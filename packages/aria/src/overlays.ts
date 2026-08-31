@@ -648,6 +648,15 @@ export type Axis = "top" | "bottom" | "left" | "right";
 export interface PositionOptions {
   /** The element the overlay is anchored to. */
   targetRef: ElementRef;
+  /**
+   * A box in client coordinates to place against, instead of the target's own.
+   *
+   * A context menu is anchored to the point the pointer was at, which is not
+   * an element and has no box to measure. `targetRef` stays whatever that
+   * point was inside, so scrolling the region away still closes the overlay
+   * and a resize there still re-places it.
+   */
+  targetRect?: MaybeAccessor<AnchorRect | null | undefined>;
   /** The overlay itself. */
   overlayRef: ElementRef;
   /** What the overlay must stay inside. @default the viewport */
@@ -681,12 +690,15 @@ export interface PositionResult {
   update(): void;
 }
 
-interface Box {
+/** A box in client coordinates: what an overlay is placed against. */
+export interface AnchorRect {
   top: number;
   left: number;
   width: number;
   height: number;
 }
+
+type Box = AnchorRect;
 
 const OPPOSITE: Record<Axis, Axis> = {
   top: "bottom",
@@ -793,9 +805,12 @@ export function overlayPosition(options: PositionOptions): PositionResult {
   const resolvedAxis = signal<Axis>("bottom");
 
   const update = (): void => {
-    const target = access(options.targetRef) as Element | null;
+    const target = access(options.targetRef) ?? null;
+    const rect = access(options.targetRect) ?? null;
     const element = access(options.overlayRef) as Element | null;
-    if (target === null || element === null || access(options.isOpen) === false) return;
+    if (element === null || access(options.isOpen) === false) return;
+    const targetBox = rect ?? (target === null ? null : boxOf(target));
+    if (targetBox === null) return;
 
     const boundaryElement = access(options.boundaryRef ?? undefined) as Element | null;
     const view = ownerWindow(element);
@@ -804,7 +819,6 @@ export function overlayPosition(options: PositionOptions): PositionResult {
         ? boxOf(boundaryElement)
         : { top: 0, left: 0, width: view.innerWidth, height: view.innerHeight };
 
-    const targetBox = boxOf(target);
     // The overlay's LAYOUT size, not its painted one. Every overlay here enters
     // with `zoom-in-95`, so the first measurement caught it at 95% — a 288px
     // popover measured 274 and was centred on that, then finished its animation
@@ -887,6 +901,7 @@ export function overlayPosition(options: PositionOptions): PositionResult {
       if (access(options.isOpen) === false) return undefined;
       // Read the refs so the position is recomputed once they resolve.
       void access(options.targetRef);
+      void access(options.targetRect);
       void access(options.overlayRef);
       void access(options.placement);
       update();

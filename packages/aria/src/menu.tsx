@@ -46,18 +46,26 @@ import type {
   SelectionMode,
 } from "./collections.ts";
 import { listState, type ListState } from "./collections.ts";
-import { contains, focusWithoutScrolling, ownerWindow, targetElement } from "./dom.ts";
+import {
+  contains,
+  focusWithoutScrolling,
+  ownerDocument,
+  ownerWindow,
+  targetElement,
+} from "./dom.ts";
 import { Popover } from "./dialog.tsx";
 import { focusRing } from "./focus.ts";
 import { hover } from "./interactions/hover.ts";
 import { getInteractionModality, isFocusVisible } from "./interactions/modality.ts";
 import { keyboard, type BaseEvent } from "./interactions/keyboard.ts";
+import { globalListeners, type GlobalListeners } from "./interactions/listeners.ts";
 import { longPressHandlers } from "./interactions/long-press.ts";
 import type { ElementRef, PressEvent } from "./interactions/press.ts";
 import { button, type ButtonOptions } from "./button.tsx";
 import {
   overlayTrigger,
   overlayTriggerState,
+  type AnchorRect,
   type OverlayTriggerState,
   type OverlayTriggerStateOptions,
   type Placement,
@@ -624,6 +632,171 @@ export function menuTrigger(
 }
 
 // ---------------------------------------------------------------------------
+// A menu at the pointer
+// ---------------------------------------------------------------------------
+
+export interface ContextMenuTriggerOptions {
+  isDisabled?: MaybeAccessor<boolean | undefined>;
+  /** How long a touch must be held before the menu opens. @default 500 */
+  longPressThreshold?: MaybeAccessor<number | undefined>;
+}
+
+export interface ContextMenuTriggerResult {
+  /** Props for the region the menu is opened over. */
+  contextMenuTriggerProps: DOMProps;
+  /** The props the menu itself needs: its id, and where to focus. */
+  menuProps: DOMProps;
+  /** The point the menu is anchored to, as a zero-size box. */
+  anchorRect: Accessor<AnchorRect | null>;
+}
+
+const TOUCH_HOLD = 500;
+
+/** How far a held touch may wander before it is a scroll rather than a hold. */
+const TOUCH_SLOP = 10;
+
+/** How long a click is waited for after a hold that opened the menu. */
+const SWALLOW_WINDOW = 300;
+
+/**
+ * Whether a `contextmenu` event came from the keyboard.
+ *
+ * It decides where focus lands: a menu opened with Shift+F10 or the Menu key
+ * has to arrive on its first item, and one opened with the pointer arrives
+ * with nothing highlighted. Where the browser dispatches `contextmenu` as a
+ * `PointerEvent` it answers this itself, with an empty `pointerType`; where it
+ * does not, the fallback is that no button was pressed and none is held, which
+ * both a right-click and a macOS Control-click fail.
+ */
+function isKeyboardContextMenu(event: MouseEvent): boolean {
+  const pointerType = (event as PointerEvent).pointerType;
+  if (typeof pointerType === "string" && pointerType !== "") return false;
+  return event.button === 0 && event.buttons === 0;
+}
+
+/**
+ * A menu opened over a region rather than from a control.
+ *
+ * The anchor is a POINT, so the menu goes just below and to the right of the
+ * pointer the way every platform's own context menu does, and flips at the
+ * edge of the screen the way any other overlay does.
+ *
+ * Touch has no second button, so a held touch opens it. That is done with the
+ * pointer events directly rather than with `press`, because a press over a
+ * region of arbitrary content would disable text selection inside it and take
+ * Enter and Space from the children the keystrokes belong to.
+ */
+export function contextMenuTrigger(
+  options: ContextMenuTriggerOptions,
+  state: MenuTriggerState,
+): ContextMenuTriggerResult {
+  const menuId = id();
+  const anchor = signal<AnchorRect | null>(null);
+  const listeners = globalListeners();
+  const isDisabled = (): boolean => access(options.isDisabled) === true;
+
+  let held: ReturnType<typeof setTimeout> | undefined;
+  let from: { x: number; y: number } | null = null;
+
+  const cancelHold = (): void => {
+    if (held !== undefined) clearTimeout(held);
+    held = undefined;
+    from = null;
+  };
+
+  const openAt = (x: number, y: number, strategy: FocusStrategy | null): void => {
+    anchor.set({ top: y, left: x, width: 0, height: 0 });
+    state.open(strategy);
+  };
+
+  const onContextMenu = (event: MouseEvent): void => {
+    // Disabled hands the page back the browser's own menu, which is what it
+    // had before this was wrapped around it.
+    if (isDisabled()) return;
+    cancelHold();
+    event.preventDefault();
+    openAt(event.clientX, event.clientY, isKeyboardContextMenu(event) ? "first" : null);
+  };
+
+  const onKeyDown = (event: KeyboardEvent): void => {
+    if (isDisabled()) return;
+    if (event.key !== "ContextMenu" && !(event.key === "F10" && event.shiftKey)) return;
+    // Under the element that HAS focus, not at the region's own corner: the
+    // region can be a page of content, and the menu is about whatever the
+    // keyboard is on.
+    const target = (targetElement(event) ?? event.currentTarget) as Element | null;
+    if (target === null) return;
+    event.preventDefault();
+    const box = target.getBoundingClientRect();
+    openAt(box.left, box.bottom, "first");
+  };
+
+  const onPointerDown = (event: PointerEvent): void => {
+    if (isDisabled()) return;
+    if (event.pointerType !== "touch" && event.pointerType !== "pen") return;
+    cancelHold();
+    from = { x: event.clientX, y: event.clientY };
+    const region = event.currentTarget as Element | null;
+    const { clientX, clientY } = event;
+    held = setTimeout(
+      () => {
+        held = undefined;
+        if (region !== null) swallowNextClick(listeners, region);
+        openAt(clientX, clientY, null);
+      },
+      access(options.longPressThreshold) ?? TOUCH_HOLD,
+    );
+  };
+
+  const onPointerMove = (event: PointerEvent): void => {
+    if (held === undefined || from === null) return;
+    const moved =
+      Math.abs(event.clientX - from.x) > TOUCH_SLOP ||
+      Math.abs(event.clientY - from.y) > TOUCH_SLOP;
+    if (moved) cancelHold();
+  };
+
+  return {
+    contextMenuTriggerProps: {
+      onContextMenu,
+      onKeyDown,
+      onPointerDown,
+      onPointerMove,
+      onPointerUp: cancelHold,
+      onPointerCancel: cancelHold,
+      // iOS puts its own callout over a held element, on top of this menu.
+      style: { "-webkit-touch-callout": "none" },
+      "data-open": () => state.isOpen(),
+      "data-disabled": () => isDisabled(),
+    },
+    menuProps: {
+      id: menuId,
+      autoFocus: () => state.focusStrategy() ?? true,
+      onClose: state.close,
+    },
+    anchorRect: anchor,
+  };
+}
+
+/**
+ * Eat the click that ends a hold.
+ *
+ * The finger is still down when the menu opens, so the click that follows
+ * would land on whatever the menu is now covering. Most platforms send no
+ * click after a long press at all, so the listener comes off on a timer as
+ * well, or the next ordinary click is eaten instead.
+ */
+function swallowNextClick(listeners: GlobalListeners, region: Element): void {
+  const doc = ownerDocument(region);
+  const swallow = (click: Event): void => {
+    click.preventDefault();
+    click.stopPropagation();
+  };
+  listeners.add(doc, "click", swallow, { once: true, capture: true });
+  setTimeout(() => listeners.remove(doc, "click", swallow, true), SWALLOW_WINDOW);
+}
+
+// ---------------------------------------------------------------------------
 // Moving the pointer to a submenu without losing it
 // ---------------------------------------------------------------------------
 
@@ -1022,9 +1195,20 @@ export function useMenuNode(): Node<unknown> {
 
 export interface MenuTriggerValue {
   state: RootMenuTriggerState;
-  triggerRef: ReturnType<typeof makeRef<HTMLButtonElement>>;
+  triggerRef: ReturnType<typeof makeRef<HTMLElement>>;
   menuTriggerProps: DOMProps;
   menuProps: DOMProps;
+  /**
+   * The box the menu is placed against, when it is not the trigger's own.
+   *
+   * A context menu is anchored to the point the pointer was at. `null` for a
+   * trigger the menu hangs off, which is every other one.
+   */
+  anchorRect: Accessor<AnchorRect | null>;
+  /** Where the menu goes when it is not told. */
+  placement: Placement;
+  /** How far from the anchor the menu sits when it is not told. */
+  offset: number;
 }
 
 const MenuTriggerContext = context<MenuTriggerValue | null>(null);
@@ -1167,13 +1351,21 @@ export interface MenuTriggerComponentProps {
  * renders only while open, so neither has to be told about the other.
  */
 export function MenuTrigger(props: Incoming<MenuTriggerComponentProps>) {
-  const triggerRef = makeRef<HTMLButtonElement>();
+  const triggerRef = makeRef<HTMLElement>();
   const options = fromProps(props);
   const state = menuTriggerState(options);
 
   const { menuTriggerProps, menuProps } = menuTrigger(options, state);
 
-  const value: MenuTriggerValue = { state, triggerRef, menuTriggerProps, menuProps };
+  const value: MenuTriggerValue = {
+    state,
+    triggerRef,
+    menuTriggerProps,
+    menuProps,
+    anchorRect: () => null,
+    placement: "bottom start",
+    offset: 8,
+  };
   const owner = getOwner();
   if (owner === null) return <>{props.children}</>;
 
@@ -1233,6 +1425,101 @@ export function MenuButton(props: Incoming<MenuButtonComponentProps>) {
     <button {...elementProps} ref={mergeRefs(menuTriggerValue.triggerRef.set, props.ref?.())}>
       {props.children}
     </button>
+  );
+}
+
+export interface ContextMenuComponentProps {
+  /** A `<ContextMenuTrigger>` and the `<Menu>` it opens, in that order. */
+  children?: Child;
+  isOpen?: boolean;
+  defaultOpen?: boolean;
+  /** Leave the browser's own menu in place. */
+  isDisabled?: boolean;
+  /** How long a touch must be held before the menu opens. @default 500 */
+  longPressThreshold?: number;
+  onOpenChange?: (isOpen: boolean) => void;
+}
+
+/**
+ * A region and the menu a right-click over it opens.
+ *
+ * ```tsx
+ * <ContextMenu>
+ *   <ContextMenuTrigger>Right-click anywhere in here</ContextMenuTrigger>
+ *   <Menu items={actions()} aria-label="Actions" onAction={(key) => run(key)}>
+ *     {(action) => <MenuItem>{action.name}</MenuItem>}
+ *   </Menu>
+ * </ContextMenu>
+ * ```
+ *
+ * Give the menu an `aria-label`. Every other menu here is named by the control
+ * that opens it, and this one's trigger is a region of content whose whole text
+ * would otherwise be read out as the menu's name.
+ */
+export function ContextMenu(props: Incoming<ContextMenuComponentProps>) {
+  const triggerRef = makeRef<HTMLElement>();
+  const options = fromProps(props);
+  const state = menuTriggerState(options);
+
+  const { contextMenuTriggerProps, menuProps, anchorRect } = contextMenuTrigger(options, state);
+
+  const value: MenuTriggerValue = {
+    state,
+    triggerRef,
+    menuTriggerProps: contextMenuTriggerProps,
+    menuProps,
+    anchorRect,
+    // A point has no side to hang off, so the menu goes down and to the right
+    // of it, which is where every platform's own context menu goes.
+    placement: "right top",
+    offset: 2,
+  };
+
+  const owner = getOwner();
+  if (owner === null) return <>{props.children}</>;
+
+  // `provide`, not `install`, for the reason `MenuTrigger` gives.
+  return provide(
+    owner,
+    MenuTriggerContext,
+    () => value,
+    () => props.children as unknown,
+  ) as never;
+}
+
+export interface ContextMenuTriggerComponentProps extends StyleProps {
+  children?: Child;
+  ref?: RefTarget<HTMLElement>;
+}
+
+/**
+ * The region an enclosing {@link ContextMenu} belongs to.
+ *
+ * The only trigger here that renders an element of its own, and it has to:
+ * there is no control for the pointer to land on, only an area.
+ *
+ * Shift+F10 and the Menu key open the menu from wherever the keyboard is
+ * inside the region, so a region whose content is not focusable needs a
+ * `tabIndex` of its own or there is no keyboard route to the menu at all.
+ */
+export function ContextMenuTrigger(props: Incoming<ContextMenuTriggerComponentProps>) {
+  const trigger = useMenuTrigger();
+  if (trigger === null) {
+    throw new Error("A ContextMenuTrigger must be rendered inside a ContextMenu.");
+  }
+
+  const options = fromProps(props);
+  const elementProps = mergeProps(
+    trigger.menuTriggerProps,
+    filterDOMProps(options, { global: true }),
+    styleProps(props),
+    { "data-testid": () => props["data-testid"]?.() },
+  );
+
+  return (
+    <div {...elementProps} ref={mergeRefs(trigger.triggerRef.set, props.ref?.())}>
+      {props.children}
+    </div>
   );
 }
 
@@ -1314,10 +1601,11 @@ export function Menu<T>(props: Incoming<MenuComponentProps<T>>) {
   return (
     <Popover
       triggerRef={trigger.triggerRef}
+      triggerRect={trigger.anchorRect()}
       isOpen={trigger.state.isOpen()}
       onOpenChange={trigger.state.setOpen}
-      placement={props.placement?.() ?? "bottom start"}
-      offset={props.offset?.() ?? 8}
+      placement={props.placement?.() ?? trigger.placement}
+      offset={props.offset?.() ?? trigger.offset}
     >
       <MenuList of={props} trigger={trigger} />
     </Popover>

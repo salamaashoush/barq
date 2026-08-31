@@ -253,6 +253,84 @@ describe("overlayPosition", () => {
     expect(leftOf(position)).toBeCloseTo(290, 1);
   });
 
+  test("places against a rect handed to it rather than the target's own box", () => {
+    // A context menu is anchored to the point the pointer was at, which has no
+    // element and no box. The target stays whatever the point was inside, so
+    // scrolling that away still closes the overlay.
+    const point = signal({ top: 80, left: 120, width: 0, height: 0 });
+    let position: PositionResult | undefined;
+
+    function Fixture() {
+      const targetRef = ref<HTMLElement>();
+      const overlayRef = ref<HTMLElement>();
+      position = overlayPosition({
+        targetRef,
+        targetRect: point,
+        overlayRef,
+        placement: "right top",
+        offset: 2,
+        isOpen: true,
+      });
+      return (
+        <>
+          <section
+            ref={(node: HTMLElement) => {
+              box(node, { top: 0, left: 0, width: 600, height: 400 });
+              targetRef.set(node);
+            }}
+          />
+          <div
+            ref={(node: HTMLElement) => {
+              box(node, { top: 0, left: 0, width: 200, height: 100 });
+              overlayRef.set(node);
+            }}
+          />
+        </>
+      );
+    }
+
+    render(() => <Fixture />);
+    flush();
+    position?.update();
+
+    expect(leftOf(position)).toBeCloseTo(122, 1);
+    expect(Number.parseFloat(styleOf(position?.overlayProps).top ?? "")).toBeCloseTo(80, 1);
+
+    point.set({ top: 200, left: 300, width: 0, height: 0 });
+    flush();
+
+    expect(leftOf(position)).toBeCloseTo(302, 1);
+  });
+
+  test("needs no target at all when it is given a rect", () => {
+    let position: PositionResult | undefined;
+
+    function Fixture() {
+      const overlayRef = ref<HTMLElement>();
+      position = overlayPosition({
+        targetRef: () => null,
+        targetRect: { top: 50, left: 60, width: 0, height: 0 },
+        overlayRef,
+        placement: "right top",
+        isOpen: true,
+      });
+      return (
+        <div
+          ref={(node: HTMLElement) => {
+            box(node, { top: 0, left: 0, width: 200, height: 100 });
+            overlayRef.set(node);
+          }}
+        />
+      );
+    }
+
+    render(() => <Fixture />);
+    flush();
+    position?.update();
+
+    expect(leftOf(position)).toBeCloseTo(60, 1);
+  });
+
   test("observes both the trigger and the overlay", () => {
     stubResizeObserver();
 

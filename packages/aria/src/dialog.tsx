@@ -33,6 +33,7 @@ import {
   overlayTrigger,
   overlayTriggerState,
   preventScroll,
+  type AnchorRect,
   type OverlayOptions,
   type OverlayTriggerState,
   type Placement,
@@ -349,6 +350,11 @@ export interface PopoverComponentProps extends StyleProps {
   children?: Child;
   /** The element the popover is anchored to. */
   triggerRef: ElementRef;
+  /**
+   * A box to place against instead of the trigger's own, in client
+   * coordinates. A context menu passes the point the pointer was at.
+   */
+  triggerRect?: AnchorRect | null;
   isOpen?: boolean;
   defaultOpen?: boolean;
   /** @default "bottom" */
@@ -387,6 +393,7 @@ export function Popover(props: Incoming<PopoverComponentProps>) {
 
   const position = overlayPosition({
     targetRef: () => access(props.triggerRef()),
+    targetRect: () => props.triggerRect?.() ?? null,
     overlayRef: domRef,
     placement: () => props.placement?.() ?? "bottom",
     offset: () => props.offset?.() ?? 8,

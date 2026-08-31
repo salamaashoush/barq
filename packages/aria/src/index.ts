@@ -273,6 +273,7 @@ export {
   type TypeSelectResult,
 } from "./selection.ts";
 export {
+  type AnchorRect,
   ariaHideOutside,
   type Axis,
   closeOnScroll,
@@ -634,6 +635,13 @@ export {
   useListBox,
 } from "./listbox.tsx";
 export {
+  ContextMenu,
+  type ContextMenuComponentProps,
+  ContextMenuTrigger,
+  type ContextMenuTriggerComponentProps,
+  contextMenuTrigger,
+  type ContextMenuTriggerOptions,
+  type ContextMenuTriggerResult,
   Menu,
   menu,
   MenuButton,

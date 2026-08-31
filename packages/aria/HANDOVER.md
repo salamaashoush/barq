@@ -5,7 +5,7 @@ The package surface, its conventions and what is not implemented are in
 changes this package caused, the traps that cost a debugging session each, and
 what has not been re-run.
 
-Green on the current tree: `bun test` passes in aria (630), core (938),
+Green on the current tree: `bun test` passes in aria (648), core (938),
 router (519), primitives (246), start (192), server (122), testing (101),
 css (62) and query (15), and `cargo test` in `compiler-rs` (468). `bunx tsc --noEmit` is clean in `packages/aria` and
 `packages/testing`, `bun run build` succeeds in aria, and
@@ -119,10 +119,32 @@ starts shut, one with no transition, and `prefers-reduced-motion`.
 same frame, because disposal is what restores it. That is what Radix and
 react-aria both do, and it was a deliberate choice rather than a consequence.
 
+## An overlay can be placed against a point now
+
+`overlayPosition` took a target ELEMENT and measured its box. A context menu
+has no element to hang off — it belongs to the point the pointer was at — so
+`targetRect` is an `AnchorRect` in client coordinates that replaces that
+measurement. Two things about the shape are deliberate:
+
+- **`targetRef` is still passed, and still does its other jobs.** A virtual
+  element with its own `getBoundingClientRect`, which is what Radix hands its
+  positioner, would have satisfied the placement and left `closeOnScroll` and
+  the `ResizeObserver` with nothing real to watch. Here the region the pointer
+  was over is a genuine element: scrolling it away closes the menu, and a
+  resize of it re-places one that is open.
+- **The rect is a signal, so re-anchoring is a `set`.** A second right-click
+  inside the same region moves the menu rather than reopening it, because
+  `update()` reads the rect inside the positioning effect.
+
+`contextMenuTrigger` in `menu.tsx` is what produces the point, and `<ContextMenu>`
+is a `MenuTrigger` whose `MenuTriggerValue` carries an `anchorRect` and its own
+default placement (`right top`, offset 2) rather than a button's `bottom start`.
+The touch hold is written on the pointer events rather than on `press`, because
+a press over a region of arbitrary content disables text selection inside it and
+claims Enter and Space from the children the keystrokes belong to.
+
 ## What `@barqjs/ui` still needs from here
 
-- **A pointer-anchored trigger**, for a context menu. `overlayPosition` takes a
-  target ELEMENT; a context menu is anchored to a point.
 - **A Toast**, which is the whole of what stands between the package and
   `Sonner`.
 - **`DisclosureGroupItem` and `Disclosure` declare `StyleProps` they cannot

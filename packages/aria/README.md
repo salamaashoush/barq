@@ -141,7 +141,7 @@ Unlike react-aria there is no view recycling: `<For>` keys rows by item, so a ro
 | `date` · `color` | barq's answers to `@internationalized/date` and `@react-stately/color`                                                                                            |
 | `validation`     | `formValidationState`, `fieldValidation`, `formValidation`                                                                                                        |
 
-Components: `Button` `ToggleButton` `Checkbox` `CheckboxGroup` `Switch` `RadioGroup` `Radio` `Link` `Separator` `ProgressBar` `Meter` `TextField` `SearchField` `NumberField` `ListBox` `Option` `Menu` `MenuTrigger` `SubmenuTrigger` `Select` `ComboBox` `GridList` `Table` `TagGroup` `Tabs` `Toolbar` `Breadcrumbs` `Disclosure` `Dialog` `Modal` `Popover` `Slider` `Calendar` `RangeCalendar` `DateField` `TimeField` `DatePicker` `ColorPicker` `ColorSlider` `ColorArea` `ColorWheel` `ColorField` `ColorSwatch` `Tooltip` `Form` `Virtualizer`.
+Components: `Button` `ToggleButton` `Checkbox` `CheckboxGroup` `Switch` `RadioGroup` `Radio` `Link` `Separator` `ProgressBar` `Meter` `TextField` `SearchField` `NumberField` `ListBox` `Option` `Menu` `MenuTrigger` `SubmenuTrigger` `ContextMenu` `Select` `ComboBox` `GridList` `Table` `TagGroup` `Tabs` `Toolbar` `Breadcrumbs` `Disclosure` `Dialog` `Modal` `Popover` `Slider` `Calendar` `RangeCalendar` `DateField` `TimeField` `DatePicker` `ColorPicker` `ColorSlider` `ColorArea` `ColorWheel` `ColorField` `ColorSwatch` `Tooltip` `Form` `Virtualizer`.
 
 ## What is not here
 
@@ -153,7 +153,7 @@ Deliberately absent:
 
 Not built yet, in rough order of how much is missing:
 
-- **Toast** and its region. **Tree** and `TreeItem`. **Autocomplete** and `SearchAutocomplete`. **StepList**. **TokenField**. **ActionGroup**. **ToggleButtonGroup**. **ContextMenu**. **Landmark** navigation.
+- **Toast** and its region. **Tree** and `TreeItem`. **Autocomplete** and `SearchAutocomplete`. **StepList**. **TokenField**. **ActionGroup**. **ToggleButtonGroup**. **Landmark** navigation.
 - **Selection checkboxes** for a grid, gridlist and table (`useGridSelectionCheckbox` and its siblings), and the selection announcement that goes with them.
 - **Load more**: `useLoadMore` and the sentinel, for a collection that pages as it scrolls.
 - **Table column resizing**.
