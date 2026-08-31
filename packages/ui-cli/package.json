@@ -1,0 +1,53 @@
+{
+  "name": "@barqjs/ui-cli",
+  "version": "0.1.0",
+  "description": "Copy @barqjs/ui components into your project, and keep them in sync",
+  "keywords": [
+    "barq",
+    "cli",
+    "components",
+    "registry",
+    "shadcn",
+    "ui"
+  ],
+  "homepage": "https://github.com/salamaashoush/barq#readme",
+  "bugs": {
+    "url": "https://github.com/salamaashoush/barq/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/salamaashoush/barq.git",
+    "directory": "packages/ui-cli"
+  },
+  "type": "module",
+  "bin": {
+    "barq-ui": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "prepublishOnly": "bun run build"
+  },
+  "devDependencies": {
+    "@barqjs/ui": "workspace:*",
+    "@types/bun": "^1.4.0",
+    "typescript": "^7.0.2"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}

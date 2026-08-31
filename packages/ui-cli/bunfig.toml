@@ -1,0 +1,6 @@
+[install]
+peer = false
+
+[test]
+root = "./test"
+timeout = 60000
