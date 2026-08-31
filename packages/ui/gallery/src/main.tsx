@@ -78,6 +78,9 @@ import {
   FieldSeparator,
   FieldSet,
   FieldTitle,
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
   Input,
   InputGroup,
   InputGroupAddon,
@@ -97,6 +100,11 @@ import {
   Kbd,
   KbdGroup,
   Label,
+  Menubar,
+  MenubarContent,
+  MenubarItem,
+  MenubarMenu,
+  MenubarTrigger,
   NativeSelect,
   Pagination,
   PaginationContent,
@@ -137,6 +145,8 @@ import {
   TabsTrigger,
   Textarea,
   Toggle,
+  ToggleGroup,
+  ToggleGroupItem,
   Tooltip,
   TooltipContent,
 } from "@barqjs/ui";
@@ -505,6 +515,68 @@ function Gallery() {
               </PaginationItem>
             </PaginationContent>
           </Pagination>
+        </div>
+      </Section>
+
+      <Section title="ToggleGroup, HoverCard and Menubar">
+        <div class={row}>
+          <ToggleGroup type="multiple" variant="outline" aria-label="Format">
+            <ToggleGroupItem value="bold" aria-label="Bold">
+              <Bold />
+            </ToggleGroupItem>
+            <ToggleGroupItem value="italic" aria-label="Italic">
+              I
+            </ToggleGroupItem>
+            <ToggleGroupItem value="underline" aria-label="Underline">
+              U
+            </ToggleGroupItem>
+          </ToggleGroup>
+
+          <ToggleGroup spacing={2} aria-label="Align">
+            <ToggleGroupItem value="left" aria-label="Left">
+              L
+            </ToggleGroupItem>
+            <ToggleGroupItem value="centre" aria-label="Centre">
+              C
+            </ToggleGroupItem>
+          </ToggleGroup>
+
+          <HoverCard openDelay={200} closeDelay={200}>
+            <HoverCardTrigger>
+              <Button variant="link">@barq</Button>
+            </HoverCardTrigger>
+            <HoverCardContent>
+              <div style={{ display: "grid", gap: "0.5rem" }}>
+                <strong>@barq</strong>
+                <span style={{ color: "var(--muted-foreground)", "font-size": "0.875rem" }}>
+                  Reactive without a virtual DOM.
+                </span>
+              </div>
+            </HoverCardContent>
+          </HoverCard>
+        </div>
+
+        <div class={row} style={{ "margin-top": "0.75rem" }}>
+          <Menubar>
+            <MenubarMenu>
+              <MenubarTrigger>File</MenubarTrigger>
+              <MenubarContent items={ACTIONS} aria-label="File">
+                {(action: (typeof ACTIONS)[number]) => <MenubarItem>{action.name}</MenubarItem>}
+              </MenubarContent>
+            </MenubarMenu>
+            <MenubarMenu>
+              <MenubarTrigger>Edit</MenubarTrigger>
+              <MenubarContent items={ACTIONS} aria-label="Edit">
+                {(action: (typeof ACTIONS)[number]) => <MenubarItem>{action.name}</MenubarItem>}
+              </MenubarContent>
+            </MenubarMenu>
+            <MenubarMenu>
+              <MenubarTrigger>View</MenubarTrigger>
+              <MenubarContent items={ACTIONS} aria-label="View">
+                {(action: (typeof ACTIONS)[number]) => <MenubarItem>{action.name}</MenubarItem>}
+              </MenubarContent>
+            </MenubarMenu>
+          </Menubar>
         </div>
       </Section>
 

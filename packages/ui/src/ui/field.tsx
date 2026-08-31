@@ -373,7 +373,7 @@ export function FieldLabel(props: Incoming<FieldLabelProps>) {
   return (
     <Label
       {...props}
-      data-slot="field-label"
+      data-slot={props["data-slot"]?.() ?? "field-label"}
       class={clsx(fieldLabel, props.class?.(), props.className?.())}
     />
   );

@@ -205,6 +205,13 @@ export {
   fieldVariants,
 } from "./ui/field.tsx";
 export {
+  HoverCard,
+  HoverCardContent,
+  type HoverCardContentProps,
+  type HoverCardProps,
+  HoverCardTrigger,
+} from "./ui/hover-card.tsx";
+export {
   InputGroup,
   InputGroupAddon,
   type InputGroupAddonProps,
@@ -244,6 +251,35 @@ export {
 } from "./ui/item.tsx";
 export { Kbd, KbdGroup } from "./ui/kbd.tsx";
 export { Label, type LabelProps } from "./ui/label.tsx";
+export {
+  Menubar,
+  MenubarCheckboxItem,
+  type MenubarCheckboxItemProps,
+  MenubarContent,
+  type MenubarContentProps,
+  MenubarGroup,
+  MenubarGroupLabel,
+  type MenubarGroupProps,
+  MenubarItem,
+  type MenubarItemProps,
+  MenubarLabel,
+  type MenubarLabelProps,
+  MenubarMenu,
+  type MenubarMenuProps,
+  type MenubarProps,
+  MenubarRadioItem,
+  type MenubarRadioItemProps,
+  MenubarSeparator,
+  MenubarShortcut,
+  MenubarSub,
+  MenubarSubContent,
+  type MenubarSubContentProps,
+  type MenubarSubProps,
+  MenubarSubTrigger,
+  type MenubarSubTriggerProps,
+  MenubarTrigger,
+  type MenubarTriggerProps,
+} from "./ui/menubar.tsx";
 export { NativeSelect, type NativeSelectProps } from "./ui/native-select.tsx";
 export {
   Pagination,
@@ -330,6 +366,13 @@ export {
   TabsTrigger,
   type TabsTriggerProps,
 } from "./ui/tabs.tsx";
+export {
+  ToggleGroup,
+  ToggleGroupItem,
+  type ToggleGroupItemProps,
+  type ToggleGroupProps,
+  type ToggleGroupType,
+} from "./ui/toggle-group.tsx";
 export {
   Toggle,
   type ToggleProps,

@@ -221,7 +221,7 @@ export function AlertDialogContent(props: Incoming<AlertDialogContentProps>) {
       isDismissable={false}
       underlayClass={overlay}
       class={clsx(content, props.class?.(), props.className?.())}
-      data-slot="alert-dialog-content"
+      data-slot={props["data-slot"]?.() ?? "alert-dialog-content"}
       data-size={props.size?.() ?? "default"}
     >
       <AriaDialog role="alertdialog" class={contents}>
@@ -256,7 +256,7 @@ export function AlertDialogTitle(props: Incoming<UiProps>) {
     <Heading
       {...props}
       slot="title"
-      data-slot="alert-dialog-title"
+      data-slot={props["data-slot"]?.() ?? "alert-dialog-title"}
       class={clsx(title, props.class?.(), props.className?.())}
     />
   );
@@ -274,7 +274,7 @@ export function AlertDialogAction(props: Incoming<AlertDialogActionProps>) {
   return (
     <Button
       {...props}
-      data-slot="alert-dialog-action"
+      data-slot={props["data-slot"]?.() ?? "alert-dialog-action"}
       onPress={(event) => {
         props.onPress?.()?.(event);
         state.close();
@@ -289,7 +289,7 @@ export function AlertDialogCancel(props: Incoming<AlertDialogActionProps>) {
   return (
     <Button
       {...props}
-      data-slot="alert-dialog-cancel"
+      data-slot={props["data-slot"]?.() ?? "alert-dialog-cancel"}
       variant={props.variant?.() ?? "outline"}
       onPress={(event) => {
         props.onPress?.()?.(event);

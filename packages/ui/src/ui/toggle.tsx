@@ -147,7 +147,7 @@ export function Toggle(props: Incoming<ToggleProps>) {
   return (
     <AriaToggleButton
       {...props}
-      data-slot="toggle"
+      data-slot={props["data-slot"]?.() ?? "toggle"}
       data-variant={props.variant?.() ?? "default"}
       data-size={props.size?.() ?? "default"}
       class={clsx(

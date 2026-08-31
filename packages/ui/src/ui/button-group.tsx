@@ -154,7 +154,7 @@ export function ButtonGroupSeparator(props: Incoming<ButtonGroupSeparatorProps>)
   return (
     <Separator
       {...props}
-      data-slot="button-group-separator"
+      data-slot={props["data-slot"]?.() ?? "button-group-separator"}
       orientation={props.orientation?.() ?? "vertical"}
       class={clsx(separator, props.class?.(), props.className?.())}
     />

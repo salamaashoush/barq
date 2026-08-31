@@ -399,6 +399,23 @@
       ]
     },
     {
+      "name": "hover-card",
+      "type": "registry:ui",
+      "title": "Hover Card",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/css",
+        "@barqjs/primitives"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props"
+      ],
+      "files": [
+        "ui/hover-card.tsx"
+      ]
+    },
+    {
       "name": "input-group",
       "type": "registry:ui",
       "title": "Input Group",
@@ -485,6 +502,24 @@
       ],
       "files": [
         "ui/label.tsx"
+      ]
+    },
+    {
+      "name": "menubar",
+      "type": "registry:ui",
+      "title": "Menubar",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "button",
+        "layers",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/menubar.tsx"
       ]
     },
     {
@@ -760,6 +795,24 @@
       ],
       "files": [
         "ui/tabs.tsx"
+      ]
+    },
+    {
+      "name": "toggle-group",
+      "type": "registry:ui",
+      "title": "Toggle Group",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "slot",
+        "toggle"
+      ],
+      "files": [
+        "ui/toggle-group.tsx"
       ]
     },
     {

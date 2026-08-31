@@ -231,7 +231,7 @@ export function DialogContent(props: Incoming<DialogContentProps>) {
       isKeyboardDismissDisabled={props.isKeyboardDismissDisabled?.() === true}
       underlayClass={overlay}
       class={clsx(content, props.class?.(), props.className?.())}
-      data-slot="dialog-content"
+      data-slot={props["data-slot"]?.() ?? "dialog-content"}
     >
       <AriaDialog role={props.role?.() ?? "dialog"} class={contents}>
         {props.children}
@@ -268,7 +268,7 @@ export function DialogTitle(props: Incoming<UiProps>) {
     <Heading
       {...props}
       slot="title"
-      data-slot="dialog-title"
+      data-slot={props["data-slot"]?.() ?? "dialog-title"}
       class={clsx(title, props.class?.(), props.className?.())}
     />
   );
@@ -304,7 +304,7 @@ export function DialogClose(props: Incoming<DialogCloseProps>) {
   return (
     <Button
       {...props}
-      data-slot="dialog-close"
+      data-slot={props["data-slot"]?.() ?? "dialog-close"}
       variant={props.variant?.() ?? "outline"}
       onPress={(event) => {
         props.onPress?.()?.(event);

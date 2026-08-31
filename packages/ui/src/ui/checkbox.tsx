@@ -116,7 +116,7 @@ export function Checkbox(props: Incoming<CheckboxProps>) {
   return (
     <AriaCheckbox
       {...props}
-      data-slot="checkbox"
+      data-slot={props["data-slot"]?.() ?? "checkbox"}
       class={clsx(box, props.class?.(), props.className?.())}
     >
       <span data-slot="checkbox-indicator" class={indicator}>

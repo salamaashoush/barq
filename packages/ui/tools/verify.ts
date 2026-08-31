@@ -50,12 +50,7 @@ function declarations(nodes: readonly CssNode[], out: string[] = []): string[] {
  * this reports two thousand differences and no bugs.
  */
 function canonical(text: string): string {
-  return text
-    .replace(/\s+/g, " ")
-    .replaceAll(", ", ",")
-    .replaceAll(") ", ")")
-    .replace(/(^|[\s:,(])0\./g, "$1.")
-    .trim();
+  return text.replace(/\s+/g, "").replace(/([:,(])0\./g, "$1.");
 }
 
 /**

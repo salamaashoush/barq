@@ -290,7 +290,7 @@ export function SheetContent(props: Incoming<SheetContentProps>) {
       isKeyboardDismissDisabled={props.isKeyboardDismissDisabled?.() === true}
       underlayClass={overlay}
       class={clsx(sheetVariants({ side: props.side?.() }), props.class?.(), props.className?.())}
-      data-slot="sheet-content"
+      data-slot={props["data-slot"]?.() ?? "sheet-content"}
       data-side={props.side?.() ?? "right"}
     >
       <AriaDialog class={contents}>
@@ -327,7 +327,7 @@ export function SheetTitle(props: Incoming<UiProps>) {
     <Heading
       {...props}
       slot="title"
-      data-slot="sheet-title"
+      data-slot={props["data-slot"]?.() ?? "sheet-title"}
       class={clsx(title, props.class?.(), props.className?.())}
     />
   );
@@ -344,7 +344,7 @@ export function SheetClose(props: Incoming<SheetCloseProps>) {
   return (
     <Button
       {...props}
-      data-slot="sheet-close"
+      data-slot={props["data-slot"]?.() ?? "sheet-close"}
       variant={props.variant?.() ?? "outline"}
       onPress={(event) => {
         props.onPress?.()?.(event);

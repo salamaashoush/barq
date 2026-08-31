@@ -145,7 +145,7 @@ export function PopoverContent(props: Incoming<PopoverContentProps>) {
       isOpen={state.isOpen()}
       onOpenChange={state.setOpen}
       placement={props.placement?.() ?? "bottom"}
-      data-slot="popover-content"
+      data-slot={props["data-slot"]?.() ?? "popover-content"}
       // Focusable, so the focus scope has somewhere to put focus when the
       // popover holds nothing focusable of its own. Without it focus stays on
       // the trigger, which is OUTSIDE the overlay — and Escape, whose handler

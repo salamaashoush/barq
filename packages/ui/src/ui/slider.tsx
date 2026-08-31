@@ -195,7 +195,7 @@ export function Slider(props: Incoming<SliderProps>) {
   return (
     <AriaSlider
       {...props}
-      data-slot="slider"
+      data-slot={props["data-slot"]?.() ?? "slider"}
       class={clsx(root, props.class?.(), props.className?.())}
     >
       <SliderOutput data-slot="slider-output" class={output} />

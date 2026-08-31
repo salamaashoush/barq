@@ -176,7 +176,7 @@ export function AccordionTrigger(props: Incoming<AccordionTriggerProps>) {
   return (
     <DisclosureButton
       {...props}
-      data-slot="accordion-trigger"
+      data-slot={props["data-slot"]?.() ?? "accordion-trigger"}
       class={clsx(trigger, props.class?.(), props.className?.())}
     >
       {props.children}

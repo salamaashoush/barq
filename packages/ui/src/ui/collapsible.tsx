@@ -78,7 +78,7 @@ export function CollapsibleTrigger(props: Incoming<CollapsibleTriggerProps>) {
   return (
     <DisclosureButton
       {...props}
-      data-slot="collapsible-trigger"
+      data-slot={props["data-slot"]?.() ?? "collapsible-trigger"}
       class={clsx(trigger, props.class?.(), props.className?.())}
     />
   );

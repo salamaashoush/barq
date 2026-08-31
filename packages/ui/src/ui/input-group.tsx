@@ -378,6 +378,7 @@ export interface InputGroupButtonProps extends Omit<ButtonProps, "size"> {
   size?: InputGroupButtonSize;
   /** @default "ghost" */
   variant?: ButtonVariant;
+  "data-slot"?: string;
 }
 
 /** A `<Button>` sized to sit inside the border rather than beside it. */
@@ -385,7 +386,7 @@ export function InputGroupButton(props: Incoming<InputGroupButtonProps>) {
   return (
     <Button
       {...props}
-      data-slot="input-group-button"
+      data-slot={props["data-slot"]?.() ?? "input-group-button"}
       variant={props.variant?.() ?? "ghost"}
       size={props.size?.() ?? "xs"}
       class={clsx(
@@ -408,7 +409,7 @@ export function InputGroupInput(props: Incoming<InputGroupInputProps>) {
   return (
     <Input
       {...props}
-      data-slot="input-group-control"
+      data-slot={props["data-slot"]?.() ?? "input-group-control"}
       class={clsx(control, props.class?.(), props.className?.())}
     />
   );
@@ -420,7 +421,7 @@ export function InputGroupTextarea(props: Incoming<InputGroupTextareaProps>) {
   return (
     <Textarea
       {...props}
-      data-slot="input-group-control"
+      data-slot={props["data-slot"]?.() ?? "input-group-control"}
       class={clsx(controlTextarea, props.class?.(), props.className?.())}
     />
   );

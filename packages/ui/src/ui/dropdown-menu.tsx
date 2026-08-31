@@ -389,7 +389,7 @@ export function DropdownMenuContent<T>(props: Incoming<DropdownMenuContentProps<
   return (
     <Menu
       {...props}
-      data-slot="dropdown-menu-content"
+      data-slot={props["data-slot"]?.() ?? "dropdown-menu-content"}
       class={clsx(content, props.class?.(), props.className?.())}
     />
   );
@@ -407,7 +407,7 @@ export function DropdownMenuItem(props: Incoming<DropdownMenuItemProps>) {
   return (
     <MenuItem
       {...props}
-      data-slot="dropdown-menu-item"
+      data-slot={props["data-slot"]?.() ?? "dropdown-menu-item"}
       data-variant={props.variant?.() ?? "default"}
       data-inset={props.inset?.() === true ? "" : undefined}
       class={clsx(item, props.class?.(), props.className?.())}
@@ -428,7 +428,7 @@ export function DropdownMenuCheckboxItem(props: Incoming<DropdownMenuCheckboxIte
   return (
     <MenuItem
       {...props}
-      data-slot="dropdown-menu-checkbox-item"
+      data-slot={props["data-slot"]?.() ?? "dropdown-menu-checkbox-item"}
       class={clsx(checkItem, props.class?.(), props.className?.())}
     >
       <span data-slot="dropdown-menu-item-indicator" class={indicator}>
@@ -446,7 +446,7 @@ export function DropdownMenuRadioItem(props: Incoming<DropdownMenuRadioItemProps
   return (
     <MenuItem
       {...props}
-      data-slot="dropdown-menu-radio-item"
+      data-slot={props["data-slot"]?.() ?? "dropdown-menu-radio-item"}
       class={clsx(checkItem, props.class?.(), props.className?.())}
     >
       <span data-slot="dropdown-menu-item-indicator" class={radioIndicator}>
@@ -489,7 +489,7 @@ export function DropdownMenuGroup<T>(props: Incoming<DropdownMenuGroupProps<T>>)
   return (
     <MenuSection
       {...props}
-      data-slot="dropdown-menu-group"
+      data-slot={props["data-slot"]?.() ?? "dropdown-menu-group"}
       class={clsx(group, props.class?.(), props.className?.())}
     />
   );
@@ -519,7 +519,7 @@ export function DropdownMenuSubTrigger(props: Incoming<DropdownMenuSubTriggerPro
   return (
     <MenuItem
       {...props}
-      data-slot="dropdown-menu-sub-trigger"
+      data-slot={props["data-slot"]?.() ?? "dropdown-menu-sub-trigger"}
       data-inset={props.inset?.() === true ? "" : undefined}
       class={clsx(subTrigger, props.class?.(), props.className?.())}
     >
@@ -535,7 +535,7 @@ export function DropdownMenuSubContent<T>(props: Incoming<DropdownMenuSubContent
   return (
     <Menu
       {...props}
-      data-slot="dropdown-menu-sub-content"
+      data-slot={props["data-slot"]?.() ?? "dropdown-menu-sub-content"}
       class={clsx(content, props.class?.(), props.className?.())}
     />
   );

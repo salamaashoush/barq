@@ -137,7 +137,7 @@ export function RadioGroupItem(props: Incoming<RadioGroupItemProps>) {
   return (
     <AriaRadio
       {...props}
-      data-slot="radio-group-item"
+      data-slot={props["data-slot"]?.() ?? "radio-group-item"}
       class={clsx(circle, props.class?.(), props.className?.())}
     >
       <span data-slot="radio-group-indicator" class={indicator}>

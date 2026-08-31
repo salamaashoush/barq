@@ -119,7 +119,7 @@ export function Switch(props: Incoming<SwitchProps>) {
   return (
     <AriaSwitch
       {...props}
-      data-slot="switch"
+      data-slot={props["data-slot"]?.() ?? "switch"}
       data-size={props.size?.() ?? "default"}
       class={clsx(track, props.class?.(), props.className?.())}
     >

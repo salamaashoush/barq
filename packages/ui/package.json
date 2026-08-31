@@ -148,6 +148,11 @@
       "bun": "./src/ui/field.tsx",
       "import": "./dist/ui/field.js"
     },
+    "./hover-card": {
+      "types": "./dist/ui/hover-card.d.ts",
+      "bun": "./src/ui/hover-card.tsx",
+      "import": "./dist/ui/hover-card.js"
+    },
     "./input-group": {
       "types": "./dist/ui/input-group.d.ts",
       "bun": "./src/ui/input-group.tsx",
@@ -172,6 +177,11 @@
       "types": "./dist/ui/label.d.ts",
       "bun": "./src/ui/label.tsx",
       "import": "./dist/ui/label.js"
+    },
+    "./menubar": {
+      "types": "./dist/ui/menubar.d.ts",
+      "bun": "./src/ui/menubar.tsx",
+      "import": "./dist/ui/menubar.js"
     },
     "./native-select": {
       "types": "./dist/ui/native-select.d.ts",
@@ -252,6 +262,11 @@
       "types": "./dist/ui/tabs.d.ts",
       "bun": "./src/ui/tabs.tsx",
       "import": "./dist/ui/tabs.js"
+    },
+    "./toggle-group": {
+      "types": "./dist/ui/toggle-group.d.ts",
+      "bun": "./src/ui/toggle-group.tsx",
+      "import": "./dist/ui/toggle-group.js"
     },
     "./toggle": {
       "types": "./dist/ui/toggle.d.ts",

@@ -312,7 +312,7 @@ export function Select<T>(props: Incoming<SelectProps<T>>) {
   return (
     <AriaSelect
       {...props}
-      data-slot="select-trigger"
+      data-slot={props["data-slot"]?.() ?? "select-trigger"}
       data-size={props.size?.() ?? "default"}
       class={clsx(trigger, chevron, props.class?.(), props.className?.())}
       listClass={list}
@@ -327,7 +327,7 @@ export function SelectItem(props: Incoming<SelectItemProps>) {
   return (
     <Option
       {...props}
-      data-slot="select-item"
+      data-slot={props["data-slot"]?.() ?? "select-item"}
       class={clsx(item, props.class?.(), props.className?.())}
     >
       <span data-slot="select-item-indicator" class={indicator}>

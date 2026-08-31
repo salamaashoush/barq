@@ -258,7 +258,7 @@ export function ItemSeparator(props: Incoming<ItemSeparatorProps>) {
   return (
     <Separator
       {...props}
-      data-slot="item-separator"
+      data-slot={props["data-slot"]?.() ?? "item-separator"}
       orientation="horizontal"
       class={clsx(separator, props.class?.(), props.className?.())}
     />

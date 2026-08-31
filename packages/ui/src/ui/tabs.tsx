@@ -228,7 +228,7 @@ export function Tabs<T>(props: Incoming<TabsProps<T>>) {
   return (
     <AriaTabs
       {...props}
-      data-slot="tabs"
+      data-slot={props["data-slot"]?.() ?? "tabs"}
       class={clsx(root, props.class?.(), props.className?.())}
     />
   );
@@ -242,7 +242,7 @@ export function TabsList<T>(props: Incoming<TabsListProps<T>>) {
   return (
     <AriaTabList
       {...props}
-      data-slot="tabs-list"
+      data-slot={props["data-slot"]?.() ?? "tabs-list"}
       data-variant={props.variant?.() ?? "default"}
       class={clsx(
         tabsListVariants({ variant: props.variant?.() }),
@@ -259,7 +259,7 @@ export function TabsTrigger(props: Incoming<TabsTriggerProps>) {
   return (
     <AriaTab
       {...props}
-      data-slot="tabs-trigger"
+      data-slot={props["data-slot"]?.() ?? "tabs-trigger"}
       class={clsx(trigger, props.class?.(), props.className?.())}
     />
   );
@@ -271,7 +271,7 @@ export function TabsContent<T>(props: Incoming<TabsContentProps<T>>) {
   return (
     <AriaTabPanel
       {...props}
-      data-slot="tabs-content"
+      data-slot={props["data-slot"]?.() ?? "tabs-content"}
       class={clsx(content, props.class?.(), props.className?.())}
     />
   );
