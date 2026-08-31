@@ -100,6 +100,11 @@
       "barq": "./src/disclosure.tsx",
       "bun": "./src/disclosure.tsx"
     },
+    "./drawer": {
+      "types": "./src/drawer.ts",
+      "barq": "./src/drawer.ts",
+      "bun": "./src/drawer.ts"
+    },
     "./dom": {
       "types": "./src/dom.ts",
       "barq": "./src/dom.ts",

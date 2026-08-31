@@ -548,6 +548,8 @@ export {
   type PopoverComponentProps,
   PortalProvider,
   type PortalProviderComponentProps,
+  type DialogDescription,
+  useDialogDescription,
   useDialogTitle,
   useDialogTrigger,
   usePopoverGroup,
@@ -837,6 +839,14 @@ export {
   type ToastQueue,
   type ToastQueueOptions,
 } from "./toast.ts";
+
+export {
+  canDragFrom,
+  drawerDrag,
+  type DrawerDirection,
+  type DrawerDrag,
+  type DrawerDragOptions,
+} from "./drawer.ts";
 
 export {
   navigationMenuState,
