@@ -5,7 +5,7 @@ The package surface, its conventions and what is not implemented are in
 changes this package caused, the traps that cost a debugging session each, and
 what has not been re-run.
 
-Green on the current tree: `bun test` passes in aria (661), core (938),
+Green on the current tree: `bun test` passes in aria (678), core (938),
 router (519), primitives (246), start (192), server (122), testing (101),
 css (92) and query (15), and `cargo test --workspace` in `compiler-rs`
 (512 + 34 + 30). `bunx tsc --noEmit` is clean in `packages/aria` and
@@ -72,7 +72,21 @@ Each has a regression test where the bug was, not where it showed up.
     anything weaker takes a plain `<Child />` back out of its Block, because an
     ordinary component call is `Opaque` rather than `Static`.
 
-15. **A style key could only be spelled camelCase.** Every backend puts one
+15. **A choice of COMPONENTS at a hole was handed over as a result.**
+    `{on() ? <A /> : <B />}` rendered one and never swapped. A JSX element
+    classifies as `Opaque` with no thunk, so the conditional joined to `Opaque`
+    and `insert` was given a built node. The same thing on INTRINSIC elements
+    worked by accident: an intrinsic lowers to a `_tmpl$()` CALL, which already
+    carries `Thunk::Arrow`. The thunk goes on the conditional and NOT on the
+    element, because a child written directly is a construction the consumer
+    places once, and wrapping every one of them makes a component's
+    construction a dependency of the hole that placed it.
+
+16. **A tab panel handed out a string where a scope belonged.** See
+    `src/tabs.test.tsx`; a keyed `<Show>` calls its slot with (scope, VALUE) and
+    the compiler supplies the scope itself.
+
+17. **A style key could only be spelled camelCase.** Every backend puts one
     through `toKebabCase` and the string renderer shares it via `styleToString`,
     so `style={{ "max-width": x }}` always worked and only `CSSProperties`
     refused it.

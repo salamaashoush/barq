@@ -4,11 +4,11 @@ The package surface is in `README.md`. This file carries what a README should
 not: the framework changes this package caused, the traps that cost a debugging
 session each, and what has not been run.
 
-Green on the current tree: `bun test` passes in ui (338), aria (662), core (938),
+Green on the current tree: `bun test` passes in ui (379), aria (678), core (938),
 router (519), primitives (246), start (192), server (122), testing (101),
 css (92), ui-cli (59), lucide (17) and query (15), and `cargo test --workspace`
 in `compiler-rs` (512 + 34 + 30). `bunx tsc --noEmit` is clean in ui, ui-cli and
-lucide, all three build, `bun run verify` reports 2449 of 2449 declarations
+lucide, all three build, `bun run verify` reports 3047 of 3047 declarations
 present, and `oxlint --type-aware --deny-warnings` is clean over `packages/ui`
 and `packages/aria`.
 
@@ -509,6 +509,66 @@ part that survives leaving them.
   pointer events fails its actionability check, so the test drives
   `page.mouse.click(x, y)` at the box's centre the way a person does.
 
+## The styles apply, and `data-slot` is why
+
+shadcn's eight styles were already transcribed into `styles/*.css` and selected
+NOTHING: they were written as `.cn-button`, and no component here carries that
+class. This package has put a `data-slot` on every element since before styles
+existed, and upstream's `.cn-button` sits on exactly the element carrying
+`data-slot="button"`. `tools/styles.ts` writes the second where upstream writes
+the first, and the whole of a style applies with no component change at all.
+
+They land in `@layer barq.style`, declared after `barq.ui`. A style is a second
+opinion about how every component looks and has to win:
+`[data-slot="button"]` inside `.style-nova` is 0-2-0 against an atom's 0-1-0 and
+would usually beat it, but an atom under a condition is 0-2-0 too and the tie
+would fall to import order.
+
+**305 of upstream's 421 classes reach an element**, and the generator NAMES the
+rest rather than dropping them, because a style quietly missing a third of its
+rules looks like a style that does not work.
+
+Four things were keeping rules off the page, and none was a missing component. A
+slot written as an object entry rather than a JSX attribute was invisible to the
+scan. `-logical` is upstream's logical-property twin of a slot, the way `-aria`
+is its other component base. An axis whose value is appended with no axis word
+between it, like `separator-horizontal`, matched nothing. And some slots are
+named differently between the classic registry this package transcribes and the
+new one the styles are written against, which is what `ALIASES` records.
+
+**A style is opt-in and costs one file.** No style is this package's own look.
+`barq-ui init --style lyra` copies that 180 KB in, and the gallery fetches
+exactly one sheet through `import.meta.glob`.
+
+## Three more the compiler owed, all one defect
+
+Every one of these is the same mistake in a different position: a value that has
+to stay a CHOICE was handed over as the result of making it.
+
+1. **A moving child beside one that builds.** `<Comp><Icon />{label()}</Comp>`
+   rendered `label()`'s first value forever, because the array goes into a Block
+   as soon as any child builds DOM and `buildChild` runs a Block untracked.
+2. **`builds_dom` stopped at a ternary**, so the array holding
+   `{on() ? <A/> : <B/>}` was a Cell over a value built once.
+3. **A choice of COMPONENTS at a hole.** `{on() ? <A /> : <B />}` on an
+   intrinsic element rendered one and never swapped. A JSX element classifies as
+   `Opaque` with no thunk; an intrinsic lowers to a `_tmpl$()` CALL, which
+   already carries `Thunk::Arrow`, so the intrinsic form worked BY ACCIDENT and
+   the component form did not. The gallery's own preview switcher is what found
+   it.
+
+The shape that works, and each half cost a full suite when wrong: a construction
+written DIRECTLY stays bare, one reached through a CHOICE is thunked, and a lone
+choice becomes an array of one so `insert` sees a live hole. Thunking a
+directly-written construction captures the scope at the call site; Blocking one
+shadows the `_s$` the array just rebound.
+
+**A conditional at a component's ROOT return is still spent once.**
+`return <>{open() ? <div/> : null}</>` is emitted as `[open() ? … : null]` and
+evaluated at return time. `<Show>` is the primitive for a reactive conditional
+and is what to reach for; `sidebar.tsx` has the bare shape and gets away with it
+only because `collapsible` never changes at run time.
+
 ## Things that will bite
 
 - **The compiler PROVES reactivity; it does not guess.** A prop whose value
@@ -535,8 +595,7 @@ part that survives leaving them.
 
 ## What has not been done
 
-- **Components.** `Toast`, `Sidebar`, `NavigationMenu`, `Carousel`,
-  `Resizable`, `Drawer` and `Chart`. `Toast` needs new work in `@barqjs/aria`;
+- **Components.** `Toast`, `Carousel`, `Resizable` and `Drawer`. `Toast` needs new work in `@barqjs/aria`;
   the rest are transcription plus composition. `Carousel`, `Resizable`,
   `Drawer` and `Chart` each wrap a third-party engine upstream, and every one of
   those engines is React, so the decision `InputOTP` already faced is the
