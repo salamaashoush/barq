@@ -18,10 +18,52 @@
 
 import { hash, register } from "./sheet.ts";
 
+/**
+ * The public surface, written out rather than re-exported wholesale.
+ *
+ * `export *` made every helper the two implementations share into API — the
+ * hash, the tier table, the shorthand map — and none of it is stable. They are
+ * `@barqjs/css/internal` now, and this list is what a consumer may rely on.
+ */
+
+// Composing declarations. Each `…In` takes a cascade layer; `layer` binds one
+// for all of them at once, which is how a design system writes it.
+export {
+  atoms,
+  atomsIn,
+  create,
+  createIn,
+  dynamic,
+  dynamicIn,
+  firstThatWorks,
+  layer,
+  mergeable,
+  props,
+  propsIn,
+} from "./atoms.ts";
+export type {
+  AtomConditions,
+  AtomInput,
+  AtomsFn,
+  AtomStyles,
+  AtomValue,
+  DynamicStyle,
+  Fallback,
+  Layer,
+  PropInput,
+  Props,
+} from "./atoms.ts";
+
+// Tokens as custom properties.
+export { createTheme, defineVars, globalVars } from "./theme.ts";
+export type { TokenValue, Vars } from "./theme.ts";
+
+// A class per combination, over classes that already compiled.
+export { variants } from "./variants.ts";
+export type { VariantFn, VariantGroups, VariantSelection, VariantSpec } from "./variants.ts";
+
+// The one registry, and how a server render reads it.
 export { collectCss, registerCss, setCssSink } from "./sheet.ts";
-export * from "./atoms.ts";
-export * from "./theme.ts";
-export * from "./variants.ts";
 
 export type CssValue = string | number | false | null | undefined;
 

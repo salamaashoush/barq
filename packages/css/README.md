@@ -171,30 +171,36 @@ module composing it lands on the classes the group's own module registered.
 ### A layer, named once
 
 A design system's rules belong in a cascade layer, so an application's own rule
-wins without `!important`. `atomsIn("barq.ui", { … })` says so at every call,
-and the layer has to be a literal there because it becomes part of every class
-name. `layer` binds it once instead:
+wins without `!important`. `atomsIn("barq.ui", { … })` says so at every call, and
+the layer has to be a literal there because it becomes part of every class name.
+`layer` binds it once instead, **for every helper that writes a rule**:
 
 ```ts
-import { createIn, layer } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
 const ui = layer("barq.ui");
 
-export const shared = createIn("barq.ui", {
-  ring: { outlineWidth: "3px", outlineColor: "var(--ring)" },
-});
-
+export const shared = ui.create({ ring: { outlineWidth: "3px" } });
 const card = ui(shared.ring, { display: "flex", padding: 8 });
+const bg = ui.dynamic((colour: string) => ({ backgroundColor: colour }));
+const attrs = ui.props(shared.ring, bg(theme()));
 ```
 
-The compiler reads `layer("barq.ui")` in **this** module, so the layer is still
-a literal at the call site and every call through the binding folds exactly as
-the `atomsIn` it stands for. An arrow function of your own does not fold, which
-is the difference: `@barqjs/ui` wrote its wrapper that way once and its whole
-stylesheet travelled inside the JS bundle.
+`ui(…)` is `atomsIn`, `ui.create` is `createIn`, `ui.props` is `propsIn` and
+`ui.dynamic` is `dynamicIn`. Each folds exactly as the `…In` it stands for,
+because it is that call: the compiler read `layer("barq.ui")` in **this** module,
+so the layer is still a literal at the call site. `ui.layer` is the name, if you
+need it.
 
-It is per module because the pass is: a binding that crosses a module boundary
-is not one the compiler reads. `createIn` is `create` with the same layer.
+`variants` is deliberately not on it. It writes no CSS — it composes classes
+that already carry the layer they were declared in — so there is nothing to
+bind.
+
+An arrow function of your own does not fold, which is the difference:
+`@barqjs/ui` wrote its wrapper that way once and its whole stylesheet travelled
+inside the JS bundle. It is per module because the pass is: a binding that
+crosses a module boundary is not one the compiler reads by itself, and
+`@barqjs/compiler/vite` resolves the ones that do.
 
 ### Ordering
 
@@ -227,14 +233,26 @@ the page computed to `0px`, beaten by the application's own reset.
 ## Tokens and themes
 
 ```ts
-import { createTheme, defineVars } from "@barqjs/css";
+import { createTheme, defineVars, globalVars } from "@barqjs/css";
 
-export const theme = defineVars({ brand: "#3b82f6", radius: "8px" });
-// { brand: "var(--brand-1a2b3c)", radius: "var(--radius-1a2b3c)" }
+// The names are the contract: an application brings its own `:root`, and a
+// theme copied out of a generator lands on your components unrewritten.
+export const tokens = globalVars({ primary: "#3b82f6", radius: "8px" });
+// { primary: "var(--primary)", radius: "var(--radius)" }
+
+// The names are yours alone, and a collision would be a bug. The suffix is a
+// hash of the whole token object.
+export const theme = defineVars({ brand: "#3b82f6" });
+// { brand: "var(--brand-1a2b3c)" }
 
 export const dark = createTheme(theme, { brand: "#60a5fa" });
 // a class that redeclares only `--brand-1a2b3c`
 ```
+
+**Reach for `globalVars` when the names are published and `defineVars` when they
+are private.** A design system wants the first: hashing makes the token set a
+closed system, so nothing outside it can write `--primary` and be heard, and
+`@barqjs/ui` hand-wrote its tokens for exactly that reason before this existed.
 
 The returned object is plain strings, so a token set crosses a module boundary
 as **data** rather than as something the compiler has to resolve there. That is
@@ -319,10 +337,17 @@ const button = variants({
 <button class={button({ size: "lg" })} />;
 ```
 
-Every arm is an ordinary `css` block that compiles on its own, so `variants` is
-pure string work: base first so a variant can override it, then the axes, then
+Every arm is a class something else already compiled, so `variants` is pure
+string work: base first so a variant can override it, then the axes, then
 compound arms last so a combination wins over what it refines. Selections are
 typed against the groups, so `button({ size: "md" })` does not compile.
+
+It **merges**, which is what `atoms` does and what the rest of this package
+means by composing. Joining was the other option and it was wrong: two atoms for
+one property both apply and the stylesheet's order decides, so a `size` that
+sets `width` over a `base` that sets `width` lost to its own base. Merging costs
+a whole-block arm nothing — a `css` block's class carries no property, so it
+merges against itself and survives whatever follows it.
 
 ## A value from another file
 
@@ -376,6 +401,11 @@ this, and is what `@barqjs/ui` does: `tokens.ts` there is hand-written
 `:root` and the package is not a closed system.
 
 ## Two helpers the compiler is not involved in
+
+`clsx` CONCATENATES, where `atoms` merges. Two atoms for one property both
+survive it and the stylesheet's order decides between them, which is the bug
+atoms exist to remove — so it is for composing a caller's own class, not for
+composing styles.
 
 ```ts
 import { clsx, cssVar } from "@barqjs/css";
@@ -438,6 +468,32 @@ served forever: `/about` inlined the rules a request for `/css` had produced.
 In a browser no sink is installed and everything goes to the one sheet, which is
 right — a rule from one route is still valid after navigating away and back.
 
+## The whole surface
+
+Everything a consumer may rely on, in one list. Anything not here is
+`@barqjs/css/internal` and is not API: the hash, the tier table and the
+shorthand map exist so the compiler and this package can be checked against each
+other, and none of them is stable.
+
+|                                           |                                                |
+| ----------------------------------------- | ---------------------------------------------- |
+| `css`, `keyframes`, `globalCss`           | a block, an animation, whole rules             |
+| `atoms`, `atomsIn`                        | declarations as classes, merged                |
+| `create`, `createIn`                      | a named set of those                           |
+| `props`, `propsIn`                        | the `class` and `style` an element takes       |
+| `dynamic`, `dynamicIn`                    | a group whose values arrive at run time        |
+| `layer`                                   | all five above, with one layer bound           |
+| `variants`                                | a class per combination, merged                |
+| `defineVars`, `globalVars`, `createTheme` | tokens as custom properties                    |
+| `firstThatWorks`                          | a declaration repeated, best last              |
+| `mergeable`                               | whether a shorthand can take part in a merge   |
+| `clsx`, `cssVar`                          | string helpers the compiler is not involved in |
+| `collectCss`, `registerCss`, `setCssSink` | the registry, for a server render              |
+
+Every one of the pairs reads the same: the bare name is unlayered, the `…In`
+name takes a cascade layer as its first argument, and `layer(name)` binds that
+argument once for all of them.
+
 ## Grammar
 
 Whatever `oxc-css-parser` accepts, which is the parser Oxfmt formats CSS with
@@ -468,9 +524,9 @@ what that is worth.
 ## What is compiled, and what is not
 
 Compiled away: `css`, `keyframes`, `globalCss`, `atoms`, `atomsIn`, `create`,
-`createIn`, a call through a `layer` binding, `firstThatWorks`, `props`,
-`defineVars`, `createTheme` over a token set the same module declares, and
-`dynamic` (its class half).
+`createIn`, `props`, `propsIn`, `dynamic` (its class half), `dynamicIn`, every
+call through a `layer` binding, `firstThatWorks`, `defineVars`, `globalVars`,
+and `createTheme` over a token set the same module declares.
 
 A module-level `const` is a fact about the module rather than about the line it
 is on, so all of these fold wherever in the file the binding is written: a string,

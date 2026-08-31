@@ -1,12 +1,25 @@
 /**
- * A class per combination of variant, from blocks that each compile on their
- * own.
+ * A class per combination of variant, from blocks or groups that each compile
+ * on their own.
  *
- * Deliberately not a compiler feature: every arm is an ordinary `css` block, so
- * the compiler already turns each into a class and this is a pure string
- * function over the results. There is no CSS here to emit and nothing to
- * register.
+ * Deliberately not a compiler feature: every arm is an ordinary `css` block or
+ * `atoms` call, so the compiler already turned each into a class and this is a
+ * pure string function over the results. There is no CSS here to emit and
+ * nothing to register.
+ *
+ * It MERGES, which is what `atoms` does and what the rest of this package
+ * means by composing. Joining was the other option and it was wrong: two atoms
+ * for one property both apply and the stylesheet's order decides, so a `size`
+ * that sets `width` over a `base` that sets `width` lost to its own base. That
+ * cost `@barqjs/ui` a calendar whose day buttons fell back to `inline-flex`
+ * and whose month buttons regained a padding they had overridden.
+ *
+ * Merging costs a whole-block arm nothing. A `css` block's class carries no
+ * property, so it merges against itself and survives whatever follows it —
+ * joining and merging give the same list, minus a repeat.
  */
+
+import { atoms } from "./atoms.ts";
 
 export type VariantGroups = Record<string, Record<string, string>>;
 
@@ -31,6 +44,27 @@ export interface VariantSpec<G extends VariantGroups> {
 
 export type VariantFn<G extends VariantGroups> = (props?: VariantSelection<G>) => string;
 
+/**
+ * A function from a selection of variants to the class it composes.
+ *
+ * The base first so an axis can override it, then the axes in declaration
+ * order, then the compound arms so a combination wins over what it refines.
+ * Every arm is a class something else already compiled — a `css` block or an
+ * `atoms` call — so this emits no CSS and registers nothing.
+ *
+ * ```ts
+ * const button = variants({
+ *   base: ui({ border: 0, cursor: "pointer" }),
+ *   variants: { size: { sm: ui({ padding: 4 }), lg: ui({ padding: 12 }) } },
+ *   defaults: { size: "sm" },
+ *   compound: [{ when: { size: "lg" }, use: ui({ fontWeight: 600 }) }],
+ * });
+ * button({ size: "lg" });
+ * ```
+ *
+ * A selection typed against the groups, so `button({ size: "md" })` does not
+ * compile.
+ */
 export function variants<G extends VariantGroups>(spec: VariantSpec<G>): VariantFn<G> {
   const groups = Object.keys(spec.variants) as (keyof G)[];
 
@@ -58,6 +92,8 @@ export function variants<G extends VariantGroups>(spec: VariantSpec<G>): Variant
       );
       if (matches && rule.use !== "") out.push(rule.use);
     }
-    return out.join(" ");
+    // Base first, then the axes, then the compounds — and merged, so the later
+    // one wins per property rather than both applying.
+    return atoms(...out);
   };
 }

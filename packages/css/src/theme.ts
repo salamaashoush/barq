@@ -45,6 +45,43 @@ export function defineVars<T extends Record<string, TokenValue>>(tokens: T): Var
 }
 
 /**
+ * Tokens on `:root` under the names you gave them, unhashed.
+ *
+ * {@link defineVars} suffixes each property with a hash of the whole token
+ * object, which is what lets two files declare the same tokens without
+ * colliding — and what makes the set a CLOSED system: nothing outside can
+ * write `--brand` and be heard. A design system wants the opposite. Its tokens
+ * are a published contract, an application brings its own `:root { --primary:
+ * … }`, and a theme copied out of a generator has to land on the components
+ * without being rewritten.
+ *
+ * So this is to {@link defineVars} what `globalCss` is to `css`: the same
+ * declaration, under the name you wrote rather than one this package chose.
+ *
+ * ```ts
+ * export const tokens = globalVars({ primary: "#3b82f6", radius: "8px" });
+ * // :root{--primary:#3b82f6;--radius:8px}
+ * // { primary: "var(--primary)", radius: "var(--radius)" }
+ * ```
+ *
+ * Use {@link defineVars} when the tokens are yours alone and a collision would
+ * be a bug; use this when the names are the point.
+ */
+export function globalVars<T extends Record<string, TokenValue>>(tokens: T): Vars<T> {
+  const declarations: string[] = [];
+  const out: Record<string, string> = {};
+  for (const [token, value] of Object.entries(tokens)) {
+    const property = `--${token.replace(/[^\w-]/g, "-")}`;
+    declarations.push(`${property}:${String(value)}`);
+    out[token] = `var(${property})`;
+  }
+  // Keyed by the NAMES, so declaring the same set twice replaces it rather
+  // than stacking two `:root` blocks that disagree.
+  register(`vars:${hash(Object.keys(tokens).join(","))}`, `:root{${declarations.join(";")}}`);
+  return out as Vars<T>;
+}
+
+/**
  * A class that redeclares some of a token set.
  *
  * Put it on any element and the subtree below reads the new values, because

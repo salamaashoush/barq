@@ -239,6 +239,19 @@ pub fn token_property(group: &str, token: &str) -> String {
     format!("--{safe}-{group}")
 }
 
+/// A token's property under the name the author gave it, for `globalVars`.
+///
+/// No group suffix, which is the whole point: an application's own
+/// `:root { --primary: … }` is heard, and a design system's tokens are a
+/// published contract rather than a closed set.
+pub fn global_property(token: &str) -> String {
+    let safe: String = token
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '_' || c == '-' { c } else { '-' })
+        .collect();
+    format!("--{safe}")
+}
+
 /// The custom property a dynamic declaration reads.
 ///
 /// Derived from the property alone, so the compiler and `@barqjs/css`'s runtime

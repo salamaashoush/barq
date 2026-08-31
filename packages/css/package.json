@@ -32,6 +32,11 @@
       "types": "./dist/index.d.ts",
       "bun": "./src/index.ts",
       "import": "./dist/index.js"
+    },
+    "./internal": {
+      "types": "./dist/internal.d.ts",
+      "bun": "./src/internal.ts",
+      "import": "./dist/internal.js"
     }
   },
   "scripts": {

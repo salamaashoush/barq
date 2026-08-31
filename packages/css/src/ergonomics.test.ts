@@ -9,16 +9,17 @@ import {
   css,
   defineVars,
   dynamic,
-  dynamicVar,
   firstThatWorks,
   globalCss,
   layer,
   mergeable,
   props,
-  TIERS,
-  tierOf,
+  propsIn,
+  dynamicIn,
   variants,
+  globalVars,
 } from "./index.ts";
+import { TIERS, dynamicVar, tierOf } from "./internal.ts";
 
 /**
  * The rule a class produced, out of the one sheet.
@@ -296,6 +297,105 @@ function layerBody(name: string): string {
   }
   return out.join("");
 }
+
+describe("layer", () => {
+  test("binds the layer for every helper that writes a rule", () => {
+    const ui = layer("barq.probe");
+    expect(ui.layer).toBe("barq.probe");
+    const group = ui.create({ ring: { outlineWidth: "9px" } });
+    const attrs = ui.props({ zIndex: 41 });
+    const bg = ui.dynamic((c: string) => ({ backgroundColor: c }))("red");
+    for (const cls of [group.ring, attrs.class, bg.$class]) {
+      expect(layerBody("barq.probe")).toContain(`.${cls.split(" ")[0]}`);
+    }
+  });
+
+  test("and each is the `…In` form it stands for", () => {
+    const ui = layer("barq.probe2");
+    expect(ui.create({ a: { zIndex: 42 } })).toEqual(
+      createIn("barq.probe2", { a: { zIndex: 42 } }),
+    );
+    expect(ui.props({ zIndex: 43 })).toEqual(propsIn("barq.probe2", { zIndex: 43 }));
+    expect(ui.dynamic((c: string) => ({ color: c }))("x")).toEqual(
+      dynamicIn("barq.probe2", (c: string) => ({ color: c }))("x"),
+    );
+    expect(ui({ zIndex: 44 })).toBe(atomsIn("barq.probe2", { zIndex: 44 }));
+  });
+
+  test("`props` and `dynamic` were the two helpers with no layered form", () => {
+    // A design system could not use a dynamic style at all: the class it makes
+    // is a rule like any other and there was no way to ask for it layered.
+    expect(propsIn("barq.probe3", { zIndex: 45 }).class).not.toBe(props({ zIndex: 45 }).class);
+    expect(dynamicIn("barq.probe3", (c: string) => ({ top: c }))("x").$class).not.toBe(
+      dynamic((c: string) => ({ top: c }))("x").$class,
+    );
+  });
+});
+
+describe("variants", () => {
+  test("merges, so an axis beats the base it refines", () => {
+    // Joining was the other option and it was wrong: two atoms for one property
+    // both apply and the stylesheet's order decides, so a `size` that sets
+    // `width` lost to its own `base`.
+    const button = variants({
+      base: atoms({ width: "10px", color: "red" }),
+      variants: { size: { lg: atoms({ width: "20px" }) } },
+    });
+    const out = button({ size: "lg" }).split(" ");
+    expect(out.filter((c) => c.startsWith("a-width"))).toHaveLength(1);
+    expect(ruleFor(out.find((c) => c.startsWith("a-width")) ?? "")).toContain("width:20px");
+    // And the base's other declaration survives.
+    expect(out.some((c) => c.startsWith("a-color"))).toBe(true);
+  });
+
+  test("and a whole-block arm is untouched by the merge", () => {
+    // A `css` block's class carries no property, so it merges against itself
+    // and survives whatever follows it.
+    const base = css`
+      padding: 20px;
+    `;
+    const loud = css`
+      background: blue;
+    `;
+    const button = variants({ base, variants: { tone: { loud } }, defaults: { tone: "loud" } });
+    expect(button().split(" ").toSorted()).toEqual([base, loud].toSorted());
+  });
+
+  test("a compound arm still wins over the axes it refines", () => {
+    const button = variants({
+      base: atoms({ padding: "1px" }),
+      variants: { size: { lg: atoms({ padding: "2px" }) } },
+      compound: [{ when: { size: "lg" }, use: atoms({ padding: "3px" }) }],
+    });
+    const out = button({ size: "lg" })
+      .split(" ")
+      .find((c) => c.startsWith("a-padding-top"));
+    expect(ruleFor(out ?? "")).toContain("padding-top:3px");
+  });
+});
+
+describe("globalVars", () => {
+  test("names the property what you called it, so an application is heard", () => {
+    const tokens = globalVars({ primary: "#3b82f6", radius: "8px" });
+    expect(tokens).toEqual({ primary: "var(--primary)", radius: "var(--radius)" });
+    expect(collectCss()).toContain(":root{--primary:#3b82f6;--radius:8px}");
+  });
+
+  test("where defineVars hashes the set, so two files cannot collide", () => {
+    const a = defineVars({ brand: "#000" });
+    const b = defineVars({ brand: "#fff" });
+    expect(a.brand).not.toBe(b.brand);
+    expect(a.brand).toMatch(/^var\(--brand-\w+\)$/);
+    // The global form is the same name whatever the value, which is the point.
+    expect(globalVars({ brand: "#000" }).brand).toBe(globalVars({ brand: "#fff" }).brand);
+  });
+
+  test("and a theme redeclares either", () => {
+    const tokens = globalVars({ accent: "#111" });
+    const dark = createTheme(tokens, { accent: "#eee" });
+    expect(collectCss()).toContain(`.${dark}{--accent:#eee}`);
+  });
+});
 
 describe("atoms > a selector list", () => {
   test("gives every branch the class, including the one with no `&`", () => {

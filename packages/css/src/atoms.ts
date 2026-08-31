@@ -426,6 +426,27 @@ function declarations(property: string, fallback: Fallback): string {
  */
 export type AtomInput = AtomStyles | string | false | null | undefined;
 
+/**
+ * Declarations as classes, merged: the last argument wins per property.
+ *
+ * One class per DECLARATION, not per block, so `which of these wins` is
+ * answerable without the cascade — the class carries its property in its own
+ * name and merging keeps the last per key. Passing order decides, always,
+ * which is the thing `clsx` cannot give you.
+ *
+ * An argument may be a style object, a class string another call produced, an
+ * array of either, or `false`/`null`/`undefined`. `null` as a VALUE removes
+ * what an earlier argument applied, where `false` and `undefined` only decline
+ * to add.
+ *
+ * ```ts
+ * atoms({ color: "red", margin: 0 }, active() && { color: "blue" });
+ * ```
+ *
+ * Unlayered on purpose: a layered rule loses to an unlayered one whatever its
+ * specificity, so an application's own reset must not be able to beat this.
+ * A design system wants the opposite and reaches for {@link layer}.
+ */
 export function atoms(...styles: (AtomInput | readonly AtomInput[])[]): string {
   return build("", styles);
 }
@@ -451,8 +472,30 @@ export function atomsIn(into: string, ...styles: (AtomInput | readonly AtomInput
   return build(into, styles);
 }
 
-/** What {@link layer} and {@link atoms} both are: styles in, a class string out. */
+/** Styles in, a class string out: what {@link atoms} and a {@link Layer} are. */
 export type AtomsFn = (...styles: (AtomInput | readonly AtomInput[])[]) => string;
+
+/**
+ * A cascade layer, and every helper that writes into it.
+ *
+ * Calling it is {@link atomsIn}; the properties are the rest of the surface
+ * with the same layer already bound, so the name is written once a module
+ * rather than at every call.
+ *
+ * {@link variants} is deliberately NOT here. It writes no CSS — it composes
+ * class strings that already carry the layer they were declared in — so there
+ * is nothing for a layer to bind.
+ */
+export interface Layer extends AtomsFn {
+  /** The layer this writes into. */
+  readonly layer: string;
+  /** {@link createIn}, in this layer. */
+  create<T extends Record<string, AtomStyles>>(styles: T): { readonly [K in keyof T]: string };
+  /** {@link propsIn}, in this layer. */
+  props(...styles: (PropInput | readonly PropInput[])[]): Props;
+  /** {@link dynamicIn}, in this layer. */
+  dynamic<A extends unknown[]>(declare: (...args: A) => AtomStyles): (...args: A) => DynamicStyle;
+}
 
 /**
  * {@link atomsIn} with its layer bound, named once at the top of a module.
@@ -473,8 +516,17 @@ export type AtomsFn = (...styles: (AtomInput | readonly AtomInput[])[]) => strin
  * this is written per module. That is one line against a layer named at every
  * call, and it puts the fact where a reader looks for it.
  */
-export function layer(name: string): AtomsFn {
-  return (...styles) => build(name, styles);
+export function layer(name: string): Layer {
+  // Built by assignment rather than `Object.assign` so each member keeps the
+  // generic signature `Layer` declares; inferred from a closure, `create` and
+  // `dynamic` would widen to their one call site's types.
+  const bound = ((...styles: (AtomInput | readonly AtomInput[])[]) =>
+    build(name, styles)) as AtomsFn & { -readonly [K in keyof Layer]: Layer[K] };
+  bound.layer = name;
+  bound.create = (styles) => createIn(name, styles);
+  bound.props = (...styles) => propsIn(name, ...styles);
+  bound.dynamic = (declare) => dynamicIn(name, declare);
+  return bound;
 }
 
 function build(into: string, styles: (AtomInput | readonly AtomInput[])[]): string {
@@ -597,6 +649,22 @@ function isDynamic(value: unknown): value is DynamicStyle {
  * wants and what the compiler turns into a literal.
  */
 export function props(...styles: (PropInput | readonly PropInput[])[]): Props {
+  return propsIn("", ...styles);
+}
+
+/**
+ * The same two attributes, with this call's own declarations in a cascade
+ * layer.
+ *
+ * `props` is unlayered for the reason {@link atoms} is. A design system wants
+ * the opposite, and without this it had no way to ask for it — `props` was the
+ * one helper with no layered form, so a layered package could not use dynamic
+ * styles at all.
+ *
+ * A {@link dynamic} group carries the layer it was declared in, so only the
+ * style objects passed here take this one.
+ */
+export function propsIn(into: string, ...styles: (PropInput | readonly PropInput[])[]): Props {
   const classes: AtomInput[] = [];
   let vars: Record<string, string | number> | undefined;
   for (const style of styles.flat(4)) {
@@ -607,7 +675,7 @@ export function props(...styles: (PropInput | readonly PropInput[])[]): Props {
     }
     classes.push(style);
   }
-  const merged = atoms(...classes);
+  const merged = build(into, classes);
   return vars === undefined ? { class: merged } : { class: merged, style: vars };
 }
 
@@ -633,6 +701,20 @@ export function dynamicVar(property: string): string {
 export function dynamic<A extends unknown[]>(
   declare: (...args: A) => AtomStyles,
 ): (...args: A) => DynamicStyle {
+  return dynamicIn("", declare);
+}
+
+/**
+ * The same group, with its one rule in a cascade layer.
+ *
+ * The class a dynamic group produces is a rule like any other — it reads
+ * `var(--…)` rather than a literal — so a design system needs it layered for
+ * the reason every other rule it writes is.
+ */
+export function dynamicIn<A extends unknown[]>(
+  into: string,
+  declare: (...args: A) => AtomStyles,
+): (...args: A) => DynamicStyle {
   return (...args) => {
     const declared = declare(...args);
     const classes: string[] = [];
@@ -646,7 +728,7 @@ export function dynamic<A extends unknown[]>(
       const name = dynamicVar(property);
       vars[name] = value;
       const applied = new Map<string, string>();
-      apply(applied, property, "default", `var(${name})`, "");
+      apply(applied, property, "default", `var(${name})`, into);
       classes.push(...applied.values());
     }
     return { $class: classes.join(" "), $vars: vars };
