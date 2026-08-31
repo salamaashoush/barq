@@ -124,12 +124,14 @@ describe("Dialog", () => {
     const underlay = document.querySelector("[data-barq-underlay]") as HTMLElement;
     expect(underlay).not.toBeNull();
     expect(underlay.className).not.toBe("");
+    const names = underlay.className.split(" ");
     const rules = collectCss()
       .split("@layer barq.ui{")
-      .filter((chunk) => chunk.includes(`.${underlay.className.split(" ")[0]}`))
+      .filter((chunk) => names.some((name) => chunk.includes(`.${name}{`)))
       .join("");
-    expect(rules).toContain("position: fixed");
-    expect(rules).toContain("inset: 0");
+    expect(rules).toContain("position:fixed");
+    // Atoms expand a shorthand, so `inset: 0` is its four sides.
+    expect(rules).toContain("top:0px");
   });
 
   test("role can be alertdialog", async () => {

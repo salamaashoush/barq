@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { flush, type Incoming } from "@barqjs/core";
-import { collectCss } from "@barqjs/css";
 import { render, screen, tick, user } from "@barqjs/testing";
+
+import { rulesFor } from "../test-rules.ts";
 
 import { Select, SelectItem } from "./select.tsx";
 
@@ -9,14 +10,6 @@ async function settle(): Promise<void> {
   flush();
   await tick();
   flush();
-}
-
-function rulesFor(className: string): string {
-  const mentions = new RegExp(`\\.${className}(?![\\w-])`);
-  return collectCss()
-    .split("@layer barq.ui{")
-    .filter((chunk) => mentions.test(chunk))
-    .join("\n");
 }
 
 const FRUITS = [
@@ -52,7 +45,7 @@ describe("Select", () => {
     render(() => <Fixture />);
     const trigger = screen.getByRole("button", { name: /Pick one/ });
     expect(trigger.querySelector("svg")).toBeNull();
-    const rules = trigger.className.split(" ").map(rulesFor).join("");
+    const rules = rulesFor(trigger.className);
     expect(rules).toContain("::after");
     expect(rules).toContain("mask-image");
   });
@@ -93,9 +86,9 @@ describe("Select", () => {
 
     const list = screen.getByRole("listbox");
     expect(list.getAttribute("data-slot")).toBe("select-list");
-    const rules = rulesFor(list.className.split(" ")[0] ?? "");
+    const rules = rulesFor(list.className);
     expect(rules).toContain("background-color: var(--popover)");
-    expect(rules).toContain("border-width: 1px");
+    expect(rules).toContain("border-top-width: 1px");
   });
 
   test("a name renders a real <select>, so the value reaches a form post", () => {
@@ -115,7 +108,7 @@ describe("Select", () => {
     await user.click(screen.getByRole("button", { name: /Pick one/ }));
     await settle();
     const mark = document.querySelector('[data-slot="select-item-indicator"]')!;
-    const rules = rulesFor(mark.className.split(" ")[0] ?? "");
+    const rules = rulesFor(mark.className);
     expect(rules).toContain("svg{display: none}");
     expect(rules).toContain("[data-selected] .");
   });

@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { flush, type Incoming } from "@barqjs/core";
-import { collectCss } from "@barqjs/css";
 import { render, screen, tick, user } from "@barqjs/testing";
+
+import { rulesFor } from "../test-rules.ts";
 
 import { Button } from "./button.tsx";
 import {
@@ -19,14 +20,6 @@ async function settle(): Promise<void> {
   flush();
   await tick();
   flush();
-}
-
-function rulesFor(className: string): string {
-  const mentions = new RegExp(`\\.${className}(?![\\w-])`);
-  return collectCss()
-    .split("@layer barq.ui{")
-    .filter((chunk) => mentions.test(chunk))
-    .join("\n");
 }
 
 const ACTIONS = [
@@ -97,9 +90,7 @@ describe("DropdownMenu", () => {
 
     const remove = screen.getByRole("menuitem", { name: "Delete" });
     expect(remove.getAttribute("data-variant")).toBe("destructive");
-    expect(rulesFor(remove.className.split(" ")[0] ?? "")).toContain(
-      '[data-variant="destructive"]',
-    );
+    expect(rulesFor(remove.className)).toContain('[data-variant="destructive"]');
   });
 
   test("the arrow keys move through the items", async () => {
@@ -140,7 +131,7 @@ describe("DropdownMenu", () => {
     expect(entry.getAttribute("data-selected")).toBe("");
 
     const mark = document.querySelector('[data-slot="dropdown-menu-item-indicator"]')!;
-    const rules = rulesFor(mark.className.split(" ")[0] ?? "");
+    const rules = rulesFor(mark.className);
     expect(rules).toContain("svg{display: none}");
     expect(rules).toContain("[data-selected] .");
   });

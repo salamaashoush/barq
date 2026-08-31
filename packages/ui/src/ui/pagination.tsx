@@ -1,52 +1,45 @@
 import type { Incoming } from "@barqjs/core";
-import { clsx, css } from "@barqjs/css";
+
 import { ChevronLeft } from "@barqjs/lucide/icons/chevron-left";
 import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
 import { Ellipsis } from "@barqjs/lucide/icons/ellipsis";
 
 import "../theme/layers.ts";
+import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { buttonVariants, type ButtonSize } from "./button.tsx";
 import { srOnly } from "./sr-only.ts";
 
-const root = css`
-  @layer barq.ui {
-    margin-inline: auto;
-    display: flex;
-    width: 100%;
-    justify-content: center;
-  }
-`;
+const root = ui({
+  marginInline: "auto",
+  display: "flex",
+  width: "100%",
+  justifyContent: "center",
+});
 
-const content = css`
-  @layer barq.ui {
-    margin: 0px;
-    display: flex;
-    list-style-type: none;
-    flex-direction: row;
-    align-items: center;
-    gap: var(--spacing);
-    padding: 0px;
-  }
-`;
+const content = ui({
+  margin: "0px",
+  display: "flex",
+  listStyleType: "none",
+  flexDirection: "row",
+  alignItems: "center",
+  gap: "var(--spacing)",
+  padding: "0px",
+});
 
-const edge = css`
-  @layer barq.ui {
-    gap: var(--spacing);
-    padding-inline: calc(var(--spacing) * 2.5);
-  }
-`;
+const edge = ui({
+  gap: "var(--spacing)",
+  paddingInline: "calc(var(--spacing) * 2.5)",
+});
 
-const ellipsis = css`
-  @layer barq.ui {
-    display: flex;
-    width: calc(var(--spacing) * 9);
-    height: calc(var(--spacing) * 9);
-    align-items: center;
-    justify-content: center;
-  }
-`;
+const ellipsis = ui({
+  display: "flex",
+  width: "calc(var(--spacing) * 9)",
+  height: "calc(var(--spacing) * 9)",
+  alignItems: "center",
+  justifyContent: "center",
+});
 
 /**
  * ```tsx
@@ -121,7 +114,7 @@ export function PaginationPrevious(props: Incoming<PaginationEdgeProps>) {
       {...props}
       size="default"
       aria-label={props["aria-label"]?.() ?? "Go to previous page"}
-      class={clsx(edge, props.class?.())}
+      class={ui(edge, props.class?.())}
     >
       <ChevronLeft />
       <span class={wide}>{() => props.label?.() ?? "Previous"}</span>
@@ -135,7 +128,7 @@ export function PaginationNext(props: Incoming<PaginationEdgeProps>) {
       {...props}
       size="default"
       aria-label={props["aria-label"]?.() ?? "Go to next page"}
-      class={clsx(edge, props.class?.())}
+      class={ui(edge, props.class?.())}
     >
       <span class={wide}>{() => props.label?.() ?? "Next"}</span>
       <ChevronRight />
@@ -144,15 +137,12 @@ export function PaginationNext(props: Incoming<PaginationEdgeProps>) {
 }
 
 /** The word beside a chevron: gone below `sm`, where the chevron says enough. */
-const wide = css`
-  @layer barq.ui {
-    display: none;
-
-    @media (width >= 40rem) {
-      display: block;
-    }
-  }
-`;
+const wide = ui({
+  display: "none",
+  "@media (width >= 40rem)": {
+    display: "block",
+  },
+});
 
 export function PaginationEllipsis(props: Incoming<UiProps>) {
   return (

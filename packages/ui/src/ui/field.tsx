@@ -1,288 +1,257 @@
 import { For, Show, type Incoming } from "@barqjs/core";
-import { clsx, css, variants } from "@barqjs/css";
+import { firstThatWorks } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { ui, uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Label, type LabelProps } from "./label.tsx";
 import { Separator } from "./separator.tsx";
 
-const fieldSet = css`
-  @layer barq.ui {
-    display: flex;
-    flex-direction: column;
-    gap: calc(var(--spacing) * 6);
-    &:has(> [data-slot="checkbox-group"]) {
-      gap: calc(var(--spacing) * 3);
-    }
-    &:has(> [data-slot="radio-group"]) {
-      gap: calc(var(--spacing) * 3);
-    }
-  }
-`;
+const fieldSet = ui({
+  display: "flex",
+  flexDirection: "column",
+  gap: "calc(var(--spacing) * 6)",
+  ':has(> [data-slot="checkbox-group"])': {
+    gap: "calc(var(--spacing) * 3)",
+  },
+  ':has(> [data-slot="radio-group"])': {
+    gap: "calc(var(--spacing) * 3)",
+  },
+});
 
 export type FieldLegendVariant = "legend" | "label";
 
-export const fieldLegendVariants = variants({
-  base: css`
-    @layer barq.ui {
-      margin-bottom: calc(var(--spacing) * 3);
-      --ui-font-weight: var(--font-weight-medium);
-      font-weight: var(--font-weight-medium);
-    }
-  `,
+export const fieldLegendVariants = uiVariants({
+  base: ui({
+    marginBottom: "calc(var(--spacing) * 3)",
+    "--ui-font-weight": "var(--font-weight-medium)",
+    fontWeight: "var(--font-weight-medium)",
+  }),
   variants: {
     variant: {
-      legend: css`
-        @layer barq.ui {
-          font-size: var(--text-base);
-          line-height: var(--ui-leading, var(--text-base--line-height));
-        }
-      `,
-      label: css`
-        @layer barq.ui {
-          font-size: var(--text-sm);
-          line-height: var(--ui-leading, var(--text-sm--line-height));
-        }
-      `,
+      legend: ui({
+        fontSize: "var(--text-base)",
+        lineHeight: "var(--ui-leading, var(--text-base--line-height))",
+      }),
+      label: ui({
+        fontSize: "var(--text-sm)",
+        lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+      }),
     },
   },
   defaults: { variant: "legend" },
 });
 
-const fieldGroup = css`
-  @layer barq.ui {
-    container-type: inline-size;
-    container-name: field-group;
-    display: flex;
-    width: 100%;
-    flex-direction: column;
-    gap: calc(var(--spacing) * 7);
-    & > [data-slot="field-group"] {
-      gap: calc(var(--spacing) * 4);
-    }
-  }
-`;
+const fieldGroup = ui({
+  containerType: "inline-size",
+  containerName: "field-group",
+  display: "flex",
+  width: "100%",
+  flexDirection: "column",
+  gap: "calc(var(--spacing) * 7)",
+  '& > [data-slot="field-group"]': {
+    gap: "calc(var(--spacing) * 4)",
+  },
+});
 
 export type FieldOrientation = "vertical" | "horizontal" | "responsive";
 
-export const fieldVariants = variants({
-  base: css`
-    @layer barq.ui {
-      display: flex;
-      width: 100%;
-      gap: calc(var(--spacing) * 3);
-      &[data-invalid] {
-        color: var(--destructive);
-      }
-    }
-  `,
+export const fieldVariants = uiVariants({
+  base: ui({
+    display: "flex",
+    width: "100%",
+    gap: "calc(var(--spacing) * 3)",
+    "[data-invalid]": {
+      color: "var(--destructive)",
+    },
+  }),
   variants: {
     orientation: {
-      vertical: css`
-        @layer barq.ui {
-          flex-direction: column;
-          & > * {
-            width: 100%;
-          }
-        }
-      `,
-      horizontal: css`
-        @layer barq.ui {
-          flex-direction: row;
-          align-items: center;
-          &:has(> [data-slot="field-content"]) {
-            align-items: flex-start;
-          }
-          & > [data-slot="field-label"] {
-            flex: auto;
-          }
-          &:has(> [data-slot="field-content"]) > [role="checkbox"],
-          &:has(> [data-slot="field-content"]) [role="radio"] {
-            margin-top: 1px;
-          }
-        }
-      `,
-      responsive: css`
-        @layer barq.ui {
-          flex-direction: column;
-          & > * {
-            width: 100%;
-          }
-          @container field-group (width >= 28rem) {
-            & {
-              flex-direction: row;
-              align-items: center;
-            }
-            &:has(> [data-slot="field-content"]) {
-              align-items: flex-start;
-            }
-            & > * {
-              width: auto;
-            }
-            & > [data-slot="field-label"] {
-              flex: auto;
-            }
-            &:has(> [data-slot="field-content"]) > [role="checkbox"],
-            &:has(> [data-slot="field-content"]) [role="radio"] {
-              margin-top: 1px;
-            }
-          }
-        }
-      `,
+      vertical: ui({
+        flexDirection: "column",
+        "& > *": {
+          width: "100%",
+        },
+      }),
+      horizontal: ui({
+        flexDirection: "row",
+        alignItems: "center",
+        ':has(> [data-slot="field-content"])': {
+          alignItems: "flex-start",
+        },
+        '& > [data-slot="field-label"]': {
+          flex: "auto",
+        },
+        ':has(> [data-slot="field-content"]) > [role="checkbox"], &:has(> [data-slot="field-content"]) [role="radio"]':
+          {
+            marginTop: "1px",
+          },
+      }),
+      responsive: ui({
+        flexDirection: "column",
+        "& > *": {
+          width: "100%",
+        },
+        "@container field-group (width >= 28rem)": {
+          "&": {
+            flexDirection: "row",
+            alignItems: "center",
+          },
+          ':has(> [data-slot="field-content"])': {
+            alignItems: "flex-start",
+          },
+          "& > *": {
+            width: "auto",
+          },
+          '& > [data-slot="field-label"]': {
+            flex: "auto",
+          },
+          ':has(> [data-slot="field-content"]) > [role="checkbox"], &:has(> [data-slot="field-content"]) [role="radio"]':
+            {
+              marginTop: "1px",
+            },
+        },
+      }),
     },
   },
   defaults: { orientation: "vertical" },
 });
 
-const fieldContent = css`
-  @layer barq.ui {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: calc(var(--spacing) * 1.5);
-    --ui-leading: var(--leading-snug);
-    line-height: var(--leading-snug);
-  }
-`;
+const fieldContent = ui({
+  display: "flex",
+  flex: "1",
+  flexDirection: "column",
+  gap: "calc(var(--spacing) * 1.5)",
+  "--ui-leading": "var(--leading-snug)",
+  lineHeight: "var(--leading-snug)",
+});
 
-const fieldLabel = css`
-  @layer barq.ui {
-    display: flex;
-    width: fit-content;
-    gap: calc(var(--spacing) * 2);
-    --ui-leading: var(--leading-snug);
-    line-height: var(--leading-snug);
-    &:has(:is([data-selected])) {
-      border-color: var(--primary);
-      background-color: var(--primary);
-      @supports (color: color-mix(in lab, red, red)) {
-        background-color: color-mix(in oklab, var(--primary) 5%, transparent);
-      }
-    }
-    &:has(> [data-slot="field"]) {
-      width: 100%;
-      flex-direction: column;
-      border-radius: calc(var(--radius) - 2px);
-      border-style: var(--ui-border-style);
-      border-width: 1px;
-    }
-    &:is(.dark *):has(:is([data-selected])) {
-      background-color: var(--primary);
-      @supports (color: color-mix(in lab, red, red)) {
-        background-color: color-mix(in oklab, var(--primary) 10%, transparent);
-      }
-    }
-    & > [data-slot="field"] {
-      padding: calc(var(--spacing) * 4);
-    }
-    [data-slot="field"][data-disabled] & {
-      opacity: 50%;
-    }
-  }
-`;
+const fieldLabel = ui({
+  display: "flex",
+  width: "fit-content",
+  gap: "calc(var(--spacing) * 2)",
+  "--ui-leading": "var(--leading-snug)",
+  lineHeight: "var(--leading-snug)",
+  ":has(:is([data-selected]))": {
+    borderColor: "var(--primary)",
+    backgroundColor: "var(--primary)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      backgroundColor: "color-mix(in oklab, var(--primary) 5%, transparent)",
+    },
+  },
+  ':has(> [data-slot="field"])': {
+    width: "100%",
+    flexDirection: "column",
+    borderRadius: "calc(var(--radius) - 2px)",
+    borderStyle: "var(--ui-border-style)",
+    borderWidth: "1px",
+  },
+  ":is(.dark *):has(:is([data-selected]))": {
+    backgroundColor: "var(--primary)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      backgroundColor: "color-mix(in oklab, var(--primary) 10%, transparent)",
+    },
+  },
+  '& > [data-slot="field"]': {
+    padding: "calc(var(--spacing) * 4)",
+  },
+  '[data-slot="field"][data-disabled] &': {
+    opacity: "50%",
+  },
+});
 
-const fieldTitle = css`
-  @layer barq.ui {
-    display: flex;
-    width: fit-content;
-    align-items: center;
-    gap: calc(var(--spacing) * 2);
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    --ui-leading: var(--leading-snug);
-    line-height: var(--leading-snug);
-    --ui-font-weight: var(--font-weight-medium);
-    font-weight: var(--font-weight-medium);
-    [data-slot="field"][data-disabled] & {
-      opacity: 50%;
-    }
-  }
-`;
+const fieldTitle = ui({
+  display: "flex",
+  width: "fit-content",
+  alignItems: "center",
+  gap: "calc(var(--spacing) * 2)",
+  fontSize: "var(--text-sm)",
+  lineHeight: firstThatWorks(
+    "var(--leading-snug)",
+    "var(--ui-leading, var(--text-sm--line-height))",
+  ),
+  "--ui-leading": "var(--leading-snug)",
+  "--ui-font-weight": "var(--font-weight-medium)",
+  fontWeight: "var(--font-weight-medium)",
+  '[data-slot="field"][data-disabled] &': {
+    opacity: "50%",
+  },
+});
 
-const fieldDescription = css`
-  @layer barq.ui {
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    --ui-leading: var(--leading-normal);
-    line-height: var(--leading-normal);
-    --ui-font-weight: var(--font-weight-normal);
-    font-weight: var(--font-weight-normal);
-    color: var(--muted-foreground);
-    &:last-child {
-      margin-top: 0px;
-    }
-    &:nth-last-child(2) {
-      margin-top: calc(var(--spacing) * -1);
-    }
-    & > a {
-      text-decoration-line: underline;
-      text-underline-offset: 4px;
-    }
-    & > a:hover {
-      color: var(--primary);
-    }
-    [data-slot="field-legend"][data-variant="legend"] + & {
-      margin-top: calc(var(--spacing) * -1.5);
-    }
-    [data-slot="field"]:has([data-orientation="horizontal"]) & {
-      text-wrap: balance;
-    }
-  }
-`;
+const fieldDescription = ui({
+  fontSize: "var(--text-sm)",
+  lineHeight: firstThatWorks(
+    "var(--leading-normal)",
+    "var(--ui-leading, var(--text-sm--line-height))",
+  ),
+  "--ui-leading": "var(--leading-normal)",
+  "--ui-font-weight": "var(--font-weight-normal)",
+  fontWeight: "var(--font-weight-normal)",
+  color: "var(--muted-foreground)",
+  ":last-child": {
+    marginTop: "0px",
+  },
+  ":nth-last-child(2)": {
+    marginTop: "calc(var(--spacing) * -1)",
+  },
+  "& > a": {
+    textDecorationLine: "underline",
+    textUnderlineOffset: "4px",
+  },
+  "& > a:hover": {
+    color: "var(--primary)",
+  },
+  '[data-slot="field-legend"][data-variant="legend"] + &': {
+    marginTop: "calc(var(--spacing) * -1.5)",
+  },
+  '[data-slot="field"]:has([data-orientation="horizontal"]) &': {
+    textWrap: "balance",
+  },
+});
 
-const fieldSeparator = css`
-  @layer barq.ui {
-    position: relative;
-    margin-block: calc(var(--spacing) * -2);
-    height: calc(var(--spacing) * 5);
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    [data-slot="field-group"][data-variant="outline"] & {
-      margin-bottom: calc(var(--spacing) * -2);
-    }
-  }
-`;
+const fieldSeparator = ui({
+  position: "relative",
+  marginBlock: "calc(var(--spacing) * -2)",
+  height: "calc(var(--spacing) * 5)",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  '[data-slot="field-group"][data-variant="outline"] &': {
+    marginBottom: "calc(var(--spacing) * -2)",
+  },
+});
 
-const fieldSeparatorLine = css`
-  @layer barq.ui {
-    position: absolute;
-    inset: 0px;
-    top: calc(1 / 2 * 100%);
-  }
-`;
+const fieldSeparatorLine = ui({
+  position: "absolute",
+  inset: "0px",
+  top: "calc(1 / 2 * 100%)",
+});
 
-const fieldSeparatorContent = css`
-  @layer barq.ui {
-    position: relative;
-    margin-inline: auto;
-    display: block;
-    width: fit-content;
-    background-color: var(--background);
-    padding-inline: calc(var(--spacing) * 2);
-    color: var(--muted-foreground);
-  }
-`;
+const fieldSeparatorContent = ui({
+  position: "relative",
+  marginInline: "auto",
+  display: "block",
+  width: "fit-content",
+  backgroundColor: "var(--background)",
+  paddingInline: "calc(var(--spacing) * 2)",
+  color: "var(--muted-foreground)",
+});
 
-const fieldError = css`
-  @layer barq.ui {
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    --ui-font-weight: var(--font-weight-normal);
-    font-weight: var(--font-weight-normal);
-    color: var(--destructive);
-  }
-`;
+const fieldError = ui({
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  "--ui-font-weight": "var(--font-weight-normal)",
+  fontWeight: "var(--font-weight-normal)",
+  color: "var(--destructive)",
+});
 
-const errorList = css`
-  @layer barq.ui {
-    margin-left: calc(var(--spacing) * 4);
-    display: flex;
-    list-style-type: disc;
-    flex-direction: column;
-    gap: var(--spacing);
-  }
-`;
+const errorList = ui({
+  marginLeft: "calc(var(--spacing) * 4)",
+  display: "flex",
+  listStyleType: "disc",
+  flexDirection: "column",
+  gap: "var(--spacing)",
+});
 
 /**
  * ```tsx
@@ -374,7 +343,7 @@ export function FieldLabel(props: Incoming<FieldLabelProps>) {
     <Label
       {...props}
       data-slot={props["data-slot"]?.() ?? "field-label"}
-      class={clsx(fieldLabel, props.class?.(), props.className?.())}
+      class={ui(fieldLabel, props.class?.(), props.className?.())}
     />
   );
 }

@@ -8,107 +8,95 @@ import {
   type SliderContextValue,
 } from "@barqjs/aria/slider";
 import type { Incoming } from "@barqjs/core";
-import { clsx, css } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { ui } from "../lib/atoms.ts";
 
-const root = css`
-  @layer barq.ui {
-    position: relative;
-    display: flex;
-    width: 100%;
-    touch-action: none;
-    align-items: center;
-    -webkit-user-select: none;
-    user-select: none;
-    &[data-orientation="vertical"] {
-      height: 100%;
-      min-height: calc(var(--spacing) * 44);
-      width: auto;
-      flex-direction: column;
-    }
-    &[data-disabled] {
-      opacity: 50%;
-    }
-  }
-`;
+const root = ui({
+  position: "relative",
+  display: "flex",
+  width: "100%",
+  touchAction: "none",
+  alignItems: "center",
+  "-webkit-user-select": "none",
+  userSelect: "none",
+  '[data-orientation="vertical"]': {
+    height: "100%",
+    minHeight: "calc(var(--spacing) * 44)",
+    width: "auto",
+    flexDirection: "column",
+  },
+  "[data-disabled]": {
+    opacity: "50%",
+  },
+});
 
-const track = css`
-  @layer barq.ui {
-    position: relative;
-    flex-grow: 1;
-    border-radius: calc(infinity * 1px);
-    background-color: var(--muted);
-    &[data-orientation="horizontal"] {
-      height: calc(var(--spacing) * 1.5);
-      width: 100%;
-    }
-    &[data-orientation="vertical"] {
-      height: 100%;
-      width: calc(var(--spacing) * 1.5);
-    }
-  }
-`;
+const track = ui({
+  position: "relative",
+  flexGrow: "1",
+  borderRadius: "calc(infinity * 1px)",
+  backgroundColor: "var(--muted)",
+  '[data-orientation="horizontal"]': {
+    height: "calc(var(--spacing) * 1.5)",
+    width: "100%",
+  },
+  '[data-orientation="vertical"]': {
+    height: "100%",
+    width: "calc(var(--spacing) * 1.5)",
+  },
+});
 
-const thumb = css`
-  @layer barq.ui {
-    position: absolute;
-    display: block;
-    width: calc(var(--spacing) * 4);
-    height: calc(var(--spacing) * 4);
-    flex-shrink: 0;
-    border-radius: calc(infinity * 1px);
-    border-style: var(--ui-border-style);
-    border-width: 1px;
-    border-color: var(--primary);
-    background-color: var(--background);
-    --ui-shadow:
-      0 1px 3px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.1)),
-      0 1px 2px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1));
-    box-shadow:
-      var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-      var(--ui-ring-shadow), var(--ui-shadow);
-    transition-property: color, box-shadow;
-    transition-timing-function: var(--ui-ease, var(--default-transition-timing-function));
-    transition-duration: var(--ui-duration, var(--default-transition-duration));
-    @media (hover: hover) {
-      &:hover {
-        --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(4px + var(--ui-ring-offset-width))
-          var(--ui-ring-color, currentcolor);
-        box-shadow:
-          var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-          var(--ui-ring-shadow), var(--ui-shadow);
-      }
-    }
-    &[data-focus-visible] {
-      --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(4px + var(--ui-ring-offset-width))
-        var(--ui-ring-color, currentcolor);
-      box-shadow:
-        var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-        var(--ui-ring-shadow), var(--ui-shadow);
-      --ui-outline-style: none;
-      outline-style: none;
-    }
-    &[data-disabled] {
-      pointer-events: none;
-      opacity: 50%;
-    }
-  }
-`;
+const thumb = ui({
+  position: "absolute",
+  display: "block",
+  width: "calc(var(--spacing) * 4)",
+  height: "calc(var(--spacing) * 4)",
+  flexShrink: "0",
+  borderRadius: "calc(infinity * 1px)",
+  borderStyle: "var(--ui-border-style)",
+  borderWidth: "1px",
+  borderColor: "var(--primary)",
+  backgroundColor: "var(--background)",
+  "--ui-shadow":
+    "0 1px 3px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
+  boxShadow:
+    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+  transitionProperty: "color, box-shadow",
+  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
+  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
+  "@media (hover: hover)": {
+    ":hover": {
+      "--ui-ring-shadow":
+        "var(--ui-ring-inset,) 0 0 0 calc(4px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+      boxShadow:
+        "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+    },
+  },
+  "[data-focus-visible]": {
+    "--ui-ring-shadow":
+      "var(--ui-ring-inset,) 0 0 0 calc(4px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+    boxShadow:
+      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+    "--ui-outline-style": "none",
+    outlineStyle: "none",
+  },
+  "[data-disabled]": {
+    pointerEvents: "none",
+    opacity: "50%",
+  },
+});
 
-const output = css`
-  @layer barq.ui {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-    border-width: 0;
-  }
-`;
+const output = ui({
+  position: "absolute",
+  width: "1px",
+  height: "1px",
+  padding: "0",
+  margin: "-1px",
+  overflow: "hidden",
+  clipPath: "inset(50%)",
+  whiteSpace: "nowrap",
+  borderWidth: "0",
+});
 
 /**
  * The filled part of the track, drawn by the track itself.
@@ -125,29 +113,16 @@ const output = css`
  * left a sliver. A background is clipped by `border-radius` on its own, with
  * the same square ends shadcn's clipped element has, and it clips nothing else.
  */
-const range = css`
-  @layer barq.ui {
-    &[data-orientation="horizontal"] {
-      background-image: linear-gradient(
-        to right,
-        transparent var(--barq-slider-start),
-        var(--primary) var(--barq-slider-start),
-        var(--primary) var(--barq-slider-end),
-        transparent var(--barq-slider-end)
-      );
-    }
-
-    &[data-orientation="vertical"] {
-      background-image: linear-gradient(
-        to top,
-        transparent var(--barq-slider-start),
-        var(--primary) var(--barq-slider-start),
-        var(--primary) var(--barq-slider-end),
-        transparent var(--barq-slider-end)
-      );
-    }
-  }
-`;
+const range = ui({
+  '[data-orientation="horizontal"]': {
+    backgroundImage:
+      "linear-gradient( to right, transparent var(--barq-slider-start), var(--primary) var(--barq-slider-start), var(--primary) var(--barq-slider-end), transparent var(--barq-slider-end) )",
+  },
+  '[data-orientation="vertical"]': {
+    backgroundImage:
+      "linear-gradient( to top, transparent var(--barq-slider-start), var(--primary) var(--barq-slider-start), var(--primary) var(--barq-slider-end), transparent var(--barq-slider-end) )",
+  },
+});
 
 /**
  * Where each thumb sits, keyed off the TRACK's orientation rather than its own.
@@ -163,21 +138,18 @@ const range = css`
  * 6px-tall track, where the static position is the track's top edge and a 16px
  * thumb hangs 10px below it.
  */
-const place = css`
-  @layer barq.ui {
-    [data-orientation="horizontal"] & {
-      left: var(--barq-slider-thumb);
-      top: 50%;
-      translate: -50% -50%;
-    }
-
-    [data-orientation="vertical"] & {
-      bottom: var(--barq-slider-thumb);
-      left: 50%;
-      translate: -50% 50%;
-    }
-  }
-`;
+const place = ui({
+  '[data-orientation="horizontal"] &': {
+    left: "var(--barq-slider-thumb)",
+    top: "50%",
+    translate: "-50% -50%",
+  },
+  '[data-orientation="vertical"] &': {
+    bottom: "var(--barq-slider-thumb)",
+    left: "50%",
+    translate: "-50% 50%",
+  },
+});
 
 export interface SliderProps extends SliderComponentProps {}
 
@@ -196,7 +168,7 @@ export function Slider(props: Incoming<SliderProps>) {
     <AriaSlider
       {...props}
       data-slot={props["data-slot"]?.() ?? "slider"}
-      class={clsx(root, props.class?.(), props.className?.())}
+      class={ui(root, props.class?.(), props.className?.())}
     >
       <SliderOutput data-slot="slider-output" class={output} />
       <Fill />
@@ -219,12 +191,12 @@ function Fill() {
   };
 
   return (
-    <SliderTrack data-slot="slider-track" class={clsx(track, range)} style={bounds()}>
+    <SliderTrack data-slot="slider-track" class={ui(track, range)} style={bounds()}>
       {(index: number) => (
         <SliderThumb
           index={index}
           data-slot="slider-thumb"
-          class={clsx(thumb, place)}
+          class={ui(thumb, place)}
           style={at(group, index)}
         />
       )}

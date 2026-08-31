@@ -58,7 +58,9 @@ describe("Card", () => {
       (container.querySelector(`[data-testid="${testid}"]`)?.className ?? "").split(" ");
     const plain = classes("plain");
     const ruled = classes("ruled");
-    expect(ruled.length).toBe(plain.length + 1);
+    // Atoms, so "a class" is one declaration: bordered adds the four the
+    // border needs and keeps every one the plain header already had.
+    expect(ruled.length).toBeGreaterThan(plain.length);
     for (const one of plain) expect(ruled).toContain(one);
   });
 
@@ -66,7 +68,7 @@ describe("Card", () => {
     const { container } = render(() => <Card class="mine">a</Card>);
     const classes = container.querySelector('[data-slot="card"]')!.className.split(" ");
     expect(classes.at(-1)).toBe("mine");
-    expect(classes).toHaveLength(2);
+    expect(classes.filter((name) => name === "mine")).toHaveLength(1);
   });
 
   test("a role, a label and a click all reach the element", async () => {

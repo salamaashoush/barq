@@ -1,179 +1,152 @@
 import { Dialog as AriaDialog, Heading, Modal } from "@barqjs/aria/dialog";
 import { Show, type Child, type Incoming } from "@barqjs/core";
-import { clsx, css } from "@barqjs/css";
+import { firstThatWorks } from "@barqjs/css";
 import { X } from "@barqjs/lucide/icons/x";
 
 import { Button, type ButtonProps } from "./button.tsx";
 
 import "../theme/layers.ts";
 import { overlayFamily, type OverlayRootProps } from "../lib/overlay.tsx";
+import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { srOnly } from "./sr-only.ts";
 
-const overlay = css`
-  @layer barq.ui {
-    position: fixed;
-    inset: 0px;
-    z-index: 50;
-    animation: enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease)
-      var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1)
-      var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none);
-    background-color: color-mix(in srgb, #000 50%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--color-black) 50%, transparent);
-    }
-    --ui-enter-opacity: calc(0/100);
-    --ui-enter-opacity: 0;
-    &[data-closed] {
-      animation: exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease)
-        var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1)
-        var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none);
-      --ui-exit-opacity: calc(0/100);
-      --ui-exit-opacity: 0;
-    }
-  }
-`;
+const overlay = ui({
+  position: "fixed",
+  inset: "0px",
+  zIndex: "50",
+  animation:
+    "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
+  backgroundColor: "color-mix(in srgb, #000 50%, transparent)",
+  "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
+  "@supports (color: color-mix(in lab, red, red))": {
+    backgroundColor: "color-mix(in oklab, var(--color-black) 50%, transparent)",
+  },
+  "[data-closed]": {
+    animation:
+      "exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
+    "--ui-exit-opacity": firstThatWorks("0", "calc(0/100)"),
+  },
+});
 
-const content = css`
-  @layer barq.ui {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    z-index: 50;
-    display: grid;
-    width: 100%;
-    max-width: calc(100% - 2rem);
-    --ui-translate-x: -50%;
-    translate: var(--ui-translate-x) var(--ui-translate-y);
-    --ui-translate-y: -50%;
-    animation: enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease)
-      var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1)
-      var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none);
-    gap: calc(var(--spacing) * 4);
-    border-radius: var(--radius);
-    border-style: var(--ui-border-style);
-    border-width: 1px;
-    background-color: var(--background);
-    padding: calc(var(--spacing) * 6);
-    --ui-shadow:
-      0 10px 15px -3px var(--ui-shadow-color, rgb(0 0 0 / 0.1)),
-      0 4px 6px -4px var(--ui-shadow-color, rgb(0 0 0 / 0.1));
-    box-shadow:
-      var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-      var(--ui-ring-shadow), var(--ui-shadow);
-    --ui-duration: 200ms;
-    transition-duration: 200ms;
-    --ui-enter-opacity: calc(0/100);
-    --ui-enter-opacity: 0;
-    --ui-outline-style: none;
-    outline-style: none;
-    --ui-enter-scale: calc(95*1%);
-    --ui-enter-scale: 0.95;
-    @media (width >= 40rem) {
-      & {
-        max-width: var(--container-lg);
-      }
-    }
-    &[data-closed] {
-      animation: exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease)
-        var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1)
-        var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none);
-      --ui-exit-opacity: calc(0/100);
-      --ui-exit-opacity: 0;
-      --ui-exit-scale: calc(95*1%);
-      --ui-exit-scale: 0.95;
-    }
-  }
-`;
+const content = ui({
+  position: "fixed",
+  top: "50%",
+  left: "50%",
+  zIndex: "50",
+  display: "grid",
+  width: "100%",
+  maxWidth: "calc(100% - 2rem)",
+  "--ui-translate-x": "-50%",
+  translate: "var(--ui-translate-x) var(--ui-translate-y)",
+  "--ui-translate-y": "-50%",
+  animation:
+    "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
+  gap: "calc(var(--spacing) * 4)",
+  borderRadius: "var(--radius)",
+  borderStyle: "var(--ui-border-style)",
+  borderWidth: "1px",
+  backgroundColor: "var(--background)",
+  padding: "calc(var(--spacing) * 6)",
+  "--ui-shadow":
+    "0 10px 15px -3px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 4px 6px -4px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
+  boxShadow:
+    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+  "--ui-duration": "200ms",
+  transitionDuration: "200ms",
+  "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
+  "--ui-outline-style": "none",
+  outlineStyle: "none",
+  "--ui-enter-scale": firstThatWorks("0.95", "calc(95*1%)"),
+  "@media (width >= 40rem)": {
+    "&": {
+      maxWidth: "var(--container-lg)",
+    },
+  },
+  "[data-closed]": {
+    animation:
+      "exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
+    "--ui-exit-opacity": firstThatWorks("0", "calc(0/100)"),
+    "--ui-exit-scale": firstThatWorks("0.95", "calc(95*1%)"),
+  },
+});
 
-const header = css`
-  @layer barq.ui {
-    display: flex;
-    flex-direction: column;
-    gap: calc(var(--spacing) * 2);
-    text-align: center;
-    @media (width >= 40rem) {
-      & {
-        text-align: left;
-      }
-    }
-  }
-`;
+const header = ui({
+  display: "flex",
+  flexDirection: "column",
+  gap: "calc(var(--spacing) * 2)",
+  textAlign: "center",
+  "@media (width >= 40rem)": {
+    "&": {
+      textAlign: "left",
+    },
+  },
+});
 
-const footer = css`
-  @layer barq.ui {
-    display: flex;
-    flex-direction: column-reverse;
-    gap: calc(var(--spacing) * 2);
-    @media (width >= 40rem) {
-      & {
-        flex-direction: row;
-        justify-content: flex-end;
-      }
-    }
-  }
-`;
+const footer = ui({
+  display: "flex",
+  flexDirection: "column-reverse",
+  gap: "calc(var(--spacing) * 2)",
+  "@media (width >= 40rem)": {
+    "&": {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+    },
+  },
+});
 
-const title = css`
-  @layer barq.ui {
-    font-size: var(--text-lg);
-    line-height: var(--ui-leading, var(--text-lg--line-height));
-    --ui-leading: 1;
-    line-height: 1;
-    --ui-font-weight: var(--font-weight-semibold);
-    font-weight: var(--font-weight-semibold);
-  }
-`;
+const title = ui({
+  fontSize: "var(--text-lg)",
+  lineHeight: firstThatWorks("1", "var(--ui-leading, var(--text-lg--line-height))"),
+  "--ui-leading": "1",
+  "--ui-font-weight": "var(--font-weight-semibold)",
+  fontWeight: "var(--font-weight-semibold)",
+});
 
-const description = css`
-  @layer barq.ui {
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    color: var(--muted-foreground);
-  }
-`;
+const description = ui({
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  color: "var(--muted-foreground)",
+});
 
-const close = css`
-  @layer barq.ui {
-    position: absolute;
-    top: calc(var(--spacing) * 4);
-    right: calc(var(--spacing) * 4);
-    border-radius: var(--radius-xs);
-    opacity: 70%;
-    --ui-ring-offset-color: var(--background);
-    transition-property: opacity;
-    transition-timing-function: var(--ui-ease, var(--default-transition-timing-function));
-    transition-duration: var(--ui-duration, var(--default-transition-duration));
-    @media (hover: hover) {
-      &:hover {
-        opacity: 100%;
-      }
-    }
-    &[data-focus-visible] {
-      --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(2px + var(--ui-ring-offset-width))
-        var(--ui-ring-color, currentcolor);
-      box-shadow:
-        var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-        var(--ui-ring-shadow), var(--ui-shadow);
-      --ui-ring-color: var(--ring);
-      --ui-ring-offset-width: 2px;
-      --ui-ring-offset-shadow: var(--ui-ring-inset,) 0 0 0 var(--ui-ring-offset-width)
-        var(--ui-ring-offset-color);
-    }
-    &[data-disabled] {
-      pointer-events: none;
-    }
-    & svg {
-      pointer-events: none;
-      flex-shrink: 0;
-    }
-    & svg:not([class*="size-"]) {
-      width: calc(var(--spacing) * 4);
-      height: calc(var(--spacing) * 4);
-    }
-  }
-`;
+const close = ui({
+  position: "absolute",
+  top: "calc(var(--spacing) * 4)",
+  right: "calc(var(--spacing) * 4)",
+  borderRadius: "var(--radius-xs)",
+  opacity: "70%",
+  "--ui-ring-offset-color": "var(--background)",
+  transitionProperty: "opacity",
+  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
+  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
+  "@media (hover: hover)": {
+    ":hover": {
+      opacity: "100%",
+    },
+  },
+  "[data-focus-visible]": {
+    "--ui-ring-shadow":
+      "var(--ui-ring-inset,) 0 0 0 calc(2px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+    boxShadow:
+      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+    "--ui-ring-color": "var(--ring)",
+    "--ui-ring-offset-width": "2px",
+    "--ui-ring-offset-shadow":
+      "var(--ui-ring-inset,) 0 0 0 var(--ui-ring-offset-width) var(--ui-ring-offset-color)",
+  },
+  "[data-disabled]": {
+    pointerEvents: "none",
+  },
+  "& svg": {
+    pointerEvents: "none",
+    flexShrink: "0",
+  },
+  '& svg:not([class*="size-"])': {
+    width: "calc(var(--spacing) * 4)",
+    height: "calc(var(--spacing) * 4)",
+  },
+});
 
 const family = overlayFamily("Dialog");
 
@@ -230,7 +203,7 @@ export function DialogContent(props: Incoming<DialogContentProps>) {
       isDismissable={props.isDismissable?.() !== false}
       isKeyboardDismissDisabled={props.isKeyboardDismissDisabled?.() === true}
       underlayClass={overlay}
-      class={clsx(content, props.class?.(), props.className?.())}
+      class={ui(content, props.class?.(), props.className?.())}
       data-slot={props["data-slot"]?.() ?? "dialog-content"}
     >
       <AriaDialog role={props.role?.() ?? "dialog"} class={contents}>
@@ -248,11 +221,9 @@ export function DialogContent(props: Incoming<DialogContentProps>) {
  * the grid is on the modal around it, and `display: contents` keeps the section
  * out of it.
  */
-const contents = css`
-  @layer barq.ui {
-    display: contents;
-  }
-`;
+const contents = ui({
+  display: "contents",
+});
 
 export function DialogHeader(props: Incoming<UiProps>) {
   return <div {...uiProps("dialog-header", header, props)}>{props.children}</div>;
@@ -269,7 +240,7 @@ export function DialogTitle(props: Incoming<UiProps>) {
       {...props}
       slot="title"
       data-slot={props["data-slot"]?.() ?? "dialog-title"}
-      class={clsx(title, props.class?.(), props.className?.())}
+      class={ui(title, props.class?.(), props.className?.())}
     />
   );
 }

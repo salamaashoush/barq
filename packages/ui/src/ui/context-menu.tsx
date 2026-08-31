@@ -8,10 +8,11 @@ import {
   type MenuItemComponentProps,
 } from "@barqjs/aria/menu";
 import type { Incoming } from "@barqjs/core";
-import { clsx, css } from "@barqjs/css";
+
 import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
 
 import "../theme/layers.ts";
+import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import {
@@ -33,68 +34,62 @@ import {
 } from "./dropdown-menu.tsx";
 
 /** shadcn's context menu names its labels in the body colour; a dropdown's inherit. */
-const label = css`
-  @layer barq.ui {
-    padding-inline: calc(var(--spacing) * 2);
-    padding-block: calc(var(--spacing) * 1.5);
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    --ui-font-weight: var(--font-weight-medium);
-    font-weight: var(--font-weight-medium);
-    color: var(--foreground);
-    &[data-inset] {
-      padding-left: calc(var(--spacing) * 8);
-    }
-  }
-`;
+const label = ui({
+  paddingInline: "calc(var(--spacing) * 2)",
+  paddingBlock: "calc(var(--spacing) * 1.5)",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  "--ui-font-weight": "var(--font-weight-medium)",
+  fontWeight: "var(--font-weight-medium)",
+  color: "var(--foreground)",
+  "[data-inset]": {
+    paddingLeft: "calc(var(--spacing) * 8)",
+  },
+});
 
 /** And its submenu trigger has no gap, so the chevron's own margin is the whole of it. */
-const subTrigger = css`
-  @layer barq.ui {
-    display: flex;
-    cursor: default;
-    align-items: center;
-    border-radius: calc(var(--radius) - 4px);
-    padding-inline: calc(var(--spacing) * 2);
-    padding-block: calc(var(--spacing) * 1.5);
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    --ui-outline-style: none;
-    outline-style: none;
-    -webkit-user-select: none;
-    user-select: none;
-    &[data-inset] {
-      padding-left: calc(var(--spacing) * 8);
-    }
-    &[data-focused] {
-      background-color: var(--accent);
-      color: var(--accent-foreground);
-    }
-    &[data-open] {
-      background-color: var(--accent);
-      color: var(--accent-foreground);
-    }
-    & svg {
-      pointer-events: none;
-      flex-shrink: 0;
-    }
-    & svg:not([class*="size-"]) {
-      width: calc(var(--spacing) * 4);
-      height: calc(var(--spacing) * 4);
-    }
-    & svg:not([class*="text-"]) {
-      color: var(--muted-foreground);
-    }
-  }
-`;
+const subTrigger = ui({
+  display: "flex",
+  cursor: "default",
+  alignItems: "center",
+  borderRadius: "calc(var(--radius) - 4px)",
+  paddingInline: "calc(var(--spacing) * 2)",
+  paddingBlock: "calc(var(--spacing) * 1.5)",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  "--ui-outline-style": "none",
+  outlineStyle: "none",
+  "-webkit-user-select": "none",
+  userSelect: "none",
+  "[data-inset]": {
+    paddingLeft: "calc(var(--spacing) * 8)",
+  },
+  "[data-focused]": {
+    backgroundColor: "var(--accent)",
+    color: "var(--accent-foreground)",
+  },
+  "[data-open]": {
+    backgroundColor: "var(--accent)",
+    color: "var(--accent-foreground)",
+  },
+  "& svg": {
+    pointerEvents: "none",
+    flexShrink: "0",
+  },
+  '& svg:not([class*="size-"])': {
+    width: "calc(var(--spacing) * 4)",
+    height: "calc(var(--spacing) * 4)",
+  },
+  '& svg:not([class*="text-"])': {
+    color: "var(--muted-foreground)",
+  },
+});
 
-const subChevron = css`
-  @layer barq.ui {
-    margin-left: auto;
-    width: calc(var(--spacing) * 4);
-    height: calc(var(--spacing) * 4);
-  }
-`;
+const subChevron = ui({
+  marginLeft: "auto",
+  width: "calc(var(--spacing) * 4)",
+  height: "calc(var(--spacing) * 4)",
+});
 
 export interface ContextMenuProps extends ContextMenuComponentProps {}
 
@@ -206,7 +201,7 @@ export function ContextMenuSubTrigger(props: Incoming<ContextMenuSubTriggerProps
       {...props}
       data-slot={props["data-slot"]?.() ?? "context-menu-sub-trigger"}
       data-inset={props.inset?.() === true ? "" : undefined}
-      class={clsx(subTrigger, props.class?.(), props.className?.())}
+      class={ui(subTrigger, props.class?.(), props.className?.())}
     >
       {props.children}
       <ChevronRight data-slot="context-menu-sub-chevron" class={subChevron} />

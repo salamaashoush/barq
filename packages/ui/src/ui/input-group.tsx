@@ -1,171 +1,157 @@
 import type { Incoming } from "@barqjs/core";
-import { clsx, css, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { ui, uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Button, type ButtonProps, type ButtonVariant } from "./button.tsx";
 import { Input, Textarea, type InputProps, type TextareaProps } from "./input.tsx";
 
-const root = css`
-  @layer barq.ui {
-    position: relative;
-    display: flex;
-    height: calc(var(--spacing) * 9);
-    width: 100%;
-    min-width: 0px;
-    align-items: center;
-    border-radius: calc(var(--radius) - 2px);
-    border-style: var(--ui-border-style);
-    border-width: 1px;
-    border-color: var(--input);
-    --ui-shadow: 0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05));
-    box-shadow:
-      var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-      var(--ui-ring-shadow), var(--ui-shadow);
-    transition-property: color, box-shadow;
-    transition-timing-function: var(--ui-ease, var(--default-transition-timing-function));
-    transition-duration: var(--ui-duration, var(--default-transition-duration));
-    --ui-outline-style: none;
-    outline-style: none;
-    &:has(:is([data-slot="input-group-control"]:focus-visible)) {
-      border-color: var(--ring);
-      --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width))
-        var(--ui-ring-color, currentcolor);
-      box-shadow:
-        var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-        var(--ui-ring-shadow), var(--ui-shadow);
-      --ui-ring-color: var(--ring);
-      @supports (color: color-mix(in lab, red, red)) {
-        --ui-ring-color: color-mix(in oklab, var(--ring) 50%, transparent);
-      }
-    }
-    &:has(:is([data-slot][aria-invalid="true"])) {
-      border-color: var(--destructive);
-      --ui-ring-color: var(--destructive);
-      @supports (color: color-mix(in lab, red, red)) {
-        --ui-ring-color: color-mix(in oklab, var(--destructive) 20%, transparent);
-      }
-    }
-    &:has(> [data-align="block-end"]) {
-      height: auto;
-      flex-direction: column;
-    }
-    &:has(> [data-align="block-start"]) {
-      height: auto;
-      flex-direction: column;
-    }
-    &:has(> textarea) {
-      height: auto;
-    }
-    &:is(.dark *) {
-      background-color: var(--input);
-      @supports (color: color-mix(in lab, red, red)) {
-        background-color: color-mix(in oklab, var(--input) 30%, transparent);
-      }
-    }
-    &:is(.dark *):has(:is([data-slot][aria-invalid="true"])) {
-      --ui-ring-color: var(--destructive);
-      @supports (color: color-mix(in lab, red, red)) {
-        --ui-ring-color: color-mix(in oklab, var(--destructive) 40%, transparent);
-      }
-    }
-    &:has(> [data-align="block-end"]) > input {
-      padding-top: calc(var(--spacing) * 3);
-    }
-    &:has(> [data-align="block-start"]) > input {
-      padding-bottom: calc(var(--spacing) * 3);
-    }
-    &:has(> [data-align="inline-end"]) > input {
-      padding-right: calc(var(--spacing) * 2);
-    }
-    &:has(> [data-align="inline-start"]) > input {
-      padding-left: calc(var(--spacing) * 2);
-    }
-  }
-`;
+const root = ui({
+  position: "relative",
+  display: "flex",
+  height: "calc(var(--spacing) * 9)",
+  width: "100%",
+  minWidth: "0px",
+  alignItems: "center",
+  borderRadius: "calc(var(--radius) - 2px)",
+  borderStyle: "var(--ui-border-style)",
+  borderWidth: "1px",
+  borderColor: "var(--input)",
+  "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
+  boxShadow:
+    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+  transitionProperty: "color, box-shadow",
+  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
+  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
+  "--ui-outline-style": "none",
+  outlineStyle: "none",
+  ':has(:is([data-slot="input-group-control"]:focus-visible))': {
+    borderColor: "var(--ring)",
+    "--ui-ring-shadow":
+      "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+    boxShadow:
+      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+    "--ui-ring-color": "var(--ring)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
+    },
+  },
+  ':has(:is([data-slot][aria-invalid="true"]))': {
+    borderColor: "var(--destructive)",
+    "--ui-ring-color": "var(--destructive)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      "--ui-ring-color": "color-mix(in oklab, var(--destructive) 20%, transparent)",
+    },
+  },
+  ':has(> [data-align="block-end"])': {
+    height: "auto",
+    flexDirection: "column",
+  },
+  ':has(> [data-align="block-start"])': {
+    height: "auto",
+    flexDirection: "column",
+  },
+  ":has(> textarea)": {
+    height: "auto",
+  },
+  ":is(.dark *)": {
+    backgroundColor: "var(--input)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      backgroundColor: "color-mix(in oklab, var(--input) 30%, transparent)",
+    },
+  },
+  ':is(.dark *):has(:is([data-slot][aria-invalid="true"]))': {
+    "--ui-ring-color": "var(--destructive)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      "--ui-ring-color": "color-mix(in oklab, var(--destructive) 40%, transparent)",
+    },
+  },
+  ':has(> [data-align="block-end"]) > input': {
+    paddingTop: "calc(var(--spacing) * 3)",
+  },
+  ':has(> [data-align="block-start"]) > input': {
+    paddingBottom: "calc(var(--spacing) * 3)",
+  },
+  ':has(> [data-align="inline-end"]) > input': {
+    paddingRight: "calc(var(--spacing) * 2)",
+  },
+  ':has(> [data-align="inline-start"]) > input': {
+    paddingLeft: "calc(var(--spacing) * 2)",
+  },
+});
 
 export type InputGroupAlign = "inline-start" | "inline-end" | "block-start" | "block-end";
 
-export const inputGroupAddonVariants = variants({
-  base: css`
-    @layer barq.ui {
-      display: flex;
-      height: auto;
-      cursor: text;
-      align-items: center;
-      justify-content: center;
-      gap: calc(var(--spacing) * 2);
-      padding-block: calc(var(--spacing) * 1.5);
-      font-size: var(--text-sm);
-      line-height: var(--ui-leading, var(--text-sm--line-height));
-      --ui-font-weight: var(--font-weight-medium);
-      font-weight: var(--font-weight-medium);
-      color: var(--muted-foreground);
-      -webkit-user-select: none;
-      user-select: none;
-      & > kbd {
-        border-radius: calc(var(--radius) - 5px);
-      }
-      & > svg:not([class*="size-"]) {
-        width: calc(var(--spacing) * 4);
-        height: calc(var(--spacing) * 4);
-      }
-      [data-slot="input-group"][data-disabled] & {
-        opacity: 50%;
-      }
-    }
-  `,
+export const inputGroupAddonVariants = uiVariants({
+  base: ui({
+    display: "flex",
+    height: "auto",
+    cursor: "text",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "calc(var(--spacing) * 2)",
+    paddingBlock: "calc(var(--spacing) * 1.5)",
+    fontSize: "var(--text-sm)",
+    lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+    "--ui-font-weight": "var(--font-weight-medium)",
+    fontWeight: "var(--font-weight-medium)",
+    color: "var(--muted-foreground)",
+    "-webkit-user-select": "none",
+    userSelect: "none",
+    "& > kbd": {
+      borderRadius: "calc(var(--radius) - 5px)",
+    },
+    '& > svg:not([class*="size-"])': {
+      width: "calc(var(--spacing) * 4)",
+      height: "calc(var(--spacing) * 4)",
+    },
+    '[data-slot="input-group"][data-disabled] &': {
+      opacity: "50%",
+    },
+  }),
   variants: {
     align: {
-      "inline-start": css`
-        @layer barq.ui {
-          order: -9999;
-          padding-left: calc(var(--spacing) * 3);
-          &:has(> button) {
-            margin-left: -0.45rem;
-          }
-          &:has(> kbd) {
-            margin-left: -0.35rem;
-          }
-        }
-      `,
-      "inline-end": css`
-        @layer barq.ui {
-          order: 9999;
-          padding-right: calc(var(--spacing) * 3);
-          &:has(> button) {
-            margin-right: -0.45rem;
-          }
-          &:has(> kbd) {
-            margin-right: -0.35rem;
-          }
-        }
-      `,
-      "block-start": css`
-        @layer barq.ui {
-          order: -9999;
-          width: 100%;
-          justify-content: flex-start;
-          padding-inline: calc(var(--spacing) * 3);
-          padding-top: calc(var(--spacing) * 3);
-          [data-slot="input-group"]:has(> input) & {
-            padding-top: calc(var(--spacing) * 2.5);
-          }
-        }
-      `,
-      "block-end": css`
-        @layer barq.ui {
-          order: 9999;
-          width: 100%;
-          justify-content: flex-start;
-          padding-inline: calc(var(--spacing) * 3);
-          padding-bottom: calc(var(--spacing) * 3);
-          [data-slot="input-group"]:has(> input) & {
-            padding-bottom: calc(var(--spacing) * 2.5);
-          }
-        }
-      `,
+      "inline-start": ui({
+        order: "-9999",
+        paddingLeft: "calc(var(--spacing) * 3)",
+        ":has(> button)": {
+          marginLeft: "-0.45rem",
+        },
+        ":has(> kbd)": {
+          marginLeft: "-0.35rem",
+        },
+      }),
+      "inline-end": ui({
+        order: "9999",
+        paddingRight: "calc(var(--spacing) * 3)",
+        ":has(> button)": {
+          marginRight: "-0.45rem",
+        },
+        ":has(> kbd)": {
+          marginRight: "-0.35rem",
+        },
+      }),
+      "block-start": ui({
+        order: "-9999",
+        width: "100%",
+        justifyContent: "flex-start",
+        paddingInline: "calc(var(--spacing) * 3)",
+        paddingTop: "calc(var(--spacing) * 3)",
+        '[data-slot="input-group"]:has(> input) &': {
+          paddingTop: "calc(var(--spacing) * 2.5)",
+        },
+      }),
+      "block-end": ui({
+        order: "9999",
+        width: "100%",
+        justifyContent: "flex-start",
+        paddingInline: "calc(var(--spacing) * 3)",
+        paddingBottom: "calc(var(--spacing) * 3)",
+        '[data-slot="input-group"]:has(> input) &': {
+          paddingBottom: "calc(var(--spacing) * 2.5)",
+        },
+      }),
     },
   },
   defaults: { align: "inline-start" },
@@ -173,141 +159,120 @@ export const inputGroupAddonVariants = variants({
 
 export type InputGroupButtonSize = "xs" | "sm" | "icon-xs" | "icon-sm";
 
-export const inputGroupButtonVariants = variants({
-  base: css`
-    @layer barq.ui {
-      display: flex;
-      align-items: center;
-      gap: calc(var(--spacing) * 2);
-      font-size: var(--text-sm);
-      line-height: var(--ui-leading, var(--text-sm--line-height));
-      --ui-shadow: 0 0 #0000;
-      box-shadow:
-        var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-        var(--ui-ring-shadow), var(--ui-shadow);
-    }
-  `,
+export const inputGroupButtonVariants = uiVariants({
+  base: ui({
+    display: "flex",
+    alignItems: "center",
+    gap: "calc(var(--spacing) * 2)",
+    fontSize: "var(--text-sm)",
+    lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+    "--ui-shadow": "0 0 #0000",
+    boxShadow:
+      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+  }),
   variants: {
     size: {
-      xs: css`
-        @layer barq.ui {
-          height: calc(var(--spacing) * 6);
-          gap: var(--spacing);
-          border-radius: calc(var(--radius) - 5px);
-          padding-inline: calc(var(--spacing) * 2);
-          &:has(> svg) {
-            padding-inline: calc(var(--spacing) * 2);
-          }
-          & > svg:not([class*="size-"]) {
-            width: calc(var(--spacing) * 3.5);
-            height: calc(var(--spacing) * 3.5);
-          }
-        }
-      `,
-      sm: css`
-        @layer barq.ui {
-          height: calc(var(--spacing) * 8);
-          gap: calc(var(--spacing) * 1.5);
-          border-radius: calc(var(--radius) - 2px);
-          padding-inline: calc(var(--spacing) * 2.5);
-          &:has(> svg) {
-            padding-inline: calc(var(--spacing) * 2.5);
-          }
-        }
-      `,
-      "icon-xs": css`
-        @layer barq.ui {
-          width: calc(var(--spacing) * 6);
-          height: calc(var(--spacing) * 6);
-          border-radius: calc(var(--radius) - 5px);
-          padding: 0px;
-          &:has(> svg) {
-            padding: 0px;
-          }
-        }
-      `,
-      "icon-sm": css`
-        @layer barq.ui {
-          width: calc(var(--spacing) * 8);
-          height: calc(var(--spacing) * 8);
-          padding: 0px;
-          &:has(> svg) {
-            padding: 0px;
-          }
-        }
-      `,
+      xs: ui({
+        height: "calc(var(--spacing) * 6)",
+        gap: "var(--spacing)",
+        borderRadius: "calc(var(--radius) - 5px)",
+        paddingInline: "calc(var(--spacing) * 2)",
+        ":has(> svg)": {
+          paddingInline: "calc(var(--spacing) * 2)",
+        },
+        '& > svg:not([class*="size-"])': {
+          width: "calc(var(--spacing) * 3.5)",
+          height: "calc(var(--spacing) * 3.5)",
+        },
+      }),
+      sm: ui({
+        height: "calc(var(--spacing) * 8)",
+        gap: "calc(var(--spacing) * 1.5)",
+        borderRadius: "calc(var(--radius) - 2px)",
+        paddingInline: "calc(var(--spacing) * 2.5)",
+        ":has(> svg)": {
+          paddingInline: "calc(var(--spacing) * 2.5)",
+        },
+      }),
+      "icon-xs": ui({
+        width: "calc(var(--spacing) * 6)",
+        height: "calc(var(--spacing) * 6)",
+        borderRadius: "calc(var(--radius) - 5px)",
+        padding: "0px",
+        ":has(> svg)": {
+          padding: "0px",
+        },
+      }),
+      "icon-sm": ui({
+        width: "calc(var(--spacing) * 8)",
+        height: "calc(var(--spacing) * 8)",
+        padding: "0px",
+        ":has(> svg)": {
+          padding: "0px",
+        },
+      }),
     },
   },
   defaults: { size: "xs" },
 });
 
-const text = css`
-  @layer barq.ui {
-    display: flex;
-    align-items: center;
-    gap: calc(var(--spacing) * 2);
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    color: var(--muted-foreground);
-    & svg {
-      pointer-events: none;
-    }
-    & svg:not([class*="size-"]) {
-      width: calc(var(--spacing) * 4);
-      height: calc(var(--spacing) * 4);
-    }
-  }
-`;
+const text = ui({
+  display: "flex",
+  alignItems: "center",
+  gap: "calc(var(--spacing) * 2)",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  color: "var(--muted-foreground)",
+  "& svg": {
+    pointerEvents: "none",
+  },
+  '& svg:not([class*="size-"])': {
+    width: "calc(var(--spacing) * 4)",
+    height: "calc(var(--spacing) * 4)",
+  },
+});
 
-const control = css`
-  @layer barq.ui {
-    flex: 1;
-    border-radius: 0;
-    border-style: var(--ui-border-style);
-    border-width: 0px;
-    background-color: transparent;
-    --ui-shadow: 0 0 #0000;
-    box-shadow:
-      var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-      var(--ui-ring-shadow), var(--ui-shadow);
-    &:focus-visible {
-      --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(0px + var(--ui-ring-offset-width))
-        var(--ui-ring-color, currentcolor);
-      box-shadow:
-        var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-        var(--ui-ring-shadow), var(--ui-shadow);
-    }
-    &:is(.dark *) {
-      background-color: transparent;
-    }
-  }
-`;
+const control = ui({
+  flex: "1",
+  borderRadius: "0",
+  borderStyle: "var(--ui-border-style)",
+  borderWidth: "0px",
+  backgroundColor: "transparent",
+  "--ui-shadow": "0 0 #0000",
+  boxShadow:
+    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+  ":focus-visible": {
+    "--ui-ring-shadow":
+      "var(--ui-ring-inset,) 0 0 0 calc(0px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+    boxShadow:
+      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+  },
+  ":is(.dark *)": {
+    backgroundColor: "transparent",
+  },
+});
 
-const controlTextarea = css`
-  @layer barq.ui {
-    flex: 1;
-    resize: none;
-    border-radius: 0;
-    border-style: var(--ui-border-style);
-    border-width: 0px;
-    background-color: transparent;
-    padding-block: calc(var(--spacing) * 3);
-    --ui-shadow: 0 0 #0000;
-    box-shadow:
-      var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-      var(--ui-ring-shadow), var(--ui-shadow);
-    &:focus-visible {
-      --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(0px + var(--ui-ring-offset-width))
-        var(--ui-ring-color, currentcolor);
-      box-shadow:
-        var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-        var(--ui-ring-shadow), var(--ui-shadow);
-    }
-    &:is(.dark *) {
-      background-color: transparent;
-    }
-  }
-`;
+const controlTextarea = ui({
+  flex: "1",
+  resize: "none",
+  borderRadius: "0",
+  borderStyle: "var(--ui-border-style)",
+  borderWidth: "0px",
+  backgroundColor: "transparent",
+  paddingBlock: "calc(var(--spacing) * 3)",
+  "--ui-shadow": "0 0 #0000",
+  boxShadow:
+    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+  ":focus-visible": {
+    "--ui-ring-shadow":
+      "var(--ui-ring-inset,) 0 0 0 calc(0px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+    boxShadow:
+      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+  },
+  ":is(.dark *)": {
+    backgroundColor: "transparent",
+  },
+});
 
 export interface InputGroupProps extends UiProps {
   /** Dims the addons. The control is disabled by its own prop. */
@@ -389,7 +354,7 @@ export function InputGroupButton(props: Incoming<InputGroupButtonProps>) {
       data-slot={props["data-slot"]?.() ?? "input-group-button"}
       variant={props.variant?.() ?? "ghost"}
       size={props.size?.() ?? "xs"}
-      class={clsx(
+      class={ui(
         inputGroupButtonVariants({ size: props.size?.() }),
         props.class?.(),
         props.className?.(),
@@ -410,7 +375,7 @@ export function InputGroupInput(props: Incoming<InputGroupInputProps>) {
     <Input
       {...props}
       data-slot={props["data-slot"]?.() ?? "input-group-control"}
-      class={clsx(control, props.class?.(), props.className?.())}
+      class={ui(control, props.class?.(), props.className?.())}
     />
   );
 }
@@ -422,7 +387,7 @@ export function InputGroupTextarea(props: Incoming<InputGroupTextareaProps>) {
     <Textarea
       {...props}
       data-slot={props["data-slot"]?.() ?? "input-group-control"}
-      class={clsx(controlTextarea, props.class?.(), props.className?.())}
+      class={ui(controlTextarea, props.class?.(), props.className?.())}
     />
   );
 }

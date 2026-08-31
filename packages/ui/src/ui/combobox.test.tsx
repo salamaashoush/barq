@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { flush, type Incoming } from "@barqjs/core";
-import { collectCss } from "@barqjs/css";
 import { render, screen, user } from "@barqjs/testing";
+
+import { rulesFor } from "../test-rules.ts";
 
 import { Combobox } from "./combobox.tsx";
 
@@ -99,16 +100,7 @@ describe("Combobox", () => {
     await settle();
 
     const content = document.querySelector('[data-slot="combobox-content"]') as HTMLElement;
-    const rules = content.className
-      .split(" ")
-      .map((name) => {
-        const mentions = new RegExp(`\\.${name}(?![\\w-])`);
-        return collectCss()
-          .split("@layer barq.ui{")
-          .filter((chunk) => mentions.test(chunk))
-          .join("");
-      })
-      .join("");
+    const rules = rulesFor(content.className);
     expect(rules).toContain("width: var(--barq-trigger-width");
     expect(rules).not.toContain("width: 100%");
   });

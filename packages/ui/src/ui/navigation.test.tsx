@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { collectCss } from "@barqjs/css";
 import { render, screen } from "@barqjs/testing";
+
+import { rulesFor } from "../test-rules.ts";
 
 import {
   Breadcrumb,
@@ -30,14 +31,6 @@ import {
   PaginationPrevious,
 } from "./pagination.tsx";
 import { ScrollArea } from "./scroll-area.tsx";
-
-function rulesFor(className: string): string {
-  const mentions = new RegExp(`\\.${className}(?![\\w-])`);
-  return collectCss()
-    .split("@layer barq.ui{")
-    .filter((chunk) => mentions.test(chunk))
-    .join("\n");
-}
 
 describe("Breadcrumb", () => {
   test("is a named landmark whose last crumb is the current page", () => {
@@ -173,7 +166,7 @@ describe("NativeSelect", () => {
     const control = screen.getByRole("combobox") as HTMLSelectElement;
     expect(control.tagName.toLowerCase()).toBe("select");
     expect(control.name).toBe("fruit");
-    expect(control.className.split(" ").map(rulesFor).join("")).toContain("background-image");
+    expect(rulesFor(control.className)).toContain("background-image");
   });
 });
 
@@ -182,8 +175,8 @@ describe("ScrollArea", () => {
     render(() => <ScrollArea aria-label="Log">lots of text</ScrollArea>);
     const region = screen.getByRole("region", { name: "Log" });
     expect(region.getAttribute("tabindex")).toBe("0");
-    const rules = rulesFor(region.className.split(" ")[0] ?? "");
-    expect(rules).toContain("overflow: auto");
+    const rules = rulesFor(region.className);
+    expect(rules).toContain("overflow-x: auto");
     expect(rules).toContain("scrollbar-color: var(--border) transparent");
   });
 });

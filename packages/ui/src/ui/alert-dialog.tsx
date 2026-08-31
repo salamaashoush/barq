@@ -1,171 +1,146 @@
 import { Dialog as AriaDialog, Heading, Modal } from "@barqjs/aria/dialog";
 import type { Child, Incoming } from "@barqjs/core";
-import { clsx, css } from "@barqjs/css";
+import { firstThatWorks } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { overlayFamily, type OverlayRootProps } from "../lib/overlay.tsx";
+import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Button, type ButtonProps } from "./button.tsx";
 
-const overlay = css`
-  @layer barq.ui {
-    position: fixed;
-    inset: 0px;
-    z-index: 50;
-    animation: enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease)
-      var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1)
-      var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none);
-    background-color: color-mix(in srgb, #000 50%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--color-black) 50%, transparent);
-    }
-    --ui-enter-opacity: calc(0/100);
-    --ui-enter-opacity: 0;
-    &[data-closed] {
-      animation: exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease)
-        var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1)
-        var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none);
-      --ui-exit-opacity: calc(0/100);
-      --ui-exit-opacity: 0;
-    }
-  }
-`;
+const overlay = ui({
+  position: "fixed",
+  inset: "0px",
+  zIndex: "50",
+  animation:
+    "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
+  backgroundColor: "color-mix(in srgb, #000 50%, transparent)",
+  "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
+  "@supports (color: color-mix(in lab, red, red))": {
+    backgroundColor: "color-mix(in oklab, var(--color-black) 50%, transparent)",
+  },
+  "[data-closed]": {
+    animation:
+      "exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
+    "--ui-exit-opacity": firstThatWorks("0", "calc(0/100)"),
+  },
+});
 
-const header = css`
-  @layer barq.ui {
-    display: grid;
-    grid-template-rows: auto 1fr;
-    place-items: center;
-    gap: calc(var(--spacing) * 1.5);
-    text-align: center;
-    &:has([data-slot="alert-dialog-media"]) {
-      grid-template-rows: auto auto 1fr;
-      column-gap: calc(var(--spacing) * 6);
-    }
-    @media (width >= 40rem) {
-      [data-slot="alert-dialog-content"][data-size="default"] & {
-        place-items: start;
-        text-align: left;
-      }
-    }
-  }
-`;
+const header = ui({
+  display: "grid",
+  gridTemplateRows: "auto 1fr",
+  placeItems: "center",
+  gap: "calc(var(--spacing) * 1.5)",
+  textAlign: "center",
+  ':has([data-slot="alert-dialog-media"])': {
+    gridTemplateRows: "auto auto 1fr",
+    columnGap: "calc(var(--spacing) * 6)",
+  },
+  "@media (width >= 40rem)": {
+    '[data-slot="alert-dialog-content"][data-size="default"] &': {
+      placeItems: "start",
+      textAlign: "left",
+    },
+  },
+});
 
-const footer = css`
-  @layer barq.ui {
-    display: flex;
-    flex-direction: column-reverse;
-    gap: calc(var(--spacing) * 2);
-    @media (width >= 40rem) {
-      & {
-        flex-direction: row;
-        justify-content: flex-end;
-      }
-    }
-    [data-slot="alert-dialog-content"][data-size="sm"] & {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-  }
-`;
+const footer = ui({
+  display: "flex",
+  flexDirection: "column-reverse",
+  gap: "calc(var(--spacing) * 2)",
+  "@media (width >= 40rem)": {
+    "&": {
+      flexDirection: "row",
+      justifyContent: "flex-end",
+    },
+  },
+  '[data-slot="alert-dialog-content"][data-size="sm"] &': {
+    display: "grid",
+    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  },
+});
 
-const title = css`
-  @layer barq.ui {
-    font-size: var(--text-lg);
-    line-height: var(--ui-leading, var(--text-lg--line-height));
-    --ui-font-weight: var(--font-weight-semibold);
-    font-weight: var(--font-weight-semibold);
-  }
-`;
+const title = ui({
+  fontSize: "var(--text-lg)",
+  lineHeight: "var(--ui-leading, var(--text-lg--line-height))",
+  "--ui-font-weight": "var(--font-weight-semibold)",
+  fontWeight: "var(--font-weight-semibold)",
+});
 
-const description = css`
-  @layer barq.ui {
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    color: var(--muted-foreground);
-  }
-`;
+const description = ui({
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  color: "var(--muted-foreground)",
+});
 
-const media = css`
-  @layer barq.ui {
-    margin-bottom: calc(var(--spacing) * 2);
-    display: inline-flex;
-    width: calc(var(--spacing) * 16);
-    height: calc(var(--spacing) * 16);
-    align-items: center;
-    justify-content: center;
-    border-radius: calc(var(--radius) - 2px);
-    background-color: var(--muted);
-    & > svg:not([class*="size-"]) {
-      width: calc(var(--spacing) * 8);
-      height: calc(var(--spacing) * 8);
-    }
-    @media (width >= 40rem) {
-      [data-slot="alert-dialog-content"][data-size="default"] & {
-        grid-row: span 2 / span 2;
-      }
-    }
-  }
-`;
+const media = ui({
+  marginBottom: "calc(var(--spacing) * 2)",
+  display: "inline-flex",
+  width: "calc(var(--spacing) * 16)",
+  height: "calc(var(--spacing) * 16)",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: "calc(var(--radius) - 2px)",
+  backgroundColor: "var(--muted)",
+  '& > svg:not([class*="size-"])': {
+    width: "calc(var(--spacing) * 8)",
+    height: "calc(var(--spacing) * 8)",
+  },
+  "@media (width >= 40rem)": {
+    '[data-slot="alert-dialog-content"][data-size="default"] &': {
+      gridRow: "span 2 / span 2",
+    },
+  },
+});
 
 export type AlertDialogSize = "default" | "sm";
 
 /** The size is an attribute the CSS reads, so there is one class and not two. */
-const content = css`
-  @layer barq.ui {
-    position: fixed;
-    top: 50%;
-    left: 50%;
-    z-index: 50;
-    display: grid;
-    width: 100%;
-    max-width: calc(100% - 2rem);
-    --ui-translate-x: -50%;
-    translate: var(--ui-translate-x) var(--ui-translate-y);
-    --ui-translate-y: -50%;
-    animation: enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease)
-      var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1)
-      var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none);
-    gap: calc(var(--spacing) * 4);
-    border-radius: var(--radius);
-    border-style: var(--ui-border-style);
-    border-width: 1px;
-    background-color: var(--background);
-    padding: calc(var(--spacing) * 6);
-    --ui-shadow:
-      0 10px 15px -3px var(--ui-shadow-color, rgb(0 0 0 / 0.1)),
-      0 4px 6px -4px var(--ui-shadow-color, rgb(0 0 0 / 0.1));
-    box-shadow:
-      var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-      var(--ui-ring-shadow), var(--ui-shadow);
-    --ui-duration: 200ms;
-    transition-duration: 200ms;
-    --ui-enter-opacity: calc(0/100);
-    --ui-enter-opacity: 0;
-    --ui-outline-style: none;
-    outline-style: none;
-    --ui-enter-scale: calc(95*1%);
-    --ui-enter-scale: 0.95;
-    &[data-size="sm"] {
-      max-width: var(--container-xs);
-    }
-    @media (width >= 40rem) {
-      &[data-size="default"] {
-        max-width: var(--container-lg);
-      }
-    }
-    &[data-closed] {
-      animation: exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease)
-        var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1)
-        var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none);
-      --ui-exit-opacity: calc(0/100);
-      --ui-exit-opacity: 0;
-      --ui-exit-scale: calc(95*1%);
-      --ui-exit-scale: 0.95;
-    }
-  }
-`;
+const content = ui({
+  position: "fixed",
+  top: "50%",
+  left: "50%",
+  zIndex: "50",
+  display: "grid",
+  width: "100%",
+  maxWidth: "calc(100% - 2rem)",
+  "--ui-translate-x": "-50%",
+  translate: "var(--ui-translate-x) var(--ui-translate-y)",
+  "--ui-translate-y": "-50%",
+  animation:
+    "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
+  gap: "calc(var(--spacing) * 4)",
+  borderRadius: "var(--radius)",
+  borderStyle: "var(--ui-border-style)",
+  borderWidth: "1px",
+  backgroundColor: "var(--background)",
+  padding: "calc(var(--spacing) * 6)",
+  "--ui-shadow":
+    "0 10px 15px -3px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 4px 6px -4px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
+  boxShadow:
+    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+  "--ui-duration": "200ms",
+  transitionDuration: "200ms",
+  "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
+  "--ui-outline-style": "none",
+  outlineStyle: "none",
+  "--ui-enter-scale": firstThatWorks("0.95", "calc(95*1%)"),
+  '[data-size="sm"]': {
+    maxWidth: "var(--container-xs)",
+  },
+  "@media (width >= 40rem)": {
+    '[data-size="default"]': {
+      maxWidth: "var(--container-lg)",
+    },
+  },
+  "[data-closed]": {
+    animation:
+      "exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
+    "--ui-exit-opacity": firstThatWorks("0", "calc(0/100)"),
+    "--ui-exit-scale": firstThatWorks("0.95", "calc(95*1%)"),
+  },
+});
 
 const family = overlayFamily("AlertDialog");
 
@@ -220,7 +195,7 @@ export function AlertDialogContent(props: Incoming<AlertDialogContentProps>) {
       // interaction, and the APG asks for Escape on every dialog, alert or not.
       isDismissable={false}
       underlayClass={overlay}
-      class={clsx(content, props.class?.(), props.className?.())}
+      class={ui(content, props.class?.(), props.className?.())}
       data-slot={props["data-slot"]?.() ?? "alert-dialog-content"}
       data-size={props.size?.() ?? "default"}
     >
@@ -232,11 +207,9 @@ export function AlertDialogContent(props: Incoming<AlertDialogContentProps>) {
 }
 
 /** See `dialog.tsx`: the dialog's own element lays nothing out. */
-const contents = css`
-  @layer barq.ui {
-    display: contents;
-  }
-`;
+const contents = ui({
+  display: "contents",
+});
 
 export function AlertDialogHeader(props: Incoming<UiProps>) {
   return <div {...uiProps("alert-dialog-header", header, props)}>{props.children}</div>;
@@ -257,7 +230,7 @@ export function AlertDialogTitle(props: Incoming<UiProps>) {
       {...props}
       slot="title"
       data-slot={props["data-slot"]?.() ?? "alert-dialog-title"}
-      class={clsx(title, props.class?.(), props.className?.())}
+      class={ui(title, props.class?.(), props.className?.())}
     />
   );
 }

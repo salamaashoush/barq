@@ -1,113 +1,102 @@
 import type { Incoming } from "@barqjs/core";
-import { clsx, css, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { ui, uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Separator, type SeparatorProps } from "./separator.tsx";
 
 export type ButtonGroupOrientation = "horizontal" | "vertical";
 
-export const buttonGroupVariants = variants({
-  base: css`
-    @layer barq.ui {
-      display: flex;
-      width: fit-content;
-      align-items: stretch;
-      &:has(> [data-slot="button-group"]) {
-        gap: calc(var(--spacing) * 2);
-      }
-      & > *:focus-visible {
-        position: relative;
-        z-index: 10;
-      }
-      &:has(> select[aria-hidden="true"]:last-child) > [data-slot="select-trigger"]:last-of-type {
-        border-top-right-radius: calc(var(--radius) - 2px);
-        border-bottom-right-radius: calc(var(--radius) - 2px);
-      }
-      & > [data-slot="select-trigger"]:not([class*="w-"]) {
-        width: fit-content;
-      }
-      & > input {
-        flex: 1;
-      }
-    }
-  `,
+export const buttonGroupVariants = uiVariants({
+  base: ui({
+    display: "flex",
+    width: "fit-content",
+    alignItems: "stretch",
+    ':has(> [data-slot="button-group"])': {
+      gap: "calc(var(--spacing) * 2)",
+    },
+    "& > *:focus-visible": {
+      position: "relative",
+      zIndex: "10",
+    },
+    ':has(> select[aria-hidden="true"]:last-child) > [data-slot="select-trigger"]:last-of-type': {
+      borderTopRightRadius: "calc(var(--radius) - 2px)",
+      borderBottomRightRadius: "calc(var(--radius) - 2px)",
+    },
+    '& > [data-slot="select-trigger"]:not([class*="w-"])': {
+      width: "fit-content",
+    },
+    "& > input": {
+      flex: "1",
+    },
+  }),
   variants: {
     orientation: {
-      horizontal: css`
-        @layer barq.ui {
-          & > :not(:first-child) {
-            border-top-left-radius: 0;
-            border-bottom-left-radius: 0;
-            border-left-style: var(--ui-border-style);
-            border-left-width: 0px;
-          }
-          & > :not(:last-child) {
-            border-top-right-radius: 0;
-            border-bottom-right-radius: 0;
-          }
-        }
-      `,
-      vertical: css`
-        @layer barq.ui {
-          flex-direction: column;
-          & > :not(:first-child) {
-            border-top-left-radius: 0;
-            border-top-right-radius: 0;
-            border-top-style: var(--ui-border-style);
-            border-top-width: 0px;
-          }
-          & > :not(:last-child) {
-            border-bottom-right-radius: 0;
-            border-bottom-left-radius: 0;
-          }
-        }
-      `,
+      horizontal: ui({
+        "& > :not(:first-child)": {
+          borderTopLeftRadius: "0",
+          borderBottomLeftRadius: "0",
+          borderLeftStyle: "var(--ui-border-style)",
+          borderLeftWidth: "0px",
+        },
+        "& > :not(:last-child)": {
+          borderTopRightRadius: "0",
+          borderBottomRightRadius: "0",
+        },
+      }),
+      vertical: ui({
+        flexDirection: "column",
+        "& > :not(:first-child)": {
+          borderTopLeftRadius: "0",
+          borderTopRightRadius: "0",
+          borderTopStyle: "var(--ui-border-style)",
+          borderTopWidth: "0px",
+        },
+        "& > :not(:last-child)": {
+          borderBottomRightRadius: "0",
+          borderBottomLeftRadius: "0",
+        },
+      }),
     },
   },
   defaults: { orientation: "horizontal" },
 });
 
-const text = css`
-  @layer barq.ui {
-    display: flex;
-    align-items: center;
-    gap: calc(var(--spacing) * 2);
-    border-radius: calc(var(--radius) - 2px);
-    border-style: var(--ui-border-style);
-    border-width: 1px;
-    background-color: var(--muted);
-    padding-inline: calc(var(--spacing) * 4);
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    --ui-font-weight: var(--font-weight-medium);
-    font-weight: var(--font-weight-medium);
-    --ui-shadow: 0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05));
-    box-shadow:
-      var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-      var(--ui-ring-shadow), var(--ui-shadow);
-    & svg {
-      pointer-events: none;
-    }
-    & svg:not([class*="size-"]) {
-      width: calc(var(--spacing) * 4);
-      height: calc(var(--spacing) * 4);
-    }
-  }
-`;
+const text = ui({
+  display: "flex",
+  alignItems: "center",
+  gap: "calc(var(--spacing) * 2)",
+  borderRadius: "calc(var(--radius) - 2px)",
+  borderStyle: "var(--ui-border-style)",
+  borderWidth: "1px",
+  backgroundColor: "var(--muted)",
+  paddingInline: "calc(var(--spacing) * 4)",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  "--ui-font-weight": "var(--font-weight-medium)",
+  fontWeight: "var(--font-weight-medium)",
+  "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
+  boxShadow:
+    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+  "& svg": {
+    pointerEvents: "none",
+  },
+  '& svg:not([class*="size-"])': {
+    width: "calc(var(--spacing) * 4)",
+    height: "calc(var(--spacing) * 4)",
+  },
+});
 
-const separator = css`
-  @layer barq.ui {
-    position: relative;
-    margin: 0px !important;
-    align-self: stretch;
-    background-color: var(--input);
-    &[data-orientation="vertical"] {
-      height: auto;
-    }
-  }
-`;
+const separator = ui({
+  position: "relative",
+  margin: "0px !important",
+  alignSelf: "stretch",
+  backgroundColor: "var(--input)",
+  '[data-orientation="vertical"]': {
+    height: "auto",
+  },
+});
 
 export interface ButtonGroupProps extends UiProps {
   /** @default "horizontal" */
@@ -156,7 +145,7 @@ export function ButtonGroupSeparator(props: Incoming<ButtonGroupSeparatorProps>)
       {...props}
       data-slot={props["data-slot"]?.() ?? "button-group-separator"}
       orientation={props.orientation?.() ?? "vertical"}
-      class={clsx(separator, props.class?.(), props.className?.())}
+      class={ui(separator, props.class?.(), props.className?.())}
     />
   );
 }

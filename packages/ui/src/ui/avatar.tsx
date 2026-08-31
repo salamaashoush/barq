@@ -1,105 +1,96 @@
 import { Show, signal, type Incoming } from "@barqjs/core";
-import { css } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
-const root = css`
-  @layer barq.ui {
-    position: relative;
-    display: flex;
-    width: calc(var(--spacing) * 8);
-    height: calc(var(--spacing) * 8);
-    flex-shrink: 0;
-    overflow: hidden;
-    border-radius: calc(infinity * 1px);
-    -webkit-user-select: none;
-    user-select: none;
-    &[data-size="lg"] {
-      width: calc(var(--spacing) * 10);
-      height: calc(var(--spacing) * 10);
-    }
-    &[data-size="sm"] {
-      width: calc(var(--spacing) * 6);
-      height: calc(var(--spacing) * 6);
-    }
-  }
-`;
+const root = ui({
+  position: "relative",
+  display: "flex",
+  width: "calc(var(--spacing) * 8)",
+  height: "calc(var(--spacing) * 8)",
+  flexShrink: "0",
+  overflow: "hidden",
+  borderRadius: "calc(infinity * 1px)",
+  "-webkit-user-select": "none",
+  userSelect: "none",
+  '[data-size="lg"]': {
+    width: "calc(var(--spacing) * 10)",
+    height: "calc(var(--spacing) * 10)",
+  },
+  '[data-size="sm"]': {
+    width: "calc(var(--spacing) * 6)",
+    height: "calc(var(--spacing) * 6)",
+  },
+});
 
-const image = css`
-  @layer barq.ui {
-    aspect-ratio: 1 / 1;
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-  }
-`;
+const image = ui({
+  aspectRatio: "1 / 1",
+  width: "100%",
+  height: "100%",
+  objectFit: "cover",
+});
 
-const fallback = css`
-  @layer barq.ui {
-    display: flex;
-    width: 100%;
-    height: 100%;
-    align-items: center;
-    justify-content: center;
-    border-radius: calc(infinity * 1px);
-    background-color: var(--muted);
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    color: var(--muted-foreground);
-    [data-size="sm"] & {
-      font-size: var(--text-xs);
-      line-height: var(--ui-leading, var(--text-xs--line-height));
-    }
-  }
-`;
+const fallback = ui({
+  display: "flex",
+  width: "100%",
+  height: "100%",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: "calc(infinity * 1px)",
+  backgroundColor: "var(--muted)",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  color: "var(--muted-foreground)",
+  '[data-size="sm"] &': {
+    fontSize: "var(--text-xs)",
+    lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
+  },
+});
 
-const badge = css`
-  @layer barq.ui {
-    position: absolute;
-    right: 0px;
-    bottom: 0px;
-    z-index: 10;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    border-radius: calc(infinity * 1px);
-    background-color: var(--primary);
-    color: var(--primary-foreground);
-    --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(2px + var(--ui-ring-offset-width))
-      var(--ui-ring-color, currentcolor);
-    box-shadow:
-      var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-      var(--ui-ring-shadow), var(--ui-shadow);
-    --ui-ring-color: var(--background);
-    -webkit-user-select: none;
-    user-select: none;
-    [data-size="default"] & {
-      width: calc(var(--spacing) * 2.5);
-      height: calc(var(--spacing) * 2.5);
-    }
-    [data-size="default"] & > svg {
-      width: calc(var(--spacing) * 2);
-      height: calc(var(--spacing) * 2);
-    }
-    [data-size="lg"] & {
-      width: calc(var(--spacing) * 3);
-      height: calc(var(--spacing) * 3);
-    }
-    [data-size="lg"] & > svg {
-      width: calc(var(--spacing) * 2);
-      height: calc(var(--spacing) * 2);
-    }
-    [data-size="sm"] & {
-      width: calc(var(--spacing) * 2);
-      height: calc(var(--spacing) * 2);
-    }
-    [data-size="sm"] & > svg {
-      display: none;
-    }
-  }
-`;
+const badge = ui({
+  position: "absolute",
+  right: "0px",
+  bottom: "0px",
+  zIndex: "10",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: "calc(infinity * 1px)",
+  backgroundColor: "var(--primary)",
+  color: "var(--primary-foreground)",
+  "--ui-ring-shadow":
+    "var(--ui-ring-inset,) 0 0 0 calc(2px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+  boxShadow:
+    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+  "--ui-ring-color": "var(--background)",
+  "-webkit-user-select": "none",
+  userSelect: "none",
+  '[data-size="default"] &': {
+    width: "calc(var(--spacing) * 2.5)",
+    height: "calc(var(--spacing) * 2.5)",
+  },
+  '[data-size="default"] & > svg': {
+    width: "calc(var(--spacing) * 2)",
+    height: "calc(var(--spacing) * 2)",
+  },
+  '[data-size="lg"] &': {
+    width: "calc(var(--spacing) * 3)",
+    height: "calc(var(--spacing) * 3)",
+  },
+  '[data-size="lg"] & > svg': {
+    width: "calc(var(--spacing) * 2)",
+    height: "calc(var(--spacing) * 2)",
+  },
+  '[data-size="sm"] &': {
+    width: "calc(var(--spacing) * 2)",
+    height: "calc(var(--spacing) * 2)",
+  },
+  '[data-size="sm"] & > svg': {
+    display: "none",
+  },
+});
 
 export type AvatarSize = "default" | "sm" | "lg";
 

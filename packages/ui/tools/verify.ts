@@ -21,8 +21,6 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { collectCss } from "@barqjs/css";
-
 import { createBuilder, parse, translate, type CssNode } from "./css.ts";
 
 /** Where this package deliberately differs, and why. */
@@ -53,36 +51,76 @@ function canonical(text: string): string {
   return text.replace(/\s+/g, "").replace(/([:,(])0\./g, "$1.");
 }
 
+/** `borderTopWidth` -> `border-top-width`, and a custom property untouched. */
+function kebab(property: string): string {
+  if (property.startsWith("--")) return property;
+  return property.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+}
+
 /**
- * The stylesheet, as a declaration set per class.
+ * The components, as a declaration set per `ui({ … })` literal.
  *
- * Per CLASS and not per sheet, because a declaration as ordinary as
- * `overflow: hidden` appears in five components: searching the whole sheet for
- * it says every spec matches and proves nothing.
+ * Per LITERAL and not per sheet, because a declaration as ordinary as
+ * `overflow: hidden` appears in five components: searching the whole package
+ * for it says every spec matches and proves nothing. It used to be per CLASS,
+ * read back out of the stylesheet, which said the same thing — until a class
+ * became one declaration and the question stopped having an answer there.
+ *
+ * The literal is read rather than evaluated. Its keys are properties or
+ * conditions, and a condition's value is a block, so a flat scan for
+ * `key: "value"` finds every declaration at every depth and no condition.
  */
-function byClass(css: string): Map<string, Set<string>> {
+function byLiteral(): Map<string, Set<string>> {
   const out = new Map<string, Set<string>>();
-  const walk = (nodes: readonly CssNode[], selector: string): void => {
-    for (const node of nodes) {
-      if (node.kind === "decl") {
-        for (const name of selector.matchAll(/\.([A-Za-z][\w-]*)/g)) {
-          const key = name[1] ?? "";
-          const held = out.get(key) ?? new Set<string>();
-          held.add(canonical(node.text));
-          out.set(key, held);
-        }
-      } else if (node.kind === "rule") {
-        walk(node.nodes, `${selector} ${node.selector}`);
-      } else {
-        walk(node.nodes, selector);
+  const dir = join(import.meta.dir, "../src/ui");
+
+  for (const file of readdirSync(dir).toSorted()) {
+    if (!/\.tsx?$/.test(file) || file.includes(".test.")) continue;
+    const source = readFileSync(join(dir, file), "utf8");
+
+    for (const start of source.matchAll(/\bui\(\{/g)) {
+      const open = (start.index ?? 0) + 3;
+      let depth = 0;
+      let at = open;
+      for (; at < source.length; at++) {
+        if (source[at] === "{") depth++;
+        else if (source[at] === "}" && --depth === 0) break;
       }
+      const literal = source.slice(open, at + 1);
+      const held = new Set<string>();
+
+      for (const [, quoted, bare, value] of literal.matchAll(
+        /(?:"([^"]+)"|([A-Za-z_$][\w$]*))\s*:\s*"((?:[^"\\]|\\.)*)"/g,
+      )) {
+        held.add(canonical(`${kebab(quoted ?? bare ?? "")}: ${value ?? ""}`));
+      }
+
+      // A fallback is the same property twice, and its own values hold commas
+      // and parentheses — `var(--a, var(--b))` — so the call is scanned to its
+      // matching close and the quoted strings taken from inside it.
+      for (const call of literal.matchAll(
+        /(?:"([^"]+)"|([A-Za-z_$][\w$]*))\s*:\s*firstThatWorks\(/g,
+      )) {
+        const from = (call.index ?? 0) + call[0].length;
+        let unclosed = 1;
+        let to = from;
+        for (; to < literal.length && unclosed > 0; to++) {
+          if (literal[to] === "(") unclosed++;
+          else if (literal[to] === ")") unclosed--;
+        }
+        const property = kebab(call[1] ?? call[2] ?? "");
+        for (const [, one] of literal.slice(from, to - 1).matchAll(/"((?:[^"\\]|\\.)*)"/g)) {
+          held.add(canonical(`${property}: ${one ?? ""}`));
+        }
+      }
+      if (held.size > 0) out.set(`${file}:${String(start.index)}`, held);
     }
-  };
-  walk(parse(css), "");
+  }
+
   return out;
 }
 
-/** The class whose rules cover most of what the spec asks for. */
+/** The literal whose declarations cover most of what the spec asks for. */
 function bestMatch(sheet: Map<string, Set<string>>, wanted: readonly string[]): Set<string> {
   let best = new Set<string>();
   let score = -1;
@@ -102,9 +140,7 @@ async function main(): Promise<void> {
   const specs = join(import.meta.dir, "../specs");
   const build = await createBuilder();
 
-  // Importing the barrel registers every component's `css` block.
-  await import("../src/index.ts");
-  const sheet = byClass(collectCss());
+  const sheet = byLiteral();
 
   let checked = 0;
   let missing = 0;

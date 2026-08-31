@@ -4,9 +4,9 @@ import {
   type MenuTriggerComponentProps,
 } from "@barqjs/aria/menu";
 import type { Incoming } from "@barqjs/core";
-import { clsx, css } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Button, type ButtonProps } from "./button.tsx";
@@ -33,62 +33,54 @@ import {
   type DropdownMenuSubTriggerProps,
 } from "./dropdown-menu.tsx";
 
-const bar = css`
-  @layer barq.ui {
-    display: flex;
-    height: calc(var(--spacing) * 9);
-    align-items: center;
-    gap: var(--spacing);
-    border-radius: calc(var(--radius) - 2px);
-    border-style: var(--ui-border-style);
-    border-width: 1px;
-    background-color: var(--background);
-    padding: var(--spacing);
-    --ui-shadow: 0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05));
-    box-shadow:
-      var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-      var(--ui-ring-shadow), var(--ui-shadow);
-  }
-`;
+const bar = ui({
+  display: "flex",
+  height: "calc(var(--spacing) * 9)",
+  alignItems: "center",
+  gap: "var(--spacing)",
+  borderRadius: "calc(var(--radius) - 2px)",
+  borderStyle: "var(--ui-border-style)",
+  borderWidth: "1px",
+  backgroundColor: "var(--background)",
+  padding: "var(--spacing)",
+  "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
+  boxShadow:
+    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+});
 
-const trigger = css`
-  @layer barq.ui {
-    display: flex;
-    height: auto;
-    align-items: center;
-    border-radius: calc(var(--radius) - 4px);
-    padding-inline: calc(var(--spacing) * 2);
-    padding-block: var(--spacing);
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    --ui-font-weight: var(--font-weight-medium);
-    font-weight: var(--font-weight-medium);
-    --ui-outline-style: none;
-    outline-style: none;
-    @media (forced-colors: active) {
-      outline: 2px solid transparent;
-      outline-offset: 2px;
-    }
-    -webkit-user-select: none;
-    user-select: none;
-    &[data-focused] {
-      background-color: var(--accent);
-      color: var(--accent-foreground);
-    }
-    &[data-expanded],
-    &[data-open] {
-      background-color: var(--accent);
-      color: var(--accent-foreground);
-    }
-  }
-`;
+const trigger = ui({
+  display: "flex",
+  height: "auto",
+  alignItems: "center",
+  borderRadius: "calc(var(--radius) - 4px)",
+  paddingInline: "calc(var(--spacing) * 2)",
+  paddingBlock: "var(--spacing)",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  "--ui-font-weight": "var(--font-weight-medium)",
+  fontWeight: "var(--font-weight-medium)",
+  "--ui-outline-style": "none",
+  outlineStyle: "none",
+  "-webkit-user-select": "none",
+  userSelect: "none",
+  "@media (forced-colors: active)": {
+    outline: "2px solid transparent",
+    outlineOffset: "2px",
+  },
+  "[data-focused]": {
+    backgroundColor: "var(--accent)",
+    color: "var(--accent-foreground)",
+  },
+  "[data-expanded], &[data-open]": {
+    backgroundColor: "var(--accent)",
+    color: "var(--accent-foreground)",
+  },
+});
 
 /** shadcn's menubar opens wider than a dropdown does. */
-const wide = css`
-  @layer barq.ui {
-    min-width: 12rem;
-  }
-`;
+const wide = ui({
+  minWidth: "12rem",
+});
 
 export interface MenubarProps extends UiProps {}
 
@@ -143,7 +135,7 @@ export function MenubarTrigger(props: Incoming<MenubarTriggerProps>) {
         {...props}
         variant="ghost"
         data-slot="menubar-trigger"
-        class={clsx(trigger, props.class?.(), props.className?.())}
+        class={ui(trigger, props.class?.(), props.className?.())}
       >
         {props.children}
       </Button>
@@ -158,7 +150,7 @@ export function MenubarContent<T>(props: Incoming<MenubarContentProps<T>>) {
     <DropdownMenuContent
       {...props}
       data-slot="menubar-content"
-      class={clsx(wide, props.class?.(), props.className?.())}
+      class={ui(wide, props.class?.(), props.className?.())}
     />
   );
 }

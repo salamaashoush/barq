@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { flush, type Incoming } from "@barqjs/core";
-import { collectCss } from "@barqjs/css";
 import { render, screen, tick, user } from "@barqjs/testing";
+
+import { rulesFor } from "../test-rules.ts";
 
 import {
   AlertDialog,
@@ -36,14 +37,6 @@ async function settle(): Promise<void> {
   flush();
   await tick();
   flush();
-}
-
-function rulesFor(className: string): string {
-  const mentions = new RegExp(`\\.${className}(?![\\w-])`);
-  return collectCss()
-    .split("@layer barq.ui{")
-    .filter((chunk) => mentions.test(chunk))
-    .join("\n");
 }
 
 describe("Sheet", () => {
@@ -81,7 +74,7 @@ describe("Sheet", () => {
 
     const sheet = document.querySelector('[data-slot="sheet-content"]') as HTMLElement;
     expect(sheet.getAttribute("data-side")).toBe("left");
-    const side = sheet.className.split(" ")[1] ?? "";
+    const side = sheet.className;
     expect(rulesFor(side)).toContain("--ui-enter-translate-x: -100%");
   });
 

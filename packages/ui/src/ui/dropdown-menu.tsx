@@ -13,320 +13,289 @@ import {
 } from "@barqjs/aria/menu";
 import { provideTriggerSlot } from "@barqjs/aria/utils";
 import { context, getOwner, provide, type Child, type Incoming } from "@barqjs/core";
-import { clsx, css } from "@barqjs/css";
+import { firstThatWorks } from "@barqjs/css";
 import { Check } from "@barqjs/lucide/icons/check";
 import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
 import { Circle } from "@barqjs/lucide/icons/circle";
 
 import "../theme/layers.ts";
+import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
-const content = css`
-  @layer barq.ui {
-    z-index: 50;
-    margin: 0px;
-    min-width: 8rem;
-    animation: enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease)
-      var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1)
-      var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none);
-    list-style-type: none;
-    overflow-x: hidden;
-    overflow-y: auto;
-    border-radius: calc(var(--radius) - 2px);
-    border-style: var(--ui-border-style);
-    border-width: 1px;
-    background-color: var(--popover);
-    padding: var(--spacing);
-    color: var(--popover-foreground);
-    --ui-shadow:
-      0 4px 6px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1)),
-      0 2px 4px -2px var(--ui-shadow-color, rgb(0 0 0 / 0.1));
-    box-shadow:
-      var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-      var(--ui-ring-shadow), var(--ui-shadow);
-    --ui-enter-opacity: calc(0/100);
-    --ui-enter-opacity: 0;
-    --ui-enter-scale: calc(95*1%);
-    --ui-enter-scale: 0.95;
-    [data-placement="bottom"] & {
-      transform-origin: top;
-      --ui-enter-translate-y: calc(2*var(--spacing)*-1);
-    }
-    [data-placement="left"] & {
-      --ui-enter-translate-x: calc(2*var(--spacing));
-    }
-    [data-placement="right"] & {
-      --ui-enter-translate-x: calc(2*var(--spacing)*-1);
-    }
-    [data-placement="top"] & {
-      transform-origin: bottom;
-      --ui-enter-translate-y: calc(2*var(--spacing));
-    }
-    [data-closed] & {
-      animation: exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease)
-        var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1)
-        var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none);
-      --ui-exit-opacity: calc(0/100);
-      --ui-exit-opacity: 0;
-      --ui-exit-scale: calc(95*1%);
-      --ui-exit-scale: 0.95;
-    }
-    [data-closed][data-placement="bottom"] & {
-      --ui-exit-translate-y: calc(2 * var(--spacing) * -1);
-    }
-    [data-closed][data-placement="left"] & {
-      --ui-exit-translate-x: calc(2 * var(--spacing));
-    }
-    [data-closed][data-placement="right"] & {
-      --ui-exit-translate-x: calc(2 * var(--spacing) * -1);
-    }
-    [data-closed][data-placement="top"] & {
-      --ui-exit-translate-y: calc(2 * var(--spacing));
-    }
-  }
-`;
+const content = ui({
+  zIndex: "50",
+  margin: "0px",
+  minWidth: "8rem",
+  animation:
+    "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
+  listStyleType: "none",
+  overflowX: "hidden",
+  overflowY: "auto",
+  borderRadius: "calc(var(--radius) - 2px)",
+  borderStyle: "var(--ui-border-style)",
+  borderWidth: "1px",
+  backgroundColor: "var(--popover)",
+  padding: "var(--spacing)",
+  color: "var(--popover-foreground)",
+  "--ui-shadow":
+    "0 4px 6px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 2px 4px -2px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
+  boxShadow:
+    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+  "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
+  "--ui-enter-scale": firstThatWorks("0.95", "calc(95*1%)"),
+  '[data-placement="bottom"] &': {
+    transformOrigin: "top",
+    "--ui-enter-translate-y": "calc(2*var(--spacing)*-1)",
+  },
+  '[data-placement="left"] &': {
+    "--ui-enter-translate-x": "calc(2*var(--spacing))",
+  },
+  '[data-placement="right"] &': {
+    "--ui-enter-translate-x": "calc(2*var(--spacing)*-1)",
+  },
+  '[data-placement="top"] &': {
+    transformOrigin: "bottom",
+    "--ui-enter-translate-y": "calc(2*var(--spacing))",
+  },
+  "[data-closed] &": {
+    animation:
+      "exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
+    "--ui-exit-opacity": firstThatWorks("0", "calc(0/100)"),
+    "--ui-exit-scale": firstThatWorks("0.95", "calc(95*1%)"),
+  },
+  '[data-closed][data-placement="bottom"] &': {
+    "--ui-exit-translate-y": "calc(2 * var(--spacing) * -1)",
+  },
+  '[data-closed][data-placement="left"] &': {
+    "--ui-exit-translate-x": "calc(2 * var(--spacing))",
+  },
+  '[data-closed][data-placement="right"] &': {
+    "--ui-exit-translate-x": "calc(2 * var(--spacing) * -1)",
+  },
+  '[data-closed][data-placement="top"] &': {
+    "--ui-exit-translate-y": "calc(2 * var(--spacing))",
+  },
+});
 
-const item = css`
-  @layer barq.ui {
-    position: relative;
-    display: flex;
-    cursor: default;
-    align-items: center;
-    gap: calc(var(--spacing) * 2);
-    border-radius: calc(var(--radius) - 4px);
-    padding-inline: calc(var(--spacing) * 2);
-    padding-block: calc(var(--spacing) * 1.5);
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    --ui-outline-style: none;
-    outline-style: none;
-    -webkit-user-select: none;
-    user-select: none;
-    &[data-inset] {
-      padding-left: calc(var(--spacing) * 8);
-    }
-    &[data-variant="destructive"] {
-      color: var(--destructive);
-    }
-    &[data-focused] {
-      background-color: var(--accent);
-      color: var(--accent-foreground);
-    }
-    &[data-variant="destructive"][data-focused] {
-      background-color: var(--destructive);
-      @supports (color: color-mix(in lab, red, red)) {
-        background-color: color-mix(in oklab, var(--destructive) 10%, transparent);
-      }
-      color: var(--destructive);
-    }
-    &:is(.dark *)[data-variant="destructive"][data-focused] {
-      background-color: var(--destructive);
-      @supports (color: color-mix(in lab, red, red)) {
-        background-color: color-mix(in oklab, var(--destructive) 20%, transparent);
-      }
-    }
-    &[data-disabled] {
-      pointer-events: none;
-      opacity: 50%;
-    }
-    & svg {
-      pointer-events: none;
-      flex-shrink: 0;
-    }
-    & svg:not([class*="size-"]) {
-      width: calc(var(--spacing) * 4);
-      height: calc(var(--spacing) * 4);
-    }
-    & svg:not([class*="text-"]) {
-      color: var(--muted-foreground);
-    }
-    &[data-variant="destructive"] > svg {
-      color: var(--destructive);
-    }
-  }
-`;
+const item = ui({
+  position: "relative",
+  display: "flex",
+  cursor: "default",
+  alignItems: "center",
+  gap: "calc(var(--spacing) * 2)",
+  borderRadius: "calc(var(--radius) - 4px)",
+  paddingInline: "calc(var(--spacing) * 2)",
+  paddingBlock: "calc(var(--spacing) * 1.5)",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  "--ui-outline-style": "none",
+  outlineStyle: "none",
+  "-webkit-user-select": "none",
+  userSelect: "none",
+  "[data-inset]": {
+    paddingLeft: "calc(var(--spacing) * 8)",
+  },
+  '[data-variant="destructive"]': {
+    color: "var(--destructive)",
+  },
+  "[data-focused]": {
+    backgroundColor: "var(--accent)",
+    color: "var(--accent-foreground)",
+  },
+  '[data-variant="destructive"][data-focused]': {
+    backgroundColor: "var(--destructive)",
+    color: "var(--destructive)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      backgroundColor: "color-mix(in oklab, var(--destructive) 10%, transparent)",
+    },
+  },
+  ':is(.dark *)[data-variant="destructive"][data-focused]': {
+    backgroundColor: "var(--destructive)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      backgroundColor: "color-mix(in oklab, var(--destructive) 20%, transparent)",
+    },
+  },
+  "[data-disabled]": {
+    pointerEvents: "none",
+    opacity: "50%",
+  },
+  "& svg": {
+    pointerEvents: "none",
+    flexShrink: "0",
+  },
+  '& svg:not([class*="size-"])': {
+    width: "calc(var(--spacing) * 4)",
+    height: "calc(var(--spacing) * 4)",
+  },
+  '& svg:not([class*="text-"])': {
+    color: "var(--muted-foreground)",
+  },
+  '[data-variant="destructive"] > svg': {
+    color: "var(--destructive)",
+  },
+});
 
-const checkItem = css`
-  @layer barq.ui {
-    position: relative;
-    display: flex;
-    cursor: default;
-    align-items: center;
-    gap: calc(var(--spacing) * 2);
-    border-radius: calc(var(--radius) - 4px);
-    padding-block: calc(var(--spacing) * 1.5);
-    padding-right: calc(var(--spacing) * 2);
-    padding-left: calc(var(--spacing) * 8);
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    --ui-outline-style: none;
-    outline-style: none;
-    -webkit-user-select: none;
-    user-select: none;
-    &[data-focused] {
-      background-color: var(--accent);
-      color: var(--accent-foreground);
-    }
-    &[data-disabled] {
-      pointer-events: none;
-      opacity: 50%;
-    }
-    & svg {
-      pointer-events: none;
-      flex-shrink: 0;
-    }
-    & svg:not([class*="size-"]) {
-      width: calc(var(--spacing) * 4);
-      height: calc(var(--spacing) * 4);
-    }
-  }
-`;
+const checkItem = ui({
+  position: "relative",
+  display: "flex",
+  cursor: "default",
+  alignItems: "center",
+  gap: "calc(var(--spacing) * 2)",
+  borderRadius: "calc(var(--radius) - 4px)",
+  paddingBlock: "calc(var(--spacing) * 1.5)",
+  paddingRight: "calc(var(--spacing) * 2)",
+  paddingLeft: "calc(var(--spacing) * 8)",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  "--ui-outline-style": "none",
+  outlineStyle: "none",
+  "-webkit-user-select": "none",
+  userSelect: "none",
+  "[data-focused]": {
+    backgroundColor: "var(--accent)",
+    color: "var(--accent-foreground)",
+  },
+  "[data-disabled]": {
+    pointerEvents: "none",
+    opacity: "50%",
+  },
+  "& svg": {
+    pointerEvents: "none",
+    flexShrink: "0",
+  },
+  '& svg:not([class*="size-"])': {
+    width: "calc(var(--spacing) * 4)",
+    height: "calc(var(--spacing) * 4)",
+  },
+});
 
-const indicator = css`
-  @layer barq.ui {
-    pointer-events: none;
-    position: absolute;
-    left: calc(var(--spacing) * 2);
-    display: flex;
-    width: calc(var(--spacing) * 3.5);
-    height: calc(var(--spacing) * 3.5);
-    align-items: center;
-    justify-content: center;
-    & > svg {
-      display: none;
-    }
-    [data-selected] & > svg {
-      display: block;
-    }
-  }
-`;
+const indicator = ui({
+  pointerEvents: "none",
+  position: "absolute",
+  left: "calc(var(--spacing) * 2)",
+  display: "flex",
+  width: "calc(var(--spacing) * 3.5)",
+  height: "calc(var(--spacing) * 3.5)",
+  alignItems: "center",
+  justifyContent: "center",
+  "& > svg": {
+    display: "none",
+  },
+  "[data-selected] & > svg": {
+    display: "block",
+  },
+});
 
-const radioIndicator = css`
-  @layer barq.ui {
-    pointer-events: none;
-    position: absolute;
-    left: calc(var(--spacing) * 2);
-    display: flex;
-    width: calc(var(--spacing) * 3.5);
-    height: calc(var(--spacing) * 3.5);
-    align-items: center;
-    justify-content: center;
-    & > svg {
-      display: none;
-      width: calc(var(--spacing) * 2);
-      height: calc(var(--spacing) * 2);
-      fill: currentcolor;
-    }
-    [data-selected] & > svg {
-      display: block;
-    }
-  }
-`;
+const radioIndicator = ui({
+  pointerEvents: "none",
+  position: "absolute",
+  left: "calc(var(--spacing) * 2)",
+  display: "flex",
+  width: "calc(var(--spacing) * 3.5)",
+  height: "calc(var(--spacing) * 3.5)",
+  alignItems: "center",
+  justifyContent: "center",
+  "& > svg": {
+    display: "none",
+    width: "calc(var(--spacing) * 2)",
+    height: "calc(var(--spacing) * 2)",
+    fill: "currentcolor",
+  },
+  "[data-selected] & > svg": {
+    display: "block",
+  },
+});
 
-const label = css`
-  @layer barq.ui {
-    padding-inline: calc(var(--spacing) * 2);
-    padding-block: calc(var(--spacing) * 1.5);
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    --ui-font-weight: var(--font-weight-medium);
-    font-weight: var(--font-weight-medium);
-    &[data-inset] {
-      padding-left: calc(var(--spacing) * 8);
-    }
-  }
-`;
+const label = ui({
+  paddingInline: "calc(var(--spacing) * 2)",
+  paddingBlock: "calc(var(--spacing) * 1.5)",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  "--ui-font-weight": "var(--font-weight-medium)",
+  fontWeight: "var(--font-weight-medium)",
+  "[data-inset]": {
+    paddingLeft: "calc(var(--spacing) * 8)",
+  },
+});
 
-const separator = css`
-  @layer barq.ui {
-    margin-inline: calc(var(--spacing) * -1);
-    margin-block: var(--spacing);
-    height: 1px;
-    border-style: var(--ui-border-style);
-    border-width: 0px;
-    background-color: var(--border);
-  }
-`;
+const separator = ui({
+  marginInline: "calc(var(--spacing) * -1)",
+  marginBlock: "var(--spacing)",
+  height: "1px",
+  borderStyle: "var(--ui-border-style)",
+  borderWidth: "0px",
+  backgroundColor: "var(--border)",
+});
 
-const shortcut = css`
-  @layer barq.ui {
-    margin-left: auto;
-    font-size: var(--text-xs);
-    line-height: var(--ui-leading, var(--text-xs--line-height));
-    --ui-tracking: var(--tracking-widest);
-    letter-spacing: var(--tracking-widest);
-    color: var(--muted-foreground);
-  }
-`;
+const shortcut = ui({
+  marginLeft: "auto",
+  fontSize: "var(--text-xs)",
+  lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
+  "--ui-tracking": "var(--tracking-widest)",
+  letterSpacing: "var(--tracking-widest)",
+  color: "var(--muted-foreground)",
+});
 
-const subTrigger = css`
-  @layer barq.ui {
-    display: flex;
-    cursor: default;
-    align-items: center;
-    gap: calc(var(--spacing) * 2);
-    border-radius: calc(var(--radius) - 4px);
-    padding-inline: calc(var(--spacing) * 2);
-    padding-block: calc(var(--spacing) * 1.5);
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    --ui-outline-style: none;
-    outline-style: none;
-    -webkit-user-select: none;
-    user-select: none;
-    &[data-inset] {
-      padding-left: calc(var(--spacing) * 8);
-    }
-    &[data-focused] {
-      background-color: var(--accent);
-      color: var(--accent-foreground);
-    }
-    &[data-open] {
-      background-color: var(--accent);
-      color: var(--accent-foreground);
-    }
-    & svg {
-      pointer-events: none;
-      flex-shrink: 0;
-    }
-    & svg:not([class*="size-"]) {
-      width: calc(var(--spacing) * 4);
-      height: calc(var(--spacing) * 4);
-    }
-    & svg:not([class*="text-"]) {
-      color: var(--muted-foreground);
-    }
-  }
-`;
+const subTrigger = ui({
+  display: "flex",
+  cursor: "default",
+  alignItems: "center",
+  gap: "calc(var(--spacing) * 2)",
+  borderRadius: "calc(var(--radius) - 4px)",
+  paddingInline: "calc(var(--spacing) * 2)",
+  paddingBlock: "calc(var(--spacing) * 1.5)",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  "--ui-outline-style": "none",
+  outlineStyle: "none",
+  "-webkit-user-select": "none",
+  userSelect: "none",
+  "[data-inset]": {
+    paddingLeft: "calc(var(--spacing) * 8)",
+  },
+  "[data-focused]": {
+    backgroundColor: "var(--accent)",
+    color: "var(--accent-foreground)",
+  },
+  "[data-open]": {
+    backgroundColor: "var(--accent)",
+    color: "var(--accent-foreground)",
+  },
+  "& svg": {
+    pointerEvents: "none",
+    flexShrink: "0",
+  },
+  '& svg:not([class*="size-"])': {
+    width: "calc(var(--spacing) * 4)",
+    height: "calc(var(--spacing) * 4)",
+  },
+  '& svg:not([class*="text-"])': {
+    color: "var(--muted-foreground)",
+  },
+});
 
-const subChevron = css`
-  @layer barq.ui {
-    margin-left: auto;
-    width: calc(var(--spacing) * 4);
-    height: calc(var(--spacing) * 4);
-  }
-`;
+const subChevron = ui({
+  marginLeft: "auto",
+  width: "calc(var(--spacing) * 4)",
+  height: "calc(var(--spacing) * 4)",
+});
 
-const group = css`
-  @layer barq.ui {
-    margin: 0px;
-    list-style-type: none;
-    padding: 0px;
-  }
-`;
+const group = ui({
+  margin: "0px",
+  listStyleType: "none",
+  padding: "0px",
+});
 
-const groupLabel = css`
-  @layer barq.ui {
-    padding-inline: calc(var(--spacing) * 2);
-    padding-block: calc(var(--spacing) * 1.5);
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    --ui-font-weight: var(--font-weight-medium);
-    font-weight: var(--font-weight-medium);
-    color: var(--muted-foreground);
-  }
-`;
+const groupLabel = ui({
+  paddingInline: "calc(var(--spacing) * 2)",
+  paddingBlock: "calc(var(--spacing) * 1.5)",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  "--ui-font-weight": "var(--font-weight-medium)",
+  fontWeight: "var(--font-weight-medium)",
+  color: "var(--muted-foreground)",
+});
 
 export interface DropdownMenuProps extends MenuTriggerComponentProps {}
 
@@ -390,7 +359,7 @@ export function DropdownMenuContent<T>(props: Incoming<DropdownMenuContentProps<
     <Menu
       {...props}
       data-slot={props["data-slot"]?.() ?? "dropdown-menu-content"}
-      class={clsx(content, props.class?.(), props.className?.())}
+      class={ui(content, props.class?.(), props.className?.())}
     />
   );
 }
@@ -410,7 +379,7 @@ export function DropdownMenuItem(props: Incoming<DropdownMenuItemProps>) {
       data-slot={props["data-slot"]?.() ?? "dropdown-menu-item"}
       data-variant={props.variant?.() ?? "default"}
       data-inset={props.inset?.() === true ? "" : undefined}
-      class={clsx(item, props.class?.(), props.className?.())}
+      class={ui(item, props.class?.(), props.className?.())}
     />
   );
 }
@@ -429,7 +398,7 @@ export function DropdownMenuCheckboxItem(props: Incoming<DropdownMenuCheckboxIte
     <MenuItem
       {...props}
       data-slot={props["data-slot"]?.() ?? "dropdown-menu-checkbox-item"}
-      class={clsx(checkItem, props.class?.(), props.className?.())}
+      class={ui(checkItem, props.class?.(), props.className?.())}
     >
       <span data-slot="dropdown-menu-item-indicator" class={indicator}>
         <Check />
@@ -447,7 +416,7 @@ export function DropdownMenuRadioItem(props: Incoming<DropdownMenuRadioItemProps
     <MenuItem
       {...props}
       data-slot={props["data-slot"]?.() ?? "dropdown-menu-radio-item"}
-      class={clsx(checkItem, props.class?.(), props.className?.())}
+      class={ui(checkItem, props.class?.(), props.className?.())}
     >
       <span data-slot="dropdown-menu-item-indicator" class={radioIndicator}>
         <Circle />
@@ -490,7 +459,7 @@ export function DropdownMenuGroup<T>(props: Incoming<DropdownMenuGroupProps<T>>)
     <MenuSection
       {...props}
       data-slot={props["data-slot"]?.() ?? "dropdown-menu-group"}
-      class={clsx(group, props.class?.(), props.className?.())}
+      class={ui(group, props.class?.(), props.className?.())}
     />
   );
 }
@@ -521,7 +490,7 @@ export function DropdownMenuSubTrigger(props: Incoming<DropdownMenuSubTriggerPro
       {...props}
       data-slot={props["data-slot"]?.() ?? "dropdown-menu-sub-trigger"}
       data-inset={props.inset?.() === true ? "" : undefined}
-      class={clsx(subTrigger, props.class?.(), props.className?.())}
+      class={ui(subTrigger, props.class?.(), props.className?.())}
     >
       {props.children}
       <ChevronRight data-slot="dropdown-menu-sub-chevron" class={subChevron} />
@@ -536,7 +505,7 @@ export function DropdownMenuSubContent<T>(props: Incoming<DropdownMenuSubContent
     <Menu
       {...props}
       data-slot={props["data-slot"]?.() ?? "dropdown-menu-sub-content"}
-      class={clsx(content, props.class?.(), props.className?.())}
+      class={ui(content, props.class?.(), props.className?.())}
     />
   );
 }

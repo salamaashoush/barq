@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { collectCss } from "@barqjs/css";
 import { render, screen } from "@barqjs/testing";
+
+import { rulesFor } from "../test-rules.ts";
 
 import {
   Field,
@@ -17,14 +18,6 @@ import {
 } from "./field.tsx";
 import { Input } from "./input.tsx";
 import { srOnly } from "./sr-only.ts";
-
-function rulesFor(className: string): string {
-  const mentions = new RegExp(`\\.${className}(?![\\w-])`);
-  return collectCss()
-    .split("@layer barq.ui{")
-    .filter((chunk) => mentions.test(chunk))
-    .join("\n");
-}
 
 function slot(name: string): HTMLElement {
   const found = document.querySelector(`[data-slot="${name}"]`);
@@ -61,7 +54,7 @@ describe("Field", () => {
     render(() => <Field>a</Field>);
     const field = slot("field");
     expect(field.getAttribute("data-orientation")).toBe("vertical");
-    const rules = field.className.split(" ").map(rulesFor).join("");
+    const rules = rulesFor(field.className);
     expect(rules).toContain("flex-direction: column");
   });
 
@@ -69,9 +62,7 @@ describe("Field", () => {
     render(() => <Field isInvalid>a</Field>);
     const field = slot("field");
     expect(field.getAttribute("data-invalid")).toBe("");
-    expect(rulesFor(fieldVariants().split(" ")[0] ?? "")).toContain(
-      "[data-invalid]{color: var(--destructive)}",
-    );
+    expect(rulesFor(fieldVariants())).toContain("[data-invalid]{color: var(--destructive)}");
   });
 
   test("disabled dims the label through the field, not through a marker class", () => {
@@ -81,7 +72,7 @@ describe("Field", () => {
       </Field>
     ));
     expect(slot("field").getAttribute("data-disabled")).toBe("");
-    const rules = slot("field-label").className.split(" ").map(rulesFor).join("");
+    const rules = rulesFor(slot("field-label").className);
     expect(rules).toContain('[data-slot="field"][data-disabled] .');
   });
 
@@ -115,12 +106,12 @@ describe("FieldSet", () => {
 
   test("a group names the container the responsive orientation measures", () => {
     render(() => <FieldGroup>a</FieldGroup>);
-    const rules = slot("field-group").className.split(" ").map(rulesFor).join("");
+    const rules = rulesFor(slot("field-group").className);
     expect(rules).toContain("container-name: field-group");
   });
 
   test("responsive turns horizontal inside that container and nowhere else", () => {
-    const responsive = fieldVariants({ orientation: "responsive" }).split(" ").at(-1) ?? "";
+    const responsive = fieldVariants({ orientation: "responsive" });
     expect(rulesFor(responsive)).toContain("@container field-group (width >= 28rem)");
   });
 });

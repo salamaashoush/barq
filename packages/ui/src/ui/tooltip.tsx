@@ -8,85 +8,76 @@ import {
 } from "@barqjs/aria/tooltip";
 import { filterDOMProps, fromProps, mergeProps, styleProps } from "@barqjs/aria/utils";
 import { Show, type Incoming } from "@barqjs/core";
-import { clsx, css } from "@barqjs/css";
+import { firstThatWorks } from "@barqjs/css";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
+import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 
-const content = css`
-  @layer barq.ui {
-    z-index: 50;
-    width: fit-content;
-    animation: enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease)
-      var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1)
-      var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none);
-    border-radius: calc(var(--radius) - 2px);
-    background-color: var(--foreground);
-    padding-inline: calc(var(--spacing) * 3);
-    padding-block: calc(var(--spacing) * 1.5);
-    font-size: var(--text-xs);
-    line-height: var(--ui-leading, var(--text-xs--line-height));
-    text-wrap: balance;
-    color: var(--background);
-    --ui-enter-opacity: calc(0/100);
-    --ui-enter-opacity: 0;
-    --ui-enter-scale: calc(95*1%);
-    --ui-enter-scale: 0.95;
-    &[data-placement="bottom"] {
-      transform-origin: top;
-      --ui-enter-translate-y: calc(2*var(--spacing)*-1);
-    }
-    &[data-placement="left"] {
-      transform-origin: 100%;
-      --ui-enter-translate-x: calc(2*var(--spacing));
-    }
-    &[data-placement="right"] {
-      transform-origin: 0;
-      --ui-enter-translate-x: calc(2*var(--spacing)*-1);
-    }
-    &[data-placement="top"] {
-      transform-origin: bottom;
-      --ui-enter-translate-y: calc(2*var(--spacing));
-    }
-    &[data-skip-animation] {
-      animation: none;
-    }
-    &[data-closed] {
-      animation: exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease)
-        var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1)
-        var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none);
-      --ui-exit-opacity: calc(0/100);
-      --ui-exit-opacity: 0;
-      --ui-exit-scale: calc(95*1%);
-      --ui-exit-scale: 0.95;
-    }
-    &[data-closed][data-placement="bottom"] {
-      --ui-exit-translate-y: calc(2 * var(--spacing) * -1);
-    }
-    &[data-closed][data-placement="left"] {
-      --ui-exit-translate-x: calc(2 * var(--spacing));
-    }
-    &[data-closed][data-placement="right"] {
-      --ui-exit-translate-x: calc(2 * var(--spacing) * -1);
-    }
-    &[data-closed][data-placement="top"] {
-      --ui-exit-translate-y: calc(2 * var(--spacing));
-    }
-  }
-`;
+const content = ui({
+  zIndex: "50",
+  width: "fit-content",
+  animation:
+    "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
+  borderRadius: "calc(var(--radius) - 2px)",
+  backgroundColor: "var(--foreground)",
+  paddingInline: "calc(var(--spacing) * 3)",
+  paddingBlock: "calc(var(--spacing) * 1.5)",
+  fontSize: "var(--text-xs)",
+  lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
+  textWrap: "balance",
+  color: "var(--background)",
+  "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
+  "--ui-enter-scale": firstThatWorks("0.95", "calc(95*1%)"),
+  '[data-placement="bottom"]': {
+    transformOrigin: "top",
+    "--ui-enter-translate-y": "calc(2*var(--spacing)*-1)",
+  },
+  '[data-placement="left"]': {
+    transformOrigin: "100%",
+    "--ui-enter-translate-x": "calc(2*var(--spacing))",
+  },
+  '[data-placement="right"]': {
+    transformOrigin: "0",
+    "--ui-enter-translate-x": "calc(2*var(--spacing)*-1)",
+  },
+  '[data-placement="top"]': {
+    transformOrigin: "bottom",
+    "--ui-enter-translate-y": "calc(2*var(--spacing))",
+  },
+  "[data-skip-animation]": {
+    animation: "none",
+  },
+  "[data-closed]": {
+    animation:
+      "exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
+    "--ui-exit-opacity": firstThatWorks("0", "calc(0/100)"),
+    "--ui-exit-scale": firstThatWorks("0.95", "calc(95*1%)"),
+  },
+  '[data-closed][data-placement="bottom"]': {
+    "--ui-exit-translate-y": "calc(2 * var(--spacing) * -1)",
+  },
+  '[data-closed][data-placement="left"]': {
+    "--ui-exit-translate-x": "calc(2 * var(--spacing))",
+  },
+  '[data-closed][data-placement="right"]': {
+    "--ui-exit-translate-x": "calc(2 * var(--spacing) * -1)",
+  },
+  '[data-closed][data-placement="top"]': {
+    "--ui-exit-translate-y": "calc(2 * var(--spacing))",
+  },
+});
 
-const arrow = css`
-  @layer barq.ui {
-    position: absolute;
-    z-index: 50;
-    width: calc(var(--spacing) * 2.5);
-    height: calc(var(--spacing) * 2.5);
-    rotate: 45deg;
-    border-radius: 2px;
-    background-color: var(--foreground);
-  }
-`;
+const arrow = ui({
+  position: "absolute",
+  zIndex: "50",
+  width: "calc(var(--spacing) * 2.5)",
+  height: "calc(var(--spacing) * 2.5)",
+  rotate: "45deg",
+  borderRadius: "2px",
+  backgroundColor: "var(--foreground)",
+});
 
 /**
  * The arrow's own placement.
@@ -95,22 +86,20 @@ const arrow = css`
  * to the caller, because only the caller knows how big the arrow is. A rotated
  * square is pushed half its own width past the edge it points away from.
  */
-const arrowSide = css`
-  @layer barq.ui {
-    &[data-placement="top"] {
-      bottom: calc(var(--spacing) * -1);
-    }
-    &[data-placement="bottom"] {
-      top: calc(var(--spacing) * -1);
-    }
-    &[data-placement="left"] {
-      right: calc(var(--spacing) * -1);
-    }
-    &[data-placement="right"] {
-      left: calc(var(--spacing) * -1);
-    }
-  }
-`;
+const arrowSide = ui({
+  '[data-placement="top"]': {
+    bottom: "calc(var(--spacing) * -1)",
+  },
+  '[data-placement="bottom"]': {
+    top: "calc(var(--spacing) * -1)",
+  },
+  '[data-placement="left"]': {
+    right: "calc(var(--spacing) * -1)",
+  },
+  '[data-placement="right"]': {
+    left: "calc(var(--spacing) * -1)",
+  },
+});
 
 export interface TooltipProps extends TooltipTriggerComponentProps {}
 
@@ -183,7 +172,7 @@ export function TooltipContent(props: Incoming<TooltipContentProps>) {
       "data-slot": "tooltip-content",
       "data-placement": position.placement,
       "data-skip-animation": trigger.state.shouldSkipAnimation,
-      class: () => clsx(content, props.class?.(), props.className?.()),
+      class: () => ui(content, props.class?.(), props.className?.()),
     },
   );
 
@@ -201,7 +190,7 @@ export function TooltipContent(props: Incoming<TooltipContentProps>) {
             ref={mergeRefs(arrowRef.set)}
             data-slot="tooltip-arrow"
             data-placement={position.placement()}
-            class={clsx(arrow, arrowSide)}
+            class={ui(arrow, arrowSide)}
           />
         </Show>
       </div>

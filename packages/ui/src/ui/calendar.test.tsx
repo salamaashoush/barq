@@ -1,21 +1,14 @@
 import { describe, expect, test } from "bun:test";
 import { CalendarDate } from "@barqjs/aria/date";
 import { flush, type Incoming } from "@barqjs/core";
-import { collectCss } from "@barqjs/css";
 import { render, screen, user } from "@barqjs/testing";
+
+import { rulesFor } from "../test-rules.ts";
 
 import { Calendar, RangeCalendar } from "./calendar.tsx";
 
 /** March 2024: begins on a Friday, has 31 days, so six week rows. */
 const MARCH = new CalendarDate(2024, 3, 7);
-
-function rulesFor(className: string): string {
-  const mentions = new RegExp(`\\.${className}(?![\\w-])`);
-  return collectCss()
-    .split("@layer barq.ui{")
-    .filter((chunk) => mentions.test(chunk))
-    .join("\n");
-}
 
 function day(weekday: string, dayOfMonth: number, month = "March"): HTMLElement {
   return screen.getByRole("button", {
@@ -144,7 +137,7 @@ describe("RangeCalendar", () => {
     const middle = cellOf(day("Tuesday", 12));
     expect(middle.getAttribute("data-range-middle")).toBe("");
 
-    const cellRules = rulesFor(middle.className.split(" ")[0] ?? "");
+    const cellRules = rulesFor(middle.className);
     expect(cellRules).toContain("[data-range-start]");
     expect(cellRules).toContain("background-color: var(--accent)");
   });

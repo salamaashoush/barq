@@ -1,20 +1,13 @@
 import { describe, expect, test } from "bun:test";
-import { collectCss } from "@barqjs/css";
 import { flush } from "@barqjs/core";
 import { render, screen, user } from "@barqjs/testing";
+
+import { rulesFor } from "../test-rules.ts";
 
 import { Button } from "./button.tsx";
 import { HoverCard, HoverCardContent, HoverCardTrigger } from "./hover-card.tsx";
 import { Menubar, MenubarContent, MenubarItem, MenubarMenu, MenubarTrigger } from "./menubar.tsx";
 import { ToggleGroup, ToggleGroupItem } from "./toggle-group.tsx";
-
-function rulesFor(className: string): string {
-  const mentions = new RegExp(`\\.${className}(?![\\w-])`);
-  return collectCss()
-    .split("@layer barq.ui{")
-    .filter((chunk) => mentions.test(chunk))
-    .join("\n");
-}
 
 function slot(name: string): HTMLElement {
   const found = document.querySelector(`[data-slot="${name}"]`);
@@ -92,7 +85,7 @@ describe("ToggleGroup", () => {
     expect(slot("toggle-group").getAttribute("data-spacing")).toBe("0");
     const item = slot("toggle-group-item");
     expect(item.getAttribute("data-spacing")).toBe("0");
-    const rules = item.className.split(" ").map(rulesFor).join("");
+    const rules = rulesFor(item.className);
     expect(rules).toContain('[data-spacing="0"]:first-child{border-top-left-radius');
     expect(rules).toContain('[data-spacing="0"][data-variant="outline"]{border-left-style');
   });

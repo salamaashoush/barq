@@ -1,85 +1,73 @@
 import type { Child, Incoming } from "@barqjs/core";
-import { css } from "@barqjs/css";
+
 import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
 import { Ellipsis } from "@barqjs/lucide/icons/ellipsis";
 
 import "../theme/layers.ts";
+import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { srOnly } from "./sr-only.ts";
 
-const list = css`
-  @layer barq.ui {
-    margin: 0px;
-    display: flex;
-    list-style-type: none;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: calc(var(--spacing) * 1.5);
-    padding: 0px;
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    overflow-wrap: break-word;
-    color: var(--muted-foreground);
-    @media (width >= 40rem) {
-      & {
-        gap: calc(var(--spacing) * 2.5);
-      }
-    }
-  }
-`;
+const list = ui({
+  margin: "0px",
+  display: "flex",
+  listStyleType: "none",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: "calc(var(--spacing) * 1.5)",
+  padding: "0px",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  overflowWrap: "break-word",
+  color: "var(--muted-foreground)",
+  "@media (width >= 40rem)": {
+    "&": {
+      gap: "calc(var(--spacing) * 2.5)",
+    },
+  },
+});
 
-const item = css`
-  @layer barq.ui {
-    display: inline-flex;
-    align-items: center;
-    gap: calc(var(--spacing) * 1.5);
-  }
-`;
+const item = ui({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: "calc(var(--spacing) * 1.5)",
+});
 
-const link = css`
-  @layer barq.ui {
-    transition-property:
-      color, background-color, border-color, outline-color, text-decoration-color, fill, stroke,
-      --ui-gradient-from, --ui-gradient-via, --ui-gradient-to;
-    transition-timing-function: var(--ui-ease, var(--default-transition-timing-function));
-    transition-duration: var(--ui-duration, var(--default-transition-duration));
-    @media (hover: hover) {
-      &:hover {
-        color: var(--foreground);
-      }
-    }
-  }
-`;
+const link = ui({
+  transitionProperty:
+    "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to",
+  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
+  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
+  "@media (hover: hover)": {
+    ":hover": {
+      color: "var(--foreground)",
+    },
+  },
+});
 
-const page = css`
-  @layer barq.ui {
-    --ui-font-weight: var(--font-weight-normal);
-    font-weight: var(--font-weight-normal);
-    color: var(--foreground);
-  }
-`;
+const page = ui({
+  "--ui-font-weight": "var(--font-weight-normal)",
+  fontWeight: "var(--font-weight-normal)",
+  color: "var(--foreground)",
+});
 
-const separator = css`
-  @layer barq.ui {
-    display: inline-flex;
-    align-items: center;
-    & > svg {
-      width: calc(var(--spacing) * 3.5);
-      height: calc(var(--spacing) * 3.5);
-    }
-  }
-`;
+const separator = ui({
+  display: "inline-flex",
+  alignItems: "center",
+  "& > svg": {
+    width: "calc(var(--spacing) * 3.5)",
+    height: "calc(var(--spacing) * 3.5)",
+  },
+});
 
-const ellipsis = css`
-  @layer barq.ui {
-    display: flex;
-    width: calc(var(--spacing) * 9);
-    height: calc(var(--spacing) * 9);
-    align-items: center;
-    justify-content: center;
-  }
-`;
+const ellipsis = ui({
+  display: "flex",
+  width: "calc(var(--spacing) * 9)",
+  height: "calc(var(--spacing) * 9)",
+  alignItems: "center",
+  justifyContent: "center",
+});
 
 /**
  * ```tsx

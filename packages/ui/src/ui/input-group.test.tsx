@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { collectCss } from "@barqjs/css";
 import { render, screen, user } from "@barqjs/testing";
+
+import { rulesFor } from "../test-rules.ts";
 
 import {
   InputGroup,
@@ -12,14 +13,6 @@ import {
   InputGroupText,
   InputGroupTextarea,
 } from "./input-group.tsx";
-
-function rulesFor(className: string): string {
-  const mentions = new RegExp(`\\.${className}(?![\\w-])`);
-  return collectCss()
-    .split("@layer barq.ui{")
-    .filter((chunk) => mentions.test(chunk))
-    .join("\n");
-}
 
 function slot(name: string): HTMLElement {
   const found = document.querySelector(`[data-slot="${name}"]`);
@@ -54,14 +47,14 @@ describe("InputGroup", () => {
         <InputGroupInput aria-label="Handle" />
       </InputGroup>
     ));
-    const rules = slot("input-group").className.split(" ").map(rulesFor).join("");
+    const rules = rulesFor(slot("input-group").className);
     expect(rules).toContain(':has(:is([data-slot="input-group-control"]:focus-visible))');
   });
 
   test("the control draws no border of its own", () => {
     render(() => <InputGroupInput aria-label="Handle" />);
     const classes = slot("input-group-control").className.split(" ");
-    expect(classes.map(rulesFor).join("")).toContain("border-width: 0px");
+    expect(classes.map(rulesFor).join("")).toContain("border-top-width: 0px");
   });
 
   test("a textarea makes the group grow", () => {
@@ -71,7 +64,7 @@ describe("InputGroup", () => {
       </InputGroup>
     ));
     expect(slot("input-group-control").tagName).toBe("TEXTAREA");
-    const rules = slot("input-group").className.split(" ").map(rulesFor).join("");
+    const rules = rulesFor(slot("input-group").className);
     expect(rules).toContain("> textarea){height: auto}");
   });
 
@@ -102,19 +95,19 @@ describe("InputGroup", () => {
     const addon = slot("input-group-addon");
     expect(addon.getAttribute("data-align")).toBe("inline-end");
 
-    const rules = slot("input-group").className.split(" ").map(rulesFor).join("");
+    const rules = rulesFor(slot("input-group").className);
     expect(rules).toContain('> [data-align="inline-end"]) > input');
   });
 
   test("inline-start is the default and it comes first in the flex order", () => {
     render(() => <InputGroupAddon>@</InputGroupAddon>);
     expect(slot("input-group-addon").getAttribute("data-align")).toBe("inline-start");
-    const start = inputGroupAddonVariants().split(" ").at(-1) ?? "";
+    const start = inputGroupAddonVariants();
     expect(rulesFor(start)).toContain("order: -9999");
   });
 
   test("a block addon takes a row of its own", () => {
-    const block = inputGroupAddonVariants({ align: "block-start" }).split(" ").at(-1) ?? "";
+    const block = inputGroupAddonVariants({ align: "block-start" });
     expect(rulesFor(block)).toContain("width: 100%");
   });
 
@@ -149,7 +142,7 @@ describe("InputGroup", () => {
     const button = slot("input-group-button");
     expect(button.getAttribute("data-variant")).toBe("ghost");
     expect(button.getAttribute("data-size")).toBe("xs");
-    const xs = inputGroupButtonVariants().split(" ").at(-1) ?? "";
+    const xs = inputGroupButtonVariants();
     expect(rulesFor(xs)).toContain("height: calc(var(--spacing) * 6)");
   });
 
@@ -162,9 +155,7 @@ describe("InputGroup", () => {
     render(() => <InputGroupText>USD</InputGroupText>);
     const text = slot("input-group-text");
     expect(text.tagName).toBe("SPAN");
-    expect(rulesFor(text.className.split(" ")[0] ?? "")).toContain(
-      "color: var(--muted-foreground)",
-    );
+    expect(rulesFor(text.className)).toContain("color: var(--muted-foreground)");
   });
 
   test("disabled dims the addons through the group", () => {
@@ -174,7 +165,7 @@ describe("InputGroup", () => {
       </InputGroup>
     ));
     expect(slot("input-group").getAttribute("data-disabled")).toBe("");
-    const base = inputGroupAddonVariants().split(" ")[0] ?? "";
+    const base = inputGroupAddonVariants();
     expect(rulesFor(base)).toContain('[data-slot="input-group"][data-disabled] .');
   });
 });

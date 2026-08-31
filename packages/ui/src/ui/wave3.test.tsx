@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { flush } from "@barqjs/core";
-import { collectCss } from "@barqjs/css";
 import { render, screen, user } from "@barqjs/testing";
+
+import { rulesFor } from "../test-rules.ts";
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./accordion.tsx";
 import { Button } from "./button.tsx";
@@ -10,14 +11,6 @@ import { Tabs, TabsContent, TabsList, TabsTrigger, tabsListVariants } from "./ta
 import { resetTooltipWarmup } from "@barqjs/aria/tooltip";
 
 import { Tooltip, TooltipContent } from "./tooltip.tsx";
-
-function rulesFor(className: string): string {
-  const mentions = new RegExp(`\\.${className}(?![\\w-])`);
-  return collectCss()
-    .split("@layer barq.ui{")
-    .filter((chunk) => mentions.test(chunk))
-    .join("\n");
-}
 
 const SECTIONS = [
   { id: "overview", name: "Overview", body: "What it is" },
@@ -71,14 +64,12 @@ describe("Tabs", () => {
     expect(document.querySelector('[data-slot="tabs"]')?.getAttribute("data-orientation")).toBe(
       "vertical",
     );
-    expect(rulesFor(list.className.split(" ")[0] ?? "")).toContain(
-      '[data-slot="tabs"][data-orientation="vertical"] .',
-    );
+    expect(rulesFor(list.className)).toContain('[data-slot="tabs"][data-orientation="vertical"] .');
   });
 
   test("the line variant is a different class, not a different component", () => {
     expect(tabsListVariants({ variant: "line" })).not.toBe(tabsListVariants());
-    const [, line] = tabsListVariants({ variant: "line" }).split(" ");
+    const line = tabsListVariants({ variant: "line" });
     expect(rulesFor(line ?? "")).toContain("background-color: transparent");
   });
 });
@@ -116,7 +107,7 @@ describe("Accordion", () => {
     // `<DisclosureGroupItem>` renders nothing, so the class went nowhere and
     // the accordion had no dividers.
     expect(items).toHaveLength(2);
-    const rules = rulesFor((items[0] as HTMLElement).className.split(" ")[0] ?? "");
+    const rules = rulesFor((items[0] as HTMLElement).className);
     expect(rules).toContain("border-bottom-width: 1px");
     expect(rules).toContain(":last-child{border-bottom-style");
   });
@@ -129,7 +120,7 @@ describe("Accordion", () => {
   test("the panel collapses on grid-template-rows, with no height to measure", () => {
     render(() => <Fixture />);
     const panel = document.querySelector('[data-slot="accordion-content"]')!;
-    const rules = rulesFor(panel.className.split(" ")[0] ?? "");
+    const rules = rulesFor(panel.className);
     expect(rules).toContain("grid-template-rows: 0fr");
     expect(rules).toContain("[data-expanded]{grid-template-rows: 1fr}");
     expect(rules).not.toContain("--radix");
@@ -138,7 +129,7 @@ describe("Accordion", () => {
   test("the chevron turns over when the section opens", async () => {
     render(() => <Fixture />);
     const trigger = screen.getByRole("button", { name: /First/ });
-    expect(rulesFor(trigger.className.split(" ")[0] ?? "")).toContain(
+    expect(rulesFor(trigger.className)).toContain(
       '[data-expanded] > [data-slot="accordion-chevron"]{rotate: 180deg}',
     );
     await user.click(trigger);

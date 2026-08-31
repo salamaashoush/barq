@@ -22,258 +22,234 @@ import {
   styleProps,
 } from "@barqjs/aria/utils";
 import { For, type Incoming, Repeat } from "@barqjs/core";
-import { clsx, css } from "@barqjs/css";
+import { firstThatWorks } from "@barqjs/css";
 import { ChevronLeft } from "@barqjs/lucide/icons/chevron-left";
 import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
 import { ref as makeRef, mergeRefs } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
+import { ui } from "../lib/atoms.ts";
 import { buttonVariants, type ButtonVariant } from "./button.tsx";
 
-const root = css`
-  @layer barq.ui {
-    width: fit-content;
-    background-color: var(--background);
-    padding: calc(var(--spacing) * 3);
-    --cell-size: calc(var(--spacing) * 8);
-    [data-slot="card-content"] & {
-      background-color: transparent;
-    }
-    [data-slot="popover-content"] & {
-      background-color: transparent;
-    }
-  }
-`;
+const root = ui({
+  width: "fit-content",
+  backgroundColor: "var(--background)",
+  padding: "calc(var(--spacing) * 3)",
+  "--cell-size": "calc(var(--spacing) * 8)",
+  '[data-slot="card-content"] &': {
+    backgroundColor: "transparent",
+  },
+  '[data-slot="popover-content"] &': {
+    backgroundColor: "transparent",
+  },
+});
 
-const months = css`
-  @layer barq.ui {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    gap: calc(var(--spacing) * 4);
-    @media (width >= 48rem) {
-      & {
-        flex-direction: row;
-      }
-    }
-  }
-`;
+const months = ui({
+  position: "relative",
+  display: "flex",
+  flexDirection: "column",
+  gap: "calc(var(--spacing) * 4)",
+  "@media (width >= 48rem)": {
+    "&": {
+      flexDirection: "row",
+    },
+  },
+});
 
-const month = css`
-  @layer barq.ui {
-    display: flex;
-    width: 100%;
-    flex-direction: column;
-    gap: calc(var(--spacing) * 4);
-  }
-`;
+const month = ui({
+  display: "flex",
+  width: "100%",
+  flexDirection: "column",
+  gap: "calc(var(--spacing) * 4)",
+});
 
-const nav = css`
-  @layer barq.ui {
-    position: absolute;
-    inset-inline: 0px;
-    top: 0px;
-    display: flex;
-    width: 100%;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--spacing);
-  }
-`;
+const nav = ui({
+  position: "absolute",
+  insetInline: "0px",
+  top: "0px",
+  display: "flex",
+  width: "100%",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "var(--spacing)",
+});
 
-const navButton = css`
-  @layer barq.ui {
-    width: var(--cell-size);
-    height: var(--cell-size);
-    padding: 0px;
-    -webkit-user-select: none;
-    user-select: none;
-    &[aria-disabled="true"] {
-      opacity: 50%;
-    }
-    &:where(:dir(rtl), [dir="rtl"], [dir="rtl"] *) > svg {
-      rotate: 180deg;
-    }
-  }
-`;
+const navButton = ui({
+  width: "var(--cell-size)",
+  height: "var(--cell-size)",
+  // `p-0` is the physical padding, and the button's own size sets the LOGICAL
+  // one. Two different properties for one side of a box do not merge, so the
+  // physical zero left `padding-block: 8px` standing and the arrows grew.
+  padding: "0px",
+  paddingBlock: "0px",
+  paddingInline: "0px",
+  "-webkit-user-select": "none",
+  userSelect: "none",
+  '[aria-disabled="true"]': {
+    opacity: "50%",
+  },
+  ':where(:dir(rtl), [dir="rtl"], [dir="rtl"] *) > svg': {
+    rotate: "180deg",
+  },
+});
 
-const monthCaption = css`
-  @layer barq.ui {
-    display: flex;
-    height: var(--cell-size);
-    width: 100%;
-    align-items: center;
-    justify-content: center;
-    padding-inline: var(--cell-size);
-  }
-`;
+const monthCaption = ui({
+  display: "flex",
+  height: "var(--cell-size)",
+  width: "100%",
+  alignItems: "center",
+  justifyContent: "center",
+  paddingInline: "var(--cell-size)",
+});
 
-const captionLabel = css`
-  @layer barq.ui {
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    --ui-font-weight: var(--font-weight-medium);
-    font-weight: var(--font-weight-medium);
-    -webkit-user-select: none;
-    user-select: none;
-  }
-`;
+const captionLabel = ui({
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  "--ui-font-weight": "var(--font-weight-medium)",
+  fontWeight: "var(--font-weight-medium)",
+  "-webkit-user-select": "none",
+  userSelect: "none",
+});
 
-const monthGrid = css`
-  @layer barq.ui {
-    width: 100%;
-    border-collapse: collapse;
-  }
-`;
+const monthGrid = ui({
+  width: "100%",
+  borderCollapse: "collapse",
+});
 
-const weekdays = css`
-  @layer barq.ui {
-    display: flex;
-  }
-`;
+const weekdays = ui({
+  display: "flex",
+});
 
-const weekday = css`
-  @layer barq.ui {
-    flex: 1;
-    border-radius: calc(var(--radius) - 2px);
-    font-size: 0.8rem;
-    --ui-font-weight: var(--font-weight-normal);
-    font-weight: var(--font-weight-normal);
-    color: var(--muted-foreground);
-    -webkit-user-select: none;
-    user-select: none;
-  }
-`;
+const weekday = ui({
+  flex: "1",
+  borderRadius: "calc(var(--radius) - 2px)",
+  fontSize: "0.8rem",
+  "--ui-font-weight": "var(--font-weight-normal)",
+  fontWeight: "var(--font-weight-normal)",
+  color: "var(--muted-foreground)",
+  "-webkit-user-select": "none",
+  userSelect: "none",
+});
 
-const week = css`
-  @layer barq.ui {
-    margin-top: calc(var(--spacing) * 2);
-    display: flex;
-    width: 100%;
-  }
-`;
+const week = ui({
+  marginTop: "calc(var(--spacing) * 2)",
+  display: "flex",
+  width: "100%",
+});
 
-const day = css`
-  @layer barq.ui {
-    position: relative;
-    aspect-ratio: 1 / 1;
-    height: 100%;
-    width: 100%;
-    padding: 0px;
-    text-align: center;
-    -webkit-user-select: none;
-    user-select: none;
-    &[data-disabled] {
-      color: var(--muted-foreground);
-      opacity: 50%;
-    }
-    &[data-outside-month] {
-      color: var(--muted-foreground);
-    }
-    &[data-outside-month][aria-selected="true"] {
-      color: var(--muted-foreground);
-    }
-    &[data-range-end] {
-      border-top-right-radius: calc(var(--radius) - 2px);
-      border-bottom-right-radius: calc(var(--radius) - 2px);
-      background-color: var(--accent);
-    }
-    &[data-range-middle] {
-      border-radius: 0;
-    }
-    &[data-range-start] {
-      border-top-left-radius: calc(var(--radius) - 2px);
-      border-bottom-left-radius: calc(var(--radius) - 2px);
-      background-color: var(--accent);
-    }
-    &[data-today] {
-      border-radius: calc(var(--radius) - 2px);
-      background-color: var(--accent);
-      color: var(--accent-foreground);
-    }
-    &[data-today][data-selected] {
-      border-radius: 0;
-    }
-    &:first-child[data-selected] [data-slot="calendar-day-button"] {
-      border-top-left-radius: calc(var(--radius) - 2px);
-      border-bottom-left-radius: calc(var(--radius) - 2px);
-    }
-    &:last-child[data-selected] [data-slot="calendar-day-button"] {
-      border-top-right-radius: calc(var(--radius) - 2px);
-      border-bottom-right-radius: calc(var(--radius) - 2px);
-    }
-  }
-`;
+const day = ui({
+  position: "relative",
+  aspectRatio: "1 / 1",
+  height: "100%",
+  width: "100%",
+  padding: "0px",
+  textAlign: "center",
+  "-webkit-user-select": "none",
+  userSelect: "none",
+  "[data-disabled]": {
+    color: "var(--muted-foreground)",
+    opacity: "50%",
+  },
+  "[data-outside-month]": {
+    color: "var(--muted-foreground)",
+  },
+  '[data-outside-month][aria-selected="true"]': {
+    color: "var(--muted-foreground)",
+  },
+  "[data-range-end]": {
+    borderTopRightRadius: "calc(var(--radius) - 2px)",
+    borderBottomRightRadius: "calc(var(--radius) - 2px)",
+    backgroundColor: "var(--accent)",
+  },
+  "[data-range-middle]": {
+    borderRadius: "0",
+  },
+  "[data-range-start]": {
+    borderTopLeftRadius: "calc(var(--radius) - 2px)",
+    borderBottomLeftRadius: "calc(var(--radius) - 2px)",
+    backgroundColor: "var(--accent)",
+  },
+  "[data-today]": {
+    borderRadius: "calc(var(--radius) - 2px)",
+    backgroundColor: "var(--accent)",
+    color: "var(--accent-foreground)",
+  },
+  "[data-today][data-selected]": {
+    borderRadius: "0",
+  },
+  ':first-child[data-selected] [data-slot="calendar-day-button"]': {
+    borderTopLeftRadius: "calc(var(--radius) - 2px)",
+    borderBottomLeftRadius: "calc(var(--radius) - 2px)",
+  },
+  ':last-child[data-selected] [data-slot="calendar-day-button"]': {
+    borderTopRightRadius: "calc(var(--radius) - 2px)",
+    borderBottomRightRadius: "calc(var(--radius) - 2px)",
+  },
+});
 
-const dayButton = css`
-  @layer barq.ui {
-    display: flex;
-    aspect-ratio: 1 / 1;
-    width: auto;
-    height: auto;
-    width: 100%;
-    min-width: var(--cell-size);
-    flex-direction: column;
-    gap: var(--spacing);
-    --ui-leading: 1;
-    line-height: 1;
-    --ui-font-weight: var(--font-weight-normal);
-    font-weight: var(--font-weight-normal);
-    &[data-range-end] {
-      border-radius: calc(var(--radius) - 2px);
-      border-top-right-radius: calc(var(--radius) - 2px);
-      border-bottom-right-radius: calc(var(--radius) - 2px);
-      background-color: var(--primary);
-      color: var(--primary-foreground);
-    }
-    &[data-range-middle] {
-      border-radius: 0;
-      background-color: var(--accent);
-      color: var(--accent-foreground);
-    }
-    &[data-range-start] {
-      border-radius: calc(var(--radius) - 2px);
-      border-top-left-radius: calc(var(--radius) - 2px);
-      border-bottom-left-radius: calc(var(--radius) - 2px);
-      background-color: var(--primary);
-      color: var(--primary-foreground);
-    }
-    &[data-selected-single] {
-      background-color: var(--primary);
-      color: var(--primary-foreground);
-    }
-    @media (hover: hover) {
-      &:is(.dark *):hover {
-        color: var(--accent-foreground);
-      }
-    }
-    & > span {
-      font-size: var(--text-xs);
-      line-height: var(--ui-leading, var(--text-xs--line-height));
-      opacity: 70%;
-    }
-    [data-slot="calendar-day"][data-focused] & {
-      position: relative;
-      z-index: 10;
-      border-color: var(--ring);
-      --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width))
-        var(--ui-ring-color, currentcolor);
-      box-shadow:
-        var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-        var(--ui-ring-shadow), var(--ui-shadow);
-      --ui-ring-color: var(--ring);
-      @supports (color: color-mix(in lab, red, red)) {
-        --ui-ring-color: color-mix(in oklab, var(--ring) 50%, transparent);
-      }
-    }
-  }
-`;
+const dayButton = ui({
+  display: "flex",
+  aspectRatio: "1 / 1",
+  width: firstThatWorks("100%", "auto"),
+  height: "auto",
+  minWidth: "var(--cell-size)",
+  flexDirection: "column",
+  gap: "var(--spacing)",
+  "--ui-leading": "1",
+  lineHeight: "1",
+  "--ui-font-weight": "var(--font-weight-normal)",
+  fontWeight: "var(--font-weight-normal)",
+  "[data-range-end]": {
+    borderRadius: "calc(var(--radius) - 2px)",
+    borderTopRightRadius: "calc(var(--radius) - 2px)",
+    borderBottomRightRadius: "calc(var(--radius) - 2px)",
+    backgroundColor: "var(--primary)",
+    color: "var(--primary-foreground)",
+  },
+  "[data-range-middle]": {
+    borderRadius: "0",
+    backgroundColor: "var(--accent)",
+    color: "var(--accent-foreground)",
+  },
+  "[data-range-start]": {
+    borderRadius: "calc(var(--radius) - 2px)",
+    borderTopLeftRadius: "calc(var(--radius) - 2px)",
+    borderBottomLeftRadius: "calc(var(--radius) - 2px)",
+    backgroundColor: "var(--primary)",
+    color: "var(--primary-foreground)",
+  },
+  "[data-selected-single]": {
+    backgroundColor: "var(--primary)",
+    color: "var(--primary-foreground)",
+  },
+  "@media (hover: hover)": {
+    ":is(.dark *):hover": {
+      color: "var(--accent-foreground)",
+    },
+  },
+  "& > span": {
+    fontSize: "var(--text-xs)",
+    lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
+    opacity: "70%",
+  },
+  '[data-slot="calendar-day"][data-focused] &': {
+    position: "relative",
+    zIndex: "10",
+    borderColor: "var(--ring)",
+    "--ui-ring-shadow":
+      "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+    boxShadow:
+      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+    "--ui-ring-color": "var(--ring)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
+    },
+  },
+});
 
-const hidden = css`
-  @layer barq.ui {
-    visibility: hidden;
-  }
-`;
+const hidden = ui({
+  visibility: "hidden",
+});
 
 interface Shared {
   /** The variant the two month buttons take. @default "ghost" */
@@ -378,7 +354,7 @@ function CalendarShell(incoming: Incoming<ShellProps>) {
   const previous = button(prevButtonProps, prevRef);
   const next = button(nextButtonProps, nextRef);
   const navClass = (): string =>
-    clsx(buttonVariants({ variant: props.buttonVariant?.() ?? "ghost" }), navButton);
+    ui(buttonVariants({ variant: props.buttonVariant?.() ?? "ghost" }), navButton);
 
   const elementProps = mergeProps(
     calendarProps,
@@ -394,7 +370,7 @@ function CalendarShell(incoming: Incoming<ShellProps>) {
   return (
     <div
       {...elementProps}
-      class={clsx(root, props.class?.(), props.className?.())}
+      class={ui(root, props.class?.(), props.className?.())}
       ref={mergeRefs(props.ref?.())}
     >
       <div data-slot="calendar-months" class={months}>
@@ -529,7 +505,7 @@ export function CalendarDay(props: Incoming<CalendarDayProps>) {
           "data-hovered": isHovered,
         })}
         data-slot="calendar-day-button"
-        class={clsx(
+        class={ui(
           buttonVariants({ variant: "ghost", size: "icon" }),
           dayButton,
           isOutsideVisibleRange() && props.showOutsideDays?.() === false ? hidden : undefined,

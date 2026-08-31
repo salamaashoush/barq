@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { flush, type Incoming } from "@barqjs/core";
-import { collectCss } from "@barqjs/css";
 import { render, screen, tick, user } from "@barqjs/testing";
+
+import { rulesFor } from "../test-rules.ts";
 
 import {
   ContextMenu,
@@ -17,14 +18,6 @@ async function settle(): Promise<void> {
   flush();
   await tick();
   flush();
-}
-
-function rulesFor(className: string): string {
-  const mentions = new RegExp(`\\.${className}(?![\\w-])`);
-  return collectCss()
-    .split("@layer barq.ui{")
-    .filter((chunk) => mentions.test(chunk))
-    .join("\n");
 }
 
 const ACTIONS = [
@@ -105,7 +98,7 @@ describe("ContextMenu", () => {
     const label = container.querySelector('[data-slot="context-menu-label"]') as HTMLElement;
 
     expect(label.getAttribute("role")).toBe("presentation");
-    expect(rulesFor(label.className.split(" ")[0] ?? "")).toContain("color: var(--foreground)");
+    expect(rulesFor(label.className)).toContain("color: var(--foreground)");
   });
 
   test("a separator and a shortcut carry their own slots", () => {

@@ -15,80 +15,71 @@ import {
   type Child,
   type Incoming,
 } from "@barqjs/core";
-import { clsx, css } from "@barqjs/css";
+import { firstThatWorks } from "@barqjs/css";
 import { ref as makeRef } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
+import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 
-const content = css`
-  @layer barq.ui {
-    z-index: 50;
-    width: calc(var(--spacing) * 64);
-    animation: enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease)
-      var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1)
-      var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none);
-    border-radius: calc(var(--radius) - 2px);
-    border-style: var(--ui-border-style);
-    border-width: 1px;
-    background-color: var(--popover);
-    padding: calc(var(--spacing) * 4);
-    color: var(--popover-foreground);
-    --ui-shadow:
-      0 4px 6px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1)),
-      0 2px 4px -2px var(--ui-shadow-color, rgb(0 0 0 / 0.1));
-    box-shadow:
-      var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-      var(--ui-ring-shadow), var(--ui-shadow);
-    --ui-enter-opacity: calc(0/100);
-    --ui-enter-opacity: 0;
-    --ui-outline-style: none;
-    outline-style: none;
-    @media (forced-colors: active) {
-      outline: 2px solid transparent;
-      outline-offset: 2px;
-    }
-    --ui-enter-scale: calc(95*1%);
-    --ui-enter-scale: 0.95;
-    &[data-placement="bottom"] {
-      transform-origin: top;
-      --ui-enter-translate-y: calc(2 * var(--spacing) * -1);
-    }
-    &[data-placement="left"] {
-      transform-origin: 100%;
-      --ui-enter-translate-x: calc(2 * var(--spacing));
-    }
-    &[data-placement="right"] {
-      transform-origin: 0;
-      --ui-enter-translate-x: calc(2 * var(--spacing) * -1);
-    }
-    &[data-placement="top"] {
-      transform-origin: bottom;
-      --ui-enter-translate-y: calc(2 * var(--spacing));
-    }
-    &[data-closed] {
-      animation: exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease)
-        var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1)
-        var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none);
-      --ui-exit-opacity: calc(0/100);
-      --ui-exit-opacity: 0;
-      --ui-exit-scale: calc(95*1%);
-      --ui-exit-scale: 0.95;
-    }
-    &[data-closed][data-placement="bottom"] {
-      --ui-exit-translate-y: calc(2 * var(--spacing) * -1);
-    }
-    &[data-closed][data-placement="left"] {
-      --ui-exit-translate-x: calc(2 * var(--spacing));
-    }
-    &[data-closed][data-placement="right"] {
-      --ui-exit-translate-x: calc(2 * var(--spacing) * -1);
-    }
-    &[data-closed][data-placement="top"] {
-      --ui-exit-translate-y: calc(2 * var(--spacing));
-    }
-  }
-`;
+const content = ui({
+  zIndex: "50",
+  width: "calc(var(--spacing) * 64)",
+  animation:
+    "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
+  borderRadius: "calc(var(--radius) - 2px)",
+  borderStyle: "var(--ui-border-style)",
+  borderWidth: "1px",
+  backgroundColor: "var(--popover)",
+  padding: "calc(var(--spacing) * 4)",
+  color: "var(--popover-foreground)",
+  "--ui-shadow":
+    "0 4px 6px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 2px 4px -2px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
+  boxShadow:
+    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+  "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
+  "--ui-outline-style": "none",
+  outlineStyle: "none",
+  "--ui-enter-scale": firstThatWorks("0.95", "calc(95*1%)"),
+  "@media (forced-colors: active)": {
+    outline: "2px solid transparent",
+    outlineOffset: "2px",
+  },
+  '[data-placement="bottom"]': {
+    transformOrigin: "top",
+    "--ui-enter-translate-y": "calc(2 * var(--spacing) * -1)",
+  },
+  '[data-placement="left"]': {
+    transformOrigin: "100%",
+    "--ui-enter-translate-x": "calc(2 * var(--spacing))",
+  },
+  '[data-placement="right"]': {
+    transformOrigin: "0",
+    "--ui-enter-translate-x": "calc(2 * var(--spacing) * -1)",
+  },
+  '[data-placement="top"]': {
+    transformOrigin: "bottom",
+    "--ui-enter-translate-y": "calc(2 * var(--spacing))",
+  },
+  "[data-closed]": {
+    animation:
+      "exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
+    "--ui-exit-opacity": firstThatWorks("0", "calc(0/100)"),
+    "--ui-exit-scale": firstThatWorks("0.95", "calc(95*1%)"),
+  },
+  '[data-closed][data-placement="bottom"]': {
+    "--ui-exit-translate-y": "calc(2 * var(--spacing) * -1)",
+  },
+  '[data-closed][data-placement="left"]': {
+    "--ui-exit-translate-x": "calc(2 * var(--spacing))",
+  },
+  '[data-closed][data-placement="right"]': {
+    "--ui-exit-translate-x": "calc(2 * var(--spacing) * -1)",
+  },
+  '[data-closed][data-placement="top"]': {
+    "--ui-exit-translate-y": "calc(2 * var(--spacing))",
+  },
+});
 
 interface HoverCardValue {
   state: OverlayTriggerState;
@@ -214,7 +205,7 @@ export function HoverCardContent(props: Incoming<HoverCardContentProps>) {
       placement={props.placement?.() ?? "bottom"}
       isDismissable
       data-slot={props["data-slot"]?.() ?? "hover-card-content"}
-      class={clsx(content, props.class?.(), props.className?.())}
+      class={ui(content, props.class?.(), props.className?.())}
     >
       {props.children}
     </AriaPopover>

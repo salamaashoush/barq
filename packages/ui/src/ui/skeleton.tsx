@@ -1,17 +1,15 @@
 import type { Incoming } from "@barqjs/core";
-import { css } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
-const skeleton = css`
-  @layer barq.ui {
-    animation: var(--animate-pulse);
-    border-radius: calc(var(--radius) - 2px);
-    background-color: var(--accent);
-  }
-`;
+const skeleton = ui({
+  animation: "var(--animate-pulse)",
+  borderRadius: "calc(var(--radius) - 2px)",
+  backgroundColor: "var(--accent)",
+});
 
 /**
  * ```tsx

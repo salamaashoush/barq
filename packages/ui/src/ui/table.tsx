@@ -1,125 +1,106 @@
 import type { Incoming } from "@barqjs/core";
-import { css } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
-const container = css`
-  @layer barq.ui {
-    position: relative;
-    width: 100%;
-    overflow-x: auto;
-  }
-`;
+const container = ui({
+  position: "relative",
+  width: "100%",
+  overflowX: "auto",
+});
 
-const table = css`
-  @layer barq.ui {
-    width: 100%;
-    caption-side: bottom;
-    border-collapse: collapse;
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-  }
-`;
+const table = ui({
+  width: "100%",
+  captionSide: "bottom",
+  borderCollapse: "collapse",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+});
 
-const header = css`
-  @layer barq.ui {
-    & tr {
-      border-bottom-style: var(--ui-border-style);
-      border-bottom-width: 1px;
-    }
-  }
-`;
+const header = ui({
+  "& tr": {
+    borderBottomStyle: "var(--ui-border-style)",
+    borderBottomWidth: "1px",
+  },
+});
 
-const body = css`
-  @layer barq.ui {
-    & tr:last-child {
-      border-style: var(--ui-border-style);
-      border-width: 0px;
-    }
-  }
-`;
+const body = ui({
+  "& tr:last-child": {
+    borderStyle: "var(--ui-border-style)",
+    borderWidth: "0px",
+  },
+});
 
-const footer = css`
-  @layer barq.ui {
-    border-top-style: var(--ui-border-style);
-    border-top-width: 1px;
-    background-color: var(--muted);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--muted) 50%, transparent);
-    }
-    --ui-font-weight: var(--font-weight-medium);
-    font-weight: var(--font-weight-medium);
-    & > tr:last-child {
-      border-bottom-style: var(--ui-border-style);
-      border-bottom-width: 0px;
-    }
-  }
-`;
+const footer = ui({
+  borderTopStyle: "var(--ui-border-style)",
+  borderTopWidth: "1px",
+  backgroundColor: "var(--muted)",
+  "--ui-font-weight": "var(--font-weight-medium)",
+  fontWeight: "var(--font-weight-medium)",
+  "@supports (color: color-mix(in lab, red, red))": {
+    backgroundColor: "color-mix(in oklab, var(--muted) 50%, transparent)",
+  },
+  "& > tr:last-child": {
+    borderBottomStyle: "var(--ui-border-style)",
+    borderBottomWidth: "0px",
+  },
+});
 
-const row = css`
-  @layer barq.ui {
-    border-bottom-style: var(--ui-border-style);
-    border-bottom-width: 1px;
-    --ui-border-style: solid;
-    border-style: solid;
-    transition-property:
-      color, background-color, border-color, outline-color, text-decoration-color, fill, stroke,
-      --ui-gradient-from, --ui-gradient-via, --ui-gradient-to;
-    transition-timing-function: var(--ui-ease, var(--default-transition-timing-function));
-    transition-duration: var(--ui-duration, var(--default-transition-duration));
-    @media (hover: hover) {
-      &:hover {
-        background-color: var(--muted);
-      }
-      @supports (color: color-mix(in lab, red, red)) {
-        &:hover {
-          background-color: color-mix(in oklab, var(--muted) 50%, transparent);
-        }
-      }
-    }
-    &[data-selected] {
-      background-color: var(--muted);
-    }
-  }
-`;
+const row = ui({
+  borderBottomStyle: "var(--ui-border-style)",
+  borderBottomWidth: "1px",
+  "--ui-border-style": "solid",
+  borderStyle: "solid",
+  transitionProperty:
+    "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to",
+  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
+  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
+  "@media (hover: hover)": {
+    ":hover": {
+      backgroundColor: "var(--muted)",
+    },
+    "@supports (color: color-mix(in lab, red, red))": {
+      ":hover": {
+        backgroundColor: "color-mix(in oklab, var(--muted) 50%, transparent)",
+      },
+    },
+  },
+  "[data-selected]": {
+    backgroundColor: "var(--muted)",
+  },
+});
 
-const head = css`
-  @layer barq.ui {
-    height: calc(var(--spacing) * 10);
-    padding-inline: calc(var(--spacing) * 2);
-    text-align: left;
-    vertical-align: middle;
-    --ui-font-weight: var(--font-weight-medium);
-    font-weight: var(--font-weight-medium);
-    white-space: nowrap;
-    color: var(--foreground);
-    &:has([role="checkbox"]) {
-      padding-right: 0px;
-    }
-  }
-`;
+const head = ui({
+  height: "calc(var(--spacing) * 10)",
+  paddingInline: "calc(var(--spacing) * 2)",
+  textAlign: "left",
+  verticalAlign: "middle",
+  "--ui-font-weight": "var(--font-weight-medium)",
+  fontWeight: "var(--font-weight-medium)",
+  whiteSpace: "nowrap",
+  color: "var(--foreground)",
+  ':has([role="checkbox"])': {
+    paddingRight: "0px",
+  },
+});
 
-const cell = css`
-  @layer barq.ui {
-    padding: calc(var(--spacing) * 2);
-    vertical-align: middle;
-    white-space: nowrap;
-    &:has([role="checkbox"]) {
-      padding-right: 0px;
-    }
-  }
-`;
+const cell = ui({
+  padding: "calc(var(--spacing) * 2)",
+  verticalAlign: "middle",
+  whiteSpace: "nowrap",
+  ':has([role="checkbox"])': {
+    paddingRight: "0px",
+  },
+});
 
-const caption = css`
-  @layer barq.ui {
-    margin-top: calc(var(--spacing) * 4);
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    color: var(--muted-foreground);
-  }
-`;
+const caption = ui({
+  marginTop: "calc(var(--spacing) * 4)",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  color: "var(--muted-foreground)",
+});
 
 /**
  * A plain HTML table, styled.

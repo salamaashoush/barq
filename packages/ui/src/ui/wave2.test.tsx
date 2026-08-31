@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { collectCss } from "@barqjs/css";
 import { flush } from "@barqjs/core";
 import { render, screen, user } from "@barqjs/testing";
+
+import { rulesFor } from "../test-rules.ts";
 
 import { Avatar, AvatarBadge, AvatarFallback, AvatarImage } from "./avatar.tsx";
 import { Checkbox } from "./checkbox.tsx";
@@ -11,14 +12,6 @@ import { Progress } from "./progress.tsx";
 import { RadioGroup, RadioGroupItem } from "./radio-group.tsx";
 import { Switch } from "./switch.tsx";
 import { Toggle, toggleVariants } from "./toggle.tsx";
-
-function rulesFor(className: string): string {
-  const mentions = new RegExp(`\\.${className}(?![\\w-])`);
-  return collectCss()
-    .split("@layer barq.ui{")
-    .filter((chunk) => mentions.test(chunk))
-    .join("\n");
-}
 
 function slot(name: string): HTMLElement {
   const found = document.querySelector(`[data-slot="${name}"]`);
@@ -54,7 +47,7 @@ describe("Label and Input", () => {
     const box = screen.getByRole("textbox");
     expect(box.tagName.toLowerCase()).toBe("textarea");
     expect(box.getAttribute("rows")).toBe("3");
-    expect(rulesFor(box.className.split(" ")[0] ?? "")).toContain("field-sizing: content");
+    expect(rulesFor(box.className)).toContain("field-sizing: content");
   });
 
   test("disabled reaches the element", () => {
@@ -84,16 +77,14 @@ describe("Checkbox", () => {
   test("the tick is hidden until it is checked", () => {
     render(() => <Checkbox aria-label="Accept" />);
     const indicator = slot("checkbox-indicator");
-    expect(rulesFor(indicator.className.split(" ")[0] ?? "")).toContain("display: none");
+    expect(rulesFor(indicator.className)).toContain("display: none");
   });
 
   test("selected colours the box with the primary token", () => {
     render(() => <Checkbox aria-label="Accept" defaultSelected />);
     const box = slot("checkbox");
     expect(box.getAttribute("data-selected")).toBe("");
-    expect(rulesFor(box.className.split(" ")[0] ?? "")).toContain(
-      "[data-selected]{border-color: var(--primary);background-color: var(--primary)",
-    );
+    expect(rulesFor(box.className)).toContain("[data-selected]{background-color: var(--primary)}");
   });
 });
 
@@ -109,13 +100,13 @@ describe("Switch", () => {
     render(() => <Switch aria-label="Wi-Fi" size="sm" />);
     const track = slot("switch");
     expect(track.getAttribute("data-size")).toBe("sm");
-    expect(rulesFor(track.className.split(" ")[0] ?? "")).toContain('[data-size="sm"]');
+    expect(rulesFor(track.className)).toContain('[data-size="sm"]');
   });
 
   test("the thumb moves off the track's state", () => {
     render(() => <Switch aria-label="Wi-Fi" />);
     const thumb = slot("switch-thumb");
-    expect(rulesFor(thumb.className.split(" ")[0] ?? "")).toContain("[data-selected] .");
+    expect(rulesFor(thumb.className)).toContain("[data-selected] .");
   });
 });
 
@@ -142,7 +133,7 @@ describe("RadioGroup", () => {
       </RadioGroup>
     ));
     const mark = document.querySelector('[data-slot="radio-group-indicator"]')!;
-    const rules = rulesFor(mark.className.split(" ")[0] ?? "");
+    const rules = rulesFor(mark.className);
     expect(rules).toContain("display: none");
     expect(rules).toContain("[data-selected] .");
   });
@@ -155,7 +146,7 @@ describe("RadioGroup", () => {
     ));
     const items = slot("radio-group-items");
     expect(items.parentElement?.getAttribute("data-slot")).toBe("radio-group");
-    expect(rulesFor(items.className.split(" ")[0] ?? "")).toContain("display: grid");
+    expect(rulesFor(items.className)).toContain("display: grid");
   });
 });
 
@@ -190,9 +181,9 @@ describe("Toggle", () => {
   });
 
   test("the outline variant draws a border and the default does not", () => {
-    const [, outline] = toggleVariants({ variant: "outline" }).split(" ");
-    const [, plain] = toggleVariants({ variant: "default" }).split(" ");
-    expect(rulesFor(outline ?? "")).toContain("border-width: 1px");
+    const outline = toggleVariants({ variant: "outline" });
+    const plain = toggleVariants({ variant: "default" });
+    expect(rulesFor(outline ?? "")).toContain("border-top-width: 1px");
     expect(rulesFor(plain ?? "")).toContain("background-color: transparent");
   });
 });
@@ -221,8 +212,6 @@ describe("Avatar", () => {
       </Avatar>
     ));
     expect(slot("avatar").getAttribute("data-size")).toBe("sm");
-    expect(rulesFor(slot("avatar-fallback").className.split(" ")[0] ?? "")).toContain(
-      '[data-size="sm"] .',
-    );
+    expect(rulesFor(slot("avatar-fallback").className)).toContain('[data-size="sm"] .');
   });
 });

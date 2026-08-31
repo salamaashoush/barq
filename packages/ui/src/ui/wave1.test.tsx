@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { collectCss } from "@barqjs/css";
 import { render, screen } from "@barqjs/testing";
+
+import { rulesFor } from "../test-rules.ts";
 
 import { Alert, AlertDescription, AlertTitle, alertVariants } from "./alert.tsx";
 import { AspectRatio } from "./aspect-ratio.tsx";
@@ -11,13 +12,6 @@ import { Skeleton } from "./skeleton.tsx";
 import { Spinner } from "./spinner.tsx";
 
 /** Every rule a class produced, so a test asserts on the CSS rather than the name. */
-function rulesFor(className: string): string {
-  const mentions = new RegExp(`\\.${className}(?![\\w-])`);
-  return collectCss()
-    .split("@layer barq.ui{")
-    .filter((chunk) => mentions.test(chunk))
-    .join("\n");
-}
 
 describe("Alert", () => {
   test("is announced, and names its variant", () => {
@@ -37,8 +31,8 @@ describe("Alert", () => {
   });
 
   test("the destructive variant colours the text and the default does not", () => {
-    const [, destructive] = alertVariants({ variant: "destructive" }).split(" ");
-    const [, plain] = alertVariants({ variant: "default" }).split(" ");
+    const destructive = alertVariants({ variant: "destructive" });
+    const plain = alertVariants({ variant: "default" });
     expect(rulesFor(destructive ?? "")).toContain("color: var(--destructive)");
     expect(rulesFor(plain ?? "")).toContain("color: var(--card-foreground)");
   });
@@ -63,8 +57,9 @@ describe("Badge", () => {
   });
 
   test("the hover rules only apply when it is a link", () => {
-    const [, variant] = badgeVariants({ variant: "outline" }).split(" ");
-    expect(rulesFor(variant ?? "")).toContain(`a.${variant}:hover`);
+    const variant = badgeVariants({ variant: "outline" });
+    // The tint is on `a&:hover`, so a div in a list does not light up.
+    expect(rulesFor(variant)).toMatch(/a\.[\w-]+:hover/);
   });
 });
 
@@ -87,10 +82,8 @@ describe("Skeleton, Kbd and Spinner", () => {
   test("a skeleton is a slot with no size of its own", () => {
     const { container } = render(() => <Skeleton />);
     const node = container.querySelector('[data-slot="skeleton"]')!;
-    expect(rulesFor(node.className.split(" ")[0] ?? "")).not.toContain("width");
-    expect(rulesFor(node.className.split(" ")[0] ?? "")).toContain(
-      "animation: var(--animate-pulse)",
-    );
+    expect(rulesFor(node.className)).not.toContain("width");
+    expect(rulesFor(node.className)).toContain("animation: var(--animate-pulse)");
   });
 
   test("a key renders as <kbd> inside a group", () => {
@@ -123,8 +116,6 @@ describe("AspectRatio", () => {
     ));
     const box = container.querySelector('[data-slot="aspect-ratio"]') as HTMLElement;
     expect(box.style.getPropertyValue("--barq-aspect-ratio")).toBe(String(16 / 9));
-    expect(rulesFor(box.className.split(" ")[0] ?? "")).toContain(
-      "aspect-ratio: var(--barq-aspect-ratio, 1)",
-    );
+    expect(rulesFor(box.className)).toContain("aspect-ratio: var(--barq-aspect-ratio, 1)");
   });
 });

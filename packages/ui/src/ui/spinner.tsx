@@ -1,16 +1,15 @@
 import type { Incoming } from "@barqjs/core";
-import { clsx, css } from "@barqjs/css";
+
 import { LoaderCircle } from "@barqjs/lucide/icons/loader-circle";
 
 import "../theme/layers.ts";
+import { ui } from "../lib/atoms.ts";
 
-const spinner = css`
-  @layer barq.ui {
-    width: calc(var(--spacing) * 4);
-    height: calc(var(--spacing) * 4);
-    animation: var(--animate-spin);
-  }
-`;
+const spinner = ui({
+  width: "calc(var(--spacing) * 4)",
+  height: "calc(var(--spacing) * 4)",
+  animation: "var(--animate-spin)",
+});
 
 export interface SpinnerProps {
   class?: string;
@@ -39,7 +38,7 @@ export function Spinner(props: Incoming<SpinnerProps>) {
       data-testid={props["data-testid"]?.()}
       id={props.id?.()}
       style={props.style?.()}
-      class={clsx(spinner, props.class?.(), props.className?.())}
+      class={ui(spinner, props.class?.(), props.className?.())}
     />
   );
 }

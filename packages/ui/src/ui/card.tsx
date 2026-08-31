@@ -1,102 +1,82 @@
 import type { Incoming } from "@barqjs/core";
-import { clsx, css } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
-const card = css`
-  @layer barq.ui {
-    display: flex;
-    flex-direction: column;
-    gap: calc(var(--spacing) * 6);
-    border-radius: calc(var(--radius) + 4px);
-    border-style: var(--ui-border-style);
-    border-width: 1px;
-    background-color: var(--card);
-    padding-block: calc(var(--spacing) * 6);
-    color: var(--card-foreground);
-    --ui-shadow:
-      0 1px 3px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.1)),
-      0 1px 2px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1));
-    box-shadow:
-      var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-      var(--ui-ring-shadow), var(--ui-shadow);
-  }
-`;
+const card = ui({
+  display: "flex",
+  flexDirection: "column",
+  gap: "calc(var(--spacing) * 6)",
+  borderRadius: "calc(var(--radius) + 4px)",
+  borderStyle: "var(--ui-border-style)",
+  borderWidth: "1px",
+  backgroundColor: "var(--card)",
+  paddingBlock: "calc(var(--spacing) * 6)",
+  color: "var(--card-foreground)",
+  "--ui-shadow":
+    "0 1px 3px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
+  boxShadow:
+    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+});
 
-const header = css`
-  @layer barq.ui {
-    container-type: inline-size;
-    container-name: card-header;
-    display: grid;
-    grid-auto-rows: min-content;
-    grid-template-rows: auto auto;
-    align-items: flex-start;
-    gap: calc(var(--spacing) * 2);
-    padding-inline: calc(var(--spacing) * 6);
-    &:has([data-slot="card-action"]) {
-      grid-template-columns: 1fr auto;
-    }
-  }
-`;
+const header = ui({
+  containerType: "inline-size",
+  containerName: "card-header",
+  display: "grid",
+  gridAutoRows: "min-content",
+  gridTemplateRows: "auto auto",
+  alignItems: "flex-start",
+  gap: "calc(var(--spacing) * 2)",
+  paddingInline: "calc(var(--spacing) * 6)",
+  ':has([data-slot="card-action"])': {
+    gridTemplateColumns: "1fr auto",
+  },
+});
 
-const headerBordered = css`
-  @layer barq.ui {
-    border-bottom-style: var(--ui-border-style);
-    border-bottom-width: 1px;
-    padding-bottom: calc(var(--spacing) * 6);
-  }
-`;
+const headerBordered = ui({
+  borderBottomStyle: "var(--ui-border-style)",
+  borderBottomWidth: "1px",
+  paddingBottom: "calc(var(--spacing) * 6)",
+});
 
-const title = css`
-  @layer barq.ui {
-    --ui-leading: 1;
-    line-height: 1;
-    --ui-font-weight: var(--font-weight-semibold);
-    font-weight: var(--font-weight-semibold);
-  }
-`;
+const title = ui({
+  "--ui-leading": "1",
+  lineHeight: "1",
+  "--ui-font-weight": "var(--font-weight-semibold)",
+  fontWeight: "var(--font-weight-semibold)",
+});
 
-const description = css`
-  @layer barq.ui {
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    color: var(--muted-foreground);
-  }
-`;
+const description = ui({
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  color: "var(--muted-foreground)",
+});
 
-const action = css`
-  @layer barq.ui {
-    grid-column-start: 2;
-    grid-row: span 2 / span 2;
-    grid-row-start: 1;
-    align-self: flex-start;
-    justify-self: flex-end;
-  }
-`;
+const action = ui({
+  gridColumnStart: "2",
+  gridRow: "span 2 / span 2",
+  gridRowStart: "1",
+  alignSelf: "flex-start",
+  justifySelf: "flex-end",
+});
 
-const content = css`
-  @layer barq.ui {
-    padding-inline: calc(var(--spacing) * 6);
-  }
-`;
+const content = ui({
+  paddingInline: "calc(var(--spacing) * 6)",
+});
 
-const footer = css`
-  @layer barq.ui {
-    display: flex;
-    align-items: center;
-    padding-inline: calc(var(--spacing) * 6);
-  }
-`;
+const footer = ui({
+  display: "flex",
+  alignItems: "center",
+  paddingInline: "calc(var(--spacing) * 6)",
+});
 
-const footerBordered = css`
-  @layer barq.ui {
-    border-top-style: var(--ui-border-style);
-    border-top-width: 1px;
-    padding-top: calc(var(--spacing) * 6);
-  }
-`;
+const footerBordered = ui({
+  borderTopStyle: "var(--ui-border-style)",
+  borderTopWidth: "1px",
+  paddingTop: "calc(var(--spacing) * 6)",
+});
 
 /**
  * ```tsx
@@ -128,7 +108,7 @@ export interface CardEdgeProps extends UiProps {
 }
 
 export function CardHeader(props: Incoming<CardEdgeProps>) {
-  const className = (): string => clsx(header, props.bordered?.() === true && headerBordered);
+  const className = (): string => ui(header, props.bordered?.() === true && headerBordered);
   return <div {...uiProps("card-header", className, props)}>{props.children}</div>;
 }
 
@@ -150,6 +130,6 @@ export function CardContent(props: Incoming<UiProps>) {
 }
 
 export function CardFooter(props: Incoming<CardEdgeProps>) {
-  const className = (): string => clsx(footer, props.bordered?.() === true && footerBordered);
+  const className = (): string => ui(footer, props.bordered?.() === true && footerBordered);
   return <div {...uiProps("card-footer", className, props)}>{props.children}</div>;
 }

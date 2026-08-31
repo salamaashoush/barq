@@ -1,176 +1,161 @@
 import type { Incoming } from "@barqjs/core";
-import { css } from "@barqjs/css";
+import { firstThatWorks } from "@barqjs/css";
 import { mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
+import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { controlProps } from "../lib/slot.ts";
 
-const input = css`
-  @layer barq.ui {
-    height: calc(var(--spacing) * 9);
-    width: 100%;
-    min-width: 0px;
-    border-radius: calc(var(--radius) - 2px);
-    border-style: var(--ui-border-style);
-    border-width: 1px;
-    border-color: var(--input);
-    background-color: transparent;
-    padding-inline: calc(var(--spacing) * 3);
-    padding-block: var(--spacing);
-    font-size: var(--text-base);
-    line-height: var(--ui-leading, var(--text-base--line-height));
-    --ui-shadow: 0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05));
-    box-shadow:
-      var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-      var(--ui-ring-shadow), var(--ui-shadow);
-    transition-property: color, box-shadow;
-    transition-timing-function: var(--ui-ease, var(--default-transition-timing-function));
-    transition-duration: var(--ui-duration, var(--default-transition-duration));
-    --ui-outline-style: none;
-    outline-style: none;
-    & ::selection {
-      background-color: var(--primary);
-    }
-    &::selection {
-      background-color: var(--primary);
-    }
-    & ::selection {
-      color: var(--primary-foreground);
-    }
-    &::selection {
-      color: var(--primary-foreground);
-    }
-    &::file-selector-button {
-      display: inline-flex;
-      height: calc(var(--spacing) * 7);
-      border-style: var(--ui-border-style);
-      border-width: 0px;
-      background-color: transparent;
-      font-size: var(--text-sm);
-      line-height: var(--ui-leading, var(--text-sm--line-height));
-      --ui-font-weight: var(--font-weight-medium);
-      font-weight: var(--font-weight-medium);
-      color: var(--foreground);
-    }
-    &::placeholder {
-      color: var(--muted-foreground);
-    }
-    &:focus-visible {
-      border-color: var(--ring);
-      --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width))
-        var(--ui-ring-color, currentcolor);
-      box-shadow:
-        var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-        var(--ui-ring-shadow), var(--ui-shadow);
-      --ui-ring-color: var(--ring);
-      @supports (color: color-mix(in lab, red, red)) {
-        --ui-ring-color: color-mix(in oklab, var(--ring) 50%, transparent);
-      }
-    }
-    &:disabled {
-      pointer-events: none;
-      cursor: not-allowed;
-      opacity: 50%;
-    }
-    &[aria-invalid="true"] {
-      border-color: var(--destructive);
-      --ui-ring-color: var(--destructive);
-      @supports (color: color-mix(in lab, red, red)) {
-        --ui-ring-color: color-mix(in oklab, var(--destructive) 20%, transparent);
-      }
-    }
-    @media (width >= 48rem) {
-      & {
-        font-size: var(--text-sm);
-        line-height: var(--ui-leading, var(--text-sm--line-height));
-      }
-    }
-    &:is(.dark *) {
-      background-color: var(--input);
-      @supports (color: color-mix(in lab, red, red)) {
-        background-color: color-mix(in oklab, var(--input) 30%, transparent);
-      }
-    }
-    &:is(.dark *)[aria-invalid="true"] {
-      --ui-ring-color: var(--destructive);
-      @supports (color: color-mix(in lab, red, red)) {
-        --ui-ring-color: color-mix(in oklab, var(--destructive) 40%, transparent);
-      }
-    }
-  }
-`;
+const input = ui({
+  height: "calc(var(--spacing) * 9)",
+  width: "100%",
+  minWidth: "0px",
+  borderRadius: "calc(var(--radius) - 2px)",
+  borderStyle: "var(--ui-border-style)",
+  borderWidth: "1px",
+  borderColor: "var(--input)",
+  backgroundColor: "transparent",
+  paddingInline: "calc(var(--spacing) * 3)",
+  paddingBlock: "var(--spacing)",
+  fontSize: "var(--text-base)",
+  lineHeight: "var(--ui-leading, var(--text-base--line-height))",
+  "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
+  boxShadow:
+    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+  transitionProperty: "color, box-shadow",
+  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
+  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
+  "--ui-outline-style": "none",
+  outlineStyle: "none",
+  "::selection": {
+    backgroundColor: firstThatWorks("var(--primary)", "var(--primary)"),
+    color: firstThatWorks("var(--primary-foreground)", "var(--primary-foreground)"),
+  },
+  "::file-selector-button": {
+    display: "inline-flex",
+    height: "calc(var(--spacing) * 7)",
+    borderStyle: "var(--ui-border-style)",
+    borderWidth: "0px",
+    backgroundColor: "transparent",
+    fontSize: "var(--text-sm)",
+    lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+    "--ui-font-weight": "var(--font-weight-medium)",
+    fontWeight: "var(--font-weight-medium)",
+    color: "var(--foreground)",
+  },
+  "::placeholder": {
+    color: "var(--muted-foreground)",
+  },
+  ":focus-visible": {
+    borderColor: "var(--ring)",
+    "--ui-ring-shadow":
+      "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+    boxShadow:
+      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+    "--ui-ring-color": "var(--ring)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
+    },
+  },
+  ":disabled": {
+    pointerEvents: "none",
+    cursor: "not-allowed",
+    opacity: "50%",
+  },
+  '[aria-invalid="true"]': {
+    borderColor: "var(--destructive)",
+    "--ui-ring-color": "var(--destructive)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      "--ui-ring-color": "color-mix(in oklab, var(--destructive) 20%, transparent)",
+    },
+  },
+  "@media (width >= 48rem)": {
+    "&": {
+      fontSize: "var(--text-sm)",
+      lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+    },
+  },
+  ":is(.dark *)": {
+    backgroundColor: "var(--input)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      backgroundColor: "color-mix(in oklab, var(--input) 30%, transparent)",
+    },
+  },
+  ':is(.dark *)[aria-invalid="true"]': {
+    "--ui-ring-color": "var(--destructive)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      "--ui-ring-color": "color-mix(in oklab, var(--destructive) 40%, transparent)",
+    },
+  },
+});
 
-const textarea = css`
-  @layer barq.ui {
-    display: flex;
-    field-sizing: content;
-    min-height: calc(var(--spacing) * 16);
-    width: 100%;
-    border-radius: calc(var(--radius) - 2px);
-    border-style: var(--ui-border-style);
-    border-width: 1px;
-    border-color: var(--input);
-    background-color: transparent;
-    padding-inline: calc(var(--spacing) * 3);
-    padding-block: calc(var(--spacing) * 2);
-    font-size: var(--text-base);
-    line-height: var(--ui-leading, var(--text-base--line-height));
-    --ui-shadow: 0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05));
-    box-shadow:
-      var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-      var(--ui-ring-shadow), var(--ui-shadow);
-    transition-property: color, box-shadow;
-    transition-timing-function: var(--ui-ease, var(--default-transition-timing-function));
-    transition-duration: var(--ui-duration, var(--default-transition-duration));
-    --ui-outline-style: none;
-    outline-style: none;
-    &::placeholder {
-      color: var(--muted-foreground);
-    }
-    &:focus-visible {
-      border-color: var(--ring);
-      --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width))
-        var(--ui-ring-color, currentcolor);
-      box-shadow:
-        var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-        var(--ui-ring-shadow), var(--ui-shadow);
-      --ui-ring-color: var(--ring);
-      @supports (color: color-mix(in lab, red, red)) {
-        --ui-ring-color: color-mix(in oklab, var(--ring) 50%, transparent);
-      }
-    }
-    &:disabled {
-      cursor: not-allowed;
-      opacity: 50%;
-    }
-    &[aria-invalid="true"] {
-      border-color: var(--destructive);
-      --ui-ring-color: var(--destructive);
-      @supports (color: color-mix(in lab, red, red)) {
-        --ui-ring-color: color-mix(in oklab, var(--destructive) 20%, transparent);
-      }
-    }
-    @media (width >= 48rem) {
-      & {
-        font-size: var(--text-sm);
-        line-height: var(--ui-leading, var(--text-sm--line-height));
-      }
-    }
-    &:is(.dark *) {
-      background-color: var(--input);
-      @supports (color: color-mix(in lab, red, red)) {
-        background-color: color-mix(in oklab, var(--input) 30%, transparent);
-      }
-    }
-    &:is(.dark *)[aria-invalid="true"] {
-      --ui-ring-color: var(--destructive);
-      @supports (color: color-mix(in lab, red, red)) {
-        --ui-ring-color: color-mix(in oklab, var(--destructive) 40%, transparent);
-      }
-    }
-  }
-`;
+const textarea = ui({
+  display: "flex",
+  fieldSizing: "content",
+  minHeight: "calc(var(--spacing) * 16)",
+  width: "100%",
+  borderRadius: "calc(var(--radius) - 2px)",
+  borderStyle: "var(--ui-border-style)",
+  borderWidth: "1px",
+  borderColor: "var(--input)",
+  backgroundColor: "transparent",
+  paddingInline: "calc(var(--spacing) * 3)",
+  paddingBlock: "calc(var(--spacing) * 2)",
+  fontSize: "var(--text-base)",
+  lineHeight: "var(--ui-leading, var(--text-base--line-height))",
+  "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
+  boxShadow:
+    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+  transitionProperty: "color, box-shadow",
+  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
+  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
+  "--ui-outline-style": "none",
+  outlineStyle: "none",
+  "::placeholder": {
+    color: "var(--muted-foreground)",
+  },
+  ":focus-visible": {
+    borderColor: "var(--ring)",
+    "--ui-ring-shadow":
+      "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+    boxShadow:
+      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+    "--ui-ring-color": "var(--ring)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
+    },
+  },
+  ":disabled": {
+    cursor: "not-allowed",
+    opacity: "50%",
+  },
+  '[aria-invalid="true"]': {
+    borderColor: "var(--destructive)",
+    "--ui-ring-color": "var(--destructive)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      "--ui-ring-color": "color-mix(in oklab, var(--destructive) 20%, transparent)",
+    },
+  },
+  "@media (width >= 48rem)": {
+    "&": {
+      fontSize: "var(--text-sm)",
+      lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+    },
+  },
+  ":is(.dark *)": {
+    backgroundColor: "var(--input)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      backgroundColor: "color-mix(in oklab, var(--input) 30%, transparent)",
+    },
+  },
+  ':is(.dark *)[aria-invalid="true"]': {
+    "--ui-ring-color": "var(--destructive)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      "--ui-ring-color": "color-mix(in oklab, var(--destructive) 40%, transparent)",
+    },
+  },
+});
 
 export interface InputProps extends UiProps {
   type?: string;

@@ -1,24 +1,23 @@
 import type { Key } from "@barqjs/aria/collections";
 import type { FilterFn } from "@barqjs/aria/combobox";
 import { getOwner, Show, signal, type Child, type Incoming } from "@barqjs/core";
-import { clsx, css } from "@barqjs/css";
+
 import { Check } from "@barqjs/lucide/icons/check";
 import { ChevronsUpDown } from "@barqjs/lucide/icons/chevrons-up-down";
 
 import "../theme/layers.ts";
+import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { Button } from "./button.tsx";
 import { Command, CommandItem } from "./command.tsx";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover.tsx";
 
-const trigger = css`
-  @layer barq.ui {
-    width: 100%;
-    justify-content: space-between;
-    --ui-font-weight: var(--font-weight-normal);
-    font-weight: var(--font-weight-normal);
-  }
-`;
+const trigger = ui({
+  width: "100%",
+  justifyContent: "space-between",
+  "--ui-font-weight": "var(--font-weight-normal)",
+  fontWeight: "var(--font-weight-normal)",
+});
 
 /**
  * The TRIGGER's width, published by `overlayPosition`.
@@ -27,73 +26,65 @@ const trigger = css`
  * `width: 100%` cannot do it: the popover is portalled, so 100% resolves
  * against the body and the list came out as wide as the page.
  */
-const content = css`
-  @layer barq.ui {
-    width: var(--barq-trigger-width, auto);
-    min-width: var(--barq-trigger-width, auto);
-    padding: 0px;
-  }
-`;
+const content = ui({
+  width: "var(--barq-trigger-width, auto)",
+  minWidth: "var(--barq-trigger-width, auto)",
+  padding: "0px",
+});
 
-const item = css`
-  @layer barq.ui {
-    position: relative;
-    display: flex;
-    width: 100%;
-    cursor: default;
-    align-items: center;
-    gap: calc(var(--spacing) * 2);
-    border-radius: calc(var(--radius) - 4px);
-    padding-block: calc(var(--spacing) * 1.5);
-    padding-right: calc(var(--spacing) * 8);
-    padding-left: calc(var(--spacing) * 2);
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    --ui-outline-style: none;
-    outline-style: none;
-    @media (forced-colors: active) {
-      outline: 2px solid transparent;
-      outline-offset: 2px;
-    }
-    -webkit-user-select: none;
-    user-select: none;
-    &[data-focused] {
-      background-color: var(--accent);
-      color: var(--accent-foreground);
-    }
-    &[data-disabled] {
-      pointer-events: none;
-      opacity: 50%;
-    }
-    & svg {
-      pointer-events: none;
-      flex-shrink: 0;
-    }
-    & svg:not([class*="size-"]) {
-      width: calc(var(--spacing) * 4);
-      height: calc(var(--spacing) * 4);
-    }
-  }
-`;
+const item = ui({
+  position: "relative",
+  display: "flex",
+  width: "100%",
+  cursor: "default",
+  alignItems: "center",
+  gap: "calc(var(--spacing) * 2)",
+  borderRadius: "calc(var(--radius) - 4px)",
+  paddingBlock: "calc(var(--spacing) * 1.5)",
+  paddingRight: "calc(var(--spacing) * 8)",
+  paddingLeft: "calc(var(--spacing) * 2)",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  "--ui-outline-style": "none",
+  outlineStyle: "none",
+  "-webkit-user-select": "none",
+  userSelect: "none",
+  "@media (forced-colors: active)": {
+    outline: "2px solid transparent",
+    outlineOffset: "2px",
+  },
+  "[data-focused]": {
+    backgroundColor: "var(--accent)",
+    color: "var(--accent-foreground)",
+  },
+  "[data-disabled]": {
+    pointerEvents: "none",
+    opacity: "50%",
+  },
+  "& svg": {
+    pointerEvents: "none",
+    flexShrink: "0",
+  },
+  '& svg:not([class*="size-"])': {
+    width: "calc(var(--spacing) * 4)",
+    height: "calc(var(--spacing) * 4)",
+  },
+});
 
-const indicator = css`
-  @layer barq.ui {
-    pointer-events: none;
-    position: absolute;
-    right: calc(var(--spacing) * 2);
-    display: flex;
-    width: calc(var(--spacing) * 4);
-    height: calc(var(--spacing) * 4);
-    align-items: center;
-    justify-content: center;
-  }
-`;
+const indicator = ui({
+  pointerEvents: "none",
+  position: "absolute",
+  right: "calc(var(--spacing) * 2)",
+  display: "flex",
+  width: "calc(var(--spacing) * 4)",
+  height: "calc(var(--spacing) * 4)",
+  alignItems: "center",
+  justifyContent: "center",
+});
 
-const chevron = css`
-  @layer barq.ui {
-    opacity: 50%;
-  }
-`;
+const chevron = ui({
+  opacity: "50%",
+});
 
 export interface ComboboxProps<T> extends UiProps {
   /** Everything that can be chosen, before the typed text narrows it. */
@@ -165,7 +156,7 @@ export function Combobox<T>(props: Incoming<ComboboxProps<T>>) {
           aria-label={props["aria-label"]?.()}
           isDisabled={props.isDisabled?.()}
           data-slot="combobox-trigger"
-          class={clsx(trigger, props.class?.(), props.className?.())}
+          class={ui(trigger, props.class?.(), props.className?.())}
         >
           {shown()}
           <ChevronsUpDown class={chevron} aria-hidden="true" />

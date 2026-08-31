@@ -1,36 +1,32 @@
 import { progressBar } from "@barqjs/aria/link";
 import { fromProps, mergeProps } from "@barqjs/aria/utils";
 import { Show, type Incoming } from "@barqjs/core";
-import { clsx, css } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 
-const track = css`
-  @layer barq.ui {
-    position: relative;
-    height: calc(var(--spacing) * 2);
-    width: 100%;
-    overflow: hidden;
-    border-radius: calc(infinity * 1px);
-    background-color: var(--primary);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--primary) 20%, transparent);
-    }
-  }
-`;
+const track = ui({
+  position: "relative",
+  height: "calc(var(--spacing) * 2)",
+  width: "100%",
+  overflow: "hidden",
+  borderRadius: "calc(infinity * 1px)",
+  backgroundColor: "var(--primary)",
+  "@supports (color: color-mix(in lab, red, red))": {
+    backgroundColor: "color-mix(in oklab, var(--primary) 20%, transparent)",
+  },
+});
 
-const bar = css`
-  @layer barq.ui {
-    height: 100%;
-    width: 100%;
-    flex: 1;
-    background-color: var(--primary);
-    transition-property: all;
-    transition-timing-function: var(--ui-ease, var(--default-transition-timing-function));
-    transition-duration: var(--ui-duration, var(--default-transition-duration));
-  }
-`;
+const bar = ui({
+  height: "100%",
+  width: "100%",
+  flex: "1",
+  backgroundColor: "var(--primary)",
+  transitionProperty: "all",
+  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
+  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
+});
 
 export interface ProgressProps extends UiProps {
   /** 0 to `maxValue`. @default 0 */
@@ -64,7 +60,7 @@ export function Progress(props: Incoming<ProgressProps>) {
   const elementProps = mergeProps(progressBarProps, {
     "data-slot": "progress",
     "data-testid": () => props["data-testid"]?.(),
-    class: () => clsx(track, props.class?.(), props.className?.()),
+    class: () => ui(track, props.class?.(), props.className?.()),
     style: () => props.style?.(),
   });
 
@@ -88,16 +84,14 @@ export function Progress(props: Incoming<ProgressProps>) {
 }
 
 /** The label is named to assistive technology and drawn nowhere. */
-const visuallyHidden = css`
-  @layer barq.ui {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip-path: inset(50%);
-    white-space: nowrap;
-    border-width: 0;
-  }
-`;
+const visuallyHidden = ui({
+  position: "absolute",
+  width: "1px",
+  height: "1px",
+  padding: "0",
+  margin: "-1px",
+  overflow: "hidden",
+  clipPath: "inset(50%)",
+  whiteSpace: "nowrap",
+  borderWidth: "0",
+});

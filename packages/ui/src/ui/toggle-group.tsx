@@ -1,61 +1,55 @@
 import { context, getContext, install, getOwner, signal, type Incoming } from "@barqjs/core";
-import { clsx, css } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Toggle, type ToggleSize, type ToggleVariant } from "./toggle.tsx";
 
-const group = css`
-  @layer barq.ui {
-    display: flex;
-    width: fit-content;
-    align-items: center;
-    border-radius: calc(var(--radius) - 2px);
-    gap: calc(var(--spacing) * var(--barq-toggle-gap, 0));
-    &[data-spacing="default"][data-variant="outline"] {
-      --ui-shadow: 0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05));
-      box-shadow:
-        var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-        var(--ui-ring-shadow), var(--ui-shadow);
-    }
-  }
-`;
+const group = ui({
+  display: "flex",
+  width: "fit-content",
+  alignItems: "center",
+  borderRadius: "calc(var(--radius) - 2px)",
+  gap: "calc(var(--spacing) * var(--barq-toggle-gap, 0))",
+  '[data-spacing="default"][data-variant="outline"]': {
+    "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
+    boxShadow:
+      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+  },
+});
 
-const item = css`
-  @layer barq.ui {
-    width: auto;
-    min-width: 0px;
-    flex-shrink: 0;
-    padding-inline: calc(var(--spacing) * 3);
-    &[data-spacing="0"] {
-      border-radius: 0;
-      --ui-shadow: 0 0 #0000;
-      box-shadow:
-        var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-        var(--ui-ring-shadow), var(--ui-shadow);
-    }
-    &[data-spacing="0"]:first-child {
-      border-top-left-radius: calc(var(--radius) - 2px);
-      border-bottom-left-radius: calc(var(--radius) - 2px);
-    }
-    &[data-spacing="0"]:last-child {
-      border-top-right-radius: calc(var(--radius) - 2px);
-      border-bottom-right-radius: calc(var(--radius) - 2px);
-    }
-    &[data-spacing="0"][data-variant="outline"] {
-      border-left-style: var(--ui-border-style);
-      border-left-width: 0px;
-    }
-    &[data-spacing="0"][data-variant="outline"]:first-child {
-      border-left-style: var(--ui-border-style);
-      border-left-width: 1px;
-    }
-    &[data-focus-visible] {
-      z-index: 10;
-    }
-  }
-`;
+const item = ui({
+  width: "auto",
+  minWidth: "0px",
+  flexShrink: "0",
+  paddingInline: "calc(var(--spacing) * 3)",
+  '[data-spacing="0"]': {
+    borderRadius: "0",
+    "--ui-shadow": "0 0 #0000",
+    boxShadow:
+      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+  },
+  '[data-spacing="0"]:first-child': {
+    borderTopLeftRadius: "calc(var(--radius) - 2px)",
+    borderBottomLeftRadius: "calc(var(--radius) - 2px)",
+  },
+  '[data-spacing="0"]:last-child': {
+    borderTopRightRadius: "calc(var(--radius) - 2px)",
+    borderBottomRightRadius: "calc(var(--radius) - 2px)",
+  },
+  '[data-spacing="0"][data-variant="outline"]': {
+    borderLeftStyle: "var(--ui-border-style)",
+    borderLeftWidth: "0px",
+  },
+  '[data-spacing="0"][data-variant="outline"]:first-child': {
+    borderLeftStyle: "var(--ui-border-style)",
+    borderLeftWidth: "1px",
+  },
+  "[data-focus-visible]": {
+    zIndex: "10",
+  },
+});
 
 interface GroupValue {
   readonly variant: () => ToggleVariant | undefined;
@@ -123,7 +117,7 @@ export function ToggleGroup(props: Incoming<ToggleGroupProps>) {
     }));
   }
 
-  const className = (): string => clsx(group, props.class?.(), props.className?.());
+  const className = (): string => ui(group, props.class?.(), props.className?.());
   return (
     <div
       {...uiProps("toggle-group", className, props)}
@@ -163,7 +157,7 @@ export function ToggleGroupItem(props: Incoming<ToggleGroupItemProps>) {
       size={held.size()}
       data-slot="toggle-group-item"
       data-spacing={String(held.spacing())}
-      class={clsx(item, props.class?.(), props.className?.())}
+      class={ui(item, props.class?.(), props.className?.())}
     >
       {props.children}
     </Toggle>

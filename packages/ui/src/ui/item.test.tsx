@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { collectCss } from "@barqjs/css";
 import { render, screen } from "@barqjs/testing";
+
+import { rulesFor } from "../test-rules.ts";
 
 import {
   Item,
@@ -16,14 +17,6 @@ import {
   ItemTitle,
   itemVariants,
 } from "./item.tsx";
-
-function rulesFor(className: string): string {
-  const mentions = new RegExp(`\\.${className}(?![\\w-])`);
-  return collectCss()
-    .split("@layer barq.ui{")
-    .filter((chunk) => mentions.test(chunk))
-    .join("\n");
-}
 
 function slot(name: string): HTMLElement {
   const found = document.querySelector(`[data-slot="${name}"]`);
@@ -97,7 +90,7 @@ describe("Item", () => {
     expect(item.tagName).toBe("A");
     expect(item.getAttribute("href")).toBe("/reports/q3");
 
-    const base = itemVariants().split(" ")[0] ?? "";
+    const base = itemVariants();
     // `[a&]:hover:bg-accent/50`: a div in a list must not light up under the
     // pointer when there is nothing to press.
     expect(rulesFor(base)).toContain("a.");
@@ -109,15 +102,15 @@ describe("Item", () => {
   });
 
   test("media lifts itself when the row has a description", () => {
-    const base = itemMediaVariants().split(" ")[0] ?? "";
+    const base = itemMediaVariants();
     expect(rulesFor(base)).toContain('[data-slot="item"]:has([data-slot="item-description"])');
   });
 
   test("the icon variant is a bordered square", () => {
-    const icon = itemMediaVariants({ variant: "icon" }).split(" ").at(-1) ?? "";
+    const icon = itemMediaVariants({ variant: "icon" });
     const rules = rulesFor(icon);
     expect(rules).toContain("background-color: var(--muted)");
-    expect(rules).toContain("border-width: 1px");
+    expect(rules).toContain("border-top-width: 1px");
   });
 
   test("a second content column does not grow", () => {
@@ -127,7 +120,7 @@ describe("Item", () => {
         <ItemContent>b</ItemContent>
       </Item>
     ));
-    const className = slot("item-content").className.split(" ")[0] ?? "";
+    const className = slot("item-content").className;
     expect(rulesFor(className)).toContain('+ [data-slot="item-content"]{flex: none}');
   });
 

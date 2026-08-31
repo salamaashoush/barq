@@ -9,198 +9,180 @@ import {
   type TabsComponentProps,
 } from "@barqjs/aria/tabs";
 import type { Incoming } from "@barqjs/core";
-import { clsx, css, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { ui, uiVariants } from "../lib/atoms.ts";
 
-const root = css`
-  @layer barq.ui {
-    display: flex;
-    gap: calc(var(--spacing) * 2);
-    &[data-orientation="horizontal"] {
-      flex-direction: column;
-    }
-  }
-`;
+const root = ui({
+  display: "flex",
+  gap: "calc(var(--spacing) * 2)",
+  '[data-orientation="horizontal"]': {
+    flexDirection: "column",
+  },
+});
 
-const trigger = css`
-  @layer barq.ui {
-    position: relative;
-    display: inline-flex;
-    height: calc(100% - 1px);
-    flex: 1;
-    align-items: center;
-    justify-content: center;
-    gap: calc(var(--spacing) * 1.5);
-    border-radius: calc(var(--radius) - 2px);
-    border-style: var(--ui-border-style);
-    border-width: 1px;
-    border-color: transparent;
-    padding-inline: calc(var(--spacing) * 2);
-    padding-block: var(--spacing);
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    --ui-font-weight: var(--font-weight-medium);
-    font-weight: var(--font-weight-medium);
-    white-space: nowrap;
-    color: var(--foreground);
-    @supports (color: color-mix(in lab, red, red)) {
-      color: color-mix(in oklab, var(--foreground) 60%, transparent);
-    }
-    transition-property: all;
-    transition-timing-function: var(--ui-ease, var(--default-transition-timing-function));
-    transition-duration: var(--ui-duration, var(--default-transition-duration));
-    &::after {
-      content: var(--ui-content);
-      position: absolute;
-      background-color: var(--foreground);
-      opacity: 0%;
-      transition-property: opacity;
-      transition-timing-function: var(--ui-ease, var(--default-transition-timing-function));
-      transition-duration: var(--ui-duration, var(--default-transition-duration));
-    }
-    @media (hover: hover) {
-      &:hover {
-        color: var(--foreground);
-      }
-    }
-    &:is(.dark *) {
-      color: var(--muted-foreground);
-    }
-    @media (hover: hover) {
-      &:is(.dark *):hover {
-        color: var(--foreground);
-      }
-    }
-    &[data-selected] {
-      background-color: var(--background);
-      color: var(--foreground);
-    }
-    &:is(.dark *)[data-selected] {
-      border-color: var(--input);
-      background-color: var(--input);
-      @supports (color: color-mix(in lab, red, red)) {
-        background-color: color-mix(in oklab, var(--input) 30%, transparent);
-      }
-      color: var(--foreground);
-    }
-    &[data-focus-visible] {
-      border-color: var(--ring);
-      --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width))
-        var(--ui-ring-color, currentcolor);
-      box-shadow:
-        var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-        var(--ui-ring-shadow), var(--ui-shadow);
-      --ui-ring-color: var(--ring);
-      @supports (color: color-mix(in lab, red, red)) {
-        --ui-ring-color: color-mix(in oklab, var(--ring) 50%, transparent);
-      }
-      outline-style: var(--ui-outline-style);
-      outline-width: 1px;
-      outline-color: var(--ring);
-    }
-    &[data-disabled] {
-      pointer-events: none;
-      opacity: 50%;
-    }
-    & svg {
-      pointer-events: none;
-      flex-shrink: 0;
-    }
-    & svg:not([class*="size-"]) {
-      width: calc(var(--spacing) * 4);
-      height: calc(var(--spacing) * 4);
-    }
-    [data-slot="tabs-list"][data-variant="default"] &[data-selected] {
-      --ui-shadow:
-        0 1px 3px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.1)),
-        0 1px 2px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1));
-      box-shadow:
-        var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-        var(--ui-ring-shadow), var(--ui-shadow);
-    }
-    [data-slot="tabs-list"][data-variant="line"] & {
-      background-color: transparent;
-    }
-    [data-slot="tabs-list"][data-variant="line"] &[data-selected] {
-      background-color: transparent;
-      --ui-shadow: 0 0 #0000;
-      box-shadow:
-        var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-        var(--ui-ring-shadow), var(--ui-shadow);
-    }
-    [data-slot="tabs-list"][data-variant="line"] &[data-selected]::after {
-      content: var(--ui-content);
-      opacity: 100%;
-    }
-    [data-slot="tabs-list"][data-variant="line"] &:is(.dark *)[data-selected] {
-      border-color: transparent;
-      background-color: transparent;
-    }
-    [data-slot="tabs"][data-orientation="horizontal"] &::after {
-      content: var(--ui-content);
-      inset-inline: 0px;
-      bottom: -5px;
-      height: calc(var(--spacing) * 0.5);
-    }
-    [data-slot="tabs"][data-orientation="vertical"] & {
-      width: 100%;
-      justify-content: flex-start;
-    }
-    [data-slot="tabs"][data-orientation="vertical"] &::after {
-      content: var(--ui-content);
-      inset-block: 0px;
-      right: calc(var(--spacing) * -1);
-      width: calc(var(--spacing) * 0.5);
-    }
-  }
-`;
+const trigger = ui({
+  position: "relative",
+  display: "inline-flex",
+  height: "calc(100% - 1px)",
+  flex: "1",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "calc(var(--spacing) * 1.5)",
+  borderRadius: "calc(var(--radius) - 2px)",
+  borderStyle: "var(--ui-border-style)",
+  borderWidth: "1px",
+  borderColor: "transparent",
+  paddingInline: "calc(var(--spacing) * 2)",
+  paddingBlock: "var(--spacing)",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  "--ui-font-weight": "var(--font-weight-medium)",
+  fontWeight: "var(--font-weight-medium)",
+  whiteSpace: "nowrap",
+  color: "var(--foreground)",
+  transitionProperty: "all",
+  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
+  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
+  "@supports (color: color-mix(in lab, red, red))": {
+    color: "color-mix(in oklab, var(--foreground) 60%, transparent)",
+  },
+  "::after": {
+    content: "var(--ui-content)",
+    position: "absolute",
+    backgroundColor: "var(--foreground)",
+    opacity: "0%",
+    transitionProperty: "opacity",
+    transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
+    transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
+  },
+  "@media (hover: hover)": {
+    ":hover": {
+      color: "var(--foreground)",
+    },
+    ":is(.dark *):hover": {
+      color: "var(--foreground)",
+    },
+  },
+  ":is(.dark *)": {
+    color: "var(--muted-foreground)",
+  },
+  "[data-selected]": {
+    backgroundColor: "var(--background)",
+    color: "var(--foreground)",
+  },
+  ":is(.dark *)[data-selected]": {
+    borderColor: "var(--input)",
+    backgroundColor: "var(--input)",
+    color: "var(--foreground)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      backgroundColor: "color-mix(in oklab, var(--input) 30%, transparent)",
+    },
+  },
+  "[data-focus-visible]": {
+    borderColor: "var(--ring)",
+    "--ui-ring-shadow":
+      "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+    boxShadow:
+      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+    "--ui-ring-color": "var(--ring)",
+    outlineStyle: "var(--ui-outline-style)",
+    outlineWidth: "1px",
+    outlineColor: "var(--ring)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
+    },
+  },
+  "[data-disabled]": {
+    pointerEvents: "none",
+    opacity: "50%",
+  },
+  "& svg": {
+    pointerEvents: "none",
+    flexShrink: "0",
+  },
+  '& svg:not([class*="size-"])': {
+    width: "calc(var(--spacing) * 4)",
+    height: "calc(var(--spacing) * 4)",
+  },
+  '[data-slot="tabs-list"][data-variant="default"] &[data-selected]': {
+    "--ui-shadow":
+      "0 1px 3px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
+    boxShadow:
+      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+  },
+  '[data-slot="tabs-list"][data-variant="line"] &': {
+    backgroundColor: "transparent",
+  },
+  '[data-slot="tabs-list"][data-variant="line"] &[data-selected]': {
+    backgroundColor: "transparent",
+    "--ui-shadow": "0 0 #0000",
+    boxShadow:
+      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+  },
+  '[data-slot="tabs-list"][data-variant="line"] &[data-selected]::after': {
+    content: "var(--ui-content)",
+    opacity: "100%",
+  },
+  '[data-slot="tabs-list"][data-variant="line"] &:is(.dark *)[data-selected]': {
+    borderColor: "transparent",
+    backgroundColor: "transparent",
+  },
+  '[data-slot="tabs"][data-orientation="horizontal"] &::after': {
+    content: "var(--ui-content)",
+    insetInline: "0px",
+    bottom: "-5px",
+    height: "calc(var(--spacing) * 0.5)",
+  },
+  '[data-slot="tabs"][data-orientation="vertical"] &': {
+    width: "100%",
+    justifyContent: "flex-start",
+  },
+  '[data-slot="tabs"][data-orientation="vertical"] &::after': {
+    content: "var(--ui-content)",
+    insetBlock: "0px",
+    right: "calc(var(--spacing) * -1)",
+    width: "calc(var(--spacing) * 0.5)",
+  },
+});
 
-const content = css`
-  @layer barq.ui {
-    flex: 1;
-    --ui-outline-style: none;
-    outline-style: none;
-  }
-`;
+const content = ui({
+  flex: "1",
+  "--ui-outline-style": "none",
+  outlineStyle: "none",
+});
 
 export type TabsListVariant = "default" | "line";
 
-export const tabsListVariants = variants({
-  base: css`
-    @layer barq.ui {
-      display: inline-flex;
-      width: fit-content;
-      align-items: center;
-      justify-content: center;
-      border-radius: var(--radius);
-      padding: 3px;
-      color: var(--muted-foreground);
-      &[data-variant="line"] {
-        border-radius: 0;
-      }
-      [data-slot="tabs"][data-orientation="horizontal"] & {
-        height: calc(var(--spacing) * 9);
-      }
-      [data-slot="tabs"][data-orientation="vertical"] & {
-        height: fit-content;
-        flex-direction: column;
-      }
-    }
-  `,
+export const tabsListVariants = uiVariants({
+  base: ui({
+    display: "inline-flex",
+    width: "fit-content",
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: "var(--radius)",
+    padding: "3px",
+    color: "var(--muted-foreground)",
+    '[data-variant="line"]': {
+      borderRadius: "0",
+    },
+    '[data-slot="tabs"][data-orientation="horizontal"] &': {
+      height: "calc(var(--spacing) * 9)",
+    },
+    '[data-slot="tabs"][data-orientation="vertical"] &': {
+      height: "fit-content",
+      flexDirection: "column",
+    },
+  }),
   variants: {
     variant: {
-      default: css`
-        @layer barq.ui {
-          background-color: var(--muted);
-        }
-      `,
-      line: css`
-        @layer barq.ui {
-          gap: var(--spacing);
-          background-color: transparent;
-        }
-      `,
+      default: ui({
+        backgroundColor: "var(--muted)",
+      }),
+      line: ui({
+        gap: "var(--spacing)",
+        backgroundColor: "transparent",
+      }),
     },
   },
   defaults: { variant: "default" },
@@ -229,7 +211,7 @@ export function Tabs<T>(props: Incoming<TabsProps<T>>) {
     <AriaTabs
       {...props}
       data-slot={props["data-slot"]?.() ?? "tabs"}
-      class={clsx(root, props.class?.(), props.className?.())}
+      class={ui(root, props.class?.(), props.className?.())}
     />
   );
 }
@@ -244,7 +226,7 @@ export function TabsList<T>(props: Incoming<TabsListProps<T>>) {
       {...props}
       data-slot={props["data-slot"]?.() ?? "tabs-list"}
       data-variant={props.variant?.() ?? "default"}
-      class={clsx(
+      class={ui(
         tabsListVariants({ variant: props.variant?.() }),
         props.class?.(),
         props.className?.(),
@@ -260,7 +242,7 @@ export function TabsTrigger(props: Incoming<TabsTriggerProps>) {
     <AriaTab
       {...props}
       data-slot={props["data-slot"]?.() ?? "tabs-trigger"}
-      class={clsx(trigger, props.class?.(), props.className?.())}
+      class={ui(trigger, props.class?.(), props.className?.())}
     />
   );
 }
@@ -272,7 +254,7 @@ export function TabsContent<T>(props: Incoming<TabsContentProps<T>>) {
     <AriaTabPanel
       {...props}
       data-slot={props["data-slot"]?.() ?? "tabs-content"}
-      class={clsx(content, props.class?.(), props.className?.())}
+      class={ui(content, props.class?.(), props.className?.())}
     />
   );
 }

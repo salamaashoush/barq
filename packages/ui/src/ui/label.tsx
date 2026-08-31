@@ -1,33 +1,31 @@
 import type { Incoming } from "@barqjs/core";
-import { css } from "@barqjs/css";
+import { firstThatWorks } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
-const label = css`
-  @layer barq.ui {
-    display: flex;
-    align-items: center;
-    gap: calc(var(--spacing) * 2);
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    --ui-leading: 1;
-    line-height: 1;
-    --ui-font-weight: var(--font-weight-medium);
-    font-weight: var(--font-weight-medium);
-    -webkit-user-select: none;
-    user-select: none;
-    &[data-disabled] {
-      pointer-events: none;
-      opacity: 50%;
-    }
-    [data-disabled] & {
-      pointer-events: none;
-      opacity: 50%;
-    }
-  }
-`;
+const label = ui({
+  display: "flex",
+  alignItems: "center",
+  gap: "calc(var(--spacing) * 2)",
+  fontSize: "var(--text-sm)",
+  lineHeight: firstThatWorks("1", "var(--ui-leading, var(--text-sm--line-height))"),
+  "--ui-leading": "1",
+  "--ui-font-weight": "var(--font-weight-medium)",
+  fontWeight: "var(--font-weight-medium)",
+  "-webkit-user-select": "none",
+  userSelect: "none",
+  "[data-disabled]": {
+    pointerEvents: "none",
+    opacity: "50%",
+  },
+  "[data-disabled] &": {
+    pointerEvents: "none",
+    opacity: "50%",
+  },
+});
 
 export interface LabelProps extends UiProps {
   /** The id of the control this names. `htmlFor` is accepted too. */

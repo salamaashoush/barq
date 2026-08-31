@@ -1,7 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { collectCss } from "@barqjs/css";
 import { flush } from "@barqjs/core";
 import { render, screen } from "@barqjs/testing";
+
+import { rulesFor } from "../test-rules.ts";
 
 import { Slider } from "./slider.tsx";
 import {
@@ -14,14 +15,6 @@ import {
   TableHeader,
   TableRow,
 } from "./table.tsx";
-
-function rulesFor(className: string): string {
-  const mentions = new RegExp(`\\.${className}(?![\\w-])`);
-  return collectCss()
-    .split("@layer barq.ui{")
-    .filter((chunk) => mentions.test(chunk))
-    .join("\n");
-}
 
 describe("Table", () => {
   test("is a real table, scrollable, with every part addressable", () => {
@@ -70,9 +63,7 @@ describe("Table", () => {
     const row = screen.getByRole("row");
     expect(row.getAttribute("data-selected")).toBe("");
     expect(row.getAttribute("aria-selected")).toBe("true");
-    expect(rulesFor(row.className.split(" ")[0] ?? "")).toContain(
-      "[data-selected]{background-color: var(--muted)}",
-    );
+    expect(rulesFor(row.className)).toContain("[data-selected]{background-color: var(--muted)}");
   });
 
   test("a header cell is a column header by default", () => {
@@ -117,7 +108,7 @@ describe("Slider", () => {
     render(() => <Slider aria-label="Volume" defaultValue={30} />);
     const track = document.querySelector('[data-slot="slider-track"]') as HTMLElement;
     expect(track.querySelector('[data-slot="slider-range"]')).toBeNull();
-    expect(track.className.split(" ").map(rulesFor).join("")).toContain("linear-gradient");
+    expect(rulesFor(track.className)).toContain("linear-gradient");
   });
 
   test("the track clips nothing, because the thumb is inside it", () => {
@@ -126,13 +117,13 @@ describe("Slider", () => {
     // `overflow: hidden` is shadcn's way of clipping its `<SliderRange>` to the
     // rounded track. Here the thumb is a CHILD of the track, so the same rule
     // cut a 16px thumb down to the track's 6px. A background needs no clipping.
-    expect(track.className.split(" ").map(rulesFor).join("")).not.toContain("overflow: hidden");
+    expect(rulesFor(track.className)).not.toContain("overflow-x: hidden");
   });
 
   test("the thumb is centred across the track, not hung from its top", () => {
     render(() => <Slider aria-label="Volume" defaultValue={30} />);
     const thumb = document.querySelector('[data-slot="slider-thumb"]') as HTMLElement;
-    const rules = thumb.className.split(" ").map(rulesFor).join("");
+    const rules = rulesFor(thumb.className);
     expect(rules).toContain("top: 50%");
     expect(rules).toContain("translate: -50% -50%");
   });
@@ -164,7 +155,7 @@ describe("Slider", () => {
   test("the rule that reads it keys off the TRACK's orientation", () => {
     render(() => <Slider aria-label="Volume" defaultValue={30} />);
     const thumb = document.querySelector('[data-slot="slider-thumb"]') as HTMLElement;
-    const rules = thumb.className.split(" ").map(rulesFor).join("");
+    const rules = rulesFor(thumb.className);
     // `&[data-orientation=…]` matched nothing: the thumb carries no such
     // attribute, so every thumb sat at `left: 0` whatever its value.
     expect(rules).toContain('[data-orientation="horizontal"] .');

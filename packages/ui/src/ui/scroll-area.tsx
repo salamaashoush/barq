@@ -1,7 +1,7 @@
 import type { Incoming } from "@barqjs/core";
-import { css } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
@@ -20,38 +20,31 @@ import { uiProps } from "../lib/slot.ts";
  * overlay the content or to fade out when idle. If you need that, the DOM is
  * yours and this component is forty lines.
  */
-const box = css`
-  @layer barq.ui {
-    position: relative;
-    overflow: auto;
-    overscroll-behavior: contain;
-    scrollbar-width: thin;
-    scrollbar-color: var(--border) transparent;
-
-    &:focus-visible {
-      outline: 1px solid var(--ring);
-      --ui-ring-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
-      box-shadow: var(--ui-ring-shadow);
-    }
-
-    /* WebKit still needs its own, and ignores scrollbar-color. */
-    &::-webkit-scrollbar {
-      width: calc(var(--spacing) * 2.5);
-      height: calc(var(--spacing) * 2.5);
-    }
-
-    &::-webkit-scrollbar-track {
-      background: transparent;
-    }
-
-    &::-webkit-scrollbar-thumb {
-      border-radius: calc(infinity * 1px);
-      background-color: var(--border);
-      border: 3px solid transparent;
-      background-clip: content-box;
-    }
-  }
-`;
+const box = ui({
+  position: "relative",
+  overflow: "auto",
+  overscrollBehavior: "contain",
+  scrollbarWidth: "thin",
+  scrollbarColor: "var(--border) transparent",
+  ":focus-visible": {
+    outline: "1px solid var(--ring)",
+    "--ui-ring-shadow": "0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent)",
+    boxShadow: "var(--ui-ring-shadow)",
+  },
+  "/* WebKit still needs its own, and ignores scrollbar-color. */ &::-webkit-scrollbar": {
+    width: "calc(var(--spacing) * 2.5)",
+    height: "calc(var(--spacing) * 2.5)",
+  },
+  "::-webkit-scrollbar-track": {
+    background: "transparent",
+  },
+  "::-webkit-scrollbar-thumb": {
+    borderRadius: "calc(infinity * 1px)",
+    backgroundColor: "var(--border)",
+    border: "3px solid transparent",
+    backgroundClip: "content-box",
+  },
+});
 
 export interface ScrollAreaProps extends UiProps {
   /** Which way it scrolls. `both` is the default the CSS already gives. */

@@ -19,190 +19,167 @@ import {
   type Child,
   type Incoming,
 } from "@barqjs/core";
-import { clsx, css } from "@barqjs/css";
+
 import { Search } from "@barqjs/lucide/icons/search";
 import { ref as makeRef } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
+import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./dialog.tsx";
 import { srOnly } from "./sr-only.ts";
 
-const root = css`
-  @layer barq.ui {
-    display: flex;
-    height: 100%;
-    width: 100%;
-    flex-direction: column;
-    overflow: hidden;
-    border-radius: calc(var(--radius) - 2px);
-    background-color: var(--popover);
-    color: var(--popover-foreground);
-  }
-`;
+const root = ui({
+  display: "flex",
+  height: "100%",
+  width: "100%",
+  flexDirection: "column",
+  overflow: "hidden",
+  borderRadius: "calc(var(--radius) - 2px)",
+  backgroundColor: "var(--popover)",
+  color: "var(--popover-foreground)",
+});
 
-const inputWrapper = css`
-  @layer barq.ui {
-    display: flex;
-    height: calc(var(--spacing) * 9);
-    align-items: center;
-    gap: calc(var(--spacing) * 2);
-    border-bottom-style: var(--ui-border-style);
-    border-bottom-width: 1px;
-    padding-inline: calc(var(--spacing) * 3);
-  }
-`;
+const inputWrapper = ui({
+  display: "flex",
+  height: "calc(var(--spacing) * 9)",
+  alignItems: "center",
+  gap: "calc(var(--spacing) * 2)",
+  borderBottomStyle: "var(--ui-border-style)",
+  borderBottomWidth: "1px",
+  paddingInline: "calc(var(--spacing) * 3)",
+});
 
-const inputIcon = css`
-  @layer barq.ui {
-    width: calc(var(--spacing) * 4);
-    height: calc(var(--spacing) * 4);
-    flex-shrink: 0;
-    opacity: 50%;
-  }
-`;
+const inputIcon = ui({
+  width: "calc(var(--spacing) * 4)",
+  height: "calc(var(--spacing) * 4)",
+  flexShrink: "0",
+  opacity: "50%",
+});
 
-const input = css`
-  @layer barq.ui {
-    display: flex;
-    height: calc(var(--spacing) * 10);
-    width: 100%;
-    border-radius: calc(var(--radius) - 2px);
-    border-style: var(--ui-border-style);
-    border-width: 0px;
-    background-color: transparent;
-    padding-block: calc(var(--spacing) * 3);
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    --ui-outline-style: none;
-    outline-style: none;
-    @media (forced-colors: active) {
-      outline: 2px solid transparent;
-      outline-offset: 2px;
-    }
-    &::placeholder {
-      color: var(--muted-foreground);
-    }
-    &:disabled {
-      cursor: not-allowed;
-      opacity: 50%;
-    }
-  }
-`;
+const input = ui({
+  display: "flex",
+  height: "calc(var(--spacing) * 10)",
+  width: "100%",
+  borderRadius: "calc(var(--radius) - 2px)",
+  borderStyle: "var(--ui-border-style)",
+  borderWidth: "0px",
+  backgroundColor: "transparent",
+  paddingBlock: "calc(var(--spacing) * 3)",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  "--ui-outline-style": "none",
+  outlineStyle: "none",
+  "@media (forced-colors: active)": {
+    outline: "2px solid transparent",
+    outlineOffset: "2px",
+  },
+  "::placeholder": {
+    color: "var(--muted-foreground)",
+  },
+  ":disabled": {
+    cursor: "not-allowed",
+    opacity: "50%",
+  },
+});
 
-const list = css`
-  @layer barq.ui {
-    margin: 0px;
-    max-height: 300px;
-    scroll-padding-block: var(--spacing);
-    list-style-type: none;
-    overflow-x: hidden;
-    overflow-y: auto;
-    padding: 0px;
-  }
-`;
+const list = ui({
+  margin: "0px",
+  maxHeight: "300px",
+  scrollPaddingBlock: "var(--spacing)",
+  listStyleType: "none",
+  overflowX: "hidden",
+  overflowY: "auto",
+  padding: "0px",
+});
 
-const empty = css`
-  @layer barq.ui {
-    padding-block: calc(var(--spacing) * 6);
-    text-align: center;
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-  }
-`;
+const empty = ui({
+  paddingBlock: "calc(var(--spacing) * 6)",
+  textAlign: "center",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+});
 
-const group = css`
-  @layer barq.ui {
-    margin: 0px;
-    list-style-type: none;
-    overflow: hidden;
-    padding: var(--spacing);
-    color: var(--foreground);
-  }
-`;
+const group = ui({
+  margin: "0px",
+  listStyleType: "none",
+  overflow: "hidden",
+  padding: "var(--spacing)",
+  color: "var(--foreground)",
+});
 
-const groupLabel = css`
-  @layer barq.ui {
-    padding-inline: calc(var(--spacing) * 2);
-    padding-block: calc(var(--spacing) * 1.5);
-    font-size: var(--text-xs);
-    line-height: var(--ui-leading, var(--text-xs--line-height));
-    --ui-font-weight: var(--font-weight-medium);
-    font-weight: var(--font-weight-medium);
-    color: var(--muted-foreground);
-  }
-`;
+const groupLabel = ui({
+  paddingInline: "calc(var(--spacing) * 2)",
+  paddingBlock: "calc(var(--spacing) * 1.5)",
+  fontSize: "var(--text-xs)",
+  lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
+  "--ui-font-weight": "var(--font-weight-medium)",
+  fontWeight: "var(--font-weight-medium)",
+  color: "var(--muted-foreground)",
+});
 
-const separator = css`
-  @layer barq.ui {
-    margin-inline: calc(var(--spacing) * -1);
-    height: 1px;
-    border-style: var(--ui-border-style);
-    border-width: 0px;
-    background-color: var(--border);
-  }
-`;
+const separator = ui({
+  marginInline: "calc(var(--spacing) * -1)",
+  height: "1px",
+  borderStyle: "var(--ui-border-style)",
+  borderWidth: "0px",
+  backgroundColor: "var(--border)",
+});
 
-const item = css`
-  @layer barq.ui {
-    position: relative;
-    display: flex;
-    cursor: default;
-    align-items: center;
-    gap: calc(var(--spacing) * 2);
-    border-radius: calc(var(--radius) - 4px);
-    padding-inline: calc(var(--spacing) * 2);
-    padding-block: calc(var(--spacing) * 1.5);
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    --ui-outline-style: none;
-    outline-style: none;
-    @media (forced-colors: active) {
-      outline: 2px solid transparent;
-      outline-offset: 2px;
-    }
-    -webkit-user-select: none;
-    user-select: none;
-    &[data-focused] {
-      background-color: var(--accent);
-      color: var(--accent-foreground);
-    }
-    &[data-disabled] {
-      pointer-events: none;
-      opacity: 50%;
-    }
-    & svg {
-      pointer-events: none;
-      flex-shrink: 0;
-    }
-    & svg:not([class*="size-"]) {
-      width: calc(var(--spacing) * 4);
-      height: calc(var(--spacing) * 4);
-    }
-    & svg:not([class*="text-"]) {
-      color: var(--muted-foreground);
-    }
-  }
-`;
+const item = ui({
+  position: "relative",
+  display: "flex",
+  cursor: "default",
+  alignItems: "center",
+  gap: "calc(var(--spacing) * 2)",
+  borderRadius: "calc(var(--radius) - 4px)",
+  paddingInline: "calc(var(--spacing) * 2)",
+  paddingBlock: "calc(var(--spacing) * 1.5)",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  "--ui-outline-style": "none",
+  outlineStyle: "none",
+  "-webkit-user-select": "none",
+  userSelect: "none",
+  "@media (forced-colors: active)": {
+    outline: "2px solid transparent",
+    outlineOffset: "2px",
+  },
+  "[data-focused]": {
+    backgroundColor: "var(--accent)",
+    color: "var(--accent-foreground)",
+  },
+  "[data-disabled]": {
+    pointerEvents: "none",
+    opacity: "50%",
+  },
+  "& svg": {
+    pointerEvents: "none",
+    flexShrink: "0",
+  },
+  '& svg:not([class*="size-"])': {
+    width: "calc(var(--spacing) * 4)",
+    height: "calc(var(--spacing) * 4)",
+  },
+  '& svg:not([class*="text-"])': {
+    color: "var(--muted-foreground)",
+  },
+});
 
-const shortcut = css`
-  @layer barq.ui {
-    margin-left: auto;
-    font-size: var(--text-xs);
-    line-height: var(--ui-leading, var(--text-xs--line-height));
-    --ui-tracking: var(--tracking-widest);
-    letter-spacing: var(--tracking-widest);
-    color: var(--muted-foreground);
-  }
-`;
+const shortcut = ui({
+  marginLeft: "auto",
+  fontSize: "var(--text-xs)",
+  lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
+  "--ui-tracking": "var(--tracking-widest)",
+  letterSpacing: "var(--tracking-widest)",
+  color: "var(--muted-foreground)",
+});
 
-const dialogContent = css`
-  @layer barq.ui {
-    overflow: hidden;
-    padding: 0px;
-  }
-`;
+const dialogContent = ui({
+  overflow: "hidden",
+  padding: "0px",
+});
 
 interface CommandValue<T> {
   state: ComboBoxState<T>;
@@ -422,7 +399,7 @@ export function CommandGroup(props: Incoming<CommandGroupProps>) {
       <ul
         {...groupProps}
         data-slot={props["data-slot"]?.() ?? "command-group"}
-        class={clsx(group, props.class?.(), props.className?.())}
+        class={ui(group, props.class?.(), props.className?.())}
       >
         {props.children}
       </ul>
@@ -439,7 +416,7 @@ export function CommandItem(props: Incoming<CommandItemProps>) {
     <Option
       {...props}
       data-slot={props["data-slot"]?.() ?? "command-item"}
-      class={clsx(item, props.class?.(), props.className?.())}
+      class={ui(item, props.class?.(), props.className?.())}
     >
       {props.children}
     </Option>

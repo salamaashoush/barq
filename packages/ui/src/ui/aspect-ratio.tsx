@@ -1,8 +1,8 @@
 import { mergeProps } from "@barqjs/aria/utils";
 import type { Incoming } from "@barqjs/core";
-import { css } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
@@ -14,18 +14,15 @@ import { uiProps } from "../lib/slot.ts";
  * safe to rely on when that component was written. It is now, and the property
  * does the same job without taking the child out of flow.
  */
-const box = css`
-  @layer barq.ui {
-    position: relative;
-    width: 100%;
-    aspect-ratio: var(--barq-aspect-ratio, 1);
-
-    & > * {
-      width: 100%;
-      height: 100%;
-    }
-  }
-`;
+const box = ui({
+  position: "relative",
+  width: "100%",
+  aspectRatio: "var(--barq-aspect-ratio, 1)",
+  "& > *": {
+    width: "100%",
+    height: "100%",
+  },
+});
 
 export interface AspectRatioProps extends UiProps {
   /** Width over height. `16 / 9` is 1.777…, and so is `"16 / 9"`. @default 1 */

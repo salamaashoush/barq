@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { collectCss } from "@barqjs/css";
 import { render, screen } from "@barqjs/testing";
+
+import { rulesFor } from "../test-rules.ts";
 
 import { Button } from "./button.tsx";
 import {
@@ -9,14 +10,6 @@ import {
   ButtonGroupText,
   buttonGroupVariants,
 } from "./button-group.tsx";
-
-function rulesFor(className: string): string {
-  const mentions = new RegExp(`\\.${className}(?![\\w-])`);
-  return collectCss()
-    .split("@layer barq.ui{")
-    .filter((chunk) => mentions.test(chunk))
-    .join("\n");
-}
 
 function slot(name: string): HTMLElement {
   const found = document.querySelector(`[data-slot="${name}"]`);
@@ -44,13 +37,13 @@ describe("ButtonGroup", () => {
     ));
     expect(slot("button-group").getAttribute("data-orientation")).toBe("horizontal");
 
-    const rules = slot("button-group").className.split(" ").map(rulesFor).join("");
+    const rules = rulesFor(slot("button-group").className);
     expect(rules).toContain("> :not(:first-child){border-top-left-radius: 0");
     expect(rules).toContain("border-left-width: 0px");
   });
 
   test("vertical squares the top and bottom instead", () => {
-    const vertical = buttonGroupVariants({ orientation: "vertical" }).split(" ").at(-1) ?? "";
+    const vertical = buttonGroupVariants({ orientation: "vertical" });
     const rules = rulesFor(vertical);
     expect(rules).toContain("flex-direction: column");
     expect(rules).toContain("border-top-width: 0px");
@@ -59,7 +52,7 @@ describe("ButtonGroup", () => {
   test("the seam is drawn on any child, not only on a Button", () => {
     // shadcn's rule is `[&>*:not(:first-child)]`, which is what lets a Select
     // trigger, an Input and a ButtonGroupText join the same welded row.
-    const base = buttonGroupVariants().split(" ")[1] ?? "";
+    const base = buttonGroupVariants();
     expect(rulesFor(base)).toContain("> :not(:first-child)");
   });
 
@@ -72,9 +65,7 @@ describe("ButtonGroup", () => {
     ));
     const text = slot("button-group-text");
     expect(text.textContent).toBe("https://");
-    expect(rulesFor(text.className.split(" ")[0] ?? "")).toContain(
-      "background-color: var(--muted)",
-    );
+    expect(rulesFor(text.className)).toContain("background-color: var(--muted)");
   });
 
   test("the separator is vertical by default and answers to its own slot", () => {

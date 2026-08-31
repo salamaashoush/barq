@@ -1,16 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { collectCss } from "@barqjs/css";
 import { render, screen, user } from "@barqjs/testing";
+
+import { rulesFor } from "../test-rules.ts";
 
 import { Button, buttonVariants } from "./button.tsx";
 
 /** The rules a class produced, so a test can assert on the CSS and not the name. */
-function rulesFor(className: string): string {
-  return collectCss()
-    .split("@layer barq.ui{")
-    .filter((chunk) => chunk.includes(`.${className}`))
-    .join("\n");
-}
 
 describe("Button", () => {
   test("renders a button with its text", () => {
@@ -74,8 +69,8 @@ describe("Button", () => {
 });
 
 describe("buttonVariants", () => {
-  test("base plus the defaults when nothing is asked for", () => {
-    expect(buttonVariants().split(" ")).toHaveLength(3);
+  test("the defaults are applied when nothing is asked for", () => {
+    expect(buttonVariants()).toBe(buttonVariants({ variant: "default", size: "default" }));
   });
 
   test("the variant's own class differs per variant", () => {
@@ -84,15 +79,20 @@ describe("buttonVariants", () => {
 
   test("every rule it produces is inside the package's layer", () => {
     const classes = buttonVariants({ variant: "destructive", size: "lg" }).split(" ");
+    expect(classes.length).toBeGreaterThan(20);
     for (const className of classes) {
-      expect(rulesFor(className)).not.toBe("");
-      expect(collectCss()).toContain(`@layer barq.ui{.${className}`);
+      // `rulesFor` reads only what follows `@layer barq.ui{`, so a class it
+      // finds is a class inside the layer.
+      expect(rulesFor(className)).toContain(className);
     }
   });
 
   test("the size decides the height and the variant decides the colour", () => {
-    const [, variant, size] = buttonVariants({ variant: "secondary", size: "lg" }).split(" ");
-    expect(rulesFor(variant ?? "")).toContain("background-color: var(--secondary)");
-    expect(rulesFor(size ?? "")).toContain("height: calc(var(--spacing) * 10)");
+    const rules = rulesFor(buttonVariants({ variant: "secondary", size: "lg" }));
+    expect(rules).toContain("background-color: var(--secondary)");
+    expect(rules).toContain("height: calc(var(--spacing) * 10)");
+    expect(rulesFor(buttonVariants({ variant: "ghost", size: "sm" }))).not.toContain(
+      "background-color: var(--secondary)",
+    );
   });
 });

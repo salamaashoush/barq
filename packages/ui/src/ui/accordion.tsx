@@ -8,97 +8,91 @@ import {
   type DisclosurePanelComponentProps,
 } from "@barqjs/aria/disclosure";
 import type { Incoming } from "@barqjs/core";
-import { clsx, css } from "@barqjs/css";
+import { firstThatWorks } from "@barqjs/css";
 import { ChevronDown } from "@barqjs/lucide/icons/chevron-down";
 
 import "../theme/layers.ts";
+import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
-const item = css`
-  @layer barq.ui {
-    border-bottom-style: var(--ui-border-style);
-    border-bottom-width: 1px;
-    &:last-child {
-      border-bottom-style: var(--ui-border-style);
-      border-bottom-width: 0px;
-    }
-  }
-`;
+const item = ui({
+  borderBottomStyle: "var(--ui-border-style)",
+  borderBottomWidth: "1px",
+  ":last-child": {
+    borderBottomStyle: "var(--ui-border-style)",
+    borderBottomWidth: "0px",
+  },
+});
 
-const trigger = css`
-  @layer barq.ui {
-    display: flex;
-    width: 100%;
-    flex: 1;
-    align-items: flex-start;
-    justify-content: space-between;
-    gap: calc(var(--spacing) * 4);
-    border-radius: calc(var(--radius) - 2px);
-    background-color: transparent;
-    padding-block: calc(var(--spacing) * 4);
-    text-align: left;
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    --ui-font-weight: var(--font-weight-medium);
-    font-weight: var(--font-weight-medium);
-    transition-property: all;
-    transition-timing-function: var(--ui-ease, var(--default-transition-timing-function));
-    transition-duration: var(--ui-duration, var(--default-transition-duration));
-    --ui-outline-style: none;
-    outline-style: none;
-    @media (hover: hover) {
-      &:hover {
-        text-decoration-line: underline;
-      }
-    }
-    &[data-focus-visible] {
-      border-color: var(--ring);
-      --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width))
-        var(--ui-ring-color, currentcolor);
-      box-shadow:
-        var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-        var(--ui-ring-shadow), var(--ui-shadow);
-      --ui-ring-color: var(--ring);
-      @supports (color: color-mix(in lab, red, red)) {
-        --ui-ring-color: color-mix(in oklab, var(--ring) 50%, transparent);
-      }
-    }
-    &[data-disabled] {
-      pointer-events: none;
-      opacity: 50%;
-    }
-    &[data-expanded] > [data-slot="accordion-chevron"] {
-      rotate: 180deg;
-    }
-  }
-`;
+const trigger = ui({
+  display: "flex",
+  width: "100%",
+  flex: "1",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: "calc(var(--spacing) * 4)",
+  borderRadius: "calc(var(--radius) - 2px)",
+  backgroundColor: "transparent",
+  paddingBlock: "calc(var(--spacing) * 4)",
+  textAlign: "left",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  "--ui-font-weight": "var(--font-weight-medium)",
+  fontWeight: "var(--font-weight-medium)",
+  transitionProperty: "all",
+  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
+  transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
+  "--ui-outline-style": "none",
+  outlineStyle: "none",
+  "@media (hover: hover)": {
+    ":hover": {
+      textDecorationLine: "underline",
+    },
+  },
+  "[data-focus-visible]": {
+    borderColor: "var(--ring)",
+    "--ui-ring-shadow":
+      "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+    boxShadow:
+      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+    "--ui-ring-color": "var(--ring)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
+    },
+  },
+  "[data-disabled]": {
+    pointerEvents: "none",
+    opacity: "50%",
+  },
+  '[data-expanded] > [data-slot="accordion-chevron"]': {
+    rotate: "180deg",
+  },
+});
 
-const chevron = css`
-  @layer barq.ui {
-    pointer-events: none;
-    width: calc(var(--spacing) * 4);
-    height: calc(var(--spacing) * 4);
-    flex-shrink: 0;
-    --ui-translate-y: calc(var(--spacing) * 0.5);
-    translate: var(--ui-translate-x) var(--ui-translate-y);
-    color: var(--muted-foreground);
-    transition-property: transform, translate, scale, rotate;
-    transition-timing-function: var(--ui-ease, var(--default-transition-timing-function));
-    transition-duration: var(--ui-duration, var(--default-transition-duration));
-    --ui-duration: 200ms;
-    transition-duration: 200ms;
-  }
-`;
+const chevron = ui({
+  pointerEvents: "none",
+  width: "calc(var(--spacing) * 4)",
+  height: "calc(var(--spacing) * 4)",
+  flexShrink: "0",
+  "--ui-translate-y": "calc(var(--spacing) * 0.5)",
+  translate: "var(--ui-translate-x) var(--ui-translate-y)",
+  color: "var(--muted-foreground)",
+  transitionProperty: "transform, translate, scale, rotate",
+  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
+  transitionDuration: firstThatWorks(
+    "200ms",
+    "var(--ui-duration, var(--default-transition-duration))",
+  ),
+  "--ui-duration": "200ms",
+});
 
-const body = css`
-  @layer barq.ui {
-    padding-top: 0px;
-    padding-bottom: calc(var(--spacing) * 4);
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-  }
-`;
+const body = ui({
+  paddingTop: "0px",
+  paddingBottom: "calc(var(--spacing) * 4)",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+});
 
 /**
  * The panel collapses on `grid-template-rows`, not on `height`.
@@ -109,27 +103,22 @@ const body = css`
  * the panel animates without JavaScript, without a resize observer, and
  * correctly when the content changes while it is open.
  */
-const panel = css`
-  @layer barq.ui {
-    display: grid;
-    grid-template-rows: 0fr;
-    overflow: hidden;
-    transition: grid-template-rows 200ms ease-out;
-
-    &[data-expanded] {
-      grid-template-rows: 1fr;
-    }
-
-    & > * {
-      overflow: hidden;
-      min-height: 0;
-    }
-
-    @media (prefers-reduced-motion: reduce) {
-      transition: none;
-    }
-  }
-`;
+const panel = ui({
+  display: "grid",
+  gridTemplateRows: "0fr",
+  overflow: "hidden",
+  transition: "grid-template-rows 200ms ease-out",
+  "[data-expanded]": {
+    gridTemplateRows: "1fr",
+  },
+  "& > *": {
+    overflow: "hidden",
+    minHeight: "0",
+  },
+  "@media (prefers-reduced-motion: reduce)": {
+    transition: "none",
+  },
+});
 
 export interface AccordionProps<T> extends DisclosureGroupComponentProps<T> {}
 
@@ -177,7 +166,7 @@ export function AccordionTrigger(props: Incoming<AccordionTriggerProps>) {
     <DisclosureButton
       {...props}
       data-slot={props["data-slot"]?.() ?? "accordion-trigger"}
-      class={clsx(trigger, props.class?.(), props.className?.())}
+      class={ui(trigger, props.class?.(), props.className?.())}
     >
       {props.children}
       <ChevronDown data-slot="accordion-chevron" class={chevron} />
@@ -190,7 +179,7 @@ export interface AccordionContentProps extends DisclosurePanelComponentProps {}
 export function AccordionContent(props: Incoming<AccordionContentProps>) {
   return (
     <DisclosurePanel {...props} data-slot="accordion-content" class={panel}>
-      <div data-slot="accordion-body" class={clsx(body, props.class?.(), props.className?.())}>
+      <div data-slot="accordion-body" class={ui(body, props.class?.(), props.className?.())}>
         {props.children}
       </div>
     </DisclosurePanel>

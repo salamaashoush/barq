@@ -31,6 +31,8 @@ import {
 } from "@barqjs/aria/utils";
 import type { Incoming } from "@barqjs/core";
 
+import { ui } from "./atoms.ts";
+
 import type { UiProps } from "./props.ts";
 
 /**
@@ -106,14 +108,23 @@ function build(
   props: Incoming<UiProps>,
   propNames: ReadonlySet<string>,
 ): DOMProps {
+  const own = typeof className === "function" ? className : () => className;
+  // `class` is composed here rather than left to `mergeProps`, which
+  // CONCATENATES. A caller is often another component in this package handing
+  // its own atoms down — `<FieldLabel>` to `<Label>` — and two atoms for one
+  // property both apply, so the stylesheet's order decides which wins instead
+  // of the order they were passed. `ui` merges by property; a class that is
+  // not an atom passes through and still wins, because it is unlayered.
+  const { class: _, ...presentation } = styleProps(props);
+
   return mergeProps(
-    { class: typeof className === "function" ? className : () => className },
+    { class: () => ui(own(), props.class?.(), props.className?.()) },
     // First, so a caller renaming the slot wins. Last, the caller's own
     // `data-slot` reached the merge and was overwritten by this one, and a
     // wrapper like `AlertDialogAction` rendered as `data-slot="button"`.
     { "data-slot": slot },
     filterDOMProps(fromProps(props), { global: true, labelable: true, propNames }),
-    styleProps(props),
+    presentation,
   );
 }
 

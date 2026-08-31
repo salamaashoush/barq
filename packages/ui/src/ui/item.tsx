@@ -1,115 +1,99 @@
 import { Show, type Incoming } from "@barqjs/core";
-import { clsx, css, variants } from "@barqjs/css";
+import { firstThatWorks } from "@barqjs/css";
 
 import "../theme/layers.ts";
+import { ui, uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Separator, type SeparatorProps } from "./separator.tsx";
 
-const group = css`
-  @layer barq.ui {
-    display: flex;
-    flex-direction: column;
-  }
-`;
+const group = ui({
+  display: "flex",
+  flexDirection: "column",
+});
 
-const separator = css`
-  @layer barq.ui {
-    margin-block: 0px;
-  }
-`;
+const separator = ui({
+  marginBlock: "0px",
+});
 
 export type ItemVariant = "default" | "outline" | "muted";
 
 export type ItemSize = "default" | "sm";
 
-export const itemVariants = variants({
-  base: css`
-    @layer barq.ui {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      border-radius: calc(var(--radius) - 2px);
-      border-style: var(--ui-border-style);
-      border-width: 1px;
-      border-color: transparent;
-      font-size: var(--text-sm);
-      line-height: var(--ui-leading, var(--text-sm--line-height));
-      transition-property:
-        color, background-color, border-color, outline-color, text-decoration-color, fill, stroke,
-        --ui-gradient-from, --ui-gradient-via, --ui-gradient-to;
-      transition-timing-function: var(--ui-ease, var(--default-transition-timing-function));
-      transition-duration: var(--ui-duration, var(--default-transition-duration));
-      --ui-duration: 100ms;
-      transition-duration: 100ms;
-      --ui-outline-style: none;
-      outline-style: none;
-      &:focus-visible {
-        border-color: var(--ring);
-        --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width))
-          var(--ui-ring-color, currentcolor);
-        box-shadow:
-          var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow),
-          var(--ui-ring-shadow), var(--ui-shadow);
-        --ui-ring-color: var(--ring);
-        @supports (color: color-mix(in lab, red, red)) {
-          --ui-ring-color: color-mix(in oklab, var(--ring) 50%, transparent);
-        }
-      }
-      a& {
-        transition-property:
-          color, background-color, border-color, outline-color, text-decoration-color, fill, stroke,
-          --ui-gradient-from, --ui-gradient-via, --ui-gradient-to;
-        transition-timing-function: var(--ui-ease, var(--default-transition-timing-function));
-        transition-duration: var(--ui-duration, var(--default-transition-duration));
-      }
-      @media (hover: hover) {
-        a&:hover {
-          background-color: var(--accent);
-        }
-        @supports (color: color-mix(in lab, red, red)) {
-          a&:hover {
-            background-color: color-mix(in oklab, var(--accent) 50%, transparent);
-          }
-        }
-      }
-    }
-  `,
+export const itemVariants = uiVariants({
+  base: ui({
+    display: "flex",
+    flexWrap: "wrap",
+    alignItems: "center",
+    borderRadius: "calc(var(--radius) - 2px)",
+    borderStyle: "var(--ui-border-style)",
+    borderWidth: "1px",
+    borderColor: "transparent",
+    fontSize: "var(--text-sm)",
+    lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+    transitionProperty:
+      "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to",
+    transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
+    transitionDuration: firstThatWorks(
+      "100ms",
+      "var(--ui-duration, var(--default-transition-duration))",
+    ),
+    "--ui-duration": "100ms",
+    "--ui-outline-style": "none",
+    outlineStyle: "none",
+    ":focus-visible": {
+      borderColor: "var(--ring)",
+      "--ui-ring-shadow":
+        "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+      boxShadow:
+        "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+      "--ui-ring-color": "var(--ring)",
+      "@supports (color: color-mix(in lab, red, red))": {
+        "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
+      },
+    },
+    "a&": {
+      transitionProperty:
+        "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to",
+      transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
+      transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
+    },
+    "@media (hover: hover)": {
+      "a&:hover": {
+        backgroundColor: "var(--accent)",
+      },
+      "@supports (color: color-mix(in lab, red, red))": {
+        "a&:hover": {
+          backgroundColor: "color-mix(in oklab, var(--accent) 50%, transparent)",
+        },
+      },
+    },
+  }),
   variants: {
     variant: {
-      default: css`
-        @layer barq.ui {
-          background-color: transparent;
-        }
-      `,
-      outline: css`
-        @layer barq.ui {
-          border-color: var(--border);
-        }
-      `,
-      muted: css`
-        @layer barq.ui {
-          background-color: var(--muted);
-          @supports (color: color-mix(in lab, red, red)) {
-            background-color: color-mix(in oklab, var(--muted) 50%, transparent);
-          }
-        }
-      `,
+      default: ui({
+        backgroundColor: "transparent",
+      }),
+      outline: ui({
+        borderColor: "var(--border)",
+      }),
+      muted: ui({
+        backgroundColor: "var(--muted)",
+        "@supports (color: color-mix(in lab, red, red))": {
+          backgroundColor: "color-mix(in oklab, var(--muted) 50%, transparent)",
+        },
+      }),
     },
     size: {
-      default: css`
-        @layer barq.ui {
-          gap: calc(var(--spacing) * 4);
-          padding: calc(var(--spacing) * 4);
-        }
-      `,
-      sm: css`
-        @layer barq.ui {
-          gap: calc(var(--spacing) * 2.5);
-          padding-inline: calc(var(--spacing) * 4);
-          padding-block: calc(var(--spacing) * 3);
-        }
-      `,
+      default: ui({
+        gap: "calc(var(--spacing) * 4)",
+        padding: "calc(var(--spacing) * 4)",
+      }),
+      sm: ui({
+        gap: "calc(var(--spacing) * 2.5)",
+        paddingInline: "calc(var(--spacing) * 4)",
+        paddingBlock: "calc(var(--spacing) * 3)",
+      }),
     },
   },
   defaults: { variant: "default", size: "default" },
@@ -117,131 +101,117 @@ export const itemVariants = variants({
 
 export type ItemMediaVariant = "default" | "icon" | "image";
 
-export const itemMediaVariants = variants({
-  base: css`
-    @layer barq.ui {
-      display: flex;
-      flex-shrink: 0;
-      align-items: center;
-      justify-content: center;
-      gap: calc(var(--spacing) * 2);
-      & svg {
-        pointer-events: none;
-      }
-      [data-slot="item"]:has([data-slot="item-description"]) & {
-        --ui-translate-y: calc(var(--spacing) * 0.5);
-        translate: var(--ui-translate-x) var(--ui-translate-y);
-        align-self: flex-start;
-      }
-    }
-  `,
+export const itemMediaVariants = uiVariants({
+  base: ui({
+    display: "flex",
+    flexShrink: "0",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "calc(var(--spacing) * 2)",
+    "& svg": {
+      pointerEvents: "none",
+    },
+    '[data-slot="item"]:has([data-slot="item-description"]) &': {
+      "--ui-translate-y": "calc(var(--spacing) * 0.5)",
+      translate: "var(--ui-translate-x) var(--ui-translate-y)",
+      alignSelf: "flex-start",
+    },
+  }),
   variants: {
     variant: {
-      default: css`
-        @layer barq.ui {
-          background-color: transparent;
-        }
-      `,
-      icon: css`
-        @layer barq.ui {
-          width: calc(var(--spacing) * 8);
-          height: calc(var(--spacing) * 8);
-          border-radius: calc(var(--radius) - 4px);
-          border-style: var(--ui-border-style);
-          border-width: 1px;
-          background-color: var(--muted);
-          & svg:not([class*="size-"]) {
-            width: calc(var(--spacing) * 4);
-            height: calc(var(--spacing) * 4);
-          }
-        }
-      `,
-      image: css`
-        @layer barq.ui {
-          width: calc(var(--spacing) * 10);
-          height: calc(var(--spacing) * 10);
-          overflow: hidden;
-          border-radius: calc(var(--radius) - 4px);
-          & img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-          }
-        }
-      `,
+      default: ui({
+        backgroundColor: "transparent",
+      }),
+      icon: ui({
+        width: "calc(var(--spacing) * 8)",
+        height: "calc(var(--spacing) * 8)",
+        borderRadius: "calc(var(--radius) - 4px)",
+        borderStyle: "var(--ui-border-style)",
+        borderWidth: "1px",
+        backgroundColor: "var(--muted)",
+        '& svg:not([class*="size-"])': {
+          width: "calc(var(--spacing) * 4)",
+          height: "calc(var(--spacing) * 4)",
+        },
+      }),
+      image: ui({
+        width: "calc(var(--spacing) * 10)",
+        height: "calc(var(--spacing) * 10)",
+        overflow: "hidden",
+        borderRadius: "calc(var(--radius) - 4px)",
+        "& img": {
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+        },
+      }),
     },
   },
   defaults: { variant: "default" },
 });
 
-const content = css`
-  @layer barq.ui {
-    display: flex;
-    flex: 1;
-    flex-direction: column;
-    gap: var(--spacing);
-    & + [data-slot="item-content"] {
-      flex: none;
-    }
-  }
-`;
+const content = ui({
+  display: "flex",
+  flex: "1",
+  flexDirection: "column",
+  gap: "var(--spacing)",
+  '& + [data-slot="item-content"]': {
+    flex: "none",
+  },
+});
 
-const title = css`
-  @layer barq.ui {
-    display: flex;
-    width: fit-content;
-    align-items: center;
-    gap: calc(var(--spacing) * 2);
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    --ui-leading: var(--leading-snug);
-    line-height: var(--leading-snug);
-    --ui-font-weight: var(--font-weight-medium);
-    font-weight: var(--font-weight-medium);
-  }
-`;
+const title = ui({
+  display: "flex",
+  width: "fit-content",
+  alignItems: "center",
+  gap: "calc(var(--spacing) * 2)",
+  fontSize: "var(--text-sm)",
+  lineHeight: firstThatWorks(
+    "var(--leading-snug)",
+    "var(--ui-leading, var(--text-sm--line-height))",
+  ),
+  "--ui-leading": "var(--leading-snug)",
+  "--ui-font-weight": "var(--font-weight-medium)",
+  fontWeight: "var(--font-weight-medium)",
+});
 
-const description = css`
-  @layer barq.ui {
-    overflow: hidden;
-    display: -webkit-box;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 2;
-    font-size: var(--text-sm);
-    line-height: var(--ui-leading, var(--text-sm--line-height));
-    --ui-leading: var(--leading-normal);
-    line-height: var(--leading-normal);
-    --ui-font-weight: var(--font-weight-normal);
-    font-weight: var(--font-weight-normal);
-    text-wrap: balance;
-    color: var(--muted-foreground);
-    & > a {
-      text-decoration-line: underline;
-      text-underline-offset: 4px;
-    }
-    & > a:hover {
-      color: var(--primary);
-    }
-  }
-`;
+const description = ui({
+  overflow: "hidden",
+  display: "-webkit-box",
+  "-webkit-box-orient": "vertical",
+  "-webkit-line-clamp": "2",
+  fontSize: "var(--text-sm)",
+  lineHeight: firstThatWorks(
+    "var(--leading-normal)",
+    "var(--ui-leading, var(--text-sm--line-height))",
+  ),
+  "--ui-leading": "var(--leading-normal)",
+  "--ui-font-weight": "var(--font-weight-normal)",
+  fontWeight: "var(--font-weight-normal)",
+  textWrap: "balance",
+  color: "var(--muted-foreground)",
+  "& > a": {
+    textDecorationLine: "underline",
+    textUnderlineOffset: "4px",
+  },
+  "& > a:hover": {
+    color: "var(--primary)",
+  },
+});
 
-const actions = css`
-  @layer barq.ui {
-    display: flex;
-    align-items: center;
-    gap: calc(var(--spacing) * 2);
-  }
-`;
+const actions = ui({
+  display: "flex",
+  alignItems: "center",
+  gap: "calc(var(--spacing) * 2)",
+});
 
-const band = css`
-  @layer barq.ui {
-    display: flex;
-    flex-basis: 100%;
-    align-items: center;
-    justify-content: space-between;
-    gap: calc(var(--spacing) * 2);
-  }
-`;
+const band = ui({
+  display: "flex",
+  flexBasis: "100%",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "calc(var(--spacing) * 2)",
+});
 
 /** A list of `<Item>`s. `role="list"`, so a reader counts them. */
 export function ItemGroup(props: Incoming<UiProps>) {
@@ -260,7 +230,7 @@ export function ItemSeparator(props: Incoming<ItemSeparatorProps>) {
       {...props}
       data-slot={props["data-slot"]?.() ?? "item-separator"}
       orientation="horizontal"
-      class={clsx(separator, props.class?.(), props.className?.())}
+      class={ui(separator, props.class?.(), props.className?.())}
     />
   );
 }
