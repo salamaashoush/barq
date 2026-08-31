@@ -4,6 +4,7 @@ import {
   atomsIn,
   collectCss,
   create,
+  createIn,
   createTheme,
   css,
   defineVars,
@@ -11,6 +12,7 @@ import {
   dynamicVar,
   firstThatWorks,
   globalCss,
+  layer,
   mergeable,
   props,
   tierOf,
@@ -343,6 +345,50 @@ describe("atomsIn", () => {
   test("a condition inside a layer keeps both", () => {
     const cls = atomsIn("barq.ui", { color: { "@media print": "black" } }).split(" ")[0] ?? "";
     expect(layerBody("barq.ui")).toContain(`@media print{.${cls}{color:black}}`);
+  });
+});
+
+describe("layer", () => {
+  test("binds the layer, and produces the classes `atomsIn` would", () => {
+    const ui = layer("barq.ui");
+    expect(ui({ color: "seagreen", paddingTop: 8 })).toBe(
+      atomsIn("barq.ui", { color: "seagreen", paddingTop: 8 }),
+    );
+  });
+
+  test("merges its arguments the way `atomsIn` does", () => {
+    const ui = layer("barq.ui");
+    const merged = ui({ color: "peru" }, { color: "sienna" }).split(" ");
+    expect(merged).toHaveLength(1);
+    expect(ruleFor(merged[0] ?? "")).toBe(`.${merged[0] ?? ""}{color:sienna}`);
+  });
+});
+
+describe("createIn", () => {
+  test("puts a group's atoms in the layer, and returns plain strings", () => {
+    const shared = createIn("barq.ui", {
+      ring: { outlineWidth: "3px" },
+      flat: { boxShadow: "none" },
+    });
+    expect(shared).toEqual({
+      ring: createIn("barq.ui", { ring: { outlineWidth: "3px" } }).ring,
+      flat: createIn("barq.ui", { flat: { boxShadow: "none" } }).flat,
+    });
+    const body = layerBody("barq.ui");
+    expect(body).toContain(`.${shared.ring}{outline-width:3px}`);
+    expect(body).toContain(`.${shared.flat}{box-shadow:none}`);
+  });
+
+  test("a group composes into a later call, which is what it is for", () => {
+    const ui = layer("barq.ui");
+    const shared = createIn("barq.ui", { ring: { outlineWidth: "3px" } });
+    const merged = ui(shared.ring, { outlineWidth: "1px" }).split(" ");
+    expect(merged).toHaveLength(1);
+    expect(ruleFor(merged[0] ?? "")).toBe(`.${merged[0] ?? ""}{outline-width:1px}`);
+  });
+
+  test("and `create` is the same groups unlayered", () => {
+    expect(create({ a: { color: "orchid" } }).a).toBe(createIn("", { a: { color: "orchid" } }).a);
   });
 });
 

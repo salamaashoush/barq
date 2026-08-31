@@ -243,7 +243,7 @@ export function tierOf(condition: string): number {
  * descendant — the same four cases the nested-block flattener has, because a
  * condition here is a nested selector written on one line.
  */
-function rule(name: string, condition: string, declaration: string, layer = ""): string {
+function rule(name: string, condition: string, declaration: string, into = ""): string {
   const parts = condition === "default" ? [] : condition.split(NEST);
   // At-rules wrap from the outside in; the selector parts all apply to the one
   // class, so they concatenate.
@@ -259,7 +259,7 @@ function rule(name: string, condition: string, declaration: string, layer = ""):
   }
   inner = `${inner}{${declaration}}`;
   for (const wrap of wraps.toReversed()) inner = `${wrap}{${inner}}`;
-  return layer === "" ? inner : `@layer ${layer}{${inner}}`;
+  return into === "" ? inner : `@layer ${into}{${inner}}`;
 }
 
 /**
@@ -272,13 +272,11 @@ function rule(name: string, condition: string, declaration: string, layer = ""):
  */
 const named = new Map<string, string>();
 
-function atom(property: string, condition: string, value: string, layer = ""): string {
+function atom(property: string, condition: string, value: string, into = ""): string {
   // The layer belongs to the atom's identity: the same declaration in and out
   // of a layer is two different rules, and one class name cannot carry both.
   const memo =
-    layer === ""
-      ? `${property}|${condition}|${value}`
-      : `${layer}|${property}|${condition}|${value}`;
+    into === "" ? `${property}|${condition}|${value}` : `${into}|${property}|${condition}|${value}`;
   const hit = named.get(memo);
   if (hit !== undefined) return hit;
   // The suffix hashes the VALUE, and nothing else. The key already carries the
@@ -288,8 +286,8 @@ function atom(property: string, condition: string, value: string, layer = ""): s
   // one value, and a compressor reads three of the four suffixes as
   // back-references instead of as noise. Measured over `@barqjs/ui`'s
   // stylesheet, 1,078 atoms: 16.2 KB brotli down to 13.1.
-  const name = `${atomKey(property, condition)}_${hash(layer === "" ? value : `${layer}|${value}`).slice(1)}`;
-  register(name, rule(name, condition, `${property}:${value}`, layer), tierOf(condition));
+  const name = `${atomKey(property, condition)}_${hash(into === "" ? value : `${into}|${value}`).slice(1)}`;
+  register(name, rule(name, condition, `${property}:${value}`, into), tierOf(condition));
   named.set(memo, name);
   return name;
 }
@@ -309,16 +307,16 @@ function apply(
   property: string,
   condition: string,
   text: string,
-  layer: string,
+  into: string,
 ): void {
   const expanded = expand(property, text);
   if (expanded === null) {
-    const name = atom(property, condition, text, layer);
+    const name = atom(property, condition, text, into);
     applied.set(key(name), name);
     return;
   }
   for (const [longhand, own] of expanded) {
-    const name = atom(longhand, condition, own, layer);
+    const name = atom(longhand, condition, own, into);
     applied.set(key(name), name);
   }
 }
@@ -347,7 +345,7 @@ function walk(
   applied: Map<string, string>,
   style: Record<string, unknown>,
   condition: string,
-  layer: string,
+  into: string,
 ): void {
   for (const rawKey in style) {
     const raw = style[rawKey];
@@ -355,19 +353,19 @@ function walk(
     // `'@media …'`, `'&:hover .x'`.
     if (looksLikeCondition(rawKey)) {
       if (isConditions(raw)) {
-        walk(applied, raw, join(condition, rawKey), layer);
+        walk(applied, raw, join(condition, rawKey), into);
       }
       continue;
     }
     const property = kebab(rawKey);
     if (isFallback(raw)) {
-      apply(applied, property, condition, declarations(property, raw), layer);
+      apply(applied, property, condition, declarations(property, raw), into);
       continue;
     }
     if (!isConditions(raw)) {
       if (raw === null) remove(applied, property, condition);
       else if (typeof raw === "string" || typeof raw === "number") {
-        apply(applied, property, condition, cssValue(property, raw), layer);
+        apply(applied, property, condition, cssValue(property, raw), into);
       }
       continue;
     }
@@ -375,11 +373,11 @@ function walk(
       const value = raw[inner];
       const where = inner === "default" ? condition : join(condition, inner);
       if (isConditions(value) && !isFallback(value)) {
-        walk(applied, { [rawKey]: value }, where, layer);
+        walk(applied, { [rawKey]: value }, where, into);
         continue;
       }
       if (isFallback(value)) {
-        apply(applied, property, where, declarations(property, value), layer);
+        apply(applied, property, where, declarations(property, value), into);
         continue;
       }
       // `null` under a non-default condition has no meaning, so it is skipped
@@ -389,7 +387,7 @@ function walk(
         continue;
       }
       if (typeof value !== "string" && typeof value !== "number") continue;
-      apply(applied, property, where, cssValue(property, value), layer);
+      apply(applied, property, where, cssValue(property, value), into);
     }
   }
 }
@@ -426,19 +424,44 @@ export function atoms(...styles: (AtomInput | readonly AtomInput[])[]): string {
  * should win without `!important` and without counting specificity, which is
  * what a layer gives and nothing else does.
  *
- * ```ts
- * const ui = (...styles: AtomInput[]) => atomsIn("barq.ui", ...styles);
- * ```
+ * A module whose every rule is in one layer writes {@link layer} once instead
+ * of naming it at each call.
  *
  * The layer is part of each atom's identity, so the same declaration layered
  * and not is two classes. Merging still works across them: the merge key is the
  * property, which both carry.
  */
-export function atomsIn(layer: string, ...styles: (AtomInput | readonly AtomInput[])[]): string {
-  return build(layer, styles);
+export function atomsIn(into: string, ...styles: (AtomInput | readonly AtomInput[])[]): string {
+  return build(into, styles);
 }
 
-function build(layer: string, styles: (AtomInput | readonly AtomInput[])[]): string {
+/** What {@link layer} and {@link atoms} both are: styles in, a class string out. */
+export type AtomsFn = (...styles: (AtomInput | readonly AtomInput[])[]) => string;
+
+/**
+ * {@link atomsIn} with its layer bound, named once at the top of a module.
+ *
+ * ```ts
+ * const ui = layer("barq.ui");
+ * const card = ui({ display: "flex", padding: 8 });
+ * ```
+ *
+ * The compiler folds a call through the binding exactly as it folds `atomsIn`,
+ * which is the whole reason this exists rather than an arrow function of your
+ * own: it reads `layer("barq.ui")` in THIS module, so the layer is still a
+ * literal at the call site and the atoms still carry it in their names. A
+ * wrapper the compiler cannot see leaves every call to the runtime, and with it
+ * the module's whole stylesheet inside the JS bundle.
+ *
+ * A binding that crosses a module boundary is not one the compiler can read, so
+ * this is written per module. That is one line against a layer named at every
+ * call, and it puts the fact where a reader looks for it.
+ */
+export function layer(name: string): AtomsFn {
+  return (...styles) => build(name, styles);
+}
+
+function build(into: string, styles: (AtomInput | readonly AtomInput[])[]): string {
   const applied = new Map<string, string>();
 
   for (const style of styles.flat(4)) {
@@ -456,7 +479,7 @@ function build(layer: string, styles: (AtomInput | readonly AtomInput[])[]): str
       }
       continue;
     }
-    walk(applied, style, "default", layer);
+    walk(applied, style, "default", into);
   }
   return [...applied.values()].join(" ");
 }
@@ -494,8 +517,30 @@ export function mergeable(property: string): boolean {
 export function create<T extends Record<string, AtomStyles>>(
   styles: T,
 ): { readonly [K in keyof T]: string } {
+  return createIn("", styles);
+}
+
+/**
+ * The same groups, inside a cascade layer, for the same reason {@link atomsIn}
+ * exists.
+ *
+ * A group is what a treatment shared across a package is written as once: the
+ * ring, the shadow, the focus block. The object it returns is plain strings, so
+ * it crosses a module boundary as DATA, and every module that composes it lands
+ * on the classes this one registered.
+ *
+ * ```ts
+ * export const shared = createIn("barq.ui", {
+ *   shadow: { boxShadow: "var(--ui-inset-shadow), …" },
+ * });
+ * ```
+ */
+export function createIn<T extends Record<string, AtomStyles>>(
+  into: string,
+  styles: T,
+): { readonly [K in keyof T]: string } {
   const out: Record<string, string> = {};
-  for (const name in styles) out[name] = atoms(styles[name]);
+  for (const name in styles) out[name] = build(into, [styles[name]]);
   return out as { readonly [K in keyof T]: string };
 }
 

@@ -164,6 +164,38 @@ compose by handing both back to `atoms`, which merges names by the key each one
 carries. The compiler turns the whole thing into an object of string literals
 and the call site into one string, or one ternary when a group is conditional.
 
+A group is what a treatment shared across a package is written as once. The
+object is plain strings, so it crosses a module boundary as data and every
+module composing it lands on the classes the group's own module registered.
+
+### A layer, named once
+
+A design system's rules belong in a cascade layer, so an application's own rule
+wins without `!important`. `atomsIn("barq.ui", { … })` says so at every call,
+and the layer has to be a literal there because it becomes part of every class
+name. `layer` binds it once instead:
+
+```ts
+import { createIn, layer } from "@barqjs/css";
+
+const ui = layer("barq.ui");
+
+export const shared = createIn("barq.ui", {
+  ring: { outlineWidth: "3px", outlineColor: "var(--ring)" },
+});
+
+const card = ui(shared.ring, { display: "flex", padding: 8 });
+```
+
+The compiler reads `layer("barq.ui")` in **this** module, so the layer is still
+a literal at the call site and every call through the binding folds exactly as
+the `atomsIn` it stands for. An arrow function of your own does not fold, which
+is the difference: `@barqjs/ui` wrote its wrapper that way once and its whole
+stylesheet travelled inside the JS bundle.
+
+It is per module because the pass is: a binding that crosses a module boundary
+is not one the compiler reads. `createIn` is `create` with the same layer.
+
 ### Ordering
 
 Nothing is wrapped in a cascade layer, and that is deliberate. Specificity does
@@ -368,8 +400,9 @@ placeholders are legal in, and everything that widening lets through — `$var`,
 
 ## What is compiled, and what is not
 
-Compiled away: `css`, `keyframes`, `globalCss`, `atoms`, `create`,
-`firstThatWorks`, `props`, `defineVars`, `dynamic` (its class half).
+Compiled away: `css`, `keyframes`, `globalCss`, `atoms`, `atomsIn`, `create`,
+`createIn`, a call through a `layer` binding, `firstThatWorks`, `props`,
+`defineVars`, `dynamic` (its class half).
 
 Left to run, and why:
 
