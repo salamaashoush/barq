@@ -6,45 +6,31 @@
  * That was one lookup per class while a class was a whole block; a class is one
  * declaration now, so the unit is the LIST a component puts on its element.
  *
- * The package's rules are all in one cascade layer, split into a sub-layer per
- * tier, so every sub-layer's contents are gathered and then split into
- * top-level statements, and the ones naming a class are kept. An at-rule comes
- * with its rule, which is what lets a test say `@media` or `:hover` and mean
- * it.
+ * The package's rules are all in one cascade layer, so the layer's contents are
+ * split into top-level statements and the ones naming a class are kept. An
+ * at-rule comes with its rule, which is what lets a test say `@media` or
+ * `:hover` and mean it.
  */
 
-import { collectCss, TIERS } from "@barqjs/css";
+import { collectCss } from "@barqjs/css";
 
-/**
- * The contents of the package's cascade layer, across the tier sub-layers it is
- * split into.
- *
- * A layered atom goes into `barq.ui.<tier>` so tier order is the cascade's
- * rather than the order two modules happened to register in. A test is about
- * the RULES the layer holds, so every sub-layer's contents count as its body.
- */
+/** The contents of the package's cascade layer, however many blocks it is in. */
 function layerBody(sheet: string): string {
+  const open = "@layer barq.ui{";
   const out: string[] = [];
-  // `""` is the layer itself, which a hand-written `@layer barq.ui { … }` in a
-  // `css` block writes to. Its content OUTRANKS every sub-layer, because
-  // un-layered content inside a layer beats that layer's nested layers, and
-  // `srOnly` is written that way on purpose.
-  for (const tier of ["", ...TIERS]) {
-    const open = tier === "" ? "@layer barq.ui{" : `@layer barq.ui.${tier}{`;
-    let from = 0;
-    for (;;) {
-      const at = sheet.indexOf(open, from);
-      if (at < 0) break;
-      const start = at + open.length;
-      let depth = 1;
-      let index = start;
-      for (; index < sheet.length; index++) {
-        if (sheet[index] === "{") depth++;
-        else if (sheet[index] === "}" && --depth === 0) break;
-      }
-      out.push(sheet.slice(start, index));
-      from = index;
+  let from = 0;
+  for (;;) {
+    const at = sheet.indexOf(open, from);
+    if (at < 0) break;
+    const start = at + open.length;
+    let depth = 1;
+    let index = start;
+    for (; index < sheet.length; index++) {
+      if (sheet[index] === "{") depth++;
+      else if (sheet[index] === "}" && --depth === 0) break;
     }
+    out.push(sheet.slice(start, index));
+    from = index;
   }
   return out.join("");
 }

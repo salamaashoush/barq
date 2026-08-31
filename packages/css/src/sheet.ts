@@ -50,17 +50,15 @@ const SHEET_ID = "barq-css";
  * cannot separate is a base against the same property under an at-rule, since
  * `@media` adds none — so the tier decides that one.
  *
- * Emitting in tier order settles it within one `atoms` call. It does NOT settle
- * it across modules: a group declared elsewhere registered its rules first, so
- * composing one could invert such a pair, and three pairs on `@barqjs/ui`'s
- * gallery were decided the wrong way round. A LAYERED atom therefore goes into
- * a sub-layer named for its tier — `barq.ui.base`, `barq.ui.media` — which
- * makes the order the cascade's rather than the bundler's while staying inside
- * `barq.ui`, so an application's unlayered rule still wins.
- *
- * An unlayered atom cannot have that, for the same reason it cannot have a
- * layer, and does not need it: two atoms conflict only when merged, merging
- * happens in one `atoms` call, and one call is in one module.
+ * The tier is a TIE-BREAKER on top of specificity, and never a cascade layer:
+ * CSS decides by specificity first and order second, where a layer overrides
+ * specificity outright. Measured in a browser, emitting each tier into
+ * `@layer barq.ui.<tier>` moved 289 computed values on `@barqjs/ui`'s gallery,
+ * because a parent's `[data-variant="destructive"] &` at 0-2-0 stopped beating
+ * the child's own 0-1-0. So the tier is carried by the ORDER of the rules, and
+ * `collectCss` sorts every rule it holds by it — which makes the order global
+ * here, where a production bundle needs `orderCss` over the built asset to
+ * reach the same place.
  *
  * `descendant` comes FIRST, and that is the one tier order decides rather than
  * specificity. A rule a parent writes about its children — `& > *`, `& svg` —
@@ -71,19 +69,6 @@ const SHEET_ID = "barq-css";
  * INTENT, so the parent's goes before it and loses the tie.
  */
 export const TIERS = ["descendant", "base", "select", "element", "media"] as const;
-
-/**
- * The statement that fixes a layer's sub-layer order.
- *
- * A layer's position is decided by where it is FIRST NAMED, so a module whose
- * first atom is a media atom would otherwise put `media` before `base`. Written
- * rather than inferred, and repeating it is free: a second `@layer a, b;` over
- * names already ordered is a no-op, which is what lets a per-file compiler emit
- * it and this emit it again without either knowing what the other did.
- */
-export function subLayerOrder(into: string): string {
-  return `@layer ${TIERS.map((tier) => `${into}.${tier}`).join(", ")};`;
-}
 
 /**
  * The tier each rule sorts in, for the one ordering specificity cannot give:
@@ -210,12 +195,6 @@ export function collectCss(): string {
   // the order. The block sits where the layer was first named.
   const out: string[] = [];
   const layers = new Map<string, string[]>();
-  // A layered atom goes into a SUB-layer named for its tier, and a sub-layer's
-  // position is decided by where it is first named — so a module whose first
-  // atom is a media atom would put `media` before `base` and invert the one
-  // pair specificity cannot separate. The statement that fixes the order is
-  // written once, before the first block of that layer, wherever that lands.
-  const ordered = new Set<string>();
   for (const rule of rules) {
     const split = wrapped(rule);
     if (split === null) {
@@ -224,11 +203,6 @@ export function collectCss(): string {
     }
     const held = layers.get(split.layer);
     if (held === undefined) {
-      const base = baseLayer(split.layer);
-      if (base !== null && !ordered.has(base)) {
-        ordered.add(base);
-        out.push(subLayerOrder(base));
-      }
       layers.set(split.layer, [split.body]);
       out.push(`\u0000${split.layer}`);
     } else {
@@ -243,13 +217,6 @@ export function collectCss(): string {
         : part,
     )
     .join("");
-}
-
-/** The layer a tier sub-layer belongs to, or `null` for anything else. */
-function baseLayer(name: string): string | null {
-  const cut = name.lastIndexOf(".");
-  if (cut < 0) return null;
-  return (TIERS as readonly string[]).includes(name.slice(cut + 1)) ? name.slice(0, cut) : null;
 }
 
 /**

@@ -353,21 +353,17 @@ pub enum Tier {
 }
 
 impl Tier {
-    /// The sub-layer this tier is emitted into, INSIDE the layer the call
-    /// named.
+    /// The tier's name, for a diagnostic and for the ordering pass's tests.
     ///
-    /// Emitting in tier order settles the pair specificity cannot, and it
-    /// settles it within one `atoms` call and nowhere else: a group declared in
-    /// another module had its rules registered first, so composing it can
-    /// invert such a pair. A sub-layer makes the order global — the cascade
-    /// decides by layer whatever the source order — without giving up the thing
-    /// atoms exist for, because a sub-layer of `barq.ui` is still inside
-    /// `barq.ui` and still loses to an application's unlayered rule.
-    ///
-    /// Only for a layered atom. An unlayered one cannot have a sub-layer for
-    /// the same reason it cannot have a layer: a layered rule loses to an
-    /// unlayered one whatever its specificity, and an application's own
-    /// `* { margin: 0 }` would beat every margin on the page.
+    /// A tier is NOT a cascade layer and must not become one. It is a
+    /// tie-breaker on top of specificity — CSS decides by specificity first and
+    /// order second — and a layer overrides specificity outright. Measured in a
+    /// browser: emitting each tier into `@layer barq.ui.<tier>` moved 289
+    /// computed values on the gallery, because a parent's
+    /// `[data-variant="destructive"] &` at 0-2-0 stopped beating the child's own
+    /// 0-1-0 the moment the two sat in different sub-layers. Ordering the rules
+    /// moves 8, and every one of them is a rule under an at-rule that was
+    /// losing to a base rule another module emitted after it.
     pub fn as_str(self) -> &'static str {
         match self {
             Tier::Descendant => "descendant",
@@ -377,24 +373,6 @@ impl Tier {
             Tier::Media => "media",
         }
     }
-
-    pub const ALL: [Tier; 5] =
-        [Tier::Descendant, Tier::Base, Tier::Select, Tier::Element, Tier::Media];
-}
-
-/// The one statement that fixes a layer's sub-layer order.
-///
-/// Written rather than inferred, because a layer's position is decided by where
-/// it is FIRST NAMED and a module whose first atom is a media atom would
-/// otherwise put `media` before `base`. Repeating it is free: a second
-/// `@layer a, b;` for names already ordered is a no-op, which is what lets a
-/// per-file pass emit it at all. StyleX cannot — its layer list is
-/// `priority1 … priorityN` derived from the whole rule set, so only a
-/// build-level aggregation can write it.
-pub fn sub_layer_order(layer: &str) -> String {
-    let names: Vec<String> =
-        Tier::ALL.iter().map(|tier| format!("{layer}.{}", tier.as_str())).collect();
-    format!("@layer {};", names.join(", "))
 }
 
 /// A condition path, joined. `@media …` outside, `:hover` inside.
@@ -424,35 +402,100 @@ fn tier_of(condition: &str) -> Tier {
     }
 }
 
+/// A selector list, split at the commas that separate its branches.
+///
+/// Depth-aware, because `:is(a, b)` and `:not(a, b)` both carry a comma that
+/// separates nothing.
+fn branches(part: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut depth = 0i32;
+    let mut start = 0usize;
+    for (index, character) in part.char_indices() {
+        match character {
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth -= 1,
+            ',' if depth == 0 => {
+                out.push(part[start..index].trim());
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    out.push(part[start..].trim());
+    out
+}
+
+/// One branch of a condition, applied to one selector built so far.
+///
+/// EVERY branch of a list gets the treatment, and that is the whole reason this
+/// is a function. `"[data-expanded], &[data-open]"` used to be substituted as
+/// one string: the `&` in the second branch matched, so the first branch was
+/// left as a bare `[data-expanded]` and the rule painted every element on the
+/// page carrying that attribute. Measured in a browser on `@barqjs/ui`'s
+/// menubar, where it took an accordion trigger's background. `atoms.ts` joins
+/// them the same way.
+fn extend(selector: &str, branch: &str) -> String {
+    if branch.contains('&') {
+        branch.replace('&', selector)
+    } else if branch.starts_with(':') || branch.starts_with('[') {
+        format!("{selector}{branch}")
+    } else {
+        format!("{selector} {branch}")
+    }
+}
+
+/// The selectors a condition's non-at-rule parts build from `seed`.
+fn selectors(condition: &str, seed: &str) -> Vec<String> {
+    let mut out = vec![seed.to_string()];
+    for part in condition.split(NEST).filter(|part| !part.starts_with('@')) {
+        out = out
+            .iter()
+            .flat_map(|selector| {
+                branches(part).into_iter().map(move |branch| extend(selector, branch))
+            })
+            .collect();
+    }
+    out
+}
+
 /// Whether a condition's subject is this element, or something under it.
 ///
 /// A rule a parent writes about its children and a rule the child writes about
 /// itself are both one class, so nothing separates them but which came last.
 /// The child's own rule is the more specific intent, so the parent's sorts
 /// first and loses the tie. `atoms.ts` decides it the same way.
+///
+/// A list is about a descendant when ANY of its branches is: the rule reaches
+/// something under the element, whatever the rest of it does.
 fn about_self(condition: &str) -> bool {
-    let mut selector = String::from("&");
-    for part in condition.split(NEST).filter(|part| !part.starts_with('@')) {
-        selector = if part.contains('&') {
-            part.replace('&', &selector)
-        } else if part.starts_with(':') || part.starts_with('[') {
-            format!("{selector}{part}")
-        } else {
-            format!("{selector} {part}")
-        };
-    }
+    selectors(condition, "&").iter().all(|selector| {
+        let at = selector.rfind('&').map_or(0, |index| index + 1);
+        let mut depth = 0i32;
+        for character in selector[at..].chars() {
+            match character {
+                '(' | '[' => depth += 1,
+                ')' | ']' => depth -= 1,
+                ' ' | '>' | '+' | '~' if depth == 0 => return false,
+                _ => {}
+            }
+        }
+        true
+    })
+}
 
-    let at = selector.rfind('&').map_or(0, |index| index + 1);
-    let mut depth = 0i32;
-    for character in selector[at..].chars() {
-        match character {
-            '(' | '[' => depth += 1,
-            ')' | ']' => depth -= 1,
-            ' ' | '>' | '+' | '~' if depth == 0 => return false,
-            _ => {}
+impl Atom {
+    /// The rule without the `@layer` wrapper `atom_in` put on it, for a test
+    /// assembling a layer by hand.
+    #[cfg(test)]
+    pub(crate) fn rule_body(&self) -> &str {
+        match self.rule.strip_prefix("@layer ") {
+            Some(rest) => match rest.find('{') {
+                Some(brace) => &rest[brace + 1..self.rule.len() - "@layer ".len() - 1],
+                None => &self.rule,
+            },
+            None => &self.rule,
         }
     }
-    true
 }
 
 /// One declaration, as a class, a merge key and a rule.
@@ -513,30 +556,24 @@ pub fn atom_in(layer: &str, property: &str, condition: &str, value: &str) -> Ato
     let declaration = format!("{property}:{value}");
     // At-rules wrap from the outside in; the selector parts all apply to the
     // one class, so they concatenate.
-    let parts: Vec<&str> =
-        if condition == "default" { Vec::new() } else { condition.split(NEST).collect() };
-    let mut inner = format!(".{class}");
-    for part in parts.iter().filter(|part| !part.starts_with('@')) {
-        inner = if part.contains('&') {
-            part.replace('&', &inner)
-        } else if part.starts_with(':') || part.starts_with('[') {
-            format!("{inner}{part}")
-        } else {
-            format!("{inner} {part}")
-        };
-    }
+    let seed = format!(".{class}");
+    let mut inner =
+        if condition == "default" { seed } else { selectors(condition, &seed).join(",") };
     inner = format!("{inner}{{{declaration}}}");
-    for part in parts.iter().filter(|part| part.starts_with('@')).rev() {
-        inner = format!("{part}{{{inner}}}");
+    if condition != "default" {
+        for part in condition
+            .split(NEST)
+            .filter(|part| part.starts_with('@'))
+            .collect::<Vec<_>>()
+            .iter()
+            .rev()
+        {
+            inner = format!("{part}{{{inner}}}");
+        }
     }
     let tier = tier_of(condition);
     if !layer.is_empty() {
-        // The SUB-layer, so tier order is the cascade's rather than the order
-        // two modules happened to be emitted in. The class name is untouched:
-        // the tier is a pure function of the condition and the condition is
-        // already in the key, so it adds nothing to the atom's identity and
-        // the suffix still hashes `layer|value`.
-        inner = format!("@layer {layer}.{}{{{inner}}}", tier.as_str());
+        inner = format!("@layer {layer}{{{inner}}}");
     }
     Atom { class, key, rule: inner, tier }
 }
@@ -673,6 +710,60 @@ mod tests {
         for ((property, condition, value), expected) in cases {
             assert_eq!(atom(property, condition, value).class, expected, "{property} {condition}");
         }
+    }
+
+    /// Every branch of a selector list gets the class, and the one that had no
+    /// `&` used to lose it: `part.replace('&', …)` matched the second branch
+    /// and left the first as a bare `[data-expanded]`, which is a rule about
+    /// every element on the page carrying that attribute. Measured in a
+    /// browser, it took an accordion trigger's background from three sections
+    /// away.
+    #[test]
+    fn every_branch_of_a_selector_list_carries_the_class() {
+        let listed = atom("background-color", "[data-expanded], &[data-open]", "red");
+        assert_eq!(
+            listed.rule,
+            format!(
+                ".{class}[data-expanded],.{class}[data-open]{{background-color:red}}",
+                class = listed.class
+            )
+        );
+        // And a branch written the explicit way is the same rule.
+        let explicit = atom("background-color", "&[data-expanded], &[data-open]", "red");
+        assert_eq!(
+            explicit.rule.replace(&explicit.class, "X"),
+            listed.rule.replace(&listed.class, "X")
+        );
+    }
+
+    /// A comma inside `:is()` separates nothing.
+    #[test]
+    fn a_comma_inside_a_functional_pseudo_class_is_not_a_branch() {
+        let atom = atom("color", ":is(.dark, .night) &", "red");
+        assert_eq!(atom.rule, format!(":is(.dark, .night) .{}{{color:red}}", atom.class));
+        assert_eq!(atom.tier, Tier::Select, "the subject is still this element");
+    }
+
+    /// A list whose branches are about a descendant sorts as one, so a parent's
+    /// rule still loses the tie to the child's own.
+    #[test]
+    fn a_list_is_a_descendant_when_any_branch_is() {
+        assert_eq!(atom("color", "& > *, &:hover", "red").tier, Tier::Descendant);
+        assert_eq!(atom("color", "&:focus, &:hover", "red").tier, Tier::Select);
+    }
+
+    /// A later part applies to every branch the earlier one produced.
+    #[test]
+    fn a_nested_condition_reaches_every_branch_of_the_list() {
+        let condition = format!("[data-a], &[data-b]{NEST}:hover");
+        let atom = atom("color", &condition, "red");
+        assert_eq!(
+            atom.rule,
+            format!(
+                ".{class}[data-a]:hover,.{class}[data-b]:hover{{color:red}}",
+                class = atom.class
+            )
+        );
     }
 
     #[test]

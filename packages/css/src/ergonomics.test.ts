@@ -15,7 +15,6 @@ import {
   layer,
   mergeable,
   props,
-  subLayerOrder,
   TIERS,
   tierOf,
   variants,
@@ -276,36 +275,50 @@ describe("create", () => {
  * so an application's `* { margin: 0 }` beat every `margin` atom on the page.
  */
 /** What one cascade layer holds, out of the whole sheet. */
-/**
- * Everything a layer holds, across the tier sub-layers it is split into.
- *
- * A layered atom goes into `<layer>.<tier>` so tier order is the cascade's
- * rather than the order two modules happened to register in. A test is about
- * the rules the layer holds, which is every sub-layer's contents in the order
- * they appear.
- */
+/** Everything a layer holds, however many blocks it is written in. */
 function layerBody(name: string): string {
   const sheet = collectCss();
+  const open = `@layer ${name}{`;
   const out: string[] = [];
-  for (const tier of ["", ...TIERS]) {
-    const open = `@layer ${tier === "" ? name : `${name}.${tier}`}{`;
-    let from = 0;
-    for (;;) {
-      const at = sheet.indexOf(open, from);
-      if (at < 0) break;
-      const start = at + open.length;
-      let depth = 1;
-      let index = start;
-      for (; index < sheet.length; index++) {
-        if (sheet[index] === "{") depth++;
-        else if (sheet[index] === "}" && --depth === 0) break;
-      }
-      out.push(sheet.slice(start, index));
-      from = index;
+  let from = 0;
+  for (;;) {
+    const at = sheet.indexOf(open, from);
+    if (at < 0) break;
+    const start = at + open.length;
+    let depth = 1;
+    let index = start;
+    for (; index < sheet.length; index++) {
+      if (sheet[index] === "{") depth++;
+      else if (sheet[index] === "}" && --depth === 0) break;
     }
+    out.push(sheet.slice(start, index));
+    from = index;
   }
   return out.join("");
 }
+
+describe("atoms > a selector list", () => {
+  test("gives every branch the class, including the one with no `&`", () => {
+    // `part.replaceAll("&", …)` matched the second branch and left the first as
+    // a bare `[data-expanded]`, which is a rule about every element on the page
+    // carrying that attribute. Measured in a browser on `@barqjs/ui`'s menubar,
+    // where it took an accordion trigger's background three sections away.
+    const cls = atoms({ backgroundColor: { "[data-expanded], &[data-open]": "red" } });
+    expect(ruleFor(cls)).toBe(`.${cls}[data-expanded],.${cls}[data-open]{background-color:red}`);
+  });
+
+  test("and a comma inside `:is()` separates nothing", () => {
+    const cls = atoms({ color: { ":is(.dark, .night) &": "red" } });
+    expect(ruleFor(cls)).toBe(`:is(.dark, .night) .${cls}{color:red}`);
+  });
+
+  test("and the compiler names the same class for it", () => {
+    // The key hashes the CONDITION, which this does not change, so a call the
+    // compiler folded and a call the runtime evaluated still meet.
+    expect(tierOf("[data-expanded], &[data-open]")).toBe(2);
+    expect(tierOf("& > *, &:hover")).toBe(0);
+  });
+});
 
 describe("atoms > a rule about a child", () => {
   test("comes before the child's own rule, so the child wins the tie", () => {
@@ -340,35 +353,26 @@ describe("atomsIn", () => {
     for (const cls of classes.split(" ")) expect(body).toContain(`.${cls}`);
   });
 
-  test("and neighbours share one block per tier rather than each writing it", () => {
-    // A package with a thousand atoms wrote its layer's wrapper a thousand
-    // times: 16 KB of the 110 KB the sheet weighed. One block per tier is the
-    // most a layer can be split into, however many rules it holds.
+  test("and neighbours share the one block rather than each writing it", () => {
+    // A package with a thousand atoms wrote `@layer barq.ui{` a thousand times.
     const sheet = collectCss();
-    for (const tier of TIERS) {
-      expect(sheet.split(`@layer barq.ui.${tier}{`).length - 1).toBeLessThanOrEqual(1);
-    }
-    // And the order is published once, before the first of them.
-    expect(sheet.split(subLayerOrder("barq.ui")).length - 1).toBe(1);
-    expect(sheet.indexOf(subLayerOrder("barq.ui"))).toBeLessThan(
-      sheet.indexOf("@layer barq.ui.base{"),
-    );
+    expect(sheet.split("@layer barq.ui{").length - 1).toBe(1);
   });
 
-  test("a tier is a sub-layer, so the order is the cascade's and not the bundler's", () => {
-    // Tier order is what settles a base against the same property under an
-    // at-rule, since `@media` adds no specificity — and emitting in tier order
-    // settles it within ONE call and nowhere else. A group declared in another
-    // module registered first, and three pairs on `@barqjs/ui`'s gallery were
-    // decided the wrong way round because of it.
+  test("a tier is an ORDER inside the layer, never a sub-layer of it", () => {
+    // A layer overrides specificity outright where a tier is a tie-breaker on
+    // top of it. Measured in a browser: one sub-layer per tier moved 289
+    // computed values on `@barqjs/ui`'s gallery, because a parent's
+    // `[data-variant="destructive"] &` at 0-2-0 stopped beating the child's own
+    // 0-1-0. `collectCss` carries the tier as order instead, which is a
+    // tie-breaker and nothing more.
     atomsIn("barq.probe", { color: { "@media print": "black" } });
     atomsIn("barq.probe", { color: "white" });
     const sheet = collectCss();
-    expect(sheet.indexOf("@layer barq.probe.base{")).toBeLessThan(
-      sheet.indexOf("@layer barq.probe.media{"),
-    );
-    // Registered the other way round, and the cascade still puts base first.
-    expect(sheet).toContain(subLayerOrder("barq.probe"));
+    for (const tier of TIERS) expect(sheet).not.toContain(`barq.probe.${tier}`);
+    // Registered at-rule first, and the sort still puts the base rule before it.
+    const body = layerBody("barq.probe");
+    expect(body.indexOf("color:white")).toBeLessThan(body.indexOf("@media print"));
   });
 
   test("the layer is part of the atom, so the same declaration is two classes", () => {

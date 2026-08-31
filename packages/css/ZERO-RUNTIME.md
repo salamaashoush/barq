@@ -14,7 +14,11 @@ lightningcss minification. `bunx vite build --config gallery/vite.config.ts`.
 | | raw | gzip | brotli |
 | --- | --- | --- | --- |
 | JS bundle | 424.89 KB | 113.91 KB | 91.31 KB |
-| CSS asset | 99.56 KB | 17.86 KB | |
+| CSS asset | 99.56 KB | 17.75 KB | 14.80 KB |
+
+And after everything below: 425.10 KB / 113.99 / 91.30 of JS, 99.71 KB /
+17.50 / 14.67 of CSS. The point of the work is not the size, and the size says
+so.
 
 The CSS asset is not one thing, and reading it as one is where the last session's
 largest number came from:
@@ -124,68 +128,96 @@ meaning what it meant.
 **The soundness gap, stated rather than hidden.** An opaque argument is typed
 `AtomStyles | string | …`, so a function returning a style object can still hand
 `build` an object at run time. `strictCss` proves that no *statically visible*
-object reaches the runtime, not that none does. That is why removing the object
-branch is a second, separate switch (`define`) rather than a consequence of the
-first, and why the runtime keeps its object branch by default.
+object reaches the runtime, not that none does.
 
-### 2. A sub-layer per tier
+So `strictCss` on its own removes nothing from a bundle: it makes the fact
+checkable, and dropping the 4.34 KB is a second switch on top of it that nothing
+here has built yet. That is the honest order of the two, and the first is worth
+having without the second.
 
-This is the only correctness item on the list, and it is real.
+### 2. Global tier order, and why it is not a cascade layer
+
+This is the only correctness item on the list, and it is real. The fix is not
+the one the brief proposed, and a browser is what said so.
 
 Tier order settles the one pair specificity cannot: a base rule against the same
 property under an at-rule, since `@media` adds none. It holds within one `atoms`
 call, because a call emits its atoms sorted by tier. It does not hold across
-modules, because a group declared in another module had its rules registered
-first.
+modules, because the compiler emits one stylesheet per module and the bundler
+concatenates them in import order.
 
-Measured on the gallery, over class strings that actually co-occur on one
-element:
+Measured on the gallery, over class strings that co-occur on one element: **56**
+pairs are same-property, same-specificity and cross-tier, so order alone decides
+each one, and **3** are decided the wrong way today.
 
-- **56** pairs are same-property, **same-specificity**, and cross-tier. Order
-  alone decides each one.
-- **3** of them are decided the wrong way today.
+**The sub-layer per tier is wrong, and it is wrong by 289 computed values.**
+Emitting each tier into `@layer barq.ui.descendant … barq.ui.media` and diffing
+the gallery against `main` — every `[data-slot]` element, 485 of them, all 579
+computed properties plus the bounding box — moved 289 of them. The reason is one
+sentence: **a cascade layer overrides specificity, and the tier is a tie-breaker
+on top of it.** CSS decides by specificity first and order second; a layer
+decides before either. So a parent's `[data-variant="destructive"] &` at 0-2-0
+stopped beating the child's own 0-1-0 the moment the two sat in different
+sub-layers, and an `[data-selected]` at 0-2-0 lost to a `@media (hover: hover)`
+rule of the same specificity that it should have been ranked against by order.
+StyleX can group by priority into `@layer priority1 … priorityN` because every
+one of its selectors is one class plus a pseudo, so priority order *is* the
+intended order. barq's atoms carry `:is(.dark *)[data-invalid]` at 0-4-0 beside
+`.a-color_x` at 0-1-0, and flattening that is not an option.
 
-The three are live, in the shipped asset:
+**Reordering is right, and it moves 8.** A stable sort by tier, over the
+concatenated asset, changes order and never specificity — which is exactly what
+a tie-breaker is allowed to do. Every one of the eight is a rule under an at-rule
+that a later base rule was beating:
 
-| property | wins today | should win |
-| --- | --- | --- |
-| `width` | `.a-width-1e6etfp_dcgnn > *` | `.a-width_dcgnn` |
-| `color` | `.a-color-7khei3_xgag40[data-selected]` | `@media (hover:hover) …:hover` |
-| `background-color` | `.a-background-color-7khei3_hbyvh9[data-selected]` | `@media (hover:hover) …:hover` |
+| slot | on `main` | after | why |
+| --- | --- | --- | --- |
+| `calendar-months` | `flex-direction: column` | `row` | `@media (width >= 48rem)` lost, so the calendar stacked at 1280px |
+| `breadcrumb-list` | `gap: 6px` | `10px` | `@media (width >= 40rem)` lost, and three rects moved with it |
+| `dialog-header` | `text-align: center` | `left` | `@media (width >= 40rem)` lost |
+| `item`, `checkbox`, `input-group-control` | a solid colour | the `color-mix` | `@supports (color-mix(…))` lost |
 
-The first is the bug `HANDOVER.md` already describes — "a field saying
-`& > * { width: 100% }` took a label's own `width: fit-content` away" — back
-again, across modules this time, where the within-call fix cannot see it.
+The first three are shadcn's `md:flex-row`, `sm:gap-2.5` and `sm:text-left`. They
+are live visual bugs on `main`, and no test could have found them: the rule is in
+the stylesheet, the class is on the element, and only a browser resolves the
+cascade.
 
-The fix: emit each atom into a sub-layer named for its tier, and declare the
-order once.
+`collectCss` has always sorted globally, so **dev was already right and only the
+production bundle was not**. `orderCss` is that same sort, exported from the
+compiler crate that owns `tier_of` and applied in the Vite plugin's
+`generateBundle`. `generateBundle` and not `transform`, because the ordering is a
+fact about the whole asset and `transform` is per file — which is the property
+that keeps dev and build identical everywhere else, and the one StyleX gives up.
 
-```css
-@layer barq.ui.descendant, barq.ui.base, barq.ui.select, barq.ui.element, barq.ui.media;
+Deriving the tier a second time, from the rule text rather than from the
+condition, is the cost. `the two ways of deciding a tier agree` pins them against
+each other over every condition shape the pass produces, because a stylesheet
+ordered by one rule and written by another is worse than one not ordered at all.
+
+Rules that are not atoms do not move. A hand-written `@layer barq.ui { … }` block
+carries an author's own intent about where it sits, and `@barqjs/ui`'s `srOnly`
+is exactly that.
+
+### 2b. A comma in a condition dropped the class from half the rule
+
+The browser pass found a second bug, live on `main` and nothing to do with
+ordering except that ordering exposed it.
+
+```ts
+"[data-expanded], &[data-open]": { backgroundColor: "var(--accent)" }
 ```
 
-Sub-layers of `barq.ui` are still inside `barq.ui`, so an application's
-unlayered rule still beats every one of them, which is the property `atomsIn`
-exists for and the reason atoms are not layered by default.
+Both implementations substituted `&` with one `replaceAll` over the whole
+condition part. The second branch has a `&` so the substitution "worked", and the
+first was left as a bare `[data-expanded]` — a rule about **every element on the
+page** carrying that attribute. It is in `@barqjs/ui`'s menubar, and it was
+painting an open accordion three sections away with `--accent` and
+`--accent-foreground`, inherited by its content and its body.
 
-**Class names do not have to change, and should not.** The brief assumed they
-would, because the layer joins an atom's identity through the suffix. That is
-true of the *declared* layer and false of the tier: the tier is a pure function
-of the condition, and the condition is already in the key. Two atoms with the
-same key and the same value are the same tier by construction, so the tier adds
-nothing to identity and the suffix keeps hashing `barq.ui|<value>`. The parity
-test still proves the two implementations agree, on the rule text rather than on
-a churn of 1,079 renamed classes.
-
-Ordering the sub-layer declaration is the one thing a per-file pass has to be
-careful about. `collectCss` emits a layer's block where the layer was first
-named, so a module whose first atom is a media atom would otherwise declare
-`barq.ui.media` first. The compiler therefore writes the declaration at the top
-of every module stylesheet that uses the layer, and `collectCss` writes it before
-the first sub-layer block it emits. A repeated `@layer a, b;` is idempotent, so
-the repetition costs bytes and nothing else.
-
-This has to land before item 3 could, if item 3 were worth doing.
+It survived because it lost on order. Reordering let it win, which is how it was
+found. Each branch of a selector list gets the class now, splitting at commas at
+bracket depth zero so `:is(a, b)` is untouched, and a list counts as a descendant
+when any branch is.
 
 ### 3. Deduplicate rules across modules — already done, by lightningcss
 
@@ -318,6 +350,28 @@ reads another file, and that dev and build are the same pipeline. The rules
 themselves already reach the stylesheet — partial folding put them there — so
 what crosses is a `Map` over seven strings and not a stylesheet.
 
+## How this was checked
+
+Two builds of the gallery served side by side, and for every `[data-slot]`
+element on each page — 485 of them — the whole of `getComputedStyle` plus
+`getBoundingClientRect`, keyed on the element's DOM path and diffed. Animations
+are pinned to `currentTime = 0` and paused first, or the spinner and the skeleton
+report differences that are only a frame.
+
+Five resting scenarios (default, dark, a focus ring after six `Tab` presses,
+`forcedColors: active`, and a 700px viewport) and 28 overlay frames: every
+`[aria-expanded="false"]` trigger opened one at a time, addressed by DOM path
+rather than by index, and each one sampled again 40 ms after `Escape` while
+`data-closed` is still on it.
+
+Every difference is in this file. Nothing else moved.
+
+Two things about the method, since both cost time. Addressing a trigger by
+`querySelectorAll(…)[0]` opens the same trigger fourteen times, because `Escape`
+puts it back to `aria-expanded="false"`; address it by path. And a 485 by 579
+dump per frame does not fit through the driver, so the sweep compares a hash per
+element and fetches the properties only for what differs.
+
 ## What is not worth doing, with the number
 
 Carried forward, so a later session does not re-derive them:
@@ -337,3 +391,6 @@ Carried forward, so a later session does not re-derive them:
 7. **A `generateBundle` dedup pass.** lightningcss already does it; the asset
    holds 1,042 distinct rules of 1,053.
 8. **Folding a literal `variants` selection.** Three call sites.
+9. **A sub-layer per tier.** 289 computed values on the gallery. A cascade layer
+   overrides specificity and a tier is a tie-breaker on top of it, so promoting
+   one to the other decides pairs specificity had already decided correctly.

@@ -3,11 +3,11 @@ pub mod codegen;
 pub mod compile;
 pub mod css;
 pub mod diag;
-pub mod env_fns;
 /// Generated into `OUT_DIR` by `build.rs`; the lib only needs it to prove the
 /// generated tables still match `dom.ts`.
 #[cfg(test)]
 mod dom_ts;
+pub mod env_fns;
 pub mod harvest;
 pub mod ir;
 pub mod lower;
@@ -416,4 +416,26 @@ pub fn route_tree(
             .map(|(id, file)| RouteEntry { id, file })
             .collect(),
     }
+}
+
+/// A bundled stylesheet with its atoms ordered by tier.
+///
+/// The compiler emits one stylesheet per MODULE and a bundler concatenates them
+/// in import order, so an atom's tier — the one thing that settles a base rule
+/// against the same property under an at-rule, since `@media` adds no
+/// specificity — held inside one `atoms` call and nowhere else. `collectCss`
+/// has always sorted globally, so dev was right and the production bundle was
+/// not; this is the same sort over the concatenated asset.
+///
+/// Not a cascade layer, and it must never become one. A layer overrides
+/// specificity outright where a tier is a tie-breaker on top of it: measured in
+/// a browser, one sub-layer per tier moved 289 computed values on `@barqjs/ui`'s
+/// gallery and reordering moves 8, every one of them a rule under an at-rule
+/// that a later base rule was beating.
+///
+/// Idempotent, and safe over a stylesheet holding none of ours: a rule that is
+/// not an atom keeps its index.
+#[napi]
+pub fn order_css(css: String) -> String {
+    barq_css::order::order_atoms(&css)
 }

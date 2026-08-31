@@ -118,24 +118,13 @@ pub fn run<'a>(
         layers: FxHashMap::default(),
         debug: options.dev,
         css: String::new(),
-        sub_layers: Vec::new(),
         emitted: FxHashSet::default(),
         reports: Vec::new(),
         name: None,
     };
     pass.seed_module_constants(program);
     pass.visit_program(program);
-    // Prepended, not interleaved: a layer's ORDER is decided by where its name
-    // is first seen, and a module whose first atom is a media atom would
-    // otherwise declare `barq.ui.media` before `barq.ui.base`. Repeating the
-    // statement across modules is a no-op in CSS, which is what lets a per-file
-    // pass write it at all.
-    let mut css = String::new();
-    for layer in &pass.sub_layers {
-        css.push_str(&barq_css::atoms::sub_layer_order(layer));
-    }
-    css.push_str(&pass.css);
-    Extracted { css: gather_layers(&css), reports: pass.reports }
+    Extracted { css: gather_layers(&pass.css), reports: pass.reports }
 }
 
 struct Css<'a, 'b> {
@@ -164,10 +153,6 @@ struct Css<'a, 'b> {
     layers: FxHashMap<SymbolId, String>,
     debug: bool,
     css: String,
-    /// Layers this module emitted an atom into, in first-use order, so the
-    /// statement that fixes their tier order can be written once at the top of
-    /// the stylesheet rather than wherever the first atom happened to land.
-    sub_layers: Vec<String>,
     /// One rule per class, however many times the module writes the block.
     emitted: FxHashSet<String>,
     reports: Vec<Report>,
@@ -1401,15 +1386,9 @@ impl<'a> Css<'a, '_> {
         let mut sorted: Vec<&barq_css::atoms::Atom> = atoms.iter().collect();
         sorted.sort_by_key(|atom| atom.tier);
         for atom in sorted {
-            if atom.rule.is_empty() || !self.emitted.insert(atom.class.clone()) {
-                continue;
+            if !atom.rule.is_empty() && self.emitted.insert(atom.class.clone()) {
+                self.css.push_str(&atom.rule);
             }
-            if let Some(layer) = layer_of_rule(&atom.rule)
-                && !self.sub_layers.iter().any(|seen| seen == layer)
-            {
-                self.sub_layers.push(layer.to_string());
-            }
-            self.css.push_str(&atom.rule);
         }
     }
 
@@ -1828,17 +1807,6 @@ fn key_name(key: &PropertyKey<'_>) -> Option<String> {
     }
 }
 
-/// The layer a rule is wrapped in, without the tier `atom_in` appended.
-///
-/// Read back off the rule rather than threaded through, because `emit_rules`
-/// is the only place that sees every rule a call produced and a `create` group
-/// reaches it by a different route than an `atoms` call does.
-fn layer_of_rule(rule: &str) -> Option<&str> {
-    let after = rule.strip_prefix("@layer ")?;
-    let name = &after[..after.find('{')?];
-    Some(&name[..name.rfind('.')?])
-}
-
 /// Neighbouring rules in one cascade layer, as one block.
 ///
 /// A layered atom carries its own `@layer barq.ui{…}`, and a package with a
@@ -2194,7 +2162,7 @@ mod atom_tests {
         );
         let css = out.css.as_deref().unwrap_or_default();
         assert!(css.contains("@layer barq.reset, barq.ui;"), "{css}");
-        assert!(css.contains("@layer barq.ui.base{"), "{css}");
+        assert!(css.contains("@layer barq.ui{"), "{css}");
     }
 
     /// `atomsIn` folds like `atoms`, and its rules land in the layer it names.
@@ -2205,40 +2173,35 @@ mod atom_tests {
         let out = run("export const a = atomsIn(\"barq.ui\", { color: \"red\", paddingTop: 8 });");
         assert!(!out.code.contains("atomsIn("), "the call survived: {}", out.code);
         let css = out.css.as_deref().unwrap_or_default();
-        // The order statement first, then one block per tier the call used.
-        assert!(css.starts_with(&barq_css::atoms::sub_layer_order("barq.ui")), "{css}");
-        assert!(css.contains("@layer barq.ui.base{"), "{css}");
+        assert!(css.starts_with("@layer barq.ui{"), "{css}");
         assert!(css.contains("color:red"), "{css}");
         assert!(css.contains("padding-top:8px"), "{css}");
         // One block, not one per atom.
-        assert_eq!(css.matches("@layer barq.ui.base{").count(), 1, "{css}");
+        assert_eq!(css.matches("@layer barq.ui{").count(), 1, "{css}");
     }
 
-    /// Tier order is the CASCADE's now, not the order two modules happened to
-    /// be emitted in. Within one call the two agree; across modules they did
-    /// not, and three pairs on the gallery were decided the wrong way round.
+    /// A tier is NOT a cascade layer and must not become one. It is a
+    /// tie-breaker on top of specificity, and a layer overrides specificity
+    /// outright: measured in a browser, one sub-layer per tier moved 289
+    /// computed values on `@barqjs/ui`'s gallery, because a parent's
+    /// `[data-variant="destructive"] &` at 0-2-0 stopped beating the child's
+    /// own 0-1-0. Tier order is carried by the ORDER of the rules, and
+    /// `barq_css::order` makes that order global over the bundle.
     #[test]
-    fn each_tier_is_its_own_sub_layer_and_the_order_is_declared_once() {
+    fn a_tier_is_an_order_and_never_a_sub_layer() {
         let out = run(
             "export const a = atomsIn(\"barq.ui\", { color: { default: \"red\", \":hover\": \"blue\", \
              \"@media print\": \"green\" }, \"& > *\": { color: \"grey\" } });",
         );
         let css = out.css.as_deref().unwrap_or_default();
-        let order = barq_css::atoms::sub_layer_order("barq.ui");
-        assert_eq!(
-            order,
-            "@layer barq.ui.descendant, barq.ui.base, barq.ui.select, barq.ui.element, \
-             barq.ui.media;"
-        );
-        assert!(css.starts_with(&order), "{css}");
-        // Declared once however many blocks follow it.
-        assert_eq!(css.matches(&order).count(), 1, "{css}");
-        for tier in ["descendant", "base", "select", "media"] {
-            assert!(css.contains(&format!("@layer barq.ui.{tier}{{")), "{tier}: {css}");
+        assert_eq!(css.matches("@layer ").count(), 1, "{css}");
+        for tier in ["descendant", "base", "select", "element", "media"] {
+            assert!(!css.contains(&format!("barq.ui.{tier}")), "{tier}: {css}");
         }
-        // And the plain layer is gone: a rule in `barq.ui` and not in one of
-        // its sub-layers would beat every sub-layer, whatever its tier.
-        assert!(!css.contains("@layer barq.ui{"), "{css}");
+        // And within the call, the tier still decides the order.
+        let media = css.find("color:green").expect("the media rule");
+        assert!(css.find("color:grey").expect("the descendant rule") < media, "{css}");
+        assert!(css.find("color:red").expect("the base rule") < media, "{css}");
     }
 
     /// An UNLAYERED atom keeps no layer at all. A layered rule loses to an
@@ -2246,7 +2209,7 @@ mod atom_tests {
     /// application's own `* { margin: 0 }` above every margin on the page —
     /// measured in a browser, and it is why `atoms` is unlayered.
     #[test]
-    fn an_unlayered_atom_is_not_given_a_sub_layer() {
+    fn an_unlayered_atom_is_not_given_a_layer() {
         let out =
             run("export const a = atoms({ color: \"red\", \"@media print\": { color: \"b\" } });");
         let css = out.css.as_deref().unwrap_or_default();
@@ -2289,8 +2252,7 @@ mod atom_tests {
             "export const shared = createIn(\"barq.ui\", { ring: { outlineWidth: \"3px\" } });",
         );
         let css = out.css.as_deref().unwrap_or_default();
-        assert!(css.starts_with(&barq_css::atoms::sub_layer_order("barq.ui")), "{css}");
-        assert!(css.contains("@layer barq.ui.base{"), "{css}");
+        assert!(css.starts_with("@layer barq.ui{"), "{css}");
         assert!(css.contains("outline-width:3px"), "{css}");
         assert!(out.code.contains("ring:"), "{}", out.code);
         assert!(!out.code.contains("createIn("), "the call survived: {}", out.code);

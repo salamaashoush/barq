@@ -332,6 +332,12 @@ export const DEFAULT_CSS_SOURCE = "@barqjs/css";
 
 interface NativeCompiler {
   transform(code: string, options?: NativeTransformOptions): NativeResult;
+  /**
+   * A bundled stylesheet with its atoms ordered by tier. Shared with the
+   * compiler rather than reimplemented here: the tier is one semantic and this
+   * would be its third copy.
+   */
+  orderCss(css: string): string;
 }
 
 let nativeCompiler: NativeCompiler | undefined;
@@ -481,6 +487,39 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       if (id === RESOLVED_CLIENT_ID) return panelClient();
       if (!id.includes(CSS_QUERY)) return null;
       return cssByModule.get(id) ?? "";
+    },
+
+    /**
+     * Every CSS asset, with its atoms ordered by tier.
+     *
+     * An atom's tier settles the one pair specificity cannot — a base rule
+     * against the same property under an at-rule, since `@media` adds none —
+     * and a call emits its atoms in tier order, so it held inside one call and
+     * nowhere else. The compiler emits one stylesheet per MODULE and the
+     * bundler concatenates them in import order, so a `@media` rule from one
+     * module landed before a base rule from another and lost a pair it should
+     * win. Measured on `@barqjs/ui`'s gallery: 8 computed values, among them a
+     * calendar that laid out in a column at 1280px because
+     * `@media (width >= 48rem) { flex-direction: row }` was beaten by a
+     * `flex-direction: column` a later module wrote.
+     *
+     * `collectCss` has always sorted globally, so DEV was already right. This
+     * is what makes the build agree with it.
+     *
+     * `generateBundle` and not `transform`, because the ordering is a fact
+     * about the whole asset and `transform` is per file and holds no cross-file
+     * state — which is the property that keeps dev and build identical
+     * everywhere else, and the one StyleX gives up.
+     */
+    generateBundle(_options, bundle) {
+      const compiler = loadNativeCompiler();
+      if (!compiler) return;
+      for (const asset of Object.values(bundle)) {
+        if (asset.type !== "asset" || !asset.fileName.endsWith(".css")) continue;
+        const source =
+          typeof asset.source === "string" ? asset.source : Buffer.from(asset.source).toString();
+        asset.source = compiler.orderCss(source);
+      }
     },
 
     // Dev only, so no byte of the panel can reach a production bundle.

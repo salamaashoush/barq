@@ -17,7 +17,7 @@
 import type * as CSS from "csstype";
 
 import { UNEXPANDABLE, expand } from "./shorthands.ts";
-import { TIERS, hash, register } from "./sheet.ts";
+import { hash, register } from "./sheet.ts";
 
 export type AtomValue = string | number | false | null | undefined | Fallback;
 
@@ -168,41 +168,89 @@ function atomKey(property: string, condition: string): string {
 }
 
 /**
- * The tier order and the statement that publishes it, from the module that owns
- * the sheet. Re-exported because a tier is an ATOM's fact and `atoms.ts` is
- * where a reader looks for it; it lives beside `register` because `sheet.ts`
- * cannot import from here without a cycle.
+ * The tier order, from the module that owns the sheet. Re-exported because a
+ * tier is an ATOM's fact and `atoms.ts` is where a reader looks for it; it
+ * lives beside `register` because `sheet.ts` cannot import from here without a
+ * cycle.
  */
-export { TIERS, subLayerOrder } from "./sheet.ts";
+export { TIERS } from "./sheet.ts";
 
-/** Whether a condition's subject is this element, or something under it. */
-function aboutSelf(condition: string): boolean {
-  let selector = "&";
-  for (const part of condition.split(NEST)) {
-    if (part.startsWith("@")) continue;
-    selector = part.includes("&")
-      ? part.replaceAll("&", selector)
-      : part.startsWith(":") || part.startsWith("[")
-        ? `${selector}${part}`
-        : `${selector} ${part}`;
-  }
-
-  // Whatever follows the last `&` at bracket depth zero: a combinator there
-  // means the rule is about another element.
-  const at = selector.lastIndexOf("&");
+/**
+ * A selector list, split at the commas that separate its branches.
+ *
+ * Depth-aware, because `:is(a, b)` and `:not(a, b)` both carry a comma that
+ * separates nothing.
+ */
+function branches(part: string): string[] {
+  const out: string[] = [];
   let depth = 0;
-  for (let index = at + 1; index < selector.length; index++) {
-    const character = selector[index];
+  let start = 0;
+  for (let index = 0; index < part.length; index++) {
+    const character = part[index];
     if (character === "(" || character === "[") depth++;
     else if (character === ")" || character === "]") depth--;
-    else if (
-      depth === 0 &&
-      (character === " " || character === ">" || character === "+" || character === "~")
-    ) {
-      return false;
+    else if (character === "," && depth === 0) {
+      out.push(part.slice(start, index).trim());
+      start = index + 1;
     }
   }
-  return true;
+  out.push(part.slice(start).trim());
+  return out;
+}
+
+/**
+ * One branch of a condition, applied to one selector built so far.
+ *
+ * EVERY branch of a list gets the treatment, and that is why this is a function
+ * rather than one `replaceAll`. `"[data-expanded], &[data-open]"` used to be
+ * substituted as a single string: the `&` in the second branch matched, so the
+ * first was left as a bare `[data-expanded]` and the rule painted every element
+ * on the page carrying that attribute. Measured in a browser on `@barqjs/ui`'s
+ * menubar, where it took an accordion trigger's background three sections away.
+ */
+function extend(selector: string, branch: string): string {
+  return branch.includes("&")
+    ? branch.replaceAll("&", selector)
+    : branch.startsWith(":") || branch.startsWith("[")
+      ? `${selector}${branch}`
+      : `${selector} ${branch}`;
+}
+
+/** The selectors a condition's non-at-rule parts build from `seed`. */
+function selectorsOf(condition: string, seed: string): string[] {
+  let out = [seed];
+  for (const part of condition.split(NEST)) {
+    if (part.startsWith("@")) continue;
+    out = out.flatMap((selector) => branches(part).map((branch) => extend(selector, branch)));
+  }
+  return out;
+}
+
+/**
+ * Whether a condition's subject is this element, or something under it.
+ *
+ * A list is about a descendant when ANY of its branches is: the rule reaches
+ * something under the element, whatever the rest of it does.
+ */
+function aboutSelf(condition: string): boolean {
+  return selectorsOf(condition, "&").every((selector) => {
+    // Whatever follows the last `&` at bracket depth zero: a combinator there
+    // means the rule is about another element.
+    const at = selector.lastIndexOf("&");
+    let depth = 0;
+    for (let index = at + 1; index < selector.length; index++) {
+      const character = selector[index];
+      if (character === "(" || character === "[") depth++;
+      else if (character === ")" || character === "]") depth--;
+      else if (
+        depth === 0 &&
+        (character === " " || character === ">" || character === "+" || character === "~")
+      ) {
+        return false;
+      }
+    }
+    return true;
+  });
 }
 
 export function tierOf(condition: string): number {
@@ -219,31 +267,15 @@ export function tierOf(condition: string): number {
  * descendant — the same four cases the nested-block flattener has, because a
  * condition here is a nested selector written on one line.
  */
-function rule(name: string, condition: string, declaration: string, into = "", tier = 1): string {
+function rule(name: string, condition: string, declaration: string, into = ""): string {
   const parts = condition === "default" ? [] : condition.split(NEST);
   // At-rules wrap from the outside in; the selector parts all apply to the one
   // class, so they concatenate.
   const wraps = parts.filter((part) => part.startsWith("@"));
-  const selectors = parts.filter((part) => !part.startsWith("@"));
-  let inner = `.${name}`;
-  for (const part of selectors) {
-    inner = part.includes("&")
-      ? part.replaceAll("&", inner)
-      : part.startsWith(":") || part.startsWith("[")
-        ? `${inner}${part}`
-        : `${inner} ${part}`;
-  }
+  let inner = condition === "default" ? `.${name}` : selectorsOf(condition, `.${name}`).join(",");
   inner = `${inner}{${declaration}}`;
   for (const wrap of wraps.toReversed()) inner = `${wrap}{${inner}}`;
-  // The SUB-layer, so tier order is the cascade's rather than the order two
-  // modules happened to register in. Emitting in tier order settles the pair
-  // specificity cannot — a base against the same property under an at-rule,
-  // since `@media` adds none — and it settles it within one `atoms` call and
-  // nowhere else: a group declared in another module registered first, so
-  // composing it could invert such a pair. A sub-layer of `barq.ui` is still
-  // inside `barq.ui`, so an application's unlayered rule still beats it and
-  // the thing atoms exist for is untouched.
-  return into === "" ? inner : `@layer ${into}.${TIERS[tier]}{${inner}}`;
+  return into === "" ? inner : `@layer ${into}{${inner}}`;
 }
 
 /**
@@ -270,13 +302,8 @@ function atom(property: string, condition: string, value: string, into = ""): st
   // one value, and a compressor reads three of the four suffixes as
   // back-references instead of as noise. Measured over `@barqjs/ui`'s
   // stylesheet, 1,078 atoms: 16.2 KB brotli down to 13.1.
-  // The class name carries the LAYER and not the tier. The tier is a pure
-  // function of the condition and the condition is already in the key, so it
-  // adds nothing to the atom's identity — and keeping it out means turning
-  // sub-layers on renames nothing.
   const name = `${atomKey(property, condition)}_${hash(into === "" ? value : `${into}|${value}`).slice(1)}`;
-  const tier = tierOf(condition);
-  register(name, rule(name, condition, `${property}:${value}`, into, tier), tier);
+  register(name, rule(name, condition, `${property}:${value}`, into), tierOf(condition));
   named.set(memo, name);
   return name;
 }

@@ -17,7 +17,7 @@
  * 3.19 KB of CSS it never used.
  */
 
-import { collectCss, subLayerOrder } from "@barqjs/css";
+import { collectCss } from "@barqjs/css";
 import { describe, expect, test } from "bun:test";
 
 import { ui } from "./lib/atoms.ts";
@@ -39,14 +39,11 @@ const GROUPS: Record<string, Record<string, string>> = {
   when,
 };
 
-/** The sub-layer a class's rule was emitted into. */
-function layerOf(className: string): string {
-  const all = sheet();
-  const at = all.indexOf(`.${className}`);
-  expect(at).toBeGreaterThanOrEqual(0);
-  const open = all.lastIndexOf("@layer ", at);
-  expect(open).toBeGreaterThanOrEqual(0);
-  return all.slice(open + "@layer ".length, all.indexOf("{", open));
+/** Where a class's rule sits in the sheet. */
+function at(className: string): number {
+  const index = sheet().indexOf(`.${className}`);
+  expect(index).toBeGreaterThanOrEqual(0);
+  return index;
 }
 
 describe("the shared groups", () => {
@@ -65,7 +62,7 @@ describe("the shared groups", () => {
   });
 
   test("and lands in the package's layer, where a caller's rule can beat it", () => {
-    expect(sheet()).toContain("@layer barq.ui.base{");
+    expect(sheet()).toContain("@layer barq.ui{");
     for (const groups of Object.values(GROUPS)) {
       for (const classes of Object.values(groups)) {
         for (const one of classes.split(" ")) expect(sheet()).toContain(`.${one}`);
@@ -73,21 +70,22 @@ describe("the shared groups", () => {
     }
   });
 
-  test("the forced-colours outline beats the outline it overrides, by layer", () => {
+  test("the forced-colours outline still comes after the outline it overrides", () => {
     // `outline: 2px solid transparent` sets `outline-style`, and so does
     // `outline-style: none`. They are different atoms with different keys, so
-    // both apply to an element composing both and neither is more specific.
-    // This used to be settled by which was emitted last, which held only
-    // because both are in one file; it is settled by the sub-layer now, so it
-    // holds whatever order the two modules reach the page in.
+    // both apply to an element composing both and neither is more specific:
+    // the later rule wins. Declaring `forcedColors` before `outline` would
+    // silently take the ring's room away in a forced-colours mode.
+    //
+    // The tier settles it, and the tier is an ORDER: `collectCss` sorts every
+    // rule it holds by tier, and `orderCss` does the same over a built asset,
+    // so this holds whatever order the two modules reach the page in. It is
+    // deliberately NOT a cascade layer — a layer overrides specificity where a
+    // tier only breaks a tie, and one sub-layer per tier moved 289 computed
+    // values on the gallery.
     const none = box.outline.split(" ").find((one) => one.startsWith("a-outline-style"));
     expect(none).toBeDefined();
-    expect(layerOf(none ?? "")).toBe("barq.ui.base");
-    expect(layerOf(box.forcedColors.split(" ")[0] ?? "")).toBe("barq.ui.media");
-    expect(sheet()).toContain(subLayerOrder("barq.ui"));
-    // `media` is declared after `base`, so it wins wherever it sits.
-    const order = subLayerOrder("barq.ui");
-    expect(order.indexOf("barq.ui.base")).toBeLessThan(order.indexOf("barq.ui.media"));
+    expect(at(box.forcedColors.split(" ")[0] ?? "")).toBeGreaterThan(at(none ?? ""));
   });
 
   test("a group and a component's own declaration merge by property, group first", () => {

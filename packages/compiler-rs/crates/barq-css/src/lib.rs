@@ -15,6 +15,7 @@
 
 pub mod atoms;
 mod hash;
+pub mod order;
 mod sheet;
 mod text;
 
