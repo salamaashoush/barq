@@ -13,17 +13,18 @@ import {
 } from "@barqjs/aria/menu";
 import { provideTriggerSlot } from "@barqjs/aria/utils";
 import { context, getOwner, provide, type Child, type Incoming } from "@barqjs/core";
-import { atomsIn, firstThatWorks } from "@barqjs/css";
+import { firstThatWorks, layer } from "@barqjs/css";
 import { Check } from "@barqjs/lucide/icons/check";
 import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
 import { Circle } from "@barqjs/lucide/icons/circle";
 
 import "../theme/layers.ts";
-import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
-const content = atomsIn("barq.ui", {
+const ui = layer("barq.ui");
+
+const content = ui({
   zIndex: "50",
   margin: "0px",
   minWidth: "8rem",
@@ -78,7 +79,7 @@ const content = atomsIn("barq.ui", {
   },
 });
 
-const item = atomsIn("barq.ui", {
+const item = ui({
   position: "relative",
   display: "flex",
   cursor: "default",
@@ -136,7 +137,7 @@ const item = atomsIn("barq.ui", {
   },
 });
 
-const checkItem = atomsIn("barq.ui", {
+const checkItem = ui({
   position: "relative",
   display: "flex",
   cursor: "default",
@@ -170,7 +171,7 @@ const checkItem = atomsIn("barq.ui", {
   },
 });
 
-const indicator = atomsIn("barq.ui", {
+const indicator = ui({
   pointerEvents: "none",
   position: "absolute",
   left: "calc(var(--spacing) * 2)",
@@ -187,7 +188,7 @@ const indicator = atomsIn("barq.ui", {
   },
 });
 
-const radioIndicator = atomsIn("barq.ui", {
+const radioIndicator = ui({
   pointerEvents: "none",
   position: "absolute",
   left: "calc(var(--spacing) * 2)",
@@ -207,7 +208,7 @@ const radioIndicator = atomsIn("barq.ui", {
   },
 });
 
-const label = atomsIn("barq.ui", {
+const label = ui({
   paddingInline: "calc(var(--spacing) * 2)",
   paddingBlock: "calc(var(--spacing) * 1.5)",
   fontSize: "var(--text-sm)",
@@ -219,7 +220,7 @@ const label = atomsIn("barq.ui", {
   },
 });
 
-const separator = atomsIn("barq.ui", {
+const separator = ui({
   marginInline: "calc(var(--spacing) * -1)",
   marginBlock: "var(--spacing)",
   height: "1px",
@@ -228,7 +229,7 @@ const separator = atomsIn("barq.ui", {
   backgroundColor: "var(--border)",
 });
 
-const shortcut = atomsIn("barq.ui", {
+const shortcut = ui({
   marginLeft: "auto",
   fontSize: "var(--text-xs)",
   lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
@@ -237,7 +238,7 @@ const shortcut = atomsIn("barq.ui", {
   color: "var(--muted-foreground)",
 });
 
-const subTrigger = atomsIn("barq.ui", {
+const subTrigger = ui({
   display: "flex",
   cursor: "default",
   alignItems: "center",
@@ -275,19 +276,19 @@ const subTrigger = atomsIn("barq.ui", {
   },
 });
 
-const subChevron = atomsIn("barq.ui", {
+const subChevron = ui({
   marginLeft: "auto",
   width: "calc(var(--spacing) * 4)",
   height: "calc(var(--spacing) * 4)",
 });
 
-const group = atomsIn("barq.ui", {
+const group = ui({
   margin: "0px",
   listStyleType: "none",
   padding: "0px",
 });
 
-const groupLabel = atomsIn("barq.ui", {
+const groupLabel = ui({
   paddingInline: "calc(var(--spacing) * 2)",
   paddingBlock: "calc(var(--spacing) * 1.5)",
   fontSize: "var(--text-sm)",

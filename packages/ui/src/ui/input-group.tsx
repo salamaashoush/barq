@@ -1,14 +1,16 @@
 import type { Incoming } from "@barqjs/core";
-import { atomsIn } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { ui, uiVariants } from "../lib/atoms.ts";
+import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Button, type ButtonProps, type ButtonVariant } from "./button.tsx";
 import { Input, Textarea, type InputProps, type TextareaProps } from "./input.tsx";
 
-const root = atomsIn("barq.ui", {
+const ui = layer("barq.ui");
+
+const root = ui({
   position: "relative",
   display: "flex",
   height: "calc(var(--spacing) * 9)",
@@ -85,7 +87,7 @@ const root = atomsIn("barq.ui", {
 export type InputGroupAlign = "inline-start" | "inline-end" | "block-start" | "block-end";
 
 export const inputGroupAddonVariants = uiVariants({
-  base: atomsIn("barq.ui", {
+  base: ui({
     display: "flex",
     height: "auto",
     cursor: "text",
@@ -113,7 +115,7 @@ export const inputGroupAddonVariants = uiVariants({
   }),
   variants: {
     align: {
-      "inline-start": atomsIn("barq.ui", {
+      "inline-start": ui({
         order: "-9999",
         paddingLeft: "calc(var(--spacing) * 3)",
         ":has(> button)": {
@@ -123,7 +125,7 @@ export const inputGroupAddonVariants = uiVariants({
           marginLeft: "-0.35rem",
         },
       }),
-      "inline-end": atomsIn("barq.ui", {
+      "inline-end": ui({
         order: "9999",
         paddingRight: "calc(var(--spacing) * 3)",
         ":has(> button)": {
@@ -133,7 +135,7 @@ export const inputGroupAddonVariants = uiVariants({
           marginRight: "-0.35rem",
         },
       }),
-      "block-start": atomsIn("barq.ui", {
+      "block-start": ui({
         order: "-9999",
         width: "100%",
         justifyContent: "flex-start",
@@ -143,7 +145,7 @@ export const inputGroupAddonVariants = uiVariants({
           paddingTop: "calc(var(--spacing) * 2.5)",
         },
       }),
-      "block-end": atomsIn("barq.ui", {
+      "block-end": ui({
         order: "9999",
         width: "100%",
         justifyContent: "flex-start",
@@ -161,7 +163,7 @@ export const inputGroupAddonVariants = uiVariants({
 export type InputGroupButtonSize = "xs" | "sm" | "icon-xs" | "icon-sm";
 
 export const inputGroupButtonVariants = uiVariants({
-  base: atomsIn("barq.ui", {
+  base: ui({
     display: "flex",
     alignItems: "center",
     gap: "calc(var(--spacing) * 2)",
@@ -173,7 +175,7 @@ export const inputGroupButtonVariants = uiVariants({
   }),
   variants: {
     size: {
-      xs: atomsIn("barq.ui", {
+      xs: ui({
         height: "calc(var(--spacing) * 6)",
         gap: "var(--spacing)",
         borderRadius: "calc(var(--radius) - 5px)",
@@ -186,7 +188,7 @@ export const inputGroupButtonVariants = uiVariants({
           height: "calc(var(--spacing) * 3.5)",
         },
       }),
-      sm: atomsIn("barq.ui", {
+      sm: ui({
         height: "calc(var(--spacing) * 8)",
         gap: "calc(var(--spacing) * 1.5)",
         borderRadius: "calc(var(--radius) - 2px)",
@@ -195,7 +197,7 @@ export const inputGroupButtonVariants = uiVariants({
           paddingInline: "calc(var(--spacing) * 2.5)",
         },
       }),
-      "icon-xs": atomsIn("barq.ui", {
+      "icon-xs": ui({
         width: "calc(var(--spacing) * 6)",
         height: "calc(var(--spacing) * 6)",
         borderRadius: "calc(var(--radius) - 5px)",
@@ -204,7 +206,7 @@ export const inputGroupButtonVariants = uiVariants({
           padding: "0px",
         },
       }),
-      "icon-sm": atomsIn("barq.ui", {
+      "icon-sm": ui({
         width: "calc(var(--spacing) * 8)",
         height: "calc(var(--spacing) * 8)",
         padding: "0px",
@@ -217,7 +219,7 @@ export const inputGroupButtonVariants = uiVariants({
   defaults: { size: "xs" },
 });
 
-const text = atomsIn("barq.ui", {
+const text = ui({
   display: "flex",
   alignItems: "center",
   gap: "calc(var(--spacing) * 2)",
@@ -233,7 +235,7 @@ const text = atomsIn("barq.ui", {
   },
 });
 
-const control = atomsIn("barq.ui", {
+const control = ui({
   flex: "1",
   borderRadius: "0",
   borderStyle: "var(--ui-border-style)",
@@ -253,7 +255,7 @@ const control = atomsIn("barq.ui", {
   },
 });
 
-const controlTextarea = atomsIn("barq.ui", {
+const controlTextarea = ui({
   flex: "1",
   resize: "none",
   borderRadius: "0",

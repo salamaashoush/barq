@@ -1,12 +1,13 @@
 import type { Incoming } from "@barqjs/core";
-import { atomsIn } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
-const card = atomsIn("barq.ui", {
+const ui = layer("barq.ui");
+
+const card = ui({
   display: "flex",
   flexDirection: "column",
   gap: "calc(var(--spacing) * 6)",
@@ -22,7 +23,7 @@ const card = atomsIn("barq.ui", {
     "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
 });
 
-const header = atomsIn("barq.ui", {
+const header = ui({
   containerType: "inline-size",
   containerName: "card-header",
   display: "grid",
@@ -36,26 +37,26 @@ const header = atomsIn("barq.ui", {
   },
 });
 
-const headerBordered = atomsIn("barq.ui", {
+const headerBordered = ui({
   borderBottomStyle: "var(--ui-border-style)",
   borderBottomWidth: "1px",
   paddingBottom: "calc(var(--spacing) * 6)",
 });
 
-const title = atomsIn("barq.ui", {
+const title = ui({
   "--ui-leading": "1",
   lineHeight: "1",
   "--ui-font-weight": "var(--font-weight-semibold)",
   fontWeight: "var(--font-weight-semibold)",
 });
 
-const description = atomsIn("barq.ui", {
+const description = ui({
   fontSize: "var(--text-sm)",
   lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
   color: "var(--muted-foreground)",
 });
 
-const action = atomsIn("barq.ui", {
+const action = ui({
   gridColumnStart: "2",
   gridRow: "span 2 / span 2",
   gridRowStart: "1",
@@ -63,17 +64,17 @@ const action = atomsIn("barq.ui", {
   justifySelf: "flex-end",
 });
 
-const content = atomsIn("barq.ui", {
+const content = ui({
   paddingInline: "calc(var(--spacing) * 6)",
 });
 
-const footer = atomsIn("barq.ui", {
+const footer = ui({
   display: "flex",
   alignItems: "center",
   paddingInline: "calc(var(--spacing) * 6)",
 });
 
-const footerBordered = atomsIn("barq.ui", {
+const footerBordered = ui({
   borderTopStyle: "var(--ui-border-style)",
   borderTopWidth: "1px",
   paddingTop: "calc(var(--spacing) * 6)",

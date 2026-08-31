@@ -1,14 +1,16 @@
 import { For, Show, type Incoming } from "@barqjs/core";
-import { atomsIn, firstThatWorks } from "@barqjs/css";
+import { firstThatWorks, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { ui, uiVariants } from "../lib/atoms.ts";
+import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Label, type LabelProps } from "./label.tsx";
 import { Separator } from "./separator.tsx";
 
-const fieldSet = atomsIn("barq.ui", {
+const ui = layer("barq.ui");
+
+const fieldSet = ui({
   display: "flex",
   flexDirection: "column",
   gap: "calc(var(--spacing) * 6)",
@@ -23,18 +25,18 @@ const fieldSet = atomsIn("barq.ui", {
 export type FieldLegendVariant = "legend" | "label";
 
 export const fieldLegendVariants = uiVariants({
-  base: atomsIn("barq.ui", {
+  base: ui({
     marginBottom: "calc(var(--spacing) * 3)",
     "--ui-font-weight": "var(--font-weight-medium)",
     fontWeight: "var(--font-weight-medium)",
   }),
   variants: {
     variant: {
-      legend: atomsIn("barq.ui", {
+      legend: ui({
         fontSize: "var(--text-base)",
         lineHeight: "var(--ui-leading, var(--text-base--line-height))",
       }),
-      label: atomsIn("barq.ui", {
+      label: ui({
         fontSize: "var(--text-sm)",
         lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
       }),
@@ -43,7 +45,7 @@ export const fieldLegendVariants = uiVariants({
   defaults: { variant: "legend" },
 });
 
-const fieldGroup = atomsIn("barq.ui", {
+const fieldGroup = ui({
   containerType: "inline-size",
   containerName: "field-group",
   display: "flex",
@@ -58,7 +60,7 @@ const fieldGroup = atomsIn("barq.ui", {
 export type FieldOrientation = "vertical" | "horizontal" | "responsive";
 
 export const fieldVariants = uiVariants({
-  base: atomsIn("barq.ui", {
+  base: ui({
     display: "flex",
     width: "100%",
     gap: "calc(var(--spacing) * 3)",
@@ -68,13 +70,13 @@ export const fieldVariants = uiVariants({
   }),
   variants: {
     orientation: {
-      vertical: atomsIn("barq.ui", {
+      vertical: ui({
         flexDirection: "column",
         "& > *": {
           width: "100%",
         },
       }),
-      horizontal: atomsIn("barq.ui", {
+      horizontal: ui({
         flexDirection: "row",
         alignItems: "center",
         ':has(> [data-slot="field-content"])': {
@@ -88,7 +90,7 @@ export const fieldVariants = uiVariants({
             marginTop: "1px",
           },
       }),
-      responsive: atomsIn("barq.ui", {
+      responsive: ui({
         flexDirection: "column",
         "& > *": {
           width: "100%",
@@ -118,7 +120,7 @@ export const fieldVariants = uiVariants({
   defaults: { orientation: "vertical" },
 });
 
-const fieldContent = atomsIn("barq.ui", {
+const fieldContent = ui({
   display: "flex",
   flex: "1",
   flexDirection: "column",
@@ -127,7 +129,7 @@ const fieldContent = atomsIn("barq.ui", {
   lineHeight: "var(--leading-snug)",
 });
 
-const fieldLabel = atomsIn("barq.ui", {
+const fieldLabel = ui({
   display: "flex",
   width: "fit-content",
   gap: "calc(var(--spacing) * 2)",
@@ -161,7 +163,7 @@ const fieldLabel = atomsIn("barq.ui", {
   },
 });
 
-const fieldTitle = atomsIn("barq.ui", {
+const fieldTitle = ui({
   display: "flex",
   width: "fit-content",
   alignItems: "center",
@@ -179,7 +181,7 @@ const fieldTitle = atomsIn("barq.ui", {
   },
 });
 
-const fieldDescription = atomsIn("barq.ui", {
+const fieldDescription = ui({
   fontSize: "var(--text-sm)",
   lineHeight: firstThatWorks(
     "var(--leading-normal)",
@@ -210,7 +212,7 @@ const fieldDescription = atomsIn("barq.ui", {
   },
 });
 
-const fieldSeparator = atomsIn("barq.ui", {
+const fieldSeparator = ui({
   position: "relative",
   marginBlock: "calc(var(--spacing) * -2)",
   height: "calc(var(--spacing) * 5)",
@@ -221,13 +223,13 @@ const fieldSeparator = atomsIn("barq.ui", {
   },
 });
 
-const fieldSeparatorLine = atomsIn("barq.ui", {
+const fieldSeparatorLine = ui({
   position: "absolute",
   inset: "0px",
   top: "calc(1 / 2 * 100%)",
 });
 
-const fieldSeparatorContent = atomsIn("barq.ui", {
+const fieldSeparatorContent = ui({
   position: "relative",
   marginInline: "auto",
   display: "block",
@@ -237,7 +239,7 @@ const fieldSeparatorContent = atomsIn("barq.ui", {
   color: "var(--muted-foreground)",
 });
 
-const fieldError = atomsIn("barq.ui", {
+const fieldError = ui({
   fontSize: "var(--text-sm)",
   lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
   "--ui-font-weight": "var(--font-weight-normal)",
@@ -245,7 +247,7 @@ const fieldError = atomsIn("barq.ui", {
   color: "var(--destructive)",
 });
 
-const errorList = atomsIn("barq.ui", {
+const errorList = ui({
   marginLeft: "calc(var(--spacing) * 4)",
   display: "flex",
   listStyleType: "disc",

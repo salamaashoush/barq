@@ -1,9 +1,11 @@
 import type { Incoming } from "@barqjs/core";
-import { atomsIn } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
+
+const ui = layer("barq.ui");
 
 /**
  * A scrolling box with a scrollbar that matches the theme.
@@ -20,7 +22,7 @@ import { uiProps } from "../lib/slot.ts";
  * overlay the content or to fade out when idle. If you need that, the DOM is
  * yours and this component is forty lines.
  */
-const box = atomsIn("barq.ui", {
+const box = ui({
   position: "relative",
   overflow: "auto",
   overscrollBehavior: "contain",

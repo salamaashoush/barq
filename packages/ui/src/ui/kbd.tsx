@@ -1,11 +1,13 @@
 import type { Incoming } from "@barqjs/core";
-import { atomsIn } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
-const kbd = atomsIn("barq.ui", {
+const ui = layer("barq.ui");
+
+const kbd = ui({
   pointerEvents: "none",
   display: "inline-flex",
   height: "calc(var(--spacing) * 5)",
@@ -44,7 +46,7 @@ const kbd = atomsIn("barq.ui", {
   },
 });
 
-const group = atomsIn("barq.ui", {
+const group = ui({
   display: "inline-flex",
   alignItems: "center",
   gap: "var(--spacing)",

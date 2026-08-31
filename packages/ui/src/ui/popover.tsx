@@ -1,15 +1,16 @@
 import { Popover as AriaPopover, type PopoverComponentProps } from "@barqjs/aria/dialog";
 import type { Placement } from "@barqjs/aria/overlays";
 import type { Child, Incoming } from "@barqjs/core";
-import { atomsIn, firstThatWorks } from "@barqjs/css";
+import { firstThatWorks, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { overlayFamily, type OverlayRootProps } from "../lib/overlay.tsx";
-import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
-const content = atomsIn("barq.ui", {
+const ui = layer("barq.ui");
+
+const content = ui({
   zIndex: "50",
   width: "calc(var(--spacing) * 72)",
   animation:
@@ -64,7 +65,7 @@ const content = atomsIn("barq.ui", {
   },
 });
 
-const header = atomsIn("barq.ui", {
+const header = ui({
   display: "flex",
   flexDirection: "column",
   gap: "var(--spacing)",
@@ -72,12 +73,12 @@ const header = atomsIn("barq.ui", {
   lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
 });
 
-const title = atomsIn("barq.ui", {
+const title = ui({
   "--ui-font-weight": "var(--font-weight-medium)",
   fontWeight: "var(--font-weight-medium)",
 });
 
-const description = atomsIn("barq.ui", {
+const description = ui({
   color: "var(--muted-foreground)",
 });
 

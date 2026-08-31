@@ -3,16 +3,18 @@ import {
   type ToggleButtonComponentProps,
 } from "@barqjs/aria/button";
 import type { Incoming } from "@barqjs/core";
-import { atomsIn } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { ui, uiVariants } from "../lib/atoms.ts";
+import { uiVariants } from "../lib/atoms.ts";
+
+const ui = layer("barq.ui");
 
 export type ToggleVariant = "default" | "outline";
 export type ToggleSize = "default" | "sm" | "lg";
 
 export const toggleVariants = uiVariants({
-  base: atomsIn("barq.ui", {
+  base: ui({
     display: "inline-flex",
     alignItems: "center",
     justifyContent: "center",
@@ -77,10 +79,10 @@ export const toggleVariants = uiVariants({
   }),
   variants: {
     variant: {
-      default: atomsIn("barq.ui", {
+      default: ui({
         backgroundColor: "transparent",
       }),
-      outline: atomsIn("barq.ui", {
+      outline: ui({
         borderStyle: "var(--ui-border-style)",
         borderWidth: "1px",
         borderColor: "var(--input)",
@@ -97,17 +99,17 @@ export const toggleVariants = uiVariants({
       }),
     },
     size: {
-      default: atomsIn("barq.ui", {
+      default: ui({
         height: "calc(var(--spacing) * 9)",
         minWidth: "calc(var(--spacing) * 9)",
         paddingInline: "calc(var(--spacing) * 2)",
       }),
-      sm: atomsIn("barq.ui", {
+      sm: ui({
         height: "calc(var(--spacing) * 8)",
         minWidth: "calc(var(--spacing) * 8)",
         paddingInline: "calc(var(--spacing) * 1.5)",
       }),
-      lg: atomsIn("barq.ui", {
+      lg: ui({
         height: "calc(var(--spacing) * 10)",
         minWidth: "calc(var(--spacing) * 10)",
         paddingInline: "calc(var(--spacing) * 2.5)",

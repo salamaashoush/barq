@@ -1,16 +1,18 @@
 import type { Incoming } from "@barqjs/core";
-import { atomsIn } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { ui, uiVariants } from "../lib/atoms.ts";
+import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Separator, type SeparatorProps } from "./separator.tsx";
 
+const ui = layer("barq.ui");
+
 export type ButtonGroupOrientation = "horizontal" | "vertical";
 
 export const buttonGroupVariants = uiVariants({
-  base: atomsIn("barq.ui", {
+  base: ui({
     display: "flex",
     width: "fit-content",
     alignItems: "stretch",
@@ -34,7 +36,7 @@ export const buttonGroupVariants = uiVariants({
   }),
   variants: {
     orientation: {
-      horizontal: atomsIn("barq.ui", {
+      horizontal: ui({
         "& > :not(:first-child)": {
           borderTopLeftRadius: "0",
           borderBottomLeftRadius: "0",
@@ -46,7 +48,7 @@ export const buttonGroupVariants = uiVariants({
           borderBottomRightRadius: "0",
         },
       }),
-      vertical: atomsIn("barq.ui", {
+      vertical: ui({
         flexDirection: "column",
         "& > :not(:first-child)": {
           borderTopLeftRadius: "0",
@@ -64,7 +66,7 @@ export const buttonGroupVariants = uiVariants({
   defaults: { orientation: "horizontal" },
 });
 
-const text = atomsIn("barq.ui", {
+const text = ui({
   display: "flex",
   alignItems: "center",
   gap: "calc(var(--spacing) * 2)",
@@ -89,7 +91,7 @@ const text = atomsIn("barq.ui", {
   },
 });
 
-const separator = atomsIn("barq.ui", {
+const separator = ui({
   position: "relative",
   margin: "0px !important",
   alignSelf: "stretch",

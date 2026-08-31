@@ -1,15 +1,16 @@
 import { Dialog as AriaDialog, Heading, Modal } from "@barqjs/aria/dialog";
 import type { Child, Incoming } from "@barqjs/core";
-import { atomsIn, firstThatWorks } from "@barqjs/css";
+import { firstThatWorks, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { overlayFamily, type OverlayRootProps } from "../lib/overlay.tsx";
-import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Button, type ButtonProps } from "./button.tsx";
 
-const overlay = atomsIn("barq.ui", {
+const ui = layer("barq.ui");
+
+const overlay = ui({
   position: "fixed",
   inset: "0px",
   zIndex: "50",
@@ -27,7 +28,7 @@ const overlay = atomsIn("barq.ui", {
   },
 });
 
-const header = atomsIn("barq.ui", {
+const header = ui({
   display: "grid",
   gridTemplateRows: "auto 1fr",
   placeItems: "center",
@@ -45,7 +46,7 @@ const header = atomsIn("barq.ui", {
   },
 });
 
-const footer = atomsIn("barq.ui", {
+const footer = ui({
   display: "flex",
   flexDirection: "column-reverse",
   gap: "calc(var(--spacing) * 2)",
@@ -61,20 +62,20 @@ const footer = atomsIn("barq.ui", {
   },
 });
 
-const title = atomsIn("barq.ui", {
+const title = ui({
   fontSize: "var(--text-lg)",
   lineHeight: "var(--ui-leading, var(--text-lg--line-height))",
   "--ui-font-weight": "var(--font-weight-semibold)",
   fontWeight: "var(--font-weight-semibold)",
 });
 
-const description = atomsIn("barq.ui", {
+const description = ui({
   fontSize: "var(--text-sm)",
   lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
   color: "var(--muted-foreground)",
 });
 
-const media = atomsIn("barq.ui", {
+const media = ui({
   marginBottom: "calc(var(--spacing) * 2)",
   display: "inline-flex",
   width: "calc(var(--spacing) * 16)",
@@ -97,7 +98,7 @@ const media = atomsIn("barq.ui", {
 export type AlertDialogSize = "default" | "sm";
 
 /** The size is an attribute the CSS reads, so there is one class and not two. */
-const content = atomsIn("barq.ui", {
+const content = ui({
   position: "fixed",
   top: "50%",
   left: "50%",
@@ -207,7 +208,7 @@ export function AlertDialogContent(props: Incoming<AlertDialogContentProps>) {
 }
 
 /** See `dialog.tsx`: the dialog's own element lays nothing out. */
-const contents = atomsIn("barq.ui", {
+const contents = ui({
   display: "contents",
 });
 

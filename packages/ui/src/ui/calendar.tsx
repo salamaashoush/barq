@@ -22,16 +22,17 @@ import {
   styleProps,
 } from "@barqjs/aria/utils";
 import { For, type Incoming, Repeat } from "@barqjs/core";
-import { atomsIn, firstThatWorks } from "@barqjs/css";
+import { firstThatWorks, layer } from "@barqjs/css";
 import { ChevronLeft } from "@barqjs/lucide/icons/chevron-left";
 import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
 import { ref as makeRef, mergeRefs } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
-import { ui } from "../lib/atoms.ts";
 import { buttonVariants, type ButtonVariant } from "./button.tsx";
 
-const root = atomsIn("barq.ui", {
+const ui = layer("barq.ui");
+
+const root = ui({
   width: "fit-content",
   backgroundColor: "var(--background)",
   padding: "calc(var(--spacing) * 3)",
@@ -44,7 +45,7 @@ const root = atomsIn("barq.ui", {
   },
 });
 
-const months = atomsIn("barq.ui", {
+const months = ui({
   position: "relative",
   display: "flex",
   flexDirection: "column",
@@ -56,14 +57,14 @@ const months = atomsIn("barq.ui", {
   },
 });
 
-const month = atomsIn("barq.ui", {
+const month = ui({
   display: "flex",
   width: "100%",
   flexDirection: "column",
   gap: "calc(var(--spacing) * 4)",
 });
 
-const nav = atomsIn("barq.ui", {
+const nav = ui({
   position: "absolute",
   insetInline: "0px",
   top: "0px",
@@ -74,7 +75,7 @@ const nav = atomsIn("barq.ui", {
   gap: "var(--spacing)",
 });
 
-const navButton = atomsIn("barq.ui", {
+const navButton = ui({
   width: "var(--cell-size)",
   height: "var(--cell-size)",
   // `p-0` is the physical padding, and the button's own size sets the LOGICAL
@@ -93,7 +94,7 @@ const navButton = atomsIn("barq.ui", {
   },
 });
 
-const monthCaption = atomsIn("barq.ui", {
+const monthCaption = ui({
   display: "flex",
   height: "var(--cell-size)",
   width: "100%",
@@ -102,7 +103,7 @@ const monthCaption = atomsIn("barq.ui", {
   paddingInline: "var(--cell-size)",
 });
 
-const captionLabel = atomsIn("barq.ui", {
+const captionLabel = ui({
   fontSize: "var(--text-sm)",
   lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
   "--ui-font-weight": "var(--font-weight-medium)",
@@ -111,16 +112,16 @@ const captionLabel = atomsIn("barq.ui", {
   userSelect: "none",
 });
 
-const monthGrid = atomsIn("barq.ui", {
+const monthGrid = ui({
   width: "100%",
   borderCollapse: "collapse",
 });
 
-const weekdays = atomsIn("barq.ui", {
+const weekdays = ui({
   display: "flex",
 });
 
-const weekday = atomsIn("barq.ui", {
+const weekday = ui({
   flex: "1",
   borderRadius: "calc(var(--radius) - 2px)",
   fontSize: "0.8rem",
@@ -131,13 +132,13 @@ const weekday = atomsIn("barq.ui", {
   userSelect: "none",
 });
 
-const week = atomsIn("barq.ui", {
+const week = ui({
   marginTop: "calc(var(--spacing) * 2)",
   display: "flex",
   width: "100%",
 });
 
-const day = atomsIn("barq.ui", {
+const day = ui({
   position: "relative",
   aspectRatio: "1 / 1",
   height: "100%",
@@ -187,7 +188,7 @@ const day = atomsIn("barq.ui", {
   },
 });
 
-const dayButton = atomsIn("barq.ui", {
+const dayButton = ui({
   display: "flex",
   aspectRatio: "1 / 1",
   width: firstThatWorks("100%", "auto"),
@@ -247,7 +248,7 @@ const dayButton = atomsIn("barq.ui", {
   },
 });
 
-const hidden = atomsIn("barq.ui", {
+const hidden = ui({
   visibility: "hidden",
 });
 

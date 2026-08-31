@@ -1,18 +1,19 @@
 import { Dialog as AriaDialog, Heading, Modal } from "@barqjs/aria/dialog";
 import { Show, type Child, type Incoming } from "@barqjs/core";
-import { atomsIn, firstThatWorks } from "@barqjs/css";
+import { firstThatWorks, layer } from "@barqjs/css";
 import { X } from "@barqjs/lucide/icons/x";
 
 import { Button, type ButtonProps } from "./button.tsx";
 
 import "../theme/layers.ts";
 import { overlayFamily, type OverlayRootProps } from "../lib/overlay.tsx";
-import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { srOnly } from "./sr-only.ts";
 
-const overlay = atomsIn("barq.ui", {
+const ui = layer("barq.ui");
+
+const overlay = ui({
   position: "fixed",
   inset: "0px",
   zIndex: "50",
@@ -30,7 +31,7 @@ const overlay = atomsIn("barq.ui", {
   },
 });
 
-const content = atomsIn("barq.ui", {
+const content = ui({
   position: "fixed",
   top: "50%",
   left: "50%",
@@ -72,7 +73,7 @@ const content = atomsIn("barq.ui", {
   },
 });
 
-const header = atomsIn("barq.ui", {
+const header = ui({
   display: "flex",
   flexDirection: "column",
   gap: "calc(var(--spacing) * 2)",
@@ -84,7 +85,7 @@ const header = atomsIn("barq.ui", {
   },
 });
 
-const footer = atomsIn("barq.ui", {
+const footer = ui({
   display: "flex",
   flexDirection: "column-reverse",
   gap: "calc(var(--spacing) * 2)",
@@ -96,7 +97,7 @@ const footer = atomsIn("barq.ui", {
   },
 });
 
-const title = atomsIn("barq.ui", {
+const title = ui({
   fontSize: "var(--text-lg)",
   lineHeight: firstThatWorks("1", "var(--ui-leading, var(--text-lg--line-height))"),
   "--ui-leading": "1",
@@ -104,13 +105,13 @@ const title = atomsIn("barq.ui", {
   fontWeight: "var(--font-weight-semibold)",
 });
 
-const description = atomsIn("barq.ui", {
+const description = ui({
   fontSize: "var(--text-sm)",
   lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
   color: "var(--muted-foreground)",
 });
 
-const close = atomsIn("barq.ui", {
+const close = ui({
   position: "absolute",
   top: "calc(var(--spacing) * 4)",
   right: "calc(var(--spacing) * 4)",
@@ -221,7 +222,7 @@ export function DialogContent(props: Incoming<DialogContentProps>) {
  * the grid is on the modal around it, and `display: contents` keeps the section
  * out of it.
  */
-const contents = atomsIn("barq.ui", {
+const contents = ui({
   display: "contents",
 });
 

@@ -1,13 +1,14 @@
 import { context, getContext, install, getOwner, signal, type Incoming } from "@barqjs/core";
-import { atomsIn } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Toggle, type ToggleSize, type ToggleVariant } from "./toggle.tsx";
 
-const group = atomsIn("barq.ui", {
+const ui = layer("barq.ui");
+
+const group = ui({
   display: "flex",
   width: "fit-content",
   alignItems: "center",
@@ -20,7 +21,7 @@ const group = atomsIn("barq.ui", {
   },
 });
 
-const item = atomsIn("barq.ui", {
+const item = ui({
   width: "auto",
   minWidth: "0px",
   flexShrink: "0",

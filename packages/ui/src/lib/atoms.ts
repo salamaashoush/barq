@@ -8,11 +8,19 @@
  * they are shared by construction, and an application writing its own component
  * with the same declaration lands on the same class.
  *
- * `atomsIn` and not `atoms`, because of what a design system's rules are FOR.
- * An atom is unlayered on purpose, so that an application's own reset cannot
- * beat it; a component library wants exactly the opposite, and `@layer barq.ui`
- * is what lets a caller's unlayered rule win without `!important` and without
- * counting specificity.
+ * Four things about it are load-bearing.
+ *
+ * `layer("barq.ui")` and not `atoms`, because of what a design system's rules
+ * are FOR. An atom is unlayered on purpose, so that an application's own reset
+ * cannot beat it; a component library wants exactly the opposite, and
+ * `@layer barq.ui` is what lets a caller's unlayered rule win without
+ * `!important` and without counting specificity.
+ *
+ * Every module declares its own `ui`, and that is the compiler's requirement
+ * rather than a style: it reads the layer as a literal in the module that names
+ * it, so a `ui` imported from here would leave all 192 calls to the runtime and
+ * take the whole stylesheet into the JS bundle with them. This one is for the
+ * merges the runtime does anyway, in `slot.ts` and in `uiVariants`.
  *
  * Merging is the other half. `clsx` concatenates, and which class wins is then
  * decided by the order the rules happen to sit in the stylesheet; `ui` merges
@@ -21,18 +29,9 @@
  * merge against.
  */
 
-import {
-  atomsIn,
-  variants,
-  type AtomInput,
-  type VariantFn,
-  type VariantGroups,
-  type VariantSpec,
-} from "@barqjs/css";
+import { layer, variants, type VariantFn, type VariantGroups, type VariantSpec } from "@barqjs/css";
 
-export function ui(...styles: (AtomInput | readonly AtomInput[])[]): string {
-  return atomsIn("barq.ui", ...styles);
-}
+export const ui = layer("barq.ui");
 
 /**
  * `variants`, merged.

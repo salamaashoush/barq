@@ -8,12 +8,11 @@ import {
   type MenuItemComponentProps,
 } from "@barqjs/aria/menu";
 import type { Incoming } from "@barqjs/core";
-import { atomsIn } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
 import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
 
 import "../theme/layers.ts";
-import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import {
@@ -34,8 +33,10 @@ import {
   type DropdownMenuSubProps,
 } from "./dropdown-menu.tsx";
 
+const ui = layer("barq.ui");
+
 /** shadcn's context menu names its labels in the body colour; a dropdown's inherit. */
-const label = atomsIn("barq.ui", {
+const label = ui({
   paddingInline: "calc(var(--spacing) * 2)",
   paddingBlock: "calc(var(--spacing) * 1.5)",
   fontSize: "var(--text-sm)",
@@ -49,7 +50,7 @@ const label = atomsIn("barq.ui", {
 });
 
 /** And its submenu trigger has no gap, so the chevron's own margin is the whole of it. */
-const subTrigger = atomsIn("barq.ui", {
+const subTrigger = ui({
   display: "flex",
   cursor: "default",
   alignItems: "center",
@@ -86,7 +87,7 @@ const subTrigger = atomsIn("barq.ui", {
   },
 });
 
-const subChevron = atomsIn("barq.ui", {
+const subChevron = ui({
   marginLeft: "auto",
   width: "calc(var(--spacing) * 4)",
   height: "calc(var(--spacing) * 4)",

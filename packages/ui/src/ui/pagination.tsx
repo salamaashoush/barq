@@ -1,25 +1,26 @@
 import type { Incoming } from "@barqjs/core";
-import { atomsIn } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
 import { ChevronLeft } from "@barqjs/lucide/icons/chevron-left";
 import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
 import { Ellipsis } from "@barqjs/lucide/icons/ellipsis";
 
 import "../theme/layers.ts";
-import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { buttonVariants, type ButtonSize } from "./button.tsx";
 import { srOnly } from "./sr-only.ts";
 
-const root = atomsIn("barq.ui", {
+const ui = layer("barq.ui");
+
+const root = ui({
   marginInline: "auto",
   display: "flex",
   width: "100%",
   justifyContent: "center",
 });
 
-const content = atomsIn("barq.ui", {
+const content = ui({
   margin: "0px",
   display: "flex",
   listStyleType: "none",
@@ -29,12 +30,12 @@ const content = atomsIn("barq.ui", {
   padding: "0px",
 });
 
-const edge = atomsIn("barq.ui", {
+const edge = ui({
   gap: "var(--spacing)",
   paddingInline: "calc(var(--spacing) * 2.5)",
 });
 
-const ellipsis = atomsIn("barq.ui", {
+const ellipsis = ui({
   display: "flex",
   width: "calc(var(--spacing) * 9)",
   height: "calc(var(--spacing) * 9)",
@@ -138,7 +139,7 @@ export function PaginationNext(props: Incoming<PaginationEdgeProps>) {
 }
 
 /** The word beside a chevron: gone below `sm`, where the chevron says enough. */
-const wide = atomsIn("barq.ui", {
+const wide = ui({
   display: "none",
   "@media (width >= 40rem)": {
     display: "block",

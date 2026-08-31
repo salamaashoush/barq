@@ -1,11 +1,13 @@
 import { Show, signal, type Incoming } from "@barqjs/core";
-import { atomsIn } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
-const root = atomsIn("barq.ui", {
+const ui = layer("barq.ui");
+
+const root = ui({
   position: "relative",
   display: "flex",
   width: "calc(var(--spacing) * 8)",
@@ -25,14 +27,14 @@ const root = atomsIn("barq.ui", {
   },
 });
 
-const image = atomsIn("barq.ui", {
+const image = ui({
   aspectRatio: "1 / 1",
   width: "100%",
   height: "100%",
   objectFit: "cover",
 });
 
-const fallback = atomsIn("barq.ui", {
+const fallback = ui({
   display: "flex",
   width: "100%",
   height: "100%",
@@ -49,7 +51,7 @@ const fallback = atomsIn("barq.ui", {
   },
 });
 
-const badge = atomsIn("barq.ui", {
+const badge = ui({
   position: "absolute",
   right: "0px",
   bottom: "0px",

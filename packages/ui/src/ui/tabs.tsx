@@ -9,12 +9,14 @@ import {
   type TabsComponentProps,
 } from "@barqjs/aria/tabs";
 import type { Incoming } from "@barqjs/core";
-import { atomsIn } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { ui, uiVariants } from "../lib/atoms.ts";
+import { uiVariants } from "../lib/atoms.ts";
 
-const root = atomsIn("barq.ui", {
+const ui = layer("barq.ui");
+
+const root = ui({
   display: "flex",
   gap: "calc(var(--spacing) * 2)",
   '[data-orientation="horizontal"]': {
@@ -22,7 +24,7 @@ const root = atomsIn("barq.ui", {
   },
 });
 
-const trigger = atomsIn("barq.ui", {
+const trigger = ui({
   position: "relative",
   display: "inline-flex",
   height: "calc(100% - 1px)",
@@ -147,7 +149,7 @@ const trigger = atomsIn("barq.ui", {
   },
 });
 
-const content = atomsIn("barq.ui", {
+const content = ui({
   flex: "1",
   "--ui-outline-style": "none",
   outlineStyle: "none",
@@ -156,7 +158,7 @@ const content = atomsIn("barq.ui", {
 export type TabsListVariant = "default" | "line";
 
 export const tabsListVariants = uiVariants({
-  base: atomsIn("barq.ui", {
+  base: ui({
     display: "inline-flex",
     width: "fit-content",
     alignItems: "center",
@@ -177,10 +179,10 @@ export const tabsListVariants = uiVariants({
   }),
   variants: {
     variant: {
-      default: atomsIn("barq.ui", {
+      default: ui({
         backgroundColor: "var(--muted)",
       }),
-      line: atomsIn("barq.ui", {
+      line: ui({
         gap: "var(--spacing)",
         backgroundColor: "transparent",
       }),

@@ -1,15 +1,17 @@
 import type { Incoming } from "@barqjs/core";
-import { atomsIn } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
+const ui = layer("barq.ui");
+
 export type AlertVariant = "default" | "destructive";
 
 export const alertVariants = uiVariants({
-  base: atomsIn("barq.ui", {
+  base: ui({
     position: "relative",
     display: "grid",
     width: "100%",
@@ -37,11 +39,11 @@ export const alertVariants = uiVariants({
   }),
   variants: {
     variant: {
-      default: atomsIn("barq.ui", {
+      default: ui({
         backgroundColor: "var(--card)",
         color: "var(--card-foreground)",
       }),
-      destructive: atomsIn("barq.ui", {
+      destructive: ui({
         backgroundColor: "var(--card)",
         color: "var(--destructive)",
         ':is(& > *)[data-slot="alert-description"]': {
@@ -59,7 +61,7 @@ export const alertVariants = uiVariants({
   defaults: { variant: "default" },
 });
 
-const title = atomsIn("barq.ui", {
+const title = ui({
   gridColumnStart: "2",
   overflow: "hidden",
   display: "-webkit-box",
@@ -72,7 +74,7 @@ const title = atomsIn("barq.ui", {
   letterSpacing: "var(--tracking-tight)",
 });
 
-const description = atomsIn("barq.ui", {
+const description = ui({
   gridColumnStart: "2",
   display: "grid",
   justifyItems: "start",

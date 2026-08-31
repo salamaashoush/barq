@@ -1,12 +1,14 @@
 import type { Incoming } from "@barqjs/core";
-import { atomsIn, firstThatWorks } from "@barqjs/css";
+import { firstThatWorks, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
-const root = atomsIn("barq.ui", {
+const ui = layer("barq.ui");
+
+const root = ui({
   display: "flex",
   minWidth: "0px",
   flex: "1",
@@ -28,7 +30,7 @@ const root = atomsIn("barq.ui", {
   },
 });
 
-const header = atomsIn("barq.ui", {
+const header = ui({
   display: "flex",
   maxWidth: "var(--container-sm)",
   flexDirection: "column",
@@ -37,7 +39,7 @@ const header = atomsIn("barq.ui", {
   textAlign: "center",
 });
 
-const title = atomsIn("barq.ui", {
+const title = ui({
   fontSize: "var(--text-lg)",
   lineHeight: "var(--ui-leading, var(--text-lg--line-height))",
   "--ui-font-weight": "var(--font-weight-medium)",
@@ -46,7 +48,7 @@ const title = atomsIn("barq.ui", {
   letterSpacing: "var(--tracking-tight)",
 });
 
-const description = atomsIn("barq.ui", {
+const description = ui({
   fontSize: "var(--text-sm)",
   lineHeight: "var(--leading-relaxed)",
   color: "var(--muted-foreground)",
@@ -59,7 +61,7 @@ const description = atomsIn("barq.ui", {
   },
 });
 
-const content = atomsIn("barq.ui", {
+const content = ui({
   display: "flex",
   width: "100%",
   maxWidth: "var(--container-sm)",
@@ -75,7 +77,7 @@ const content = atomsIn("barq.ui", {
 export type EmptyMediaVariant = "default" | "icon";
 
 export const emptyMediaVariants = uiVariants({
-  base: atomsIn("barq.ui", {
+  base: ui({
     marginBottom: "calc(var(--spacing) * 2)",
     display: "flex",
     flexShrink: "0",
@@ -88,10 +90,10 @@ export const emptyMediaVariants = uiVariants({
   }),
   variants: {
     variant: {
-      default: atomsIn("barq.ui", {
+      default: ui({
         backgroundColor: "transparent",
       }),
-      icon: atomsIn("barq.ui", {
+      icon: ui({
         display: "flex",
         width: "calc(var(--spacing) * 10)",
         height: "calc(var(--spacing) * 10)",

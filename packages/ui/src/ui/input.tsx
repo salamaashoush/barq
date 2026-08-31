@@ -1,12 +1,14 @@
 import type { Incoming } from "@barqjs/core";
-import { atomsIn, firstThatWorks } from "@barqjs/css";
+import { firstThatWorks, layer } from "@barqjs/css";
 import { mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
 import type { UiProps } from "../lib/props.ts";
 import { controlProps } from "../lib/slot.ts";
 
-const input = atomsIn("barq.ui", {
+const ui = layer("barq.ui");
+
+const input = ui({
   height: "calc(var(--spacing) * 9)",
   width: "100%",
   minWidth: "0px",
@@ -89,7 +91,7 @@ const input = atomsIn("barq.ui", {
   },
 });
 
-const textarea = atomsIn("barq.ui", {
+const textarea = ui({
   display: "flex",
   fieldSizing: "content",
   minHeight: "calc(var(--spacing) * 16)",

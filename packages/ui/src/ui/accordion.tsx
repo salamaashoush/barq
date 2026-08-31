@@ -8,15 +8,16 @@ import {
   type DisclosurePanelComponentProps,
 } from "@barqjs/aria/disclosure";
 import type { Incoming } from "@barqjs/core";
-import { atomsIn, firstThatWorks } from "@barqjs/css";
+import { firstThatWorks, layer } from "@barqjs/css";
 import { ChevronDown } from "@barqjs/lucide/icons/chevron-down";
 
 import "../theme/layers.ts";
-import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
-const item = atomsIn("barq.ui", {
+const ui = layer("barq.ui");
+
+const item = ui({
   borderBottomStyle: "var(--ui-border-style)",
   borderBottomWidth: "1px",
   ":last-child": {
@@ -25,7 +26,7 @@ const item = atomsIn("barq.ui", {
   },
 });
 
-const trigger = atomsIn("barq.ui", {
+const trigger = ui({
   display: "flex",
   width: "100%",
   flex: "1",
@@ -70,7 +71,7 @@ const trigger = atomsIn("barq.ui", {
   },
 });
 
-const chevron = atomsIn("barq.ui", {
+const chevron = ui({
   pointerEvents: "none",
   width: "calc(var(--spacing) * 4)",
   height: "calc(var(--spacing) * 4)",
@@ -87,7 +88,7 @@ const chevron = atomsIn("barq.ui", {
   "--ui-duration": "200ms",
 });
 
-const body = atomsIn("barq.ui", {
+const body = ui({
   paddingTop: "0px",
   paddingBottom: "calc(var(--spacing) * 4)",
   fontSize: "var(--text-sm)",
@@ -103,7 +104,7 @@ const body = atomsIn("barq.ui", {
  * the panel animates without JavaScript, without a resize observer, and
  * correctly when the content changes while it is open.
  */
-const panel = atomsIn("barq.ui", {
+const panel = ui({
   display: "grid",
   gridTemplateRows: "0fr",
   overflow: "hidden",

@@ -4,10 +4,9 @@ import {
   type MenuTriggerComponentProps,
 } from "@barqjs/aria/menu";
 import type { Incoming } from "@barqjs/core";
-import { atomsIn } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Button, type ButtonProps } from "./button.tsx";
@@ -34,7 +33,9 @@ import {
   type DropdownMenuSubTriggerProps,
 } from "./dropdown-menu.tsx";
 
-const bar = atomsIn("barq.ui", {
+const ui = layer("barq.ui");
+
+const bar = ui({
   display: "flex",
   height: "calc(var(--spacing) * 9)",
   alignItems: "center",
@@ -49,7 +50,7 @@ const bar = atomsIn("barq.ui", {
     "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
 });
 
-const trigger = atomsIn("barq.ui", {
+const trigger = ui({
   display: "flex",
   height: "auto",
   alignItems: "center",
@@ -79,7 +80,7 @@ const trigger = atomsIn("barq.ui", {
 });
 
 /** shadcn's menubar opens wider than a dropdown does. */
-const wide = atomsIn("barq.ui", {
+const wide = ui({
   minWidth: "12rem",
 });
 

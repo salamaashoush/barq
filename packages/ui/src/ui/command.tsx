@@ -1,5 +1,5 @@
 import { comboBox, comboBoxState, type ComboBoxState, type FilterFn } from "@barqjs/aria/combobox";
-import { atomsIn } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 import {
   listBox,
   listBoxSection,
@@ -25,13 +25,14 @@ import { Search } from "@barqjs/lucide/icons/search";
 import { ref as makeRef } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
-import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./dialog.tsx";
 import { srOnly } from "./sr-only.ts";
 
-const root = atomsIn("barq.ui", {
+const ui = layer("barq.ui");
+
+const root = ui({
   display: "flex",
   height: "100%",
   width: "100%",
@@ -42,7 +43,7 @@ const root = atomsIn("barq.ui", {
   color: "var(--popover-foreground)",
 });
 
-const inputWrapper = atomsIn("barq.ui", {
+const inputWrapper = ui({
   display: "flex",
   height: "calc(var(--spacing) * 9)",
   alignItems: "center",
@@ -52,14 +53,14 @@ const inputWrapper = atomsIn("barq.ui", {
   paddingInline: "calc(var(--spacing) * 3)",
 });
 
-const inputIcon = atomsIn("barq.ui", {
+const inputIcon = ui({
   width: "calc(var(--spacing) * 4)",
   height: "calc(var(--spacing) * 4)",
   flexShrink: "0",
   opacity: "50%",
 });
 
-const input = atomsIn("barq.ui", {
+const input = ui({
   display: "flex",
   height: "calc(var(--spacing) * 10)",
   width: "100%",
@@ -85,7 +86,7 @@ const input = atomsIn("barq.ui", {
   },
 });
 
-const list = atomsIn("barq.ui", {
+const list = ui({
   margin: "0px",
   maxHeight: "300px",
   scrollPaddingBlock: "var(--spacing)",
@@ -95,14 +96,14 @@ const list = atomsIn("barq.ui", {
   padding: "0px",
 });
 
-const empty = atomsIn("barq.ui", {
+const empty = ui({
   paddingBlock: "calc(var(--spacing) * 6)",
   textAlign: "center",
   fontSize: "var(--text-sm)",
   lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
 });
 
-const group = atomsIn("barq.ui", {
+const group = ui({
   margin: "0px",
   listStyleType: "none",
   overflow: "hidden",
@@ -110,7 +111,7 @@ const group = atomsIn("barq.ui", {
   color: "var(--foreground)",
 });
 
-const groupLabel = atomsIn("barq.ui", {
+const groupLabel = ui({
   paddingInline: "calc(var(--spacing) * 2)",
   paddingBlock: "calc(var(--spacing) * 1.5)",
   fontSize: "var(--text-xs)",
@@ -120,7 +121,7 @@ const groupLabel = atomsIn("barq.ui", {
   color: "var(--muted-foreground)",
 });
 
-const separator = atomsIn("barq.ui", {
+const separator = ui({
   marginInline: "calc(var(--spacing) * -1)",
   height: "1px",
   borderStyle: "var(--ui-border-style)",
@@ -128,7 +129,7 @@ const separator = atomsIn("barq.ui", {
   backgroundColor: "var(--border)",
 });
 
-const item = atomsIn("barq.ui", {
+const item = ui({
   position: "relative",
   display: "flex",
   cursor: "default",
@@ -168,7 +169,7 @@ const item = atomsIn("barq.ui", {
   },
 });
 
-const shortcut = atomsIn("barq.ui", {
+const shortcut = ui({
   marginLeft: "auto",
   fontSize: "var(--text-xs)",
   lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
@@ -177,7 +178,7 @@ const shortcut = atomsIn("barq.ui", {
   color: "var(--muted-foreground)",
 });
 
-const dialogContent = atomsIn("barq.ui", {
+const dialogContent = ui({
   overflow: "hidden",
   padding: "0px",
 });

@@ -6,15 +6,16 @@ import {
   type SelectComponentProps,
 } from "@barqjs/aria/select";
 import type { Incoming } from "@barqjs/core";
-import { atomsIn, firstThatWorks } from "@barqjs/css";
+import { firstThatWorks, layer } from "@barqjs/css";
 import { Check } from "@barqjs/lucide/icons/check";
 
 import "../theme/layers.ts";
-import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
-const trigger = atomsIn("barq.ui", {
+const ui = layer("barq.ui");
+
+const trigger = ui({
   display: "flex",
   width: "fit-content",
   alignItems: "center",
@@ -118,7 +119,7 @@ const trigger = atomsIn("barq.ui", {
  * publishes the same measurement; the plain `8rem` beside it is the fallback
  * for a browser without `max()`, and is what the transcription produced.
  */
-const list = atomsIn("barq.ui", {
+const list = ui({
   position: "relative",
   zIndex: "50",
   margin: "0px",
@@ -172,7 +173,7 @@ const list = atomsIn("barq.ui", {
   },
 });
 
-const item = atomsIn("barq.ui", {
+const item = ui({
   position: "relative",
   display: "flex",
   width: "100%",
@@ -210,7 +211,7 @@ const item = atomsIn("barq.ui", {
   },
 });
 
-const indicator = atomsIn("barq.ui", {
+const indicator = ui({
   position: "absolute",
   right: "calc(var(--spacing) * 2)",
   display: "flex",
@@ -226,7 +227,7 @@ const indicator = atomsIn("barq.ui", {
   },
 });
 
-const label = atomsIn("barq.ui", {
+const label = ui({
   paddingInline: "calc(var(--spacing) * 2)",
   paddingBlock: "calc(var(--spacing) * 1.5)",
   fontSize: "var(--text-xs)",
@@ -234,7 +235,7 @@ const label = atomsIn("barq.ui", {
   color: "var(--muted-foreground)",
 });
 
-const separator = atomsIn("barq.ui", {
+const separator = ui({
   pointerEvents: "none",
   marginInline: "calc(var(--spacing) * -1)",
   marginBlock: "var(--spacing)",
@@ -254,7 +255,7 @@ const separator = atomsIn("barq.ui", {
  * by a screen reader, which an `<svg>` there would have needed
  * `aria-hidden` to avoid.
  */
-const chevron = atomsIn("barq.ui", {
+const chevron = ui({
   "::after": {
     content: '""',
     width: "calc(var(--spacing) * 4)",

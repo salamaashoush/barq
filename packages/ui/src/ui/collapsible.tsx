@@ -7,12 +7,13 @@ import {
   type DisclosurePanelComponentProps,
 } from "@barqjs/aria/disclosure";
 import type { Incoming } from "@barqjs/core";
-import { atomsIn, clsx } from "@barqjs/css";
+import { clsx, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
-import { ui } from "../lib/atoms.ts";
 
-const trigger = atomsIn("barq.ui", {
+const ui = layer("barq.ui");
+
+const trigger = ui({
   "--ui-outline-style": "none",
   outlineStyle: "none",
   "[data-focus-visible]": {
@@ -32,7 +33,7 @@ const trigger = atomsIn("barq.ui", {
 });
 
 /** The same `grid-template-rows` collapse the accordion uses; see `accordion.tsx`. */
-const panel = atomsIn("barq.ui", {
+const panel = ui({
   display: "grid",
   gridTemplateRows: "0fr",
   overflow: "hidden",

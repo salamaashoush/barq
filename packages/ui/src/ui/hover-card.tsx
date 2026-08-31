@@ -15,14 +15,15 @@ import {
   type Child,
   type Incoming,
 } from "@barqjs/core";
-import { atomsIn, firstThatWorks } from "@barqjs/css";
+import { firstThatWorks, layer } from "@barqjs/css";
 import { ref as makeRef } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
-import { ui } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 
-const content = atomsIn("barq.ui", {
+const ui = layer("barq.ui");
+
+const content = ui({
   zIndex: "50",
   width: "calc(var(--spacing) * 64)",
   animation:

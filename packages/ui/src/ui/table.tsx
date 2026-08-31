@@ -1,17 +1,19 @@
 import type { Incoming } from "@barqjs/core";
-import { atomsIn } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
 
-const container = atomsIn("barq.ui", {
+const ui = layer("barq.ui");
+
+const container = ui({
   position: "relative",
   width: "100%",
   overflowX: "auto",
 });
 
-const table = atomsIn("barq.ui", {
+const table = ui({
   width: "100%",
   captionSide: "bottom",
   borderCollapse: "collapse",
@@ -19,21 +21,21 @@ const table = atomsIn("barq.ui", {
   lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
 });
 
-const header = atomsIn("barq.ui", {
+const header = ui({
   "& tr": {
     borderBottomStyle: "var(--ui-border-style)",
     borderBottomWidth: "1px",
   },
 });
 
-const body = atomsIn("barq.ui", {
+const body = ui({
   "& tr:last-child": {
     borderStyle: "var(--ui-border-style)",
     borderWidth: "0px",
   },
 });
 
-const footer = atomsIn("barq.ui", {
+const footer = ui({
   borderTopStyle: "var(--ui-border-style)",
   borderTopWidth: "1px",
   backgroundColor: "var(--muted)",
@@ -48,7 +50,7 @@ const footer = atomsIn("barq.ui", {
   },
 });
 
-const row = atomsIn("barq.ui", {
+const row = ui({
   borderBottomStyle: "var(--ui-border-style)",
   borderBottomWidth: "1px",
   "--ui-border-style": "solid",
@@ -72,7 +74,7 @@ const row = atomsIn("barq.ui", {
   },
 });
 
-const head = atomsIn("barq.ui", {
+const head = ui({
   height: "calc(var(--spacing) * 10)",
   paddingInline: "calc(var(--spacing) * 2)",
   textAlign: "left",
@@ -86,7 +88,7 @@ const head = atomsIn("barq.ui", {
   },
 });
 
-const cell = atomsIn("barq.ui", {
+const cell = ui({
   padding: "calc(var(--spacing) * 2)",
   verticalAlign: "middle",
   whiteSpace: "nowrap",
@@ -95,7 +97,7 @@ const cell = atomsIn("barq.ui", {
   },
 });
 
-const caption = atomsIn("barq.ui", {
+const caption = ui({
   marginTop: "calc(var(--spacing) * 4)",
   fontSize: "var(--text-sm)",
   lineHeight: "var(--ui-leading, var(--text-sm--line-height))",

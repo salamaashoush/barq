@@ -1,10 +1,12 @@
 import { mergeProps } from "@barqjs/aria/utils";
 import type { Incoming } from "@barqjs/core";
-import { atomsIn } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
+
+const ui = layer("barq.ui");
 
 /**
  * `aspect-ratio`, not the padding-bottom trick.
@@ -14,7 +16,7 @@ import { uiProps } from "../lib/slot.ts";
  * safe to rely on when that component was written. It is now, and the property
  * does the same job without taking the child out of flow.
  */
-const box = atomsIn("barq.ui", {
+const box = ui({
   position: "relative",
   width: "100%",
   aspectRatio: "var(--barq-aspect-ratio, 1)",

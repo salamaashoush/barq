@@ -1,10 +1,12 @@
 import { Show, type Incoming } from "@barqjs/core";
-import { atomsIn } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { uiVariants } from "../lib/atoms.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
+
+const ui = layer("barq.ui");
 
 export type BadgeVariant = "default" | "secondary" | "destructive" | "outline" | "ghost" | "link";
 
@@ -16,7 +18,7 @@ export type BadgeVariant = "default" | "secondary" | "destructive" | "outline" |
  * ```
  */
 export const badgeVariants = uiVariants({
-  base: atomsIn("barq.ui", {
+  base: ui({
     display: "inline-flex",
     width: "fit-content",
     flexShrink: "0",
@@ -70,7 +72,7 @@ export const badgeVariants = uiVariants({
   }),
   variants: {
     variant: {
-      default: atomsIn("barq.ui", {
+      default: ui({
         backgroundColor: "var(--primary)",
         color: "var(--primary-foreground)",
         "@media (hover: hover)": {
@@ -84,7 +86,7 @@ export const badgeVariants = uiVariants({
           },
         },
       }),
-      secondary: atomsIn("barq.ui", {
+      secondary: ui({
         backgroundColor: "var(--secondary)",
         color: "var(--secondary-foreground)",
         "@media (hover: hover)": {
@@ -98,7 +100,7 @@ export const badgeVariants = uiVariants({
           },
         },
       }),
-      destructive: atomsIn("barq.ui", {
+      destructive: ui({
         backgroundColor: "var(--destructive)",
         color: "var(--color-white)",
         ":focus-visible": {
@@ -130,7 +132,7 @@ export const badgeVariants = uiVariants({
           },
         },
       }),
-      outline: atomsIn("barq.ui", {
+      outline: ui({
         borderColor: "var(--border)",
         color: "var(--foreground)",
         "@media (hover: hover)": {
@@ -140,7 +142,7 @@ export const badgeVariants = uiVariants({
           },
         },
       }),
-      ghost: atomsIn("barq.ui", {
+      ghost: ui({
         "@media (hover: hover)": {
           "a&:hover": {
             backgroundColor: "var(--accent)",
@@ -148,7 +150,7 @@ export const badgeVariants = uiVariants({
           },
         },
       }),
-      link: atomsIn("barq.ui", {
+      link: ui({
         color: "var(--primary)",
         textUnderlineOffset: "4px",
         "@media (hover: hover)": {

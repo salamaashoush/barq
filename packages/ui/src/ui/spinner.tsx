@@ -1,12 +1,13 @@
 import type { Incoming } from "@barqjs/core";
-import { atomsIn } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 
 import { LoaderCircle } from "@barqjs/lucide/icons/loader-circle";
 
 import "../theme/layers.ts";
-import { ui } from "../lib/atoms.ts";
 
-const spinner = atomsIn("barq.ui", {
+const ui = layer("barq.ui");
+
+const spinner = ui({
   width: "calc(var(--spacing) * 4)",
   height: "calc(var(--spacing) * 4)",
   animation: "var(--animate-spin)",
