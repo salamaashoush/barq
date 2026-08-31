@@ -1,0 +1,16 @@
+{
+  "attachment": "relative flex w-fit max-w-full min-w-0 shrink-0 flex-wrap rounded-xl border bg-card text-card-foreground transition-colors",
+  "attachment-size-default": "gap-2 text-sm",
+  "attachment-size-sm": "gap-2.5 text-xs",
+  "attachment-size-xs": "gap-1.5 rounded-lg text-xs",
+  "attachment-orientation-horizontal": "min-w-40 items-center",
+  "attachment-orientation-vertical": "w-24 flex-col",
+  "attachment-media": "relative flex aspect-square w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-muted text-foreground",
+  "attachment-media-variant-image": "opacity-60",
+  "attachment-content": "max-w-full min-w-0 flex-1 leading-tight",
+  "attachment-title": "block max-w-full min-w-0 truncate font-medium",
+  "attachment-description": "mt-0.5 block min-w-0 truncate text-xs text-muted-foreground max-w-full",
+  "attachment-actions": "relative z-20 flex shrink-0 items-center",
+  "attachment-trigger": "absolute inset-0 z-10 outline-none",
+  "attachment-group": "flex min-w-0 snap-x snap-mandatory scroll-px-1 gap-3 overflow-x-auto overscroll-x-contain py-1"
+}

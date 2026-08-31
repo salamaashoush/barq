@@ -1,0 +1,24 @@
+{
+  "$schema": "https://github.com/salamaashoush/barq/schema/registry-item.json",
+  "name": "marker",
+  "type": "registry:ui",
+  "title": "Marker",
+  "dependencies": [
+    "@barqjs/core",
+    "@barqjs/css"
+  ],
+  "registryDependencies": [
+    "layers",
+    "props",
+    "shared-icon",
+    "shared-text",
+    "slot"
+  ],
+  "files": [
+    {
+      "path": "ui/marker.tsx",
+      "type": "registry:ui",
+      "content": "import type { Child, Incoming } from \"@barqjs/core\";\nimport { layer, variants } from \"@barqjs/css\";\n\nimport \"../theme/layers.ts\";\nimport { icon as iconGroup } from \"../lib/shared-icon.ts\";\nimport { text } from \"../lib/shared-text.ts\";\nimport type { UiProps } from \"../lib/props.ts\";\nimport { uiProps } from \"../lib/slot.ts\";\n\nconst ui = layer(\"barq.ui\");\n\nexport type MarkerVariant = \"default\" | \"separator\" | \"border\";\n\nexport const markerVariants = variants({\n  base: ui(text.sm, iconGroup.sized, {\n    position: \"relative\",\n    display: \"flex\",\n    minHeight: \"calc(var(--spacing) * 4)\",\n    width: \"100%\",\n    alignItems: \"center\",\n    gap: \"calc(var(--spacing) * 2)\",\n    textAlign: \"left\",\n    color: \"var(--muted-foreground)\",\n    \"& a\": {\n      textDecorationLine: \"underline\",\n      textUnderlineOffset: \"3px\",\n    },\n    \"@media (hover: hover)\": {\n      \"& a:hover\": {\n        color: \"var(--foreground)\",\n      },\n    },\n  }),\n  variants: {\n    variant: {\n      default: \"\",\n      separator: ui({\n        \"::before\": {\n          content: \"var(--ui-content)\",\n          marginRight: \"var(--spacing)\",\n          height: \"1px\",\n          minWidth: \"0px\",\n          flex: \"1\",\n          backgroundColor: \"var(--border)\",\n        },\n        \"::after\": {\n          content: \"var(--ui-content)\",\n          marginLeft: \"var(--spacing)\",\n          height: \"1px\",\n          minWidth: \"0px\",\n          flex: \"1\",\n          backgroundColor: \"var(--border)\",\n        },\n      }),\n      border: ui({\n        borderBottomStyle: \"var(--ui-border-style)\",\n        borderBottomWidth: \"1px\",\n        borderColor: \"var(--border)\",\n        paddingBottom: \"calc(var(--spacing) * 2)\",\n      }),\n    },\n  },\n  defaults: { variant: \"default\" },\n});\n\nconst iconBox = ui(iconGroup.sized, {\n  width: \"calc(var(--spacing) * 4)\",\n  height: \"calc(var(--spacing) * 4)\",\n  flexShrink: \"0\",\n});\n\nconst content = ui({\n  minWidth: \"0px\",\n  overflowWrap: \"break-word\",\n  // The separator variant centres its label between the two rules, so the\n  // label must stop growing or there is nothing left for them to fill.\n  '[data-slot=\"marker\"][data-variant=\"separator\"] &': {\n    flex: \"none\",\n    textAlign: \"center\",\n  },\n  \"& > a\": {\n    textDecorationLine: \"underline\",\n    textUnderlineOffset: \"3px\",\n  },\n  \"@media (hover: hover)\": {\n    \"& > a:hover\": {\n      color: \"var(--foreground)\",\n    },\n  },\n});\n\nexport interface MarkerProps extends UiProps {\n  /** @default \"default\" */\n  variant?: MarkerVariant;\n}\n\n/**\n * A line of secondary text between blocks: a timestamp, a day, \"unread\".\n *\n * The `separator` variant is the one that earns the component. It draws a rule\n * either side of its label with pseudo-elements, so the label stays centred\n * whatever its length and no measurement is involved.\n *\n * ```tsx\n * <Marker variant=\"separator\">\n *   <MarkerContent>Yesterday</MarkerContent>\n * </Marker>\n * ```\n */\nexport function Marker(props: Incoming<MarkerProps>) {\n  return (\n    <div\n      {...uiProps(\n        \"marker\",\n        () => ui(markerVariants({ variant: props.variant?.() }), \"group/marker\"),\n        props,\n      )}\n      data-variant={props.variant?.() ?? \"default\"}\n    >\n      {props.children}\n    </div>\n  );\n}\n\n/** Decoration beside the label, and hidden from a screen reader for that reason. */\nexport function MarkerIcon(props: Incoming<UiProps>) {\n  return (\n    <span {...uiProps(\"marker-icon\", iconBox, props)} aria-hidden=\"true\">\n      {props.children}\n    </span>\n  );\n}\n\nexport function MarkerContent(props: Incoming<{ children?: Child } & UiProps>) {\n  return <span {...uiProps(\"marker-content\", content, props)}>{props.children}</span>;\n}\n"
+    }
+  ]
+}

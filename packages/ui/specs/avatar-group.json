@@ -1,0 +1,7 @@
+{
+  "avatar-group": "flex -space-x-2",
+  "avatar-group-count": "relative flex size-8 shrink-0 items-center justify-center rounded-full bg-muted text-sm text-muted-foreground ring-2 ring-background",
+  "avatar-group-count-lg": "size-10",
+  "avatar-group-count-sm": "size-6",
+  "avatar-group-count-icon": "size-4"
+}

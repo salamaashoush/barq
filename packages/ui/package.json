@@ -123,6 +123,11 @@
       "barq": "./src/ui/aspect-ratio.tsx",
       "bun": "./src/ui/aspect-ratio.tsx"
     },
+    "./attachment": {
+      "types": "./src/ui/attachment.tsx",
+      "barq": "./src/ui/attachment.tsx",
+      "bun": "./src/ui/attachment.tsx"
+    },
     "./avatar": {
       "types": "./src/ui/avatar.tsx",
       "barq": "./src/ui/avatar.tsx",
@@ -137,6 +142,11 @@
       "types": "./src/ui/breadcrumb.tsx",
       "barq": "./src/ui/breadcrumb.tsx",
       "bun": "./src/ui/breadcrumb.tsx"
+    },
+    "./bubble": {
+      "types": "./src/ui/bubble.tsx",
+      "barq": "./src/ui/bubble.tsx",
+      "bun": "./src/ui/bubble.tsx"
     },
     "./button-group": {
       "types": "./src/ui/button-group.tsx",
@@ -258,10 +268,20 @@
       "barq": "./src/ui/label.tsx",
       "bun": "./src/ui/label.tsx"
     },
+    "./marker": {
+      "types": "./src/ui/marker.tsx",
+      "barq": "./src/ui/marker.tsx",
+      "bun": "./src/ui/marker.tsx"
+    },
     "./menubar": {
       "types": "./src/ui/menubar.tsx",
       "barq": "./src/ui/menubar.tsx",
       "bun": "./src/ui/menubar.tsx"
+    },
+    "./message": {
+      "types": "./src/ui/message.tsx",
+      "barq": "./src/ui/message.tsx",
+      "bun": "./src/ui/message.tsx"
     },
     "./native-select": {
       "types": "./src/ui/native-select.tsx",

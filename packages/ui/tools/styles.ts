@@ -115,6 +115,10 @@ const AXES = [
   ["variant", "data-variant"],
   ["size", "data-size"],
   ["orientation", "data-orientation"],
+  // Placement, which a bubble's reactions and an input group's addon both
+  // split on and neither writes as a variant.
+  ["side", "data-side"],
+  ["align", "data-align"],
 ] as const;
 
 /**

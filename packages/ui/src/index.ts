@@ -85,9 +85,32 @@ export {
 } from "./ui/alert.tsx";
 export { AspectRatio, type AspectRatioProps } from "./ui/aspect-ratio.tsx";
 export {
+  Attachment,
+  AttachmentAction,
+  type AttachmentActionProps,
+  AttachmentActions,
+  AttachmentContent,
+  AttachmentDescription,
+  AttachmentGroup,
+  AttachmentMedia,
+  type AttachmentMediaProps,
+  type AttachmentMediaVariant,
+  attachmentMediaVariants,
+  type AttachmentOrientation,
+  type AttachmentProps,
+  type AttachmentSize,
+  type AttachmentState,
+  AttachmentTitle,
+  AttachmentTrigger,
+  type AttachmentTriggerProps,
+  attachmentVariants,
+} from "./ui/attachment.tsx";
+export {
   Avatar,
   AvatarBadge,
   AvatarFallback,
+  AvatarGroup,
+  AvatarGroupCount,
   AvatarImage,
   type AvatarImageProps,
   type AvatarProps,
@@ -105,6 +128,19 @@ export {
   BreadcrumbSeparator,
   type BreadcrumbSeparatorProps,
 } from "./ui/breadcrumb.tsx";
+export {
+  Bubble,
+  type BubbleAlign,
+  BubbleContent,
+  BubbleGroup,
+  type BubbleProps,
+  BubbleReactions,
+  type BubbleReactionsProps,
+  bubbleReactionsVariants,
+  type BubbleSide,
+  type BubbleVariant,
+  bubbleVariants,
+} from "./ui/bubble.tsx";
 export {
   ButtonGroup,
   type ButtonGroupOrientation,
@@ -362,6 +398,14 @@ export {
 export { Kbd, KbdGroup } from "./ui/kbd.tsx";
 export { Label, type LabelProps } from "./ui/label.tsx";
 export {
+  Marker,
+  MarkerContent,
+  MarkerIcon,
+  type MarkerProps,
+  type MarkerVariant,
+  markerVariants,
+} from "./ui/marker.tsx";
+export {
   Menubar,
   MenubarCheckboxItem,
   type MenubarCheckboxItemProps,
@@ -390,6 +434,16 @@ export {
   MenubarTrigger,
   type MenubarTriggerProps,
 } from "./ui/menubar.tsx";
+export {
+  Message,
+  type MessageAlign,
+  MessageAvatar,
+  MessageContent,
+  MessageFooter,
+  MessageGroup,
+  MessageHeader,
+  type MessageProps,
+} from "./ui/message.tsx";
 export { NativeSelect, type NativeSelectProps } from "./ui/native-select.tsx";
 export {
   NavigationMenu,

@@ -288,6 +288,26 @@
       ]
     },
     {
+      "name": "attachment",
+      "type": "registry:ui",
+      "title": "Attachment",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "button",
+        "layers",
+        "props",
+        "shared-icon",
+        "shared-text",
+        "slot"
+      ],
+      "files": [
+        "ui/attachment.tsx"
+      ]
+    },
+    {
       "name": "avatar",
       "type": "registry:ui",
       "title": "Avatar",
@@ -345,6 +365,24 @@
       ],
       "files": [
         "ui/breadcrumb.tsx"
+      ]
+    },
+    {
+      "name": "bubble",
+      "type": "registry:ui",
+      "title": "Bubble",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "shared-text",
+        "slot"
+      ],
+      "files": [
+        "ui/bubble.tsx"
       ]
     },
     {
@@ -859,6 +897,25 @@
       ]
     },
     {
+      "name": "marker",
+      "type": "registry:ui",
+      "title": "Marker",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "shared-icon",
+        "shared-text",
+        "slot"
+      ],
+      "files": [
+        "ui/marker.tsx"
+      ]
+    },
+    {
       "name": "menubar",
       "type": "registry:ui",
       "title": "Menubar",
@@ -879,6 +936,24 @@
       ],
       "files": [
         "ui/menubar.tsx"
+      ]
+    },
+    {
+      "name": "message",
+      "type": "registry:ui",
+      "title": "Message",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers",
+        "props",
+        "shared-text",
+        "slot"
+      ],
+      "files": [
+        "ui/message.tsx"
       ]
     },
     {

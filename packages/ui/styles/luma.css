@@ -1448,6 +1448,48 @@
       }
     }
 
+    [data-slot="input-group-addon"][data-align="inline-start"] {
+      padding-left: calc(var(--spacing) * 3);
+      &:has( > button) {
+        margin-left: calc(var(--spacing) * -1);
+      }
+      &:has( > kbd) {
+        margin-left: calc(var(--spacing) * -1);
+      }
+    }
+
+    [data-slot="input-group-addon"][data-align="inline-end"] {
+      padding-right: calc(var(--spacing) * 3);
+      &:has( > button) {
+        margin-right: calc(var(--spacing) * -1);
+      }
+      &:has( > kbd) {
+        margin-right: calc(var(--spacing) * -1);
+      }
+    }
+
+    [data-slot="input-group-addon"][data-align="block-start"] {
+      padding-inline: calc(var(--spacing) * 3);
+      padding-top: calc(var(--spacing) * 3);
+      &:is(:where(.group\/input-group):has( > input) *) {
+        padding-top: calc(var(--spacing) * 3.5);
+      }
+      &:is(.border-b) {
+        padding-bottom: calc(var(--spacing) * 3.5);
+      }
+    }
+
+    [data-slot="input-group-addon"][data-align="block-end"] {
+      padding-inline: calc(var(--spacing) * 3);
+      padding-bottom: calc(var(--spacing) * 3);
+      &:is(:where(.group\/input-group):has( > input) *) {
+        padding-bottom: calc(var(--spacing) * 3.5);
+      }
+      &:is(.border-t) {
+        padding-top: calc(var(--spacing) * 3.5);
+      }
+    }
+
     [data-slot="input-group-button"] {
       gap: calc(var(--spacing) * 2);
       border-radius: var(--radius-4xl);
@@ -2211,6 +2253,36 @@
       background-color: var(--primary);
       color: var(--primary-foreground);
       --ui-ring-color: var(--background);
+    }
+
+    [data-slot="avatar-group-count"] {
+      width: calc(var(--spacing) * 8);
+      height: calc(var(--spacing) * 8);
+      border-radius: calc(infinity * 1px);
+      background-color: var(--muted);
+      font-size: var(--text-sm);
+      line-height: var(--ui-leading, var(--text-sm--line-height));
+      color: var(--muted-foreground);
+      &:is(:where(.group\/avatar-group):has([data-size="lg"]) *) {
+        width: calc(var(--spacing) * 10);
+        height: calc(var(--spacing) * 10);
+      }
+      &:is(:where(.group\/avatar-group):has([data-size="sm"]) *) {
+        width: calc(var(--spacing) * 6);
+        height: calc(var(--spacing) * 6);
+      }
+      & > svg {
+        width: calc(var(--spacing) * 4);
+        height: calc(var(--spacing) * 4);
+      }
+      &:is(:where(.group\/avatar-group):has([data-size="lg"]) *) > svg {
+        width: calc(var(--spacing) * 5);
+        height: calc(var(--spacing) * 5);
+      }
+      &:is(:where(.group\/avatar-group):has([data-size="sm"]) *) > svg {
+        width: calc(var(--spacing) * 3);
+        height: calc(var(--spacing) * 3);
+      }
     }
 
     [data-slot="badge"] {
@@ -5337,6 +5409,482 @@
       &[data-side="inline-start"] {
         --ui-enter-translate-x: calc(2*var(--spacing));
       }
+    }
+
+    [data-slot="bubble"] {
+      max-width: 80%;
+      gap: var(--spacing);
+      &:is(:where(.group\/message)[data-align="end"] *) {
+        align-self: flex-end;
+      }
+      &[data-align="end"] {
+        align-self: flex-end;
+      }
+      &[data-variant="ghost"] {
+        max-width: 100%;
+      }
+    }
+
+    [data-slot="bubble-content"] {
+      border-radius: var(--radius-3xl);
+      border-style: var(--ui-border-style);
+      border-width: 1px;
+      border-color: transparent;
+      padding-inline: calc(var(--spacing) * 3.5);
+      padding-block: calc(var(--spacing) * 2.5);
+      font-size: var(--text-sm);
+      line-height: var(--ui-leading, var(--text-sm--line-height));
+      --ui-leading: var(--leading-relaxed);
+      line-height: var(--leading-relaxed);
+      &:is(:where(.group\/bubble)[data-align="end"] *) {
+        align-self: flex-end;
+      }
+      &:is(button, a) {
+        --ui-outline-style: none;
+        outline-style: none;
+      }
+      &:is(button, a):focus-visible {
+        border-color: var(--ring);
+        --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor);
+        box-shadow: var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow);
+        --ui-ring-color: var(--ring);
+        @supports (color: color-mix(in lab, red, red)) {
+          --ui-ring-color: color-mix(in oklab, var(--ring) 30%, transparent);
+        }
+      }
+    }
+
+    [data-slot="bubble"][data-variant="default"] {
+      :is(& > *)[data-slot="bubble-content"] {
+        background-color: var(--primary);
+        color: var(--primary-foreground);
+      }
+      & > [data-slot=bubble-content]:is(button, a):hover {
+        background-color: var(--primary);
+        @supports (color: color-mix(in lab, red, red)) {
+          background-color: color-mix(in oklab, var(--primary) 80%, transparent);
+        }
+      }
+    }
+
+    [data-slot="bubble"][data-variant="secondary"] {
+      :is(& > *)[data-slot="bubble-content"] {
+        background-color: var(--secondary);
+        color: var(--secondary-foreground);
+      }
+      & > [data-slot=bubble-content]:is(button, a):hover {
+        background-color: var(--secondary);
+        @supports (color: color-mix(in lab, red, red)) {
+          background-color: color-mix(in oklch,var(--secondary),var(--foreground) 5%);
+        }
+      }
+    }
+
+    [data-slot="bubble"][data-variant="muted"] {
+      :is(& > *)[data-slot="bubble-content"] {
+        background-color: var(--muted);
+      }
+      & > [data-slot=bubble-content]:is(button, a):hover {
+        background-color: var(--muted);
+        @supports (color: color-mix(in lab, red, red)) {
+          background-color: color-mix(in oklch,var(--muted),var(--foreground) 5%);
+        }
+      }
+    }
+
+    [data-slot="bubble"][data-variant="tinted"] {
+      :is(& > *)[data-slot="bubble-content"] {
+        background-color: oklch(from var(--primary) 0.93 calc(c * 0.4) h);
+        color: var(--foreground);
+      }
+      :is(&:is(.dark *) > *)[data-slot="bubble-content"] {
+        background-color: oklch(from var(--primary) 0.3 calc(c * 0.4) h);
+      }
+      & > [data-slot=bubble-content]:is(button, a):hover {
+        background-color: oklch(from var(--primary) 0.88 calc(c * 0.5) h);
+      }
+      &:is(.dark *) > [data-slot=bubble-content]:is(button, a):hover {
+        background-color: oklch(from var(--primary) 0.35 calc(c * 0.5) h);
+      }
+    }
+
+    [data-slot="bubble"][data-variant="outline"] {
+      :is(& > *)[data-slot="bubble-content"] {
+        border-color: var(--border);
+        background-color: var(--background);
+      }
+      & > [data-slot=bubble-content]:is(button, a):hover {
+        background-color: var(--muted);
+        color: var(--foreground);
+      }
+      &:is(.dark *) > [data-slot=bubble-content]:is(button, a):hover {
+        background-color: var(--input);
+        @supports (color: color-mix(in lab, red, red)) {
+          background-color: color-mix(in oklab, var(--input) 30%, transparent);
+        }
+      }
+    }
+
+    [data-slot="bubble"][data-variant="ghost"] {
+      --ui-border-style: none;
+      border-style: none;
+      :is(& > *)[data-slot="bubble-content"] {
+        border-radius: 0;
+        background-color: transparent;
+        padding: 0px;
+      }
+      & > [data-slot=bubble-content]:is(button, a):hover {
+        background-color: var(--muted);
+        color: var(--foreground);
+      }
+      &:is(.dark *) > [data-slot=bubble-content]:is(button, a):hover {
+        background-color: var(--muted);
+        @supports (color: color-mix(in lab, red, red)) {
+          background-color: color-mix(in oklab, var(--muted) 50%, transparent);
+        }
+      }
+    }
+
+    [data-slot="bubble"][data-variant="destructive"] {
+      :is(& > *)[data-slot="bubble-content"] {
+        background-color: var(--destructive);
+        @supports (color: color-mix(in lab, red, red)) {
+          background-color: color-mix(in oklab, var(--destructive) 10%, transparent);
+        }
+        color: var(--destructive);
+      }
+      :is(&:is(.dark *) > *)[data-slot="bubble-content"] {
+        background-color: var(--destructive);
+        @supports (color: color-mix(in lab, red, red)) {
+          background-color: color-mix(in oklab, var(--destructive) 20%, transparent);
+        }
+      }
+      & > [data-slot=bubble-content]:is(button, a):hover {
+        background-color: var(--destructive);
+        @supports (color: color-mix(in lab, red, red)) {
+          background-color: color-mix(in oklab, var(--destructive) 20%, transparent);
+        }
+      }
+      &:is(.dark *) > [data-slot=bubble-content]:is(button, a):hover {
+        background-color: var(--destructive);
+        @supports (color: color-mix(in lab, red, red)) {
+          background-color: color-mix(in oklab, var(--destructive) 30%, transparent);
+        }
+      }
+    }
+
+    [data-slot="bubble-reactions"] {
+      flex-shrink: 0;
+      gap: var(--spacing);
+      border-radius: calc(infinity * 1px);
+      background-color: var(--muted);
+      padding-inline: calc(var(--spacing) * 1.5);
+      padding-block: calc(var(--spacing) * 0.5);
+      font-size: var(--text-sm);
+      line-height: var(--ui-leading, var(--text-sm--line-height));
+      --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor);
+      box-shadow: var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow);
+      --ui-ring-color: var(--card);
+      &:has(:is(button)) {
+        padding: 0px;
+      }
+    }
+
+    [data-slot="bubble-reactions"][data-side="top"] {
+      top: 0px;
+      --ui-translate-y: calc(calc(3 / 4 * 100%) * -1);
+      translate: var(--ui-translate-x) var(--ui-translate-y);
+    }
+
+    [data-slot="bubble-reactions"][data-side="bottom"] {
+      bottom: 0px;
+      --ui-translate-y: calc(3 / 4 * 100%);
+      translate: var(--ui-translate-x) var(--ui-translate-y);
+    }
+
+    [data-slot="bubble-reactions"][data-align="start"] {
+      left: calc(var(--spacing) * 3);
+    }
+
+    [data-slot="bubble-reactions"][data-align="end"] {
+      right: calc(var(--spacing) * 3);
+    }
+
+    [data-slot="bubble-group"] {
+      gap: calc(var(--spacing) * 2);
+    }
+
+    [data-slot="attachment"] {
+      width: fit-content;
+      border-radius: var(--radius-3xl);
+      &:focus-within {
+        --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(1px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor);
+        box-shadow: var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow);
+        --ui-ring-color: var(--ring);
+        @supports (color: color-mix(in lab, red, red)) {
+          --ui-ring-color: color-mix(in oklab, var(--ring) 30%, transparent);
+        }
+      }
+    }
+
+    [data-slot="attachment"][data-orientation="horizontal"] {
+      min-width: calc(var(--spacing) * 40);
+    }
+
+    [data-slot="attachment"][data-orientation="vertical"] {
+      width: calc(var(--spacing) * 24);
+      &:has([data-slot="attachment-content"]) {
+        width: calc(var(--spacing) * 30);
+      }
+    }
+
+    [data-slot="attachment"][data-size="default"] {
+      gap: calc(var(--spacing) * 2);
+      font-size: var(--text-sm);
+      line-height: var(--ui-leading, var(--text-sm--line-height));
+      &:has([data-slot="attachment-content"]) {
+        padding-inline: calc(var(--spacing) * 2.5);
+        padding-block: calc(var(--spacing) * 2);
+      }
+      &:has([data-slot="attachment-media"]) {
+        padding: calc(var(--spacing) * 2);
+      }
+    }
+
+    [data-slot="attachment"][data-size="sm"] {
+      gap: calc(var(--spacing) * 2.5);
+      font-size: var(--text-xs);
+      line-height: var(--ui-leading, var(--text-xs--line-height));
+      &:has([data-slot="attachment-content"]) {
+        padding-inline: calc(var(--spacing) * 2);
+        padding-block: calc(var(--spacing) * 1.5);
+      }
+      &:has([data-slot="attachment-media"]) {
+        padding: calc(var(--spacing) * 1.5);
+      }
+    }
+
+    [data-slot="attachment"][data-size="xs"] {
+      gap: calc(var(--spacing) * 1.5);
+      border-radius: var(--radius-2xl);
+      font-size: var(--text-xs);
+      line-height: var(--ui-leading, var(--text-xs--line-height));
+      &:has([data-slot="attachment-content"]) {
+        padding-inline: calc(var(--spacing) * 1.5);
+        padding-block: var(--spacing);
+      }
+      &:has([data-slot="attachment-media"]) {
+        padding: var(--spacing);
+      }
+    }
+
+    [data-slot="attachment-media"] {
+      width: calc(var(--spacing) * 10);
+      border-radius: var(--radius-2xl);
+      background-color: var(--muted);
+      color: var(--foreground);
+      &:is(:where(.group\/attachment)[data-orientation="vertical"] *) {
+        width: 100%;
+      }
+      &:is(:where(.group\/attachment)[data-size="sm"] *) {
+        width: calc(var(--spacing) * 8);
+      }
+      &:is(:where(.group\/attachment)[data-size="xs"] *) {
+        width: calc(var(--spacing) * 7);
+        border-radius: calc(var(--radius) + 4px);
+      }
+      :is(&:is(:where(.group\/attachment)[data-orientation="vertical"] *) > *)[data-slot="spinner"] {
+        width: calc(var(--spacing) * 6) !important;
+        height: calc(var(--spacing) * 6) !important;
+      }
+      & svg:not([class*='size-']) {
+        width: calc(var(--spacing) * 4);
+        height: calc(var(--spacing) * 4);
+      }
+      &:is(:where(.group\/attachment)[data-orientation="vertical"] *) svg:not([class*='size-']) {
+        width: calc(var(--spacing) * 6);
+        height: calc(var(--spacing) * 6);
+      }
+      &:is(:where(.group\/attachment)[data-size="xs"] *) svg:not([class*='size-']) {
+        width: calc(var(--spacing) * 3.5);
+        height: calc(var(--spacing) * 3.5);
+      }
+    }
+
+    [data-slot="attachment-media"][data-variant="image"] {
+      opacity: 60%;
+      &:is(:where(.group\/attachment)[data-state="done"] *) {
+        opacity: 100%;
+      }
+      &:is(:where(.group\/attachment)[data-state="idle"] *) {
+        opacity: 100%;
+      }
+    }
+
+    [data-slot="attachment-content"] {
+      --ui-leading: var(--leading-tight);
+      line-height: var(--leading-tight);
+      &:is(:where(.group\/attachment)[data-orientation="vertical"] *) {
+        padding-inline: var(--spacing);
+      }
+    }
+
+    [data-slot="attachment-title"] {
+      --ui-font-weight: var(--font-weight-medium);
+      font-weight: var(--font-weight-medium);
+    }
+
+    [data-slot="attachment-description"] {
+      margin-top: calc(var(--spacing) * 0.5);
+      font-size: var(--text-xs);
+      line-height: var(--ui-leading, var(--text-xs--line-height));
+    }
+
+    [data-slot="attachment-actions"] {
+      position: relative;
+      z-index: 20;
+      &:is(:where(.group\/attachment)[data-orientation="vertical"] *) {
+        position: absolute;
+        top: calc(var(--spacing) * 3);
+        right: calc(var(--spacing) * 3);
+        gap: var(--spacing);
+      }
+    }
+
+    [data-slot="attachment-group"] {
+      scroll-padding-inline: var(--spacing);
+      gap: calc(var(--spacing) * 3);
+      padding-block: var(--spacing);
+    }
+
+    [data-slot="attachment-trigger"] {
+      position: absolute;
+      inset: 0px;
+      z-index: 10;
+      --ui-outline-style: none;
+      outline-style: none;
+    }
+
+    [data-slot="marker"] {
+      min-height: calc(var(--spacing) * 4);
+      gap: calc(var(--spacing) * 2);
+      text-align: left;
+      font-size: var(--text-sm);
+      line-height: var(--ui-leading, var(--text-sm--line-height));
+      color: var(--muted-foreground);
+      & svg:not([class*='size-']) {
+        width: calc(var(--spacing) * 4);
+        height: calc(var(--spacing) * 4);
+      }
+      &:is(a) {
+        text-decoration-line: underline;
+        text-underline-offset: 3px;
+      }
+      @media (hover: hover) {
+        &:is(a):hover {
+          color: var(--foreground);
+        }
+      }
+    }
+
+    [data-slot="marker"][data-variant="separator"] {
+      &::before {
+        content: var(--ui-content);
+        margin-right: var(--spacing);
+        height: 1px;
+        min-width: 0px;
+        flex: 1;
+        background-color: var(--border);
+      }
+      &::after {
+        content: var(--ui-content);
+        margin-left: var(--spacing);
+        height: 1px;
+        min-width: 0px;
+        flex: 1;
+        background-color: var(--border);
+      }
+    }
+
+    [data-slot="marker"][data-variant="border"] {
+      border-bottom-style: var(--ui-border-style);
+      border-bottom-width: 1px;
+      border-color: var(--border);
+      padding-bottom: calc(var(--spacing) * 2);
+    }
+
+    [data-slot="marker-icon"] {
+      width: calc(var(--spacing) * 4);
+      height: calc(var(--spacing) * 4);
+      & svg:not([class*='size-']) {
+        width: calc(var(--spacing) * 4);
+        height: calc(var(--spacing) * 4);
+      }
+    }
+
+    [data-slot="marker-content"] {
+      &:is(:where(.group\/marker)[data-variant="separator"] *) {
+        flex: none;
+        text-align: center;
+      }
+      :is(& > *):is(a) {
+        text-decoration-line: underline;
+        text-underline-offset: 3px;
+      }
+      @media (hover: hover) {
+        :is(& > *):is(a):hover {
+          color: var(--foreground);
+        }
+      }
+    }
+
+    [data-slot="message"] {
+      gap: calc(var(--spacing) * 2);
+      font-size: var(--text-sm);
+      line-height: var(--ui-leading, var(--text-sm--line-height));
+    }
+
+    [data-slot="message-avatar"] {
+      min-width: calc(var(--spacing) * 8);
+      &:is(:where(.group\/message):has([data-slot="message-footer"]) *) {
+        --ui-translate-y: calc(var(--spacing) * -8);
+        translate: var(--ui-translate-x) var(--ui-translate-y);
+      }
+    }
+
+    [data-slot="message-content"] {
+      gap: calc(var(--spacing) * 2.5);
+      :is(&:is(:where(.group\/message)[data-align="end"] *) > *)[data-slot] {
+        align-self: flex-end;
+      }
+    }
+
+    [data-slot="message-header"] {
+      padding-inline: calc(var(--spacing) * 3.5);
+      font-size: var(--text-xs);
+      line-height: var(--ui-leading, var(--text-xs--line-height));
+      --ui-font-weight: var(--font-weight-medium);
+      font-weight: var(--font-weight-medium);
+      color: var(--muted-foreground);
+      &:is(:where(.group\/message):has([data-variant="ghost"]) *) {
+        padding-inline: 0px;
+      }
+    }
+
+    [data-slot="message-footer"] {
+      padding-inline: calc(var(--spacing) * 3.5);
+      font-size: var(--text-xs);
+      line-height: var(--ui-leading, var(--text-xs--line-height));
+      --ui-font-weight: var(--font-weight-medium);
+      font-weight: var(--font-weight-medium);
+      color: var(--muted-foreground);
+      &:is(:where(.group\/message):has([data-variant="ghost"]) *) {
+        padding-inline: 0px;
+      }
+    }
+
+    [data-slot="message-group"] {
+      gap: calc(var(--spacing) * 2);
     }
 
     [data-slot="alert-dialog-overlay"] {

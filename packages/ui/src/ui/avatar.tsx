@@ -152,3 +152,71 @@ export function AvatarFallback(props: Incoming<UiProps>) {
 export function AvatarBadge(props: Incoming<UiProps>) {
   return <span {...uiProps("avatar-badge", badge, props)}>{props.children}</span>;
 }
+
+const group = ui({
+  display: "flex",
+  ":where(& > :not(:last-child))": {
+    "--ui-space-x-reverse": "0",
+    marginInlineStart: "calc(calc(var(--spacing) * -2) * var(--ui-space-x-reverse))",
+    marginInlineEnd: "calc(calc(var(--spacing) * -2) * calc(1 - var(--ui-space-x-reverse)))",
+  },
+  '& > [data-slot="avatar"]': {
+    "--ui-ring-shadow":
+      "var(--ui-ring-inset,) 0 0 0 calc(2px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+    boxShadow:
+      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+    "--ui-ring-color": "var(--background)",
+  },
+});
+
+const groupCount = ui(text.sm, {
+  position: "relative",
+  display: "flex",
+  width: "calc(var(--spacing) * 8)",
+  height: "calc(var(--spacing) * 8)",
+  flexShrink: "0",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: "calc(infinity * 1px)",
+  backgroundColor: "var(--muted)",
+  color: "var(--muted-foreground)",
+  "--ui-ring-shadow":
+    "var(--ui-ring-inset,) 0 0 0 calc(2px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+  boxShadow:
+    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+  "--ui-ring-color": "var(--background)",
+  // Off the GROUP's own size, through `:has`, rather than off a marker class:
+  // the count is not an avatar and has no `data-size` of its own, and it has
+  // to match the avatars beside it.
+  '[data-slot="avatar-group"]:has([data-size="lg"]) &': {
+    width: "calc(var(--spacing) * 10)",
+    height: "calc(var(--spacing) * 10)",
+  },
+  '[data-slot="avatar-group"]:has([data-size="sm"]) &': {
+    width: "calc(var(--spacing) * 6)",
+    height: "calc(var(--spacing) * 6)",
+  },
+  "& > svg": {
+    width: "calc(var(--spacing) * 4)",
+    height: "calc(var(--spacing) * 4)",
+  },
+});
+
+/**
+ * A row of overlapping avatars.
+ *
+ * The ring on each one is drawn from HERE and not by `<Avatar>`, because a
+ * lone avatar has nothing to be separated from: the ring exists to cut the
+ * one behind it, and putting it on the avatar would draw a halo around every
+ * single one on the page.
+ */
+export function AvatarGroup(props: Incoming<UiProps>) {
+  return (
+    <div {...uiProps("avatar-group", ui(group, "group/avatar-group"), props)}>{props.children}</div>
+  );
+}
+
+/** The "+3" at the end of the row, which is not an avatar and has no image. */
+export function AvatarGroupCount(props: Incoming<UiProps>) {
+  return <div {...uiProps("avatar-group-count", groupCount, props)}>{props.children}</div>;
+}

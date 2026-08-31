@@ -1,0 +1,12 @@
+{
+  "message-group": "flex min-w-0 flex-col gap-2",
+  "message": "relative flex w-full min-w-0 gap-2 text-sm",
+  "message-end": "flex-row-reverse",
+  "message-avatar": "flex w-fit min-w-8 shrink-0 items-center justify-center self-end overflow-hidden rounded-full bg-muted",
+  "message-avatar-lifted": "-translate-y-8",
+  "message-content": "flex w-full min-w-0 flex-col gap-2.5 wrap-break-word",
+  "message-header": "flex max-w-full min-w-0 items-center px-3 text-xs font-medium text-muted-foreground",
+  "message-footer": "flex max-w-full min-w-0 items-center px-3 text-xs font-medium text-muted-foreground",
+  "message-footer-end": "justify-end",
+  "message-part-flush": "px-0"
+}

@@ -1,0 +1,10 @@
+{
+  "bubble-group": "flex min-w-0 flex-col gap-2",
+  "bubble": "relative flex w-fit max-w-[80%] min-w-0 flex-col gap-1",
+  "bubble-content": "w-fit max-w-full min-w-0 overflow-hidden rounded-xl border border-transparent px-3 py-2 text-sm leading-relaxed wrap-break-word",
+  "bubble-reactions": "absolute z-10 flex w-fit shrink-0 items-center justify-center gap-1 rounded-full bg-muted px-1.5 py-0.5 text-sm ring-3 ring-card",
+  "bubble-reactions-side-top": "top-0 -translate-y-3/4",
+  "bubble-reactions-side-bottom": "bottom-0 translate-y-3/4",
+  "bubble-reactions-align-start": "left-3",
+  "bubble-reactions-align-end": "right-3"
+}

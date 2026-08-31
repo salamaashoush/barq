@@ -4,7 +4,14 @@ import { render, screen, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
 
-import { Avatar, AvatarBadge, AvatarFallback, AvatarImage } from "./avatar.tsx";
+import {
+  Avatar,
+  AvatarBadge,
+  AvatarFallback,
+  AvatarGroup,
+  AvatarGroupCount,
+  AvatarImage,
+} from "./avatar.tsx";
 import { Checkbox } from "./checkbox.tsx";
 import { Input, Textarea } from "./input.tsx";
 import { Label } from "./label.tsx";
@@ -213,5 +220,40 @@ describe("Avatar", () => {
     ));
     expect(slot("avatar").getAttribute("data-size")).toBe("sm");
     expect(rulesFor(slot("avatar-fallback").className)).toContain('[data-size="sm"] .');
+  });
+
+  test("a group draws the ring, because a lone avatar has nothing to cut", () => {
+    // On the avatar it would be a halo around every single one on the page.
+    render(() => (
+      <AvatarGroup>
+        <Avatar>
+          <AvatarFallback>A</AvatarFallback>
+        </Avatar>
+        <Avatar>
+          <AvatarFallback>B</AvatarFallback>
+        </Avatar>
+        <AvatarGroupCount>+3</AvatarGroupCount>
+      </AvatarGroup>
+    ));
+    const rules = rulesFor(slot("avatar-group").className);
+    expect(rules).toContain('[data-slot="avatar"]');
+    expect(rules).toContain("--ui-ring-color: var(--background)");
+    expect(rulesFor(slot("avatar").className)).not.toContain("--ui-ring-color");
+  });
+
+  test("the count follows the size of the avatars beside it", () => {
+    // Through `:has` on the group: the count is not an avatar and carries no
+    // `data-size` of its own.
+    render(() => (
+      <AvatarGroup>
+        <Avatar size="lg">
+          <AvatarFallback>A</AvatarFallback>
+        </Avatar>
+        <AvatarGroupCount>+3</AvatarGroupCount>
+      </AvatarGroup>
+    ));
+    expect(rulesFor(slot("avatar-group-count").className)).toContain(
+      '[data-slot="avatar-group"]:has([data-size="lg"])',
+    );
   });
 });

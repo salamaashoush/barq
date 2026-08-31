@@ -1,0 +1,23 @@
+{
+  "$schema": "https://github.com/salamaashoush/barq/schema/registry-item.json",
+  "name": "message",
+  "type": "registry:ui",
+  "title": "Message",
+  "dependencies": [
+    "@barqjs/core",
+    "@barqjs/css"
+  ],
+  "registryDependencies": [
+    "layers",
+    "props",
+    "shared-text",
+    "slot"
+  ],
+  "files": [
+    {
+      "path": "ui/message.tsx",
+      "type": "registry:ui",
+      "content": "import type { Incoming } from \"@barqjs/core\";\nimport { layer } from \"@barqjs/css\";\n\nimport \"../theme/layers.ts\";\nimport { text } from \"../lib/shared-text.ts\";\nimport type { UiProps } from \"../lib/props.ts\";\nimport { uiProps } from \"../lib/slot.ts\";\n\nconst ui = layer(\"barq.ui\");\n\nexport type MessageAlign = \"start\" | \"end\";\n\nconst group = ui({\n  display: \"flex\",\n  minWidth: \"0px\",\n  flexDirection: \"column\",\n  gap: \"calc(var(--spacing) * 2)\",\n});\n\nconst root = ui(text.sm, {\n  position: \"relative\",\n  display: \"flex\",\n  width: \"100%\",\n  minWidth: \"0px\",\n  gap: \"calc(var(--spacing) * 2)\",\n  // The whole row turns over rather than each part being placed twice: one\n  // attribute decides which side of the conversation this is.\n  '&[data-align=\"end\"]': {\n    flexDirection: \"row-reverse\",\n  },\n});\n\nconst avatar = ui({\n  display: \"flex\",\n  width: \"fit-content\",\n  minWidth: \"calc(var(--spacing) * 8)\",\n  flexShrink: \"0\",\n  alignItems: \"center\",\n  justifyContent: \"center\",\n  alignSelf: \"flex-end\",\n  overflow: \"hidden\",\n  borderRadius: \"calc(infinity * 1px)\",\n  backgroundColor: \"var(--muted)\",\n  // A footer under the bubble pushes the row's baseline down, and the avatar\n  // belongs beside the bubble rather than beside the timestamp.\n  '[data-slot=\"message\"]:has([data-slot=\"message-footer\"]) &': {\n    \"--ui-translate-y\": \"calc(var(--spacing) * -8)\",\n    translate: \"var(--ui-translate-x) var(--ui-translate-y)\",\n  },\n});\n\nconst content = ui({\n  display: \"flex\",\n  width: \"100%\",\n  minWidth: \"0px\",\n  flexDirection: \"column\",\n  gap: \"calc(var(--spacing) * 2.5)\",\n  overflowWrap: \"break-word\",\n  '[data-slot=\"message\"][data-align=\"end\"] & > [data-slot]': {\n    alignSelf: \"flex-end\",\n  },\n});\n\nconst band = ui(text.medium, {\n  fontSize: \"var(--text-xs)\",\n  lineHeight: \"var(--ui-leading, var(--text-xs--line-height))\",\n  display: \"flex\",\n  maxWidth: \"100%\",\n  minWidth: \"0px\",\n  alignItems: \"center\",\n  paddingInline: \"calc(var(--spacing) * 3)\",\n  color: \"var(--muted-foreground)\",\n  // A ghost bubble has no padding of its own, so the label above it must not\n  // sit indented from nothing.\n  '[data-slot=\"message\"]:has([data-variant=\"ghost\"]) &': {\n    paddingInline: \"0px\",\n  },\n});\n\nconst footer = ui(band, {\n  '[data-slot=\"message\"][data-align=\"end\"] &': {\n    justifyContent: \"flex-end\",\n  },\n});\n\n/** A run of messages, one under another. */\nexport function MessageGroup(props: Incoming<UiProps>) {\n  return <div {...uiProps(\"message-group\", group, props)}>{props.children}</div>;\n}\n\nexport interface MessageProps extends UiProps {\n  /** Which side of the conversation. @default \"start\" */\n  align?: MessageAlign;\n}\n\n/**\n * One message: an avatar, and a column holding a header, bubbles and a footer.\n *\n * ```tsx\n * <Message align=\"end\">\n *   <MessageContent>\n *     <Bubble align=\"end\"><BubbleContent>On my way</BubbleContent></Bubble>\n *     <MessageFooter>Sent</MessageFooter>\n *   </MessageContent>\n * </Message>\n * ```\n */\nexport function Message(props: Incoming<MessageProps>) {\n  return (\n    <div\n      {...uiProps(\"message\", () => ui(root, \"group/message\"), props)}\n      data-align={props.align?.() ?? \"start\"}\n    >\n      {props.children}\n    </div>\n  );\n}\n\nexport function MessageAvatar(props: Incoming<UiProps>) {\n  return <div {...uiProps(\"message-avatar\", avatar, props)}>{props.children}</div>;\n}\n\nexport function MessageContent(props: Incoming<UiProps>) {\n  return <div {...uiProps(\"message-content\", content, props)}>{props.children}</div>;\n}\n\n/** The name and the time above the bubbles. */\nexport function MessageHeader(props: Incoming<UiProps>) {\n  return <div {...uiProps(\"message-header\", band, props)}>{props.children}</div>;\n}\n\n/** The delivery state under them. */\nexport function MessageFooter(props: Incoming<UiProps>) {\n  return <div {...uiProps(\"message-footer\", footer, props)}>{props.children}</div>;\n}\n"
+    }
+  ]
+}
