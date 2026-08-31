@@ -118,6 +118,16 @@ describe("AlertDialog", () => {
     expect(screen.getByRole("alertdialog", { name: "Delete the project?" })).toBeTruthy();
   });
 
+  test("the description describes it, rather than sitting there unread", async () => {
+    render(() => <Fixture />);
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    await settle();
+    const dialog = screen.getByRole("alertdialog");
+    const described = dialog.getAttribute("aria-describedby");
+    expect(described).not.toBeNull();
+    expect(document.getElementById(described ?? "")?.textContent).toBe("This cannot be undone.");
+  });
+
   test("Escape closes it, and a press outside does not", async () => {
     // This asserted the opposite. Radix prevents `onPointerDownOutside` and
     // `onInteractOutside` on an alert dialog and leaves Escape alone, which

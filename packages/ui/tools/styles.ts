@@ -48,6 +48,10 @@ function slotsWeEmit(root: string): Set<string> {
       // how a component that builds its props separately spells it. `Progress`
       // does, and was reported as having no element at all.
       /"data-slot":\s*"([a-z0-9-]+)"/g,
+      // The underlay's slot is named through a prop, because the element
+      // belongs to `<Modal>` rather than to the component. Without this every
+      // overlay's backdrop reported as reaching nothing.
+      /underlaySlot="([a-z0-9-]+)"/g,
     ]) {
       for (const [, slot] of source.matchAll(pattern)) if (slot !== undefined) out.add(slot);
     }
@@ -85,6 +89,12 @@ const ALIASES: Readonly<Record<string, string>> = {
   // Both are links, and the style is about the pair rather than the direction.
   "pagination-next": "pagination-link",
   "pagination-previous": "pagination-link",
+  // Upstream's drawer moved to Base UI, which names the panel a popup and the
+  // grip a swipe handle. The elements are the same two.
+  "drawer-popup": "drawer-content",
+  "drawer-swipe-handle": "drawer-handle",
+  "drawer-header-base": "drawer-header",
+  "drawer-footer-base": "drawer-footer",
 };
 
 /** The three axes a style splits a slot on, and the attribute each is. */

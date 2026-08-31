@@ -1,4 +1,4 @@
-import { Dialog as AriaDialog, Heading, Modal } from "@barqjs/aria/dialog";
+import { Dialog as AriaDialog, Heading, Modal, useDialogDescription } from "@barqjs/aria/dialog";
 import { Show, type Child, type Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 import { X } from "@barqjs/lucide/icons/x";
@@ -228,7 +228,15 @@ export function DialogTitle(props: Incoming<UiProps>) {
 }
 
 export function DialogDescription(props: Incoming<UiProps>) {
-  return <p {...uiProps("dialog-description", description, props)}>{props.children}</p>;
+  const described = useDialogDescription();
+  // The dialog points at this element, and only because the hook was called:
+  // a description nothing references is read by whoever goes looking for it
+  // and by nobody else.
+  return (
+    <p {...uiProps("dialog-description", description, props)} id={props.id?.() ?? described?.id()}>
+      {props.children}
+    </p>
+  );
 }
 
 /** The ✕ in the corner. Not `<DialogClose>`, which is a real button with padding and a border. */

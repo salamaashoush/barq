@@ -42,6 +42,19 @@ function Fixture() {
 }
 
 describe("Dialog", () => {
+  test("the description describes it, rather than sitting there unread", async () => {
+    // Radix wires `aria-describedby` from `<DialogDescription>`; without it
+    // the paragraph under the title is read by whoever goes looking and by
+    // nobody else.
+    render(() => <Fixture />);
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    await settle();
+    const dialog = screen.getByRole("dialog");
+    const described = dialog.getAttribute("aria-describedby");
+    expect(described).not.toBeNull();
+    expect(document.getElementById(described ?? "")?.textContent).toBe("This cannot be undone.");
+  });
+
   test("nothing is in the document until it opens", () => {
     render(() => <Fixture />);
     expect(screen.queryByRole("dialog")).toBeNull();

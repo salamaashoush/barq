@@ -29,7 +29,7 @@ export const BASES: readonly Option[] = BASE_THEMES.map((theme) => ({
   label: theme.title,
   ...(dotOf(theme, "muted-foreground") === undefined
     ? {}
-    : { swatch: dotOf(theme, "muted-foreground") as string }),
+    : { swatch: dotOf(theme, "muted-foreground") }),
 }));
 
 export const ACCENTS: readonly Option[] = [
@@ -37,7 +37,7 @@ export const ACCENTS: readonly Option[] = [
   ...ACCENT_THEMES.map((theme) => ({
     value: theme.name,
     label: theme.title,
-    ...(dotOf(theme, "primary") === undefined ? {} : { swatch: dotOf(theme, "primary") as string }),
+    ...(dotOf(theme, "primary") === undefined ? {} : { swatch: dotOf(theme, "primary") }),
   })),
 ];
 
@@ -47,7 +47,7 @@ export const CHARTS: readonly Option[] = [
   ...ACCENT_THEMES.map((theme) => ({
     value: theme.name,
     label: theme.title,
-    ...(theme.dark["chart-1"] === undefined ? {} : { swatch: theme.dark["chart-1"] as string }),
+    ...(theme.dark["chart-1"] === undefined ? {} : { swatch: theme.dark["chart-1"] }),
   })),
 ];
 

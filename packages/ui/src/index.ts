@@ -221,6 +221,21 @@ export {
   DialogTrigger,
 } from "./ui/dialog.tsx";
 export {
+  Drawer,
+  DrawerClose,
+  type DrawerCloseProps,
+  DrawerContent,
+  type DrawerContentProps,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  type DrawerHeaderProps,
+  type DrawerProps,
+  DrawerTitle,
+  DrawerTrigger,
+  drawerVariants,
+} from "./ui/drawer.tsx";
+export {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   type DropdownMenuCheckboxItemProps,

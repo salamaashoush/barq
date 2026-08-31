@@ -1,4 +1,4 @@
-import { Dialog as AriaDialog, Heading, Modal } from "@barqjs/aria/dialog";
+import { Dialog as AriaDialog, Heading, Modal, useDialogDescription } from "@barqjs/aria/dialog";
 import { Show, type Child, type Incoming } from "@barqjs/core";
 import { firstThatWorks, layer, variants } from "@barqjs/css";
 import { X } from "@barqjs/lucide/icons/x";
@@ -275,7 +275,15 @@ export function SheetTitle(props: Incoming<UiProps>) {
 }
 
 export function SheetDescription(props: Incoming<UiProps>) {
-  return <p {...uiProps("sheet-description", description, props)}>{props.children}</p>;
+  const described = useDialogDescription();
+  // The dialog points at this element, and only because the hook was called:
+  // a description nothing references is read by whoever goes looking for it
+  // and by nobody else.
+  return (
+    <p {...uiProps("sheet-description", description, props)} id={props.id?.() ?? described?.id()}>
+      {props.children}
+    </p>
+  );
 }
 
 export interface SheetCloseProps extends ButtonProps {}

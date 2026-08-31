@@ -1,0 +1,14 @@
+{
+  "drawer-overlay": "fixed inset-0 z-50 bg-black/50 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0",
+  "drawer-content": "group/drawer-content fixed z-50 flex h-auto flex-col bg-background",
+  "drawer-content-top": "inset-x-0 top-0 mb-24 max-h-[80vh] rounded-b-lg border-b",
+  "drawer-content-bottom": "inset-x-0 bottom-0 mt-24 max-h-[80vh] rounded-t-lg border-t",
+  "drawer-content-right": "inset-y-0 right-0 w-3/4 border-l sm:max-w-sm",
+  "drawer-content-left": "inset-y-0 left-0 w-3/4 border-r sm:max-w-sm",
+  "drawer-handle": "mx-auto mt-4 h-2 w-[100px] shrink-0 rounded-full bg-muted",
+  "drawer-header": "flex flex-col gap-0.5 p-4 md:gap-1.5 md:text-left",
+  "drawer-header-centered": "text-center",
+  "drawer-footer": "mt-auto flex flex-col gap-2 p-4",
+  "drawer-title": "font-semibold text-foreground",
+  "drawer-description": "text-sm text-muted-foreground"
+}

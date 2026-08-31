@@ -1,4 +1,4 @@
-import { Dialog as AriaDialog, Heading, Modal } from "@barqjs/aria/dialog";
+import { Dialog as AriaDialog, Heading, Modal, useDialogDescription } from "@barqjs/aria/dialog";
 import type { Child, Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 
@@ -227,7 +227,18 @@ export function AlertDialogTitle(props: Incoming<UiProps>) {
 }
 
 export function AlertDialogDescription(props: Incoming<UiProps>) {
-  return <p {...uiProps("alert-dialog-description", description, props)}>{props.children}</p>;
+  const described = useDialogDescription();
+  // The dialog points at this element, and only because the hook was called:
+  // a description nothing references is read by whoever goes looking for it
+  // and by nobody else.
+  return (
+    <p
+      {...uiProps("alert-dialog-description", description, props)}
+      id={props.id?.() ?? described?.id()}
+    >
+      {props.children}
+    </p>
+  );
 }
 
 export interface AlertDialogActionProps extends ButtonProps {}

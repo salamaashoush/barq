@@ -610,6 +610,28 @@
       ]
     },
     {
+      "name": "drawer",
+      "type": "registry:ui",
+      "title": "Drawer",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "button",
+        "layers",
+        "overlay",
+        "props",
+        "shared-box",
+        "shared-text",
+        "slot"
+      ],
+      "files": [
+        "ui/drawer.tsx"
+      ]
+    },
+    {
       "name": "dropdown-menu",
       "type": "registry:ui",
       "title": "Dropdown Menu",

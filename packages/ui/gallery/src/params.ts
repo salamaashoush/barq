@@ -136,7 +136,7 @@ export function design(): Design {
   const committed = signal<Params>(read(typeof location === "undefined" ? "" : location.search));
   const hovered = signal<Partial<Params> | null>(null);
 
-  const params = (): Params => ({ ...committed(), ...(hovered() ?? {}) });
+  const params = (): Params => ({ ...committed(), ...hovered() });
 
   /**
    * A style is 180 KB, and somebody picks ONE.

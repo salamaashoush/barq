@@ -177,6 +177,14 @@ import {
   SidebarRail,
   SidebarSeparator,
   SidebarTrigger,
+  Drawer,
+  DrawerClose,
+  DrawerContent,
+  DrawerDescription,
+  DrawerFooter,
+  DrawerHeader,
+  DrawerTitle,
+  DrawerTrigger,
   Sheet,
   SheetContent,
   SheetHeader,
@@ -554,6 +562,24 @@ function Gallery() {
               </SheetHeader>
             </SheetContent>
           </Sheet>
+
+          <Drawer>
+            <DrawerTrigger>
+              <Button variant="outline">Drawer</Button>
+            </DrawerTrigger>
+            <DrawerContent>
+              <div style={{ "margin-inline": "auto", width: "100%", "max-width": "24rem" }}>
+                <DrawerHeader>
+                  <DrawerTitle>Move goal</DrawerTitle>
+                  <DrawerDescription>Set your daily activity goal.</DrawerDescription>
+                </DrawerHeader>
+                <DrawerFooter>
+                  <Button>Submit</Button>
+                  <DrawerClose>Cancel</DrawerClose>
+                </DrawerFooter>
+              </div>
+            </DrawerContent>
+          </Drawer>
 
           <Popover>
             <PopoverTrigger>

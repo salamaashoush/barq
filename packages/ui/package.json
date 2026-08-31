@@ -198,6 +198,11 @@
       "barq": "./src/ui/dialog.tsx",
       "bun": "./src/ui/dialog.tsx"
     },
+    "./drawer": {
+      "types": "./src/ui/drawer.tsx",
+      "barq": "./src/ui/drawer.tsx",
+      "bun": "./src/ui/drawer.tsx"
+    },
     "./dropdown-menu": {
       "types": "./src/ui/dropdown-menu.tsx",
       "barq": "./src/ui/dropdown-menu.tsx",

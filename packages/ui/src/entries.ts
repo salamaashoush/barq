@@ -41,6 +41,7 @@ export const ENTRIES: readonly string[] = [
   "ui/context-menu.tsx",
   "ui/date-picker.tsx",
   "ui/dialog.tsx",
+  "ui/drawer.tsx",
   "ui/dropdown-menu.tsx",
   "ui/empty.tsx",
   "ui/field.tsx",
