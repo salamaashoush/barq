@@ -20,7 +20,7 @@
  * missing rule is invisible: the component simply loses part of its look.
  */
 
-import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 
 import { createBuilder, translate } from "./css.ts";
@@ -172,6 +172,47 @@ export function selectorFor(cn: string, slots: ReadonlySet<string>): string | nu
   return null;
 }
 
+/**
+ * Every `data-slot` UPSTREAM'S OWN components render.
+ *
+ * A style ships rules for elements the pinned registry does not have: they
+ * belong to components shadcn keeps elsewhere, or to a newer registry the
+ * styles were written against. Counting those as this package's gap is wrong,
+ * and listing them by hand rots the moment the checkout moves.
+ */
+function slotsUpstreamEmits(checkout: string): Set<string> {
+  const out = new Set<string>();
+  const directory = resolve(checkout, "apps/v4/registry/new-york-v4/ui");
+  if (!existsSync(directory)) return out;
+  for (const file of readdirSync(directory)) {
+    if (!file.endsWith(".tsx")) continue;
+    const source = readFileSync(join(directory, file), "utf8");
+    for (const [, slot] of source.matchAll(/data-slot="([a-z0-9-]+)"/g)) {
+      if (slot !== undefined) out.add(slot);
+    }
+  }
+  return out;
+}
+
+/**
+ * Where a class reaching nothing is a decision rather than a gap.
+ *
+ * The list is short on purpose: everything not here is work.
+ */
+const DIVERGENT: Record<string, string> = {
+  "scroll-area-scrollbar":
+    "the scroll area is the NATIVE scroller with `scrollbar-color` on it, " +
+    "which is stated in the component and is why there are no scrollbar elements",
+  "scroll-area-thumb": "as above",
+  "select-scroll-up-button":
+    "Radix needs these because its popper content does not scroll; the list " +
+    "here is a real scroller with `overflow-y: auto`, and a fake arrow over a " +
+    "native scrollbar is strictly worse than the scrollbar",
+  "select-scroll-down-button": "as above",
+  "menu-translucent": "a modifier a caller opts into, not a slot any menu always renders",
+  "menu-translucent-aria": "as above",
+};
+
 /** `.cn-slot { @apply … }` blocks, as slot to class list. */
 export function parseStyle(source: string): Map<string, string> {
   const out = new Map<string, string>();
@@ -202,6 +243,7 @@ async function main(): Promise<void> {
 
   const build = await createBuilder();
   const ours = slotsWeEmit(resolve(import.meta.dir, ".."));
+  const theirs = slotsUpstreamEmits(resolve(process.cwd(), checkout));
   const unreachable = new Set<string>();
   let missing = 0;
 
@@ -242,15 +284,33 @@ async function main(): Promise<void> {
     );
   }
 
-  // Named, not counted. A style is missing a rule because this package has no
-  // element for it, and the list is the work left rather than an error.
-  if (unreachable.size > 0) {
+  // Split three ways, because one number answering three questions answers
+  // none of them. Only the first is work.
+  const bare = [...unreachable].map((slot) => slot.replace(/^cn-/, "")).toSorted();
+  const stripped = (slot: string): string => slot.replace(/-(aria|logical)$/, "");
+  const decided = bare.filter((slot) => DIVERGENT[slot] !== undefined);
+  const absent = bare.filter(
+    (slot) => DIVERGENT[slot] === undefined && !theirs.has(stripped(slot)),
+  );
+  const gap = bare.filter((slot) => DIVERGENT[slot] === undefined && theirs.has(stripped(slot)));
+
+  if (gap.length > 0) {
     process.stdout.write(
-      `\n${String(unreachable.size)} classes reach nothing here, ` +
-        `because no component renders the slot they name:\n  ` +
-        [...unreachable].toSorted().join(" ") +
+      `\n${String(gap.length)} classes reach nothing, and upstream renders the element:\n  ` +
+        gap.join(" ") +
         "\n",
     );
+  }
+  if (absent.length > 0) {
+    process.stdout.write(
+      `\n${String(absent.length)} name elements the pinned registry does not render either, ` +
+        `so they belong to components shadcn keeps outside it:\n  ` +
+        absent.join(" ") +
+        "\n",
+    );
+  }
+  for (const slot of decided) {
+    process.stdout.write(`\n${slot} is deliberate: ${DIVERGENT[slot] ?? ""}\n`);
   }
 
   if (missing > 0) process.exitCode = 1;
