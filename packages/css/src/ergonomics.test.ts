@@ -235,8 +235,11 @@ describe("create", () => {
  */
 describe("atoms > ordering", () => {
   test("nothing is wrapped in a cascade layer", () => {
-    expect(atoms({ color: "seagreen", padding: { ":hover": 2, "@media print": 3 } })).not.toBe("");
-    expect(collectCss()).not.toContain("@layer");
+    const classes = atoms({ color: "seagreen", padding: { ":hover": 2, "@media print": 3 } });
+    expect(classes).not.toBe("");
+    // Each atom's own rules rather than the whole sheet: `globalCss` is free to
+    // write a layer, and did once a test in another file declared an order.
+    for (const cls of classes.split(" ")) expect(ruleFor(cls)).not.toContain("@layer");
   });
 
   /** 0-1-0 against a reset's 0-0-0, which is the whole of it. */

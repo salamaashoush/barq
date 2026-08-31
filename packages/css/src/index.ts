@@ -156,7 +156,17 @@ function emit(source: string, scope: string, conditions: string[], out: string[]
       index = stop + 1;
       continue;
     }
-    if (head !== "") pending.push(head);
+    if (head.startsWith("@")) {
+      // A STATEMENT at-rule — `@layer a, b;`, `@import`, `@charset`. It ends in
+      // a `;` like a declaration and is not one: wrapped in the scope's braces
+      // it becomes `{@layer a, b}`, which no browser reads. The compiler emits
+      // it beside the rule, so the runtime has to as well or a block behaves
+      // one way under `bun test` and another once built.
+      flush();
+      out.push(`${open}${head};${close}`);
+    } else if (head !== "") {
+      pending.push(head);
+    }
     index = end + 1;
     if (found === "}" || found === "") break;
   }

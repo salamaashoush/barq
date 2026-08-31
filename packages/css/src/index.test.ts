@@ -128,6 +128,23 @@ describe("keyframes and globalCss", () => {
     expect(globalCss`body { margin: 0 }`).toBeUndefined();
     expect(collectCss()).toContain("body{margin: 0}");
   });
+
+  test("a statement at-rule is emitted beside the rule, not inside it", () => {
+    globalCss`
+      @layer probe-one, probe-two;
+      main { display: grid }
+    `;
+    expect(collectCss()).toContain("@layer probe-one, probe-two;");
+    expect(collectCss()).not.toContain("{@layer probe-one");
+  });
+
+  test("a statement at-rule inside a block does not swallow the declarations", () => {
+    const name = css`
+      @import "probe.css";
+      color: red;
+    `;
+    expect(collectCss()).toContain(`@import "probe.css";.${name}{color: red}`);
+  });
 });
 
 describe("helpers", () => {
