@@ -47,6 +47,11 @@ import {
   CardHeader,
   CardTitle,
   Checkbox,
+  ChartBars,
+  ChartContainer,
+  ChartLegend,
+  ChartLines,
+  ChartTooltipContent,
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
@@ -305,6 +310,23 @@ const PALETTE = [
   { id: "settings", name: "Open settings", keys: "\u2318," },
 ];
 
+/** Five series, so every step of the ramp is on the page and the picker moves it. */
+const CHART_CONFIG = [
+  { key: "desktop", label: "Desktop", color: "var(--chart-1)" },
+  { key: "mobile", label: "Mobile", color: "var(--chart-2)" },
+  { key: "tablet", label: "Tablet", color: "var(--chart-3)" },
+  { key: "watch", label: "Watch", color: "var(--chart-4)" },
+  { key: "tv", label: "TV", color: "var(--chart-5)" },
+];
+
+const CHART_DATA = [
+  { month: "Jan", desktop: 186, mobile: 80, tablet: 45, watch: 20, tv: 12 },
+  { month: "Feb", desktop: 305, mobile: 200, tablet: 92, watch: 31, tv: 25 },
+  { month: "Mar", desktop: 237, mobile: 120, tablet: 61, watch: 44, tv: 18 },
+  { month: "Apr", desktop: 273, mobile: 190, tablet: 78, watch: 25, tv: 30 },
+  { month: "May", desktop: 209, mobile: 130, tablet: 55, watch: 38, tv: 22 },
+];
+
 const FRUITS = [
   { id: "apple", name: "Apple" },
   { id: "banana", name: "Banana" },
@@ -525,6 +547,41 @@ function Gallery() {
         <div class={row}>
           <Calendar aria-label="Departure" />
           <RangeCalendar aria-label="Stay" />
+        </div>
+      </Section>
+
+      <Section title="Chart">
+        <div class={row} style={{ "align-items": "flex-start" }}>
+          <Card style={{ width: "24rem" }}>
+            <CardHeader>
+              <CardTitle>Revenue</CardTitle>
+              <CardDescription>Every series is a step of the theme's ramp.</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <ChartContainer config={CHART_CONFIG}>
+                <ChartBars data={CHART_DATA} x="month" aria-label="Revenue by month" />
+                <ChartLegend />
+              </ChartContainer>
+            </CardContent>
+          </Card>
+          <Card style={{ width: "24rem" }}>
+            <CardHeader>
+              <CardTitle>Sessions</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ChartContainer config={CHART_CONFIG}>
+                <ChartLines data={CHART_DATA} x="month" area aria-label="Sessions by month" />
+                <ChartLegend />
+              </ChartContainer>
+            </CardContent>
+          </Card>
+          <ChartTooltipContent
+            label="March"
+            items={[
+              { key: "desktop", label: "Desktop", value: "1,204" },
+              { key: "mobile", label: "Mobile", value: "832" },
+            ]}
+          />
         </div>
       </Section>
 

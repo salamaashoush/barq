@@ -139,6 +139,19 @@ export {
   CardHeader,
   CardTitle,
 } from "./ui/card.tsx";
+export {
+  ChartBars,
+  type ChartConfig,
+  ChartContainer,
+  type ChartContainerProps,
+  chartHover,
+  ChartLegend,
+  ChartLines,
+  type ChartPlotProps,
+  type ChartSeries,
+  ChartTooltipContent,
+  type ChartTooltipProps,
+} from "./ui/chart.tsx";
 export { Checkbox, type CheckboxProps } from "./ui/checkbox.tsx";
 export {
   Collapsible,

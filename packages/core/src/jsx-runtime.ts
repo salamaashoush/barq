@@ -850,6 +850,20 @@ export namespace JSX {
     ref?: T | ((el: T) => void) | { current: T | null };
     children?: Child | Child[];
 
+    /**
+     * The same three `HTMLAttributes` carries, because SVG takes all three.
+     *
+     * `role` and `aria-*` are how a drawing is described to a screen reader —
+     * `<svg role="img" aria-label="Revenue by month">` is the accessible way to
+     * label a chart — and `data-*` is universal. Naming them on the HTML bag
+     * alone made every one a type error on the elements that need them most,
+     * for markup the runtime has always written: `setAttr` does not consult
+     * this list.
+     */
+    role?: FunctionMaybe<string>;
+    [key: `aria-${string}`]: FunctionMaybe<string | number | boolean | undefined>;
+    [key: `data-${string}`]: FunctionMaybe<string | number | boolean | undefined>;
+
     // SVG-specific attributes
     viewBox?: FunctionMaybe<string>;
     xmlns?: FunctionMaybe<string>;

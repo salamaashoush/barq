@@ -157,6 +157,11 @@
       "barq": "./src/ui/card.tsx",
       "bun": "./src/ui/card.tsx"
     },
+    "./chart": {
+      "types": "./src/ui/chart.tsx",
+      "barq": "./src/ui/chart.tsx",
+      "bun": "./src/ui/chart.tsx"
+    },
     "./checkbox": {
       "types": "./src/ui/checkbox.tsx",
       "barq": "./src/ui/checkbox.tsx",

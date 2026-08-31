@@ -215,10 +215,10 @@ what a stylesheet of your own selects:
 | **Dates**      | `Calendar` `RangeCalendar` `DatePicker` `DateRangePicker`                                                                                                                             |
 | **Disclosure** | `Accordion` `Collapsible` `Tabs`                                                                                                                                                      |
 | **Navigation** | `Breadcrumb` `Pagination` `Menubar` `Sidebar`                                                                                                                                                   |
-| **Display**    | `Alert` `Avatar` `Badge` `Kbd` `Skeleton` `Spinner`                                                                                                                                   |
+| **Display**    | `Alert` `Avatar` `Badge` `Kbd` `Skeleton` `Spinner` `Chart`                                                                                                                                   |
 
-Not built yet: `Toast`, `NavigationMenu`, `Carousel`, `Resizable`, `Drawer`
-and `Chart`.
+Not built yet: `Toast`, `NavigationMenu`, `Carousel`, `Resizable` and
+`Drawer`.
 
 `DatePicker` is a composition rather than a transcription, because upstream
 ships no `date-picker.tsx`: shadcn documents a `<Popover>` around a `<Calendar>`
