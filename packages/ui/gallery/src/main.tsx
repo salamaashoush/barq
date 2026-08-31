@@ -50,6 +50,9 @@ import {
   Collapsible,
   CollapsibleContent,
   CollapsibleTrigger,
+  Command,
+  CommandItem,
+  CommandShortcut,
   Dialog,
   DialogClose,
   DialogContent,
@@ -225,6 +228,13 @@ const ACTIONS = [
   { id: "rename", name: "Rename" },
   { id: "duplicate", name: "Duplicate" },
   { id: "delete", name: "Delete" },
+];
+
+const PALETTE = [
+  { id: "new", name: "New file", keys: "\u2318N" },
+  { id: "open", name: "Open file", keys: "\u2318O" },
+  { id: "search", name: "Search the project", keys: "\u2318F" },
+  { id: "settings", name: "Open settings", keys: "\u2318," },
 ];
 
 const FRUITS = [
@@ -515,6 +525,27 @@ function Gallery() {
               </PaginationItem>
             </PaginationContent>
           </Pagination>
+        </div>
+      </Section>
+
+      <Section title="Command">
+        <div
+          class={stack}
+          style={{
+            "max-width": "28rem",
+            border: "1px solid var(--border)",
+            "border-radius": "var(--radius)",
+            overflow: "hidden",
+          }}
+        >
+          <Command items={PALETTE} placeholder="Type a command or search" aria-label="Commands">
+            {(entry: (typeof PALETTE)[number]) => (
+              <CommandItem>
+                {entry.name}
+                <CommandShortcut>{entry.keys}</CommandShortcut>
+              </CommandItem>
+            )}
+          </Command>
         </div>
       </Section>
 

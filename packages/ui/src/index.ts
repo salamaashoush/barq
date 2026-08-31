@@ -132,6 +132,18 @@ export {
   type CollapsibleTriggerProps,
 } from "./ui/collapsible.tsx";
 export {
+  Command,
+  CommandDialog,
+  type CommandDialogProps,
+  CommandGroup,
+  type CommandGroupProps,
+  CommandItem,
+  type CommandItemProps,
+  type CommandProps,
+  CommandSeparator,
+  CommandShortcut,
+} from "./ui/command.tsx";
+export {
   Dialog,
   DialogClose,
   type DialogCloseProps,

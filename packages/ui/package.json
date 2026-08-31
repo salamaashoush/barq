@@ -128,6 +128,11 @@
       "bun": "./src/ui/collapsible.tsx",
       "import": "./dist/ui/collapsible.js"
     },
+    "./command": {
+      "types": "./dist/ui/command.d.ts",
+      "bun": "./src/ui/command.tsx",
+      "import": "./dist/ui/command.js"
+    },
     "./dialog": {
       "types": "./dist/ui/dialog.d.ts",
       "bun": "./src/ui/dialog.tsx",

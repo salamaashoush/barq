@@ -322,6 +322,27 @@
       ]
     },
     {
+      "name": "command",
+      "type": "registry:ui",
+      "title": "Command",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/css",
+        "@barqjs/lucide",
+        "@barqjs/primitives"
+      ],
+      "registryDependencies": [
+        "dialog",
+        "layers",
+        "props",
+        "slot",
+        "sr-only"
+      ],
+      "files": [
+        "ui/command.tsx"
+      ]
+    },
+    {
       "name": "dialog",
       "type": "registry:ui",
       "title": "Dialog",

@@ -1,0 +1,14 @@
+{
+  "command": "flex h-full w-full flex-col overflow-hidden rounded-md bg-popover text-popover-foreground",
+  "command-input-wrapper": "flex h-9 items-center gap-2 border-b px-3",
+  "command-input-icon": "size-4 shrink-0 opacity-50",
+  "command-input": "flex h-10 w-full rounded-md bg-transparent py-3 text-sm outline-hidden placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 border-0",
+  "command-list": "max-h-[300px] scroll-py-1 overflow-x-hidden overflow-y-auto list-none m-0 p-0",
+  "command-empty": "py-6 text-center text-sm",
+  "command-group": "overflow-hidden p-1 text-foreground list-none m-0",
+  "command-group-label": "px-2 py-1.5 text-xs font-medium text-muted-foreground",
+  "command-separator": "-mx-1 h-px bg-border border-0",
+  "command-item": "relative flex cursor-default items-center gap-2 rounded-sm px-2 py-1.5 text-sm outline-hidden select-none is-disabled:pointer-events-none is-disabled:opacity-50 is-focused:bg-accent is-focused:text-accent-foreground [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4 [&_svg:not([class*='text-'])]:text-muted-foreground",
+  "command-shortcut": "ml-auto text-xs tracking-widest text-muted-foreground",
+  "command-dialog-content": "overflow-hidden p-0"
+}
