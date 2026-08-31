@@ -157,13 +157,25 @@ export function MenubarItem(props: Incoming<MenubarItemProps>) {
 export interface MenubarCheckboxItemProps extends DropdownMenuCheckboxItemProps {}
 
 export function MenubarCheckboxItem(props: Incoming<MenubarCheckboxItemProps>) {
-  return <DropdownMenuCheckboxItem {...props} data-slot="menubar-checkbox-item" />;
+  return (
+    <DropdownMenuCheckboxItem
+      {...props}
+      data-slot="menubar-checkbox-item"
+      indicatorSlot="menubar-checkbox-item-indicator"
+    />
+  );
 }
 
 export interface MenubarRadioItemProps extends DropdownMenuRadioItemProps {}
 
 export function MenubarRadioItem(props: Incoming<MenubarRadioItemProps>) {
-  return <DropdownMenuRadioItem {...props} data-slot="menubar-radio-item" />;
+  return (
+    <DropdownMenuRadioItem
+      {...props}
+      data-slot="menubar-radio-item"
+      indicatorSlot="menubar-radio-item-indicator"
+    />
+  );
 }
 
 export interface MenubarLabelProps extends DropdownMenuLabelProps {}

@@ -136,6 +136,35 @@ describe("DropdownMenu", () => {
     expect(rules).toContain("[data-selected] .");
   });
 
+  test("a menu that renames the item renames the tick with it", async () => {
+    // A style names the tick after the menu it is in, so a context menu whose
+    // tick still says `dropdown-menu-item-indicator` is a tick that
+    // `cn-context-menu-item-indicator` never reaches.
+    render(() => (
+      <DropdownMenu>
+        <DropdownMenuTrigger>
+          <Button>View</Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent
+          items={[{ id: "status", name: "Status bar" }]}
+          aria-label="View"
+          selectionMode="multiple"
+        >
+          {(entry: { id: string; name: string }) => (
+            <DropdownMenuCheckboxItem indicatorSlot="context-menu-item-indicator">
+              {entry.name}
+            </DropdownMenuCheckboxItem>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    ));
+    await user.click(screen.getByRole("button", { name: "View" }));
+    await settle();
+
+    expect(document.querySelector('[data-slot="context-menu-item-indicator"]')).not.toBeNull();
+    expect(document.querySelector('[data-slot="dropdown-menu-item-indicator"]')).toBeNull();
+  });
+
   test("a label and a separator are presentational", async () => {
     render(() => (
       <DropdownMenu>

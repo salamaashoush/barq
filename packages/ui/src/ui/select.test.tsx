@@ -85,7 +85,9 @@ describe("Select", () => {
     await settle();
 
     const list = screen.getByRole("listbox");
-    expect(list.getAttribute("data-slot")).toBe("select-list");
+    // `select-content`, which is what shadcn calls this element: a style's
+    // `cn-select-content` reaches it by that name and by no other.
+    expect(list.getAttribute("data-slot")).toBe("select-content");
     const rules = rulesFor(list.className);
     expect(rules).toContain("background-color: var(--popover)");
     expect(rules).toContain("border-top-width: 1px");

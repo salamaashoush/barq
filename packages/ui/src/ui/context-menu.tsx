@@ -131,13 +131,25 @@ export function ContextMenuItem(props: Incoming<ContextMenuItemProps>) {
 export interface ContextMenuCheckboxItemProps extends DropdownMenuCheckboxItemProps {}
 
 export function ContextMenuCheckboxItem(props: Incoming<ContextMenuCheckboxItemProps>) {
-  return <DropdownMenuCheckboxItem {...props} data-slot="context-menu-checkbox-item" />;
+  return (
+    <DropdownMenuCheckboxItem
+      {...props}
+      data-slot="context-menu-checkbox-item"
+      indicatorSlot="context-menu-item-indicator"
+    />
+  );
 }
 
 export interface ContextMenuRadioItemProps extends DropdownMenuRadioItemProps {}
 
 export function ContextMenuRadioItem(props: Incoming<ContextMenuRadioItemProps>) {
-  return <DropdownMenuRadioItem {...props} data-slot="context-menu-radio-item" />;
+  return (
+    <DropdownMenuRadioItem
+      {...props}
+      data-slot="context-menu-radio-item"
+      indicatorSlot="context-menu-item-indicator"
+    />
+  );
 }
 
 export interface ContextMenuLabelProps extends UiProps {

@@ -574,6 +574,15 @@ export interface SelectComponentProps<T> extends StyleProps, ItemAccessors<T> {
    * draw the box the options sit in.
    */
   listClass?: string;
+  /**
+   * The `data-slot` for that same list.
+   *
+   * `select-list` is what it says by default, and a design system naming the
+   * element after its own vocabulary — shadcn calls it the select CONTENT —
+   * could otherwise only reach it through a global rule that every select on
+   * the page would share.
+   */
+  listSlot?: string;
   "aria-label"?: string;
   "aria-labelledby"?: string;
   ref?: RefTarget<HTMLButtonElement>;
@@ -706,6 +715,7 @@ export function Select<T>(props: Incoming<SelectComponentProps<T>>) {
           options={listBoxOptions}
           ariaLabel={props["aria-label"]?.()}
           listClass={props.listClass?.()}
+          listSlot={props.listSlot?.()}
           state={state}
           listRef={listRef}
           render={renderOption as unknown as (scope: unknown, item: unknown) => Child}
@@ -728,6 +738,7 @@ interface SelectListProps {
   options: DOMProps;
   ariaLabel?: string;
   listClass?: string;
+  listSlot?: string;
   state: SelectState<unknown>;
   listRef: ReturnType<typeof makeRef<HTMLUListElement>>;
   render: (scope: unknown, item: unknown) => Child;
@@ -760,7 +771,7 @@ function SelectList(props: Incoming<SelectListProps>) {
     id: options.id,
     "aria-labelledby": options["aria-labelledby"],
     class: props.listClass,
-    "data-slot": "select-list",
+    "data-slot": () => props.listSlot?.() ?? "select-list",
   });
 
   return (

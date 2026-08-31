@@ -357,8 +357,8 @@ export function InputOTPSlot(props: Incoming<InputOTPSlotProps>) {
     >
       {char()}
       {hasCaret() ? (
-        <div class={caretWrapper}>
-          <div class={caret} />
+        <div data-slot="input-otp-caret" class={caretWrapper}>
+          <div data-slot="input-otp-caret-line" class={caret} />
         </div>
       ) : null}
     </div>

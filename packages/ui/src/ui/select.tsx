@@ -246,6 +246,7 @@ export function Select<T>(props: Incoming<SelectProps<T>>) {
       data-size={props.size?.() ?? "default"}
       class={ui(trigger, chevron, props.class?.(), props.className?.())}
       listClass={list}
+      listSlot="select-content"
     />
   );
 }

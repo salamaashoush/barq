@@ -48,10 +48,15 @@ function slotsWeEmit(root: string): Set<string> {
       // how a component that builds its props separately spells it. `Progress`
       // does, and was reported as having no element at all.
       /"data-slot":\s*"([a-z0-9-]+)"/g,
-      // The underlay's slot is named through a prop, because the element
-      // belongs to `<Modal>` rather than to the component. Without this every
-      // overlay's backdrop reported as reaching nothing.
-      /underlaySlot="([a-z0-9-]+)"/g,
+      // The same entry written as an accessor with a default, which is how a
+      // component that lets a caller RENAME its slot spells it. `Calendar`
+      // does, and reported as having no root element at all.
+      /"data-slot":\s*\(\)\s*=>[^,\n]*\?\?\s*"([a-z0-9-]+)"/g,
+      // A slot named through a PROP, because the element belongs to a
+      // `@barqjs/aria` component rather than to this one: `underlaySlot` on a
+      // modal's backdrop, `listSlot` on a select's list. Without this every
+      // such element reported as reaching nothing.
+      /[A-Za-z]+Slot="([a-z0-9-]+)"/g,
     ]) {
       for (const [, slot] of source.matchAll(pattern)) if (slot !== undefined) out.add(slot);
     }
@@ -89,6 +94,14 @@ const ALIASES: Readonly<Record<string, string>> = {
   // Both are links, and the style is about the pair rather than the direction.
   "pagination-next": "pagination-link",
   "pagination-previous": "pagination-link",
+  // The styles were written against upstream's Base UI registry, whose names
+  // for the SAME elements differ from the components' own `data-slot`s. Each
+  // of these is one element under two names, not a missing one.
+  "dropdown-menu-subcontent": "dropdown-menu-sub-content",
+  "context-menu-subcontent": "context-menu-sub-content",
+  "command-input-group": "command-input-wrapper",
+  "navigation-menu-popup": "navigation-menu-viewport",
+  "navigation-menu-positioner": "navigation-menu-viewport-wrapper",
   // Upstream's drawer moved to Base UI, which names the panel a popup and the
   // grip a swipe handle. The elements are the same two.
   "drawer-popup": "drawer-content",

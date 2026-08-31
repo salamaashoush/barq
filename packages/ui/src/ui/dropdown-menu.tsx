@@ -337,7 +337,17 @@ export function DropdownMenuItem(props: Incoming<DropdownMenuItemProps>) {
   );
 }
 
-export interface DropdownMenuCheckboxItemProps extends MenuItemComponentProps {}
+export interface DropdownMenuCheckboxItemProps extends MenuItemComponentProps {
+  /**
+   * The tick's own slot.
+   *
+   * A context menu and a menubar reuse this item and rename it, and a style
+   * names the tick after the menu it is in — `cn-context-menu-item-indicator`,
+   * `cn-menubar-checkbox-item-indicator` — so the child has to be renameable
+   * with the parent or it keeps a name that style never mentions.
+   */
+  indicatorSlot?: string;
+}
 
 /**
  * An item with a tick.
@@ -353,7 +363,7 @@ export function DropdownMenuCheckboxItem(props: Incoming<DropdownMenuCheckboxIte
       data-slot={props["data-slot"]?.() ?? "dropdown-menu-checkbox-item"}
       class={ui(checkItem, props.class?.(), props.className?.())}
     >
-      <span data-slot="dropdown-menu-item-indicator" class={indicator}>
+      <span data-slot={props.indicatorSlot?.() ?? "dropdown-menu-item-indicator"} class={indicator}>
         <Check />
       </span>
       {props.children}
@@ -361,7 +371,10 @@ export function DropdownMenuCheckboxItem(props: Incoming<DropdownMenuCheckboxIte
   );
 }
 
-export interface DropdownMenuRadioItemProps extends MenuItemComponentProps {}
+export interface DropdownMenuRadioItemProps extends MenuItemComponentProps {
+  /** See {@link DropdownMenuCheckboxItemProps.indicatorSlot}. */
+  indicatorSlot?: string;
+}
 
 /** As above, with `selectionMode="single"`. */
 export function DropdownMenuRadioItem(props: Incoming<DropdownMenuRadioItemProps>) {
@@ -371,7 +384,10 @@ export function DropdownMenuRadioItem(props: Incoming<DropdownMenuRadioItemProps
       data-slot={props["data-slot"]?.() ?? "dropdown-menu-radio-item"}
       class={ui(checkItem, props.class?.(), props.className?.())}
     >
-      <span data-slot="dropdown-menu-item-indicator" class={radioIndicator}>
+      <span
+        data-slot={props.indicatorSlot?.() ?? "dropdown-menu-item-indicator"}
+        class={radioIndicator}
+      >
         <Circle />
       </span>
       {props.children}

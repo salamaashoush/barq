@@ -146,6 +146,16 @@ describe("InputOTP", () => {
     expect(slots()[0]?.getAttribute("data-active")).toBe("false");
   });
 
+  test("the caret names itself, because a style draws it", () => {
+    // `cn-input-otp-caret-line` is the blink; without the slot the rule has no
+    // element and the active box shows nothing where the caret should be.
+    render(() => <Six />);
+    field().focus();
+    flush();
+    expect(document.querySelector('[data-slot="input-otp-caret"]')).not.toBeNull();
+    expect(document.querySelector('[data-slot="input-otp-caret-line"]')).not.toBeNull();
+  });
+
   test("a full field keeps the LAST slot active, not one past the end", () => {
     render(() => <Six />);
     const input = field();
