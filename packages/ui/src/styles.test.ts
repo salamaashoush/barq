@@ -89,6 +89,20 @@ describe("the generated stylesheets", () => {
       // still reaching the theme. Not `--radius`: lyra rounds nothing.
       expect(sheet).not.toContain("@apply");
       expect(sheet).toContain("var(--");
+
+      // No marker CLASS survives. Tailwind's group and peer variants compile
+      // to a selector naming a class on the ancestor or the sibling, and this
+      // package puts no such class on anything: nineteen of the twenty-eight
+      // markers reached no element, so every rule hanging off one was dead and
+      // silent. They are rewritten to the `data-slot` they stand for, the same
+      // way `.cn-card` is.
+      expect(sheet).not.toMatch(/\.(?:group|peer)\\\//);
     });
   }
+
+  test("a marker resolves to the slot it names", () => {
+    const sheet = readFileSync(join(STYLES, "vega.css"), "utf8");
+    // `group-data-[size=sm]/card:text-sm`, which decides a small card's title.
+    expect(sheet).toContain(':is(:where([data-slot="card"])[data-size="sm"] *)');
+  });
 });

@@ -245,6 +245,52 @@ function indent(text: string, by: string): string {
     .join("\n");
 }
 
+/**
+ * Where a marker names an element whose `data-slot` is spelled differently.
+ *
+ * Separate from {@link ALIASES}, which renames a slot upstream STYLES; these
+ * rename a group or peer upstream's COMPONENTS declare, and the two lists
+ * disagree — `menu-item` is a sidebar row here and a menu row there.
+ */
+const MARKERS: Readonly<Record<string, string>> = {
+  "menu-item": "sidebar-menu-item",
+  "menu-button": "sidebar-menu-button",
+};
+
+/**
+ * `.group\/card` as the selector that reaches OUR card.
+ *
+ * Tailwind's group and peer variants compile to a selector naming a
+ * marker CLASS on the ancestor or the sibling — `:where(.group\/card)` — and
+ * this package puts no such class on anything. Nineteen of the twenty-eight
+ * markers the eight styles select on reached no element at all, so every rule
+ * hanging off one was dead: a small card kept a large title, a switch's thumb
+ * kept its unchecked offset, a field label never dimmed with its field.
+ * Nothing failed, because a rule that matches nothing is not an error.
+ *
+ * The marker is only ever a stand-in for "the ancestor that is a card", and
+ * this package already has a reliable way to say that. So the selector is
+ * rewritten the same way `.cn-card` is, which fixes all twenty-eight at once
+ * and cannot drift as upstream adds more. It is also STRICTER than the class
+ * it replaces: `.group\/item` and `.group\/item-group` are two classes that a
+ * prefix match could confuse, where two `data-slot` values cannot be.
+ */
+function resolveMarkers(
+  css: string,
+  slots: ReadonlySet<string>,
+): { css: string; missed: string[] } {
+  const missed = new Set<string>();
+  const out = css.replace(/\.(?:group|peer)\\\/([a-z0-9-]+)/g, (whole, name: string) => {
+    const slot = MARKERS[name] ?? ALIASES[name] ?? name;
+    if (!slots.has(slot)) {
+      missed.add(name);
+      return whole;
+    }
+    return `[data-slot="${slot}"]`;
+  });
+  return { css: out, missed: [...missed] };
+}
+
 async function main(): Promise<void> {
   const checkout = process.argv[2] ?? "../ui";
   const from = resolve(process.cwd(), checkout, "apps/v4/registry/styles");
@@ -255,6 +301,7 @@ async function main(): Promise<void> {
   const ours = slotsWeEmit(resolve(import.meta.dir, ".."));
   const theirs = slotsUpstreamEmits(resolve(process.cwd(), checkout));
   const unreachable = new Set<string>();
+  const unreachableMarkers = new Set<string>();
   let missing = 0;
 
   for (const file of readdirSync(from).toSorted()) {
@@ -277,7 +324,9 @@ async function main(): Promise<void> {
         process.stderr.write(`  ${name}/${slot}: NOT A UTILITY: ${result.unknown.join(" ")}\n`);
       }
       if (result.css.trim() === "") continue;
-      rules.push(`${selector} {\n${indent(result.css, "  ")}\n}`);
+      const resolved = resolveMarkers(result.css, ours);
+      for (const marker of resolved.missed) unreachableMarkers.add(marker);
+      rules.push(`${selector} {\n${indent(resolved.css, "  ")}\n}`);
     }
     void unmatched;
 
@@ -321,6 +370,17 @@ async function main(): Promise<void> {
   }
   for (const slot of decided) {
     process.stdout.write(`\n${slot} is deliberate: ${DIVERGENT[slot] ?? ""}\n`);
+  }
+
+  // A marker naming no element is the same failure as a class naming none, and
+  // quieter: the rule still ships, still parses, and still matches nothing.
+  if (unreachableMarkers.size > 0) {
+    process.stdout.write(
+      `\n${String(unreachableMarkers.size)} group or peer markers reach nothing:\n  ` +
+        [...unreachableMarkers].toSorted().join(" ") +
+        "\n",
+    );
+    process.exitCode = 1;
   }
 
   if (missing > 0) process.exitCode = 1;
