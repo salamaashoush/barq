@@ -184,6 +184,7 @@ export function DialogContent(props: Incoming<DialogContentProps>) {
       isDismissable={props.isDismissable?.() !== false}
       isKeyboardDismissDisabled={props.isKeyboardDismissDisabled?.() === true}
       underlayClass={overlay}
+      underlaySlot="dialog-overlay"
       class={ui(content, props.class?.(), props.className?.())}
       data-slot={props["data-slot"]?.() ?? "dialog-content"}
     >

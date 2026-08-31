@@ -44,6 +44,10 @@ function slotsWeEmit(root: string): Set<string> {
       /(?:uiProps|controlProps)\(\s*"([a-z0-9-]+)"/g,
       /data-slot="([a-z0-9-]+)"/g,
       /data-slot=\{[^}]*\?\?\s*"([a-z0-9-]+)"/g,
+      // A slot written as an object entry rather than a JSX attribute, which is
+      // how a component that builds its props separately spells it. `Progress`
+      // does, and was reported as having no element at all.
+      /"data-slot":\s*"([a-z0-9-]+)"/g,
     ]) {
       for (const [, slot] of source.matchAll(pattern)) if (slot !== undefined) out.add(slot);
     }
@@ -51,6 +55,37 @@ function slotsWeEmit(root: string): Set<string> {
   if (out.size === 0) throw new Error(`no data-slot found under ${directory}`);
   return out;
 }
+
+/**
+ * Where upstream and this package name the SAME element differently.
+ *
+ * These slot names came from shadcn's classic registry, which is what this
+ * package transcribes; the styles are written against the new one, which
+ * renamed some of them. An alias is the honest record of that, and it is much
+ * smaller than renaming fifty components to match a registry they are not from.
+ *
+ * Only pairs that are genuinely one element. A name with no element here is
+ * left unreachable and reported, because guessing at one would style the wrong
+ * thing and look like the style being wrong.
+ */
+const ALIASES: Readonly<Record<string, string>> = {
+  // The outer element IS the track here; the inner one is the filled part.
+  "progress-track": "progress",
+  "progress-value": "progress-indicator",
+  // The fill is a gradient on the track rather than an element of its own,
+  // which is what stopped the track's `overflow: hidden` cutting the thumb.
+  "slider-range": "slider-track",
+  "accordion-content-inner": "accordion-body",
+  "calendar-caption": "calendar-month-caption",
+  "combobox-list": "combobox-content",
+  "radio-group-indicator-icon": "radio-group-indicator",
+  // One control, whichever element it is.
+  "input-group-input": "input-group-control",
+  "input-group-textarea": "input-group-control",
+  // Both are links, and the style is about the pair rather than the direction.
+  "pagination-next": "pagination-link",
+  "pagination-previous": "pagination-link",
+};
 
 /** The three axes a style splits a slot on, and the attribute each is. */
 const AXES = [
@@ -77,14 +112,33 @@ export function selectorFor(cn: string, slots: ReadonlySet<string>): string | nu
 
   // A base-ui twin of a slot we already have. Upstream ships two component
   // bases and styles both; the markup this package renders is one of them.
-  const bare = name.replace(/-aria$/, "");
+  // `-aria` is upstream's other component base and `-logical` its
+  // logical-property twin. Both style the SAME element this package renders, so
+  // both resolve to the one slot rather than being reported as missing.
+  const bare = name.replace(/-(?:aria|logical)$/, "");
   if (slots.has(bare)) return `[data-slot="${bare}"]`;
+
+  const alias = ALIASES[bare];
+  if (alias !== undefined && slots.has(alias)) return `[data-slot="${alias}"]`;
 
   for (const [axis, attribute] of AXES) {
     const at = bare.lastIndexOf(`-${axis}-`);
     if (at < 0) continue;
     const slot = bare.slice(0, at);
     const value = bare.slice(at + axis.length + 2);
+    if (slots.has(slot)) return `[data-slot="${slot}"][${attribute}="${value}"]`;
+  }
+
+  // An axis whose value upstream appends with no axis word between:
+  // `cn-separator-horizontal`, not `cn-separator-orientation-horizontal`.
+  for (const [value, attribute] of [
+    ["horizontal", "data-orientation"],
+    ["vertical", "data-orientation"],
+    ["default", "data-variant"],
+    ["icon", "data-variant"],
+  ] as const) {
+    if (!bare.endsWith(`-${value}`)) continue;
+    const slot = bare.slice(0, -value.length - 1);
     if (slots.has(slot)) return `[data-slot="${slot}"][${attribute}="${value}"]`;
   }
 

@@ -231,6 +231,7 @@ export function SheetContent(props: Incoming<SheetContentProps>) {
       isDismissable={props.isDismissable?.() !== false}
       isKeyboardDismissDisabled={props.isKeyboardDismissDisabled?.() === true}
       underlayClass={overlay}
+      underlaySlot="sheet-overlay"
       class={ui(sheetVariants({ side: props.side?.() }), props.class?.(), props.className?.())}
       data-slot={props["data-slot"]?.() ?? "sheet-content"}
       data-side={props.side?.() ?? "right"}

@@ -190,6 +190,7 @@ export interface ModalComponentProps extends StyleProps, OverlayOptions {
    * every modal on the page would then share.
    */
   underlayClass?: string;
+  underlaySlot?: string;
   onOpenChange?: (isOpen: boolean) => void;
 }
 
@@ -211,6 +212,7 @@ export function Modal(props: Incoming<ModalComponentProps>) {
       isDismissable={props.isDismissable?.() !== false}
       isKeyboardDismissDisabled={props.isKeyboardDismissDisabled?.() === true}
       underlayClass={props.underlayClass?.()}
+      underlaySlot={props.underlaySlot?.()}
       class={props.class?.() ?? props.className?.()}
       style={props.style?.()}
       // The global attributes, the global events and every `data-*` the caller
@@ -231,6 +233,7 @@ interface ContentsProps extends StyleProps {
   isDismissable: boolean;
   isKeyboardDismissDisabled: boolean;
   underlayClass?: string;
+  underlaySlot?: string;
   /** What `Modal` filtered out of its own props for the dialog's element. */
   domProps?: DOMProps;
   children?: Child;
@@ -267,6 +270,7 @@ function ModalContents(props: Incoming<ContentsProps>) {
           isDismissable={props.isDismissable()}
           isKeyboardDismissDisabled={props.isKeyboardDismissDisabled()}
           underlayClass={props.underlayClass?.()}
+          underlaySlot={props.underlaySlot?.()}
           domProps={props.domProps?.()}
           class={props.class?.()}
           style={props.style?.()}
@@ -285,6 +289,7 @@ interface BodyProps extends StyleProps {
   isDismissable: boolean;
   isKeyboardDismissDisabled: boolean;
   underlayClass?: string;
+  underlaySlot?: string;
   domProps?: DOMProps;
   children?: Child;
 }
@@ -334,6 +339,12 @@ function ModalBody(props: Incoming<BodyProps>) {
     <div
       {...underlayProps}
       data-barq-underlay
+      // A `data-slot` like every other element in this package, and the reason
+      // is a consumer's stylesheet: `[data-barq-underlay]` is one global rule
+      // and cannot tell a dialog's backdrop from a sheet's. shadcn names them
+      // separately (`cn-dialog-overlay`, `cn-sheet-overlay`) and so can anyone
+      // styling these.
+      data-slot={props.underlaySlot?.()}
       data-closed={props.isExiting() ? "" : undefined}
       class={props.underlayClass?.()}
     >

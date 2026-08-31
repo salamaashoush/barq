@@ -185,6 +185,7 @@ export function AlertDialogContent(props: Incoming<AlertDialogContentProps>) {
       // interaction, and the APG asks for Escape on every dialog, alert or not.
       isDismissable={false}
       underlayClass={overlay}
+      underlaySlot="alert-dialog-overlay"
       class={ui(content, props.class?.(), props.className?.())}
       data-slot={props["data-slot"]?.() ?? "alert-dialog-content"}
       data-size={props.size?.() ?? "default"}
