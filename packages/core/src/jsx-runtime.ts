@@ -399,9 +399,17 @@ export namespace JSX {
    * CSS style properties using csstype for comprehensive type coverage.
    * Supports CSS custom properties (variables) with `--` prefix.
    * All properties can be reactive (FunctionMaybe).
+   *
+   * Both spellings, because both have always WORKED: every backend puts a key
+   * through `toKebabCase`, which leaves `max-width` alone and turns `maxWidth`
+   * into it. Naming only the camelCase half made `style={{ "max-width": … }}`
+   * a type error for markup the DOM and the string renderer both accept, and
+   * `@barqjs/ui`'s own gallery is written in the half that did not typecheck.
    */
   type CSSProperties = {
     [K in keyof CSS.Properties]?: FunctionMaybe<CSS.Properties[K]>;
+  } & {
+    [K in keyof CSS.PropertiesHyphen]?: FunctionMaybe<CSS.PropertiesHyphen[K]>;
   } & {
     [key: `--${string}`]: FunctionMaybe<string | number>;
   };
