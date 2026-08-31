@@ -90,8 +90,7 @@ export function variants<G extends VariantGroups>(spec: VariantSpec<G>): Variant
       // axis. It used to mean "not chosen": `false` was the sentinel AND a
       // legal key, so an off state silently took the default instead of the
       // arm written for it.
-      const named =
-        asked === null || asked === undefined ? undefined : String(asked);
+      const named = asked === null || asked === undefined ? undefined : String(asked);
       const value =
         named !== undefined && Object.hasOwn(spec.variants[group] ?? {}, named)
           ? named

@@ -1,20 +1,22 @@
 /**
  * CSS-in-JS Demo
- * Tests: css, styled, keyframe, globalCss, atoms, variants, createTheme, token, globalVars, defineVars
+ * Tests: css, keyframes, globalCss, atoms, create, variants, defineVars, createTheme,
+ * dynamic, props, firstThatWorks, and the application's own token helpers
  */
 
-import { For, type Incoming, signal } from "@barqjs/core";
-import { type DesignTokens, createTheme, defineVars, token, variants } from "../styles";
+import { type Incoming, signal } from "@barqjs/core";
 import {
   atoms,
   create,
-  createTheme as createCssTheme,
+  createTheme,
   css,
-  defineVars as defineTokens,
+  defineVars,
   dynamic,
   firstThatWorks,
+  globalVars,
   keyframes,
-  props,
+  props as styleProps,
+  variants,
 } from "@barqjs/css";
 import { Button, DemoCard, DemoSection } from "./shared";
 
@@ -320,7 +322,7 @@ function VariantsDemo() {
         `,
       },
     },
-    defaultVariants: {
+    defaults: {
       intent: "primary",
       size: "md",
     },
@@ -371,105 +373,58 @@ function VariantsDemo() {
   );
 }
 
-// Theme tokens
+/**
+ * `globalVars`: tokens under the names you gave them.
+ *
+ * Module scope, because that is where a token set belongs — the compiler reads
+ * it here and every block below folds against it, so `${tokens.background}` is
+ * a `var()` in the stylesheet rather than a call in the browser.
+ */
+const tokens = globalVars({
+  brand: "#3b82f6",
+  surface: "#0f172a",
+  radius: "8px",
+  sans: "system-ui, sans-serif",
+});
+
+/** A class that redeclares two of them. Put it on any element. */
+const dusk = createTheme(tokens, { brand: "#60a5fa", surface: "#1e293b" });
+
+const tokenBox = css`
+  padding: 16px;
+  border-radius: ${tokens.radius};
+  background: ${tokens.surface};
+  font-family: ${tokens.sans};
+  color: ${tokens.brand};
+`;
+
 function ThemeDemo() {
-  const baseTokens: DesignTokens = {
-    colors: {
-      primary: "#3b82f6",
-      secondary: "#64748b",
-      background: "#0f172a",
-      text: "#e2e8f0",
-    },
-    fonts: {
-      sans: "system-ui, sans-serif",
-      mono: "Fira Code, monospace",
-    },
-    spacing: {
-      1: "4px",
-      2: "8px",
-      3: "12px",
-      4: "16px",
-    },
-    radius: {
-      sm: "4px",
-      md: "8px",
-      lg: "12px",
-    },
-    shadow: {
-      sm: "0 1px 2px rgba(0,0,0,0.1)",
-      md: "0 4px 6px rgba(0,0,0,0.1)",
-    },
-    fontSize: {
-      sm: "12px",
-      md: "14px",
-      lg: "16px",
-    },
-    fontWeight: {
-      normal: 400,
-      medium: 500,
-      bold: 700,
-    },
-    lineHeight: {
-      tight: 1.25,
-      normal: 1.5,
-      relaxed: 1.75,
-    },
-    zIndex: {
-      dropdown: 100,
-      modal: 1000,
-    },
-  };
-
-  const darkTheme = createTheme(baseTokens, {
-    colors: {
-      primary: "#60a5fa",
-      background: "#1e293b",
-    },
-  });
-
   return (
-    <DemoCard title="createTheme & token">
-      {/*
-        The one block in this application that BARQ015 reports, and it is left
-        that way on purpose: `token()` is a call the compiler cannot fold, so
-        this block stays on `@barqjs/css`'s runtime and the demo exercises the
-        escape hatch end to end. Its class is prefixed `r`, not `b`.
-      */}
-      <div
-        class={css`
-          padding: 16px;
-          background: ${token(baseTokens, "colors.background")};
-          border-radius: ${token(baseTokens, "radius.md")};
-          font-family: ${token(baseTokens, "fonts.sans")};
-        `}
-      >
-        <p style={{ color: token(baseTokens, "colors.primary") }}>
-          Primary Color: {token(baseTokens, "colors.primary")}
-        </p>
-        <p style={{ marginTop: token(baseTokens, "spacing.2") }}>
-          Spacing 2: {token(baseTokens, "spacing.2")}
-        </p>
+    <DemoCard title="globalVars & createTheme">
+      <div class={tokenBox}>The tokens, as declared</div>
+      <div class={dusk}>
+        <div class={tokenBox}>The same block, under a theme that redeclares two</div>
       </div>
-
-      <p class={noteStyle}>Design tokens provide consistent values across your app.</p>
+      <p class={noteStyle}>
+        `globalVars` names the property what you called it, so an application's own `:root` is
+        heard. `defineVars` hashes the set instead, which is below.
+      </p>
     </DemoCard>
   );
 }
 
-// CSS Variables
+/**
+ * A custom property that changes every frame.
+ *
+ * Written straight onto the element, which is what a `style` object is for and
+ * what BARQ015 tells you to reach for: the block stays static and compiles
+ * away, and the only thing that moves is one property on one element.
+ */
 function CssVarDemo() {
   const hue = signal(220);
 
-  // Make vars reactive by using a getter function
-  const getVars = () =>
-    defineVars({
-      "primary-hue": String(hue()),
-      "primary-color": `hsl(${hue()}, 70%, 50%)`,
-      "primary-light": `hsl(${hue()}, 70%, 70%)`,
-    });
-
   return (
-    <DemoCard title="defineVars & globalVars">
+    <DemoCard title="a reactive custom property">
       <input
         type="range"
         min="0"
@@ -481,35 +436,30 @@ function CssVarDemo() {
       <p>Hue: {hue}</p>
 
       <div
-        class={css`
-          padding: 20px;
-          border-radius: 8px;
-          margin-top: 12px;
-        `}
-        style={() => {
-          const vars = getVars();
-          return {
-            ...Object.fromEntries(
-              vars
-                .split(";")
-                .filter(Boolean)
-                .map((v) => {
-                  const [key, val] = v.split(":");
-                  return [key.trim(), val?.trim()];
-                }),
-            ),
-            background: "var(--primary-color)",
-            color: "white",
-          };
-        }}
+        class={swatchStyle}
+        style={() => ({
+          "--primary-color": `hsl(${hue()}, 70%, 50%)`,
+          "--primary-light": `hsl(${hue()}, 70%, 70%)`,
+        })}
       >
-        <p>Background uses var(--primary-color)</p>
+        <p>Background reads var(--primary-color)</p>
       </div>
 
-      <pre class={previewStyle}>{getVars}</pre>
+      <p class={noteStyle}>
+        One property is written per change. The block itself never re-registers, because nothing in
+        it moved.
+      </p>
     </DemoCard>
   );
 }
+
+const swatchStyle = css`
+  padding: 20px;
+  border-radius: 8px;
+  margin-top: 12px;
+  background: var(--primary-color);
+  color: white;
+`;
 
 // Styles
 const stackStyle = css`
@@ -622,27 +572,31 @@ function AtomsDemo() {
   );
 }
 
-/** `defineVars` and `createTheme`: tokens as custom properties. */
-// Aliased: this file also uses the application's own `defineVars`, which
-// returns a declaration STRING for a `style` attribute rather than a token set.
-const tokens = defineTokens({ brand: "rgb(59, 130, 246)", pad: "12px" });
-const brighter = createCssTheme(tokens, { brand: "rgb(96, 165, 250)" });
+/**
+ * `defineVars`: the same idea with the names hashed.
+ *
+ * The suffix is a hash of the whole token object, so two files declaring
+ * different tokens cannot collide — and nothing outside the set can write
+ * `--brand` and be heard, which is the trade against `globalVars` above.
+ */
+const scoped = defineVars({ brand: "rgb(59, 130, 246)", pad: "12px" });
+const brighter = createTheme(scoped, { brand: "rgb(96, 165, 250)" });
 
-const tokenBox = css`
-  color: ${tokens.brand};
-  padding: ${tokens.pad};
-  border: 1px solid ${tokens.brand};
+const scopedBox = css`
+  color: ${scoped.brand};
+  padding: ${scoped.pad};
+  border: 1px solid ${scoped.brand};
   border-radius: 6px;
 `;
 
 function TokensDemo() {
   return (
-    <DemoCard title="defineVars & createTheme - tokens">
-      <div data-testid="tokens-default" class={tokenBox}>
+    <DemoCard title="defineVars - the same, scoped">
+      <div data-testid="tokens-default" class={scopedBox}>
         Reads the token
       </div>
       <div class={brighter}>
-        <div data-testid="tokens-themed" class={tokenBox}>
+        <div data-testid="tokens-themed" class={scopedBox}>
           The same block, under a theme that redeclares one token
         </div>
       </div>
@@ -664,7 +618,7 @@ function DynamicDemo() {
     <DemoCard title="dynamic - a value only known at run time">
       <p
         data-testid="dynamic"
-        {...props(cardStyles.root, tint(hot() ? "rgb(251, 146, 60)" : "rgb(148, 163, 184)"))}
+        {...styleProps(cardStyles.root, tint(hot() ? "rgb(251, 146, 60)" : "rgb(148, 163, 184)"))}
       >
         One custom property changes; no new CSS is produced
       </p>
