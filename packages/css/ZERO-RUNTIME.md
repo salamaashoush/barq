@@ -292,63 +292,77 @@ The other sixteen pass a signal read (`props.variant?.()`), which is the point o
 a variant. Three calls times 63 ns is not a reason to teach the compiler a fifth
 wrapper shape.
 
-### 6. Cross-module groups, and why the merge stays
+### 6. Cross-module values — solved, by resolving the import
 
-`shared.focusRing` imported from another module is opaque, so the merge stays at
-run time. Fixing that means the compiler knowing something about another file,
-and `transform` is per-file by design: that is what keeps dev and build
-identical.
+A value another module owns was the one thing left, and it is the shape most
+projects have: the tokens in one file, the shared treatments in another, the
+components importing both. Measured before the fix, on four files:
 
-The two ways out, both taken by a neighbour, both read from their own source:
+| what `card.tsx` imports                | folded | what ran in the browser                   |
+| -------------------------------------- | ------ | ----------------------------------------- |
+| a `createIn` group                     | partly | a merge over class strings, 443 ns a call |
+| a `defineVars` token                   | **no** | the whole call, object walk and all       |
+| a plain `const BRAND = "var(--brand)"` | **no** | the whole call                            |
+| a `layer("app")` binding               | **no** | the whole call                            |
 
-**StyleX holds cross-file state.** `processStylexRules` collects every rule from
-every module, sorts them by a numeric priority, groups by
-`Math.floor(priority / 1000)` and emits `@layer priority1, priority2, …`. The
-layer list is derived from the whole rule set, so it cannot be written by a
-per-file pass at all. Its Vite plugin pays for that with
-`globalThis.__stylex_unplugin_store`, a map shared across the client, SSR and RSC
-environments, plus an opt-in `devPersistToDisk` that serialises the rules to a
-JSON file "to bridge multiple plugin containers/processes". That is the divergence
-this project already rejected, written out in its own code.
+Only the first was acceptable. The other three are the common case, and they
+fell all the way back.
 
-**vanilla-extract evaluates the file.** `@vanilla-extract/compiler` starts a
-second Vite server and a `ViteNodeRunner`, then calls `runner.executeFile(path)`
-and reads the exports. There is no static analysis to defeat, which is why a
-`.css.ts` file may compute anything — and that is what the separate-file
-requirement buys: a file that is _executed at build time_ is a different kind of
-file from one that ships, and the extension says so. Colocation cannot have it,
-because a component file cannot be executed at build time without executing the
-component.
+**The fix keeps the compiler per-file.** It reads no file. It reports which
+binding a fold would have needed (`cssWanted`), the Vite plugin resolves that
+one module, compiles it for its exported constants (`cssExports`), and compiles
+the consumer again with the answer (`cssImports`). `transform` is still a pure
+function of its inputs, so a name means the same thing in dev and in a build.
 
-**Panda** reaches for sub-layers exactly as item 2 does (`recipes.slots`, `_base`
-nested inside `recipes`) and ships `@csstools/postcss-cascade-layers` as a
-polyfill; it also builds the whole sheet in one codegen step. **Tailwind v4**
-declares `@layer theme, base, components, utilities;` once and sorts utilities
-globally by a bigint variant mask then a property order — again, whole-project.
-**Linaria**'s atomic mode has no ordering machinery at all: it hashes property
-and value into a class and joins them, which is barq's problem with none of
-barq's answer.
+That is a different thing from what the neighbours give up:
 
-Every one of the four buys global ordering with a whole-project step. barq's
-answer is different and it is the reason item 2 is cheap here: **the tier set is
-fixed at five names, so the ordering declaration is a constant and a per-file
-pass can write it.** StyleX cannot, because its priority groups depend on which
-rules exist.
+- **StyleX** derives `@layer priority1 … priorityN` from every rule in the
+  project. That is a whole-project reduction, and its Vite plugin pays for it
+  with `globalThis.__stylex_unplugin_store` shared across the client, SSR and
+  RSC environments, plus an opt-in `devPersistToDisk` that serialises rules to a
+  JSON file "to bridge multiple plugin containers/processes".
+- **vanilla-extract** starts a second Vite server and a `ViteNodeRunner` and
+  calls `runner.executeFile(path)`. There is no static analysis to defeat, which
+  is why a `.css.ts` file may compute anything — and why it has to be a
+  different kind of file from one that ships.
 
-What is left, then, is the merge, and the honest number for it:
+Resolving one named module for its literal constants is neither. It is a
+pointwise, deterministic lookup, cached by path and mtime, and it happens only
+for files something asked for.
 
-```
-merge two class strings (7 classes)   443 ns/call
-merge one class string (4 classes)    257 ns/call
-atoms, 4 declarations                1092 ns/call
-variants, two axes                     65 ns/call
-```
+**What it costs, measured on the gallery:**
 
-443 ns per composing call, per render, is the price of a group crossing a module
-boundary. It buys the property that a group is data, that the compiler never
-reads another file, and that dev and build are the same pipeline. The rules
-themselves already reach the stylesheet — partial folding put them there — so
-what crosses is a `Map` over seven strings and not a stylesheet.
+|            | raw       | gzip      | brotli   |
+| ---------- | --------- | --------- | -------- |
+| JS, before | 425.10 KB | 113.99 KB | 91.30 KB |
+| JS, after  | 443.67 KB | 114.15 KB | 90.97 KB |
+
+The 18.6 KB of raw growth is the same class-name text inlined at 94 call sites,
+which both compressors eat: gzip is 162 bytes worse and brotli 337 bytes better.
+On the wire it is a wash, and it buys 94 runtime merges and, for a project whose
+tokens live in a file, the difference between compiling and not compiling at
+all. The CSS asset does not move.
+
+**One hazard, and it is not obvious.** Folding an imported value INLINES it,
+which can leave that module with no used export — and a bundler then drops the
+module and the `import "….barq.css"` inside it. Measured on a four-file app: the
+JS carried `a-outline-width_o01p2h` and the asset defined nothing. The consumer
+carries the stylesheet of everything it folded a value out of, which is a
+side-effect import and survives.
+
+**Verified in a browser.** The gallery built with resolution against the same
+gallery without it: 485 elements, 579 computed properties and the box, five
+resting scenarios and 28 overlay frames. **Zero differences.**
+
+Under `bun test` there is no integration, so those calls fall back to the
+runtime, which computes the same class names. Nothing diverges; only the CSS
+arrives through `<style id="barq-css">` rather than an asset, which is already
+true of every block in dev.
+
+What is still left, and correctly: an argument whose value is genuinely only
+known at run time. `ui(shared.ring, props.class?.())` keeps a merge over strings,
+because `props.class?.()` is a signal read. 230 of `@barqjs/ui`'s 324 calls are
+that shape, and no compiler can do better than leave them.
 
 ## How this was checked
 

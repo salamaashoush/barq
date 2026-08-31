@@ -1,4 +1,5 @@
 import { createRequire } from "node:module";
+import { readFile, stat } from "node:fs/promises";
 import type { Plugin, TransformResult, ViteDevServer } from "vite";
 
 const NATIVE_PACKAGE = "@barqjs/compiler-rs";
@@ -134,6 +135,27 @@ export interface BarqCompilerOptions {
   strictCss?: boolean;
 
   /**
+   * Fold values a module imports from another file: a design token, a shared
+   * `create` group, a `layer` binding, a plain `const` holding a `var()`.
+   *
+   * Without it those are opaque and the whole call is evaluated by
+   * `@barqjs/css` in the browser, which is the shape most projects have — the
+   * tokens are in one file and the components import them.
+   *
+   * The compiler still reads no file. It reports which binding it would have
+   * needed (`cssWanted`), this resolves that ONE module, and it compiles again
+   * with the answer. So the transform stays a pure function of its inputs and a
+   * name resolves to the same value in dev and in a build. That is what
+   * separates it from StyleX's `globalThis.__stylex_unplugin_store`, which is
+   * an aggregate over every module and cannot be either.
+   *
+   * Costs one extra transform per imported file, cached by path and mtime, and
+   * only for the files something actually asked for.
+   * @default true
+   */
+  resolveImports?: boolean;
+
+  /**
    * Every route pattern in the project, which is what BARQ013 checks a
    * `<Link to>` against.
    *
@@ -261,6 +283,8 @@ interface NativeTransformOptions {
   routerSource?: string;
   cssSource?: string;
   strictCss?: boolean;
+  cssExports?: boolean;
+  cssImports?: string[][];
   routes?: readonly string[];
   moduleSource?: string;
   serverSource?: string;
@@ -293,6 +317,10 @@ interface NativeResult {
   labels?: BarqTemplateLabel[];
   serverFns?: string;
   css?: string;
+  /** `[specifier, exported name]` a fold needed and did not have. */
+  cssWanted?: string[][];
+  /** `[exported name, kind, member, value]` this module can hand over. */
+  cssExports?: string[][];
 }
 
 /**
@@ -423,8 +451,15 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
     exclude = [/node_modules/],
     overlay = "warning",
     cssMode,
+    resolveImports = true,
     ...compilerOptions
   } = options;
+
+  /**
+   * What each file exports that another can fold against, keyed by path and
+   * mtime so an edit is a different key and a build reads each file once.
+   */
+  const exportsByFile = new Map<string, string[][]>();
 
   // The compiler's dev-mode diagnostics are advice about runtime behaviour, so
   // they belong on a dev build and nowhere else. Deriving it from Vite means the
@@ -546,16 +581,21 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
     // The `ssr` boolean is the pre-6 one, kept as the fallback for a caller that
     // is not Vite at all — the tests drive this hook directly — rather than as a
     // second opinion when both are present.
-    transform(
+    async transform(
       this: {
         environment?: { name?: string };
         error(message: string, position?: number): never;
         warn(message: string, position?: number): void;
+        resolve?(
+          source: string,
+          importer?: string,
+        ): Promise<{ id: string; external?: boolean | string } | null>;
+        addWatchFile?(file: string): void;
       },
       code: string,
       id: string,
       transformOptions?: { ssr?: boolean },
-    ): TransformResult | null {
+    ): Promise<TransformResult | null> {
       const environment = this?.environment;
       // `client` is Vite's name for the browser environment and `ssr` for the
       // server one; anything else a user configures is a server environment
@@ -608,11 +648,80 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
         );
       }
 
-      // A native transform can fail on a parse diagnostic, and anything the
-      // Rust side raises arrives here as a bare message with no file in it.
-      let result: NativeResult;
-      try {
-        result = compiler.transform(code, {
+      /**
+       * What one imported file exports, compiled once and remembered.
+       *
+       * Recursive, because a token file can itself import a token file, and
+       * depth-bounded and cycle-guarded because a module graph is neither a
+       * tree nor acyclic. A file that will not resolve contributes nothing and
+       * the fold declines exactly as it would have.
+       */
+      /**
+       * The stylesheet of every file this module folded a value out of.
+       *
+       * Folding an imported value INLINES it, which can leave that module with
+       * no used export — and a bundler then drops the module and the
+       * `import "….barq.css"` inside it. Measured on a four-file app: the JS
+       * carried `a-outline-width_o01p2h` and the asset defined nothing, because
+       * `shared.ts` had been tree-shaken whole. So the consumer carries the
+       * stylesheet of everything it read from, which is a side-effect import
+       * and survives.
+       */
+      const foldedAgainst = new Map<string, string>();
+
+      const exportsOf = async (
+        path: string,
+        depth: number,
+        seen: Set<string>,
+      ): Promise<string[][]> => {
+        if (depth <= 0 || seen.has(path)) return [];
+        seen.add(path);
+        let key = path;
+        try {
+          key = `${path}:${(await stat(path)).mtimeMs}`;
+        } catch {
+          return [];
+        }
+        const hit = exportsByFile.get(key);
+        if (hit !== undefined) return hit;
+
+        let source: string;
+        try {
+          source = await readFile(path, "utf8");
+        } catch {
+          return [];
+        }
+        let rows: string[][] = [];
+        try {
+          const out = await compileWithImports(source, path, depth - 1, seen, {
+            cssExports: true,
+          });
+          rows = out.cssExports ?? [];
+          if (out.css != null && out.css !== "") foldedAgainst.set(path, out.css);
+        } catch {
+          rows = [];
+        }
+        exportsByFile.set(key, rows);
+        return rows;
+      };
+
+      /**
+       * A module compiled with its imports resolved, in as many rounds as it
+       * asks for.
+       *
+       * More than one round because a style object stops reading at the FIRST
+       * value it cannot resolve, so the second unresolved name in one object is
+       * only reported once the first has an answer. Bounded, and a round that
+       * learns nothing new ends it.
+       */
+      const compileWithImports = async (
+        source: string,
+        file: string,
+        depth: number,
+        seen: Set<string>,
+        extra: { cssExports?: boolean } = {},
+      ): Promise<NativeResult> => {
+        const base = {
           moduleSource: compilerOptions.moduleSource,
           serverSource: compilerOptions.serverSource,
           startSource: compilerOptions.startSource,
@@ -643,10 +752,48 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
           hydratable: compilerOptions.hydratable,
           interp: (compilerOptions.interp ?? false) && forClient,
           dev,
-          filename: id,
+          filename: file,
           sourcemap: true,
           ssr: !forClient,
-        });
+          ...extra,
+        };
+        let out = compiler.transform(source, base);
+        if (!resolveImports || depth <= 0 || this.resolve === undefined) return out;
+
+        const cssImports: string[][] = [];
+        const asked = new Set<string>();
+        for (let round = 0; round < 4; round++) {
+          const wanted = (out.cssWanted ?? []).filter(
+            (entry) => !asked.has(`${entry[0]}\u0000${entry[1]}`),
+          );
+          if (wanted.length === 0) break;
+          let learned = false;
+          for (const [specifier, name] of wanted) {
+            asked.add(`${specifier}\u0000${name}`);
+            const resolved = await this.resolve?.(specifier ?? "", file);
+            if (!resolved || resolved.external === true || resolved.external === "absolute")
+              continue;
+            const path = resolved.id.split("?", 1)[0] ?? resolved.id;
+            // A watched dependency, so editing the token file retransforms
+            // every module that folded against it.
+            this.addWatchFile?.(path);
+            for (const row of await exportsOf(path, depth, new Set(seen))) {
+              if (row[0] !== name) continue;
+              cssImports.push([specifier ?? "", ...row]);
+              learned = true;
+            }
+          }
+          if (!learned) break;
+          out = compiler.transform(source, { ...base, cssImports });
+        }
+        return out;
+      };
+
+      // A native transform can fail on a parse diagnostic, and anything the
+      // Rust side raises arrives here as a bare message with no file in it.
+      let result: NativeResult;
+      try {
+        result = await compileWithImports(code, id, 6, new Set([id]));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         throw new Error(`[barq-compiler] Failed to transform ${id}: ${message}`, {
@@ -703,6 +850,21 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       } else if (cssByModule.delete(stylesheet) && server !== undefined) {
         const module = server.moduleGraph.getModuleById(stylesheet);
         if (module) server.moduleGraph.invalidateModule(module);
+      }
+
+      // And the stylesheet of everything this module folded a value out of. The
+      // module that declares a group emits those rules when it is compiled, but
+      // inlining its value can leave it with no used export and a bundler drops
+      // it whole. A side-effect import here keeps the rules a class on this
+      // page needs.
+      for (const [path, sheet] of foldedAgainst) {
+        const other = `${path}${CSS_QUERY}`;
+        if (mode === "inline") {
+          emitted += cssRegistration(other, sheet, cssSource);
+          continue;
+        }
+        cssByModule.set(other, sheet);
+        emitted += `\nimport ${JSON.stringify(other)};\n`;
       }
 
       return {

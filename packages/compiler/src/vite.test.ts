@@ -4,7 +4,10 @@
  * ERROR rather than a quieter build.
  */
 
-import { describe, expect, test } from "bun:test";
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { TransformResult } from "vite";
 
 import {
@@ -33,16 +36,16 @@ interface ConfigEnv {
   mode: string;
 }
 
-function run(
+async function run(
   plugin: ReturnType<typeof barqVitePlugin>,
   code: string,
   id: string,
   options?: { ssr?: boolean },
-): {
+): Promise<{
   result: TransformResult | null;
   warnings: string[];
   positions: (number | undefined)[];
-} {
+}> {
   const warnings: string[] = [];
   const positions: (number | undefined)[] = [];
   const context: PluginContext = {
@@ -59,8 +62,8 @@ function run(
     code: string,
     id: string,
     options?: { ssr?: boolean },
-  ) => TransformResult | null;
-  return { result: transform.call(context, code, id, options), warnings, positions };
+  ) => Promise<TransformResult | null> | TransformResult | null;
+  return { result: await transform.call(context, code, id, options), warnings, positions };
 }
 
 /** Drive the `config` hook the way Vite does, so `dev` is derived. */
@@ -91,50 +94,50 @@ function withoutTheNativePackage<T>(fn: () => T): T {
 }
 
 describe("barqVitePlugin", () => {
-  test("only transforms the configured extensions", () => {
+  test("only transforms the configured extensions", async () => {
     const plugin = barqVitePlugin();
-    expect(run(plugin, SOURCE, "/a/app.css").result).toBe(null);
-    expect(run(plugin, SOURCE, "/a/app.ts").result).toBe(null);
-    expect(run(plugin, SOURCE, "/node_modules/x/a.tsx").result).toBe(null);
+    expect((await run(plugin, SOURCE, "/a/app.css")).result).toBe(null);
+    expect((await run(plugin, SOURCE, "/a/app.ts")).result).toBe(null);
+    expect((await run(plugin, SOURCE, "/node_modules/x/a.tsx")).result).toBe(null);
   });
 
-  test("a client module emits template clones, not createElement", () => {
+  test("a client module emits template clones, not createElement", async () => {
     const plugin = barqVitePlugin();
-    const { result, warnings } = run(plugin, SOURCE, "/a/app.tsx");
+    const { result, warnings } = await run(plugin, SOURCE, "/a/app.tsx");
     expect(warnings).toEqual([]);
     expect(isCompiled(result?.code)).toBe(true);
     expect(result?.code).toContain("_$insert(");
     expect(result?.map).toBeTruthy();
   });
 
-  test("an SSR module takes the string backend", () => {
+  test("an SSR module takes the string backend", async () => {
     // `ssr` is per MODULE: Vite transforms the same file twice and only this
     // argument says which build is running.
     const plugin = barqVitePlugin();
-    const { result, warnings } = run(plugin, SOURCE, "/a/app.tsx", { ssr: true });
+    const { result, warnings } = await run(plugin, SOURCE, "/a/app.tsx", { ssr: true });
     expect(result?.code).toContain("@barqjs/server");
     expect(result?.code).not.toContain("_$template(");
     expect(warnings).toEqual([]);
 
     // …and the client build of the SAME file still gets the DOM backend.
-    const client = run(plugin, SOURCE, "/a/app.tsx");
+    const client = await run(plugin, SOURCE, "/a/app.tsx");
     expect(isCompiled(client.result?.code)).toBe(true);
     expect(client.result?.code).toContain("_$template(");
   });
 
-  test("a missing native binary fails the build instead of degrading it", () => {
-    withoutTheNativePackage(() => {
+  test("a missing native binary fails the build instead of degrading it", async () => {
+    await withoutTheNativePackage(async () => {
       expect(loadNativeCompiler()).toBeUndefined();
 
       const plugin = barqVitePlugin();
-      expect(() => run(plugin, SOURCE, "/a/app.tsx")).toThrow(/@barqjs\/compiler-rs/);
+      expect(run(plugin, SOURCE, "/a/app.tsx")).rejects.toThrow(/@barqjs\/compiler-rs/);
       // …and it names the command that fixes it, because the binary is a build
       // artifact and "not built yet" is a state a fresh checkout is in.
-      expect(() => run(plugin, SOURCE, "/a/app.tsx")).toThrow(/compiler-rs build/);
+      expect(run(plugin, SOURCE, "/a/app.tsx")).rejects.toThrow(/compiler-rs build/);
     });
   });
 
-  test("the loader is usable again once the package resolves", () => {
+  test("the loader is usable again once the package resolves", async () => {
     resetNativeCompilerCache();
     expect(loadNativeCompiler()).toBeDefined();
   });
@@ -151,28 +154,28 @@ describe("barqVitePlugin", () => {
       const [state] = store({ rows: [] });
       export const V = () => <ul><For each={state.rows}>{(row) => <li>{row.name}</li>}</For></ul>;\n`;
 
-    test("a dev server run warns", () => {
+    test("a dev server run warns", async () => {
       const plugin = barqVitePlugin();
       configure(plugin, { command: "serve", mode: "development" });
-      const { warnings } = run(plugin, DEV_NOTE, "/a/app.tsx");
+      const { warnings } = await run(plugin, DEV_NOTE, "/a/app.tsx");
       expect(warnings.length).toBeGreaterThan(0);
       expect(warnings.join("\n")).toContain("DESIGN O3");
     });
 
-    test("a production build does not", () => {
+    test("a production build does not", async () => {
       const plugin = barqVitePlugin();
       configure(plugin, { command: "build", mode: "production" });
-      expect(run(plugin, DEV_NOTE, "/a/app.tsx").warnings).toEqual([]);
+      expect((await run(plugin, DEV_NOTE, "/a/app.tsx")).warnings).toEqual([]);
     });
 
-    test("an explicit dev option still wins over the derivation", () => {
+    test("an explicit dev option still wins over the derivation", async () => {
       const plugin = barqVitePlugin({ dev: true });
       configure(plugin, { command: "build", mode: "production" });
-      expect(run(plugin, DEV_NOTE, "/a/app.tsx").warnings.length).toBeGreaterThan(0);
+      expect((await run(plugin, DEV_NOTE, "/a/app.tsx")).warnings.length).toBeGreaterThan(0);
 
       const off = barqVitePlugin({ dev: false });
       configure(off, { command: "serve", mode: "development" });
-      expect(run(off, DEV_NOTE, "/a/app.tsx").warnings).toEqual([]);
+      expect((await run(off, DEV_NOTE, "/a/app.tsx")).warnings).toEqual([]);
     });
   });
 
@@ -192,8 +195,8 @@ describe("barqVitePlugin", () => {
       return plugin;
     }
 
-    test("a warning carries the byte offset Rollup's position argument wants", () => {
-      const { warnings, positions } = run(dev(), COERCED, "/a/app.tsx");
+    test("a warning carries the byte offset Rollup's position argument wants", async () => {
+      const { warnings, positions } = await run(dev(), COERCED, "/a/app.tsx");
       expect(warnings.length).toBe(1);
       expect(warnings[0]).toContain("BARQ001");
       expect(positions[0]).toBe(COERCED.indexOf("${count}") + 2);
@@ -207,42 +210,42 @@ describe("barqVitePlugin", () => {
       expect(warnings[0]).toMatch(/^BARQ001 warning: /);
     });
 
-    test("a suppression comment silences it and the codes are per-rule", () => {
+    test("a suppression comment silences it and the codes are per-rule", async () => {
       const silenced = COERCED.replace(
         "export const V",
         "// barq-ignore-next-line BARQ001 (this panel wants the source text)\nexport const V",
       );
-      expect(run(dev(), silenced, "/a/app.tsx").warnings).toEqual([]);
+      expect((await run(dev(), silenced, "/a/app.tsx")).warnings).toEqual([]);
 
       const wrong = silenced.replace("BARQ001", "BARQ005");
-      const { warnings } = run(dev(), wrong, "/a/app.tsx");
+      const { warnings } = await run(dev(), wrong, "/a/app.tsx");
       expect(warnings.join("\n")).toContain("BARQ001");
       expect(warnings.join("\n")).toContain("BARQ008");
     });
 
-    test("the severity map is one resolution, shared with the compiler", () => {
-      expect(run(dev({ checks: { BARQ001: "suppress" } }), COERCED, "/a/app.tsx").warnings).toEqual(
-        [],
-      );
-      const noted = run(dev({ checks: { BARQ001: "note" } }), COERCED, "/a/app.tsx");
+    test("the severity map is one resolution, shared with the compiler", async () => {
+      expect(
+        (await run(dev({ checks: { BARQ001: "suppress" } }), COERCED, "/a/app.tsx")).warnings,
+      ).toEqual([]);
+      const noted = await run(dev({ checks: { BARQ001: "note" } }), COERCED, "/a/app.tsx");
       expect(noted.warnings[0]).toContain("note:");
     });
 
-    test("an escalated code fails the build through this.error", () => {
-      expect(() => run(dev({ checks: { BARQ001: "error" } }), COERCED, "/a/app.tsx")).toThrow(
+    test("an escalated code fails the build through this.error", async () => {
+      expect(run(dev({ checks: { BARQ001: "error" } }), COERCED, "/a/app.tsx")).rejects.toThrow(
         /BARQ001/,
       );
       // …and nothing escalates by default, which is the whole point.
-      expect(() => run(dev(), COERCED, "/a/app.tsx")).not.toThrow();
+      expect((await run(dev(), COERCED, "/a/app.tsx")).result).not.toBeNull();
     });
 
-    test("the rules can be run on a production build for CI", () => {
+    test("the rules can be run on a production build for CI", async () => {
       const plugin = barqVitePlugin({ diagnostics: true });
       configure(plugin, { command: "build", mode: "production" });
-      expect(run(plugin, COERCED, "/a/app.tsx").warnings.length).toBe(1);
+      expect((await run(plugin, COERCED, "/a/app.tsx")).warnings.length).toBe(1);
     });
 
-    test("the panel client is a virtual module and never a production import", () => {
+    test("the panel client is a virtual module and never a production import", async () => {
       const plugin = dev();
       const resolve = plugin.resolveId as unknown as (id: string) => string | null;
       const load = plugin.load as unknown as (id: string) => string | null;
@@ -273,7 +276,7 @@ describe("barqVitePlugin", () => {
      * silences plugin warnings entirely in both modes. This payload owes Vite's
      * logger nothing.
      */
-    test("the panel is fed over a custom HMR event, independent of the logger", () => {
+    test("the panel is fed over a custom HMR event, independent of the logger", async () => {
       const sent: { event?: string; data?: unknown }[] = [];
       const plugin = dev();
       const configureServer = plugin.configureServer as unknown as (server: unknown) => void;
@@ -284,7 +287,7 @@ describe("barqVitePlugin", () => {
         },
       });
 
-      run(plugin, COERCED, "/a/app.tsx");
+      await run(plugin, COERCED, "/a/app.tsx");
       const last = sent.at(-1) as {
         event: string;
         data: { diagnostics: BarqDiagnostic[]; labels: Record<string, unknown[]> };
@@ -297,12 +300,12 @@ describe("barqVitePlugin", () => {
       expect(Object.keys(last.data.labels)).toEqual(["/a/app.tsx"]);
 
       // A file that stops reporting clears its own rows rather than accreting.
-      run(plugin, `export const V = () => <p>ok</p>;\n`, "/a/app.tsx");
+      await run(plugin, `export const V = () => <p>ok</p>;\n`, "/a/app.tsx");
       const cleared = sent.at(-1) as { data: { diagnostics: unknown[] } };
       expect(cleared.data.diagnostics).toEqual([]);
     });
 
-    test("the structured diagnostic survives the napi boundary intact", () => {
+    test("the structured diagnostic survives the napi boundary intact", async () => {
       const compiler = loadNativeCompiler()!;
       const result = compiler.transform(COERCED, {
         filename: "/a/app.tsx",
@@ -334,35 +337,35 @@ describe("barqVitePlugin", () => {
       `const n = signal(0);\n` +
       `export const V = () => <b id={n()} title={n()}>x</b>;\n`;
 
-    function build(options: Parameters<typeof barqVitePlugin>[0] = {}) {
+    async function build(options: Parameters<typeof barqVitePlugin>[0] = {}) {
       const plugin = barqVitePlugin(options);
       configure(plugin, { command: "build", mode: "production" });
-      return run(plugin, FUSED, "/a/app.tsx").result?.code ?? "";
+      return (await run(plugin, FUSED, "/a/app.tsx")).result?.code ?? "";
     }
 
-    test("the default is the optimising path", () => {
-      expect(build()).toContain("bindEffect");
-      expect(build({ optimize: 1 })).toBe(build());
+    test("the default is the optimising path", async () => {
+      expect(await build()).toContain("bindEffect");
+      expect(await build({ optimize: 1 })).toBe(await build());
     });
 
-    test("optimize 0 turns every optimisation off", () => {
+    test("optimize 0 turns every optimisation off", async () => {
       // `fuse` off means one effect per live prop, not none: there is no
       // runtime `setProp` dispatcher to hand a thunk to, so the effect around a
       // proven-live write belongs to the compiler at every level. What the
       // level decides is whether two props SHARE one.
-      const reference = build({ optimize: 0 });
+      const reference = await build({ optimize: 0 });
       expect(reference.match(/_\$bindEffect\(/g)).toHaveLength(2);
-      expect(build().match(/_\$bindEffect\(/g)).toHaveLength(1);
+      expect((await build()).match(/_\$bindEffect\(/g)).toHaveLength(1);
       // Each is a fused record of ONE, so its previous value is a scalar and
       // the compute returns it directly. The optimised build merges the two
       // into one record with positional fields.
       expect(reference).toContain(`if (_v$ !== _p$) _$setAttr(_el$1, "id", _v$);`);
       expect(reference).toContain(`if (_v$ !== _p$) _$setAttr(_el$1, "title", _v$);`);
-      expect(build()).toContain(`if (_v$.a !== _p$.a) _$setAttr(_el$1, "id", _v$.a);`);
-      expect(build()).toContain(`if (_v$.b !== _p$.b) _$setAttr(_el$1, "title", _v$.b);`);
+      expect(await build()).toContain(`if (_v$.a !== _p$.a) _$setAttr(_el$1, "id", _v$.a);`);
+      expect(await build()).toContain(`if (_v$.b !== _p$.b) _$setAttr(_el$1, "title", _v$.b);`);
     });
 
-    test("one pass can be flipped against an otherwise optimised build", () => {
+    test("one pass can be flipped against an otherwise optimised build", async () => {
       // The whole point of the axis: a differential failure bisects to one
       // pass. `fuse` off alone must move the output, and every other knob must
       // stay exactly where the level put it — reached here from both sides.
@@ -377,14 +380,16 @@ describe("barqVitePlugin", () => {
         "flow",
       ];
       const fromBelow = Object.fromEntries(everythingElse.map((name) => [name, true]));
-      expect(build({ passes: { fuse: false } })).toBe(build({ optimize: 0, passes: fromBelow }));
-      expect(build({ passes: { fuse: false } })).not.toBe(build());
+      expect(await build({ passes: { fuse: false } })).toBe(
+        await build({ optimize: 0, passes: fromBelow }),
+      );
+      expect(await build({ passes: { fuse: false } })).not.toBe(await build());
     });
 
-    test("a pass name this build does not have is reported, not ignored", () => {
+    test("a pass name this build does not have is reported, not ignored", async () => {
       const plugin = barqVitePlugin({ passes: { tempaltes: false } as never });
       configure(plugin, { command: "build", mode: "production" });
-      const { warnings } = run(plugin, FUSED, "/a/app.tsx");
+      const { warnings } = await run(plugin, FUSED, "/a/app.tsx");
       expect(warnings.join("\n")).toContain("tempaltes");
     });
   });
@@ -395,27 +400,27 @@ describe("barqVitePlugin", () => {
       `const n = signal(0);\n` +
       `export const V = () => <b id={n()}>x</b>;\n`;
 
-    function build(
+    async function build(
       options: Parameters<typeof barqVitePlugin>[0],
       transformOptions?: { ssr?: boolean },
     ) {
       const plugin = barqVitePlugin(options);
       configure(plugin, { command: "build", mode: "production" });
-      return run(plugin, SOURCE, "/a/app.tsx", transformOptions).result?.code ?? "";
+      return (await run(plugin, SOURCE, "/a/app.tsx", transformOptions)).result?.code ?? "";
     }
 
-    test("interp serialises the IR instead of emitting the walk", () => {
-      const code = build({ interp: true });
+    test("interp serialises the IR instead of emitting the walk", async () => {
+      const code = await build({ interp: true });
       expect(code).toContain('from "@barqjs/core/interp"');
       expect(code).toContain("_$interp(");
-      expect(build({})).not.toContain("/interp");
+      expect(await build({})).not.toContain("/interp");
     });
 
     // It is a DOM backend, so it has nothing to say about the server pass and
     // asking for it must not silently produce a module `renderToString` cannot
     // serialise.
-    test("the server pass still goes through the string backend", () => {
-      const code = build({ interp: true }, { ssr: true });
+    test("the server pass still goes through the string backend", async () => {
+      const code = await build({ interp: true }, { ssr: true });
       expect(code).not.toContain("/interp");
     });
   });
@@ -426,6 +431,119 @@ describe("barqVitePlugin", () => {
  * `barqRouter` uses for a route's split half and `@vitejs/plugin-vue` uses for
  * a SFC's `<style>`. `lang.css` is what makes Vite's own CSS pipeline claim it.
  */
+/**
+ * The shape most projects have: the tokens are in one file and the components
+ * import them. Without resolution every one of those calls is opaque and
+ * `@barqjs/css` evaluates it in the browser.
+ */
+describe("a value imported from another file", () => {
+  const DIR = join(tmpdir(), `barq-xfile-${process.pid}`);
+
+  beforeAll(() => {
+    mkdirSync(DIR, { recursive: true });
+    writeFileSync(join(DIR, "tokens.ts"), `export const BRAND = "var(--brand)";\n`);
+    writeFileSync(
+      join(DIR, "shared.ts"),
+      `import { createIn, layer } from "@barqjs/css";
+export const ui = layer("app");
+export const shared = createIn("app", { ring: { outlineWidth: "3px" } });
+`,
+    );
+  });
+  afterAll(() => rmSync(DIR, { recursive: true, force: true }));
+
+  /** The plugin context the resolver needs, over a real directory. */
+  function withResolver(): PluginContext & {
+    resolve(source: string): Promise<{ id: string; external: boolean } | null>;
+    addWatchFile(file: string): void;
+    watched: string[];
+  } {
+    const watched: string[] = [];
+    return {
+      warn() {},
+      error(message: string): never {
+        throw new Error(message);
+      },
+      resolve: async (source: string) =>
+        source.startsWith(".")
+          ? { id: join(DIR, source.replace(/^\.\//, "")), external: false }
+          : null,
+      addWatchFile: (file: string) => {
+        watched.push(file);
+      },
+      watched,
+    };
+  }
+
+  async function transform(
+    plugin: ReturnType<typeof barqVitePlugin>,
+    code: string,
+    context = withResolver(),
+  ): Promise<{ code: string; watched: string[] }> {
+    const hook = plugin.transform as unknown as (
+      this: unknown,
+      code: string,
+      id: string,
+    ) => Promise<TransformResult | null>;
+    const result = await hook.call(context, code, join(DIR, "card.tsx"));
+    return { code: (result as { code?: string } | null)?.code ?? "", watched: context.watched };
+  }
+
+  const CARD = `import { atomsIn } from "@barqjs/css";
+import { BRAND } from "./tokens.ts";
+import { shared, ui } from "./shared.ts";
+export const a = atomsIn("app", { color: BRAND });
+export const b = atomsIn("app", shared.ring);
+export const c = ui({ padding: 4 });
+`;
+
+  test("a token, a group and a layer binding all fold", async () => {
+    const { code } = await transform(barqVitePlugin(), CARD);
+    expect(code).not.toContain("atomsIn(");
+    expect(code).not.toContain("ui({");
+    expect(code).toContain("a-color_");
+    expect(code).toContain("a-outline-width_");
+  });
+
+  test("and the file each value came from is watched, so an edit retransforms this one", async () => {
+    const context = withResolver();
+    await transform(barqVitePlugin(), CARD, context);
+    expect(context.watched.some((file) => file.endsWith("tokens.ts"))).toBe(true);
+    expect(context.watched.some((file) => file.endsWith("shared.ts"))).toBe(true);
+  });
+
+  test("this module carries the stylesheet of everything it folded a value out of", async () => {
+    // Folding INLINES the value, which can leave the other module with no used
+    // export — and a bundler then drops it and the `import "….barq.css"` inside
+    // it. Measured on a four-file app: the JS named `a-outline-width_o01p2h`
+    // and the asset defined nothing.
+    const { code } = await transform(barqVitePlugin(), CARD);
+    expect(code).toContain(`import "${join(DIR, "shared.ts")}.barq.css"`);
+  });
+
+  test("and with it off, the call is left for the runtime", async () => {
+    const { code } = await transform(barqVitePlugin({ resolveImports: false }), CARD);
+    expect(code).toContain("atomsIn(");
+  });
+
+  test("a plugin with no resolver still compiles, it just folds less", async () => {
+    const plugin = barqVitePlugin();
+    const hook = plugin.transform as unknown as (
+      this: unknown,
+      code: string,
+      id: string,
+    ) => Promise<TransformResult | null>;
+    const bare = {
+      warn() {},
+      error(message: string): never {
+        throw new Error(message);
+      },
+    };
+    const result = await hook.call(bare, CARD, join(DIR, "card.tsx"));
+    expect((result as { code?: string } | null)?.code ?? "").toContain("atomsIn(");
+  });
+});
+
 describe("stylesheets", () => {
   const CSS_SOURCE = `import { css } from "@barqjs/css";
 export const card = css\`color: red\`;
@@ -441,9 +559,9 @@ export const card = css\`color: red\`;
     return hook.call(plugin, id);
   }
 
-  test("a block becomes a class and its CSS is served from the module's own id", () => {
+  test("a block becomes a class and its CSS is served from the module's own id", async () => {
     const plugin = barqVitePlugin();
-    const { result } = run(plugin, CSS_SOURCE, "/a/styles.ts");
+    const { result } = await run(plugin, CSS_SOURCE, "/a/styles.ts");
     const code = result?.code ?? "";
     expect(code).toContain('import "/a/styles.ts.barq.css"');
     expect(code).not.toContain("css`");
@@ -455,37 +573,35 @@ export const card = css\`color: red\`;
   });
 
   /** A stylesheet lives in a `.ts` module, which the extension list excludes. */
-  test("a module is transformed because it names the package, not because of its extension", () => {
+  test("a module is transformed because it names the package, not because of its extension", async () => {
     const plugin = barqVitePlugin();
-    expect(run(plugin, SOURCE, "/a/plain.ts").result).toBe(null);
-    expect(run(plugin, CSS_SOURCE, "/a/styles.ts").result).not.toBe(null);
+    expect((await run(plugin, SOURCE, "/a/plain.ts")).result).toBe(null);
+    expect((await run(plugin, CSS_SOURCE, "/a/styles.ts")).result).not.toBe(null);
   });
 
-  test("the id is claimed verbatim, so the query it is keyed by survives", () => {
+  test("the id is claimed verbatim, so the query it is keyed by survives", async () => {
     const plugin = barqVitePlugin();
-    expect(resolve(plugin, "/a/styles.ts.barq.css")).toBe(
-      "/a/styles.ts.barq.css",
-    );
+    expect(resolve(plugin, "/a/styles.ts.barq.css")).toBe("/a/styles.ts.barq.css");
     expect(resolve(plugin, "/a/styles.ts")).toBe(null);
   });
 
-  test("a module that wrote no CSS gets no import appended", () => {
+  test("a module that wrote no CSS gets no import appended", async () => {
     const plugin = barqVitePlugin();
-    const { result } = run(plugin, SOURCE, "/a/app.tsx");
+    const { result } = await run(plugin, SOURCE, "/a/app.tsx");
     expect(result?.code).not.toContain(".barq.css");
   });
 
-  test("an unknown stylesheet loads as empty rather than as undefined", () => {
+  test("an unknown stylesheet loads as empty rather than as undefined", async () => {
     const plugin = barqVitePlugin();
     expect(load(plugin, "/never/seen.ts.barq.css")).toBe("");
     expect(load(plugin, "/a/styles.ts")).toBe(null);
   });
 
-  test("a custom cssSource is what the import must name", () => {
+  test("a custom cssSource is what the import must name", async () => {
     const plugin = barqVitePlugin({ cssSource: "@acme/styles" });
-    expect(run(plugin, CSS_SOURCE, "/a/styles.ts").result).toBe(null);
+    expect((await run(plugin, CSS_SOURCE, "/a/styles.ts")).result).toBe(null);
     const renamed = CSS_SOURCE.replace("@barqjs/css", "@acme/styles");
-    expect(run(plugin, renamed, "/a/styles.ts").result?.code).toContain(".barq.css");
+    expect((await run(plugin, renamed, "/a/styles.ts")).result?.code).toContain(".barq.css");
   });
 });
 
@@ -506,17 +622,17 @@ export const card = css\`color: red\`;
     return hook.call(plugin, id);
   }
 
-  test("a build serves the CSS as an asset the module imports", () => {
+  test("a build serves the CSS as an asset the module imports", async () => {
     const plugin = barqVitePlugin({ dev: false });
-    const code = run(plugin, CSS_SOURCE, "/a/styles.ts").result?.code ?? "";
+    const code = (await run(plugin, CSS_SOURCE, "/a/styles.ts")).result?.code ?? "";
     expect(code).toContain('import "/a/styles.ts.barq.css"');
     expect(code).not.toContain("registerCss");
     expect(load(plugin, "/a/styles.ts.barq.css")).toContain("color: red");
   });
 
-  test("dev carries the rules in the module, keyed by its id", () => {
+  test("dev carries the rules in the module, keyed by its id", async () => {
     const plugin = barqVitePlugin({ dev: true });
-    const code = run(plugin, CSS_SOURCE, "/a/styles.ts").result?.code ?? "";
+    const code = (await run(plugin, CSS_SOURCE, "/a/styles.ts")).result?.code ?? "";
     expect(code).toContain('import { registerCss as _$registerCss } from "@barqjs/css"');
     // Keyed by the stylesheet's id, which carries the module's query: a split
     // route is two modules that differ only by `?barq-split`, and keying on the
@@ -525,17 +641,17 @@ export const card = css\`color: red\`;
     expect(code).toContain("color: red");
   });
 
-  test("the mode can be forced against the environment", () => {
+  test("the mode can be forced against the environment", async () => {
     const asAsset = barqVitePlugin({ dev: true, cssMode: "asset" });
-    expect(run(asAsset, CSS_SOURCE, "/a/styles.ts").result?.code).toContain(".barq.css");
+    expect((await run(asAsset, CSS_SOURCE, "/a/styles.ts")).result?.code).toContain(".barq.css");
     const asInline = barqVitePlugin({ dev: false, cssMode: "inline" });
-    expect(run(asInline, CSS_SOURCE, "/a/styles.ts").result?.code).toContain("registerCss");
+    expect((await run(asInline, CSS_SOURCE, "/a/styles.ts")).result?.code).toContain("registerCss");
   });
 
-  test("the registration names the configured package, not a hard-coded one", () => {
+  test("the registration names the configured package, not a hard-coded one", async () => {
     const plugin = barqVitePlugin({ dev: true, cssSource: "@acme/styles" });
-    const code = run(plugin, CSS_SOURCE.replace("@barqjs/css", "@acme/styles"), "/a/s.ts").result
-      ?.code;
+    const code = (await run(plugin, CSS_SOURCE.replace("@barqjs/css", "@acme/styles"), "/a/s.ts"))
+      .result?.code;
     expect(code).toContain('from "@acme/styles"');
   });
   /**
@@ -544,12 +660,12 @@ export const card = css\`color: red\`;
    * whichever transformed last won — measured in a browser as a route whose
    * markup carried every class against a 36-byte sheet.
    */
-  test("the two halves of a split route get their own stylesheets", () => {
+  test("the two halves of a split route get their own stylesheets", async () => {
     const plugin = barqVitePlugin({ dev: false });
     const reference = `import { globalCss } from "@barqjs/css";\nglobalCss\`body { margin: 0 }\`;\n`;
     const split = `import { css } from "@barqjs/css";\nexport const box = css\`color: red\`;\n`;
-    run(plugin, reference, "/a/route.tsx");
-    run(plugin, split, "/a/route.tsx?barq-split");
+    await run(plugin, reference, "/a/route.tsx");
+    await run(plugin, split, "/a/route.tsx?barq-split");
 
     const load = plugin.load as unknown as (id: string) => string | null;
     expect(load.call(plugin, "/a/route.tsx.barq.css")).toBe("body{margin: 0}");

@@ -22,11 +22,13 @@ use oxc::ast_visit::VisitMut;
 use oxc::ast_visit::walk_mut::{walk_expression, walk_statements, walk_variable_declarator};
 use oxc::semantic::{Scoping, SemanticBuilder, SymbolId};
 use oxc::span::{GetSpan, Span};
+use std::cell::RefCell;
+
 use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::analysis::without_type_wrappers;
 use crate::diag::Code;
-use crate::options::ResolvedOptions;
+use crate::options::{ImportedValue, ResolvedOptions};
 
 /// What one of the three tags compiles to.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -79,6 +81,24 @@ pub struct Extracted {
     /// This module's stylesheet, or empty when it produced none.
     pub css: String,
     pub reports: Vec<Report>,
+    /// `[specifier, exported name]` for every imported binding a fold needed
+    /// and did not have. Empty when the module folded on its own, which is the
+    /// point: an integration pays for resolution only where it buys something.
+    pub wanted: Vec<(String, String)>,
+    /// `[exported name, kind, member, value]` for every module-level binding
+    /// this pass resolved, so a module importing one can be handed it.
+    pub exports: Vec<(String, Resolved)>,
+}
+
+/// A value one module exports and another can fold against.
+#[derive(Debug, Clone)]
+pub enum Resolved {
+    /// A string, a number's text, or a class this pass generated.
+    Text(String),
+    /// A `create` group or a `defineVars` token set, as `(member, value)`.
+    Group(Vec<(String, String)>),
+    /// A `layer("…")` binding, as the layer it names.
+    Layer(String),
 }
 
 pub struct Report {
@@ -103,15 +123,30 @@ pub fn run<'a>(
     // unresolved and the pass silently does nothing.
     let scoping = SemanticBuilder::new().build(program).semantic.into_scoping();
     let tags = imported_tags(program, &options.css_source);
-    if tags.is_empty() {
-        return Extracted { css: String::new(), reports: Vec::new() };
+    // A module with no tag of ours writes no CSS — but it can still EXPORT the
+    // constant another module folds against, and `tokens.ts` holding
+    // `export const BRAND = "var(--brand)"` is exactly that file. So the seed
+    // still runs when a caller asked for the exports, and only the rewrite is
+    // skipped.
+    if tags.is_empty() && !options.css_exports {
+        return Extracted {
+            css: String::new(),
+            reports: Vec::new(),
+            wanted: Vec::new(),
+            exports: Vec::new(),
+        };
     }
+    let rewrite = !tags.is_empty();
 
     let mut pass = Css {
         allocator,
         ast: AstBuilder::new(allocator),
         scoping: &scoping,
         tags,
+        imports: imported_bindings(program, &options.css_source),
+        resolved: options.css_imports.clone(),
+        wanted: RefCell::new(Vec::new()),
+        exported: FxHashMap::default(),
         folded: FxHashMap::default(),
         numeric: FxHashSet::default(),
         groups: FxHashMap::default(),
@@ -123,8 +158,16 @@ pub fn run<'a>(
         name: None,
     };
     pass.seed_module_constants(program);
-    pass.visit_program(program);
-    Extracted { css: gather_layers(&pass.css), reports: pass.reports }
+    if rewrite {
+        pass.visit_program(program);
+    }
+    let exports = pass.resolved_exports();
+    Extracted {
+        css: gather_layers(&pass.css),
+        reports: pass.reports,
+        wanted: pass.wanted.into_inner(),
+        exports,
+    }
 }
 
 struct Css<'a, 'b> {
@@ -151,6 +194,24 @@ struct Css<'a, 'b> {
     /// that layer. The literal is read HERE, in the module that names it, which
     /// is what keeps the pass per-file.
     layers: FxHashMap<SymbolId, String>,
+    /// What each import binding names, so a value this module cannot see can be
+    /// ASKED for by name. `[[specifier, exported name]]`, and the integration
+    /// resolves them.
+    ///
+    /// The pass stays a pure function of its inputs: it reads no file, it only
+    /// says which one it would have to. That is the difference between this and
+    /// StyleX's global rule store — a name resolves to the same value in dev
+    /// and in a build, where an aggregate over every module does not.
+    imports: FxHashMap<SymbolId, (String, String)>,
+    /// What an integration resolved those to, if it resolved any.
+    resolved: Vec<(String, String, ImportedValue)>,
+    /// Of those, the ones a lookup actually missed. Interior mutability because
+    /// the reading half of the pass is `&self` all the way down, and a miss is
+    /// a fact about the read rather than a change to the fold.
+    wanted: RefCell<Vec<(String, String)>>,
+    /// The name each module-level binding is exported under, so what this pass
+    /// resolved can be handed to the modules that import it.
+    exported: FxHashMap<SymbolId, String>,
     debug: bool,
     css: String,
     /// One rule per class, however many times the module writes the block.
@@ -456,6 +517,8 @@ impl<'a> Css<'a, '_> {
     fn seed_module_constants(&mut self, program: &Program<'a>) {
         let mut pending: Vec<(SymbolId, &Expression<'a>)> = Vec::new();
         let mut bindings: Vec<(SymbolId, &Expression<'a>)> = Vec::new();
+        self.collect_exports(program);
+        self.seed_resolved_imports();
         for statement in &program.body {
             let declaration = match statement {
                 Statement::VariableDeclaration(declaration) => &**declaration,
@@ -558,6 +621,113 @@ impl<'a> Css<'a, '_> {
                 _ => {}
             }
         }
+    }
+
+    /// What an integration resolved this module's imports to.
+    ///
+    /// Seeded exactly where a local binding is, so an imported group and a
+    /// group declared here fold by the same path and there is no second rule
+    /// for a reader to know. Nothing is EMITTED for them: the module that
+    /// declares a group emits its rules when it is itself compiled, and this
+    /// one only needs the names.
+    fn seed_resolved_imports(&mut self) {
+        if self.resolved.is_empty() {
+            return;
+        }
+        let bindings: Vec<(SymbolId, (String, String))> =
+            self.imports.iter().map(|(symbol, entry)| (*symbol, entry.clone())).collect();
+        for (symbol, (specifier, name)) in bindings {
+            let Some((.., value)) = self
+                .resolved
+                .iter()
+                .find(|(from, exported, _)| *from == specifier && *exported == name)
+            else {
+                continue;
+            };
+            match value {
+                ImportedValue::Text(text) => {
+                    self.folded.insert(symbol, text.clone());
+                }
+                ImportedValue::Group(members) => {
+                    self.groups.insert(symbol, members.iter().cloned().collect());
+                }
+                ImportedValue::Layer(layer) => {
+                    self.layers.insert(symbol, layer.clone());
+                }
+            }
+        }
+    }
+
+    /// The name each module-level binding is exported under.
+    ///
+    /// Both spellings: `export const x = …` and `export { x as y }`. Only what
+    /// is exported, because only what is exported can be imported, and a
+    /// module's private constants are nobody else's business.
+    fn collect_exports(&mut self, program: &Program<'a>) {
+        for statement in &program.body {
+            match statement {
+                Statement::ExportDeclaration(export) => {
+                    let oxc::ast::ast::Declaration::VariableDeclaration(declaration) =
+                        &export.declaration
+                    else {
+                        continue;
+                    };
+                    for declarator in &declaration.declarations {
+                        if let Some(id) = declarator.id.get_binding_identifier()
+                            && let Some(symbol) = id.symbol_id.get()
+                        {
+                            self.exported.insert(symbol, id.name.to_string());
+                        }
+                    }
+                }
+                Statement::ExportNamedDeclaration(export) => {
+                    for specifier in &export.specifiers {
+                        let ModuleExportName::IdentifierReference(local) = &specifier.local else {
+                            continue;
+                        };
+                        let name = match &specifier.exported {
+                            ModuleExportName::IdentifierName(name) => name.name.to_string(),
+                            ModuleExportName::StringLiteral(literal) => literal.value.to_string(),
+                            ModuleExportName::IdentifierReference(reference) => {
+                                reference.name.to_string()
+                            }
+                        };
+                        if let Some(symbol) = local
+                            .reference_id
+                            .get()
+                            .and_then(|id| self.scoping.get_reference(id).symbol_id())
+                        {
+                            self.exported.insert(symbol, name);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// What this module exports that another can fold against.
+    ///
+    /// Read AFTER the walk, so a `create` group and a `css` block's class are
+    /// the values the rewrite produced rather than the calls that produced
+    /// them.
+    fn resolved_exports(&self) -> Vec<(String, Resolved)> {
+        let mut out = Vec::new();
+        for (symbol, name) in &self.exported {
+            if let Some(layer) = self.layers.get(symbol) {
+                out.push((name.clone(), Resolved::Layer(layer.clone())));
+            } else if let Some(group) = self.groups.get(symbol) {
+                let mut members: Vec<(String, String)> =
+                    group.iter().map(|(key, value)| (key.clone(), value.clone())).collect();
+                // Stable, so two builds of one file hand over the same bytes.
+                members.sort_by(|a, b| a.0.cmp(&b.0));
+                out.push((name.clone(), Resolved::Group(members)));
+            } else if let Some(text) = self.folded.get(symbol) {
+                out.push((name.clone(), Resolved::Text(text.clone())));
+            }
+        }
+        out.sort_by(|a, b| a.0.cmp(&b.0));
+        out
     }
 
     /// One reason this call is going to the runtime, said out loud.
@@ -1405,13 +1575,19 @@ impl<'a> Css<'a, '_> {
             Expression::StringLiteral(literal) => literal.value.to_string(),
             Expression::StaticMemberExpression(member) => {
                 let symbol = crate::analysis::symbol_of(self.scoping, &member.object)?;
-                self.groups.get(&symbol)?.get(member.property.name.as_str())?.clone()
+                match self.groups.get(&symbol) {
+                    Some(group) => group.get(member.property.name.as_str())?.clone(),
+                    None => return self.miss(symbol).map(|_| Vec::new()),
+                }
             }
             // A `const` in this module holding a class string, which is what
             // every folded `atoms` call above it has become.
             Expression::Identifier(_) => {
                 let symbol = crate::analysis::symbol_of(self.scoping, expression)?;
-                self.folded.get(&symbol)?.clone()
+                match self.folded.get(&symbol) {
+                    Some(text) => text.clone(),
+                    None => return self.miss(symbol).map(|_| Vec::new()),
+                }
             }
             _ => return None,
         };
@@ -1596,7 +1772,10 @@ impl<'a> Css<'a, '_> {
     fn layer_of(&self, callee: &Expression<'_>) -> Option<String> {
         let Expression::Identifier(identifier) = without_type_wrappers(callee) else { return None };
         let symbol = self.scoping.get_reference(identifier.reference_id.get()?).symbol_id()?;
-        self.layers.get(&symbol).cloned()
+        match self.layers.get(&symbol) {
+            Some(layer) => Some(layer.clone()),
+            None => self.miss(symbol),
+        }
     }
 
     /// One argument as text, which is what a layer name has to be.
@@ -1692,6 +1871,21 @@ impl<'a> Css<'a, '_> {
             .is_some_and(|symbol| self.numeric.contains(&symbol))
     }
 
+    /// A lookup that missed on an IMPORTED binding, remembered by name.
+    ///
+    /// `None` either way — the pass declines exactly as it did — but the module
+    /// now says what it would have needed, which is what lets an integration
+    /// hand it over and the fold happen on a second pass.
+    fn miss(&self, symbol: SymbolId) -> Option<String> {
+        if let Some(entry) = self.imports.get(&symbol) {
+            let mut wanted = self.wanted.borrow_mut();
+            if !wanted.contains(entry) {
+                wanted.push(entry.clone());
+            }
+        }
+        None
+    }
+
     fn text_of(&self, expression: &Expression<'_>) -> Option<String> {
         match without_type_wrappers(expression) {
             Expression::StringLiteral(literal) => Some(literal.value.to_string()),
@@ -1710,7 +1904,10 @@ impl<'a> Css<'a, '_> {
             Expression::Identifier(identifier) => {
                 let symbol =
                     self.scoping.get_reference(identifier.reference_id.get()?).symbol_id()?;
-                self.folded.get(&symbol).cloned()
+                match self.folded.get(&symbol) {
+                    Some(text) => Some(text.clone()),
+                    None => self.miss(symbol),
+                }
             }
             // `theme.brand` — a token set or a `create` group this module
             // produced, whose values are strings by the time the walk gets
@@ -1718,7 +1915,10 @@ impl<'a> Css<'a, '_> {
             // runtime, which is the one thing tokens exist to avoid.
             Expression::StaticMemberExpression(member) => {
                 let symbol = crate::analysis::symbol_of(self.scoping, &member.object)?;
-                self.groups.get(&symbol)?.get(member.property.name.as_str()).cloned()
+                match self.groups.get(&symbol) {
+                    Some(group) => group.get(member.property.name.as_str()).cloned(),
+                    None => self.miss(symbol),
+                }
             }
             _ => None,
         }
@@ -1906,6 +2106,50 @@ fn expand_atoms(
             .collect(),
         None => vec![barq_css::atoms::atom_in(layer, property, condition, value)],
     }
+}
+
+/// What every OTHER import binding names: `symbol -> (specifier, exported name)`.
+///
+/// Everything except `@barqjs/css` itself, whose names are the tags. A default
+/// import is `default` and a namespace import is `*`, spelled the way an
+/// integration would have to ask for them.
+fn imported_bindings(
+    program: &Program<'_>,
+    css_source: &str,
+) -> FxHashMap<SymbolId, (String, String)> {
+    let mut out = FxHashMap::default();
+    for statement in &program.body {
+        let Statement::ImportDeclaration(declaration) = statement else { continue };
+        let specifier = declaration.source.value.as_str();
+        if specifier == css_source {
+            continue;
+        }
+        let Some(specifiers) = declaration.specifiers.as_ref() else { continue };
+        for entry in specifiers {
+            let (name, local) = match entry {
+                ImportDeclarationSpecifier::ImportSpecifier(imported) => {
+                    let name = match &imported.imported {
+                        ModuleExportName::IdentifierName(name) => name.name.to_string(),
+                        ModuleExportName::StringLiteral(literal) => literal.value.to_string(),
+                        ModuleExportName::IdentifierReference(reference) => {
+                            reference.name.to_string()
+                        }
+                    };
+                    (name, &imported.local)
+                }
+                ImportDeclarationSpecifier::ImportDefaultSpecifier(imported) => {
+                    ("default".to_string(), &imported.local)
+                }
+                ImportDeclarationSpecifier::ImportNamespaceSpecifier(imported) => {
+                    ("*".to_string(), &imported.local)
+                }
+            };
+            if let Some(symbol) = local.symbol_id.get() {
+                out.insert(symbol, (specifier.to_string(), name));
+            }
+        }
+    }
+    out
 }
 
 /// The local symbols `css` / `keyframes` / `globalCss` were imported as.
@@ -2723,6 +2967,182 @@ mod decline_tests {
             "const ui = layer(\"barq.ui\");\nexport const a = ui({ color: \"red\" });\nexport const g = createIn(\"barq.ui\", { r: { padding: 8 } });",
         );
         assert!(out.warnings.iter().all(|warning| warning.code.is_none()), "{:?}", codes(&out));
+    }
+}
+
+#[cfg(test)]
+mod cross_file_tests {
+    use crate::compile::{CompileOutput, compile};
+    use crate::css::Resolved;
+    use crate::options::{ResolvedOptions, TransformOptions};
+
+    fn run(body: &str, imports: Vec<Vec<String>>, exports: bool) -> CompileOutput {
+        let options = TransformOptions {
+            filename: Some("card.tsx".to_string()),
+            css_imports: Some(imports),
+            css_exports: Some(exports),
+            ..TransformOptions::default()
+        };
+        compile(body, &options.resolve()).expect("compiles")
+    }
+
+    fn plain(body: &str) -> CompileOutput {
+        compile(body, &ResolvedOptions::with_filename("m.ts")).expect("compiles")
+    }
+
+    fn rows(out: &CompileOutput, specifier: &str) -> Vec<Vec<String>> {
+        let mut rows = Vec::new();
+        for (name, value) in &out.css_exports {
+            match value {
+                Resolved::Text(text) => rows.push(vec![
+                    specifier.to_string(),
+                    name.clone(),
+                    "text".to_string(),
+                    String::new(),
+                    text.clone(),
+                ]),
+                Resolved::Layer(layer) => rows.push(vec![
+                    specifier.to_string(),
+                    name.clone(),
+                    "layer".to_string(),
+                    String::new(),
+                    layer.clone(),
+                ]),
+                Resolved::Group(members) => {
+                    for (member, class) in members {
+                        rows.push(vec![
+                            specifier.to_string(),
+                            name.clone(),
+                            "group".to_string(),
+                            member.clone(),
+                            class.clone(),
+                        ]);
+                    }
+                }
+            }
+        }
+        rows
+    }
+
+    const CARD: &str = "import { atomsIn } from \"@barqjs/css\";\n\
+                        import { theme } from \"./theme.ts\";\n\
+                        import { BRAND } from \"./tokens.ts\";\n\
+                        import { shared, ui } from \"./shared.ts\";\n\
+                        export const a = atomsIn(\"app\", { color: theme.brand, borderColor: BRAND });\n\
+                        export const b = atomsIn(\"app\", shared.ring);\n\
+                        export const c = ui({ padding: 4 });";
+
+    /// The pass reads no file. It says which one it would have to, and folds
+    /// what it is handed — which is what keeps it a pure function of its inputs
+    /// and a name resolving to the same value in dev and in a build.
+    #[test]
+    fn a_module_says_which_imports_a_fold_would_have_needed() {
+        let out = run(CARD, Vec::new(), false);
+        assert!(out.css_wanted.contains(&("./theme.ts".to_string(), "theme".to_string())));
+        assert!(out.css_wanted.contains(&("./shared.ts".to_string(), "shared".to_string())));
+        assert!(out.css_wanted.contains(&("./shared.ts".to_string(), "ui".to_string())));
+        assert!(out.code.contains("atomsIn("), "it folded without an answer: {}", out.code);
+    }
+
+    /// A module that folds on its own asks for nothing, so an integration pays
+    /// for resolution only where it buys a fold.
+    #[test]
+    fn a_module_that_folds_asks_for_nothing() {
+        let out = run(
+            "import { atomsIn } from \"@barqjs/css\";\nexport const a = atomsIn(\"app\", { color: \"red\" });",
+            Vec::new(),
+            false,
+        );
+        assert!(out.css_wanted.is_empty(), "{:?}", out.css_wanted);
+    }
+
+    /// A token set, a plain constant, a group and a layer binding: the four
+    /// shapes a file exports that another can fold against.
+    #[test]
+    fn every_shape_crosses_the_boundary_and_folds() {
+        let mut imports = Vec::new();
+        imports.extend(rows(
+            &plain(
+                "import { defineVars } from \"@barqjs/css\";\n\
+                 export const theme = defineVars({ brand: \"#3b82f6\" });",
+            ),
+            "./theme.ts",
+        ));
+        imports.extend(rows(
+            &run("export const BRAND = \"var(--brand)\";", Vec::new(), true),
+            "./tokens.ts",
+        ));
+        imports.extend(rows(
+            &plain(
+                "import { createIn, layer } from \"@barqjs/css\";\n\
+                 export const ui = layer(\"app\");\n\
+                 export const shared = createIn(\"app\", { ring: { outlineWidth: \"3px\" } });",
+            ),
+            "./shared.ts",
+        ));
+
+        let out = run(CARD, imports, false);
+        assert!(!out.code.contains("atomsIn("), "a call survived: {}", out.code);
+        assert!(!out.code.contains("ui({"), "the layer binding survived: {}", out.code);
+        assert!(out.css_wanted.is_empty(), "{:?}", out.css_wanted);
+        let css = out.css.as_deref().unwrap_or_default();
+        // The token's `var()` is the one the OTHER module named.
+        assert!(css.contains("color:var(--brand-"), "{css}");
+        assert!(css.contains("border-top-color:var(--brand)"), "{css}");
+        // A group's rules stay where they were declared; only its names cross.
+        assert!(!css.contains("outline-width"), "the group was re-emitted: {css}");
+        assert!(out.code.contains("a-outline-width_"), "{}", out.code);
+        // And the layer binding put this module's own atoms in the layer.
+        assert!(css.contains("@layer app{"), "{css}");
+    }
+
+    /// A file that writes no CSS still exports the constant another folds
+    /// against, and `tokens.ts` holding a `var()` string is exactly that file.
+    #[test]
+    fn a_file_with_no_css_of_its_own_still_reports_its_constants() {
+        let out = run(
+            "export const BRAND = \"var(--brand)\";\nconst PRIVATE = \"var(--x)\";",
+            Vec::new(),
+            true,
+        );
+        assert_eq!(out.css_exports.len(), 1, "{:?}", out.css_exports);
+        assert_eq!(out.css_exports[0].0, "BRAND");
+        // A module's private constants are nobody else's business.
+        assert!(!out.css_exports.iter().any(|(name, _)| name == "PRIVATE"));
+        // And without the flag it is not compiled at all.
+        assert!(
+            run("export const BRAND = \"var(--brand)\";", Vec::new(), false).css_exports.is_empty()
+        );
+    }
+
+    /// A row this build does not understand is dropped rather than guessed at,
+    /// so the fold declines exactly as it would have. Folding a value the other
+    /// side did not mean would name a class no rule was emitted for.
+    #[test]
+    fn a_row_of_an_unknown_kind_is_ignored() {
+        let out = run(
+            "import { atomsIn } from \"@barqjs/css\";\n\
+             import { BRAND } from \"./tokens.ts\";\n\
+             export const a = atomsIn(\"app\", { color: BRAND });",
+            vec![vec![
+                "./tokens.ts".to_string(),
+                "BRAND".to_string(),
+                "whatever".to_string(),
+                String::new(),
+                "var(--brand)".to_string(),
+            ]],
+            false,
+        );
+        assert!(out.code.contains("atomsIn("), "{}", out.code);
+    }
+
+    /// `export { x as y }` is the other spelling, and an importer asks for `y`.
+    #[test]
+    fn a_renamed_export_crosses_under_the_name_it_is_exported_as() {
+        let out =
+            run("const inner = \"var(--brand)\";\nexport { inner as BRAND };", Vec::new(), true);
+        assert_eq!(out.css_exports.len(), 1, "{:?}", out.css_exports);
+        assert_eq!(out.css_exports[0].0, "BRAND");
     }
 }
 

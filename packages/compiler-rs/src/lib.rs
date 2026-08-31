@@ -89,6 +89,39 @@ pub struct TransformResult {
     /// dev invalidation, the production asset and SSR collection — and one file
     /// edited invalidates one file's CSS.
     pub css: Option<String>,
+    /// `[specifier, exported name]` for every imported binding a fold needed
+    /// and did not have.
+    ///
+    /// Empty when the module folded on its own, which is the point: an
+    /// integration resolves these and calls `transform` again with
+    /// `cssImports`, so it pays for resolution only where it buys a fold.
+    pub css_wanted: Vec<Vec<String>>,
+    /// `[exported name, kind, member, value]` for what this module exports that
+    /// another can fold against, under `cssExports: true` or whenever the
+    /// module writes CSS. `kind` is `text`, `group` or `layer`.
+    pub css_exports: Vec<Vec<String>>,
+}
+
+/// A module's resolved exports as flat rows, because napi has no map type and a
+/// JSON string would put a parser on both sides of the boundary.
+fn css_export_rows(exports: Vec<(String, crate::css::Resolved)>) -> Vec<Vec<String>> {
+    let mut out = Vec::new();
+    for (name, value) in exports {
+        match value {
+            crate::css::Resolved::Text(text) => {
+                out.push(vec![name, "text".to_string(), String::new(), text]);
+            }
+            crate::css::Resolved::Layer(layer) => {
+                out.push(vec![name, "layer".to_string(), String::new(), layer]);
+            }
+            crate::css::Resolved::Group(members) => {
+                for (member, class) in members {
+                    out.push(vec![name.clone(), "group".to_string(), member, class]);
+                }
+            }
+        }
+    }
+    out
 }
 
 fn js_diagnostic(diagnostic: &Diagnostic) -> JsDiagnostic {
@@ -168,6 +201,12 @@ pub fn transform(code: String, options: Option<Object>) -> napi::Result<Transfor
             addresses: output.addresses,
             server_fns: output.server_fns,
             css: output.css,
+            css_wanted: output
+                .css_wanted
+                .into_iter()
+                .map(|(specifier, name)| vec![specifier, name])
+                .collect(),
+            css_exports: css_export_rows(output.css_exports),
         }),
         Err(diagnostics) => Err(napi::Error::from_reason(format!(
             "[barq-compiler] {}\n{}",

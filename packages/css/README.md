@@ -324,6 +324,57 @@ pure string work: base first so a variant can override it, then the axes, then
 compound arms last so a combination wins over what it refines. Selections are
 typed against the groups, so `button({ size: "md" })` does not compile.
 
+## A value from another file
+
+Most projects put the tokens in one file and import them, and share treatments
+the same way. All of it folds:
+
+```ts
+// tokens.ts — no `@barqjs/css` in it at all
+export const BRAND = "var(--brand)";
+
+// theme.ts
+export const theme = defineVars({ brand: "#3b82f6" });
+
+// shared.ts
+export const ui = layer("app");
+export const shared = createIn("app", { ring: { outlineWidth: "3px" } });
+
+// card.tsx — every one of these is a literal after the build
+const a = atomsIn("app", { color: theme.brand, borderColor: BRAND });
+const b = atomsIn("app", shared.ring, { padding: 12 });
+const c = ui({ padding: 4 });
+```
+
+**The compiler still reads no file.** It reports which binding a fold would have
+needed, `@barqjs/compiler/vite` resolves that one module and compiles again with
+the answer, so `transform` stays a pure function of its inputs and a name means
+the same thing in dev and in a build. That is what separates it from StyleX,
+whose `@layer priority1 … priorityN` is derived from every rule in the project
+and needs a store shared across the client, SSR and RSC environments to exist at
+all. It is also not vanilla-extract's answer, which is to start a second Vite
+server and _execute_ the `.css.ts` file — the reason that file has to be a
+different kind of file from one that ships.
+
+Costs one extra compile per imported file, cached by path and mtime, and only
+for the files something asked for. `resolveImports: false` turns it off.
+
+Two things follow from it and are worth knowing.
+
+- **A module you fold a value out of may be dropped.** Inlining its value can
+  leave it with no used export, and a bundler then drops the module and the
+  stylesheet import inside it. The consumer carries that stylesheet instead, so
+  the rules a class on the page needs are still there.
+- **Under `bun test` there is no integration**, so those calls fall back to the
+  runtime, which computes the same class names. Nothing diverges; only the CSS
+  arrives through `<style id="barq-css">` rather than an asset, which is already
+  true of every block in dev.
+
+A token set that crosses as a plain object of `var()` strings needs none of
+this, and is what `@barqjs/ui` does: `tokens.ts` there is hand-written
+`"var(--primary)"` rather than `defineVars`, so an application can bring its own
+`:root` and the package is not a closed system.
+
 ## Two helpers the compiler is not involved in
 
 ```ts
@@ -436,10 +487,9 @@ Left to run, and why:
 - **A dynamic value.** A colour from a signal is not knowable at build time,
   which is why it becomes a custom property.
 - **`clsx` and `cssVar`** are pure string functions over runtime values.
-- **`createTheme` on an IMPORTED token set**, and any interpolation naming
-  another module. `transform` is per-file and holds no cross-file state, which
-  is what keeps dev and build identical. A local token set compiles, and to the
-  class the runtime would have named.
+- **A value from a module the integration cannot resolve.** See below: with
+  `@barqjs/compiler/vite` an imported token, group or layer binding folds, and
+  what is left is a specifier nothing on disk answers for.
 - **`atoms` with two or more conditional arguments** (`BARQ016`). Four outcomes,
   then eight, and a nested ternary over eight class strings is larger than the
   runtime call it replaces.

@@ -163,6 +163,54 @@ impl Opt {
     }
 }
 
+/// What one import resolved to, on the way in from an integration.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ImportedValue {
+    /// A string, a number's text, or a class the other module generated.
+    Text(String),
+    /// A `create` group or a `defineVars` token set, as `(member, value)`.
+    Group(Vec<(String, String)>),
+    /// A `layer("…")` binding, as the layer it names.
+    Layer(String),
+}
+
+impl ImportedValue {
+    /// `[specifier, name, kind, member, value]` rows, gathered by name.
+    ///
+    /// A row this build does not understand is DROPPED rather than guessed at:
+    /// the fold then declines exactly as it would have, which is the safe
+    /// direction. Folding a value the other side did not mean would produce a
+    /// class no rule was emitted for.
+    fn parse(rows: Vec<Vec<String>>) -> Vec<(String, String, ImportedValue)> {
+        let mut out: Vec<(String, String, ImportedValue)> = Vec::new();
+        for row in rows {
+            let [specifier, name, kind, member, value] = row.as_slice() else { continue };
+            let key =
+                |entry: &(String, String, ImportedValue)| entry.0 == *specifier && entry.1 == *name;
+            match kind.as_str() {
+                "text" => {
+                    out.push((specifier.clone(), name.clone(), ImportedValue::Text(value.clone())))
+                }
+                "layer" => {
+                    out.push((specifier.clone(), name.clone(), ImportedValue::Layer(value.clone())))
+                }
+                "group" => match out.iter_mut().find(|entry| key(entry)) {
+                    Some((.., ImportedValue::Group(members))) => {
+                        members.push((member.clone(), value.clone()));
+                    }
+                    _ => out.push((
+                        specifier.clone(),
+                        name.clone(),
+                        ImportedValue::Group(vec![(member.clone(), value.clone())]),
+                    )),
+                },
+                _ => {}
+            }
+        }
+        out
+    }
+}
+
 /// `autoComputed` and the three component NAME LISTS the deleted Babel plugin
 /// took are not here and will not be. Nothing in this compiler could read them —
 /// every component and every reactive read resolves by `SymbolId` in P0,
@@ -228,6 +276,26 @@ pub struct TransformOptions {
     /// Per-code severity, `[[code, category]]`. `category` is one of `suppress`,
     /// `note`, `warning`, `error`. napi has no map type, so this is pairs.
     pub checks: Option<Vec<Vec<String>>>,
+    /// Report what this module EXPORTS that another could fold against, and do
+    /// it even when the module writes no CSS of its own.
+    ///
+    /// Off by default, because a normal transform has no use for it: an
+    /// integration turns it on only for a file some other file imports from.
+    /// @default false
+    pub css_exports: Option<bool>,
+    /// What this module's imports resolve to, which an integration looked up
+    /// and this compiler did not.
+    ///
+    /// `[specifier, exported name, kind, member, value]`, where `kind` is
+    /// `text`, `group` or `layer` and `member` is the group key or empty. napi
+    /// has no map type, so this is tuples.
+    ///
+    /// The pass stays a pure function of its inputs: it reads no file, it only
+    /// reports which one it would have to (`cssImportsWanted`) and folds what
+    /// it is handed. That is what keeps dev and a build identical — a name
+    /// resolves to the same value in both, where StyleX's aggregate over every
+    /// module does not.
+    pub css_imports: Option<Vec<Vec<String>>>,
     /// Every CSS diagnostic is an error, so a call `@barqjs/css`'s runtime
     /// would have to evaluate fails the build instead.
     ///
@@ -303,6 +371,8 @@ pub const OPTION_KEYS: &[&str] = &[
     "interp",
     "diagnostics",
     "checks",
+    "cssExports",
+    "cssImports",
     "strictCss",
     "defaultCategory",
     "ownership",
@@ -352,6 +422,9 @@ pub struct ResolvedOptions {
     pub ownership: bool,
     pub addresses: bool,
     pub hydratable: bool,
+    pub css_exports: bool,
+    /// `(specifier, exported name) -> value`, resolved by the integration.
+    pub css_imports: Vec<(String, String, ImportedValue)>,
     /// Every CSS diagnostic is an error. Carried on the resolved options as
     /// well as folded into `severities`, because the emission side reads it
     /// too: a strict build has no reason to keep the call it just refused.
@@ -387,6 +460,8 @@ impl Default for ResolvedOptions {
             ownership: false,
             addresses: false,
             hydratable: false,
+            css_exports: false,
+            css_imports: Vec::new(),
             strict_css: false,
             opt: Opt::ALL,
             unknown_passes: Vec::new(),
@@ -450,6 +525,8 @@ impl TransformOptions {
             ownership: self.ownership.unwrap_or(false),
             addresses: self.addresses.unwrap_or(false),
             hydratable: self.hydratable.unwrap_or(false),
+            css_exports: self.css_exports.unwrap_or(false),
+            css_imports: ImportedValue::parse(self.css_imports.unwrap_or_default()),
             strict_css,
             opt,
             unknown_passes,

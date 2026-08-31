@@ -97,6 +97,13 @@ pub struct CompileOutput {
     /// above, except that the code is NOT identical with it on or off: every
     /// `css` call it collected has been replaced by the class it produced.
     pub css: Option<String>,
+    /// `(specifier, exported name)` for every imported binding a fold needed
+    /// and did not have, so an integration can resolve them and compile again.
+    /// Empty when the module folded on its own.
+    pub css_wanted: Vec<(String, String)>,
+    /// What this module exports that another can fold against, under
+    /// `options.cssExports` or whenever it writes CSS.
+    pub css_exports: Vec<(String, crate::css::Resolved)>,
 }
 
 #[derive(Debug, Clone)]
@@ -386,6 +393,8 @@ fn compile_on_this_stack(
                 .server_fns
                 .then(|| server_fn_json(Some(scan), &module_id(options, filename))),
             css: None,
+            css_wanted: Vec::new(),
+            css_exports: Vec::new(),
         });
     }
 
@@ -398,7 +407,8 @@ fn compile_on_this_stack(
     // The payoff is downstream: `class={cardStyle}` is a literal by the time
     // `lower` sees it, so `fold` bakes the class into the template markup and
     // the element carries no class channel.
-    let stylesheet = crate::css::mentions(source_text, &options.css_source)
+    let stylesheet = (crate::css::mentions(source_text, &options.css_source)
+        || options.css_exports)
         .then(|| crate::css::run(&allocator, &mut program, options));
 
     let mut module = Module::for_source(&allocator, source_text);
@@ -515,8 +525,22 @@ fn compile_on_this_stack(
 
     let warnings = resolve_diagnostics(warnings, &mut suppressions, filename, &mut lines, options);
     let server_fns = options.server_fns.then(|| server_fn_json(server_fns.as_ref(), filename));
-    let css = stylesheet.and_then(|sheet| (!sheet.css.is_empty()).then_some(sheet.css));
-    Ok(CompileOutput { code, map, warnings, labels, ownership, addresses, server_fns, css })
+    let (css, css_wanted, css_exports) = match stylesheet {
+        Some(sheet) => ((!sheet.css.is_empty()).then_some(sheet.css), sheet.wanted, sheet.exports),
+        None => (None, Vec::new(), Vec::new()),
+    };
+    Ok(CompileOutput {
+        code,
+        map,
+        warnings,
+        labels,
+        ownership,
+        addresses,
+        server_fns,
+        css,
+        css_wanted,
+        css_exports,
+    })
 }
 
 /// Suppression, severity resolution and ordering, in one place — the compiler,
