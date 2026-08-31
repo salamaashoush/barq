@@ -179,10 +179,39 @@ export function collectCss(): string {
   return out
     .map((part) =>
       part.startsWith("\u0000")
-        ? `@layer ${part.slice(1)}{${(layers.get(part.slice(1)) ?? []).join("")}}`
+        ? `@layer ${part.slice(1)}{${once((layers.get(part.slice(1)) ?? []).join(""))}}`
         : part,
     )
     .join("");
+}
+
+/**
+ * A layer's contents with each rule written once.
+ *
+ * The compiler emits a module's atoms with the module, and an atom two modules
+ * both use is in both blobs — it dedupes within one compilation and cannot see
+ * the others. Measured over `@barqjs/ui`: 1,955 rules where 552 were distinct,
+ * and the sheet weighed 210 KB instead of 93. Identical text, so which copy
+ * survives does not matter.
+ */
+function once(body: string): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  let from = 0;
+  let depth = 0;
+  for (let index = 0; index < body.length; index++) {
+    if (body[index] === "{") depth++;
+    else if (body[index] === "}" && --depth === 0) {
+      const statement = body.slice(from, index + 1);
+      if (!seen.has(statement)) {
+        seen.add(statement);
+        out.push(statement);
+      }
+      from = index + 1;
+    }
+  }
+  // Whatever did not close is not a statement this can reason about.
+  return out.join("") + body.slice(from);
 }
 
 /** A rule that is exactly one cascade layer, as its name and its contents. */

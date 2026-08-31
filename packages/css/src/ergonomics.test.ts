@@ -61,6 +61,26 @@ describe("atoms", () => {
     expect(ruleFor(cls)).toBe(`a.${cls}:hover{background-color:red}`);
   });
 
+  test("atoms holding the same value end in the same token", () => {
+    // The suffix hashes the value alone, so a compressor reads the second,
+    // third and fourth as back-references. A shorthand is the common case: one
+    // value across four longhands.
+    const sides = atoms({ borderWidth: "3px" }).split(" ");
+    expect(sides.length).toBe(4);
+    const suffixes = new Set(sides.map((name) => name.slice(name.lastIndexOf("_"))));
+    expect(suffixes.size).toBe(1);
+
+    // And a different property with the same value shares it too.
+    const other = atoms({ outlineWidth: "3px" }).split(" ")[0] ?? "";
+    expect(other.slice(other.lastIndexOf("_"))).toBe([...suffixes][0]);
+  });
+
+  test("but the key still separates them, so they do not merge", () => {
+    const both = atoms({ borderTopWidth: "3px", outlineWidth: "3px" }).split(" ");
+    expect(both).toHaveLength(2);
+    expect(new Set(both).size).toBe(2);
+  });
+
   test("a class that is not an atom is kept rather than merged", () => {
     // An application's own class arrives through a `class` prop and has no
     // property in its name. Keyed on a slice of itself, two of them could

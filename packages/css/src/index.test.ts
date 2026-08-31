@@ -181,6 +181,26 @@ describe("the sheet", () => {
  * The registry is what every environment shares, so these are the properties
  * the compiler's inline mode, `bun test` and a server render all depend on.
  */
+describe("a cascade layer", () => {
+  test("holds each rule once, however many modules brought it", () => {
+    // The compiler emits a module's atoms with the module, and an atom two
+    // modules both use arrives twice. Measured over `@barqjs/ui`: 1,955 rules
+    // where 552 were distinct.
+    registerCss("one", "@layer barq.probe{.shared{color:red}.only-one{color:blue}}");
+    registerCss("two", "@layer barq.probe{.shared{color:red}.only-two{color:green}}");
+    const sheet = collectCss();
+    const layer = sheet.slice(sheet.indexOf("@layer barq.probe{"));
+    expect(layer.split(".shared{color:red}").length - 1).toBe(1);
+    expect(layer).toContain(".only-one{color:blue}");
+    expect(layer).toContain(".only-two{color:green}");
+  });
+
+  test("and is written once, not once per module", () => {
+    const sheet = collectCss();
+    expect(sheet.split("@layer barq.probe{").length - 1).toBe(1);
+  });
+});
+
 describe("registerCss", () => {
   test("a module's rules arrive whole and are collectable", () => {
     registerCss("/a/card.tsx", ".b1{color:red}");

@@ -338,8 +338,14 @@ fn split_values(value: &str) -> Vec<String> {
 /// Ordering ACROSS modules is not needed and never was: two atoms conflict only
 /// when they are merged, merging happens in one `atoms` call, and one call is
 /// in one module.
+/// `Descendant` comes FIRST, and it is the one tier order decides rather than
+/// specificity: a rule a parent writes about its children — `& > *`, `& svg` —
+/// and a rule the child writes about itself are both one class. Measured in a
+/// browser, a field saying `& > * { width: 100% }` took a label's own
+/// `width: fit-content` away and stretched it across the row.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Tier {
+    Descendant,
     Base,
     Select,
     Element,
@@ -360,6 +366,9 @@ fn tier_of(condition: &str) -> Tier {
     if condition == "default" {
         return Tier::Base;
     }
+    if !about_self(condition) {
+        return Tier::Descendant;
+    }
     let parts = || condition.split(NEST);
     if parts().any(|part| part.starts_with('@')) {
         Tier::Media
@@ -368,6 +377,37 @@ fn tier_of(condition: &str) -> Tier {
     } else {
         Tier::Select
     }
+}
+
+/// Whether a condition's subject is this element, or something under it.
+///
+/// A rule a parent writes about its children and a rule the child writes about
+/// itself are both one class, so nothing separates them but which came last.
+/// The child's own rule is the more specific intent, so the parent's sorts
+/// first and loses the tie. `atoms.ts` decides it the same way.
+fn about_self(condition: &str) -> bool {
+    let mut selector = String::from("&");
+    for part in condition.split(NEST).filter(|part| !part.starts_with('@')) {
+        selector = if part.contains('&') {
+            part.replace('&', &selector)
+        } else if part.starts_with(':') || part.starts_with('[') {
+            format!("{selector}{part}")
+        } else {
+            format!("{selector} {part}")
+        };
+    }
+
+    let at = selector.rfind('&').map_or(0, |index| index + 1);
+    let mut depth = 0i32;
+    for character in selector[at..].chars() {
+        match character {
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth -= 1,
+            ' ' | '>' | '+' | '~' if depth == 0 => return false,
+            _ => {}
+        }
+    }
+    true
 }
 
 /// One declaration, as a class, a merge key and a rule.
@@ -382,6 +422,15 @@ pub struct Atom {
 }
 
 pub fn atom(property: &str, condition: &str, value: &str) -> Atom {
+    atom_in("", property, condition, value)
+}
+
+/// The same, inside a cascade layer.
+///
+/// For a component LIBRARY, whose rules are meant to lose to an application's.
+/// The layer joins the atom's identity through the suffix, because one class
+/// name cannot carry a layered rule and an unlayered one.
+pub fn atom_in(layer: &str, property: &str, condition: &str, value: &str) -> Atom {
     let name = if let Some(rest) = property.strip_prefix("--") {
         format!("var-{rest}")
     } else {
@@ -392,7 +441,17 @@ pub fn atom(property: &str, condition: &str, value: &str) -> Atom {
     } else {
         format!("a-{name}-{}", hash32(condition))
     };
-    let class = format!("{key}_{}", hash32(&format!("{property}|{condition}|{value}")));
+    // The suffix hashes the VALUE, and nothing else. The key already carries
+    // the property and the condition, so the value is all that is left to tell
+    // two atoms of one key apart — and hashing it alone means every atom
+    // holding that value ends in the same token, which a compressor reads as a
+    // back-reference rather than as noise. `atoms.ts` computes the same name;
+    // a compiled call and a runtime one have to agree or one declaration
+    // reaches the page as two classes.
+    let class = format!(
+        "{key}_{}",
+        if layer.is_empty() { hash32(value) } else { hash32(&format!("{layer}|{value}")) }
+    );
     let declaration = format!("{property}:{value}");
     // At-rules wrap from the outside in; the selector parts all apply to the
     // one class, so they concatenate.
@@ -411,6 +470,9 @@ pub fn atom(property: &str, condition: &str, value: &str) -> Atom {
     inner = format!("{inner}{{{declaration}}}");
     for part in parts.iter().filter(|part| part.starts_with('@')).rev() {
         inner = format!("{part}{{{inner}}}");
+    }
+    if !layer.is_empty() {
+        inner = format!("@layer {layer}{{{inner}}}");
     }
     Atom { class, key, rule: inner, tier: tier_of(condition) }
 }
@@ -494,15 +556,42 @@ mod tests {
         assert_eq!(number_text(8.5), "8.5");
     }
 
+    /// Two atoms of one value share their suffix, which is what makes the
+    /// stylesheet compress: a shorthand expands to four longhands over one
+    /// value, and three of the four suffixes are then back-references.
+    #[test]
+    fn one_value_is_one_suffix() {
+        let top = atom("border-top-width", "default", "3px");
+        let right = atom("border-right-width", "default", "3px");
+        let outline = atom("outline-width", "default", "3px");
+        let suffix = |atom: &Atom| atom.class.rsplit('_').next().unwrap().to_string();
+        assert_eq!(suffix(&top), suffix(&right));
+        assert_eq!(suffix(&top), suffix(&outline));
+        // And the key still tells them apart, so they do not merge.
+        assert_ne!(top.key, right.key);
+        assert_ne!(top.class, right.class);
+    }
+
+    /// A rule about a child sorts before the child's own, and loses the tie.
+    #[test]
+    fn a_rule_about_a_child_sorts_first() {
+        assert_eq!(tier_of("& > *"), Tier::Descendant);
+        assert_eq!(tier_of("& svg"), Tier::Descendant);
+        assert!(Tier::Descendant < Tier::Base);
+        // A condition about this element is not one, however deep the brackets.
+        assert_eq!(tier_of(":has(> [data-slot=\"field\"])"), Tier::Select);
+        assert_eq!(tier_of(":hover"), Tier::Select);
+    }
+
     #[test]
     fn the_names_match_the_runtime_exactly() {
         let cases = [
-            (("color", "default", "red"), "a-color_1sew0by"),
-            (("margin-top", "default", "8px"), "a-margin-top_zpmxs0"),
-            (("line-height", "default", "2"), "a-line-height_5xmq2e"),
-            (("--brand", "default", "#3b82f6"), "a-var-brand_hdvzb3"),
-            (("color", ":hover", "blue"), "a-color-doumed_63189g"),
-            (("color", "@media (min-width: 600px)", "green"), "a-color-1dkfo85_131k155"),
+            (("color", "default", "red"), "a-color_i0tgik"),
+            (("margin-top", "default", "8px"), "a-margin-top_1dzhg7"),
+            (("line-height", "default", "2"), "a-line-height_f9vgt1"),
+            (("--brand", "default", "#3b82f6"), "a-var-brand_12y16pd"),
+            (("color", ":hover", "blue"), "a-color-doumed_10cd4ul"),
+            (("color", "@media (min-width: 600px)", "green"), "a-color-1dkfo85_b5mm4"),
         ];
         for ((property, condition, value), expected) in cases {
             assert_eq!(atom(property, condition, value).class, expected, "{property} {condition}");

@@ -35,6 +35,7 @@ enum Tag {
     Keyframes,
     Global,
     Atoms,
+    AtomsIn,
     Create,
     FirstThatWorks,
     Props,
@@ -49,6 +50,7 @@ impl Tag {
             "keyframes" => Tag::Keyframes,
             "globalCss" => Tag::Global,
             "atoms" => Tag::Atoms,
+            "atomsIn" => Tag::AtomsIn,
             "create" => Tag::Create,
             "firstThatWorks" => Tag::FirstThatWorks,
             "props" => Tag::Props,
@@ -113,7 +115,7 @@ pub fn run<'a>(
         name: None,
     };
     pass.visit_program(program);
-    Extracted { css: pass.css, reports: pass.reports }
+    Extracted { css: gather_layers(&pass.css), reports: pass.reports }
 }
 
 struct Css<'a, 'b> {
@@ -214,8 +216,32 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
             let span = call.span;
             match self.tag_of(&call.callee) {
                 Some(Tag::Atoms) => {
-                    if let Some(replacement) = self.compile_atoms(call, span) {
+                    if let Some(replacement) = self.compile_atoms(call, span, "") {
                         *expression = replacement;
+                    }
+                    return;
+                }
+                // `atomsIn("barq.ui", …)`: the layer is the first argument and
+                // has to be a literal, because it becomes part of every name.
+                Some(Tag::AtomsIn) => {
+                    let layer = call.arguments.first().and_then(|argument| {
+                        match argument.as_expression().map(crate::analysis::without_type_wrappers) {
+                            Some(Expression::StringLiteral(literal)) => {
+                                Some(literal.value.to_string())
+                            }
+                            _ => None,
+                        }
+                    });
+                    if let Some(layer) = layer {
+                        call.arguments.remove(0);
+                        if let Some(replacement) = self.compile_atoms(call, span, &layer) {
+                            *expression = replacement;
+                            return;
+                        }
+                        // Put it back: the runtime is going to make this call.
+                        let text = self.allocator.alloc_str(&layer);
+                        let literal = Expression::new_string_literal(span, text, None, &self.ast);
+                        call.arguments.insert(0, oxc::ast::ast::Argument::from(literal));
                     }
                     return;
                 }
@@ -226,7 +252,7 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
                     return;
                 }
                 Some(Tag::Props) => {
-                    if let Some(classes) = self.compile_atoms(call, span) {
+                    if let Some(classes) = self.compile_atoms(call, span, "") {
                         // `{ class: … }`. The `style` half only exists when a
                         // dynamic group is in the call, and a dynamic group is
                         // not something this arm can see yet.
@@ -290,6 +316,7 @@ impl<'a> Css<'a, '_> {
         &mut self,
         call: &mut oxc::ast::ast::CallExpression<'a>,
         span: Span,
+        layer: &str,
     ) -> Option<Expression<'a>> {
         let mut arguments: Vec<Argument<'a>> = Vec::new();
         for argument in call.arguments.iter_mut() {
@@ -352,7 +379,7 @@ impl<'a> Css<'a, '_> {
             return None;
         }
 
-        let with = Self::merge(&arguments, true);
+        let with = Self::merge(&arguments, true, layer);
         let Some(index) = arguments.iter().position(|argument| argument.test.is_some()) else {
             let all = self.emit_atoms(&with);
             let text = self.allocator.alloc_str(&all);
@@ -361,7 +388,7 @@ impl<'a> Css<'a, '_> {
 
         // Both branches, because either can run — but only the atoms one of
         // them actually names.
-        let without_atoms = Self::merge(&arguments, false);
+        let without_atoms = Self::merge(&arguments, false, layer);
         let all = self.emit_atoms(&with);
         let without = self.emit_atoms(&without_atoms);
         let test = arguments[index].test.take()?;
@@ -460,7 +487,7 @@ impl<'a> Css<'a, '_> {
             }
             let property_name = barq_css::atoms::kebab(&name);
             let variable = barq_css::atoms::dynamic_var(&property_name);
-            for atom in expand_atoms(&property_name, "default", &format!("var({variable})")) {
+            for atom in expand_atoms("", &property_name, "default", &format!("var({variable})")) {
                 classes.push(atom);
             }
             let placeholder = Expression::new_null_literal(property.value.span(), &self.ast);
@@ -576,7 +603,7 @@ impl<'a> Css<'a, '_> {
             };
             let declarations = self.declarations(&property.value)?;
             let merged =
-                Self::merge(&[Argument { test: None, declarations, atoms: Vec::new() }], true);
+                Self::merge(&[Argument { test: None, declarations, atoms: Vec::new() }], true, "");
             groups.push((name, self.emit_atoms(&merged)));
         }
 
@@ -614,7 +641,11 @@ impl<'a> Css<'a, '_> {
     /// here: an atom a later argument replaced is not in the result, and
     /// emitting as the walk went left `margin-top:0` in the stylesheet under a
     /// class no output referenced.
-    fn merge(arguments: &[Argument<'_>], conditional: bool) -> Vec<barq_css::atoms::Atom> {
+    fn merge(
+        arguments: &[Argument<'_>],
+        conditional: bool,
+        layer: &str,
+    ) -> Vec<barq_css::atoms::Atom> {
         let mut applied: Vec<barq_css::atoms::Atom> = Vec::new();
         for argument in arguments {
             if argument.test.is_some() && !conditional {
@@ -630,7 +661,7 @@ impl<'a> Css<'a, '_> {
                 // `"0"` is a stand-in: a removal only needs the KEY, and the key
                 // is the class up to its value.
                 let text = value.clone().unwrap_or_else(|| "0".to_string());
-                for atom in expand_atoms(property, condition, &text) {
+                for atom in expand_atoms(layer, property, condition, &text) {
                     if value.is_none() {
                         applied.retain(|slot| slot.key != atom.key);
                         continue;
@@ -947,7 +978,15 @@ fn is_identifier(name: &str) -> bool {
 }
 
 fn is_condition(key: &str) -> bool {
-    key.starts_with(':') || key.starts_with('@') || key.starts_with('&') || key.starts_with('[')
+    key.starts_with(':')
+        || key.starts_with('@')
+        || key.starts_with('&')
+        || key.starts_with('[')
+        // `a&:hover` — an anchor that is also this element. The `&` is
+        // substituted wherever it appears, so a selector is not obliged to lead
+        // with it, and a property name never contains one. `atoms.ts` reads a
+        // key the same way.
+        || key.contains('&')
 }
 
 fn join(outer: &str, inner: &str) -> String {
@@ -966,18 +1005,104 @@ fn key_name(key: &PropertyKey<'_>) -> Option<String> {
     }
 }
 
+/// Neighbouring rules in one cascade layer, as one block.
+///
+/// A layered atom carries its own `@layer barq.ui{…}`, and a package with a
+/// thousand of them writes the wrapper a thousand times: 16 KB of the 110 KB
+/// `@barqjs/ui`'s sheet weighed. Concatenating a layer's contents is what the
+/// cascade does anyway, and the layer's ORDER is decided by where it is first
+/// named, which does not move. `@barqjs/css`'s `collectCss` does the same to
+/// what the runtime registers.
+fn gather_layers(css: &str) -> String {
+    let mut out = String::with_capacity(css.len());
+    let mut open: Option<&str> = None;
+    let mut at = 0;
+
+    while at < css.len() {
+        let rest = &css[at..];
+        let Some(layer) = rest.strip_prefix("@layer ").and_then(|after| {
+            after.find('{').and_then(|brace| {
+                let name = &after[..brace];
+                name.chars()
+                    .all(|character| {
+                        character.is_alphanumeric() || character == '.' || character == '-'
+                    })
+                    .then_some(name)
+            })
+        }) else {
+            if open.take().is_some() {
+                out.push('}');
+            }
+            // Past this `@layer`, not back to it: `@layer a, b, c;` is a
+            // DECLARATION rather than a block, and looking for the next one
+            // from where this one starts finds itself and never moves.
+            let from = at + if rest.starts_with("@layer ") { "@layer ".len() } else { 0 };
+            let end = css[from..].find("@layer ").map_or(css.len(), |index| from + index);
+            out.push_str(&css[at..end]);
+            at = end;
+            continue;
+        };
+
+        let body = at + "@layer ".len() + layer.len() + 1;
+        let Some(close) = matching_brace(css, body) else {
+            out.push_str(rest);
+            break;
+        };
+
+        if open != Some(layer) {
+            if open.take().is_some() {
+                out.push('}');
+            }
+            out.push_str("@layer ");
+            out.push_str(layer);
+            out.push('{');
+            open = Some(layer);
+        }
+        out.push_str(&css[body..close]);
+        at = close + 1;
+    }
+
+    if open.is_some() {
+        out.push('}');
+    }
+    out
+}
+
+/// Where the block opened at `from` closes.
+fn matching_brace(text: &str, from: usize) -> Option<usize> {
+    let mut depth = 1i32;
+    for (offset, character) in text[from..].char_indices() {
+        match character {
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(from + offset);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 /// A declaration, expanded through any shorthand it is.
 ///
 /// An unexpandable shorthand is left whole rather than half-expanded: its
 /// values go to sub-properties by TYPE, so counting them cannot say which one
 /// a value belongs to, and guessing is worse than not expanding.
-fn expand_atoms(property: &str, condition: &str, value: &str) -> Vec<barq_css::atoms::Atom> {
+fn expand_atoms(
+    layer: &str,
+    property: &str,
+    condition: &str,
+    value: &str,
+) -> Vec<barq_css::atoms::Atom> {
     match barq_css::atoms::expand(property, value) {
         Some(longhands) => longhands
             .into_iter()
-            .map(|(name, own)| barq_css::atoms::atom(&name, condition, &own))
+            .map(|(name, own)| barq_css::atoms::atom_in(layer, &name, condition, &own))
             .collect(),
-        None => vec![barq_css::atoms::atom(property, condition, value)],
+        None => vec![barq_css::atoms::atom_in(layer, property, condition, value)],
     }
 }
 
@@ -1206,11 +1331,59 @@ mod atom_tests {
     use crate::compile::{CompileOutput, compile};
     use crate::options::ResolvedOptions;
 
-    const IMPORT: &str = "import { atoms, create } from \"@barqjs/css\";\n";
+    const IMPORT: &str = "import { atoms, atomsIn, create, globalCss } from \"@barqjs/css\";\n";
 
     fn run(body: &str) -> CompileOutput {
         compile(&format!("{IMPORT}{body}"), &ResolvedOptions::with_filename("s.tsx"))
             .expect("compiles")
+    }
+
+    /// A selector with `&` in the middle is a condition, not a property.
+    /// `@barqjs/ui`'s badge lights up on hover only when it is an anchor, and
+    /// reading `a&:hover` as a property put the whole block on the floor.
+    #[test]
+    fn a_selector_with_an_ampersand_in_the_middle_is_a_condition() {
+        let out = run("export const a = atoms({ backgroundColor: { \"a&:hover\": \"red\" } });");
+        let css = out.css.as_deref().unwrap_or_default();
+        assert!(css.contains(":hover{background-color:red}"), "{css}");
+        assert!(css.starts_with("a."), "{css}");
+    }
+
+    /// `@layer a, b, c;` is a declaration, not a block. Gathering used to look
+    /// for the next `@layer` from where this one STARTS, find itself, and never
+    /// move — the build hung rather than failing.
+    #[test]
+    fn a_layer_declaration_is_passed_through_rather_than_gathered() {
+        let out = run(
+            "globalCss`@layer barq.reset, barq.ui;`;\n             export const a = atomsIn(\"barq.ui\", { color: \"red\" });",
+        );
+        let css = out.css.as_deref().unwrap_or_default();
+        assert!(css.contains("@layer barq.reset, barq.ui;"), "{css}");
+        assert!(css.contains("@layer barq.ui{"), "{css}");
+    }
+
+    /// `atomsIn` folds like `atoms`, and its rules land in the layer it names.
+    /// Without this the whole of `@barqjs/ui` stayed on the runtime and its CSS
+    /// travelled inside the JS bundle instead of in a stylesheet.
+    #[test]
+    fn a_layered_call_folds_and_its_rules_are_in_the_layer() {
+        let out = run("export const a = atomsIn(\"barq.ui\", { color: \"red\", paddingTop: 8 });");
+        assert!(!out.code.contains("atomsIn("), "the call survived: {}", out.code);
+        let css = out.css.as_deref().unwrap_or_default();
+        assert!(css.starts_with("@layer barq.ui{"), "{css}");
+        assert!(css.contains("color:red"), "{css}");
+        assert!(css.contains("padding-top:8px"), "{css}");
+        // One block, not one per atom.
+        assert_eq!(css.matches("@layer barq.ui{").count(), 1, "{css}");
+    }
+
+    /// A layer that is not a literal cannot become part of a name, so the call
+    /// stays whole and the runtime computes it.
+    #[test]
+    fn a_layer_the_compiler_cannot_read_is_left_alone() {
+        let out =
+            run("declare const name: string;\nexport const a = atomsIn(name, { color: \"red\" });");
+        assert!(out.code.contains("atomsIn("), "{}", out.code);
     }
 
     /// The class the runtime produces for the same declaration, pinned in
@@ -1219,13 +1392,13 @@ mod atom_tests {
     fn a_static_call_becomes_the_class_string_it_produces() {
         let out = run("export const a = atoms({ color: \"red\", paddingTop: 8 });");
         assert!(
-            out.code.contains("export const a = \"a-color_1sew0by a-padding-top_1l9h9x1\""),
+            out.code.contains("export const a = \"a-color_i0tgik a-padding-top_1dzhg7\""),
             "{}",
             out.code
         );
         assert_eq!(
             out.css.as_deref(),
-            Some(".a-color_1sew0by{color:red}.a-padding-top_1l9h9x1{padding-top:8px}")
+            Some(".a-color_i0tgik{color:red}.a-padding-top_1dzhg7{padding-top:8px}")
         );
         assert!(!out.code.contains("atoms({"), "the call survived: {}", out.code);
     }
@@ -1245,7 +1418,7 @@ mod atom_tests {
     fn one_conditional_argument_becomes_a_ternary_of_two_literals() {
         let out =
             run("export const c = (on) => atoms({ color: \"red\" }, on && { color: \"blue\" });");
-        assert!(out.code.contains("on ? \"a-color_9i4lnn\" : \"a-color_1sew0by\""), "{}", out.code);
+        assert!(out.code.contains("on ? \"a-color_10cd4ul\" : \"a-color_i0tgik\""), "{}", out.code);
         let css = out.css.as_deref().expect("a stylesheet");
         assert!(css.contains("color:red") && css.contains("color:blue"), "{css}");
     }
@@ -1271,7 +1444,7 @@ mod atom_tests {
         let out =
             run("export const e = atoms({ color: { default: \"red\", \":hover\": \"blue\" } });");
         let css = out.css.as_deref().expect("a stylesheet");
-        assert!(css.contains(".a-color-doumed_63189g:hover{color:blue}"), "{css}");
+        assert!(css.contains(".a-color-doumed_10cd4ul:hover{color:blue}"), "{css}");
         assert!(!css.contains("@layer"), "atoms must not be layered: {css}");
         assert_eq!(out.code.matches("a-color").count(), 2, "{}", out.code);
     }
@@ -1283,9 +1456,9 @@ mod atom_tests {
             "const s = create({ root: { width: \"100%\" }, child: { marginBlock: \"1rem\" } });\n\
              export const f = atoms(s.root, s.child);",
         );
-        assert!(out.code.contains("root: \"a-width_e9elx8\""), "{}", out.code);
+        assert!(out.code.contains("root: \"a-width_d7e8u3\""), "{}", out.code);
         assert!(
-            out.code.contains("export const f = \"a-width_e9elx8 a-margin-block-start_"),
+            out.code.contains("export const f = \"a-width_d7e8u3 a-margin-block-start_"),
             "{}",
             out.code
         );
@@ -1364,11 +1537,11 @@ mod parity_tests {
     fn a_pseudo_element_is_a_top_level_key_holding_a_style_object() {
         assert_eq!(
             classes(r##"atoms({ "::placeholder": { color: "#999" } })"##),
-            "a-color-1t2wucq_1eolkbx"
+            "a-color-1t2wucq_1f65243"
         );
         assert!(
             sheet(r##"atoms({ "::placeholder": { color: "#999" } })"##)
-                .contains(".a-color-1t2wucq_1eolkbx::placeholder{color:#999}"),
+                .contains(".a-color-1t2wucq_1f65243::placeholder{color:#999}"),
             "{}",
             sheet(r##"atoms({ "::placeholder": { color: "#999" } })"##)
         );
@@ -1377,10 +1550,10 @@ mod parity_tests {
     #[test]
     fn conditions_combine_and_the_at_rule_wraps_the_selector() {
         let body = r#"atoms({ color: { default: "black", "@media (min-width: 800px)": { default: "navy", ":hover": "blue" } } })"#;
-        assert_eq!(classes(body), "a-color_doyqta a-color-12j0t8v_1ld2zyk a-color-n29619_acirwk");
+        assert_eq!(classes(body), "a-color_o0md2c a-color-12j0t8v_18o6jtd a-color-n29619_10cd4ul");
         assert!(
             sheet(body)
-                .contains("@media (min-width: 800px){.a-color-n29619_acirwk:hover{color:blue}}"),
+                .contains("@media (min-width: 800px){.a-color-n29619_10cd4ul:hover{color:blue}}"),
             "{}",
             sheet(body)
         );
@@ -1389,7 +1562,7 @@ mod parity_tests {
     #[test]
     fn first_that_works_repeats_the_declaration_best_last() {
         let body = r#"atoms({ position: firstThatWorks("sticky", "-webkit-sticky", "fixed") })"#;
-        assert_eq!(classes(body), "a-position_n53mkl");
+        assert_eq!(classes(body), "a-position_a7lem1");
         assert!(
             sheet(body).contains("position:fixed;position:-webkit-sticky;position:sticky"),
             "{}",
@@ -1402,8 +1575,8 @@ mod parity_tests {
         let body = r#"atoms({ color: "red", padding: 4 }, { color: null })"#;
         assert_eq!(
             classes(body),
-            "a-padding-top_xez13l a-padding-right_1qluhxc a-padding-bottom_1vy816r \
-             a-padding-left_13qynt1"
+            "a-padding-top_1ql4awz a-padding-right_1ql4awz a-padding-bottom_1ql4awz \
+             a-padding-left_1ql4awz"
         );
         // And no rule for the class it removed, nor a stand-in for the removal.
         let css = sheet(body);
@@ -1479,8 +1652,8 @@ mod vars_tests {
             run("const s = create({ root: { padding: 8 } });\nexport const p = props(s.root);");
         assert!(
             out.code.contains(
-                "class: \"a-padding-top_1l9h9x1 a-padding-right_eqfcdg \
-                 a-padding-bottom_6r1047 a-padding-left_fwimld\""
+                "class: \"a-padding-top_1dzhg7 a-padding-right_1dzhg7 \
+                 a-padding-bottom_1dzhg7 a-padding-left_1dzhg7\""
             ),
             "{}",
             out.code
@@ -1493,7 +1666,7 @@ mod vars_tests {
         let out =
             run("export const p = (on) => props({ color: \"red\" }, on && { color: \"blue\" });");
         assert!(
-            out.code.contains("class: on ? \"a-color_9i4lnn\" : \"a-color_1sew0by\""),
+            out.code.contains("class: on ? \"a-color_10cd4ul\" : \"a-color_i0tgik\""),
             "{}",
             out.code
         );
