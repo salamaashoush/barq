@@ -63,6 +63,8 @@ import {
   DialogTitle,
   DialogTrigger,
   Calendar,
+  DatePicker,
+  DateRangePicker,
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
@@ -160,6 +162,8 @@ import {
   TooltipContent,
 } from "@barqjs/ui";
 import "@barqjs/ui/theme/reset.ts";
+import { CalendarDate } from "@barqjs/aria/date";
+
 import { Configurator } from "./configurator.tsx";
 
 import { AtSign } from "@barqjs/lucide/icons/at-sign";
@@ -474,6 +478,19 @@ function Gallery() {
         <div class={row}>
           <Calendar aria-label="Departure" />
           <RangeCalendar aria-label="Stay" />
+        </div>
+      </Section>
+
+      <Section title="DatePicker">
+        <div class={row}>
+          <DatePicker />
+          <DatePicker defaultValue={new CalendarDate(2022, 1, 20)} />
+          <DateRangePicker
+            defaultValue={{
+              start: new CalendarDate(2022, 1, 20),
+              end: new CalendarDate(2022, 2, 9),
+            }}
+          />
         </div>
       </Section>
 

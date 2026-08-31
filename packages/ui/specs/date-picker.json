@@ -1,0 +1,7 @@
+{
+  "date-picker-trigger": "w-[240px] justify-start text-left font-normal",
+  "date-picker-trigger-empty": "text-muted-foreground",
+  "date-picker-content": "w-auto p-0",
+  "date-range-picker": "grid gap-2",
+  "date-range-picker-trigger": "w-[300px] justify-start text-left font-normal"
+}

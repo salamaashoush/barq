@@ -212,12 +212,17 @@ what a stylesheet of your own selects:
 | **Layout**     | `Card` `AspectRatio` `Separator` `ScrollArea` `Table` `Empty` `Item`                                                                                                                  |
 | **Forms**      | `Button` `Input` `Textarea` `Label` `Checkbox` `RadioGroup` `Switch` `Slider` `Select` `NativeSelect` `Combobox` `Toggle` `ToggleGroup` `Progress` `Field` `InputGroup` `ButtonGroup` |
 | **Overlays**   | `Dialog` `AlertDialog` `Sheet` `Popover` `HoverCard` `Tooltip` `DropdownMenu` `ContextMenu` `Command`                                                                                 |
+| **Dates**      | `Calendar` `RangeCalendar` `DatePicker` `DateRangePicker`                                                                                                                             |
 | **Disclosure** | `Accordion` `Collapsible` `Tabs`                                                                                                                                                      |
 | **Navigation** | `Breadcrumb` `Pagination` `Menubar`                                                                                                                                                   |
 | **Display**    | `Alert` `Avatar` `Badge` `Kbd` `Skeleton` `Spinner`                                                                                                                                   |
 
-Not built yet: `Calendar`, `DatePicker`, `Toast`, `Sidebar`, `NavigationMenu`,
-`Carousel`, `Resizable`, `InputOTP`, `Drawer` and `Chart`.
+Not built yet: `Toast`, `Sidebar`, `NavigationMenu`, `Carousel`, `Resizable`,
+`InputOTP`, `Drawer` and `Chart`.
+
+`DatePicker` is a composition rather than a transcription, because upstream
+ships no `date-picker.tsx`: shadcn documents a `<Popover>` around a `<Calendar>`
+and that is what this is.
 
 ## Icons
 

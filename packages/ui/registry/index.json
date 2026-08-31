@@ -545,6 +545,28 @@
       ]
     },
     {
+      "name": "date-picker",
+      "type": "registry:ui",
+      "title": "Date Picker",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "button",
+        "calendar",
+        "layers",
+        "popover",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/date-picker.tsx"
+      ]
+    },
+    {
       "name": "dialog",
       "type": "registry:ui",
       "title": "Dialog",

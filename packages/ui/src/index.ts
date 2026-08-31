@@ -189,6 +189,12 @@ export {
   type ContextMenuTriggerProps,
 } from "./ui/context-menu.tsx";
 export {
+  DatePicker,
+  type DatePickerProps,
+  DateRangePicker,
+  type DateRangePickerProps,
+} from "./ui/date-picker.tsx";
+export {
   Dialog,
   DialogClose,
   type DialogCloseProps,

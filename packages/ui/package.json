@@ -182,6 +182,11 @@
       "barq": "./src/ui/context-menu.tsx",
       "bun": "./src/ui/context-menu.tsx"
     },
+    "./date-picker": {
+      "types": "./src/ui/date-picker.tsx",
+      "barq": "./src/ui/date-picker.tsx",
+      "bun": "./src/ui/date-picker.tsx"
+    },
     "./dialog": {
       "types": "./src/ui/dialog.tsx",
       "barq": "./src/ui/dialog.tsx",
