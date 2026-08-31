@@ -290,6 +290,31 @@ function Grouped() {
   );
 }
 
+describe("an item's focus events", () => {
+  // A menu here moves REAL DOM focus through its items rather than a virtual
+  // highlight, so `onFocus` on an item is what tells a caller which one the
+  // keyboard is on. `filterDOMProps` dropped it, which left the pointer as the
+  // only observable way through a menu: shadcn's `/create` previews the
+  // hovered value and browsing with the arrow keys previewed nothing.
+  test("reach the caller", async () => {
+    const focused: string[] = [];
+
+    render(() => (
+      <Menu aria-label="Actions" items={ACTIONS} getTextValue={(action: Action) => action.name}>
+        {(action: Action) => (
+          <MenuItem onFocus={() => focused.push(action.name)}>{action.name}</MenuItem>
+        )}
+      </Menu>
+    ));
+
+    const items = screen.getAllByRole("menuitem");
+    (items[1] as HTMLElement).focus();
+    await tick();
+
+    expect(focused).toEqual(["Copy"]);
+  });
+});
+
 describe("MenuSection", () => {
   test("groups its items and takes its name from the heading", () => {
     render(() => <Grouped />);

@@ -242,6 +242,14 @@ const LINK = new Set(["href", "hrefLang", "target", "rel", "download", "ping", "
 const GLOBAL_ATTRS = new Set(["dir", "lang", "hidden", "inert", "translate", "tabIndex", "title"]);
 
 const GLOBAL_EVENTS = new Set([
+  // The focus four. A collection here moves REAL DOM focus through its items
+  // rather than a virtual highlight, so `onFocus` on an item is how a caller
+  // hears about keyboard browsing — and without these it was filtered out,
+  // leaving the pointer as the only observable way through a menu.
+  "onFocus",
+  "onBlur",
+  "onFocusIn",
+  "onFocusOut",
   "onClick",
   "onAuxClick",
   "onContextMenu",
@@ -596,6 +604,10 @@ export function triggerSlot(): TriggerSlot {
  * with no event.
  */
 export interface GlobalEvents {
+  onFocus?: (event: FocusEvent) => void;
+  onBlur?: (event: FocusEvent) => void;
+  onFocusIn?: (event: FocusEvent) => void;
+  onFocusOut?: (event: FocusEvent) => void;
   onClick?: (event: MouseEvent) => void;
   onAuxClick?: (event: MouseEvent) => void;
   onContextMenu?: (event: MouseEvent) => void;
