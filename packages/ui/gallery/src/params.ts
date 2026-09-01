@@ -220,8 +220,11 @@ export function design(): Design {
   const wearStyle = (name: string): void => {
     if (host === null) return;
     const element = host;
+    // `none` names no stylesheet, so it takes the class OFF rather than adding
+    // a `style-none` that selects nothing and reads as a real choice in devtools.
     const put = (): void => {
       for (const each of STYLES) {
+        if (each.value === NONE) continue;
         element.classList.toggle(`style-${each.value}`, each.value === name);
       }
     };
