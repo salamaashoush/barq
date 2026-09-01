@@ -49,11 +49,17 @@ globalThis.__sweep = (() => {
   });
   if (sheet === undefined) return { error: `no stylesheet for ${style}` };
 
-  /** Every rule, with its selector resolved through the nesting. */
+  /**
+   * Every rule, with its selector resolved through the nesting.
+   *
+   * @type {{ selector: string; declarations: CSSStyleDeclaration }[]}
+   */
   const rules = [];
+  /** @type {(list: CSSRuleList, prefix: string) => void} */
   const walk = (list, prefix) => {
     for (const rule of list) {
-      const own = rule.selectorText;
+      /** @type {string | undefined} */
+      const own = /** @type {CSSStyleRule} */ (rule).selectorText;
       // `&` is the parent, and a nested selector without one is a descendant.
       // Both have to be spelled out or `matches` answers a different question.
       const here =
@@ -64,10 +70,12 @@ globalThis.__sweep = (() => {
             : own.includes("&")
               ? own.replaceAll("&", `:is(${prefix})`)
               : `${prefix} :is(${own})`;
-      if (rule.style !== undefined && rule.style.length > 0) {
-        rules.push({ selector: here, declarations: rule.style });
+      const declarations = /** @type {CSSStyleRule} */ (rule).style;
+      if (declarations !== undefined && declarations.length > 0) {
+        rules.push({ selector: here, declarations });
       }
-      if (rule.cssRules !== undefined && rule.cssRules.length > 0) walk(rule.cssRules, here);
+      const nested = /** @type {CSSGroupingRule} */ (rule).cssRules;
+      if (nested !== undefined && nested.length > 0) walk(nested, here);
     }
   };
   walk(sheet.cssRules, "");
@@ -81,7 +89,9 @@ globalThis.__sweep = (() => {
    * `var(--ui-ring-inset,)` is a deliberate empty. Only a bare read can drop a
    * declaration, so only a bare read is worth reporting.
    */
+  /** @type {(value: string) => string[]} */
   const varsIn = (value) => {
+    /** @type {string[]} */
     const out = [];
     for (let at = value.indexOf("var("); at >= 0; at = value.indexOf("var(", at + 4)) {
       let depth = 0;
@@ -109,7 +119,9 @@ globalThis.__sweep = (() => {
   const CONDITIONAL =
     /:hover|:focus|:active|:target|::|\[data-(open|closed|selected|focused|disabled|hovered|pressed|state|placeholder|invalid|dragging|active|expanded)/;
 
+  /** @type {{ selector: string; why: string }[]} */
   const unreached = [];
+  /** @type {Map<string, { token: string; count: number; example: string }>} */
   const unresolved = new Map();
   let matched = 0;
   let checked = 0;
@@ -152,7 +164,7 @@ globalThis.__sweep = (() => {
     rules: rules.length,
     matched,
     tokenReadsChecked: checked,
-    unresolvedTokens: [...unresolved.values()].sort((a, b) => b.count - a.count),
+    unresolvedTokens: [...unresolved.values()].toSorted((a, b) => b.count - a.count),
     unreached: unreached.slice(0, 40),
     unreachedTotal: unreached.length,
   };
