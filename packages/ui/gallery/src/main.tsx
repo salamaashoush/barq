@@ -247,6 +247,7 @@ import { providePortalTarget } from "@barqjs/aria/overlays";
 import { ref } from "@barqjs/primitives/refs";
 
 import { Customizer } from "./customizer.tsx";
+import { Dashboard01 } from "./blocks/dashboard-01.tsx";
 import { Showcase } from "./showcase.tsx";
 import { design } from "./params.ts";
 
@@ -427,6 +428,14 @@ const scroller = ui({
   // container, which is the same claim spelled in CSS.
   containerType: "inline-size",
   containerName: "preview",
+  // And the containing block for anything FIXED inside it, which is the other
+  // half of what the iframe was doing. `dashboard-01`'s sidebar is
+  // `position: fixed`, so it resolved against the window: measured at x=0, over
+  // the customizer, while its own gap reserved 256px inside the preview it had
+  // left. `container-type` alone does not do this in Chrome — only layout
+  // containment does, and saying `contain: layout` says the thing that is meant
+  // where a `transform` would have done it by side effect and cost a layer.
+  contain: "layout",
 });
 
 const switcher = css`
@@ -1578,10 +1587,18 @@ function Gallery() {
   );
 }
 
-/** shadcn shows a composed screen first and the parts on demand. */
+/**
+ * What the preview can show, which is upstream's `PreviewSwitcher`.
+ *
+ * A composed screen first, then one of shadcn's own blocks, then the parts.
+ * The block is the reason the switcher is worth having: a masonry of cards and
+ * a real application layout are different questions about a style, and only one
+ * of them has a sidebar in it.
+ */
 const VIEWS = [
   { id: "showcase", label: "01" },
-  { id: "gallery", label: "02" },
+  { id: "dashboard", label: "02" },
+  { id: "gallery", label: "03" },
 ];
 
 /**
@@ -1622,7 +1639,15 @@ function Designer() {
                 reading as a hole rather than a surface. */}
             <div class={previewInner}>
               <div class={previewBackdrop} aria-hidden="true" />
-              <div class={scroller}>{view() === "showcase" ? <Showcase /> : <Gallery />}</div>
+              <div class={scroller}>
+                {view() === "showcase" ? (
+                  <Showcase />
+                ) : view() === "dashboard" ? (
+                  <Dashboard01 />
+                ) : (
+                  <Gallery />
+                )}
+              </div>
             </div>
           </PreviewPortal>
           <div class={ui("dark", switcher)} data-slot="preview-switcher">
