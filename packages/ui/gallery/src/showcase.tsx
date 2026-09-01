@@ -78,18 +78,31 @@ import { TriangleAlert } from "@barqjs/lucide/icons/triangle-alert";
 import { TrendingUp } from "@barqjs/lucide/icons/trending-up";
 import { Truck } from "@barqjs/lucide/icons/truck";
 
+/*
+ * `@container`, not `@media`, and this is what upstream's iframe was buying.
+ *
+ * A media query asks the WINDOW how wide it is, and this page is not the
+ * window: it is 1,304px of preview inside a 1,600px viewport. Asking the window
+ * gave four columns to a container that had room for three, and the fourth ran
+ * off the right edge with a select and a date cut in half. Upstream never meets
+ * this because their preview is an iframe, whose viewport IS its width.
+ *
+ * The preview declares the container; these ask it. The breakpoints are the
+ * same numbers a media query would use, because they are about how much room
+ * there is and that has not changed — only what is being asked.
+ */
 const page = css`
   padding: 1rem;
   columns: 1;
   column-gap: 1rem;
 
-  @media (width >= 48rem) {
+  @container preview (width >= 48rem) {
     columns: 2;
   }
-  @media (width >= 80rem) {
+  @container preview (width >= 80rem) {
     columns: 3;
   }
-  @media (width >= 100rem) {
+  @container preview (width >= 110rem) {
     columns: 4;
   }
 `;

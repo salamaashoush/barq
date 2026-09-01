@@ -422,6 +422,11 @@ const scroller = ui({
   minHeight: "0px",
   overflowY: "auto",
   backgroundColor: "var(--background)",
+  // What the preview's own layout measures itself against, in place of the
+  // window. An iframe would have made its width a viewport; this makes it a
+  // container, which is the same claim spelled in CSS.
+  containerType: "inline-size",
+  containerName: "preview",
 });
 
 const switcher = css`

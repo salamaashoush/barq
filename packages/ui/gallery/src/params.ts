@@ -134,6 +134,19 @@ function stackOf(options: readonly Option[], value: string): string | undefined 
   return options.find((option) => option.value === value)?.css;
 }
 
+/**
+ * The radius a style has already decided, which is `lyra` and only `lyra`.
+ *
+ * Upstream's `effectiveRadius` is `style === "lyra" ? "none" : radius`, while
+ * its picker locks for `sera` too — the control says None there and the token
+ * keeps whatever it had, because sera's own stylesheet overrules it anyway.
+ * Copied as it is rather than tidied: matching the inconsistency is what makes
+ * the two pages the same page.
+ */
+function radiusFor(params: Params): string {
+  return params.style === "lyra" ? "0" : params.radius;
+}
+
 /** The selection `installTheme` and the copy-out both read. */
 export function selectionOf(params: Params): ThemeSelection {
   const sans = stackOf(FONTS, params.font);
@@ -151,7 +164,7 @@ export function selectionOf(params: Params): ThemeSelection {
     base: params.baseColor,
     ...(params.theme === NONE ? {} : { accent: params.theme }),
     ...(params.chartColor === NONE ? {} : { chart: params.chartColor }),
-    ...(params.radius === NONE ? {} : { radius: params.radius }),
+    ...(radiusFor(params) === NONE ? {} : { radius: radiusFor(params) }),
     ...(Object.keys(fonts).length === 0 ? {} : { fonts }),
   };
 }
