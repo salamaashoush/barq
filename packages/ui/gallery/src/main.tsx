@@ -1631,7 +1631,6 @@ function Designer() {
           }}
         >
           <PreviewPortal target={() => preview() ?? null}>
-            <Toaster />
             {/* Upstream's two layers, kept: a backdrop under the content and
                 the content above it. Their iframe brings its own document
                 background, so the backdrop is what shows in the letterboxing
@@ -1640,6 +1639,12 @@ function Designer() {
             <div class={previewInner}>
               <div class={previewBackdrop} aria-hidden="true" />
               <div class={scroller}>
+                {/* INSIDE the scroller, because the scroller is what contains
+                    layout: a toaster is `position: fixed`, and one rendered
+                    beside it fell back to the window and sat 24px past the
+                    preview's right edge. It also belongs to the previewed
+                    application rather than to the page showing it. */}
+                <Toaster />
                 {view() === "showcase" ? (
                   <Showcase />
                 ) : view() === "dashboard" ? (
