@@ -245,7 +245,18 @@ export function design(): Design {
   const apply = (): void => {
     const now = previewed();
     installTheme({ ...selectionOf(now), scope: PREVIEW_SCOPE });
+    // BOTH, and they are different claims. The preview wears the theme being
+    // configured; the page around it wears the fixed one and only follows the
+    // light/dark switch. Pinning the chrome to light left the body white behind
+    // a dark page, which is not what shadcn's looks like — their site is dark
+    // when you are working dark, and only the customizer is dark unconditionally.
+    //
+    // This cannot bring the flicker back: `dark` is the one parameter no picker
+    // previews, so it changes on a commit and never under the pointer.
     host?.classList.toggle("dark", now.dark);
+    if (typeof document !== "undefined") {
+      document.documentElement.classList.toggle("dark", now.dark);
+    }
     wearStyle(now.style);
   };
 

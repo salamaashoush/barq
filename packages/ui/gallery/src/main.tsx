@@ -271,10 +271,18 @@ globalCss`
     font-family: var(--font-sans);
   }
 
+  /*
+   * A DEFINITE height, not a minimum. A min-height leaves the create root's
+   * flex-grow with nothing to resolve against, so it grew to its own content
+   * instead of being capped by the viewport: the document scrolled, the preview
+   * did not, and the page opened somewhere in the middle of itself. Only the
+   * preview's own scroller is meant to move.
+   */
   #app {
     display: flex;
-    min-height: 100%;
+    height: 100%;
     flex-direction: column;
+    overflow: hidden;
   }
 `;
 
@@ -295,6 +303,18 @@ const createRoot = ui({
   flex: "1",
   flexDirection: "column",
   overflow: "hidden",
+  // `section-soft`, which upstream declares as
+  // `bg-linear-to-b from-background to-surface/40 dark:bg-background`. Dark is
+  // the whole of it — a flat `--background` — and light is a gradient down to a
+  // token this package does not have: `--surface` is shadcn's SITE token, not
+  // one their component registry declares. `--muted` at the same 40% is the
+  // nearest thing here and is the only substitution in the page.
+  backgroundColor: "var(--background)",
+  backgroundImage:
+    "linear-gradient(to bottom, var(--background), color-mix(in oklab, var(--muted) 40%, transparent))",
+  ":is(.dark *), &:is(.dark)": {
+    backgroundImage: "none",
+  },
   "--customizer-width": "calc(var(--spacing) * 48)",
   "--gap": "calc(var(--spacing) * 4)",
   "@media (width >= 48rem)": {
@@ -370,7 +390,34 @@ const panel = ui({
   color: "var(--foreground)",
 });
 
+/** `relative z-0 mx-auto flex w-full flex-1 flex-col overflow-hidden`, upstream's. */
+const previewInner = ui({
+  position: "relative",
+  zIndex: "0",
+  marginInline: "auto",
+  display: "flex",
+  width: "100%",
+  flex: "1",
+  flexDirection: "column",
+  overflow: "hidden",
+});
+
+/** `absolute inset-0 bg-muted dark:bg-muted/30`, upstream's. */
+const previewBackdrop = ui({
+  position: "absolute",
+  inset: "0px",
+  backgroundColor: "var(--muted)",
+  ":is(.dark *)": {
+    backgroundColor: "var(--muted)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      backgroundColor: "color-mix(in oklab, var(--muted) 30%, transparent)",
+    },
+  },
+});
+
 const scroller = ui({
+  position: "relative",
+  zIndex: "10",
   flex: "1",
   minHeight: "0px",
   overflowY: "auto",
@@ -1563,7 +1610,15 @@ function Designer() {
         >
           <PreviewPortal target={() => preview() ?? null}>
             <Toaster />
-            <div class={scroller}>{view() === "showcase" ? <Showcase /> : <Gallery />}</div>
+            {/* Upstream's two layers, kept: a backdrop under the content and
+                the content above it. Their iframe brings its own document
+                background, so the backdrop is what shows in the letterboxing
+                around it — and it is what stops a light theme in a dark page
+                reading as a hole rather than a surface. */}
+            <div class={previewInner}>
+              <div class={previewBackdrop} aria-hidden="true" />
+              <div class={scroller}>{view() === "showcase" ? <Showcase /> : <Gallery />}</div>
+            </div>
           </PreviewPortal>
           <div class={ui("dark", switcher)} data-slot="preview-switcher">
             <For each={() => VIEWS}>
