@@ -408,6 +408,37 @@ describe("overlayPosition", () => {
     expect(style["--barq-transform-origin"]).toBe("0px 15px");
   });
 
+  test("puts the stacking level on the element that is positioned", () => {
+    // `z-index` does nothing on a static element, and a popup IS static: the
+    // POSITIONER is what carries `position: absolute`. So the `z-50` every
+    // overlay in `@barqjs/ui` writes on its own popup never applied, and an
+    // overlay portalled to the body lost to any `position: relative` page
+    // chrome that came after it in document order. Measured in a browser: a
+    // picker's menu painted underneath the preview panel beside it.
+    let position: PositionResult | undefined;
+
+    function Fixture() {
+      const targetRef = ref<HTMLElement>();
+      const overlayRef = ref<HTMLElement>();
+      position = overlayPosition({ targetRef, overlayRef, placement: "bottom", isOpen: true });
+      return (
+        <>
+          <button type="button" ref={targetRef.set}>
+            Open
+          </button>
+          <div ref={overlayRef.set} />
+        </>
+      );
+    }
+
+    render(() => <Fixture />);
+    flush();
+
+    const style = styleOf(position?.overlayProps);
+    expect(style.position).toBe("absolute");
+    expect(style.zIndex).toBe(50);
+  });
+
   test("leaves the available box unset until there is a measurement", () => {
     // An undefined `var()` invalidates the declaration reading it, so a rule
     // sized off `--available-width` falls back to `auto`. A stand-in number

@@ -989,6 +989,13 @@ export function overlayPosition(options: PositionOptions): PositionResult {
           position: "absolute",
           top: `${current.top}px`,
           left: `${current.left}px`,
+          // On the POSITIONER, which is the positioned element. A popup's own
+          // `z-index` does nothing, because the popup is static — so an overlay
+          // portalled to the body painted in document order and lost to any
+          // page chrome that had a stacking context of its own. Measured on the
+          // gallery: a picker's menu opened underneath the card that owns it.
+          // 50 is what Radix and Base UI both put on theirs.
+          zIndex: 50,
           maxHeight: Number.isFinite(current.maxHeight) ? `${current.maxHeight}px` : undefined,
           // What the trigger measures, for an overlay that wants to match it.
           // A listbox under a combobox is the case: `width: 100%` resolves
