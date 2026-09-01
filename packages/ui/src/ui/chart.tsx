@@ -9,6 +9,8 @@ import {
   type Incoming,
 } from "@barqjs/core";
 import { layer } from "@barqjs/css";
+import { resizeObserver } from "@barqjs/primitives/observers";
+import { ref as makeRef } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
 import { uiProps } from "../lib/slot.ts";
@@ -112,6 +114,16 @@ const legendSwatch = ui({
  */
 const gridLine = ui({ stroke: "var(--border)", strokeWidth: "1" });
 
+/**
+ * The axis type size, in user units, twice.
+ *
+ * The atom needs a LITERAL — an interpolated value leaves the whole call on the
+ * runtime (BARQ017) and takes the stylesheet into the JS bundle with it — and
+ * `ticksOf` needs the number to work out how many labels fit. `chart.test.tsx`
+ * asserts the two agree, which is the only thing keeping them honest.
+ */
+export const AXIS_FONT_SIZE = 10;
+
 const axisText = ui({ fill: "var(--muted-foreground)", fontSize: "10px" });
 
 const barMark = ui({ fill: "var(--color-series)" });
@@ -205,6 +217,40 @@ function ChartProvider(props: Incoming<{ config: ChartConfig; children?: Child }
   ) as never;
 }
 
+/**
+ * The plot's own box, in CSS pixels.
+ *
+ * The viewBox used to be a fixed 320x160 stretched to fit with
+ * `preserveAspectRatio="none"`, and stretching a viewBox stretches its TEXT:
+ * the same chart at 950px wide drew a 10px axis label three times too wide, so
+ * twelve dates ran into one another. Measuring instead makes one user unit one
+ * pixel, which is the only way the type comes out the size it asks for.
+ *
+ * The default is the old fixed box, so a chart rendered where nothing measures
+ * — a server render, happy-dom — still draws something sensible rather than
+ * collapsing to nothing.
+ */
+function measured(
+  fallbackWidth: number,
+  fallbackHeight: number,
+): { ref: ReturnType<typeof makeRef<SVGSVGElement>>; box: () => { w: number; h: number } } {
+  const ref = makeRef<SVGSVGElement>();
+  const box = signal({ w: fallbackWidth, h: fallbackHeight });
+
+  resizeObserver(
+    () => ref() as Element | null,
+    () => {
+      const node = ref();
+      if (node === null || node === undefined) return;
+      const rect = node.getBoundingClientRect();
+      if (rect.width < 1 || rect.height < 1) return;
+      box.set({ w: Math.round(rect.width), h: Math.round(rect.height) });
+    },
+  );
+
+  return { ref, box };
+}
+
 export interface ChartPlotProps extends UiProps {
   /** One object per column, each holding `x` and every series key. */
   data: readonly Record<string, string | number>[];
@@ -216,7 +262,7 @@ export interface ChartPlotProps extends UiProps {
   height?: number;
 }
 
-interface Geometry {
+export interface Geometry {
   readonly w: number;
   readonly h: number;
   readonly pad: number;
@@ -235,6 +281,31 @@ function geometryOf(props: {
   // A zero maximum would divide by zero and put every mark on the axis.
   const max = Math.max(1, ...values);
   return { w: props.width, h: props.height, pad: 24, max };
+}
+
+/**
+ * The labels there is room for, which is not always all of them.
+ *
+ * Every label was drawn whatever the width, so twelve dates in a 950px chart
+ * ran into each other and read as one smear. A stride rather than a rotation or
+ * an ellipsis, because a date you can read half of is worse than a date that is
+ * not there: the axis is for orienting, and every other tick orients you fine.
+ *
+ * The width estimate is `0.6em` a character, which is about right for a
+ * proportional face and errs wide — the cost of erring wide is one fewer label,
+ * and of erring narrow is the smear this exists to stop.
+ */
+export function ticksOf(
+  labels: readonly string[],
+  geometry: Geometry,
+): { label: string; index: number }[] {
+  const slot = (geometry.w - geometry.pad - 4) / Math.max(1, labels.length);
+  const widest = labels.reduce((most, label) => Math.max(most, label.length), 0);
+  const needed = widest * AXIS_FONT_SIZE * 0.6 + 8;
+  const stride = Math.max(1, Math.ceil(needed / Math.max(1, slot)));
+  return labels
+    .map((label, index) => ({ label, index }))
+    .filter((entry) => entry.index % stride === 0);
 }
 
 /** The horizontal rules and the labels along the bottom, shared by every mark. */
@@ -256,7 +327,7 @@ function Frame(props: Incoming<{ geometry: Geometry; labels: readonly string[] }
         </For>
       </g>
       <g data-slot="chart-axis">
-        <For each={() => props.labels().map((label, index) => ({ label, index }))}>
+        <For each={() => ticksOf(props.labels(), props.geometry())}>
           {(entry: { label: string; index: number }) => (
             <text
               class={axisText}
@@ -280,12 +351,13 @@ function Frame(props: Incoming<{ geometry: Geometry; labels: readonly string[] }
 /** A column per datum, one bar per series. */
 export function ChartBars(props: Incoming<ChartPlotProps>) {
   const { config } = useChart();
+  const box = measured(props.width?.() ?? 320, props.height?.() ?? 160);
   const geometry = (): Geometry =>
     geometryOf({
       data: props.data(),
       config: config(),
-      width: props.width?.() ?? 320,
-      height: props.height?.() ?? 160,
+      width: props.width?.() ?? box.box().w,
+      height: props.height?.() ?? box.box().h,
     });
 
   const bars = (): {
@@ -319,12 +391,16 @@ export function ChartBars(props: Incoming<ChartPlotProps>) {
   return (
     <svg
       {...uiProps("chart-plot", "", props)}
+      ref={box.ref.set}
       viewBox={() => `0 0 ${String(geometry().w)} ${String(geometry().h)}`}
       width="100%"
       // The plot takes the space the legend does not, and `min-height: 0` is
       // what stops a flex child refusing to shrink below its content.
       style={{ flex: "1", "min-height": "0" }}
-      preserveAspectRatio="none"
+      // NOT `preserveAspectRatio="none"`. Stretching a viewBox stretches its
+      // text with everything else, so a 10px axis label in a 950px-wide chart
+      // came out three times too wide and twelve dates ran into one smear. The
+      // box is measured instead, which makes one user unit one pixel.
       role="img"
       aria-label={() => props["aria-label"]?.() ?? "Chart"}
     >
@@ -357,12 +433,13 @@ export function ChartBars(props: Incoming<ChartPlotProps>) {
 /** A line per series, with the area beneath it. */
 export function ChartLines(props: Incoming<ChartPlotProps & { area?: boolean }>) {
   const { config } = useChart();
+  const box = measured(props.width?.() ?? 320, props.height?.() ?? 160);
   const geometry = (): Geometry =>
     geometryOf({
       data: props.data(),
       config: config(),
-      width: props.width?.() ?? 320,
-      height: props.height?.() ?? 160,
+      width: props.width?.() ?? box.box().w,
+      height: props.height?.() ?? box.box().h,
     });
 
   const pathOf = (key: string, closed: boolean): string => {
@@ -388,12 +465,16 @@ export function ChartLines(props: Incoming<ChartPlotProps & { area?: boolean }>)
   return (
     <svg
       {...uiProps("chart-plot", "", props)}
+      ref={box.ref.set}
       viewBox={() => `0 0 ${String(geometry().w)} ${String(geometry().h)}`}
       width="100%"
       // The plot takes the space the legend does not, and `min-height: 0` is
       // what stops a flex child refusing to shrink below its content.
       style={{ flex: "1", "min-height": "0" }}
-      preserveAspectRatio="none"
+      // NOT `preserveAspectRatio="none"`. Stretching a viewBox stretches its
+      // text with everything else, so a 10px axis label in a 950px-wide chart
+      // came out three times too wide and twelve dates ran into one smear. The
+      // box is measured instead, which makes one user unit one pixel.
       role="img"
       aria-label={() => props["aria-label"]?.() ?? "Chart"}
     >

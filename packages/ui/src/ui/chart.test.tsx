@@ -4,11 +4,13 @@ import { render } from "@barqjs/testing";
 import { rulesFor } from "../test-rules.ts";
 
 import {
+  AXIS_FONT_SIZE,
   ChartBars,
   ChartContainer,
   ChartLegend,
   ChartLines,
   ChartTooltipContent,
+  ticksOf,
   type ChartConfig,
 } from "./chart.tsx";
 
@@ -142,6 +144,50 @@ describe("Chart", () => {
   test("a plot outside a container says what is wrong", () => {
     expect(() => render(() => <ChartBars data={DATA} x="month" />)).toThrow(
       "inside a <ChartContainer>",
+    );
+  });
+});
+
+describe("the axis", () => {
+  // Every label was drawn whatever the width, so twelve dates in a 950px chart
+  // ran into each other and read as one smear. The stride is what stops it.
+  test("draws only the labels there is room for", () => {
+    const narrow = ticksOf(["January", "February", "March", "April", "May", "June"], {
+      w: 200,
+      h: 160,
+      pad: 24,
+      max: 1,
+    });
+    const wide = ticksOf(["January", "February", "March", "April", "May", "June"], {
+      w: 1200,
+      h: 160,
+      pad: 24,
+      max: 1,
+    });
+
+    expect(narrow.length).toBeLessThan(6);
+    expect(wide).toHaveLength(6);
+    // Whatever the stride, the first label is always drawn: an axis whose left
+    // end is unlabelled cannot be read at all.
+    expect(narrow[0]?.label).toBe("January");
+  });
+
+  test("keeps every label when they are short", () => {
+    const ticks = ticksOf(["J", "F", "M", "A"], { w: 320, h: 160, pad: 24, max: 1 });
+    expect(ticks).toHaveLength(4);
+  });
+
+  // The atom needs a literal or the whole call stays on the runtime, so the
+  // number lives twice. This is what stops the two drifting.
+  test("the size the ticks are measured at is the size they are drawn at", () => {
+    const { container } = render(() => (
+      <ChartContainer config={CONFIG}>
+        <ChartBars data={DATA} x="month" aria-label="Visitors" />
+      </ChartContainer>
+    ));
+    const label = container.querySelector('[data-slot="chart-axis"] text');
+    expect(rulesFor(label?.getAttribute("class") ?? "")).toContain(
+      `font-size: ${String(AXIS_FONT_SIZE)}px`,
     );
   });
 });

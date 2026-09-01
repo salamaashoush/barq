@@ -493,7 +493,8 @@
       "title": "Chart",
       "dependencies": [
         "@barqjs/core",
-        "@barqjs/css"
+        "@barqjs/css",
+        "@barqjs/primitives"
       ],
       "registryDependencies": [
         "layers",
