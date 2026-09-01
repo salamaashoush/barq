@@ -37,12 +37,19 @@ export interface ThemeSelection {
    */
   readonly chart?: string | ThemeDefinition;
   /**
-   * `--font-sans` and `--font-mono`, which every component reads through
-   * `--default-font-family`. A stack, not a family: nothing here loads a font.
+   * `--font-sans`, `--font-mono` and `--font-heading`. A stack, not a family:
+   * nothing here loads a font.
+   *
+   * `heading` is a separate choice from `sans` because shadcn's own
+   * configurator makes it one: every title element is marked `cn-font-heading`,
+   * and a serif heading over a sans body is the first thing anybody tries. It
+   * falls back to `sans` where it is not set, so a page that never asks for one
+   * looks unchanged.
    */
   readonly fonts?: {
     readonly sans?: string;
     readonly mono?: string;
+    readonly heading?: string;
   };
   /**
    * Where the light values land.
@@ -118,6 +125,7 @@ function fontTokens(fonts: ThemeSelection["fonts"]): ThemeTokens {
   return {
     ...(fonts.sans === undefined ? {} : { "font-sans": fonts.sans }),
     ...(fonts.mono === undefined ? {} : { "font-mono": fonts.mono }),
+    ...(fonts.heading === undefined ? {} : { "font-heading": fonts.heading }),
   };
 }
 

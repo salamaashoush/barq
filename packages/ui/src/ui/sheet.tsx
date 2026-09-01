@@ -48,7 +48,7 @@ const footer = ui({
   padding: "calc(var(--spacing) * 4)",
 });
 
-const title = ui({
+const title = ui(text.heading, {
   "--ui-font-weight": "var(--font-weight-semibold)",
   fontWeight: "var(--font-weight-semibold)",
   color: "var(--foreground)",

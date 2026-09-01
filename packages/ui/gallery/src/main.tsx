@@ -243,6 +243,8 @@ import {
 } from "@barqjs/ui";
 import "@barqjs/ui/theme/reset.ts";
 import { CalendarDate } from "@barqjs/aria/date";
+import { providePortalTarget } from "@barqjs/aria/overlays";
+import { ref } from "@barqjs/primitives/refs";
 
 import { Customizer } from "./customizer.tsx";
 import { Showcase } from "./showcase.tsx";
@@ -257,37 +259,70 @@ import { Inbox } from "@barqjs/lucide/icons/inbox";
 import { TriangleAlert } from "@barqjs/lucide/icons/triangle-alert";
 
 globalCss`
+  html,
   body {
+    height: 100%;
+  }
+
+  body {
+    margin: 0;
     background: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);
   }
+
+  #app {
+    display: flex;
+    min-height: 100%;
+    flex-direction: column;
+  }
 `;
 
 /**
- * shadcn's `/create` layout: the preview and the customizer side by side, the
- * customizer docked on the RIGHT. `flex-row-reverse` rather than putting it
- * second in the markup, because the reading order is the preview and the tab
- * order should be the controls.
+ * The two variables shadcn's `/create` is built on, and the page they scope.
+ *
+ * `--customizer-width` and `--gap` are declared once, here, and every part
+ * below reads them: the designer's padding IS the gap between its two halves,
+ * so a single number keeps the preview's frame the same distance from the
+ * window as it is from the card. The top is a quarter of it, which is what
+ * tucks the page under the site's header without a second variable.
  */
-const designer = css`
-  --customizer-width: 13rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  height: 100dvh;
-  padding: 1.5rem;
-  box-sizing: border-box;
+const createRoot = ui({
+  position: "relative",
+  zIndex: "10",
+  display: "flex",
+  minHeight: "0px",
+  flex: "1",
+  flexDirection: "column",
+  overflow: "hidden",
+  "--customizer-width": "calc(var(--spacing) * 48)",
+  "--gap": "calc(var(--spacing) * 4)",
+  "@media (width >= 48rem)": {
+    "--gap": "calc(var(--spacing) * 6)",
+  },
+  "@media (width >= 96rem)": {
+    "--customizer-width": "calc(var(--spacing) * 56)",
+  },
+});
 
-  @media (width >= 48rem) {
-    flex-direction: row-reverse;
-    align-items: stretch;
-  }
-
-  @media (width >= 96rem) {
-    --customizer-width: 15rem;
-  }
-`;
+/**
+ * The preview and the customizer side by side, the customizer on the RIGHT.
+ *
+ * `flex-row-reverse` rather than putting it second in the markup, because the
+ * reading order is the preview and the tab order should be the controls.
+ */
+const designer = ui({
+  display: "flex",
+  minHeight: "0px",
+  flex: "1",
+  flexDirection: "column",
+  gap: "var(--gap)",
+  padding: "var(--gap)",
+  paddingTop: "calc(var(--gap) * 0.25)",
+  "@media (width >= 48rem)": {
+    flexDirection: "row-reverse",
+  },
+});
 
 const page = css`
   display: grid;
@@ -299,26 +334,48 @@ const page = css`
  * The preview is a FRAMED panel, which is shadcn's arrangement and is doing
  * work: a muted surround and a ring separate what is being themed from the
  * page around it, so a light theme on a light page still reads as a thing.
+ *
+ * It is also the element the chosen theme and the chosen style are scoped to,
+ * which is what upstream's `<iframe>` does for them. See `params.ts`.
  */
-const panel = css`
-  position: relative;
-  display: flex;
-  flex: 1;
-  min-width: 0;
-  flex-direction: column;
-  overflow: hidden;
-  border-radius: var(--radius-2xl);
-  background-color: var(--muted);
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent);
-  max-height: calc(100dvh - 3rem);
-`;
+const panel = ui({
+  position: "relative",
+  display: "flex",
+  flex: "1",
+  minWidth: "0px",
+  flexDirection: "column",
+  justifyContent: "center",
+  overflow: "hidden",
+  borderRadius: "var(--radius-2xl)",
+  "--ui-ring-shadow":
+    "var(--ui-ring-inset,) 0 0 0 calc(1px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+  boxShadow:
+    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+  "--ui-ring-color": "var(--foreground)",
+  "@supports (color: color-mix(in lab, red, red))": {
+    "--ui-ring-color": "color-mix(in oklab, var(--foreground) 10%, transparent)",
+  },
+  "@media (width >= 48rem)": {
+    "--ui-ring-color": "var(--muted)",
+  },
+  "&.dark": {
+    "--ui-ring-color": "var(--foreground)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      "--ui-ring-color": "color-mix(in oklab, var(--foreground) 10%, transparent)",
+    },
+  },
+  // The theme is scoped HERE, so the surface has to be too: `--background` on
+  // this element is the previewed one, and the page around it keeps its own.
+  backgroundColor: "var(--background)",
+  color: "var(--foreground)",
+});
 
-const scroller = css`
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  background: var(--background);
-`;
+const scroller = ui({
+  flex: "1",
+  minHeight: "0px",
+  overflowY: "auto",
+  backgroundColor: "var(--background)",
+});
 
 const switcher = css`
   position: absolute;
@@ -1475,35 +1532,72 @@ const VIEWS = [
   { id: "gallery", label: "02" },
 ];
 
+/**
+ * shadcn's `/create`, over this package's own components.
+ *
+ * The shape is upstream's `create/page.tsx`: a root declaring the two
+ * variables, a `data-slot="designer"` holding the preview and the customizer,
+ * and nothing else. What upstream renders in an `<iframe>` renders in place
+ * here, and `providePortalTarget` is what makes that equivalent — a dialog or a
+ * menu the preview opens lands INSIDE the preview, so it wears the theme and
+ * the style being configured rather than the page's own.
+ */
 function Designer() {
   const system = design();
-  // Whatever the URL asked for, on the page before anything is drawn.
-  system.set({});
   const view = signal("showcase");
+  const preview = ref<HTMLDivElement>();
 
   return (
-    <div class={designer} data-slot="designer">
-      <Toaster />
-      <Customizer design={system} />
-      <div class={panel} data-slot="preview">
-        <div class={scroller}>{view() === "showcase" ? <Showcase /> : <Gallery />}</div>
-        <div class={ui("dark", switcher)} data-slot="preview-switcher">
-          <For each={() => VIEWS}>
-            {(each: (typeof VIEWS)[number]) => (
-              <Button
-                size="sm"
-                variant="ghost"
-                data-active={() => (view() === each.id ? "true" : "false")}
-                onPress={() => view.set(each.id)}
-              >
-                {each.label}
-              </Button>
-            )}
-          </For>
+    <div class={createRoot} data-slot="create">
+      {/* The preview FIRST and the customizer second, with `flex-row-reverse`
+          above: the reading order is the preview, the tab order is the
+          controls, and the controls land on the left where shadcn puts them. */}
+      <div class={designer} data-slot="designer">
+        <div
+          class={panel}
+          data-slot="preview"
+          ref={(node: HTMLDivElement) => {
+            preview.set(node);
+            system.wear(node);
+          }}
+        >
+          <PreviewPortal target={() => preview() ?? null}>
+            <Toaster />
+            <div class={scroller}>{view() === "showcase" ? <Showcase /> : <Gallery />}</div>
+          </PreviewPortal>
+          <div class={ui("dark", switcher)} data-slot="preview-switcher">
+            <For each={() => VIEWS}>
+              {(each: (typeof VIEWS)[number]) => (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  data-active={() => (view() === each.id ? "true" : "false")}
+                  onPress={() => view.set(each.id)}
+                >
+                  {each.label}
+                </Button>
+              )}
+            </For>
+          </div>
         </div>
+        <Customizer design={system} />
       </div>
     </div>
   );
+}
+
+/**
+ * Where the preview's own overlays go.
+ *
+ * A `provide` callback that BUILDS its children needs a component of its own:
+ * inlined, it runs where its siblings read and the context is missing. This is
+ * that component, and it is the whole of what the iframe was doing for the
+ * overlays — without it a dialog opened inside the preview portals to the body,
+ * outside the scoped theme, and paints in the page's colours.
+ */
+function PreviewPortal(props: Incoming<{ target: () => Element | null; children?: Child }>) {
+  providePortalTarget(() => props.target()());
+  return <>{props.children}</>;
 }
 
 render(() => <Designer />, document.getElementById("app")!);

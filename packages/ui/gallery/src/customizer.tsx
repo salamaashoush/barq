@@ -1,55 +1,73 @@
 /**
- * shadcn's `/create` customizer, over this package's data.
+ * shadcn's `/create` customizer, ported from
+ * `apps/v4/app/(app)/(create)/components/customizer.tsx`.
  *
- * A dark card docked at the side, a column of pickers, and a footer that hands
- * the result over. Every control drives `installTheme` and every one previews
- * on hover, which is the interaction the page exists for: choosing a colour
- * scheme is comparing, and a list you have to click and undo is a different
- * task from one you sweep.
+ * A `<Card size="sm">` carrying `dark`, docked on the right of the designer: a
+ * header holding the main menu, a `<FieldGroup>` of pickers with a
+ * `<FieldSeparator>` between each run, and two footers — the row of actions,
+ * then Get Code on its own.
  *
- * FOUR OF SHADCN'S CONTROLS ARE NOT HERE, and none of them by omission. `Style`
- * (base-nova and the rest), `Icon Library`, `Menu Color` and `Menu Accent`
- * belong to the NEW upstream registry, whose look lives in a stylesheet rather
- * than in the class lists `tools/css.ts` transcribes. This package targets the
- * classic registry, so those four have nothing here to change and a control
- * that changes nothing is worse than an absent one.
+ * The card is `dark` and its theme is the page's fixed one rather than the
+ * previewed one, which is what upstream's `<iframe>` buys them for free: the
+ * configurator is chrome, and chrome that changes with the thing it configures
+ * stops being a fixed point to judge the change against. See `params.ts`.
+ *
+ * FOUR OF SHADCN'S CONTROLS ARE NOT HERE, and each for a stated reason.
+ * `Icon Library` is lucide only in this package, by decision. `Menu Color` and
+ * `Menu Accent` drive `.cn-menu-target` and `.cn-menu-translucent`, which
+ * belong to upstream's newer registry — this package targets the classic one,
+ * and `tools/styles.ts` records both as deliberate divergences. `Base` picks
+ * between shadcn's three component bases, and there is one here.
  */
 
-import { For, signal, type Incoming } from "@barqjs/core";
-import { css, layer } from "@barqjs/css";
+import { signal, type Incoming } from "@barqjs/core";
+import { layer } from "@barqjs/css";
 import {
   Button,
   Card,
   CardContent,
   CardFooter,
   CardHeader,
-  Label,
-  Separator,
-  Switch,
-  themeCss,
-  themeValues,
+  FieldGroup,
+  FieldSeparator,
 } from "@barqjs/ui";
-import { Check } from "@barqjs/lucide/icons/check";
-import { Copy } from "@barqjs/lucide/icons/copy";
-import { Dices } from "@barqjs/lucide/icons/dices";
-import { RotateCcw } from "@barqjs/lucide/icons/rotate-ccw";
 
-import { ACCENTS, BASES, CHARTS, FONTS, MONO, RADII, STYLES, type Option } from "./options.ts";
+import { ActionMenu } from "./action-menu.tsx";
+import { FontGlyph, RadiusGlyph, StyleGlyph } from "./glyphs.tsx";
+import { footerButton, growingFooterButton, narrowFooterButton, truncated } from "./layout.ts";
+import { MainMenu } from "./main-menu.tsx";
+import { OpenPreset } from "./open-preset.tsx";
+import { ProjectForm } from "./project-form.tsx";
+import { ResetDialog } from "./reset-dialog.tsx";
+import {
+  BASE_COLORS,
+  CHART_COLORS,
+  FONTS,
+  HEADING_FONTS,
+  MONO,
+  optionOf,
+  RADII,
+  STYLES,
+  THEMES,
+  type Option,
+} from "./options.ts";
 import { Picker } from "./picker.tsx";
-import { commandFor, selectionOf, type Design, type Params } from "./params.ts";
+import { commandFor, type Design, type Params } from "./params.ts";
 
 const ui = layer("barq.ui");
 
 const card = ui({
-  position: "sticky",
-  top: "calc(var(--spacing) * 6)",
   isolation: "isolate",
   zIndex: "10",
-  alignSelf: "start",
-  maxHeight: "calc(100dvh - var(--spacing) * 12)",
-  minHeight: "0",
+  maxHeight: "100%",
+  minHeight: "0px",
   width: "100%",
-  borderRadius: "calc(var(--radius) + 8px)",
+  alignSelf: "flex-start",
+  borderRadius: "var(--radius-2xl)",
+  backgroundColor: "var(--card)",
+  "@supports (color: color-mix(in lab, red, red))": {
+    backgroundColor: "color-mix(in oklab, var(--card) 90%, transparent)",
+  },
   "--ui-backdrop-blur": "blur(var(--blur-xl))",
   backdropFilter: "var(--ui-backdrop-blur,)",
   "@media (width >= 48rem)": {
@@ -57,296 +75,280 @@ const card = ui({
   },
 });
 
-const body = css`
-  display: flex;
-  flex-direction: column;
-  gap: 0.8125rem;
-  min-height: 0;
-  flex: 1;
-  overflow-y: auto;
-  scrollbar-width: none;
-`;
+const head = ui({
+  display: "none",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "calc(var(--spacing) * 2)",
+  "@media (width >= 48rem)": {
+    display: "flex",
+  },
+});
 
-const foot = css`
-  display: flex;
-  flex-direction: column;
-  gap: 0.5rem;
-  min-width: 0;
+const body = ui({
+  msOverflowStyle: "none",
+  scrollbarWidth: "none",
+  "&::-webkit-scrollbar": { display: "none" },
+  minHeight: "0px",
+  flex: "1",
+  overflowX: "auto",
+  overflowY: "hidden",
+  "@media (width >= 48rem)": {
+    overflowY: "auto",
+  },
+});
 
-  & > * {
-    width: 100%;
-  }
-`;
+const fields = ui({
+  flexDirection: "row",
+  gap: "calc(var(--spacing) * 2.5)",
+  paddingBlock: "1px",
+  // `**:data-[slot=field-separator]:-mx-4` upstream: the rule runs the full
+  // width of the card rather than stopping at the content's padding.
+  '& [data-slot="field-separator"]': {
+    marginInline: "calc(var(--spacing) * -4)",
+    width: "auto",
+  },
+  "@media (width >= 48rem)": {
+    flexDirection: "column",
+    gap: "calc(var(--spacing) * 3.25)",
+  },
+});
 
-const head = css`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem;
-  width: 100%;
-  min-width: 0;
-`;
+/** A separator only the column layout draws: the mobile row scrolls instead. */
+const columnOnly = ui({
+  display: "none",
+  "@media (width >= 48rem)": { display: "block" },
+});
 
-const title = css`
-  margin: 0;
-  font-size: 0.875rem;
-  font-weight: 600;
-`;
+const foot = ui({
+  display: "flex",
+  minWidth: "0px",
+  gap: "calc(var(--spacing) * 2)",
+  "@media (width >= 48rem)": {
+    flexDirection: "column",
+    borderBottomRightRadius: "0",
+    borderBottomLeftRadius: "0",
+    "& button, & a": { width: "100%" },
+  },
+});
 
-const mode = css`
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex: none;
-  white-space: nowrap;
-`;
+const footCode = ui({
+  marginTop: "calc(var(--spacing) * -3)",
+  display: "none",
+  minWidth: "0px",
+  gap: "calc(var(--spacing) * 2)",
+  "@media (width >= 48rem)": {
+    display: "flex",
+    flexDirection: "column",
+    "& button, & a": { width: "100%" },
+  },
+});
 
-const command = css`
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  margin-top: 0.25rem;
-  padding: 0.25rem 0.25rem 0.25rem 0.625rem;
-  border-radius: var(--radius);
-  background: var(--muted);
-  min-width: 0;
-`;
-
-const commandText = css`
-  flex: 1;
-  min-width: 0;
-  overflow-x: auto;
-  white-space: nowrap;
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  color: var(--muted-foreground);
-  scrollbar-width: none;
-`;
-
-const code = css`
-  max-height: 20rem;
-  overflow: auto;
-  margin: 0.75rem 0 0;
-  padding: 0.75rem 0.875rem;
-  border-radius: var(--radius);
-  background: var(--muted);
-  font-family: var(--font-mono);
-  font-size: 0.6875rem;
-  line-height: 1.7;
-`;
-
-const line = css`
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  color: var(--muted-foreground);
-  white-space: pre;
-`;
-
-const chip = css`
-  display: inline-block;
-  flex: none;
-  width: 0.7rem;
-  height: 0.7rem;
-  border-radius: 2px;
-  border: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
-`;
-
-/** A value worth drawing a square for: every colour here is a colour function. */
-function isColour(value: string): boolean {
-  return /^(?:oklch|oklab|rgb|hsl|color|#)/i.test(value);
-}
-
+/** The lists whose second group is separated by a rule are named by their group. */
 function pick(options: readonly Option[]): string {
   const at = Math.floor(Math.random() * options.length);
   return options[at]?.value ?? options[0]?.value ?? "";
 }
 
-function Declarations(props: Incoming<{ tokens: Record<string, string> }>) {
-  return (
-    <For each={() => Object.entries(props.tokens())}>
-      {(entry: [string, string]) => (
-        <div class={line}>
-          <span
-            class={chip}
-            style={{ background: isColour(entry[1]) ? entry[1] : "transparent" }}
-          />
-          <span>
-            {"  --"}
-            {entry[0]}: {entry[1]};
-          </span>
-        </div>
-      )}
-    </For>
-  );
+/**
+ * The radius a style has already decided.
+ *
+ * `lyra` squares every corner and `sera` keeps them fine, so upstream disables
+ * the control rather than offering a choice the style overrules — a picker that
+ * appears to do nothing reads as a bug in the picker.
+ */
+function radiusIsFixed(style: string): boolean {
+  return style === "lyra" || style === "sera";
 }
 
 export function Customizer(props: Incoming<{ design: Design }>) {
-  const took = signal(false);
-  const ran = signal(false);
-  const showing = signal(false);
-
+  const searching = signal(false);
+  const resetting = signal(false);
   const now = (): Params => props.design().params();
   const set = (next: Partial<Params>): void => props.design().set(next);
-  const preview = (next: Partial<Params> | null): void => props.design().preview(next);
+  const preview = (next: Partial<Params>): void => props.design().preview(next);
+  const clear = (): void => props.design().clearPreview();
 
-  const copy = (): void => {
-    void navigator.clipboard.writeText(themeCss(selectionOf(now())));
-    took.set(true);
-    setTimeout(() => took.set(false), 2000);
-  };
-
-  const randomise = (): void => {
+  const shuffle = (): void => {
     set({
       style: pick(STYLES),
-      base: pick(BASES),
-      accent: pick(ACCENTS),
-      chart: pick(CHARTS),
+      baseColor: pick(BASE_COLORS),
+      theme: pick(THEMES),
+      chartColor: pick(CHART_COLORS),
       radius: pick(RADII),
       font: pick(FONTS),
+      fontHeading: pick(HEADING_FONTS),
     });
   };
 
+  const toggleDark = (): void => set({ dark: !now().dark });
+
+  /**
+   * What the heading glyph is set in.
+   *
+   * `inherit` means the body font, so the glyph has to resolve it rather than
+   * showing the browser's default: the point of the control is seeing the shape
+   * the headings will actually have.
+   */
+  const headingStack = (): string | undefined =>
+    now().fontHeading === "inherit"
+      ? optionOf(FONTS, now().font)?.css
+      : optionOf(HEADING_FONTS, now().fontHeading)?.css;
+
   return (
-    // `dark` on the CARD, which is what shadcn does and is not decoration: the
-    // customizer is chrome, and chrome that changes colour with the thing it is
-    // configuring stops being a fixed point to judge the change against.
-    // `themeCss` writes `.dark { … }`, so the class puts those tokens on this
-    // element and its subtree inherits them, whatever the page is set to.
-    <Card class={ui(card, "dark")} data-slot="customizer">
-      <CardHeader>
-        <div class={head}>
-          <h2 class={title}>@barqjs/ui</h2>
-          <div class={mode}>
-            <Label for="dark-mode">Dark</Label>
-            <Switch
-              id="dark-mode"
-              aria-label="Dark mode"
-              isSelected={now().dark}
-              onChange={(on: boolean) => set({ dark: on })}
-            />
-          </div>
-        </div>
+    <Card size="sm" class={ui(card, "dark")} data-slot="customizer">
+      <CardHeader bordered class={head}>
+        <MainMenu
+          design={props.design()}
+          onShuffle={shuffle}
+          onToggleDark={toggleDark}
+          onSearch={() => searching.set(true)}
+          onReset={() => resetting.set(true)}
+        />
       </CardHeader>
 
-      <CardContent>
-        <div class={body}>
+      <CardContent class={body}>
+        <FieldGroup class={fields}>
           <Picker
             label="Style"
             options={STYLES}
             value={now().style}
+            glyph={<StyleGlyph name={now().style} />}
             onPick={(value: string) => set({ style: value })}
-            onPreview={(value: string | null) => preview(value === null ? null : { style: value })}
+            onPreview={(value: string) => preview({ style: value })}
+            clearPreview={clear}
           />
-          <Separator />
+
+          <FieldSeparator class={columnOnly} />
+
           <Picker
             label="Base Color"
-            options={BASES}
-            value={now().base}
-            onPick={(value: string) => set({ base: value })}
-            onPreview={(value: string | null) => preview(value === null ? null : { base: value })}
+            options={BASE_COLORS}
+            value={now().baseColor}
+            onPick={(value: string) => set({ baseColor: value })}
+            onPreview={(value: string) => preview({ baseColor: value })}
+            clearPreview={clear}
           />
           <Picker
             label="Theme"
-            options={ACCENTS}
-            value={now().accent}
-            onPick={(value: string) => set({ accent: value })}
-            onPreview={(value: string | null) => preview(value === null ? null : { accent: value })}
+            options={THEMES}
+            value={now().theme}
+            onPick={(value: string) => set({ theme: value })}
+            onPreview={(value: string) => preview({ theme: value })}
+            clearPreview={clear}
           />
           <Picker
             label="Chart Color"
-            options={CHARTS}
-            value={now().chart}
-            onPick={(value: string) => set({ chart: value })}
-            onPreview={(value: string | null) => preview(value === null ? null : { chart: value })}
+            options={CHART_COLORS}
+            value={now().chartColor}
+            onPick={(value: string) => set({ chartColor: value })}
+            onPreview={(value: string) => preview({ chartColor: value })}
+            clearPreview={clear}
           />
-          <Separator />
+
+          <FieldSeparator class={columnOnly} />
+
+          <Picker
+            label="Heading"
+            options={HEADING_FONTS}
+            value={now().fontHeading}
+            glyph={<FontGlyph stack={headingStack()} />}
+            onPick={(value: string) => set({ fontHeading: value })}
+            onPreview={(value: string) => preview({ fontHeading: value })}
+            clearPreview={clear}
+          />
           <Picker
             label="Font"
             options={FONTS}
             value={now().font}
+            glyph={<FontGlyph stack={optionOf(FONTS, now().font)?.css} />}
             onPick={(value: string) => set({ font: value })}
-            onPreview={(value: string | null) => preview(value === null ? null : { font: value })}
+            onPreview={(value: string) => preview({ font: value })}
+            clearPreview={clear}
           />
           <Picker
             label="Mono"
             options={MONO}
             value={now().mono}
+            glyph={<FontGlyph stack={optionOf(MONO, now().mono)?.css} />}
             onPick={(value: string) => set({ mono: value })}
-            onPreview={(value: string | null) => preview(value === null ? null : { mono: value })}
+            onPreview={(value: string) => preview({ mono: value })}
+            clearPreview={clear}
           />
-          <Separator />
+
+          <FieldSeparator class={columnOnly} />
+
           <Picker
             label="Radius"
             options={RADII}
-            value={now().radius}
+            value={radiusIsFixed(now().style) ? "0" : now().radius}
+            disabled={radiusIsFixed(now().style)}
+            glyph={<RadiusGlyph />}
             onPick={(value: string) => set({ radius: value })}
-            onPreview={(value: string | null) => preview(value === null ? null : { radius: value })}
+            onPreview={(value: string) => preview({ radius: value })}
+            clearPreview={clear}
           />
-        </div>
+        </FieldGroup>
       </CardContent>
 
-      <CardFooter>
-        <div class={foot}>
-          <Button size="sm" onPress={copy} data-slot="copy-preset">
-            {took() ? <Check /> : <Copy />}
-            {took() ? "Copied" : "Copy Preset"}
-          </Button>
-          <Button size="sm" variant="outline" onPress={randomise} data-slot="randomise">
-            <Dices />
-            Random
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onPress={() => props.design().reset()}
-            data-slot="reset"
-          >
-            <RotateCcw />
-            Reset
-          </Button>
-          <Button
-            size="sm"
-            variant="ghost"
-            onPress={() => showing.set(!showing())}
-            data-slot="toggle-code"
-          >
-            {showing() ? "Hide CSS" : "Show CSS"}
-          </Button>
+      {/* Four controls, which is upstream's footer exactly. Search and Reset
+          are NOT buttons here: both are in the menu, and both render only their
+          dialog — a footer of six is a different page. */}
+      <CardFooter class={foot}>
+        <CopyPreset design={props.design()} />
+        <OpenPreset design={props.design()} class={growingFooterButton} />
+        <Button
+          variant="outline"
+          class={ui(footerButton, narrowFooterButton)}
+          onPress={shuffle}
+          data-slot="shuffle"
+        >
+          <span class={truncated}>Shuffle</span>
+        </Button>
+        <ActionMenu
+          design={props.design()}
+          isOpen={searching()}
+          onOpenChange={(next: boolean) => searching.set(next)}
+        />
+        <ResetDialog
+          design={props.design()}
+          isOpen={resetting()}
+          onOpenChange={(next: boolean) => resetting.set(next)}
+        />
+      </CardFooter>
 
-          {/* The command, because a configurator that only shows you colours
-              leaves you to translate them yourself. This is what you run. */}
-          <div class={command} data-slot="install-command">
-            <code class={commandText}>{commandFor(now())}</code>
-            <Button
-              size="icon"
-              variant="ghost"
-              aria-label="Copy the command"
-              data-slot="copy-command"
-              onPress={() => {
-                void navigator.clipboard.writeText(commandFor(now()));
-                ran.set(true);
-                setTimeout(() => ran.set(false), 2000);
-              }}
-            >
-              {ran() ? <Check /> : <Copy />}
-            </Button>
-          </div>
-
-          {showing() ? (
-            <div class={code} data-slot="preset-code">
-              <div class={line}>@layer barq.theme {"{"}</div>
-              <div class={line}>:root {"{"}</div>
-              <Declarations tokens={() => themeValues(selectionOf(now())).light} />
-              <div class={line}>{"}"}</div>
-              <div class={line}>.dark {"{"}</div>
-              <Declarations tokens={() => themeValues(selectionOf(now())).dark} />
-              <div class={line}>{"}"}</div>
-              <div class={line}>{"}"}</div>
-            </div>
-          ) : null}
-        </div>
+      <CardFooter class={footCode}>
+        <ProjectForm design={props.design()} />
       </CardFooter>
     </Card>
+  );
+}
+
+/**
+ * The command that reproduces what is on the screen, on the clipboard.
+ *
+ * shadcn copies a preset CODE, which is a nine-character hash their server can
+ * decode. There is no server here, so the honest equivalent is the command
+ * itself: it is longer, and it is the thing you were going to run anyway.
+ */
+function CopyPreset(props: Incoming<{ design: Design }>) {
+  const took = signal(false);
+
+  const copy = (): void => {
+    void navigator.clipboard.writeText(commandFor(props.design().params()));
+    took.set(true);
+    setTimeout(() => took.set(false), 2000);
+  };
+
+  return (
+    <Button
+      variant="outline"
+      class={ui(footerButton, growingFooterButton)}
+      onPress={copy}
+      data-slot="copy-preset"
+      title={commandFor(props.design().params())}
+    >
+      <span class={truncated}>{took() ? "Copied" : commandFor(props.design().params())}</span>
+    </Button>
   );
 }

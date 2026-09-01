@@ -275,6 +275,133 @@ const MARKERS: Readonly<Record<string, string>> = {
  * it replaces: `.group\/item` and `.group\/item-group` are two classes that a
  * prefix match could confuse, where two `data-slot` values cannot be.
  */
+/**
+ * Where upstream and this package spell the same STATE differently.
+ *
+ * The styles are written against Base UI and Radix, which announce state as
+ * `data-state="checked"` or `data-checked`; `@barqjs/aria` announces it as the
+ * PRESENCE of `data-selected`, which is what every component here and every
+ * rule this package writes selects on. So fourteen `data-state="checked"`
+ * selectors and every `data-checked` twin beside them matched nothing under all
+ * eight styles: a switch's thumb never moved when it was on, a checked field
+ * label never took its primary tint, a highlighted combobox row never lit.
+ * No error, no warning, and `verify` cannot see it — it asks whether a
+ * declaration exists, never whether anything can match the selector holding it.
+ *
+ * The `to` is the selector `@barqjs/aria` actually writes. Order matters: the
+ * longer `data-checked` form is rewritten before the bare attribute inside it.
+ */
+const STATES: readonly {
+  readonly from: RegExp;
+  readonly to: string;
+  /** Where one upstream name means two different things here. */
+  readonly slots?: readonly string[];
+}[] = [
+  // A PART whose state lives on its owner, and first because it matches the
+  // same text the generic rules below do. Radix and Base UI write the state
+  // onto the thumb as well as the track; `@barqjs/aria` writes it once, on the
+  // switch, and the thumb is a plain `<span>` under it — so a state selector
+  // aimed at the thumb has to ask about the switch above it instead. Rewriting
+  // it to a bare `[data-selected]` is right about the attribute and wrong about
+  // the element, which is the same silence in a new place.
+  {
+    from: /\[data-state="unchecked"\]|\[data-unchecked\]:not\(\[data-unchecked="false"\]\)/g,
+    to: ':is([data-slot="switch"]:not([data-selected]) *)',
+    slots: ["switch-thumb"],
+  },
+  {
+    from: /\[data-state="checked"\]|\[data-checked\]:not\(\[data-checked="false"\]\)/g,
+    to: ':is([data-slot="switch"][data-selected] *)',
+    slots: ["switch-thumb"],
+  },
+  { from: /\[data-checked\]:not\(\[data-checked="false"\]\)/g, to: "[data-selected]" },
+  { from: /\[data-unchecked\]:not\(\[data-unchecked="false"\]\)/g, to: ":not([data-selected])" },
+  { from: /\[data-highlighted\]:not\(\[data-highlighted="false"\]\)/g, to: "[data-focused]" },
+  { from: /\[data-highlighted\]/g, to: "[data-focused]" },
+  { from: /\[data-state="checked"\]/g, to: "[data-selected]" },
+  { from: /\[data-state="unchecked"\]/g, to: ":not([data-selected])" },
+  // A toggle is on, a table row is selected, a tab is active: one attribute
+  // here, because each of them is the collection's selection.
+  { from: /\[data-state="on"\]/g, to: "[data-selected]" },
+  { from: /\[data-state="selected"\]/g, to: "[data-selected]" },
+  { from: /\[data-state="active"\]/g, to: "[data-selected]", slots: ["tabs-trigger"] },
+  // The sidebar's rows say `data-active` in both registries, so this one is a
+  // rename rather than a different idea.
+  {
+    from: /\[data-state="active"\]/g,
+    to: '[data-active="true"]',
+    slots: ["sidebar-menu-button", "sidebar-menu-sub-button", "sidebar-menu-badge"],
+  },
+  // A trigger whose popup is open. `navigation-menu-trigger` writes the state
+  // out in full, which is the one place the two already agree.
+  { from: /\[data-popup-open\]/g, to: '[data-state="open"]' },
+  // Entering and leaving. `presence` here marks only the EXIT, with
+  // `data-closed`, and reads the duration back off the element; an entering
+  // element carries no attribute at all, so "entering" is "not leaving".
+  { from: /\[data-entering\]/g, to: ":not([data-closed])" },
+  { from: /\[data-starting-style\]/g, to: ":not([data-closed])" },
+  { from: /\[data-exiting\]/g, to: "[data-closed]" },
+  { from: /\[data-ending-style\]/g, to: "[data-closed]" },
+];
+
+/** `a, a, b` as `a, b`: rewriting a twin onto its sibling leaves duplicates. */
+function dedupeSelector(selector: string): string {
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const character of selector) {
+    if (character === "(" || character === "[") depth++;
+    else if (character === ")" || character === "]") depth--;
+    if (character === "," && depth === 0) {
+      parts.push(current);
+      current = "";
+      continue;
+    }
+    current += character;
+  }
+  parts.push(current);
+  const kept: string[] = [];
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (trimmed === "" || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    kept.push(trimmed);
+  }
+  return kept.join(", ");
+}
+
+/**
+ * Every state selector in a rule, rewritten to what this package writes.
+ *
+ * ONE pass over the selector, not one pass per entry. Applying them in turn
+ * lets a later entry rewrite what an earlier one just produced: the switch
+ * thumb's `:not([data-selected])` became
+ * `:not(:is([data-slot="switch"][data-selected] *))`, which is the opposite of
+ * what it means. An alternation tries its branches left to right, so the order
+ * of `STATES` still expresses precedence and no output is ever re-scanned.
+ */
+function resolveStates(css: string, slot: string): string {
+  const applicable = STATES.filter(
+    (state) => state.slots === undefined || state.slots.includes(slot),
+  );
+  if (applicable.length === 0) return css;
+  const combined = new RegExp(applicable.map((state) => `(${state.from.source})`).join("|"), "g");
+
+  return css.replace(
+    /^([ \t]*)([^\n{}]*?)([ \t]*\{)$/gm,
+    (whole, leading: string, selector: string, open: string) => {
+      if (!selector.includes("[data-")) return whole;
+      const text = selector.replace(combined, (...args: unknown[]) => {
+        const groups = args.slice(1, 1 + applicable.length) as (string | undefined)[];
+        const at = groups.findIndex((group) => group !== undefined);
+        return applicable[at]?.to ?? (args[0] as string);
+      });
+      return `${leading}${dedupeSelector(text)}${open}`;
+    },
+  );
+}
+
 function resolveMarkers(
   css: string,
   slots: ReadonlySet<string>,
@@ -324,7 +451,7 @@ async function main(): Promise<void> {
         process.stderr.write(`  ${name}/${slot}: NOT A UTILITY: ${result.unknown.join(" ")}\n`);
       }
       if (result.css.trim() === "") continue;
-      const resolved = resolveMarkers(result.css, ours);
+      const resolved = resolveMarkers(resolveStates(result.css, slot.replace(/^cn-/, "")), ours);
       for (const marker of resolved.missed) unreachableMarkers.add(marker);
       rules.push(`${selector} {\n${indent(resolved.css, "  ")}\n}`);
     }

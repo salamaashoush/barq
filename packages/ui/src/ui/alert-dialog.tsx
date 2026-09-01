@@ -65,7 +65,7 @@ const footer = ui({
   },
 });
 
-const title = ui({
+const title = ui(text.heading, {
   fontSize: "var(--text-lg)",
   lineHeight: "var(--ui-leading, var(--text-lg--line-height))",
   "--ui-font-weight": "var(--font-weight-semibold)",

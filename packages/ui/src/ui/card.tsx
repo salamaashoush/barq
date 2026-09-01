@@ -41,7 +41,7 @@ const headerBordered = ui({
   paddingBottom: "calc(var(--spacing) * 6)",
 });
 
-const title = ui({
+const title = ui(text.heading, {
   "--ui-leading": "1",
   lineHeight: "1",
   "--ui-font-weight": "var(--font-weight-semibold)",
@@ -127,13 +127,11 @@ export function CardHeader(props: Incoming<CardEdgeProps>) {
   // A literal alongside the atoms. The styles ask for the padding as
   // `[.border-b]:pb-(--card-spacing)`, which compiles to `&:is(.border-b)`, so
   // without the class a bordered header had a rule under every style and no
-  // padding to go with it.
+  // padding to go with it. A ternary rather than two conditional arguments,
+  // because the compiler folds a call whose arguments are all constants and
+  // two independent conditions would leave the merge on the runtime.
   const className = (): string =>
-    ui(
-      header,
-      props.bordered?.() === true && headerBordered,
-      props.bordered?.() === true && "border-b",
-    );
+    props.bordered?.() === true ? ui(header, headerBordered, "border-b") : ui(header);
   return <div {...uiProps("card-header", className, props)}>{props.children}</div>;
 }
 
@@ -156,10 +154,6 @@ export function CardContent(props: Incoming<UiProps>) {
 
 export function CardFooter(props: Incoming<CardEdgeProps>) {
   const className = (): string =>
-    ui(
-      footer,
-      props.bordered?.() === true && footerBordered,
-      props.bordered?.() === true && "border-t",
-    );
+    props.bordered?.() === true ? ui(footer, footerBordered, "border-t") : ui(footer);
   return <div {...uiProps("card-footer", className, props)}>{props.children}</div>;
 }

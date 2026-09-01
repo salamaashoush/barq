@@ -40,7 +40,7 @@ const header = ui({
   textAlign: "center",
 });
 
-const title = ui(text.medium, {
+const title = ui(text.medium, text.heading, {
   fontSize: "var(--text-lg)",
   lineHeight: "var(--ui-leading, var(--text-lg--line-height))",
   "--ui-tracking": "var(--tracking-tight)",
