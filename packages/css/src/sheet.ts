@@ -195,18 +195,29 @@ export function collectCss(): string {
   // the order. The block sits where the layer was first named.
   const out: string[] = [];
   const layers = new Map<string, string[]>();
+  // Each ENTRY split into its top-level statements first. An entry is one
+  // registration — a module's whole compiled stylesheet — and the compiler
+  // emits several `@layer barq.ui{…}` blocks for a module with several `ui()`
+  // calls. Asking whether the entry IS a layer therefore said no, and the whole
+  // entry was written out where it happened to be registered instead of being
+  // gathered: its atoms escaped the tier order, so a plain `width: 100%` from a
+  // late module beat a `@media` width from an early one and the customizer came
+  // out full width with the preview at zero. Splitting first makes the question
+  // one per statement, which is the level the answer was always about.
   for (const rule of rules) {
-    const split = wrapped(rule);
-    if (split === null) {
-      out.push(rule);
-      continue;
-    }
-    const held = layers.get(split.layer);
-    if (held === undefined) {
-      layers.set(split.layer, [split.body]);
-      out.push(`\u0000${split.layer}`);
-    } else {
-      held.push(split.body);
+    for (const statement of statements(rule)) {
+      const split = wrapped(statement);
+      if (split === null) {
+        out.push(statement);
+        continue;
+      }
+      const held = layers.get(split.layer);
+      if (held === undefined) {
+        layers.set(split.layer, [split.body]);
+        out.push(`\u0000${split.layer}`);
+      } else {
+        held.push(split.body);
+      }
     }
   }
 
@@ -217,6 +228,29 @@ export function collectCss(): string {
         : part,
     )
     .join("");
+}
+
+/**
+ * A blob of CSS as its top-level statements.
+ *
+ * Balanced-brace scanning rather than a parser, because that is all the
+ * question needs: a statement is whatever closes back to depth zero. A tail
+ * that never closes is handed back whole rather than guessed at.
+ */
+function statements(text: string): string[] {
+  const out: string[] = [];
+  let from = 0;
+  let depth = 0;
+  for (let index = 0; index < text.length; index++) {
+    if (text[index] === "{") depth++;
+    else if (text[index] === "}" && --depth === 0) {
+      out.push(text.slice(from, index + 1));
+      from = index + 1;
+    }
+  }
+  const tail = text.slice(from);
+  if (tail !== "") out.push(tail);
+  return out;
 }
 
 /**

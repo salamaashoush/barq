@@ -188,6 +188,29 @@ describe("a cascade layer", () => {
 });
 
 describe("registerCss", () => {
+  test("an entry holding several layer blocks is gathered, not left where it was", () => {
+    // The compiler emits a module's stylesheet as ONE registration, and a
+    // module with several `ui()` calls gets several `@layer barq.ui{…}` blocks
+    // inside it. Asking whether the entry IS a layer said no, so the whole
+    // entry was written out at its registration position and its atoms escaped
+    // the tier order — a plain `width: 100%` from a late module then beat a
+    // `@media` width from an early one, with no error and nothing to see but a
+    // panel at the wrong size.
+    registerCss("early", "@layer barq.probe{@media (min-width:1px){.late{width:10px}}}");
+    registerCss("theme", "@layer other{.between{color:red}}");
+    registerCss("module", "@layer barq.probe{.a{width:100%}}@layer barq.probe{.b{color:blue}}");
+
+    const sheet = collectCss();
+    // One block per layer, and everything in it.
+    expect(sheet.split("@layer barq.probe{").length - 1).toBe(1);
+    expect(sheet).toContain(".a{width:100%}");
+    expect(sheet).toContain(".b{color:blue}");
+    // And they are INSIDE that block rather than trailing the layers registered
+    // after it, which is where the whole entry used to be written out.
+    expect(sheet.indexOf(".a{width:100%}")).toBeLessThan(sheet.indexOf("@layer other{"));
+    expect(sheet.indexOf(".b{color:blue}")).toBeLessThan(sheet.indexOf("@layer other{"));
+  });
+
   test("a module's rules arrive whole and are collectable", () => {
     registerCss("/a/card.tsx", ".b1{color:red}");
     expect(collectCss()).toContain(".b1{color:red}");
