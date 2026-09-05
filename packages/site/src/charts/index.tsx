@@ -5,6 +5,8 @@ import { Link, useLocation, useParams } from "@barqjs/router";
 
 import { AREA_CHARTS } from "./area.tsx";
 import { BAR_CHARTS } from "./bar.tsx";
+import { LINE_CHARTS } from "./line.tsx";
+import { PIE_CHARTS } from "./pie.tsx";
 import { Page } from "../site.tsx";
 
 import type { Child } from "@barqjs/core";
@@ -30,8 +32,8 @@ export const CHART_TYPES: readonly {
 }[] = [
   { type: "area", label: "Area", charts: AREA_CHARTS },
   { type: "bar", label: "Bar", charts: BAR_CHARTS },
-  { type: "line", label: "Line", charts: [] },
-  { type: "pie", label: "Pie", charts: [] },
+  { type: "line", label: "Line", charts: LINE_CHARTS },
+  { type: "pie", label: "Pie", charts: PIE_CHARTS },
   { type: "radar", label: "Radar", charts: [] },
   { type: "radial", label: "Radial", charts: [] },
   { type: "tooltip", label: "Tooltip", charts: [] },
