@@ -24,7 +24,11 @@ const ui = layer("barq.ui");
 
 const content = ui(when.closing, {
   zIndex: "50",
+  display: "inline-flex",
   width: "fit-content",
+  maxWidth: "var(--container-xs)",
+  alignItems: "center",
+  gap: "calc(var(--spacing) * 1.5)",
   animation:
     "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
   borderRadius: "calc(var(--radius) * 0.8)",
@@ -33,8 +37,18 @@ const content = ui(when.closing, {
   paddingBlock: "calc(var(--spacing) * 1.5)",
   fontSize: "var(--text-xs)",
   lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
-  textWrap: "balance",
   color: "var(--background)",
+  // A shortcut key inside the tooltip takes the padding in on its side and
+  // sits above the tip, which is a sibling with a z-index of its own.
+  ':has([data-slot="kbd"])': {
+    paddingRight: "calc(var(--spacing) * 1.5)",
+  },
+  ':is(& *)[data-slot="kbd"]': {
+    position: "relative",
+    isolation: "isolate",
+    zIndex: "50",
+    borderRadius: "calc(var(--radius) * 0.6)",
+  },
   "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
   "--ui-enter-scale": firstThatWorks("0.95", "calc(95*1%)"),
   '[data-placement="bottom"]': {

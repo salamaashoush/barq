@@ -67,15 +67,20 @@ describe("Sheet", () => {
     expect(screen.getByRole("dialog", { name: "Filters" })).toBeTruthy();
   });
 
-  test("the side chooses a different class, and it slides from that side", async () => {
+  // The side is an ATTRIBUTE, not a class. One class list carries all four,
+  // keyed off `data-side`, which is what lets the eight styles reach the rule
+  // that decides which edge the sheet comes from.
+  test("the side is an attribute the class list selects on", async () => {
     render(() => <Fixture side="left" />);
     await user.click(screen.getByRole("button", { name: "Filters" }));
     await settle();
 
     const sheet = document.querySelector('[data-slot="sheet-content"]') as HTMLElement;
     expect(sheet.getAttribute("data-side")).toBe("left");
-    const side = sheet.className;
-    expect(rulesFor(side)).toContain("--ui-enter-translate-x: -100%");
+    const rules = rulesFor(sheet.className);
+    expect(rules).toContain('[data-side="left"]');
+    expect(rules).toContain('[data-side="right"]');
+    expect(rules).toContain("--ui-enter-translate-x: calc(.1*-100%)");
   });
 
   test("SheetClose closes it", async () => {

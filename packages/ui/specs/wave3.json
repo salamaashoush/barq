@@ -3,7 +3,6 @@
   "tabs-list.line": "gap-1 bg-transparent",
   "accordion-chevron": "pointer-events-none size-4 shrink-0 translate-y-0.5 text-muted-foreground transition-transform duration-200",
   "accordion-body": "pt-0 pb-4 text-sm",
-  "tooltip-content": "z-50 w-fit animate-in rounded-md bg-foreground px-3 py-1.5 text-xs text-balance text-background fade-in-0 zoom-in-95 data-[placement=bottom]:slide-in-from-top-2 data-[placement=left]:slide-in-from-right-2 data-[placement=right]:slide-in-from-left-2 data-[placement=top]:slide-in-from-bottom-2 data-[placement=top]:origin-bottom data-[placement=bottom]:origin-top data-[placement=left]:origin-right data-[placement=right]:origin-left data-[skip-animation]:animate-none",
   "tooltip-arrow": "absolute z-50 size-2.5 rotate-45 rounded-[2px] bg-foreground",
   "collapsible-trigger": "outline-none is-focus-visible:ring-[3px] is-focus-visible:ring-ring/50 is-disabled:pointer-events-none is-disabled:opacity-50"
 }

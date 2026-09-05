@@ -287,7 +287,6 @@ export {
   type DrawerProps,
   DrawerTitle,
   DrawerTrigger,
-  drawerVariants,
 } from "./ui/drawer.tsx";
 export {
   DropdownMenu,
@@ -546,7 +545,6 @@ export {
   type SheetSide,
   SheetTitle,
   SheetTrigger,
-  sheetVariants,
 } from "./ui/sheet.tsx";
 export {
   Sidebar,

@@ -17,16 +17,30 @@ import { srOnly } from "./sr-only.ts";
 
 const ui = layer("barq.ui");
 
+// A tenth of black and a blur, not half of black: the page behind stays
+// readable and the dialog reads as a layer over it rather than a hole in it.
 const overlay = ui({
   position: "fixed",
   inset: "0px",
+  isolation: "isolate",
   zIndex: "50",
   animation:
     "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
-  backgroundColor: "color-mix(in srgb, #000 50%, transparent)",
+  backgroundColor: "color-mix(in srgb, #000 10%, transparent)",
+  "--ui-duration": "100ms",
+  transitionDuration: "100ms",
   "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
   "@supports (color: color-mix(in lab, red, red))": {
-    backgroundColor: "color-mix(in oklab, var(--color-black) 50%, transparent)",
+    backgroundColor: "color-mix(in oklab, var(--color-black) 10%, transparent)",
+  },
+  "@supports (backdrop-filter: var(--tw))": {
+    "&": {
+      "--ui-backdrop-blur": "blur(var(--blur-xs))",
+      "-webkit-backdrop-filter":
+        "var(--ui-backdrop-blur,) var(--ui-backdrop-brightness,) var(--ui-backdrop-contrast,) var(--ui-backdrop-grayscale,) var(--ui-backdrop-hue-rotate,) var(--ui-backdrop-invert,) var(--ui-backdrop-opacity,) var(--ui-backdrop-saturate,) var(--ui-backdrop-sepia,)",
+      backdropFilter:
+        "var(--ui-backdrop-blur,) var(--ui-backdrop-brightness,) var(--ui-backdrop-contrast,) var(--ui-backdrop-grayscale,) var(--ui-backdrop-hue-rotate,) var(--ui-backdrop-invert,) var(--ui-backdrop-opacity,) var(--ui-backdrop-saturate,) var(--ui-backdrop-sepia,)",
+    },
   },
   "[data-closed]": {
     animation:
@@ -36,32 +50,37 @@ const overlay = ui({
   },
 });
 
-const content = ui(box.border, box.shadow, box.outline, when.closing, {
+const content = ui(box.shadow, box.outline, text.sm, when.closing, {
   position: "fixed",
-  top: "50%",
-  left: "50%",
+  top: "calc(1 / 2 * 100%)",
+  left: "calc(1 / 2 * 100%)",
   zIndex: "50",
   display: "grid",
   width: "100%",
   maxWidth: "calc(100% - 2rem)",
-  "--ui-translate-x": "-50%",
+  "--ui-translate-x": "calc(calc(1 / 2 * 100%) * -1)",
   translate: "var(--ui-translate-x) var(--ui-translate-y)",
-  "--ui-translate-y": "-50%",
+  "--ui-translate-y": "calc(calc(1 / 2 * 100%) * -1)",
   animation:
     "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
   gap: "calc(var(--spacing) * 4)",
-  borderRadius: "var(--radius)",
-  backgroundColor: "var(--background)",
-  padding: "calc(var(--spacing) * 6)",
-  "--ui-shadow":
-    "0 10px 15px -3px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 4px 6px -4px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
-  "--ui-duration": "200ms",
-  transitionDuration: "200ms",
+  borderRadius: "calc(var(--radius) * 1.4)",
+  backgroundColor: "var(--popover)",
+  padding: "calc(var(--spacing) * 4)",
+  color: "var(--popover-foreground)",
+  "--ui-ring-shadow":
+    "var(--ui-ring-inset,) 0 0 0 calc(1px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+  "--ui-ring-color": "var(--foreground)",
+  "--ui-duration": "100ms",
+  transitionDuration: "100ms",
   "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
   "--ui-enter-scale": firstThatWorks("0.95", "calc(95*1%)"),
+  "@supports (color: color-mix(in lab, red, red))": {
+    "--ui-ring-color": "color-mix(in oklab, var(--foreground) 10%, transparent)",
+  },
   "@media (width >= 40rem)": {
     "&": {
-      maxWidth: "var(--container-lg)",
+      maxWidth: "var(--container-sm)",
     },
   },
 });
@@ -70,18 +89,26 @@ const header = ui({
   display: "flex",
   flexDirection: "column",
   gap: "calc(var(--spacing) * 2)",
-  textAlign: "center",
-  "@media (width >= 40rem)": {
-    "&": {
-      textAlign: "left",
-    },
-  },
 });
 
+// The footer is pulled out to the content's own edges and given the content's
+// bottom corners, so the muted band reaches the sides rather than floating
+// inside the padding.
 const footer = ui({
+  marginInline: "calc(var(--spacing) * -4)",
+  marginBottom: "calc(var(--spacing) * -4)",
   display: "flex",
   flexDirection: "column-reverse",
   gap: "calc(var(--spacing) * 2)",
+  borderBottomRightRadius: "calc(var(--radius) * 1.4)",
+  borderBottomLeftRadius: "calc(var(--radius) * 1.4)",
+  borderTopStyle: "var(--ui-border-style)",
+  borderTopWidth: "1px",
+  backgroundColor: "var(--muted)",
+  padding: "calc(var(--spacing) * 4)",
+  "@supports (color: color-mix(in lab, red, red))": {
+    backgroundColor: "color-mix(in oklab, var(--muted) 50%, transparent)",
+  },
   "@media (width >= 40rem)": {
     "&": {
       flexDirection: "row",
@@ -90,16 +117,23 @@ const footer = ui({
   },
 });
 
-const title = ui(text.heading, {
-  fontSize: "var(--text-lg)",
-  lineHeight: firstThatWorks("1", "var(--ui-leading, var(--text-lg--line-height))"),
+const title = ui(text.heading, text.medium, {
+  fontSize: "var(--text-base)",
+  lineHeight: firstThatWorks("1", "var(--ui-leading, var(--text-base--line-height))"),
   "--ui-leading": "1",
-  "--ui-font-weight": "var(--font-weight-semibold)",
-  fontWeight: "var(--font-weight-semibold)",
 });
 
 const description = ui(text.sm, {
   color: "var(--muted-foreground)",
+  ":is(& > *):is(a)": {
+    textDecorationLine: "underline",
+    textUnderlineOffset: "3px",
+  },
+  "@media (hover: hover)": {
+    ":is(& > *):is(a):hover": {
+      color: "var(--foreground)",
+    },
+  },
 });
 
 const close = ui(box.transition, icon.plain, icon.sized, {

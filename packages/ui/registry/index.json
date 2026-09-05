@@ -769,6 +769,7 @@
         "layers",
         "props",
         "shared-box",
+        "shared-text",
         "shared-when"
       ],
       "files": [

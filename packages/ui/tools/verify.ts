@@ -42,6 +42,15 @@ const ALLOWED: Record<string, string> = {
     "carrier is not, and a class on an element the renderer owns would be " +
     "overwritten on the next scene",
   "chart:chart-axis-label:fill": 'as above, as `fill="var(--muted-foreground)"`',
+  "popover:popover-content:transform-origin":
+    "`origin-(--radix-popover-content-transform-origin)` reads a variable " +
+    "Radix's popper writes from its own measurement, and there is no popper " +
+    "here to write it. An undefined `var()` is invalid at computed-value time " +
+    "and the origin would fall back to `50% 50%`, which scales the panel out " +
+    "of its own corner. The origin is a rule per `data-placement` instead, " +
+    "which is the same four values Radix computes",
+  "hover-card:hover-card-content:transform-origin": "as above, per placement",
+  "tooltip:tooltip-content:transform-origin": "as above, per placement",
   "message-scroller:message-scroller-button:transition-duration":
     "`transition-[…]` and `duration-200` set the SAME property, and an atom " +
     "is one declaration: the literal wins and the `var()` form it replaces " +

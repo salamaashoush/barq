@@ -19,10 +19,21 @@ const overlay = ui({
   zIndex: "50",
   animation:
     "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
-  backgroundColor: "color-mix(in srgb, #000 50%, transparent)",
+  backgroundColor: "color-mix(in srgb, #000 10%, transparent)",
+  "--ui-duration": "100ms",
+  transitionDuration: "100ms",
   "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
   "@supports (color: color-mix(in lab, red, red))": {
-    backgroundColor: "color-mix(in oklab, var(--color-black) 50%, transparent)",
+    backgroundColor: "color-mix(in oklab, var(--color-black) 10%, transparent)",
+  },
+  "@supports (backdrop-filter: var(--tw))": {
+    "&": {
+      "--ui-backdrop-blur": "blur(var(--blur-xs))",
+      "-webkit-backdrop-filter":
+        "var(--ui-backdrop-blur,) var(--ui-backdrop-brightness,) var(--ui-backdrop-contrast,) var(--ui-backdrop-grayscale,) var(--ui-backdrop-hue-rotate,) var(--ui-backdrop-invert,) var(--ui-backdrop-opacity,) var(--ui-backdrop-saturate,) var(--ui-backdrop-sepia,)",
+      backdropFilter:
+        "var(--ui-backdrop-blur,) var(--ui-backdrop-brightness,) var(--ui-backdrop-contrast,) var(--ui-backdrop-grayscale,) var(--ui-backdrop-hue-rotate,) var(--ui-backdrop-invert,) var(--ui-backdrop-opacity,) var(--ui-backdrop-saturate,) var(--ui-backdrop-sepia,)",
+    },
   },
   "[data-closed]": {
     animation:
@@ -40,20 +51,37 @@ const header = ui({
   textAlign: "center",
   ':has([data-slot="alert-dialog-media"])': {
     gridTemplateRows: "auto auto 1fr",
-    columnGap: "calc(var(--spacing) * 6)",
+    columnGap: "calc(var(--spacing) * 4)",
   },
   "@media (width >= 40rem)": {
     '[data-slot="alert-dialog-content"][data-size="default"] &': {
       placeItems: "start",
       textAlign: "left",
     },
+    '[data-slot="alert-dialog-content"][data-size="default"] &:has([data-slot="alert-dialog-media"])':
+      {
+        gridTemplateRows: "auto 1fr",
+      },
   },
 });
 
+// Pulled out to the content's edges and given its bottom corners, so the
+// muted band reaches the sides rather than floating inside the padding.
 const footer = ui({
+  marginInline: "calc(var(--spacing) * -4)",
+  marginBottom: "calc(var(--spacing) * -4)",
   display: "flex",
   flexDirection: "column-reverse",
   gap: "calc(var(--spacing) * 2)",
+  borderBottomRightRadius: "calc(var(--radius) * 1.4)",
+  borderBottomLeftRadius: "calc(var(--radius) * 1.4)",
+  borderTopStyle: "var(--ui-border-style)",
+  borderTopWidth: "1px",
+  backgroundColor: "var(--muted)",
+  padding: "calc(var(--spacing) * 4)",
+  "@supports (color: color-mix(in lab, red, red))": {
+    backgroundColor: "color-mix(in oklab, var(--muted) 50%, transparent)",
+  },
   "@media (width >= 40rem)": {
     "&": {
       flexDirection: "row",
@@ -66,29 +94,48 @@ const footer = ui({
   },
 });
 
-const title = ui(text.heading, {
-  fontSize: "var(--text-lg)",
-  lineHeight: "var(--ui-leading, var(--text-lg--line-height))",
-  "--ui-font-weight": "var(--font-weight-semibold)",
-  fontWeight: "var(--font-weight-semibold)",
+const title = ui(text.heading, text.medium, {
+  fontSize: "var(--text-base)",
+  lineHeight: "var(--ui-leading, var(--text-base--line-height))",
+  "@media (width >= 40rem)": {
+    '[data-slot="alert-dialog-content"][data-size="default"]:has([data-slot="alert-dialog-media"]) &':
+      {
+        gridColumnStart: "2",
+      },
+  },
 });
 
 const description = ui(text.sm, {
+  textWrap: "balance",
   color: "var(--muted-foreground)",
+  "@media (width >= 48rem)": {
+    "&": {
+      textWrap: "pretty",
+    },
+  },
+  ":is(& > *):is(a)": {
+    textDecorationLine: "underline",
+    textUnderlineOffset: "3px",
+  },
+  "@media (hover: hover)": {
+    ":is(& > *):is(a):hover": {
+      color: "var(--foreground)",
+    },
+  },
 });
 
 const media = ui({
   marginBottom: "calc(var(--spacing) * 2)",
   display: "inline-flex",
-  width: "calc(var(--spacing) * 16)",
-  height: "calc(var(--spacing) * 16)",
+  width: "calc(var(--spacing) * 10)",
+  height: "calc(var(--spacing) * 10)",
   alignItems: "center",
   justifyContent: "center",
   borderRadius: "calc(var(--radius) * 0.8)",
   backgroundColor: "var(--muted)",
   '& > svg:not([class*="size-"])': {
-    width: "calc(var(--spacing) * 8)",
-    height: "calc(var(--spacing) * 8)",
+    width: "calc(var(--spacing) * 6)",
+    height: "calc(var(--spacing) * 6)",
   },
   "@media (width >= 40rem)": {
     '[data-slot="alert-dialog-content"][data-size="default"] &': {
@@ -100,35 +147,42 @@ const media = ui({
 export type AlertDialogSize = "default" | "sm";
 
 /** The size is an attribute the CSS reads, so there is one class and not two. */
-const content = ui(box.border, box.shadow, box.outline, when.closing, {
+const content = ui(box.shadow, box.outline, when.closing, {
   position: "fixed",
-  top: "50%",
-  left: "50%",
+  top: "calc(1 / 2 * 100%)",
+  left: "calc(1 / 2 * 100%)",
   zIndex: "50",
   display: "grid",
   width: "100%",
-  maxWidth: "calc(100% - 2rem)",
-  "--ui-translate-x": "-50%",
+  "--ui-translate-x": "calc(calc(1 / 2 * 100%) * -1)",
   translate: "var(--ui-translate-x) var(--ui-translate-y)",
-  "--ui-translate-y": "-50%",
+  "--ui-translate-y": "calc(calc(1 / 2 * 100%) * -1)",
   animation:
     "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
   gap: "calc(var(--spacing) * 4)",
-  borderRadius: "var(--radius)",
-  backgroundColor: "var(--background)",
-  padding: "calc(var(--spacing) * 6)",
-  "--ui-shadow":
-    "0 10px 15px -3px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 4px 6px -4px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
-  "--ui-duration": "200ms",
-  transitionDuration: "200ms",
+  borderRadius: "calc(var(--radius) * 1.4)",
+  backgroundColor: "var(--popover)",
+  padding: "calc(var(--spacing) * 4)",
+  color: "var(--popover-foreground)",
+  "--ui-ring-shadow":
+    "var(--ui-ring-inset,) 0 0 0 calc(1px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+  "--ui-ring-color": "var(--foreground)",
+  "--ui-duration": "100ms",
+  transitionDuration: "100ms",
   "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
   "--ui-enter-scale": firstThatWorks("0.95", "calc(95*1%)"),
+  "@supports (color: color-mix(in lab, red, red))": {
+    "--ui-ring-color": "color-mix(in oklab, var(--foreground) 10%, transparent)",
+  },
+  '[data-size="default"]': {
+    maxWidth: "var(--container-xs)",
+  },
   '[data-size="sm"]': {
     maxWidth: "var(--container-xs)",
   },
   "@media (width >= 40rem)": {
     '[data-size="default"]': {
-      maxWidth: "var(--container-lg)",
+      maxWidth: "var(--container-sm)",
     },
   },
 });

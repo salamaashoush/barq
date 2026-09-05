@@ -1,6 +1,6 @@
 import { Dialog as AriaDialog, Heading, Modal, useDialogDescription } from "@barqjs/aria/dialog";
 import { Show, type Child, type Incoming } from "@barqjs/core";
-import { firstThatWorks, layer, variants } from "@barqjs/css";
+import { firstThatWorks, layer } from "@barqjs/css";
 import { X } from "@barqjs/lucide/icons/x";
 
 import "../theme/layers.ts";
@@ -21,10 +21,21 @@ const overlay = ui({
   zIndex: "50",
   animation:
     "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
-  backgroundColor: "color-mix(in srgb, #000 50%, transparent)",
+  backgroundColor: "color-mix(in srgb, #000 10%, transparent)",
+  "--ui-duration": "100ms",
+  transitionDuration: "100ms",
   "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
   "@supports (color: color-mix(in lab, red, red))": {
-    backgroundColor: "color-mix(in oklab, var(--color-black) 50%, transparent)",
+    backgroundColor: "color-mix(in oklab, var(--color-black) 10%, transparent)",
+  },
+  "@supports (backdrop-filter: var(--tw))": {
+    "&": {
+      "--ui-backdrop-blur": "blur(var(--blur-xs))",
+      "-webkit-backdrop-filter":
+        "var(--ui-backdrop-blur,) var(--ui-backdrop-brightness,) var(--ui-backdrop-contrast,) var(--ui-backdrop-grayscale,) var(--ui-backdrop-hue-rotate,) var(--ui-backdrop-invert,) var(--ui-backdrop-opacity,) var(--ui-backdrop-saturate,) var(--ui-backdrop-sepia,)",
+      backdropFilter:
+        "var(--ui-backdrop-blur,) var(--ui-backdrop-brightness,) var(--ui-backdrop-contrast,) var(--ui-backdrop-grayscale,) var(--ui-backdrop-hue-rotate,) var(--ui-backdrop-invert,) var(--ui-backdrop-opacity,) var(--ui-backdrop-saturate,) var(--ui-backdrop-sepia,)",
+    },
   },
   "[data-closed]": {
     animation:
@@ -37,7 +48,7 @@ const overlay = ui({
 const header = ui({
   display: "flex",
   flexDirection: "column",
-  gap: "calc(var(--spacing) * 1.5)",
+  gap: "calc(var(--spacing) * 0.5)",
   padding: "calc(var(--spacing) * 4)",
 });
 
@@ -49,9 +60,9 @@ const footer = ui({
   padding: "calc(var(--spacing) * 4)",
 });
 
-const title = ui(text.heading, {
-  "--ui-font-weight": "var(--font-weight-semibold)",
-  fontWeight: "var(--font-weight-semibold)",
+const title = ui(text.heading, text.medium, {
+  fontSize: "var(--text-base)",
+  lineHeight: "var(--ui-leading, var(--text-base--line-height))",
   color: "var(--foreground)",
 });
 
@@ -89,99 +100,106 @@ const close = ui(box.transition, icon.plain, icon.sized, {
 
 export type SheetSide = "top" | "right" | "bottom" | "left";
 
-export const sheetVariants = variants({
-  base: ui(box.shadow, {
-    position: "fixed",
-    zIndex: "50",
-    display: "flex",
-    animation:
-      "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
-    flexDirection: "column",
-    gap: "calc(var(--spacing) * 4)",
-    backgroundColor: "var(--background)",
-    "--ui-shadow":
-      "0 10px 15px -3px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 4px 6px -4px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
-    transitionProperty:
-      "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events",
-    transitionTimingFunction: firstThatWorks(
-      "var(--ease-in-out)",
-      "var(--ui-ease, var(--default-transition-timing-function))",
-    ),
-    transitionDuration: firstThatWorks(
-      "500ms",
-      "var(--ui-duration, var(--default-transition-duration))",
-    ),
-    "--ui-duration": "500ms",
-    "--ui-ease": "var(--ease-in-out)",
-    "[data-closed]": {
-      animation:
-        "exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
-      "--ui-animation-fill-mode": "forwards",
-      "--ui-duration": "300ms",
-      transitionDuration: "300ms",
+/**
+ * One class, four sides, keyed off `data-side`.
+ *
+ * It was a `variants()` with a class per side. Upstream writes one class list
+ * with `data-[side=…]` in it, and so does this now: the side is an attribute a
+ * style can select on, and a rule that lives in a class only the component
+ * chooses is a rule the eight styles cannot reach.
+ */
+const content = ui(box.shadow, {
+  position: "fixed",
+  zIndex: "50",
+  display: "flex",
+  animation:
+    "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
+  flexDirection: "column",
+  gap: "calc(var(--spacing) * 4)",
+  backgroundColor: "var(--popover)",
+  // The border is drawn INSIDE the fill, so a sheet against the viewport edge
+  // does not paint its background over its own rule.
+  backgroundClip: "padding-box",
+  color: "var(--popover-foreground)",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  "--ui-shadow":
+    "0 10px 15px -3px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 4px 6px -4px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
+  transitionProperty:
+    "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to, opacity, box-shadow, transform, translate, scale, rotate, filter, -webkit-backdrop-filter, backdrop-filter, display, content-visibility, overlay, pointer-events",
+  transitionTimingFunction: firstThatWorks(
+    "var(--ease-in-out)",
+    "var(--ui-ease, var(--default-transition-timing-function))",
+  ),
+  transitionDuration: firstThatWorks(
+    "200ms",
+    "var(--ui-duration, var(--default-transition-duration))",
+  ),
+  "--ui-duration": "200ms",
+  "--ui-ease": "var(--ease-in-out)",
+  // A tenth of the panel and a fade, not the whole of it: the sheet arrives
+  // rather than being thrown in from off screen.
+  "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
+  '[data-side="bottom"]': {
+    insetInline: "0px",
+    bottom: "0px",
+    height: "auto",
+    borderTopStyle: "var(--ui-border-style)",
+    borderTopWidth: "1px",
+    "--ui-enter-translate-y": firstThatWorks("calc(.1*100%)", "calc(10*var(--spacing))"),
+  },
+  '[data-side="left"]': {
+    insetBlock: "0px",
+    left: "0px",
+    height: "100%",
+    width: "calc(3 / 4 * 100%)",
+    borderRightStyle: "var(--ui-border-style)",
+    borderRightWidth: "1px",
+    "--ui-enter-translate-x": firstThatWorks("calc(.1*-100%)", "calc(10*var(--spacing)*-1)"),
+  },
+  '[data-side="right"]': {
+    insetBlock: "0px",
+    right: "0px",
+    height: "100%",
+    width: "calc(3 / 4 * 100%)",
+    borderLeftStyle: "var(--ui-border-style)",
+    borderLeftWidth: "1px",
+    "--ui-enter-translate-x": firstThatWorks("calc(.1*100%)", "calc(10*var(--spacing))"),
+  },
+  '[data-side="top"]': {
+    insetInline: "0px",
+    top: "0px",
+    height: "auto",
+    borderBottomStyle: "var(--ui-border-style)",
+    borderBottomWidth: "1px",
+    "--ui-enter-translate-y": firstThatWorks("calc(.1*-100%)", "calc(10*var(--spacing)*-1)"),
+  },
+  "@media (width >= 40rem)": {
+    '[data-side="left"]': {
+      maxWidth: "var(--container-sm)",
     },
-  }),
-  variants: {
-    side: {
-      right: ui({
-        insetBlock: "0px",
-        right: "0px",
-        height: "100%",
-        width: "calc(3 / 4 * 100%)",
-        borderLeftStyle: "var(--ui-border-style)",
-        borderLeftWidth: "1px",
-        "--ui-enter-translate-x": "100%",
-        "[data-closed]": {
-          "--ui-exit-translate-x": "100%",
-        },
-        "@media (width >= 40rem)": {
-          "&": {
-            maxWidth: "var(--container-sm)",
-          },
-        },
-      }),
-      left: ui({
-        insetBlock: "0px",
-        left: "0px",
-        height: "100%",
-        width: "calc(3 / 4 * 100%)",
-        borderRightStyle: "var(--ui-border-style)",
-        borderRightWidth: "1px",
-        "--ui-enter-translate-x": "-100%",
-        "[data-closed]": {
-          "--ui-exit-translate-x": "-100%",
-        },
-        "@media (width >= 40rem)": {
-          "&": {
-            maxWidth: "var(--container-sm)",
-          },
-        },
-      }),
-      top: ui({
-        insetInline: "0px",
-        top: "0px",
-        height: "auto",
-        borderBottomStyle: "var(--ui-border-style)",
-        borderBottomWidth: "1px",
-        "--ui-enter-translate-y": "-100%",
-        "[data-closed]": {
-          "--ui-exit-translate-y": "-100%",
-        },
-      }),
-      bottom: ui({
-        insetInline: "0px",
-        bottom: "0px",
-        height: "auto",
-        borderTopStyle: "var(--ui-border-style)",
-        borderTopWidth: "1px",
-        "--ui-enter-translate-y": "100%",
-        "[data-closed]": {
-          "--ui-exit-translate-y": "100%",
-        },
-      }),
+    '[data-side="right"]': {
+      maxWidth: "var(--container-sm)",
     },
   },
-  defaults: { side: "right" },
+  "[data-closed]": {
+    animation:
+      "exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
+    "--ui-animation-fill-mode": "forwards",
+    "--ui-exit-opacity": firstThatWorks("0", "calc(0/100)"),
+  },
+  '[data-closed][data-side="bottom"]': {
+    "--ui-exit-translate-y": firstThatWorks("calc(.1*100%)", "calc(10*var(--spacing))"),
+  },
+  '[data-closed][data-side="left"]': {
+    "--ui-exit-translate-x": firstThatWorks("calc(.1*-100%)", "calc(10*var(--spacing)*-1)"),
+  },
+  '[data-closed][data-side="right"]': {
+    "--ui-exit-translate-x": firstThatWorks("calc(.1*100%)", "calc(10*var(--spacing))"),
+  },
+  '[data-closed][data-side="top"]': {
+    "--ui-exit-translate-y": firstThatWorks("calc(.1*-100%)", "calc(10*var(--spacing)*-1)"),
+  },
 });
 
 const family = overlayFamily("Sheet");
@@ -234,7 +252,7 @@ export function SheetContent(props: Incoming<SheetContentProps>) {
       isKeyboardDismissDisabled={props.isKeyboardDismissDisabled?.() === true}
       underlayClass={overlay}
       underlaySlot="sheet-overlay"
-      class={ui(sheetVariants({ side: props.side?.() }), props.class?.(), props.className?.())}
+      class={ui(content, props.class?.(), props.className?.())}
       data-slot={props["data-slot"]?.() ?? "sheet-content"}
       data-side={props.side?.() ?? "right"}
     >

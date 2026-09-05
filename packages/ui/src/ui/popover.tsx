@@ -13,17 +13,30 @@ import { uiProps } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
-const content = ui(box.border, box.shadow, box.outline, when.closing, {
+const content = ui(box.shadow, box.outline, box.forcedColors, text.sm, when.closing, {
   zIndex: "50",
+  display: "flex",
   width: "calc(var(--spacing) * 72)",
+  flexDirection: "column",
+  gap: "calc(var(--spacing) * 2.5)",
   animation:
     "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
-  borderRadius: "calc(var(--radius) * 0.8)",
+  borderRadius: "var(--radius)",
   backgroundColor: "var(--popover)",
-  padding: "calc(var(--spacing) * 4)",
+  padding: "calc(var(--spacing) * 2.5)",
   color: "var(--popover-foreground)",
   "--ui-shadow":
     "0 4px 6px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 2px 4px -2px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
+  // A ring rather than a border: it costs no layout, which is what lets the
+  // popover be measured against the trigger without a 2px correction.
+  "--ui-ring-shadow":
+    "var(--ui-ring-inset,) 0 0 0 calc(1px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+  "--ui-ring-color": "var(--foreground)",
+  "@supports (color: color-mix(in lab, red, red))": {
+    "--ui-ring-color": "color-mix(in oklab, var(--foreground) 10%, transparent)",
+  },
+  "--ui-duration": "100ms",
+  transitionDuration: "100ms",
   "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
   "--ui-enter-scale": firstThatWorks("0.95", "calc(95*1%)"),
   '[data-placement="bottom"]': {
@@ -59,7 +72,7 @@ const content = ui(box.border, box.shadow, box.outline, when.closing, {
 const header = ui(text.sm, {
   display: "flex",
   flexDirection: "column",
-  gap: "var(--spacing)",
+  gap: "calc(var(--spacing) * 0.5)",
 });
 
 const title = ui(text.medium);

@@ -9,7 +9,7 @@ import {
   type Child,
   type Incoming,
 } from "@barqjs/core";
-import { firstThatWorks, layer, variants } from "@barqjs/css";
+import { firstThatWorks, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { text } from "../lib/shared-text.ts";
@@ -26,10 +26,19 @@ const overlay = ui({
   zIndex: "50",
   animation:
     "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
-  backgroundColor: "color-mix(in srgb, #000 50%, transparent)",
+  backgroundColor: "color-mix(in srgb, #000 10%, transparent)",
   "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
   "@supports (color: color-mix(in lab, red, red))": {
-    backgroundColor: "color-mix(in oklab, var(--color-black) 50%, transparent)",
+    backgroundColor: "color-mix(in oklab, var(--color-black) 10%, transparent)",
+  },
+  "@supports (backdrop-filter: var(--tw))": {
+    "&": {
+      "--ui-backdrop-blur": "blur(var(--blur-xs))",
+      "-webkit-backdrop-filter":
+        "var(--ui-backdrop-blur,) var(--ui-backdrop-brightness,) var(--ui-backdrop-contrast,) var(--ui-backdrop-grayscale,) var(--ui-backdrop-hue-rotate,) var(--ui-backdrop-invert,) var(--ui-backdrop-opacity,) var(--ui-backdrop-saturate,) var(--ui-backdrop-sepia,)",
+      backdropFilter:
+        "var(--ui-backdrop-blur,) var(--ui-backdrop-brightness,) var(--ui-backdrop-contrast,) var(--ui-backdrop-grayscale,) var(--ui-backdrop-hue-rotate,) var(--ui-backdrop-invert,) var(--ui-backdrop-opacity,) var(--ui-backdrop-saturate,) var(--ui-backdrop-sepia,)",
+    },
   },
   "[data-closed]": {
     animation:
@@ -39,101 +48,107 @@ const overlay = ui({
   },
 });
 
-export const drawerVariants = variants({
-  base: ui({
-    position: "fixed",
-    zIndex: "50",
-    display: "flex",
-    height: "auto",
-    flexDirection: "column",
-    backgroundColor: "var(--background)",
-    animation:
-      "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
-    transitionProperty: "transform",
-    transitionTimingFunction: firstThatWorks(
-      "var(--ease-out)",
-      "var(--ui-ease, var(--default-transition-timing-function))",
-    ),
-    transitionDuration: firstThatWorks(
-      "300ms",
-      "var(--ui-duration, var(--default-transition-duration))",
-    ),
-    "--ui-duration": "300ms",
-    "--ui-ease": "var(--ease-out)",
-    "[data-closed]": {
-      animation:
-        "exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
-      "--ui-animation-fill-mode": "forwards",
+/**
+ * One class, four directions, keyed off `data-direction`.
+ *
+ * It was a `variants()` with a class per direction. Upstream writes one class
+ * list with `data-[vaul-drawer-direction=…]` in it — the same shape with
+ * Vaul's attribute name — and the side is a thing a style can select on rather
+ * than a class only the component chooses.
+ */
+const content = ui("group/drawer-content", {
+  position: "fixed",
+  zIndex: "50",
+  display: "flex",
+  height: "auto",
+  flexDirection: "column",
+  backgroundColor: "var(--popover)",
+  color: "var(--popover-foreground)",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  animation:
+    "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
+  transitionProperty: "transform",
+  transitionTimingFunction: firstThatWorks(
+    "var(--ease-out)",
+    "var(--ui-ease, var(--default-transition-timing-function))",
+  ),
+  transitionDuration: firstThatWorks(
+    "300ms",
+    "var(--ui-duration, var(--default-transition-duration))",
+  ),
+  "--ui-duration": "300ms",
+  "--ui-ease": "var(--ease-out)",
+  // A drag has to move the drawer and nothing else: without this the pointer
+  // scrolls the page behind it on a touch screen and the drawer stays put.
+  touchAction: "none",
+  '[data-direction="top"]': {
+    insetInline: "0px",
+    top: "0px",
+    marginBottom: "calc(var(--spacing) * 24)",
+    maxHeight: "80vh",
+    borderBottomRightRadius: "calc(var(--radius) * 1.4)",
+    borderBottomLeftRadius: "calc(var(--radius) * 1.4)",
+    borderBottomStyle: "var(--ui-border-style)",
+    borderBottomWidth: "1px",
+    "--ui-enter-translate-y": "-100%",
+  },
+  '[data-direction="bottom"]': {
+    insetInline: "0px",
+    bottom: "0px",
+    marginTop: "calc(var(--spacing) * 24)",
+    maxHeight: "80vh",
+    borderTopLeftRadius: "calc(var(--radius) * 1.4)",
+    borderTopRightRadius: "calc(var(--radius) * 1.4)",
+    borderTopStyle: "var(--ui-border-style)",
+    borderTopWidth: "1px",
+    "--ui-enter-translate-y": "100%",
+  },
+  '[data-direction="right"]': {
+    insetBlock: "0px",
+    right: "0px",
+    width: "calc(3 / 4 * 100%)",
+    borderTopLeftRadius: "calc(var(--radius) * 1.4)",
+    borderBottomLeftRadius: "calc(var(--radius) * 1.4)",
+    borderLeftStyle: "var(--ui-border-style)",
+    borderLeftWidth: "1px",
+    "--ui-enter-translate-x": "100%",
+  },
+  '[data-direction="left"]': {
+    insetBlock: "0px",
+    left: "0px",
+    width: "calc(3 / 4 * 100%)",
+    borderTopRightRadius: "calc(var(--radius) * 1.4)",
+    borderBottomRightRadius: "calc(var(--radius) * 1.4)",
+    borderRightStyle: "var(--ui-border-style)",
+    borderRightWidth: "1px",
+    "--ui-enter-translate-x": "-100%",
+  },
+  "@media (width >= 40rem)": {
+    '[data-direction="left"]': {
+      maxWidth: "var(--container-sm)",
     },
-    // A drag has to move the drawer and nothing else: without this the pointer
-    // scrolls the page behind it on a touch screen and the drawer stays put.
-    touchAction: "none",
-  }),
-  variants: {
-    direction: {
-      top: ui({
-        insetInline: "0px",
-        top: "0px",
-        marginBottom: "calc(var(--spacing) * 24)",
-        maxHeight: "80vh",
-        borderBottomRightRadius: "var(--radius)",
-        borderBottomLeftRadius: "var(--radius)",
-        borderBottomStyle: "var(--ui-border-style)",
-        borderBottomWidth: "1px",
-        "--ui-enter-translate-y": "-100%",
-        "[data-closed]": {
-          "--ui-exit-translate-y": "-100%",
-        },
-      }),
-      bottom: ui({
-        insetInline: "0px",
-        bottom: "0px",
-        marginTop: "calc(var(--spacing) * 24)",
-        maxHeight: "80vh",
-        borderTopLeftRadius: "var(--radius)",
-        borderTopRightRadius: "var(--radius)",
-        borderTopStyle: "var(--ui-border-style)",
-        borderTopWidth: "1px",
-        "--ui-enter-translate-y": "100%",
-        "[data-closed]": {
-          "--ui-exit-translate-y": "100%",
-        },
-      }),
-      right: ui({
-        insetBlock: "0px",
-        right: "0px",
-        width: "calc(3 / 4 * 100%)",
-        borderLeftStyle: "var(--ui-border-style)",
-        borderLeftWidth: "1px",
-        "--ui-enter-translate-x": "100%",
-        "[data-closed]": {
-          "--ui-exit-translate-x": "100%",
-        },
-        "@media (width >= 40rem)": {
-          "&": {
-            maxWidth: "var(--container-sm)",
-          },
-        },
-      }),
-      left: ui({
-        insetBlock: "0px",
-        left: "0px",
-        width: "calc(3 / 4 * 100%)",
-        borderRightStyle: "var(--ui-border-style)",
-        borderRightWidth: "1px",
-        "--ui-enter-translate-x": "-100%",
-        "[data-closed]": {
-          "--ui-exit-translate-x": "-100%",
-        },
-        "@media (width >= 40rem)": {
-          "&": {
-            maxWidth: "var(--container-sm)",
-          },
-        },
-      }),
+    '[data-direction="right"]': {
+      maxWidth: "var(--container-sm)",
     },
   },
-  defaults: { direction: "bottom" },
+  "[data-closed]": {
+    animation:
+      "exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
+    "--ui-animation-fill-mode": "forwards",
+  },
+  '[data-closed][data-direction="top"]': {
+    "--ui-exit-translate-y": "-100%",
+  },
+  '[data-closed][data-direction="bottom"]': {
+    "--ui-exit-translate-y": "100%",
+  },
+  '[data-closed][data-direction="right"]': {
+    "--ui-exit-translate-x": "100%",
+  },
+  '[data-closed][data-direction="left"]': {
+    "--ui-exit-translate-x": "-100%",
+  },
 });
 
 const handle = ui({
@@ -151,17 +166,29 @@ const header = ui({
   flexDirection: "column",
   gap: "calc(var(--spacing) * 0.5)",
   padding: "calc(var(--spacing) * 4)",
+  // A drawer coming from the top or the bottom is the full width of the
+  // viewport and reads down the middle; one from a side is a column.
+  '[data-slot="drawer-content"][data-direction="bottom"] &': {
+    textAlign: "center",
+  },
+  '[data-slot="drawer-content"][data-direction="top"] &': {
+    textAlign: "center",
+  },
   "@media (width >= 48rem)": {
     "&": {
-      gap: "calc(var(--spacing) * 1.5)",
+      gap: "calc(var(--spacing) * 0.5)",
       textAlign: "left",
     },
   },
 });
 
-/** A drawer coming from an edge with no side is read down the middle. */
+/** What `centered` writes when a caller overrides the direction's default. */
 const headerCentered = ui({
   textAlign: "center",
+});
+
+const headerAligned = ui({
+  textAlign: "left",
 });
 
 const footer = ui({
@@ -172,9 +199,9 @@ const footer = ui({
   padding: "calc(var(--spacing) * 4)",
 });
 
-const title = ui(text.heading, {
-  "--ui-font-weight": "var(--font-weight-semibold)",
-  fontWeight: "var(--font-weight-semibold)",
+const title = ui(text.heading, text.medium, {
+  fontSize: "var(--text-base)",
+  lineHeight: "var(--ui-leading, var(--text-base--line-height))",
   color: "var(--foreground)",
 });
 
@@ -351,7 +378,7 @@ export function DrawerContent(props: Incoming<DrawerContentProps>) {
       isKeyboardDismissDisabled={props.isKeyboardDismissDisabled?.() === true}
       underlayClass={overlay}
       underlaySlot="drawer-overlay"
-      class={ui(drawerVariants({ direction: direction() }), props.class?.(), props.className?.())}
+      class={ui(content, props.class?.(), props.className?.())}
       data-slot={props["data-slot"]?.() ?? "drawer-content"}
       data-direction={direction()}
       onPointerDown={onPointerDown}
@@ -373,14 +400,16 @@ export interface DrawerHeaderProps extends UiProps {
 
 export function DrawerHeader(props: Incoming<DrawerHeaderProps>) {
   const drawer = useDrawer();
-  const centered = (): boolean => {
-    const said = props.centered?.();
-    if (said !== undefined) return said;
-    return drawer.direction() === "top" || drawer.direction() === "bottom";
-  };
+  // The direction already decides this in CSS; the prop only exists to say
+  // otherwise, so it writes a class either way rather than leaving the
+  // direction's rule in place under a `centered={false}`.
+  const centered = (): boolean =>
+    props.centered?.() ?? (drawer.direction() === "top" || drawer.direction() === "bottom");
 
   return (
-    <div {...uiProps("drawer-header", ui(header, centered() ? headerCentered : ""), props)}>
+    <div
+      {...uiProps("drawer-header", ui(header, centered() ? headerCentered : headerAligned), props)}
+    >
       {props.children}
     </div>
   );
