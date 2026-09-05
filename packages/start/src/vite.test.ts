@@ -424,39 +424,61 @@ describe("the router entry a project DOES write", () => {
 });
 
 describe("`target` pins the srvx adapter at BUILD time", () => {
-  const ssrAlias = (options: Parameters<typeof barqStart>[0]): unknown => {
+  /**
+   * A `resolveId` hook and not `resolve.alias`, so this asks the HOOK. It was
+   * an alias on `environments.ssr.resolve` for a long time, and Vite's
+   * per-environment `resolve` is `EnvironmentResolveOptions`, which has no
+   * `alias` — so it was accepted, ignored, and asserted on by a test that read
+   * the config object rather than the bundle. Every build shipped srvx's
+   * `default` export, the GENERIC adapter, whose `serve()` opens no socket:
+   * `bun dist/server/serve.js` exited 0 in 9ms having served nothing.
+   */
+  const resolveSrvx = async (
+    options: Parameters<typeof barqStart>[0],
+    environment: string,
+    id = "srvx",
+  ): Promise<string | null> => {
     const plugins = barqStart(options) as unknown as (Loose & { name: string })[];
-    for (const plugin of plugins) plugin.configResolved?.({ root: ROOT, mode: "development" });
     for (const plugin of plugins) {
-      const config = plugin.config?.({}, { command: "build", mode: "production" }) as
-        | { environments?: Record<string, { resolve?: { alias?: unknown } }> }
+      const hook = plugin.resolveId as
+        | ((this: unknown, id: string) => Promise<{ id: string } | null> | null)
         | undefined;
-      const alias = config?.environments?.ssr?.resolve?.alias;
-      if (alias !== undefined) return alias;
+      if (hook === undefined) continue;
+      const asked: string[] = [];
+      const context = {
+        environment: { name: environment },
+        resolve: (source: string) => {
+          asked.push(source);
+          return Promise.resolve({ id: source });
+        },
+      };
+      const found = await hook.call(context, id);
+      if (found !== null) return asked[0] ?? null;
     }
-    return undefined;
+    return null;
   };
 
-  /**
-   * Under a bundler the export condition applied is the BUILD's, not the
-   * deployment's, so `import { serve } from "srvx"` in a bundle built on Node
-   * carries the Node adapter wherever it is deployed. Naming the target is what
-   * pins it, and doing it here costs nothing per request.
-   */
   test("naming one rewrites the bare `srvx` specifier", async () => {
-    expect(ssrAlias({ server: { target: "bun" } })).toEqual([
-      { find: /^srvx$/, replacement: "srvx/bun" },
-    ]);
+    expect(await resolveSrvx({ server: { target: "bun" } }, "ssr")).toBe("srvx/bun");
+    expect(await resolveSrvx({ server: { target: "node" } }, "ssr")).toBe("srvx/node");
   });
 
-  test("the pattern is ANCHORED, so `srvx/static` is left alone", async () => {
-    const [entry] = ssrAlias({ server: { target: "node" } }) as { find: RegExp }[];
-    expect(entry.find.test("srvx")).toBe(true);
-    expect(entry.find.test("srvx/static")).toBe(false);
+  test("only the bare specifier, so `srvx/static` is left alone", async () => {
+    expect(await resolveSrvx({ server: { target: "node" } }, "ssr", "srvx/static")).toBe(null);
+    expect(await resolveSrvx({ server: { target: "node" } }, "ssr", "srvx/node")).toBe(null);
   });
 
-  test("`auto` pins nothing, because srvx's own conditions already answer", async () => {
-    expect(ssrAlias({})).toEqual([]);
-    expect(ssrAlias({ server: { target: "auto" } })).toEqual([]);
+  /**
+   * The CLIENT graph never imports it, and a hook that answered there would be
+   * pinning an adapter for a browser.
+   */
+  test("the server graph only", async () => {
+    expect(await resolveSrvx({ server: { target: "bun" } }, "client")).toBe(null);
+  });
+
+  test("`auto` pins the runtime the build runs on, never the generic adapter", async () => {
+    const expected = process.versions.bun === undefined ? "srvx/node" : "srvx/bun";
+    expect(await resolveSrvx({}, "ssr")).toBe(expected);
+    expect(await resolveSrvx({ server: { target: "auto" } }, "ssr")).toBe(expected);
   });
 });

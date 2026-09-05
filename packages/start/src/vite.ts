@@ -525,6 +525,80 @@ interface Discovered {
  * Everything here is available there too, because both end up as
  * `BarqServeOptions`.
  */
+/**
+ * The runtime this BUILD is running on, as an srvx adapter name.
+ *
+ * `target: "auto"` used to leave the import as bare `srvx` on the reasoning
+ * that its root export resolves by runtime condition. A bundler is what makes
+ * that false: none of `deno`, `bun`, `workerd` or `node` is in a Vite server
+ * build's conditions, so `default` won and every `auto` build shipped srvx's
+ * GENERIC adapter — whose `serve()` is an empty method that opens no socket.
+ * Measured on `@barqjs/site`: `bun dist/server/serve.js` exited 0 in 9ms,
+ * having served nothing, with no error of any kind.
+ *
+ * So `auto` names the runtime it is built on. Build and deployment are the same
+ * runtime in almost every case, and where they are not the node adapter is what
+ * a Bun or Deno deployment falls back to — both implement `node:http`, so it
+ * runs. `target` is for saying otherwise on purpose.
+ */
+function buildingRuntime(): "node" | "bun" | "deno" {
+  const versions = (globalThis as { process?: { versions?: Record<string, string> } }).process
+    ?.versions;
+  if (versions?.bun !== undefined) return "bun";
+  if (versions?.deno !== undefined) return "deno";
+  return "node";
+}
+
+/**
+ * `srvx` pinned to one adapter, in the SERVER graph only.
+ *
+ * A `resolveId` hook and NOT `resolve.alias`, which is what this was and why
+ * `target` never did anything. Vite's per-environment `resolve` is
+ * `EnvironmentResolveOptions`, and `alias` is not on it — only the top-level
+ * `resolve` is `AllResolveOptions`. So `environments.ssr.resolve.alias` was
+ * accepted, ignored, and asserted on by a test that read the config object
+ * rather than the bundle. Every build shipped srvx's `default` export, the
+ * GENERIC adapter, whose `serve()` opens no socket: `bun dist/server/serve.js`
+ * exited 0 in 9ms having served nothing, on `auto` and on a named target alike.
+ *
+ * PRE, which is what makes it run at all: Vite orders alias, then `pre`
+ * plugins, then its own `vite:resolve`. A plugin with no `enforce` is asked
+ * only after `vite:resolve` has answered, and for a bare specifier it always
+ * has.
+ *
+ * `this.environment` is what keeps it to the server graph, which a top-level
+ * alias could not have been.
+ */
+function srvxTarget(target: BarqServerOptions["target"]): Plugin {
+  return {
+    name: "barq-start:srvx",
+    enforce: "pre",
+    sharedDuringBuild: true,
+    // EXACT, so `srvx/static` and `srvx/node` are left alone.
+    resolveId(
+      this: {
+        environment?: { name?: string };
+        resolve?: (
+          source: string,
+          importer?: string,
+          options?: { skipSelf?: boolean },
+        ) => Promise<{ id: string } | null>;
+      },
+      id,
+      importer,
+    ) {
+      if (id !== "srvx" || this.environment?.name !== ENVIRONMENTS.server) return null;
+      const pinned = target === undefined || target === "auto" ? buildingRuntime() : target;
+      // THE IMPORTER, and it is not optional. `srvx` is a dependency of
+      // `@barqjs/start`, and under an isolated node_modules layout it sits in
+      // the store rather than beside the application — so resolving from the
+      // project root finds nothing and the hook declines in silence. Resolving
+      // from the module that asked for it is the only lookup that can succeed.
+      return this.resolve?.(`srvx/${pinned}`, importer, { skipSelf: true }) ?? null;
+    },
+  };
+}
+
 export interface BarqServerOptions {
   /**
    * Which srvx adapter the entry imports `serve` from.
@@ -887,6 +961,7 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
   const dev: Plugin = {
     name: "barq-start:dev",
     sharedDuringBuild: true,
+
     // `config` rather than `configResolved`: the environments have to exist
     // before Vite resolves them, and `consumer` is what decides whether a
     // module graph is a browser one.
@@ -894,8 +969,6 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       // `configResolved` is too late — the environments have to exist by the
       // end of this hook — so the root is resolved the way Vite resolves it.
       const ownsEntry = hasIndexHtml(resolve(user.root ?? process.cwd()));
-      const target = options.server?.target ?? "auto";
-      const pinnedTarget = target === "auto" ? null : target;
       const inputs = {
         // NAMED, both of them. The client name is what `generateBundle` above
         // identifies its own entry chunk by, and the ssr name is the emitted
@@ -946,18 +1019,6 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
             // which is indistinguishable from a bug the repo had already fixed.
             resolve: {
               noExternal: [/@barqjs\//],
-              // `target` is a BUILD-time choice, resolved here rather than by a
-              // dynamic import at runtime. srvx's root export picks its adapter
-              // from the runtime condition, and under a bundler the condition
-              // applied is the BUILD's, not the deployment's — so a bundle built
-              // on Node and run on Bun would carry the Node adapter. Naming the
-              // target pins it.
-              //
-              // Anchored, so `srvx/static` is not rewritten to `srvx/bun/static`.
-              alias:
-                pinnedTarget === null
-                  ? []
-                  : [{ find: /^srvx$/, replacement: `srvx/${pinnedTarget}` }],
             },
             build: {
               ssr: true,
@@ -1238,6 +1299,7 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
         onServerFns: record,
       }),
     },
+    srvxTarget(options.server?.target),
     entries,
     manifest,
     dev,
