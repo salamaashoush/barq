@@ -42,6 +42,26 @@ const ALLOWED: Record<string, string> = {
     "carrier is not, and a class on an element the renderer owns would be " +
     "overwritten on the next scene",
   "chart:chart-axis-label:fill": 'as above, as `fill="var(--muted-foreground)"`',
+  "dropdown-menu:dropdown-menu-content:max-height":
+    "`--radix-dropdown-menu-content-available-height` is Radix's name for the " +
+    "room the positioner measured; `@barqjs/aria` writes the same number as " +
+    "`--barq-available-height`. Same measurement, this package's name",
+  "dropdown-menu:dropdown-menu-content:width": "as above, `--barq-trigger-width`",
+  "context-menu:context-menu-content:max-height": "as above",
+  "menubar:menubar-content:max-height": "as above",
+  "menubar:menubar-content:width": "as above",
+  "select:select-content:max-height": "as above",
+  "combobox:combobox-content:max-height": "as above",
+  "combobox:combobox-content:width": "as above",
+  "dropdown-menu:dropdown-menu-content:transform-origin":
+    "as `popover-content` below, a rule per `data-placement`",
+  "dropdown-menu:dropdown-menu-sub-content:transform-origin": "as above",
+  "context-menu:context-menu-content:transform-origin": "as above",
+  "context-menu:context-menu-sub-content:transform-origin": "as above",
+  "menubar:menubar-content:transform-origin": "as above",
+  "menubar:menubar-sub-content:transform-origin": "as above",
+  "select:select-content:transform-origin": "as above",
+  "combobox:combobox-content:transform-origin": "as above",
   "popover:popover-content:transform-origin":
     "`origin-(--radix-popover-content-transform-origin)` reads a variable " +
     "Radix's popper writes from its own measurement, and there is no popper " +

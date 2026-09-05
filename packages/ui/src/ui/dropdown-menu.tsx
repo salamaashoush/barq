@@ -28,23 +28,122 @@ import { uiProps } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
-const content = ui(box.border, box.shadow, {
+const content = ui(box.shadow, {
   zIndex: "50",
   margin: "0px",
-  minWidth: "8rem",
+  // `--barq-available-height` and `--barq-trigger-width` are what
+  // `@barqjs/aria`'s positioner writes; Radix's names for the same two
+  // measurements are in `ALLOWED`. Both are unset when there is no positioner,
+  // and both properties take their initial value then, which is what a menu
+  // with no trigger should have.
+  maxHeight: "var(--barq-available-height)",
+  width: "var(--barq-trigger-width)",
+  minWidth: "calc(var(--spacing) * 32)",
+  // A context menu and a menubar menu open wider, and neither takes its
+  // trigger's width: a context menu's trigger is a REGION, so matching it
+  // would open a menu the width of the page.
+  '[data-slot="context-menu-content"]': {
+    width: "auto",
+    minWidth: "calc(var(--spacing) * 36)",
+  },
+  '[data-slot="menubar-content"]': {
+    width: "auto",
+    minWidth: "calc(var(--spacing) * 36)",
+  },
   animation:
     "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
   listStyleType: "none",
   overflowX: "hidden",
   overflowY: "auto",
-  borderRadius: "calc(var(--radius) * 0.8)",
+  borderRadius: "var(--radius)",
   backgroundColor: "var(--popover)",
   padding: "var(--spacing)",
   color: "var(--popover-foreground)",
   "--ui-shadow":
     "0 4px 6px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 2px 4px -2px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
+  "--ui-ring-shadow":
+    "var(--ui-ring-inset,) 0 0 0 calc(1px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+  "--ui-ring-color": "var(--foreground)",
+  "--ui-duration": "100ms",
+  transitionDuration: "100ms",
   "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
   "--ui-enter-scale": firstThatWorks("0.95", "calc(95*1%)"),
+  "@supports (color: color-mix(in lab, red, red))": {
+    "--ui-ring-color": "color-mix(in oklab, var(--foreground) 10%, transparent)",
+  },
+  '[data-placement="bottom"] &': {
+    transformOrigin: "top",
+    "--ui-enter-translate-y": "calc(2*var(--spacing)*-1)",
+  },
+  '[data-placement="left"] &': {
+    "--ui-enter-translate-x": "calc(2*var(--spacing))",
+  },
+  '[data-placement="right"] &': {
+    "--ui-enter-translate-x": "calc(2*var(--spacing)*-1)",
+  },
+  '[data-placement="top"] &': {
+    transformOrigin: "bottom",
+    "--ui-enter-translate-y": "calc(2*var(--spacing))",
+  },
+  // A closing menu stops scrolling: the exit shrinks it, and a scrollbar
+  // appearing for the last four frames is the flicker that comes of it.
+  "[data-closed] &": {
+    overflow: "hidden",
+    animation:
+      "exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
+    "--ui-animation-fill-mode": "forwards",
+    "--ui-exit-opacity": firstThatWorks("0", "calc(0/100)"),
+    "--ui-exit-scale": firstThatWorks("0.95", "calc(95*1%)"),
+  },
+  '[data-closed][data-placement="bottom"] &': {
+    "--ui-exit-translate-y": "calc(2 * var(--spacing) * -1)",
+  },
+  '[data-closed][data-placement="left"] &': {
+    "--ui-exit-translate-x": "calc(2 * var(--spacing))",
+  },
+  '[data-closed][data-placement="right"] &': {
+    "--ui-exit-translate-x": "calc(2 * var(--spacing) * -1)",
+  },
+  '[data-closed][data-placement="top"] &': {
+    "--ui-exit-translate-y": "calc(2 * var(--spacing))",
+  },
+});
+
+/** A submenu is narrower and sits on a heavier shadow. */
+const subContent = ui(box.shadow, {
+  zIndex: "50",
+  margin: "0px",
+  minWidth: "96px",
+  // The context menu's submenu keeps a border where the dropdown's has the
+  // ring, and opens at the width a menubar's does.
+  '[data-slot="context-menu-sub-content"]': {
+    minWidth: "calc(var(--spacing) * 32)",
+    borderStyle: "var(--ui-border-style)",
+    borderWidth: "1px",
+  },
+  '[data-slot="menubar-sub-content"]': {
+    minWidth: "calc(var(--spacing) * 32)",
+  },
+  animation:
+    "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
+  listStyleType: "none",
+  overflow: "hidden",
+  borderRadius: "var(--radius)",
+  backgroundColor: "var(--popover)",
+  padding: "var(--spacing)",
+  color: "var(--popover-foreground)",
+  "--ui-shadow":
+    "0 10px 15px -3px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 4px 6px -4px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
+  "--ui-ring-shadow":
+    "var(--ui-ring-inset,) 0 0 0 calc(1px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+  "--ui-ring-color": "var(--foreground)",
+  "--ui-duration": "100ms",
+  transitionDuration: "100ms",
+  "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
+  "--ui-enter-scale": firstThatWorks("0.95", "calc(95*1%)"),
+  "@supports (color: color-mix(in lab, red, red))": {
+    "--ui-ring-color": "color-mix(in oklab, var(--foreground) 10%, transparent)",
+  },
   '[data-placement="bottom"] &': {
     transformOrigin: "top",
     "--ui-enter-translate-y": "calc(2*var(--spacing)*-1)",
@@ -83,23 +182,32 @@ const content = ui(box.border, box.shadow, {
 const item = ui(
   text.sm,
   box.outline,
+  box.forcedColors,
   box.noSelect,
   when.focused,
   when.disabled,
   icon.plain,
   icon.sized,
   icon.muted,
+  // A marker: the shortcut reads the item's focus through
+  // `.group\/dropdown-menu-item:focus`.
+  "group/dropdown-menu-item",
   {
     position: "relative",
     display: "flex",
     cursor: "default",
     alignItems: "center",
-    gap: "calc(var(--spacing) * 2)",
-    borderRadius: "calc(var(--radius) * 0.6)",
-    paddingInline: "calc(var(--spacing) * 2)",
-    paddingBlock: "calc(var(--spacing) * 1.5)",
+    gap: "calc(var(--spacing) * 1.5)",
+    borderRadius: "calc(var(--radius) * 0.8)",
+    paddingInline: "calc(var(--spacing) * 1.5)",
+    paddingBlock: "var(--spacing)",
+    // Everything inside a focused item takes the accent colour, so an icon
+    // that set its own does not stay muted against the highlight.
+    ':is(&:not([data-variant="destructive"])[data-focused] *)': {
+      color: "var(--accent-foreground)",
+    },
     "[data-inset]": {
-      paddingLeft: "calc(var(--spacing) * 8)",
+      paddingLeft: "calc(var(--spacing) * 7)",
     },
     '[data-variant="destructive"]': {
       color: "var(--destructive)",
@@ -117,15 +225,17 @@ const item = ui(
         backgroundColor: "color-mix(in oklab, var(--destructive) 20%, transparent)",
       },
     },
-    '[data-variant="destructive"] > svg': {
+    ':is(&[data-variant="destructive"] > *):is(svg)': {
       color: "var(--destructive)",
     },
   },
 );
 
+/** A checkbox or radio row: the mark is on the RIGHT, so the text starts flush. */
 const checkItem = ui(
   text.sm,
   box.outline,
+  box.forcedColors,
   box.noSelect,
   when.focused,
   when.disabled,
@@ -136,25 +246,31 @@ const checkItem = ui(
     display: "flex",
     cursor: "default",
     alignItems: "center",
-    gap: "calc(var(--spacing) * 2)",
-    borderRadius: "calc(var(--radius) * 0.6)",
-    paddingBlock: "calc(var(--spacing) * 1.5)",
-    paddingRight: "calc(var(--spacing) * 2)",
-    paddingLeft: "calc(var(--spacing) * 8)",
+    gap: "calc(var(--spacing) * 1.5)",
+    borderRadius: "calc(var(--radius) * 0.8)",
+    paddingBlock: "var(--spacing)",
+    paddingRight: "calc(var(--spacing) * 8)",
+    paddingLeft: "calc(var(--spacing) * 1.5)",
+    ":is(&[data-focused] *)": {
+      color: "var(--accent-foreground)",
+    },
+    "[data-inset]": {
+      paddingLeft: "calc(var(--spacing) * 7)",
+    },
   },
 );
 
 const indicator = ui({
   pointerEvents: "none",
   position: "absolute",
-  left: "calc(var(--spacing) * 2)",
+  right: "calc(var(--spacing) * 2)",
   display: "flex",
-  width: "calc(var(--spacing) * 3.5)",
-  height: "calc(var(--spacing) * 3.5)",
   alignItems: "center",
   justifyContent: "center",
   "& > svg": {
     display: "none",
+    width: "calc(var(--spacing) * 4)",
+    height: "calc(var(--spacing) * 4)",
   },
   "[data-selected] & > svg": {
     display: "block",
@@ -164,10 +280,8 @@ const indicator = ui({
 const radioIndicator = ui({
   pointerEvents: "none",
   position: "absolute",
-  left: "calc(var(--spacing) * 2)",
+  right: "calc(var(--spacing) * 2)",
   display: "flex",
-  width: "calc(var(--spacing) * 3.5)",
-  height: "calc(var(--spacing) * 3.5)",
   alignItems: "center",
   justifyContent: "center",
   "& > svg": {
@@ -181,11 +295,14 @@ const radioIndicator = ui({
   },
 });
 
-const label = ui(text.sm, text.medium, {
-  paddingInline: "calc(var(--spacing) * 2)",
-  paddingBlock: "calc(var(--spacing) * 1.5)",
+const label = ui(text.medium, {
+  paddingInline: "calc(var(--spacing) * 1.5)",
+  paddingBlock: "var(--spacing)",
+  fontSize: "var(--text-xs)",
+  lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
+  color: "var(--muted-foreground)",
   "[data-inset]": {
-    paddingLeft: "calc(var(--spacing) * 8)",
+    paddingLeft: "calc(var(--spacing) * 7)",
   },
 });
 
@@ -205,11 +322,15 @@ const shortcut = ui({
   "--ui-tracking": "var(--tracking-widest)",
   letterSpacing: "var(--tracking-widest)",
   color: "var(--muted-foreground)",
+  ':is(:where(.group\\/dropdown-menu-item)[data-focused] *)': {
+    color: "var(--accent-foreground)",
+  },
 });
 
 const subTrigger = ui(
   text.sm,
   box.outline,
+  box.forcedColors,
   box.noSelect,
   when.focused,
   icon.plain,
@@ -219,12 +340,15 @@ const subTrigger = ui(
     display: "flex",
     cursor: "default",
     alignItems: "center",
-    gap: "calc(var(--spacing) * 2)",
-    borderRadius: "calc(var(--radius) * 0.6)",
-    paddingInline: "calc(var(--spacing) * 2)",
-    paddingBlock: "calc(var(--spacing) * 1.5)",
+    gap: "calc(var(--spacing) * 1.5)",
+    borderRadius: "calc(var(--radius) * 0.8)",
+    paddingInline: "calc(var(--spacing) * 1.5)",
+    paddingBlock: "var(--spacing)",
+    ':is(&:not([data-variant="destructive"])[data-focused] *)': {
+      color: "var(--accent-foreground)",
+    },
     "[data-inset]": {
-      paddingLeft: "calc(var(--spacing) * 8)",
+      paddingLeft: "calc(var(--spacing) * 7)",
     },
     "[data-open]": {
       backgroundColor: "var(--accent)",
@@ -245,9 +369,11 @@ const group = ui({
   padding: "0px",
 });
 
-const groupLabel = ui(text.sm, text.medium, {
-  paddingInline: "calc(var(--spacing) * 2)",
-  paddingBlock: "calc(var(--spacing) * 1.5)",
+const groupLabel = ui(text.medium, {
+  paddingInline: "calc(var(--spacing) * 1.5)",
+  paddingBlock: "var(--spacing)",
+  fontSize: "var(--text-xs)",
+  lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
   color: "var(--muted-foreground)",
 });
 
@@ -475,7 +601,7 @@ export function DropdownMenuSubContent<T>(props: Incoming<DropdownMenuSubContent
     <Menu
       {...props}
       data-slot={props["data-slot"]?.() ?? "dropdown-menu-sub-content"}
-      class={ui(content, props.class?.(), props.className?.())}
+      class={ui(subContent, props.class?.(), props.className?.())}
     />
   );
 }

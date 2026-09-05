@@ -1,85 +1,35 @@
 import {
   ContextMenu as AriaContextMenu,
   ContextMenuTrigger as AriaContextMenuTrigger,
-  MenuItem,
   type ContextMenuComponentProps,
   type ContextMenuTriggerComponentProps,
   type MenuComponentProps,
-  type MenuItemComponentProps,
 } from "@barqjs/aria/menu";
 import type { Incoming } from "@barqjs/core";
-import { layer } from "@barqjs/css";
-
-import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
 
 import "../theme/layers.ts";
-import { box } from "../lib/shared-box.ts";
-import { icon } from "../lib/shared-icon.ts";
-import { when } from "../lib/shared-when.ts";
-import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
-import { uiProps } from "../lib/slot.ts";
 import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuGroupLabel,
   DropdownMenuItem,
+  DropdownMenuLabel,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuSub,
   DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   type DropdownMenuCheckboxItemProps,
   type DropdownMenuGroupProps,
   type DropdownMenuItemProps,
+  type DropdownMenuLabelProps,
   type DropdownMenuRadioItemProps,
   type DropdownMenuSubProps,
+  type DropdownMenuSubTriggerProps,
 } from "./dropdown-menu.tsx";
-
-const ui = layer("barq.ui");
-
-/** shadcn's context menu names its labels in the body colour; a dropdown's inherit. */
-const label = ui(text.sm, text.medium, {
-  paddingInline: "calc(var(--spacing) * 2)",
-  paddingBlock: "calc(var(--spacing) * 1.5)",
-  color: "var(--foreground)",
-  "[data-inset]": {
-    paddingLeft: "calc(var(--spacing) * 8)",
-  },
-});
-
-/** And its submenu trigger has no gap, so the chevron's own margin is the whole of it. */
-const subTrigger = ui(
-  text.sm,
-  box.outline,
-  box.noSelect,
-  when.focused,
-  icon.plain,
-  icon.sized,
-  icon.muted,
-  {
-    display: "flex",
-    cursor: "default",
-    alignItems: "center",
-    borderRadius: "calc(var(--radius) * 0.6)",
-    paddingInline: "calc(var(--spacing) * 2)",
-    paddingBlock: "calc(var(--spacing) * 1.5)",
-    "[data-inset]": {
-      paddingLeft: "calc(var(--spacing) * 8)",
-    },
-    "[data-open]": {
-      backgroundColor: "var(--accent)",
-      color: "var(--accent-foreground)",
-    },
-  },
-);
-
-const subChevron = ui({
-  marginLeft: "auto",
-  width: "calc(var(--spacing) * 4)",
-  height: "calc(var(--spacing) * 4)",
-});
 
 export interface ContextMenuProps extends ContextMenuComponentProps {}
 
@@ -152,21 +102,10 @@ export function ContextMenuRadioItem(props: Incoming<ContextMenuRadioItemProps>)
   );
 }
 
-export interface ContextMenuLabelProps extends UiProps {
-  /** Indent past the space a tick would occupy, so a mixed menu lines up. */
-  inset?: boolean;
-}
+export interface ContextMenuLabelProps extends DropdownMenuLabelProps {}
 
 export function ContextMenuLabel(props: Incoming<ContextMenuLabelProps>) {
-  return (
-    <li
-      {...uiProps("context-menu-label", label, props)}
-      role="presentation"
-      data-inset={props.inset?.() === true ? "" : undefined}
-    >
-      {props.children}
-    </li>
-  );
+  return <DropdownMenuLabel {...props} data-slot="context-menu-label" />;
 }
 
 export function ContextMenuSeparator(props: Incoming<UiProps>) {
@@ -193,22 +132,11 @@ export function ContextMenuSub(props: Incoming<ContextMenuSubProps>) {
   return <DropdownMenuSub {...props} />;
 }
 
-export interface ContextMenuSubTriggerProps extends MenuItemComponentProps {
-  inset?: boolean;
-}
+export interface ContextMenuSubTriggerProps extends DropdownMenuSubTriggerProps {}
 
+/** The same row as a dropdown's now: upstream stopped styling the two apart. */
 export function ContextMenuSubTrigger(props: Incoming<ContextMenuSubTriggerProps>) {
-  return (
-    <MenuItem
-      {...props}
-      data-slot={props["data-slot"]?.() ?? "context-menu-sub-trigger"}
-      data-inset={props.inset?.() === true ? "" : undefined}
-      class={ui(subTrigger, props.class?.(), props.className?.())}
-    >
-      {props.children}
-      <ChevronRight data-slot="context-menu-sub-chevron" class={subChevron} />
-    </MenuItem>
-  );
+  return <DropdownMenuSubTrigger {...props} data-slot="context-menu-sub-trigger" />;
 }
 
 export interface ContextMenuSubContentProps<T> extends MenuComponentProps<T> {}

@@ -58,18 +58,28 @@ async function main(): Promise<void> {
       const wanted = declarations(parse(result.css)).map(canonical);
       for (const one of wanted) asked.add(one);
 
-      let best = new Set<string>();
-      let bestKey = "";
-      let score = 0;
-      for (const [key, held] of within) {
-        let overlap = 0;
-        for (const decl of wanted) if (held.has(decl)) overlap++;
-        if (overlap > score) {
-          score = overlap;
-          best = held;
-          bestKey = key;
+      const pick = (from: Map<string, Set<string>>): [string, Set<string>] => {
+        let held = new Set<string>();
+        let key = "";
+        let score = 0;
+        for (const [name_, own] of from) {
+          let overlap = 0;
+          for (const decl of wanted) if (own.has(decl)) overlap++;
+          if (overlap > score) {
+            score = overlap;
+            held = own;
+            key = name_;
+          }
         }
-      }
+        return [key, held];
+      };
+
+      // A component that COMPOSES another owns slots whose class lives in the
+      // other's file — the menubar's items are the dropdown menu's. Nothing in
+      // this file matching at all is the signal for that, and the package-wide
+      // best is then the right answer.
+      let [bestKey, best] = pick(within);
+      if (bestKey === "") [bestKey, best] = pick(sheet);
       if (bestKey !== "") calls.set(bestKey, best);
 
       const absent = wanted.filter((decl) => !best.has(decl));
