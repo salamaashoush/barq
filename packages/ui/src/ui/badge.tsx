@@ -20,28 +20,47 @@ export type BadgeVariant = "default" | "secondary" | "destructive" | "outline" |
  * ```
  */
 export const badgeVariants = variants({
-  base: ui(box.border, text.medium, box.transition, ring.focus, ring.invalid, ring.invalidDark, {
-    display: "inline-flex",
-    width: "fit-content",
-    flexShrink: "0",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "var(--spacing)",
-    overflow: "hidden",
-    borderRadius: "calc(infinity * 1px)",
-    borderColor: "transparent",
-    paddingInline: "calc(var(--spacing) * 2)",
-    paddingBlock: "calc(var(--spacing) * 0.5)",
-    fontSize: "var(--text-xs)",
-    lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
-    whiteSpace: "nowrap",
-    transitionProperty: "color, box-shadow",
-    "& > svg": {
-      pointerEvents: "none",
-      width: "calc(var(--spacing) * 3)",
-      height: "calc(var(--spacing) * 3)",
+  base: ui(
+    box.border,
+    text.medium,
+    box.transition,
+    ring.focus,
+    ring.invalid,
+    ring.invalidDark,
+    // A marker: upstream's styles compile to `.group\/badge:has(…)`.
+    "group/badge",
+    {
+      display: "inline-flex",
+      height: "calc(var(--spacing) * 5)",
+      width: "fit-content",
+      flexShrink: "0",
+      alignItems: "center",
+      justifyContent: "center",
+      gap: "var(--spacing)",
+      overflow: "hidden",
+      borderRadius: "calc(var(--radius) * 2.6)",
+      borderColor: "transparent",
+      paddingInline: "calc(var(--spacing) * 2)",
+      paddingBlock: "calc(var(--spacing) * 0.5)",
+      fontSize: "var(--text-xs)",
+      lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
+      whiteSpace: "nowrap",
+      transitionProperty: "all",
+      // An icon on one side takes the padding in on that side, so the badge
+      // does not sit lopsided around it.
+      ':has([data-icon="inline-end"])': {
+        paddingRight: "calc(var(--spacing) * 1.5)",
+      },
+      ':has([data-icon="inline-start"])': {
+        paddingLeft: "calc(var(--spacing) * 1.5)",
+      },
+      "& > svg": {
+        pointerEvents: "none",
+        width: "calc(var(--spacing) * 3) !important",
+        height: "calc(var(--spacing) * 3) !important",
+      },
     },
-  }),
+  ),
   variants: {
     variant: {
       default: ui({
@@ -53,7 +72,7 @@ export const badgeVariants = variants({
           },
           "@supports (color: color-mix(in lab, red, red))": {
             "a&:hover": {
-              backgroundColor: "color-mix(in oklab, var(--primary) 90%, transparent)",
+              backgroundColor: "color-mix(in oklab, var(--primary) 80%, transparent)",
             },
           },
         },
@@ -67,14 +86,17 @@ export const badgeVariants = variants({
           },
           "@supports (color: color-mix(in lab, red, red))": {
             "a&:hover": {
-              backgroundColor: "color-mix(in oklab, var(--secondary) 90%, transparent)",
+              backgroundColor: "color-mix(in oklab, var(--secondary) 80%, transparent)",
             },
           },
         },
       }),
       destructive: ui({
         backgroundColor: "var(--destructive)",
-        color: "var(--color-white)",
+        color: "var(--destructive)",
+        "@supports (color: color-mix(in lab, red, red))": {
+          backgroundColor: "color-mix(in oklab, var(--destructive) 10%, transparent)",
+        },
         ":focus-visible": {
           "--ui-ring-color": "var(--destructive)",
           "@supports (color: color-mix(in lab, red, red))": {
@@ -84,7 +106,7 @@ export const badgeVariants = variants({
         ":is(.dark *)": {
           backgroundColor: "var(--destructive)",
           "@supports (color: color-mix(in lab, red, red))": {
-            backgroundColor: "color-mix(in oklab, var(--destructive) 60%, transparent)",
+            backgroundColor: "color-mix(in oklab, var(--destructive) 20%, transparent)",
           },
         },
         ":is(.dark *):focus-visible": {
@@ -99,7 +121,7 @@ export const badgeVariants = variants({
           },
           "@supports (color: color-mix(in lab, red, red))": {
             "a&:hover": {
-              backgroundColor: "color-mix(in oklab, var(--destructive) 90%, transparent)",
+              backgroundColor: "color-mix(in oklab, var(--destructive) 20%, transparent)",
             },
           },
         },
@@ -109,16 +131,26 @@ export const badgeVariants = variants({
         color: "var(--foreground)",
         "@media (hover: hover)": {
           "a&:hover": {
-            backgroundColor: "var(--accent)",
-            color: "var(--accent-foreground)",
+            backgroundColor: "var(--muted)",
+            color: "var(--muted-foreground)",
           },
         },
       }),
+      // Not `a&`: upstream hovers a ghost badge whether it links anywhere or
+      // not, which is what makes it the variant a filter chip wears.
       ghost: ui({
         "@media (hover: hover)": {
-          "a&:hover": {
-            backgroundColor: "var(--accent)",
-            color: "var(--accent-foreground)",
+          ":hover": {
+            backgroundColor: "var(--muted)",
+            color: "var(--muted-foreground)",
+          },
+          ":is(.dark *):hover": {
+            backgroundColor: "var(--muted)",
+          },
+          "@supports (color: color-mix(in lab, red, red))": {
+            ":is(.dark *):hover": {
+              backgroundColor: "color-mix(in oklab, var(--muted) 50%, transparent)",
+            },
           },
         },
       }),
@@ -126,7 +158,7 @@ export const badgeVariants = variants({
         color: "var(--primary)",
         textUnderlineOffset: "4px",
         "@media (hover: hover)": {
-          "a&:hover": {
+          ":hover": {
             textDecorationLine: "underline",
           },
         },

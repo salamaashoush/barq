@@ -9,14 +9,27 @@ import { uiProps } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
-const root = ui(box.noSelect, {
+// A marker: the badge and the fallback read the avatar's size back through
+// `.group\/avatar[data-size=…]`.
+const root = ui(box.noSelect, "group/avatar", {
   position: "relative",
   display: "flex",
   width: "calc(var(--spacing) * 8)",
   height: "calc(var(--spacing) * 8)",
   flexShrink: "0",
-  overflow: "hidden",
   borderRadius: "calc(infinity * 1px)",
+  // The edge is a blended pseudo-element rather than `overflow: hidden` on the
+  // avatar itself, which is what lets the badge hang outside the circle.
+  "::after": {
+    content: "var(--ui-content)",
+    position: "absolute",
+    inset: "0px",
+    borderRadius: "calc(infinity * 1px)",
+    borderStyle: "var(--ui-border-style)",
+    borderWidth: "1px",
+    borderColor: "var(--border)",
+    mixBlendMode: "darken",
+  },
   '[data-size="lg"]': {
     width: "calc(var(--spacing) * 10)",
     height: "calc(var(--spacing) * 10)",
@@ -25,12 +38,17 @@ const root = ui(box.noSelect, {
     width: "calc(var(--spacing) * 6)",
     height: "calc(var(--spacing) * 6)",
   },
+  ":is(.dark *)::after": {
+    content: "var(--ui-content)",
+    mixBlendMode: "lighten",
+  },
 });
 
 const image = ui({
   aspectRatio: "1 / 1",
   width: "100%",
   height: "100%",
+  borderRadius: "calc(infinity * 1px)",
   objectFit: "cover",
 });
 
@@ -60,6 +78,7 @@ const badge = ui(box.shadow, box.noSelect, {
   borderRadius: "calc(infinity * 1px)",
   backgroundColor: "var(--primary)",
   color: "var(--primary-foreground)",
+  backgroundBlendMode: "color",
   "--ui-ring-shadow":
     "var(--ui-ring-inset,) 0 0 0 calc(2px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
   "--ui-ring-color": "var(--background)",
@@ -199,6 +218,14 @@ const groupCount = ui(text.sm, {
   "& > svg": {
     width: "calc(var(--spacing) * 4)",
     height: "calc(var(--spacing) * 4)",
+  },
+  '[data-slot="avatar-group"]:has([data-size="lg"]) & > svg': {
+    width: "calc(var(--spacing) * 5)",
+    height: "calc(var(--spacing) * 5)",
+  },
+  '[data-slot="avatar-group"]:has([data-size="sm"]) & > svg': {
+    width: "calc(var(--spacing) * 3)",
+    height: "calc(var(--spacing) * 3)",
   },
 });
 

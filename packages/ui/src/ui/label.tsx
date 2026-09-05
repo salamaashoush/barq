@@ -21,6 +21,13 @@ const label = ui(text.medium, box.noSelect, when.disabled, {
     pointerEvents: "none",
     opacity: "50%",
   },
+  // The one rule that keeps shadcn's marker class. A native control disabled
+  // BEFORE its label publishes nothing an ancestor selector can see, and
+  // `sidebar.tsx` already marks siblings `peer` for the same reason.
+  ":is(:where(.peer):disabled ~ *)": {
+    cursor: "not-allowed",
+    opacity: "50%",
+  },
 });
 
 export interface LabelProps extends UiProps {

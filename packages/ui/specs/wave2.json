@@ -1,5 +1,4 @@
 {
-  "label": "flex items-center gap-2 text-sm leading-none font-medium select-none is-disabled:pointer-events-none is-disabled:opacity-50 [[data-disabled]_&]:pointer-events-none [[data-disabled]_&]:opacity-50",
   "input": "h-9 w-full min-w-0 rounded-md border border-input bg-transparent px-3 py-1 text-base shadow-xs transition-[color,box-shadow] outline-none selection:bg-primary selection:text-primary-foreground file:inline-flex file:h-7 file:border-0 file:bg-transparent file:text-sm file:font-medium file:text-foreground placeholder:text-muted-foreground disabled:pointer-events-none disabled:cursor-not-allowed disabled:opacity-50 md:text-sm dark:bg-input/30 focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40",
   "textarea": "flex field-sizing-content min-h-16 w-full rounded-md border border-input bg-transparent px-3 py-2 text-base shadow-xs transition-[color,box-shadow] outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 md:text-sm dark:bg-input/30 dark:aria-invalid:ring-destructive/40",
   "checkbox": "inline-grid place-content-center size-4 shrink-0 rounded-[4px] border border-input shadow-xs transition-shadow outline-none is-focus-visible:border-ring is-focus-visible:ring-[3px] is-focus-visible:ring-ring/50 is-disabled:cursor-not-allowed is-disabled:opacity-50 is-invalid:border-destructive is-invalid:ring-destructive/20 is-selected:border-primary is-selected:bg-primary is-selected:text-primary-foreground is-indeterminate:border-primary is-indeterminate:bg-primary is-indeterminate:text-primary-foreground dark:bg-input/30 dark:is-invalid:ring-destructive/40 dark:is-selected:bg-primary",
@@ -16,9 +15,5 @@
   "toggle.outline": "border border-input bg-transparent shadow-xs hover:bg-accent hover:text-accent-foreground",
   "toggle.sm": "h-8 min-w-8 px-1.5",
   "toggle.default-size": "h-9 min-w-9 px-2",
-  "toggle.lg": "h-10 min-w-10 px-2.5",
-  "avatar": "relative flex size-8 shrink-0 overflow-hidden rounded-full select-none data-[size=lg]:size-10 data-[size=sm]:size-6",
-  "avatar-image": "aspect-square size-full object-cover",
-  "avatar-fallback": "flex size-full items-center justify-center rounded-full bg-muted text-sm text-muted-foreground [[data-size=sm]_&]:text-xs",
-  "avatar-badge": "absolute right-0 bottom-0 z-10 inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground ring-2 ring-background select-none [[data-size=sm]_&]:size-2 [[data-size=sm]_&]:[&>svg]:hidden [[data-size=default]_&]:size-2.5 [[data-size=default]_&]:[&>svg]:size-2 [[data-size=lg]_&]:size-3 [[data-size=lg]_&]:[&>svg]:size-2"
+  "toggle.lg": "h-10 min-w-10 px-2.5"
 }

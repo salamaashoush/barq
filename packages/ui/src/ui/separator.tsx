@@ -14,8 +14,8 @@ const separator = ui({
     width: "100%",
   },
   '[data-orientation="vertical"]': {
-    height: "100%",
     width: "1px",
+    alignSelf: "stretch",
   },
 });
 
