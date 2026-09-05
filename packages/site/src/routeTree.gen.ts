@@ -18,7 +18,8 @@ import { Route as ColorsRoute } from "./routes/colors";
 import { Route as CreateRoute } from "./routes/create";
 import { Route as BlocksNameRoute } from "./routes/blocks.$name";
 import { Route as ChartsTypeRoute } from "./routes/charts.$type";
-import { Route as DocsComponentsRoute } from "./routes/docs.components";
+import { Route as DocsComponentsIndexRoute } from "./routes/docs.components.index";
+import { Route as DocsComponentsNameRoute } from "./routes/docs.components.$name";
 
 /**
  * The table, exactly the shape `createRouter` and `createPageHandler` take.
@@ -56,10 +57,16 @@ export const routeTree: AnyRouteDefinition[] = [
         src: "/src/routes/charts.$type.tsx",
       },
       {
-        ...DocsComponentsRoute.options,
-        id: "/docs/components",
+        ...DocsComponentsIndexRoute.options,
+        id: "/docs/components/",
         path: "docs/components",
-        src: "/src/routes/docs.components.tsx",
+        src: "/src/routes/docs.components.index.tsx",
+      },
+      {
+        ...DocsComponentsNameRoute.options,
+        id: "/docs/components/$name",
+        path: "docs/components/$name",
+        src: "/src/routes/docs.components.$name.tsx",
       },
     ],
   },
@@ -75,7 +82,8 @@ export interface FileRoutesById {
   "/create": typeof CreateRoute;
   "/blocks/$name": typeof BlocksNameRoute;
   "/charts/$type": typeof ChartsTypeRoute;
-  "/docs/components": typeof DocsComponentsRoute;
+  "/docs/components/": typeof DocsComponentsIndexRoute;
+  "/docs/components/$name": typeof DocsComponentsNameRoute;
 }
 
 export interface FileRouteTypes {
@@ -88,7 +96,8 @@ export interface FileRouteTypes {
     | "/create"
     | "/blocks/$name"
     | "/charts/$type"
-    | "/docs/components";
+    | "/docs/components/"
+    | "/docs/components/$name";
   /** Every ADDRESSABLE pattern — a leaf, since a layout is reached through one. */
   fullPaths:
     | "/"
@@ -97,7 +106,8 @@ export interface FileRouteTypes {
     | "/create"
     | "/blocks/$name"
     | "/charts/$type"
-    | "/docs/components";
+    | "/docs/components"
+    | "/docs/components/$name";
   fileRoutesById: FileRoutesById;
 }
 

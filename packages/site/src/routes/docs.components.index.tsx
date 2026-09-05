@@ -1,5 +1,5 @@
 import { createFileRoute } from "@barqjs/router";
 
-import { ComponentsPage } from "../gallery.tsx";
+import { ComponentsDirectory } from "../docs/directory.tsx";
 
-export const Route = createFileRoute("/docs/components")({ component: ComponentsPage });
+export const Route = createFileRoute("/docs/components/")({ component: ComponentsDirectory });

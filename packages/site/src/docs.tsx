@@ -1,5 +1,6 @@
 import { For, type Child, type Incoming } from "@barqjs/core";
 import { css } from "@barqjs/css";
+import { Link } from "@barqjs/router";
 
 import { wrapper } from "./site.tsx";
 
@@ -126,11 +127,21 @@ const railLink = css`
  * contents as its sibling in a row. That is what puts the 640px measure at
  * x=392 rather than centred in the whole column — the article is centred in
  * what the two rails leave, not in the grid cell.
+ *
+ * `text-[1.05rem] sm:text-[15px]` is theirs too, and it is the base every
+ * heading in the prose is a multiple of: `.typeset` sizes an `h2` at `1.25em`,
+ * so a 16px base gives 20px against upstream's 18.75px and the whole page runs
+ * a size large. Measured against their button page before this line existed.
  */
 const middle = css`
   display: flex;
   min-width: 0;
   flex: 1;
+  font-size: 1.05rem;
+
+  @media (width >= 40rem) {
+    font-size: 15px;
+  }
 `;
 
 const column = css`
@@ -198,8 +209,22 @@ const article = css`
   }
 `;
 
-/** `flex items-center justify-between md:items-start`. */
+/**
+ * `flex flex-col gap-2` around the title ROW and the description under it.
+ *
+ * The description is a sibling of the row, not of the title, which is what
+ * gives it the whole measure: nested beside the previous/next pair it came out
+ * 381px wide against upstream's 512, because it was sharing a flex line with
+ * them.
+ */
 const articleHead = css`
+  display: flex;
+  flex-direction: column;
+  gap: calc(var(--spacing) * 2);
+`;
+
+/** `flex items-center justify-between md:items-start` — the title and the pair. */
+const titleRow = css`
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -219,14 +244,22 @@ const heading = css`
   letter-spacing: -0.025em;
 `;
 
+/** `text-[1.05rem] text-muted-foreground sm:text-base sm:text-balance md:max-w-[80%]`. */
 const lede = css`
-  margin: calc(var(--spacing) * 2) 0 0;
+  margin: 0;
+  font-size: 1.05rem;
   color: var(--muted-foreground);
   text-wrap: pretty;
-`;
 
-const headBlock = css`
-  display: grid;
+  @media (width >= 40rem) {
+    font-size: 1rem;
+    line-height: 1.5;
+    text-wrap: balance;
+  }
+
+  @media (width >= 48rem) {
+    max-width: 80%;
+  }
 `;
 
 /** An anchor a rail link lands on, clearing the sticky header. */
@@ -237,6 +270,21 @@ export const anchor = css`
 export interface DocsSection {
   readonly id: string;
   readonly label: string;
+}
+
+/**
+ * A rail entry, which is a LINK where the table of contents is an anchor.
+ *
+ * Upstream's rail lists every component and each one is its own page
+ * (`/docs/components/radix/button`); the right-hand column lists the headings
+ * on the page you are on. Two lists, two jobs, and this site had them both
+ * pointing at anchors on one enormous page.
+ */
+export interface RailEntry {
+  readonly to: string;
+  readonly label: string;
+  /** Highlighted, which the rail decides by comparing against the location. */
+  readonly current?: boolean;
 }
 
 /** `Grouped and multiple` → `grouped-and-multiple`, which is the anchor. */
@@ -251,7 +299,12 @@ export function DocsPage(
   props: Incoming<{
     title: string;
     lede?: string;
+    /** The right-hand column: the headings on THIS page, as anchors. */
     sections: readonly DocsSection[];
+    /** The left rail: every component, as links. */
+    rail?: readonly RailEntry[];
+    /** Beside the title — upstream's previous/next pair. */
+    actions?: Child;
     children?: Child;
   }>,
 ) {
@@ -262,11 +315,11 @@ export function DocsPage(
           <div class={railScroll}>
             <div class={railGroup}>
               <span class={railTitle}>Components</span>
-              <For each={() => props.sections()}>
-                {(entry: DocsSection) => (
-                  <a class={railLink} href={`#${entry.id}`}>
+              <For each={() => props.rail?.() ?? []}>
+                {(entry: RailEntry) => (
+                  <Link class={railLink} to={entry.to} aria-current={entry.current === true}>
                     {entry.label}
-                  </a>
+                  </Link>
                 )}
               </For>
             </div>
@@ -276,10 +329,11 @@ export function DocsPage(
           <div class={column}>
             <div class={article}>
               <div class={articleHead}>
-                <div class={headBlock}>
+                <div class={titleRow}>
                   <h1 class={heading}>{props.title}</h1>
-                  {props.lede?.() === undefined ? null : <p class={lede}>{props.lede()}</p>}
+                  {props.actions === undefined ? null : props.actions}
                 </div>
+                {props.lede?.() === undefined ? null : <p class={lede}>{props.lede()}</p>}
               </div>
               {props.children}
             </div>

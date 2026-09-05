@@ -570,6 +570,10 @@ const CHART_DATA = [
   { month: "May", desktop: 209, mobile: 130, tablet: 55, watch: 38, tv: 22 },
 ];
 
+const SLIDES = [1, 2, 3, 4, 5];
+
+const LOG_LINES = Array.from({ length: 20 }, (_, index) => `Line ${String(index + 1)}`);
+
 const FRUITS = [
   { id: "apple", name: "Apple" },
   { id: "banana", name: "Banana" },
@@ -852,23 +856,25 @@ export function Gallery() {
             <MessageScroller>
               <MessageScrollerViewport>
                 <MessageScrollerContent>
-                  {CHAT.map((turn) => (
-                    <MessageScrollerItem>
-                      <Message align={turn.mine ? "end" : "start"}>
-                        <MessageAvatar>{turn.who}</MessageAvatar>
-                        <MessageContent>
-                          <MessageHeader>{turn.name}</MessageHeader>
-                          <Bubble
-                            align={turn.mine ? "end" : "start"}
-                            variant={turn.mine ? "default" : "muted"}
-                          >
-                            <BubbleContent>{turn.body}</BubbleContent>
-                          </Bubble>
-                          <MessageFooter>{turn.at}</MessageFooter>
-                        </MessageContent>
-                      </Message>
-                    </MessageScrollerItem>
-                  ))}
+                  <For each={() => CHAT}>
+                    {(turn: (typeof CHAT)[number]) => (
+                      <MessageScrollerItem>
+                        <Message align={turn.mine ? "end" : "start"}>
+                          <MessageAvatar>{turn.who}</MessageAvatar>
+                          <MessageContent>
+                            <MessageHeader>{turn.name}</MessageHeader>
+                            <Bubble
+                              align={turn.mine ? "end" : "start"}
+                              variant={turn.mine ? "default" : "muted"}
+                            >
+                              <BubbleContent>{turn.body}</BubbleContent>
+                            </Bubble>
+                            <MessageFooter>{turn.at}</MessageFooter>
+                          </MessageContent>
+                        </Message>
+                      </MessageScrollerItem>
+                    )}
+                  </For>
                 </MessageScrollerContent>
               </MessageScrollerViewport>
               <MessageScrollerButton />
@@ -916,23 +922,25 @@ export function Gallery() {
         <div style={{ width: "100%", "max-width": "24rem", "padding-inline": "3rem" }}>
           <Carousel>
             <CarouselContent>
-              {[1, 2, 3, 4, 5].map((each) => (
-                <CarouselItem>
-                  <Card>
-                    <CardContent
-                      style={{
-                        display: "flex",
-                        "aspect-ratio": "1 / 1",
-                        "align-items": "center",
-                        "justify-content": "center",
-                        padding: "1.5rem",
-                      }}
-                    >
-                      <span style={{ "font-size": "2rem", "font-weight": "600" }}>{each}</span>
-                    </CardContent>
-                  </Card>
-                </CarouselItem>
-              ))}
+              <For each={() => SLIDES}>
+                {(each: number) => (
+                  <CarouselItem>
+                    <Card>
+                      <CardContent
+                        style={{
+                          display: "flex",
+                          "aspect-ratio": "1 / 1",
+                          "align-items": "center",
+                          "justify-content": "center",
+                          padding: "1.5rem",
+                        }}
+                      >
+                        <span style={{ "font-size": "2rem", "font-weight": "600" }}>{each}</span>
+                      </CardContent>
+                    </Card>
+                  </CarouselItem>
+                )}
+              </For>
             </CarouselContent>
             <CarouselPrevious />
             <CarouselNext />
@@ -1574,9 +1582,7 @@ export function Gallery() {
 
           <ScrollArea aria-label="Log" style={{ height: "10rem", width: "18rem" }}>
             <div style={{ padding: "0.75rem", display: "grid", gap: "0.5rem" }}>
-              {Array.from({ length: 20 }, (_, index) => (
-                <div>Line {String(index + 1)}</div>
-              ))}
+              <For each={() => LOG_LINES}>{(line: string) => <div>{line}</div>}</For>
             </div>
           </ScrollArea>
 
