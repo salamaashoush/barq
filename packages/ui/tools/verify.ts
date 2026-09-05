@@ -38,6 +38,16 @@ const ALLOWED: Record<string, string> = {
     "containing block for fixed descendants, a viewport unit is the one thing " +
     "containment cannot redirect, and the sidebar came out a window tall in a " +
     "shorter panel with its footer below the fold",
+  "chart:chart:aspect-ratio":
+    "the scene is drawn by TanStack Charts, not Recharts. Every rule in " +
+    "upstream's class list past `flex text-xs` selects a `.recharts-*` class " +
+    "that no element here carries, and the aspect ratio is the container's " +
+    "own decision rather than the chart's",
+  "chart:chart:justify-content": "as above",
+  "chart:chart:fill": "as above",
+  "chart:chart:stroke": "as above",
+  "chart:chart:outline-style": "as above",
+  "chart:chart:--ui-outline-style": "as above",
   "chart:chart-grid-line:stroke":
     "the scene is drawn by TanStack Charts and a node's paint arrives as a " +
     "presentation attribute rather than a class, so the token reaches the " +

@@ -6,7 +6,6 @@ import { rulesFor } from "../test-rules.ts";
 import {
   InputGroup,
   InputGroupAddon,
-  inputGroupAddonVariants,
   InputGroupButton,
   inputGroupButtonVariants,
   InputGroupInput,
@@ -99,16 +98,21 @@ describe("InputGroup", () => {
     expect(rules).toContain('> [data-align="inline-end"]) > input');
   });
 
+  // The alignment is an ATTRIBUTE, not a class: one class list carries all
+  // four, which is what lets the eight styles reach the rule that decides
+  // where an addon sits.
   test("inline-start is the default and it comes first in the flex order", () => {
     render(() => <InputGroupAddon>@</InputGroupAddon>);
-    expect(slot("input-group-addon").getAttribute("data-align")).toBe("inline-start");
-    const start = inputGroupAddonVariants();
-    expect(rulesFor(start)).toContain("order: -9999");
+    const addon = slot("input-group-addon");
+    expect(addon.getAttribute("data-align")).toBe("inline-start");
+    expect(rulesFor(addon.className)).toContain('[data-align="inline-start"]{order: -9999}');
   });
 
   test("a block addon takes a row of its own", () => {
-    const block = inputGroupAddonVariants({ align: "block-start" });
-    expect(rulesFor(block)).toContain("width: 100%");
+    render(() => <InputGroupAddon align="block-start">@</InputGroupAddon>);
+    const addon = slot("input-group-addon");
+    expect(addon.getAttribute("data-align")).toBe("block-start");
+    expect(rulesFor(addon.className)).toContain('[data-align="block-start"]{width: 100%');
   });
 
   test("pressing the addon's padding focuses the control", () => {
@@ -165,7 +169,8 @@ describe("InputGroup", () => {
       </InputGroup>
     ));
     expect(slot("input-group").getAttribute("data-disabled")).toBe("");
-    const base = inputGroupAddonVariants();
-    expect(rulesFor(base)).toContain('[data-slot="input-group"][data-disabled] .');
+    expect(rulesFor(slot("input-group-addon").className)).toContain(
+      '[data-slot="input-group"][data-disabled] .',
+    );
   });
 });

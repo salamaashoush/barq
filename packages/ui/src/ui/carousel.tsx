@@ -61,6 +61,9 @@ const itemVertical = ui({
 
 const button = ui({
   position: "absolute",
+  // `touch-manipulation`: a double tap on an arrow pages twice rather than
+  // asking the browser to wait 300ms to find out whether it was a zoom.
+  touchAction: "manipulation",
   width: "calc(var(--spacing) * 8)",
   height: "calc(var(--spacing) * 8)",
   borderRadius: "calc(infinity * 1px)",

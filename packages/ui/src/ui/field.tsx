@@ -13,7 +13,7 @@ const ui = layer("barq.ui");
 const fieldSet = ui({
   display: "flex",
   flexDirection: "column",
-  gap: "calc(var(--spacing) * 6)",
+  gap: "calc(var(--spacing) * 4)",
   ':has(> [data-slot="checkbox-group"])': {
     gap: "calc(var(--spacing) * 3)",
   },
@@ -24,20 +24,23 @@ const fieldSet = ui({
 
 export type FieldLegendVariant = "legend" | "label";
 
-export const fieldLegendVariants = variants({
-  base: ui(text.medium, {
-    marginBottom: "calc(var(--spacing) * 3)",
-  }),
-  variants: {
-    variant: {
-      legend: ui({
-        fontSize: "var(--text-base)",
-        lineHeight: "var(--ui-leading, var(--text-base--line-height))",
-      }),
-      label: ui(text.sm),
-    },
+/**
+ * One class, both variants, keyed off `data-variant`.
+ *
+ * A `variants()` put the size in a class the component picks, which is a rule
+ * the eight styles cannot reach — and `verify` reads one call per slot, so the
+ * legend's own margin went unchecked beside it.
+ */
+const fieldLegend = ui(text.medium, {
+  marginBottom: "calc(var(--spacing) * 1.5)",
+  '[data-variant="legend"]': {
+    fontSize: "var(--text-base)",
+    lineHeight: "var(--ui-leading, var(--text-base--line-height))",
   },
-  defaults: { variant: "legend" },
+  '[data-variant="label"]': {
+    fontSize: "var(--text-sm)",
+    lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  },
 });
 
 const fieldGroup = ui({
@@ -46,8 +49,11 @@ const fieldGroup = ui({
   display: "flex",
   width: "100%",
   flexDirection: "column",
-  gap: "calc(var(--spacing) * 7)",
-  '& > [data-slot="field-group"]': {
+  gap: "calc(var(--spacing) * 5)",
+  '[data-slot="checkbox-group"]': {
+    gap: "calc(var(--spacing) * 3)",
+  },
+  ':is(& > *)[data-slot="field-group"]': {
     gap: "calc(var(--spacing) * 4)",
   },
 });
@@ -58,7 +64,7 @@ export const fieldVariants = variants({
   base: ui({
     display: "flex",
     width: "100%",
-    gap: "calc(var(--spacing) * 3)",
+    gap: "calc(var(--spacing) * 2)",
     "[data-invalid]": {
       color: "var(--destructive)",
     },
@@ -115,11 +121,11 @@ export const fieldVariants = variants({
   defaults: { orientation: "vertical" },
 });
 
-const fieldContent = ui({
+const fieldContent = ui("group/field-content", {
   display: "flex",
   flex: "1",
   flexDirection: "column",
-  gap: "calc(var(--spacing) * 1.5)",
+  gap: "calc(var(--spacing) * 0.5)",
   "--ui-leading": "var(--leading-snug)",
   lineHeight: "var(--leading-snug)",
 });
@@ -175,6 +181,7 @@ const fieldTitle = ui(text.medium, {
 });
 
 const fieldDescription = ui({
+  textAlign: "left",
   fontSize: "var(--text-sm)",
   lineHeight: firstThatWorks(
     "var(--leading-normal)",
@@ -268,10 +275,9 @@ export interface FieldLegendProps extends UiProps {
 }
 
 export function FieldLegend(props: Incoming<FieldLegendProps>) {
-  const className = (): string => fieldLegendVariants({ variant: props.variant?.() });
   return (
     <legend
-      {...uiProps("field-legend", className, props)}
+      {...uiProps("field-legend", fieldLegend, props)}
       data-variant={props.variant?.() ?? "legend"}
     >
       {props.children}

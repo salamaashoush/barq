@@ -12,25 +12,38 @@ import { Separator, type SeparatorProps } from "./separator.tsx";
 
 const ui = layer("barq.ui");
 
-const group = ui({
+const group = ui("group/item-group", {
   display: "flex",
+  width: "100%",
   flexDirection: "column",
+  gap: "calc(var(--spacing) * 4)",
+  // The rows tighten with the size they are given, and the GROUP is what sees
+  // that: an item carries `data-size` and the group reads it with `:has`.
+  ':has([data-size="sm"])': {
+    gap: "calc(var(--spacing) * 2.5)",
+  },
+  ':has([data-size="xs"])': {
+    gap: "calc(var(--spacing) * 2)",
+  },
 });
 
 const separator = ui({
-  marginBlock: "0px",
+  marginBlock: "calc(var(--spacing) * 2)",
 });
 
 export type ItemVariant = "default" | "outline" | "muted";
 
-export type ItemSize = "default" | "sm";
+export type ItemSize = "default" | "sm" | "xs";
 
 export const itemVariants = variants({
-  base: ui(box.border, text.sm, box.outline, ring.focus, {
+  // A marker: the media, the content and the description all read the item's
+  // size back through `.group\/item[data-size=…]`.
+  base: ui("group/item", box.border, text.sm, box.outline, ring.focus, {
     display: "flex",
+    width: "100%",
     flexWrap: "wrap",
     alignItems: "center",
-    borderRadius: "calc(var(--radius) * 0.8)",
+    borderRadius: "var(--radius)",
     borderColor: "transparent",
     transitionProperty:
       "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to",
@@ -48,12 +61,7 @@ export const itemVariants = variants({
     },
     "@media (hover: hover)": {
       "a&:hover": {
-        backgroundColor: "var(--accent)",
-      },
-      "@supports (color: color-mix(in lab, red, red))": {
-        "a&:hover": {
-          backgroundColor: "color-mix(in oklab, var(--accent) 50%, transparent)",
-        },
+        backgroundColor: "var(--muted)",
       },
     },
   }),
@@ -66,6 +74,7 @@ export const itemVariants = variants({
         borderColor: "var(--border)",
       }),
       muted: ui({
+        borderColor: "transparent",
         backgroundColor: "var(--muted)",
         "@supports (color: color-mix(in lab, red, red))": {
           backgroundColor: "color-mix(in oklab, var(--muted) 50%, transparent)",
@@ -74,13 +83,23 @@ export const itemVariants = variants({
     },
     size: {
       default: ui({
-        gap: "calc(var(--spacing) * 4)",
-        padding: "calc(var(--spacing) * 4)",
+        gap: "calc(var(--spacing) * 2.5)",
+        paddingInline: "calc(var(--spacing) * 3)",
+        paddingBlock: "calc(var(--spacing) * 2.5)",
       }),
       sm: ui({
         gap: "calc(var(--spacing) * 2.5)",
-        paddingInline: "calc(var(--spacing) * 4)",
-        paddingBlock: "calc(var(--spacing) * 3)",
+        paddingInline: "calc(var(--spacing) * 3)",
+        paddingBlock: "calc(var(--spacing) * 2.5)",
+      }),
+      xs: ui({
+        gap: "calc(var(--spacing) * 2)",
+        paddingInline: "calc(var(--spacing) * 2.5)",
+        paddingBlock: "calc(var(--spacing) * 2)",
+        // A row in a dropdown is the menu's own padding, not its own.
+        '[data-slot="dropdown-menu-content"] &': {
+          padding: "0px",
+        },
       }),
     },
   },
@@ -121,6 +140,14 @@ export const itemMediaVariants = variants({
         height: "calc(var(--spacing) * 10)",
         overflow: "hidden",
         borderRadius: "calc(var(--radius) * 0.6)",
+        ':is(:where(.group\\/item)[data-size="sm"] *)': {
+          width: "calc(var(--spacing) * 8)",
+          height: "calc(var(--spacing) * 8)",
+        },
+        ':is(:where(.group\\/item)[data-size="xs"] *)': {
+          width: "calc(var(--spacing) * 6)",
+          height: "calc(var(--spacing) * 6)",
+        },
         "& img": {
           width: "100%",
           height: "100%",
@@ -137,16 +164,27 @@ const content = ui({
   flex: "1",
   flexDirection: "column",
   gap: "var(--spacing)",
+  ':is(:where(.group\\/item)[data-size="xs"] *)': {
+    gap: "0px",
+  },
   '& + [data-slot="item-content"]': {
     flex: "none",
   },
 });
 
 const title = ui(text.medium, {
-  display: "flex",
+  overflow: "hidden",
+  // `line-clamp-1 flex`: upstream writes both and the later class wins, so the
+  // clamp's other three properties are there and the clamp itself does not
+  // apply. Both declarations ship, in that order, so the computed value is
+  // upstream's and a reader can see where it came from.
+  display: firstThatWorks("flex", "-webkit-box"),
+  "-webkit-box-orient": "vertical",
+  "-webkit-line-clamp": "1",
   width: "fit-content",
   alignItems: "center",
   gap: "calc(var(--spacing) * 2)",
+  textUnderlineOffset: "4px",
   fontSize: "var(--text-sm)",
   lineHeight: firstThatWorks(
     "var(--leading-snug)",
@@ -160,6 +198,7 @@ const description = ui({
   display: "-webkit-box",
   "-webkit-box-orient": "vertical",
   "-webkit-line-clamp": "2",
+  textAlign: "left",
   fontSize: "var(--text-sm)",
   lineHeight: firstThatWorks(
     "var(--leading-normal)",
@@ -176,6 +215,10 @@ const description = ui({
   },
   "& > a:hover": {
     color: "var(--primary)",
+  },
+  ':is(:where(.group\\/item)[data-size="xs"] *)': {
+    fontSize: "var(--text-xs)",
+    lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
   },
 });
 

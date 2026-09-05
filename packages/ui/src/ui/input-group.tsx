@@ -13,17 +13,39 @@ import { Input, Textarea, type InputProps, type TextareaProps } from "./input.ts
 
 const ui = layer("barq.ui");
 
-const root = ui(box.border, box.shadow, box.transition, box.outline, when.darkInput, {
+// A marker: the addon dims with the group and the block addons read whether
+// the group holds an `<input>`.
+const root = ui(box.border, box.transition, box.outline, when.darkInput, "group/input-group", {
   position: "relative",
   display: "flex",
-  height: "calc(var(--spacing) * 9)",
+  height: "calc(var(--spacing) * 8)",
   width: "100%",
   minWidth: "0px",
   alignItems: "center",
-  borderRadius: "calc(var(--radius) * 0.8)",
+  borderRadius: "var(--radius)",
   borderColor: "var(--input)",
-  "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
-  transitionProperty: "color, box-shadow",
+  transitionProperty:
+    "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to",
+  // Inside a combobox panel the PANEL is the focus surface, so the search row
+  // keeps the border it inherits and draws no ring.
+  '[data-slot="combobox-content"] &:focus-within': {
+    borderColor: "inherit",
+    "--ui-ring-shadow":
+      "var(--ui-ring-inset,) 0 0 0 calc(0px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+  },
+  ":has(:disabled)": {
+    backgroundColor: "var(--input)",
+    opacity: "50%",
+    "@supports (color: color-mix(in lab, red, red))": {
+      backgroundColor: "color-mix(in oklab, var(--input) 50%, transparent)",
+    },
+  },
+  ":is(.dark *):has(:disabled)": {
+    backgroundColor: "var(--input)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      backgroundColor: "color-mix(in oklab, var(--input) 80%, transparent)",
+    },
+  },
   ':has(:is([data-slot="input-group-control"]:focus-visible))': {
     borderColor: "var(--ring)",
     "--ui-ring-shadow":
@@ -66,81 +88,88 @@ const root = ui(box.border, box.shadow, box.transition, box.outline, when.darkIn
     paddingBottom: "calc(var(--spacing) * 3)",
   },
   ':has(> [data-align="inline-end"]) > input': {
-    paddingRight: "calc(var(--spacing) * 2)",
+    paddingRight: "calc(var(--spacing) * 1.5)",
   },
   ':has(> [data-align="inline-start"]) > input': {
-    paddingLeft: "calc(var(--spacing) * 2)",
+    paddingLeft: "calc(var(--spacing) * 1.5)",
   },
 });
 
 export type InputGroupAlign = "inline-start" | "inline-end" | "block-start" | "block-end";
 
-export const inputGroupAddonVariants = variants({
-  base: ui(text.sm, text.medium, box.noSelect, {
-    display: "flex",
-    height: "auto",
-    cursor: "text",
-    alignItems: "center",
-    justifyContent: "center",
-    gap: "calc(var(--spacing) * 2)",
-    paddingBlock: "calc(var(--spacing) * 1.5)",
-    color: "var(--muted-foreground)",
-    "& > kbd": {
-      borderRadius: "calc(var(--radius) - 5px)",
-    },
-    '& > svg:not([class*="size-"])': {
-      width: "calc(var(--spacing) * 4)",
-      height: "calc(var(--spacing) * 4)",
-    },
-    '[data-slot="input-group"][data-disabled] &': {
-      opacity: "50%",
-    },
-  }),
-  variants: {
-    align: {
-      "inline-start": ui({
-        order: "-9999",
-        paddingLeft: "calc(var(--spacing) * 3)",
-        ":has(> button)": {
-          marginLeft: "-0.45rem",
-        },
-        ":has(> kbd)": {
-          marginLeft: "-0.35rem",
-        },
-      }),
-      "inline-end": ui({
-        order: "9999",
-        paddingRight: "calc(var(--spacing) * 3)",
-        ":has(> button)": {
-          marginRight: "-0.45rem",
-        },
-        ":has(> kbd)": {
-          marginRight: "-0.35rem",
-        },
-      }),
-      "block-start": ui({
-        order: "-9999",
-        width: "100%",
-        justifyContent: "flex-start",
-        paddingInline: "calc(var(--spacing) * 3)",
-        paddingTop: "calc(var(--spacing) * 3)",
-        '[data-slot="input-group"]:has(> input) &': {
-          paddingTop: "calc(var(--spacing) * 2.5)",
-        },
-      }),
-      "block-end": ui({
-        order: "9999",
-        width: "100%",
-        justifyContent: "flex-start",
-        paddingInline: "calc(var(--spacing) * 3)",
-        paddingBottom: "calc(var(--spacing) * 3)",
-        '[data-slot="input-group"]:has(> input) &': {
-          paddingBottom: "calc(var(--spacing) * 2.5)",
-        },
-      }),
-    },
+/**
+ * One class, four alignments, keyed off `data-align`.
+ *
+ * It was a `variants()` with a class per alignment, which is a rule the eight
+ * styles cannot reach and a slot `verify` reads through one call.
+ */
+const addon = ui(text.sm, text.medium, box.noSelect, {
+  display: "flex",
+  height: "auto",
+  cursor: "text",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: "calc(var(--spacing) * 2)",
+  paddingBlock: "calc(var(--spacing) * 1.5)",
+  color: "var(--muted-foreground)",
+  "& > kbd": {
+    borderRadius: "calc(var(--radius) - 5px)",
   },
-  defaults: { align: "inline-start" },
+  '& > svg:not([class*="size-"])': {
+    width: "calc(var(--spacing) * 4)",
+    height: "calc(var(--spacing) * 4)",
+  },
+  '[data-slot="input-group"][data-disabled] &': {
+    opacity: "50%",
+  },
+  // A button or a key cap carries its own padding, so the addon pulls back by
+  // that much and the control's text still starts where it would.
+  '[data-align="inline-start"]': {
+    order: "-9999",
+    paddingLeft: "calc(var(--spacing) * 2)",
+  },
+  '[data-align="inline-start"]:has(> button)': {
+    marginLeft: "-0.3rem",
+  },
+  '[data-align="inline-start"]:has(> kbd)': {
+    marginLeft: "-0.15rem",
+  },
+  '[data-align="inline-end"]': {
+    order: "9999",
+    paddingRight: "calc(var(--spacing) * 2)",
+  },
+  '[data-align="inline-end"]:has(> button)': {
+    marginRight: "-0.3rem",
+  },
+  '[data-align="inline-end"]:has(> kbd)': {
+    marginRight: "-0.15rem",
+  },
+  '[data-align="block-start"]': {
+    order: "-9999",
+    width: "100%",
+    justifyContent: "flex-start",
+    paddingInline: "calc(var(--spacing) * 2.5)",
+    paddingTop: "calc(var(--spacing) * 2)",
+  },
+  '[data-align="block-start"]:is(.border-b)': {
+    paddingBottom: "calc(var(--spacing) * 2)",
+  },
+  '[data-slot="input-group"]:has(> input) &[data-align="block-start"]': {
+    paddingTop: "calc(var(--spacing) * 2)",
+  },
+  '[data-align="block-end"]': {
+    order: "9999",
+    width: "100%",
+    justifyContent: "flex-start",
+    paddingInline: "calc(var(--spacing) * 2.5)",
+    paddingBottom: "calc(var(--spacing) * 2)",
+  },
+  '[data-align="block-end"]:is(.border-t)': {
+    paddingTop: "calc(var(--spacing) * 2)",
+  },
+  '[data-slot="input-group"]:has(> input) &[data-align="block-end"]': {
+    paddingBottom: "calc(var(--spacing) * 2)",
+  },
 });
 
 export type InputGroupButtonSize = "xs" | "sm" | "icon-xs" | "icon-sm";
@@ -157,29 +186,18 @@ export const inputGroupButtonVariants = variants({
       xs: ui({
         height: "calc(var(--spacing) * 6)",
         gap: "var(--spacing)",
-        borderRadius: "calc(var(--radius) - 5px)",
-        paddingInline: "calc(var(--spacing) * 2)",
-        ":has(> svg)": {
-          paddingInline: "calc(var(--spacing) * 2)",
-        },
+        borderRadius: "calc(var(--radius) - 3px)",
+        paddingInline: "calc(var(--spacing) * 1.5)",
         '& > svg:not([class*="size-"])': {
           width: "calc(var(--spacing) * 3.5)",
           height: "calc(var(--spacing) * 3.5)",
         },
       }),
-      sm: ui({
-        height: "calc(var(--spacing) * 8)",
-        gap: "calc(var(--spacing) * 1.5)",
-        borderRadius: "calc(var(--radius) * 0.8)",
-        paddingInline: "calc(var(--spacing) * 2.5)",
-        ":has(> svg)": {
-          paddingInline: "calc(var(--spacing) * 2.5)",
-        },
-      }),
+      sm: ui({}),
       "icon-xs": ui({
         width: "calc(var(--spacing) * 6)",
         height: "calc(var(--spacing) * 6)",
-        borderRadius: "calc(var(--radius) - 5px)",
+        borderRadius: "calc(var(--radius) - 3px)",
         padding: "0px",
         ":has(> svg)": {
           padding: "0px",
@@ -210,6 +228,8 @@ const label = ui(text.sm, icon.sized, {
 
 const control = ui(box.shadow, {
   flex: "1",
+  resize: "none",
+  paddingBlock: "calc(var(--spacing) * 2)",
   borderRadius: "0",
   borderStyle: "var(--ui-border-style)",
   borderWidth: "0px",
@@ -291,10 +311,9 @@ export interface InputGroupAddonProps extends UiProps {
  * input's own padding does. A press on a button inside is that button's.
  */
 export function InputGroupAddon(props: Incoming<InputGroupAddonProps>) {
-  const className = (): string => inputGroupAddonVariants({ align: props.align?.() });
   return (
     <div
-      {...uiProps("input-group-addon", className, props)}
+      {...uiProps("input-group-addon", addon, props)}
       role={props.role?.() ?? "group"}
       data-align={props.align?.() ?? "inline-start"}
       onClick={(event: MouseEvent) => {

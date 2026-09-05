@@ -159,6 +159,18 @@ export function byCall(): Map<string, Set<string>> {
     if (!/\.tsx?$/.test(file) || file.includes(".test.")) continue;
     const source = readFileSync(join(dir, file), "utf8");
 
+    // `import { icon as iconGroup }` is the same group under another name, and
+    // a scan keyed on the EXPORTED name reads a call composing it as composing
+    // nothing. `marker.tsx` renames one and lost `icon.sized`'s two
+    // declarations, which `verify` then reported as missing from a component
+    // that had them.
+    const aliases = new Map<string, string>();
+    for (const [, local, declared] of source.matchAll(
+      /import\s*\{\s*([A-Za-z_$][\w$]*)\s+as\s+([A-Za-z_$][\w$]*)\s*\}\s*from\s*"[^"]*shared-[\w-]+\.ts"/g,
+    )) {
+      if (local !== undefined && declared !== undefined) aliases.set(declared, local);
+    }
+
     for (const start of source.matchAll(/\bui\(/g)) {
       const from = (start.index ?? 0) + start[0].length - 1;
       let unclosed = 0;
@@ -170,7 +182,13 @@ export function byCall(): Map<string, Set<string>> {
       const call = source.slice(from, to + 1);
       const held = declarationsIn(call);
       for (const [name, own] of groups) {
-        if (!call.includes(`${name},`) && !call.includes(`${name})`)) continue;
+        const [namespace, group] = name.split(".");
+        const spellings = [name];
+        for (const [alias, declared] of aliases) {
+          if (declared === namespace) spellings.push(`${alias}.${group ?? ""}`);
+        }
+        if (!spellings.some((one) => call.includes(`${one},`) || call.includes(`${one})`)))
+          continue;
         for (const declaration of own) held.add(declaration);
       }
       if (held.size > 0) out.set(`${file}:${String(start.index)}`, held);

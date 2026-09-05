@@ -1,7 +1,8 @@
 {
-  "marker": "relative flex min-h-4 w-full items-center gap-2 text-left text-sm text-muted-foreground",
+  "marker-icon": "size-4 shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "marker-content": "min-w-0 wrap-break-word group-data-[variant=separator]/marker:flex-none group-data-[variant=separator]/marker:text-center *:[a]:underline *:[a]:underline-offset-3 *:[a]:hover:text-foreground",
+  "marker": "group/marker relative flex min-h-4 w-full items-center gap-2 text-left text-sm text-muted-foreground [&_svg:not([class*='size-'])]:size-4 [a]:underline [a]:underline-offset-3 [a]:hover:text-foreground",
+  "marker-variant-default": "",
   "marker-variant-separator": "before:mr-1 before:h-px before:min-w-0 before:flex-1 before:bg-border after:ml-1 after:h-px after:min-w-0 after:flex-1 after:bg-border",
-  "marker-variant-border": "border-b border-border pb-2",
-  "marker-icon": "size-4 shrink-0",
-  "marker-content": "min-w-0 wrap-break-word"
+  "marker-variant-border": "border-b border-border pb-2"
 }
