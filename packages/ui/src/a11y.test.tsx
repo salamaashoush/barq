@@ -21,6 +21,9 @@
  */
 
 import { describe, expect, test } from "bun:test";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
 import { ariaViolations, render } from "@barqjs/testing";
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion.tsx";
@@ -529,4 +532,54 @@ describe("every component, as the docs render it", () => {
       expect(found).toEqual([]);
     });
   }
+});
+
+/**
+ * An element on its way out keeps its last frame.
+ *
+ * `presence` in `@barqjs/aria` removes the whole subtree on ONE timer, the
+ * longest exit anywhere under the element. An element whose own animation is
+ * shorter therefore finishes early, and with `animation-fill-mode: none` it
+ * reverts to its PRE-animation frame and sits there until the removal catches
+ * up. Measured in a browser on the dialog: the overlay faded to 0.004 over
+ * 138ms, snapped back to opacity 1 at 151ms, and was still on screen at 219ms.
+ * A modal that flashes fully opaque on its way out is what that looks like.
+ *
+ * Asserted on the RULE rather than in a browser, because happy-dom runs no
+ * animations at all: what can be checked here is that every exit rule the
+ * package ships declares the fill mode, and that is the thing that was missing.
+ */
+describe("closing", () => {
+  /**
+   * Read from the SOURCE, because an atom is one declaration per class: the
+   * `animation: exit …` and the `--ui-animation-fill-mode: forwards` are two
+   * different classes and never share a block in the stylesheet, so there is
+   * nothing to assert about a rule. What can be asserted is that a component
+   * declaring one declares the other, which is the thing a new overlay will
+   * forget.
+   */
+  test("every exit animation declares the fill mode beside it", () => {
+    const directory = new URL("./", import.meta.url).pathname;
+    const offenders: string[] = [];
+    const walk = (at: string): void => {
+      for (const entry of readdirSync(at, { withFileTypes: true })) {
+        const path = join(at, entry.name);
+        if (entry.isDirectory()) {
+          walk(path);
+          continue;
+        }
+        if (!entry.name.endsWith(".ts") && !entry.name.endsWith(".tsx")) continue;
+        if (entry.name.includes(".test.")) continue;
+        const lines = readFileSync(path, "utf8").split("\n");
+        for (const [index, line] of lines.entries()) {
+          if (!line.includes('"exit var(--ui-animation-duration')) continue;
+          const near = lines.slice(index, index + 3).join("\n");
+          if (near.includes('"--ui-animation-fill-mode": "forwards"')) continue;
+          offenders.push(`${entry.name}:${String(index + 1)}`);
+        }
+      }
+    };
+    walk(directory);
+    expect(offenders).toEqual([]);
+  });
 });

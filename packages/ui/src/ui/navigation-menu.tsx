@@ -149,6 +149,7 @@ const content = ui({
   '[data-motion^="to-"]': {
     animation:
       "exit var(--ui-animation-duration,var(--ui-duration,.15s))var(--ui-ease,ease)var(--ui-animation-delay,0s)var(--ui-animation-iteration-count,1)var(--ui-animation-direction,normal)var(--ui-animation-fill-mode,none)",
+    "--ui-animation-fill-mode": "forwards",
     "--ui-exit-opacity": "0",
   },
   "@media (width >= 48rem)": {
@@ -186,6 +187,7 @@ const viewport = ui({
   '[data-state="closed"]': {
     animation:
       "exit var(--ui-animation-duration,var(--ui-duration,.15s))var(--ui-ease,ease)var(--ui-animation-delay,0s)var(--ui-animation-iteration-count,1)var(--ui-animation-direction,normal)var(--ui-animation-fill-mode,none)",
+    "--ui-animation-fill-mode": "forwards",
     "--ui-exit-scale": firstThatWorks(".95", "calc(95*1%)"),
   },
   '[data-state="open"]': {
@@ -263,6 +265,7 @@ const indicator = ui({
   '[data-state="hidden"]': {
     animation:
       "exit var(--ui-animation-duration,var(--ui-duration,.15s))var(--ui-ease,ease)var(--ui-animation-delay,0s)var(--ui-animation-iteration-count,1)var(--ui-animation-direction,normal)var(--ui-animation-fill-mode,none)",
+    "--ui-animation-fill-mode": "forwards",
     "--ui-exit-opacity": "0",
   },
   '[data-state="visible"]': {

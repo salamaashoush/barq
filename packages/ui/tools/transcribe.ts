@@ -4,6 +4,7 @@
  * ```
  * bun run tools/transcribe.ts "inline-flex items-center gap-2 hover:bg-accent"
  * bun run tools/transcribe.ts --spec button.json
+ * bun run tools/transcribe.ts --spec specs/button.json --atoms button-size-sm
  * ```
  *
  * A spec is `{ "slot": "class list" }`, which is how a component with a base
@@ -15,6 +16,7 @@
  */
 
 import { readFileSync } from "node:fs";
+import { atomize } from "./atomize.ts";
 import { createBuilder, translate } from "./css.ts";
 
 const LAYER = "barq.ui";
@@ -40,10 +42,18 @@ async function main(): Promise<void> {
       ? { "": argv.filter((entry) => !entry.startsWith("--")).join(" ") }
       : (JSON.parse(readFileSync(argv[specIndex + 1] ?? "", "utf8")) as Record<string, string>);
 
+  // `--atoms` prints what the components actually hold, which is the shape a
+  // port is pasted into: `atomize` is a source transformation over the same
+  // declarations, so this is one step rather than two files and a copy.
+  const asAtoms = argv.includes("--atoms");
+  // A slot, when only one is wanted out of a spec with twenty in it.
+  const only = new Set(argv.filter((entry, at) => at > specIndex + 1 && !entry.startsWith("--")));
+
   for (const [name, classes] of Object.entries(spec)) {
+    if (only.size > 0 && !only.has(name)) continue;
     const result = await translate(build, classes);
     if (name !== "") process.stdout.write(`// ${name}\n`);
-    process.stdout.write(`${block(result.css)}\n`);
+    process.stdout.write(`${asAtoms ? atomize(result.css) : block(result.css)}\n`);
     if (result.unknown.length > 0) {
       process.stderr.write(`  NOT A UTILITY: ${result.unknown.join(" ")}\n`);
     }

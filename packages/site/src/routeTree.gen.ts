@@ -29,53 +29,22 @@ import { Route as DocsComponentsNameRoute } from "./routes/docs.components.$name
  * decides those, and a route that disagrees is already refused by the id check.
  */
 export const routeTree: AnyRouteDefinition[] = [
-  {
-    ...rootRoute.options,
-    id: "__root__",
-    path: "/",
-    src: "/src/routes/__root.tsx",
-    children: [
-      { ...IndexRoute.options, id: "/", path: "", src: "/src/routes/index.tsx" },
-      {
-        ...BlocksIndexRoute.options,
-        id: "/blocks/",
-        path: "blocks",
-        src: "/src/routes/blocks.index.tsx",
-      },
-      { ...ColorsRoute.options, id: "/colors", path: "colors", src: "/src/routes/colors.tsx" },
-      { ...CreateRoute.options, id: "/create", path: "create", src: "/src/routes/create.tsx" },
-      {
-        ...BlocksNameRoute.options,
-        id: "/blocks/$name",
-        path: "blocks/$name",
-        src: "/src/routes/blocks.$name.tsx",
-      },
-      {
-        ...ChartsTypeRoute.options,
-        id: "/charts/$type",
-        path: "charts/$type",
-        src: "/src/routes/charts.$type.tsx",
-      },
-      {
-        ...DocsComponentsIndexRoute.options,
-        id: "/docs/components/",
-        path: "docs/components",
-        src: "/src/routes/docs.components.index.tsx",
-      },
-      {
-        ...DocsComponentsNameRoute.options,
-        id: "/docs/components/$name",
-        path: "docs/components/$name",
-        src: "/src/routes/docs.components.$name.tsx",
-      },
-    ],
-  },
+  { ...rootRoute.options, id: "__root__", path: "/", src: "/src/routes/__root.tsx", children: [
+    { ...IndexRoute.options, id: "/", path: "", src: "/src/routes/index.tsx" },
+    { ...BlocksIndexRoute.options, id: "/blocks/", path: "blocks", src: "/src/routes/blocks.index.tsx" },
+    { ...ColorsRoute.options, id: "/colors", path: "colors", src: "/src/routes/colors.tsx" },
+    { ...CreateRoute.options, id: "/create", path: "create", src: "/src/routes/create.tsx" },
+    { ...BlocksNameRoute.options, id: "/blocks/$name", path: "blocks/$name", src: "/src/routes/blocks.$name.tsx" },
+    { ...ChartsTypeRoute.options, id: "/charts/$type", path: "charts/$type", src: "/src/routes/charts.$type.tsx" },
+    { ...DocsComponentsIndexRoute.options, id: "/docs/components/", path: "docs/components", src: "/src/routes/docs.components.index.tsx" },
+    { ...DocsComponentsNameRoute.options, id: "/docs/components/$name", path: "docs/components/$name", src: "/src/routes/docs.components.$name.tsx" }
+  ] }
 ];
 
 export default routeTree;
 
 export interface FileRoutesById {
-  __root__: typeof rootRoute;
+  "__root__": typeof rootRoute;
   "/": typeof IndexRoute;
   "/blocks/": typeof BlocksIndexRoute;
   "/colors": typeof ColorsRoute;
@@ -88,26 +57,9 @@ export interface FileRoutesById {
 
 export interface FileRouteTypes {
   /** Every route id, layouts included — what `useMatch` and `Link`'s `to` address. */
-  id:
-    | "__root__"
-    | "/"
-    | "/blocks/"
-    | "/colors"
-    | "/create"
-    | "/blocks/$name"
-    | "/charts/$type"
-    | "/docs/components/"
-    | "/docs/components/$name";
+  id: "__root__" | "/" | "/blocks/" | "/colors" | "/create" | "/blocks/$name" | "/charts/$type" | "/docs/components/" | "/docs/components/$name";
   /** Every ADDRESSABLE pattern — a leaf, since a layout is reached through one. */
-  fullPaths:
-    | "/"
-    | "/blocks"
-    | "/colors"
-    | "/create"
-    | "/blocks/$name"
-    | "/charts/$type"
-    | "/docs/components"
-    | "/docs/components/$name";
+  fullPaths: "/" | "/blocks" | "/colors" | "/create" | "/blocks/$name" | "/charts/$type" | "/docs/components" | "/docs/components/$name";
   fileRoutesById: FileRoutesById;
 }
 

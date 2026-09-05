@@ -29,6 +29,7 @@ const overlay = ui({
   "[data-closed]": {
     animation:
       "exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
+    "--ui-animation-fill-mode": "forwards",
     "--ui-exit-opacity": firstThatWorks("0", "calc(0/100)"),
   },
 });
@@ -115,6 +116,7 @@ export const sheetVariants = variants({
     "[data-closed]": {
       animation:
         "exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
+      "--ui-animation-fill-mode": "forwards",
       "--ui-duration": "300ms",
       transitionDuration: "300ms",
     },

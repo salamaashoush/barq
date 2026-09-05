@@ -2,8 +2,9 @@
  * `specs/*.json`, read straight out of a shadcn checkout.
  *
  * ```
- * bun run tools/respec.ts ~/Workspace/vendor/ui            # report the drift
- * bun run tools/respec.ts ~/Workspace/vendor/ui --write    # write the specs
+ * bun run tools/respec.ts ~/Workspace/vendor/ui             # report the drift
+ * bun run tools/respec.ts ~/Workspace/vendor/ui --write     # write every spec
+ * bun run tools/respec.ts ~/Workspace/vendor/ui --write button   # write one
  * ```
  *
  * A spec is the PROVENANCE for every rule this package ships, and every one of
@@ -209,6 +210,9 @@ function main(): void {
     process.exit(1);
   }
   const write = process.argv.includes("--write");
+  // One component at a time, because writing every spec at once leaves `verify`
+  // red until the last component is done and there is nothing to read in that.
+  const only = process.argv.slice(3).filter((argument) => !argument.startsWith("--"));
   const from = join(checkout, "apps/v4/styles", SET, "ui");
   const specs = join(import.meta.dir, "../specs");
   const held = new Set(readdirSync(specs).filter((name) => name.endsWith(".json")));
@@ -219,6 +223,7 @@ function main(): void {
 
   for (const file of readdirSync(from).filter((name) => name.endsWith(".tsx"))) {
     const name = basename(file, ".tsx");
+    if (only.length > 0 && !only.includes(name)) continue;
     const spec = specFor(readFileSync(join(from, file), "utf8"));
     if (Object.keys(spec).length === 0) continue;
 
