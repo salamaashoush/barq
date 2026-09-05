@@ -22,11 +22,9 @@ import { uiProps } from "../lib/slot.ts";
 const ui = layer("barq.ui");
 
 const item = ui({
-  borderBottomStyle: "var(--ui-border-style)",
-  borderBottomWidth: "1px",
-  ":last-child": {
+  ":not(:last-child)": {
     borderBottomStyle: "var(--ui-border-style)",
-    borderBottomWidth: "0px",
+    borderBottomWidth: "1px",
   },
 });
 
@@ -37,22 +35,42 @@ const trigger = ui(
   box.outline,
   ringSlot.focus,
   when.disabled,
+  // A marker: upstream's styles compile to `.group\/accordion-trigger:has(…)`.
+  "group/accordion-trigger",
   {
+    position: "relative",
     display: "flex",
     width: "100%",
     flex: "1",
     alignItems: "flex-start",
     justifyContent: "space-between",
-    gap: "calc(var(--spacing) * 4)",
-    borderRadius: "calc(var(--radius) * 0.8)",
+    borderRadius: "var(--radius)",
+    borderStyle: "var(--ui-border-style)",
+    borderWidth: "1px",
+    borderColor: "transparent",
     backgroundColor: "transparent",
-    paddingBlock: "calc(var(--spacing) * 4)",
+    paddingBlock: "calc(var(--spacing) * 2.5)",
     textAlign: "left",
     transitionProperty: "all",
     "@media (hover: hover)": {
       ":hover": {
         textDecorationLine: "underline",
       },
+    },
+    ":focus-visible": {
+      borderColor: "var(--ring)",
+    },
+    ":focus-visible::after": {
+      content: "var(--ui-content)",
+      borderColor: "var(--ring)",
+    },
+    // The chevron is a DESCENDANT rule upstream, so its size and colour belong
+    // to the trigger rather than to the icon's own class.
+    ':is(& *)[data-slot="accordion-trigger-icon"]': {
+      marginLeft: "auto",
+      width: "calc(var(--spacing) * 4)",
+      height: "calc(var(--spacing) * 4)",
+      color: "var(--muted-foreground)",
     },
     '[data-expanded] > [data-slot="accordion-chevron"]': {
       rotate: "180deg",

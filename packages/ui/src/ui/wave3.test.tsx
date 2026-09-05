@@ -108,8 +108,10 @@ describe("Accordion", () => {
     // the accordion had no dividers.
     expect(items).toHaveLength(2);
     const rules = rulesFor((items[0] as HTMLElement).className);
-    expect(rules).toContain("border-bottom-width: 1px");
-    expect(rules).toContain(":last-child{border-bottom-style");
+    // `not-last:border-b` upstream, which is one rule rather than a border on
+    // every item and a second removing it from the last. It was the other way
+    // round in the older registry this was first ported from.
+    expect(rules).toContain(":not(:last-child){border-bottom-width: 1px}");
   });
 
   test("the panel stays in the document while collapsed, so find-in-page reaches it", () => {
