@@ -7,6 +7,9 @@ import { AREA_CHARTS } from "./area.tsx";
 import { BAR_CHARTS } from "./bar.tsx";
 import { LINE_CHARTS } from "./line.tsx";
 import { PIE_CHARTS } from "./pie.tsx";
+import { RADAR_CHARTS } from "./radar.tsx";
+import { RADIAL_CHARTS } from "./radial.tsx";
+import { TOOLTIP_CHARTS } from "./tooltip.tsx";
 import { Page } from "../site.tsx";
 
 import type { Child } from "@barqjs/core";
@@ -34,9 +37,9 @@ export const CHART_TYPES: readonly {
   { type: "bar", label: "Bar", charts: BAR_CHARTS },
   { type: "line", label: "Line", charts: LINE_CHARTS },
   { type: "pie", label: "Pie", charts: PIE_CHARTS },
-  { type: "radar", label: "Radar", charts: [] },
-  { type: "radial", label: "Radial", charts: [] },
-  { type: "tooltip", label: "Tooltip", charts: [] },
+  { type: "radar", label: "Radar", charts: RADAR_CHARTS },
+  { type: "radial", label: "Radial", charts: RADIAL_CHARTS },
+  { type: "tooltip", label: "Tooltip", charts: TOOLTIP_CHARTS },
 ];
 
 const tabs = css`
