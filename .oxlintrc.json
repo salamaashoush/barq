@@ -65,9 +65,21 @@
     // import is how a component says "the layer order has to be declared before
     // mine". `@barqjs/ui` has one per component, and the alternative — a dead
     // binding and a `void` beside it — is noise standing in for the same claim.
+    //
+    // A stylesheet is the same claim in the other direction: `import
+    // "@fontsource-variable/geist/index.css"` is how a bundle says the face has
+    // to be in the document, and there is no binding it could produce.
     "import/no-unassigned-import": [
       "error",
-      { "allow": ["**/layers.ts", "**/base.ts", "**/reset.ts", "**/register-dom.ts"] }
+      {
+        "allow": [
+          "**/layers.ts",
+          "**/base.ts",
+          "**/reset.ts",
+          "**/register-dom.ts",
+          "**/*.css"
+        ]
+      }
     ],
     "import/no-cycle": "error",
     "import/no-self-import": "error",

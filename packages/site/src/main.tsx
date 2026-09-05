@@ -6,8 +6,8 @@
  * question no headless DOM can answer.
  */
 
-import "@fontsource-variable/geist";
-import "@fontsource-variable/geist-mono";
+import "@fontsource-variable/geist/index.css";
+import "@fontsource-variable/geist-mono/index.css";
 
 import { For, render, signal, type Child, type Incoming } from "@barqjs/core";
 import { css, globalCss, layer } from "@barqjs/css";
