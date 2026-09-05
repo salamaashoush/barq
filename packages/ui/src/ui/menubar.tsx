@@ -19,7 +19,6 @@ import {
   DropdownMenuGroup,
   DropdownMenuGroupLabel,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
@@ -38,15 +37,13 @@ import {
 
 const ui = layer("barq.ui");
 
-const bar = ui(box.border, box.shadow, {
+const bar = ui(box.border, {
   display: "flex",
-  height: "calc(var(--spacing) * 9)",
+  height: "calc(var(--spacing) * 8)",
   alignItems: "center",
-  gap: "var(--spacing)",
-  borderRadius: "calc(var(--radius) * 0.8)",
-  backgroundColor: "var(--background)",
-  padding: "var(--spacing)",
-  "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
+  gap: "calc(var(--spacing) * 0.5)",
+  borderRadius: "var(--radius)",
+  padding: "3px",
 });
 
 const trigger = ui(
@@ -60,19 +57,42 @@ const trigger = ui(
     display: "flex",
     height: "auto",
     alignItems: "center",
+    // The trigger is a `<Button variant="ghost">` here and a bare button
+    // upstream, and the button's transparent 1px edge made every trigger 2px
+    // taller than theirs: 26 against 24, measured on their menubar page.
+    borderStyle: "none",
     borderRadius: "calc(var(--radius) * 0.6)",
-    paddingInline: "calc(var(--spacing) * 2)",
-    paddingBlock: "var(--spacing)",
+    paddingInline: "calc(var(--spacing) * 1.5)",
+    paddingBlock: "2px",
+    "@media (hover: hover)": {
+      ":hover": {
+        backgroundColor: "var(--muted)",
+      },
+    },
+    // `aria-expanded` as well as the attribute the menu writes: a trigger keeps
+    // its fill while its menu is open, and that is the state a screen reader
+    // is told about too.
     "[data-expanded], &[data-open]": {
-      backgroundColor: "var(--accent)",
-      color: "var(--accent-foreground)",
+      backgroundColor: "var(--muted)",
+    },
+    '[aria-expanded="true"]': {
+      backgroundColor: "var(--muted)",
     },
   },
 );
 
-/** shadcn's menubar opens wider than a dropdown does. */
-const wide = ui({
-  minWidth: "12rem",
+/**
+ * A menubar's label is the body colour at `text-sm`, not the dropdown's muted
+ * `text-xs`, and its ticks sit on the LEFT where a dropdown's are on the right.
+ */
+const label = ui(text.medium, {
+  paddingInline: "calc(var(--spacing) * 1.5)",
+  paddingBlock: "var(--spacing)",
+  fontSize: "var(--text-sm)",
+  lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  "[data-inset]": {
+    paddingLeft: "calc(var(--spacing) * 7)",
+  },
 });
 
 export interface MenubarProps extends UiProps {}
@@ -143,7 +163,7 @@ export function MenubarContent<T>(props: Incoming<MenubarContentProps<T>>) {
     <DropdownMenuContent
       {...props}
       data-slot="menubar-content"
-      class={ui(wide, props.class?.(), props.className?.())}
+      class={ui(props.class?.(), props.className?.())}
     />
   );
 }
@@ -180,8 +200,17 @@ export function MenubarRadioItem(props: Incoming<MenubarRadioItemProps>) {
 
 export interface MenubarLabelProps extends DropdownMenuLabelProps {}
 
+/** Its own element, because a menubar's label is body-coloured `text-sm`. */
 export function MenubarLabel(props: Incoming<MenubarLabelProps>) {
-  return <DropdownMenuLabel {...props} data-slot="menubar-label" />;
+  return (
+    <li
+      {...uiProps("menubar-label", label, props)}
+      role="presentation"
+      data-inset={props.inset?.() === true ? "" : undefined}
+    >
+      {props.children}
+    </li>
+  );
 }
 
 export function MenubarSeparator(props: Incoming<UiProps>) {

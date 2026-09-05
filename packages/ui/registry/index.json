@@ -606,19 +606,12 @@
       "title": "Context Menu",
       "dependencies": [
         "@barqjs/aria",
-        "@barqjs/core",
-        "@barqjs/css",
-        "@barqjs/lucide"
+        "@barqjs/core"
       ],
       "registryDependencies": [
         "dropdown-menu",
         "layers",
-        "props",
-        "shared-box",
-        "shared-icon",
-        "shared-text",
-        "shared-when",
-        "slot"
+        "props"
       ],
       "files": [
         "ui/context-menu.tsx"

@@ -52,6 +52,11 @@ export function slotsWeEmit(root: string): Set<string> {
       // component that lets a caller RENAME its slot spells it. `Calendar`
       // does, and reported as having no root element at all.
       /"data-slot":\s*\(\)\s*=>[^,\n]*\?\?\s*"([a-z0-9-]+)"/g,
+      // And the accessor read straight into the entry, which is what a slot
+      // prop with a default looks like: `props.listSlot?.() ?? "command-list"`.
+      // `<Command>`'s list took that shape for the combobox and the list
+      // reported as reaching nothing.
+      /"data-slot":\s*[^,\n]*\?\?\s*"([a-z0-9-]+)"/g,
       // A slot named through a PROP, because the element belongs to a
       // `@barqjs/aria` component rather than to this one: `underlaySlot` on a
       // modal's backdrop, `listSlot` on a select's list. Without this every

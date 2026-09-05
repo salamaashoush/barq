@@ -42,6 +42,44 @@ const ALLOWED: Record<string, string> = {
     "carrier is not, and a class on an element the renderer owns would be " +
     "overwritten on the next scene",
   "chart:chart-axis-label:fill": 'as above, as `fill="var(--muted-foreground)"`',
+  "combobox:combobox-content:max-width":
+    "the combobox is the one component upstream ships from Base UI rather than " +
+    "Radix, so its class list reads Base's `--available-width`, " +
+    "`--anchor-width` and `--available-height`. `@barqjs/aria`'s positioner " +
+    "writes the same three measurements as `--barq-available-width`, " +
+    "`--barq-trigger-width` and `--barq-available-height`",
+  "combobox:combobox-content:min-width": "as above, `--barq-trigger-width`",
+  "combobox:combobox-list:max-height": "as above, `--barq-available-height`",
+  "combobox:combobox-content:position":
+    "the panel is a `<Popover>` here rather than a positioner of the " +
+    "combobox's own, and the popover is already the containing block its " +
+    "children are placed against",
+  "combobox:combobox-content:margin":
+    "the search row is `<Command>`'s input, not an `<InputGroup>` the combobox " +
+    "places inside its panel, so the rules upstream writes ABOUT that group " +
+    "belong to the input's own class",
+  "combobox:combobox-content:margin-bottom": "as above",
+  "combobox:combobox-content:height": "as above",
+  "combobox:combobox-content:border-color": "as above",
+  "combobox:combobox-content:background-color": "as above",
+  "combobox:combobox-content:--ui-shadow": "as above",
+  "combobox:input-group-button:display":
+    "a rule ABOUT the input group's button, which this combobox does not " +
+    "render: the clear control is the chip's own remove button",
+  "combobox:combobox-chip-input:min-width":
+    "the chips box opens its list from a `<Button>` rather than a bare input, " +
+    "so the width belongs to `chipsTrigger`, which carries it",
+  "select:select-scroll-up-button:z-index":
+    "there are no scroll buttons. Radix needs them because its popper content " +
+    "does not scroll; the list here is a real scroller with `overflow-y: auto`, " +
+    "and a fake arrow over a native scrollbar is strictly worse than the " +
+    "scrollbar. `PORTING.md` records it and `tools/styles.ts` names the two " +
+    "slots as deliberate",
+  "select:select-scroll-up-button:justify-content": "as above",
+  "select:select-scroll-up-button:background-color": "as above",
+  "select:select-scroll-down-button:z-index": "as above",
+  "select:select-scroll-down-button:justify-content": "as above",
+  "select:select-scroll-down-button:background-color": "as above",
   "dropdown-menu:dropdown-menu-content:max-height":
     "`--radix-dropdown-menu-content-available-height` is Radix's name for the " +
     "room the positioner measured; `@barqjs/aria` writes the same number as " +

@@ -93,12 +93,15 @@ describe("ContextMenu", () => {
     expect(region().getAttribute("data-open")).toBe("");
   });
 
-  test("its label is drawn in the body colour, which a dropdown's is not", () => {
+  // Upstream styled the two apart and no longer does: a context menu's label is
+  // the same muted `text-xs` a dropdown's is, so this renders the dropdown's
+  // element under the context menu's slot rather than a second class.
+  test("its label is a dropdown's, under its own slot", () => {
     const { container } = render(() => <ContextMenuLabel>Section</ContextMenuLabel>);
     const label = container.querySelector('[data-slot="context-menu-label"]') as HTMLElement;
 
     expect(label.getAttribute("role")).toBe("presentation");
-    expect(rulesFor(label.className)).toContain("color: var(--foreground)");
+    expect(rulesFor(label.className)).toContain("color: var(--muted-foreground)");
   });
 
   test("a separator and a shortcut carry their own slots", () => {

@@ -23,14 +23,16 @@ const ui = layer("barq.ui");
 const trigger = ui(
   box.border,
   text.sm,
-  box.shadow,
   box.transition,
   box.outline,
+  box.noSelect,
   when.darkInput,
   ringSlot.focus,
   when.disabledCursor,
   ringSlot.invalid,
+  ringSlot.invalidRing,
   ringSlot.invalidDark,
+  ringSlot.invalidBorderDark,
   icon.plain,
   icon.sized,
   icon.muted,
@@ -39,20 +41,22 @@ const trigger = ui(
     width: "fit-content",
     alignItems: "center",
     justifyContent: "space-between",
-    gap: "calc(var(--spacing) * 2)",
-    borderRadius: "calc(var(--radius) * 0.8)",
+    gap: "calc(var(--spacing) * 1.5)",
+    borderRadius: "var(--radius)",
     borderColor: "var(--input)",
     backgroundColor: "transparent",
-    paddingInline: "calc(var(--spacing) * 3)",
     paddingBlock: "calc(var(--spacing) * 2)",
+    paddingRight: "calc(var(--spacing) * 2)",
+    paddingLeft: "calc(var(--spacing) * 2.5)",
     whiteSpace: "nowrap",
-    "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
-    transitionProperty: "color, box-shadow",
+    transitionProperty:
+      "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to",
     '[data-size="default"]': {
-      height: "calc(var(--spacing) * 9)",
+      height: "calc(var(--spacing) * 8)",
     },
     '[data-size="sm"]': {
-      height: "calc(var(--spacing) * 8)",
+      height: "calc(var(--spacing) * 7)",
+      borderRadius: "min(var(--radius-md), 10px)",
     },
     "@media (hover: hover)": {
       ":is(.dark *):hover": {
@@ -73,7 +77,7 @@ const trigger = ui(
       "-webkit-box-orient": "vertical",
       "-webkit-line-clamp": "1",
       alignItems: "center",
-      gap: "calc(var(--spacing) * 2)",
+      gap: "calc(var(--spacing) * 1.5)",
     },
   },
 );
@@ -84,22 +88,38 @@ const trigger = ui(
  * publishes the same measurement; the plain `8rem` beside it is the fallback
  * for a browser without `max()`, and is what the transcription produced.
  */
-const list = ui(box.border, box.shadow, {
+const list = ui(box.shadow, {
   position: "relative",
   zIndex: "50",
   margin: "0px",
-  minWidth: firstThatWorks("max(8rem, var(--barq-trigger-width, 0px))", "8rem"),
+  maxHeight: "var(--barq-available-height)",
+  minWidth: firstThatWorks(
+    "max(calc(var(--spacing) * 36), var(--barq-trigger-width, 0px))",
+    "calc(var(--spacing) * 36)",
+  ),
   animation:
     "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
   listStyleType: "none",
   overflowX: "hidden",
   overflowY: "auto",
-  borderRadius: "calc(var(--radius) * 0.8)",
+  borderRadius: "var(--radius)",
   backgroundColor: "var(--popover)",
-  padding: "var(--spacing)",
   color: "var(--popover-foreground)",
   "--ui-shadow":
     "0 4px 6px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 2px 4px -2px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
+  "--ui-ring-shadow":
+    "var(--ui-ring-inset,) 0 0 0 calc(1px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+  "--ui-ring-color": "var(--foreground)",
+  "--ui-duration": "100ms",
+  transitionDuration: "100ms",
+  "@supports (color: color-mix(in lab, red, red))": {
+    "--ui-ring-color": "color-mix(in oklab, var(--foreground) 10%, transparent)",
+  },
+  // A list pinned to its trigger does not zoom out of a corner: it is already
+  // where it belongs, and the scale reads as a jolt rather than an entrance.
+  '[data-align-trigger="true"]': {
+    animation: "none",
+  },
   "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
   "--ui-enter-scale": firstThatWorks("0.95", "calc(95*1%)"),
   '[data-placement="bottom"] &': {
@@ -138,6 +158,7 @@ const list = ui(box.border, box.shadow, {
 const item = ui(
   text.sm,
   box.outline,
+  box.forcedColors,
   box.noSelect,
   when.focused,
   when.disabled,
@@ -150,11 +171,21 @@ const item = ui(
     width: "100%",
     cursor: "default",
     alignItems: "center",
-    gap: "calc(var(--spacing) * 2)",
-    borderRadius: "calc(var(--radius) * 0.6)",
-    paddingBlock: "calc(var(--spacing) * 1.5)",
+    gap: "calc(var(--spacing) * 1.5)",
+    borderRadius: "calc(var(--radius) * 0.8)",
+    paddingBlock: "var(--spacing)",
     paddingRight: "calc(var(--spacing) * 8)",
-    paddingLeft: "calc(var(--spacing) * 2)",
+    paddingLeft: "calc(var(--spacing) * 1.5)",
+    ':is(&:not([data-variant="destructive"])[data-focused] *)': {
+      color: "var(--accent-foreground)",
+    },
+    // The row's trailing span is the label beside the value's own icon, and it
+    // lays out as a row of its own.
+    ":is(& > *):is(span:last-child)": {
+      display: "flex",
+      alignItems: "center",
+      gap: "calc(var(--spacing) * 2)",
+    },
   },
 );
 

@@ -228,6 +228,11 @@ const item = ui(
     ':is(&[data-variant="destructive"] > *):is(svg)': {
       color: "var(--destructive)",
     },
+    // The menubar wins the tie outright: its rows sit on a lighter fill and a
+    // destructive glyph that lost to the row's own colour read as ordinary.
+    ':is([data-slot="menubar-item"][data-variant="destructive"] > *):is(svg)': {
+      color: "var(--destructive) !important",
+    },
   },
 );
 
@@ -257,6 +262,16 @@ const checkItem = ui(
     "[data-inset]": {
       paddingLeft: "calc(var(--spacing) * 7)",
     },
+    // A menubar keeps its ticks on the LEFT, which is where a desktop menu has
+    // always put them and what upstream still writes for this one menu.
+    '[data-slot="menubar-checkbox-item"]': {
+      paddingRight: "calc(var(--spacing) * 1.5)",
+      paddingLeft: "calc(var(--spacing) * 7)",
+    },
+    '[data-slot="menubar-radio-item"]': {
+      paddingRight: "calc(var(--spacing) * 1.5)",
+      paddingLeft: "calc(var(--spacing) * 7)",
+    },
   },
 );
 
@@ -267,6 +282,11 @@ const indicator = ui({
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
+  // With the menubar's rows, which put the tick on the left.
+  '[data-slot="menubar-checkbox-item-indicator"], &[data-slot="menubar-radio-item-indicator"]': {
+    right: "auto",
+    left: "calc(var(--spacing) * 2)",
+  },
   "& > svg": {
     display: "none",
     width: "calc(var(--spacing) * 4)",
@@ -284,6 +304,11 @@ const radioIndicator = ui({
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
+  // With the menubar's rows, which put the tick on the left.
+  '[data-slot="menubar-checkbox-item-indicator"], &[data-slot="menubar-radio-item-indicator"]': {
+    right: "auto",
+    left: "calc(var(--spacing) * 2)",
+  },
   "& > svg": {
     display: "none",
     width: "calc(var(--spacing) * 2)",
@@ -322,7 +347,7 @@ const shortcut = ui({
   "--ui-tracking": "var(--tracking-widest)",
   letterSpacing: "var(--tracking-widest)",
   color: "var(--muted-foreground)",
-  ':is(:where(.group\\/dropdown-menu-item)[data-focused] *)': {
+  ":is(:where(.group\\/dropdown-menu-item)[data-focused] *)": {
     color: "var(--accent-foreground)",
   },
 });

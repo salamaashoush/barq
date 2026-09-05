@@ -90,7 +90,9 @@ describe("Select", () => {
     expect(list.getAttribute("data-slot")).toBe("select-content");
     const rules = rulesFor(list.className);
     expect(rules).toContain("background-color: var(--popover)");
-    expect(rules).toContain("border-top-width: 1px");
+    // A ring rather than a border, which is what upstream draws now: it costs
+    // no layout, so the list measures the same as the trigger it came from.
+    expect(rules).toContain("--ui-ring-color: var(--foreground)");
   });
 
   test("a name renders a real <select>, so the value reaches a form post", () => {

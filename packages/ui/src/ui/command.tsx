@@ -43,8 +43,11 @@ const root = ui({
   width: "100%",
   flexDirection: "column",
   overflow: "hidden",
-  borderRadius: "calc(var(--radius) * 0.8)",
+  // `!important` upstream, so a dialog wrapping the palette cannot flatten its
+  // corners with its own radius.
+  borderRadius: "calc(var(--radius) * 1.4) !important",
   backgroundColor: "var(--popover)",
+  padding: "var(--spacing)",
   color: "var(--popover-foreground)",
 });
 
@@ -55,7 +58,8 @@ const inputWrapper = ui({
   gap: "calc(var(--spacing) * 2)",
   borderBottomStyle: "var(--ui-border-style)",
   borderBottomWidth: "1px",
-  paddingInline: "calc(var(--spacing) * 3)",
+  padding: "var(--spacing)",
+  paddingBottom: "0px",
 });
 
 const inputIcon = ui({
@@ -83,35 +87,75 @@ const input = ui(text.sm, box.outline, box.forcedColors, {
   },
 });
 
-const list = ui({
+const list = ui(box.outline, {
   margin: "0px",
-  maxHeight: "300px",
+  maxHeight: "calc(var(--spacing) * 72)",
   scrollPaddingBlock: "var(--spacing)",
   listStyleType: "none",
   overflowX: "hidden",
   overflowY: "auto",
   padding: "0px",
+  // `no-scrollbar`: the palette scrolls and says so with its own rows moving,
+  // and a bar down the side of a floating panel is noise.
+  "-ms-overflow-style": "none",
+  scrollbarWidth: "none",
+  "::-webkit-scrollbar": {
+    display: "none",
+  },
+  // A combobox's list is the same element inside a popover, and it stops short
+  // of the height a palette takes: the input above it is part of the panel, so
+  // the list gets what is left rather than the whole of it.
+  '[data-slot="combobox-list"]': {
+    maxHeight:
+      "min(calc(calc(var(--spacing) * 72) - calc(var(--spacing) * 9)), calc(var(--barq-available-height) - calc(var(--spacing) * 9)))",
+    overscrollBehavior: "contain",
+    padding: "var(--spacing)",
+  },
+  '[data-slot="combobox-list"][data-empty]': {
+    padding: "0px",
+  },
 });
 
 const empty = ui(text.sm, {
   paddingBlock: "calc(var(--spacing) * 6)",
   textAlign: "center",
+  // A combobox shows its empty state only when the list really is empty, and
+  // in a shorter box: the popover is a picker, not a page.
+  '[data-slot="combobox-empty"]': {
+    display: "none",
+    width: "100%",
+    justifyContent: "center",
+    paddingBlock: "calc(var(--spacing) * 2)",
+    textAlign: "center",
+    color: "var(--muted-foreground)",
+  },
+  ':is(:where(.group\\/combobox-content)[data-empty] *)[data-slot="combobox-empty"]': {
+    display: "flex",
+  },
 });
 
+/**
+ * The group and its heading in one class.
+ *
+ * Upstream styles the heading through `**:[[cmdk-group-heading]]` — a rule the
+ * GROUP writes about a descendant — rather than giving it a class of its own,
+ * and keeping the two in one call is what lets `verify` see the whole slot.
+ */
 const group = ui({
   margin: "0px",
   listStyleType: "none",
   overflow: "hidden",
   padding: "var(--spacing)",
   color: "var(--foreground)",
-});
-
-const groupLabel = ui(text.medium, {
-  paddingInline: "calc(var(--spacing) * 2)",
-  paddingBlock: "calc(var(--spacing) * 1.5)",
-  fontSize: "var(--text-xs)",
-  lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
-  color: "var(--muted-foreground)",
+  ':is(& *)[data-slot="command-group-label"]': {
+    paddingInline: "calc(var(--spacing) * 2)",
+    paddingBlock: "calc(var(--spacing) * 1.5)",
+    fontSize: "var(--text-xs)",
+    lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
+    "--ui-font-weight": "var(--font-weight-medium)",
+    fontWeight: "var(--font-weight-medium)",
+    color: "var(--muted-foreground)",
+  },
 });
 
 const separator = ui({
@@ -141,6 +185,17 @@ const item = ui(
     borderRadius: "calc(var(--radius) * 0.6)",
     paddingInline: "calc(var(--spacing) * 2)",
     paddingBlock: "calc(var(--spacing) * 1.5)",
+    // A palette inside a dialog opens its rows out to match the panel.
+    '[data-slot="dialog-content"] &': {
+      borderRadius: "var(--radius) !important",
+    },
+    "[data-focused]": {
+      backgroundColor: "var(--muted)",
+      color: "var(--foreground)",
+    },
+    ":is(&[data-focused] > *):is(svg)": {
+      color: "var(--foreground)",
+    },
   },
 );
 
@@ -151,6 +206,9 @@ const shortcut = ui({
   "--ui-tracking": "var(--tracking-widest)",
   letterSpacing: "var(--tracking-widest)",
   color: "var(--muted-foreground)",
+  '[data-slot="command-item"][data-focused] &': {
+    color: "var(--foreground)",
+  },
 });
 
 const dialogContent = ui({
@@ -193,6 +251,8 @@ export interface CommandProps<T> extends UiProps, ItemAccessors<T> {
    * every `command-empty` on the page.
    */
   emptySlot?: string;
+  /** The list's own slot, for the same reason. */
+  listSlot?: string;
   placeholder?: string;
   value?: string;
   defaultValue?: string;
@@ -278,7 +338,7 @@ export function Command<T>(props: Incoming<CommandProps<T>>) {
       <Show
         when={isEmpty()}
         fallback={
-          <CommandList aria-label={props["aria-label"]?.()}>
+          <CommandList aria-label={props["aria-label"]?.()} listSlot={props.listSlot?.()}>
             <For each={() => [...state.collection()]}>
               {(node: Node<T>) => {
                 provideItemNode(node);
@@ -319,6 +379,7 @@ function CommandInput(props: Incoming<InputProps>) {
 
 interface ListProps {
   "aria-label"?: string;
+  listSlot?: string;
   children?: Child;
 }
 
@@ -336,7 +397,7 @@ function CommandList(props: Incoming<ListProps>) {
     id: options["id"],
     "aria-labelledby": options["aria-labelledby"],
     "aria-label": () => props["aria-label"]?.(),
-    "data-slot": "command-list",
+    "data-slot": props.listSlot?.() ?? "command-list",
     class: () => list,
   });
 
@@ -380,7 +441,7 @@ export function CommandGroup(props: Incoming<CommandGroupProps>) {
   return (
     <li {...itemProps}>
       <Show when={props.heading?.() !== undefined}>
-        <div {...headingProps} data-slot="command-group-label" class={groupLabel}>
+        <div {...headingProps} data-slot="command-group-label">
           {props.heading}
         </div>
       </Show>

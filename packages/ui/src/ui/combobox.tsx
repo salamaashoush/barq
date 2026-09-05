@@ -36,10 +36,33 @@ const trigger = ui({
  * `width: 100%` cannot do it: the popover is portalled, so 100% resolves
  * against the body and the list came out as wide as the page.
  */
-const content = ui({
+const content = ui("group/combobox-content", {
+  position: "relative",
+  maxHeight: "var(--barq-available-height)",
   width: "var(--barq-trigger-width, auto)",
-  minWidth: "var(--barq-trigger-width, auto)",
+  maxWidth: "var(--barq-available-width)",
+  minWidth: "calc(var(--barq-trigger-width) + calc(var(--spacing) * 7))",
+  overflow: "hidden",
   padding: "0px",
+  // A chips box is already as wide as its content, so the list matches it
+  // exactly rather than reserving room for a tick column.
+  '[data-chips="true"]': {
+    minWidth: "var(--barq-trigger-width)",
+  },
+  // The search row is an input group inside the panel, inset by a spacing unit
+  // and flush with the list below it.
+  ':is(& > *)[data-slot="input-group"]': {
+    margin: "var(--spacing)",
+    marginBottom: "0px",
+    height: "calc(var(--spacing) * 8)",
+    borderColor: "var(--input)",
+    backgroundColor: "var(--input)",
+    "--ui-shadow": "0 0 #0000",
+    "@supports (color: color-mix(in lab, red, red))": {
+      borderColor: "color-mix(in oklab, var(--input) 30%, transparent)",
+      backgroundColor: "color-mix(in oklab, var(--input) 30%, transparent)",
+    },
+  },
 });
 
 const item = ui(
@@ -90,30 +113,31 @@ const chevron = ui({
  */
 const chips = ui(text.sm, {
   display: "flex",
-  minHeight: "calc(var(--spacing) * 9)",
+  minHeight: "calc(var(--spacing) * 8)",
   flexWrap: "wrap",
   alignItems: "center",
-  gap: "calc(var(--spacing) * 1.5)",
-  borderRadius: "calc(var(--radius) * 0.8)",
+  gap: "var(--spacing)",
+  borderRadius: "var(--radius)",
   borderStyle: "var(--ui-border-style)",
   borderWidth: "1px",
   borderColor: "var(--input)",
   backgroundColor: "transparent",
   backgroundClip: "padding-box",
   paddingInline: "calc(var(--spacing) * 2.5)",
-  paddingBlock: "calc(var(--spacing) * 1.5)",
-  "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
-  boxShadow:
-    "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
-  transitionProperty: "color, box-shadow",
+  paddingBlock: "var(--spacing)",
+  transitionProperty:
+    "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to",
   transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
   transitionDuration: "var(--ui-duration, var(--default-transition-duration))",
   ".dark &": {
-    backgroundColor: "color-mix(in oklab, var(--input) 30%, transparent)",
+    backgroundColor: "var(--input)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      backgroundColor: "color-mix(in oklab, var(--input) 30%, transparent)",
+    },
   },
   // A chip carries its own padding, so the box stops adding a second one.
   '&:has([data-slot="combobox-chip"])': {
-    paddingInline: "calc(var(--spacing) * 1.5)",
+    paddingInline: "var(--spacing)",
   },
   ":focus-within": {
     borderColor: "var(--ring)",
@@ -121,7 +145,10 @@ const chips = ui(text.sm, {
       "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
     boxShadow:
       "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
-    "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
+    "--ui-ring-color": "var(--ring)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
+    },
   },
   '&:has([aria-invalid="true"])': {
     borderColor: "var(--destructive)",
@@ -129,13 +156,24 @@ const chips = ui(text.sm, {
       "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
     boxShadow:
       "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
-    "--ui-ring-color": "color-mix(in oklab, var(--destructive) 20%, transparent)",
+    "--ui-ring-color": "var(--destructive)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      "--ui-ring-color": "color-mix(in oklab, var(--destructive) 20%, transparent)",
+    },
+  },
+  '.dark &:has([aria-invalid="true"])': {
+    borderColor: "var(--destructive)",
+    "--ui-ring-color": "var(--destructive)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      borderColor: "color-mix(in oklab, var(--destructive) 50%, transparent)",
+      "--ui-ring-color": "color-mix(in oklab, var(--destructive) 40%, transparent)",
+    },
   },
 });
 
 const chip = ui(text.medium, {
   display: "flex",
-  height: "calc(calc(var(--spacing) * 5.5))",
+  height: "calc(calc(var(--spacing) * 5.25))",
   width: "fit-content",
   alignItems: "center",
   justifyContent: "center",
@@ -395,6 +433,7 @@ export function Combobox<T>(props: Incoming<ComboboxProps<T>>) {
           placeholder={props.searchPlaceholder?.() ?? "Search…"}
           empty={props.empty?.()}
           emptySlot="combobox-empty"
+          listSlot="combobox-list"
           filterBy={props.filterBy?.()}
           aria-label={props["aria-label"]?.()}
           onAction={(key) => {
