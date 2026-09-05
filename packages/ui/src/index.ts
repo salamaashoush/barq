@@ -173,6 +173,8 @@ export {
   type CardEdgeProps,
   CardFooter,
   CardHeader,
+  type CardProps,
+  type CardSize,
   CardTitle,
 } from "./ui/card.tsx";
 export {
@@ -187,14 +189,18 @@ export {
   type CarouselProps,
 } from "./ui/carousel.tsx";
 export {
+  AXIS_FONT_SIZE,
+  Chart,
   ChartBars,
   type ChartConfig,
   ChartContainer,
   type ChartContainerProps,
+  type ChartDefinition,
   chartHover,
   ChartLegend,
   ChartLines,
   type ChartPlotProps,
+  type ChartProps,
   type ChartSeries,
   ChartTooltipContent,
   type ChartTooltipProps,

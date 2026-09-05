@@ -47,6 +47,15 @@ export interface Params {
   readonly fontHeading: string;
   readonly mono: string;
   readonly dark: boolean;
+  /**
+   * Which composition the preview shows, by upstream's registry name.
+   *
+   * `item` in their `search-params.ts`, and `shallow: true` there: it belongs
+   * in the URL, so "look at this in this theme" is a link, but it is not the
+   * page. A block is a page — `/blocks/dashboard-01` — and this is the flip
+   * between two whole-application previews while you configure one.
+   */
+  readonly item: string;
 }
 
 export const DEFAULTS: Params = {
@@ -59,6 +68,7 @@ export const DEFAULTS: Params = {
   fontHeading: "inherit",
   mono: "system",
   dark: false,
+  item: "preview-02",
 };
 
 /** `"none"` is a choice, so it needs a key; the selection turns it back into absence. */
@@ -105,6 +115,7 @@ export function read(search: string): Params {
     fontHeading: oneOf(HEADING_FONTS, query.get("fontHeading"), DEFAULTS.fontHeading),
     mono: oneOf(MONO, query.get("mono"), DEFAULTS.mono),
     dark: query.get("dark") === "1",
+    item: query.get("item") ?? DEFAULTS.item,
   };
 }
 
@@ -126,6 +137,7 @@ export function write(params: Params): string {
     if (params[key] !== DEFAULTS[key]) query.set(key, params[key]);
   }
   if (params.dark) query.set("dark", "1");
+  if (params.item !== DEFAULTS.item) query.set("item", params.item);
   const text = query.toString();
   return text === "" ? "" : `?${text}`;
 }
@@ -210,6 +222,102 @@ export interface Design {
   reset(): void;
   /** The element the style and the theme are scoped to. */
   wear(element: HTMLElement | null): void;
+  /** Which composition the preview shows, and the flip between them. */
+  readonly item: Accessor<string>;
+  setItem(next: string): void;
+}
+
+/**
+ * The eight stylesheets, one chunk each, fetched on demand.
+ *
+ * `import.meta.glob` gives Vite a chunk per file, so opening the page costs one
+ * style rather than eight. Module scope rather than inside `design()`, because
+ * the SITE loads them too now and two `loaded` sets would fetch each sheet
+ * twice.
+ */
+const SHEETS = import.meta.glob("../../styles/*.css");
+const LOADED = new Set<string>();
+
+/** `style-<name>` on one element, and every other style's class off it. */
+function markStyle(element: HTMLElement, name: string): void {
+  for (const each of STYLES) {
+    if (each.value === NONE) continue;
+    element.classList.toggle(`style-${each.value}`, each.value === name);
+  }
+}
+
+/**
+ * Put a style on an element, fetching its sheet first if this is the first ask.
+ *
+ * `still` is what stops a race applying a stale choice: the sheet is in flight
+ * for a beat, and the pointer may have moved on to another style by the time it
+ * lands. `none` names no stylesheet, so it takes the class OFF rather than
+ * adding a `style-none` that selects nothing and reads as a real choice in
+ * devtools.
+ */
+export function wearStyleOn(element: HTMLElement | null, name: string, still: () => boolean): void {
+  if (element === null) return;
+  if (name === NONE || LOADED.has(name)) {
+    markStyle(element, name);
+    return;
+  }
+  const load = SHEETS[`../../styles/${name}.css`];
+  if (load === undefined) return;
+  void load().then(() => {
+    LOADED.add(name);
+    if (still()) markStyle(element, name);
+  });
+}
+
+/**
+ * The theme the SITE wears, from the same URL the designer writes.
+ *
+ * Every page outside `/create` had no theme at all: `design()` is the
+ * designer's own, so `--chart-1`, `--radius` and the rest were undefined
+ * everywhere else. An undefined `var()` is not a fallback — the declaration is
+ * invalid at computed-value time and the property takes its INITIAL value — so
+ * the charts drew grey, every corner was square and the type was the browser's.
+ *
+ * The style class goes on `<html>` here, which is what the designer must NOT
+ * do: putting it there while the customizer is on screen makes the customizer
+ * restyle ITSELF under the pointer, and a menu item that resizes as you hover
+ * it swaps rows forever. There is no customizer on any other page, so the
+ * document is the right scope and the whole page is themed.
+ */
+export function installSite(): { params: Accessor<Params>; set(next: Partial<Params>): void } {
+  const current = signal<Params>(read(typeof location === "undefined" ? "" : location.search));
+
+  const apply = (): void => {
+    const now = current();
+    installTheme(selectionOf(now));
+    if (typeof document === "undefined") return;
+    const root = document.documentElement;
+    root.classList.toggle("dark", now.dark);
+    wearStyleOn(root, now.style, () => current().style === now.style);
+  };
+
+  effect(apply);
+
+  if (typeof window !== "undefined") {
+    const reread = (): void => current.set(read(location.search));
+    window.addEventListener("popstate", reread);
+    // A `<Link>` navigation is a pushState the router owns, and neither fires
+    // `popstate`. The router's own location is the honest source, but reading it
+    // here would tie this file to a router; a microtask after the click sees the
+    // URL the router just wrote, and re-reading a URL that did not change costs
+    // one object.
+    window.addEventListener("click", () => queueMicrotask(reread), { capture: true });
+  }
+
+  return {
+    params: current,
+    set(next) {
+      current.set({ ...current(), ...next });
+      if (typeof history !== "undefined") {
+        history.replaceState(null, "", `${location.pathname}${write(current())}`);
+      }
+    },
+  };
 }
 
 export function design(): Design {
@@ -219,41 +327,8 @@ export function design(): Design {
 
   let host: HTMLElement | null = null;
 
-  /**
-   * A style is 180 KB, and somebody picks ONE.
-   *
-   * `import.meta.glob` gives Vite a chunk per file and this fetches only the
-   * chosen one, so opening the page costs one style rather than eight. The
-   * class goes on once the sheet is actually there, or the components spend a
-   * frame with a style declared and not yet loaded.
-   */
-  const sheets = import.meta.glob("../../styles/*.css");
-  const loaded = new Set<string>();
-
-  const wearStyle = (name: string): void => {
-    if (host === null) return;
-    const element = host;
-    // `none` names no stylesheet, so it takes the class OFF rather than adding
-    // a `style-none` that selects nothing and reads as a real choice in devtools.
-    const put = (): void => {
-      for (const each of STYLES) {
-        if (each.value === NONE) continue;
-        element.classList.toggle(`style-${each.value}`, each.value === name);
-      }
-    };
-    if (name === NONE || loaded.has(name)) {
-      put();
-      return;
-    }
-    const load = sheets[`../../styles/${name}.css`];
-    if (load === undefined) return;
-    void load().then(() => {
-      loaded.add(name);
-      // The choice may have moved on while the sheet was in flight, and
-      // applying a stale one here is what a race looks like from the outside.
-      if (previewed().style === name) put();
-    });
-  };
+  const wearStyle = (name: string): void =>
+    wearStyleOn(host, name, () => previewed().style === name);
 
   const apply = (): void => {
     const now = previewed();
@@ -313,6 +388,11 @@ export function design(): Design {
     },
     clearPreview() {
       hovered.clear();
+    },
+    item: () => committed().item,
+    setItem(next) {
+      committed.set({ ...committed(), item: next });
+      writeUrl();
     },
     reset() {
       committed.set(DEFAULTS);
