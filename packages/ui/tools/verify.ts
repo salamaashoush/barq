@@ -26,8 +26,11 @@ import { createBuilder, parse, translate } from "./css.ts";
 
 /** Where this package deliberately differs, and why. */
 const ALLOWED: Record<string, string> = {
-  "wave6:slider-track:overflow":
-    "the thumb is a CHILD of the track here, so `overflow: hidden` clipped it",
+  "slider:slider-track:overflow":
+    "the thumb is a CHILD of the track here, so `overflow: hidden` clipped a " +
+    "12px thumb down to the track's 4px. Upstream's thumb is a SIBLING and the " +
+    "rule is there to clip its `<SliderRange>` to the rounded ends; the fill " +
+    "is a gradient the track paints here and needs no clipping",
   "sidebar:sidebar-container:height":
     "`inset-block: 0` already says as tall as my containing block, and for a " +
     "fixed element with no contained ancestor that IS the viewport — so the " +
@@ -42,6 +45,46 @@ const ALLOWED: Record<string, string> = {
     "carrier is not, and a class on an element the renderer owns would be " +
     "overwritten on the next scene",
   "chart:chart-axis-label:fill": 'as above, as `fill="var(--muted-foreground)"`',
+  "navigation-menu:navigation-menu-viewport:height":
+    "`--radix-navigation-menu-viewport-height` is measured and written by " +
+    "Radix's own script. This component measures the open panel itself and " +
+    "publishes `--barq-viewport-height` and `--barq-viewport-width`, which is " +
+    "the same two numbers under this package's names",
+  "navigation-menu:navigation-menu-viewport:width": "as above",
+  "scroll-area:scroll-area-viewport:width":
+    "there is no viewport, no scrollbar and no thumb: this is the NATIVE " +
+    "scroller with `scrollbar-color` on it, which did not exist when Radix's " +
+    "component was written. The component states the trade — a native " +
+    "scrollbar cannot overlay content or fade out — and `tools/styles.ts` " +
+    "names the two scrollbar slots as deliberate for the same reason",
+  "scroll-area:scroll-area-viewport:height": "as above",
+  "scroll-area:scroll-area-viewport:border-radius": "as above",
+  "scroll-area:scroll-area-scrollbar:padding": "as above",
+  "scroll-area:scroll-area-scrollbar:transition-property": "as above",
+  "scroll-area:scroll-area-scrollbar:-webkit-user-select": "as above",
+  "scroll-area:scroll-area-scrollbar:user-select": "as above",
+  "scroll-area:scroll-area-scrollbar:height": "as above",
+  "scroll-area:scroll-area-scrollbar:border-top-color": "as above",
+  "scroll-area:scroll-area-scrollbar:width": "as above",
+  "scroll-area:scroll-area-scrollbar:border-left-color": "as above",
+  "scroll-area:scroll-area-thumb:flex": "as above",
+  "slider:slider-range:height":
+    "there is no `<SliderRange>` element. `@barqjs/aria`'s track renders one " +
+    "child per THUMB and nothing to be a range, and it does not need one: the " +
+    "start and end are two custom properties, so the fill is a gradient the " +
+    "TRACK paints. `slider.tsx` says so where the gradient is written",
+  "slider:slider-range:width": "as above",
+  "slider:slider-thumb:position":
+    "the thumb is a CHILD of the track here rather than a sibling, so it is " +
+    "absolutely positioned against the track — `position: relative` on it " +
+    "would put every thumb at the track's start",
+  "accordion:accordion-content:animation":
+    "`animate-accordion-down` and `-up` read " +
+    "`--radix-accordion-content-height`, which Radix's own JavaScript measures " +
+    "and writes. This panel collapses with `grid-template-rows: 0fr` to `1fr`, " +
+    "which needs no measurement and no script; `tools/base.ts` drops the two " +
+    "keyframes for the same reason, since shipping them would ship a " +
+    "reference to a library that is not installed",
   "combobox:combobox-content:max-width":
     "the combobox is the one component upstream ships from Base UI rather than " +
     "Radix, so its class list reads Base's `--available-width`, " +

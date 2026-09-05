@@ -1,0 +1,6 @@
+{
+  "scroll-area": "relative",
+  "scroll-area-viewport": "size-full rounded-[inherit] transition-[color,box-shadow] outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-1",
+  "scroll-area-scrollbar": "flex touch-none p-px transition-colors select-none data-horizontal:h-2.5 data-horizontal:flex-col data-horizontal:border-t data-horizontal:border-t-transparent data-vertical:h-full data-vertical:w-2.5 data-vertical:border-l data-vertical:border-l-transparent",
+  "scroll-area-thumb": "relative flex-1 rounded-full bg-border"
+}

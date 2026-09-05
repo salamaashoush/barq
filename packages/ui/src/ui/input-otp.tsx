@@ -69,8 +69,8 @@ const group = ui({ display: "flex", alignItems: "center" });
 const slot = ui(text.sm, {
   position: "relative",
   display: "flex",
-  height: "calc(var(--spacing) * 9)",
-  width: "calc(var(--spacing) * 9)",
+  height: "calc(var(--spacing) * 8)",
+  width: "calc(var(--spacing) * 8)",
   alignItems: "center",
   justifyContent: "center",
   borderBlockStyle: "var(--ui-border-style)",
@@ -87,14 +87,14 @@ const slot = ui(text.sm, {
   "--ui-outline-style": "none",
   outlineStyle: "none",
   "&:first-child": {
-    borderTopLeftRadius: "calc(var(--radius) * 0.8)",
-    borderBottomLeftRadius: "calc(var(--radius) * 0.8)",
+    borderTopLeftRadius: "var(--radius)",
+    borderBottomLeftRadius: "var(--radius)",
     borderLeftStyle: "var(--ui-border-style)",
     borderLeftWidth: "1px",
   },
   "&:last-child": {
-    borderTopRightRadius: "calc(var(--radius) * 0.8)",
-    borderBottomRightRadius: "calc(var(--radius) * 0.8)",
+    borderTopRightRadius: "var(--radius)",
+    borderBottomRightRadius: "var(--radius)",
   },
   '&[aria-invalid="true"]': {
     borderColor: "var(--destructive)",

@@ -11,24 +11,19 @@ const ui = layer("barq.ui");
 
 const root = ui({
   display: "flex",
+  width: "100%",
   minWidth: "0px",
   flex: "1",
   flexDirection: "column",
   alignItems: "center",
   justifyContent: "center",
-  gap: "calc(var(--spacing) * 6)",
-  borderRadius: "var(--radius)",
+  gap: "calc(var(--spacing) * 4)",
+  borderRadius: "calc(var(--radius) * 1.4)",
   borderStyle: firstThatWorks("dashed", "var(--ui-border-style)"),
-  borderWidth: "1px",
   "--ui-border-style": "dashed",
   padding: "calc(var(--spacing) * 6)",
   textAlign: "center",
   textWrap: "balance",
-  "@media (width >= 48rem)": {
-    "&": {
-      padding: "calc(var(--spacing) * 12)",
-    },
-  },
 });
 
 const header = ui({
@@ -40,9 +35,7 @@ const header = ui({
   textAlign: "center",
 });
 
-const title = ui(text.medium, text.heading, {
-  fontSize: "var(--text-lg)",
-  lineHeight: "var(--ui-leading, var(--text-lg--line-height))",
+const title = ui(text.medium, text.heading, text.sm, {
   "--ui-tracking": "var(--tracking-tight)",
   letterSpacing: "var(--tracking-tight)",
 });
@@ -67,7 +60,7 @@ const content = ui(text.sm, {
   minWidth: "0px",
   flexDirection: "column",
   alignItems: "center",
-  gap: "calc(var(--spacing) * 4)",
+  gap: "calc(var(--spacing) * 2.5)",
   textWrap: "balance",
 });
 
@@ -88,8 +81,8 @@ export const emptyMediaVariants = variants({
       }),
       icon: ui({
         display: "flex",
-        width: "calc(var(--spacing) * 10)",
-        height: "calc(var(--spacing) * 10)",
+        width: "calc(var(--spacing) * 8)",
+        height: "calc(var(--spacing) * 8)",
         flexShrink: "0",
         alignItems: "center",
         justifyContent: "center",
@@ -97,8 +90,8 @@ export const emptyMediaVariants = variants({
         backgroundColor: "var(--muted)",
         color: "var(--foreground)",
         '& svg:not([class*="size-"])': {
-          width: "calc(var(--spacing) * 6)",
-          height: "calc(var(--spacing) * 6)",
+          width: "calc(var(--spacing) * 4)",
+          height: "calc(var(--spacing) * 4)",
         },
       }),
     },

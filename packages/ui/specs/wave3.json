@@ -1,7 +1,6 @@
 {
   "tabs-list.default": "bg-muted",
   "tabs-list.line": "gap-1 bg-transparent",
-  "accordion-chevron": "pointer-events-none size-4 shrink-0 translate-y-0.5 text-muted-foreground transition-transform duration-200",
   "accordion-body": "pt-0 pb-4 text-sm",
   "tooltip-arrow": "absolute z-50 size-2.5 rotate-45 rounded-[2px] bg-foreground",
   "collapsible-trigger": "outline-none is-focus-visible:ring-[3px] is-focus-visible:ring-ring/50 is-disabled:pointer-events-none is-disabled:opacity-50"

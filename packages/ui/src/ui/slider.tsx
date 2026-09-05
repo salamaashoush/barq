@@ -24,7 +24,7 @@ const root = ui(box.noSelect, {
   alignItems: "center",
   '[data-orientation="vertical"]': {
     height: "100%",
-    minHeight: "calc(var(--spacing) * 44)",
+    minHeight: "calc(var(--spacing) * 40)",
     width: "auto",
     flexDirection: "column",
   },
@@ -39,42 +39,62 @@ const track = ui({
   borderRadius: "calc(infinity * 1px)",
   backgroundColor: "var(--muted)",
   '[data-orientation="horizontal"]': {
-    height: "calc(var(--spacing) * 1.5)",
+    height: "var(--spacing)",
     width: "100%",
   },
   '[data-orientation="vertical"]': {
     height: "100%",
-    width: "calc(var(--spacing) * 1.5)",
+    width: "var(--spacing)",
   },
 });
 
-const thumb = ui(box.border, box.shadow, box.transition, when.disabled, {
+const thumb = ui(box.border, box.transition, box.noSelect, box.forcedColors, when.disabled, {
   position: "absolute",
   display: "block",
-  width: "calc(var(--spacing) * 4)",
-  height: "calc(var(--spacing) * 4)",
+  width: "calc(var(--spacing) * 3)",
+  height: "calc(var(--spacing) * 3)",
   flexShrink: "0",
   borderRadius: "calc(infinity * 1px)",
-  borderColor: "var(--primary)",
-  backgroundColor: "var(--background)",
-  "--ui-shadow":
-    "0 1px 3px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
+  borderColor: "var(--ring)",
+  // `bg-white`, not `--background`: the thumb reads as a physical control and
+  // stays light in a dark theme, which is what upstream draws.
+  backgroundColor: "var(--color-white)",
+  "--ui-ring-color": "var(--ring)",
   transitionProperty: "color, box-shadow",
+  "@supports (color: color-mix(in lab, red, red))": {
+    "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
+  },
+  // A 12px thumb is far under the pointer-target minimum, so the press area is
+  // grown past the paint, as it is on the switch and the checkbox.
+  "::after": {
+    content: "var(--ui-content)",
+    position: "absolute",
+    inset: "calc(var(--spacing) * -2)",
+  },
   "@media (hover: hover)": {
     ":hover": {
       "--ui-ring-shadow":
-        "var(--ui-ring-inset,) 0 0 0 calc(4px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+        "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
       boxShadow:
         "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
     },
   },
+  ":active": {
+    "--ui-ring-shadow":
+      "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+    boxShadow:
+      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+  },
   "[data-focus-visible]": {
     "--ui-ring-shadow":
-      "var(--ui-ring-inset,) 0 0 0 calc(4px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+      "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
     boxShadow:
       "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
     "--ui-outline-style": "none",
     outlineStyle: "none",
+  },
+  ":disabled": {
+    pointerEvents: "none",
   },
 });
 
@@ -106,6 +126,10 @@ const output = ui({
  * the same square ends shadcn's clipped element has, and it clips nothing else.
  */
 const range = ui({
+  // The fill is the track's own gradient. It carries NO size: `ui(track, range)`
+  // merges by property, so a `height: 100%` here won the track's own
+  // `height: var(--spacing)` and collapsed the bar to nothing — measured as a
+  // 0px track on the slider page. `ALLOWED` records the slot instead.
   '[data-orientation="horizontal"]': {
     backgroundImage:
       "linear-gradient( to right, transparent var(--barq-slider-start), var(--primary) var(--barq-slider-start), var(--primary) var(--barq-slider-end), transparent var(--barq-slider-end) )",

@@ -37,7 +37,7 @@ const list = ui({
   listStyleType: "none",
   alignItems: "center",
   justifyContent: "center",
-  gap: "var(--spacing)",
+  gap: "0px",
 });
 
 const item = ui({
@@ -127,8 +127,54 @@ const content = ui({
   top: "0px",
   left: "0px",
   width: "100%",
-  padding: "calc(var(--spacing) * 2)",
-  paddingRight: "calc(var(--spacing) * 2.5)",
+  padding: "var(--spacing)",
+  // The easing upstream names for the slide, which is a long ease-out: the
+  // panel arrives fast and settles rather than gliding the whole way.
+  "--ui-ease": "cubic-bezier(.22,1,.36,1)",
+  transitionTimingFunction: "cubic-bezier(.22,1,.36,1)",
+  // A link inside a content panel draws no ring of its own: the panel is
+  // already the focus surface, and two rings inside one popover is noise.
+  ':is(& *)[data-slot="navigation-menu-link"]:focus': {
+    "--ui-ring-shadow":
+      "var(--ui-ring-inset,) 0 0 0 calc(0px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+    "--ui-outline-style": "none",
+    outlineStyle: "none",
+  },
+  // Without a viewport the panel IS the popover, so it carries the surface the
+  // viewport would otherwise draw around it.
+  '[data-slot="navigation-menu"][data-viewport="false"] &': {
+    top: "100%",
+    marginTop: "calc(var(--spacing) * 1.5)",
+    overflow: "hidden",
+    borderRadius: "var(--radius)",
+    backgroundColor: "var(--popover)",
+    color: "var(--popover-foreground)",
+    "--ui-shadow":
+      "0 1px 3px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
+    boxShadow:
+      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+    "--ui-ring-shadow":
+      "var(--ui-ring-inset,) 0 0 0 calc(1px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+    "--ui-ring-color": "var(--foreground)",
+    "--ui-duration": "300ms",
+    transitionDuration: "300ms",
+    "@supports (color: color-mix(in lab, red, red))": {
+      "--ui-ring-color": "color-mix(in oklab, var(--foreground) 10%, transparent)",
+    },
+  },
+  '[data-slot="navigation-menu"][data-viewport="false"] &[data-state="open"]': {
+    animation:
+      "enter var(--ui-animation-duration,var(--ui-duration,.15s))var(--ui-ease,ease)var(--ui-animation-delay,0s)var(--ui-animation-iteration-count,1)var(--ui-animation-direction,normal)var(--ui-animation-fill-mode,none)",
+    "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
+    "--ui-enter-scale": firstThatWorks(".95", "calc(95*1%)"),
+  },
+  '[data-slot="navigation-menu"][data-viewport="false"] &[data-state="closed"]': {
+    animation:
+      "exit var(--ui-animation-duration,var(--ui-duration,.15s))var(--ui-ease,ease)var(--ui-animation-delay,0s)var(--ui-animation-iteration-count,1)var(--ui-animation-direction,normal)var(--ui-animation-fill-mode,none)",
+    "--ui-animation-fill-mode": "forwards",
+    "--ui-exit-opacity": firstThatWorks("0", "calc(0/100)"),
+    "--ui-exit-scale": firstThatWorks(".95", "calc(95*1%)"),
+  },
   '[data-motion="from-end"]': {
     "--ui-enter-translate-x": "calc(52*var(--spacing))",
   },
@@ -173,22 +219,35 @@ const viewportWrapper = ui({
 const viewport = ui({
   position: "relative",
   marginTop: "calc(var(--spacing) * 1.5)",
+  height: "var(--barq-viewport-height)",
   width: "100%",
   overflow: "hidden",
-  borderRadius: "calc(var(--radius) * 0.8)",
-  borderStyle: "var(--ui-border-style)",
-  borderWidth: "1px",
+  transformOrigin: "top center",
+  borderRadius: "var(--radius)",
   backgroundColor: "var(--popover)",
   color: "var(--popover-foreground)",
   "--ui-shadow":
     "0 1px 3px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
   boxShadow:
     "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+  "--ui-ring-shadow":
+    "var(--ui-ring-inset,) 0 0 0 calc(1px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+  "--ui-ring-color": "var(--foreground)",
+  "--ui-duration": "100ms",
+  transitionDuration: "100ms",
+  "@supports (color: color-mix(in lab, red, red))": {
+    "--ui-ring-color": "color-mix(in oklab, var(--foreground) 10%, transparent)",
+  },
+  "@media (width >= 48rem)": {
+    "&": {
+      width: "var(--barq-viewport-width)",
+    },
+  },
   '[data-state="closed"]': {
     animation:
       "exit var(--ui-animation-duration,var(--ui-duration,.15s))var(--ui-ease,ease)var(--ui-animation-delay,0s)var(--ui-animation-iteration-count,1)var(--ui-animation-direction,normal)var(--ui-animation-fill-mode,none)",
     "--ui-animation-fill-mode": "forwards",
-    "--ui-exit-scale": firstThatWorks(".95", "calc(95*1%)"),
+    "--ui-exit-scale": firstThatWorks(".9", "calc(90*1%)"),
   },
   '[data-state="open"]': {
     animation:
@@ -199,10 +258,14 @@ const viewport = ui({
 
 const link = ui({
   display: "flex",
-  flexDirection: "column",
-  gap: "var(--spacing)",
-  borderRadius: "calc(var(--radius) * 0.6)",
+  alignItems: "center",
+  gap: "calc(var(--spacing) * 2)",
+  borderRadius: "var(--radius)",
   padding: "calc(var(--spacing) * 2)",
+  // Inside a content panel the rows are tighter, so their corners are too.
+  '[data-slot="navigation-menu-content"] &': {
+    borderRadius: "calc(var(--radius) * 0.8)",
+  },
   fontSize: "var(--text-sm)",
   lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
   transitionProperty: "all",
@@ -212,16 +275,23 @@ const link = ui({
   outlineStyle: "none",
   "@media (hover: hover)": {
     ":hover": {
-      backgroundColor: "var(--accent)",
-      color: "var(--accent-foreground)",
+      backgroundColor: "var(--muted)",
     },
     '[data-active="true"]:hover': {
-      backgroundColor: "var(--accent)",
+      backgroundColor: "var(--muted)",
     },
   },
   ":focus": {
-    backgroundColor: "var(--accent)",
-    color: "var(--accent-foreground)",
+    backgroundColor: "var(--muted)",
+  },
+  '[data-active="true"]': {
+    backgroundColor: "var(--muted)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      backgroundColor: "color-mix(in oklab, var(--muted) 50%, transparent)",
+    },
+  },
+  '[data-active="true"]:focus': {
+    backgroundColor: "var(--muted)",
   },
   ":focus-visible": {
     "--ui-ring-shadow":
@@ -234,16 +304,6 @@ const link = ui({
     "@supports (color: color-mix(in lab, red, red))": {
       "--ui-ring-color": "color-mix(in oklab, var(--ring) 50%, transparent)",
     },
-  },
-  '[data-active="true"]': {
-    backgroundColor: "var(--accent)",
-    color: "var(--accent-foreground)",
-    "@supports (color: color-mix(in lab, red, red))": {
-      backgroundColor: "color-mix(in oklab, var(--accent) 50%, transparent)",
-    },
-  },
-  '[data-active="true"]:focus': {
-    backgroundColor: "var(--accent)",
   },
   "& svg:not([class*='size-'])": {
     width: "calc(var(--spacing) * 4)",

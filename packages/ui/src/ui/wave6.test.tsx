@@ -111,6 +111,18 @@ describe("Slider", () => {
     expect(rulesFor(track.className)).toContain("linear-gradient");
   });
 
+  // The fill is the track's own gradient and carries NO size of its own.
+  // `ui(track, range)` merges by property, so a `height: 100%` on the range
+  // won the track's `height: var(--spacing)` and collapsed the bar to 0px,
+  // which every interaction test still passed.
+  test("the track keeps its own height, which the fill does not touch", () => {
+    render(() => <Slider aria-label="Volume" defaultValue={30} />);
+    const track = document.querySelector('[data-slot="slider-track"]') as HTMLElement;
+    const rules = rulesFor(track.className);
+    expect(rules).toContain('[data-orientation="horizontal"]{height: var(--spacing)}');
+    expect(rules).not.toContain('[data-orientation="horizontal"]{height: 100%}');
+  });
+
   test("the track clips nothing, because the thumb is inside it", () => {
     render(() => <Slider aria-label="Volume" defaultValue={30} />);
     const track = document.querySelector('[data-slot="slider-track"]') as HTMLElement;

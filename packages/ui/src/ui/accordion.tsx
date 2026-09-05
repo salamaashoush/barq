@@ -8,8 +8,9 @@ import {
   type DisclosurePanelComponentProps,
 } from "@barqjs/aria/disclosure";
 import type { Incoming } from "@barqjs/core";
-import { firstThatWorks, layer } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 import { ChevronDown } from "@barqjs/lucide/icons/chevron-down";
+import { ChevronUp } from "@barqjs/lucide/icons/chevron-up";
 
 import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
@@ -72,27 +73,32 @@ const trigger = ui(
       height: "calc(var(--spacing) * 4)",
       color: "var(--muted-foreground)",
     },
-    '[data-expanded] > [data-slot="accordion-chevron"]': {
-      rotate: "180deg",
-    },
   },
 );
 
-const chevron = ui({
+/**
+ * TWO chevrons, one shown at a time, which is what upstream draws now.
+ *
+ * It was one glyph rotated 180 degrees on `data-expanded`. Upstream renders a
+ * down chevron and an up chevron and swaps which is displayed, so the icon
+ * changes shape rather than turning over — and the size and colour come from
+ * the TRIGGER's descendant rule, not from either icon's own class.
+ */
+const chevronDown = ui({
   pointerEvents: "none",
-  width: "calc(var(--spacing) * 4)",
-  height: "calc(var(--spacing) * 4)",
   flexShrink: "0",
-  "--ui-translate-y": "calc(var(--spacing) * 0.5)",
-  translate: "var(--ui-translate-x) var(--ui-translate-y)",
-  color: "var(--muted-foreground)",
-  transitionProperty: "transform, translate, scale, rotate",
-  transitionTimingFunction: "var(--ui-ease, var(--default-transition-timing-function))",
-  transitionDuration: firstThatWorks(
-    "200ms",
-    "var(--ui-duration, var(--default-transition-duration))",
-  ),
-  "--ui-duration": "200ms",
+  "[data-expanded] &": {
+    display: "none",
+  },
+});
+
+const chevronUp = ui({
+  pointerEvents: "none",
+  display: "none",
+  flexShrink: "0",
+  "[data-expanded] &": {
+    display: "inline",
+  },
 });
 
 const body = ui(text.sm, {
@@ -166,7 +172,7 @@ export function AccordionItem(props: Incoming<AccordionItemProps>) {
 
 export interface AccordionTriggerProps extends DisclosureButtonComponentProps {}
 
-/** The header row. The chevron turns over on `data-expanded`, which the button already writes. */
+/** The header row. The chevron swaps on `data-expanded`, which the button writes. */
 export function AccordionTrigger(props: Incoming<AccordionTriggerProps>) {
   return (
     <DisclosureButton
@@ -175,7 +181,8 @@ export function AccordionTrigger(props: Incoming<AccordionTriggerProps>) {
       class={ui(trigger, props.class?.(), props.className?.())}
     >
       {props.children}
-      <ChevronDown data-slot="accordion-chevron" class={chevron} />
+      <ChevronDown data-slot="accordion-trigger-icon" class={chevronDown} />
+      <ChevronUp data-slot="accordion-trigger-icon" class={chevronUp} />
     </DisclosureButton>
   );
 }

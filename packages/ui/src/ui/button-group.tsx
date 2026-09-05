@@ -26,8 +26,8 @@ export const buttonGroupVariants = variants({
       zIndex: "10",
     },
     ':has(> select[aria-hidden="true"]:last-child) > [data-slot="select-trigger"]:last-of-type': {
-      borderTopRightRadius: "calc(var(--radius) * 0.8)",
-      borderBottomRightRadius: "calc(var(--radius) * 0.8)",
+      borderTopRightRadius: "var(--radius)",
+      borderBottomRightRadius: "var(--radius)",
     },
     '& > [data-slot="select-trigger"]:not([class*="w-"])': {
       width: "fit-content",
@@ -49,6 +49,13 @@ export const buttonGroupVariants = variants({
           borderTopRightRadius: "0",
           borderBottomRightRadius: "0",
         },
+        // The LAST slotted child, which is not always `:last-child`: a select
+        // renders a hidden native `<select>` after its trigger, and the trigger
+        // is what has to keep the group's outer corner.
+        "& > [data-slot]:not(:has(~ [data-slot]))": {
+          borderTopRightRadius: "var(--radius) !important",
+          borderBottomRightRadius: "var(--radius) !important",
+        },
       }),
       vertical: ui({
         flexDirection: "column",
@@ -61,6 +68,10 @@ export const buttonGroupVariants = variants({
         "& > :not(:last-child)": {
           borderBottomRightRadius: "0",
           borderBottomLeftRadius: "0",
+        },
+        "& > [data-slot]:not(:has(~ [data-slot]))": {
+          borderBottomRightRadius: "var(--radius) !important",
+          borderBottomLeftRadius: "var(--radius) !important",
         },
       }),
     },
@@ -83,10 +94,16 @@ const label = ui(box.border, text.sm, text.medium, box.shadow, icon.sized, {
 
 const separator = ui({
   position: "relative",
-  margin: "0px !important",
   alignSelf: "stretch",
   backgroundColor: "var(--input)",
+  // A hairline of its own margin on the axis it divides, so the rule sits
+  // between the two controls rather than against the edge of one.
+  '[data-orientation="horizontal"]': {
+    marginInline: "1px",
+    width: "auto",
+  },
   '[data-orientation="vertical"]': {
+    marginBlock: "1px",
     height: "auto",
   },
 });

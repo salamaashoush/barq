@@ -34,6 +34,9 @@ const handle = ui({
   alignItems: "center",
   justifyContent: "center",
   backgroundColor: "var(--border)",
+  // `ring-offset-background`: the gap the focus ring leaves is the page, not
+  // the handle's own hairline, or the ring reads as a second divider.
+  "--ui-ring-offset-color": "var(--background)",
   "::after": {
     content: "var(--ui-content)",
     position: "absolute",

@@ -128,12 +128,17 @@ describe("Accordion", () => {
     expect(rules).not.toContain("--radix");
   });
 
-  test("the chevron turns over when the section opens", async () => {
+  // TWO chevrons, one shown at a time. It was one glyph rotated 180 degrees;
+  // upstream renders a down chevron and an up chevron and swaps which is
+  // displayed, so the icon changes shape rather than turning over.
+  test("the chevron swaps when the section opens", async () => {
     render(() => <Fixture />);
     const trigger = screen.getByRole("button", { name: /First/ });
-    expect(rulesFor(trigger.className)).toContain(
-      '[data-expanded] > [data-slot="accordion-chevron"]{rotate: 180deg}',
-    );
+    const icons = trigger.querySelectorAll('[data-slot="accordion-trigger-icon"]');
+    expect(icons).toHaveLength(2);
+    expect(rulesFor(icons[0]!.className)).toContain("[data-expanded] .");
+    expect(rulesFor(icons[1]!.className)).toContain("display: none");
+
     await user.click(trigger);
     expect(trigger.getAttribute("data-expanded")).toBe("");
   });
