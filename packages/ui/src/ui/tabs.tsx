@@ -19,7 +19,9 @@ import { text } from "../lib/shared-text.ts";
 
 const ui = layer("barq.ui");
 
-const root = ui({
+// Markers: the trigger reads both the tabs' orientation and the list's variant
+// back through `.group\/tabs` and `.group\/tabs-list`.
+const root = ui("group/tabs", {
   display: "flex",
   gap: "calc(var(--spacing) * 2)",
   '[data-orientation="horizontal"]': {
@@ -45,13 +47,19 @@ const trigger = ui(
     gap: "calc(var(--spacing) * 1.5)",
     borderRadius: "calc(var(--radius) * 0.8)",
     borderColor: "transparent",
-    paddingInline: "calc(var(--spacing) * 2)",
-    paddingBlock: "var(--spacing)",
+    paddingInline: "calc(var(--spacing) * 1.5)",
+    paddingBlock: "calc(var(--spacing) * 0.5)",
     whiteSpace: "nowrap",
     color: "var(--foreground)",
     transitionProperty: "all",
     "@supports (color: color-mix(in lab, red, red))": {
       color: "color-mix(in oklab, var(--foreground) 60%, transparent)",
+    },
+    ':has([data-icon="inline-end"])': {
+      paddingRight: "var(--spacing)",
+    },
+    ':has([data-icon="inline-start"])': {
+      paddingLeft: "var(--spacing)",
     },
     "::after": {
       content: "var(--ui-content)",
@@ -141,14 +149,14 @@ const trigger = ui(
   },
 );
 
-const content = ui(box.outline, {
+const content = ui(box.outline, text.sm, {
   flex: "1",
 });
 
 export type TabsListVariant = "default" | "line";
 
 export const tabsListVariants = variants({
-  base: ui({
+  base: ui("group/tabs-list", {
     display: "inline-flex",
     width: "fit-content",
     alignItems: "center",
@@ -160,7 +168,7 @@ export const tabsListVariants = variants({
       borderRadius: "0",
     },
     '[data-slot="tabs"][data-orientation="horizontal"] &': {
-      height: "calc(var(--spacing) * 9)",
+      height: "calc(var(--spacing) * 8)",
     },
     '[data-slot="tabs"][data-orientation="vertical"] &': {
       height: "fit-content",

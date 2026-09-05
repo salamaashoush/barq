@@ -23,17 +23,12 @@ const list = ui(text.sm, {
   padding: "0px",
   overflowWrap: "break-word",
   color: "var(--muted-foreground)",
-  "@media (width >= 40rem)": {
-    "&": {
-      gap: "calc(var(--spacing) * 2.5)",
-    },
-  },
 });
 
 const item = ui({
   display: "inline-flex",
   alignItems: "center",
-  gap: "calc(var(--spacing) * 1.5)",
+  gap: "var(--spacing)",
 });
 
 const link = ui(box.transition, {
@@ -63,10 +58,14 @@ const separator = ui({
 
 const ellipsis = ui({
   display: "flex",
-  width: "calc(var(--spacing) * 9)",
-  height: "calc(var(--spacing) * 9)",
+  width: "calc(var(--spacing) * 5)",
+  height: "calc(var(--spacing) * 5)",
   alignItems: "center",
   justifyContent: "center",
+  "& > svg": {
+    width: "calc(var(--spacing) * 4)",
+    height: "calc(var(--spacing) * 4)",
+  },
 });
 
 /**

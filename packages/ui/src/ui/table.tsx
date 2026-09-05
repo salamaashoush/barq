@@ -65,6 +65,14 @@ const row = ui(box.transition, {
       },
     },
   },
+  // A row holding an open disclosure stays highlighted while the thing it
+  // expanded is on screen, which is what tells you which row opened it.
+  ':has([aria-expanded="true"])': {
+    backgroundColor: "var(--muted)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      backgroundColor: "color-mix(in oklab, var(--muted) 50%, transparent)",
+    },
+  },
   "[data-selected]": {
     backgroundColor: "var(--muted)",
   },

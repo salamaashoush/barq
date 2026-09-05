@@ -14,24 +14,57 @@ const ui = layer("barq.ui");
 
 const control = ui(
   box.border,
-  box.shadow,
   box.transition,
   box.outline,
   when.darkInput,
   ringSlot.focus,
   when.disabledCursor,
   ringSlot.invalid,
+  ringSlot.invalidRing,
   ringSlot.invalidDark,
+  ringSlot.invalidBorderDark,
+  // A label beside it reads `.peer:disabled ~ *`.
+  "peer",
   {
-    display: "inline-grid",
+    position: "relative",
+    display: "flex",
     width: "calc(var(--spacing) * 4)",
     height: "calc(var(--spacing) * 4)",
     flexShrink: "0",
-    placeContent: "center",
+    alignItems: "center",
+    justifyContent: "center",
     borderRadius: "4px",
     borderColor: "var(--input)",
-    "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
-    transitionProperty: "box-shadow",
+    transitionProperty:
+      "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to",
+    // 16px is under the pointer-target minimum, so the press area is grown
+    // past the paint. Same trick as the switch.
+    "::after": {
+      content: "var(--ui-content)",
+      position: "absolute",
+      insetInline: "calc(var(--spacing) * -3)",
+      insetBlock: "calc(var(--spacing) * -2)",
+    },
+    // Inside a field the ROW carries the ring and the box carries none, or
+    // there are two rings around one control.
+    ":is(:where(.group\\/field):has(:disabled) *)": {
+      opacity: "50%",
+    },
+    ":is(:where(.group\\/field-label):has(:is(:focus-visible)) *)": {
+      "--ui-ring-shadow":
+        "var(--ui-ring-inset,) 0 0 0 calc(0px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+    },
+    ":is(:where(.group\\/field-label):has(:is(:focus-visible)) *):not([data-selected])": {
+      borderColor: "var(--input)",
+    },
+    ":is(:where(.group\\/field-label):has(:is(:focus-visible)) *)[data-selected]": {
+      borderColor: "var(--primary)",
+    },
+    // An invalid box that is nonetheless ticked keeps the primary border: the
+    // tick is not the thing that is wrong.
+    '[data-invalid][aria-checked="true"]': {
+      borderColor: "var(--primary)",
+    },
     "[data-selected]": {
       borderColor: "var(--primary)",
       backgroundColor: "var(--primary)",

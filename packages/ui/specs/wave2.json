@@ -1,13 +1,1 @@
-{
-  "checkbox": "inline-grid place-content-center size-4 shrink-0 rounded-[4px] border border-input shadow-xs transition-shadow outline-none is-focus-visible:border-ring is-focus-visible:ring-[3px] is-focus-visible:ring-ring/50 is-disabled:cursor-not-allowed is-disabled:opacity-50 is-invalid:border-destructive is-invalid:ring-destructive/20 is-selected:border-primary is-selected:bg-primary is-selected:text-primary-foreground is-indeterminate:border-primary is-indeterminate:bg-primary is-indeterminate:text-primary-foreground dark:bg-input/30 dark:is-invalid:ring-destructive/40 dark:is-selected:bg-primary",
-  "checkbox-indicator": "hidden place-content-center text-current transition-none [[data-selected]_&]:grid [[data-indeterminate]_&]:grid [&>svg]:size-3.5",
-  "radio-group": "grid gap-3",
-  "radio": "relative inline-flex items-center justify-center aspect-square size-4 shrink-0 rounded-full border border-input text-primary shadow-xs transition-[color,box-shadow] outline-none is-focus-visible:border-ring is-focus-visible:ring-[3px] is-focus-visible:ring-ring/50 is-disabled:cursor-not-allowed is-disabled:opacity-50 is-invalid:border-destructive is-invalid:ring-destructive/20 dark:bg-input/30 dark:is-invalid:ring-destructive/40",
-  "radio-indicator": "relative flex items-center justify-center [&>svg]:hidden [[data-selected]_&>svg]:block [&>svg]:absolute [&>svg]:top-1/2 [&>svg]:left-1/2 [&>svg]:size-2 [&>svg]:-translate-x-1/2 [&>svg]:-translate-y-1/2 [&>svg]:fill-primary [&>svg]:stroke-primary",
-  "toggle": "inline-flex items-center justify-center gap-2 rounded-md text-sm font-medium whitespace-nowrap transition-[color,box-shadow] outline-none hover:bg-muted hover:text-muted-foreground is-focus-visible:border-ring is-focus-visible:ring-[3px] is-focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 aria-invalid:border-destructive aria-invalid:ring-destructive/20 is-selected:bg-accent is-selected:text-accent-foreground dark:aria-invalid:ring-destructive/40 [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
-  "toggle.default": "bg-transparent",
-  "toggle.outline": "border border-input bg-transparent shadow-xs hover:bg-accent hover:text-accent-foreground",
-  "toggle.sm": "h-8 min-w-8 px-1.5",
-  "toggle.default-size": "h-9 min-w-9 px-2",
-  "toggle.lg": "h-10 min-w-10 px-2.5"
-}
+{}

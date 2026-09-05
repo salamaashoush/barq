@@ -26,7 +26,7 @@ const content = ui({
   listStyleType: "none",
   flexDirection: "row",
   alignItems: "center",
-  gap: "var(--spacing)",
+  gap: "calc(var(--spacing) * 0.5)",
   padding: "0px",
 });
 
@@ -37,10 +37,14 @@ const edge = ui({
 
 const ellipsis = ui({
   display: "flex",
-  width: "calc(var(--spacing) * 9)",
-  height: "calc(var(--spacing) * 9)",
+  width: "calc(var(--spacing) * 8)",
+  height: "calc(var(--spacing) * 8)",
   alignItems: "center",
   justifyContent: "center",
+  "& svg:not([class*='size-'])": {
+    width: "calc(var(--spacing) * 4)",
+    height: "calc(var(--spacing) * 4)",
+  },
 });
 
 /**

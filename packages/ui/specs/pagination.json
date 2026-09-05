@@ -1,0 +1,5 @@
+{
+  "pagination": "mx-auto flex w-full justify-center",
+  "pagination-content": "flex items-center gap-0.5",
+  "pagination-ellipsis": "flex size-8 items-center justify-center [&_svg:not([class*='size-'])]:size-4"
+}

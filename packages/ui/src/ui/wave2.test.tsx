@@ -132,6 +132,9 @@ describe("RadioGroup", () => {
     expect(small!.checked).toBe(false);
   });
 
+  // The dot is an element of its own now, not a glyph inside the indicator:
+  // upstream fills the chosen radio with `primary` and punches the dot out of
+  // it in `primary-foreground`, so there is nothing left for an icon to be.
   test("the dot is hidden until the radio is chosen", () => {
     render(() => (
       <RadioGroup label="Size" defaultValue="m">
@@ -139,10 +142,11 @@ describe("RadioGroup", () => {
         <RadioGroupItem value="m" aria-label="Medium" />
       </RadioGroup>
     ));
-    const mark = document.querySelector('[data-slot="radio-group-indicator"]')!;
-    const rules = rulesFor(mark.className);
+    const dot = document.querySelector('[data-slot="radio-group-dot"]')!;
+    const rules = rulesFor(dot.className);
     expect(rules).toContain("display: none");
     expect(rules).toContain("[data-selected] .");
+    expect(rules).toContain("background-color: var(--primary-foreground)");
   });
 
   test("the grid is an inner element, so an empty label does not take a row", () => {

@@ -206,6 +206,33 @@ function readWholeString(argument: string): string | null {
 }
 
 /**
+ * Which characters sit inside a string literal.
+ *
+ * `[&>svg]:size-3.5` is an ordinary class and the `>` in it is not the end of
+ * anything, so a scan for tag boundaries that reads it as one stops mid
+ * attribute — which is how the checkbox's indicator arrived as
+ * `grid place-content-center text-current transition-none [&`.
+ */
+function quoted(source: string): Uint8Array {
+  const mask = new Uint8Array(source.length);
+  let open: string | null = null;
+  for (let at = 0; at < source.length; at++) {
+    const character = source[at] ?? "";
+    if (open !== null) {
+      mask[at] = 1;
+      if (character === "\\") {
+        mask[at + 1] = 1;
+        at++;
+      } else if (character === open) open = null;
+    } else if (character === '"' || character === "'" || character === "`") {
+      open = character;
+      mask[at] = 1;
+    }
+  }
+  return mask;
+}
+
+/**
  * The opening JSX tag `at` sits inside, as `[start, end]`.
  *
  * Backwards to the `<` and forwards to the `>` that closes it, counting braces
@@ -214,9 +241,10 @@ function readWholeString(argument: string): string | null {
  * `className` comes BEFORE it on several elements and reading forwards only
  * lost the native select's icon and its `<select>` both.
  */
-function openingTag(source: string, at: number): [number, number] | null {
+function openingTag(source: string, mask: Uint8Array, at: number): [number, number] | null {
   let start = -1;
   for (let scan = at; scan >= 0; scan--) {
+    if (mask[scan] === 1) continue;
     if (source[scan] === ">") return null;
     if (source[scan] === "<") {
       start = scan;
@@ -227,6 +255,7 @@ function openingTag(source: string, at: number): [number, number] | null {
 
   let depth = 0;
   for (let scan = start; scan < source.length; scan++) {
+    if (mask[scan] === 1) continue;
     const character = source[scan];
     if (character === "{") depth++;
     else if (character === "}") depth--;
@@ -238,10 +267,11 @@ function openingTag(source: string, at: number): [number, number] | null {
 /** `data-slot="x"` with a `className` on the same element, in either spelling. */
 function readSlots(source: string): Map<string, string> {
   const out = new Map<string, string>();
+  const mask = quoted(source);
   const pattern = /data-slot="([a-z0-9-]+)"/g;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(source)) !== null) {
-    const bounds = openingTag(source, match.index);
+    const bounds = openingTag(source, mask, match.index);
     if (bounds === null) continue;
     const tag = source.slice(bounds[0], bounds[1]);
 

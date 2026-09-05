@@ -28,27 +28,34 @@ export const toggleVariants = variants({
     ringSlot.focus,
     icon.plain,
     icon.sized,
+    // A marker: the group welds its items by reading `.group\/toggle`.
+    "group/toggle",
     {
       display: "inline-flex",
       alignItems: "center",
       justifyContent: "center",
-      gap: "calc(var(--spacing) * 2)",
-      borderRadius: "calc(var(--radius) * 0.8)",
+      gap: "var(--spacing)",
+      borderRadius: "var(--radius)",
       whiteSpace: "nowrap",
-      transitionProperty: "color, box-shadow",
+      transitionProperty: "all",
       "@media (hover: hover)": {
         ":hover": {
           backgroundColor: "var(--muted)",
-          color: "var(--muted-foreground)",
+          color: "var(--foreground)",
         },
       },
       ":disabled": {
         pointerEvents: "none",
         opacity: "50%",
       },
+      // `aria-pressed` as well as the attribute `@barqjs/aria` writes: a
+      // caller rendering the classes on a button of their own has the ARIA and
+      // not the data attribute, and upstream styles both.
+      '[aria-pressed="true"]': {
+        backgroundColor: "var(--muted)",
+      },
       "[data-selected]": {
-        backgroundColor: "var(--accent)",
-        color: "var(--accent-foreground)",
+        backgroundColor: "var(--muted)",
       },
     },
   ),
@@ -57,33 +64,55 @@ export const toggleVariants = variants({
       default: ui({
         backgroundColor: "transparent",
       }),
-      outline: ui(box.border, box.shadow, {
+      outline: ui(box.border, {
         borderColor: "var(--input)",
         backgroundColor: "transparent",
-        "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
         "@media (hover: hover)": {
           ":hover": {
-            backgroundColor: "var(--accent)",
-            color: "var(--accent-foreground)",
+            backgroundColor: "var(--muted)",
           },
         },
       }),
     },
     size: {
       default: ui({
-        height: "calc(var(--spacing) * 9)",
-        minWidth: "calc(var(--spacing) * 9)",
-        paddingInline: "calc(var(--spacing) * 2)",
-      }),
-      sm: ui({
         height: "calc(var(--spacing) * 8)",
         minWidth: "calc(var(--spacing) * 8)",
-        paddingInline: "calc(var(--spacing) * 1.5)",
+        paddingInline: "calc(var(--spacing) * 2.5)",
+        ':has([data-icon="inline-end"])': {
+          paddingRight: "calc(var(--spacing) * 2)",
+        },
+        ':has([data-icon="inline-start"])': {
+          paddingLeft: "calc(var(--spacing) * 2)",
+        },
+      }),
+      sm: ui({
+        height: "calc(var(--spacing) * 7)",
+        minWidth: "calc(var(--spacing) * 7)",
+        borderRadius: "min(var(--radius-md), 12px)",
+        paddingInline: "calc(var(--spacing) * 2.5)",
+        fontSize: "0.8rem",
+        ':has([data-icon="inline-end"])': {
+          paddingRight: "calc(var(--spacing) * 1.5)",
+        },
+        ':has([data-icon="inline-start"])': {
+          paddingLeft: "calc(var(--spacing) * 1.5)",
+        },
+        "& svg:not([class*='size-'])": {
+          width: "calc(var(--spacing) * 3.5)",
+          height: "calc(var(--spacing) * 3.5)",
+        },
       }),
       lg: ui({
-        height: "calc(var(--spacing) * 10)",
-        minWidth: "calc(var(--spacing) * 10)",
+        height: "calc(var(--spacing) * 9)",
+        minWidth: "calc(var(--spacing) * 9)",
         paddingInline: "calc(var(--spacing) * 2.5)",
+        ':has([data-icon="inline-end"])': {
+          paddingRight: "calc(var(--spacing) * 2)",
+        },
+        ':has([data-icon="inline-start"])': {
+          paddingLeft: "calc(var(--spacing) * 2)",
+        },
       }),
     },
   },

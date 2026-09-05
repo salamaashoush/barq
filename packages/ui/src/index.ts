@@ -31,7 +31,7 @@ export { ringSlot } from "./lib/shared-ring-slot.ts";
 export { ring } from "./lib/shared-ring.ts";
 export { text } from "./lib/shared-text.ts";
 export { when } from "./lib/shared-when.ts";
-export { controlProps, uiProps } from "./lib/slot.ts";
+export { controlProps, omit, uiProps } from "./lib/slot.ts";
 export { cn } from "./lib/utils.ts";
 export {
   ACCENT_THEMES,

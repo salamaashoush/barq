@@ -1,0 +1,8 @@
+{
+  "breadcrumb-list": "flex flex-wrap items-center gap-1.5 text-sm wrap-break-word text-muted-foreground",
+  "breadcrumb-item": "inline-flex items-center gap-1",
+  "breadcrumb-link": "transition-colors hover:text-foreground",
+  "breadcrumb-page": "font-normal text-foreground",
+  "breadcrumb-separator": "[&>svg]:size-3.5",
+  "breadcrumb-ellipsis": "flex size-5 items-center justify-center [&>svg]:size-4"
+}

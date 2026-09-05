@@ -8,45 +8,78 @@ import { Toggle, type ToggleSize, type ToggleVariant } from "./toggle.tsx";
 
 const ui = layer("barq.ui");
 
-const group = ui({
+// A marker: every rule that welds the items together is written against
+// `.group\/toggle-group`, so the group's orientation and spacing reach them.
+const group = ui("group/toggle-group", {
   display: "flex",
   width: "fit-content",
+  flexDirection: "row",
   alignItems: "center",
-  borderRadius: "calc(var(--radius) * 0.8)",
-  gap: "calc(var(--spacing) * var(--barq-toggle-gap, 0))",
-  '[data-spacing="default"][data-variant="outline"]': {
-    "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
-    boxShadow:
-      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+  gap: "calc(var(--spacing) * var(--gap))",
+  borderRadius: "var(--radius)",
+  '[data-size="sm"]': {
+    borderRadius: "min(var(--radius-md), 10px)",
+  },
+  ':where([data-orientation="vertical"])': {
+    flexDirection: "column",
+    alignItems: "stretch",
   },
 });
 
 const item = ui({
-  width: "auto",
-  minWidth: "0px",
   flexShrink: "0",
-  paddingInline: "calc(var(--spacing) * 3)",
-  '[data-spacing="0"]': {
+  ':is(:where(.group\\/toggle-group)[data-spacing="0"] *)': {
     borderRadius: "0",
-    "--ui-shadow": "0 0 #0000",
-    boxShadow:
-      "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+    paddingInline: "calc(var(--spacing) * 2)",
   },
-  '[data-spacing="0"]:first-child': {
-    borderTopLeftRadius: "calc(var(--radius) * 0.8)",
-    borderBottomLeftRadius: "calc(var(--radius) * 0.8)",
+  ':is(:where(.group\\/toggle-group)[data-spacing="0"] *):has([data-icon="inline-end"])': {
+    paddingRight: "calc(var(--spacing) * 1.5)",
   },
-  '[data-spacing="0"]:last-child': {
-    borderTopRightRadius: "calc(var(--radius) * 0.8)",
-    borderBottomRightRadius: "calc(var(--radius) * 0.8)",
+  ':is(:where(.group\\/toggle-group)[data-spacing="0"] *):has([data-icon="inline-start"])': {
+    paddingLeft: "calc(var(--spacing) * 1.5)",
   },
-  '[data-spacing="0"][data-variant="outline"]': {
-    borderLeftStyle: "var(--ui-border-style)",
-    borderLeftWidth: "0px",
-  },
-  '[data-spacing="0"][data-variant="outline"]:first-child': {
-    borderLeftStyle: "var(--ui-border-style)",
-    borderLeftWidth: "1px",
+  ':is(:where(.group\\/toggle-group):where([data-orientation="horizontal"]) *)[data-spacing="0"]:first-child':
+    {
+      borderTopLeftRadius: "var(--radius)",
+      borderBottomLeftRadius: "var(--radius)",
+    },
+  ':is(:where(.group\\/toggle-group):where([data-orientation="vertical"]) *)[data-spacing="0"]:first-child':
+    {
+      borderTopLeftRadius: "var(--radius)",
+      borderTopRightRadius: "var(--radius)",
+    },
+  ':is(:where(.group\\/toggle-group):where([data-orientation="horizontal"]) *)[data-spacing="0"]:last-child':
+    {
+      borderTopRightRadius: "var(--radius)",
+      borderBottomRightRadius: "var(--radius)",
+    },
+  ':is(:where(.group\\/toggle-group):where([data-orientation="vertical"]) *)[data-spacing="0"]:last-child':
+    {
+      borderBottomRightRadius: "var(--radius)",
+      borderBottomLeftRadius: "var(--radius)",
+    },
+  ':is(:where(.group\\/toggle-group):where([data-orientation="horizontal"]) *)[data-spacing="0"][data-variant="outline"]':
+    {
+      borderLeftStyle: "var(--ui-border-style)",
+      borderLeftWidth: "0px",
+    },
+  ':is(:where(.group\\/toggle-group):where([data-orientation="vertical"]) *)[data-spacing="0"][data-variant="outline"]':
+    {
+      borderTopStyle: "var(--ui-border-style)",
+      borderTopWidth: "0px",
+    },
+  ':is(:where(.group\\/toggle-group):where([data-orientation="horizontal"]) *)[data-spacing="0"][data-variant="outline"]:first-child':
+    {
+      borderLeftStyle: "var(--ui-border-style)",
+      borderLeftWidth: "1px",
+    },
+  ':is(:where(.group\\/toggle-group):where([data-orientation="vertical"]) *)[data-spacing="0"][data-variant="outline"]:first-child':
+    {
+      borderTopStyle: "var(--ui-border-style)",
+      borderTopWidth: "1px",
+    },
+  ":focus": {
+    zIndex: "10",
   },
   "[data-focus-visible]": {
     zIndex: "10",
@@ -76,6 +109,8 @@ export interface ToggleGroupProps extends UiProps {
   size?: ToggleSize;
   /** Spacing units between items. `0` welds them into one control. @default 0 */
   spacing?: number;
+  /** @default "horizontal" */
+  orientation?: "horizontal" | "vertical";
   onChange?: (value: string[]) => void;
 }
 
@@ -127,7 +162,8 @@ export function ToggleGroup(props: Incoming<ToggleGroupProps>) {
       data-variant={props.variant?.() ?? "default"}
       data-size={props.size?.() ?? "default"}
       data-spacing={String(props.spacing?.() ?? 0)}
-      style={{ ...props.style?.(), "--barq-toggle-gap": String(props.spacing?.() ?? 0) }}
+      data-orientation={props.orientation?.() ?? "horizontal"}
+      style={{ ...props.style?.(), "--gap": String(props.spacing?.() ?? 0) }}
     >
       {props.children}
     </div>
