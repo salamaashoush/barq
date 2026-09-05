@@ -299,6 +299,18 @@ export interface FilterDOMPropsOptions {
   events?: boolean;
   /** Any other names to keep. */
   propNames?: ReadonlySet<string>;
+  /**
+   * Keep `id`. @default true
+   *
+   * `false` for the OUTER element of a control that wraps a hidden input in a
+   * label — a checkbox, a switch, a radio, a colour swatch. `id` belongs on
+   * the input, which is the labelable element: an `id` on both writes it
+   * twice, `document.getElementById` answers with the label because it comes
+   * first, and `<label for>` pointing at a `<label>` does nothing at all.
+   * Measured on the site's checkbox page as clicking the text toggling
+   * nothing.
+   */
+  id?: boolean;
 }
 
 /**
@@ -310,14 +322,14 @@ export interface FilterDOMPropsOptions {
  * `isdisabled="true"` in the document.
  */
 export function filterDOMProps(props: object, options: FilterDOMPropsOptions = {}): DOMProps {
-  const { labelable, isLink, global, events = global, propNames } = options;
+  const { labelable, isLink, global, events = global, propNames, id: keepId = true } = options;
   const filtered: DOMProps = {};
   const source = props as DOMProps;
 
   for (const key in source) {
     if (!Object.hasOwn(source, key)) continue;
     const keep =
-      key === "id" ||
+      (key === "id" && keepId) ||
       (labelable === true && LABELLING.has(key)) ||
       (isLink === true && LINK.has(key)) ||
       (global === true && GLOBAL_ATTRS.has(key)) ||

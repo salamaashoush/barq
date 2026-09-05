@@ -13,6 +13,42 @@ describe("Checkbox", () => {
     expect(accessibleName(box)).toBe("I agree");
   });
 
+  /**
+   * A LABEL SOMEWHERE ELSE, which is shadcn's own idiom:
+   * `<Label for="terms" />` beside `<Checkbox id="terms" />`, the two joined by
+   * the id rather than by nesting.
+   *
+   * `id` reached both the wrapper `<label>` and the `<input>` inside it, so the
+   * document held it twice. `for` may only address a LABELABLE element and
+   * resolves to the first match in tree order, which was the wrapper — so the
+   * association pointed at a `<label>`, which is not one, and clicking the text
+   * toggled nothing. 736 tests passed over it; this is the one that does not.
+   */
+  test("an id lands on the input, once, so an external label can address it", () => {
+    render(() => (
+      <>
+        <label for="terms">Accept the terms</label>
+        <Checkbox id="terms" />
+      </>
+    ));
+    const box = screen.getByRole("checkbox") as HTMLInputElement;
+    expect(box.id).toBe("terms");
+    expect(document.querySelectorAll("#terms")).toHaveLength(1);
+    expect((document.querySelector("label[for=terms]") as HTMLLabelElement).control).toBe(box);
+  });
+
+  test("a click on an external label toggles it", async () => {
+    const changes: boolean[] = [];
+    render(() => (
+      <>
+        <label for="terms">Accept the terms</label>
+        <Checkbox id="terms" onChange={(on) => changes.push(on)} />
+      </>
+    ));
+    await user.click(document.querySelector("label[for=terms]") as HTMLElement);
+    expect(changes).toEqual([true]);
+  });
+
   test("a click on the label toggles it", () => {
     const changes: boolean[] = [];
     render(() => <Checkbox onChange={(on) => changes.push(on)}>I agree</Checkbox>);

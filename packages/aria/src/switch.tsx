@@ -99,7 +99,12 @@ export function Switch(props: Incoming<SwitchComponentProps>) {
   const outerProps = mergeProps(
     labelProps,
     hoverProps,
-    filterDOMProps(options, { global: true }),
+    // NOT `id`: this is a `<label>`, and `id` belongs on the input it wraps.
+    // A `<label for>` elsewhere on the page can only reach a LABELABLE element,
+    // so an `id` here answered `getElementById` first — the label came earlier
+    // in the document — and clicking the text toggled nothing. Measured on the
+    // site's checkbox page.
+    filterDOMProps(options, { global: true, id: false }),
     styleProps(props),
     {
       "data-selected": isSelected,
