@@ -39,7 +39,28 @@ import type { UiProps } from "./props.ts";
  * What a presentational element accepts beyond the global attributes and events
  * `filterDOMProps` already allows.
  */
-const EXTRA = new Set(["role", "title", "tabIndex", "slot", "itemProp", "itemScope", "itemType"]);
+const EXTRA = new Set([
+  "role",
+  "title",
+  "tabIndex",
+  "slot",
+  "itemProp",
+  "itemScope",
+  "itemType",
+  // The ARIA a presentational element legitimately carries. `filterDOMProps`
+  // allows the LABELLING set and nothing else, which is right for a `<div>` and
+  // wrong for one that is also a control: a sidebar menu button driving a
+  // disclosure had its `aria-expanded` dropped in silence, so the row announced
+  // nothing about the submenu it opens.
+  "aria-expanded",
+  "aria-controls",
+  "aria-current",
+  "aria-pressed",
+  "aria-selected",
+  "aria-haspopup",
+  "aria-disabled",
+  "aria-live",
+]);
 
 /**
  * What a form control accepts on top of that.

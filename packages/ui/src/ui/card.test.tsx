@@ -121,6 +121,22 @@ describe("Card", () => {
     expect(document.querySelector('[data-slot="card"]')).toBeNull();
   });
 
+  // `filterDOMProps` allows the LABELLING aria and nothing else, which is right
+  // for a `<div>` and wrong for one that is also a control. A sidebar menu
+  // button driving a disclosure had its `aria-expanded` dropped in silence, so
+  // the row announced nothing about the submenu it opens.
+  test("the ARIA a control carries reaches the element", () => {
+    render(() => (
+      <Card aria-expanded aria-controls="panel" aria-current="page" role="button">
+        a
+      </Card>
+    ));
+    const card = slot("card");
+    expect(card.getAttribute("aria-expanded")).toBe("true");
+    expect(card.getAttribute("aria-controls")).toBe("panel");
+    expect(card.getAttribute("aria-current")).toBe("page");
+  });
+
   test("a prop that is not a DOM attribute does not become one", () => {
     render(() => <CardHeader bordered>a</CardHeader>);
     expect(slot("card-header").hasAttribute("bordered")).toBe(false);
