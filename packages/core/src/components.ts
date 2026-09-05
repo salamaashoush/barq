@@ -424,7 +424,16 @@ export function Dynamic(
   _s: Scope | null,
   props: { component: unknown } & Record<string, unknown>,
 ): JSXElement {
-  const component = computed(() => readValue(props.component, "Dynamic.component"));
+  // Read WITHOUT the Cell-slot Block guard, the way `dom.ts`'s `dynamic` reads
+  // it. A compiled component is a Block, and one arriving here is the whole
+  // point rather than a mistake: the value is invoked as a component with its
+  // scope, never stringified into an attribute, so there is nothing for C3.8 to
+  // protect. Guarding it made `Dynamic` reject every component the compiler
+  // emits, which is every component in an application.
+  const component = computed(() => {
+    const slot = props.component;
+    return typeof slot === "function" ? (slot as () => unknown)() : slot;
+  });
   const rest = omit(props, "component");
   return branch(_s, null, null, component, (scope: Scope | null) =>
     dynamic(scope, component as unknown as Cell<never>, rest),

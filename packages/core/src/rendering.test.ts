@@ -5,7 +5,7 @@
 
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { element } from "./dom.ts";
-import { signal, effect, computed, scope, batch, onCleanup, flush } from "./signals.ts";
+import { block, signal, effect, computed, scope, batch, onCleanup, flush } from "./signals.ts";
 import { Dynamic, Errored, For, Loading, Match, Portal, Show, Switch } from "./components.ts";
 import { mergeProps, splitProps } from "./props.ts";
 import type { Scope } from "./scope.ts";
@@ -895,6 +895,31 @@ describe("Dynamic component", () => {
 
     expect(container.querySelector(".a")).toBeNull();
     expect(container.querySelector(".b")?.textContent).toBe("Hello");
+  });
+
+  /**
+   * A compiled component IS a Block, and `Dynamic` exists to render one held
+   * in data.
+   *
+   * The compiler lowers `<Dynamic component={C} />` to a branch keyed on the
+   * component, and the key's VALUE was guarded against Blocks the way a Cell
+   * slot is. A key is only compared with `===` — never invoked, never
+   * stringified — so the guard protected nothing and made a registry of
+   * components, which is the whole use, throw from inside `Dynamic` itself.
+   */
+  test("renders a branded Block component, which is what the compiler emits", () => {
+    const Compiled = block((_s: unknown, props: { text: string }) =>
+      element(null, "div", { class: "compiled", children: props.text }),
+    );
+    const current = signal<typeof Compiled>(() => Compiled);
+
+    const node = Dynamic(null, {
+      component: () => current(),
+      text: "Hello",
+    });
+
+    container.appendChild(node as Node);
+    expect(container.querySelector(".compiled")?.textContent).toBe("Hello");
   });
 
   test("handles null component gracefully", () => {

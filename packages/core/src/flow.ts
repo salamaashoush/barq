@@ -684,12 +684,10 @@ function region<K>(
     // previous-key record, and — when `NO_SCOPE` is proved too — no allocation
     // at all beyond the nodes themselves.
     const k = untrack(key);
-    cellSlot(k, "branch key");
     swap(k);
   } else {
     renderEffect(() => {
       const k = key();
-      cellSlot(k, "branch key");
       if (previous !== UNSET && k === previous && !retry) return;
       previous = k;
       // Set before the attempt and cleared on the far side of one that
@@ -775,6 +773,15 @@ export function branch<K>(
   flags = 0,
 ): Node | null {
   const given = requireScope(s, "branch");
+  // The key ACCESSOR, not the key's value.
+  //
+  // A Block here is a mistimed construction and the guard is right. The VALUE
+  // it yields is only ever compared with `===`: it is never invoked, never
+  // stringified and never inserted, so C3.8 has nothing to protect. Guarding it
+  // too made `<Dynamic component={C} />` impossible — the compiler lowers it to
+  // a branch keyed on the component, and a compiled component IS a Block — so
+  // rendering a component held in data threw from inside the construct that
+  // exists to do exactly that.
   cellSlot(key, "branch key");
   const { site, out } = siteFor(parent, anchor);
   claimSite(site, parent, anchor, flags, "branch");
