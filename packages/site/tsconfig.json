@@ -12,6 +12,7 @@
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "types": ["@types/bun"],
     "allowImportingTsExtensions": true,
+    "allowArbitraryExtensions": true,
     "exactOptionalPropertyTypes": false,
     "noUncheckedIndexedAccess": true,
     "paths": {

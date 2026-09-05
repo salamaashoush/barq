@@ -15,6 +15,53 @@ import {
 
 import type { Child, Incoming } from "@barqjs/core";
 
+/** The theme the scene paints with, in this package's own tokens. */
+export const THEME = {
+  foreground: "var(--foreground)",
+  muted: "var(--muted-foreground)",
+  grid: "var(--border)",
+  background: "transparent",
+} as const;
+
+export interface Row {
+  readonly x: string;
+  readonly series: string;
+  readonly value: number;
+}
+
+/**
+ * The wide rows an application holds, as the long rows a mark reads.
+ *
+ * A caller's datum is one column with a field per series, which is the shape a
+ * table has and the shape every one of shadcn's chart examples uses. A mark
+ * groups by a CHANNEL, so the same numbers have to arrive as one row per series
+ * per column.
+ */
+export function rows(
+  config: ChartConfig,
+  data: readonly Record<string, string | number>[],
+  x = "month",
+): Row[] {
+  return data.flatMap((row) =>
+    config.map((series) => ({
+      x: String(row[x] ?? ""),
+      series: series.key,
+      value: Number(row[series.key] ?? 0),
+    })),
+  );
+}
+
+/** The colour scale, as the series NAMES rather than the colours behind them. */
+export function palette(config: ChartConfig): {
+  domain: readonly string[];
+  range: readonly string[];
+} {
+  return {
+    domain: config.map((series) => series.key),
+    range: config.map((series) => `var(--color-${series.key})`),
+  };
+}
+
 /**
  * The six months every one of shadcn's chart examples is drawn from.
  *

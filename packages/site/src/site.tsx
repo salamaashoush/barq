@@ -81,6 +81,17 @@ const wrapperEdge = css`
  * `px-6`.
  */
 const container = css`
+  /*
+   * width: 100% is load-bearing, not belt and braces.
+   *
+   * margin-inline: auto on a column flex item beats align-self: stretch, so the
+   * box shrinks to its content instead of filling the line. Upstream never sees
+   * it because their container always sits inside container-wrapper, which is
+   * an ordinary block; ours went straight into the flex main and every page
+   * came out 660px wide in a 1336px column, with a three-across grid rendering
+   * one card per row and nothing overflowing to say so.
+   */
+  width: 100%;
   margin-inline: auto;
   max-width: 1400px;
   padding-inline: calc(var(--spacing) * 4);
@@ -477,8 +488,8 @@ const lede = css`
 /** A page's heading and its body, so every section on the site opens the same. */
 export function Page(props: Incoming<{ title: string; lede?: string; children?: Child }>) {
   return (
-    <div class={container}>
-      <div class={shell}>
+    <div class={wrapper}>
+      <div class={`${container} ${shell}`}>
         <div>
           <h1 class={title}>{props.title}</h1>
           {props.lede?.() === undefined ? null : <p class={lede}>{props.lede()}</p>}
