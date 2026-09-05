@@ -13,7 +13,7 @@
  * every press, which is measurable on a large document.
  */
 
-import { ownerDocument } from "../dom.ts";
+import { isStyledElement, ownerDocument } from "../dom.ts";
 import { isIOS, isWebKit } from "../platform.ts";
 import { runAfterTransition } from "../dom.ts";
 
@@ -38,7 +38,7 @@ export function disableTextSelection(target?: Element | null): void {
     return;
   }
 
-  if (target instanceof HTMLElement || target instanceof SVGElement) {
+  if (isStyledElement(target)) {
     const property = userSelectProperty(target);
     modified.set(target, target.style[property]);
     target.style[property] = "none";
@@ -67,7 +67,7 @@ export function restoreTextSelection(target?: Element | null): void {
     return;
   }
 
-  if ((target instanceof HTMLElement || target instanceof SVGElement) && modified.has(target)) {
+  if (isStyledElement(target) && modified.has(target)) {
     const previous = modified.get(target) as string;
     const property = userSelectProperty(target);
     if (target.style[property] === "none") target.style[property] = previous;

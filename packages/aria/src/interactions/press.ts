@@ -27,6 +27,7 @@ import { tryCleanup } from "@barqjs/primitives/utils";
 import {
   contains,
   focusWithoutScrolling,
+  isStyledElement,
   ownerDocument,
   ownerWindow,
   targetElement,
@@ -604,7 +605,7 @@ export function press(options: PressOptions): PressResult {
       // certain roles, to emulate hover.
       let clicked = false;
       const timeout = setTimeout(() => {
-        if (!state.isPressed || !(state.target instanceof HTMLElement)) return;
+        if (!state.isPressed || !isStyledElement(state.target)) return;
         if (clicked) {
           cancel(pointer);
         } else {

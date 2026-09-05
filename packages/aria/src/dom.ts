@@ -45,6 +45,26 @@ export function isNode(value: unknown): value is Node {
   );
 }
 
+/** A value with `nodeType === 1`. */
+export function isElement(value: unknown): value is Element {
+  return isNode(value) && value.nodeType === 1;
+}
+
+/**
+ * An element carrying a `style` map: an `HTMLElement` or an `SVGElement`.
+ *
+ * Duck-typed, like {@link isNode}, and for one more reason than that one has.
+ * `instanceof HTMLElement` is wrong across realms — an element from an
+ * `<iframe>` fails it — and it is wrong where there is no realm at all: on a
+ * server the global does not exist, so the test THROWS rather than answering
+ * false. A cleanup that ran while a server-rendered tree was disposed took the
+ * whole render with it, reported as `ReferenceError: HTMLElement is not
+ * defined` from a line asking whether it had an element.
+ */
+export function isStyledElement(value: unknown): value is HTMLElement | SVGElement {
+  return isElement(value) && "style" in value;
+}
+
 function isWindow(value: unknown): value is Window & typeof globalThis {
   return (
     typeof value === "object" &&
