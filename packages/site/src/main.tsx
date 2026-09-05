@@ -255,6 +255,7 @@ import { Home } from "./home.tsx";
 import { ChartsPage } from "./charts/index.tsx";
 import { Colors } from "./colors.tsx";
 import { Customizer } from "./customizer.tsx";
+import { anchor, DocsPage, slugOf, type DocsSection } from "./docs.tsx";
 import { SiteLayout } from "./site.tsx";
 import { Showcase } from "./showcase.tsx";
 import { design } from "./params.ts";
@@ -485,9 +486,17 @@ const heading = css`
   margin: 0 0 0.75rem;
 `;
 
+/**
+ * One component's section, anchored so the docs rail can land on it.
+ *
+ * The id is derived from the title rather than written twice: a rail whose
+ * links and headings are two lists drifts the moment one gains an entry, and
+ * the drift is a link that silently scrolls nowhere.
+ */
 function Section(props: Incoming<{ title?: string; children?: Child }>) {
+  const id = (): string => slugOf(props.title?.() ?? "");
   return (
-    <section data-section={props.title?.()}>
+    <section data-section={props.title?.()} id={id} class={anchor}>
       <h2 class={heading}>{props.title}</h2>
       {props.children}
     </section>
@@ -1739,6 +1748,58 @@ const routeError = css`
 `;
 
 /**
+ * Every section the gallery renders, as the rail's contents.
+ *
+ * Written down rather than discovered, because the rail is built before the
+ * article and a walk of the DOM would need the article to exist first. The
+ * `Section` component derives its own id from the same title, so the two agree
+ * by construction and a rename moves both.
+ */
+const DOC_SECTIONS: readonly DocsSection[] = [
+  "Button",
+  "Badge",
+  "Card",
+  "Alert",
+  "Form",
+  "Overlays",
+  "Calendar",
+  "Grouped and multiple",
+  "Chat",
+  "Carousel",
+  "Resizable",
+  "Toast",
+  "NavigationMenu",
+  "Chart",
+  "Sidebar",
+  "InputOTP",
+  "DatePicker",
+  "Disclosure",
+  "Navigation",
+  "Command",
+  "Combobox",
+  "ToggleGroup, HoverCard and Menubar",
+  "Field",
+  "InputGroup",
+  "ButtonGroup",
+  "Item",
+  "Display",
+  "Table",
+  "Empty and ScrollArea",
+].map((label) => ({ id: slugOf(label), label }));
+
+function ComponentsPage() {
+  return (
+    <DocsPage
+      title="Components"
+      lede="Every component this package ships, in every state a style can select on. Sixty of them, transcribed from upstream's own class lists."
+      sections={DOC_SECTIONS}
+    >
+      <Gallery />
+    </DocsPage>
+  );
+}
+
+/**
  * The site, as pages.
  *
  * `SiteLayout` is the layout route: the header is built once and the matched
@@ -1760,7 +1821,7 @@ const ROUTES = [
     errorComponent: RouteError as never,
     children: [
       { path: "/", component: Home },
-      { path: "/docs/components", component: Gallery },
+      { path: "/docs/components", component: ComponentsPage },
       { path: "/blocks", component: BlocksIndex },
       { path: "/blocks/$name", component: BlockPage },
       { path: "/charts/$type", component: ChartsPage },
