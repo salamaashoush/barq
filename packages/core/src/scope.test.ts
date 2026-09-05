@@ -26,6 +26,7 @@ import {
 } from "./scope.ts";
 import {
   DEV,
+  block,
   context,
   scope,
   effect,
@@ -557,6 +558,60 @@ describe("X — context on the scope", () => {
     // X2: the stored value is a Cell, so the consumer sees the new value
     // through its own read without anything being rebuilt.
     value.set(2);
+    exit(root);
+    dispose(root);
+  });
+
+  /**
+   * A provider's body is often SEVERAL things, and several things are an array.
+   *
+   * Literal siblings fold into one Block the compiler emits, so `<A /><B />`
+   * arrived as a single Block and ran under the binding. A forwarded child
+   * cannot fold — `<A />{props.children}` is an array with a Block in it — and
+   * only the outermost value was unwrapped, so those elements were left for
+   * `insert` to build later, under the scope OUTSIDE the binding. Every
+   * consumer in a forwarded child then reported its provider missing.
+   */
+  test("X1: a Block inside the array a body arrives as runs under the binding", () => {
+    const ctx = context<number>();
+    const root = enterRoot();
+    const seen: number[] = [];
+
+    const child = block((s: Scope) => {
+      seen.push(read(ctx, s)());
+      return "child";
+    });
+
+    const out = provide(
+      root,
+      ctx,
+      () => 7,
+      () => ["first", child] as unknown,
+    );
+
+    expect(seen).toEqual([7]);
+    expect(out).toEqual(["first", "child"]);
+    exit(root);
+    dispose(root);
+  });
+
+  test("X1: a Block nested deeper in that array runs under it too", () => {
+    const ctx = context<number>();
+    const root = enterRoot();
+    const seen: number[] = [];
+    const child = block((s: Scope) => {
+      seen.push(read(ctx, s)());
+      return "deep";
+    });
+
+    provide(
+      root,
+      ctx,
+      () => 3,
+      () => ["a", ["b", child]] as unknown,
+    );
+
+    expect(seen).toEqual([3]);
     exit(root);
     dispose(root);
   });

@@ -29,6 +29,7 @@ import {
   pin,
   readSlot,
   untrack,
+  unwrapBlocks,
   provideOn,
   requireScope,
   ScopeMissingError,
@@ -115,10 +116,11 @@ export function provide<T, R>(
   provideOn(instance, context.id, value);
   let built = false;
   try {
-    let out: R = block(instance);
-    // A Block forwarded inside a Cell is still a Block, and it has to run here,
-    // inside the scope that carries the binding. See `context`'s Provider.
-    while (isBlock(out)) out = (out as unknown as Block<R>)(instance);
+    // A Block forwarded inside a Cell, or inside the ARRAY several children
+    // arrive as, is still a Block and has to run here, inside the scope that
+    // carries the binding. `context`'s Provider walks the same way, and both
+    // call the same function so they cannot drift apart again.
+    const out: R = unwrapBlocks(block(instance), instance);
     built = true;
     return out;
   } finally {

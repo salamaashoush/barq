@@ -3698,12 +3698,29 @@ export function context<T>(defaultValue?: T, description?: string): Context<T> {
  * intact. It is guarded on the RESULT being branded, so a hole is read once and
  * returned live rather than recursed into.
  */
-function unwrapBlocks<R>(out: R, instance: Scope): R {
+export function unwrapBlocks<R>(out: R, instance: Scope): R {
   let at = out;
   for (;;) {
     if (isBlock(at)) {
       at = (at as unknown as (s: Scope) => R)(instance);
       continue;
+    }
+    // A children slot holding SEVERAL things is an array, and a Block inside
+    // one is still a Block that has to run under this scope. Only the outermost
+    // value was unwrapped, so a provider whose body was `<A /><B />` worked and
+    // one whose body was `<A />{props.children}` did not: literal siblings fold
+    // into a single Block the compiler emits, a forwarded child cannot, and the
+    // array that results left every element to be built later by `insert` —
+    // under the scope OUTSIDE the binding, which had already been exited. The
+    // consumer then reported the provider missing from inside it.
+    if (Array.isArray(at)) {
+      let changed = false;
+      const each = (at as unknown[]).map((item) => {
+        const built = unwrapBlocks(item, instance);
+        if (built !== item) changed = true;
+        return built;
+      });
+      return (changed ? each : at) as R;
     }
     if (typeof at !== "function") return at;
     const peeked = untrack(() => (at as unknown as (s: Scope) => R)(instance));
