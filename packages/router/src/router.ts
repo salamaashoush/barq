@@ -46,6 +46,7 @@ import {
   type RouteLifecycle,
   flattenRoutes,
   pendingChunks,
+  preloadMatched,
 } from "./route.ts";
 import {
   applyTrailingSlash,
@@ -2203,6 +2204,20 @@ export function createRouter(config: RouterConfig): RouterState {
       const target = parseLocation(resolved + rest, null);
       const candidate = matcher.match(target.pathname);
       if (candidate === null) return;
+
+      /**
+       * The MODULES, started before the guards rather than after the loaders.
+       *
+       * A preload that warmed only the loaders warmed the half that was never
+       * the wait. The commit holds for the chunk, so an intent preload that
+       * leaves it cold has bought nothing for the one thing it was asked to
+       * shorten. TanStack's `preloadClientRoute` runs `executeClientLane`, the
+       * same lane a real load takes, and `loadRouteChunk` is in it.
+       *
+       * NOT AWAITED: a preload is speculative and its caller does not wait, so
+       * the fetch starting is the whole of what this line is for.
+       */
+      void preloadMatched(candidate.route.chain);
 
       let produced: readonly Record<string, unknown>[];
       try {

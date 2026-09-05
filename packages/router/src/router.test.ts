@@ -1549,6 +1549,35 @@ describe("Link preload", () => {
     return { state, element: host.querySelector("a") as HTMLElement, dispose };
   };
 
+  /**
+   * The CHUNK, not only the loader.
+   *
+   * A preload that warmed only the loaders warmed the half that was never the
+   * wait: the commit holds for the route's module, so an intent preload that
+   * left it cold bought nothing for the one thing it was asked to shorten.
+   * TanStack's `preloadClientRoute` runs `executeClientLane`, the same lane a
+   * real load takes, and `loadRouteChunk` is in it.
+   */
+  test("a preload starts the route's module, not just its loader", async () => {
+    const loads: string[] = [];
+    let release: (() => void) | undefined;
+    const component = Object.assign(page("late"), {
+      preload: async (): Promise<void> => {
+        loads.push("component");
+        await new Promise<void>((resolve) => (release = resolve));
+      },
+    });
+    const routes = [
+      { path: "/", component: page("home") },
+      { path: "/late", component },
+    ] as never as AnyRouteDefinition[];
+    const state = createRouter({ routeTree: routes, history: memoryHistory({ initial: ["/"] }) });
+    await state.preload("/late");
+    expect(loads).toEqual(["component"]);
+    release?.();
+    state.dispose();
+  });
+
   test("preload is OFF by default: a hover fetches nothing", async () => {
     const calls: string[] = [];
     const { element, dispose } = link({ to: "/users/7" }, calls);
