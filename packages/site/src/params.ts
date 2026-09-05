@@ -22,6 +22,7 @@
  */
 
 import { effect, signal, type Accessor } from "@barqjs/core";
+import { useLocation } from "@barqjs/router";
 import { installTheme, type ThemeSelection } from "@barqjs/ui";
 
 import {
@@ -310,12 +311,26 @@ export function wearStyleOn(element: HTMLElement | null, name: string, still: ()
  * it swaps rows forever. There is no customizer on any other page, so the
  * document is the right scope and the whole page is themed.
  */
+/**
+ * What the site reads out of the URL, and the two things that still change.
+ *
+ * The THEME is not one of them. `src/theme.ts` is a `globalCss` block the
+ * compiler folds into the stylesheet the document links, so the page arrives
+ * themed rather than being themed by a script — which is the whole of the FOUC
+ * answer and is what `barq-ui init` writes into any project. Registering the
+ * same rules from an effect here would have been a second source for one fact,
+ * and the one that runs after the document is already on screen.
+ *
+ * What is left is genuinely dynamic: the `dark` class, and the style class an
+ * explicit `?style=` asks for. Both are attributes on `<html>`, and `dark` is
+ * written by the SERVER into the markup rather than toggled on hydration.
+ */
 export function installSite(): { params: Accessor<Params>; set(next: Partial<Params>): void } {
-  const current = signal<Params>(read(typeof location === "undefined" ? "" : location.search));
+  const here = useLocation();
+  const current = signal<Params>(read(here().search));
 
   const apply = (): void => {
     const now = current();
-    installTheme(selectionOf(now));
     if (typeof document === "undefined") return;
     const root = document.documentElement;
     root.classList.toggle("dark", now.dark);
@@ -328,24 +343,26 @@ export function installSite(): { params: Accessor<Params>; set(next: Partial<Par
     //
     // An EXPLICIT `?style=` still applies, because being able to read this site
     // in each of the eight is worth having and costs nothing when nobody asks.
-    const asked = new URLSearchParams(location.search).get("style");
-    wearStyleOn(root, asked ?? NONE, () => current().style === (asked ?? NONE));
+    wearStyleOn(
+      root,
+      now.style === DEFAULTS.style ? NONE : now.style,
+      () => current().style === now.style,
+    );
   };
 
+  // The front page's card panel, which upstream marks `theme-neutral`. Scoped,
+  // so it is a rule ABOUT an element rather than the document's own theme, and
+  // registering it during render is what puts it in the inlined sheet.
+  installTheme({ base: "neutral", scope: DEMO_SCOPE });
   effect(apply);
 
-  installTheme({ base: "neutral", scope: DEMO_SCOPE });
-
-  if (typeof window !== "undefined") {
-    const reread = (): void => current.set(read(location.search));
-    window.addEventListener("popstate", reread);
-    // A `<Link>` navigation is a pushState the router owns, and neither fires
-    // `popstate`. The router's own location is the honest source, but reading it
-    // here would tie this file to a router; a microtask after the click sees the
-    // URL the router just wrote, and re-reading a URL that did not change costs
-    // one object.
-    window.addEventListener("click", () => queueMicrotask(reread), { capture: true });
-  }
+  // The router owns the URL, so its location is what the theme follows. A
+  // `popstate` listener would miss a `<Link>` — that is a `pushState` — and a
+  // click listener guessing at a microtask would race the router's own write.
+  effect(() => {
+    const next = read(here().search);
+    if (write(next) !== write(current())) current.set(next);
+  });
 
   return {
     params: current,

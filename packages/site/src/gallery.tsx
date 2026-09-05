@@ -9,7 +9,7 @@
 import "@fontsource-variable/geist/index.css";
 import "@fontsource-variable/geist-mono/index.css";
 
-import { For, render, signal, type Child, type Incoming } from "@barqjs/core";
+import { For, signal, type Child, type Incoming } from "@barqjs/core";
 import { css, globalCss, layer } from "@barqjs/css";
 
 const ui = layer("barq.ui");
@@ -247,16 +247,10 @@ import {
 import "@barqjs/ui/theme/reset.ts";
 import { CalendarDate } from "@barqjs/aria/date";
 import { providePortalTarget } from "@barqjs/aria/overlays";
-import { retainSearchParams, Router } from "@barqjs/router";
 import { ref } from "@barqjs/primitives/refs";
 
-import { BlockPage, BlocksIndex } from "./pages.tsx";
-import { Home } from "./home.tsx";
-import { ChartsPage } from "./charts/index.tsx";
-import { Colors } from "./colors.tsx";
 import { Customizer } from "./customizer.tsx";
 import { anchor, DocsPage, slugOf, type DocsSection } from "./docs.tsx";
-import { SiteLayout } from "./site.tsx";
 import { Showcase } from "./showcase.tsx";
 import { design } from "./params.ts";
 
@@ -582,7 +576,7 @@ const FRUITS = [
   { id: "cherry", name: "Cherry" },
 ];
 
-function Gallery() {
+export function Gallery() {
   const progress = signal(62);
 
   return (
@@ -1642,7 +1636,7 @@ const VIEWS = [
  * A page under the site's own header, at `/create`, which is where upstream
  * puts it too.
  */
-function Designer() {
+export function Designer() {
   const system = design();
   const preview = ref<HTMLDivElement>();
 
@@ -1715,37 +1709,6 @@ function PreviewPortal(props: Incoming<{ target: () => Element | null; children?
   return <>{props.children}</>;
 }
 
-/**
- * What a page that threw says.
- *
- * A route with no `errorComponent` renders NOTHING and logs, which reads as a
- * blank page with a working header — the hardest failure to tell from a page
- * that simply has no content. This says what broke, in the page's own type.
- */
-function RouteError(props: Incoming<{ error: () => Error }>) {
-  const shown = (): string => {
-    const held = props.error() as unknown;
-    const value = typeof held === "function" ? (held as () => Error)() : (held as Error);
-    return String(value?.stack ?? value);
-  };
-  return (
-    <pre id="route-error" class={routeError}>
-      {shown}
-    </pre>
-  );
-}
-
-const routeError = css`
-  margin: 2rem 1.5rem;
-  padding: 1rem;
-  border: 1px solid var(--destructive);
-  border-radius: calc(var(--radius) + 4px);
-  color: var(--destructive);
-  font-family: var(--font-mono);
-  font-size: 0.8125rem;
-  white-space: pre-wrap;
-  overflow-x: auto;
-`;
 
 /**
  * Every section the gallery renders, as the rail's contents.
@@ -1787,7 +1750,7 @@ const DOC_SECTIONS: readonly DocsSection[] = [
   "Empty and ScrollArea",
 ].map((label) => ({ id: slugOf(label), label }));
 
-function ComponentsPage() {
+export function ComponentsPage() {
   return (
     <DocsPage
       title="Components"
@@ -1798,37 +1761,3 @@ function ComponentsPage() {
     </DocsPage>
   );
 }
-
-/**
- * The site, as pages.
- *
- * `SiteLayout` is the layout route: the header is built once and the matched
- * page goes into its `<Outlet />`. Every section upstream's `siteConfig`
- * names has an address here, and the designer is one of them rather than the
- * whole application — a switcher flipping a signal is not a site, and
- * `/blocks/dashboard-01` is a link somebody can send.
- *
- * `retainSearchParams(true)` on the layout is what keeps the design across a
- * navigation: a `<Link to="/blocks">` mentions no search, and without the
- * middleware the router would build a URL with none, so every page would open
- * in the default theme and the configuration you were looking at would be gone.
- */
-const ROUTES = [
-  {
-    path: "/",
-    component: SiteLayout,
-    search: { middlewares: [retainSearchParams(true)] },
-    errorComponent: RouteError as never,
-    children: [
-      { path: "/", component: Home },
-      { path: "/docs/components", component: ComponentsPage },
-      { path: "/blocks", component: BlocksIndex },
-      { path: "/blocks/$name", component: BlockPage },
-      { path: "/charts/$type", component: ChartsPage },
-      { path: "/colors", component: Colors },
-      { path: "/create", component: Designer },
-    ],
-  },
-];
-
-render(() => <Router routeTree={ROUTES as never} />, document.getElementById("app")!);

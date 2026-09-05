@@ -453,15 +453,15 @@ export function SiteFooter() {
  * sections never rebuilds it and never loses what it holds.
  */
 export function SiteLayout() {
-  // The whole document, from the same search string the designer writes. Every
-  // page but `/create` had no theme at all before this: `--chart-1`, `--radius`
-  // and the rest were undefined, and an undefined `var()` takes the property's
-  // INITIAL value rather than falling back, so the charts drew grey and every
-  // corner was square with nothing reporting a problem.
-  installSite();
+  const site = installSite();
 
   return (
-    <div class={layout} data-slot="layout">
+    // `dark` is on the LAYOUT, not on `<html>`. The shell renders outside the
+    // router's context, so it cannot read the location; the theme's dark rule
+    // is a plain `.dark` class and matches here just as well. Written into the
+    // server's markup either way, which is what stops a dark page arriving
+    // light and flipping on hydration.
+    <div class={() => (site.params().dark ? `${layout} dark` : layout)} data-slot="layout">
       <SiteHeader />
       <main class={main}>
         <Outlet />

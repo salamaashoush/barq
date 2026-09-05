@@ -77,7 +77,8 @@
           "**/base.ts",
           "**/reset.ts",
           "**/register-dom.ts",
-          "**/*.css"
+          "**/*.css",
+          "**/theme.ts"
         ]
       }
     ],
