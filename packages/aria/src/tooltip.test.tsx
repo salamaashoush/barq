@@ -112,11 +112,13 @@ describe("TooltipTrigger", () => {
 
     user.hover(screen.getByRole("button", { name: "Save" }));
     await after(40);
+    await tick();
     flush();
     expect(screen.getByRole("tooltip").textContent).toBe("Saves");
 
     user.unhover(screen.getByRole("button", { name: "Save" }));
     user.hover(screen.getByRole("button", { name: "Undo" }));
+    await tick();
     flush();
 
     // No wait: the group is warm, so the second one is the first one moving.
@@ -140,8 +142,10 @@ describe("TooltipTrigger", () => {
     ));
 
     user.hover(screen.getByRole("button", { name: "Save" }));
+    await tick();
     flush();
     user.hover(screen.getByRole("button", { name: "Undo" }));
+    await tick();
     flush();
 
     expect(screen.getAllByRole("tooltip")).toHaveLength(1);
@@ -196,6 +200,7 @@ describe("TooltipTrigger", () => {
     render(() => <Saver delay={0} closeDelay={5000} />);
 
     user.hover(target());
+    await tick();
     flush();
     expect(screen.queryByRole("tooltip")).not.toBeNull();
 
@@ -208,6 +213,7 @@ describe("TooltipTrigger", () => {
     render(() => <Saver delay={0} closeDelay={5000} shouldCloseOnPress={false} />);
 
     user.hover(target());
+    await tick();
     flush();
     user.click(target());
     flush();
@@ -239,11 +245,16 @@ describe("TooltipTrigger", () => {
   });
 
   test("has no ARIA violations while showing", async () => {
-    const { container } = render(() => <Saver delay={0} />);
+    render(() => <Saver delay={0} />);
 
     user.hover(target());
+    await tick();
     flush();
 
-    expectNoAriaViolations(container);
+    // `document.body` and not the render container: the tooltip is PORTALLED,
+    // so the trigger and the tooltip it describes are in different subtrees and
+    // only the document holds both. An `aria-describedby` pointing outside the
+    // container is exactly the shape this has to be able to check.
+    expectNoAriaViolations(document.body);
   });
 });

@@ -64,7 +64,6 @@ const preview = css`
   width: 100%;
   justify-content: center;
   padding: calc(var(--spacing) * 10);
-  overflow: auto;
 
   &[data-align="center"] {
     align-items: center;
@@ -75,6 +74,12 @@ const preview = css`
   &[data-align="end"] {
     align-items: flex-end;
   }
+  /* NO overflow, which upstream's has none of either. A scroller here clips
+     every tooltip, popover and menu a demo opens — they are positioned in
+     viewport coordinates and land outside this box — and puts two scrollbars
+     on a card that is meant to be a picture of a component. A demo too tall
+     for 288px says size="auto" instead. */
+
   /* A demo that cannot be measured at 288px says so and takes its own height. */
   &[data-size="auto"] {
     height: auto;

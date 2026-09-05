@@ -1,4 +1,9 @@
-import { overlayPosition, type Placement } from "@barqjs/aria/overlays";
+import {
+  overlayPosition,
+  portalContainer,
+  usePortalTarget,
+  type Placement,
+} from "@barqjs/aria/overlays";
 import { presence } from "@barqjs/aria/presence";
 import {
   TooltipTrigger as AriaTooltipTrigger,
@@ -7,7 +12,7 @@ import {
   type TooltipTriggerComponentProps,
 } from "@barqjs/aria/tooltip";
 import { filterDOMProps, fromProps, mergeProps, styleProps } from "@barqjs/aria/utils";
-import { Show, type Incoming } from "@barqjs/core";
+import { Portal, Show, type Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 
@@ -134,8 +139,18 @@ export interface TooltipContentProps extends UiProps {
  * Built on the hooks rather than `@barqjs/aria`'s `<Tooltip>`, for one reason:
  * the arrow. `overlayPosition` returns `arrowProps`, and the component does not
  * pass them on because it draws no arrow of its own.
+ *
+ * PORTALLED, which it was not, and the tooltip was invisible wherever it
+ * mattered. `overlayPosition` computes coordinates in the VIEWPORT and the
+ * element is `position: absolute`, so it needs the body as its containing
+ * block: rendered in place, the nearest positioned ancestor was whatever the
+ * trigger happened to sit in and the tooltip landed hundreds of pixels away —
+ * measured on the docs preview as a trigger at x=671 and a tooltip at x=1069.
+ * An ancestor with `overflow: hidden` then clipped what was left. Radix wraps
+ * its content in `Tooltip.Portal` for both halves of the same reason.
  */
 export function TooltipContent(props: Incoming<TooltipContentProps>) {
+  const target = usePortalTarget();
   const domRef = makeRef<HTMLDivElement>();
   const arrowRef = makeRef<HTMLSpanElement>();
   const trigger = useTooltipTrigger();
@@ -174,22 +189,24 @@ export function TooltipContent(props: Incoming<TooltipContentProps>) {
 
   return (
     <Show when={gate.isPresent()}>
-      <div
-        {...elementProps}
-        data-closed={gate.isExiting() ? "" : undefined}
-        ref={mergeRefs(domRef.set, props.ref?.())}
-      >
-        {props.children}
-        <Show when={props.arrow?.() !== false}>
-          <span
-            {...position.arrowProps}
-            ref={mergeRefs(arrowRef.set)}
-            data-slot="tooltip-arrow"
-            data-placement={position.placement()}
-            class={ui(arrow, arrowSide)}
-          />
-        </Show>
-      </div>
+      <Portal mount={portalContainer(target)}>
+        <div
+          {...elementProps}
+          data-closed={gate.isExiting() ? "" : undefined}
+          ref={mergeRefs(domRef.set, props.ref?.())}
+        >
+          {props.children}
+          <Show when={props.arrow?.() !== false}>
+            <span
+              {...position.arrowProps}
+              ref={mergeRefs(arrowRef.set)}
+              data-slot="tooltip-arrow"
+              data-placement={position.placement()}
+              class={ui(arrow, arrowSide)}
+            />
+          </Show>
+        </div>
+      </Portal>
     </Show>
   );
 }

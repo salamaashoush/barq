@@ -30,6 +30,7 @@ import {
   getOwner,
   type Incoming,
   isServer,
+  Portal,
   provide,
   Show,
   signal,
@@ -43,6 +44,8 @@ import type { ElementRef } from "./interactions/press.ts";
 import {
   overlayPosition,
   overlayTriggerState,
+  portalContainer,
+  usePortalTarget,
   type OverlayTriggerState,
   type OverlayTriggerStateOptions,
   type Placement,
@@ -477,6 +480,7 @@ export interface TooltipComponentProps extends StyleProps {
  * back in reads as a flicker.
  */
 export function Tooltip(props: Incoming<TooltipComponentProps>) {
+  const target = usePortalTarget();
   const domRef = makeRef<HTMLDivElement>();
   const trigger = useTooltipTrigger();
 
@@ -508,9 +512,11 @@ export function Tooltip(props: Incoming<TooltipComponentProps>) {
 
   return (
     <Show when={trigger.state.isOpen()}>
-      <div {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
-        {props.children}
-      </div>
+      <Portal mount={portalContainer(target)}>
+        <div {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
+          {props.children}
+        </div>
+      </Portal>
     </Show>
   );
 }
