@@ -8,7 +8,9 @@
   ],
   "scripts": {
     "dev": "bun run --cwd packages/kitchen-sink dev",
-    "build": "bun run --filter '*' build",
+    "build": "bun run build:packages && bun run build:apps",
+    "build:packages": "bun run --filter '*' --filter '!@barqjs/benchmark' --filter '!@barqjs/kitchen-sink' --filter '!@barqjs/site' build",
+    "build:apps": "bun run --filter '@barqjs/benchmark' --filter '@barqjs/kitchen-sink' --filter '@barqjs/site' build",
     "typecheck": "bun run --filter '*' typecheck",
     "test": "bun run --filter '*' test",
     "lint": "oxlint --type-aware packages/aria packages/core packages/css packages/server packages/start packages/router packages/primitives packages/query packages/testing packages/create-barq/src packages/create-barq/test packages/ui/src packages/ui/tools packages/site/src packages/ui-cli/src packages/ui-cli/test packages/lucide/src/icon.ts packages/lucide/src/manifest.ts packages/lucide/src/index.ts packages/lucide/src/test-setup.ts packages/lucide/src/register-dom.ts packages/lucide/src/lucide.test.tsx packages/lucide/src/tree-shaking.test.ts packages/lucide/tools",
