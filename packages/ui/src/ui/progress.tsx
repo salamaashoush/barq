@@ -11,14 +11,15 @@ const ui = layer("barq.ui");
 
 const track = ui({
   position: "relative",
-  height: "calc(var(--spacing) * 2)",
+  display: "flex",
+  height: "var(--spacing)",
   width: "100%",
-  overflow: "hidden",
+  alignItems: "center",
+  // `overflow-x`, not `overflow`: the label beside the fill is positioned
+  // outside the track and clipping both axes would take it with it.
+  overflowX: "hidden",
   borderRadius: "calc(infinity * 1px)",
-  backgroundColor: "var(--primary)",
-  "@supports (color: color-mix(in lab, red, red))": {
-    backgroundColor: "color-mix(in oklab, var(--primary) 20%, transparent)",
-  },
+  backgroundColor: "var(--muted)",
 });
 
 const bar = ui(box.transition, {

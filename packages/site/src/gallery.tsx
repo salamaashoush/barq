@@ -157,6 +157,7 @@ import {
   MessageScrollerItem,
   MessageScrollerViewport,
   NativeSelect,
+  NativeSelectOption,
   NavigationMenu,
   NavigationMenuContent,
   NavigationMenuIndicator,
@@ -658,8 +659,8 @@ export function Gallery() {
           <Input id="email" type="email" placeholder="you@example.com" />
           <Textarea aria-label="Notes" placeholder="Notes" />
           <NativeSelect aria-label="Country">
-            <option>United Kingdom</option>
-            <option>Egypt</option>
+            <NativeSelectOption>United Kingdom</NativeSelectOption>
+            <NativeSelectOption>Egypt</NativeSelectOption>
           </NativeSelect>
           <Select items={FRUITS} aria-label="Fruit" placeholder="Pick one">
             {(fruit: (typeof FRUITS)[number]) => <SelectItem>{fruit.name}</SelectItem>}

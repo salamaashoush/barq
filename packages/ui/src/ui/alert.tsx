@@ -12,26 +12,35 @@ const ui = layer("barq.ui");
 export type AlertVariant = "default" | "destructive";
 
 export const alertVariants = variants({
-  base: ui(box.border, text.sm, {
+  // A marker: the title reads `.group\/alert:has(>svg)` to know whether the
+  // grid opened an icon column it has to start after.
+  base: ui(box.border, text.sm, "group/alert", {
     position: "relative",
     display: "grid",
     width: "100%",
-    gridTemplateColumns: "0 1fr",
-    alignItems: "flex-start",
-    rowGap: "calc(var(--spacing) * 0.5)",
+    gap: "calc(var(--spacing) * 0.5)",
     borderRadius: "var(--radius)",
-    paddingInline: "calc(var(--spacing) * 4)",
-    paddingBlock: "calc(var(--spacing) * 3)",
-    ":has(> svg)": {
-      gridTemplateColumns: "calc(var(--spacing) * 4) 1fr",
-      columnGap: "calc(var(--spacing) * 3)",
+    paddingInline: "calc(var(--spacing) * 2.5)",
+    paddingBlock: "calc(var(--spacing) * 2)",
+    textAlign: "left",
+    // The action sits over the text, so the text stops short of it.
+    ':has([data-slot="alert-action"])': {
+      position: "relative",
+      paddingRight: "calc(var(--spacing) * 18)",
     },
-    "& > svg": {
-      width: "calc(var(--spacing) * 4)",
-      height: "calc(var(--spacing) * 4)",
+    ":has( > svg)": {
+      gridTemplateColumns: "auto 1fr",
+      columnGap: "calc(var(--spacing) * 2)",
+    },
+    ":is(& > *):is(svg)": {
+      gridRow: "span 2 / span 2",
       "--ui-translate-y": "calc(var(--spacing) * 0.5)",
       translate: "var(--ui-translate-x) var(--ui-translate-y)",
       color: "currentcolor",
+    },
+    ":is(& > *):is(svg:not([class*='size-']))": {
+      width: "calc(var(--spacing) * 4)",
+      height: "calc(var(--spacing) * 4)",
     },
   }),
   variants: {
@@ -49,7 +58,7 @@ export const alertVariants = variants({
             color: "color-mix(in oklab, var(--destructive) 90%, transparent)",
           },
         },
-        "& > svg": {
+        ":is(& > *):is(svg)": {
           color: "currentcolor",
         },
       }),
@@ -58,27 +67,50 @@ export const alertVariants = variants({
   defaults: { variant: "default" },
 });
 
+// The title only takes the second column when there IS one. It used to start
+// at column 2 unconditionally, which left an empty gutter in an alert with no
+// icon.
 const title = ui(text.medium, {
-  gridColumnStart: "2",
-  overflow: "hidden",
-  display: "-webkit-box",
-  "-webkit-box-orient": "vertical",
-  "-webkit-line-clamp": "1",
-  minHeight: "calc(var(--spacing) * 4)",
-  "--ui-tracking": "var(--tracking-tight)",
-  letterSpacing: "var(--tracking-tight)",
+  ":is(:where(.group\\/alert):has( > svg) *)": {
+    gridColumnStart: "2",
+  },
+  "& a": {
+    textDecorationLine: "underline",
+    textUnderlineOffset: "3px",
+  },
+  "@media (hover: hover)": {
+    "& a:hover": {
+      color: "var(--foreground)",
+    },
+  },
 });
 
 const description = ui(text.sm, {
-  gridColumnStart: "2",
-  display: "grid",
-  justifyItems: "start",
-  gap: "var(--spacing)",
+  textWrap: "balance",
   color: "var(--muted-foreground)",
-  "& p": {
-    "--ui-leading": "var(--leading-relaxed)",
-    lineHeight: "var(--leading-relaxed)",
+  "@media (width >= 48rem)": {
+    "&": {
+      textWrap: "pretty",
+    },
   },
+  "& a": {
+    textDecorationLine: "underline",
+    textUnderlineOffset: "3px",
+  },
+  "@media (hover: hover)": {
+    "& a:hover": {
+      color: "var(--foreground)",
+    },
+  },
+  "& p:not(:last-child)": {
+    marginBottom: "calc(var(--spacing) * 4)",
+  },
+});
+
+const action = ui({
+  position: "absolute",
+  top: "calc(var(--spacing) * 2)",
+  right: "calc(var(--spacing) * 2)",
 });
 
 export interface AlertProps extends UiProps {
@@ -116,4 +148,9 @@ export function AlertTitle(props: Incoming<UiProps>) {
 
 export function AlertDescription(props: Incoming<UiProps>) {
   return <div {...uiProps("alert-description", description, props)}>{props.children}</div>;
+}
+
+/** A control in the corner: dismiss, retry, the one thing the alert offers. */
+export function AlertAction(props: Incoming<UiProps>) {
+  return <div {...uiProps("alert-action", action, props)}>{props.children}</div>;
 }

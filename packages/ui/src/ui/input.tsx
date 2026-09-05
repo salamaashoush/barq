@@ -1,5 +1,5 @@
 import type { Incoming } from "@barqjs/core";
-import { firstThatWorks, layer } from "@barqjs/css";
+import { layer } from "@barqjs/css";
 import { mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
@@ -13,33 +13,30 @@ const ui = layer("barq.ui");
 
 const input = ui(
   box.border,
-  box.shadow,
   box.transition,
   box.outline,
   ring.focus,
   ring.invalid,
+  ring.invalidRing,
   when.darkInput,
   ring.invalidDark,
+  ring.invalidBorderDark,
   {
-    height: "calc(var(--spacing) * 9)",
+    height: "calc(var(--spacing) * 8)",
     width: "100%",
     minWidth: "0px",
-    borderRadius: "calc(var(--radius) * 0.8)",
+    borderRadius: "var(--radius)",
     borderColor: "var(--input)",
     backgroundColor: "transparent",
-    paddingInline: "calc(var(--spacing) * 3)",
+    paddingInline: "calc(var(--spacing) * 2.5)",
     paddingBlock: "var(--spacing)",
     fontSize: "var(--text-base)",
     lineHeight: "var(--ui-leading, var(--text-base--line-height))",
-    "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
-    transitionProperty: "color, box-shadow",
-    "::selection": {
-      backgroundColor: firstThatWorks("var(--primary)", "var(--primary)"),
-      color: firstThatWorks("var(--primary-foreground)", "var(--primary-foreground)"),
-    },
+    transitionProperty:
+      "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to",
     "::file-selector-button": {
       display: "inline-flex",
-      height: "calc(var(--spacing) * 7)",
+      height: "calc(var(--spacing) * 6)",
       borderStyle: "var(--ui-border-style)",
       borderWidth: "0px",
       backgroundColor: "transparent",
@@ -55,7 +52,11 @@ const input = ui(
     ":disabled": {
       pointerEvents: "none",
       cursor: "not-allowed",
+      backgroundColor: "var(--input)",
       opacity: "50%",
+      "@supports (color: color-mix(in lab, red, red))": {
+        backgroundColor: "color-mix(in oklab, var(--input) 50%, transparent)",
+      },
     },
     "@media (width >= 48rem)": {
       "&": {
@@ -63,43 +64,60 @@ const input = ui(
         lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
       },
     },
+    ":is(.dark *):disabled": {
+      backgroundColor: "var(--input)",
+      "@supports (color: color-mix(in lab, red, red))": {
+        backgroundColor: "color-mix(in oklab, var(--input) 80%, transparent)",
+      },
+    },
   },
 );
 
 const textarea = ui(
   box.border,
-  box.shadow,
   box.transition,
   box.outline,
   ring.focus,
   ring.invalid,
+  ring.invalidRing,
   when.darkInput,
   ring.invalidDark,
+  ring.invalidBorderDark,
   {
     display: "flex",
     fieldSizing: "content",
     minHeight: "calc(var(--spacing) * 16)",
     width: "100%",
-    borderRadius: "calc(var(--radius) * 0.8)",
+    borderRadius: "var(--radius)",
     borderColor: "var(--input)",
     backgroundColor: "transparent",
-    paddingInline: "calc(var(--spacing) * 3)",
+    paddingInline: "calc(var(--spacing) * 2.5)",
     paddingBlock: "calc(var(--spacing) * 2)",
     fontSize: "var(--text-base)",
     lineHeight: "var(--ui-leading, var(--text-base--line-height))",
-    "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
-    transitionProperty: "color, box-shadow",
+    transitionProperty:
+      "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to",
     "::placeholder": {
       color: "var(--muted-foreground)",
     },
     ":disabled": {
       cursor: "not-allowed",
+      backgroundColor: "var(--input)",
       opacity: "50%",
+      "@supports (color: color-mix(in lab, red, red))": {
+        backgroundColor: "color-mix(in oklab, var(--input) 50%, transparent)",
+      },
     },
     "@media (width >= 48rem)": {
       "&": {
         fontSize: "var(--text-sm)",
         lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+      },
+    },
+    ":is(.dark *):disabled": {
+      backgroundColor: "var(--input)",
+      "@supports (color: color-mix(in lab, red, red))": {
+        backgroundColor: "color-mix(in oklab, var(--input) 80%, transparent)",
       },
     },
   },

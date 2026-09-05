@@ -38,12 +38,38 @@ export const ring = ui.create({
     },
   },
 
+  /**
+   * `aria-invalid:ring-3` — the ring itself.
+   *
+   * Separate from `invalid`, because eight of the components that turn their
+   * border destructive draw no ring with it. Folding the shadow into `invalid`
+   * would put a ring around every one of them.
+   */
+  invalidRing: {
+    '[aria-invalid="true"]': {
+      "--ui-ring-shadow":
+        "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+      boxShadow:
+        "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+    },
+  },
+
   /** Its dark half, which is a different mix and a separate opt-in. */
   invalidDark: {
     ':is(.dark *)[aria-invalid="true"]': {
       "--ui-ring-color": "var(--destructive)",
       "@supports (color: color-mix(in lab, red, red))": {
         "--ui-ring-color": "color-mix(in oklab, var(--destructive) 40%, transparent)",
+      },
+    },
+  },
+
+  /** `dark:aria-invalid:border-destructive/50`, which `invalidDark` is not. */
+  invalidBorderDark: {
+    ':is(.dark *)[aria-invalid="true"]': {
+      borderColor: "var(--destructive)",
+      "@supports (color: color-mix(in lab, red, red))": {
+        borderColor: "color-mix(in oklab, var(--destructive) 50%, transparent)",
       },
     },
   },

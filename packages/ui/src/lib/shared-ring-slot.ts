@@ -37,11 +37,31 @@ export const ringSlot = ui.create({
     },
   },
 
+  /** `aria-invalid:ring-3`, as `ring.invalidRing` is for the platform's own. */
+  invalidRing: {
+    "[data-invalid]": {
+      "--ui-ring-shadow":
+        "var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+      boxShadow:
+        "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
+    },
+  },
+
   invalidDark: {
     ":is(.dark *)[data-invalid]": {
       "--ui-ring-color": "var(--destructive)",
       "@supports (color: color-mix(in lab, red, red))": {
         "--ui-ring-color": "color-mix(in oklab, var(--destructive) 40%, transparent)",
+      },
+    },
+  },
+
+  /** `dark:aria-invalid:border-destructive/50`, which `invalidDark` is not. */
+  invalidBorderDark: {
+    ":is(.dark *)[data-invalid]": {
+      borderColor: "var(--destructive)",
+      "@supports (color: color-mix(in lab, red, red))": {
+        borderColor: "color-mix(in oklab, var(--destructive) 50%, transparent)",
       },
     },
   },

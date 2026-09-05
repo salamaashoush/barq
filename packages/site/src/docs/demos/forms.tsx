@@ -38,6 +38,7 @@ import {
   InputOTPSlot,
   Label,
   NativeSelect,
+  NativeSelectOption,
   RadioGroup,
   RadioGroupItem,
   Select,
@@ -227,9 +228,9 @@ export function SelectGrouped() {
 export function NativeSelectDemo() {
   return (
     <NativeSelect aria-label="Country">
-      <option>United Kingdom</option>
-      <option>Egypt</option>
-      <option>Germany</option>
+      <NativeSelectOption>United Kingdom</NativeSelectOption>
+      <NativeSelectOption>Egypt</NativeSelectOption>
+      <NativeSelectOption>Germany</NativeSelectOption>
     </NativeSelect>
   );
 }

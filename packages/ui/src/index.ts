@@ -77,6 +77,7 @@ export {
 } from "./ui/alert-dialog.tsx";
 export {
   Alert,
+  AlertAction,
   AlertDescription,
   type AlertProps,
   AlertTitle,
@@ -459,7 +460,15 @@ export {
   MessageHeader,
   type MessageProps,
 } from "./ui/message.tsx";
-export { NativeSelect, type NativeSelectProps } from "./ui/native-select.tsx";
+export {
+  NativeSelect,
+  NativeSelectOptGroup,
+  type NativeSelectOptGroupProps,
+  NativeSelectOption,
+  type NativeSelectOptionProps,
+  type NativeSelectProps,
+  type NativeSelectSize,
+} from "./ui/native-select.tsx";
 export {
   NavigationMenu,
   NavigationMenuContent,

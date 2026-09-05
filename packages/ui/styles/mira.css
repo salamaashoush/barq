@@ -274,6 +274,12 @@
       }
     }
 
+    [data-slot="alert-action"] {
+      position: absolute;
+      top: calc(var(--spacing) * 1.5);
+      right: calc(var(--spacing) * 2);
+    }
+
     [data-slot="avatar"] {
       width: calc(var(--spacing) * 8);
       height: calc(var(--spacing) * 8);
@@ -3584,7 +3590,7 @@
       }
     }
 
-    [data-slot="native-select"][data-variant="icon"] {
+    [data-slot="native-select-icon"] {
       top: calc(1 / 2 * 100%);
       right: calc(var(--spacing) * 1.5);
       width: calc(var(--spacing) * 3.5);

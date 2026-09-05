@@ -1384,10 +1384,10 @@ export const COMPONENTS: readonly ComponentDoc[] = [
     title: "Native Select",
     description: "A styled native HTML select element with consistent design system integration.",
     usage: [
-      importLine("NativeSelect", "native-select"),
+      importLine("NativeSelect, NativeSelectOption", "native-select"),
       "",
       '<NativeSelect aria-label="Country">',
-      "  <option>United Kingdom</option>",
+      "  <NativeSelectOption>United Kingdom</NativeSelectOption>",
       "</NativeSelect>",
     ].join("\n"),
     demos: [

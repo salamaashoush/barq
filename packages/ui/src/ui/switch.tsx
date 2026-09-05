@@ -11,26 +11,46 @@ const ui = layer("barq.ui");
 
 const track = ui(
   box.border,
-  box.shadow,
   box.transition,
   box.outline,
   ringSlot.focus,
+  ringSlot.invalid,
+  ringSlot.invalidRing,
+  ringSlot.invalidDark,
+  ringSlot.invalidBorderDark,
   when.disabledCursor,
+  // `peer` for a label beside it, `group/switch` for the thumb inside it.
+  "peer group/switch",
   {
+    position: "relative",
     display: "inline-flex",
     flexShrink: "0",
     alignItems: "center",
     borderRadius: "calc(infinity * 1px)",
     borderColor: "transparent",
-    "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
     transitionProperty: "all",
+    // A 32x18 track is under the 24px minimum a pointer target wants, so the
+    // press area is grown past the paint with a pseudo-element.
+    "::after": {
+      content: "var(--ui-content)",
+      position: "absolute",
+      insetInline: "calc(var(--spacing) * -3)",
+      insetBlock: "calc(var(--spacing) * -2)",
+    },
+    // A field label draws the focus ring around the whole row, so the switch
+    // inside it draws none of its own.
+    ":is(:where(.group\\/field-label):has(:focus-visible) *)": {
+      borderColor: "transparent",
+      "--ui-ring-shadow":
+        "var(--ui-ring-inset,) 0 0 0 calc(0px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+    },
     '[data-size="default"]': {
-      height: "1.15rem",
-      width: "calc(var(--spacing) * 8)",
+      height: "18.4px",
+      width: "32px",
     },
     '[data-size="sm"]': {
-      height: "calc(var(--spacing) * 3.5)",
-      width: "calc(var(--spacing) * 6)",
+      height: "14px",
+      width: "24px",
     },
     "[data-selected]": {
       backgroundColor: "var(--primary)",

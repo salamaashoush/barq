@@ -132,6 +132,12 @@
       }
     }
 
+    [data-slot="alert-action"] {
+      position: absolute;
+      top: calc(calc(var(--spacing) * 1.25));
+      right: calc(calc(var(--spacing) * 1.25));
+    }
+
     [data-slot="alert-dialog-overlay"] {
       background-color: color-mix(in srgb, #000 10%, transparent);
       @supports (color: color-mix(in lab, red, red)) {
@@ -3500,7 +3506,7 @@
       }
     }
 
-    [data-slot="native-select"][data-variant="icon"] {
+    [data-slot="native-select-icon"] {
       top: calc(1 / 2 * 100%);
       right: calc(var(--spacing) * 2.5);
       width: calc(var(--spacing) * 4);

@@ -20,7 +20,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "./empty.tsx";
-import { NativeSelect } from "./native-select.tsx";
+import { NativeSelect, NativeSelectOption } from "./native-select.tsx";
 import {
   Pagination,
   PaginationContent,
@@ -157,16 +157,37 @@ describe("Empty", () => {
 });
 
 describe("NativeSelect", () => {
-  test("is a real select, and the chevron is a background image", () => {
+  // The chevron used to be a `background-image` on the select. It is an
+  // element beside it now, which is what lets it take the theme's colour and
+  // the size the styles ask for; `appearance: none` is what keeps the
+  // platform's own arrow from appearing next to it.
+  test("is a real select, with the chevron beside it", () => {
     render(() => (
       <NativeSelect aria-label="Fruit" name="fruit">
-        <option value="apple">Apple</option>
+        <NativeSelectOption value="apple">Apple</NativeSelectOption>
       </NativeSelect>
     ));
     const control = screen.getByRole("combobox") as HTMLSelectElement;
     expect(control.tagName.toLowerCase()).toBe("select");
     expect(control.name).toBe("fruit");
-    expect(rulesFor(control.className)).toContain("background-image");
+    expect(rulesFor(control.className)).toContain("appearance: none");
+
+    const chevron = document.querySelector('[data-slot="native-select-icon"]');
+    expect(chevron).toBeTruthy();
+    expect(chevron?.getAttribute("aria-hidden")).toBe("true");
+    expect(document.querySelector('[data-slot="native-select-wrapper"]')).toBeTruthy();
+  });
+
+  test("the size reaches both the wrapper and the control", () => {
+    render(() => (
+      <NativeSelect aria-label="Fruit" size="sm">
+        <NativeSelectOption value="apple">Apple</NativeSelectOption>
+      </NativeSelect>
+    ));
+    expect(
+      document.querySelector('[data-slot="native-select-wrapper"]')?.getAttribute("data-size"),
+    ).toBe("sm");
+    expect(screen.getByRole("combobox").getAttribute("data-size")).toBe("sm");
   });
 });
 

@@ -157,6 +157,21 @@ export function uiProps(
   return build(slot, className, props, EXTRA);
 }
 
+/**
+ * The props minus the ones the component reads itself.
+ *
+ * A design-system prop whose name is ALSO a real attribute cannot be filtered
+ * by the allow-list: `size` on `<NativeSelect>` means `"sm"` and `size` on a
+ * `<select>` means how many rows to show, so `CONTROL` lets it through and the
+ * control rendered as a listbox. shadcn hits the same collision and writes
+ * `Omit<ComponentProps<"select">, "size">`; this is that, at runtime.
+ */
+export function omit<T extends object>(props: T, names: readonly string[]): T {
+  const out = { ...props } as Record<string, unknown>;
+  for (const name of names) delete out[name];
+  return out as T;
+}
+
 /** {@link uiProps} for an `<input>`, `<textarea>` or `<select>`. */
 export function controlProps(
   slot: string,
