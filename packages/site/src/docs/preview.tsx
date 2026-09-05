@@ -102,8 +102,11 @@ const pre = css`
   overflow: auto;
   padding: calc(var(--spacing) * 4);
   font-family: var(--font-mono);
-  font-size: 0.8125rem;
-  line-height: 1.6;
+  /* 14px on a 1.75 leading, measured off their card page: the panel was a
+     size smaller and a third tighter, which is the loudest thing on a docs
+     page that is mostly code. */
+  font-size: 0.875rem;
+  line-height: 1.75;
   tab-size: 2;
   white-space: pre;
 `;

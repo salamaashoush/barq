@@ -31,7 +31,6 @@ const figure = css`
   border-radius: var(--radius-2xl);
   background-color: var(--code);
   color: var(--code-foreground);
-  font-size: 0.875rem;
 `;
 
 const body = css`
@@ -39,8 +38,11 @@ const body = css`
   overflow-x: auto;
   padding: calc(var(--spacing) * 4);
   font-family: var(--font-mono);
-  font-size: 0.8125rem;
-  line-height: 1.6;
+  /* 14px on a 1.75 leading, measured off their card page: the panel was a
+     size smaller and a third tighter, which is the loudest thing on a docs
+     page that is mostly code. */
+  font-size: 0.875rem;
+  line-height: 1.75;
   tab-size: 2;
   white-space: pre;
   background-color: transparent;
@@ -112,7 +114,7 @@ const tab = css`
   background: transparent;
   padding: calc(var(--spacing) * 2.5) calc(var(--spacing) * 2);
   font-family: var(--font-mono);
-  font-size: 0.8125rem;
+  font-size: 0.875rem;
   color: var(--muted-foreground);
   cursor: pointer;
   border-bottom: 1px solid transparent;
