@@ -109,7 +109,14 @@ const container = ui({
   insetBlock: "0px",
   zIndex: "10",
   display: "none",
-  height: "100svh",
+  // NOT `h-svh`, which is upstream's. `inset-block: 0` already says "as tall as
+  // my containing block", and for a fixed element with no contained ancestor
+  // that IS the viewport — so the two agree wherever `h-svh` was right, and
+  // only disagree where it was wrong. Inside anything establishing a containing
+  // block for fixed descendants (`contain: layout`, a `transform`, a container),
+  // a viewport unit is the one thing containment cannot redirect: the sidebar
+  // came out a window tall inside a shorter panel with its footer below the
+  // fold. Recorded in `ALLOWED`.
   width: "var(--sidebar-width)",
   transitionProperty: "left,right,width",
   transitionTimingFunction: firstThatWorks(

@@ -27,6 +27,13 @@ import { createBuilder, parse, translate, type CssNode } from "./css.ts";
 const ALLOWED: Record<string, string> = {
   "wave6:slider-track:overflow":
     "the thumb is a CHILD of the track here, so `overflow: hidden` clipped it",
+  "sidebar:sidebar-container:height":
+    "`inset-block: 0` already says as tall as my containing block, and for a " +
+    "fixed element with no contained ancestor that IS the viewport — so the " +
+    "two agree wherever `h-svh` was right. Inside anything establishing a " +
+    "containing block for fixed descendants, a viewport unit is the one thing " +
+    "containment cannot redirect, and the sidebar came out a window tall in a " +
+    "shorter panel with its footer below the fold",
   "message-scroller:message-scroller-button:transition-duration":
     "`transition-[…]` and `duration-200` set the SAME property, and an atom " +
     "is one declaration: the literal wins and the `var()` form it replaces " +
