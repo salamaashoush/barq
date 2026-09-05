@@ -87,35 +87,39 @@ const tiers = new Map<string, number>();
  * debugging.
  */
 /**
- * Where a rule registered DURING a render goes, when a host installs one.
+ * Where a rule registered DURING a render is ALSO recorded, when a host asks.
  *
- * A server process imports the application once and serves forever, so a
- * module-scope rule belongs to every request and a rule a component body
- * registers belongs to one. Without the split they went to the same map and
- * `/about` inlined the rules a request for `/css` had produced — bounded, since
- * a block is content-hashed and registers once, but bytes no page on that route
- * can use.
+ * The server serialises `<head>` before it renders the body, so a rule the
+ * render itself produces reaches the head too late. The sink is how the host
+ * learns which rules those were, and it emits them at the end of the body.
  *
  * A FUNCTION rather than a map, because the host is what knows which request is
  * current: `@barqjs/start` reads its `AsyncLocalStorage`, so two requests in
- * flight at once cannot take each other's rules. No sink means no host has
- * asked — a browser, or a server before its first request — and everything goes
- * to the one sheet.
+ * flight at once cannot take each other's rules.
+ *
+ * IT IS A COPY, NOT A MOVE, and that is the whole correction. The sink used to
+ * take the rule INSTEAD of the shared sheet, on the reasoning that a rule a
+ * component body registers belongs to one request. A module's own rules are
+ * registered when the module is first IMPORTED, and a lazily routed module is
+ * imported inside whichever request happened to reach it first — so its rules
+ * went into that one response and no other. Measured on the dev server against
+ * `/charts/area`: the first request carried six `css` blocks in its late sheet
+ * and every request after it carried none, and the page arrived with no rules
+ * for its own layout at all. The cost of the copy is bytes a later page cannot
+ * use; the cost of the move was a page with no styles.
  */
 let sink: ((key: string, rules: string) => boolean) | null = null;
 
-/**
- * The sink RETURNS whether it took the rule, so there is one fallback and not
- * two: outside a request there is nothing to attribute a rule to, the sink says
- * so, and the rule lands in the sheet every request reads.
- */
+/** The sink's return value is unused: a rule reaches the sheet either way. */
 export function setCssSink(next: ((key: string, rules: string) => boolean) | null): void {
   sink = next;
 }
 
 export function register(key: string, rules: string, tier = 0): string {
-  if (sink?.(key, rules) === true) return key;
+  // Only what the shared sheet did NOT already have, so a rule the head was
+  // serialised with is not emitted a second time at the end of the body.
   if (registered.get(key) === rules) return key;
+  sink?.(key, rules);
   registered.set(key, rules);
   if (tier !== 0) tiers.set(key, tier);
   paint();

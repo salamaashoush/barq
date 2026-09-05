@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { collectCss, css, globalCss, keyframes, registerCss } from "./index.ts";
+import { collectCss, css, globalCss, keyframes, registerCss, setCssSink } from "./index.ts";
 
 /** The rules a block registered, without its class name in the way. */
 function rulesFor(name: string): string {
@@ -240,5 +240,36 @@ describe("registerCss", () => {
     const sheet = collectCss();
     expect(sheet).toContain(".bcompiled{color:red}");
     expect(sheet).toContain(`.${runtime}{color: papayawhip}`);
+  });
+
+  // A sink is how a server learns which rules its render produced AFTER it
+  // serialised `<head>`. It used to TAKE them, and a module imported lazily
+  // inside a request registers its own rules there — so they reached that one
+  // response and no other, and every later request served the page with no
+  // rules for its own layout. Measured on the dev server against
+  // `/charts/area`: six blocks in the first response's late sheet, none after.
+  test("a rule the sink records still reaches the sheet every request reads", () => {
+    const taken: string[] = [];
+    setCssSink((key, rules) => {
+      taken.push(`${key} ${rules}`);
+      return true;
+    });
+    registerCss("/a/lazy.tsx", ".blazy{color:blue}");
+    setCssSink(null);
+
+    expect(taken).toEqual(["/a/lazy.tsx .blazy{color:blue}"]);
+    expect(collectCss()).toContain(".blazy{color:blue}");
+  });
+
+  test("a rule the sheet already holds is not offered to the sink again", () => {
+    registerCss("/a/known.tsx", ".bknown{color:teal}");
+    const taken: string[] = [];
+    setCssSink((key) => {
+      taken.push(key);
+      return true;
+    });
+    registerCss("/a/known.tsx", ".bknown{color:teal}");
+    setCssSink(null);
+    expect(taken).toEqual([]);
   });
 });
