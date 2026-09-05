@@ -67,6 +67,7 @@ import {
   ToggleGroup,
   ToggleGroupItem,
 } from "@barqjs/ui";
+import { blockFillsPreview } from "../layout.ts";
 import { ChartBar } from "@barqjs/lucide/icons/chart-bar";
 import { ChevronLeft } from "@barqjs/lucide/icons/chevron-left";
 import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
@@ -481,7 +482,7 @@ export function Dashboard01() {
   };
 
   return (
-    <SidebarProvider>
+    <SidebarProvider class={blockFillsPreview}>
       <Sidebar variant="inset" collapsible="icon">
         <SidebarHeader>
           <SidebarMenu>

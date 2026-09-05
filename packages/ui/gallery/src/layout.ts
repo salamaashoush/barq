@@ -62,3 +62,21 @@ export const truncated = ui({
   textOverflow: "ellipsis",
   whiteSpace: "nowrap",
 });
+
+/**
+ * A full-page block, filling the preview rather than the window.
+ *
+ * shadcn's page-level blocks are `min-h-svh`, and inside their `<iframe>` that
+ * IS the preview: the frame's viewport is its box. Rendered in place, `svh`
+ * still means the window, so a sidebar came out 951px tall in a 921px preview
+ * and its footer sat 30px below the fold.
+ *
+ * A viewport UNIT is the one thing containment cannot redirect — `contain:
+ * layout` fixes where a fixed element resolves, and a container query fixes
+ * what a media query measures, but `svh` is a length and always means the
+ * window. So the block is told its height instead.
+ */
+export const blockFillsPreview = ui({
+  minHeight: "100%",
+  height: "100%",
+});
