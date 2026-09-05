@@ -235,7 +235,7 @@ export interface Design {
  * the SITE loads them too now and two `loaded` sets would fetch each sheet
  * twice.
  */
-const SHEETS = import.meta.glob("../../styles/*.css");
+const SHEETS = import.meta.glob("../../ui/styles/*.css");
 const LOADED = new Set<string>();
 
 /** `style-<name>` on one element, and every other style's class off it. */
@@ -261,7 +261,7 @@ export function wearStyleOn(element: HTMLElement | null, name: string, still: ()
     markStyle(element, name);
     return;
   }
-  const load = SHEETS[`../../styles/${name}.css`];
+  const load = SHEETS[`../../ui/styles/${name}.css`];
   if (load === undefined) return;
   void load().then(() => {
     LOADED.add(name);

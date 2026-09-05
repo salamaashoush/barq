@@ -144,7 +144,7 @@ jobs:
       # graph — a missing export condition, a style that reaches no element, a
       # module the bundler cannot resolve.
       - name: Component gallery — build
-        run: bun run --cwd packages/ui gallery:build
+        run: bun run --cwd packages/site build
 
   build:
     name: Build

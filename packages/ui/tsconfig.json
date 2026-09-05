@@ -19,6 +19,6 @@
       "@barqjs/ui/*": ["./src/*"]
     }
   },
-  "include": ["src/**/*", "tools/**/*", "types/**/*", "gallery/**/*"],
+  "include": ["src/**/*", "tools/**/*", "types/**/*"],
   "exclude": ["node_modules", "dist"]
 }

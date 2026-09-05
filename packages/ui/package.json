@@ -412,8 +412,6 @@
     "exports": "bun run tools/exports.ts",
     "registry": "bun run tools/registry.ts",
     "verify": "bun --preload ./src/test-setup.ts tools/verify.ts",
-    "gallery": "vite --config gallery/vite.config.ts",
-    "gallery:build": "vite build --config gallery/vite.config.ts",
     "prepublishOnly": "bun run registry",
     "styles": "bun run tools/styles.ts"
   },

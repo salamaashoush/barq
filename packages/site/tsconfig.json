@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "@barqjs/core",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "types": ["@types/bun"],
+    "allowImportingTsExtensions": true,
+    "exactOptionalPropertyTypes": false,
+    "noUncheckedIndexedAccess": true,
+    "paths": {
+      "@barqjs/ui": ["../ui/src/index.ts"],
+      "@barqjs/ui/*": ["../ui/src/*"]
+    }
+  },
+  "include": ["src/**/*", "types/**/*", "vite.config.ts"],
+  "exclude": ["node_modules", "dist"]
+}
