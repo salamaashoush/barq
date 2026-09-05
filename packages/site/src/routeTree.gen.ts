@@ -34,21 +34,14 @@ export const routeTree: AnyRouteDefinition[] = [
     path: "/",
     src: "/src/routes/__root.tsx",
     children: [
-      { ...IndexRoute.options, id: "/", path: "", src: "/src/routes/index.tsx", prerender: true },
+      { ...IndexRoute.options, id: "/", path: "", src: "/src/routes/index.tsx" },
       {
         ...BlocksIndexRoute.options,
         id: "/blocks/",
         path: "blocks",
         src: "/src/routes/blocks.index.tsx",
-        prerender: true,
       },
-      {
-        ...ColorsRoute.options,
-        id: "/colors",
-        path: "colors",
-        src: "/src/routes/colors.tsx",
-        prerender: true,
-      },
+      { ...ColorsRoute.options, id: "/colors", path: "colors", src: "/src/routes/colors.tsx" },
       { ...CreateRoute.options, id: "/create", path: "create", src: "/src/routes/create.tsx" },
       {
         ...BlocksNameRoute.options,
@@ -67,7 +60,6 @@ export const routeTree: AnyRouteDefinition[] = [
         id: "/docs/components",
         path: "docs/components",
         src: "/src/routes/docs.components.tsx",
-        prerender: true,
       },
     ],
   },

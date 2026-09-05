@@ -1709,7 +1709,6 @@ function PreviewPortal(props: Incoming<{ target: () => Element | null; children?
   return <>{props.children}</>;
 }
 
-
 /**
  * Every section the gallery renders, as the rail's contents.
  *

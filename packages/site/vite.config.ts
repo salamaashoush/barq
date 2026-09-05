@@ -51,10 +51,6 @@ export default defineConfig({
         // empty and every `<Link to>` is reported as matching no route.
         routes: () => routes,
       },
-      // `/` is the seed; everything else is found by crawling the links each
-      // rendered page produced, and kept only where the route declares
-      // `prerender`.
-      prerender: { routes: ["/"] },
       verify: { reachability: () => reachability },
     }),
   ],
