@@ -96,6 +96,16 @@ export const RADII: readonly Option[] = [
  * last.
  */
 export const FONTS: readonly Option[] = [
+  /**
+   * The site's own face, and upstream's: `next/font/google`'s `Geist`.
+   *
+   * The only family here that is fetched rather than assumed, and it is
+   * BUNDLED — `@fontsource-variable/geist` ships the woff2 beside the code, so
+   * it works with no network and cannot half-load. That is the objection the
+   * rest of this list was written against, and it does not apply to a file the
+   * build already has.
+   */
+  { value: "geist", label: "Geist", group: "sans", css: '"Geist Variable", sans-serif' },
   { value: "system", label: "System", group: "sans", css: undefined },
   {
     value: "humanist",
@@ -154,6 +164,12 @@ export const HEADING_FONTS: readonly Option[] = [
 ];
 
 export const MONO: readonly Option[] = [
+  {
+    value: "geist-mono",
+    label: "Geist Mono",
+    group: "mono",
+    css: '"Geist Mono Variable", monospace',
+  },
   { value: "system", label: "System", group: "mono", css: undefined },
   {
     value: "menlo",

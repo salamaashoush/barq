@@ -1,105 +1,108 @@
-import { For } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { ArrowRight } from "@barqjs/lucide/icons/arrow-right";
 import { Link } from "@barqjs/router";
-import {
-  Avatar,
-  AvatarFallback,
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-  Checkbox,
-  Input,
-  Label,
-  Progress,
-  Separator,
-  Slider,
-  Switch,
-} from "@barqjs/ui";
+import { Badge, Button } from "@barqjs/ui";
 
-import { STYLES } from "./options.ts";
-import { container } from "./site.tsx";
+import { Showcase } from "./showcase.tsx";
+import { wearStyleOn } from "./params.ts";
+import { container, wrapper } from "./site.tsx";
 
 /**
- * The hero, which is a page-wide band rather than a column.
+ * The front page, which is app/(app)/(root)/page.tsx and its PageHeader.
  *
- * A component library's front door has one job: show that the components are
- * real and that they change with the theme. So the type is on the left and
- * live components are on the right — not a screenshot of them, the same
- * elements every other page uses, wearing whatever style the URL asks for.
+ * Every number here is measured off that page rather than chosen: a centred
+ * column at container flex flex-col items-center gap-2 px-6 py-8 text-center
+ * md:py-16 lg:py-20 xl:gap-4, with the page's own md:pb-8 lg:pb-12 on top of
+ * it. The words are ours; the layout is theirs, and the whole point of the
+ * exercise is that the second sentence stays true.
  */
-const hero = css`
-  display: grid;
-  gap: calc(var(--spacing) * 12);
-  align-items: center;
-  padding-block: calc(var(--spacing) * 16) calc(var(--spacing) * 12);
+const header = css`
+  border-color: var(--border);
 
-  @media (width >= 64rem) {
-    grid-template-columns: minmax(0, 1fr) minmax(0, 26rem);
-    padding-block: calc(var(--spacing) * 24) calc(var(--spacing) * 16);
+  @supports (color: color-mix(in lab, red, red)) {
+    border-color: color-mix(in oklab, var(--border) 50%, transparent);
   }
 `;
 
-const pitch = css`
-  display: grid;
-  gap: 1.5rem;
-  justify-items: start;
-`;
-
-const eyebrow = css`
-  display: inline-flex;
+const headerInner = css`
+  display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 0.5rem;
-  font-size: 0.8125rem;
-  color: var(--muted-foreground);
-`;
+  gap: calc(var(--spacing) * 2);
+  padding-inline: calc(var(--spacing) * 6);
+  padding-block: calc(var(--spacing) * 8);
+  text-align: center;
 
-const title = css`
-  margin: 0;
-  font-size: clamp(2.5rem, 6vw, 4.25rem);
-  line-height: 1.02;
-  letter-spacing: -0.04em;
-  font-weight: 600;
-  text-wrap: balance;
+  @media (width >= 48rem) {
+    padding-block: calc(var(--spacing) * 16) calc(var(--spacing) * 8);
+  }
+
+  @media (width >= 64rem) {
+    padding-block: calc(var(--spacing) * 20) calc(var(--spacing) * 12);
+  }
+
+  @media (width >= 80rem) {
+    gap: calc(var(--spacing) * 4);
+  }
 `;
 
 /**
- * The one flourish on the page.
+ * leading-tighter max-w-4xl text-3xl font-semibold tracking-tight text-balance
+ * text-primary lg:leading-[1.1] xl:text-5xl xl:tracking-tighter.
  *
- * `background-clip: text` over a gradient built from the THEME's own ramp, so
- * the accent on the front door is the accent the customizer is setting rather
- * than a colour picked here and left behind when the theme changes.
+ * text-3xl carries its own line-height: 2.25rem, which is why the ratio
+ * only shows above lg: 30px over 36px is the size's default, and 1.1 takes
+ * over at 1024 and again at the 48px the heading grows to at 1280.
  */
-const accent = css`
-  background-image: linear-gradient(
-    100deg,
-    var(--chart-1) 0%,
-    var(--chart-3) 45%,
-    var(--chart-5) 100%
-  );
-  background-clip: text;
-  color: transparent;
-`;
-
-const lede = css`
+const heading = css`
   margin: 0;
-  font-size: 1.125rem;
-  line-height: 1.6;
-  color: var(--muted-foreground);
-  max-width: 34rem;
-  text-wrap: pretty;
+  max-width: 56rem;
+  font-size: 1.875rem;
+  line-height: 2.25rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+  color: var(--primary);
+
+  @media (width >= 64rem) {
+    line-height: 1.1;
+  }
+
+  @media (width >= 80rem) {
+    font-size: 3rem;
+    letter-spacing: -0.05em;
+  }
 `;
 
-const row = css`
+/** max-w-4xl text-base text-balance text-foreground sm:text-lg. */
+const description = css`
+  margin: 0;
+  max-width: 56rem;
+  font-size: 1rem;
+  line-height: 1.5rem;
+  text-wrap: balance;
+  color: var(--foreground);
+
+  @media (width >= 40rem) {
+    font-size: 1.125rem;
+    line-height: 1.75rem;
+  }
+`;
+
+/** flex w-full items-center justify-center gap-2 pt-2. */
+const actions = css`
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
+  width: 100%;
   align-items: center;
+  justify-content: center;
+  gap: calc(var(--spacing) * 2);
+  padding-top: calc(var(--spacing) * 2);
+
+  /* **:data-[slot=button]:shadow-none — the hero's buttons sit on a flat
+     surface, so the elevation every other button carries reads as a mistake. */
+  & [data-slot="button"] {
+    box-shadow: none;
+  }
 `;
 
 const plain = css`
@@ -107,306 +110,169 @@ const plain = css`
   color: inherit;
 `;
 
-const figures = css`
+/**
+ * The panel under the hero: CardsDemo.
+ *
+ * bg-muted p-12 pb-0! [--gap:--spacing(8)] lg:p-6 lg:[--gap:--spacing(6)],
+ * with the two gradients that fade the cards into the page at both ends. The
+ * cards are behind them and keep going, which is what makes the page read as a
+ * window onto a much larger application rather than a list that stops.
+ *
+ * container-name: preview because the cards inside size themselves against
+ * their container rather than the window — they are the same components the
+ * designer's preview renders, and a card that reflows with the viewport would
+ * lay out differently in the two places that show it.
+ */
+const demo = css`
+  --gap: calc(var(--spacing) * 8);
+
+  position: relative;
   display: flex;
-  flex-wrap: wrap;
-  gap: 2rem;
-  padding-top: 0.5rem;
-`;
+  width: 100%;
+  max-width: none;
+  flex-direction: column;
+  gap: var(--gap);
+  overflow: hidden;
+  background-color: var(--muted);
+  padding: calc(var(--spacing) * 12) calc(var(--spacing) * 12) 0;
 
-const figure = css`
-  display: grid;
-  gap: 0.125rem;
-`;
+  container-type: inline-size;
+  container-name: preview;
 
-const figureValue = css`
-  font-size: 1.5rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  font-variant-numeric: tabular-nums;
-`;
-
-const figureLabel = css`
-  font-size: 0.8125rem;
-  color: var(--muted-foreground);
-`;
-
-/** The live panel: real controls, stacked, so the theme is visible at a glance. */
-const specimen = css`
-  display: grid;
-  gap: 1rem;
-`;
-
-const field = css`
-  display: grid;
-  gap: 0.5rem;
-`;
-
-const between = css`
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-`;
-
-const people = css`
-  display: flex;
-
-  & > * + * {
-    margin-left: -0.5rem;
+  @media (width >= 64rem) {
+    --gap: calc(var(--spacing) * 6);
+    padding: calc(var(--spacing) * 6) calc(var(--spacing) * 6) 0;
   }
-`;
-
-const section = css`
-  padding-bottom: calc(var(--spacing) * 16);
-  display: grid;
-  gap: calc(var(--spacing) * 5);
-`;
-
-const sectionHead = css`
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 1rem;
-  flex-wrap: wrap;
-`;
-
-const sectionTitle = css`
-  margin: 0;
-  font-size: 1.25rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-`;
-
-const sectionNote = css`
-  margin: 0;
-  color: var(--muted-foreground);
-  font-size: 0.875rem;
 `;
 
 const cards = css`
-  display: grid;
-  gap: 1rem;
-  grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
+  position: relative;
+  z-index: 10;
+  margin-inline: auto;
+  width: 100%;
 `;
 
-const cardLink = css`
-  text-decoration: none;
-  color: inherit;
-  display: block;
-  transition: transform 120ms ease;
+/** absolute inset-x-0 top-0 z-1 h-120 bg-linear-to-b from-background via-muted to-transparent. */
+const fadeTop = css`
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  z-index: 1;
+  height: 30rem;
+  background-image: linear-gradient(to bottom, var(--background), var(--muted), transparent);
 
-  &:hover {
-    transform: translateY(-2px);
-  }
-
-  &:focus-visible {
-    outline: 2px solid var(--ring);
-    outline-offset: 4px;
-    border-radius: calc(var(--radius) + 4px);
+  .dark & {
+    display: none;
   }
 `;
 
-const styleGrid = css`
-  display: grid;
-  gap: 0.75rem;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-`;
+/** absolute inset-x-0 bottom-0 z-20 h-48 bg-linear-to-t … lg:h-80 xl:h-64. */
+const fadeBottom = css`
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  z-index: 20;
+  height: 12rem;
+  background-image: linear-gradient(to top, var(--background), var(--muted), transparent);
 
-const styleCard = css`
-  display: grid;
-  gap: 0.25rem;
-  padding: 0.875rem 1rem;
-  border: 1px solid var(--border);
-  border-radius: calc(var(--radius) + 4px);
-  background-color: var(--card);
-  text-decoration: none;
-  color: inherit;
+  @media (width >= 64rem) {
+    height: 20rem;
+  }
 
-  &:hover {
-    background-color: var(--accent);
+  @media (width >= 80rem) {
+    height: 16rem;
   }
 `;
 
-const styleName = css`
-  font-weight: 500;
-  font-size: 0.9375rem;
+/** container-wrapper flex-1 p-0 over container overflow-hidden md:px-0 lg:max-w-none. */
+const belowFold = css`
+  flex: 1;
+  padding: 0;
 `;
 
-const styleNote = css`
-  font-size: 0.8125rem;
-  color: var(--muted-foreground);
+const belowFoldInner = css`
+  overflow: hidden;
+
+  @media (width >= 48rem) {
+    padding-inline: 0;
+  }
+
+  @media (width >= 64rem) {
+    max-width: none;
+  }
 `;
 
-const FIGURES = [
-  { value: "60", label: "components" },
-  { value: "8", label: "styles" },
-  { value: "3,611", label: "declarations verified" },
-  { value: "0", label: "runtime CSS-in-JS" },
-];
+const hideBelowMd = css`
+  display: none;
 
-const DESTINATIONS = [
-  {
-    to: "/docs/components",
-    title: "Components",
-    body: "Every component on one page, in every state a style can select on.",
-  },
-  {
-    to: "/blocks",
-    title: "Blocks",
-    body: "Whole pages — a dashboard, a sidebar, a login — each at its own address.",
-  },
-  {
-    to: "/charts/area",
-    title: "Charts",
-    body: "Area, bar, line, pie, radar and radial, on TanStack Charts.",
-  },
-  {
-    to: "/colors",
-    title: "Colors",
-    body: "Every token, resolved against the theme the page is actually wearing.",
-  },
-];
+  @media (width >= 48rem) {
+    display: block;
+  }
+`;
+
+/**
+ * The panel wears style `rhea`, because upstream's does.
+ *
+ * Their cards import from `@/styles/base-rhea/ui/*` while the chrome around
+ * them imports the plain registry, so the front page is the one place their
+ * site shows a style at all — a 24px card corner against the registry's 14px,
+ * which is exactly the difference a reader is meant to notice.
+ *
+ * Scoped to the panel rather than the document for the same reason the
+ * designer scopes its own: a style on `<html>` restyles the chrome that is
+ * supposed to stay fixed.
+ */
+function wearDemoStyle(element: HTMLElement | null): void {
+  wearStyleOn(element, "rhea", () => true);
+}
 
 export function Home() {
   return (
-    <div class={container}>
-      <section class={hero}>
-        <div class={pitch}>
-          <span class={eyebrow}>
-            <Badge variant="secondary">Alpha</Badge>
-            shadcn/ui, ported to barq
-          </span>
-          <h1 class={title}>
-            The components you know,
-            <br />
-            <span class={accent}>compiled away</span>.
-          </h1>
-          <p class={lede}>
-            Every rule is transcribed from upstream&rsquo;s own class lists, so the look is
-            shadcn&rsquo;s rather than an approximation of it. The reactivity is compiled, the
-            styles are static, and nothing ships a runtime style engine.
-          </p>
-          <div class={row}>
-            <Link to="/create" class={plain}>
-              <Button size="lg">
-                Open the designer
-                <ArrowRight size={16} />
-              </Button>
-            </Link>
+    <div
+      class={css`
+        display: flex;
+        flex: 1;
+        flex-direction: column;
+      `}
+    >
+      <section class={header}>
+        <div class={wrapper}>
+          <div class={`${container} ${headerInner}`}>
             <Link to="/docs/components" class={plain}>
-              <Button size="lg" variant="outline">
-                Browse the components
-              </Button>
+              <Badge variant="secondary">
+                Every component, transcribed from upstream <ArrowRight size={12} />
+              </Badge>
             </Link>
-          </div>
-          <div class={figures}>
-            <For each={() => FIGURES}>
-              {(each: (typeof FIGURES)[number]) => (
-                <div class={figure}>
-                  <span class={figureValue}>{each.value}</span>
-                  <span class={figureLabel}>{each.label}</span>
-                </div>
-              )}
-            </For>
-          </div>
-        </div>
-
-        {/* Not a screenshot. The same components every other page renders, so
-            the front door changes with the style the URL asks for and a broken
-            token shows up here first. */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Deployment</CardTitle>
-            <CardDescription>Push to production when the checks pass.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div class={specimen}>
-              <div class={field}>
-                <Label for="home-project">Project</Label>
-                <Input id="home-project" value="acme-web" />
-              </div>
-              <div class={between}>
-                <Label for="home-preview">Preview deployments</Label>
-                <Switch id="home-preview" defaultSelected />
-              </div>
-              <div class={field}>
-                <div class={between}>
-                  <Label>Build concurrency</Label>
-                  <span class={styleNote}>4</span>
-                </div>
-                <Slider aria-label="Build concurrency" defaultValue={50} />
-              </div>
-              <Separator />
-              <div class={between}>
-                <span class={styleNote}>Rollout</span>
-                <span class={styleNote}>72%</span>
-              </div>
-              <Progress value={72} />
-              <div class={between}>
-                <div class={people}>
-                  <Avatar>
-                    <AvatarFallback>SA</AvatarFallback>
-                  </Avatar>
-                  <Avatar>
-                    <AvatarFallback>MK</AvatarFallback>
-                  </Avatar>
-                  <Avatar>
-                    <AvatarFallback>JD</AvatarFallback>
-                  </Avatar>
-                </div>
-                <div class={row}>
-                  <Checkbox id="home-notify" defaultSelected />
-                  <Label for="home-notify">Notify me</Label>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-          <CardFooter>
-            <Button>Deploy</Button>
-          </CardFooter>
-        </Card>
-      </section>
-
-      <section class={section}>
-        <div class={sectionHead}>
-          <h2 class={sectionTitle}>Everything in here</h2>
-          <p class={sectionNote}>Each one is a page, not a tab.</p>
-        </div>
-        <div class={cards}>
-          <For each={() => DESTINATIONS}>
-            {(each: (typeof DESTINATIONS)[number]) => (
-              <Link to={each.to} class={cardLink}>
-                <Card>
-                  <CardHeader>
-                    <CardTitle>{each.title}</CardTitle>
-                    <CardDescription>{each.body}</CardDescription>
-                  </CardHeader>
-                </Card>
+            <h1 class={heading}>Components you can own, compiled away</h1>
+            <p class={description}>
+              Composable, accessible components with thoughtful defaults, built on a compiler that
+              folds the reactivity and the styles away. Customize, extend, and make them your own.
+            </p>
+            <div class={actions}>
+              <Link to="/docs/components" class={plain}>
+                <Button>Get Started</Button>
               </Link>
-            )}
-          </For>
+              <Link to="/create" class={plain}>
+                <Button variant="secondary">Open the Designer</Button>
+              </Link>
+            </div>
+          </div>
         </div>
       </section>
 
-      <section class={section}>
-        <div class={sectionHead}>
-          <h2 class={sectionTitle}>Eight styles, one set of components</h2>
-          <p class={sectionNote}>
-            A style is a stylesheet, and `barq-ui init --style x` writes exactly one.
-          </p>
+      <div class={`${wrapper} ${belowFold}`}>
+        <div class={`${container} ${belowFoldInner}`}>
+          <section class={hideBelowMd}>
+            <div class={demo} data-slot="demo" ref={wearDemoStyle}>
+              <div class={cards}>
+                <Showcase />
+              </div>
+              <div class={fadeTop} aria-hidden="true" />
+              <div class={fadeBottom} aria-hidden="true" />
+            </div>
+          </section>
         </div>
-        <div class={styleGrid}>
-          <For each={() => STYLES.filter((style) => style.value !== "none")}>
-            {(style: (typeof STYLES)[number]) => (
-              <a class={styleCard} href={`/?style=${style.value}`}>
-                <span class={styleName}>{style.label}</span>
-                <span class={styleNote}>{style.description}</span>
-              </a>
-            )}
-          </For>
-        </div>
-      </section>
+      </div>
     </div>
   );
 }

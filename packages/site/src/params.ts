@@ -71,10 +71,8 @@ export interface Params {
  * `--color-blue-800`, and the greyscale ramp `registry/base-colors.ts` gives
  * `neutral` is what a consumer's own app starts from. This is the site.
  *
- * `font` is the one divergence and it is stated in `options.ts`: theirs is
- * `inter` and fetches it, and a family that is not installed falls back in
- * silence, so a control that appears to do nothing on half the machines that
- * open it is worse than a stack that always works.
+ * `font` is Geist, which is what `lib/fonts.ts` loads for the site itself.
+ * Bundled rather than fetched, so it works offline and cannot half-load.
  */
 export const DEFAULTS: Params = {
   style: "nova",
@@ -82,9 +80,9 @@ export const DEFAULTS: Params = {
   theme: "none",
   chartColor: "blue",
   radius: "none",
-  font: "system",
+  font: "geist",
   fontHeading: "inherit",
-  mono: "system",
+  mono: "geist-mono",
   dark: false,
   item: "preview-02",
 };
@@ -102,6 +100,16 @@ export const INHERIT = "inherit";
  * element already carries the name for its own sake.
  */
 export const PREVIEW_SCOPE = '[data-slot="preview"]';
+
+/**
+ * The front page's card panel, which upstream marks `theme-neutral`.
+ *
+ * Its charts are the greyscale ramp `base-colors.ts` gives `neutral`, not the
+ * blue the site around it draws with. A wall of cards is showing SHAPE — the
+ * radius, the spacing, the type — and five accent colours competing across
+ * twenty cards is noise over the thing being shown.
+ */
+export const DEMO_SCOPE = '[data-slot="demo"]';
 
 /**
  * What the page around the preview wears, and never changes.
@@ -311,10 +319,22 @@ export function installSite(): { params: Accessor<Params>; set(next: Partial<Par
     if (typeof document === "undefined") return;
     const root = document.documentElement;
     root.classList.toggle("dark", now.dark);
-    wearStyleOn(root, now.style, () => current().style === now.style);
+    // The style is NOT put on the document by default, because upstream's site
+    // does not wear one: their chrome imports `registry/new-york-v4/ui/*`
+    // directly and only the designer's preview is styled. A site that styled
+    // itself disagreed with theirs everywhere a style has an opinion — the
+    // announcement badge came out at a 32px radius against their `rounded-full`
+    // — which is the opposite of what a port is for.
+    //
+    // An EXPLICIT `?style=` still applies, because being able to read this site
+    // in each of the eight is worth having and costs nothing when nobody asks.
+    const asked = new URLSearchParams(location.search).get("style");
+    wearStyleOn(root, asked ?? NONE, () => current().style === (asked ?? NONE));
   };
 
   effect(apply);
+
+  installTheme({ base: "neutral", scope: DEMO_SCOPE });
 
   if (typeof window !== "undefined") {
     const reread = (): void => current.set(read(location.search));

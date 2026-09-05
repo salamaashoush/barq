@@ -58,32 +58,37 @@ const layout = css`
   }
 `;
 
-/**
- * Upstream's `container-wrapper`, at the `px-6` the header and footer pass it.
- *
- * Their utility is `mx-auto w-full px-2` and every caller overrides the
- * padding: the header is `container-wrapper px-6`, the footer
- * `container-wrapper px-4 xl:px-6`. Six is what both settle on above `sm`, and
- * a wrapper whose padding every caller replaces is two rules pretending to be
- * one.
- */
+/** Upstream's `container-wrapper`: `mx-auto w-full px-2`. */
 const wrapper = css`
   margin-inline: auto;
   width: 100%;
+  padding-inline: calc(var(--spacing) * 2);
+`;
+
+/** The `px-6` the header and the footer pass it. */
+const wrapperEdge = css`
   padding-inline: calc(var(--spacing) * 6);
 `;
 
 /**
- * What a page's content sits in, which is the header's own wrapper.
+ * Upstream's `container`: `mx-auto max-w-[1400px] px-4 lg:px-8`.
  *
- * Upstream has two — `container-wrapper` for the chrome and `container` for a
- * documentation column — and they align because the chrome is full-bleed at
- * `px-6` and so is every page that is not a docs article. Sharing one here is
- * how the brand and the page heading are guaranteed to start at the same
- * inset: two boxes with two paddings drifted apart by fifty pixels, which is
- * the kind of thing nothing fails on and everyone sees.
+ * The inner box, which the outer wrapper centres a page's content inside. Two
+ * boxes rather than one because they do different jobs: the wrapper is
+ * full-bleed and holds the chrome at the window's edge, and this caps the
+ * measure so a line of text stays readable on a wide screen. A caller that
+ * wants a different edge replaces the padding, which is what the hero does at
+ * `px-6`.
  */
-const container = wrapper;
+const container = css`
+  margin-inline: auto;
+  max-width: 1400px;
+  padding-inline: calc(var(--spacing) * 4);
+
+  @media (width >= 64rem) {
+    padding-inline: calc(var(--spacing) * 8);
+  }
+`;
 
 const header = css`
   position: sticky;
@@ -369,7 +374,7 @@ export function ModeSwitcher() {
 export function SiteHeader() {
   return (
     <header class={header} data-slot="site-header">
-      <div class={wrapper}>
+      <div class={`${wrapper} ${wrapperEdge}`}>
         <div class={bar}>
           <MobileNav />
           <Link to="/" class={brand}>
@@ -396,7 +401,7 @@ export function SiteHeader() {
 export function SiteFooter() {
   return (
     <footer class={footer}>
-      <div class={wrapper}>
+      <div class={`${wrapper} ${wrapperEdge}`}>
         <div class={footerInner}>
           <div class={footerText}>
             Built on{" "}
@@ -484,4 +489,4 @@ export function Page(props: Incoming<{ title: string; lede?: string; children?: 
   );
 }
 
-export { container, wrapper };
+export { container, wrapper, wrapperEdge };

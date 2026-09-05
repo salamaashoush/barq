@@ -91,19 +91,32 @@ import { Truck } from "@barqjs/lucide/icons/truck";
  * same numbers a media query would use, because they are about how much room
  * there is and that has not changed — only what is being asked.
  */
+/**
+ * The card wall, at upstream's own column counts.
+ *
+ * Their `CardsDemo` grid is `md:grid-cols-2 lg:grid-cols-3
+ * min-[1400px]:grid-cols-4 min-[1900px]:grid-cols-5`, keyed on the WINDOW. This
+ * is keyed on the panel, because the same wall renders inside the designer's
+ * preview where the window is not the box. The thresholds are theirs converted:
+ * a 1400px window leaves the panel about 83rem once the wrapper and the panel's
+ * own padding are off it, and so on for each.
+ */
 const page = css`
   padding: 1rem;
   columns: 1;
   column-gap: 1rem;
 
-  @container preview (width >= 48rem) {
+  @container preview (width >= 41rem) {
     columns: 2;
   }
-  @container preview (width >= 80rem) {
+  @container preview (width >= 60rem) {
     columns: 3;
   }
-  @container preview (width >= 110rem) {
+  @container preview (width >= 83rem) {
     columns: 4;
+  }
+  @container preview (width >= 114rem) {
+    columns: 5;
   }
 `;
 
