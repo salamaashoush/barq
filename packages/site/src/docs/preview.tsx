@@ -21,6 +21,9 @@ import { Check } from "@barqjs/lucide/icons/check";
 import { Copy } from "@barqjs/lucide/icons/copy";
 import { Button } from "@barqjs/ui";
 
+import { CodeTokens } from "./code.tsx";
+import { highlighted } from "./highlight.ts";
+
 /**
  * `--code` is upstream's, and it is not in the generated theme.
  *
@@ -93,7 +96,6 @@ const codePanel = css`
   border-top: 1px solid var(--border);
   background-color: var(--code);
   color: var(--code-foreground);
-  font-size: 0.875rem;
 `;
 
 const pre = css`
@@ -187,8 +189,10 @@ export function ComponentPreview(props: Incoming<PreviewProps>) {
           >
             {() => (copied() ? <Check /> : <Copy />)}
           </Button>
-          <pre class={() => `${pre} ${open() ? "" : collapsed}`}>
-            <code>{() => props.code?.() ?? ""}</code>
+          <pre class={() => `${pre} ${highlighted} ${open() ? "" : collapsed}`}>
+            <code>
+              <CodeTokens code={() => props.code?.() ?? ""} />
+            </code>
           </pre>
           {() =>
             open() ? null : (

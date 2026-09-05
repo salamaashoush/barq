@@ -2,10 +2,11 @@
  * The two code surfaces a documentation page has that are not a preview card.
  *
  * `<CodeBlock>` is upstream's `[data-rehype-pretty-code-figure]`: the `--code`
- * surface at `rounded-2xl`, a copy button top right, and no syntax colouring —
- * theirs comes from `rehype-pretty-code` at build time over a Shiki grammar,
- * and a highlighter in the client bundle to colour eight lines of `npx shadcn
- * add` is a worse trade than plain text.
+ * surface at `rounded-2xl`, a copy button top right, and syntax colouring from
+ * `highlight.ts`. Theirs comes from `rehype-pretty-code` at build time over a
+ * Shiki grammar; a highlighter of that size in the client bundle would be a
+ * worse trade than plain text, so the scanner beside this file is the whole
+ * cost — one pass over a string, no grammar and no theme file.
  *
  * `<CommandTabs>` is their `<CodeTabs>` over the four package managers.
  */
@@ -15,6 +16,8 @@ import { css } from "@barqjs/css";
 import { Check } from "@barqjs/lucide/icons/check";
 import { Copy } from "@barqjs/lucide/icons/copy";
 import { Button } from "@barqjs/ui";
+
+import { codeTokens, highlighted, shellTokens, type Token } from "./highlight.ts";
 
 const figure = css`
   --code: oklch(0.98 0 0);
@@ -93,10 +96,38 @@ export function CodeBlock(props: Incoming<{ code: string; title?: string }>) {
       >
         {() => (copied() ? <Check /> : <Copy />)}
       </Button>
-      <pre class={body}>
-        <code>{() => props.code()}</code>
+      <pre class={() => `${body} ${highlighted}`}>
+        <code>
+          <Highlighted tokens={() => codeTokens(props.code())} />
+        </code>
       </pre>
     </figure>
+  );
+}
+
+/**
+ * A snippet's tokens, coloured. The preview panel renders the same ones.
+ *
+ * The palette and the `data-token` rules live on whichever `<pre>` holds it,
+ * so a panel that wants a different one only redeclares the properties.
+ */
+export function CodeTokens(props: Incoming<{ code: string }>) {
+  return <Highlighted tokens={() => codeTokens(props.code())} />;
+}
+
+/**
+ * A token per span, coloured by kind.
+ *
+ * `plain` gets no element at all: it is most of a snippet, and a span around
+ * every run of whitespace triples the markup for nothing.
+ */
+function Highlighted(props: Incoming<{ tokens: readonly Token[] }>) {
+  return (
+    <For each={() => props.tokens()}>
+      {(token: Token) =>
+        token.kind === "plain" ? token.text : <span data-token={token.kind}>{token.text}</span>
+      }
+    </For>
   );
 }
 
@@ -171,8 +202,10 @@ export function CommandTabs(props: Incoming<{ command: string }>) {
       >
         {() => (copied() ? <Check /> : <Copy />)}
       </Button>
-      <pre class={body}>
-        <code>{line}</code>
+      <pre class={() => `${body} ${highlighted}`}>
+        <code>
+          <Highlighted tokens={() => shellTokens(line())} />
+        </code>
       </pre>
     </figure>
   );

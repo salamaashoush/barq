@@ -98,16 +98,17 @@ const railLink = css`
   align-items: center;
   gap: calc(var(--spacing) * 2);
   border-radius: calc(var(--radius) - 2px);
-  padding: calc(var(--spacing) * 2);
+  /* Their rail is a sidebar menu button: a 30px row on 12.8px text at a 500
+     weight, in the FOREGROUND colour. Measured on their card page against ours
+     at a 34px row of 14px/14px/400 muted text — a size larger, unweighted,
+     dimmer, and four pixels taller on every one of sixty rows. */
+  padding: calc(var(--spacing) * 1.5) calc(var(--spacing) * 2);
   text-align: left;
-  /* Their rail is a sidebar menu button, which computes 12.8px on a 500 weight
-     and an 18.29px line. Measured on their card page against ours at
-     14px/14px/400: a size larger, unweighted, and cramped to the cap height. */
   font-size: 0.8rem;
   font-weight: 500;
   line-height: 1.4285;
   text-decoration: none;
-  color: var(--muted-foreground);
+  color: var(--foreground);
   transition:
     color 120ms,
     background-color 120ms;

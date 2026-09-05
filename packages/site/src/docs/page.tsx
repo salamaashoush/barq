@@ -73,6 +73,31 @@ const prose = css`
   }
 `;
 
+/**
+ * A note's inline code, which is the only markdown a note uses.
+ *
+ * Nine of them name a prop or an element in backticks and every one rendered
+ * the backticks literally — `` `bordered` puts a rule under the header ``, on
+ * the page. Backticks are all this handles: a note that wants a link or a bold
+ * span is a note that wants to be a section.
+ */
+function Prose(props: Incoming<{ text: string }>) {
+  const parts = (): readonly { text: string; code: boolean }[] =>
+    props
+      .text()
+      .split("`")
+      .map((text, at) => ({ text, code: at % 2 === 1 }))
+      .filter((part) => part.text !== "");
+
+  return (
+    <For each={parts}>
+      {(part: { text: string; code: boolean }) =>
+        part.code ? <code>{part.text}</code> : part.text
+      }
+    </For>
+  );
+}
+
 function DemoSection(props: Incoming<{ demo: Demo }>) {
   return (
     <>
@@ -81,7 +106,11 @@ function DemoSection(props: Incoming<{ demo: Demo }>) {
           {props.demo().title}
         </h2>
       )}
-      {props.demo().note === undefined ? null : <p>{props.demo().note}</p>}
+      {props.demo().note === undefined ? null : (
+        <p>
+          <Prose text={() => props.demo().note ?? ""} />
+        </p>
+      )}
       <ComponentPreview
         code={props.demo().code}
         align={props.demo().align}
