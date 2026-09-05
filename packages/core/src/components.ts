@@ -497,13 +497,16 @@ export function lazy<P = unknown>(
 ): ((s: Scope | null, props: P) => JSXElement) & {
   preload: () => Promise<void>;
   ready: () => void;
+  loaded: () => boolean;
 } {
   let cell: Cell<unknown> | null = null;
+  let here = false;
   const resolved = (): Cell<unknown> =>
     (cell ??= runWithOwner(null, () => computed(async () => pick(await load()))));
 
   const component = (s: Scope | null, props: P): JSXElement => {
     const Loaded = resolved()() as (s: Scope | null, props: P) => JSXElement;
+    here = true;
     return Loaded(s, props);
   };
 
@@ -512,7 +515,23 @@ export function lazy<P = unknown>(
   // that is not itself memoised, and it made `preload()` import twice.
   component.preload = async (): Promise<void> => {
     await resolve(resolved());
+    here = true;
   };
+
+  /**
+   * Whether the module is already here, answered WITHOUT awaiting.
+   *
+   * A caller that must not defer when there is nothing to defer for needs a
+   * synchronous answer, and `preload()` cannot give one: awaiting an
+   * already-settled cell still costs a microtask, and a router that awaits it
+   * on every navigation makes every commit asynchronous — including the
+   * navigations that had no chunk to fetch. TanStack's `loadRouteChunk` returns
+   * `undefined` for a chunk that is already loaded, for the same reason.
+   *
+   * Only ever true once the module has actually been read, so a false answer
+   * costs a wait that was going to happen anyway.
+   */
+  component.loaded = (): boolean => here;
 
   /**
    * A TRACKED read of the module, for a caller that must subscribe to it.
@@ -531,6 +550,7 @@ export function lazy<P = unknown>(
    */
   component.ready = (): void => {
     resolved()();
+    here = true;
   };
 
   return component;

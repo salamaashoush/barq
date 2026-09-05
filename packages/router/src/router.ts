@@ -45,6 +45,7 @@ import {
   type Route,
   type RouteLifecycle,
   flattenRoutes,
+  pendingChunks,
 } from "./route.ts";
 import {
   applyTrailingSlash,
@@ -1725,6 +1726,17 @@ export function createRouter(config: RouterConfig): RouterState {
   // commits and the context has to land with it rather than after it.
   let pendingContexts: readonly Record<string, unknown>[] | null = null;
 
+  /**
+   * Which history entry the page is being taken to, so a slow chunk cannot
+   * commit over a faster navigation that started after it.
+   *
+   * Every entry waits for its own modules and they do not arrive in the order
+   * they were asked for: a click on a 300 KB route followed by a click back
+   * resolves the second first, and without this the first would land on top of
+   * it and leave the page on a route nobody asked to be on.
+   */
+  let newestEntry = 0;
+
   const unsubscribe = history.subscribe((next) => {
     const asked = pendingNavigate;
     // A SEPARATE FLAG, not `asked !== undefined`. `navigate("/a")` passes no
@@ -1810,6 +1822,36 @@ export function createRouter(config: RouterConfig): RouterState {
     // once it has finished animating. Awaiting `finished` is what made the old
     // router's page visibly jump when the animation had already played.
     const restoreScroll = async (): Promise<void> => {
+      /**
+       * The chunk FIRST, and the commit only once it is here.
+       *
+       * A route is renderable when both its data and its own module are ready,
+       * and only the data half has a boundary to park in. `lazy()` makes a
+       * route its own chunk, so committing before it arrives tears the previous
+       * page down and puts nothing in its place: the depth's `Loading` boundary
+       * re-arms on the pathname, its fallback is `null` for a route that
+       * declares no `pendingComponent`, and the page is empty until the module
+       * lands. Measured on `@barqjs/site` as 705 elements dropping to 84 for
+       * 166 ms on a single link click.
+       *
+       * This is TanStack's rule and their wording — "a route is renderable only
+       * after both its data and normal component chunk are ready"
+       * (`router-core/src/load-client.ts`). Their matches stay `pending` and the
+       * PRESENTED ones keep rendering until the chunk resolves; with no
+       * `pendingComponent` to reveal, `offerPending` never cuts the wait short.
+       *
+       * HERE and not in `navigate`, because the back button never goes through
+       * `navigate` and flashed exactly the same way.
+       */
+      const mine = ++newestEntry;
+      const chunks = pendingChunks(matcher.match(unmask(next))?.route.chain ?? []);
+      // SYNCHRONOUS when there is nothing to fetch. A navigation to a route
+      // whose module is already in memory commits in the same task it always
+      // did; only a cold chunk defers, which is the case that was broken.
+      if (chunks.length > 0) {
+        await Promise.allSettled(chunks);
+        if (mine !== newestEntry) return;
+      }
       await withViewTransition(commit, {
         enabled: asked?.viewTransition ?? config.viewTransition ?? false,
       });

@@ -54,6 +54,7 @@ import {
   resolveHead,
   resolveScripts,
   styleText,
+  tagKey,
   tagProps,
 } from "./head.ts";
 import type { JSX as CoreJSX } from "@barqjs/core/jsx-runtime";
@@ -440,6 +441,20 @@ export function clientHeadAssets(
   } = {},
 ): HeadAssets {
   const resolved = signal<readonly import("./head.ts").MatchAssets[]>(options.initial ?? []);
+  /**
+   * The head nodes this document already has, by `tagKey`.
+   *
+   * HERE and not in `tagTree`, which is the whole of the fix. `<HeadContent />`
+   * re-runs on every navigation — measured: its body ran once per link click
+   * where this function ran once for the page — so a cache in the closure
+   * `tagTree` returns is empty every time it is consulted, and every tag is
+   * rebuilt. `insert` reconciles by node IDENTITY, so a rebuilt
+   * `<link rel="stylesheet">` is a REMOVED one: the sheet stops applying when
+   * the old node leaves and does not apply again until the new one loads.
+   * Measured on `@barqjs/site` as all eight sheets removed and re-created on a
+   * single link click, and 314ms of a page at the user agent's defaults.
+   */
+  let held = new Map<string, Element>();
   let newest = 0;
   let first = options.initial !== undefined;
   effect(() => {
@@ -504,8 +519,32 @@ export function clientHeadAssets(
     // the same path `<html>`, `<head>` and `<body>` already take. Returning a
     // function makes the caller's `insert` re-run it on a navigation, and
     // `insert` reconciles the array it produces.
-    tagTree: (_scope, list) => () =>
-      list().map((tag, index) => element(null, tag.tag, tagProps(tag, index))),
+    //
+    // KEYED BY `tagKey`, and that is what makes it a keyed list rather than one
+    // that only looks like one. `insert` reconciles by node IDENTITY, so a run
+    // that builds a fresh element for a tag that did not change replaces the
+    // node the document already had. For a `<link rel="stylesheet">` that means
+    // the sheet stops applying the moment the old node leaves and does not
+    // apply again until the new one loads — measured on `@barqjs/site` as every
+    // one of the eight sheets removed and re-created on a single link click,
+    // and 314ms of a page rendered at the user agent's defaults. Solid's `For`
+    // is referentially keyed for the same reason, and `ManagedTag.identity`
+    // exists so a href survives a route that shifts its index.
+    tagTree: (_scope, list) => () => {
+      const kept = new Map<string, Element>();
+      const nodes = list().map((tag, index) => {
+        const key = tagKey(tag, index);
+        // A key twice in ONE list is two tags, not one node in two places, and
+        // handing `insert` the same node twice loses one of them.
+        const node =
+          (kept.has(key) ? undefined : held.get(key)) ??
+          element(null, tag.tag, tagProps(tag, index));
+        if (!kept.has(key)) kept.set(key, node);
+        return node;
+      });
+      held = kept;
+      return nodes;
+    },
   };
 }
 

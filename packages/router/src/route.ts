@@ -674,6 +674,20 @@ export type { Scope };
  * writes are what make the wait short; this is what makes it correct.
  */
 export async function preloadMatched(chain: readonly Route[]): Promise<void> {
+  await Promise.allSettled(pendingChunks(chain));
+}
+
+/**
+ * The chunks this chain is still waiting on, or an EMPTY array when it is not.
+ *
+ * Synchronous, and that is the point: a caller on the navigation path must not
+ * defer a commit that has nothing to defer for. Awaiting an already-settled
+ * `preload()` still costs a microtask, so a router that awaits unconditionally
+ * makes every navigation asynchronous — including the ones whose modules have
+ * been in memory since the first render. TanStack's `loadRouteChunk` returns
+ * `undefined` for a chunk that is already loaded, for the same reason.
+ */
+export function pendingChunks(chain: readonly Route[]): readonly Promise<void>[] {
   const loads: Promise<void>[] = [];
   for (const matched of chain) {
     // `shellComponent` too, and it is not optional: the shell renders `<html>`,
@@ -687,12 +701,15 @@ export async function preloadMatched(chain: readonly Route[]): Promise<void> {
       matched.definition.pendingComponent,
       declared.shellComponent,
     ]) {
-      const preload = (candidate as { preload?: () => Promise<void> } | undefined)?.preload;
-      if (typeof preload === "function") loads.push(preload());
+      const chunk = candidate as
+        | { preload?: () => Promise<void>; loaded?: () => boolean }
+        | undefined;
+      if (typeof chunk?.preload !== "function") continue;
+      // A `lazy()` that predates `loaded` answers `undefined`, which reads as
+      // "still pending" and costs the wait it always cost.
+      if (chunk.loaded?.() === true) continue;
+      loads.push(chunk.preload());
     }
   }
-  // `allSettled`: a chunk that fails to load is the matched's own error to report
-  // when it renders, and refusing to hydrate the whole page over it would turn
-  // one broken route into a blank document.
-  await Promise.allSettled(loads);
+  return loads;
 }
