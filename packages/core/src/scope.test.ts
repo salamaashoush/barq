@@ -393,12 +393,12 @@ describe("O2 — a Block runs under the scope it is given", () => {
     expect(home).not.toBe(root);
 
     const seen: Scope[] = [];
-    const block = pin(home, (s: Scope) => {
+    const pinned = pin(home, (s: Scope) => {
       seen.push(s);
       onCleanup(() => undefined);
       return getOwner();
     });
-    const ambient = block(away);
+    const ambient = pinned(away);
 
     expect(seen).toEqual([home]);
     expect(ambient).toBe(home);

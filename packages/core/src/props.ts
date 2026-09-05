@@ -29,10 +29,21 @@ interface Filter {
   readonly keep: boolean;
   /** `mergeProps`: a later `undefined` does not override an earlier value. */
   readonly skipUndefined: boolean;
+  /**
+   * Whether a plain value is presented as the Cell the props model says every
+   * prop is. See {@link carrier}.
+   *
+   * True for the COMPILER's carrier and nothing else. `mergeProps`,
+   * `splitProps`, `omit` and `merge` are utilities over ordinary objects, and a
+   * caller merging `{ count: 1 }` wants `count` to be `1`.
+   */
+  readonly carriers: boolean;
 }
 
-const ALL: Filter = { keys: null, keep: false, skipUndefined: false };
-const ALL_DEFINED: Filter = { keys: null, keep: false, skipUndefined: true };
+const ALL: Filter = { keys: null, keep: false, skipUndefined: false, carriers: false };
+const ALL_DEFINED: Filter = { keys: null, keep: false, skipUndefined: true, carriers: false };
+/** {@link props}: the compiler's source list, where every prop is a Cell. */
+const ALL_AS_CARRIERS: Filter = { keys: null, keep: false, skipUndefined: false, carriers: true };
 
 function admits(filter: Filter, key: string): boolean {
   const keys = filter.keys;
@@ -69,6 +80,47 @@ function flatten(sources: readonly Source[]): Source[] {
     }
   }
   return flat;
+}
+
+/**
+ * The prop, as the Cell the model says every prop is.
+ *
+ * A source list holds two kinds of record. The compiler's are all carriers by
+ * construction — `{ onPress: () => handler, title: _k$1 }` — and a SPREAD is
+ * whatever the caller wrote, which is ordinarily plain values. Both arrive
+ * here, and a callee reads `props.k()` without knowing which it got: a spread
+ * of `{ trend: "up" }` therefore reached it as `props.trend is not a function`,
+ * on code the type checker passed, because `Outgoing` admits a bare `T` on the
+ * understanding that the compiler wraps it and the compiler cannot wrap a key
+ * it only sees at run time.
+ *
+ * So the wrap happens on the read instead, and the rule is the one `cell_for`
+ * already applies per attribute: a value already carrying the calling
+ * convention is FORWARDED BY NAME and never re-wrapped, and anything else
+ * crosses as a Cell. That makes this a no-op on every compiler-built record,
+ * which is what lets it sit on the shared path rather than behind a flag.
+ *
+ * `undefined` is left alone, and that is load-bearing: a prop the caller
+ * omitted is not an own property, the read is `props.k?.()`, and the default
+ * lives beside it. Wrapping absence would make every optional prop present.
+ *
+ * The Cell reads THROUGH rather than closing over the value, so a source
+ * object mutated after the first read is still seen.
+ */
+function carrier(
+  sources: readonly Source[],
+  filter: Filter,
+  key: string,
+  minted: Map<string, Cell<unknown>>,
+): unknown {
+  const value = lookup(sources, filter, key);
+  if (!filter.carriers || typeof value === "function" || value === undefined) return value;
+  let held = minted.get(key);
+  if (held === undefined) {
+    held = (): unknown => lookup(sources, filter, key);
+    minted.set(key, held);
+  }
+  return held;
 }
 
 function lookup(sources: readonly Source[], filter: Filter, key: string): unknown {
@@ -122,6 +174,11 @@ function keysOf(sources: readonly Source[], filter: Filter): string[] {
  */
 function view(sources: readonly Source[], filter: Filter): Record<string, unknown> {
   const list = flatten(sources);
+  // One Cell per key, minted on first read and kept. A consumer can observe a
+  // prop's IDENTITY — a handler compared across renders, an array in a `For` —
+  // so `props.k === props.k` has to hold, and a fresh closure per read would
+  // break exactly the claim C3.4 makes about copying a Cell.
+  const minted = new Map<string, Cell<unknown>>();
   // A fresh, EXTENSIBLE target: the ownKeys invariant rejects a key the target
   // does not have unless the target can grow, and a frozen one cannot.
   const target: Record<string, unknown> = {};
@@ -129,7 +186,7 @@ function view(sources: readonly Source[], filter: Filter): Record<string, unknow
     get(_target, key: string | symbol): unknown {
       if (typeof key === "symbol") return undefined;
       if (key === SOURCES) return filter.keys === null ? list : undefined;
-      return lookup(list, filter, key);
+      return carrier(list, filter, key, minted);
     },
     has(_target, key: string | symbol): boolean {
       if (typeof key === "symbol") return false;
@@ -143,7 +200,7 @@ function view(sources: readonly Source[], filter: Filter): Record<string, unknow
       if (typeof key === "symbol" || key === SOURCES) return undefined;
       if (!present(list, filter, key)) return undefined;
       return {
-        value: lookup(list, filter, key),
+        value: carrier(list, filter, key, minted),
         writable: true,
         enumerable: true,
         configurable: true,
@@ -168,9 +225,25 @@ function view(sources: readonly Source[], filter: Filter): Record<string, unknow
 export function props(sources: readonly Source[]): Record<string, unknown> {
   if (sources.length === 1) {
     const only = sources[0];
-    if (only !== null && only !== undefined && !Array.isArray(only[SOURCES])) return only;
+    // Returned UNCHANGED only when it is already all carriers, which every
+    // compiler-built record is and which is the overwhelming case. A lone
+    // spread — `<Foo {...values} />` emits one source and nothing else — is
+    // the one shape that would otherwise skip the read path entirely and hand
+    // the callee raw values.
+    if (only !== null && only !== undefined && !Array.isArray(only[SOURCES]) && carriers(only)) {
+      return only;
+    }
   }
-  return view(sources, ALL);
+  return view(sources, ALL_AS_CARRIERS);
+}
+
+/** Whether every own value is already a Cell or a Block, so a view buys nothing. */
+function carriers(source: Record<string, unknown>): boolean {
+  for (const key in source) {
+    const value = source[key];
+    if (typeof value !== "function" && value !== undefined) return false;
+  }
+  return true;
 }
 
 /**
@@ -202,7 +275,12 @@ export function omit<T extends Record<string, unknown>, K extends keyof T & stri
   source: T,
   ...keys: K[]
 ): Omit<T, K> {
-  return view([source], { keys: new Set(keys), keep: false, skipUndefined: false }) as Omit<T, K>;
+  return view([source], {
+    keys: new Set(keys),
+    keep: false,
+    skipUndefined: false,
+    carriers: false,
+  }) as Omit<T, K>;
 }
 
 /** Two views of one source list: the `keys` and everything else. */
@@ -212,7 +290,7 @@ export function splitProps<T extends Record<string, unknown>, K extends keyof T 
 ): [Pick<T, K>, Omit<T, K>] {
   const set = new Set<string>(keys);
   return [
-    view([source], { keys: set, keep: true, skipUndefined: false }) as Pick<T, K>,
-    view([source], { keys: set, keep: false, skipUndefined: false }) as Omit<T, K>,
+    view([source], { keys: set, keep: true, skipUndefined: false, carriers: false }) as Pick<T, K>,
+    view([source], { keys: set, keep: false, skipUndefined: false, carriers: false }) as Omit<T, K>,
   ];
 }

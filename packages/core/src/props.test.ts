@@ -270,3 +270,70 @@ describe("the source list is a view, not a copy", () => {
     expect(Object.keys(three).toSorted()).toEqual(["x", "y", "z"]);
   });
 });
+
+describe("a spread of plain values into a component", () => {
+  /**
+   * The hole this closes.
+   *
+   * `Outgoing<Incoming<P>>` admits a bare `T` because the compiler wraps it,
+   * and the compiler wraps a literal ATTRIBUTE. It cannot wrap a key it only
+   * sees at run time, so `<Card {...{ trend: "up" }} />` typechecked and then
+   * threw `props.trend is not a function` inside the callee.
+   */
+  test("every member crosses as a Cell", () => {
+    const merged = props([{ trend: "up" }, { title: () => "Revenue" }]);
+    expect(typeof merged["trend"]).toBe("function");
+    expect((merged["trend"] as () => unknown)()).toBe("up");
+    expect((merged["title"] as () => unknown)()).toBe("Revenue");
+  });
+
+  test("a lone spread does not take the unchanged fast path", () => {
+    const merged = props([{ trend: "up" }]);
+    expect((merged["trend"] as () => unknown)()).toBe("up");
+  });
+
+  test("a record that is already all carriers is returned unchanged", () => {
+    const only = { title: () => "Revenue" };
+    expect(props([only])).toBe(only);
+  });
+
+  // C5's identity claim: a consumer can compare a prop across reads, so the
+  // Cell has to be the same object and not a fresh closure per access.
+  test("the Cell it mints is stable", () => {
+    const merged = props([{ rows: [1, 2] }]);
+    expect(merged["rows"]).toBe(merged["rows"]);
+  });
+
+  // Read THROUGH, not closed over: a source mutated after the first read is
+  // still seen, which is what a plain object source can do and a Cell cannot.
+  test("the Cell reads through to the source", () => {
+    const source: Record<string, unknown> = { trend: "up" };
+    const merged = props([source, { title: () => "Revenue" }]);
+    const trend = merged["trend"] as () => unknown;
+    source["trend"] = "down";
+    expect(trend()).toBe("down");
+  });
+
+  // Absence is load-bearing: the read is `props.k?.()` and the default lives
+  // beside it, so wrapping `undefined` would make every optional prop present.
+  test("an absent prop is still absent", () => {
+    const merged = props([{ trend: undefined }, { title: () => "Revenue" }]);
+    expect(merged["trend"]).toBeUndefined();
+  });
+
+  // A function in a spread already carries the calling convention, so it is
+  // forwarded by name rather than wrapped a second time.
+  test("a member that is already a Cell is forwarded", () => {
+    const cellular = (): string => "up";
+    const merged = props([{ trend: cellular }, { title: () => "Revenue" }]);
+    expect(merged["trend"]).toBe(cellular);
+  });
+
+  // `mergeProps` and friends are utilities over ordinary objects, where a
+  // caller merging `{ count: 1 }` wants `count` to be `1`.
+  test("mergeProps is untouched by any of this", () => {
+    const merged = mergeProps({ count: 1 }, { flag: true });
+    expect(merged["count"]).toBe(1);
+    expect(merged["flag"]).toBe(true);
+  });
+});

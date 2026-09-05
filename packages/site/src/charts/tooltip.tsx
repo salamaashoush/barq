@@ -79,15 +79,7 @@ function stacked(options: {
   });
 }
 
-/**
- * ACCESSORS, not values.
- *
- * A spread into a component passes its members through untouched: the compiler
- * wraps a literal attribute in a Cell and cannot do the same for a key it only
- * sees at run time. The callee reads every prop as one, so a bare string here
- * reaches it as `props.trend is not a function`.
- */
-const CARD = { trend: () => TREND, footnote: () => VISITORS } as const;
+const CARD = { trend: TREND, footnote: VISITORS } as const;
 
 const MONTH_NAMES: Record<string, string> = Object.fromEntries(
   MONTHS.map((row) => [row.month, row.month]),
