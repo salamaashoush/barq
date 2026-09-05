@@ -1,11 +1,10 @@
 import { css } from "@barqjs/css";
-import { ArrowRight } from "@barqjs/lucide/icons/arrow-right";
 import { Link } from "@barqjs/router";
-import { Badge, Button } from "@barqjs/ui";
+import { Button } from "@barqjs/ui";
 
 import { Showcase } from "./showcase.tsx";
 import { wearStyleOn } from "./params.ts";
-import { container, wrapper } from "./site.tsx";
+import { Announcement, container, PageHeader, wrapper } from "./site.tsx";
 
 /**
  * The front page, which is app/(app)/(root)/page.tsx and its PageHeader.
@@ -16,95 +15,6 @@ import { container, wrapper } from "./site.tsx";
  * it. The words are ours; the layout is theirs, and the whole point of the
  * exercise is that the second sentence stays true.
  */
-const header = css`
-  border-color: var(--border);
-
-  @supports (color: color-mix(in lab, red, red)) {
-    border-color: color-mix(in oklab, var(--border) 50%, transparent);
-  }
-`;
-
-const headerInner = css`
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: calc(var(--spacing) * 2);
-  padding-inline: calc(var(--spacing) * 6);
-  padding-block: calc(var(--spacing) * 8);
-  text-align: center;
-
-  @media (width >= 48rem) {
-    padding-block: calc(var(--spacing) * 16) calc(var(--spacing) * 8);
-  }
-
-  @media (width >= 64rem) {
-    padding-block: calc(var(--spacing) * 20) calc(var(--spacing) * 12);
-  }
-
-  @media (width >= 80rem) {
-    gap: calc(var(--spacing) * 4);
-  }
-`;
-
-/**
- * leading-tighter max-w-4xl text-3xl font-semibold tracking-tight text-balance
- * text-primary lg:leading-[1.1] xl:text-5xl xl:tracking-tighter.
- *
- * text-3xl carries its own line-height: 2.25rem, which is why the ratio
- * only shows above lg: 30px over 36px is the size's default, and 1.1 takes
- * over at 1024 and again at the 48px the heading grows to at 1280.
- */
-const heading = css`
-  margin: 0;
-  max-width: 56rem;
-  font-size: 1.875rem;
-  line-height: 2.25rem;
-  font-weight: 600;
-  letter-spacing: -0.025em;
-  text-wrap: balance;
-  color: var(--primary);
-
-  @media (width >= 64rem) {
-    line-height: 1.1;
-  }
-
-  @media (width >= 80rem) {
-    font-size: 3rem;
-    letter-spacing: -0.05em;
-  }
-`;
-
-/** max-w-4xl text-base text-balance text-foreground sm:text-lg. */
-const description = css`
-  margin: 0;
-  max-width: 56rem;
-  font-size: 1rem;
-  line-height: 1.5rem;
-  text-wrap: balance;
-  color: var(--foreground);
-
-  @media (width >= 40rem) {
-    font-size: 1.125rem;
-    line-height: 1.75rem;
-  }
-`;
-
-/** flex w-full items-center justify-center gap-2 pt-2. */
-const actions = css`
-  display: flex;
-  width: 100%;
-  align-items: center;
-  justify-content: center;
-  gap: calc(var(--spacing) * 2);
-  padding-top: calc(var(--spacing) * 2);
-
-  /* **:data-[slot=button]:shadow-none — the hero's buttons sit on a flat
-     surface, so the elevation every other button carries reads as a mistake. */
-  & [data-slot="button"] {
-    box-shadow: none;
-  }
-`;
-
 const plain = css`
   text-decoration: none;
   color: inherit;
@@ -235,30 +145,22 @@ export function Home() {
         flex-direction: column;
       `}
     >
-      <section class={header}>
-        <div class={wrapper}>
-          <div class={`${container} ${headerInner}`}>
+      <PageHeader
+        title="Components you can own, compiled away"
+        lede="Composable, accessible components with thoughtful defaults, built on a compiler that folds the reactivity and the styles away. Customize, extend, and make them your own."
+        actions={
+          <>
             <Link to="/docs/components" class={plain}>
-              <Badge variant="secondary">
-                Every component, transcribed from upstream <ArrowRight size={12} />
-              </Badge>
+              <Button>Get Started</Button>
             </Link>
-            <h1 class={heading}>Components you can own, compiled away</h1>
-            <p class={description}>
-              Composable, accessible components with thoughtful defaults, built on a compiler that
-              folds the reactivity and the styles away. Customize, extend, and make them your own.
-            </p>
-            <div class={actions}>
-              <Link to="/docs/components" class={plain}>
-                <Button>Get Started</Button>
-              </Link>
-              <Link to="/create" class={plain}>
-                <Button variant="secondary">Open the Designer</Button>
-              </Link>
-            </div>
-          </div>
-        </div>
-      </section>
+            <Link to="/create" class={plain}>
+              <Button variant="secondary">Open the Designer</Button>
+            </Link>
+          </>
+        }
+      >
+        <Announcement />
+      </PageHeader>
 
       <div class={`${wrapper} ${belowFold}`}>
         <div class={`${container} ${belowFoldInner}`}>

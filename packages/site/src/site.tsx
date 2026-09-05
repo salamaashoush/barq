@@ -1,9 +1,19 @@
 import { For, signal, type Child, type Incoming } from "@barqjs/core";
 import { css } from "@barqjs/css";
+import { ArrowRight } from "@barqjs/lucide/icons/arrow-right";
 import { Menu } from "@barqjs/lucide/icons/menu";
 import { Search } from "@barqjs/lucide/icons/search";
 import { Link, Outlet, useLocation } from "@barqjs/router";
-import { Button, Kbd, Separator, Sheet, SheetContent, SheetTitle, SheetTrigger } from "@barqjs/ui";
+import {
+  Badge,
+  Button,
+  Kbd,
+  Separator,
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  SheetTrigger,
+} from "@barqjs/ui";
 
 import { installSite } from "./params.ts";
 
@@ -461,42 +471,170 @@ export function SiteLayout() {
   );
 }
 
+/**
+ * `PageHeader`: the centred column every page of theirs opens with.
+ *
+ * `container flex flex-col items-center gap-2 px-6 py-8 text-center md:py-16
+ * lg:py-20 xl:gap-4`, inside a `border-grid` section. The home page, `/colors`,
+ * `/blocks` and the docs index all render it, which is why the type on each of
+ * them lands on the same baseline — and why extracting it is not tidying but
+ * the thing that makes them agree.
+ */
+const headerSection = css`
+  border-color: var(--border);
+
+  @supports (color: color-mix(in lab, red, red)) {
+    border-color: color-mix(in oklab, var(--border) 50%, transparent);
+  }
+`;
+
+const headerInner = css`
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  padding-inline: calc(var(--spacing) * 6);
+  padding-block: calc(var(--spacing) * 8);
+  text-align: center;
+
+  @media (width >= 48rem) {
+    padding-block: calc(var(--spacing) * 16) calc(var(--spacing) * 8);
+  }
+
+  @media (width >= 64rem) {
+    padding-block: calc(var(--spacing) * 20) calc(var(--spacing) * 12);
+  }
+
+  @media (width >= 80rem) {
+    gap: calc(var(--spacing) * 4);
+  }
+`;
+
+/**
+ * `leading-tighter max-w-3xl text-3xl font-semibold tracking-tight text-balance
+ * text-primary lg:leading-[1.1] xl:text-5xl xl:tracking-tighter`.
+ *
+ * `text-3xl` carries its own `line-height: 2.25rem`, which is why the ratio
+ * only shows above `lg`: 30 over 36 is the size's own default, and 1.1 takes
+ * over at 1024 and again at the 48px the heading grows to at 1280.
+ */
+const headerHeading = css`
+  margin: 0;
+  max-width: 48rem;
+  font-size: 1.875rem;
+  line-height: 2.25rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+  color: var(--primary);
+
+  @media (width >= 64rem) {
+    line-height: 1.1;
+  }
+
+  @media (width >= 80rem) {
+    font-size: 3rem;
+    letter-spacing: -0.05em;
+  }
+`;
+
+/** `max-w-4xl text-base text-balance text-foreground sm:text-lg`. */
+const headerLede = css`
+  margin: 0;
+  max-width: 56rem;
+  font-size: 1rem;
+  line-height: 1.5rem;
+  text-wrap: balance;
+  color: var(--foreground);
+
+  @media (width >= 40rem) {
+    font-size: 1.125rem;
+    line-height: 1.75rem;
+  }
+`;
+
+/**
+ * `Announcement`: the badge above every page's heading, not just the home one.
+ *
+ * `<Badge asChild variant="secondary" className="bg-muted">` wrapping a link,
+ * and it is in `PageHeader`'s children on `/`, `/colors`, `/blocks` and the
+ * docs index alike — which is why their headings all start at the same `y`.
+ */
+export function Announcement() {
+  return (
+    <Link to="/docs/components" class={navLink}>
+      <Badge variant="secondary">
+        Every component, transcribed from upstream <ArrowRight size={12} />
+      </Badge>
+    </Link>
+  );
+}
+
+/**
+ * `flex w-full items-center justify-center gap-2 pt-2
+ * **:data-[slot=button]:shadow-none` — upstream's `PageActions`, which is the
+ * last of `PageHeader`'s children rather than a section of its own.
+ */
+const headerActions = css`
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: calc(var(--spacing) * 2);
+  padding-top: calc(var(--spacing) * 2);
+
+  /* The hero's buttons sit on a flat surface, so the elevation every other
+     button carries reads there as a mistake. */
+  & [data-slot="button"] {
+    box-shadow: none;
+  }
+`;
+
+export function PageHeader(
+  props: Incoming<{ title: string; lede?: string; actions?: Child; children?: Child }>,
+) {
+  return (
+    <section class={headerSection}>
+      <div class={wrapper}>
+        <div class={`${container} ${headerInner}`}>
+          {props.children}
+          <h1 class={headerHeading}>{props.title}</h1>
+          {props.lede?.() === undefined ? null : <p class={headerLede}>{props.lede()}</p>}
+          {/* `props.actions === undefined` tests PRESENCE without invoking.
+              `actions` is JSX, so it lowers to a Block, and a Block called with
+              no scope throws — `props.actions?.()` is the Cell read this slot
+              is not. The absent prop is not an own property, so comparing the
+              carrier is the whole test. */}
+          {props.actions === undefined ? null : <div class={headerActions}>{props.actions}</div>}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 const shell = css`
   padding-block: calc(var(--spacing) * 8) calc(var(--spacing) * 16);
   display: grid;
   gap: calc(var(--spacing) * 8);
 `;
 
-const title = css`
-  font-size: 1.875rem;
-  font-weight: 600;
-  letter-spacing: -0.025em;
-  margin: 0;
-
-  @media (width >= 64rem) {
-    font-size: 2.25rem;
-  }
-`;
-
-const lede = css`
-  color: var(--muted-foreground);
-  margin: calc(var(--spacing) * 2) 0 0;
-  max-width: 46rem;
-  text-wrap: pretty;
-`;
-
-/** A page's heading and its body, so every section on the site opens the same. */
+/**
+ * A page: their `PageHeader` over its body.
+ *
+ * Upstream's `/colors`, `/blocks` and docs index all open with the same centred
+ * header the front page does, so this is that header and the content under it
+ * rather than a heading each page styles itself.
+ */
 export function Page(props: Incoming<{ title: string; lede?: string; children?: Child }>) {
   return (
-    <div class={wrapper}>
-      <div class={`${container} ${shell}`}>
-        <div>
-          <h1 class={title}>{props.title}</h1>
-          {props.lede?.() === undefined ? null : <p class={lede}>{props.lede()}</p>}
-        </div>
-        {props.children}
+    <>
+      <PageHeader title={props.title()} lede={props.lede?.()}>
+        <Announcement />
+      </PageHeader>
+      <div class={wrapper}>
+        <div class={`${container} ${shell}`}>{props.children}</div>
       </div>
-    </div>
+    </>
   );
 }
 
