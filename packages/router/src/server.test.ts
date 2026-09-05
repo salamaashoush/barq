@@ -30,6 +30,7 @@ import {
   linkHref,
 } from "./components.ts";
 
+import { useLocation } from "./hooks.ts";
 import { memoryHistory } from "./history.ts";
 import { createRouter } from "./router.ts";
 import { HeadContent, Scripts } from "./components.ts";
@@ -1390,6 +1391,42 @@ describe("shellComponent", () => {
     const body = await render(table());
     expect(body).toContain("Site");
     expect(body).toContain('content="site"');
+  });
+
+  /**
+   * The shell renders `<html>`, so it is the only place `lang` and `dir` can be
+   * set, and a localised application decides both from the URL. Without the
+   * router context out here, `useLocation()` threw `ContextNotFoundError` and
+   * the whole page 500'd — `renderRoutes` provides that context at depth 0,
+   * which is INSIDE the shell.
+   */
+  test("`useLocation()` is readable inside the shell, which is where `dir` goes", async () => {
+    const localised: AnyRouteDefinition[] = [
+      {
+        id: "__root__",
+        path: "/",
+        shellComponent: (_s: unknown, props: { children: unknown }) => {
+          const at = useLocation();
+          const rtl = at().pathname.startsWith("/ar");
+          return ssrHtml(
+            `<html lang="${rtl ? "ar" : "en"}" dir="${rtl ? "rtl" : "ltr"}">` +
+              `<body>${esc(props.children)}</body></html>`,
+          );
+        },
+        component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+        children: [
+          { id: "/$locale", path: "$locale", component: () => ssrHtml("<main>page</main>") },
+        ],
+      },
+    ] as never;
+
+    const serve = async (path: string): Promise<string> => {
+      const handler = createPageHandler({ routeTree: localised, app: (s) => renderRoutes(s) });
+      return (await handler(get(path))).text();
+    };
+
+    expect(await serve("/ar")).toContain('<html lang="ar" dir="rtl">');
+    expect(await serve("/en")).toContain('<html lang="en" dir="ltr">');
   });
 
   test("`<Scripts />` places the client entry and the route's body scripts", async () => {

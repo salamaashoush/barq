@@ -583,8 +583,14 @@ export function Document(
   // A null scope has nothing to provide ON, and `renderShell` makes the same
   // split for the same reason.
   if (scope === null) return shell(null, { children }) as JSXElement;
+  // Both contexts, and in the order `renderShell` provides them: the shell
+  // renders `<html>`, so it is where `lang` and `dir` are set, and it can only
+  // know them from the location. A backend that provided one and not the other
+  // would hydrate into a different tree than it served.
   return provide(scope, HeadAssetsContext, cell(assets), (inner) =>
-    shell(inner, { children }),
+    provide(inner as Scope, RouterContext, cell(state), (withRouter) =>
+      shell(withRouter, { children }),
+    ),
   ) as JSXElement;
 }
 

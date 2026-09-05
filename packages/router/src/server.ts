@@ -1613,17 +1613,23 @@ export function renderShell(
   //
   // WHAT THIS COSTS is the one thing worth naming: a context the SHELL provides
   // no longer wraps the routes, because they are constructed before it runs.
-  // `renderShell` provides `HeadAssetsContext` itself, outside the shell, so
-  // `<HeadContent />` is unaffected; the router's own context is provided at
-  // depth 0 inside `renderRoutes`. A shell that wants to provide something to
-  // the routes has to do it in the ROOT ROUTE's component, which is where a
-  // layout's providers belong anyway.
+  // `<HeadContent />` is unaffected, and so is `useLocation()`: both contexts
+  // are provided HERE, outside the shell, rather than by it. A shell that wants
+  // to provide something to the routes has to do it in the ROOT ROUTE's
+  // component, which is where a layout's providers belong anyway.
+  //
+  // `RouterContext` is outside the shell because the shell renders `<html>`,
+  // and `lang` and `dir` are the attributes every localised application has to
+  // set there. It reads the same state `renderRoutes` provides at depth 0, so
+  // the two cannot disagree.
   const build = (inner: Scope | null): unknown => {
     const rendered = body();
     return shell(inner, { children: () => rendered });
   };
   if (owner === null) return build(null);
-  return provide(owner, HeadAssetsContext, cell(assets), (inner) => build(inner as Scope));
+  return provide(owner, HeadAssetsContext, cell(assets), (inner) =>
+    provide(inner as Scope, RouterContext, cell(state), (withRouter) => build(withRouter as Scope)),
+  );
 }
 
 /**
