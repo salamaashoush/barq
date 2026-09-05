@@ -22,7 +22,6 @@ import {
   enterRoot,
   exit,
   getOwner,
-  isBlock,
   isDisposed,
   lookupContext,
   ownRange,

@@ -177,26 +177,6 @@ const chosen = linked<string[], string>(options, (list, previous) =>
 Both type arguments are spelled because the compute's return mentions
 `previous`, so `T` has nothing to infer from but itself.
 
-## Compiler mode
-
-Add this once, anywhere in your project's type graph:
-
-```ts
-declare global {
-  namespace Barq {
-    interface Config {
-      COMPILER_MODE: true;
-    }
-  }
-}
-
-export {};
-```
-
-It widens the control-flow props so `when={visible}` typechecks alongside
-`when={() => visible()}`, because the compiler wraps the first form for you.
-Without it those props demand the thunk you no longer have to write.
-
 ## Async
 
 ```tsx

@@ -28,14 +28,16 @@ function box(element: HTMLElement, rect: Rect): void {
   element.getBoundingClientRect = () => value;
 }
 
-function styleOf(props: { style?: unknown } | undefined): Record<string, string | undefined> {
+function styleOf(
+  props: { style?: unknown } | undefined,
+): Record<string, string | number | undefined> {
   if (props === undefined) throw new Error("overlayPosition returned nothing");
-  return (props.style as () => Record<string, string | undefined>)();
+  return (props.style as () => Record<string, string | number | undefined>)();
 }
 
 /** Where the overlay was put, along the axis the test is about. */
 function leftOf(result: PositionResult | undefined): number {
-  return Number.parseFloat(styleOf(result?.overlayProps).left ?? "");
+  return Number.parseFloat(String(styleOf(result?.overlayProps).left ?? ""));
 }
 
 type Observer = { target: Element; fire: () => void };
@@ -112,7 +114,7 @@ describe("overlayPosition", () => {
     // The trigger's centre is 440. The overlay is 300 wide and shifted to stay
     // inside the viewport, so its left is not 290 — the arrow has to follow the
     // trigger rather than sit in the middle of the overlay.
-    const arrowLeft = Number.parseFloat(styleOf(position?.arrowProps).left ?? "");
+    const arrowLeft = Number.parseFloat(String(styleOf(position?.arrowProps).left ?? ""));
     expect(leftOf(position) + arrowLeft + 5).toBeCloseTo(440, 1);
   });
 
@@ -294,7 +296,7 @@ describe("overlayPosition", () => {
     position?.update();
 
     expect(leftOf(position)).toBeCloseTo(122, 1);
-    expect(Number.parseFloat(styleOf(position?.overlayProps).top ?? "")).toBeCloseTo(80, 1);
+    expect(Number.parseFloat(String(styleOf(position?.overlayProps).top ?? ""))).toBeCloseTo(80, 1);
 
     point.set({ top: 200, left: 300, width: 0, height: 0 });
     flush();

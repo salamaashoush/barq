@@ -111,15 +111,8 @@ export type { Signal, Computed, Context } from "./signals.ts";
 export type { Resource, ResourceInfo, ResourceOptions, ResourceStatus } from "./async.ts";
 export type { Store } from "./store.ts";
 
-// Type configuration - for compiler mode opt-in
-export type {
-  BarqConfig,
-  IsCompilerMode,
-  Incoming,
-  StrictAccessor,
-  StrictArrayAccessor,
-  StrictChild,
-} from "./config.ts";
+// What a JSX call site writes, and what a component body reads.
+export type { Incoming, StrictAccessor, StrictArrayAccessor, StrictChild } from "./config.ts";
 
 // Store - fine-grained nested reactivity
 export { isClient, isServer } from "./env.ts";

@@ -1,103 +1,48 @@
 /**
- * Global type configuration for Barq
+ * The types a JSX call site writes against.
  *
- * By default, Barq uses strict types that require explicit accessors/thunks.
- * This ensures code works correctly without the compiler.
+ * There is one mode. `@barqjs/compiler` wraps a bare value in a thunk on the
+ * way through, so `<Show when={count() > 5}>` and `<For each={items()}>` are
+ * what a caller writes and what the emitted code hands the construct.
  *
- * When using the Barq compiler (@barqjs/compiler), you can enable permissive
- * types that allow raw values where the compiler will wrap them.
- *
- * To enable compiler mode, add this to your project's type declarations:
- *
- * @example
- * ```typescript
- * // In your app's barq.d.ts or global.d.ts
- * declare global {
- *   namespace Barq {
- *     interface Config {
- *       COMPILER_MODE: true;
- *     }
- *   }
- * }
- * export {};
- * ```
+ * This used to be an OPT-IN — `declare global { namespace Barq { interface
+ * Config { COMPILER_MODE: true } } }` in a `barq.d.ts` — from when a caller
+ * could plausibly run the JSX runtime uncompiled and had to write the thunks by
+ * hand. Nothing does: every package here and every `create-barq` template
+ * declared the flag, nine copies of one file saying yes to a question with no
+ * other answer, and a package that forgot it got type errors that described a
+ * mode it was not in.
  */
 
 import type { Child } from "./dom.ts";
 
-/**
- * Global namespace for Barq type configuration.
- * Augment Barq.Config interface to enable compiler mode.
- *
- * @example
- * ```typescript
- * // Enable compiler mode for permissive types
- * declare global {
- *   namespace Barq {
- *     interface Config {
- *       COMPILER_MODE: true;
- *     }
- *   }
- * }
- * export {};
- * ```
- */
-declare global {
-  namespace Barq {
-    // Base config interface - augment this to enable compiler mode
-    // by adding `COMPILER_MODE: true`
-    // eslint-disable-next-line @typescript-eslint/no-empty-object-type
-    interface Config {}
-  }
-}
-
-/**
- * Re-export for convenience
- */
-export type BarqConfig = Barq.Config;
-
-/**
- * Check if compiler mode is enabled via declaration merging.
- * Returns true if Barq.Config has COMPILER_MODE property set to true.
- */
-export type IsCompilerMode = Barq.Config extends { COMPILER_MODE: true } ? true : false;
-
-/**
- * Accessor type - a function that returns a value.
- * This is the fundamental reactive primitive.
- */
+/** A deferred read: the fundamental reactive primitive. */
 export type Accessor<T> = () => T;
 
 /**
- * Strict accessor type for control flow props.
+ * What a control-flow prop accepts at a JSX call site.
  *
- * - In strict mode (default): requires `() => T` (accessor/thunk)
- * - In compiler mode: allows `T | (() => T)` (value or accessor)
- *
- * Use this for props like `Show.when` or `Match.when` that need
- * to be reactive and re-evaluated when dependencies change.
+ * A value or an accessor: the compiler wraps the value, and a caller who
+ * already has an accessor passes it through.
  *
  * @example
- * ```typescript
- * // Strict mode (default)
- * <Show when={() => count() > 5}>  // Must wrap in thunk
- *
- * // Compiler mode
- * <Show when={count() > 5}>        // Compiler wraps it
+ * ```tsx
+ * <Show when={count() > 5}>
+ * <Match when={mode() === "edit"}>
  * ```
  */
-export type StrictAccessor<T> = IsCompilerMode extends true ? T | Accessor<T> : Accessor<T>;
+export type StrictAccessor<T> = T | Accessor<T>;
 
 /**
  * What a component BODY sees, given the props its CALLER declares.
  *
- * The two directions are not the same type and conflating them is why an app
- * with `COMPILER_MODE` on cannot annotate a component at all. `StrictAccessor`
- * is the OUTGOING side — what a JSX call site may write, which the compiler
- * widens to `T | Accessor<T>` because it wraps a bare value in a thunk for you.
+ * The two directions are not the same type and conflating them is why an
+ * application could not annotate a component at all. `StrictAccessor` is the
+ * OUTGOING side — what a JSX call site may write, which is a value or an
+ * accessor because the compiler wraps a bare value in a thunk for you.
  * Incoming is the CALLEE side, and there the compiler has already done that: a
- * prop that is present is a Cell and is called at the use site, in every mode.
- * So this is `Accessor` unconditionally.
+ * prop that is present is a Cell and is called at the use site. So this is
+ * `Accessor` unconditionally.
  *
  * Optionality is preserved rather than stripped, because it is load-bearing:
  * a prop the caller omitted is not an own property, so the read is `?.()` and
@@ -113,47 +58,24 @@ export type StrictAccessor<T> = IsCompilerMode extends true ? T | Accessor<T> : 
 export type Incoming<P> = { [K in keyof P]: Accessor<P[K]> };
 
 /**
- * Strict array accessor type for list iteration props.
+ * The same, for a list prop: `For.each`, `Repeat.count`.
  *
- * - In strict mode (default): requires `() => T[]` (accessor returning array)
- * - In compiler mode: allows `T[] | (() => T[])` (array or accessor)
- *
- * Use this for props like `For.each` or `Repeat.count`.
- *
- * @example
- * ```typescript
- * // Strict mode (default)
- * <For each={() => items()}>  // Must wrap in thunk
- *
- * // Compiler mode
- * <For each={items()}>        // Compiler wraps it
- * ```
+ * The falsy members are the empty list a caller writes as `items && items` or
+ * as a resource that has not landed, and a construct treats each as no rows
+ * rather than as a mistake.
  */
-export type StrictArrayAccessor<T> = IsCompilerMode extends true
-  ?
-      | readonly T[]
-      | T[]
-      | undefined
-      | null
-      | false
-      | Accessor<readonly T[] | T[] | undefined | null | false>
-  : Accessor<readonly T[] | T[] | undefined | null | false>;
+export type StrictArrayAccessor<T> =
+  | readonly T[]
+  | T[]
+  | undefined
+  | null
+  | false
+  | Accessor<readonly T[] | T[] | undefined | null | false>;
 
 /**
- * Strict children type for control flow components.
+ * The children slot of a construct that builds them lazily.
  *
- * - In strict mode (default): requires `() => Child` (thunk)
- * - In compiler mode: allows `Child | (() => Child)` (direct or thunk)
- *
- * Use this for children props that need lazy evaluation.
- *
- * @example
- * ```typescript
- * // Strict mode (default)
- * <Show when={visible}>{() => <Content />}</Show>
- *
- * // Compiler mode
- * <Show when={visible}><Content /></Show>  // Compiler wraps children
- * ```
+ * `<Show when={visible}><Content /></Show>`: the compiler emits the Block, and
+ * a caller holding one already passes it through.
  */
-export type StrictChild = IsCompilerMode extends true ? Child | Accessor<Child> : Accessor<Child>;
+export type StrictChild = Child | Accessor<Child>;
