@@ -12,6 +12,22 @@ function svgOf(node: () => unknown): SVGSVGElement {
   return svg;
 }
 
+describe("data attributes", () => {
+  // The package's convention is that state is an ATTRIBUTE, so styling an icon
+  // off one is the ordinary thing to want. Two names were enumerated and every
+  // other `data-*` was dropped in silence, which is how a disclosure's chevron
+  // kept pointing right at an open row with nothing to see anywhere.
+  test("any data attribute reaches the element", () => {
+    const { container } = render(() => (
+      <Check data-open="true" data-state="checked" data-slot="mark" />
+    ));
+    const svg = container.querySelector("svg");
+    expect(svg?.getAttribute("data-open")).toBe("true");
+    expect(svg?.getAttribute("data-state")).toBe("checked");
+    expect(svg?.getAttribute("data-slot")).toBe("mark");
+  });
+});
+
 describe("an icon", () => {
   test("draws lucide's own paths", () => {
     const svg = svgOf(() => <Check />);

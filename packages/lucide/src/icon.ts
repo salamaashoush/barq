@@ -35,6 +35,16 @@ export interface IconProps {
   "aria-labelledby"?: string;
   "data-slot"?: string;
   "data-testid"?: string;
+  /**
+   * Any other data attribute, forwarded.
+   *
+   * This package's whole convention is that state is an ATTRIBUTE, so styling
+   * an icon off one — `data-open` on a disclosure's chevron, `data-state` on a
+   * toggle's mark — is the ordinary thing to want. Two names were enumerated
+   * and every other `data-*` was dropped in silence, which is how a chevron
+   * came to keep pointing right at an open row with no error anywhere.
+   */
+  [key: `data-${string}`]: unknown;
 }
 
 export const ICON_VIEW_BOX = "0 0 24 24";
@@ -44,7 +54,17 @@ export function iconProps(props: Incoming<IconProps>): Record<string, unknown> {
   const size = (): string | number => props.size?.() ?? 24;
   const stroke = (): string | number => props.strokeWidth?.() ?? 2;
 
+  // Every `data-*` the caller passed, as the accessor it arrived as. Read
+  // through rather than copied, so one that changes still writes its attribute.
+  const data: Record<string, unknown> = {};
+  for (const key in props) {
+    if (!key.startsWith("data-")) continue;
+    const read = (props as Record<string, unknown>)[key];
+    data[key] = typeof read === "function" ? read : () => read;
+  }
+
   return {
+    ...data,
     xmlns: "http://www.w3.org/2000/svg",
     viewBox: ICON_VIEW_BOX,
     fill: "none",
