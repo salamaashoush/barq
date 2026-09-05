@@ -22,13 +22,30 @@ import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { compile } from "tailwindcss";
 
-/** The `@theme` shadcn maps its semantic tokens through. Kept in sync with `apps/v4/app/globals.css`. */
+/**
+ * The `@theme` shadcn maps its semantic tokens through. Kept in sync with
+ * `apps/v4/app/globals.css`.
+ *
+ * The radius scale is RELATIVE, every step of it, and that is upstream's
+ * current form rather than a rewrite of it. The subtractive form this used to
+ * carry — `calc(var(--radius) - 4px)` and so on — agrees with theirs to the
+ * pixel at the default `--radius: 0.625rem` and disagrees everywhere else: at
+ * `1.5rem` the multiplicative scale gives 14.4/19.2/33.6 where the subtractive
+ * one gives 20/22/28, so a project that changed its radius got a scale that
+ * bore no relation to shadcn's. `/create` changes exactly that, which is how
+ * this was found.
+ *
+ * `--radius-2xl` was ABSENT, so `rounded-2xl` fell through to Tailwind's own
+ * static `1rem` — 16px against upstream's 18px, on every preview card the docs
+ * render.
+ */
 const THEME = `
 @theme inline {
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);

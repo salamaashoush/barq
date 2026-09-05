@@ -43,7 +43,7 @@ const trigger = ui(
     alignItems: "center",
     justifyContent: "center",
     gap: "calc(var(--spacing) * 1.5)",
-    borderRadius: "calc(var(--radius) - 2px)",
+    borderRadius: "calc(var(--radius) * 0.8)",
     borderColor: "transparent",
     paddingInline: "calc(var(--spacing) * 2)",
     paddingBlock: "var(--spacing)",

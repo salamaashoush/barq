@@ -83,7 +83,7 @@ const media = ui({
   height: "calc(var(--spacing) * 16)",
   alignItems: "center",
   justifyContent: "center",
-  borderRadius: "calc(var(--radius) - 2px)",
+  borderRadius: "calc(var(--radius) * 0.8)",
   backgroundColor: "var(--muted)",
   '& > svg:not([class*="size-"])': {
     width: "calc(var(--spacing) * 8)",

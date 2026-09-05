@@ -13,7 +13,7 @@ const card = ui(box.border, box.shadow, {
   display: "flex",
   flexDirection: "column",
   gap: "calc(var(--spacing) * 6)",
-  borderRadius: "calc(var(--radius) + 4px)",
+  borderRadius: "calc(var(--radius) * 1.4)",
   backgroundColor: "var(--card)",
   paddingBlock: "calc(var(--spacing) * 6)",
   color: "var(--card-foreground)",

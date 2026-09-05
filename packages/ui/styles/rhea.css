@@ -9,7 +9,7 @@
     }
 
     [data-slot="slider-track"] {
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       background-color: var(--input);
       @supports (color: color-mix(in lab, red, red)) {
         background-color: color-mix(in oklab, var(--input) 90%, transparent);
@@ -31,7 +31,7 @@
     [data-slot="slider-thumb"] {
       width: calc(var(--spacing) * 4);
       height: calc(var(--spacing) * 4);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       background-color: var(--color-white);
       --ui-shadow: 0 4px 6px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 2px 4px -2px var(--ui-shadow-color, rgb(0 0 0 / 0.1));
       box-shadow: var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow);
@@ -78,7 +78,7 @@
 
     [data-slot="switch"] {
       flex-shrink: 0;
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       border-style: var(--ui-border-style);
       border-width: 2px;
       &:is(:where([data-slot="field-label"]):has(:is(:focus-visible)) *) {
@@ -183,7 +183,7 @@
     }
 
     [data-slot="switch-thumb"] {
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       background-color: var(--background);
       --ui-shadow: 0 1px 3px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1));
       box-shadow: var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow);
@@ -240,7 +240,7 @@
       display: flex;
       width: calc(var(--spacing) * 4);
       height: calc(var(--spacing) * 4);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       border-style: var(--ui-border-style);
       border-width: 1px;
       border-color: transparent;
@@ -474,7 +474,7 @@
     }
 
     [data-slot="button"] {
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       border-style: var(--ui-border-style);
       border-width: 1px;
       border-color: transparent;
@@ -761,8 +761,8 @@
         border-color: var(--ring);
       }
       &:has(:is(select[aria-hidden=true]:last-child)) > [data-slot=select-trigger]:last-of-type {
-        border-top-right-radius: var(--radius-2xl);
-        border-bottom-right-radius: var(--radius-2xl);
+        border-top-right-radius: calc(var(--radius) * 1.8);
+        border-bottom-right-radius: calc(var(--radius) * 1.8);
       }
       &:has( > [data-variant=outline]) > input {
         border-color: var(--border);
@@ -774,21 +774,21 @@
 
     [data-slot="button-group"][data-orientation="horizontal"] {
       & > [data-slot]:not(:has( ~ [data-slot])) {
-        border-top-right-radius: var(--radius-2xl) !important;
-        border-bottom-right-radius: var(--radius-2xl) !important;
+        border-top-right-radius: calc(var(--radius) * 1.8) !important;
+        border-bottom-right-radius: calc(var(--radius) * 1.8) !important;
       }
     }
 
     [data-slot="button-group"][data-orientation="vertical"] {
       & > [data-slot]:not(:has( ~ [data-slot])) {
-        border-bottom-right-radius: var(--radius-2xl) !important;
-        border-bottom-left-radius: var(--radius-2xl) !important;
+        border-bottom-right-radius: calc(var(--radius) * 1.8) !important;
+        border-bottom-left-radius: calc(var(--radius) * 1.8) !important;
       }
     }
 
     [data-slot="button-group-text"] {
       gap: calc(var(--spacing) * 2);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       border-style: var(--ui-border-style);
       border-width: 1px;
       background-color: var(--muted);
@@ -809,7 +809,7 @@
 
     [data-slot="input"] {
       height: calc(var(--spacing) * 8);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       border-style: var(--ui-border-style);
       border-width: 1px;
       border-color: transparent;
@@ -871,7 +871,7 @@
 
     [data-slot="textarea"] {
       resize: none;
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       border-style: var(--ui-border-style);
       border-width: 1px;
       border-color: transparent;
@@ -926,7 +926,7 @@
 
     [data-slot="select-trigger"] {
       gap: calc(var(--spacing) * 1.5);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       border-style: var(--ui-border-style);
       border-width: 1px;
       border-color: transparent;
@@ -1010,7 +1010,7 @@
 
     [data-slot="select-content"] {
       min-width: calc(var(--spacing) * 36);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       background-color: var(--popover);
       color: var(--popover-foreground);
       --ui-shadow: 0 10px 15px -3px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 4px 6px -4px var(--ui-shadow-color, rgb(0 0 0 / 0.1));
@@ -1076,7 +1076,7 @@
     [data-slot="select-item"] {
       min-height: calc(var(--spacing) * 7);
       gap: calc(var(--spacing) * 2);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding-block: calc(var(--spacing) * 1.5);
       padding-right: calc(var(--spacing) * 8);
       padding-left: calc(var(--spacing) * 2);
@@ -1135,7 +1135,7 @@
       width: 100%;
       min-width: 0px;
       appearance: none;
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       border-style: var(--ui-border-style);
       border-width: 1px;
       border-color: transparent;
@@ -1217,7 +1217,7 @@
       max-height: calc(var(--spacing) * 72);
       min-width: calc(var(--spacing) * 36);
       overflow: hidden;
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       background-color: var(--popover);
       color: var(--popover-foreground);
       --ui-shadow: 0 10px 15px -3px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 4px 6px -4px var(--ui-shadow-color, rgb(0 0 0 / 0.1));
@@ -1298,7 +1298,7 @@
     [data-slot="combobox-item"] {
       min-height: calc(var(--spacing) * 7);
       gap: calc(var(--spacing) * 2);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding-block: calc(var(--spacing) * 1.5);
       padding-right: calc(var(--spacing) * 8);
       padding-left: calc(var(--spacing) * 2);
@@ -1393,7 +1393,7 @@
       flex-wrap: wrap;
       align-items: center;
       gap: var(--spacing);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       border-style: var(--ui-border-style);
       border-width: 1px;
       border-color: transparent;
@@ -1451,7 +1451,7 @@
       align-items: center;
       justify-content: center;
       gap: var(--spacing);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       background-color: var(--input);
       padding-inline: calc(var(--spacing) * 1.5);
       font-size: var(--text-xs);
@@ -1488,7 +1488,7 @@
 
     [data-slot="input-group"] {
       height: calc(var(--spacing) * 8);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       border-style: var(--ui-border-style);
       border-width: 1px;
       border-color: transparent;
@@ -1565,7 +1565,7 @@
         opacity: 50%;
       }
       :is(& *)[data-slot="kbd"] {
-        border-radius: var(--radius-2xl);
+        border-radius: calc(var(--radius) * 1.8);
         background-color: var(--muted-foreground);
         @supports (color: color-mix(in lab, red, red)) {
           background-color: color-mix(in oklab, var(--muted-foreground) 10%, transparent);
@@ -1622,7 +1622,7 @@
 
     [data-slot="input-group-button"] {
       gap: calc(var(--spacing) * 2);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       font-size: var(--text-sm);
       line-height: var(--ui-leading, var(--text-sm--line-height));
     }
@@ -1630,7 +1630,7 @@
     [data-slot="input-group-button"][data-size="xs"] {
       height: calc(var(--spacing) * 6);
       gap: var(--spacing);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding-inline: calc(var(--spacing) * 1.5);
       & > svg:not([class*='size-']) {
         width: calc(var(--spacing) * 3.5);
@@ -1641,7 +1641,7 @@
     [data-slot="input-group-button"][data-size="icon-xs"] {
       width: calc(var(--spacing) * 6);
       height: calc(var(--spacing) * 6);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding: 0px;
       &:has( > svg) {
         padding: 0px;
@@ -1716,7 +1716,7 @@
     }
 
     [data-slot="input-otp-group"] {
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       &:has([aria-invalid="true"]) {
         border-color: var(--destructive);
         --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor);
@@ -1756,14 +1756,14 @@
       --ui-outline-style: none;
       outline-style: none;
       &:first-child {
-        border-top-left-radius: var(--radius-2xl);
-        border-bottom-left-radius: var(--radius-2xl);
+        border-top-left-radius: calc(var(--radius) * 1.8);
+        border-bottom-left-radius: calc(var(--radius) * 1.8);
         border-left-style: var(--ui-border-style);
         border-left-width: 1px;
       }
       &:last-child {
-        border-top-right-radius: var(--radius-2xl);
-        border-bottom-right-radius: var(--radius-2xl);
+        border-top-right-radius: calc(var(--radius) * 1.8);
+        border-bottom-right-radius: calc(var(--radius) * 1.8);
       }
       &[aria-invalid="true"] {
         border-color: var(--destructive);
@@ -1866,7 +1866,7 @@
         }
       }
       &:has( > [data-slot=field]) {
-        border-radius: var(--radius-2xl);
+        border-radius: calc(var(--radius) * 1.8);
         border-style: var(--ui-border-style);
         border-width: 1px;
       }
@@ -1952,7 +1952,7 @@
     }
 
     [data-slot="tabs-list"] {
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       padding: 3px;
       &:is(:where([data-slot="tabs"]):where([data-orientation="horizontal"]) *) {
         height: calc(var(--spacing) * 8);
@@ -1967,7 +1967,7 @@
 
     [data-slot="tabs-trigger"] {
       gap: calc(var(--spacing) * 1.5);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       border-style: var(--ui-border-style);
       border-width: 1px;
       border-color: transparent !important;
@@ -2069,7 +2069,7 @@
 
     [data-slot="accordion"] {
       overflow: hidden;
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       border-style: var(--ui-border-style);
       border-width: 1px;
     }
@@ -2276,7 +2276,7 @@
     [data-slot="alert"] {
       display: grid;
       gap: calc(var(--spacing) * 0.5);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       border-style: var(--ui-border-style);
       border-width: 1px;
       padding-inline: calc(var(--spacing) * 4);
@@ -2413,7 +2413,7 @@
     [data-slot="badge"] {
       height: calc(var(--spacing) * 5);
       gap: var(--spacing);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       border-style: var(--ui-border-style);
       border-width: 1px;
       border-color: transparent;
@@ -2674,7 +2674,7 @@
       cursor: default;
       align-items: center;
       gap: calc(var(--spacing) * 2);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding-inline: calc(var(--spacing) * 2);
       padding-block: calc(var(--spacing) * 1.5);
       font-size: var(--text-sm);
@@ -2688,7 +2688,7 @@
       -webkit-user-select: none;
       user-select: none;
       :where([data-slot="dialog-content"]) & {
-        border-radius: var(--radius-2xl);
+        border-radius: calc(var(--radius) * 1.8);
       }
       &:where([data-selected]:not([data-selected="false"])) {
         background-color: var(--muted);
@@ -2733,7 +2733,7 @@
 
     [data-slot="context-menu-content"] {
       min-width: calc(var(--spacing) * 36);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       background-color: var(--popover);
       padding: var(--spacing);
       color: var(--popover-foreground);
@@ -2792,7 +2792,7 @@
     [data-slot="context-menu-item"] {
       min-height: calc(var(--spacing) * 7);
       gap: calc(var(--spacing) * 2);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding-inline: calc(var(--spacing) * 2);
       padding-block: calc(var(--spacing) * 1.5);
       font-size: var(--text-sm);
@@ -2835,7 +2835,7 @@
     [data-slot="context-menu-checkbox-item"] {
       min-height: calc(var(--spacing) * 7);
       gap: calc(var(--spacing) * 2);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding-block: calc(var(--spacing) * 1.5);
       padding-right: calc(var(--spacing) * 8);
       padding-left: calc(var(--spacing) * 2);
@@ -2857,7 +2857,7 @@
     [data-slot="context-menu-radio-item"] {
       min-height: calc(var(--spacing) * 7);
       gap: calc(var(--spacing) * 2);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding-block: calc(var(--spacing) * 1.5);
       padding-right: calc(var(--spacing) * 8);
       padding-left: calc(var(--spacing) * 2);
@@ -2916,7 +2916,7 @@
 
     [data-slot="context-menu-sub-trigger"] {
       min-height: calc(var(--spacing) * 7);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding-inline: calc(var(--spacing) * 2);
       padding-block: calc(var(--spacing) * 1.5);
       font-size: var(--text-sm);
@@ -2940,7 +2940,7 @@
 
     [data-slot="context-menu-sub-content"] {
       min-width: calc(var(--spacing) * 32);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       background-color: var(--popover);
       padding: var(--spacing);
       color: var(--popover-foreground);
@@ -3267,7 +3267,7 @@
 
     [data-slot="dropdown-menu-content"] {
       min-width: calc(var(--spacing) * 32);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       background-color: var(--popover);
       padding: var(--spacing);
       color: var(--popover-foreground);
@@ -3326,7 +3326,7 @@
     [data-slot="dropdown-menu-item"] {
       min-height: calc(var(--spacing) * 7);
       gap: calc(var(--spacing) * 2);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding-inline: calc(var(--spacing) * 2);
       padding-block: calc(var(--spacing) * 1.5);
       font-size: var(--text-sm);
@@ -3369,7 +3369,7 @@
     [data-slot="dropdown-menu-checkbox-item"] {
       min-height: calc(var(--spacing) * 7);
       gap: calc(var(--spacing) * 2);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding-block: calc(var(--spacing) * 1.5);
       padding-right: calc(var(--spacing) * 8);
       padding-left: calc(var(--spacing) * 2);
@@ -3394,7 +3394,7 @@
     [data-slot="dropdown-menu-radio-item"] {
       min-height: calc(var(--spacing) * 7);
       gap: calc(var(--spacing) * 2);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding-block: calc(var(--spacing) * 1.5);
       padding-right: calc(var(--spacing) * 8);
       padding-left: calc(var(--spacing) * 2);
@@ -3460,7 +3460,7 @@
     [data-slot="dropdown-menu-sub-trigger"] {
       min-height: calc(var(--spacing) * 7);
       gap: calc(var(--spacing) * 2);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding-inline: calc(var(--spacing) * 2);
       padding-block: calc(var(--spacing) * 1.5);
       font-size: var(--text-sm);
@@ -3487,7 +3487,7 @@
 
     [data-slot="dropdown-menu-sub-content"] {
       min-width: 96px;
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       background-color: var(--popover);
       padding: var(--spacing);
       color: var(--popover-foreground);
@@ -3540,7 +3540,7 @@
     }
 
     [data-slot="item"] {
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       border-style: var(--ui-border-style);
       border-width: 1px;
       font-size: var(--text-sm);
@@ -3613,7 +3613,7 @@
       width: calc(var(--spacing) * 10);
       height: calc(var(--spacing) * 10);
       overflow: hidden;
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       &:is(:where([data-slot="item"])[data-size="sm"] *) {
         width: calc(var(--spacing) * 8);
         height: calc(var(--spacing) * 8);
@@ -3745,14 +3745,14 @@
 
     [data-slot="menubar"] {
       height: calc(var(--spacing) * 8);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       border-style: var(--ui-border-style);
       border-width: 1px;
       padding: 3px;
     }
 
     [data-slot="menubar-trigger"] {
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       padding-inline: calc(var(--spacing) * 1.5);
       padding-block: 2px;
       font-size: var(--text-sm);
@@ -3771,7 +3771,7 @@
 
     [data-slot="menubar-content"] {
       min-width: calc(var(--spacing) * 36);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       background-color: var(--popover);
       padding: var(--spacing);
       color: var(--popover-foreground);
@@ -3823,7 +3823,7 @@
     [data-slot="menubar-item"] {
       min-height: calc(var(--spacing) * 7);
       gap: calc(var(--spacing) * 2);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding-inline: calc(var(--spacing) * 2);
       padding-block: calc(var(--spacing) * 1.5);
       font-size: var(--text-sm);
@@ -3869,7 +3869,7 @@
     [data-slot="menubar-checkbox-item"] {
       min-height: calc(var(--spacing) * 7);
       gap: calc(var(--spacing) * 2);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding-block: calc(var(--spacing) * 1.5);
       padding-right: calc(var(--spacing) * 1.5);
       padding-left: calc(var(--spacing) * 7);
@@ -3900,7 +3900,7 @@
     [data-slot="menubar-radio-item"] {
       min-height: calc(var(--spacing) * 7);
       gap: calc(var(--spacing) * 2);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding-block: calc(var(--spacing) * 1.5);
       padding-right: calc(var(--spacing) * 1.5);
       padding-left: calc(var(--spacing) * 7);
@@ -3967,7 +3967,7 @@
     [data-slot="menubar-sub-trigger"] {
       min-height: calc(var(--spacing) * 7);
       gap: calc(var(--spacing) * 2);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding-inline: calc(var(--spacing) * 2);
       padding-block: calc(var(--spacing) * 1.5);
       font-size: var(--text-sm);
@@ -3991,7 +3991,7 @@
 
     [data-slot="menubar-sub-content"] {
       min-width: calc(var(--spacing) * 32);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       background-color: var(--popover);
       padding: var(--spacing);
       color: var(--popover-foreground);
@@ -4047,7 +4047,7 @@
     }
 
     [data-slot="navigation-menu-trigger"] {
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       padding-inline: calc(var(--spacing) * 2.5);
       padding-block: calc(var(--spacing) * 1.5);
       font-size: var(--text-sm);
@@ -4109,7 +4109,7 @@
       display: flex;
       align-items: center;
       gap: calc(var(--spacing) * 2);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       padding-inline: calc(var(--spacing) * 2.5);
       padding-block: calc(var(--spacing) * 1.5);
       font-size: var(--text-sm);
@@ -4141,7 +4141,7 @@
       }
       :where([data-slot="navigation-menu-content"]) & {
         width: 100%;
-        border-radius: calc(var(--radius) + 4px);
+        border-radius: calc(var(--radius) * 1.4);
         padding: calc(var(--spacing) * 2);
         --ui-font-weight: var(--font-weight-normal);
         font-weight: var(--font-weight-normal);
@@ -4190,7 +4190,7 @@
       --ui-ease: cubic-bezier(0.22,1,0.36,1);
       transition-timing-function: cubic-bezier(0.22,1,0.36,1);
       &:is(:where([data-slot="navigation-menu"])[data-viewport="false"] *) {
-        border-radius: var(--radius-2xl);
+        border-radius: calc(var(--radius) * 1.8);
         background-color: var(--popover);
         color: var(--popover-foreground);
         --ui-shadow: 0 10px 15px -3px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 4px 6px -4px var(--ui-shadow-color, rgb(0 0 0 / 0.1));
@@ -4246,7 +4246,7 @@
     }
 
     [data-slot="navigation-menu-viewport"] {
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       background-color: var(--popover);
       color: var(--popover-foreground);
       --ui-shadow: 0 10px 15px -3px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 4px 6px -4px var(--ui-shadow-color, rgb(0 0 0 / 0.1));
@@ -4288,7 +4288,7 @@
     }
 
     [data-slot="navigation-menu-indicator-arrow"] {
-      border-top-left-radius: calc(var(--radius) - 4px);
+      border-top-left-radius: calc(var(--radius) * 0.6);
       background-color: var(--border);
       --ui-shadow: 0 4px 6px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 2px 4px -2px var(--ui-shadow-color, rgb(0 0 0 / 0.1));
       box-shadow: var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow);
@@ -4388,7 +4388,7 @@
     [data-slot="sidebar-inner"] {
       background-color: var(--sidebar);
       &:is(:where(.group)[data-variant="floating"] *) {
-        border-radius: var(--radius-2xl);
+        border-radius: calc(var(--radius) * 1.8);
         --ui-shadow: 0 1px 3px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1));
         box-shadow: var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow);
         --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(1px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor);
@@ -4411,7 +4411,7 @@
         &:is(:where(.peer)[data-variant="inset"] ~ *) {
           margin: calc(var(--spacing) * 2);
           margin-left: 0px;
-          border-radius: var(--radius-2xl);
+          border-radius: calc(var(--radius) * 1.8);
           --ui-shadow: 0 1px 3px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1));
           box-shadow: var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow);
         }
@@ -4473,7 +4473,7 @@
 
     [data-slot="sidebar-group-label"] {
       height: calc(var(--spacing) * 8);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding-inline: calc(var(--spacing) * 3);
       font-size: var(--text-xs);
       line-height: var(--ui-leading, var(--text-xs--line-height));
@@ -4510,7 +4510,7 @@
       top: calc(var(--spacing) * 3.5);
       right: calc(var(--spacing) * 3);
       width: calc(var(--spacing) * 5);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding: 0px;
       color: var(--sidebar-foreground);
       --ui-ring-color: var(--sidebar-ring);
@@ -4532,7 +4532,7 @@
 
     [data-slot="sidebar-menu-button"] {
       gap: calc(var(--spacing) * 2);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding-inline: calc(var(--spacing) * 3);
       padding-block: calc(var(--spacing) * 2);
       text-align: left;
@@ -4649,7 +4649,7 @@
       right: var(--spacing);
       aspect-ratio: 1 / 1;
       width: calc(var(--spacing) * 5);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding: 0px;
       color: var(--sidebar-foreground);
       --ui-ring-color: var(--sidebar-ring);
@@ -4690,7 +4690,7 @@
       display: flex;
       height: calc(var(--spacing) * 5);
       min-width: calc(var(--spacing) * 5);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding-inline: var(--spacing);
       font-size: var(--text-xs);
       line-height: var(--ui-leading, var(--text-xs--line-height));
@@ -4719,14 +4719,14 @@
     [data-slot="sidebar-menu-skeleton"] {
       height: calc(var(--spacing) * 8);
       gap: calc(var(--spacing) * 2);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding-inline: calc(var(--spacing) * 2);
     }
 
     [data-slot="sidebar-menu-skeleton-icon"] {
       width: calc(var(--spacing) * 4);
       height: calc(var(--spacing) * 4);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
     }
 
     [data-slot="sidebar-menu-skeleton-text"] {
@@ -4751,7 +4751,7 @@
     [data-slot="sidebar-menu-sub-button"] {
       height: calc(var(--spacing) * 7);
       gap: calc(var(--spacing) * 2);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding-inline: calc(var(--spacing) * 3);
       color: var(--sidebar-foreground);
       --ui-ring-color: var(--sidebar-ring);
@@ -4871,13 +4871,13 @@
 
     [data-slot="progress"] {
       height: calc(var(--spacing) * 2);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       background-color: var(--muted);
     }
 
     [data-slot="progress"] {
       height: calc(var(--spacing) * 2);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       background-color: var(--muted);
     }
 
@@ -5021,12 +5021,12 @@
     }
 
     [data-slot="skeleton"] {
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       background-color: var(--muted);
     }
 
     [data-slot="toast"] {
-      border-radius: var(--radius-2xl) !important;
+      border-radius: calc(var(--radius) * 1.8) !important;
     }
 
     [data-slot="table-container"] {
@@ -5142,7 +5142,7 @@
 
     [data-slot="toggle"] {
       gap: var(--spacing);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       font-size: var(--text-sm);
       line-height: var(--ui-leading, var(--text-sm--line-height));
       --ui-font-weight: var(--font-weight-medium);
@@ -5244,7 +5244,7 @@
 
     [data-slot="toggle-group"] {
       &[data-spacing="0"][data-variant="outline"] {
-        border-radius: var(--radius-2xl);
+        border-radius: calc(var(--radius) * 1.8);
       }
     }
 
@@ -5262,20 +5262,20 @@
         padding-left: calc(var(--spacing) * 1.5);
       }
       &:is(:where([data-slot="toggle-group"]):where([data-orientation="horizontal"]) *)[data-spacing="0"]:first-child {
-        border-top-left-radius: var(--radius-2xl);
-        border-bottom-left-radius: var(--radius-2xl);
+        border-top-left-radius: calc(var(--radius) * 1.8);
+        border-bottom-left-radius: calc(var(--radius) * 1.8);
       }
       &:is(:where([data-slot="toggle-group"]):where([data-orientation="vertical"]) *)[data-spacing="0"]:first-child {
-        border-top-left-radius: var(--radius-2xl);
-        border-top-right-radius: var(--radius-2xl);
+        border-top-left-radius: calc(var(--radius) * 1.8);
+        border-top-right-radius: calc(var(--radius) * 1.8);
       }
       &:is(:where([data-slot="toggle-group"]):where([data-orientation="horizontal"]) *)[data-spacing="0"]:last-child {
-        border-top-right-radius: var(--radius-2xl);
-        border-bottom-right-radius: var(--radius-2xl);
+        border-top-right-radius: calc(var(--radius) * 1.8);
+        border-bottom-right-radius: calc(var(--radius) * 1.8);
       }
       &:is(:where([data-slot="toggle-group"]):where([data-orientation="vertical"]) *)[data-spacing="0"]:last-child {
-        border-bottom-right-radius: var(--radius-2xl);
-        border-bottom-left-radius: var(--radius-2xl);
+        border-bottom-right-radius: calc(var(--radius) * 1.8);
+        border-bottom-left-radius: calc(var(--radius) * 1.8);
       }
       &[data-selected] {
         background-color: var(--muted);
@@ -5286,7 +5286,7 @@
       display: inline-flex;
       align-items: center;
       gap: calc(var(--spacing) * 1.5);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding-inline: calc(var(--spacing) * 3);
       padding-block: calc(var(--spacing) * 1.5);
       font-size: var(--text-xs);
@@ -5405,7 +5405,7 @@
       flex-shrink: 0;
       align-items: center;
       justify-content: center;
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       background-color: var(--muted);
       color: var(--foreground);
       & svg:not([class*='size-']) {
@@ -5447,16 +5447,16 @@
     }
 
     [data-slot="carousel-previous"] {
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
     }
 
     [data-slot="carousel-next"] {
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
     }
 
     [data-slot="chart-tooltip"] {
       gap: calc(var(--spacing) * 1.5);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       background-color: var(--popover);
       padding-inline: calc(var(--spacing) * 2.5);
       padding-block: calc(var(--spacing) * 1.5);
@@ -5743,7 +5743,7 @@
 
     [data-slot="attachment"] {
       width: fit-content;
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       &:focus-within {
         --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(1px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor);
         box-shadow: var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow);
@@ -5793,7 +5793,7 @@
 
     [data-slot="attachment"][data-size="xs"] {
       gap: calc(var(--spacing) * 1.5);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       font-size: var(--text-xs);
       line-height: var(--ui-leading, var(--text-xs--line-height));
       &:has([data-slot="attachment-content"]) {
@@ -5818,7 +5818,7 @@
       }
       &:is(:where([data-slot="attachment"])[data-size="xs"] *) {
         width: calc(var(--spacing) * 7);
-        border-radius: calc(var(--radius) - 2px);
+        border-radius: calc(var(--radius) * 0.8);
       }
       :is(&:is(:where([data-slot="attachment"])[data-orientation="vertical"] *) > *)[data-slot="spinner"] {
         width: calc(var(--spacing) * 6) !important;
@@ -6096,7 +6096,7 @@
       max-height: calc(var(--spacing) * 72);
       min-width: calc(var(--spacing) * 36);
       overflow: hidden;
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       background-color: var(--popover);
       color: var(--popover-foreground);
       --ui-shadow: 0 10px 15px -3px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 4px 6px -4px var(--ui-shadow-color, rgb(0 0 0 / 0.1));
@@ -6159,7 +6159,7 @@
 
     [data-slot="context-menu-content"] {
       min-width: calc(var(--spacing) * 36);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       background-color: var(--popover);
       padding: var(--spacing);
       color: var(--popover-foreground);
@@ -6280,7 +6280,7 @@
 
     [data-slot="dropdown-menu-content"] {
       min-width: calc(var(--spacing) * 32);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       background-color: var(--popover);
       padding: var(--spacing);
       color: var(--popover-foreground);
@@ -6433,7 +6433,7 @@
 
     [data-slot="select-content"] {
       min-width: calc(var(--spacing) * 36);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       background-color: var(--popover);
       color: var(--popover-foreground);
       --ui-shadow: 0 10px 15px -3px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 4px 6px -4px var(--ui-shadow-color, rgb(0 0 0 / 0.1));
@@ -6483,7 +6483,7 @@
       display: inline-flex;
       align-items: center;
       gap: calc(var(--spacing) * 1.5);
-      border-radius: calc(var(--radius) + 4px);
+      border-radius: calc(var(--radius) * 1.4);
       padding-inline: calc(var(--spacing) * 3);
       padding-block: calc(var(--spacing) * 1.5);
       font-size: var(--text-xs);
@@ -6527,7 +6527,7 @@
 
     [data-slot="context-menu-sub-content"] {
       min-width: calc(var(--spacing) * 32);
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       background-color: var(--popover);
       padding: var(--spacing);
       color: var(--popover-foreground);
@@ -6550,7 +6550,7 @@
 
     [data-slot="dropdown-menu-sub-content"] {
       min-width: 96px;
-      border-radius: var(--radius-2xl);
+      border-radius: calc(var(--radius) * 1.8);
       background-color: var(--popover);
       padding: var(--spacing);
       color: var(--popover-foreground);

@@ -87,14 +87,14 @@ const slot = ui(text.sm, {
   "--ui-outline-style": "none",
   outlineStyle: "none",
   "&:first-child": {
-    borderTopLeftRadius: "calc(var(--radius) - 2px)",
-    borderBottomLeftRadius: "calc(var(--radius) - 2px)",
+    borderTopLeftRadius: "calc(var(--radius) * 0.8)",
+    borderBottomLeftRadius: "calc(var(--radius) * 0.8)",
     borderLeftStyle: "var(--ui-border-style)",
     borderLeftWidth: "1px",
   },
   "&:last-child": {
-    borderTopRightRadius: "calc(var(--radius) - 2px)",
-    borderBottomRightRadius: "calc(var(--radius) - 2px)",
+    borderTopRightRadius: "calc(var(--radius) * 0.8)",
+    borderBottomRightRadius: "calc(var(--radius) * 0.8)",
   },
   '&[aria-invalid="true"]': {
     borderColor: "var(--destructive)",

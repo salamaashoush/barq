@@ -43,7 +43,7 @@ const bar = ui(box.border, box.shadow, {
   height: "calc(var(--spacing) * 9)",
   alignItems: "center",
   gap: "var(--spacing)",
-  borderRadius: "calc(var(--radius) - 2px)",
+  borderRadius: "calc(var(--radius) * 0.8)",
   backgroundColor: "var(--background)",
   padding: "var(--spacing)",
   "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
@@ -60,7 +60,7 @@ const trigger = ui(
     display: "flex",
     height: "auto",
     alignItems: "center",
-    borderRadius: "calc(var(--radius) - 4px)",
+    borderRadius: "calc(var(--radius) * 0.6)",
     paddingInline: "calc(var(--spacing) * 2)",
     paddingBlock: "var(--spacing)",
     "[data-expanded], &[data-open]": {

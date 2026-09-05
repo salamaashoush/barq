@@ -30,7 +30,7 @@ export const itemVariants = variants({
     display: "flex",
     flexWrap: "wrap",
     alignItems: "center",
-    borderRadius: "calc(var(--radius) - 2px)",
+    borderRadius: "calc(var(--radius) * 0.8)",
     borderColor: "transparent",
     transitionProperty:
       "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to",
@@ -113,14 +113,14 @@ export const itemMediaVariants = variants({
       icon: ui(box.border, icon.sized, {
         width: "calc(var(--spacing) * 8)",
         height: "calc(var(--spacing) * 8)",
-        borderRadius: "calc(var(--radius) - 4px)",
+        borderRadius: "calc(var(--radius) * 0.6)",
         backgroundColor: "var(--muted)",
       }),
       image: ui({
         width: "calc(var(--spacing) * 10)",
         height: "calc(var(--spacing) * 10)",
         overflow: "hidden",
-        borderRadius: "calc(var(--radius) - 4px)",
+        borderRadius: "calc(var(--radius) * 0.6)",
         "& img": {
           width: "100%",
           height: "100%",

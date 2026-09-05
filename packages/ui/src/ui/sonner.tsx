@@ -91,7 +91,7 @@ const action = ui({
 const close = ui({
   marginLeft: "auto",
   flexShrink: "0",
-  borderRadius: "calc(var(--radius) - 2px)",
+  borderRadius: "calc(var(--radius) * 0.8)",
   padding: "var(--spacing)",
   color: "var(--muted-foreground)",
   opacity: "0%",

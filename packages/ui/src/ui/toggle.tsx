@@ -33,7 +33,7 @@ export const toggleVariants = variants({
       alignItems: "center",
       justifyContent: "center",
       gap: "calc(var(--spacing) * 2)",
-      borderRadius: "calc(var(--radius) - 2px)",
+      borderRadius: "calc(var(--radius) * 0.8)",
       whiteSpace: "nowrap",
       transitionProperty: "color, box-shadow",
       "@media (hover: hover)": {

@@ -23,7 +23,7 @@ const control = ui(
   {
     height: "calc(var(--spacing) * 9)",
     width: "100%",
-    borderRadius: "calc(var(--radius) - 2px)",
+    borderRadius: "calc(var(--radius) * 0.8)",
     borderColor: "var(--input)",
     backgroundColor: "transparent",
     paddingInline: "calc(var(--spacing) * 3)",

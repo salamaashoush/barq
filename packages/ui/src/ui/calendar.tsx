@@ -113,7 +113,7 @@ const weekdays = ui({
 
 const weekday = ui(box.noSelect, {
   flex: "1",
-  borderRadius: "calc(var(--radius) - 2px)",
+  borderRadius: "calc(var(--radius) * 0.8)",
   fontSize: "0.8rem",
   "--ui-font-weight": "var(--font-weight-normal)",
   fontWeight: "var(--font-weight-normal)",
@@ -144,20 +144,20 @@ const day = ui(box.noSelect, {
     color: "var(--muted-foreground)",
   },
   "[data-range-end]": {
-    borderTopRightRadius: "calc(var(--radius) - 2px)",
-    borderBottomRightRadius: "calc(var(--radius) - 2px)",
+    borderTopRightRadius: "calc(var(--radius) * 0.8)",
+    borderBottomRightRadius: "calc(var(--radius) * 0.8)",
     backgroundColor: "var(--accent)",
   },
   "[data-range-middle]": {
     borderRadius: "0",
   },
   "[data-range-start]": {
-    borderTopLeftRadius: "calc(var(--radius) - 2px)",
-    borderBottomLeftRadius: "calc(var(--radius) - 2px)",
+    borderTopLeftRadius: "calc(var(--radius) * 0.8)",
+    borderBottomLeftRadius: "calc(var(--radius) * 0.8)",
     backgroundColor: "var(--accent)",
   },
   "[data-today]": {
-    borderRadius: "calc(var(--radius) - 2px)",
+    borderRadius: "calc(var(--radius) * 0.8)",
     backgroundColor: "var(--accent)",
     color: "var(--accent-foreground)",
   },
@@ -165,12 +165,12 @@ const day = ui(box.noSelect, {
     borderRadius: "0",
   },
   ':first-child[data-selected] [data-slot="calendar-day-button"]': {
-    borderTopLeftRadius: "calc(var(--radius) - 2px)",
-    borderBottomLeftRadius: "calc(var(--radius) - 2px)",
+    borderTopLeftRadius: "calc(var(--radius) * 0.8)",
+    borderBottomLeftRadius: "calc(var(--radius) * 0.8)",
   },
   ':last-child[data-selected] [data-slot="calendar-day-button"]': {
-    borderTopRightRadius: "calc(var(--radius) - 2px)",
-    borderBottomRightRadius: "calc(var(--radius) - 2px)",
+    borderTopRightRadius: "calc(var(--radius) * 0.8)",
+    borderBottomRightRadius: "calc(var(--radius) * 0.8)",
   },
 });
 
@@ -187,9 +187,9 @@ const dayButton = ui({
   "--ui-font-weight": "var(--font-weight-normal)",
   fontWeight: "var(--font-weight-normal)",
   "[data-range-end]": {
-    borderRadius: "calc(var(--radius) - 2px)",
-    borderTopRightRadius: "calc(var(--radius) - 2px)",
-    borderBottomRightRadius: "calc(var(--radius) - 2px)",
+    borderRadius: "calc(var(--radius) * 0.8)",
+    borderTopRightRadius: "calc(var(--radius) * 0.8)",
+    borderBottomRightRadius: "calc(var(--radius) * 0.8)",
     backgroundColor: "var(--primary)",
     color: "var(--primary-foreground)",
   },
@@ -199,9 +199,9 @@ const dayButton = ui({
     color: "var(--accent-foreground)",
   },
   "[data-range-start]": {
-    borderRadius: "calc(var(--radius) - 2px)",
-    borderTopLeftRadius: "calc(var(--radius) - 2px)",
-    borderBottomLeftRadius: "calc(var(--radius) - 2px)",
+    borderRadius: "calc(var(--radius) * 0.8)",
+    borderTopLeftRadius: "calc(var(--radius) * 0.8)",
+    borderBottomLeftRadius: "calc(var(--radius) * 0.8)",
     backgroundColor: "var(--primary)",
     color: "var(--primary-foreground)",
   },

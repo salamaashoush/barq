@@ -12,7 +12,7 @@ const group = ui({
   display: "flex",
   width: "fit-content",
   alignItems: "center",
-  borderRadius: "calc(var(--radius) - 2px)",
+  borderRadius: "calc(var(--radius) * 0.8)",
   gap: "calc(var(--spacing) * var(--barq-toggle-gap, 0))",
   '[data-spacing="default"][data-variant="outline"]': {
     "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
@@ -33,12 +33,12 @@ const item = ui({
       "var(--ui-inset-shadow), var(--ui-inset-ring-shadow), var(--ui-ring-offset-shadow), var(--ui-ring-shadow), var(--ui-shadow)",
   },
   '[data-spacing="0"]:first-child': {
-    borderTopLeftRadius: "calc(var(--radius) - 2px)",
-    borderBottomLeftRadius: "calc(var(--radius) - 2px)",
+    borderTopLeftRadius: "calc(var(--radius) * 0.8)",
+    borderBottomLeftRadius: "calc(var(--radius) * 0.8)",
   },
   '[data-spacing="0"]:last-child': {
-    borderTopRightRadius: "calc(var(--radius) - 2px)",
-    borderBottomRightRadius: "calc(var(--radius) - 2px)",
+    borderTopRightRadius: "calc(var(--radius) * 0.8)",
+    borderBottomRightRadius: "calc(var(--radius) * 0.8)",
   },
   '[data-spacing="0"][data-variant="outline"]': {
     borderLeftStyle: "var(--ui-border-style)",

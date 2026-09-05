@@ -494,7 +494,8 @@
       "dependencies": [
         "@barqjs/core",
         "@barqjs/css",
-        "@barqjs/primitives"
+        "@barqjs/primitives",
+        "@tanstack/charts"
       ],
       "registryDependencies": [
         "layers",

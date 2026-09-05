@@ -26,8 +26,8 @@ export const buttonGroupVariants = variants({
       zIndex: "10",
     },
     ':has(> select[aria-hidden="true"]:last-child) > [data-slot="select-trigger"]:last-of-type': {
-      borderTopRightRadius: "calc(var(--radius) - 2px)",
-      borderBottomRightRadius: "calc(var(--radius) - 2px)",
+      borderTopRightRadius: "calc(var(--radius) * 0.8)",
+      borderBottomRightRadius: "calc(var(--radius) * 0.8)",
     },
     '& > [data-slot="select-trigger"]:not([class*="w-"])': {
       width: "fit-content",
@@ -72,7 +72,7 @@ const label = ui(box.border, text.sm, text.medium, box.shadow, icon.sized, {
   display: "flex",
   alignItems: "center",
   gap: "calc(var(--spacing) * 2)",
-  borderRadius: "calc(var(--radius) - 2px)",
+  borderRadius: "calc(var(--radius) * 0.8)",
   backgroundColor: "var(--muted)",
   paddingInline: "calc(var(--spacing) * 4)",
   "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",

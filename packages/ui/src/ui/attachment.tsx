@@ -32,7 +32,7 @@ export const attachmentVariants = variants({
     minWidth: "0px",
     flexShrink: "0",
     flexWrap: "wrap",
-    borderRadius: "calc(var(--radius) + 4px)",
+    borderRadius: "calc(var(--radius) * 1.4)",
     borderStyle: "var(--ui-border-style)",
     borderWidth: "1px",
     backgroundColor: "var(--card)",
@@ -148,7 +148,7 @@ export const attachmentMediaVariants = variants({
     },
     '[data-slot="attachment"][data-size="xs"] &': {
       width: "calc(var(--spacing) * 7)",
-      borderRadius: "calc(var(--radius) - 2px)",
+      borderRadius: "calc(var(--radius) * 0.8)",
     },
     '[data-slot="attachment"][data-size="xs"] & svg:not([class*="size-"])': {
       width: "calc(var(--spacing) * 3.5)",

@@ -2,7 +2,7 @@
  * This package's declarations, one class each.
  *
  * Every rule here used to be a `css` block: one class holding a slot's whole
- * look, which meant a declaration as ordinary as `border-radius: calc(var(--radius) - 2px)`
+ * look, which meant a declaration as ordinary as `border-radius: calc(var(--radius) * 0.8)`
  * was written into forty different classes. Measured across the package, 1,948
  * declarations collapsed to 433 distinct ones. An atom is one declaration, so
  * they are shared by construction, and an application writing its own component

@@ -9,7 +9,7 @@ const ui = layer("barq.ui");
 
 const skeleton = ui({
   animation: "var(--animate-pulse)",
-  borderRadius: "calc(var(--radius) - 2px)",
+  borderRadius: "calc(var(--radius) * 0.8)",
   backgroundColor: "var(--accent)",
 });
 

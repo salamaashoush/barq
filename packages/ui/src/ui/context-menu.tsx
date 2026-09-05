@@ -62,7 +62,7 @@ const subTrigger = ui(
     display: "flex",
     cursor: "default",
     alignItems: "center",
-    borderRadius: "calc(var(--radius) - 4px)",
+    borderRadius: "calc(var(--radius) * 0.6)",
     paddingInline: "calc(var(--spacing) * 2)",
     paddingBlock: "calc(var(--spacing) * 1.5)",
     "[data-inset]": {

@@ -140,7 +140,7 @@ const fieldLabel = ui({
   ':has(> [data-slot="field"])': {
     width: "100%",
     flexDirection: "column",
-    borderRadius: "calc(var(--radius) - 2px)",
+    borderRadius: "calc(var(--radius) * 0.8)",
     borderStyle: "var(--ui-border-style)",
     borderWidth: "1px",
   },

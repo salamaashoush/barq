@@ -50,7 +50,7 @@ export const buttonVariants = variants({
       alignItems: "center",
       justifyContent: "center",
       gap: "calc(var(--spacing) * 2)",
-      borderRadius: "calc(var(--radius) - 2px)",
+      borderRadius: "calc(var(--radius) * 0.8)",
       whiteSpace: "nowrap",
       transitionProperty: "all",
       ":disabled": {
@@ -184,7 +184,7 @@ export const buttonVariants = variants({
       xs: ui({
         height: "calc(var(--spacing) * 6)",
         gap: "var(--spacing)",
-        borderRadius: "calc(var(--radius) - 2px)",
+        borderRadius: "calc(var(--radius) * 0.8)",
         paddingInline: "calc(var(--spacing) * 2)",
         fontSize: "var(--text-xs)",
         lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
@@ -199,7 +199,7 @@ export const buttonVariants = variants({
       sm: ui({
         height: "calc(var(--spacing) * 8)",
         gap: "calc(var(--spacing) * 1.5)",
-        borderRadius: "calc(var(--radius) - 2px)",
+        borderRadius: "calc(var(--radius) * 0.8)",
         paddingInline: "calc(var(--spacing) * 3)",
         ":has(> svg)": {
           paddingInline: "calc(var(--spacing) * 2.5)",
@@ -207,7 +207,7 @@ export const buttonVariants = variants({
       }),
       lg: ui({
         height: "calc(var(--spacing) * 10)",
-        borderRadius: "calc(var(--radius) - 2px)",
+        borderRadius: "calc(var(--radius) * 0.8)",
         paddingInline: "calc(var(--spacing) * 6)",
         ":has(> svg)": {
           paddingInline: "calc(var(--spacing) * 4)",
@@ -220,7 +220,7 @@ export const buttonVariants = variants({
       "icon-xs": ui({
         width: "calc(var(--spacing) * 6)",
         height: "calc(var(--spacing) * 6)",
-        borderRadius: "calc(var(--radius) - 2px)",
+        borderRadius: "calc(var(--radius) * 0.8)",
         '& svg:not([class*="size-"])': {
           width: "calc(var(--spacing) * 3)",
           height: "calc(var(--spacing) * 3)",

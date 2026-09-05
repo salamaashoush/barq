@@ -161,7 +161,7 @@ const content = ui(text.sm, {
   maxWidth: "100%",
   minWidth: "0px",
   overflow: "hidden",
-  borderRadius: "calc(var(--radius) + 4px)",
+  borderRadius: "calc(var(--radius) * 1.4)",
   borderStyle: "var(--ui-border-style)",
   borderWidth: "1px",
   borderColor: "transparent",

@@ -18,7 +18,7 @@ const kbd = ui(text.medium, box.noSelect, {
   alignItems: "center",
   justifyContent: "center",
   gap: "var(--spacing)",
-  borderRadius: "calc(var(--radius) - 4px)",
+  borderRadius: "calc(var(--radius) * 0.6)",
   backgroundColor: "var(--muted)",
   paddingInline: "var(--spacing)",
   fontFamily: "var(--font-sans)",

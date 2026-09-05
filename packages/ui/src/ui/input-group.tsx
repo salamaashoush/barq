@@ -20,7 +20,7 @@ const root = ui(box.border, box.shadow, box.transition, box.outline, when.darkIn
   width: "100%",
   minWidth: "0px",
   alignItems: "center",
-  borderRadius: "calc(var(--radius) - 2px)",
+  borderRadius: "calc(var(--radius) * 0.8)",
   borderColor: "var(--input)",
   "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
   transitionProperty: "color, box-shadow",
@@ -170,7 +170,7 @@ export const inputGroupButtonVariants = variants({
       sm: ui({
         height: "calc(var(--spacing) * 8)",
         gap: "calc(var(--spacing) * 1.5)",
-        borderRadius: "calc(var(--radius) - 2px)",
+        borderRadius: "calc(var(--radius) * 0.8)",
         paddingInline: "calc(var(--spacing) * 2.5)",
         ":has(> svg)": {
           paddingInline: "calc(var(--spacing) * 2.5)",

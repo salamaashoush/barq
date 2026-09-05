@@ -44,7 +44,7 @@ const trigger = ui(
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: "calc(var(--spacing) * 4)",
-    borderRadius: "calc(var(--radius) - 2px)",
+    borderRadius: "calc(var(--radius) * 0.8)",
     backgroundColor: "transparent",
     paddingBlock: "calc(var(--spacing) * 4)",
     textAlign: "left",

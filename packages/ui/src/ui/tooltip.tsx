@@ -22,7 +22,7 @@ const content = ui(when.closing, {
   width: "fit-content",
   animation:
     "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
-  borderRadius: "calc(var(--radius) - 2px)",
+  borderRadius: "calc(var(--radius) * 0.8)",
   backgroundColor: "var(--foreground)",
   paddingInline: "calc(var(--spacing) * 3)",
   paddingBlock: "calc(var(--spacing) * 1.5)",
