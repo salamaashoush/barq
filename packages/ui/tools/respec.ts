@@ -205,20 +205,57 @@ function readWholeString(argument: string): string | null {
   return found.value;
 }
 
-/** `data-slot="x"` with a `className={cn("…")}` on the same element. */
+/**
+ * The opening JSX tag `at` sits inside, as `[start, end]`.
+ *
+ * Backwards to the `<` and forwards to the `>` that closes it, counting braces
+ * so an expression attribute holding either character does not end the tag
+ * early. The whole tag rather than the text after `data-slot`, because
+ * `className` comes BEFORE it on several elements and reading forwards only
+ * lost the native select's icon and its `<select>` both.
+ */
+function openingTag(source: string, at: number): [number, number] | null {
+  let start = -1;
+  for (let scan = at; scan >= 0; scan--) {
+    if (source[scan] === ">") return null;
+    if (source[scan] === "<") {
+      start = scan;
+      break;
+    }
+  }
+  if (start === -1) return null;
+
+  let depth = 0;
+  for (let scan = start; scan < source.length; scan++) {
+    const character = source[scan];
+    if (character === "{") depth++;
+    else if (character === "}") depth--;
+    else if (character === ">" && depth === 0) return [start, scan];
+  }
+  return null;
+}
+
+/** `data-slot="x"` with a `className` on the same element, in either spelling. */
 function readSlots(source: string): Map<string, string> {
   const out = new Map<string, string>();
   const pattern = /data-slot="([a-z0-9-]+)"/g;
   let match: RegExpExecArray | null;
   while ((match = pattern.exec(source)) !== null) {
-    const tail = source.slice(match.index, match.index + 2000);
-    const call = /className=\{cn\(/.exec(tail);
-    if (call === null) continue;
-    // Only within the same element, which ends at the first `/>` or `>`.
-    const ends = tail.search(/\/?>/);
-    if (ends !== -1 && call.index > ends) continue;
-    const found = argumentStrings(tail, call.index + call[0].length - 1);
-    if (found !== "") out.set(match[1] ?? "", found);
+    const bounds = openingTag(source, match.index);
+    if (bounds === null) continue;
+    const tag = source.slice(bounds[0], bounds[1]);
+
+    const call = /className=\{cn\(/.exec(tag);
+    if (call !== null) {
+      const found = argumentStrings(tag, call.index + call[0].length - 1);
+      if (found !== "") out.set(match[1] ?? "", found);
+      continue;
+    }
+    // `className="…"`, which is what an element with nothing to merge carries.
+    const plain = /className="/.exec(tag);
+    if (plain === null) continue;
+    const found = readString(tag, plain.index + plain[0].length - 1);
+    if (found !== null && found.value !== "") out.set(match[1] ?? "", found.value);
   }
   return out;
 }

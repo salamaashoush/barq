@@ -412,6 +412,7 @@
     "exports": "bun run tools/exports.ts",
     "registry": "bun run tools/registry.ts",
     "verify": "bun --preload ./src/test-setup.ts tools/verify.ts",
+    "audit": "bun --preload ./src/test-setup.ts tools/audit.ts",
     "prepublishOnly": "bun run registry",
     "styles": "bun run tools/styles.ts"
   },
