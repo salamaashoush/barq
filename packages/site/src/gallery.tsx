@@ -631,7 +631,7 @@ export function Gallery() {
             </CardAction>
           </CardHeader>
           <CardContent>Twelve invoices, four of them unpaid.</CardContent>
-          <CardFooter bordered>
+          <CardFooter>
             <Button size="sm">Export</Button>
           </CardFooter>
         </Card>

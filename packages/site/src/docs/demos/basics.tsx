@@ -223,7 +223,7 @@ export function CardBordered() {
       <CardContent>
         <Progress value={62} label="Requests" />
       </CardContent>
-      <CardFooter bordered>
+      <CardFooter>
         <Button size="sm" variant="outline">
           Upgrade
         </Button>

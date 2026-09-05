@@ -442,7 +442,7 @@ export function Showcase() {
             </div>
           </div>
         </CardContent>
-        <CardFooter bordered>
+        <CardFooter>
           <span class={small}>You have not met your targets for this year.</span>
         </CardFooter>
       </Card>
@@ -539,7 +539,7 @@ export function Showcase() {
             </div>
           </div>
         </CardContent>
-        <CardFooter bordered>
+        <CardFooter>
           <span class={small}>
             Once your bank is connected, balances over $10.00 are automatically eligible for monthly
             distribution on the 15th of each month.
@@ -829,7 +829,7 @@ export function Showcase() {
             </For>
           </ItemGroup>
         </CardContent>
-        <CardFooter bordered>
+        <CardFooter>
           <Button size="sm" variant="outline" style={{ width: "100%" }}>
             Invite a teammate
           </Button>

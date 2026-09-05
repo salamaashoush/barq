@@ -207,7 +207,7 @@ function CardExample() {
         </CardAction>
       </CardHeader>
       <CardContent>Twelve invoices.</CardContent>
-      <CardFooter bordered>
+      <CardFooter>
         <Button size="sm">Export</Button>
       </CardFooter>
     </Card>

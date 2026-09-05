@@ -65,23 +65,36 @@ describe("Card", () => {
   });
 
   // The eight styles select on both of these and the card wrote neither:
-  // `[--card-spacing:--spacing(4)]` hangs off `data-[size=sm]`, and a bordered
-  // edge's padding off the literal `.border-b` / `.border-t`. Nothing failed
-  // without them — the card simply kept the large spacing under every style,
-  // and a bordered header had a rule and no padding to go with it.
+  // `[--card-spacing:--spacing(3)]` hangs off `data-[size=sm]`, and a bordered
+  // header's padding off the literal `.border-b`. Nothing failed without them —
+  // the card simply kept the large spacing under every style, and a bordered
+  // header had a rule and no padding to go with it.
   test("carries the hooks the styles select on", () => {
     render(() => (
       <Card size="sm">
         <CardHeader bordered>
           <CardTitle>Invoices</CardTitle>
         </CardHeader>
-        <CardFooter bordered>Paid</CardFooter>
+        <CardFooter>Paid</CardFooter>
       </Card>
     ));
 
     expect(slot("card").getAttribute("data-size")).toBe("sm");
     expect(slot("card-header").className.split(" ")).toContain("border-b");
-    expect(slot("card-footer").className.split(" ")).toContain("border-t");
+  });
+
+  // The card reads its own size back through the marker rather than through a
+  // context, so a title with no `group/card` above it is styled by nothing.
+  test("the card and its header carry the group markers their parts read", () => {
+    render(() => (
+      <Card>
+        <CardHeader>
+          <CardTitle>Invoices</CardTitle>
+        </CardHeader>
+      </Card>
+    ));
+    expect(slot("card").className.split(" ")).toContain("group/card");
+    expect(slot("card-header").className.split(" ")).toContain("group/card-header");
   });
 
   test("a card is default-sized unless it is told otherwise", () => {

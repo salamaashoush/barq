@@ -1,5 +1,5 @@
 import type { Incoming } from "@barqjs/core";
-import { layer } from "@barqjs/css";
+import { firstThatWorks, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
@@ -9,43 +9,88 @@ import { uiProps } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
-const card = ui(box.border, box.shadow, {
-  display: "flex",
-  flexDirection: "column",
-  gap: "calc(var(--spacing) * 6)",
-  borderRadius: "calc(var(--radius) * 1.4)",
-  backgroundColor: "var(--card)",
-  paddingBlock: "calc(var(--spacing) * 6)",
-  color: "var(--card-foreground)",
-  "--ui-shadow":
-    "0 1px 3px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
-});
+const card = ui(
+  text.sm,
+  box.shadow,
+  // A marker: the title reads the card's size back through
+  // `.group\/card[data-size=sm]`.
+  "group/card",
+  {
+    display: "flex",
+    flexDirection: "column",
+    gap: "var(--card-spacing)",
+    overflow: "hidden",
+    borderRadius: "calc(var(--radius) * 1.4)",
+    backgroundColor: "var(--card)",
+    paddingBlock: "var(--card-spacing)",
+    color: "var(--card-foreground)",
+    "--ui-ring-shadow":
+      "var(--ui-ring-inset,) 0 0 0 calc(1px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+    "--ui-ring-color": "var(--foreground)",
+    "--card-spacing": "calc(var(--spacing) * 4)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      "--ui-ring-color": "color-mix(in oklab, var(--foreground) 10%, transparent)",
+    },
+    ':has([data-slot="card-footer"])': {
+      paddingBottom: "0px",
+    },
+    ":has( > img:first-child)": {
+      paddingTop: "0px",
+    },
+    '[data-size="sm"]': {
+      "--card-spacing": "calc(var(--spacing) * 3)",
+    },
+    '[data-size="sm"]:has([data-slot="card-footer"])': {
+      paddingBottom: "0px",
+    },
+    ":is(& > *):is(img:first-child)": {
+      borderTopLeftRadius: "calc(var(--radius) * 1.4)",
+      borderTopRightRadius: "calc(var(--radius) * 1.4)",
+    },
+    ":is(& > *):is(img:last-child)": {
+      borderBottomRightRadius: "calc(var(--radius) * 1.4)",
+      borderBottomLeftRadius: "calc(var(--radius) * 1.4)",
+    },
+  },
+);
 
-const header = ui({
+const header = ui("group/card-header", {
   containerType: "inline-size",
   containerName: "card-header",
   display: "grid",
   gridAutoRows: "min-content",
-  gridTemplateRows: "auto auto",
   alignItems: "flex-start",
-  gap: "calc(var(--spacing) * 2)",
-  paddingInline: "calc(var(--spacing) * 6)",
+  gap: "var(--spacing)",
+  borderTopLeftRadius: "calc(var(--radius) * 1.4)",
+  borderTopRightRadius: "calc(var(--radius) * 1.4)",
+  paddingInline: "var(--card-spacing)",
   ':has([data-slot="card-action"])': {
     gridTemplateColumns: "1fr auto",
+  },
+  ':has([data-slot="card-description"])': {
+    gridTemplateRows: "auto auto",
+  },
+  ":is(.border-b)": {
+    paddingBottom: "var(--card-spacing)",
   },
 });
 
 const headerBordered = ui({
   borderBottomStyle: "var(--ui-border-style)",
   borderBottomWidth: "1px",
-  paddingBottom: "calc(var(--spacing) * 6)",
 });
 
-const title = ui(text.heading, {
-  "--ui-leading": "1",
-  lineHeight: "1",
-  "--ui-font-weight": "var(--font-weight-semibold)",
-  fontWeight: "var(--font-weight-semibold)",
+const title = ui(text.heading, text.medium, {
+  fontSize: "var(--text-base)",
+  lineHeight: firstThatWorks(
+    "var(--leading-snug)",
+    "var(--ui-leading, var(--text-base--line-height))",
+  ),
+  "--ui-leading": "var(--leading-snug)",
+  ':is(:where(.group\\/card)[data-size="sm"] *)': {
+    fontSize: "var(--text-sm)",
+    lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+  },
 });
 
 const description = ui(text.sm, {
@@ -61,19 +106,21 @@ const action = ui({
 });
 
 const content = ui({
-  paddingInline: "calc(var(--spacing) * 6)",
+  paddingInline: "var(--card-spacing)",
 });
 
 const footer = ui({
   display: "flex",
   alignItems: "center",
-  paddingInline: "calc(var(--spacing) * 6)",
-});
-
-const footerBordered = ui({
+  borderBottomRightRadius: "calc(var(--radius) * 1.4)",
+  borderBottomLeftRadius: "calc(var(--radius) * 1.4)",
   borderTopStyle: "var(--ui-border-style)",
   borderTopWidth: "1px",
-  paddingTop: "calc(var(--spacing) * 6)",
+  backgroundColor: "var(--muted)",
+  padding: "var(--card-spacing)",
+  "@supports (color: color-mix(in lab, red, red))": {
+    backgroundColor: "color-mix(in oklab, var(--muted) 50%, transparent)",
+  },
 });
 
 export type CardSize = "default" | "sm";
@@ -83,8 +130,8 @@ export interface CardProps extends UiProps {
    * The padding, the gap and the title's size, together.
    *
    * One attribute rather than three props because that is what the eight styles
-   * select on: each declares `[--card-spacing:--spacing(6)]` and
-   * `data-[size=sm]:[--card-spacing:--spacing(4)]` on the card itself, and
+   * select on: each declares `[--card-spacing:--spacing(4)]` and
+   * `data-[size=sm]:[--card-spacing:--spacing(3)]` on the card itself, and
    * every part reads the token by inheritance.
    */
   size?: CardSize;
@@ -117,8 +164,9 @@ export interface CardEdgeProps extends UiProps {
    * it.
    *
    * shadcn asks for the border class and keys the padding off it
-   * (`[.border-b]:pb-6`). There are no utility classes to key off here, so it
-   * is a prop — which is also the thing the CSS was standing in for.
+   * (`[.border-b]:pb-(--card-spacing)`). There are no utility classes to key
+   * off here, so it is a prop — which is also the thing the CSS was standing in
+   * for.
    */
   bordered?: boolean;
 }
@@ -152,8 +200,7 @@ export function CardContent(props: Incoming<UiProps>) {
   return <div {...uiProps("card-content", content, props)}>{props.children}</div>;
 }
 
-export function CardFooter(props: Incoming<CardEdgeProps>) {
-  const className = (): string =>
-    props.bordered?.() === true ? ui(footer, footerBordered, "border-t") : ui(footer);
-  return <div {...uiProps("card-footer", className, props)}>{props.children}</div>;
+/** The rule above it and the muted fill are upstream's, not a `bordered` prop. */
+export function CardFooter(props: Incoming<UiProps>) {
+  return <div {...uiProps("card-footer", footer, props)}>{props.children}</div>;
 }
