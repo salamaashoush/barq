@@ -303,6 +303,7 @@
         "@barqjs/css": "workspace:*",
         "@barqjs/lucide": "workspace:*",
         "@barqjs/primitives": "workspace:*",
+        "@barqjs/router": "workspace:*",
         "@barqjs/server": "workspace:*",
         "@barqjs/testing": "workspace:*",
         "@happy-dom/global-registrator": "^20.11.6",

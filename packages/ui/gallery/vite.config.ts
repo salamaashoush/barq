@@ -22,6 +22,10 @@ export default defineConfig({
     alias: [
       { find: /^@barqjs\/ui$/, replacement: from("../src/index.ts") },
       { find: /^@barqjs\/ui\/(.*)$/, replacement: `${from("../src")}/$1` },
+      // The router's SOURCE too, for the same reason: the compiler folds what it
+      // sees, and a `dist` it did not compile would leave the gallery's routes
+      // running the runtime fallback while everything around them is folded.
+      { find: /^@barqjs\/router$/, replacement: from("../../router/src/index.ts") },
     ],
   },
   plugins: [barq({ strictCss: true })],

@@ -244,10 +244,13 @@ import {
 import "@barqjs/ui/theme/reset.ts";
 import { CalendarDate } from "@barqjs/aria/date";
 import { providePortalTarget } from "@barqjs/aria/overlays";
+import { Link, Outlet, retainSearchParams, Router, useLocation } from "@barqjs/router";
 import { ref } from "@barqjs/primitives/refs";
 
 import { Customizer } from "./customizer.tsx";
 import { Dashboard01 } from "./blocks/dashboard-01.tsx";
+import { Login04 } from "./blocks/login-04.tsx";
+import { Sidebar07 } from "./blocks/sidebar-07.tsx";
 import { Showcase } from "./showcase.tsx";
 import { design } from "./params.ts";
 
@@ -1595,11 +1598,32 @@ function Gallery() {
  * a real application layout are different questions about a style, and only one
  * of them has a sidebar in it.
  */
+/**
+ * What the preview can show, and the path each lives at.
+ *
+ * REAL ROUTES, through `@barqjs/router`, rather than a signal the switcher
+ * flips. Upstream keeps the previewed item in the URL for a reason worth
+ * keeping — `?item=preview-02` is what makes "look at this block in this theme"
+ * a link somebody else can open — and a path says it better than a query key
+ * does. Back and Forward move between blocks, which is what they are for, while
+ * the design parameters stay in the search string and are retained across every
+ * navigation by the layout route's middleware.
+ *
+ * The names are shadcn's own, because that is what upstream's `item` holds: a
+ * registry item's name, so `/dashboard-01` opens the block anyone would go
+ * looking for.
+ */
 const VIEWS = [
-  { id: "showcase", label: "01" },
-  { id: "dashboard", label: "02" },
-  { id: "gallery", label: "03" },
+  { to: "/", label: "01", name: "showcase" },
+  { to: "/dashboard-01", label: "02", name: "dashboard-01" },
+  { to: "/sidebar-07", label: "03", name: "sidebar-07" },
+  { to: "/login-04", label: "04", name: "login-04" },
+  { to: "/components", label: "05", name: "components" },
 ];
+
+const switcherLink = css`
+  text-decoration: none;
+`;
 
 /**
  * shadcn's `/create`, over this package's own components.
@@ -1610,11 +1634,16 @@ const VIEWS = [
  * here, and `providePortalTarget` is what makes that equivalent — a dialog or a
  * menu the preview opens lands INSIDE the preview, so it wears the theme and
  * the style being configured rather than the page's own.
+ *
+ * This is the LAYOUT route: it renders the chrome once and the matched block
+ * into its `<Outlet />`, so navigating between blocks never rebuilds the
+ * customizer — which is the whole reason the theme survives a navigation
+ * without being re-installed.
  */
 function Designer() {
   const system = design();
-  const view = signal("showcase");
   const preview = ref<HTMLDivElement>();
+  const here = useLocation();
 
   return (
     <div class={createRoot} data-slot="create">
@@ -1645,27 +1674,28 @@ function Designer() {
                     preview's right edge. It also belongs to the previewed
                     application rather than to the page showing it. */}
                 <Toaster />
-                {view() === "showcase" ? (
-                  <Showcase />
-                ) : view() === "dashboard" ? (
-                  <Dashboard01 />
-                ) : (
-                  <Gallery />
-                )}
+                <Outlet />
               </div>
             </div>
           </PreviewPortal>
           <div class={ui("dark", switcher)} data-slot="preview-switcher">
             <For each={() => VIEWS}>
               {(each: (typeof VIEWS)[number]) => (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  data-active={() => (view() === each.id ? "true" : "false")}
-                  onPress={() => view.set(each.id)}
+                <Link
+                  to={each.to}
+                  class={switcherLink}
+                  data-slot="preview-switcher-link"
+                  data-active={() => (here().pathname === each.to ? "true" : "false")}
+                  aria-current={() => (here().pathname === each.to ? "page" : undefined)}
                 >
-                  {each.label}
-                </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    data-active={() => (here().pathname === each.to ? "true" : "false")}
+                  >
+                    {each.label}
+                  </Button>
+                </Link>
               )}
             </For>
           </div>
@@ -1690,4 +1720,27 @@ function PreviewPortal(props: Incoming<{ target: () => Element | null; children?
   return <>{props.children}</>;
 }
 
-render(() => <Designer />, document.getElementById("app")!);
+/**
+ * The layout route and the five it holds.
+ *
+ * `retainSearchParams(true)` on the layout is what keeps the theme across a
+ * navigation: a `<Link to="/login-04">` mentions no search, and without the
+ * middleware the router would build a URL with none — every block would open in
+ * the default theme and the configuration you were looking at would be gone.
+ */
+const ROUTES = [
+  {
+    path: "/",
+    component: Designer,
+    search: { middlewares: [retainSearchParams(true)] },
+    children: [
+      { path: "/", component: Showcase },
+      { path: "/dashboard-01", component: Dashboard01 },
+      { path: "/sidebar-07", component: Sidebar07 },
+      { path: "/login-04", component: Login04 },
+      { path: "/components", component: Gallery },
+    ],
+  },
+];
+
+render(() => <Router routeTree={ROUTES as never} />, document.getElementById("app")!);

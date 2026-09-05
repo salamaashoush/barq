@@ -290,6 +290,16 @@ export function design(): Design {
     history.replaceState(null, "", `${location.pathname}${write(committed())}`);
   };
 
+  // Back and Forward are real here — the router owns the path and every block
+  // is a route — so the search has to be read back on one too: `retainSearchParams`
+  // carries it across a navigation, and a page that never re-read it would show
+  // the theme it started with whatever the URL said.
+  if (typeof window !== "undefined") {
+    window.addEventListener("popstate", () => {
+      committed.set(read(location.search));
+    });
+  }
+
   return {
     params: committed,
     previewed,
