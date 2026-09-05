@@ -2592,7 +2592,7 @@
     }
 
     [data-slot="command"] {
-      border-radius: var(--radius-3xl);
+      border-radius: calc(var(--radius) * 2.2);
       background-color: var(--popover);
       padding: var(--spacing);
       color: var(--popover-foreground);
@@ -4311,7 +4311,7 @@
     }
 
     [data-slot="navigation-menu-viewport"] {
-      border-radius: var(--radius-3xl);
+      border-radius: calc(var(--radius) * 2.2);
       background-color: var(--popover);
       color: var(--popover-foreground);
       --ui-shadow: 0 10px 15px -3px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 4px 6px -4px var(--ui-shadow-color, rgb(0 0 0 / 0.1));
@@ -4792,7 +4792,7 @@
       display: flex;
       flex-direction: column;
       gap: calc(var(--spacing) * 4);
-      border-radius: var(--radius-3xl);
+      border-radius: calc(var(--radius) * 2.2);
       background-color: var(--popover);
       padding: calc(var(--spacing) * 4);
       font-size: var(--text-sm);
@@ -5380,7 +5380,7 @@
 
     [data-slot="empty"] {
       gap: calc(var(--spacing) * 4);
-      border-radius: var(--radius-3xl);
+      border-radius: calc(var(--radius) * 2.2);
       --ui-border-style: dashed;
       border-style: dashed;
       padding: calc(var(--spacing) * 12);
@@ -5480,7 +5480,7 @@
 
     [data-slot="hover-card-content"] {
       width: calc(var(--spacing) * 72);
-      border-radius: var(--radius-3xl);
+      border-radius: calc(var(--radius) * 2.2);
       background-color: var(--popover);
       padding: calc(var(--spacing) * 4);
       font-size: var(--text-sm);
@@ -5553,7 +5553,7 @@
     }
 
     [data-slot="bubble-content"] {
-      border-radius: var(--radius-3xl);
+      border-radius: calc(var(--radius) * 2.2);
       border-style: var(--ui-border-style);
       border-width: 1px;
       border-color: transparent;
@@ -6331,7 +6331,7 @@
       display: flex;
       flex-direction: column;
       gap: calc(var(--spacing) * 4);
-      border-radius: var(--radius-3xl);
+      border-radius: calc(var(--radius) * 2.2);
       background-color: var(--popover);
       padding: calc(var(--spacing) * 4);
       font-size: var(--text-sm);
@@ -6382,7 +6382,7 @@
 
     [data-slot="hover-card-content"] {
       width: calc(var(--spacing) * 72);
-      border-radius: var(--radius-3xl);
+      border-radius: calc(var(--radius) * 2.2);
       background-color: var(--popover);
       padding: calc(var(--spacing) * 4);
       font-size: var(--text-sm);

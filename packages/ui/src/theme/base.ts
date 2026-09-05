@@ -66,8 +66,7 @@ globalCss`
     --radius-md: calc(var(--radius) * 0.8);
     --radius-xl: calc(var(--radius) * 1.4);
     --radius-2xl: calc(var(--radius) * 1.8);
-    --radius-3xl: 1.5rem;
-    --radius-4xl: 2rem;
+    --radius-4xl: calc(var(--radius) * 2.6);
     --ease-in-out: cubic-bezier(0.4, 0, 0.2, 1);
     --animate-spin: spin 1s linear infinite;
     --animate-pulse: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
@@ -81,7 +80,7 @@ globalCss`
     --default-font-family: var(--font-sans);
     --default-mono-font-family: var(--font-mono);
     --color-border: var(--border);
-    --card-spacing: calc(var(--spacing) * 5);
+    --card-spacing: calc(var(--spacing) * 4);
   }
 }
 `;

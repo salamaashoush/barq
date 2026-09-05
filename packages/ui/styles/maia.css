@@ -88,7 +88,7 @@
 
     [data-slot="alert-dialog-content"] {
       gap: calc(var(--spacing) * 6);
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       background-color: var(--popover);
       padding: calc(var(--spacing) * 6);
       color: var(--popover-foreground);
@@ -341,7 +341,7 @@
     [data-slot="badge"] {
       height: calc(var(--spacing) * 5);
       gap: var(--spacing);
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       border-style: var(--ui-border-style);
       border-width: 1px;
       border-color: transparent;
@@ -524,7 +524,7 @@
     }
 
     [data-slot="button"] {
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       border-style: var(--ui-border-style);
       border-width: 1px;
       border-color: transparent;
@@ -796,28 +796,28 @@
         gap: calc(var(--spacing) * 2);
       }
       &:has(:is(select[aria-hidden=true]:last-child)) > [data-slot=select-trigger]:last-of-type {
-        border-top-right-radius: var(--radius-4xl);
-        border-bottom-right-radius: var(--radius-4xl);
+        border-top-right-radius: calc(var(--radius) * 2.6);
+        border-bottom-right-radius: calc(var(--radius) * 2.6);
       }
     }
 
     [data-slot="button-group"][data-orientation="horizontal"] {
       & > [data-slot]:not(:has( ~ [data-slot])) {
-        border-top-right-radius: var(--radius-4xl) !important;
-        border-bottom-right-radius: var(--radius-4xl) !important;
+        border-top-right-radius: calc(var(--radius) * 2.6) !important;
+        border-bottom-right-radius: calc(var(--radius) * 2.6) !important;
       }
     }
 
     [data-slot="button-group"][data-orientation="vertical"] {
       & > [data-slot]:not(:has( ~ [data-slot])) {
-        border-bottom-right-radius: var(--radius-4xl) !important;
-        border-bottom-left-radius: var(--radius-4xl) !important;
+        border-bottom-right-radius: calc(var(--radius) * 2.6) !important;
+        border-bottom-left-radius: calc(var(--radius) * 2.6) !important;
       }
     }
 
     [data-slot="button-group-text"] {
       gap: calc(var(--spacing) * 2);
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       border-style: var(--ui-border-style);
       border-width: 1px;
       background-color: var(--muted);
@@ -1238,7 +1238,7 @@
       flex-wrap: wrap;
       align-items: center;
       gap: calc(var(--spacing) * 1.5);
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       border-style: var(--ui-border-style);
       border-width: 1px;
       border-color: var(--input);
@@ -1294,7 +1294,7 @@
       align-items: center;
       justify-content: center;
       gap: var(--spacing);
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       background-color: var(--muted-foreground);
       @supports (color: color-mix(in lab, red, red)) {
         background-color: color-mix(in oklab, var(--muted-foreground) 10%, transparent);
@@ -1322,7 +1322,7 @@
     }
 
     [data-slot="command"] {
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       background-color: var(--popover);
       padding: var(--spacing);
       color: var(--popover-foreground);
@@ -1732,7 +1732,7 @@
       display: grid;
       max-width: calc(100% - 2rem);
       gap: calc(var(--spacing) * 6);
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       background-color: var(--popover);
       padding: calc(var(--spacing) * 6);
       font-size: var(--text-sm);
@@ -1834,7 +1834,7 @@
         position: absolute;
         inset: calc(var(--spacing) * 2);
         z-index: calc(10 * -1);
-        border-radius: var(--radius-4xl);
+        border-radius: calc(var(--radius) * 2.6);
         border-style: var(--ui-border-style);
         border-width: 1px;
         border-color: var(--border);
@@ -1843,7 +1843,7 @@
     }
 
     [data-slot="drawer-content"] {
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       border-style: var(--ui-border-style);
       border-width: 1px;
       border-color: var(--popover);
@@ -2503,7 +2503,7 @@
 
     [data-slot="input"] {
       height: calc(var(--spacing) * 9);
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       border-style: var(--ui-border-style);
       border-width: 1px;
       border-color: var(--input);
@@ -2566,7 +2566,7 @@
     }
 
     [data-slot="input-otp-group"] {
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       &:has([aria-invalid="true"]) {
         border-color: var(--destructive);
         --ui-ring-shadow: var(--ui-ring-inset,) 0 0 0 calc(3px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor);
@@ -2604,14 +2604,14 @@
       --ui-outline-style: none;
       outline-style: none;
       &:first-child {
-        border-top-left-radius: var(--radius-4xl);
-        border-bottom-left-radius: var(--radius-4xl);
+        border-top-left-radius: calc(var(--radius) * 2.6);
+        border-bottom-left-radius: calc(var(--radius) * 2.6);
         border-left-style: var(--ui-border-style);
         border-left-width: 1px;
       }
       &:last-child {
-        border-top-right-radius: var(--radius-4xl);
-        border-bottom-right-radius: var(--radius-4xl);
+        border-top-right-radius: calc(var(--radius) * 2.6);
+        border-bottom-right-radius: calc(var(--radius) * 2.6);
       }
       &[aria-invalid="true"] {
         border-color: var(--destructive);
@@ -2859,7 +2859,7 @@
 
     [data-slot="menubar"] {
       height: calc(var(--spacing) * 9);
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       border-style: var(--ui-border-style);
       border-width: 1px;
       padding: var(--spacing);
@@ -3433,7 +3433,7 @@
       width: 100%;
       min-width: 0px;
       appearance: none;
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       border-style: var(--ui-border-style);
       border-width: 1px;
       border-color: var(--input);
@@ -3625,13 +3625,13 @@
 
     [data-slot="progress"] {
       height: calc(var(--spacing) * 3);
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       background-color: var(--muted);
     }
 
     [data-slot="progress"] {
       height: calc(var(--spacing) * 3);
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       background-color: var(--muted);
     }
 
@@ -3788,7 +3788,7 @@
 
     [data-slot="select-trigger"] {
       gap: calc(var(--spacing) * 1.5);
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       border-style: var(--ui-border-style);
       border-width: 1px;
       border-color: var(--input);
@@ -4527,7 +4527,7 @@
     }
 
     [data-slot="slider-track"] {
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       background-color: var(--muted);
       &:where([data-orientation="horizontal"]) {
         height: calc(var(--spacing) * 3);
@@ -4546,7 +4546,7 @@
     [data-slot="slider-thumb"] {
       width: calc(var(--spacing) * 4);
       height: calc(var(--spacing) * 4);
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       border-style: var(--ui-border-style);
       border-width: 1px;
       border-color: var(--primary);
@@ -4862,7 +4862,7 @@
     }
 
     [data-slot="tabs-list"] {
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       padding: 3px;
       &:is(:where([data-slot="tabs"]):where([data-orientation="horizontal"]) *) {
         height: calc(var(--spacing) * 9);
@@ -4963,7 +4963,7 @@
 
     [data-slot="toggle"] {
       gap: var(--spacing);
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       font-size: var(--text-sm);
       line-height: var(--ui-leading, var(--text-sm--line-height));
       --ui-font-weight: var(--font-weight-medium);
@@ -5065,7 +5065,7 @@
 
     [data-slot="toggle-group"] {
       &[data-spacing="0"][data-variant="outline"] {
-        border-radius: var(--radius-4xl);
+        border-radius: calc(var(--radius) * 2.6);
       }
     }
 
@@ -5083,20 +5083,20 @@
         padding-left: calc(var(--spacing) * 2.5);
       }
       &:is(:where([data-slot="toggle-group"]):where([data-orientation="horizontal"]) *)[data-spacing="0"]:first-child {
-        border-top-left-radius: var(--radius-3xl);
-        border-bottom-left-radius: var(--radius-3xl);
+        border-top-left-radius: calc(var(--radius) * 2.2);
+        border-bottom-left-radius: calc(var(--radius) * 2.2);
       }
       &:is(:where([data-slot="toggle-group"]):where([data-orientation="vertical"]) *)[data-spacing="0"]:first-child {
-        border-top-left-radius: var(--radius-3xl);
-        border-top-right-radius: var(--radius-3xl);
+        border-top-left-radius: calc(var(--radius) * 2.2);
+        border-top-right-radius: calc(var(--radius) * 2.2);
       }
       &:is(:where([data-slot="toggle-group"]):where([data-orientation="horizontal"]) *)[data-spacing="0"]:last-child {
-        border-top-right-radius: var(--radius-3xl);
-        border-bottom-right-radius: var(--radius-3xl);
+        border-top-right-radius: calc(var(--radius) * 2.2);
+        border-bottom-right-radius: calc(var(--radius) * 2.2);
       }
       &:is(:where([data-slot="toggle-group"]):where([data-orientation="vertical"]) *)[data-spacing="0"]:last-child {
-        border-bottom-right-radius: var(--radius-3xl);
-        border-bottom-left-radius: var(--radius-3xl);
+        border-bottom-right-radius: calc(var(--radius) * 2.2);
+        border-bottom-left-radius: calc(var(--radius) * 2.2);
       }
       &[data-selected] {
         background-color: var(--muted);
@@ -5131,7 +5131,7 @@
         position: relative;
         isolation: isolate;
         z-index: 50;
-        border-radius: var(--radius-4xl);
+        border-radius: calc(var(--radius) * 2.6);
       }
       &[data-state="delayed-open"] {
         animation: enter var(--ui-animation-duration,var(--ui-duration,.15s))var(--ui-ease,ease)var(--ui-animation-delay,0s)var(--ui-animation-iteration-count,1)var(--ui-animation-direction,normal)var(--ui-animation-fill-mode,none);
@@ -5201,7 +5201,7 @@
 
     [data-slot="input-group"] {
       height: calc(var(--spacing) * 9);
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       border-style: var(--ui-border-style);
       border-width: 1px;
       border-color: var(--input);
@@ -5285,7 +5285,7 @@
         opacity: 50%;
       }
       :is(& *)[data-slot="kbd"] {
-        border-radius: var(--radius-4xl);
+        border-radius: calc(var(--radius) * 2.6);
         background-color: var(--muted-foreground);
         @supports (color: color-mix(in lab, red, red)) {
           background-color: color-mix(in oklab, var(--muted-foreground) 10%, transparent);
@@ -5342,7 +5342,7 @@
 
     [data-slot="input-group-button"] {
       gap: calc(var(--spacing) * 2);
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       font-size: var(--text-sm);
       line-height: var(--ui-leading, var(--text-sm--line-height));
     }
@@ -5444,7 +5444,7 @@
     }
 
     [data-slot="bubble-content"] {
-      border-radius: var(--radius-3xl);
+      border-radius: calc(var(--radius) * 2.2);
       border-style: var(--ui-border-style);
       border-width: 1px;
       border-color: transparent;
@@ -5937,7 +5937,7 @@
 
     [data-slot="alert-dialog-content"] {
       gap: calc(var(--spacing) * 6);
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       background-color: var(--popover);
       padding: calc(var(--spacing) * 6);
       color: var(--popover-foreground);
@@ -6106,7 +6106,7 @@
       display: grid;
       max-width: calc(100% - 2rem);
       gap: calc(var(--spacing) * 6);
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       background-color: var(--popover);
       padding: calc(var(--spacing) * 6);
       font-size: var(--text-sm);
@@ -6366,7 +6366,7 @@
         position: relative;
         isolation: isolate;
         z-index: 50;
-        border-radius: var(--radius-4xl);
+        border-radius: calc(var(--radius) * 2.6);
       }
     }
 

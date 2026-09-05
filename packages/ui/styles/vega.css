@@ -340,7 +340,7 @@
     [data-slot="badge"] {
       height: calc(var(--spacing) * 5);
       gap: var(--spacing);
-      border-radius: var(--radius-4xl);
+      border-radius: calc(var(--radius) * 2.6);
       border-style: var(--ui-border-style);
       border-width: 1px;
       border-color: transparent;

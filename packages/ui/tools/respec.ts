@@ -159,6 +159,52 @@ function readString(text: string, from: number): { value: string; end: number } 
   return { value: value.trim(), end: at + 1 };
 }
 
+/**
+ * Every whole string argument of a call, joined into one class list.
+ *
+ * A class list long enough gets broken across ARGUMENTS rather than lines —
+ * `cn("a", "b", className)` — and reading only the first silently dropped the
+ * three rules that size the avatar's badge. Only an argument that is nothing
+ * but a literal counts: `condition && "x"` is a class list the element wears
+ * sometimes, and folding it into the base would claim it always does.
+ */
+function argumentStrings(text: string, open: number): string {
+  const close = matching(text, open);
+  if (close === -1) return "";
+  const parts: string[] = [];
+  let depth = 0;
+  let start = open + 1;
+  for (let at = open + 1; at <= close; at++) {
+    const character = text[at];
+    if (character === "(" || character === "[" || character === "{") depth++;
+    else if (character === ")" || character === "]" || character === "}") {
+      if (at === close) {
+        const whole = readWholeString(text.slice(start, at));
+        if (whole !== null) parts.push(whole);
+        break;
+      }
+      depth--;
+    } else if (character === '"' && depth === 0) {
+      const found = readString(text, at);
+      if (found !== null) at = found.end - 1;
+    } else if (character === "," && depth === 0) {
+      const whole = readWholeString(text.slice(start, at));
+      if (whole !== null) parts.push(whole);
+      start = at + 1;
+    }
+  }
+  return parts.join(" ");
+}
+
+/** An argument that is only string literals, joined; `null` for anything else. */
+function readWholeString(argument: string): string | null {
+  const trimmed = argument.trim();
+  if (!trimmed.startsWith('"')) return null;
+  const found = readString(trimmed, 0);
+  if (found === null || trimmed.slice(found.end).trim() !== "") return null;
+  return found.value;
+}
+
 /** `data-slot="x"` with a `className={cn("…")}` on the same element. */
 function readSlots(source: string): Map<string, string> {
   const out = new Map<string, string>();
@@ -171,8 +217,8 @@ function readSlots(source: string): Map<string, string> {
     // Only within the same element, which ends at the first `/>` or `>`.
     const ends = tail.search(/\/?>/);
     if (ends !== -1 && call.index > ends) continue;
-    const found = readString(tail, call.index);
-    if (found !== null && found.value !== "") out.set(match[1] ?? "", found.value);
+    const found = argumentStrings(tail, call.index + call[0].length - 1);
+    if (found !== "") out.set(match[1] ?? "", found);
   }
   return out;
 }

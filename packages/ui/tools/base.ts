@@ -160,9 +160,10 @@ async function main(): Promise<void> {
    * a card at 24px and the one outside at 0.
    *
    * A default here is inherited from the root, so the card's own value still
-   * wins wherever there is a card. shadcn's own default is `--spacing(5)`.
+   * wins wherever there is a card. Each style picks its own; this is nova's,
+   * which is what the components ship without one.
    */
-  const fallbacks = "  --card-spacing: calc(var(--spacing) * 5);";
+  const fallbacks = "  --card-spacing: calc(var(--spacing) * 4);";
 
   const parts = {
     preflight: print(await preflight()),

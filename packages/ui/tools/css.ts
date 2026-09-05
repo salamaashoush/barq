@@ -37,7 +37,8 @@ import { compile } from "tailwindcss";
  *
  * `--radius-2xl` was ABSENT, so `rounded-2xl` fell through to Tailwind's own
  * static `1rem` — 16px against upstream's 18px, on every preview card the docs
- * render.
+ * render. `3xl` and `4xl` were absent for the same reason and cost the badge
+ * a 32px corner where upstream's is 26px.
  */
 const THEME = `
 @theme inline {
@@ -46,6 +47,8 @@ const THEME = `
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) * 1.4);
   --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
