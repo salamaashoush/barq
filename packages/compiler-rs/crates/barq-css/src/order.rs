@@ -49,6 +49,95 @@ pub fn order_atoms(css: &str) -> String {
     order_rules(&out)
 }
 
+/// Every cascade layer an ORDER STATEMENT in `css` names, in the order it names
+/// them. A `@layer NAME{ … }` block is not one: a block declares a position
+/// only by being first, which is the whole problem this reads towards.
+pub fn declared_layers(css: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let bytes = css.as_bytes();
+    let mut depth = 0i32;
+    let mut at = 0usize;
+    while at < bytes.len() {
+        match bytes[at] {
+            b'{' => {
+                depth += 1;
+                at += 1;
+            }
+            b'}' => {
+                depth -= 1;
+                at += 1;
+            }
+            b'@' if depth == 0 && css[at..].starts_with("@layer ") => {
+                let after = at + "@layer ".len();
+                let Some(end) = css[after..].find(['{', ';']) else { break };
+                match bytes[after + end] {
+                    b';' => out.extend(
+                        css[after..after + end]
+                            .split(',')
+                            .map(str::trim)
+                            .filter(|name| !name.is_empty())
+                            .map(str::to_string),
+                    ),
+                    // The brace this skipped over is the layer's own, and its
+                    // depth is what keeps a nested order statement out.
+                    _ => depth += 1,
+                }
+                at = after + end + 1;
+            }
+            _ => at += 1,
+        }
+    }
+    out
+}
+
+/// `names` folded into `order`, keeping every relative position both agree on.
+///
+/// One package declares `barq.reset, barq.ui` and another
+/// `barq.reset, barq.base, barq.ui`; the answer has to hold both, and neither
+/// list on its own is it. A name already held moves the insertion point to just
+/// after it, so a name new to `order` lands where the incoming list puts it.
+pub fn merge_layer_order(order: &mut Vec<String>, names: &[String]) {
+    let mut at = 0usize;
+    for name in names {
+        match order.iter().position(|held| held == name) {
+            Some(found) => at = found + 1,
+            None => {
+                order.insert(at, name.clone());
+                at += 1;
+            }
+        }
+    }
+}
+
+/// `css` with `order` declared in front of it, when `css` names a layer at all.
+///
+/// A layer's position is fixed by its FIRST appearance across every stylesheet
+/// the document loads, and a code-split build is several stylesheets whose link
+/// order the bundler decides. One chunk carrying `@layer barq.ui{ … }` linked
+/// ahead of the chunk holding the order statement therefore put the components
+/// in front of the reset, and Tailwind's preflight — a later layer — beat every
+/// one of them: buttons lost their padding and their background.
+///
+/// Declaring the order in EVERY chunk that names a layer settles it whichever
+/// one the browser reads first. Repeating an order statement is idempotent by
+/// specification, so the second and later copies cost nothing but their bytes.
+///
+/// A minifier is why this cannot be left to the source. Lightning CSS rewrites
+/// an order statement to name only the layers with no block in the same file,
+/// on the reasoning that a block declares its own position — sound within one
+/// sheet, and wrong across several. Beside `@barqjs/ui`'s theme the five-layer
+/// statement came out as `@layer barq.reset,barq.base;`.
+pub fn with_layer_order(css: &str, order: &[String]) -> String {
+    if order.is_empty() || !css.contains("@layer") {
+        return css.to_string();
+    }
+    let statement = format!("@layer {};", order.join(", "));
+    match css.starts_with(&statement) {
+        true => css.to_string(),
+        false => format!("{statement}{css}"),
+    }
+}
+
 /// One layer's contents, with its atoms tier-ordered and everything else fixed.
 fn order_rules(body: &str) -> String {
     let rules: Vec<&str> = statements(body);
@@ -324,6 +413,61 @@ mod tests {
         let base = atom_in("", "color", "default", "red");
         let css = format!("{}{}", media.rule, base.rule);
         let ordered = order_atoms(&css);
+        assert!(ordered.find(&base.class) < ordered.find(&media.class), "{ordered}");
+    }
+
+    /// A minifier writes the order statement as `@layer a;@layer b{…}` and a
+    /// block declares no order at all, so only the statement is read.
+    #[test]
+    fn only_an_order_statement_names_a_layer() {
+        assert_eq!(
+            declared_layers("@layer barq.reset, barq.base;@layer barq.ui{.a{color:red}}"),
+            vec!["barq.reset", "barq.base"]
+        );
+        assert!(declared_layers("@layer barq.ui{.a{color:red}}").is_empty());
+        // Nested, so it declares an order inside `barq.ui` and not the sheet's.
+        assert!(declared_layers("@layer barq.ui{@layer a, b;.a{color:red}}").is_empty());
+    }
+
+    #[test]
+    fn two_partial_orders_merge_into_one_that_holds_both() {
+        let mut order = Vec::new();
+        merge_layer_order(&mut order, &["reset".to_string(), "ui".to_string()]);
+        merge_layer_order(
+            &mut order,
+            &["reset".to_string(), "base".to_string(), "ui".to_string(), "style".to_string()],
+        );
+        assert_eq!(order, vec!["reset", "base", "ui", "style"]);
+    }
+
+    #[test]
+    fn a_sheet_naming_a_layer_gets_the_order_in_front_of_it_once() {
+        let order = ["barq.reset".to_string(), "barq.ui".to_string()];
+        let sheet = "@layer barq.ui{.a{color:red}}";
+        let once = with_layer_order(sheet, &order);
+        assert_eq!(once, "@layer barq.reset, barq.ui;@layer barq.ui{.a{color:red}}");
+        assert_eq!(with_layer_order(&once, &order), once);
+    }
+
+    /// A stylesheet with no layer in it has no position to fix, and a font
+    /// face or a third-party asset is most of what a build emits.
+    #[test]
+    fn a_sheet_naming_no_layer_is_left_alone() {
+        let order = ["barq.reset".to_string()];
+        assert_eq!(with_layer_order(".a{color:red}", &order), ".a{color:red}");
+        assert_eq!(with_layer_order("@layer x{.a{color:red}}", &[]), "@layer x{.a{color:red}}");
+    }
+
+    /// The prepended statement is a declaration in front of a block, which is
+    /// the shape `layer_body` has to read past to find the block.
+    #[test]
+    fn ordering_a_sheet_that_carries_its_layer_order_still_orders_it() {
+        let base = atom_in("barq.ui", "color", "default", "red");
+        let media = atom_in("barq.ui", "color", "@media print", "green");
+        let sheet = format!("@layer barq.ui{{{}{}}}", media.rule_body(), base.rule_body());
+        let order = ["barq.reset".to_string(), "barq.base".to_string(), "barq.ui".to_string()];
+        let ordered = order_atoms(&with_layer_order(&sheet, &order));
+        assert!(ordered.starts_with("@layer barq.reset, barq.base, barq.ui;@layer barq.ui{"));
         assert!(ordered.find(&base.class) < ordered.find(&media.class), "{ordered}");
     }
 

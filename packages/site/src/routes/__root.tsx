@@ -18,7 +18,6 @@ import { createRootRoute, HeadContent, retainSearchParams, Scripts } from "@barq
  * Times New Roman while the components page, which imports sixty, was in Geist.
  * A reset is global by definition, so the root is where it belongs.
  */
-import "../layers.ts";
 import "@barqjs/ui/theme/reset.ts";
 import "@barqjs/ui/theme/base.ts";
 import "../theme.ts";

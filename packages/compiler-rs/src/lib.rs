@@ -472,9 +472,36 @@ pub fn route_tree(
 /// gallery and reordering moves 8, every one of them a rule under an at-rule
 /// that a later base rule was beating.
 ///
+/// `layers` is the document's cascade layer order, and it is declared in front
+/// of every asset that names a layer at all. A layer's position is fixed by its
+/// FIRST appearance across every stylesheet the page loads, so a code-split
+/// build cannot leave the statement in whichever chunk its module landed in:
+/// the chunk carrying `@layer barq.ui{ … }` may well be linked first, and then
+/// the components sit in front of the reset and Tailwind's preflight beats
+/// them. Repeating the statement is idempotent by specification.
+///
 /// Idempotent, and safe over a stylesheet holding none of ours: a rule that is
 /// not an atom keeps its index.
 #[napi]
-pub fn order_css(css: String) -> String {
-    barq_css::order::order_atoms(&css)
+pub fn order_css(css: String, layers: Option<Vec<String>>) -> String {
+    let ordered = barq_css::order::order_atoms(&css);
+    match layers {
+        Some(layers) => barq_css::order::with_layer_order(&ordered, &layers),
+        None => ordered,
+    }
+}
+
+/// The cascade layer order `sheets` between them declare, as one list.
+///
+/// Read from the modules the compiler emitted rather than from the built
+/// assets, because a minifier has rewritten the statement by then: Lightning
+/// CSS drops the names that have a block in the same file, which is sound
+/// within one sheet and loses the order across several.
+#[napi]
+pub fn layer_order(sheets: Vec<String>) -> Vec<String> {
+    let mut order: Vec<String> = Vec::new();
+    for sheet in &sheets {
+        barq_css::order::merge_layer_order(&mut order, &barq_css::order::declared_layers(sheet));
+    }
+    order
 }

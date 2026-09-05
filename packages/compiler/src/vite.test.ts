@@ -620,6 +620,75 @@ export const card = css\`color: red\`;
 });
 
 /**
+ * The cascade layer order, in the assets a build emits.
+ *
+ * A layer's position is fixed by its FIRST appearance across every stylesheet
+ * the document loads, and a code-split build is several stylesheets whose link
+ * order the bundler decides. Measured on `@barqjs/site`: the chunk carrying
+ * `@layer barq.ui{…}` was linked first, the components were therefore declared
+ * before `barq.reset`, and Tailwind's preflight — a later layer — beat every
+ * one of them. Buttons lost their padding and their background.
+ */
+describe("cascade layer order", () => {
+  const ORDER = `import { globalCss } from "@barqjs/css";
+globalCss\`@layer barq.reset, barq.base, barq.ui;\`;
+`;
+  const LAYERED = `import { css, layer } from "@barqjs/css";
+layer("barq.ui");
+export const card = css\`color: red\`;
+`;
+
+  function bundle(plugin: ReturnType<typeof barqVitePlugin>, assets: Record<string, string>) {
+    const chunks = Object.fromEntries(
+      Object.entries(assets).map(([fileName, source]) => [
+        fileName,
+        { type: "asset" as const, fileName, source },
+      ]),
+    );
+    const hook = plugin.generateBundle as unknown as (options: unknown, bundle: unknown) => void;
+    hook.call(plugin, {}, chunks);
+    return Object.fromEntries(
+      Object.entries(chunks).map(([name, asset]) => [name, asset.source as string]),
+    );
+  }
+
+  test("every asset naming a layer declares the whole order", async () => {
+    const plugin = barqVitePlugin({ dev: false });
+    await run(plugin, ORDER, "/a/layers.ts");
+    await run(plugin, LAYERED, "/a/card.ts");
+
+    const out = bundle(plugin, {
+      // The chunk the order statement did NOT land in, linked first.
+      "components.css": "@layer barq.ui{.a-color_x{color:red}}",
+      "theme.css": "@layer barq.reset, barq.base;@layer barq.ui{.b{color:blue}}",
+    });
+    for (const source of Object.values(out)) {
+      expect(source.startsWith("@layer barq.reset, barq.base, barq.ui;")).toBe(true);
+    }
+  });
+
+  test("an asset naming no layer is left alone", async () => {
+    const plugin = barqVitePlugin({ dev: false });
+    await run(plugin, ORDER, "/a/layers.ts");
+    const out = bundle(plugin, { "font.css": "@font-face{font-family:x;src:url(x.woff2)}" });
+    expect(out["font.css"]).toBe("@font-face{font-family:x;src:url(x.woff2)}");
+  });
+
+  /**
+   * Read from the MODULE stylesheets and not from the assets, because by the
+   * time an asset exists Lightning CSS has rewritten the statement to name only
+   * the layers with no block in the same file. Nothing the build saw declares
+   * an order here, so there is none to declare.
+   */
+  test("a build that saw no order statement declares none", async () => {
+    const plugin = barqVitePlugin({ dev: false });
+    await run(plugin, LAYERED, "/a/card.ts");
+    const out = bundle(plugin, { "components.css": "@layer barq.ui{.a-color_x{color:red}}" });
+    expect(out["components.css"]).toBe("@layer barq.ui{.a-color_x{color:red}}");
+  });
+});
+
+/**
  * The two delivery modes, which is the whole of how CSS reaches a page.
  *
  * A dev server has no `generateBundle`, so the asset path cannot work there —

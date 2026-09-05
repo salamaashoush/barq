@@ -404,7 +404,9 @@ interface NativeCompiler {
    * compiler rather than reimplemented here: the tier is one semantic and this
    * would be its third copy.
    */
-  orderCss(css: string): string;
+  orderCss(css: string, layers?: string[]): string;
+  /** The cascade layer order the given module stylesheets declare between them. */
+  layerOrder(sheets: string[]): string[];
 }
 
 let nativeCompiler: NativeCompiler | undefined;
@@ -736,15 +738,31 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
      * about the whole asset and `transform` is per file and holds no cross-file
      * state — which is the property that keeps dev and build identical
      * everywhere else, and the one StyleX gives up.
+     *
+     * The CASCADE LAYER ORDER is declared here for the same reason and settles
+     * a different failure. A layer's position is fixed by its first appearance
+     * across every stylesheet the document loads, and a code-split build is
+     * several stylesheets whose link order the bundler decides — so the chunk
+     * that happened to hold `@layer a, b, c;` is not reliably the first one,
+     * and a chunk carrying `@layer b{ … }` ahead of it puts `b` at the front.
+     * Measured on this site: `@barqjs/ui`'s components were declared before
+     * `barq.reset`, Tailwind's preflight became the later layer and beat every
+     * one of them, and buttons lost their padding and their background.
+     *
+     * The order is read from the MODULE stylesheets, not from the assets: by
+     * the time an asset exists Lightning CSS has rewritten the statement to
+     * name only the layers with no block in the same file, which is sound
+     * within one sheet and loses the order across several.
      */
     generateBundle(_options, bundle) {
       const compiler = loadNativeCompiler();
       if (!compiler) return;
+      const layers = compiler.layerOrder([...cssByModule.values()]);
       for (const asset of Object.values(bundle)) {
         if (asset.type !== "asset" || !asset.fileName.endsWith(".css")) continue;
         const source =
           typeof asset.source === "string" ? asset.source : Buffer.from(asset.source).toString();
-        asset.source = compiler.orderCss(source);
+        asset.source = compiler.orderCss(source, layers);
       }
     },
 
