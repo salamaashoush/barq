@@ -2439,7 +2439,14 @@ describe("router-wide route defaults", () => {
   });
 
   test("`ssr` applies to every route that does not say", () => {
-    const state = createRouter({ routeTree: table, defaults: { ssr: false } });
+    // An explicit history, because this is about `defaults` and not about where
+    // the router starts: the default follows the environment now, and under a
+    // DOM that is whatever the test page's URL happens to be.
+    const state = createRouter({
+      routeTree: table,
+      defaults: { ssr: false },
+      history: memoryHistory(),
+    });
     expect(state.ssrModes()).toEqual([false]);
   });
 
@@ -2448,7 +2455,11 @@ describe("router-wide route defaults", () => {
     const own = [
       { path: "/", ssr: true, component: (() => null) as never },
     ] as never as AnyRouteDefinition[];
-    const state = createRouter({ routeTree: own, defaults: { ssr: false } });
+    const state = createRouter({
+      routeTree: own,
+      defaults: { ssr: false },
+      history: memoryHistory(),
+    });
     expect(state.ssrModes()).toEqual([true]);
   });
 

@@ -32,6 +32,7 @@ import { PathParamError, isNotFound, isRedirect } from "./errors.ts";
 import {
   type History,
   type Location,
+  browserHistory,
   href,
   memoryHistory,
   normalizeBase,
@@ -921,7 +922,16 @@ export function createRouter(config: RouterConfig): RouterState {
   const defaults: RouteDefaults = config.defaults ?? {};
   // A history the CALLER built already knows its own base; one built here is
   // told. Both spellings therefore work, and neither has to repeat the other.
-  const history = config.history ?? memoryHistory();
+  //
+  // The default follows the ENVIRONMENT rather than being memory everywhere.
+  // Memory was the default, and an application that did not pass a history got
+  // a router whose address bar never moved: links navigated, the outlet
+  // swapped, and Back left the app entirely — with no error, because a memory
+  // history is doing exactly what it says. That is the wrong default in the one
+  // place a router is normally used. On a server, or under a test with no
+  // `window`, memory is still the only thing that can work.
+  const history =
+    config.history ?? (typeof window === "undefined" ? memoryHistory() : browserHistory());
   const matcher = createMatcher(flattenRoutes(config.routeTree), {
     caseSensitive: config.caseSensitive,
   });
