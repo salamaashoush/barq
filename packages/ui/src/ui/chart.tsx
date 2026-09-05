@@ -1,8 +1,11 @@
 import {
   context,
+  effect,
   For,
   getContext,
   getOwner,
+  onCleanup,
+  onMount,
   provide,
   signal,
   type Child,
@@ -11,6 +14,14 @@ import {
 import { layer } from "@barqjs/css";
 import { resizeObserver } from "@barqjs/primitives/observers";
 import { ref as makeRef } from "@barqjs/primitives/refs";
+import { createChartAdapter } from "@tanstack/charts/adapter";
+import { areaY, barY, defineChart, group, lineY } from "@tanstack/charts";
+
+import { scaleBand } from "@tanstack/charts/scales/band";
+import { scaleLinear } from "@tanstack/charts/scales/linear";
+import { scalePoint } from "@tanstack/charts/scales/point";
+
+import type { DomChartDefinition } from "@tanstack/charts/types";
 
 import "../theme/layers.ts";
 import { uiProps } from "../lib/slot.ts";
@@ -30,6 +41,20 @@ const chart = ui({
   // and puts the key beside it; a column is the same box with the parts stacked.
   flexDirection: "column",
 });
+
+/**
+ * The box the scene fills, and the scene taken out of the flow to fill it.
+ *
+ * The host writes the measured size onto the SVG, so an SVG in the flow is what
+ * decides the box that was supposed to decide the SVG: the first frame's
+ * default 320 made the container 320 tall, which measured as 320, which kept
+ * the default forever. Positioning the scene absolutely breaks the loop — the
+ * box is the flex remainder and nothing else — and `height: 0` is what makes
+ * `flex-grow` mean "the remainder" rather than "the remainder plus my content".
+ */
+const surface = ui({ position: "relative", width: "100%", flexGrow: "1", height: "0" });
+
+const scene = ui({ position: "absolute", inset: "0" });
 
 const tooltip = ui({
   display: "grid",
@@ -98,45 +123,24 @@ const legendSwatch = ui({
   borderRadius: "2px",
 });
 
-/**
- * The marks, as atoms on the elements rather than descendant rules.
- *
- * `fill` and `stroke` are properties like any other, so there is no reason for a
- * chart to be the one place in this package that reaches for a global block. A
- * mark reads `--color-series`, which the group around it sets from the config,
- * so one custom property restyles a whole series and a theme's ramp reaches the
- * chart without the chart knowing anything about the theme. That indirection is
- * what shadcn's `<ChartStyle>` emits, kept exactly.
- *
- * shadcn's container also carries a dozen `[&_.recharts-…]` rules that reach
- * into recharts' own markup. There is no recharts here, so there is nothing for
- * them to select and they are not transcribed.
- */
-const gridLine = ui({ stroke: "var(--border)", strokeWidth: "1" });
-
-/**
- * The axis type size, in user units, twice.
- *
- * The atom needs a LITERAL — an interpolated value leaves the whole call on the
- * runtime (BARQ017) and takes the stylesheet into the JS bundle with it — and
- * `ticksOf` needs the number to work out how many labels fit. `chart.test.tsx`
- * asserts the two agree, which is the only thing keeping them honest.
- */
+/** The axis type size, in scene units, which the guides are told directly. */
 export const AXIS_FONT_SIZE = 10;
 
-const axisText = ui({ fill: "var(--muted-foreground)", fontSize: "10px" });
-
-const barMark = ui({ fill: "var(--color-series)" });
-
-const lineMark = ui({
-  fill: "none",
-  stroke: "var(--color-series)",
-  strokeWidth: "2",
-  strokeLinecap: "round",
-  strokeLinejoin: "round",
-});
-
-const areaMark = ui({ fill: "var(--color-series)", opacity: "0.2" });
+/**
+ * What the scene paints with, in this package's own tokens.
+ *
+ * A theme colour reaches the renderer as a paint string and lands on the node
+ * as a presentation attribute or a style, and `var()` resolves in both, so a
+ * token survives the trip intact. That is the whole reason a chart can follow a
+ * style switch without being rebuilt: nothing here holds a colour, only the
+ * name of one.
+ */
+const THEME = {
+  foreground: "var(--foreground)",
+  muted: "var(--muted-foreground)",
+  grid: "var(--border)",
+  background: "transparent",
+} as const;
 
 export interface ChartSeries {
   /** The key of the value this series reads out of each datum. */
@@ -174,23 +178,30 @@ export interface ChartContainerProps extends UiProps {
  * </ChartContainer>
  * ```
  *
- * shadcn's chart is a recharts wrapper. recharts is React to its foundations —
- * hooks, context and `cloneElement` over its own children — so there is nothing
- * of it to take, and this draws SVG instead. That is not a smaller answer than
- * wrapping one: a chart IS SVG, and the marks below are a few dozen lines
- * against a dependency measured in hundreds of kilobytes.
+ * shadcn's chart is a recharts wrapper and recharts is React to its
+ * foundations — hooks, context and `cloneElement` over its own children — so
+ * there is nothing of it to take. The engine here is TanStack Charts, whose DOM
+ * host is framework-neutral by construction: it takes a container and a
+ * definition and owns measurement, scene updates, interaction and teardown.
  *
  * What is kept exactly is the CONFIG shape and what it produces: a series
- * becomes `--color-<key>`, and every mark reads that rather than being handed a
- * colour, so one rule restyles a whole series and a theme's ramp reaches the
- * chart without the chart knowing about the theme.
+ * becomes `--color-<key>`, and the scene's colour scale reads those names
+ * rather than colours, so one rule restyles a whole series and a theme's ramp
+ * reaches the chart without the chart knowing about the theme. The same names
+ * are published as `--ts-chart-N`, which is what the library's own palette
+ * reads when a mark does not name a series.
  */
 export function ChartContainer(props: Incoming<ChartContainerProps>) {
   return (
     <div
       {...uiProps("chart", chart, props)}
       style={() =>
-        Object.fromEntries(props.config().map((series) => [`--color-${series.key}`, series.color]))
+        Object.fromEntries(
+          props.config().flatMap((series, at) => [
+            [`--color-${series.key}`, series.color],
+            [`--ts-chart-${at + 1}`, series.color],
+          ]),
+        )
       }
     >
       <ChartProvider config={props.config()}>{props.children}</ChartProvider>
@@ -218,37 +229,113 @@ function ChartProvider(props: Incoming<{ config: ChartConfig; children?: Child }
 }
 
 /**
- * The plot's own box, in CSS pixels.
+ * What a `<Chart>` mounts.
  *
- * The viewBox used to be a fixed 320x160 stretched to fit with
- * `preserveAspectRatio="none"`, and stretching a viewBox stretches its TEXT:
- * the same chart at 950px wide drew a 10px axis label three times too wide, so
- * twelve dates ran into one another. Measuring instead makes one user unit one
- * pixel, which is the only way the type comes out the size it asks for.
- *
- * The default is the old fixed box, so a chart rendered where nothing measures
- * — a server render, happy-dom — still draws something sensible rather than
- * collapsing to nothing.
+ * The host's own definition type rather than `ReturnType<typeof defineChart>`:
+ * `defineChart` is generic in the datum and both coordinates, so its return
+ * type is a different type per call and nothing could be assigned to a prop
+ * declared as one of them. This is the type the DOM host accepts, which is
+ * exactly the contract a caller has to meet.
  */
-function measured(
-  fallbackWidth: number,
-  fallbackHeight: number,
-): { ref: ReturnType<typeof makeRef<SVGSVGElement>>; box: () => { w: number; h: number } } {
-  const ref = makeRef<SVGSVGElement>();
-  const box = signal({ w: fallbackWidth, h: fallbackHeight });
+export type ChartDefinition = DomChartDefinition;
 
+export interface ChartProps extends UiProps {
+  /** A `defineChart(...)` result. Its IDENTITY is the update boundary. */
+  definition: ChartDefinition;
+  /** Names the chart for a screen reader. Required, as the host requires it. */
+  ariaLabel: string;
+  /** @default the container's own height */
+  height?: number;
+  aspectRatio?: number;
+  /** The width the server and the first frame draw at, before measurement. */
+  initialWidth?: number;
+}
+
+/**
+ * One chart, mounted.
+ *
+ * The markup is the host's own `prerender()` on both sides, so the server
+ * writes the scene it would draw and the client adopts those exact bytes rather
+ * than replacing them: `dangerouslySetInnerHTML` skips its write while
+ * hydrating when the html already matches, and `mount` takes over the shell the
+ * renderer finds. A chart that rendered client-side only would leave a hole in
+ * the document the size of the plot until JavaScript arrived.
+ *
+ * The definition's IDENTITY is the update boundary the library documents, so
+ * the effect below reads `props.definition()` and nothing else: a new
+ * definition updates the live host, and everything a definition captured stays
+ * captured.
+ */
+export function Chart(props: Incoming<ChartProps>) {
+  const node = makeRef<HTMLDivElement>();
+
+  /**
+   * The box's own height, because the host has no "follow the container" mode.
+   *
+   * It observes WIDTH and takes a height or an aspect ratio, which is right for
+   * a chart the page sizes and wrong for one in a card that sizes itself: a
+   * fixed 320 in a 190px slot drew a scene taller than its box and the axis
+   * labels fell out of the bottom. Measuring here is the same answer the width
+   * already gets, and `height` from the caller still wins.
+   */
+  const measured = signal(0);
   resizeObserver(
-    () => ref() as Element | null,
+    () => node() as Element | null,
     () => {
-      const node = ref();
-      if (node === null || node === undefined) return;
-      const rect = node.getBoundingClientRect();
-      if (rect.width < 1 || rect.height < 1) return;
-      box.set({ w: Math.round(rect.width), h: Math.round(rect.height) });
+      const element = node();
+      if (element === null || element === undefined) return;
+      const height = Math.round(element.getBoundingClientRect().height);
+      if (height > 0) measured.set(height);
     },
   );
 
-  return { ref, box };
+  const heightOf = (): number | undefined =>
+    props.height?.() ?? (measured() > 0 ? measured() : undefined);
+
+  const optionsOf = (): Parameters<typeof createChartAdapter>[0] => ({
+    definition: props.definition(),
+    ariaLabel: props.ariaLabel(),
+    ...(heightOf() === undefined ? {} : { height: heightOf() }),
+    ...(props.aspectRatio?.() === undefined ? {} : { aspectRatio: props.aspectRatio?.() }),
+    initialWidth: props.initialWidth?.() ?? 640,
+    className: scene,
+  });
+
+  const adapter = createChartAdapter(optionsOf());
+  const markup = adapter.prerender();
+
+  let mounted = false;
+  onMount(() => {
+    const element = node();
+    if (element === null || element === undefined) return;
+    adapter.mount(element);
+    mounted = true;
+  });
+
+  // Only after the mount: an update before it re-runs `prerender` work the
+  // markup above already holds, and the first run of an effect is the value
+  // the adapter was built with.
+  let first = true;
+  effect(() => {
+    const options = optionsOf();
+    if (first) {
+      first = false;
+      return;
+    }
+    if (mounted) adapter.update(options);
+  });
+
+  // The host holds a resize observer and pointer listeners on the container, so
+  // a route that leaves without this keeps measuring a plot that is gone.
+  onCleanup(() => adapter.destroy());
+
+  return (
+    <div
+      {...uiProps("chart-surface", surface, props)}
+      ref={node.set}
+      dangerouslySetInnerHTML={{ __html: markup }}
+    />
+  );
 }
 
 export interface ChartPlotProps extends UiProps {
@@ -262,241 +349,121 @@ export interface ChartPlotProps extends UiProps {
   height?: number;
 }
 
-export interface Geometry {
-  readonly w: number;
-  readonly h: number;
-  readonly pad: number;
-  readonly max: number;
-}
-
-function geometryOf(props: {
-  data: readonly Record<string, string | number>[];
-  config: ChartConfig;
-  width: number;
-  height: number;
-}): Geometry {
-  const values = props.data.flatMap((row) =>
-    props.config.map((series) => Number(row[series.key] ?? 0)),
-  );
-  // A zero maximum would divide by zero and put every mark on the axis.
-  const max = Math.max(1, ...values);
-  return { w: props.width, h: props.height, pad: 24, max };
+interface Point {
+  readonly x: string;
+  readonly series: string;
+  readonly value: number;
 }
 
 /**
- * The labels there is room for, which is not always all of them.
+ * The wide rows an application holds, as the long rows a mark reads.
  *
- * Every label was drawn whatever the width, so twelve dates in a 950px chart
- * ran into each other and read as one smear. A stride rather than a rotation or
- * an ellipsis, because a date you can read half of is worse than a date that is
- * not there: the axis is for orienting, and every other tick orients you fine.
- *
- * The width estimate is `0.6em` a character, which is about right for a
- * proportional face and errs wide — the cost of erring wide is one fewer label,
- * and of erring narrow is the smear this exists to stop.
+ * A caller's datum is one column with a field per series, which is the shape a
+ * table has and the shape shadcn's charts take. A mark groups by a CHANNEL, so
+ * the same numbers have to arrive as one row per series per column. Folding
+ * here rather than asking the caller to is what keeps `data` and `config` the
+ * only two things a chart needs.
  */
-export function ticksOf(
-  labels: readonly string[],
-  geometry: Geometry,
-): { label: string; index: number }[] {
-  const slot = (geometry.w - geometry.pad - 4) / Math.max(1, labels.length);
-  const widest = labels.reduce((most, label) => Math.max(most, label.length), 0);
-  const needed = widest * AXIS_FONT_SIZE * 0.6 + 8;
-  const stride = Math.max(1, Math.ceil(needed / Math.max(1, slot)));
-  return labels
-    .map((label, index) => ({ label, index }))
-    .filter((entry) => entry.index % stride === 0);
-}
-
-/** The horizontal rules and the labels along the bottom, shared by every mark. */
-function Frame(props: Incoming<{ geometry: Geometry; labels: readonly string[] }>) {
-  const lines = (): number[] => [0, 0.25, 0.5, 0.75, 1];
-  return (
-    <>
-      <g data-slot="chart-grid">
-        <For each={() => lines()}>
-          {(at: number) => (
-            <line
-              class={gridLine}
-              x1={props.geometry().pad}
-              x2={props.geometry().w - 4}
-              y1={props.geometry().pad + (props.geometry().h - props.geometry().pad * 2) * at}
-              y2={props.geometry().pad + (props.geometry().h - props.geometry().pad * 2) * at}
-            />
-          )}
-        </For>
-      </g>
-      <g data-slot="chart-axis">
-        <For each={() => ticksOf(props.labels(), props.geometry())}>
-          {(entry: { label: string; index: number }) => (
-            <text
-              class={axisText}
-              x={
-                props.geometry().pad +
-                ((props.geometry().w - props.geometry().pad - 4) / props.labels().length) *
-                  (entry.index + 0.5)
-              }
-              y={props.geometry().h - 6}
-              text-anchor="middle"
-            >
-              {entry.label}
-            </text>
-          )}
-        </For>
-      </g>
-    </>
+function fold(
+  data: readonly Record<string, string | number>[],
+  config: ChartConfig,
+  x: string,
+): Point[] {
+  return data.flatMap((row) =>
+    config.map((series) => ({
+      x: String(row[x] ?? ""),
+      series: series.key,
+      value: Number(row[series.key] ?? 0),
+    })),
   );
 }
 
-/** A column per datum, one bar per series. */
+/** The colour scale, as the series names rather than the colours behind them. */
+function colorScale(config: ChartConfig): {
+  domain: readonly string[];
+  range: readonly string[];
+} {
+  return {
+    domain: config.map((series) => series.key),
+    range: config.map((series) => `var(--color-${series.key})`),
+  };
+}
+
+/**
+ * The tick labels, at this package's own size, thinned to what fits.
+ *
+ * `thin` is what stops twelve dates in a wide chart running into one another.
+ * The old plotter estimated a label's width at `0.6em` a character and dropped
+ * every Nth; the guide measures the text it is about to draw, which is the same
+ * decision made from the real number.
+ */
+const TICK_LABELS = { fontSize: AXIS_FONT_SIZE, thin: true } as const;
+
+const AXIS = { tickLabels: TICK_LABELS } as const;
+
+/** A column per datum, one bar per series, side by side. */
 export function ChartBars(props: Incoming<ChartPlotProps>) {
   const { config } = useChart();
-  const box = measured(props.width?.() ?? 320, props.height?.() ?? 160);
-  const geometry = (): Geometry =>
-    geometryOf({
-      data: props.data(),
-      config: config(),
-      width: props.width?.() ?? box.box().w,
-      height: props.height?.() ?? box.box().h,
+
+  const definition = (): ChartDefinition =>
+    defineChart({
+      marks: [
+        barY(fold(props.data(), config(), props.x()), {
+          x: "x",
+          y: "value",
+          color: "series",
+          layout: group(),
+        }),
+      ],
+      scales: {
+        x: { scale: scaleBand, axis: AXIS },
+        y: { scale: scaleLinear, nice: true, grid: true, axis: AXIS },
+      },
+      color: colorScale(config()),
+      theme: THEME,
     });
 
-  const bars = (): {
-    key: string;
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  }[] => {
-    const g = geometry();
-    const rows = props.data();
-    const series = config();
-    const plot = g.h - g.pad * 2;
-    const step = (g.w - g.pad - 4) / Math.max(1, rows.length);
-    const bandwidth = (step * 0.7) / Math.max(1, series.length);
-    return rows.flatMap((row, column) =>
-      series.map((each, index) => {
-        const value = Number(row[each.key] ?? 0);
-        const height = (value / g.max) * plot;
-        return {
-          key: `${String(column)}-${each.key}`,
-          x: g.pad + step * column + step * 0.15 + bandwidth * index,
-          y: g.pad + plot - height,
-          width: Math.max(1, bandwidth - 2),
-          height,
-        };
-      }),
-    );
-  };
-
   return (
-    <svg
-      {...uiProps("chart-plot", "", props)}
-      ref={box.ref.set}
-      viewBox={() => `0 0 ${String(geometry().w)} ${String(geometry().h)}`}
-      width="100%"
-      // The plot takes the space the legend does not, and `min-height: 0` is
-      // what stops a flex child refusing to shrink below its content.
-      style={{ flex: "1", "min-height": "0" }}
-      // NOT `preserveAspectRatio="none"`. Stretching a viewBox stretches its
-      // text with everything else, so a 10px axis label in a 950px-wide chart
-      // came out three times too wide and twelve dates ran into one smear. The
-      // box is measured instead, which makes one user unit one pixel.
-      role="img"
-      aria-label={() => props["aria-label"]?.() ?? "Chart"}
-    >
-      <Frame
-        geometry={geometry()}
-        labels={props.data().map((row) => String(row[props.x()] ?? ""))}
-      />
-      <For each={() => config()}>
-        {(series: ChartSeries) => (
-          <g data-slot="chart-bar" style={{ "--color-series": `var(--color-${series.key})` }}>
-            <For each={() => bars().filter((bar) => bar.key.endsWith(series.key))}>
-              {(bar: { x: number; y: number; width: number; height: number }) => (
-                <rect
-                  class={barMark}
-                  x={bar.x}
-                  y={bar.y}
-                  width={bar.width}
-                  height={bar.height}
-                  rx="2"
-                />
-              )}
-            </For>
-          </g>
-        )}
-      </For>
-    </svg>
+    <Chart
+      {...props}
+      definition={definition()}
+      ariaLabel={props["aria-label"]?.() ?? "Chart"}
+      height={props.height?.()}
+    />
   );
 }
 
-/** A line per series, with the area beneath it. */
+/** A path per series, optionally filled to the axis. */
 export function ChartLines(props: Incoming<ChartPlotProps & { area?: boolean }>) {
   const { config } = useChart();
-  const box = measured(props.width?.() ?? 320, props.height?.() ?? 160);
-  const geometry = (): Geometry =>
-    geometryOf({
-      data: props.data(),
-      config: config(),
-      width: props.width?.() ?? box.box().w,
-      height: props.height?.() ?? box.box().h,
-    });
 
-  const pathOf = (key: string, closed: boolean): string => {
-    const g = geometry();
-    const rows = props.data();
-    const plot = g.h - g.pad * 2;
-    const step = (g.w - g.pad - 4) / Math.max(1, rows.length);
-    const points = rows.map((row, index) => {
-      const value = Number(row[key] ?? 0);
-      return [g.pad + step * (index + 0.5), g.pad + plot - (value / g.max) * plot] as const;
+  const definition = (): ChartDefinition => {
+    const rows = fold(props.data(), config(), props.x());
+    const line = lineY(rows, { x: "x", y: "value", z: "series", color: "series" });
+    return defineChart({
+      marks:
+        props.area?.() === true
+          ? [
+              areaY(rows, { x: "x", y: "value", z: "series", color: "series", fillOpacity: 0.2 }),
+              line,
+            ]
+          : [line],
+      scales: {
+        x: { scale: scalePoint, axis: AXIS },
+        y: { scale: scaleLinear, nice: true, grid: true, axis: AXIS },
+      },
+      color: colorScale(config()),
+      theme: THEME,
     });
-    if (points.length === 0) return "";
-    const line = points
-      .map(([x, y], index) => `${index === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`)
-      .join(" ");
-    if (!closed) return line;
-    const first = points[0];
-    const last = points.at(-1);
-    if (first === undefined || last === undefined) return line;
-    return `${line} L${last[0].toFixed(1)},${(g.pad + plot).toFixed(1)} L${first[0].toFixed(1)},${(g.pad + plot).toFixed(1)} Z`;
   };
 
   return (
-    <svg
-      {...uiProps("chart-plot", "", props)}
-      ref={box.ref.set}
-      viewBox={() => `0 0 ${String(geometry().w)} ${String(geometry().h)}`}
-      width="100%"
-      // The plot takes the space the legend does not, and `min-height: 0` is
-      // what stops a flex child refusing to shrink below its content.
-      style={{ flex: "1", "min-height": "0" }}
-      // NOT `preserveAspectRatio="none"`. Stretching a viewBox stretches its
-      // text with everything else, so a 10px axis label in a 950px-wide chart
-      // came out three times too wide and twelve dates ran into one smear. The
-      // box is measured instead, which makes one user unit one pixel.
-      role="img"
-      aria-label={() => props["aria-label"]?.() ?? "Chart"}
-    >
-      <Frame
-        geometry={geometry()}
-        labels={props.data().map((row) => String(row[props.x()] ?? ""))}
-      />
-      <For each={() => config()}>
-        {(series: ChartSeries) => (
-          <g style={{ "--color-series": `var(--color-${series.key})` }}>
-            {props.area?.() === true ? (
-              <g data-slot="chart-area">
-                <path class={areaMark} d={pathOf(series.key, true)} />
-              </g>
-            ) : null}
-            <g data-slot="chart-line">
-              <path class={lineMark} d={pathOf(series.key, false)} />
-            </g>
-          </g>
-        )}
-      </For>
-    </svg>
+    <Chart
+      {...props}
+      definition={definition()}
+      ariaLabel={props["aria-label"]?.() ?? "Chart"}
+      height={props.height?.()}
+    />
   );
 }
 

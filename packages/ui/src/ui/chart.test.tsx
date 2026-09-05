@@ -1,8 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { render } from "@barqjs/testing";
 
-import { rulesFor } from "../test-rules.ts";
-
 import {
   AXIS_FONT_SIZE,
   ChartBars,
@@ -10,7 +8,6 @@ import {
   ChartLegend,
   ChartLines,
   ChartTooltipContent,
-  ticksOf,
   type ChartConfig,
 } from "./chart.tsx";
 
@@ -24,104 +21,188 @@ const DATA = [
   { month: "Feb", desktop: 200, mobile: 150 },
 ];
 
+const svg = (root: ParentNode): SVGSVGElement => {
+  const found = root.querySelector<SVGSVGElement>("svg");
+  if (found === null) throw new Error("no chart was drawn");
+  return found;
+};
+
 describe("Chart", () => {
   test("a series becomes a custom property, which is how a theme reaches it", () => {
-    render(() => (
+    const { container } = render(() => (
       <ChartContainer config={CONFIG}>
         <ChartBars data={DATA} x="month" />
       </ChartContainer>
     ));
-    const container = document.querySelector('[data-slot="chart"]') as HTMLElement;
+    const box = container.querySelector('[data-slot="chart"]') as HTMLElement;
     // Handing each mark a colour would work and would put the theme inside the
     // chart. One property per series is what lets the ramp change underneath it.
-    expect(container.style.getPropertyValue("--color-desktop")).toBe("var(--chart-1)");
-    expect(container.style.getPropertyValue("--color-mobile")).toBe("var(--chart-2)");
+    expect(box.style.getPropertyValue("--color-desktop")).toBe("var(--chart-1)");
+    expect(box.style.getPropertyValue("--color-mobile")).toBe("var(--chart-2)");
   });
 
-  test("every mark reads --color-series rather than a colour of its own", () => {
-    render(() => (
+  // The library's own palette is what a mark that names no series paints with,
+  // so a chart written against `--ts-chart-N` gets this theme's ramp too.
+  test("the same colours are published under the library's palette names", () => {
+    const { container } = render(() => (
       <ChartContainer config={CONFIG}>
         <ChartBars data={DATA} x="month" />
       </ChartContainer>
     ));
-    const groups = [...document.querySelectorAll<SVGElement>('[data-slot="chart-bar"]')];
-    expect(groups).toHaveLength(2);
-    expect(groups[0]?.style.getPropertyValue("--color-series")).toBe("var(--color-desktop)");
-    const rect = groups[0]?.querySelector("rect");
-    expect(rulesFor([...(rect?.classList ?? [])].join(" "))).toContain("fill: var(--color-series)");
+    const box = container.querySelector('[data-slot="chart"]') as HTMLElement;
+    expect(box.style.getPropertyValue("--ts-chart-1")).toBe("var(--chart-1)");
+    expect(box.style.getPropertyValue("--ts-chart-2")).toBe("var(--chart-2)");
   });
 
-  test("a bar per datum per series, and the tallest fills the plot", () => {
-    render(() => (
+  test("every mark reads --color-<series> rather than a colour of its own", () => {
+    const { container } = render(() => (
+      <ChartContainer config={CONFIG}>
+        <ChartBars data={DATA} x="month" />
+      </ChartContainer>
+    ));
+    const fills = [...container.querySelectorAll("rect")].map((r) => r.getAttribute("fill"));
+    // A colour scale of NAMES, not colours: `var()` resolves in a presentation
+    // attribute, so the ramp changes under a scene nobody rebuilt.
+    expect(new Set(fills)).toEqual(new Set(["var(--color-desktop)", "var(--color-mobile)"]));
+  });
+
+  test("a bar per datum per series, side by side rather than stacked", () => {
+    const { container } = render(() => (
       <ChartContainer config={CONFIG}>
         <ChartBars data={DATA} x="month" height={160} />
       </ChartContainer>
     ));
-    const rects = [...document.querySelectorAll("rect")];
+    const rects = [...container.querySelectorAll("rect")];
     expect(rects).toHaveLength(4);
-    // 160 tall, 24 of padding each end, so the plot is 112 and the maximum
-    // value gets all of it. A bar taller than the plot means the scale is off.
-    const heights = rects.map((r) => Number(r.getAttribute("height")));
-    expect(Math.max(...heights)).toBeCloseTo(112, 0);
-    for (const height of heights) expect(height).toBeLessThanOrEqual(112);
+    // Repeated positions STACK by default in this grammar. Grouped is the
+    // explicit opt-in, and without it two series share one column and the
+    // second is drawn on top of the first at the same x.
+    const columns = new Set(rects.map((r) => r.getAttribute("x")));
+    expect(columns.size).toBe(4);
   });
 
-  test("a column with no value sits on the axis rather than throwing", () => {
-    render(() => (
+  test("the taller value draws the taller bar", () => {
+    const { container } = render(() => (
+      <ChartContainer config={CONFIG}>
+        <ChartBars data={DATA} x="month" height={160} />
+      </ChartContainer>
+    ));
+    const heights = [...container.querySelectorAll("rect")].map((r) =>
+      Number(r.getAttribute("height")),
+    );
+    expect(Math.max(...heights)).toBeGreaterThan(Math.min(...heights));
+    for (const height of heights) expect(Number.isFinite(height)).toBe(true);
+  });
+
+  test("a column with no value draws nothing rather than throwing", () => {
+    const { container } = render(() => (
       <ChartContainer config={CONFIG}>
         <ChartBars data={[{ month: "Jan" }]} x="month" />
       </ChartContainer>
     ));
-    const rects = [...document.querySelectorAll("rect")];
-    expect(rects.every((r) => Number(r.getAttribute("height")) === 0)).toBe(true);
+    const heights = [...container.querySelectorAll("rect")].map((r) =>
+      Number(r.getAttribute("height")),
+    );
+    expect(heights.every((height) => height === 0)).toBe(true);
   });
 
   test("all-zero data does not divide by zero", () => {
-    // The maximum is clamped to 1, or every mark lands at NaN and disappears.
-    render(() => (
+    const { container } = render(() => (
       <ChartContainer config={CONFIG}>
         <ChartBars data={[{ month: "Jan", desktop: 0, mobile: 0 }]} x="month" />
       </ChartContainer>
     ));
-    for (const rect of document.querySelectorAll("rect")) {
+    for (const rect of container.querySelectorAll("rect")) {
       expect(Number.isNaN(Number(rect.getAttribute("y")))).toBe(false);
     }
   });
 
-  test("a line is one path per series, and the area closes back to the axis", () => {
-    render(() => (
+  test("a line is one path per series, and the area is filled under it", () => {
+    const { container } = render(() => (
       <ChartContainer config={CONFIG}>
         <ChartLines data={DATA} x="month" area />
       </ChartContainer>
     ));
-    const lines = [...document.querySelectorAll('[data-slot="chart-line"] path')];
-    const areas = [...document.querySelectorAll('[data-slot="chart-area"] path')];
-    expect(lines).toHaveLength(2);
-    expect(areas).toHaveLength(2);
-    expect(lines[0]?.getAttribute("d")?.startsWith("M")).toBe(true);
-    // A closed path, or the fill spills to the shape's own bounding box.
-    expect(areas[0]?.getAttribute("d")?.endsWith("Z")).toBe(true);
-    expect(lines[0]?.getAttribute("d")?.endsWith("Z")).toBe(false);
+    const paths = [...container.querySelectorAll("path")];
+    // Two areas and two lines: an area mark and a line mark per series.
+    expect(paths.length).toBeGreaterThanOrEqual(4);
+    const filled = paths.filter((p) => (p.getAttribute("fill") ?? "none") !== "none");
+    const stroked = paths.filter((p) => (p.getAttribute("stroke") ?? "none") !== "none");
+    expect(filled).toHaveLength(2);
+    expect(stroked).toHaveLength(2);
+    expect(paths[0]?.getAttribute("d")?.startsWith("M")).toBe(true);
+  });
+
+  test("a line without `area` fills nothing", () => {
+    const { container } = render(() => (
+      <ChartContainer config={CONFIG}>
+        <ChartLines data={DATA} x="month" />
+      </ChartContainer>
+    ));
+    const filled = [...container.querySelectorAll("path")].filter(
+      (p) => (p.getAttribute("fill") ?? "none") !== "none",
+    );
+    expect(filled).toHaveLength(0);
   });
 
   test("the drawing names itself, which is all a screen reader gets from SVG", () => {
-    render(() => (
+    const { container } = render(() => (
       <ChartContainer config={CONFIG}>
         <ChartBars data={DATA} x="month" aria-label="Revenue by month" />
       </ChartContainer>
     ));
-    const svg = document.querySelector("svg");
-    expect(svg?.getAttribute("role")).toBe("img");
-    expect(svg?.getAttribute("aria-label")).toBe("Revenue by month");
+    expect(svg(container).getAttribute("role")).toBe("img");
+    expect(svg(container).getAttribute("aria-label")).toBe("Revenue by month");
+  });
+
+  /**
+   * The markup exists before any script runs.
+   *
+   * The host is a browser object and mounting is a browser event, so a chart
+   * that only drew on mount would leave a hole the size of the plot in every
+   * server-rendered page. The adapter's `prerender` is what fills it, and the
+   * same bytes are what the client adopts.
+   */
+  test("the scene is in the markup rather than waiting for a mount", () => {
+    const { container } = render(() => (
+      <ChartContainer config={CONFIG}>
+        <ChartBars data={DATA} x="month" aria-label="Visitors" />
+      </ChartContainer>
+    ));
+    expect(container.querySelectorAll("rect").length).toBe(4);
+  });
+
+  test("the axis draws its labels at the size this package asks for", () => {
+    const { container } = render(() => (
+      <ChartContainer config={CONFIG}>
+        <ChartBars data={DATA} x="month" aria-label="Visitors" />
+      </ChartContainer>
+    ));
+    const labels = [...container.querySelectorAll("text")];
+    expect(labels.length).toBeGreaterThan(0);
+    for (const label of labels) {
+      expect(label.getAttribute("font-size")).toBe(String(AXIS_FONT_SIZE));
+    }
+  });
+
+  test("the grid and the tick labels are this package's own tokens", () => {
+    const { container } = render(() => (
+      <ChartContainer config={CONFIG}>
+        <ChartBars data={DATA} x="month" />
+      </ChartContainer>
+    ));
+    const grid = container.querySelector('[data-ts-key="grid"]');
+    expect(grid?.getAttribute("stroke")).toBe("var(--border)");
+    expect(container.querySelector("text")?.getAttribute("fill")).toBe("var(--muted-foreground)");
   });
 
   test("the legend names every series and swatches it", () => {
-    render(() => (
+    const { container } = render(() => (
       <ChartContainer config={CONFIG}>
         <ChartLegend />
       </ChartContainer>
     ));
-    const items = [...document.querySelectorAll('[data-slot="chart-legend-item"]')];
+    const items = [...container.querySelectorAll('[data-slot="chart-legend-item"]')];
     expect(items.map((i) => i.textContent?.trim())).toEqual(["Desktop", "Mobile"]);
     const swatch = items[0]?.querySelector<HTMLElement>('[data-slot="chart-legend-swatch"]');
     expect(swatch?.style.background).toBe("var(--color-desktop)");
@@ -144,50 +225,6 @@ describe("Chart", () => {
   test("a plot outside a container says what is wrong", () => {
     expect(() => render(() => <ChartBars data={DATA} x="month" />)).toThrow(
       "inside a <ChartContainer>",
-    );
-  });
-});
-
-describe("the axis", () => {
-  // Every label was drawn whatever the width, so twelve dates in a 950px chart
-  // ran into each other and read as one smear. The stride is what stops it.
-  test("draws only the labels there is room for", () => {
-    const narrow = ticksOf(["January", "February", "March", "April", "May", "June"], {
-      w: 200,
-      h: 160,
-      pad: 24,
-      max: 1,
-    });
-    const wide = ticksOf(["January", "February", "March", "April", "May", "June"], {
-      w: 1200,
-      h: 160,
-      pad: 24,
-      max: 1,
-    });
-
-    expect(narrow.length).toBeLessThan(6);
-    expect(wide).toHaveLength(6);
-    // Whatever the stride, the first label is always drawn: an axis whose left
-    // end is unlabelled cannot be read at all.
-    expect(narrow[0]?.label).toBe("January");
-  });
-
-  test("keeps every label when they are short", () => {
-    const ticks = ticksOf(["J", "F", "M", "A"], { w: 320, h: 160, pad: 24, max: 1 });
-    expect(ticks).toHaveLength(4);
-  });
-
-  // The atom needs a literal or the whole call stays on the runtime, so the
-  // number lives twice. This is what stops the two drifting.
-  test("the size the ticks are measured at is the size they are drawn at", () => {
-    const { container } = render(() => (
-      <ChartContainer config={CONFIG}>
-        <ChartBars data={DATA} x="month" aria-label="Visitors" />
-      </ChartContainer>
-    ));
-    const label = container.querySelector('[data-slot="chart-axis"] text');
-    expect(rulesFor(label?.getAttribute("class") ?? "")).toContain(
-      `font-size: ${String(AXIS_FONT_SIZE)}px`,
     );
   });
 });

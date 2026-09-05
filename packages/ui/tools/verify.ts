@@ -34,6 +34,13 @@ const ALLOWED: Record<string, string> = {
     "containing block for fixed descendants, a viewport unit is the one thing " +
     "containment cannot redirect, and the sidebar came out a window tall in a " +
     "shorter panel with its footer below the fold",
+  "chart:chart-grid-line:stroke":
+    "the scene is drawn by TanStack Charts and a node's paint arrives as a " +
+    "presentation attribute rather than a class, so the token reaches the " +
+    'element as `stroke="var(--border)"`. The value is upstream\'s; the ' +
+    "carrier is not, and a class on an element the renderer owns would be " +
+    "overwritten on the next scene",
+  "chart:chart-axis-label:fill": 'as above, as `fill="var(--muted-foreground)"`',
   "message-scroller:message-scroller-button:transition-duration":
     "`transition-[…]` and `duration-200` set the SAME property, and an atom " +
     "is one declaration: the literal wins and the `var()` form it replaces " +
