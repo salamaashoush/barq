@@ -55,6 +55,11 @@ const layout = css`
   min-height: 100svh;
   flex-direction: column;
   background-color: var(--background);
+  /* The layout is where the dark class lands, so it is where the page's text
+     colour has to come from. Without it everything that inherits — the nav
+     buttons, every heading, the prose — took the browser's black, which reads
+     as ordinary in light mode and is black on near-black in dark. */
+  color: var(--foreground);
   overscroll-behavior: none;
 
   @media (width >= 64rem) {
