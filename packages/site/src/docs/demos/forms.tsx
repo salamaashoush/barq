@@ -276,13 +276,18 @@ export function FieldDemo() {
           <Input id="street-demo" placeholder="12 Rue de Rivoli" />
           <FieldDescription>Where the parcel goes.</FieldDescription>
         </Field>
-        <Field orientation="horizontal">
-          <Checkbox id="receipts-demo" />
-          <FieldContent>
-            <FieldTitle>Send receipts</FieldTitle>
-            <FieldDescription>One email per payment.</FieldDescription>
-          </FieldContent>
-        </Field>
+        {/* The label WRAPS the row, which is upstream's shape and the only one
+            that names the control: `FieldTitle` is a div, here and there, so a
+            checkbox beside one has no accessible name of its own. */}
+        <FieldLabel for="receipts-demo">
+          <Field orientation="horizontal">
+            <Checkbox id="receipts-demo" />
+            <FieldContent>
+              <FieldTitle>Send receipts</FieldTitle>
+              <FieldDescription>One email per payment.</FieldDescription>
+            </FieldContent>
+          </Field>
+        </FieldLabel>
       </FieldGroup>
     </FieldSet>
   );

@@ -147,8 +147,7 @@ export function role(element: Element): string | null {
       // A `region` only when it has an accessible name; otherwise generic.
       return accessibleName(element) === "" ? "generic" : "region";
     case "select":
-      return (element as HTMLSelectElement).multiple ||
-        (element as HTMLSelectElement).size > 1
+      return (element as HTMLSelectElement).multiple || (element as HTMLSelectElement).size > 1
         ? "listbox"
         : "combobox";
     case "summary":
@@ -305,7 +304,13 @@ function nameOf(
     if (title !== null) return collapse(title.textContent ?? "");
   }
 
-  if (tag === "input" || tag === "select" || tag === "textarea" || tag === "meter" || tag === "progress") {
+  if (
+    tag === "input" ||
+    tag === "select" ||
+    tag === "textarea" ||
+    tag === "meter" ||
+    tag === "progress"
+  ) {
     const labels = labelsFor(element);
     if (labels.length > 0) {
       const text = labels.map((label) => collapse(textFrom(label, visited))).join(" ");
@@ -379,7 +384,10 @@ export interface AriaViolation {
 }
 
 /** `aria-*` attributes and what they may hold. */
-const ARIA_ATTRIBUTES: Record<string, "boolean" | "tristate" | "number" | "integer" | "idref" | "idrefs" | "string" | readonly string[]> = {
+const ARIA_ATTRIBUTES: Record<
+  string,
+  "boolean" | "tristate" | "number" | "integer" | "idref" | "idrefs" | "string" | readonly string[]
+> = {
   "aria-activedescendant": "idref",
   "aria-atomic": "boolean",
   "aria-autocomplete": ["inline", "list", "both", "none"],
@@ -456,7 +464,12 @@ const REQUIRED_PARENT: Record<string, readonly string[]> = {
   menuitem: ["menu", "menubar", "group"],
   menuitemcheckbox: ["menu", "menubar", "group"],
   menuitemradio: ["menu", "menubar", "group"],
-  option: ["listbox", "group"],
+  // `combobox` because that is what a `<select>` maps to: a collapsed select is
+  // a combobox with an implicit listbox popup that ARIA in HTML does not make
+  // an element for, so its `<option>` children have no `listbox` ancestor in
+  // the DOM and never will. Requiring one reported every native select on the
+  // page, which is a bug in the rule rather than in the markup.
+  option: ["listbox", "group", "combobox"],
   row: ["grid", "rowgroup", "table", "treegrid"],
   rowgroup: ["grid", "table", "treegrid"],
   rowheader: ["row"],
@@ -490,6 +503,21 @@ const NAME_REQUIRED = new Set([
   "tree",
   "treeitem",
 ]);
+
+/**
+ * What `<label for>` is allowed to address.
+ *
+ * The HTML specification's list, and it is short. `for` resolves to the first
+ * element with that id in tree order and then requires it to be LABELABLE — so
+ * a label pointing at a `<div>`, at a `<label>`, or at nothing at all is not a
+ * degraded association, it is no association: clicking the text moves no focus
+ * and toggles no control, in silence.
+ *
+ * Three components in `@barqjs/aria` shipped exactly that. Each is a `<label>`
+ * wrapping a hidden `<input>`, and the caller's `id` reached both — so the
+ * document held it twice and `for` found the wrapper first.
+ */
+const LABELABLE = new Set(["BUTTON", "INPUT", "METER", "OUTPUT", "PROGRESS", "SELECT", "TEXTAREA"]);
 
 const FOCUSABLE_SELECTOR =
   "input:not([disabled]):not([type=hidden]),select:not([disabled]),textarea:not([disabled])," +
@@ -643,10 +671,32 @@ export function ariaViolations(
         found.push(
           violation(
             "aria-hidden-focus",
-            "aria-hidden=\"true\" hides an element that is still reachable by Tab.",
+            'aria-hidden="true" hides an element that is still reachable by Tab.',
             element,
           ),
         );
+      }
+    }
+
+    if (element.tagName === "LABEL") {
+      const target = element.getAttribute("for");
+      if (target !== null && target !== "") {
+        const addressed = (element.getRootNode() as Document | ShadowRoot).querySelector(
+          `#${CSS.escape(target)}`,
+        );
+        if (addressed === null) {
+          found.push(
+            violation("label-for-target", `<label for="${target}"> addresses no element.`, element),
+          );
+        } else if (!LABELABLE.has(addressed.tagName)) {
+          found.push(
+            violation(
+              "label-for-target",
+              `<label for="${target}"> addresses a <${addressed.tagName.toLowerCase()}>, which is not labelable.`,
+              element,
+            ),
+          );
+        }
       }
     }
 
@@ -684,11 +734,7 @@ export function ariaViolations(
           if (element.tagName === "METER" || element.tagName === "PROGRESS") continue;
         }
         found.push(
-          violation(
-            "aria-required-attr",
-            `role="${elementRole}" requires ${attribute}.`,
-            element,
-          ),
+          violation("aria-required-attr", `role="${elementRole}" requires ${attribute}.`, element),
         );
       }
     }
@@ -716,14 +762,9 @@ export function ariaViolations(
 
     if (NAME_REQUIRED.has(elementRole) && accessibleName(element) === "") {
       found.push(
-        violation(
-          "role-has-name",
-          `role="${elementRole}" has no accessible name.`,
-          element,
-        ),
+        violation("role-has-name", `role="${elementRole}" has no accessible name.`, element),
       );
     }
-
   }
 
   return found.filter((entry) => !skip.has(entry.rule));

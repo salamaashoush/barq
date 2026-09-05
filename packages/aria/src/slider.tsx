@@ -766,7 +766,21 @@ export function Slider(props: Incoming<SliderComponentProps>) {
       state,
       baseId,
       trackRef,
-      groupLabelId: () => access(labelProps.id as MaybeAccessor<string | undefined>),
+      /**
+       * The label element when there is one, and the GROUP when there is not.
+       *
+       * A thumb is `role="slider"` and needs a name of its own — that is the
+       * thing a screen reader announces, not the group around it. A caller who
+       * writes `<Slider aria-label="Volume" />` renders no label element, so
+       * `labelProps.id` is undefined and the thumb had no name at all: measured
+       * as `role="slider" has no accessible name` on the very first sweep of
+       * the library. The group carries the `aria-label`, and `aria-labelledby`
+       * resolves through it, so pointing at the group answers both shapes.
+       * React Aria does the same, with `data.id` in `useSliderThumb`.
+       */
+      groupLabelId: () =>
+        access(labelProps.id as MaybeAccessor<string | undefined>) ??
+        access(groupProps.id as MaybeAccessor<string | undefined>),
       outputProps,
       name: () => props.name?.(),
       form: () => props.form?.(),
