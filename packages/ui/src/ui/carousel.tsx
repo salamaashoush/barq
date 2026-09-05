@@ -156,12 +156,45 @@ export function Carousel(props: Incoming<CarouselProps>) {
   let instance: CarouselApi | null = null;
   let node: HTMLElement | null = null;
   let mounted = false;
+  /** One deferred build at a time, and one retry per node. */
+  let pending: number | undefined;
+  let retried = false;
 
   const build = (): void => {
     instance?.destroy();
     instance = null;
     api.set(null);
     if (node === null) return;
+
+    /**
+     * CONNECTED, or there is nothing to measure and embla says so with a
+     * TypeError.
+     *
+     * `ownerWindow(el)` is `el.ownerDocument.defaultView`, and a node still in
+     * the fragment it was built from belongs to a document that has none — so
+     * embla's first `getComputedStyle` reads `null.getComputedStyle` and the
+     * whole init throws. `onMount` does not promise a connected node: it
+     * promises the reactive work has settled, which is a different moment, and
+     * a component placed by `<Dynamic />` reaches the first before the second.
+     * Measured on the site's own carousel page as
+     * `connected=false view=false parent=DIV`, followed by a second build that
+     * succeeded — the carousel worked and reported a TypeError on every load.
+     *
+     * A FRAME, not a microtask: the node is appended inside the same task, so
+     * the next frame always has it, and `requestAnimationFrame` runs before
+     * paint so nothing is visible in between.
+     */
+    if (!node.isConnected) {
+      if (retried) return;
+      retried = true;
+      const frame = requestAnimationFrame(() => {
+        pending = undefined;
+        build();
+      });
+      pending = frame;
+      return;
+    }
+    retried = false;
 
     const made = EmblaCarousel(
       node,
@@ -194,6 +227,7 @@ export function Carousel(props: Incoming<CarouselProps>) {
    */
   const attach = (element: HTMLElement | null): void => {
     node = element;
+    retried = false;
     if (mounted) build();
   };
 
@@ -204,7 +238,10 @@ export function Carousel(props: Incoming<CarouselProps>) {
 
   // The instance holds listeners on the window and a resize observer, so a
   // route that leaves without this keeps measuring a container that is gone.
-  onCleanup(() => instance?.destroy());
+  onCleanup(() => {
+    if (pending !== undefined) cancelAnimationFrame(pending);
+    instance?.destroy();
+  });
 
   const value: CarouselValue = {
     orientation,

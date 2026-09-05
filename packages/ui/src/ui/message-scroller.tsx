@@ -157,7 +157,9 @@ export interface MessageScrollerProps extends UiProps {
  * <MessageScroller>
  *   <MessageScrollerViewport>
  *     <MessageScrollerContent>
- *       {messages().map((one) => <MessageScrollerItem>{one.body}</MessageScrollerItem>)}
+ *       <For each={messages}>
+ *         {(one) => <MessageScrollerItem>{one.body}</MessageScrollerItem>}
+ *       </For>
  *     </MessageScrollerContent>
  *   </MessageScrollerViewport>
  *   <MessageScrollerButton />
