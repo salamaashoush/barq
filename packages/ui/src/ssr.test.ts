@@ -371,9 +371,15 @@ describe("the server", () => {
 
     const sheet = collectCss();
     for (const name of classes) {
+      // A MARKER has no rule and is not meant to: upstream's styles compile to
+      // `.group\/button:has(…)`, so the string has to be on the element for
+      // their selector to match and nothing here ever declares it. Every class
+      // this package generates starts with `a-`.
+      if (!name.startsWith("a-")) continue;
       expect(sheet, `.${name} is on the button and nowhere in the stylesheet`).toContain(
         `.${name}`,
       );
     }
+    expect(classes.filter((name) => !name.startsWith("a-"))).toEqual(["group/button"]);
   });
 });

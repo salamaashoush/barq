@@ -336,7 +336,15 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       '<Button variant="outline" onPress={() => save()}>Save</Button>',
     ].join("\n"),
     demos: [
-      { code: "<Button>Button</Button>", component: basics.ButtonDemo },
+      {
+        code: [
+          '<Button variant="outline">Button</Button>',
+          '<Button variant="outline" size="icon" aria-label="Submit">',
+          "  <ArrowUp />",
+          "</Button>",
+        ].join("\n"),
+        component: basics.ButtonDemo,
+      },
       {
         title: "Variants",
         code: [

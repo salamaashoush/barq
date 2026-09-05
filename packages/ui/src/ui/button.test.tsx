@@ -77,10 +77,19 @@ describe("buttonVariants", () => {
     expect(buttonVariants({ variant: "ghost" })).not.toBe(buttonVariants({ variant: "link" }));
   });
 
+  /**
+   * `group/button` is the one class here with no rule of its own, and that is
+   * what a marker IS: upstream's styles compile to `.group\/button:has(…)`, so
+   * the string has to be on the element for their selector to match, and
+   * nothing in this package ever declares it. Every other class is an atom.
+   */
   test("every rule it produces is inside the package's layer", () => {
     const classes = buttonVariants({ variant: "destructive", size: "lg" }).split(" ");
     expect(classes.length).toBeGreaterThan(20);
+    const markers = classes.filter((className) => !className.startsWith("a-"));
+    expect(markers).toEqual(["group/button"]);
     for (const className of classes) {
+      if (markers.includes(className)) continue;
       // `rulesFor` reads only what follows `@layer barq.ui{`, so a class it
       // finds is a class inside the layer.
       expect(rulesFor(className)).toContain(className);
@@ -90,7 +99,9 @@ describe("buttonVariants", () => {
   test("the size decides the height and the variant decides the colour", () => {
     const rules = rulesFor(buttonVariants({ variant: "secondary", size: "lg" }));
     expect(rules).toContain("background-color: var(--secondary)");
-    expect(rules).toContain("height: calc(var(--spacing) * 10)");
+    // `h-9`, which is upstream's current `lg`. It was `h-10` in the older
+    // registry this package was first ported from.
+    expect(rules).toContain("height: calc(var(--spacing) * 9)");
     expect(rulesFor(buttonVariants({ variant: "ghost", size: "sm" }))).not.toContain(
       "background-color: var(--secondary)",
     );

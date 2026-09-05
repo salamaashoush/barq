@@ -10,6 +10,7 @@
 
 import { css } from "@barqjs/css";
 import { ArrowRight } from "@barqjs/lucide/icons/arrow-right";
+import { ArrowUp } from "@barqjs/lucide/icons/arrow-up";
 import { BadgeCheck } from "@barqjs/lucide/icons/badge-check";
 import { Bold } from "@barqjs/lucide/icons/bold";
 import { CircleAlert } from "@barqjs/lucide/icons/circle-alert";
@@ -47,8 +48,16 @@ import {
 
 import { row, stack } from "./shared.ts";
 
+/** Upstream's own `button-demo`: an outline button and an outline icon button. */
 export function ButtonDemo() {
-  return <Button>Button</Button>;
+  return (
+    <div class={row}>
+      <Button variant="outline">Button</Button>
+      <Button variant="outline" size="icon" aria-label="Submit">
+        <ArrowUp />
+      </Button>
+    </div>
+  );
 }
 
 export function ButtonVariants() {

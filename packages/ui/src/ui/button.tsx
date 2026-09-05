@@ -44,18 +44,40 @@ export const buttonVariants = variants({
     ring.invalidDark,
     icon.plain,
     icon.sized,
+    // `group/button` is a marker class, not a utility: upstream's styles compile
+    // to `.group\/button:has(…)`, so it has to be the literal string.
+    "group/button",
     {
       display: "inline-flex",
       flexShrink: "0",
       alignItems: "center",
       justifyContent: "center",
-      gap: "calc(var(--spacing) * 2)",
-      borderRadius: "calc(var(--radius) * 0.8)",
+      borderRadius: "var(--radius)",
+      borderStyle: "var(--ui-border-style)",
+      borderWidth: "1px",
+      borderColor: "transparent",
+      backgroundClip: "padding-box",
       whiteSpace: "nowrap",
       transitionProperty: "all",
+      "-webkit-user-select": "none",
+      userSelect: "none",
+      // A button that opens something must not nudge, or the menu it anchors
+      // moves with it.
+      ":active:not([aria-haspopup])": {
+        "--ui-translate-y": "1px",
+        translate: "var(--ui-translate-x) var(--ui-translate-y)",
+      },
       ":disabled": {
         pointerEvents: "none",
         opacity: "50%",
+      },
+      // `ring.invalidDark` carries the ring colour and not the border, and
+      // upstream's button asks for both (`dark:aria-invalid:border-destructive/50`).
+      ':is(.dark *)[aria-invalid="true"]': {
+        borderColor: "var(--destructive)",
+        "@supports (color: color-mix(in lab, red, red))": {
+          borderColor: "color-mix(in oklab, var(--destructive) 50%, transparent)",
+        },
       },
     },
   ),
@@ -70,34 +92,45 @@ export const buttonVariants = variants({
           },
           "@supports (color: color-mix(in lab, red, red))": {
             ":hover": {
-              backgroundColor: "color-mix(in oklab, var(--primary) 90%, transparent)",
+              backgroundColor: "color-mix(in oklab, var(--primary) 80%, transparent)",
             },
           },
         },
       }),
       destructive: ui({
         backgroundColor: "var(--destructive)",
-        color: "var(--color-white)",
+        color: "var(--destructive)",
+        "@supports (color: color-mix(in lab, red, red))": {
+          backgroundColor: "color-mix(in oklab, var(--destructive) 10%, transparent)",
+        },
         "@media (hover: hover)": {
           ":hover": {
             backgroundColor: "var(--destructive)",
           },
           "@supports (color: color-mix(in lab, red, red))": {
             ":hover": {
-              backgroundColor: "color-mix(in oklab, var(--destructive) 90%, transparent)",
+              backgroundColor: "color-mix(in oklab, var(--destructive) 20%, transparent)",
             },
+            ":is(.dark *):hover": {
+              backgroundColor: "color-mix(in oklab, var(--destructive) 30%, transparent)",
+            },
+          },
+          ":is(.dark *):hover": {
+            backgroundColor: "var(--destructive)",
           },
         },
         ":focus-visible": {
+          borderColor: "var(--destructive)",
           "--ui-ring-color": "var(--destructive)",
           "@supports (color: color-mix(in lab, red, red))": {
+            borderColor: "color-mix(in oklab, var(--destructive) 40%, transparent)",
             "--ui-ring-color": "color-mix(in oklab, var(--destructive) 20%, transparent)",
           },
         },
         ":is(.dark *)": {
           backgroundColor: "var(--destructive)",
           "@supports (color: color-mix(in lab, red, red))": {
-            backgroundColor: "color-mix(in oklab, var(--destructive) 60%, transparent)",
+            backgroundColor: "color-mix(in oklab, var(--destructive) 20%, transparent)",
           },
         },
         ":is(.dark *):focus-visible": {
@@ -107,13 +140,13 @@ export const buttonVariants = variants({
           },
         },
       }),
-      outline: ui(box.border, box.shadow, {
+      outline: ui({
+        borderColor: "var(--border)",
         backgroundColor: "var(--background)",
-        "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
         "@media (hover: hover)": {
           ":hover": {
-            backgroundColor: "var(--accent)",
-            color: "var(--accent-foreground)",
+            backgroundColor: "var(--muted)",
+            color: "var(--foreground)",
           },
           ":is(.dark *):hover": {
             backgroundColor: "var(--input)",
@@ -123,6 +156,10 @@ export const buttonVariants = variants({
               backgroundColor: "color-mix(in oklab, var(--input) 50%, transparent)",
             },
           },
+        },
+        '[aria-expanded="true"]': {
+          backgroundColor: "var(--muted)",
+          color: "var(--foreground)",
         },
         ":is(.dark *)": {
           borderColor: "var(--input)",
@@ -141,25 +178,33 @@ export const buttonVariants = variants({
           },
           "@supports (color: color-mix(in lab, red, red))": {
             ":hover": {
-              backgroundColor: "color-mix(in oklab, var(--secondary) 80%, transparent)",
+              backgroundColor: "color-mix(in oklch,var(--secondary),var(--foreground) 5%)",
             },
           },
+        },
+        '[aria-expanded="true"]': {
+          backgroundColor: "var(--secondary)",
+          color: "var(--secondary-foreground)",
         },
       }),
       ghost: ui({
         "@media (hover: hover)": {
           ":hover": {
-            backgroundColor: "var(--accent)",
-            color: "var(--accent-foreground)",
+            backgroundColor: "var(--muted)",
+            color: "var(--foreground)",
           },
           ":is(.dark *):hover": {
-            backgroundColor: "var(--accent)",
+            backgroundColor: "var(--muted)",
           },
           "@supports (color: color-mix(in lab, red, red))": {
             ":is(.dark *):hover": {
-              backgroundColor: "color-mix(in oklab, var(--accent) 50%, transparent)",
+              backgroundColor: "color-mix(in oklab, var(--muted) 50%, transparent)",
             },
           },
+        },
+        '[aria-expanded="true"]': {
+          backgroundColor: "var(--muted)",
+          color: "var(--foreground)",
         },
       }),
       link: ui({
@@ -174,65 +219,95 @@ export const buttonVariants = variants({
     },
     size: {
       default: ui({
-        height: "calc(var(--spacing) * 9)",
-        paddingInline: "calc(var(--spacing) * 4)",
-        paddingBlock: "calc(var(--spacing) * 2)",
-        ":has(> svg)": {
-          paddingInline: "calc(var(--spacing) * 3)",
+        height: "calc(var(--spacing) * 8)",
+        gap: "calc(var(--spacing) * 1.5)",
+        paddingInline: "calc(var(--spacing) * 2.5)",
+        ':has([data-icon="inline-end"])': {
+          paddingRight: "calc(var(--spacing) * 2)",
+        },
+        ':has([data-icon="inline-start"])': {
+          paddingLeft: "calc(var(--spacing) * 2)",
         },
       }),
       xs: ui({
         height: "calc(var(--spacing) * 6)",
         gap: "var(--spacing)",
-        borderRadius: "calc(var(--radius) * 0.8)",
+        borderRadius: "min(var(--radius-md), 10px)",
         paddingInline: "calc(var(--spacing) * 2)",
         fontSize: "var(--text-xs)",
         lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
-        ":has(> svg)": {
-          paddingInline: "calc(var(--spacing) * 1.5)",
+        ':where([data-slot="button-group"]) &': {
+          borderRadius: "var(--radius)",
         },
-        '& svg:not([class*="size-"])': {
+        ':has([data-icon="inline-end"])': {
+          paddingRight: "calc(var(--spacing) * 1.5)",
+        },
+        ':has([data-icon="inline-start"])': {
+          paddingLeft: "calc(var(--spacing) * 1.5)",
+        },
+        "& svg:not([class*='size-'])": {
           width: "calc(var(--spacing) * 3)",
           height: "calc(var(--spacing) * 3)",
         },
       }),
       sm: ui({
-        height: "calc(var(--spacing) * 8)",
-        gap: "calc(var(--spacing) * 1.5)",
-        borderRadius: "calc(var(--radius) * 0.8)",
-        paddingInline: "calc(var(--spacing) * 3)",
-        ":has(> svg)": {
-          paddingInline: "calc(var(--spacing) * 2.5)",
+        height: "calc(var(--spacing) * 7)",
+        gap: "var(--spacing)",
+        borderRadius: "min(var(--radius-md), 12px)",
+        paddingInline: "calc(var(--spacing) * 2.5)",
+        fontSize: "0.8rem",
+        ':where([data-slot="button-group"]) &': {
+          borderRadius: "var(--radius)",
+        },
+        ':has([data-icon="inline-end"])': {
+          paddingRight: "calc(var(--spacing) * 1.5)",
+        },
+        ':has([data-icon="inline-start"])': {
+          paddingLeft: "calc(var(--spacing) * 1.5)",
+        },
+        "& svg:not([class*='size-'])": {
+          width: "calc(var(--spacing) * 3.5)",
+          height: "calc(var(--spacing) * 3.5)",
         },
       }),
       lg: ui({
-        height: "calc(var(--spacing) * 10)",
-        borderRadius: "calc(var(--radius) * 0.8)",
-        paddingInline: "calc(var(--spacing) * 6)",
-        ":has(> svg)": {
-          paddingInline: "calc(var(--spacing) * 4)",
+        height: "calc(var(--spacing) * 9)",
+        gap: "calc(var(--spacing) * 1.5)",
+        paddingInline: "calc(var(--spacing) * 2.5)",
+        ':has([data-icon="inline-end"])': {
+          paddingRight: "calc(var(--spacing) * 2)",
+        },
+        ':has([data-icon="inline-start"])': {
+          paddingLeft: "calc(var(--spacing) * 2)",
         },
       }),
       icon: ui({
-        width: "calc(var(--spacing) * 9)",
-        height: "calc(var(--spacing) * 9)",
+        width: "calc(var(--spacing) * 8)",
+        height: "calc(var(--spacing) * 8)",
       }),
       "icon-xs": ui({
         width: "calc(var(--spacing) * 6)",
         height: "calc(var(--spacing) * 6)",
-        borderRadius: "calc(var(--radius) * 0.8)",
-        '& svg:not([class*="size-"])': {
+        borderRadius: "min(var(--radius-md), 10px)",
+        ':where([data-slot="button-group"]) &': {
+          borderRadius: "var(--radius)",
+        },
+        "& svg:not([class*='size-'])": {
           width: "calc(var(--spacing) * 3)",
           height: "calc(var(--spacing) * 3)",
         },
       }),
       "icon-sm": ui({
-        width: "calc(var(--spacing) * 8)",
-        height: "calc(var(--spacing) * 8)",
+        width: "calc(var(--spacing) * 7)",
+        height: "calc(var(--spacing) * 7)",
+        borderRadius: "min(var(--radius-md), 12px)",
+        ':where([data-slot="button-group"]) &': {
+          borderRadius: "var(--radius)",
+        },
       }),
       "icon-lg": ui({
-        width: "calc(var(--spacing) * 10)",
-        height: "calc(var(--spacing) * 10)",
+        width: "calc(var(--spacing) * 9)",
+        height: "calc(var(--spacing) * 9)",
       }),
     },
   },
