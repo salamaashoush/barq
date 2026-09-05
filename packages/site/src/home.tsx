@@ -23,14 +23,7 @@ import {
 } from "@barqjs/ui";
 
 import { STYLES } from "./options.ts";
-
-const page = css`
-  --edge: 1.5rem;
-
-  @media (width >= 64rem) {
-    --edge: 2.5rem;
-  }
-`;
+import { container } from "./site.tsx";
 
 /**
  * The hero, which is a page-wide band rather than a column.
@@ -42,15 +35,13 @@ const page = css`
  */
 const hero = css`
   display: grid;
-  gap: 3rem;
+  gap: calc(var(--spacing) * 12);
   align-items: center;
-  padding: 4rem var(--edge) 3rem;
-  max-width: 84rem;
-  margin-inline: auto;
+  padding-block: calc(var(--spacing) * 16) calc(var(--spacing) * 12);
 
   @media (width >= 64rem) {
     grid-template-columns: minmax(0, 1fr) minmax(0, 26rem);
-    padding-block: 6rem 4rem;
+    padding-block: calc(var(--spacing) * 24) calc(var(--spacing) * 16);
   }
 `;
 
@@ -167,11 +158,9 @@ const people = css`
 `;
 
 const section = css`
-  padding: 0 var(--edge) 4rem;
-  max-width: 84rem;
-  margin-inline: auto;
+  padding-bottom: calc(var(--spacing) * 16);
   display: grid;
-  gap: 1.25rem;
+  gap: calc(var(--spacing) * 5);
 `;
 
 const sectionHead = css`
@@ -281,7 +270,7 @@ const DESTINATIONS = [
 
 export function Home() {
   return (
-    <div class={page}>
+    <div class={container}>
       <section class={hero}>
         <div class={pitch}>
           <span class={eyebrow}>

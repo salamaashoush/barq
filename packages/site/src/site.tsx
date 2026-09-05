@@ -1,18 +1,20 @@
-import { For, type Child, type Incoming } from "@barqjs/core";
+import { For, signal, type Child, type Incoming } from "@barqjs/core";
 import { css } from "@barqjs/css";
-import { Button, Separator } from "@barqjs/ui";
+import { Menu } from "@barqjs/lucide/icons/menu";
+import { Search } from "@barqjs/lucide/icons/search";
 import { Link, Outlet, useLocation } from "@barqjs/router";
+import { Button, Kbd, Separator, Sheet, SheetContent, SheetTitle, SheetTrigger } from "@barqjs/ui";
 
 import { installSite } from "./params.ts";
 
 /**
  * The site around the pages, which is shadcn's own.
  *
- * `siteConfig.navItems` upstream, minus the entries this gallery has nothing
- * behind: no changelog, no directory, no typeset. What is left is a real
- * address per thing rather than a switcher flipping a signal — `/blocks/
- * dashboard-01` is a page somebody can open, bookmark and send, and the design
- * parameters ride along in the search string on every one of them.
+ * `siteConfig.navItems` upstream, minus the entries this has nothing behind:
+ * no changelog, no directory, no typeset. What is left is a real address per
+ * thing rather than a switcher flipping a signal — `/blocks/dashboard-01` is a
+ * page somebody can open, bookmark and send, and the design parameters ride
+ * along in the search string on every one of them.
  */
 export const NAV = [
   { to: "/", label: "Home" },
@@ -20,7 +22,68 @@ export const NAV = [
   { to: "/blocks", label: "Blocks" },
   { to: "/charts/area", label: "Charts" },
   { to: "/colors", label: "Colors" },
+  { to: "/create", label: "Create" },
 ] as const;
+
+/**
+ * The measurements the whole layout is built on, which are upstream's.
+ *
+ * `--header-height` is `calc(var(--spacing) * 14)` and `16` above `lg` in
+ * their root layout, and `--footer-height` the same shape. They are variables
+ * rather than literals because the docs sidebar sticks at
+ * `calc(var(--header-height) + 0.6rem)` and an anchor jump clears the header
+ * with `scroll-padding-top`: three places that have to agree, and a number
+ * typed three times is three places to disagree.
+ */
+const layout = css`
+  --header-height: calc(var(--spacing) * 14);
+  --footer-height: calc(var(--spacing) * 14);
+
+  position: relative;
+  z-index: 10;
+  display: flex;
+  min-height: 100svh;
+  flex-direction: column;
+  background-color: var(--background);
+  overscroll-behavior: none;
+
+  @media (width >= 64rem) {
+    --header-height: calc(var(--spacing) * 16);
+  }
+
+  /* The designer takes the viewport: its two panels scroll, the page does not. */
+  &:has([data-slot="designer"]) {
+    height: 100svh;
+    overflow: hidden;
+  }
+`;
+
+/**
+ * Upstream's `container-wrapper`, at the `px-6` the header and footer pass it.
+ *
+ * Their utility is `mx-auto w-full px-2` and every caller overrides the
+ * padding: the header is `container-wrapper px-6`, the footer
+ * `container-wrapper px-4 xl:px-6`. Six is what both settle on above `sm`, and
+ * a wrapper whose padding every caller replaces is two rules pretending to be
+ * one.
+ */
+const wrapper = css`
+  margin-inline: auto;
+  width: 100%;
+  padding-inline: calc(var(--spacing) * 6);
+`;
+
+/**
+ * What a page's content sits in, which is the header's own wrapper.
+ *
+ * Upstream has two — `container-wrapper` for the chrome and `container` for a
+ * documentation column — and they align because the chrome is full-bleed at
+ * `px-6` and so is every page that is not a docs article. Sharing one here is
+ * how the brand and the page heading are guaranteed to start at the same
+ * inset: two boxes with two paddings drifted apart by fifty pixels, which is
+ * the kind of thing nothing fails on and everyone sees.
+ */
+const container = wrapper;
 
 const header = css`
   position: sticky;
@@ -28,24 +91,31 @@ const header = css`
   z-index: 50;
   width: 100%;
   background-color: var(--background);
-  border-bottom: 1px solid var(--border);
 `;
 
 const bar = css`
   display: flex;
-  height: 3.5rem;
+  height: var(--header-height);
   align-items: center;
-  gap: 0.5rem;
-  padding-inline: 1.5rem;
+  gap: calc(var(--spacing) * 2);
+
+  /* Upstream's **:data-[slot=separator]:h-4! — every rule in the bar is
+     4 units tall whatever the separator's own height would be. */
+  & [data-slot="separator"][data-orientation="vertical"] {
+    height: calc(var(--spacing) * 4);
+  }
 `;
 
 const brand = css`
+  display: inline-flex;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
   font-weight: 600;
   font-size: 0.875rem;
   text-decoration: none;
   color: var(--foreground);
-  margin-right: 0.5rem;
   white-space: nowrap;
+  margin-right: calc(var(--spacing) * 2);
 `;
 
 const nav = css`
@@ -53,7 +123,7 @@ const nav = css`
   align-items: center;
   gap: 0;
 
-  @media (width >= 48rem) {
+  @media (width >= 64rem) {
     display: flex;
   }
 `;
@@ -67,11 +137,122 @@ const trailing = css`
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: calc(var(--spacing) * 2);
+
+  @media (width >= 48rem) {
+    flex: 1;
+    justify-content: flex-end;
+  }
 `;
 
-const body = css`
-  min-height: calc(100dvh - 3.5rem);
+/**
+ * The command affordance: a button shaped like a search field.
+ *
+ * `bg-surface text-surface-foreground` upstream, which this package does not
+ * declare, so it is `muted` — the same job, in a token that exists here.
+ */
+const commandButton = css`
+  display: none;
+  align-items: center;
+  gap: calc(var(--spacing) * 2);
+  height: calc(var(--spacing) * 8);
+  width: calc(var(--spacing) * 56);
+  justify-content: flex-start;
+  border-radius: calc(var(--radius) - 2px);
+  background-color: var(--muted);
+  padding-inline: calc(var(--spacing) * 2);
+  font-size: 0.875rem;
+  font-weight: 400;
+  color: var(--muted-foreground);
+  border: 0;
+  cursor: pointer;
+
+  &:hover {
+    background-color: var(--accent);
+    color: var(--accent-foreground);
+  }
+
+  @media (width >= 48rem) {
+    display: inline-flex;
+  }
+`;
+
+const commandHint = css`
+  margin-left: auto;
+`;
+
+const mobileOnly = css`
+  display: inline-flex;
+
+  @media (width >= 64rem) {
+    display: none;
+  }
+`;
+
+const sheetNav = css`
+  display: grid;
+  gap: calc(var(--spacing) * 1);
+  padding: calc(var(--spacing) * 4);
+`;
+
+const sheetLink = css`
+  display: block;
+  padding: calc(var(--spacing) * 2) 0;
+  font-size: 1rem;
+  text-decoration: none;
+  color: var(--muted-foreground);
+
+  &[aria-current="page"] {
+    color: var(--foreground);
+    font-weight: 500;
+  }
+`;
+
+const main = css`
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+`;
+
+const footer = css`
+  /* The designer owns the viewport, so a footer under it would be unreachable
+     and would give the page a scrollbar it must not have. */
+  [data-slot="layout"]:has([data-slot="designer"]) & {
+    display: none;
+  }
+`;
+
+const footerInner = css`
+  display: flex;
+  height: var(--footer-height);
+  align-items: center;
+  justify-content: space-between;
+`;
+
+const footerText = css`
+  width: 100%;
+  padding-inline: calc(var(--spacing) * 1);
+  text-align: center;
+  font-size: 0.75rem;
+  line-height: 1.75;
+  color: var(--muted-foreground);
+
+  @media (width >= 40rem) {
+    font-size: 0.875rem;
+  }
+`;
+
+const footerLink = css`
+  font-weight: 500;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  color: inherit;
+`;
+
+const sun = css`
+  width: calc(var(--spacing) * 4.5);
+  height: calc(var(--spacing) * 4.5);
 `;
 
 /** Whether a nav entry is the page being looked at, including its children. */
@@ -108,27 +289,138 @@ export function MainNav() {
   );
 }
 
+/**
+ * The nav below `lg`, which upstream puts in a sheet.
+ *
+ * A real `<Sheet>` from this package rather than a hand-rolled drawer, because
+ * a menu that traps focus and closes on Escape is the component's job and
+ * writing a second one here would be the approximation this whole site exists
+ * to stop shipping.
+ */
+export function MobileNav() {
+  const open = signal(false);
+  const here = useLocation();
+
+  return (
+    <Sheet isOpen={open()} onOpenChange={(next: boolean) => open.set(next)}>
+      <SheetTrigger>
+        <Button variant="ghost" size="icon" class={mobileOnly} aria-label="Open the menu">
+          <Menu size={18} />
+        </Button>
+      </SheetTrigger>
+      <SheetContent side="left">
+        <SheetTitle>Menu</SheetTitle>
+        <nav class={sheetNav} aria-label="Main">
+          <For each={() => NAV}>
+            {(item: (typeof NAV)[number]) => (
+              <Link
+                to={item.to}
+                class={sheetLink}
+                aria-current={() => (isHere(here().pathname, item.to) ? "page" : undefined)}
+                onClick={() => open.set(false)}
+              >
+                {item.label}
+              </Link>
+            )}
+          </For>
+        </nav>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+/**
+ * Light and dark, upstream's own icon.
+ *
+ * Their `next-themes` writes `dark` on `<html>` and persists it. Here `dark` is
+ * one of the design parameters and lives in the URL beside the rest, so the
+ * mode travels in a shared link the way every other choice does.
+ */
+export function ModeSwitcher() {
+  const site = installSite();
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      aria-label="Toggle the theme"
+      onPress={() => site.set({ dark: !site.params().dark })}
+    >
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="2"
+        stroke-linecap="round"
+        stroke-linejoin="round"
+        class={sun}
+        aria-hidden="true"
+      >
+        <path d="M12 12m-9 0a9 9 0 1 0 18 0a9 9 0 1 0 -18 0" />
+        <path d="M12 3l0 18" />
+        <path d="M12 9l4.65 -4.65" />
+        <path d="M12 14.3l7.37 -7.37" />
+        <path d="M12 19.6l8.85 -8.85" />
+      </svg>
+    </Button>
+  );
+}
+
 export function SiteHeader() {
   return (
     <header class={header} data-slot="site-header">
-      <div class={bar}>
-        <Link to="/" class={brand}>
-          @barqjs/ui
-        </Link>
-        <MainNav />
-        <div class={trailing}>
-          <Separator orientation="vertical" />
-          <Link to="/create" class={navLink}>
-            <Button size="sm">New</Button>
+      <div class={wrapper}>
+        <div class={bar}>
+          <MobileNav />
+          <Link to="/" class={brand}>
+            @barqjs/ui
           </Link>
+          <MainNav />
+          <div class={trailing}>
+            <button type="button" class={commandButton}>
+              <Search size={16} />
+              Search components…
+              <span class={commandHint}>
+                <Kbd>⌘K</Kbd>
+              </span>
+            </button>
+            <Separator orientation="vertical" />
+            <ModeSwitcher />
+          </div>
         </div>
       </div>
     </header>
   );
 }
 
+export function SiteFooter() {
+  return (
+    <footer class={footer}>
+      <div class={wrapper}>
+        <div class={footerInner}>
+          <div class={footerText}>
+            Built on{" "}
+            <a class={footerLink} href="https://github.com/salamaashoush/barq">
+              barq
+            </a>
+            , from{" "}
+            <a class={footerLink} href="https://ui.shadcn.com" target="_blank" rel="noreferrer">
+              shadcn/ui
+            </a>
+            &rsquo;s own class lists. The source is on{" "}
+            <a class={footerLink} href="https://github.com/salamaashoush/barq">
+              GitHub
+            </a>
+            .
+          </div>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
 /**
- * The chrome every page shares.
+ * The chrome every page shares, which is upstream's `AppLayout`.
  *
  * A layout ROUTE rather than a wrapper each page renders: the header is built
  * once and the matched page goes into the `<Outlet />`, so moving between
@@ -143,21 +435,20 @@ export function SiteLayout() {
   installSite();
 
   return (
-    <>
+    <div class={layout} data-slot="layout">
       <SiteHeader />
-      <div class={body} data-slot="site-body">
+      <main class={main}>
         <Outlet />
-      </div>
-    </>
+      </main>
+      <SiteFooter />
+    </div>
   );
 }
 
 const shell = css`
-  padding: 2rem 1.5rem 4rem;
+  padding-block: calc(var(--spacing) * 8) calc(var(--spacing) * 16);
   display: grid;
-  gap: 2rem;
-  max-width: 80rem;
-  margin-inline: auto;
+  gap: calc(var(--spacing) * 8);
 `;
 
 const title = css`
@@ -165,23 +456,32 @@ const title = css`
   font-weight: 600;
   letter-spacing: -0.025em;
   margin: 0;
+
+  @media (width >= 64rem) {
+    font-size: 2.25rem;
+  }
 `;
 
 const lede = css`
   color: var(--muted-foreground);
-  margin: 0.5rem 0 0;
+  margin: calc(var(--spacing) * 2) 0 0;
   max-width: 46rem;
+  text-wrap: pretty;
 `;
 
 /** A page's heading and its body, so every section on the site opens the same. */
 export function Page(props: Incoming<{ title: string; lede?: string; children?: Child }>) {
   return (
-    <main class={shell}>
-      <div>
-        <h1 class={title}>{props.title}</h1>
-        {props.lede?.() === undefined ? null : <p class={lede}>{props.lede()}</p>}
+    <div class={container}>
+      <div class={shell}>
+        <div>
+          <h1 class={title}>{props.title}</h1>
+          {props.lede?.() === undefined ? null : <p class={lede}>{props.lede()}</p>}
+        </div>
+        {props.children}
       </div>
-      {props.children}
-    </main>
+    </div>
   );
 }
+
+export { container, wrapper };

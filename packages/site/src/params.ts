@@ -58,11 +58,29 @@ export interface Params {
   readonly item: string;
 }
 
+/**
+ * shadcn's own `DEFAULT_CONFIG`, in this package's spelling.
+ *
+ * `registry/config.ts` upstream: style `nova`, base and theme `neutral`, the
+ * chart ramp the theme's own, radius default. Opening this site with no search
+ * string therefore shows what opening theirs shows, which is the point of a
+ * replacement rather than a gallery.
+ *
+ * The chart ramp is `blue`, which is what their SITE draws with:
+ * `app/globals.css` overrides `--chart-1` to `--color-blue-300` through
+ * `--color-blue-800`, and the greyscale ramp `registry/base-colors.ts` gives
+ * `neutral` is what a consumer's own app starts from. This is the site.
+ *
+ * `font` is the one divergence and it is stated in `options.ts`: theirs is
+ * `inter` and fetches it, and a family that is not installed falls back in
+ * silence, so a control that appears to do nothing on half the machines that
+ * open it is worse than a stack that always works.
+ */
 export const DEFAULTS: Params = {
-  style: "none",
+  style: "nova",
   baseColor: "neutral",
   theme: "none",
-  chartColor: "none",
+  chartColor: "blue",
   radius: "none",
   font: "system",
   fontHeading: "inherit",
