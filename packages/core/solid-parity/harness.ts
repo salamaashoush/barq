@@ -47,7 +47,10 @@ import {
   signal,
   SUPPORTS_PROXY,
   trackedEffect,
+  TimeoutError,
   untrack,
+  until as barqUntil,
+  type UntilOptions,
 } from "../src/signals.ts";
 import { errorBoundary, flatten, loadingBoundary, revealOrder } from "../src/boundaries.ts";
 import {
@@ -96,12 +99,8 @@ export class NoOwnerError extends Error {
   }
 }
 
-export class TimeoutError extends Error {
-  constructor() {
-    super("Timeout");
-    this.name = "TimeoutError";
-  }
-}
+/** barq's own, so `until`'s rejection is `instanceof` the class tests import. */
+export { TimeoutError };
 
 // ---------------------------------------------------------------------------
 // Core primitives
@@ -278,8 +277,8 @@ export function refresh<T>(target: T): Promise<unknown> {
   return Promise.resolve(undefined);
 }
 
-export function until<T>(_fn: () => T, _options?: unknown): Promise<T> {
-  return gap("until", "barq has no authoritative-view await primitive");
+export function until<T>(fn: () => T, options?: UntilOptions): Promise<T> {
+  return barqUntil(fn, options);
 }
 
 export function action<A extends unknown[], R>(fn: (...args: A) => unknown) {

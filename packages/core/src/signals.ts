@@ -2607,6 +2607,103 @@ export function resolve<T>(fn: () => T): Promise<T> {
   });
 }
 
+/** `until`'s deadline, as its own type so a caller can tell it from a rejection. */
+export class TimeoutError extends Error {
+  constructor(message = "Timed out waiting for condition") {
+    super(message);
+    this.name = "TimeoutError";
+  }
+}
+
+export interface UntilOptions {
+  /** Reject with `TimeoutError` if the predicate has not turned truthy in time. */
+  timeout?: number;
+  /** Reject with `signal.reason` on abort. */
+  signal?: AbortSignal;
+}
+
+/**
+ * Await a reactive predicate; resolve the first time it settles TRUTHY.
+ *
+ * `resolve` answers "what is this value" and settles on the first value of any
+ * kind. `until` answers "has this become true yet", so a falsy result and a
+ * pending async read mean the same thing: not yet, stay subscribed, look again
+ * when a source moves. That is the difference, and it is why a mutation
+ * confirmed on a live channel — a socket, a subscription — waits on this rather
+ * than on the response to its own request.
+ *
+ * A throw, an async source that rejects, the deadline and the abort signal all
+ * reject. The deadline is worth passing wherever the confirming truth arrives
+ * over a transport that can drop, because nothing else ends the wait.
+ */
+export function until<T>(fn: () => T, options?: UntilOptions): Promise<T> {
+  // THROWS rather than rejecting, unlike `resolve`. A caller inside a tracked
+  // scope has written a bug, not asked a question whose answer is a rejection,
+  // and a rejected promise it never awaits is silence.
+  if (tracking && currentObserver !== null) {
+    throw new Error("until() cannot be called inside a reactive scope; it does not subscribe.");
+  }
+  return new Promise<T>((res, rej) => {
+    const abort = options?.signal;
+    if (abort?.aborted === true) {
+      rej(abort.reason);
+      return;
+    }
+    const owner = createOwnerScope(false);
+    let settled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let onAbort: (() => void) | undefined;
+    const finish = (): void => {
+      settled = true;
+      if (timer !== undefined) clearTimeout(timer);
+      if (onAbort !== undefined) abort?.removeEventListener("abort", onAbort);
+      // Deferred: the effect node is mid-run, so tear down after it unwinds.
+      queueMicrotask(() => owner.dispose());
+    };
+    // The same private boundary pair `resolve` installs: a pending read retries
+    // silently rather than warning about a missing Loading boundary, and an
+    // error rejects rather than escaping to the page.
+    provideOn(owner, LOADING_BOUNDARY, {
+      add() {},
+      delete() {},
+    } satisfies LoadingBoundaryHandle);
+    provideOn(owner, ERROR_BOUNDARY, (err: unknown) => {
+      if (settled) return;
+      finish();
+      rej(err);
+    });
+    runInOwner(owner, () => {
+      createEffectNode(
+        fn,
+        (value) => {
+          // Falsy is "not yet": the subscription stays live and the next
+          // evaluation gets another turn. Only a truthy settled value resolves.
+          if (settled || !value) return;
+          finish();
+          res(value as T);
+        },
+        EFFECT_USER,
+      );
+    });
+    if (options?.timeout !== undefined) {
+      timer = setTimeout(() => {
+        if (settled) return;
+        finish();
+        rej(new TimeoutError());
+      }, options.timeout);
+    }
+    if (abort !== undefined) {
+      onAbort = (): void => {
+        if (settled) return;
+        finish();
+        rej(abort.reason);
+      };
+      abort.addEventListener("abort", onAbort, { once: true });
+    }
+    schedule();
+  });
+}
+
 /**
  * Register a cleanup function for the current owner.
  * Returns the function for convenience.

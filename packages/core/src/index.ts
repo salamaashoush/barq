@@ -53,6 +53,8 @@ export {
   effectAllocations,
   resetChildIds,
   resolve,
+  until,
+  TimeoutError,
   markInMotion,
 } from "./signals.ts";
 export type { ExternalSource, ExternalSourceConfig, ExternalSourceFactory } from "./signals.ts";
