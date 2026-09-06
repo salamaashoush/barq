@@ -92,7 +92,6 @@ pub fn emit_unit<'a>(
     let name = ctx.module.uids.ir(id, ctx.allocator);
     ctx.interp_units.push(binding(ctx, name, descriptor, span));
 
-    let scope = ctx.scope(span);
     let callee = ctx.helper(Helper::Interp, span);
     // Innermost first, so the lists evaluate in region order — the same order
     // the other two backends evaluate them in.
@@ -101,7 +100,6 @@ pub fn emit_unit<'a>(
         values = crate::codegen::dom::bind_sources(ctx, Some((binding, list)), values, span);
     }
     let arguments = vec![
-        oxc::ast::ast::Argument::from(scope),
         oxc::ast::ast::Argument::from(ctx.ident(name, span)),
         oxc::ast::ast::Argument::from(values),
     ];

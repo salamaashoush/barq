@@ -40,7 +40,7 @@ export const optimality = {
   // `fallback` is `(error, reset) => Child`, so it is a real two-parameter
   // callback and never a built node; `reset` reaches the button as a handler
   // value, not through a thunk.
-  emits: ["boundary(", '"error"', ", error, reset) =>"],
+  emits: ["boundary(", '"error"', "(error, reset) =>"],
   // The adapter frame -O0 still pays: a props object, and the two slots the
   // boundary now takes positionally.
   absent: ["Errored(", "ErrorBoundary(", "fallback: ", "children: "],

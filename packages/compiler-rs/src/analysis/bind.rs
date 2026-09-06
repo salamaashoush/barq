@@ -21,7 +21,17 @@ use crate::ir::{
 use crate::options::ResolvedOptions;
 
 use super::symbol_of;
-use crate::scope::is_component_tag;
+
+/// A lowercase tag is an element, and its slots are element children the
+/// compiler builds itself. Only a COMPONENT tag hands a slot to a callee.
+pub(crate) fn is_component_tag(name: &JSXElementName<'_>) -> bool {
+    match name {
+        JSXElementName::Identifier(id) => id.name.starts_with(char::is_uppercase),
+        JSXElementName::IdentifierReference(id) => id.name.starts_with(char::is_uppercase),
+        JSXElementName::MemberExpression(_) | JSXElementName::NamespacedName(_) => true,
+        JSXElementName::ThisExpression(_) => false,
+    }
+}
 
 /// A declaration initialiser, reduced to what the fixpoint actually reads. It is
 /// OWNED, so the AST is walked exactly once and the loop below runs over a flat

@@ -131,11 +131,11 @@ export const claims: Claim[] = [
     says: "JSX children lower to a Block — a function taking the scope — never to a built node",
     check(kit) {
       kit.precondition(
-        /\bProvider\)\(\s*[\w$]+\s*,\s*\{/.test(kit.emitted),
+        /\bProvider\)\(\s*\{/.test(kit.emitted),
         "the emitted module contains no Provider call at all, so there is no children slot to " +
           "inspect and this claim would pass for a fixture that renders nothing",
       )
-      const call = /\bProvider\)\(\s*[\w$]+\s*,\s*\{[\s\S]{0,200}?children:\s*([A-Za-z_$][\w$]*)\(/.exec(kit.emitted)
+      const call = /\bProvider\)\(\s*\{[\s\S]{0,200}?children:\s*([A-Za-z_$][\w$]*)\(/.exec(kit.emitted)
       // The scope brand is the ONE call that leaves the slot deferred: it
       // marks the function in place and hands it back. Every other call in this
       // position has already produced a node.

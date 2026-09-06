@@ -45,6 +45,6 @@ export const optimality = {
   templates: 2,
   // The source is the accessor itself, static. The keying carrier is the member
   // read, unresolved. Both in one call, which is the whole claim.
-  emits: ["each(", ", rows, ", ".keyed, ", ", row, index) =>"],
+  emits: ["each(", ", rows, ", ".keyed, ", "(row, index) =>"],
   absent: ["For(", "opts.each"],
 }

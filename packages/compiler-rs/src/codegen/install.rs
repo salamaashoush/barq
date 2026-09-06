@@ -7,7 +7,7 @@ use oxc::ast::ast::{
 };
 use oxc::span::{SPAN, Span};
 
-use super::{Emit, HELPER_COUNT, Helper, IMPORTED, Target};
+use super::{Emit, Helper, IMPORTED, Target};
 use crate::ir::{Hoisted, TemplateId};
 use oxc::allocator::CloneIn;
 
@@ -67,12 +67,6 @@ pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
         }
         templates.extend(super::dom::delegate_call(emit));
     }
-    // The one binding a JSX root written outside every function needs, so that
-    // C3.8's `ScopeMissingError` fires at the position that wrote it instead of
-    // a `ReferenceError` naming a compiler identifier.
-    if emit.module.detached_roots {
-        templates.insert(0, detached_scope(emit));
-    }
     // Last, because a serialised unit names the `_tmpl$N` it clones and the
     // `_h$N` it installs, and a `const` cannot be read before its initialiser
     // has run.
@@ -95,7 +89,14 @@ pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
     let groups = [
         (
             emit.module_source,
-            helper_specifiers(emit, (0..super::FIRST_SERVER_HELPER).filter(shared_here)),
+            helper_specifiers(
+                emit,
+                (0..super::FIRST_SERVER_HELPER)
+                    .filter(shared_here)
+                    // `getOwner` sits past the interp entry in the table but is
+                    // a module-source helper like the rest of the DOM surface.
+                    .chain(std::iter::once(super::Helper::GetOwner as usize)),
+            ),
         ),
         (
             emit.server_source,
@@ -105,7 +106,7 @@ pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
                     .chain(super::SHARED_ABI.filter(|index| !shared_here(index))),
             ),
         ),
-        (emit.interp_source, helper_specifiers(emit, super::FIRST_INTERP_HELPER..HELPER_COUNT)),
+        (emit.interp_source, helper_specifiers(emit, super::FIRST_INTERP_HELPER..(super::Helper::GetOwner as usize))),
     ];
     let allocator = emit.allocator;
     let mut body = std::mem::replace(&mut program.body, ArenaVec::new_in(&allocator));
@@ -266,27 +267,6 @@ fn helper_import<'a>(
     )
 }
 
-/// `const _s$ = null` — the scope a module-level JSX root runs under, which is
-/// none.
-fn detached_scope<'a>(emit: &mut Emit<'a, '_>) -> Statement<'a> {
-    let name = emit.module.uids.scope();
-    let init = Expression::new_null_literal(SPAN, &emit.ast);
-    let declarator = VariableDeclarator::new(
-        SPAN,
-        BindingPattern::new_binding_identifier(SPAN, name, &emit.ast),
-        None,
-        Some(init),
-        false,
-        &emit.ast,
-    );
-    Statement::new_variable_declaration(
-        SPAN,
-        VariableDeclarationKind::Const,
-        [declarator],
-        false,
-        &emit.ast,
-    )
-}
 
 fn hoisted_declaration<'a>(emit: &mut Emit<'a, '_>, index: usize) -> Statement<'a> {
     let (id, expr, span, cell) = match &emit.module.hoisted[index] {

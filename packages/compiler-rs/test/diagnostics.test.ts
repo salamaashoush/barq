@@ -257,6 +257,10 @@ describe("the diagnostic engine", () => {
         `import { atoms } from "@barqjs/css";\n` +
         `export const cls = (x, y) =>\n` +
         `  atoms({ color: "red" }, x && { color: "blue" }, y && { padding: 8 });\n`,
+      // A spread the compiler cannot see through, so the fold gives up and the
+      // runtime does the work instead — `css.rs`'s own `atoms(...rest)` case.
+      BARQ017:
+        `import { atoms } from "@barqjs/css";\n` + `export const cls = (rest) => atoms(...rest);\n`,
     };
 
     const advertised = native

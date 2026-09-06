@@ -952,14 +952,12 @@ fn dynamic<'a>(
     let props = Expression::new_object_expression(span, properties, &shaper.ast);
 
     let callee = shaper.helper(Helper::Dynamic, span);
-    let scope = shaper.ident(shaper.scope, span);
-    let call = call(shaper, callee, vec![scope, dup(shaper, &cell), props], span);
-    let scope = shaper.scope;
+    let call = call(shaper, callee, vec![dup(shaper, &cell), props], span);
     let body = Expression::new_arrow_function_expression(
         span,
         false,
         None,
-        params(shaper, &[scope], span),
+        params(shaper, &[], span),
         None,
         ArrowFunctionBody::from(call),
         &shaper.ast,
@@ -1006,8 +1004,7 @@ pub(super) fn reveal<'a>(
         .unwrap_or_else(|| Expression::new_null_literal(span, &shaper.ast));
 
     let callee = shaper.helper(Helper::Reveal, span);
-    let scope = shaper.ident(shaper.scope, span);
-    let mut call = call(shaper, callee, vec![scope, order, collapsed, body], span);
+    let mut call = call(shaper, callee, vec![order, collapsed, body], span);
     // `reveal` is a call rather than a region row, so the source list is bound
     // here instead of in `region_call` — same shape, same one evaluation.
     if let Some((binding, mut list)) = bag.spread.take() {
@@ -1037,7 +1034,7 @@ fn body_slot<'a>(
         let elements = ArenaVec::from_iter_in(elements, &shaper.allocator);
         Expression::new_array_expression(span, elements, &shaper.ast)
     };
-    if builds { shaper.block(value, span) } else { shaper.cell_value(value, span) }
+    shaper.construction_slot(value, span, builds)
 }
 
 fn body_slot_of<'a>(
@@ -1091,7 +1088,6 @@ fn keyed_body<'a>(
 
     let shown = match content {
         Some(slot) => {
-            let scope = shaper.ident(shaper.scope, span);
             let taken = shaper.ident(temp, span);
             let taken = match narrowed {
                 Some(test) => {
@@ -1100,15 +1096,12 @@ fn keyed_body<'a>(
                 }
                 None => taken,
             };
-            slot.invoke(shaper, vec![scope, taken], span)
+            slot.invoke(shaper, vec![taken], span)
         }
         None => Expression::new_null_literal(span, &shaper.ast),
     };
     let hidden = match fallback {
-        Some(slot) => {
-            let scope = shaper.ident(shaper.scope, span);
-            slot.invoke(shaper, vec![scope], span)
-        }
+        Some(slot) => slot.invoke(shaper, vec![], span),
         None => Expression::new_null_literal(span, &shaper.ast),
     };
     let test = shaper.ident(temp, span);
@@ -1123,12 +1116,11 @@ fn keyed_body<'a>(
         statements,
         &shaper.ast,
     );
-    let scope = shaper.scope;
     let arrow = Expression::new_arrow_function_expression(
         span,
         false,
         None,
-        params(shaper, &[scope], span),
+        params(shaper, &[], span),
         None,
         body,
         &shaper.ast,
@@ -1136,8 +1128,8 @@ fn keyed_body<'a>(
     shaper.brand(arrow, span)
 }
 
-/// `(_s$) => body(_s$, value)` — a body that wants the branch's value, wrapped
-/// so the value is read at ACTIVATION time rather than captured at construction.
+/// `() => body(value)` — a body that wants the branch's value, wrapped so the
+/// value is read at ACTIVATION time rather than captured at construction.
 fn pass_value<'a>(
     shaper: &mut Shaper<'a, '_>,
     body: Expression<'a>,
@@ -1147,14 +1139,12 @@ fn pass_value<'a>(
     if !wants_value(&body) {
         return body;
     }
-    let scope = shaper.ident(shaper.scope, span);
-    let inner = call(shaper, body, vec![scope, value], span);
-    let scope = shaper.scope;
+    let inner = call(shaper, body, vec![value], span);
     let arrow = Expression::new_arrow_function_expression(
         span,
         false,
         None,
-        params(shaper, &[scope], span),
+        params(shaper, &[], span),
         None,
         ArrowFunctionBody::from(inner),
         &shaper.ast,
@@ -1162,9 +1152,14 @@ fn pass_value<'a>(
     shaper.brand(arrow, span)
 }
 
-/// Whether a Block declares a parameter beyond its scope. A body that does not
-/// want the value is handed on untouched, which is the overwhelming case and
-/// costs neither a closure nor a call.
+/// Whether a Block declares a parameter at all. A body that does not want the
+/// value is handed on untouched, which is the overwhelming case and costs
+/// neither a closure nor a call.
+///
+/// ONE parameter, not two. While the scope was threaded a value-taking body was
+/// `(_s$, v) => …` and the test was arity beyond the scope; now it is `(v) => …`
+/// and counting past one left every keyed arm unwrapped, so `v` was undefined
+/// wherever the body actually read it.
 fn wants_value(body: &Expression<'_>) -> bool {
     match body {
         // `_$block(fn)` — the brand is a call around the function it marks.
@@ -1172,8 +1167,8 @@ fn wants_value(body: &Expression<'_>) -> bool {
             call.arguments.first().and_then(|it| it.as_expression()).is_some_and(wants_value)
         }
         Expression::ParenthesizedExpression(inner) => wants_value(&inner.expression),
-        Expression::ArrowFunctionExpression(arrow) => arrow.params.items.len() > 1,
-        Expression::FunctionExpression(function) => function.params.items.len() > 1,
+        Expression::ArrowFunctionExpression(arrow) => !arrow.params.items.is_empty(),
+        Expression::FunctionExpression(function) => !function.params.items.is_empty(),
         // A forwarded name, whose arity is not visible here. Offering the value
         // is free: a Cell ignores every argument.
         _ => true,
@@ -1201,7 +1196,7 @@ fn bind_sources<'a>(
     call(shaper, arrow, vec![list], span)
 }
 
-/// `(_s$, i) => row(_s$, i + from())` — `Repeat`'s index shift.
+/// `(i) => row(i + from())` — `Repeat`'s index shift.
 fn shift_index<'a>(
     shaper: &mut Shaper<'a, '_>,
     row: Expression<'a>,
@@ -1209,7 +1204,6 @@ fn shift_index<'a>(
     span: Span,
 ) -> Expression<'a> {
     let index = shaper.uids.temp();
-    let scope = shaper.ident(shaper.scope, span);
     let shifted = Expression::new_binary_expression(
         span,
         shaper.ident(index, span),
@@ -1217,13 +1211,12 @@ fn shift_index<'a>(
         read,
         &shaper.ast,
     );
-    let inner = call(shaper, row, vec![scope, shifted], span);
-    let scope = shaper.scope;
+    let inner = call(shaper, row, vec![shifted], span);
     let arrow = Expression::new_arrow_function_expression(
         span,
         false,
         None,
-        params(shaper, &[scope, index], span),
+        params(shaper, &[index], span),
         None,
         ArrowFunctionBody::from(inner),
         &shaper.ast,

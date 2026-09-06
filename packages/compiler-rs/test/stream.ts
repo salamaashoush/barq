@@ -29,7 +29,7 @@ export async function chunksOf(mod: FixtureModule): Promise<string[]> {
   // measured is the assembly, not the clock: every fixture that settles at all
   // settles on a `tick`.
   const stream = server.renderToStream(
-    (() => (mod.default as unknown as (s: unknown) => unknown)(null)) as never,
+    (() => (mod.default as unknown as (props?: unknown) => unknown)()) as never,
     { timeout: 150 },
   );
   const reader = stream.getReader();

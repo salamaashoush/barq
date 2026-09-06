@@ -35,12 +35,11 @@ impl<'a> Emit<'a, '_> {
         // position and the handlers land on the wrong elements.
         let cold = self.hydratable;
         let callee = self.helper(Helper::Element, span);
-        let scope = self.scope(span);
         let tag = self.element_name(opening.name);
         let props = self.props_with_children(opening.attributes, children, span);
         let call = self.call(
             callee,
-            vec![Argument::from(scope), Argument::from(tag), Argument::from(props)],
+            vec![Argument::from(tag), Argument::from(props)],
             span,
         );
         if cold { self.cold_call(call, span) } else { call }

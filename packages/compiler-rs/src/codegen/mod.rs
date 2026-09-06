@@ -1,5 +1,4 @@
 pub mod backend;
-mod brand;
 pub mod dom;
 mod fallback;
 mod install;
@@ -57,7 +56,7 @@ impl Target {
     }
 }
 
-pub const HELPER_COUNT: usize = 60;
+pub const HELPER_COUNT: usize = 61;
 
 /// The first helper that lives in `<server_source>` rather than in the
 /// module source itself. The string backend calls into `ssr.ts`, which the DOM
@@ -270,6 +269,12 @@ pub enum Helper {
     FormAttr = 58,
     // ── `<module_source>/interp` ──────────────────────────────────────────
     Interp = 59,
+    /// `_$getOwner()` — the ambient owner, read where a scope VALUE is needed
+    /// rather than a construction under one. The delegated-event dispatcher
+    /// stores it on the element (`$$s`) so a throw routes to the scope's
+    /// catcher; nothing else needs it, because every construct reads the
+    /// ambient itself.
+    GetOwner = 60,
 }
 
 const IMPORTED: [&str; HELPER_COUNT] = [
@@ -333,6 +338,7 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "ssrReveal",
     "formAttr",
     "interp",
+    "getOwner",
 ];
 
 /// The name a helper is imported under, for a test that has to check the table
@@ -395,7 +401,6 @@ pub fn emit<'a>(
 ) {
     let mut emit = Emit::new(allocator, program.source_text, module, options, target);
     emit.visit_program(program);
-    brand::run(&mut emit, program);
     prune::run(&mut emit, program);
     install::run(&mut emit, program);
 }

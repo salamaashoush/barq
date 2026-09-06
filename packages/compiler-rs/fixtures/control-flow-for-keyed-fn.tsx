@@ -59,6 +59,6 @@ export const optimality = {
   // The key function reaches `each` as `keyOf` DIRECTLY. What the runtime used
   // to do — `typeof carrier === "function" && carrier.length >= 1` — the
   // compiler answers from the arity the author declared.
-  emits: ["each(", ", rows, (row) => row.id, ", ", row, index) =>", "() => row().text"],
+  emits: ["each(", ", rows, (row) => row.id, ", "(row, index) =>", "() => row().text"],
   absent: ["For(", "() => index()", ", row().text)"],
 }

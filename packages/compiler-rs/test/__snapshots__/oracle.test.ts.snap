@@ -145,7 +145,7 @@ attrs 2: 0/0 button: type"
 exports[`rendered DOM golden class-empty-string: rendered DOM 1`] = `
 "initial: <div class="host"><span class="" data-p="static"></span><span class="" data-p="dynamic"></span><span class="" data-p="merged"></span><span data-p="not-an-object"></span></div>
 step 0: <div class="host"><span class="" data-p="static"></span><span class="b" data-p="dynamic"></span><span class="" data-p="merged"></span><span data-p="not-an-object"></span></div>
-step 1: <div class="host"><span class="" data-p="static"></span><span class="b" data-p="dynamic"></span><span class="on hit" data-p="merged"></span><span data-p="not-an-object"></span></div>
+step 1: <div class="host"><span class="" data-p="static"></span><span class="b" data-p="dynamic"></span><span class="hit on" data-p="merged"></span><span data-p="not-an-object"></span></div>
 attrs 0: 0 div: class
 attrs 0: 0/0 span: data-p,class
 attrs 0: 0/1 span: data-p,class

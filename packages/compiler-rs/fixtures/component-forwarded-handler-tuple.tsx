@@ -89,7 +89,7 @@ export const optimality = {
   // already, so C5 forwards it by NAME and no closure is allocated at all.
   emits: [
     "Chip(",
-    "([props.handler(), props.label()])",
+    "cb: () => [props.handler(), props.label()]",
     "tone: props.label",
   ],
   absent: ["get cb()", "get render()", "get tone()", "(Chip, {"],

@@ -41,6 +41,6 @@ export const optimality = {
   // `keyed={true}` and `keyed` absent are ONE arm, and the compiler now says so
   // in the emission rather than forwarding a Cell for the runtime to unpick:
   // `each`'s `keyOf` is `null`, which is how identity-is-the-item is spelled.
-  emits: ["each(", ", rows, null, ", ", row) =>", ", row.text)"],
+  emits: ["each(", ", rows, null, ", "(row) =>", ", row.text)"],
   absent: ["For(", "() => true", "() => row.text"],
 }

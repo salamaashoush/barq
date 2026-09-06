@@ -46,7 +46,7 @@ export const optimality = {
     'boundary(',
     '"loading"',
     '"error"',
-    ", error, reset) =>",
+    "(error, reset) =>",
   ],
   // Both boundaries stand FREE of any template — the construct is the whole of
   // `Reveal`'s children, so there is no walk to take a pair from and the region

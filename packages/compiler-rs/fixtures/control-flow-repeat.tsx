@@ -20,6 +20,6 @@ export const optimality = {
   // the row index is a plain number and needs no thunk at all.
   // `Repeat` is `each`'s fourth mode: the source is a COUNT, and the mode is
   // the `COUNT` symbol rather than a `keyOf`.
-  emits: ["each(", ", n, ", "COUNT", ", i) =>"],
+  emits: ["each(", ", n, ", "COUNT", "(i) =>"],
   absent: ["Repeat(", "count: "],
 }

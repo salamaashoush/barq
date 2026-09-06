@@ -60,6 +60,6 @@ export const optimality = {
   //
   // The `keyed` member read below is the whole of the keying decision, crossing
   // unresolved, and the primitive is what resolves it.
-  emits: ["each(", ".each, ", ".keyed, ", ".fallback)", ", row) =>", "() => row().text"],
+  emits: ["each(", ".each, ", ".keyed, ", ".fallback)", "(row) =>", "() => row().text"],
   absent: ["For(", ", row().text)"],
 }

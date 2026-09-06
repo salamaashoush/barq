@@ -76,8 +76,7 @@ pub fn run<'a>(
             ast: AstBuilder::new(allocator),
             lift: Lift::new(allocator, env, scoping),
             source,
-            scope: uids.scope(),
-            uids,
+                uids,
             hoisted,
             regions,
             flow_rewrites,
@@ -127,8 +126,6 @@ pub(super) struct Shaper<'a, 'm> {
     pub(super) ast: AstBuilder<'a>,
     pub(super) lift: Lift<'a, 'm>,
     source: &'a str,
-    /// The one name the ownership channel travels under (`scope.rs`).
-    pub(super) scope: &'a str,
     pub(super) uids: &'m Uids<'a>,
     hoisted: &'m mut oxc::allocator::Vec<'a, Hoisted<'a>>,
     /// The flow pass's staging table. A region lands here and is claimed either
@@ -414,7 +411,7 @@ impl<'a> Shaper<'a, '_> {
             if builds {
                 self.block_into_cell_slot(symbol, "children", span);
             }
-            let value = if builds { self.block(value, span) } else { self.cell_value(value, span) };
+            let value = self.construction_slot(value, span, builds);
             let property = self.property("children", value, span);
             let last = sources.len() - 1;
             let Source::Record(record) = &mut sources[last] else { unreachable!() };
@@ -454,9 +451,7 @@ impl<'a> Shaper<'a, '_> {
         // lie about the emitted module.
 
         let props = self.source_list(sources, span);
-        let scope = self.ident(self.scope, span);
-        let arguments =
-            ArenaVec::from_iter_in([Argument::from(scope), Argument::from(props)], &self.allocator);
+        let arguments = ArenaVec::from_iter_in([Argument::from(props)], &self.allocator);
         Expression::new_call_expression(span, callee, None, arguments, false, &self.ast)
     }
 
@@ -539,9 +534,19 @@ impl<'a> Shaper<'a, '_> {
         if self.builds_dom(&value) {
             return self.block(value, span);
         }
-        if self.is_block(&value) {
-            // Written in place by `scope.rs` and forwarded by identity (C5),
-            // but this IS its definition site, so the brand belongs here.
+        // An UNNAMED slot is a construction slot, and among named ones only
+        // the construct's own body channels are: `fallback`'s `(error, reset)`
+        // is a deferred construction and has to stay one, because the -O0
+        // adapter reaches a flow construct's slots by name and wrapping that
+        // arrow as a Cell handed the fallback its own props record where the
+        // error accessor belonged.
+        //
+        // An ALLOWLIST, not "everything but `ref` and `on*`". Every other named
+        // channel is an attribute or an ordinary component prop, and a function
+        // arriving there is the VALUE — `setApi={(api) => …}` is a callback the
+        // consumer calls with the thing it made, and branding it had the
+        // runtime invoke it with a construct's arguments instead.
+        if channel.is_none_or(is_construction_channel) && self.is_block(&value) {
             return self.brand(value, span);
         }
         // Before the Cell test, because `() => s()` satisfies both and the
@@ -659,11 +664,62 @@ impl<'a> Shaper<'a, '_> {
         }
     }
 
-    /// A value already carrying the Block calling convention: a function whose
-    /// first parameter is the scope name, which is what `scope.rs` left behind
-    /// for every JSX-bearing function including a row callback. Forwarded
-    /// unchanged — wrapping it would make the consumer's `x($c)` hand back the
-    /// Block instead of running it.
+    /// A function literal that TAKES something is a deferred construction, not
+    /// a deferred read: a row callback `(item, index) => …`, a fallback handed
+    /// `(error, reset)`. A Cell is `() => T` by definition, so arity is what
+    /// separates them now that neither carries a scope parameter.
+    ///
+    /// Forwarded unchanged — wrapping it would make the consumer's `x()` hand
+    /// back the function instead of running it.
+    /// A CONSTRUCTION slot: JSX children, a flow construct's body, a boundary's
+    /// fallback. Everything placed here is built when the construct decides,
+    /// never at the call site.
+    ///
+    /// `builds` is the caller's own answer to "is this JSX", because it is
+    /// computed over the children before they are folded into one value.
+    pub(super) fn construction_slot(
+        &mut self,
+        value: Expression<'a>,
+        span: Span,
+        builds: bool,
+    ) -> Expression<'a> {
+        if builds {
+            return self.block(value, span);
+        }
+        // η first, and it is not a hole in the rule below: it fires only for a
+        // proven signal accessor, so `fallback={() => note()}` reduces to the
+        // carrier it already is while `{() => <p/>}` reaches the brand.
+        if let Some(reduced) = self.eta(&value) {
+            return reduced;
+        }
+        // An AUTHOR-written thunk over DOM is a construction and has to stay
+        // one. Forwarded as a Cell it is evaluated once at the call site, and
+        // the construct then hands back the same node on every activation —
+        // invisible to every channel but node identity.
+        //
+        // Over DOM, and not over anything else: `{() => props.items()}` in a
+        // children slot is a Cell carrying DATA, and branding it made every
+        // consumer that reads its children as a value receive a Block instead.
+        if self.thunk_builds_dom(&value) {
+            return self.brand(value, span);
+        }
+        self.cell_value(value, span)
+    }
+
+    /// A zero-argument function literal whose BODY builds DOM — `{() => <p/>}`.
+    ///
+    /// The expression body only. A statement body could build DOM too, and
+    /// answering that needs a walk this pass has no reason to carry; refusing
+    /// it forwards the thunk as a Cell, which is what happened to every author
+    /// thunk before this rule existed.
+    fn thunk_builds_dom(&self, value: &Expression<'a>) -> bool {
+        let body = match strip_wrappers(value) {
+            Expression::ArrowFunctionExpression(arrow) => arrow.body.as_expression(),
+            _ => None,
+        };
+        body.is_some_and(|body| self.builds_dom(body))
+    }
+
     fn is_block(&self, value: &Expression<'a>) -> bool {
         let params = match value {
             Expression::ParenthesizedExpression(inner) => return self.is_block(&inner.expression),
@@ -674,11 +730,7 @@ impl<'a> Shaper<'a, '_> {
             Expression::FunctionExpression(function) => &function.params,
             _ => return false,
         };
-        params
-            .items
-            .first()
-            .and_then(|first| first.pattern.get_binding_identifier())
-            .is_some_and(|id| id.name.as_str() == self.scope)
+        !params.items.is_empty()
     }
 
     /// A value already carrying the Cell calling convention, forwarded by name
@@ -771,7 +823,7 @@ impl<'a> Shaper<'a, '_> {
         {
             self.retarget.push((index, span));
         }
-        let arrow = self.thunk(value, span, Some(self.scope));
+        let arrow = self.thunk(value, span, None);
         self.brand(arrow, span)
     }
 
@@ -860,7 +912,7 @@ impl<'a> Shaper<'a, '_> {
     /// left to be ignorant of. It stays refused when the reduced expression is
     /// JSX, which lowers to a Block (C5.2) — that case never reaches here,
     /// because `builds_dom` claims it first.
-    fn eta(&self, value: &Expression<'a>) -> Option<Expression<'a>> {
+    pub(super) fn eta(&self, value: &Expression<'a>) -> Option<Expression<'a>> {
         let Expression::ArrowFunctionExpression(arrow) = value else { return None };
         if arrow.r#async || !arrow.params.items.is_empty() || arrow.params.rest.is_some() {
             return None;
@@ -1112,6 +1164,17 @@ impl<'a> Shaper<'a, '_> {
 /// `createElement` path.
 fn shapeable(element: &JSXElement<'_>) -> bool {
     !element.children.iter().any(|child| matches!(child, JSXChild::Spread(_)))
+}
+
+/// The named channels that carry a CONSTRUCTION rather than a value: a
+/// construct's body, and the fallback it builds instead.
+///
+/// `children` is lowered on its own path and never reaches here by name; it is
+/// listed because the rule is about what the name MEANS, and leaving it out
+/// would make this read as "fallback is special" rather than "these two are the
+/// body channels".
+pub(crate) fn is_construction_channel(name: &str) -> bool {
+    matches!(name, "children" | "fallback")
 }
 
 /// The handler channel, on a component tag as on an intrinsic one.

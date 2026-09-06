@@ -553,17 +553,14 @@ describe("self-check: the assertion would notice", () => {
     // a mutation that no longer mutates makes the check decoration.
     //
     // So the defect is written where it can still be written, in the emitted
-    // text: turn `children: (_s$) => Label(_s$, {})` back into an ARGUMENT.
+    // text: turn `children: () => Label({})` back into an ARGUMENT.
     const clean = ownershipSource("own-provider-thunked");
     let hit = 0;
     const corrupt = (code: string): string =>
-      code.replace(
-        /children:\s*(?:[\w$]*block)?\(?\((_s\$\d*)\)\s*=>\s*(\w+)\(\1, \{\}\)\)?/g,
-        (_m, scope, comp) => {
-          hit++;
-          return `children: ${comp}(${scope}, {})`;
-        },
-      );
+      code.replace(/children:\s*(?:[\w$]*block)?\(?\(\)\s*=>\s*(\w+)\(\{\}\)\)?/g, (_m, comp) => {
+        hit++;
+        return `children: ${comp}({})`;
+      });
     const run = await checkOwnership(
       "mutant-provider",
       clean,
@@ -585,13 +582,13 @@ describe("self-check: the assertion would notice", () => {
     // that decides, so the hoist is written into the emitted module.
     //
     // Since M4b the body is not a `children` PROP either — the construct is
-    // gone and what stands here is `_$boundary(_s$, parent, anchor, kind,
-    // fallback, body)`, whose body argument is the Block. Building it at the
-    // call site instead is the same mutation one syntax later.
+    // gone and what stands here is `_$boundary(parent, anchor, kind, fallback,
+    // body)`, whose body argument is the Block. Building it at the call site
+    // instead is the same mutation one syntax later.
     const clean = ownershipSource("own-nested-scopes-dispose");
     let hit = 0;
     const corrupt = (code: string): string =>
-      code.replace(/[\w$]*block\(\(_s\$\d*\)\s*=>\s*(_tmpl\$\d+\(\))\)/g, (_m, clone) => {
+      code.replace(/[\w$]*block\(\(\)\s*=>\s*(_tmpl\$\d+\(\))\)/g, (_m, clone) => {
         hit++;
         return clone as string;
       });
@@ -694,12 +691,13 @@ describe("self-check: the assertion would notice", () => {
           (d: () => void, root: object) => {
             dispose = d;
             core.scope(
-              (_d: () => void, provide: object) => {
-                // `insert` is HANDED the scope it must build under,
-                // so `given` is threaded rather than read back off `CURRENT` at
-                // the handover instant — which is the comparison that could not
-                // fail whatever the runtime did.
-                core.insert(provide, host, () =>
+              (_d: () => void, _provide: object) => {
+                // `insert` reads the AMBIENT owner, which `scope` has already
+                // entered — so what is compared is the scope the construction
+                // actually ran under against the one that was current when the
+                // body was handed over, and `runWithOwner` below is what makes
+                // those two disagree.
+                core.insert(host, () =>
                   elsewhere ? core.runWithOwner(root, () => make()) : make(),
                 );
               },
@@ -774,8 +772,8 @@ describe("self-check: the assertion would notice", () => {
           (d: () => void, root: object) => {
             dispose = d;
             core.scope(
-              (_d: () => void, provide: object) => {
-                core.insert(provide, host, () => {
+              (_d: () => void, _provide: object) => {
+                core.insert(host, () => {
                   const node = make();
                   const bind = (): void => void core.renderEffect(() => value());
                   if (elsewhere) core.runWithOwner(root, bind);

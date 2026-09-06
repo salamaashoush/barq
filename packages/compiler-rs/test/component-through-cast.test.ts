@@ -7,22 +7,23 @@
  * `Expression::Identifier` and saw a `TSAsExpression`, so the cast form marked
  * nothing.
  *
- * WHAT AN UNDETECTED COMPONENT COMPILES TO, because nothing reported it: the
- * authored parameter list is kept, so no scope parameter is threaded; its JSX
- * lowers against a module-level `const _s$ = null`; its holes are emitted as
- * VALUES rather than accessors, so nothing is tracked; and no `block()` wraps
- * it. It renders once, against no scope, and never updates. It surfaced as a
- * route stuck on its `pendingComponent` forever.
+ * WHAT AN UNDETECTED COMPONENT COMPILES TO, because nothing reported it: its
+ * holes are emitted as VALUES rather than accessors, so nothing is tracked. It
+ * renders once and never updates. It surfaced as a route stuck on its
+ * `pendingComponent` forever.
+ *
+ * The hole is the whole symptom now. Ownership is ambient, so a detected
+ * component gains no scope parameter and no `block()` wrapper to tell it apart
+ * from an undetected one — what still separates them is whether `props.data()`
+ * crossed as `() => props.data()` or as its value.
  */
 
 import { describe, expect, it } from "bun:test";
 
 import { compileSource } from "./harness.ts";
 
-// `(props)`, which is the AUTHORED form: the compiler threads the scope in
-// front of it. Writing `(scope, props)` by hand is a different thing and a
-// silently broken one, because the scope is prepended regardless and `props`
-// lands third, where nothing recognises it as the props parameter.
+// `(props)`, which is both the authored form and the emitted one: ownership is
+// ambient, so the parameter list a component declares is the one it keeps.
 const component = `function Home(props) { return <h1>{props.data()?.title}</h1>; }`;
 
 const shapes = {
@@ -39,25 +40,25 @@ describe("a component referenced through a type cast", () => {
     it(`is lowered as a component: ${name}`, () => {
       const out = compileSource(source, "tree.tsx");
 
-      // The three symptoms, each asserted rather than inferred from the others.
-      expect(out).not.toContain("const _s$ = null");
-      expect(out).toContain("Home = _$block(Home)");
+      // No scope is threaded anywhere: the uid that named one is gone.
+      expect(out).not.toContain("_s$");
       // The hole is an ACCESSOR, so `insert` reads it inside a tracked effect.
       // Eagerly evaluated, it reads the loader's pending value once and never
       // runs again, which is the failure that has no error attached to it.
-      expect(out).toMatch(/_\$insert\([^,]+, [^,]+, \(\) =>/);
-      expect(out).not.toMatch(/_\$insert\([^,]+, [^,]+, props\.data\(\)/);
+      expect(out).toMatch(/_\$insert\([^,]+, \(\) =>/);
+      expect(out).not.toMatch(/_\$insert\([^,]+, props\.data\(\)/);
     });
   }
 
   /**
    * The other half of the rule, so the fix cannot be "call everything a
-   * component". A function nothing references is not one, and its JSX has no
-   * scope to be lowered against.
+   * component". A function nothing references is not one, so its holes stay
+   * VALUES — which is the difference the tests above measure from the other
+   * side.
    */
   it("but a local function nothing references is still not one", () => {
     const out = compileSource(component, "tree.tsx");
-    expect(out).toContain("const _s$ = null");
-    expect(out).not.toContain("Home = _$block(Home)");
+    expect(out).toMatch(/_\$insert\([^,]+, props\.data\(\)/);
+    expect(out).not.toMatch(/_\$insert\([^,]+, \(\) =>/);
   });
 });

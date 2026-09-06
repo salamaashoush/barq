@@ -988,19 +988,18 @@ export function auditAnchors(code: string): AnchorAudit {
     used.add(node);
   };
   for (const call of callsTo(stripped, "insert")) {
-    // `_$insert($s, parent, value, anchor)` — the scope is first, so
-    // the anchor is the FOURTH argument.
-    if (call.length < 4) continue;
-    claim(call[3].trim());
+    // `_$insert(parent, value, anchor)` — the anchor is the THIRD argument.
+    if (call.length < 3) continue;
+    claim(call[2].trim());
   }
-  // A REGION consumes an anchor too, and takes it as the THIRD argument:
-  // `_$branch($s, parent, anchor, …)`. Since M4b that is where most of the
+  // A REGION consumes an anchor too, and takes it as the SECOND argument:
+  // `_$branch(parent, anchor, …)`. Since M4b that is where most of the
   // corpus's anchors are read, so an audit that only knew about `insert` would
   // report every one of them as baked-and-unused (K5, K7).
   for (const primitive of REGION_PRIMITIVES) {
     for (const call of callsTo(stripped, primitive)) {
-      if (call.length < 3) continue;
-      claim(call[2].trim());
+      if (call.length < 2) continue;
+      claim(call[1].trim());
     }
   }
 
@@ -1125,8 +1124,8 @@ function reportedAs(name: string): string {
 export const CHANNEL_CALL =
   /_\$+(setAttr|setDomProp|setLive|setBool|setClass|setStyleProp|setStyle|setClassList|setHtml)\(\s*(_el\$+\d+)\s*,\s*"([^"]+)"/g;
 
-/** `_$bindProp($s, el, _$setAttr, "id", v)` — the channel is the third argument. */
-export const BIND_PROP_CALL = /_\$+bindProp\([^,]+,\s*(_el\$+\d+)\s*,[^,]+,\s*"([^"]+)"/g;
+/** `_$bindProp(el, _$setAttr, "id", v)` — the channel is the second argument. */
+export const BIND_PROP_CALL = /_\$+bindProp\(\s*(_el\$+\d+)\s*,[^,]+,\s*"([^"]+)"/g;
 
 /**
  * The props the emitted module applies AFTER the clone, by attribute name.

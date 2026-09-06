@@ -421,11 +421,10 @@ fn compile_on_this_stack(
     // `bind`: it resolves flow components and local components by `SymbolId`.
     let mut ownership = options.ownership.then(|| crate::ownership::build(&program, &module));
 
-    // P-new `scope`, the AST half (C1). Before harvest, because that is the
-    // last moment the JSX and the function that encloses it are in one tree.
-    if source_type.is_jsx() {
-        crate::scope::run(&allocator, &mut program, &mut module);
-    }
+    // The `scope` pass used to prepend a scope parameter to every component and
+    // deferred body here. Ownership is ambient now — the runtime enters the
+    // scope a body belongs to before invoking it — so a component is a function
+    // of its props and nothing has to be threaded.
     harvest::run(&allocator, &mut program, &mut module);
     lower::lower(&allocator, source_text, options, &mut module);
 

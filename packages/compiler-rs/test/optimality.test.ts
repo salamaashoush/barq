@@ -218,43 +218,52 @@ describe("declared optimality", () => {
 
   /**
    * C1, stated once for the whole corpus instead of 38 times in fixture
-   * strings. A component is invoked with the scope it must run under FIRST, and
-   * a slot literal declares the same parameter — so a call that lost the
-   * argument, or a Block that lost the parameter, fails here whatever any
-   * individual declaration happens to spell.
+   * strings. Ownership is AMBIENT: a component is invoked with its props and
+   * nothing else, and a Block takes only the arguments its construct hands it.
+   * So a call that still threads a scope, or a Block that still declares one,
+   * fails here whatever any individual declaration happens to spell.
+   *
+   * The uid `_s$` is the witness. It named the threaded scope and the emitter
+   * has no other use for it, so its total absence from the corpus is the
+   * strongest single statement that the channel is gone — one grep standing in
+   * for every call site the change had to reach.
    *
    * It lives in the test file because a fixture may not name a compiler uid:
    * see the test above for what happens when one does.
    */
-  it("the call shape is C1's: scope first at every component call and every Block", () => {
+  it("the call shape is C1's: props first, and no scope threaded anywhere", () => {
     let calls = 0;
     let blocks = 0;
-    const withProps = new Map<string, string[]>();
+    const threaded = new Map<string, string[]>();
     for (const name of listFixtures()) {
       const code = stripLiterals(compileFixtureBody(name));
-      // The two shapes the compiler emits for a component call, and the scope
-      // is the first argument of both. Anything capitalised whose first
-      // argument is a props object or a source list is a call that lost it.
-      const lost = [...code.matchAll(/(?<![\w$.])([A-Z][\w$]*)\(\s*(\{|_\$props\()/g)].map(
-        (m) => m[1]!,
-      );
-      if (lost.length > 0) withProps.set(name, [...new Set(lost)]);
-      calls += [...code.matchAll(/(?<![\w$.])[A-Z][\w$]*\(_s\$[,)]/g)].length;
-      // A Block is BRANDED at its definition site, so the slot's
-      // value is `_$block((_s$…`. The brand is what lets a consumer test kind
-      // instead of guessing it from arity.
+      // Anything still spelling the scope uid, wherever it appears: a call
+      // argument, a Block parameter, or a module-level `const _s$ = null`.
+      const lost = [...code.matchAll(/[\w$]*\(?\s*(_s\$)[,)\s]/g)].map((m) => m[1]!);
+      if (lost.length > 0) threaded.set(name, [...new Set(lost)]);
+      // The two shapes the compiler emits for a component call, and the props
+      // are the first argument of both.
+      calls += [...code.matchAll(/(?<![\w$.])[A-Z][\w$]*\(\s*(\{|_\$props\()/g)].length;
+      // A Block is BRANDED at its definition site. The brand is what lets a
+      // consumer test kind instead of guessing it from arity — which matters
+      // more now, not less, because a zero-arity Block and a Cell are the same
+      // shape and only the brand tells them apart.
       //
       // Since M4b a body is not always a NAMED slot: the flow pass hands
       // `branch`/`each`/`boundary`/`portal` their bodies positionally, so the
       // brand is what identifies one and the prop name no longer exists to
       // anchor on.
-      blocks += [...code.matchAll(/[\w$]*block\(\(_s\$[,)]/g)].length;
+      blocks += [...code.matchAll(/[\w$]*block\(\(/g)].length;
     }
     expect(
-      [...withProps].map(([name, callees]) => `${name}: ${callees.join(", ")}`),
-      "a component whose FIRST argument is its props object is a call that lost its scope",
+      [...threaded].map(([name, uids]) => `${name}: ${uids.join(", ")}`),
+      "the scope uid survives somewhere, so the threading channel is not gone",
     ).toEqual([]);
-    expect(calls, "the sweep found no component calls at all").toBeGreaterThan(40);
+    // A floor that says the sweep really looked, not a ratchet on the count.
+    // It was 40 while `Comp(_s$` matched every call including the ones whose
+    // props are a bare identifier; props-first matches the object and source
+    // list shapes only, and the corpus has 31 of those.
+    expect(calls, "the sweep found no component calls at all").toBeGreaterThan(25);
     expect(blocks, "the sweep found no Blocks at all").toBeGreaterThan(30);
   }, 120_000);
 
@@ -800,7 +809,7 @@ describe("target 5 — walk elision", () => {
   }
 
   function holes(code: string): string[] {
-    return [...code.matchAll(/_\$+insert\([^,]+,\s*(_el\$+\d+)/g)].map((m) => m[1]);
+    return [...code.matchAll(/_\$+insert\(\s*(_el\$+\d+)/g)].map((m) => m[1]);
   }
 
   it("deep-walk: five nested single-child divs cost exactly five hops and nothing else", () => {
@@ -872,8 +881,8 @@ describe("target 7 — delegated events as expando writes", () => {
     // are what make this more than "the compiler emitted nothing".
     // B4: the listener is registered THROUGH the scope, so it dies with the
     // position. `addEventListener` with no cleanup is what leaked.
-    expect(code).toMatch(/_\$listen\(_s\$, _el\$\d+, "mouseenter"/);
-    expect(code).toMatch(/_\$listen\(_s\$, _el\$\d+, "focus"/);
+    expect(code).toMatch(/_\$listen\(_el\$\d+, "mouseenter"/);
+    expect(code).toMatch(/_\$listen\(_el\$\d+, "focus"/);
     expect(code, "never a bare addEventListener").not.toContain("addEventListener");
     expect(code, "no module-wide registration for a type that does not bubble").not.toContain(
       "delegateEvents",
@@ -1142,13 +1151,13 @@ describe("target 8 — thunk elision for static control-flow bodies", () => {
     // M4b took the call away as well: K5 lowers the construct onto `branch`,
     // which receives the `(parent, anchor)` pair the walk computed — here
     // `(null, null)`, because the construct IS the component's whole body.
-    expect(code).toMatch(/[\w$]*branch\(_s\$, null, null, /);
+    expect(code).toMatch(/[\w$]*branch\(null, null, /);
     // O2/O2.1 SUPERSEDE target #8's eager arm, and this is where that is said.
     // A child may not be an ARGUMENT, because an argument is evaluated at the
     // call site — before the receiving scope exists — so "the clone itself,
     // handed straight in" is a shape M3 makes unrepresentable. What survives of
     // the elision is the IIFE and the element binding, both still absent.
-    expect(code).toMatch(/[\w$]*block\(\(_s\$\)\s*=>\s*_tmpl\$\d+\(\)\)/);
+    expect(code).toMatch(/[\w$]*block\(\(\)\s*=>\s*_tmpl\$\d+\(\)\)/);
     // …and the flag the compiler PROVED about it: nothing in the body registers
     // anything disposable, so `NO_SCOPE` is shipped and the activation
     // allocates no `Scope`.
@@ -1181,9 +1190,9 @@ describe("target 8 — thunk elision for static control-flow bodies", () => {
     // again. `node-identity` in normalize.ts is the only channel that sees the
     // second half — html, markers, attributes and anchors are all identical.
     const code = compileFixtureBody("control-flow-show-static-body");
-    expect(code).toMatch(/[\w$]*branch\(_s\$, null, null, /);
+    expect(code).toMatch(/[\w$]*branch\(null, null, /);
     // C6: the child is a Block, so the arrow declares the scope it runs under.
-    expect(code).toMatch(/[\w$]*block\(\(_s\$\)\s*=>\s*_tmpl\$\d+\(\)\)/);
+    expect(code).toMatch(/[\w$]*block\(\(\)\s*=>\s*_tmpl\$\d+\(\)\)/);
     // The key is the author's own `when` read, emitted as plain JavaScript
     // (K5). Non-keyed is the default since M10, so what it carries is the
     // TRUTHINESS — one index for every falsy value, which is what keeps a
@@ -1209,8 +1218,8 @@ describe("target 8 — thunk elision for static control-flow bodies", () => {
     // Elision is a fact about the component's children contract, never about the
     // body alone.
     const code = compileFixtureBody("control-flow-for-static-body");
-    expect(code).toMatch(/[\w$]*each\(_s\$, _el\$1, null, rows, null, /);
-    expect(code).toMatch(/[\w$]*block\(\(_s\$\)\s*=>\s*_tmpl\$\d+\(\)\)/);
+    expect(code).toMatch(/[\w$]*each\(_el\$1, null, rows, null, /);
+    expect(code).toMatch(/[\w$]*block\(\(\)\s*=>\s*_tmpl\$\d+\(\)\)/);
   });
 
   it("control-flow-show: a body with a hole in it also keeps its thunk", async () => {
@@ -1218,7 +1227,7 @@ describe("target 8 — thunk elision for static control-flow bodies", () => {
     // into it. That body is not static, so the arrow stays and the DOM is only
     // built when `when` is first true.
     const code = compileFixtureBody("control-flow-nested");
-    expect(code).toMatch(/[\w$]*block\(\(_s\$\)\s*=>\s*\{/);
+    expect(code).toMatch(/[\w$]*block\(\(\)\s*=>\s*\{/);
     // …and no flag: the body builds a list, so it registers something
     // disposable and the activation still gets a `Scope`.
     expect(code, "an unprovable body ships no flag").not.toMatch(/\}\), \d\)/);
@@ -1249,7 +1258,7 @@ describe("target 9 — marker elision", () => {
     const code = compileFixtureBody("text-hole-followed");
     expect(templateAnchors(code)).toBe(0);
     expect(templateHtml(code)).toEqual(['<div><span class="suffix">items</span></div>']);
-    expect(code).toMatch(/_\$insert\(_s\$, _el\$1, \(\) => count\(\), _el\$2\)/);
+    expect(code).toMatch(/_\$insert\(_el\$1, \(\) => count\(\), _el\$2\)/);
     expect(code, "and the anchor it uses is the span itself").toMatch(
       /const _el\$2 = _el\$1\.firstChild;/,
     );
@@ -1440,10 +1449,10 @@ describe("open questions the harness must be able to state", () => {
     const code = compileFixtureBody("auto-thunked-read");
     // The attribute hole is a fused effect of ONE, so the compiler-built thunk
     // is the compute itself rather than a `const` inside a block body.
-    expect(code).toMatch(/_\$bindEffect\(_s\$, \(\) => `count: \$\{count\(\)\}`, /);
-    expect(code).toMatch(/_\$insert\(_s\$, _el\$\d+, \(\) => `n=\$\{count\(\)\}`\)/);
+    expect(code).toMatch(/_\$bindEffect\(\(\) => `count: \$\{count\(\)\}`, /);
+    expect(code).toMatch(/_\$insert\(_el\$\d+, \(\) => `n=\$\{count\(\)\}`\)/);
     expect(code, "a bare read still η-reduces to the accessor itself").toMatch(
-      /_\$insert\(_s\$, _el\$\d+, count\)/,
+      /_\$insert\(_el\$\d+, count\)/,
     );
     expect(code, "an async arrow would make every hole a Promise").not.toMatch(
       /async\s*\(\s*\)\s*=>/,
@@ -1471,7 +1480,7 @@ describe("open questions the harness must be able to state", () => {
     // the order the author wrote them.
     const code = compileFixtureBody("spread-static-mix");
     expect(templateHtml(code)).toEqual(["<div>spread</div>"]);
-    const order = ['_$setAttr(_el$1, "id"', "_$spread(_s$, _el$1,", '_$setClass(_el$1, "class"'];
+    const order = ['_$setAttr(_el$1, "id"', "_$spread(_el$1,", '_$setClass(_el$1, "class"'];
     let cursor = -1;
     for (const needle of order) {
       const at = code.indexOf(needle);

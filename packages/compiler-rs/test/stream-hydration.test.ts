@@ -58,6 +58,18 @@ async function streamFixture(name: string): Promise<StreamResult> {
   return streamSource(name, fixtureSource(name));
 }
 
+/** Resolve `null` after `n` macrotask turns — a load-independent deadline. */
+function ticks(n: number): Promise<null> {
+  return new Promise<null>((resolve) => {
+    let left = n;
+    const step = (): void => {
+      if (left-- <= 0) resolve(null);
+      else setTimeout(step, 0);
+    };
+    setTimeout(step, 0);
+  });
+}
+
 async function streamSource(name: string, source: string): Promise<StreamResult> {
   // TWO compilations of the same source, and the second name is what separates
   // them. A fixture may hold module-level state — a signal at the top of the
@@ -77,9 +89,18 @@ async function streamSource(name: string, source: string): Promise<StreamResult>
   const settled = await Promise.race([
     server
       .renderPage((() =>
-        (reference.ssr.default as unknown as (s: unknown) => unknown)(null)) as never)
+        (reference.ssr.default as unknown as (props?: unknown) => unknown)()) as never)
       .then((page) => page.html),
-    new Promise<null>((resolve) => setTimeout(() => resolve(null), 250)),
+    // TICKS, not milliseconds. The corpus contains fixtures whose promise never
+    // settles by design, so the race needs a loser — but a wall-clock deadline
+    // makes which fixtures can be compared a function of machine load: 250ms
+    // was measured in isolation and this runs after the whole corpus has
+    // streamed, where a 3ms render loses and the convergence check silently
+    // downgrades to `null` ("cannot be compared") on fixtures written for it.
+    // A page that settles at all settles on a `tick`, so counting ticks is the
+    // same bound expressed in the units the thing being measured actually uses,
+    // and it costs a never-settling fixture almost nothing.
+    ticks(50),
   ]);
   let bufferedShape: string | null = null;
   if (settled !== null) {
@@ -197,7 +218,7 @@ describe("L5-S streaming hydration conformance", () => {
         kinds: known.kinds,
         reuse: known.reuse,
       });
-    });
+    }, 60_000);
   }
 
   /**
@@ -222,7 +243,7 @@ describe("L5-S streaming hydration conformance", () => {
       mostAreComparable: comparable.length > all.length / 2,
     }).toEqual({ streamedFixtures: true, mostAreComparable: true });
     expect(swapped.length).toBe(0);
-  });
+  }, 60_000);
 });
 
 /**
@@ -291,7 +312,7 @@ describe("L5-S the streaming mechanism itself", () => {
         percent: 100,
         lost: null,
       });
-    });
+    }, 60_000);
   }
 
   /**
@@ -331,7 +352,7 @@ describe("L5-S the streaming mechanism itself", () => {
     // …and the content around it is intact.
     expect(result.hydratedShape).toContain("before");
     expect(result.hydratedShape).toContain("after");
-  });
+  }, 60_000);
 
   test("each boundary is delivered exactly once: one template, one swap", async () => {
     for (const [name, result] of await STREAMED) {
@@ -345,5 +366,5 @@ describe("L5-S the streaming mechanism itself", () => {
       });
       expect(result.swaps).toBeGreaterThan(0);
     }
-  });
+  }, 60_000);
 });

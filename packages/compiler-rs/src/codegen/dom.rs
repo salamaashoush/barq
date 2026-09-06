@@ -155,7 +155,6 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
     fn set_opaque(&mut self, at: At<'_>, name: NameId, value: ExprId, chan: Chan) -> Self::Out {
         let span = at.span();
         let value = take(self.ctx, self.unit, value, span);
-        let scope = self.ctx.scope(span);
         let element = ref_ident(self.ctx, self.unit, at.target(), span);
         let key = self.ctx.module.interner.name(name).text;
         let key = self.ctx.string(key, span);
@@ -164,7 +163,6 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         let call = self.ctx.call(
             callee,
             vec![
-                Argument::from(scope),
                 Argument::from(element),
                 Argument::from(write),
                 Argument::from(key),
@@ -205,7 +203,6 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         plan: InsertPlan,
     ) -> Self::Out {
         let span = at.span();
-        let scope = self.ctx.scope(span);
         let parent = ref_ident(self.ctx, self.unit, at.target(), span);
         let value = match plan {
             InsertPlan::Live => thunk(self.ctx, self.unit, value, span),
@@ -232,7 +229,7 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         };
         let callee = self.ctx.helper(Helper::Insert, span);
         let mut arguments =
-            vec![Argument::from(scope), Argument::from(parent), Argument::from(value)];
+            vec![Argument::from(parent), Argument::from(value)];
         if whole {
             // Positional, and `whole` implies `Anchor::End` — a slot that owns
             // the child list has nothing after it to anchor against — so the
@@ -296,7 +293,8 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
             return Some(Statement::new_expression_statement(span, write, &self.ctx.ast));
         }
         let element = ref_ident(self.ctx, self.unit, at.target(), span);
-        let scope = self.ctx.scope(span);
+        let get_owner = self.ctx.helper(Helper::GetOwner, span);
+        let scope = self.ctx.call(get_owner, Vec::new(), span);
         let owner = Expression::new_assignment_expression(
             span,
             oxc::ast::ast::AssignmentOperator::Assign,
@@ -324,14 +322,12 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         capture: bool,
     ) -> Self::Out {
         let span = at.span();
-        let scope = self.ctx.scope(span);
         let element = ref_ident(self.ctx, self.unit, at.target(), span);
         let key = self.ctx.module.interner.name(event).text;
         let key = self.ctx.string(key, span);
         let handler = handler_expression(self.ctx, self.unit, handler, span);
         let callee = self.ctx.helper(Helper::Listen, span);
         let mut arguments = vec![
-            Argument::from(scope),
             Argument::from(element),
             Argument::from(key),
             Argument::from(handler),
@@ -362,14 +358,12 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         capture: bool,
     ) -> Self::Out {
         let span = at.span();
-        let scope = self.ctx.scope(span);
         let element = ref_ident(self.ctx, self.unit, at.target(), span);
         let key = self.ctx.module.interner.name(event).text;
         let key = self.ctx.string(key, span);
         let value = take(self.ctx, self.unit, value, span);
         let callee = self.ctx.helper(Helper::BindEvent, span);
         let mut arguments = vec![
-            Argument::from(scope),
             Argument::from(element),
             Argument::from(key),
             Argument::from(value),
@@ -390,7 +384,6 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
     /// `type`.
     fn bind(&mut self, at: At<'_>, prop: NameId, event: NameId, value: ExprId) -> Self::Out {
         let span = at.span();
-        let scope = self.ctx.scope(span);
         let element = ref_ident(self.ctx, self.unit, at.target(), span);
         let prop = self.ctx.module.interner.name(prop).text;
         let prop = self.ctx.string(prop, span);
@@ -401,7 +394,6 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         let call = self.ctx.call(
             callee,
             vec![
-                Argument::from(scope),
                 Argument::from(element),
                 Argument::from(prop),
                 Argument::from(event),
@@ -422,11 +414,10 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         let span = at.span();
         let element = ref_ident(self.ctx, self.unit, at.target(), span);
         let value = take(self.ctx, self.unit, value, span);
-        let scope = self.ctx.scope(span);
         let callee = self.ctx.helper(Helper::FormAction, span);
         let call = self.ctx.call(
             callee,
-            vec![Argument::from(scope), Argument::from(element), Argument::from(value)],
+            vec![Argument::from(element), Argument::from(value)],
             span,
         );
         Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
@@ -446,11 +437,10 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
             );
             return Some(Statement::new_expression_statement(span, assign, &self.ctx.ast));
         }
-        let scope = self.ctx.scope(span);
         let callee = self.ctx.helper(Helper::Ref, span);
         let call = self.ctx.call(
             callee,
-            vec![Argument::from(scope), Argument::from(element), Argument::from(value)],
+            vec![Argument::from(element), Argument::from(value)],
             span,
         );
         Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
@@ -479,11 +469,10 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         } else {
             take(self.ctx, self.unit, value, span)
         };
-        let scope = self.ctx.scope(span);
         let callee = self.ctx.helper(Helper::Spread, span);
         let call = self.ctx.call(
             callee,
-            vec![Argument::from(scope), Argument::from(element), Argument::from(value)],
+            vec![Argument::from(element), Argument::from(value)],
             span,
         );
         Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
@@ -556,10 +545,8 @@ pub fn region_call<'a>(
     // `portal` takes no insertion pair at all: it returns a marker standing at
     // its LEXICAL position, and the surrounding tree is what places it.
     if kind == RegionKind::Portal {
-        let scope = ctx.scope(span);
         let callee = ctx.helper(Helper::Portal, span);
         let mut arguments = vec![
-            Argument::from(scope),
             Argument::from(key.expect("a portal always carries a target")),
             Argument::from(body),
         ];
@@ -568,19 +555,17 @@ pub fn region_call<'a>(
         }
         let call = ctx.call(callee, arguments, span);
         let Some(parent) = parent else { return bind_sources(ctx, sources, call, span) };
-        let scope = ctx.scope(span);
         let callee = ctx.helper(Helper::Insert, span);
         let mut arguments =
-            vec![Argument::from(scope), Argument::from(parent), Argument::from(call)];
+            vec![Argument::from(parent), Argument::from(call)];
         arguments.extend(anchor.map(Argument::from));
         let call = ctx.call(callee, arguments, span);
         return bind_sources(ctx, sources, call, span);
     }
 
-    let scope = ctx.scope(span);
     let parent = parent.unwrap_or_else(|| Expression::new_null_literal(span, &ctx.ast));
     let anchor = anchor.unwrap_or_else(|| Expression::new_null_literal(span, &ctx.ast));
-    let mut arguments = vec![Argument::from(scope), Argument::from(parent), Argument::from(anchor)];
+    let mut arguments = vec![Argument::from(parent), Argument::from(anchor)];
 
     let helper = match kind {
         RegionKind::Branch => Helper::Branch,
@@ -970,10 +955,9 @@ fn effect_call<'a>(
     span: Span,
 ) -> Statement<'a> {
     let callee = ctx.helper(Helper::BindEffect, span);
-    let scope = ctx.scope(span);
     let call = ctx.call(
         callee,
-        vec![Argument::from(scope), Argument::from(compute), Argument::from(apply)],
+        vec![Argument::from(compute), Argument::from(apply)],
         span,
     );
     Statement::new_expression_statement(span, call, &ctx.ast)

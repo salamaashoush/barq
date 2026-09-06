@@ -182,7 +182,7 @@ it("serialises a unit as [clone, refs, ops] with its expressions beside it", () 
     ];`),
   );
   expect(flat(code)).toContain(
-    flat(`return _$interp(_s$, _ir$1, [() => penultimate(), () => last()]);`),
+    flat(`return _$interp(_ir$1, [() => penultimate(), () => last()]);`),
   );
 });
 

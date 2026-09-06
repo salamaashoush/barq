@@ -429,7 +429,7 @@ const REACTIVITY_PROBES: Array<{ what: string; source: string; before: string; a
 ];
 
 /**
- * The APPLY half of every `bindEffect(scope, compute, apply)` in a module.
+ * The APPLY half of every `bindEffect(compute, apply)` in a module.
  *
  * The compute reads; the apply writes, and what it writes to is the question —
  * so the extraction is deliberately the second argument only. Brace matching
@@ -454,7 +454,7 @@ function applyBodies(code: string): string[] {
         }
       } else if (char === "," && depth === 1) {
         commas++;
-        if (commas === 2) start = at + 1;
+        if (commas === 1) start = at + 1;
       }
     }
   }

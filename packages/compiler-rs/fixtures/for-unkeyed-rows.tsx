@@ -35,6 +35,6 @@ export const optimality = {
   // mode. There is no longer a "which component did the author write" for the
   // emission to be wrong about, and since M7b there is no second component to
   // have written.
-  emits: ["each(", ", words, false, ", ", word: () => string, index: number)"],
+  emits: ["each(", ", words, false, ", "(word: () => string, index: number)"],
   absent: ["each: ", "() => false"],
 }

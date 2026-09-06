@@ -275,10 +275,9 @@ describe("compiled render integrity", () => {
       // component AND bakes an anchor. Without both halves this is a list of
       // fixtures that were never degraded in the first place.
       expect(templateAnchors(result.code ?? ""), `${name} bakes no anchor`).toBeGreaterThan(0);
-      // C1 moved the call shape: a component takes its scope first, so the
-      // props object is the SECOND argument.
-      const callsComponent =
-        /\b[A-Z][\w$]*\(_s\$,\s*(\{|_\$props\()|\)\s*\(_s\$,\s*(\{|_\$props\()/;
+      // C1's call shape: ownership is ambient, so the props object is the
+      // FIRST argument and there is nothing ahead of it.
+      const callsComponent = /\b[A-Z][\w$]*\(\s*(\{|_\$props\()|\)\s*\(\s*(\{|_\$props\()/;
       expect(
         callsComponent.test(stripLiterals(result.code ?? "")),
         `${name} calls no component`,
@@ -463,13 +462,11 @@ describe("node-identity self-check", () => {
     // toggles off and back on, so the clean build really does build two.
     const unwrapThunk = (code: string): string => {
       const out = code.replace(
-        /([\w$]*block)\(\(_s\$\) => (_tmpl\$\d+)\(\)\)/g,
-        "$1((_s$) => ($2.$$n ??= $2()))",
+        /([\w$]*block)\(\(\) => (_tmpl\$\d+)\(\)\)/g,
+        "$1(() => ($2.$$n ??= $2()))",
       );
       if (out === code) {
-        throw new Error(
-          "self-check corruption is stale: no `_$block((_s$) => _tmpl$N())` to memoise",
-        );
+        throw new Error("self-check corruption is stale: no `_$block(() => _tmpl$N())` to memoise");
       }
       return out;
     };
@@ -487,8 +484,8 @@ describe("node-identity self-check", () => {
     // one's Block result is stable.
     const rebuildEveryFrame = (code: string): string => {
       const out = code.replace(
-        /([\w$]*block\()\(_s\$\) => (_tmpl\$\d+)\(\)/g,
-        '$1(_s$) => { const _n = $2(); _n.setAttribute("data-x", ""); _n.removeAttribute("data-x"); return _n }',
+        /([\w$]*block\()\(\) => (_tmpl\$\d+)\(\)/g,
+        '$1() => { const _n = $2(); _n.setAttribute("data-x", ""); _n.removeAttribute("data-x"); return _n }',
       );
       if (out === code) throw new Error("self-check corruption is stale");
       return out;

@@ -30,6 +30,6 @@ export const optimality = {
   templates: 2,
   // The count is the member read, called by the primitive. The shift is the
   // slot read, wrapped by the compiler.
-  emits: ["each(", ".count, ", "COUNT", "readSlot(", "?? 0", ", i) =>"],
+  emits: ["each(", ".count, ", "COUNT", "readSlot(", "?? 0", "(i) =>"],
   absent: ["Repeat(", "count: "],
 }

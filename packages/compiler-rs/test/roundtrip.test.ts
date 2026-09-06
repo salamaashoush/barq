@@ -115,20 +115,37 @@ describe("emitted code snapshots", () => {
    *
    * TanStack's authoring surface never writes `<Layout />` and never exports
    * it — `createRootRoute({ component: Layout })` is the whole of the evidence.
-   * Without this the module has no component at all, compiles against a null
-   * scope, and every context read in it silently answers the default: measured
-   * on the reference application as a correct `<head>` above an empty
-   * `<div id="app">`.
+   * Without it the module has no component at all and `props` is an ordinary
+   * object, so every read of it is a CALL evaluated once rather than the Cell
+   * C3.1 says it is: measured on the reference application as a correct
+   * `<head>` above an empty `<div id="app">`.
+   *
+   * The evidence used to be a prepended scope parameter. Ownership is ambient,
+   * so there is no parameter to look for and the props treatment is what
+   * separates the two — asserted in both directions, because a rule whose
+   * positive is "something is absent" passes for a module that compiled to
+   * nothing at all.
    */
-  it("a component named only as an object property takes a scope", () => {
+  it("a component named only as an object property is compiled as one", () => {
+    const registered =
+      'function Layout(props) { return <div class="l">{props.x()}</div>; }\n' +
+      "export const Route = createRootRoute({ component: Layout });\n";
     const code = compileSource(
-      'import { createRootRoute } from "@barqjs/router";\n' +
-        'function Layout() { return <div class="l" />; }\n' +
-        "export const Route = createRootRoute({ component: Layout });\n",
+      'import { createRootRoute } from "@barqjs/router";\n' + registered,
       "__root.tsx",
     );
-    expect(code).toContain("function Layout(_s$");
-    expect(code).not.toContain("const _s$ = null");
+    // `props.x` IS the Cell, forwarded by identity rather than called.
+    expect(code).toContain("_$insert(_el$1, props.x)");
+    expect(code).not.toContain("_s$");
+
+    // And the same declaration with nothing naming it as a component: the read
+    // is a call the compiler wraps, which is the shape that renders once.
+    const loose = compileSource(
+      'function Layout(props) { return <div class="l">{props.x()}</div>; }\n' +
+        "export const other = 1;\n",
+      "__root.tsx",
+    );
+    expect(loose).toContain("_$insert(_el$1, () => props.x())");
   });
 
   /**

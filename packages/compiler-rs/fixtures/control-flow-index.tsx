@@ -32,6 +32,6 @@ export const optimality = {
   // The positional mode gives its row an ACCESSOR item and a plain-number index
   // — the mirror image of the identity-keyed default — so the index hole passes
   // through as a value and calling the item is the tracked read.
-  emits: ["each(", ", nums, false, ", ", item, index) =>"],
+  emits: ["each(", ", nums, false, ", "(item, index) =>"],
   absent: ["For(", "each: "],
 }

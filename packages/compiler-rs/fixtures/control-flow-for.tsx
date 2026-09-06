@@ -36,6 +36,6 @@ export const optimality = {
   // K5: the construct is gone and `each` takes the source, the key mode and the
   // row Block positionally. Absent `keyed` is `null` — identity is the item —
   // and the fallback rides after the flags integer `each` never reads.
-  emits: ["each(", ", items, null, ", ", item, index) =>", ", 0, "],
+  emits: ["each(", ", items, null, ", "(item, index) =>", ", 0, "],
   absent: ["For(", "each: "],
 }

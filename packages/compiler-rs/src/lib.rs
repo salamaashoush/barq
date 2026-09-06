@@ -18,7 +18,6 @@ pub mod passes;
 pub mod route_source;
 pub mod route_split;
 pub mod routes;
-pub mod scope;
 pub mod tables;
 
 use napi::bindgen_prelude::{FromNapiValue, JsValue, Object};
