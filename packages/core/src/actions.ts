@@ -30,12 +30,14 @@ import {
   overrideWrite,
   probingPending,
   readingLatest,
+  renderEffect,
   retireLane,
   signal,
+  untrack,
   writableComputed,
 } from "./signals.ts";
 import type { MemoOptions, Signal, SignalOptions } from "./signals.ts";
-import { type Store, unwrap, store } from "./store.ts";
+import { type Store, deep, store, unwrap, writableProjection } from "./store.ts";
 
 interface ActionContext {
   retire: (() => void)[];
@@ -280,8 +282,23 @@ interface StoreLayer {
  * Reads are routed by mode exactly as a value's are: normal reads see the
  * override, `latest()` reads through to `base`, `isPending()` reports.
  */
-export function optimisticStore<T extends object>(seed: T): Store<T> {
-  const [base, setBase] = store(seed);
+export function optimisticStore<T extends object>(seed: T): Store<T>;
+export function optimisticStore<T extends object>(
+  compute: (draft: T) => void | T,
+  seed: T,
+): Store<T>;
+export function optimisticStore<T extends object>(
+  first: T | ((draft: T) => void | T),
+  second?: T,
+): Store<T> {
+  // A FUNCTION makes the authoritative buffer a PROJECTION rather than a plain
+  // store: what it holds is whatever the last recompute produced, so an
+  // action's layer survives exactly until the data it is guessing about lands.
+  // That is the shape a list fed by a query has, and the reason the plain-seed
+  // form could not express it: there was nothing to recompute into.
+  const derived = typeof first === "function";
+  const seed = (derived ? second : first) ?? ({} as T);
+  const [base, setBase] = derived ? writableProjection(first, seed) : store(seed);
   const [view, setView] = store(structuredClone(unwrap(seed)));
   const layers = signal<StoreLayer[]>([]);
   const owned = new WeakMap<ActionContext, StoreLayer>();
@@ -321,6 +338,16 @@ export function optimisticStore<T extends object>(seed: T): Store<T> {
       }
     }
   };
+
+  // The projection recomputing is a write to `base` nothing here initiated, so
+  // the view has to be rebuilt over it. `deep` is the tracked read: `derive`
+  // itself goes through `unwrap`, which registers nothing.
+  if (derived) {
+    renderEffect(() => {
+      deep(base as unknown as object);
+      untrack(derive);
+    });
+  }
 
   const optimisticSet = ((...args: unknown[]) => {
     const layer = claimLayer(layers, owned, () => ({ calls: [] }), derive);

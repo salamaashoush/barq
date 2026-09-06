@@ -59,6 +59,7 @@ import {
   optimistic,
   optimisticStore,
 } from "../src/actions.ts";
+import { writableProjection } from "../src/store.ts";
 import { mapArray, repeat } from "../src/map.ts";
 import { merge, omit } from "../src/props.ts";
 import { dispose as barqDispose } from "../src/scope.ts";
@@ -327,11 +328,7 @@ export { $TRACK, $PROXY, $TARGET };
 export function createStore(first: unknown, second?: unknown, third?: unknown): unknown {
   if (typeof first === "function") {
     void third;
-    // barq's projection returns the proxy only and has no writable setter.
-    return [
-      projection(first as never, second as never),
-      () => gap("createStore(fn)", "barq's projection has no setter"),
-    ];
+    return writableProjection(first as never, second as never);
   }
   return store(first as never);
 }
@@ -341,11 +338,9 @@ export function createProjection(fn: unknown, seed: unknown, _options?: unknown)
 }
 
 export function createOptimisticStore(first: unknown, second?: unknown): unknown {
-  if (typeof first === "function") {
-    return gap("createOptimisticStore(fn, seed)", "barq's optimisticStore takes a plain seed only");
-  }
-  void second;
-  return optimisticStore(first as never);
+  return typeof first === "function"
+    ? optimisticStore(first as never, second as never)
+    : optimisticStore(first as never);
 }
 
 export function setSnapshotCapture(): never {

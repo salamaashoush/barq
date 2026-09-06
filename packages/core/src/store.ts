@@ -462,13 +462,33 @@ export function projection<T extends object>(
   fn: (draft: T) => void | T,
   seed: T = {} as T,
 ): DeepReadonly<T> {
+  return writableProjection(fn, seed)[0];
+}
+
+/**
+ * The same projection, handing back its setter.
+ *
+ * A projection has always had one: `fn` writes through it on every recompute.
+ * Returning it makes the value WRITABLE between recomputes, which is what a
+ * form over derived data needs — the field is edited locally and the next
+ * arrival of the underlying data overwrites it, because the recompute is the
+ * authority and a local write is not.
+ *
+ * Kept as a sibling rather than a wider return on `projection`, because a
+ * read-only derived store is the common case and handing every caller a setter
+ * it did not ask for invites writes nothing then reconciles.
+ */
+export function writableProjection<T extends object>(
+  fn: (draft: T) => void | T,
+  seed: T = {} as T,
+): [DeepReadonly<T>, StoreSetter<T>] {
   const [state, setState] = store(seed);
 
   renderEffect(() => {
     setState((draftState) => fn(draftState) as Partial<T> | void);
   });
 
-  return state;
+  return [state, setState];
 }
 
 /**

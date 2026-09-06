@@ -118,7 +118,16 @@ export type { Incoming, StrictAccessor, StrictArrayAccessor, StrictChild } from 
 // Store - fine-grained nested reactivity
 export { isClient, isServer } from "./env.ts";
 
-export { store, produce, reconcile, unwrap, snapshot, projection, deep } from "./store.ts";
+export {
+  store,
+  produce,
+  reconcile,
+  unwrap,
+  snapshot,
+  projection,
+  writableProjection,
+  deep,
+} from "./store.ts";
 export type { Part, StorePathRange } from "./store.ts";
 
 // Actions & optimistic updates
