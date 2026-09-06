@@ -7,7 +7,7 @@ import { box } from "../lib/shared-box.ts";
 import { ring } from "../lib/shared-ring.ts";
 import { when } from "../lib/shared-when.ts";
 import type { UiProps } from "../lib/props.ts";
-import { controlProps } from "../lib/slot.ts";
+import { controlProps, omit } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
@@ -57,6 +57,16 @@ const input = ui(
       "@supports (color: color-mix(in lab, red, red))": {
         backgroundColor: "color-mix(in oklab, var(--input) 50%, transparent)",
       },
+    },
+    // The dense one, matching `NativeSelect`'s: a panel of numbers beside a
+    // panel of selects has to line up, and a field that is 32 px next to one
+    // that is 28 px reads as a mistake.
+    '[data-size="sm"]': {
+      height: "calc(var(--spacing) * 7)",
+      borderRadius: "min(var(--radius-md), 10px)",
+      paddingInline: "calc(var(--spacing) * 2)",
+      fontSize: "var(--text-sm)",
+      lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
     },
     "@media (width >= 48rem)": {
       "&": {
@@ -123,7 +133,11 @@ const textarea = ui(
   },
 );
 
+export type InputSize = "default" | "sm";
+
 export interface InputProps extends UiProps {
+  /** `sm` is the dense one, the height `NativeSelect`'s `sm` is. */
+  size?: InputSize;
   type?: string;
   name?: string;
   value?: string | number;
@@ -162,7 +176,13 @@ export interface InputProps extends UiProps {
  * label could not be put inside a form row that owns one too.
  */
 export function Input(props: Incoming<InputProps>) {
-  return <input {...controlProps("input", input, props)} ref={mergeRefs(props.ref?.())} />;
+  return (
+    <input
+      {...controlProps("input", input, omit(props, ["size"]))}
+      data-size={props.size?.() ?? "default"}
+      ref={mergeRefs(props.ref?.())}
+    />
+  );
 }
 
 export interface TextareaProps extends Omit<InputProps, "type" | "ref"> {

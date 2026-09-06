@@ -137,3 +137,48 @@ describe("Item", () => {
     expect(document.querySelector('[data-slot="separator"]')).toBeNull();
   });
 });
+
+describe("Item density", () => {
+  test("every size is its own size", () => {
+    const classes = (["default", "sm", "xs", "2xs"] as const).map((size) =>
+      itemVariants({ size }),
+    );
+    // `sm` was a copy of `default`, so asking for a smaller row gave the same
+    // row and the caller had to reach for a class of their own.
+    expect(new Set(classes).size).toBe(4);
+  });
+
+  test("each one is tighter than the one before it", () => {
+    const spacing = (size: "default" | "sm" | "xs" | "2xs", side: string): number => {
+      const rules = rulesFor(itemVariants({ size }));
+      const found = new RegExp(`${side}: calc\\(var\\(--spacing\\) \\* ([\\d.]+)\\)`).exec(rules);
+      return Number(found?.[1] ?? Number.NaN);
+    };
+
+    expect(spacing("default", "padding-block-start")).toBeGreaterThan(
+      spacing("sm", "padding-block-start"),
+    );
+    expect(spacing("sm", "padding-inline-start")).toBeGreaterThan(
+      spacing("xs", "padding-inline-start"),
+    );
+    expect(spacing("xs", "padding-block-start")).toBeGreaterThan(
+      spacing("2xs", "padding-block-start"),
+    );
+  });
+
+  test("the densest size takes the text and the media down with it", () => {
+    // A row is only as short as what is in it: a 12 px title and a 20 px icon
+    // are what make the list a list rather than a stack of cards.
+    expect(rulesFor(itemMediaVariants({ variant: "icon" }))).toContain(
+      "calc(var(--spacing) * 5)",
+    );
+  });
+});
+
+describe("ItemMedia density", () => {
+  test("an icon follows the row's size, as an image already did", () => {
+    const rules = rulesFor(itemMediaVariants({ variant: "icon" }));
+    expect(rules).toContain('[data-size="xs"]');
+    expect(rules).toContain("calc(var(--spacing) * 6)");
+  });
+});

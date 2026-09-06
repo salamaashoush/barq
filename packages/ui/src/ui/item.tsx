@@ -33,7 +33,12 @@ const separator = ui({
 
 export type ItemVariant = "default" | "outline" | "muted";
 
-export type ItemSize = "default" | "sm" | "xs";
+/**
+ * `2xs` is for a LIST that is a control rather than a reading surface: a layers
+ * panel, a token list, an outline. Twenty-five rows of `xs` is a scroll for
+ * something a person is meant to take in at once.
+ */
+export type ItemSize = "default" | "sm" | "xs" | "2xs";
 
 export const itemVariants = variants({
   // A marker: the media, the content and the description all read the item's
@@ -87,16 +92,27 @@ export const itemVariants = variants({
         paddingInline: "calc(var(--spacing) * 3)",
         paddingBlock: "calc(var(--spacing) * 2.5)",
       }),
+      // Between `default` and `xs`, and it has to differ from both: this was a
+      // copy of `default`, so a caller asking for a smaller row got the same
+      // row and reached for a class of their own to shrink it.
       sm: ui({
         gap: "calc(var(--spacing) * 2.5)",
         paddingInline: "calc(var(--spacing) * 3)",
-        paddingBlock: "calc(var(--spacing) * 2.5)",
+        paddingBlock: "calc(var(--spacing) * 2)",
       }),
       xs: ui({
         gap: "calc(var(--spacing) * 2)",
         paddingInline: "calc(var(--spacing) * 2.5)",
         paddingBlock: "calc(var(--spacing) * 2)",
         // A row in a dropdown is the menu's own padding, not its own.
+        '[data-slot="dropdown-menu-content"] &': {
+          padding: "0px",
+        },
+      }),
+      "2xs": ui({
+        gap: "calc(var(--spacing) * 1.5)",
+        paddingInline: "calc(var(--spacing) * 2)",
+        paddingBlock: "calc(var(--spacing) * 1)",
         '[data-slot="dropdown-menu-content"] &': {
           padding: "0px",
         },
@@ -129,11 +145,26 @@ export const itemMediaVariants = variants({
       default: ui({
         backgroundColor: "transparent",
       }),
+      // The box follows the ROW's density, the way `image` already does. It
+      // did not, so a dense list came out with 32 px icons in 24 px rows and
+      // the row was the icon's height whatever size it asked for.
       icon: ui(box.border, icon.sized, {
         width: "calc(var(--spacing) * 8)",
         height: "calc(var(--spacing) * 8)",
         borderRadius: "calc(var(--radius) * 0.6)",
         backgroundColor: "var(--muted)",
+        ':is(:where(.group\\/item)[data-size="sm"] *)': {
+          width: "calc(var(--spacing) * 7)",
+          height: "calc(var(--spacing) * 7)",
+        },
+        ':is(:where(.group\\/item)[data-size="xs"] *)': {
+          width: "calc(var(--spacing) * 6)",
+          height: "calc(var(--spacing) * 6)",
+        },
+        ':is(:where(.group\\/item)[data-size="2xs"] *)': {
+          width: "calc(var(--spacing) * 5)",
+          height: "calc(var(--spacing) * 5)",
+        },
       }),
       image: ui({
         width: "calc(var(--spacing) * 10)",
@@ -167,6 +198,9 @@ const content = ui({
   ':is(:where(.group\\/item)[data-size="xs"] *)': {
     gap: "0px",
   },
+  ':is(:where(.group\\/item)[data-size="2xs"] *)': {
+    gap: "0px",
+  },
   '& + [data-slot="item-content"]': {
     flex: "none",
   },
@@ -186,6 +220,10 @@ const title = ui(text.medium, {
   gap: "calc(var(--spacing) * 2)",
   textUnderlineOffset: "4px",
   fontSize: "var(--text-sm)",
+  ':is(:where(.group\\/item)[data-size="2xs"] *)': {
+    fontSize: "var(--text-xs)",
+    lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
+  },
   lineHeight: firstThatWorks(
     "var(--leading-snug)",
     "var(--ui-leading, var(--text-sm--line-height))",

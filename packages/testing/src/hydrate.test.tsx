@@ -7,7 +7,7 @@
 import { describe, expect, test } from "bun:test";
 
 import { html as ssrHtml } from "@barqjs/server";
-import { template } from "@barqjs/core";
+import { For, flush, signal, template } from "@barqjs/core";
 
 import { renderAndHydrate } from "./hydrate.ts";
 
@@ -80,6 +80,79 @@ describe("renderAndHydrate", () => {
       client: (_scope: unknown) => document.createElement("i"),
     });
     expect(result.html).toBe("<b>hi</b>");
+    result.unmount();
+  });
+});
+
+/**
+ * The list a server wrote, added to on the client.
+ *
+ * A hydrated row ADOPTS the server's nodes rather than creating any, so it used
+ * to report an empty extent, and a row with no extent is one the reconciler
+ * cannot insert beside: it looks for the first node of the row below, finds
+ * none the whole way down, and falls back on the list's own end. Everything
+ * added to a hydrated list therefore appeared at the bottom of it, wherever the
+ * array said it belonged. Nothing about the array was wrong, which is what made
+ * it hard to see.
+ */
+describe("a keyed list that the server wrote", () => {
+  interface Row {
+    readonly id: string;
+  }
+
+  const order = (container: HTMLElement): string =>
+    [...container.querySelectorAll("[data-k]")]
+      .map((node) => node.getAttribute("data-k"))
+      .join(",");
+
+  const rows = (...ids: string[]): Row[] => ids.map((id) => ({ id }));
+
+  test("takes a new row where the array puts it, not at the end", () => {
+    const list = signal<Row[]>(rows("a", "b", "c"));
+    const result = renderAndHydrate({
+      server: () =>
+        ssrHtml(
+          '<ul><!--[--><li data-k="a">a</li><li data-k="b">b</li><li data-k="c">c</li><!--]--></ul>',
+        ),
+      client: () => (
+        <ul>
+          <For each={() => list()} keyed={(row: Row) => row.id}>
+            {(row: () => Row) => <li data-k={row().id}>{() => row().id}</li>}
+          </For>
+        </ul>
+      ),
+    });
+
+    expect(result.recovered).toBe(false);
+    expect(order(result.container)).toBe("a,b,c");
+
+    list.set(rows("a", "g", "b", "c"));
+    flush();
+    expect(order(result.container)).toBe("a,g,b,c");
+
+    result.unmount();
+  });
+
+  test("reorders rows it adopted, which needs their extent as much", () => {
+    const list = signal<Row[]>(rows("a", "b", "c"));
+    const result = renderAndHydrate({
+      server: () =>
+        ssrHtml(
+          '<ul><!--[--><li data-k="a">a</li><li data-k="b">b</li><li data-k="c">c</li><!--]--></ul>',
+        ),
+      client: () => (
+        <ul>
+          <For each={() => list()} keyed={(row: Row) => row.id}>
+            {(row: () => Row) => <li data-k={row().id}>{() => row().id}</li>}
+          </For>
+        </ul>
+      ),
+    });
+
+    list.set(rows("c", "a", "b"));
+    flush();
+    expect(order(result.container)).toBe("c,a,b");
+
     result.unmount();
   });
 });
