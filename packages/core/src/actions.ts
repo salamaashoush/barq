@@ -32,8 +32,9 @@ import {
   readingLatest,
   retireLane,
   signal,
+  writableComputed,
 } from "./signals.ts";
-import type { Signal, SignalOptions } from "./signals.ts";
+import type { MemoOptions, Signal, SignalOptions } from "./signals.ts";
 import { type Store, unwrap, store } from "./store.ts";
 
 interface ActionContext {
@@ -199,8 +200,24 @@ function claimLayer<L extends object>(
  * coming. Retiring the lane drops the override, exposing whatever the
  * authoritative buffer has become in the meantime.
  */
-export function optimistic<T>(initialValue: T, options?: SignalOptions<T>): Signal<T> {
-  const target = signal(initialValue, options);
+export function optimistic<T>(initialValue: T, options?: SignalOptions<T>): Signal<T>;
+export function optimistic<T>(
+  compute: (prev?: T) => T,
+  options?: SignalOptions<T> & MemoOptions<T>,
+): Signal<T>;
+export function optimistic<T>(
+  first: T | ((prev?: T) => T),
+  options?: SignalOptions<T> & MemoOptions<T>,
+): Signal<T> {
+  // A FUNCTION is a derived optimistic value: the same two buffers over a memo
+  // rather than over a seed. It is the shape a list already fed by a query
+  // needs, where the authoritative value is not a constant somebody set but
+  // whatever the last fetch produced, and the action's write has to survive
+  // exactly until that fetch lands.
+  const target =
+    typeof first === "function"
+      ? writableComputed(first as (prev?: T) => T, options)
+      : signal(first, options);
   const read = (() => target()) as Signal<T>;
 
   const write = (patch: (prev: T) => T): void => {

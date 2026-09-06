@@ -291,9 +291,6 @@ export function affects(target: unknown, key?: PropertyKey): void {
 }
 
 export function createOptimistic<T>(first?: unknown, second?: unknown): Signal<T> {
-  if (typeof first === "function") {
-    return gap("createOptimistic(fn)", "barq's optimistic() takes a plain value only");
-  }
   return pair(optimistic(first as T, second as never) as never);
 }
 

@@ -2157,6 +2157,24 @@ function createComputedNode<T>(
 }
 
 /** Shared read implementation for computed/writable-derived accessors */
+/**
+ * A computed's value AS READ: its own, or the lanes' folded over it.
+ *
+ * The same two buffers a signal has, at derived arity. A write inside an action
+ * stages a patch under that action's lane; the recompute keeps landing in the
+ * authoritative buffer underneath, so retiring the lane drops the patch onto a
+ * value that is already correct and there is no revert target to stash.
+ *
+ * `latest()` reads through to the authoritative value exactly as it does for a
+ * signal, which is what makes `isPending` and not the value the thing that
+ * reports an answer is still coming.
+ */
+function overriddenValue<T>(node: ComputedNode<T>): T {
+  if (slowSignalRead === 0 || node._override === null || latestDepth > 0) return node._value;
+  notePendingLane();
+  return foldOverride(node as unknown as SignalNode<T>);
+}
+
 function computedRead<T>(node: ComputedNode<T>): T {
   const flags = node._flags;
 
@@ -2173,7 +2191,7 @@ function computedRead<T>(node: ComputedNode<T>): T {
         REACTIVE_AFFECTED)
     )
   ) {
-    return node._value;
+    return overriddenValue(node);
   }
 
   if (flags & REACTIVE_DISPOSED) {
@@ -2211,7 +2229,7 @@ function computedRead<T>(node: ComputedNode<T>): T {
     throw new NotReadyError(node);
   }
 
-  return node._value;
+  return overriddenValue(node);
 }
 
 function computedPeek<T>(node: ComputedNode<T>): T {
@@ -2227,7 +2245,7 @@ function computedPeek<T>(node: ComputedNode<T>): T {
       currentObserver = prevObserver;
     }
   }
-  return node._value;
+  return overriddenValue(node);
 }
 
 /**
@@ -2381,7 +2399,7 @@ export function linked<S, T>(
 }
 
 /** Writable derived signal: signal(fn) */
-function writableComputed<T>(fn: (prev?: T) => T, options?: MemoOptions<T>): Signal<T> {
+export function writableComputed<T>(fn: (prev?: T) => T, options?: MemoOptions<T>): Signal<T> {
   const node = createComputedNode(fn, EFFECT_PURE, options);
   // Eager, but at the next flush rather than during this call. Solid 2.0 runs
   // a memo's body where it is declared; the GOAL of that is that a value which
@@ -3692,9 +3710,13 @@ const laneNodes = new WeakMap<object, Set<SignalNode<unknown>>>();
 
 function overridableNode<T>(target: () => T): SignalNode<T> {
   const node = (target as unknown as { _node?: SignalNode<T> })._node;
-  if (node === undefined || node._fn !== undefined) {
-    throw new Error("an override needs a plain signal created by this runtime.");
+  if (node === undefined) {
+    throw new Error("an override needs a signal or computed created by this runtime.");
   }
+  // A COMPUTED qualifies. It used to be refused because a derived value has no
+  // buffer of its own to leave free, which was wrong: the recompute owns
+  // `_value` and the lane owns the patch folded over it, so the two never
+  // contend. Refusing it is what made `optimistic()` take a plain seed only.
   return node;
 }
 
