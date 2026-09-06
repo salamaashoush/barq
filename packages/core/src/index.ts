@@ -56,6 +56,10 @@ export {
   until,
   TimeoutError,
   markInMotion,
+  setSnapshotCapture,
+  markSnapshotScope,
+  releaseSnapshotScope,
+  clearSnapshots,
 } from "./signals.ts";
 export type { ExternalSource, ExternalSourceConfig, ExternalSourceFactory } from "./signals.ts";
 

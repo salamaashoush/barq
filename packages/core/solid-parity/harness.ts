@@ -40,8 +40,12 @@ import {
   renderEffect,
   resetErrorHalt,
   resolve,
+  clearSnapshots,
+  markSnapshotScope,
+  releaseSnapshotScope,
   runWithOwner,
   scope as barqScope,
+  setSnapshotCapture,
   ScopeMissingError,
   setContext as barqSetContext,
   signal,
@@ -343,18 +347,7 @@ export function createOptimisticStore(first: unknown, second?: unknown): unknown
     : optimisticStore(first as never);
 }
 
-export function setSnapshotCapture(): never {
-  return gap("setSnapshotCapture", "barq removed snapshot capture (M9)");
-}
-export function markSnapshotScope(): never {
-  return gap("markSnapshotScope", "barq removed snapshot capture (M9)");
-}
-export function releaseSnapshotScope(): never {
-  return gap("releaseSnapshotScope", "barq removed snapshot capture (M9)");
-}
-export function clearSnapshots(): never {
-  return gap("clearSnapshots", "barq removed snapshot capture (M9)");
-}
+export { setSnapshotCapture, markSnapshotScope, releaseSnapshotScope, clearSnapshots };
 
 // ---------------------------------------------------------------------------
 // Types the ported suite imports

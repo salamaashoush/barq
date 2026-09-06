@@ -40,6 +40,8 @@ const STATUS_PENDING = 1 << 7; // Async value in flight
 const STATUS_ERROR = 1 << 8; // Last computation threw
 const REACTIVE_CHILDREN_FORBIDDEN = 1 << 9; // Leaf effect: may not own primitives
 const REACTIVE_AFFECTED = 1 << 10; // Declared in motion: reads as pending until released
+const REACTIVE_IN_SNAPSHOT = 1 << 11; // Reads snapshots rather than live values
+const REACTIVE_SNAPSHOT_STALE = 1 << 12; // Served a snapshot that the live value has left behind
 
 const EFFECT_PURE = 0;
 const EFFECT_RENDER = 1;
@@ -650,6 +652,8 @@ export interface Scope {
   _range: (() => void) | null;
   /** Whether `ctx` is this scope's own record rather than an inherited one. */
   _forked: boolean;
+  /** `markSnapshotScope`: computations under this scope read snapshots. */
+  _snapshotScope?: boolean;
 }
 
 /** The pre-split name. `Owner` and `Scope` are the same object now. */
@@ -1278,8 +1282,16 @@ function openWave(): void {
  */
 function propagate(node: SignalNode<unknown>, state: number): void {
   openWave();
+  // A source with a snapshot is not moving as far as a held reader is
+  // concerned, so the write does not reach it. The mark it would have carried
+  // becomes the stale bit `releaseSnapshotScope` re-runs it on.
+  const held = slowSignalRead !== 0 && snapshots.has(node);
   for (let l = node._subs; l !== null; l = l._nextSub) {
     const sub = l._sub;
+    if (held && sub._flags & REACTIVE_IN_SNAPSHOT) {
+      sub._flags |= REACTIVE_SNAPSHOT_STALE;
+      continue;
+    }
     markNode(sub, state);
     if (sub._kind === EFFECT_PURE) scheduleDirect(sub);
   }
@@ -1742,6 +1754,7 @@ function recompute(node: ComputedNode<unknown>, create = false): void {
   node._loadingWindow = false;
 
   const first = (node._flags & REACTIVE_UNINITIALIZED) !== 0;
+  if (first) captureSnapshot(node, newValue);
   const valueChanged =
     first || wasPending || node._equals === false || !node._equals(node._value, newValue);
 
@@ -2102,6 +2115,11 @@ export function signal<T>(
     _pending: NOT_STAGED,
   };
 
+  // `ownedWrite` marks the runtime's own control channels, which are not part
+  // of the frame a snapshot holds: a boundary that catches an error during a
+  // held render has to show its fallback, not the arm the capture froze.
+  if (options?.ownedWrite !== true) captureSnapshot(node as SignalNode<unknown>, initialValue);
+
   const read = (): T => {
     // One global load decides whether any of the rare read modes are live.
     // Zero in every ordinary app, so the common path stays two branches.
@@ -2194,6 +2212,7 @@ function createComputedNode<T>(
     initialHeight = currentObserver._height + 1;
   }
 
+  const inSnapshot = snapshotCapture && inSnapshotScope(host !== null ? host._owner : currentOwner);
   const node: ComputedNode<T> = {
     _value: undefined as T,
     _subs: null,
@@ -2213,7 +2232,7 @@ function createComputedNode<T>(
     _affected: 0,
     _deps: null,
     _depsTail: null,
-    _flags: REACTIVE_DIRTY | REACTIVE_UNINITIALIZED,
+    _flags: REACTIVE_DIRTY | REACTIVE_UNINITIALIZED | (inSnapshot ? REACTIVE_IN_SNAPSHOT : 0),
     _height: initialHeight,
     _nextHeap: undefined,
     _prevHeap: null as never,
@@ -2311,6 +2330,21 @@ function computedRead<T>(node: ComputedNode<T>): T {
 
   if (flags & (REACTIVE_CHECK | REACTIVE_DIRTY)) {
     updateIfNecessary(node as ComputedNode<unknown>);
+  }
+
+  if (slowSignalRead !== 0 && currentObserver !== null) {
+    const observer = currentObserver;
+    if (observer._flags & REACTIVE_IN_SNAPSHOT) {
+      const held = snapshots.get(node as SignalNode<unknown>);
+      if (held !== undefined) {
+        if (tracking && !(observer._flags & REACTIVE_DISPOSED)) {
+          link(node as ComputedNode<unknown>, observer);
+        }
+        const value = held === NO_SNAPSHOT ? undefined : held;
+        if (!Object.is(value, node._value)) observer._flags |= REACTIVE_SNAPSHOT_STALE;
+        return value as T;
+      }
+    }
   }
 
   // Link AFTER updating so the snapshot is the settled value, but BEFORE
@@ -3742,9 +3776,22 @@ function readSignalSlow<T>(node: SignalNode<T>): T {
     return foldOverride(node);
   }
 
-  if (!tracking) return visibleValue(node);
-
   const observer = currentObserver;
+  if (observer !== null && observer._flags & REACTIVE_IN_SNAPSHOT) {
+    const held = snapshots.get(node as SignalNode<unknown>);
+    if (held !== undefined) {
+      if (tracking && !(observer._flags & REACTIVE_DISPOSED)) {
+        link(node as SignalNode<unknown>, observer);
+      }
+      const value = held === NO_SNAPSHOT ? undefined : held;
+      // The reader is answering about a frame the source has left. Release has
+      // to re-run it; a reader the write never moved has nothing to redo.
+      if (!Object.is(value, stagedValue(node))) observer._flags |= REACTIVE_SNAPSHOT_STALE;
+      return value as T;
+    }
+  }
+
+  if (!tracking) return visibleValue(node);
   if (observer === null || observer._flags & REACTIVE_DISPOSED) return visibleValue(node);
   link(node as SignalNode<unknown>, observer);
 
@@ -3793,6 +3840,109 @@ export function markInMotion(target: () => unknown): () => void {
     propagate(node, REACTIVE_DIRTY);
     schedule();
   };
+}
+
+// ============================================================================
+// Snapshot capture
+// ============================================================================
+
+/**
+ * A transitional read mode: while a scope is MARKED, the computations under it
+ * keep answering from the values their sources held when capture opened, and
+ * everything else carries on against the live graph. It is how one subtree is
+ * held at an old frame while the rest of the page moves.
+ *
+ * Removed at M9 for costing a `_snapshot` slot on every signal node, which is a
+ * hard budget: every field is present on every instance to keep the shape
+ * monomorphic. It is back on the pay-for-use terms `slowSignalRead` sets — the
+ * values live in a WeakMap keyed by node, an app that never calls
+ * `setSnapshotCapture` allocates nothing, and the ordinary read is unchanged.
+ */
+let snapshotCapture = false;
+
+/** `undefined` is a value a signal may hold, so absence needs its own token. */
+const NO_SNAPSHOT: unique symbol = Symbol("barq.no-snapshot");
+
+const snapshots = new WeakMap<SignalNode<unknown>, unknown>();
+
+/** What `clearSnapshots` has to undo. Null while nothing has been captured. */
+let snapshotSources: SignalNode<unknown>[] | null = null;
+
+/**
+ * Record what `node` holds right now, if capture is open. Called at creation,
+ * which is what "the values as they stood when capture opened" means: a node
+ * created before it has no snapshot and its writes are ordinary.
+ */
+function captureSnapshot(node: SignalNode<unknown>, value: unknown): void {
+  if (!snapshotCapture || snapshots.has(node)) return;
+  snapshots.set(node, value === undefined ? NO_SNAPSHOT : value);
+  (snapshotSources ??= []).push(node);
+  slowSignalRead++;
+}
+
+/** Whether `scope` or anything above it is a marked snapshot scope. */
+function inSnapshotScope(scope: Scope | null): boolean {
+  for (let s = scope; s !== null; s = s.parent) {
+    if (s._snapshotScope === true) return true;
+  }
+  return false;
+}
+
+/**
+ * Open or close capture. While open, every signal and computed CREATED records
+ * the value it starts with.
+ */
+export function setSnapshotCapture(active: boolean): void {
+  snapshotCapture = active;
+}
+
+/** Hold the computations under `owner` at the captured frame. */
+export function markSnapshotScope(owner: Owner): void {
+  owner._snapshotScope = true;
+}
+
+/**
+ * Let them go. Anything that served a snapshot the live value had already left
+ * behind is re-dirtied, because its cache is an answer about a frame that no
+ * longer exists; anything that read the same value either way is left alone.
+ */
+export function releaseSnapshotScope(owner: Owner): void {
+  owner._snapshotScope = false;
+  releaseSnapshotSubtree(owner);
+  schedule();
+}
+
+function releaseSnapshotSubtree(scope: Scope): void {
+  const kids = scope.kids;
+  if (kids === null) return;
+  for (let i = 0; i < kids.length; i++) {
+    const kid = kids[i];
+    if ("kids" in kid) {
+      // A nested mark is its own hold and outlives its parent's release.
+      if (kid._snapshotScope !== true) releaseSnapshotSubtree(kid);
+      continue;
+    }
+    const node = kid;
+    node._flags &= ~REACTIVE_IN_SNAPSHOT;
+    if (node._flags & REACTIVE_SNAPSHOT_STALE) {
+      node._flags &= ~REACTIVE_SNAPSHOT_STALE;
+      node._flags |= REACTIVE_DIRTY;
+      insertIntoHeap(node, heapFor(node));
+    }
+    if (node._scope !== null) releaseSnapshotSubtree(node._scope);
+  }
+}
+
+/** Drop every captured value and close capture. */
+export function clearSnapshots(): void {
+  const sources = snapshotSources;
+  if (sources !== null) {
+    for (let i = 0; i < sources.length; i++) {
+      if (snapshots.delete(sources[i])) slowSignalRead--;
+    }
+    snapshotSources = null;
+  }
+  snapshotCapture = false;
 }
 
 // ============================================================================
