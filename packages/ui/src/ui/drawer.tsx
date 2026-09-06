@@ -268,7 +268,6 @@ function DrawerProvider(
   const value: DrawerValue = { direction: () => props.direction?.() ?? "bottom" };
   if (owner === null) return <>{props.children}</>;
   return provide(
-    owner,
     DrawerContext,
     () => value,
     () => props.children,

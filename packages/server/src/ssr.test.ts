@@ -9,7 +9,6 @@ import {
   props,
   render,
   type Cell,
-  type Scope,
 } from "@barqjs/core";
 import { describe, expect, test } from "bun:test";
 
@@ -46,11 +45,11 @@ import {
  * failure, and one that under-escapes is an XSS hole.
  */
 function oracleText(value: unknown): string {
-  return renderToString(() => element(null, "p", { children: value })).replace(/^<p>|<\/p>$/g, "");
+  return renderToString(() => element("p", { children: value })).replace(/^<p>|<\/p>$/g, "");
 }
 
 function oracleAttr(value: unknown): string {
-  const markup = renderToString(() => element(null, "p", { title: value }));
+  const markup = renderToString(() => element("p", { title: value }));
   const match = /^<p title="([\s\S]*)"><\/p>$/.exec(markup);
   return match ? match[1] : markup;
 }
@@ -202,7 +201,7 @@ describe("escaping", () => {
   });
 
   test("a real DOM node from a fallback module reaches the wire as markup", () => {
-    const node = element(null, "b", { class: "c", children: "hi" }) as Node;
+    const node = element("b", { class: "c", children: "hi" }) as Node;
     expect(esc(node)).toBe('<b class="c">hi</b>');
     // …and the node is not consumed: it is cloned, not moved.
     expect((node as Element).textContent).toBe("hi");
@@ -314,7 +313,7 @@ describe("attributes", () => {
       // direct `attr` assertion above is the one that can be trusted, the same
       // way the attribute-name check below trusts only what happy-dom does
       // implement.
-      const live = element(null, tag, { [name]: value }) as unknown as Record<string, unknown>;
+      const live = element(tag, { [name]: value }) as unknown as Record<string, unknown>;
       const host = globalThis.document.createElement("div");
       host.innerHTML = `<${tag}${attr(name, value, tag)}></${tag}>`;
       const parsed = host.firstElementChild as unknown as Record<string, unknown>;
@@ -399,7 +398,7 @@ describe("attributes", () => {
         undefined,
         0,
       ] as unknown[]) {
-        const oracle = renderToString(() => element(null, "div", { [name]: value }));
+        const oracle = renderToString(() => element("div", { [name]: value }));
         const string = `<div${attr(name, value, "div")}></div>`;
         if (oracle !== string) {
           wrong.push(`${name}=${JSON.stringify(value)}: DOM ${oracle} vs string ${string}`);
@@ -410,9 +409,9 @@ describe("attributes", () => {
 
     // Both answers are really reached, so neither clause is vacuous — and the
     // empty one is the one that regressed.
-    expect(renderToString(() => element(null, "div", { class: "" }))).toBe('<div class=""></div>');
-    expect(renderToString(() => element(null, "div", { class: null }))).toBe("<div></div>");
-    expect(renderToString(() => element(null, "div", { classList: {} }))).toBe("<div></div>");
+    expect(renderToString(() => element("div", { class: "" }))).toBe('<div class=""></div>');
+    expect(renderToString(() => element("div", { class: null }))).toBe("<div></div>");
+    expect(renderToString(() => element("div", { classList: {} }))).toBe("<div></div>");
   });
 
   test("spreadAttrs writes the object in its own key order", () => {
@@ -435,31 +434,31 @@ describe("attributes", () => {
 });
 
 describe("the six string-inlinable flow components", () => {
-  const row = (_s: unknown, item: { n: string }, index: () => number) =>
+  const row = (item: { n: string }, index: () => number) =>
     html(`<li>${index()}: ${esc(item.n)}</li>`);
 
   test("ssrFor reproduces For's rows, keys and fallback", () => {
     const rows = [{ n: "a" }, { n: "<b>" }];
-    expect(ssrFor(null, { each: rows, children: row }).toString()).toBe(
+    expect(ssrFor({ each: rows, children: row }).toString()).toBe(
       "<li>0: a</li><li>1: &lt;b&gt;</li>",
     );
-    expect(ssrFor(null, { each: () => rows, children: row }).toString()).toBe(
+    expect(ssrFor({ each: () => rows, children: row }).toString()).toBe(
       "<li>0: a</li><li>1: &lt;b&gt;</li>",
     );
-    expect(ssrFor(null, { each: [], fallback: "none", children: row }).toString()).toBe("none");
-    expect(ssrFor(null, { each: null, children: row }).toString()).toBe("");
+    expect(ssrFor({ each: [], fallback: "none", children: row }).toString()).toBe("none");
+    expect(ssrFor({ each: null, children: row }).toString()).toBe("");
     // A key FUNCTION hands the row its item as an ACCESSOR.
-    const boxed = ssrFor(null, {
+    const boxed = ssrFor({
       each: rows,
       keyed: cell((item: { n: string }) => item.n),
-      children: (_s: unknown, item: () => { n: string }) => html(`<li>${esc(item().n)}</li>`),
+      children: (item: () => { n: string }) => html(`<li>${esc(item().n)}</li>`),
     });
     expect(boxed.toString()).toBe("<li>a</li><li>&lt;b&gt;</li>");
     // `keyed: false` is the positional mode, whose row item is an accessor.
-    const unkeyed = ssrFor(null, {
+    const unkeyed = ssrFor({
       each: rows,
       keyed: false,
-      children: (_s: unknown, item: () => { n: string }) => html(`<li>${esc(item().n)}</li>`),
+      children: (item: () => { n: string }) => html(`<li>${esc(item().n)}</li>`),
     });
     expect(unkeyed.toString()).toBe("<li>a</li><li>&lt;b&gt;</li>");
   });
@@ -484,14 +483,14 @@ describe("the six string-inlinable flow components", () => {
       { each: rows },
       { keyed },
       {
-        children: (_s: unknown, item: () => { n: string }) => html(`<li>${esc(item().n)}</li>`),
+        children: (item: () => { n: string }) => html(`<li>${esc(item().n)}</li>`),
       },
     ]) as never;
 
     // A key function selects the BOXED row shape, where `children` takes its
     // item as an accessor. Getting that wrong renders `[object Object]` or
     // throws, so the markup is the observation.
-    expect(ssrFor(null, carrier).toString()).toBe("<li>a</li><li>b</li>");
+    expect(ssrFor(carrier).toString()).toBe("<li>a</li><li>b</li>");
     expect(seen, "the key function was never invoked as if it were a Cell").toEqual([]);
 
     // The detector. Reading the same carrier the way a Cell is read — call it,
@@ -502,73 +501,69 @@ describe("the six string-inlinable flow components", () => {
 
   test("ssrFor keyed={false} hands the item as an accessor and the index as a number", () => {
     const seen: number[] = [];
-    const out = ssrFor(null, {
+    const out = ssrFor({
       each: ["a", "b"],
       keyed: false,
-      children: (_s: unknown, item: () => string, index: number) => {
+      children: (item: () => string, index: number) => {
         seen.push(index);
         return html(`<i>${esc(item())}</i>`);
       },
     });
     expect(out.toString()).toBe("<i>a</i><i>b</i>");
     expect(seen).toEqual([0, 1]);
-    expect(
-      ssrFor(null, { each: [], keyed: false, fallback: "empty", children: row }).toString(),
-    ).toBe("empty");
+    expect(ssrFor({ each: [], keyed: false, fallback: "empty", children: row }).toString()).toBe(
+      "empty",
+    );
   });
 
   test("ssrRepeat counts from `from` and falls back at zero", () => {
-    expect(ssrRepeat(null, { count: 3, children: (_s, i) => html(`<i>${i}</i>`) }).toString()).toBe(
+    expect(ssrRepeat({ count: 3, children: (i: number) => html(`<i>${i}</i>`) }).toString()).toBe(
       "<i>0</i><i>1</i><i>2</i>",
     );
     expect(
-      ssrRepeat(null, {
+      ssrRepeat({
         count: () => 2,
         from: 5,
-        children: (_s, i) => html(`<i>${i}</i>`),
+        children: (i: number) => html(`<i>${i}</i>`),
       }).toString(),
     ).toBe("<i>5</i><i>6</i>");
-    expect(ssrRepeat(null, { count: 0, fallback: "none", children: () => "" }).toString()).toBe(
-      "none",
-    );
-    expect(ssrRepeat(null, { count: -1, children: () => "x" }).toString()).toBe("");
+    expect(ssrRepeat({ count: 0, fallback: "none", children: () => "" }).toString()).toBe("none");
+    expect(ssrRepeat({ count: -1, children: () => "x" }).toString()).toBe("");
   });
 
   test("ssrShow branches, and passes the value the way Show does", () => {
-    expect(ssrShow(null, { when: true, children: html("<b>y</b>") }).toString()).toBe("<b>y</b>");
-    expect(ssrShow(null, { when: 0, fallback: "no", children: "yes" }).toString()).toBe("no");
+    expect(ssrShow({ when: true, children: html("<b>y</b>") }).toString()).toBe("<b>y</b>");
+    expect(ssrShow({ when: 0, fallback: "no", children: "yes" }).toString()).toBe("no");
     expect(
-      ssrShow(null, {
+      ssrShow({
         when: () => "v",
-        children: (_s: Scope | null, v: unknown) => esc(v),
+        children: (v: unknown) => esc(v),
       }).toString(),
     ).toBe("v");
     // Non-keyed narrows to an accessor.
     expect(
-      ssrShow(null, {
+      ssrShow({
         when: "v",
         keyed: false,
-        children: (_s: Scope | null, v: unknown) => esc((v as () => unknown)()),
+        children: (v: unknown) => esc((v as () => unknown)()),
       }).toString(),
     ).toBe("v");
     // A body that is user data is still escaped.
-    expect(ssrShow(null, { when: true, children: "<b>" }).toString()).toBe("&lt;b&gt;");
+    expect(ssrShow({ when: true, children: "<b>" }).toString()).toBe("&lt;b&gt;");
   });
 
   test("ssrSwitch picks the first truthy Match and falls back", () => {
     const children = [
-      ssrMatch(null, { when: false, children: "a" }),
-      ssrMatch(null, { when: () => "hit", children: (_s: Scope | null, v: unknown) => esc(v) }),
-      ssrMatch(null, { when: true, children: "c" }),
+      ssrMatch({ when: false, children: "a" }),
+      ssrMatch({ when: () => "hit", children: (v: unknown) => esc(v) }),
+      ssrMatch({ when: true, children: "c" }),
     ];
-    expect(ssrSwitch(null, { children }).toString()).toBe("hit");
-    expect(ssrSwitch(null, { children: [], fallback: "none" }).toString()).toBe("none");
-    expect(
-      ssrSwitch(null, { children: [ssrMatch(null, { when: 0, children: "a" })] }).toString(),
-    ).toBe("");
+    expect(ssrSwitch({ children }).toString()).toBe("hit");
+    expect(ssrSwitch({ children: [], fallback: "none" }).toString()).toBe("none");
+    expect(ssrSwitch({ children: [ssrMatch({ when: 0, children: "a" })] }).toString()).toBe("");
     // Identity, exactly as the client component is.
     const identity = { when: 1, children: "x" };
-    expect(ssrMatch(null, identity)).toBe(identity);
+    expect(ssrMatch(identity)).toBe(identity);
   });
 
   /**
@@ -584,51 +579,51 @@ describe("the six string-inlinable flow components", () => {
     const rows = [{ n: "a" }, { n: "<b>" }];
     const cases: Array<[string, () => unknown]> = [
       [
-        ssrFor(null, { each: rows, children: row }).toString(),
+        ssrFor({ each: rows, children: row }).toString(),
         () =>
-          For(null, {
+          For({
             each: () => rows,
-            children: (_s: Scope | null, item: { n: string }, index: Cell<number>) =>
-              element(null, "li", { children: `${index()}: ${item.n}` }),
+            children: (item: { n: string }, index: Cell<number>) =>
+              element("li", { children: `${index()}: ${item.n}` }),
           }),
       ],
       [
-        ssrFor(null, {
+        ssrFor({
           each: rows,
           keyed: false,
-          children: (_s: unknown, item: () => { n: string }, index: number) =>
+          children: (item: () => { n: string }, index: number) =>
             html(`<li>${index}: ${esc(item().n)}</li>`),
         }).toString(),
         () =>
-          For(null, {
+          For({
             each: () => rows,
             keyed: false,
-            children: (_s: Scope | null, item: Cell<{ n: string }>, index: number) =>
-              element(null, "li", { children: `${index}: ${item().n}` }),
+            children: (item: Cell<{ n: string }>, index: number) =>
+              element("li", { children: `${index}: ${item().n}` }),
           }),
       ],
       [
-        ssrRepeat(null, { count: 2, children: (_s, i) => html(`<li>${i}</li>`) }).toString(),
+        ssrRepeat({ count: 2, children: (i: number) => html(`<li>${i}</li>`) }).toString(),
         () =>
-          Repeat(null, {
+          Repeat({
             count: 2,
-            children: (_s: Scope | null, i: number) => element(null, "li", { children: String(i) }),
+            children: (i: number) => element("li", { children: String(i) }),
           }),
       ],
       [
-        ssrShow(null, { when: true, children: html("<i>on</i>") }).toString(),
-        () => Show(null, { when: () => true, children: element(null, "i", { children: "on" }) }),
+        ssrShow({ when: true, children: html("<i>on</i>") }).toString(),
+        () => Show({ when: () => true, children: element("i", { children: "on" }) }),
       ],
       [
-        ssrSwitch(null, {
-          children: [ssrMatch(null, { when: true, children: html("<i>m</i>") })],
+        ssrSwitch({
+          children: [ssrMatch({ when: true, children: html("<i>m</i>") })],
         }).toString(),
         () =>
-          Switch(null, {
+          Switch({
             children: [
-              Match(null, {
+              Match({
                 when: () => true,
-                children: () => element(null, "i", { children: "m" }),
+                children: () => element("i", { children: "m" }),
               }),
             ],
           }),
@@ -651,14 +646,14 @@ describe("the two SSR strategies compose", () => {
     // The direction the brand exists for: a fallback module builds real nodes
     // and one of its children is markup a string-compiled module produced.
     const container = document.createElement("div");
-    render(element(null, "section", { children: html('<b class="x">bold</b>') }), container);
+    render(element("section", { children: html('<b class="x">bold</b>') }), container);
     expect(container.innerHTML).toBe('<section><b class="x">bold</b></section>');
     expect(container.querySelector("b")?.className).toBe("x");
   });
 
   test("and it is not inserted as escaped text", () => {
     const container = document.createElement("div");
-    render(element(null, "section", { children: "<b>bold</b>" }), container);
+    render(element("section", { children: "<b>bold</b>" }), container);
     expect(container.innerHTML).toBe("<section>&lt;b&gt;bold&lt;/b&gt;</section>");
   });
 });
@@ -687,7 +682,7 @@ describe("the brand cannot be forged", () => {
     // Before the brand was a registered symbol this rendered a live
     // `<img onerror>`; an unbranded object is now what it always was —
     // a value with no node meaning, stringified into a text node.
-    const markup = renderToString(() => element(null, "div", { children: forged }));
+    const markup = renderToString(() => element("div", { children: forged }));
     expect(markup).not.toContain("<img");
     expect(markup).toBe("<div>[object Object]</div>");
   });
@@ -736,10 +731,10 @@ describe("an attribute NAME is data only in a spread, and is refused there", () 
    * for exactly the reason `spreadAttrs` refuses a key.
    */
   test("a dynamic TAG is a name too, and is refused on the same production", () => {
-    expect(() => ssrDynamic(null, { component: "div onload=alert(1)", children: "x" })).toThrow(
+    expect(() => ssrDynamic({ component: "div onload=alert(1)", children: "x" })).toThrow(
       /not a valid tag name/,
     );
-    expect(() => ssrDynamic(null, { component: "a><img src=x>", children: "x" })).toThrow();
+    expect(() => ssrDynamic({ component: "a><img src=x>", children: "x" })).toThrow();
     // The DOM half of this parity is NOT asserted here, and that is deliberate:
     // `document.createElement` throws `InvalidCharacterError` on a name outside
     // the `Name` production in every real engine, and happy-dom implements no
@@ -750,10 +745,10 @@ describe("an attribute NAME is data only in a spread, and is refused there", () 
 
     // And a legitimate one still writes, through the same attribute policy every
     // other hole on this backend goes through.
-    expect(ssrDynamic(null, { component: "section", class: "c", children: "<b>" }).toString()).toBe(
+    expect(ssrDynamic({ component: "section", class: "c", children: "<b>" }).toString()).toBe(
       '<section class="c">&lt;b&gt;</section>',
     );
-    expect(ssrDynamic(null, { component: "br" }).toString()).toBe("<br>");
+    expect(ssrDynamic({ component: "br" }).toString()).toBe("<br>");
   });
 
   /**
@@ -769,16 +764,16 @@ describe("an attribute NAME is data only in a spread, and is refused there", () 
    */
   test("a dynamic script is raw text, and agrees with the DOM backend", () => {
     expect(
-      ssrDynamic(null, { component: "script", children: 'if (a & b) { x = "<y>"; }' }).toString(),
+      ssrDynamic({ component: "script", children: 'if (a & b) { x = "<y>"; }' }).toString(),
     ).toBe('<script>if (a & b) { x = "<y>"; }</script>');
     expect(
-      ssrDynamic(null, { component: "style", children: "a::after { content: '<' }" }).toString(),
+      ssrDynamic({ component: "style", children: "a::after { content: '<' }" }).toString(),
     ).toBe("<style>a::after { content: '<' }</style>");
 
     // The escape that DOES apply is the breakout, and it survives: `</script>`
     // has no entity form, so the close tag is broken instead.
     expect(
-      ssrDynamic(null, {
+      ssrDynamic({
         component: "script",
         children: "x; </script><img src=x onerror=alert(1)>",
       }).toString(),
@@ -786,7 +781,7 @@ describe("an attribute NAME is data only in a spread, and is refused there", () 
 
     // `textarea` and `title` are ESCAPABLE raw text — entities are decoded
     // there, so they keep the ordinary text escaper.
-    expect(ssrDynamic(null, { component: "title", children: "a & b" }).toString()).toBe(
+    expect(ssrDynamic({ component: "title", children: "a & b" }).toString()).toBe(
       "<title>a &amp; b</title>",
     );
   });

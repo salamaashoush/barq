@@ -307,10 +307,7 @@ export function InputOTP(props: Incoming<InputOTPProps>) {
  * context instead of under it and every slot fails to find it.
  */
 function Provider(props: Incoming<{ value: OtpValue; children?: Child }>) {
-  const owner = getOwner();
-  if (owner === null) return <>{props.children}</>;
   return provide(
-    owner,
     OtpContext,
     () => props.value(),
     () => props.children,

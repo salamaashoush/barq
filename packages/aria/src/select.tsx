@@ -679,7 +679,7 @@ export function Select<T>(props: Incoming<SelectComponentProps<T>>) {
     state,
   );
 
-  const renderOption = props.children as unknown as (scope: unknown, item: T) => Child;
+  const renderOption = props.children as unknown as (item: T) => Child;
 
   const owner = getOwner();
   if (owner !== null) {
@@ -724,7 +724,7 @@ export function Select<T>(props: Incoming<SelectComponentProps<T>>) {
           listSlot={props.listSlot?.()}
           state={state}
           listRef={listRef}
-          render={renderOption as unknown as (scope: unknown, item: unknown) => Child}
+          render={renderOption as unknown as (item: unknown) => Child}
         />
       </Popover>
       <span {...descriptionProps}>{props.description}</span>
@@ -747,7 +747,7 @@ interface SelectListProps {
   listSlot?: string;
   state: SelectState<unknown>;
   listRef: ReturnType<typeof makeRef<HTMLUListElement>>;
-  render: (scope: unknown, item: unknown) => Child;
+  render: (item: unknown) => Child;
 }
 
 /**
@@ -795,7 +795,7 @@ function SelectList(props: Incoming<SelectListProps>) {
         <For each={() => [...state.collection()]}>
           {(node: Node<unknown>) => {
             provideItemNode(node);
-            return render(getOwner(), node.value);
+            return render(node.value);
           }}
         </For>
       </ul>

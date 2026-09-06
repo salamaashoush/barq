@@ -142,10 +142,7 @@ export function HoverCard(props: Incoming<HoverCardProps>) {
     leave: () => later(false, props.closeDelay?.() ?? 300),
   };
 
-  const owner = getOwner();
-  if (owner === null) return <>{props.children}</>;
   return provide(
-    owner,
     HoverCardContext,
     () => value,
     () => props.children as unknown,
@@ -159,10 +156,7 @@ export function HoverCardTrigger(props: Incoming<{ children?: Child }>) {
     onHoverEnd: () => value.leave(),
   });
 
-  const owner = getOwner();
-  if (owner === null) return <>{props.children}</>;
   return provide(
-    owner,
     HoverCardContext,
     () => value,
     () => {

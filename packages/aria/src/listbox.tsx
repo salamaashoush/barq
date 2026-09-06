@@ -240,7 +240,7 @@ export interface ListBoxContextValue {
 const ListBoxContext = context<ListBoxContextValue | null>(null);
 const ItemNodeContext = context<Node<unknown> | null>(null);
 
-type ItemRender = (scope: unknown, item: unknown) => Child;
+type ItemRender = (item: unknown) => Child;
 
 /**
  * The list's own item callback, so a SECTION can render its children with it.
@@ -265,10 +265,7 @@ const ItemRenderContext = context<ItemRender | null>(null);
  * binding was installed on, so every `<Option>` would look past it.
  */
 export function ListBoxProvider(props: Incoming<{ value: ListBoxContextValue; children?: Child }>) {
-  const owner = getOwner();
-  if (owner === null) return <>{props.children}</>;
   return provide(
-    owner,
     ListBoxContext,
     () => props.value(),
     () => props.children as unknown,
@@ -361,7 +358,7 @@ export function Section(props: Incoming<SectionComponentProps>) {
         <For each={() => [...node.childNodes]}>
           {(child: Node<unknown>) => {
             provideItemNode(child);
-            return render(getOwner(), child.value);
+            return render(child.value);
           }}
         </For>
       </ul>
@@ -458,7 +455,7 @@ export function ListBox<T>(props: Incoming<ListBoxComponentProps<T>>) {
     },
   );
 
-  const render = props.children as unknown as (scope: unknown, item: T) => Child;
+  const render = props.children as unknown as (item: T) => Child;
 
   /** The whole collection, or the window of it the virtualiser says is on screen. */
   const rows = (): Node<T>[] => {
@@ -470,7 +467,7 @@ export function ListBox<T>(props: Incoming<ListBoxComponentProps<T>>) {
       .filter((node: Node<T> | null): node is Node<T> => node !== null);
   };
 
-  provideItemRender(render as unknown as (scope: unknown, item: unknown) => Child);
+  provideItemRender(render as unknown as (item: unknown) => Child);
 
   return (
     <>
@@ -479,7 +476,7 @@ export function ListBox<T>(props: Incoming<ListBoxComponentProps<T>>) {
         <For each={rows}>
           {(node: Node<T>) => {
             provideItemNode(node);
-            return render(getOwner(), node.value as T);
+            return render(node.value as T);
           }}
         </For>
       </ul>

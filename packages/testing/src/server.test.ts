@@ -184,11 +184,9 @@ describe("ssrPage renders a whole document", () => {
   const table: AnyRouteDefinition[] = [
     {
       path: "/",
-      // `(scope, props)`, because this shell is hand-written: the compiler
-      // prepends the scope for a component it lowers, and `children` is a BLOCK
-      // rather than a value. Authored `(props)`, `children` is the scope and the
-      // body renders empty with no error at all.
-      shellComponent: (_scope: unknown, props: { children: () => unknown }) =>
+      // `children` is a BLOCK rather than a value, so the shell CALLS it and the
+      // chain is constructed inside the document rather than before it.
+      shellComponent: (props: { children: () => unknown }) =>
         ssrHtml(`<html><head><title>t</title></head><body>${esc(props.children())}</body></html>`),
       component: () => ssrHtml("<main>home</main>"),
     },
@@ -198,7 +196,7 @@ describe("ssrPage renders a whole document", () => {
         await Promise.resolve();
         return "Ada";
       },
-      component: (_s: unknown, props: { data: () => unknown }) =>
+      component: (props: { data: () => unknown }) =>
         ssrHtml(`<main>hello ${esc(String(props.data()))}</main>`),
     },
   ] as never;

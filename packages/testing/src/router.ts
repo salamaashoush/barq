@@ -82,20 +82,17 @@ export async function renderRoute(options: RenderRouteOptions): Promise<RouteRen
   await state.start();
   await preloadMatched(state.chain());
 
-  // `(scope, props)`, which is the real calling convention behind the
-  // props-first type — the same cast `router.test.ts`'s `mountState` uses.
-  const provider = RouterProvider as never as (s: Scope | null, p: unknown) => unknown;
-  const result = render(
-    ((scope: Scope | null) => provider(scope, { state: () => state })) as never,
-    {
-      container: options.container,
-      // Through `render`'s own registry rather than by wrapping `unmount`, so
-      // `cleanup()` reaches it too. A router left running keeps its history
-      // subscription and its loader cache; nothing fails, it just leaks for the
-      // rest of the process.
-      onUnmount: () => state.dispose(),
-    },
-  );
+  // `(props)`, which is the real calling convention behind the props-first
+  // type — the same cast `router.test.ts`'s `mountState` uses.
+  const provider = RouterProvider as never as (p: unknown) => unknown;
+  const result = render((() => provider({ state: () => state })) as never, {
+    container: options.container,
+    // Through `render`'s own registry rather than by wrapping `unmount`, so
+    // `cleanup()` reaches it too. A router left running keeps its history
+    // subscription and its loader cache; nothing fails, it just leaks for the
+    // rest of the process.
+    onUnmount: () => state.dispose(),
+  });
   flush();
 
   return {

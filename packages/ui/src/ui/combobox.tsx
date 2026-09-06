@@ -356,15 +356,14 @@ export function Combobox<T>(props: Incoming<ComboboxProps<T>>) {
    * with none. Reading only the first crashed the moment anyone grouped their
    * options, because a group's callback has to return an element.
    */
-  const render = ((): ((scope: unknown, item: T) => Child) | undefined => {
+  const render = ((): ((item: T) => Child) | undefined => {
     const given = props.children as unknown;
     if (given === undefined || given === null) return undefined;
-    if (isBlock(given)) return given as (scope: unknown, item: T) => Child;
-    return (given as () => (scope: unknown, item: T) => Child)();
+    if (isBlock(given)) return given as (item: T) => Child;
+    return (given as () => (item: T) => Child)();
   })();
 
-  const label = (entry: T): Child =>
-    render === undefined ? textOf(entry) : render(getOwner(), entry);
+  const label = (entry: T): Child => (render === undefined ? textOf(entry) : render(entry));
 
   return (
     <Popover isOpen={open()} onOpenChange={(next: boolean) => open.set(next)}>

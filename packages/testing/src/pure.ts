@@ -72,9 +72,7 @@ export function render(ui: Ui, options: RenderOptions = {}): RenderResult {
   // `() => wrapper({ children: ui() })` evaluated `ui()` as an ARGUMENT, so
   // the subject was constructed before the wrapper existed and its own JSDoc
   // example (a ThemeProvider) could not work.
-  const wrappedUi: Ui = wrapper
-    ? (s: Scope | null): JSXElement => wrapper(s, { children: ui })
-    : ui;
+  const wrappedUi: Ui = wrapper ? (): JSXElement => wrapper({ children: ui }) : ui;
 
   // Render the component
   const dispose = barqRender(wrappedUi, container);
@@ -128,9 +126,7 @@ export function render(ui: Ui, options: RenderOptions = {}): RenderResult {
     rerender: (newUi: Ui) => {
       current();
       container.innerHTML = "";
-      const newWrappedUi: Ui = wrapper
-        ? (s: Scope | null): JSXElement => wrapper(s, { children: newUi })
-        : newUi;
+      const newWrappedUi: Ui = wrapper ? (): JSXElement => wrapper({ children: newUi }) : newUi;
       // The SAME entry keeps pointing at the live dispose, rather than a second
       // entry being added beside the first.
       current = barqRender(newWrappedUi, container);
@@ -173,7 +169,7 @@ export function renderHook<TResult, TProps = unknown>(
   };
 
   const wrappedComponent: Ui = wrapper
-    ? (s: Scope | null): JSXElement => wrapper(s, { children: renderHookComponent })
+    ? (): JSXElement => wrapper({ children: renderHookComponent })
     : renderHookComponent;
 
   dispose = barqRender(wrappedComponent, container);

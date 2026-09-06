@@ -300,11 +300,7 @@ export function Disclosure(props: Incoming<DisclosureComponentProps>) {
   );
 
   const value: DisclosureContextValue = { state, buttonProps, panelProps, panelRef };
-  const owner = getOwner();
-  if (owner === null) return <>{props.children}</>;
-
   return provide(
-    owner,
     DisclosureContext,
     () => value,
     () => props.children as unknown,
@@ -458,7 +454,7 @@ export function DisclosureGroup<T>(props: Incoming<DisclosureGroupComponentProps
     },
   );
 
-  const render = props.children as unknown as (scope: unknown, item: T) => Child;
+  const render = props.children as unknown as (item: T) => Child;
 
   return (
     <div {...elementProps} ref={mergeRefs(props.ref?.())}>
@@ -468,7 +464,7 @@ export function DisclosureGroup<T>(props: Incoming<DisclosureGroupComponentProps
           if (rowOwner !== null) {
             install(rowOwner, DisclosureNodeContext, () => node as Node<unknown>);
           }
-          return render(rowOwner, node.value as T);
+          return render(node.value as T);
         }}
       </For>
     </div>
@@ -513,11 +509,7 @@ export function DisclosureGroupItem(props: Incoming<DisclosureGroupItemComponent
   const { buttonProps, panelProps } = disclosure({ panelRef, isDisabled }, state);
 
   const value: DisclosureContextValue = { state, buttonProps, panelProps, panelRef };
-  const owner = getOwner();
-  if (owner === null) return <>{props.children}</>;
-
   return provide(
-    owner,
     DisclosureContext,
     () => value,
     () => props.children as unknown,

@@ -7,7 +7,7 @@ import { cleanup, fireEvent, render, renderHook, screen, waitFor } from "./index
 // registers the native transform for every `.tsx` here, so a prop really is a
 // Cell and a child really is a Block. Run on bun's own JSX transform this file
 // gets plain values instead, and measures a path no consumer takes.
-function Counter(_s: Scope | null, props: { initial?: number }) {
+function Counter(props: { initial?: number }) {
   const count = signal(props.initial ?? 0);
   return (
     <div>
@@ -23,12 +23,12 @@ function Counter(_s: Scope | null, props: { initial?: number }) {
 }
 
 // Wrapper component for testing
-function ThemeWrapper(_s: Scope | null, props: { children: Ui }) {
+function ThemeWrapper(props: { children: Ui }) {
   return <div data-testid="theme-wrapper">{props.children}</div>;
 }
 
 // Component with async behavior
-function AsyncComponent(_s: Scope | null) {
+function AsyncComponent() {
   const data = signal<string | null>(null);
 
   const loadData = () => {
@@ -93,7 +93,7 @@ describe("render", () => {
 
 describe("reactive updates", () => {
   test("updates are synchronous", () => {
-    render((s) => Counter(s, {}));
+    render(() => Counter({}));
 
     expect(screen.getByTestId("count").textContent).toBe("Count: 0");
 
@@ -115,7 +115,7 @@ describe("reactive updates", () => {
   });
 
   test("renders with initial props", () => {
-    render((s) => Counter(s, { initial: 10 }));
+    render(() => Counter({ initial: 10 }));
     expect(screen.getByTestId("count").textContent).toBe("Count: 10");
   });
 });
@@ -159,7 +159,7 @@ describe("renderHook", () => {
 
 describe("waitFor", () => {
   test("waits for async updates", async () => {
-    render((s) => AsyncComponent(s));
+    render(() => AsyncComponent());
 
     expect(screen.getByTestId("status").textContent).toBe("idle");
 

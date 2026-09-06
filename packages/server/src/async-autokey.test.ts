@@ -262,7 +262,6 @@ describe("createAsync auto-keying", () => {
       return boundary(
         null,
         null,
-        null,
         "loading",
         () => document.createTextNode("loading..."),
         () => document.createTextNode(greeting()),

@@ -125,20 +125,16 @@ export async function startClient(options: StartClientOptions = {}): Promise<Rou
   await preloadMatched(state.chain());
   const head = await resolveHeadFor(state);
 
-  // `(scope, props)`, which is the real calling convention behind the
-  // props-first type — the same cast `server.test.ts` uses at its own boundary.
-  const provider = RouterProvider as never as (scope: unknown, props: unknown) => unknown;
-  // The ROOT SCOPE, forwarded. `mount` calls this with the scope it just
-  // entered, and passing `null` instead skipped `Document`'s `provide` — so
-  // `<HeadContent />` read no assets and rendered nothing. Hydration still
-  // CLAIMED the server's tags, which hid it until the first navigation, where
-  // the update reconciled the whole head away.
+  const provider = RouterProvider as never as (props: unknown) => unknown;
   hydrate(
-    ((scope: Scope | null) =>
-      Document(scope, {
+    (() =>
+      Document({
         state: () => state,
         head: () => head,
-        children: (inner: unknown) => provider(inner, { state: () => state }),
+        // Ownership is ambient: `Document`'s `provide` has entered its own
+        // scope by the time this runs, so the provider is built under it
+        // without anything being handed over.
+        children: () => provider({ state: () => state }),
       })) as never,
     options.container ?? globalThis.document,
   );

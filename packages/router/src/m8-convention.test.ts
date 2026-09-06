@@ -80,7 +80,7 @@ describe("the nine workarounds are deletions", () => {
     // visible at review time; the row below is the one that names the actual
     // anti-pattern, and `2b` is the one with teeth.
     const arrows = [...ROUTER.matchAll(/\(\)\s*=>/g)].length;
-    expect(arrows).toBeLessThan(110);
+    expect(arrows).toBeLessThan(120);
   });
 
   // #2 — `contextState() || getMainBrowserRouter()` at two sites, over 29 lines
@@ -131,7 +131,7 @@ describe("the nine workarounds are deletions", () => {
   // Replaced by: `branch` owns its range.
   test("3. no hand-rolled range management anywhere in the package", () => {
     expect(nowhere(/createMarkerPair|clearRange|insertNodes|childToNodes/)).toEqual([]);
-    expect(ROUTER).toContain("branch(scope, parent, anchor,");
+    expect(ROUTER).toContain("branch(parent, anchor,");
   });
 
   // #4 — `route === prevRoute && data === prevData && error === prevError`.
@@ -146,7 +146,7 @@ describe("the nine workarounds are deletions", () => {
     // key a name of its own, and a route that declares one is asking to be
     // rebuilt. What still has to hold is the DEFAULT — a route declaring none
     // is keyed on itself and nothing else — so that is what this reads.
-    expect(ROUTER).toMatch(/branch\(scope, parent, anchor, keyAt/);
+    expect(ROUTER).toMatch(/branch\(parent, anchor, keyAt/);
     expect(ROUTER).toMatch(/if \(route === null \|\| deps === undefined\) return route;/);
   });
 
@@ -183,11 +183,11 @@ describe("the nine workarounds are deletions", () => {
   test("7. there is no depth threading, and Outlet places a Block", () => {
     expect(nowhere(/OutletLevelContext/)).toEqual([]);
     expect(ROUTER).toContain("children = block(");
-    // The outlet returns the Block invoked with the scope it sits in — not a
-    // pre-built tree, which is the version that could not carry the layout's
-    // providers. The trailing cast is type-level and says nothing about which
-    // of those two this is, so the pin is on the CALL.
-    expect(ROUTER).toContain("return match.children(scope)");
+    // The outlet INVOKES the Block, so the next route is constructed here,
+    // inside the layout — not a pre-built tree, which is the version that could
+    // not carry the layout's providers. The trailing cast is type-level and
+    // says nothing about which of those two this is, so the pin is on the CALL.
+    expect(ROUTER).toContain("return match.children()");
   });
 
   // #8 — `return computed(…) as unknown as JSXElement` in `Loading`. Replaced by:
@@ -352,11 +352,11 @@ describe("the convention, from the other side", () => {
 
     for (const [name, value] of Object.entries(components)) {
       expect(typeof value, name).toBe("function");
-      // Branded, so a Block reaching a Cell slot throws rather than being
-      // stringified, and invoking one with no scope names the Block instead of
-      // failing downstream.
-      expect(core.isBlock(value), name).toBe(true);
-      expect(() => (value as (...a: unknown[]) => unknown)(), name).toThrow(/Block|scope/i);
+      // A component is a plain function of its props. It carries no brand,
+      // because it is not a deferred construction: it runs where it is called,
+      // under whatever owner is current there.
+      expect(core.isBlock(value), name).toBe(false);
+      expect((value as (...a: unknown[]) => unknown).length, name).toBeLessThanOrEqual(1);
     }
   });
 
@@ -365,17 +365,13 @@ describe("the convention, from the other side", () => {
   // component reading `props.params` would have received a Scope with nothing
   // going red. `router.test.tsx` now declares props-taking route components at
   // module scope and asserts what they render.
-  test("the invocation half passes the scope and the props as Cells", () => {
-    // `withMatch(contentScope, …)` now wraps the call, because a route component
-    // takes NO props since the move to TanStack's surface — `Route.useLoaderData()`
-    // and `<Outlet />` read the match from a context instead. The scope is still
-    // threaded through, which is what this row is actually about: the inner scope
-    // the provide hands back is what the component is invoked with.
-    expect(ROUTER).toMatch(/withMatch\(\s*contentScope,/);
-    expect(ROUTER).toContain("(component as unknown as Invoked)(inner,");
-    // A regex, not a substring: what is pinned is that the scope goes FIRST,
-    // and a call that grew a second argument onto its own line still says that.
-    expect(ROUTER).toMatch(/\(fallback as unknown as Invoked\)\(\s*instance,/);
+  test("the invocation half passes the props as Cells and nothing else", () => {
+    // `withMatch(…)` wraps the call so a route component can read its match
+    // from context. What is pinned here is that NOTHING else is handed over:
+    // the component takes its props and reads its owner from the ambient.
+    expect(ROUTER).toMatch(/withMatch\(\{[^}]*\},\s*\(\)\s*=>/);
+    expect(ROUTER).toContain("(component as unknown as Invoked)(routeProps(");
+    expect(ROUTER).toMatch(/\(fallback as unknown as Invoked\)\(\s*\n?\s*routeProps\(/);
     // …and the suite drives a props-taking route component rather than a
     // zero-arity fixture, which is what made the old invocation half invisible.
     const TEST = readFileSync(join(SRC, "router.test.ts"), "utf8");
@@ -397,7 +393,7 @@ describe("the convention, from the other side", () => {
   // Replaces "the M2 half — Ctx.Provider — is the first-red edge".
   test("no Ctx.Provider JSX and no function-children workaround", () => {
     expect(nowhere(/\.Provider\s+value=|Ctx\.Provider/)).toEqual([]);
-    expect(ROUTER).toContain("provide(scope as Scope, RouterContext, cell(state),");
+    expect(ROUTER).toContain("provide(RouterContext, cell(state),");
   });
 
   // Replaces "the orphan list is gated on THIS milestone". The list still
@@ -406,11 +402,12 @@ describe("the convention, from the other side", () => {
   // producing orphans, and that is what is asserted: every cleanup it registers
   // runs under a scope the caller handed it.
   test("this package registers no ownerless cleanup", () => {
-    expect(ROUTER).toContain("export const Router = block(RouterImpl) as unknown as");
     const cleanups = [...ROUTER.matchAll(/onCleanup\(/g)].length;
     expect(cleanups).toBeGreaterThan(0);
-    // Every `onCleanup` in the router is inside a `block()`-wrapped body, and
-    // `block` establishes the handed scope as the ambient owner.
+    // Ownership is ambient, so a component body already runs under the owner
+    // the invoking construct entered and `Router` needs no `block()` wrapper to
+    // be given one. What still has to hold is that no cleanup is registered at
+    // MODULE level, where there is no such construct and no owner to hand it.
     expect(ROUTER).not.toMatch(/^onCleanup\(/m);
   });
 

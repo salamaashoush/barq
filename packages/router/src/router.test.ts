@@ -46,8 +46,8 @@ function mount(props: Parameters<typeof Router>[0]): { host: HTMLElement; dispos
   const host = document.createElement("div");
   document.body.appendChild(host);
   const dispose = render(
-    ((scope: Scope | null) =>
-      (Router as never as (s: Scope | null, p: unknown) => unknown)(scope, {
+    (() =>
+      (Router as never as (p: unknown) => unknown)({
         routeTree: () => props.routeTree,
         history: () => props.history,
         notFound: () => props.notFound,
@@ -65,8 +65,8 @@ function mountState(state: RouterState): { host: HTMLElement; dispose: () => voi
   const host = document.createElement("div");
   document.body.appendChild(host);
   const dispose = render(
-    ((scope: Scope | null) =>
-      (RouterProvider as never as (s: Scope | null, p: unknown) => unknown)(scope, {
+    (() =>
+      (RouterProvider as never as (p: unknown) => unknown)({
         state: () => state,
       })) as never,
     host,
@@ -96,7 +96,7 @@ const text = (value: string) => (): Node => document.createTextNode(value);
 
 const page =
   (label: string) =>
-  (_scope: Scope | null, _props: RouteProps): Node =>
+  (_props: RouteProps): Node =>
     document.createTextNode(label);
 
 describe("mounting and navigation", () => {
@@ -175,7 +175,7 @@ describe("params", () => {
       routeTree: [
         {
           path: "/u/$id",
-          component: (_s: Scope | null, props: RouteProps) => {
+          component: (props: RouteProps) => {
             builds++;
             const node = document.createTextNode("");
             // A render effect would be the compiled form; reading once per
@@ -223,9 +223,9 @@ describe("loaders", () => {
           // settled. `insert` is what the compiler emits for a dynamic hole and
           // it is a tracked effect, which is what registers the read with the
           // loading boundary.
-          component: (scope: Scope | null, props: RouteProps) => {
+          component: (props: RouteProps) => {
             const node = document.createElement("span");
-            insert(scope, node, () => String(props.data()));
+            insert(node, () => String(props.data()));
             return node;
           },
         },
@@ -260,9 +260,9 @@ describe("loaders", () => {
             return `page ${page_}`;
           },
           pendingComponent: page("loading"),
-          component: (scope: Scope | null, props: RouteProps) => {
+          component: (props: RouteProps) => {
             const node = document.createElement("span");
-            insert(scope, node, () => String(props.data()));
+            insert(node, () => String(props.data()));
             return node;
           },
         },
@@ -312,9 +312,9 @@ describe("loaders", () => {
             return "once";
           },
           pendingComponent: page("loading"),
-          component: (scope: Scope | null, props: RouteProps) => {
+          component: (props: RouteProps) => {
             const node = document.createElement("span");
-            insert(scope, node, () => String(props.data()));
+            insert(node, () => String(props.data()));
             return node;
           },
         },
@@ -340,9 +340,9 @@ describe("loaders", () => {
       routeTree: [
         {
           path: "/",
-          component: (scope: Scope | null, props: RouteProps) => {
+          component: (props: RouteProps) => {
             const node = document.createElement("span");
-            insert(scope, node, () => String(props.data()));
+            insert(node, () => String(props.data()));
             return node;
           },
         },
@@ -356,9 +356,9 @@ describe("loaders", () => {
 
 describe("loaderDeps and the reload policy", () => {
   /** The compiled shape: the read goes in `insert`, which is a tracked effect. */
-  const span = (scope: Scope | null, props: RouteProps): Node => {
+  const span = (props: RouteProps): Node => {
     const node = document.createElement("span");
-    insert(scope, node, () => String(props.data()));
+    insert(node, () => String(props.data()));
     return node;
   };
 
@@ -629,7 +629,7 @@ describe("loaderDeps and the reload policy", () => {
           pendingComponent: page("SKELETON"),
           errorComponent: (scope: Scope | null) => {
             const node = document.createElement("b");
-            insert(scope, node, () => "ERROR");
+            insert(node, () => "ERROR");
             return node;
           },
           component: span,
@@ -667,10 +667,10 @@ describe("loaderDeps and the reload policy", () => {
     // parallelism.
     const started: string[] = [];
     const history = memoryHistory({ initial: ["/other"] });
-    const layout = (scope: Scope | null, props: RouteProps): Node => {
+    const layout = (props: RouteProps): Node => {
       const node = document.createElement("div");
-      insert(scope, node, () => String(props.data()));
-      insert(scope, node, () => props.children);
+      insert(node, () => String(props.data()));
+      insert(node, () => props.children);
       return node;
     };
     const { dispose } = mount({
@@ -746,11 +746,11 @@ describe("loaderDeps and the reload policy", () => {
 });
 
 describe("validateSearch", () => {
-  const showSearch = (scope: Scope | null, props: RouteProps): Node => {
+  const showSearch = (props: RouteProps): Node => {
     const node = document.createElement("span");
     const state = useRouter();
     void props;
-    insert(scope, node, () => JSON.stringify(state.validSearch()));
+    insert(node, () => JSON.stringify(state.validSearch()));
     return node;
   };
 
@@ -774,9 +774,9 @@ describe("validateSearch", () => {
 
   test("a child's validator sees its ancestors' validated output", async () => {
     const history = memoryHistory({ initial: ["/app/x?page=2"] });
-    const wrap = (scope: Scope | null, props: RouteProps): Node => {
+    const wrap = (props: RouteProps): Node => {
       const node = document.createElement("div");
-      insert(scope, node, () => props.children);
+      insert(node, () => props.children);
       return node;
     };
     const { host, dispose } = mount({
@@ -814,9 +814,9 @@ describe("validateSearch", () => {
             if (Number.isNaN(Number(input.page))) throw new Error("page must be a number");
             return { page: Number(input.page) };
           },
-          errorComponent: (scope: Scope | null, props: { error: () => Error }) => {
+          errorComponent: (props: { error: () => Error }) => {
             const node = document.createElement("b");
-            insert(scope, node, () => props.error().message);
+            insert(node, () => props.error().message);
             return node;
           },
           component: showSearch,
@@ -839,7 +839,7 @@ describe("validateSearch", () => {
           component: (scope: Scope | null) => {
             const node = document.createElement("span");
             const s = useSearch<{ n: number }>();
-            insert(scope, node, () => String(s().n));
+            insert(node, () => String(s().n));
             return node;
           },
         },
@@ -885,9 +885,9 @@ describe("validateSearch", () => {
 });
 
 describe("beforeLoad and route context", () => {
-  const span = (scope: Scope | null, props: RouteProps): Node => {
+  const span = (props: RouteProps): Node => {
     const node = document.createElement("span");
-    insert(scope, node, () => JSON.stringify(props.context()));
+    insert(node, () => JSON.stringify(props.context()));
     return node;
   };
 
@@ -899,9 +899,9 @@ describe("beforeLoad and route context", () => {
           path: "/app",
           context: () => ({ tenant: "acme", role: "guest" }),
           beforeLoad: async () => ({ level: "layout" }),
-          component: (scope: Scope | null, props: RouteProps) => {
+          component: (props: RouteProps) => {
             const node = document.createElement("div");
-            insert(scope, node, () => props.children);
+            insert(node, () => props.children);
             return node;
           },
           children: [
@@ -931,9 +931,9 @@ describe("beforeLoad and route context", () => {
   test("beforeLoad runs outermost-first and each one sees the ones above it", async () => {
     const order: string[] = [];
     const history = memoryHistory({ initial: ["/a/b/c"] });
-    const wrap = (scope: Scope | null, props: RouteProps): Node => {
+    const wrap = (props: RouteProps): Node => {
       const node = document.createElement("div");
-      insert(scope, node, () => props.children);
+      insert(node, () => props.children);
       return node;
     };
     const { dispose } = mount({
@@ -1039,9 +1039,9 @@ describe("beforeLoad and route context", () => {
               ran.push("beforeLoad");
               return { token: "from-client" };
             },
-            component: (scope: Scope | null, props: RouteProps) => {
+            component: (props: RouteProps) => {
               const node = document.createElement("span");
-              insert(scope, node, () => JSON.stringify(props.context()));
+              insert(node, () => JSON.stringify(props.context()));
               return node;
             },
           },
@@ -1082,9 +1082,9 @@ describe("beforeLoad and route context", () => {
               ran.push("beforeLoad");
               return { token: "fresh" };
             },
-            component: (scope: Scope | null, props: RouteProps) => {
+            component: (props: RouteProps) => {
               const node = document.createElement("span");
-              insert(scope, node, () => JSON.stringify(props.context()));
+              insert(node, () => JSON.stringify(props.context()));
               return node;
             },
           },
@@ -1117,9 +1117,9 @@ describe("beforeLoad and route context", () => {
               ran.push("beforeLoad");
               return { token: "fresh" };
             },
-            component: (scope: Scope | null, props: RouteProps) => {
+            component: (props: RouteProps) => {
               const node = document.createElement("span");
-              insert(scope, node, () => JSON.stringify(props.context()));
+              insert(node, () => JSON.stringify(props.context()));
               return node;
             },
           },
@@ -1221,9 +1221,9 @@ describe("beforeLoad and route context", () => {
         {
           path: "/app",
           beforeLoad: () => ({ token: "abc" }),
-          component: (scope: Scope | null, props: RouteProps) => {
+          component: (props: RouteProps) => {
             const node = document.createElement("div");
-            insert(scope, node, () => props.children);
+            insert(node, () => props.children);
             return node;
           },
           children: [
@@ -1235,9 +1235,9 @@ describe("beforeLoad and route context", () => {
                 return "ok";
               },
               pendingComponent: page("l"),
-              component: (scope: Scope | null, props: RouteProps) => {
+              component: (props: RouteProps) => {
                 const node = document.createElement("b");
-                insert(scope, node, () => String(props.data()));
+                insert(node, () => String(props.data()));
                 return node;
               },
             },
@@ -1271,14 +1271,14 @@ describe("errorComponent on the DOM backend", () => {
             throw new Error("loader said no");
           },
           pendingComponent: page("loading"),
-          errorComponent: (scope: Scope | null, props: { error: () => Error }) => {
+          errorComponent: (props: { error: () => Error }) => {
             const node = document.createElement("p");
-            insert(scope, node, () => props.error().message);
+            insert(node, () => props.error().message);
             return node;
           },
-          component: (scope: Scope | null, props: RouteProps) => {
+          component: (props: RouteProps) => {
             const node = document.createElement("span");
-            insert(scope, node, () => String(props.data()));
+            insert(node, () => String(props.data()));
             return node;
           },
         },
@@ -1306,17 +1306,17 @@ describe("errorComponent on the DOM backend", () => {
           pendingComponent: page("loading"),
           errorComponent: (scope: Scope | null) => {
             const node = document.createElement("p");
-            insert(scope, node, () => "generic");
+            insert(node, () => "generic");
             return node;
           },
-          notFoundComponent: (scope: Scope | null, props: { error: () => Error }) => {
+          notFoundComponent: (props: { error: () => Error }) => {
             const node = document.createElement("p");
-            insert(scope, node, () => props.error().message);
+            insert(node, () => props.error().message);
             return node;
           },
-          component: (scope: Scope | null, props: RouteProps) => {
+          component: (props: RouteProps) => {
             const node = document.createElement("span");
-            insert(scope, node, () => String(props.data()));
+            insert(node, () => String(props.data()));
             return node;
           },
         },
@@ -1339,10 +1339,10 @@ describe("nested layouts", () => {
       routeTree: [
         {
           path: "/users",
-          component: (scope: Scope | null, props: RouteProps) => {
+          component: (props: RouteProps) => {
             const wrapper = document.createElement("section");
             wrapper.appendChild(document.createTextNode("["));
-            const child = (props.children as unknown as (s: Scope | null) => unknown)(scope);
+            const child = (props.children as unknown as () => unknown)();
             if (child !== null && child !== undefined) wrapper.append(child as never);
             wrapper.appendChild(document.createTextNode("]"));
             return wrapper;
@@ -1370,8 +1370,8 @@ describe("Link", () => {
       routeTree: [
         {
           path: "/",
-          component: (scope: Scope | null) =>
-            (Link as never as (s: Scope | null, p: unknown) => Node)(scope, {
+          component: () =>
+            (Link as never as (p: unknown) => Node)({
               to: () => "/users/7",
               children: () => "go",
             }),
@@ -1400,8 +1400,8 @@ describe("Link", () => {
       routeTree: [
         {
           path: "/",
-          component: (scope: Scope | null) =>
-            (Link as never as (s: Scope | null, p: unknown) => Node)(scope, {
+          component: () =>
+            (Link as never as (p: unknown) => Node)({
               to: () => "/users/$id",
               params: () => ({ id: "7" }),
               children: () => "go",
@@ -1421,8 +1421,8 @@ describe("Link", () => {
       routeTree: [
         {
           path: "/",
-          component: (scope: Scope | null) =>
-            (Link as never as (s: Scope | null, p: unknown) => Node)(scope, {
+          component: () =>
+            (Link as never as (p: unknown) => Node)({
               to: () => "https://example.com/x",
               children: () => "out",
             }),
@@ -1444,8 +1444,8 @@ describe("Link", () => {
       routeTree: [
         {
           path: "/",
-          component: (scope: Scope | null) =>
-            (Link as never as (s: Scope | null, p: unknown) => Node)(scope, {
+          component: () =>
+            (Link as never as (p: unknown) => Node)({
               to: () => "/users/7",
               children: () => "go",
             }),
@@ -1473,7 +1473,7 @@ describe("Link", () => {
           component: (scope: Scope | null) => {
             const wrapper = document.createElement("div");
             wrapper.append(
-              (Link as never as (s: Scope | null, p: unknown) => Node)(scope, {
+              (Link as never as (p: unknown) => Node)({
                 to: () => "..",
                 children: () => "up",
               }),
@@ -1538,8 +1538,8 @@ describe("Link preload", () => {
   ): { state: RouterState; element: HTMLElement; dispose: () => void } => {
     const history = memoryHistory({ initial: ["/"] });
     const routes = table(calls);
-    (routes[0] as { component: unknown }).component = (scope: Scope | null) =>
-      (Link as never as (s: Scope | null, p: unknown) => Node)(scope, {
+    (routes[0] as { component: unknown }).component = () =>
+      (Link as never as (p: unknown) => Node)({
         to: () => props.to,
         preload: () => props.preload,
         children: () => "go",
@@ -1724,16 +1724,16 @@ describe("NavLink", () => {
           component: (scope: Scope | null) => {
             const wrapper = document.createElement("div");
             wrapper.append(
-              (NavLink as never as (s: Scope | null, p: unknown) => Node)(scope, {
+              (NavLink as never as (p: unknown) => Node)({
                 to: () => "/user",
                 children: () => "prefix",
               }),
-              (NavLink as never as (s: Scope | null, p: unknown) => Node)(scope, {
+              (NavLink as never as (p: unknown) => Node)({
                 to: () => "/user",
                 end: () => true,
                 children: () => "exact",
               }),
-              (NavLink as never as (s: Scope | null, p: unknown) => Node)(scope, {
+              (NavLink as never as (p: unknown) => Node)({
                 to: () => "/user-settings",
                 children: () => "sibling",
               }),
@@ -1950,9 +1950,9 @@ describe("the smaller surface", () => {
         {
           id: "layout",
           path: "/app",
-          component: (scope: Scope | null, props: RouteProps) => {
+          component: (props: RouteProps) => {
             const node = document.createElement("div");
-            insert(scope, node, () => props.children);
+            insert(node, () => props.children);
             return node;
           },
           children: [{ id: "leaf", path: "$id", component: page("leaf") }],
@@ -2006,9 +2006,9 @@ describe("the smaller surface", () => {
             return "data";
           },
           pendingComponent: page("SKELETON"),
-          component: (scope: Scope | null, props: RouteProps) => {
+          component: (props: RouteProps) => {
             const node = document.createElement("span");
-            insert(scope, node, () => String(props.data()));
+            insert(node, () => String(props.data()));
             return node;
           },
         },
@@ -2041,9 +2041,9 @@ describe("the smaller surface", () => {
             return "data";
           },
           pendingComponent: page("SKELETON"),
-          component: (scope: Scope | null, props: RouteProps) => {
+          component: (props: RouteProps) => {
             const node = document.createElement("span");
-            insert(scope, node, () => String(props.data()));
+            insert(node, () => String(props.data()));
             return node;
           },
         },
@@ -2078,9 +2078,9 @@ describe("the smaller surface", () => {
             return "data";
           },
           pendingComponent: page("SKELETON"),
-          component: (scope: Scope | null, props: RouteProps) => {
+          component: (props: RouteProps) => {
             const node = document.createElement("span");
-            insert(scope, node, () => String(props.data()));
+            insert(node, () => String(props.data()));
             return node;
           },
         },
@@ -2147,8 +2147,8 @@ describe("the smaller surface", () => {
       routeTree: [
         {
           path: "/a",
-          component: (scope: Scope | null) =>
-            (NavLink as never as (s: Scope | null, p: unknown) => Node)(scope, {
+          component: () =>
+            (NavLink as never as (p: unknown) => Node)({
               to: () => "/a",
               activeProps: () => ({ "data-state": "here", title: "you are here" }),
               inactiveProps: () => ({ "data-state": "away" }),
@@ -2175,8 +2175,8 @@ describe("the smaller surface", () => {
       routeTree: [
         {
           path: "/a",
-          component: (scope: Scope | null) =>
-            (NavLink as never as (s: Scope | null, p: unknown) => Node)(scope, {
+          component: () =>
+            (NavLink as never as (p: unknown) => Node)({
               to: () => "/elsewhere",
               activeProps: () => ({ title: "you are here" }),
               inactiveProps: () => ({ "data-state": "away" }),
@@ -2265,9 +2265,8 @@ describe("beforeEnter", () => {
             order.push("layout");
             return true;
           },
-          component: (scope: Scope | null, props: RouteProps) =>
-            ((props.children as unknown as (s: Scope | null) => unknown)(scope) ??
-              document.createTextNode("")) as Node,
+          component: (props: RouteProps) =>
+            ((props.children as unknown as () => unknown)() ?? document.createTextNode("")) as Node,
           children: [
             {
               path: "users",
@@ -2314,9 +2313,8 @@ describe("beforeEnter", () => {
             asked.push("layout");
             return "/";
           },
-          component: (scope: Scope | null, props: RouteProps) =>
-            ((props.children as unknown as (s: Scope | null) => unknown)(scope) ??
-              document.createTextNode("")) as Node,
+          component: (props: RouteProps) =>
+            ((props.children as unknown as () => unknown)() ?? document.createTextNode("")) as Node,
           children: [
             {
               path: "users",
@@ -2417,7 +2415,7 @@ test("navigating to a lazy() route reveals it once the module lands", async () =
   document.body.appendChild(host);
   const dispose = render(
     ((s: unknown) =>
-      (RouterProvider as never as (s: unknown, p: unknown) => unknown)(s, {
+      (RouterProvider as never as (p: unknown) => unknown)({
         state: () => state,
       })) as never,
     host,
@@ -2771,7 +2769,7 @@ describe("params.parse / params.stringify", () => {
           },
         },
         component: (() => null) as never,
-        errorComponent: ((_scope: unknown, props: { error: () => Error }) =>
+        errorComponent: ((props: { error: () => Error }) =>
           document.createTextNode(`refused: ${props.error().message}`)) as never,
       },
     ] as never as AnyRouteDefinition[];
@@ -2873,14 +2871,13 @@ describe("Await", () => {
       {
         path: "/report",
         loader: () => ({ summary: "ready now", rows: rows() }),
-        component: ((scope: Scope | null, props: { data: () => { rows: Promise<unknown> } }) =>
-          (Await as never as (s: Scope | null, p: unknown) => unknown)(scope, {
+        component: ((props: { data: () => { rows: Promise<unknown> } }) =>
+          (Await as never as (p: unknown) => unknown)({
             promise: () => props.data().rows,
             fallback: () => document.createTextNode("waiting"),
-            children: (_inner: Scope | null, value: () => unknown) =>
-              document.createTextNode(`rows: ${String(value())}`),
+            children: (value: () => unknown) => document.createTextNode(`rows: ${String(value())}`),
           })) as never,
-        errorComponent: ((_s: Scope | null, props: { error: () => Error }) =>
+        errorComponent: ((props: { error: () => Error }) =>
           document.createTextNode(`caught ${props.error().message}`)) as never,
       },
     ] as never;
@@ -3463,10 +3460,10 @@ describe("structuralSharing", () => {
           pendingComponent: (() => document.createTextNode("loading")) as never,
           // A HOLE, which is what makes the read tracked — a body reads once
           // and would never see the second answer.
-          component: (scope: Scope | null, props: RouteProps) => {
+          component: (props: RouteProps) => {
             state = useRouter();
             const node = document.createElement("span");
-            insert(scope, node, () => `page ${String(props.data() ?? "")}`);
+            insert(node, () => `page ${String(props.data() ?? "")}`);
             return node;
           },
         },

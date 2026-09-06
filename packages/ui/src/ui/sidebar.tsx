@@ -915,10 +915,7 @@ export function SidebarProvider(props: Incoming<SidebarProviderProps>) {
  * it and every `useSidebar` throws.
  */
 function SidebarProviderInner(props: Incoming<{ value: SidebarValue; children?: Child }>) {
-  const owner = getOwner();
-  if (owner === null) return <>{props.children}</>;
   return provide(
-    owner,
     SidebarContext,
     () => props.value(),
     () => props.children,

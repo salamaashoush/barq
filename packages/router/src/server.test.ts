@@ -173,7 +173,7 @@ describe("the request is ambient for the whole render", () => {
         {
           path: "/",
           loader: () => whoami(),
-          component: (_s: unknown, props: { data: () => unknown }) =>
+          component: (props: { data: () => unknown }) =>
             ssrHtml(`<b>${esc(String(props.data()))}</b>`),
         },
       ] as never,
@@ -209,7 +209,7 @@ describe("the request is ambient for the whole render", () => {
       {
         path: "/",
         loader: () => load(),
-        component: (_s: unknown, props: { data: () => unknown }) =>
+        component: (props: { data: () => unknown }) =>
           ssrHtml(`<b>${esc(String(props.data()))}</b>`),
       },
     ] as never;
@@ -260,7 +260,7 @@ describe("the document", () => {
       app: () =>
         ssrHtml(
           `<main>${esc(
-            ssrLoading(null, {
+            ssrLoading({
               fallback: () => ssrHtml("<i>loading</i>"),
               children: () => ssrHtml(`<b>${esc(late())}</b>`),
             }),
@@ -327,7 +327,7 @@ describe("P6 defects", () => {
           await tick();
           return "LAYOUT";
         },
-        component: (_s: unknown, props: { data: () => unknown; children: unknown }) =>
+        component: (props: { data: () => unknown; children: unknown }) =>
           ssrHtml(
             // `esc` passes an `SsrHtml` through unescaped; `String()`-ing it
             // first turns the child's markup into text.
@@ -343,7 +343,7 @@ describe("P6 defects", () => {
               await tick();
               return "LEAF";
             },
-            component: (_s: unknown, props: { data: () => unknown }) =>
+            component: (props: { data: () => unknown }) =>
               ssrHtml(`<main>${esc(String(props.data()))}</main>`),
           },
         ],
@@ -384,7 +384,7 @@ describe("P6 defects", () => {
           await tick();
           redirect("/login");
         },
-        component: (_s: unknown, props: { data: () => unknown }) =>
+        component: (props: { data: () => unknown }) =>
           ssrHtml(`<main>${esc(String(props.data()))}</main>`),
       },
     ] as never;
@@ -437,7 +437,7 @@ describe("P6 defects", () => {
           order.push("loader settled");
           return "LATE";
         },
-        component: (_s: unknown, props: { data: () => unknown }) =>
+        component: (props: { data: () => unknown }) =>
           ssrHtml(`<main>${esc(String(props.data()))}</main>`),
       },
     ] as never;
@@ -492,7 +492,7 @@ describe("errorComponent and notFoundComponent", () => {
           await tick();
           thrown();
         },
-        component: (_s: unknown, props: { data: () => unknown }) =>
+        component: (props: { data: () => unknown }) =>
           ssrHtml(`<main>${esc(String(props.data()))}</main>`),
         ...extra,
       },
@@ -518,7 +518,7 @@ describe("errorComponent and notFoundComponent", () => {
             throw new Error("the database is on fire");
           },
           {
-            errorComponent: (_s: unknown, props: { error: () => Error }) =>
+            errorComponent: (props: { error: () => Error }) =>
               ssrHtml(`<p class="boom">${esc(props.error().message)}</p>`),
           },
         ),
@@ -533,7 +533,7 @@ describe("errorComponent and notFoundComponent", () => {
     const body = await render(
       table(id, () => notFound("no such thing"), {
         errorComponent: () => ssrHtml("<p>generic failure</p>"),
-        notFoundComponent: (_s: unknown, props: { error: () => Error }) =>
+        notFoundComponent: (props: { error: () => Error }) =>
           ssrHtml(`<p class="missing">${esc(props.error().message)}</p>`),
       }),
       false,
@@ -556,7 +556,7 @@ describe("errorComponent and notFoundComponent", () => {
   test("notFound() answers 404 when the status is still open", async () => {
     const id = `s${seq++}`;
     const routes = table(id, () => notFound("gone"), {
-      notFoundComponent: (_s: unknown, props: { error: () => Error }) =>
+      notFoundComponent: (props: { error: () => Error }) =>
         ssrHtml(`<p>${esc(props.error().message)}</p>`),
     });
     const handler = createPageHandler({
@@ -577,9 +577,9 @@ describe("errorComponent and notFoundComponent", () => {
       {
         id: `${id}-layout`,
         path: "/app",
-        errorComponent: (_s: unknown, props: { error: () => Error }) =>
+        errorComponent: (props: { error: () => Error }) =>
           ssrHtml(`<p class="layout-caught">${esc(props.error().message)}</p>`),
-        component: (_s: unknown, props: { children: unknown }) =>
+        component: (props: { children: unknown }) =>
           ssrHtml(`<div>${esc((props.children as () => unknown)())}</div>`),
         children: [
           {
@@ -589,7 +589,7 @@ describe("errorComponent and notFoundComponent", () => {
               await tick();
               throw new Error("leaf failed");
             },
-            component: (_s: unknown, props: { data: () => unknown }) =>
+            component: (props: { data: () => unknown }) =>
               ssrHtml(`<main>${esc(String(props.data()))}</main>`),
           },
         ],
@@ -626,7 +626,7 @@ describe("modulepreload for the matched chain", () => {
     {
       id: "layout",
       path: "/app",
-      component: (_s: unknown, props: { children: unknown }) =>
+      component: (props: { children: unknown }) =>
         ssrHtml(`<div>${esc((props.children as () => unknown)())}</div>`),
       children: [{ id: "leaf", path: "$id", component: () => ssrHtml("<main>x</main>") }],
     },
@@ -701,7 +701,7 @@ describe("ssr: boolean | 'data-only'", () => {
           return "LAYOUT";
         },
         pendingComponent: () => ssrHtml("<i>layout-skeleton</i>"),
-        component: (_s: unknown, props: { data: () => unknown; children: unknown }) =>
+        component: (props: { data: () => unknown; children: unknown }) =>
           ssrHtml(
             `<header>${esc(String(props.data()))}</header>${esc((props.children as () => unknown)())}`,
           ),
@@ -716,7 +716,7 @@ describe("ssr: boolean | 'data-only'", () => {
               return "LEAF";
             },
             pendingComponent: () => ssrHtml("<i>leaf-skeleton</i>"),
-            component: (_s: unknown, props: { data: () => unknown }) =>
+            component: (props: { data: () => unknown }) =>
               ssrHtml(`<main>${esc(String(props.data()))}</main>`),
           },
         ],
@@ -815,14 +815,14 @@ describe("Await", () => {
           summary: "ready now",
           rows: new Promise((resolve) => setTimeout(() => resolve("the slow part"), 10)),
         }),
-        component: (scope: unknown, props: { data: () => { summary: string; rows: unknown } }) =>
+        component: (props: { data: () => { summary: string; rows: unknown } }) =>
           ssrHtml(
             `<main>${esc(props.data().summary)}</main>` +
               esc(
-                (Await as never as (s: unknown, p: unknown) => unknown)(scope, {
+                (Await as never as (p: unknown) => unknown)({
                   promise: () => props.data().rows,
                   fallback,
-                  children: (_inner: unknown, value: () => unknown) =>
+                  children: (value: () => unknown) =>
                     ssrHtml(`<p id="rows">${esc(String(value()))}</p>`),
                 }),
               ),
@@ -871,14 +871,13 @@ describe("Await", () => {
             setTimeout(() => reject(new Error("the slow part failed")), 5),
           ),
         }),
-        component: (scope: unknown, props: { data: () => { rows: unknown } }) =>
-          (Await as never as (s: unknown, p: unknown) => unknown)(scope, {
+        component: (props: { data: () => { rows: unknown } }) =>
+          (Await as never as (p: unknown) => unknown)({
             promise: () => props.data().rows,
             fallback: () => ssrHtml("<p>waiting</p>"),
-            children: (_inner: unknown, value: () => unknown) =>
-              ssrHtml(`<p>${esc(String(value()))}</p>`),
+            children: (value: () => unknown) => ssrHtml(`<p>${esc(String(value()))}</p>`),
           }),
-        errorComponent: ((_s: unknown, props: { error: () => Error }) =>
+        errorComponent: ((props: { error: () => Error }) =>
           ssrHtml(`<p id="boom">caught ${esc(props.error().message)}</p>`)) as never,
       },
     ] as never;
@@ -903,7 +902,7 @@ describe("deferred loader data", () => {
         // Deliberately not awaited.
         rows: new Promise((resolve) => setTimeout(() => resolve("the slow part"), 10)),
       }),
-      component: (_s: unknown, props: { data: () => { summary: string } }) =>
+      component: (props: { data: () => { summary: string } }) =>
         ssrHtml(`<main>${esc(props.data().summary)}</main>`),
     },
   ] as never;
@@ -961,7 +960,7 @@ describe("beforeLoad does not run twice on hydration", () => {
           await tick();
           return { token: "abc" };
         },
-        component: (_s: unknown, props: { context: () => Record<string, unknown> }) =>
+        component: (props: { context: () => Record<string, unknown> }) =>
           ssrHtml(`<main>${esc(JSON.stringify(props.context()))}</main>`),
       },
     ] as never;
@@ -1048,7 +1047,7 @@ describe("the context handoff, server to client", () => {
           // rather than what `JSON.stringify` would.
           return { token: "abc", at: new Date(0) };
         },
-        component: (_s: unknown, props: { context: () => Record<string, unknown> }) =>
+        component: (props: { context: () => Record<string, unknown> }) =>
           ssrHtml(`<main>${esc((props.context() as { token: string }).token)}</main>`),
       },
     ] as never;
@@ -1129,22 +1128,21 @@ describe("hydration", () => {
   }
 
   const table = (ssr: boolean, ran: { calls: number }): AnyRouteDefinition[] => {
-    const Root = (scope: never, props: Kids): unknown =>
+    const Root = (props: Kids): unknown =>
       ssr
         ? ssrHtml(`<div>shell:<!--[-->${esc(props.children)}<!--]--></div>`)
         : ((): unknown => {
             const node = shellTemplate();
-            insert(scope, node, props.children as never);
+            insert(node, props.children as never);
             return node;
           })();
 
-    const Leaf = (scope: never, props: Data): unknown =>
+    const Leaf = (props: Data): unknown =>
       ssr
         ? ssrHtml(`<b>${esc(() => props.data()?.name)}</b>`)
         : ((): unknown => {
             const node = boldTemplate();
             insert(
-              scope,
               node,
               hole(node, null, () => () => props.data()?.name, 16),
               null,
@@ -1208,8 +1206,8 @@ describe("hydration", () => {
     });
     // `(scope, props)`, which is the real calling convention behind the
     // props-first type — the same cast `router.test.ts`'s `mountState` uses.
-    const provider = RouterProvider as never as (s: unknown, p: unknown) => unknown;
-    hydrate(((s: unknown) => provider(s, { state: () => state })) as never, container);
+    const provider = RouterProvider as never as (p: unknown) => unknown;
+    hydrate(((): unknown => provider({ state: () => state })) as never, container);
     flush();
 
     expect(hydrate.report.recovered).toBe(false);
@@ -1340,12 +1338,12 @@ describe("shellComponent", () => {
       {
         id: "__root__",
         path: "/",
-        shellComponent: (_s: unknown, props: { children: unknown }) =>
+        shellComponent: (props: { children: unknown }) =>
           ssrHtml(
-            `<html lang="en"><head>${esc(HeadContent(_s as never))}</head>` +
+            `<html lang="en"><head>${esc(HeadContent())}</head>` +
               `<body><div id="app">${esc(props.children)}</div>${esc(Scripts())}</body></html>`,
           ),
-        component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+        component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
         head: { meta: [{ title: "Site" }, { name: "description", content: "site" }] },
         children: [
           {
@@ -1405,7 +1403,7 @@ describe("shellComponent", () => {
       {
         id: "__root__",
         path: "/",
-        shellComponent: (_s: unknown, props: { children: unknown }) => {
+        shellComponent: (props: { children: unknown }) => {
           const at = useLocation();
           const rtl = at().pathname.startsWith("/ar");
           return ssrHtml(
@@ -1413,7 +1411,7 @@ describe("shellComponent", () => {
               `<body>${esc(props.children)}</body></html>`,
           );
         },
-        component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+        component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
         children: [
           { id: "/$locale", path: "$locale", component: () => ssrHtml("<main>page</main>") },
         ],
@@ -1490,11 +1488,11 @@ describe("crawlers are answered with the whole page", () => {
     {
       id: "__root__",
       path: "/",
-      shellComponent: (_s: unknown, props: { children: unknown }) =>
+      shellComponent: (props: { children: unknown }) =>
         ssrHtml(
-          `<html><head>${esc(HeadContent(_s as never))}</head><body>${esc(props.children)}</body></html>`,
+          `<html><head>${esc(HeadContent())}</head><body>${esc(props.children)}</body></html>`,
         ),
-      component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+      component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
       children: [{ id: "/p", path: "p", component: () => ssrHtml("<main>p</main>") }],
     },
   ] as never as AnyRouteDefinition[];
@@ -1536,8 +1534,7 @@ describe("crawlers are answered with the whole page", () => {
  */
 describe("shell and hydration", () => {
   const leaf = (): unknown => ssrHtml("<b>leaf</b>");
-  const layout = (_s: unknown, props: { children: unknown }): unknown =>
-    ssrHtml(esc(props.children));
+  const layout = (props: { children: unknown }): unknown => ssrHtml(esc(props.children));
 
   const inside = (document_: string): string =>
     document_.slice(
@@ -1561,7 +1558,7 @@ describe("shell and hydration", () => {
       {
         id: "__root__",
         path: "/",
-        shellComponent: (_s: unknown, props: { children: unknown }) =>
+        shellComponent: (props: { children: unknown }) =>
           ssrHtml(
             `<html><head></head><body><div id="app">${esc(props.children)}</div></body></html>`,
           ),
@@ -1597,12 +1594,12 @@ describe("the head lane stops where the render does", () => {
       {
         id: "__root__",
         path: "/",
-        shellComponent: (_s: unknown, props: { children: unknown }) =>
+        shellComponent: (props: { children: unknown }) =>
           ssrHtml(
-            `<html><head>${esc(HeadContent(_s as never))}</head>` +
+            `<html><head>${esc(HeadContent())}</head>` +
               `<body>${esc(props.children)}</body></html>`,
           ),
-        component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+        component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
         head: { meta: [{ name: "root", content: "yes" }] },
         children: [
           {
@@ -1610,7 +1607,7 @@ describe("the head lane stops where the render does", () => {
             path: "app",
             ssr: layoutSsr,
             head: { meta: [{ name: "layout", content: "yes" }] },
-            component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+            component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
             children: [
               {
                 id: "/app/",
@@ -1681,7 +1678,7 @@ describe("a failure before the render, and what the handler does with it", () =>
         {
           id: "__root__",
           path: "/",
-          component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+          component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
           children: [
             {
               id: "/boom",
@@ -1728,12 +1725,12 @@ describe("a failure before the render, and what the handler does with it", () =>
         {
           id: "__root__",
           path: "/",
-          shellComponent: (_s: unknown, props: { children: unknown }) =>
+          shellComponent: (props: { children: unknown }) =>
             ssrHtml(
-              `<html><head>${esc(HeadContent(_s as never))}</head>` +
+              `<html><head>${esc(HeadContent())}</head>` +
                 `<body>${esc(props.children)}</body></html>`,
             ),
-          component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+          component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
           head: { meta: [{ name: "root", content: "yes" }] },
           children: [
             {
@@ -1776,7 +1773,7 @@ describe("the response a page render drafts", () => {
         {
           id: "__root__",
           path: "/",
-          component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+          component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
           children: [
             {
               id: "/x",
@@ -1784,7 +1781,7 @@ describe("the response a page render drafts", () => {
               // READS `data`, because a loader runs on read — a component that
               // ignores it never triggers one, and the test would be asserting
               // against a loader that had not run.
-              component: (_s: unknown, props: { data: () => unknown }) =>
+              component: (props: { data: () => unknown }) =>
                 ssrHtml(`<main>${esc(String(props.data() ?? "x"))}</main>`),
               ...definition,
             },
@@ -1880,7 +1877,7 @@ describe("a route's own HTTP handlers", () => {
         {
           id: "__root__",
           path: "/",
-          component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+          component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
           children: [
             {
               id: "/api/users/$id",
@@ -2006,7 +2003,7 @@ describe("a route's own HTTP handlers", () => {
           id: "__root__",
           path: "/",
           server: { middleware: [outer] },
-          component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+          component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
           children: [
             {
               id: "/api",
@@ -2167,7 +2164,7 @@ describe("a route's own HTTP handlers", () => {
         {
           id: "__root__",
           path: "/",
-          component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+          component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
           children: [
             {
               id: "/api",
@@ -2221,7 +2218,7 @@ describe("a redirect target has to be navigable", () => {
       {
         id: "__root__",
         path: "/",
-        component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+        component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
         children: [
           {
             id: "/x",
@@ -2237,7 +2234,7 @@ describe("a redirect target has to be navigable", () => {
                     throw redirect(to);
                   },
                 }),
-            component: (_s: unknown, props: { data: () => unknown }) =>
+            component: (props: { data: () => unknown }) =>
               ssrHtml(`<main>${esc(String(props.data() ?? "x"))}</main>`),
           },
         ],
@@ -2299,12 +2296,12 @@ describe("loaderData in head", () => {
       {
         id: "__root__",
         path: "/",
-        shellComponent: (scope: unknown, props: { children: unknown }) =>
+        shellComponent: (props: { children: unknown }) =>
           ssrHtml(
-            `<html><head>${esc(HeadContent(scope as never))}</head>` +
+            `<html><head>${esc(HeadContent())}</head>` +
               `<body>${esc(props.children)}</body></html>`,
           ),
-        component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+        component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
         children: [
           {
             id: "/post",
@@ -2314,7 +2311,7 @@ describe("loaderData in head", () => {
               return { title: "FROM THE LOADER" };
             },
             head,
-            component: (_s: unknown, props: { data: () => unknown }) =>
+            component: (props: { data: () => unknown }) =>
               ssrHtml(`<main>${esc((props.data() as { title: string })?.title)}</main>`),
           },
         ],
@@ -2396,12 +2393,12 @@ describe("loaderData in head", () => {
         {
           id: "__root__",
           path: "/",
-          shellComponent: (scope: unknown, props: { children: unknown }) =>
+          shellComponent: (props: { children: unknown }) =>
             ssrHtml(
-              `<html><head>${esc(HeadContent(scope as never))}</head>` +
+              `<html><head>${esc(HeadContent())}</head>` +
                 `<body>${esc(props.children)}</body></html>`,
             ),
-          component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+          component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
           children: [
             {
               id: "/x",
@@ -2500,13 +2497,13 @@ describe("a cancelled response", () => {
     {
       id: "__root__",
       path: "/",
-      component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+      component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
       children: [
         {
           id: "/slow",
           path: "slow",
           loader: () => new Promise((resolve) => setTimeout(() => resolve("late"), 200)),
-          component: (_s: unknown, props: { data: () => unknown }) =>
+          component: (props: { data: () => unknown }) =>
             ssrHtml(`<main>${esc(String(props.data()))}</main>`),
         },
       ],
@@ -2555,16 +2552,16 @@ describe("MatchRoute", () => {
       {
         id: "__root__",
         path: "/",
-        component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+        component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
         children: [
           {
             id: "/posts/$id",
             path: "posts/$id",
-            component: (scope: unknown) =>
-              (MatchRoute as never as (s: unknown, p: unknown) => unknown)(scope, {
+            component: () =>
+              (MatchRoute as never as (p: unknown) => unknown)({
                 to,
                 fuzzy,
-                children: (_inner: unknown, params: () => Record<string, string>) =>
+                children: (params: () => Record<string, string>) =>
                   ssrHtml(`<b>on ${esc(params().id ?? "?")}</b>`),
               }),
           },
@@ -2609,12 +2606,11 @@ describe("params.parse on the server", () => {
     {
       id: "__root__",
       path: "/",
-      shellComponent: (scope: unknown, props: { children: unknown }) =>
+      shellComponent: (props: { children: unknown }) =>
         ssrHtml(
-          `<html><head>${esc(HeadContent(scope as never))}</head>` +
-            `<body>${esc(props.children)}</body></html>`,
+          `<html><head>${esc(HeadContent())}</head>` + `<body>${esc(props.children)}</body></html>`,
         ),
-      component: (_s: unknown, props: { children: unknown }) => ssrHtml(esc(props.children)),
+      component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
       children: [
         {
           id: "/posts/$id",
@@ -2630,12 +2626,12 @@ describe("params.parse on the server", () => {
             meta: [{ title: `post ${params.id * 2}` }],
           }),
           loader: ({ params }: { params: { id: number } }) => ({ doubled: params.id * 2 }),
-          component: (_s: unknown, props: { data: () => unknown; params: () => unknown }) =>
+          component: (props: { data: () => unknown; params: () => unknown }) =>
             ssrHtml(
               `<main>${esc(String((props.data() as { doubled: number })?.doubled))}` +
                 `:${esc(String((props.params() as { id: unknown }).id))}</main>`,
             ),
-          errorComponent: ((_s: unknown, props: { error: () => Error }) =>
+          errorComponent: ((props: { error: () => Error }) =>
             ssrHtml(`<p>refused ${esc(props.error().message)}</p>`)) as never,
         },
       ],
@@ -2750,8 +2746,8 @@ describe("an unmatched path, hydrated", () => {
       routeTree: table,
       history: memoryHistory({ initial: ["/nowhere"] }),
     });
-    const provider = RouterProvider as never as (s: unknown, p: unknown) => unknown;
-    hydrate(((s: unknown) => provider(s, { state: () => state })) as never, container);
+    const provider = RouterProvider as never as (p: unknown) => unknown;
+    hydrate(((): unknown => provider({ state: () => state })) as never, container);
     flush();
 
     // THE ASSERTION. A mismatch here meant the client threw the server's whole
@@ -2837,7 +2833,7 @@ describe("ClientOnly", () => {
     {
       path: "/",
       component: ((scope: unknown) =>
-        (ClientOnly as never as (s: unknown, p: unknown) => unknown)(scope, {
+        (ClientOnly as never as (p: unknown) => unknown)({
           fallback: () => ssrHtml("<p>skeleton</p>"),
           children: () => ssrHtml("<p>the chart</p>"),
         })) as never,

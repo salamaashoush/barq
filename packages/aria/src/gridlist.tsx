@@ -376,10 +376,7 @@ export function useRowNode(): Node<unknown> {
 export function GridListProvider(
   props: Incoming<{ value: GridListContextValue; children?: Child }>,
 ) {
-  const owner = getOwner();
-  if (owner === null) return <>{props.children}</>;
   return provide(
-    owner,
     GridListContext,
     () => props.value(),
     () => props.children as unknown,
@@ -470,7 +467,7 @@ export function GridList<T>(props: Incoming<GridListComponentProps<T>>) {
     },
   );
 
-  const render = props.children as unknown as (scope: unknown, item: T) => Child;
+  const render = props.children as unknown as (item: T) => Child;
 
   /** The whole collection, or the window of it the virtualiser says is on screen. */
   const rows = (): Node<T>[] => {
@@ -488,7 +485,7 @@ export function GridList<T>(props: Incoming<GridListComponentProps<T>>) {
         <For each={rows}>
           {(node: Node<T>) => {
             provideRowNode(node);
-            return render(getOwner(), node.value as T);
+            return render(node.value as T);
           }}
         </For>
       </div>

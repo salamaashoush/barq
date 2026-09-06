@@ -557,7 +557,7 @@ export function TabList<T>(props: Incoming<TabListComponentProps<T>>) {
     },
   );
 
-  const render = props.children as unknown as (scope: unknown, item: T) => Child;
+  const render = props.children as unknown as (item: T) => Child;
 
   return (
     <div {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
@@ -565,7 +565,7 @@ export function TabList<T>(props: Incoming<TabListComponentProps<T>>) {
         {(node: Node<unknown>) => {
           const rowOwner = getOwner();
           if (rowOwner !== null) install(rowOwner, TabNodeContext, () => node);
-          return render(rowOwner, node.value as T);
+          return render(node.value as T);
         }}
       </For>
     </div>
@@ -659,23 +659,17 @@ export function TabPanel<T>(props: Incoming<TabPanelComponentProps<T>>) {
   // has to be REBUILT when the selection changes rather than re-read. `Show`
   // keyed on the selected key is what rebuilds it, and only then: the panel
   // is one element throughout, and only its contents are swapped.
-  const renderPanel = props.children as unknown as (scope: unknown, item: T | undefined) => Child;
+  const renderPanel = props.children as unknown as (item: T | undefined) => Child;
 
   return (
     <div {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
       <Show when={tabs.state.selectedKey()} keyed>
         {() => {
-          // `getOwner()`, the way `TabList` above does it. A keyed `Show` calls
-          // its slot with (scope, VALUE), and the compiler supplies the scope
-          // parameter itself — so a callback declaring ONE parameter binds it to
-          // the value, which here is the selected KEY. Naming that parameter
-          // `scope` and forwarding it handed `renderPanel` the string: every
-          // component in a panel that provides context died on
-          // `Cannot create property 'kids' on string`, which is `enter()` being
-          // given a key. `<Collapsible>` in a tab panel was enough to hit it.
-          const owner = getOwner();
+          // The keyed `Show` supplies the selected KEY, and the panel wants the
+          // ITEM. Reading it untracked keeps the rebuild governed by the key
+          // alone, so an item mutated in place does not discard the panel.
           const selected = untrack(() => tabs.state.selectedItem());
-          return renderPanel(owner, selected === null ? undefined : (selected.value as T));
+          return renderPanel(selected === null ? undefined : (selected.value as T));
         }}
       </Show>
     </div>

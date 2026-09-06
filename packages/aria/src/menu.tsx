@@ -1311,14 +1311,10 @@ export function SubmenuTrigger(props: Incoming<SubmenuTriggerComponentProps>) {
     popoverProps,
   };
 
-  const owner = getOwner();
-  if (owner === null) return <>{props.children}</>;
-
   // `provide`, not `install`, for the reason `MenuTrigger` gives: two submenu
   // triggers in one menu both run their bodies before either one's children
   // are built.
   return provide(
-    owner,
     SubmenuTriggerContext,
     () => value,
     () => props.children as unknown,
@@ -1374,7 +1370,6 @@ export function MenuTrigger(props: Incoming<MenuTriggerComponentProps>) {
   // triggers beside each other both run their bodies before either one's
   // children are built, and every child of both then sees the second one.
   return provide(
-    owner,
     MenuTriggerContext,
     () => value,
     () => props.children as unknown,
@@ -1475,12 +1470,8 @@ export function ContextMenu(props: Incoming<ContextMenuComponentProps>) {
     offset: 2,
   };
 
-  const owner = getOwner();
-  if (owner === null) return <>{props.children}</>;
-
   // `provide`, not `install`, for the reason `MenuTrigger` gives.
   return provide(
-    owner,
     MenuTriggerContext,
     () => value,
     () => props.children as unknown,
@@ -1702,14 +1693,14 @@ function MenuList<T>(listProps: Incoming<MenuListProps<T>>) {
     },
   );
 
-  const render = props.children as unknown as (scope: unknown, item: T) => Child;
+  const render = props.children as unknown as (item: T) => Child;
 
   return (
     <ul {...elementProps} ref={mergeRefs(domRef.set, submenu?.submenuRef.set, props.ref?.())}>
       <For each={() => [...state.collection()]}>
         {(node: Node<T>) => {
           provideMenuNode(node);
-          return render(getOwner(), node.value as T);
+          return render(node.value as T);
         }}
       </For>
     </ul>
@@ -1820,7 +1811,7 @@ export function MenuSection<T>(props: Incoming<MenuSectionComponentProps<T>>) {
     "aria-label": () => props["aria-label"]?.(),
   });
 
-  const render = props.children as unknown as (scope: unknown, item: T) => Child;
+  const render = props.children as unknown as (item: T) => Child;
 
   return (
     <li {...itemProps}>
@@ -1829,7 +1820,7 @@ export function MenuSection<T>(props: Incoming<MenuSectionComponentProps<T>>) {
         <For each={() => [...node.childNodes]}>
           {(child: Node<unknown>) => {
             provideMenuNode(child);
-            return render(getOwner(), child.value as T);
+            return render(child.value as T);
           }}
         </For>
       </ul>

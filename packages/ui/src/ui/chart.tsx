@@ -218,10 +218,7 @@ export function ChartContainer(props: Incoming<ChartContainerProps>) {
  * function`, because it was reading a `props` the provider never gave it.
  */
 function ChartProvider(props: Incoming<{ config: ChartConfig; children?: Child }>) {
-  const owner = getOwner();
-  if (owner === null) return <>{props.children}</>;
   return provide(
-    owner,
     ChartContext,
     () => ({ config: () => props.config() }),
     () => props.children,

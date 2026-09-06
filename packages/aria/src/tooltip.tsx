@@ -447,7 +447,6 @@ export function TooltipTrigger(props: Incoming<TooltipTriggerComponentProps>) {
   // one's children were built, and every child of both then saw the second
   // one's state.
   return provide(
-    owner,
     TooltipTriggerContext,
     () => value,
     () => {

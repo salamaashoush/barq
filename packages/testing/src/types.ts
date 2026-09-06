@@ -8,8 +8,8 @@ import type { BoundFunctions, prettyFormat, queries } from "@testing-library/dom
  */
 export type Ui = Block<JSXElement>;
 
-/** C1: a wrapper is an ordinary component — scope first, `children` a Block. */
-export type WrapperComponent = (s: Scope | null, props: { children: Ui }) => JSXElement;
+/** C1: a wrapper is an ordinary component — a function of its props, `children` a Block. */
+export type WrapperComponent = (props: { children: Ui }) => JSXElement;
 
 export interface RenderOptions {
   /** Container element to render into */

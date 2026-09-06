@@ -597,10 +597,7 @@ export function usePopoverGroup(): ElementRef | null {
 }
 
 function PopoverGroupProvider(props: Incoming<{ value: ElementRef; children?: Child }>) {
-  const owner = getOwner();
-  if (owner === null) return <>{props.children}</>;
   return provide(
-    owner,
     PopoverGroupContext,
     () => props.value(),
     () => props.children as unknown,
@@ -684,10 +681,7 @@ const DialogTriggerContext = context<DialogTriggerValue | null>(null);
  * children are built, and every child of both then sees the second one.
  */
 function provideDialogTrigger(value: DialogTriggerValue, children: () => Child): never {
-  const owner = getOwner();
-  if (owner === null) return children() as never;
   return provide(
-    owner,
     DialogTriggerContext,
     () => value,
     () => children() as unknown,

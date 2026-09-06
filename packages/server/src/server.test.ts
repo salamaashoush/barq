@@ -98,7 +98,7 @@ describe("renderToString", () => {
     const doubled = computed(() => count() + 1);
 
     const html = renderToString(() =>
-      element(null, "div", { class: "app", children: ["Count: ", () => String(doubled())] }),
+      element("div", { class: "app", children: ["Count: ", () => String(doubled())] }),
     );
 
     expect(html).toContain('<div class="app">');
@@ -108,7 +108,7 @@ describe("renderToString", () => {
 
   test("escapes HTML in text content (XSS-safe by construction)", () => {
     const userInput = '<img src=x onerror="alert(1)">';
-    const html = renderToString(() => element(null, "p", { children: userInput }));
+    const html = renderToString(() => element("p", { children: userInput }));
 
     expect(html).not.toContain("<img");
     expect(html).toContain("&lt;img");
@@ -121,7 +121,7 @@ describe("renderToString", () => {
     });
 
     const html = renderToString(() =>
-      Loading(null, {
+      Loading({
         fallback: document.createTextNode("loading..."),
         children: () => {
           try {
@@ -150,7 +150,7 @@ describe("renderToStringAsync", () => {
     );
 
     const html = await renderToStringAsync(() =>
-      Loading(null, {
+      Loading({
         fallback: document.createTextNode("loading..."),
         children: () => document.createTextNode(`Hello ${user().name}`),
       }),
@@ -171,7 +171,7 @@ describe("renderToStringAsync", () => {
     );
 
     await renderToStringAsync(() => {
-      return element(null, "div", {
+      return element("div", {
         children: () => {
           return String(b());
         },
@@ -203,7 +203,7 @@ describe("renderToStringAsync", () => {
       );
       return ssrHtml(
         `<main>${esc(
-          ssrLoading(null, {
+          ssrLoading({
             fallback: () => ssrHtml("<i>loading</i>"),
             children: () => ssrHtml(`<b>${esc(user())}</b>`),
           }),
@@ -225,9 +225,7 @@ describe("renderToStringAsync", () => {
   test("generateHydrationScript escapes script-breaking content", async () => {
     const evil = computed(async () => "</script><script>alert(1)</script>", { key: "evil" });
 
-    await renderToStringAsync(() =>
-      element(null, "div", { children: () => evil().length.toString() }),
-    );
+    await renderToStringAsync(() => element("div", { children: () => evil().length.toString() }));
 
     const script = generateHydrationScript();
     expect(script.startsWith("<script>window.__BARQ_DATA__=")).toBe(true);
@@ -247,7 +245,7 @@ describe("the seed encoder", () => {
     const rich = computed(async () => cyclic, { key: "rich" });
 
     await renderToStringAsync(() =>
-      element(null, "div", { children: () => (rich() as { tags: Set<unknown> }).tags.size }),
+      element("div", { children: () => (rich() as { tags: Set<unknown> }).tags.size }),
     );
 
     const back = (0, eval)(encodeSeed(getRenderData())) as Record<string, { self: unknown }>;
@@ -298,7 +296,7 @@ describe("the seed encoder", () => {
     const page = (): unknown =>
       ssrHtml(
         `<main>${esc(
-          ssrLoading(null, {
+          ssrLoading({
             fallback: () => ssrHtml("<i>loading</i>"),
             children: () => ssrHtml(`<b>${esc(late())}</b>`),
           }),
@@ -328,7 +326,7 @@ describe("the seed encoder", () => {
     const page = (): unknown =>
       ssrHtml(
         `<main>${esc(
-          ssrLoading(null, {
+          ssrLoading({
             fallback: () => ssrHtml("<i>loading</i>"),
             children: () => ssrHtml(`<b>${esc(late())}</b>`),
           }),
@@ -400,7 +398,7 @@ describe("the seed encoder", () => {
 
     const defer = (value: () => unknown): string =>
       esc(
-        ssrLoading(null, {
+        ssrLoading({
           fallback: () => ssrHtml("<i>…</i>"),
           children: () => ssrHtml(`<b>${esc((value() as { via: string }).via)}</b>`),
         }),
@@ -455,7 +453,7 @@ describe("the seed encoder", () => {
     const page = (): unknown =>
       ssrHtml(
         `<main>${esc(
-          ssrLoading(null, {
+          ssrLoading({
             fallback: () => ssrHtml("<i>…</i>"),
             children: () => ssrHtml(`<b>${esc(slow())}</b>`),
           }),
@@ -511,7 +509,7 @@ describe("hydrate", () => {
         { key: "user" },
       );
       return () =>
-        Loading(null, {
+        Loading({
           fallback: document.createTextNode("loading..."),
           children: () => document.createTextNode(`Hello ${user()}`),
         });
@@ -578,8 +576,8 @@ describe("hydrate", () => {
       };
       const fallback = () => (ssr ? ssrHtml("<i>loading</i>") : italic());
       return ssr
-        ? () => ssrBoundary(null, null, null, "loading", fallback, content, HYDRATE)
-        : () => boundary(null, null, null, "loading", fallback, content, HYDRATE);
+        ? () => ssrBoundary(null, null, "loading", fallback, content, HYDRATE)
+        : () => boundary(null, null, "loading", fallback, content, HYDRATE);
     };
 
     const serverHtml = await renderToStringAsync(makeApp(true));
@@ -611,7 +609,7 @@ describe("hydrate", () => {
     const makeApp = () => {
       const count = signal(0);
       return () =>
-        element(null, "button", {
+        element("button", {
           onClick: () => count.update((n) => n + 1),
           children: () => `clicks: ${count()}`,
         });
@@ -645,7 +643,7 @@ describe("concurrent server renders", () => {
         { key: `data-${label}` },
       );
       return () =>
-        Loading(null, {
+        Loading({
           fallback: document.createTextNode("..."),
           children: () => document.createTextNode(`got:${data()}`),
         });
@@ -691,7 +689,7 @@ describe("concurrent server renders", () => {
     const out = await renderPage(() =>
       ssrHtml(
         `<main>${esc(
-          ssrLoading(null, {
+          ssrLoading({
             fallback: () => ssrHtml("<i>...</i>"),
             children: () => ssrHtml(`<b>${esc(mine())}</b>`),
           }),
@@ -761,7 +759,7 @@ describe("renderToStream", () => {
     const page = (): unknown =>
       ssrHtml(
         `<main>${esc(
-          ssrLoading(null, {
+          ssrLoading({
             fallback: () => ssrHtml("<i>loading</i>"),
             children: () => ssrHtml(`<b>${esc(late())}</b>`),
           }),
@@ -805,7 +803,7 @@ describe("renderToStream", () => {
     const page = (): unknown =>
       ssrHtml(
         `<main><p>before</p>${esc(
-          ssrLoading(null, {
+          ssrLoading({
             fallback: () => ssrHtml("<i>loading</i>"),
             children: () => ssrHtml(`<b>${esc(late())}</b>`),
           }),
@@ -862,7 +860,7 @@ describe("renderToStream", () => {
 
     const defer = (value: () => unknown): string =>
       esc(
-        ssrLoading(null, {
+        ssrLoading({
           fallback: () => ssrHtml("<i>…</i>"),
           children: () => ssrHtml(`<b>${esc(value())}</b>`),
         }),
@@ -905,7 +903,7 @@ describe("renderToStream", () => {
     const page = (): unknown =>
       ssrHtml(
         `<main>${esc(
-          ssrLoading(null, {
+          ssrLoading({
             fallback: () => ssrHtml("<i>loading</i>"),
             children: () => ssrHtml(`<b>${esc(late())}</b>`),
           }),
@@ -928,7 +926,7 @@ describe("renderToStream", () => {
     const neverSettles = (): unknown =>
       ssrHtml(
         `<main>${esc(
-          ssrLoading(null, {
+          ssrLoading({
             fallback: () => ssrHtml("<i>loading</i>"),
             children: () =>
               ssrHtml(`<b>${esc(computed(() => new Promise<string>(() => {}))())}</b>`),
@@ -1017,7 +1015,7 @@ describe("a Loading fallback that is itself not ready", () => {
     );
     return {
       page: () =>
-        ssrLoading(null, {
+        ssrLoading({
           fallback: () => ssrHtml(`<i>${esc(skeleton())}</i>`),
           children: () => ssrHtml(`<b>${esc(data())}</b>`),
         }),
@@ -1058,7 +1056,7 @@ describe("a pending promise inside a seeded value", () => {
       ),
     );
     const out = await renderPage(() =>
-      ssrLoading(null, {
+      ssrLoading({
         fallback: () => ssrHtml("<i>l</i>"),
         children: () => ssrHtml(`<b>${esc((cell() as { now: string }).now)}</b>`),
       }),
@@ -1083,7 +1081,7 @@ describe("a pending promise inside a seeded value", () => {
       ),
     );
     const out = await renderPage(() =>
-      ssrLoading(null, {
+      ssrLoading({
         fallback: () => ssrHtml("<i>l</i>"),
         children: () => ssrHtml(`<b>${esc((cell() as { name: string }).name)}</b>`),
       }),
@@ -1117,7 +1115,7 @@ describe("a pending promise inside a seeded value", () => {
       ),
     );
     const out = await renderPage(() =>
-      ssrLoading(null, {
+      ssrLoading({
         fallback: () => ssrHtml("<i>l</i>"),
         children: () => ssrHtml(`<b>${esc((cell() as { now: string }).now)}</b>`),
       }),
@@ -1159,7 +1157,7 @@ describe("a pending promise inside a seeded value", () => {
     );
     const parts = await collect(
       renderToStream(() =>
-        ssrLoading(null, {
+        ssrLoading({
           fallback: () => ssrHtml("<i>l</i>"),
           children: () => ssrHtml(`<b>${esc((cell() as { now: string }).now)}</b>`),
         }),
@@ -1192,7 +1190,7 @@ describe("a pending promise inside a seeded value", () => {
     );
     const parts = await collect(
       renderToStream(() =>
-        ssrLoading(null, {
+        ssrLoading({
           fallback: () => ssrHtml("<i>l</i>"),
           children: () => ssrHtml(`<b>${esc((cell() as { now: string }).now)}</b>`),
         }),
@@ -1224,7 +1222,7 @@ describe("a throw after the shell", () => {
     return () =>
       ssrHtml(
         `<main>${esc(
-          ssrLoading(null, {
+          ssrLoading({
             fallback: () => ssrHtml("<i>skel</i>"),
             children: () => ssrHtml(`<b>${esc(bad())}</b>`),
           }),
@@ -1272,7 +1270,7 @@ describe("the stream's lifecycle", () => {
     const page = (): unknown =>
       ssrHtml(
         `<main>${esc(
-          ssrLoading(null, {
+          ssrLoading({
             fallback: () => ssrHtml("<i>skel</i>"),
             children: () => ssrHtml(`<b>${esc(late())}</b>`),
           }),
@@ -1384,7 +1382,7 @@ describe("a children array holding a claimed region", () => {
       ssrHtml(
         `<div id="header">${esc([
           ssrHtml(`<div id="title">Invoices</div>`),
-          ssrBranch(null, null, null, () => 0, [() => ssrHtml(`<span id="mark">New</span>`)], 5),
+          ssrBranch(null, null, () => 0, [() => ssrHtml(`<span id="mark">New</span>`)], 5),
         ])}</div>`,
       );
 
@@ -1402,15 +1400,11 @@ describe("a children array holding a claimed region", () => {
     const mark = template(`<span id="mark">New</span>`);
 
     hydrate(
-      ((s: never) => {
+      (() => {
         const host = outer() as HTMLElement;
         insert(
-          s,
           host,
-          block((inner: never) => [
-            title(),
-            branch(inner, null, null, () => 0, [block(() => mark())], 5),
-          ]),
+          block(() => [title(), branch(null, null, () => 0, [block(() => mark())], 5)]),
           null,
           16,
         );

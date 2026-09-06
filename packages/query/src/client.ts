@@ -2,9 +2,9 @@ import {
   type Cell,
   type JSXElement,
   type Scope,
-  block,
   cell,
   context,
+  getOwner,
   provide,
   read,
   readSlot,
@@ -24,17 +24,16 @@ export interface QueryClientProviderProps {
  * Forks the context on its own instance scope and builds `children` INSIDE it,
  * so a consumer constructed below sees this client rather than an outer one.
  */
-export const QueryClientProvider = block(
-  (scope: Scope | null, props: { client: Cell<QueryClient>; children?: unknown }): unknown => {
-    const client = readSlot(props.client, "QueryClientProvider.client") as QueryClient;
-    return provide(scope as Scope, CLIENT, cell(client), (inner: Scope | null) => {
-      const children = props.children;
-      return typeof children === "function"
-        ? (children as (s: Scope | null) => unknown)(inner)
-        : children;
-    });
-  },
-) as unknown as (props: QueryClientProviderProps) => JSXElement;
+export const QueryClientProvider = ((props: {
+  client: Cell<QueryClient>;
+  children?: unknown;
+}): unknown => {
+  const client = readSlot(props.client, "QueryClientProvider.client") as QueryClient;
+  return provide(CLIENT, cell(client), () => {
+    const children = props.children;
+    return typeof children === "function" ? (children as () => unknown)() : children;
+  });
+}) as unknown as (props: QueryClientProviderProps) => JSXElement;
 
 /**
  * The client in scope, or the one you hand in.
@@ -69,17 +68,16 @@ export interface IsRestoringProviderProps {
  * drives this, and every hook below reads it — which is why it exists here
  * rather than in whatever package eventually wraps the persister.
  */
-export const IsRestoringProvider = block(
-  (scope: Scope | null, props: { value: Cell<() => boolean>; children?: unknown }): unknown => {
-    const value = readSlot(props.value, "IsRestoringProvider.value") as () => boolean;
-    return provide(scope as Scope, RESTORING, cell(value), (inner: Scope | null) => {
-      const children = props.children;
-      return typeof children === "function"
-        ? (children as (s: Scope | null) => unknown)(inner)
-        : children;
-    });
-  },
-) as unknown as (props: IsRestoringProviderProps) => JSXElement;
+export const IsRestoringProvider = ((props: {
+  value: Cell<() => boolean>;
+  children?: unknown;
+}): unknown => {
+  const value = readSlot(props.value, "IsRestoringProvider.value") as () => boolean;
+  return provide(RESTORING, cell(value), () => {
+    const children = props.children;
+    return typeof children === "function" ? (children as () => unknown)() : children;
+  });
+}) as unknown as (props: IsRestoringProviderProps) => JSXElement;
 
 const NOT_RESTORING = signal(false);
 

@@ -1025,81 +1025,6 @@ export function createRouter(config: RouterConfig): RouterState {
     return { slices, failures };
   };
 
-  const parsedParams = computed(() => parseChain(chain(), rawParams()));
-
-  /**
-   * What every reader gets: the raw params with the whole chain's `parse`
-   * applied, which is `useParams()`, `props.params()` and a loader's `params`.
-   *
-   * The raw record is returned UNCHANGED when no route in the chain parses,
-   * which is nearly every application — `dataFor` memoises on the identity of
-   * this value, so allocating a copy per read would rebuild every reader on
-   * every location change.
-   */
-  /**
-   * The deepest route's validated search, shared like `params` and for the same
-   * reason: `useSearch()` reads it from a hole, and a fresh record per
-   * navigation re-runs that hole when nothing in the query moved.
-   */
-  const validSearch = computed<Record<string, unknown>>(() => {
-    const { slices } = validated();
-    return slices[slices.length - 1] ?? searchRecord(search());
-  }, shared);
-
-  const params = computed<Record<string, string>>(() => {
-    const { slices } = parsedParams();
-    return (slices[slices.length - 1] ?? rawParams()) as Record<string, string>;
-  }, shared);
-
-  /**
-   * The validated search, one entry per depth, and the LAST one is what
-   * `useSearch()` answers with.
-   *
-   * A route's validator sees the raw search with every ancestor's validated
-   * output layered over it, so unknown keys survive; `_defaults` records what a
-   * validator ADDED, which is how `stripSearchParams` tells a schema default
-   * from a value the caller asked for.
-   *
-   * A failure does NOT throw here. `computed` is read during a render, and a
-   * throw would take the page rather than the route: the error is stored and
-   * re-thrown by `searchErrorAt`, from inside the route's own boundary.
-   */
-  const validated = computed<{
-    readonly slices: readonly Record<string, unknown>[];
-    readonly defaults: ReadonlyMap<string, unknown>;
-    readonly failures: readonly (SearchParamError | null)[];
-  }>(() => {
-    const raw = searchRecord(search());
-    const slices: Record<string, unknown>[] = [];
-    const failures: (SearchParamError | null)[] = [];
-    const defaults = new Map<string, unknown>();
-    let merged: Record<string, unknown> = raw;
-    for (const route of chain()) {
-      const validator = route.definition.validateSearch;
-      if (validator === undefined) {
-        slices.push(merged);
-        failures.push(null);
-        continue;
-      }
-      try {
-        const slice = validateSearch(validator, { ...merged });
-        for (const [key, value] of Object.entries(slice)) {
-          if (!(key in raw)) defaults.set(key, value);
-        }
-        merged = { ...merged, ...slice };
-        slices.push(merged);
-        failures.push(null);
-      } catch (error) {
-        failures.push(
-          error instanceof SearchParamError
-            ? error
-            : new SearchParamError((error as Error).message ?? "search did not validate"),
-        );
-        slices.push(merged);
-      }
-    }
-    return { slices, defaults, failures };
-  });
   /**
    * The chain an UNMATCHED location renders.
    *
@@ -1144,6 +1069,83 @@ export function createRouter(config: RouterConfig): RouterState {
 
   /** Nothing matched, so the chain above is the root standing in. */
   const missed = computed<boolean>(() => match() === null);
+
+  const validated = computed<{
+    readonly slices: readonly Record<string, unknown>[];
+    readonly defaults: ReadonlyMap<string, unknown>;
+    readonly failures: readonly (SearchParamError | null)[];
+  }>(() => {
+    const raw = searchRecord(search());
+    const slices: Record<string, unknown>[] = [];
+    const failures: (SearchParamError | null)[] = [];
+    const searchDefaults = new Map<string, unknown>();
+    let merged: Record<string, unknown> = raw;
+    for (const route of chain()) {
+      const validator = route.definition.validateSearch;
+      if (validator === undefined) {
+        slices.push(merged);
+        failures.push(null);
+        continue;
+      }
+      try {
+        const slice = validateSearch(validator, { ...merged });
+        for (const [key, value] of Object.entries(slice)) {
+          if (!(key in raw)) searchDefaults.set(key, value);
+        }
+        merged = { ...merged, ...slice };
+        slices.push(merged);
+        failures.push(null);
+      } catch (error) {
+        failures.push(
+          error instanceof SearchParamError
+            ? error
+            : new SearchParamError((error as Error).message ?? "search did not validate"),
+        );
+        slices.push(merged);
+      }
+    }
+    return { slices, defaults: searchDefaults, failures };
+  });
+
+  const parsedParams = computed(() => parseChain(chain(), rawParams()));
+
+  /**
+   * What every reader gets: the raw params with the whole chain's `parse`
+   * applied, which is `useParams()`, `props.params()` and a loader's `params`.
+   *
+   * The raw record is returned UNCHANGED when no route in the chain parses,
+   * which is nearly every application — `dataFor` memoises on the identity of
+   * this value, so allocating a copy per read would rebuild every reader on
+   * every location change.
+   */
+  /**
+   * The deepest route's validated search, shared like `params` and for the same
+   * reason: `useSearch()` reads it from a hole, and a fresh record per
+   * navigation re-runs that hole when nothing in the query moved.
+   */
+  const validSearch = computed<Record<string, unknown>>(() => {
+    const { slices } = validated();
+    return slices[slices.length - 1] ?? searchRecord(search());
+  }, shared);
+
+  const params = computed<Record<string, string>>(() => {
+    const { slices } = parsedParams();
+    return (slices[slices.length - 1] ?? rawParams()) as Record<string, string>;
+  }, shared);
+
+  /**
+   * The validated search, one entry per depth, and the LAST one is what
+   * `useSearch()` answers with.
+   *
+   * A route's validator sees the raw search with every ancestor's validated
+   * output layered over it, so unknown keys survive; `_defaults` records what a
+   * validator ADDED, which is how `stripSearchParams` tells a schema default
+   * from a value the caller asked for.
+   *
+   * A failure does NOT throw here. `computed` is read during a render, and a
+   * throw would take the page rather than the route: the error is stored and
+   * re-thrown by `searchErrorAt`, from inside the route's own boundary.
+   */
 
   const entries = new Map<string, Entry>();
   const limit = config.cacheSize ?? DEFAULT_CACHE_SIZE;
@@ -1263,7 +1265,12 @@ export function createRouter(config: RouterConfig): RouterState {
                     throw error;
                   }
                 },
-                { key: seedKey },
+                // LAZY on purpose. A route's loader must run when the route's
+                // data is asked for — a read, or an explicit preload — not
+                // when the cache entry is minted. It is also the one shape
+                // that cannot run eagerly: the body reads `entry`, which this
+                // cell is being built to fill in.
+                { key: seedKey, lazy: true },
               );
 
         entry = {

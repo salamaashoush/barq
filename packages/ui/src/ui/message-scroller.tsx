@@ -182,10 +182,7 @@ export function MessageScroller(props: Incoming<MessageScrollerProps>) {
 
 /** See `drawer.tsx`: the scope a `provide` needs exists only in a component. */
 function ScrollerProvider(props: Incoming<{ value: MessageScroller; children?: Child }>) {
-  const owner = getOwner();
-  if (owner === null) return <>{props.children}</>;
   return provide(
-    owner,
     ScrollerContext,
     () => props.value(),
     () => props.children,

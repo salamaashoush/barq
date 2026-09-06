@@ -156,10 +156,7 @@ describe("ToggleButton", () => {
  */
 describe("the trigger slot", () => {
   function Wrap(props: Incoming<{ children?: Child; onPress?: () => void }>) {
-    const owner = getOwner();
-    if (owner === null) return <>{props.children}</>;
     return provide(
-      owner,
       probe,
       () => 1,
       () => {

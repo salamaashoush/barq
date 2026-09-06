@@ -51,7 +51,7 @@ function bindOne(
   // of a handler has to reach the enclosing `Errored` boundary the same way a
   // compiled `onClick` does, and the handler has to run under this owner so
   // primitives it creates are disposed with it.
-  listen(getOwner(), target, type, handler, options);
+  listen(target, type, handler, options);
 }
 
 function bindAll(

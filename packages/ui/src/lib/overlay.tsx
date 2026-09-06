@@ -77,7 +77,6 @@ export function overlayFamily(name: string, kind: OverlayKind = "dialog"): Overl
     // dialogs beside each other would share one open state.
     if (owner === null) return <>{props.children}</>;
     return provide(
-      owner,
       Context,
       () => value,
       () => props.children as unknown,
@@ -88,14 +87,11 @@ export function overlayFamily(name: string, kind: OverlayKind = "dialog"): Overl
     const value = use();
     const { triggerProps } = overlayTrigger({ type: kind }, value.state);
 
-    const owner = getOwner();
-    if (owner === null) return <>{props.children}</>;
     // The slot is installed INSIDE the `provide` callback, which is the only
     // place a scope of its own exists. Installed on the ambient owner it would
     // land beside the trigger rather than above it, and the control would
     // never see it.
     return provide(
-      owner,
       TriggerContext,
       () => value,
       () => {

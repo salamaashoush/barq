@@ -143,14 +143,14 @@ export function errorFallbackFor(
   chain: readonly Route[],
   depth: number,
   params: () => Record<string, string>,
-): (scope: unknown, error: () => Error, reset: () => void) => unknown {
+): (error: () => Error, reset: () => void) => unknown {
   // ONE report per error OBJECT. The fallback re-renders — a reset, a
   // re-entered branch — and `onCatch` is a notification, not a render step, so
   // firing it every time would report one failure many times to a crash
   // reporter. A `notFound()` is an ANSWER rather than a failure and is not
   // reported at all.
   let reported: unknown = null;
-  return (scope, error, reset) => {
+  return (error, reset) => {
     const missing = isNotFound(error());
     if (!missing && reported !== error()) {
       reported = error();
@@ -162,15 +162,10 @@ export function errorFallbackFor(
         ? (definition?.notFoundComponent ?? definition?.errorComponent)
         : definition?.errorComponent;
       if (component !== undefined) {
-        // Scope-first, like every other component the router invokes. On the
-        // string backend it is `null`; on the DOM one it is the fallback arm's
-        // own instance scope, and passing `null` there would leave anything the
-        // error component created with no owner to die with.
-        return (component as unknown as (s: unknown, p: unknown) => unknown)(scope, {
-          error,
-          reset,
-          params,
-        });
+        // A component is a function of its props; whatever it creates is owned
+        // by the fallback arm's own instance scope, which the boundary entered
+        // before invoking this.
+        return (component as unknown as (p: unknown) => unknown)({ error, reset, params });
       }
     }
     // No `errorComponent` anywhere up the chain, so the boundary shows nothing

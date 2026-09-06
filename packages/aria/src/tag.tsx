@@ -277,10 +277,7 @@ export function useTagNode(): Node<unknown> {
 }
 
 function TagGroupProvider(props: Incoming<{ value: TagGroupContextValue; children?: Child }>) {
-  const owner = getOwner();
-  if (owner === null) return <>{props.children}</>;
   return provide(
-    owner,
     TagGroupContext,
     () => props.value(),
     () => props.children as unknown,
@@ -349,7 +346,7 @@ export function TagGroup<T>(props: Incoming<TagGroupComponentProps<T>>) {
     },
   );
 
-  const render = props.children as unknown as (scope: unknown, item: T) => Child;
+  const render = props.children as unknown as (item: T) => Child;
 
   return (
     <TagGroupProvider value={value}>
@@ -359,7 +356,7 @@ export function TagGroup<T>(props: Incoming<TagGroupComponentProps<T>>) {
           {(node: Node<T>) => {
             const rowOwner = getOwner();
             if (rowOwner !== null) install(rowOwner, TagNodeContext, () => node as Node<unknown>);
-            return render(rowOwner, node.value as T);
+            return render(node.value as T);
           }}
         </For>
       </div>

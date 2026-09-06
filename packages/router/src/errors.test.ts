@@ -153,13 +153,11 @@ describe("onCatch", () => {
     const boom = new Error("boom");
 
     fallback(
-      null,
       () => boom,
       () => {},
     );
     // A re-render of the SAME error reports nothing further.
     fallback(
-      null,
       () => boom,
       () => {},
     );
@@ -167,7 +165,6 @@ describe("onCatch", () => {
 
     // A different error is a different report.
     fallback(
-      null,
       () => new Error("again"),
       () => {},
     );
@@ -182,7 +179,6 @@ describe("onCatch", () => {
       notFoundComponent: (() => null) as never,
     });
     errorFallbackFor(chain, 0, () => ({}))(
-      null,
       () => new NotFound("gone"),
       () => {},
     );

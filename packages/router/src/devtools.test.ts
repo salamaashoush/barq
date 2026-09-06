@@ -23,28 +23,27 @@ afterEach(() => {
 
 const page =
   (labelText: string) =>
-  (_scope: Scope | null, _props: RouteProps): Node =>
+  (_props: RouteProps): Node =>
     document.createTextNode(labelText);
 
 function mount(state: RouterState, open = true): { host: HTMLElement; dispose: () => void } {
   const host = document.createElement("div");
   document.body.append(host);
   const dispose = render(
-    ((scope: Scope | null) =>
-      (RouterProvider as never as (s: Scope | null, p: unknown) => unknown)(scope, {
+    (() =>
+      (RouterProvider as never as (p: unknown) => unknown)({
         state: () => state,
       })) as never,
     host,
   );
   const panelHost = document.createElement("div");
   document.body.append(panelHost);
-  const disposePanel = render((scope: Scope | null) => {
+  const disposePanel = render(() => {
     const node = document.createElement("div");
     insert(
-      scope,
       node,
       () =>
-        (RouterDevtools as never as (s: Scope | null, p: unknown) => unknown)(scope, {
+        (RouterDevtools as never as (p: unknown) => unknown)({
           state: () => state,
           open: () => open,
         }) as never,
@@ -66,9 +65,9 @@ const routes: AnyRouteDefinition[] = [
     id: "layout",
     path: "/app",
     context: () => ({ tenant: "acme" }),
-    component: (scope: Scope | null, props: RouteProps) => {
+    component: (props: RouteProps) => {
       const node = document.createElement("div");
-      insert(scope, node, () => props.children);
+      insert(node, () => props.children);
       return node;
     },
     children: [{ id: "leaf", path: "$id", component: page("leaf") }],

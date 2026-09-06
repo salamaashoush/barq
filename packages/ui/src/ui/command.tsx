@@ -326,10 +326,10 @@ export function Command<T>(props: Incoming<CommandProps<T>>) {
   const owner = getOwner();
   if (owner !== null) install(owner, CommandContext, () => value);
 
-  const render = props.children as unknown as (scope: unknown, item: T | null) => Child;
+  const render = props.children as unknown as (item: T | null) => Child;
   // So a `<Section>` in that callback builds its own options with it, rather
   // than the caller passing the callback down by hand at every use.
-  provideItemRender(render as unknown as (scope: unknown, item: unknown) => Child);
+  provideItemRender(render as unknown as (item: unknown) => Child);
   const isEmpty = (): boolean => [...state.collection()].length === 0;
 
   return (
@@ -342,7 +342,7 @@ export function Command<T>(props: Incoming<CommandProps<T>>) {
             <For each={() => [...state.collection()]}>
               {(node: Node<T>) => {
                 provideItemNode(node);
-                return render(getOwner(), node.value);
+                return render(node.value);
               }}
             </For>
           </CommandList>

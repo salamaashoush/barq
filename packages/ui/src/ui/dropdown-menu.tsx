@@ -438,10 +438,7 @@ export function DropdownMenuTrigger(props: Incoming<{ children?: Child }>) {
   const trigger = useMenuTrigger();
   if (trigger === null) throw new Error("A DropdownMenuTrigger must be inside a DropdownMenu.");
 
-  const owner = getOwner();
-  if (owner === null) return <>{props.children}</>;
   return provide(
-    owner,
     Slotted,
     () => true,
     () => {

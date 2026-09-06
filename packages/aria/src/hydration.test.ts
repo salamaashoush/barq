@@ -77,7 +77,7 @@ async function bothBackends<T>(source: string): Promise<Halves<T>> {
   };
 }
 
-type Half = { App: (scope: null, props: unknown) => unknown };
+type Half = { App: (props: unknown) => unknown };
 
 const FIELD = `
   import { field } from "${SRC}/label.ts";
@@ -180,8 +180,8 @@ function referencesIn(html: string): string[] {
 async function hydrated(source: string): Promise<ReturnType<typeof renderAndHydrate>> {
   const { server, client } = await bothBackends<Half>(source);
   return renderAndHydrate({
-    server: () => server.App(null, {}) as never,
-    client: (() => client.App(null, {})) as never,
+    server: () => server.App({}) as never,
+    client: (() => client.App({})) as never,
   });
 }
 

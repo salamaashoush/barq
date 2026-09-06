@@ -56,7 +56,7 @@ async function ssrModule<T>(source: string): Promise<T> {
 
 describe("a labelled field", () => {
   test("the label names the control, on the server", async () => {
-    const mod = await ssrModule<{ Field: (s: null, props: unknown) => unknown }>(`
+    const mod = await ssrModule<{ Field: (props: unknown) => unknown }>(`
       import { field } from "${SRC}/label.ts";
 
       export function Field() {
@@ -74,7 +74,7 @@ describe("a labelled field", () => {
       }
     `);
 
-    const html = renderToString(() => mod.Field(null, {}) as never);
+    const html = renderToString(() => mod.Field({}) as never);
 
     const labelId = /<label[^>]*\bid="([^"]+)"/.exec(html)?.[1];
     const describedBy = /<input[^>]*aria-describedby="([^"]+)"/.exec(html)?.[1];
@@ -88,7 +88,7 @@ describe("a labelled field", () => {
   });
 
   test("an invalid field says so and points at the message", async () => {
-    const mod = await ssrModule<{ Field: (s: null, props: unknown) => unknown }>(`
+    const mod = await ssrModule<{ Field: (props: unknown) => unknown }>(`
       import { field } from "${SRC}/label.ts";
 
       export function Field() {
@@ -106,7 +106,7 @@ describe("a labelled field", () => {
       }
     `);
 
-    const html = renderToString(() => mod.Field(null, {}) as never);
+    const html = renderToString(() => mod.Field({}) as never);
     const errorId = /<span[^>]*\bid="([^"]+)"/.exec(html)?.[1];
 
     expect(errorId).toBeDefined();
@@ -116,7 +116,7 @@ describe("a labelled field", () => {
 
 describe("a listbox", () => {
   test("the roles and the selection are in the markup, not added on the client", async () => {
-    const mod = await ssrModule<{ List: (s: null, props: unknown) => unknown }>(`
+    const mod = await ssrModule<{ List: (props: unknown) => unknown }>(`
       import { listState } from "${SRC}/collections.ts";
       import { listBox, option, optionIdFor } from "${SRC}/listbox.tsx";
       import { ref } from "@barqjs/primitives/refs";
@@ -148,7 +148,7 @@ describe("a listbox", () => {
       }
     `);
 
-    const html = renderToString(() => mod.List(null, {}) as never);
+    const html = renderToString(() => mod.List({}) as never);
 
     expect(html).toContain('role="listbox"');
     expect(html).toContain('aria-label="Fruit"');
@@ -160,7 +160,7 @@ describe("a listbox", () => {
   });
 
   test("an option's id is derived, so anything can name it before it exists", async () => {
-    const mod = await ssrModule<{ List: (s: null, props: unknown) => unknown }>(`
+    const mod = await ssrModule<{ List: (props: unknown) => unknown }>(`
       import { listState } from "${SRC}/collections.ts";
       import { listBox, option, optionIdFor } from "${SRC}/listbox.tsx";
       import { ref } from "@barqjs/primitives/refs";
@@ -183,7 +183,7 @@ describe("a listbox", () => {
       }
     `);
 
-    const html = renderToString(() => mod.List(null, {}) as never);
+    const html = renderToString(() => mod.List({}) as never);
 
     const optionId = /<li[^>]*\bid="([^"]+)"/.exec(html)?.[1];
     const derived = /data-derived="([^"]+)"/.exec(html)?.[1];

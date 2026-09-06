@@ -857,7 +857,7 @@ export interface SliderTrackComponentProps extends StyleProps {
  */
 export function SliderTrack(props: Incoming<SliderTrackComponentProps>) {
   const group = useSlider();
-  const render = props.children as unknown as (scope: unknown, index: number) => Child;
+  const render = props.children as unknown as (index: number) => Child;
 
   const elementProps = mergeProps(
     props.trackProps?.() ?? {},
@@ -873,7 +873,7 @@ export function SliderTrack(props: Incoming<SliderTrackComponentProps>) {
   return (
     <div {...elementProps} ref={mergeRefs(group.trackRef.set, props.ref?.())}>
       <For each={() => group.state.values().map((_, index) => index)}>
-        {(index: number) => render(getOwner(), index)}
+        {(index: number) => render(index)}
       </For>
     </div>
   );

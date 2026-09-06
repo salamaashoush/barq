@@ -181,7 +181,7 @@ export function Breadcrumbs<T>(props: Incoming<BreadcrumbsComponentProps<T>>) {
     },
   );
 
-  const render = props.children as unknown as (scope: unknown, item: T) => Child;
+  const render = props.children as unknown as (item: T) => Child;
 
   return (
     <nav {...elementProps} ref={mergeRefs(props.ref?.())}>
@@ -195,7 +195,7 @@ export function Breadcrumbs<T>(props: Incoming<BreadcrumbsComponentProps<T>>) {
                 isLast: node.nextKey === undefined,
               }));
             }
-            return render(rowOwner, node.value as T);
+            return render(node.value as T);
           }}
         </For>
       </ol>

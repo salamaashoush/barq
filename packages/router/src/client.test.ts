@@ -20,9 +20,9 @@ function table(seen: string[]): AnyRouteDefinition[] {
     {
       id: "__root__",
       path: "/",
-      component: ((_scope: unknown, props: { children: unknown }) => {
+      component: ((props: { children: unknown }) => {
         seen.push("root");
-        return (props.children as (scope: unknown) => unknown)(null);
+        return (props.children as () => unknown)();
       }) as never,
       children: [
         {

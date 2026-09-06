@@ -60,14 +60,11 @@ function row(label: string, value: () => string): HTMLElement {
   line.append(name);
   const slot = document.createElement("span");
   line.append(slot);
-  insert(null, slot, value);
+  insert(slot, value);
   return line;
 }
 
-function RouterDevtoolsImpl(
-  scope: Scope | null,
-  props: { state?: () => unknown; open?: () => unknown },
-): Node {
+function RouterDevtoolsImpl(props: { state?: () => unknown; open?: () => unknown }): Node {
   // `useRouter` throws when there is no provider above, so it is only reached
   // when nothing was handed over.
   const state = (props.state === undefined ? useRouter() : props.state()) as RouterState;
@@ -90,13 +87,13 @@ function RouterDevtoolsImpl(
   panel.append(body);
 
   const label = (): string => `barq router — ${state.chain().length} matched ${open ? "▾" : "▸"}`;
-  insert(scope, header, label);
-  listen(scope, header, "click", () => {
+  insert(header, label);
+  listen(header, "click", () => {
     open = !open;
     body.style.display = open ? "block" : "none";
     // The header's own label carries the caret, so it has to re-read.
     header.textContent = "";
-    insert(scope, header, label);
+    insert(header, label);
   });
 
   body.append(
@@ -120,7 +117,7 @@ function RouterDevtoolsImpl(
     row("canGoBack", () => String(state.canGoBack())),
   );
 
-  bindProp(scope, panel, setAttr, "data-barq-devtools", () => "");
+  bindProp(panel, setAttr, "data-barq-devtools", () => "");
   return panel;
 }
 

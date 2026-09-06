@@ -8,8 +8,8 @@
  *
  * Two shapes are load-bearing and neither is React's:
  *
- *  - **`(scope, props)`.** Every component and every Block. The scope is first
- *    and is not optional.
+ *  - **`(props)`.** A component is a function of its props; ownership is
+ *    ambient, established by the construct that invokes a body.
  *  - **`children` is a Block**, so a layout CONSTRUCTS the next route inside its
  *    own scope. A provider or a boundary a layout installs is therefore visible
  *    to the route it wraps, which an outlet cannot do.
@@ -36,6 +36,7 @@ import {
   listen,
   onCleanup,
   props as sources,
+  getOwner,
   provide,
   read,
   readSlot,
@@ -73,7 +74,7 @@ import {
 } from "./path.ts";
 
 /** The real ABI. `RouteComponent` is declared props-first for TypeScript's sake. */
-type Invoked = (scope: Scope | null, props: RouteProps) => unknown;
+type Invoked = (props: RouteProps) => unknown;
 
 const RouterContext = context<RouterState>(undefined, "barq-router");
 
@@ -217,7 +218,7 @@ export interface HeadAssets {
    * `ssrFor`/`ssrDynamic` of its own, and each backend hands over the one that
    * is its.
    */
-  readonly tagTree?: (scope: Scope | null, list: () => readonly ManagedTag[]) => unknown;
+  readonly tagTree?: (list: () => readonly ManagedTag[]) => unknown;
 }
 
 export const HeadAssetsContext = context<HeadAssets | null>(null, "barq-router-head");
@@ -248,7 +249,7 @@ export const HeadAssetsContext = context<HeadAssets | null>(null, "barq-router-h
  */
 // The props parameter is never read; it is declared so JSX reads the FIRST
 // parameter as the scope. `Outlet` carries the same note and the same reason.
-export function HeadContent(scope: Scope | null, _props?: Record<string, never>): JSXElement {
+export function HeadContent(_props?: Record<string, never>): JSXElement {
   const assets = read(HeadAssetsContext)();
   if (assets === null) return null;
   const list = (): readonly ManagedTag[] =>
@@ -266,7 +267,7 @@ export function HeadContent(scope: Scope | null, _props?: Record<string, never>)
   // ONLY the managed tags. Everything else that used to be written here is
   // placed with the seed instead, because `<head>` is hydrated and every node
   // in it has to be one this tree produces.
-  return assets.tagTree(scope, list) as JSXElement;
+  return assets.tagTree(list) as JSXElement;
 }
 
 /**
@@ -510,7 +511,7 @@ export function clientHeadAssets(
     //
     // `each` claims through `claimAt(parent, anchor, …)`, and a hydrating list
     // therefore needs the element it sits in — which is why the compiler emits
-    // `_$each(_s$, _el$2, _el$6, …)` with both. A hand-written component has
+    // `_$each(_el$2, _el$6, …)` with both. A hand-written component has
     // neither: it returns a value and the caller's `insert` decides where it
     // goes. Calling `each` with nulls claimed nothing and the enclosing WHOLE
     // claim then reconciled the server's whole head away.
@@ -530,15 +531,14 @@ export function clientHeadAssets(
     // and 314ms of a page rendered at the user agent's defaults. Solid's `For`
     // is referentially keyed for the same reason, and `ManagedTag.identity`
     // exists so a href survives a route that shifts its index.
-    tagTree: (_scope, list) => () => {
+    tagTree: (list) => () => {
       const kept = new Map<string, Element>();
       const nodes = list().map((tag, index) => {
         const key = tagKey(tag, index);
         // A key twice in ONE list is two tags, not one node in two places, and
         // handing `insert` the same node twice loses one of them.
         const node =
-          (kept.has(key) ? undefined : held.get(key)) ??
-          element(null, tag.tag, tagProps(tag, index));
+          (kept.has(key) ? undefined : held.get(key)) ?? element(tag.tag, tagProps(tag, index));
         if (!kept.has(key)) kept.set(key, node);
         return node;
       });
@@ -562,10 +562,11 @@ export function clientHeadAssets(
  * for exactly this reason: a cold `lazy()` here throws `NotReadyError` from a
  * position with no boundary above it and the whole page fails.
  */
-export function Document(
-  scope: Scope | null,
-  props: { readonly state: unknown; readonly head?: unknown; readonly children: unknown },
-): JSXElement {
+export function Document(props: {
+  readonly state: unknown;
+  readonly head?: unknown;
+  readonly children: unknown;
+}): JSXElement {
   const state = readSlot(props.state, "Document.state") as RouterState;
   const shell = shellComponentOf(state.config.routeTree);
   const assets = clientHeadAssets(state, {
@@ -582,15 +583,14 @@ export function Document(
   if (shell === undefined) return children as JSXElement;
   // A null scope has nothing to provide ON, and `renderShell` makes the same
   // split for the same reason.
-  if (scope === null) return shell(null, { children }) as JSXElement;
+  const scope = getOwner();
+  if (scope === null) return shell({ children }) as JSXElement;
   // Both contexts, and in the order `renderShell` provides them: the shell
   // renders `<html>`, so it is where `lang` and `dir` are set, and it can only
   // know them from the location. A backend that provided one and not the other
   // would hydrate into a different tree than it served.
-  return provide(scope, HeadAssetsContext, cell(assets), (inner) =>
-    provide(inner as Scope, RouterContext, cell(state), (withRouter) =>
-      shell(withRouter, { children }),
-    ),
+  return provide(HeadAssetsContext, cell(assets), () =>
+    provide(RouterContext, cell(state), () => shell({ children })),
   ) as JSXElement;
 }
 
@@ -602,10 +602,10 @@ export function Document(
  */
 function shellComponentOf(
   routes: readonly unknown[],
-): ((scope: Scope | null, props: { children: unknown }) => unknown) | undefined {
+): ((props: { children: unknown }) => unknown) | undefined {
   const declared = (routes[0] as { shellComponent?: unknown } | undefined)?.shellComponent;
   return typeof declared === "function"
-    ? (declared as (scope: Scope | null, props: { children: unknown }) => unknown)
+    ? (declared as (props: { children: unknown }) => unknown)
     : undefined;
 }
 
@@ -712,7 +712,6 @@ function readyOf(component: unknown): void {
  * layout, and what an identity-gated re-render used to be hand-rolled for.
  */
 export function renderDepth(
-  scope: Scope | null,
   state: RouterState,
   depth: number,
   parent: Node | null,
@@ -741,7 +740,7 @@ export function renderDepth(
     )}`;
   };
 
-  const body = (instance: Scope | null): unknown => {
+  const body = (): unknown => {
     const route = untrack(routeAt);
     if (route === null) {
       // The not-found goes where the MATCHED route would have gone, which with
@@ -757,17 +756,14 @@ export function renderDepth(
         untrack(() => state.chain()),
         depth - 1,
         () => state.params(),
-      )(instance, () => NOT_FOUND_ERROR, NOOP_RESET);
+      )(() => NOT_FOUND_ERROR, NOOP_RESET);
       if (own !== null && own !== undefined) return own as Node;
       const fallback = state.config.notFound;
       if (fallback !== undefined) {
         // A not-found route has no next depth, so its `children` is the Block
         // that places nothing. Omitting the argument was a type error the
         // package's own `typecheck` has been failing on.
-        return (fallback as unknown as Invoked)(
-          instance,
-          routeProps(state, depth, null, EMPTY_CHILDREN),
-        );
+        return (fallback as unknown as Invoked)(routeProps(state, depth, null, EMPTY_CHILDREN));
       }
       // THROUGH `template`, not `document.createTextNode`.
       //
@@ -788,7 +784,7 @@ export function renderDepth(
     // reactivity. A body that reads `useParams()` directly would otherwise
     // subscribe the enclosing block and rebuild the whole route on a parameter
     // change. Measured: two builds for one navigation within the same route.
-    const content = (contentScope: Scope | null): unknown => {
+    const content = (): unknown => {
       // TRACKED, and outside the `untrack` below on purpose. A code-split route
       // is a `lazy()`, and reading its cell inside `untrack` subscribes to
       // nothing — so the `NotReadyError` parks this depth's boundary and the
@@ -802,15 +798,10 @@ export function renderDepth(
         // page down. The PATH is checked first: it decided which route this is.
         const refused = state.paramsErrorAt(depth) ?? state.searchErrorAt(depth);
         if (refused !== null) throw refused;
-        if (component === undefined) return renderDepth(contentScope, state, depth + 1, null, null);
-        const children = block((childScope: Scope | null) =>
-          renderDepth(childScope, state, depth + 1, null, null),
-        );
-        return withMatch(
-          contentScope,
-          { state, depth, route, children, blocking: false },
-          (inner) =>
-            (component as unknown as Invoked)(inner, routeProps(state, depth, route, children)),
+        if (component === undefined) return renderDepth(state, depth + 1, null, null);
+        const children = block(() => renderDepth(state, depth + 1, null, null));
+        return withMatch({ state, depth, route, children, blocking: false }, () =>
+          (component as unknown as Invoked)(routeProps(state, depth, route, children)),
         );
       });
     };
@@ -823,18 +814,17 @@ export function renderDepth(
     // Inside rather than outside, for the reason the string side records: what
     // is re-entered after a park is the loading boundary's own content, so a
     // catcher outside it is not in the path on the retry.
-    const guarded: Block<unknown> = (contentScope: Scope | null): unknown =>
+    const guarded: Block<unknown> = (): unknown =>
       boundary(
-        contentScope,
         null,
         null,
         "error",
-        ((fallbackScope: Scope | null, error: () => Error, reset: () => void) => {
+        ((error: () => Error, reset: () => void) => {
           const shown = errorFallbackFor(
             untrack(() => state.chain()),
             depth,
             () => state.params(),
-          )(fallbackScope, error, reset);
+          )(error, reset);
           return shown === null || shown === undefined ? null : shown;
         }) as Block<unknown>,
         content,
@@ -848,7 +838,6 @@ export function renderDepth(
     // merely fail to seed — the render throws `NotReadyError` and produces
     // nothing.
     return boundary(
-      instance,
       null,
       null,
       "loading",
@@ -868,7 +857,7 @@ export function renderDepth(
   // ranges while this side claimed none of them, and every SSR'd page threw its
   // markup away and re-rendered cold — measured as `claimed: 0, recovered: true`
   // against a real dev server before this line existed.
-  return branch(scope, parent, anchor, keyAt as Cell<unknown>, body, HYDRATE);
+  return branch(parent, anchor, keyAt as Cell<unknown>, body, HYDRATE);
 }
 
 /**
@@ -884,8 +873,8 @@ function routeFallback(state: RouterState, route: Route): Block<unknown> | null 
   if (pending === undefined) return null;
   const delay = route.definition.pendingMs ?? state.config.defaults?.pendingMs ?? 0;
 
-  return (fallbackScope: Scope | null) => {
-    const shown = (pending as unknown as Invoked)(fallbackScope, {
+  return () => {
+    const shown = (pending as unknown as Invoked)({
       params: () => state.params(),
       data: () => undefined,
       context: () => ({}),
@@ -991,13 +980,12 @@ export const RouteMatchContext = context<RouteMatchInfo | null>(null, "barq-rout
  * install a context there, and a hook called under one throws `NoOwnerError`
  * with its own message, which is a better failure than a silently absent match.
  */
-function withMatch(
-  scope: Scope | null,
-  match: RouteMatchInfo,
-  body: (inner: Scope | null) => unknown,
-): unknown {
-  if (scope === null) return body(null);
-  return provide(scope, RouteMatchContext, cell(match), body);
+function withMatch(match: RouteMatchInfo, body: () => unknown): unknown {
+  const scope = getOwner();
+  // No owner is a legal position — a module-level render — and there is
+  // nothing to provide ON, so the body runs as it stands.
+  if (scope === null) return body();
+  return provide(RouteMatchContext, cell(match), body);
 }
 
 /**
@@ -1013,22 +1001,17 @@ export function useRouteMatch(): RouteMatchInfo | null {
 /**
  * TanStack's `<Outlet />`: the next matched route, rendered HERE.
  *
- * barq's is a Block invoked with the scope `<Outlet />` itself sits in, so the
- * child is still CONSTRUCTED inside the layout — a provider or a boundary the
- * layout installed is visible to the route it wraps. That is the property the
- * old `props.children` had and the reason this file used to say an outlet could
- * not have it; it can, as long as the outlet places a Block rather than a
- * pre-built tree.
+ * barq's is a Block, invoked here and therefore under the scope `<Outlet />`
+ * itself sits in, so the child is still CONSTRUCTED inside the layout — a
+ * provider or a boundary the layout installed is visible to the route it wraps.
+ * That is the property the old `props.children` had and the reason this file
+ * used to say an outlet could not have it; it can, as long as the outlet places
+ * a Block rather than a pre-built tree.
  */
-// The props parameter is never read. It is declared because the calling
-// convention is `(scope, props)` and JSX reads the FIRST parameter of a
-// one-argument component as its props — so without it `<Outlet />` type-checks
-// its (absent) attributes against `Scope`. `route.ts` records the same asymmetry
-// for authored components, which C1 rewrites into this shape.
-export function Outlet(scope: Scope | null, _props?: Record<string, never>): JSXElement {
+export function Outlet(_props?: Record<string, never>): JSXElement {
   const match = read(RouteMatchContext)();
   if (match === null) return null;
-  return match.children(scope) as JSXElement;
+  return match.children() as JSXElement;
 }
 
 export interface ClientOnlyProps {
@@ -1056,7 +1039,7 @@ export interface ClientOnlyProps {
  * Sniffing the environment cannot do this: it would be `true` on the client's
  * FIRST render, which is the render that has to match the server's.
  */
-function ClientOnlyImpl(scope: Scope | null, props: Incoming<ClientOnlyProps>): JSXElement {
+function ClientOnlyImpl(props: Incoming<ClientOnlyProps>): JSXElement {
   const shown = signal(false);
   // Never runs on the string backend, which is what makes the server's answer
   // the fallback without asking what environment this is.
@@ -1066,8 +1049,8 @@ function ClientOnlyImpl(scope: Scope | null, props: Incoming<ClientOnlyProps>): 
   // A Block is INVOKED with the scope the branch is holding, exactly as
   // `Outlet` invokes the next depth; anything else is a value and is returned.
   // That is what lets `<ClientOnly>` take JSX children and a JSX fallback.
-  const place = (slot: unknown) => (inner: Scope | null) =>
-    typeof slot === "function" ? (slot as (s: Scope | null) => unknown)(inner) : (slot ?? null);
+  const place = (slot: unknown) => () =>
+    typeof slot === "function" ? (slot as () => unknown)() : (slot ?? null);
 
   const bodies = [block(place(props.fallback)), block(place(props.children))] as const;
   // The string backend writes the same region with the fallback arm chosen.
@@ -1079,11 +1062,11 @@ function ClientOnlyImpl(scope: Scope | null, props: Incoming<ClientOnlyProps>): 
   // `errorBoundary` picks `0` or `1` the same way. A boolean key selects
   // `bodies[false]`, which is `undefined`, and the region renders nothing.
   const arm = (): number => (shown() ? 1 : 0);
-  return branch(scope, null, null, arm as Cell<number>, [
+  return branch(null, null, arm, [
     // Index 0 is `false`: the fallback. Index 1 is `true`: the children.
     bodies[0],
     bodies[1],
-  ]) as JSXElement;
+  ]);
 }
 
 export const ClientOnly = ClientOnlyImpl as unknown as (props: ClientOnlyProps) => JSXElement;
@@ -1140,7 +1123,7 @@ export interface AwaitProps<T = unknown> {
  * kind, so a `redirect()` or a `notFound()` awaited here is still one when it
  * lands.
  */
-function AwaitImpl<T>(scope: Scope | null, props: Incoming<AwaitProps<T>>): JSXElement {
+function AwaitImpl<T>(props: Incoming<AwaitProps<T>>): JSXElement {
   // TRACKED on purpose: `props.promise` is a slot over the loader's data, so a
   // navigation that produces a different promise re-runs this and the region
   // parks again rather than holding the previous page's value.
@@ -1151,22 +1134,19 @@ function AwaitImpl<T>(scope: Scope | null, props: Incoming<AwaitProps<T>>): JSXE
   const fallback: Block<unknown> | null =
     props.fallback === undefined
       ? null
-      : block((inner: Scope | null) =>
+      : block(() =>
           typeof props.fallback === "function"
-            ? (props.fallback as (s: Scope | null) => unknown)(inner)
+            ? (props.fallback as () => unknown)()
             : (props.fallback ?? null),
         );
 
-  const content: Block<unknown> = (inner: Scope | null): unknown => {
+  const content: Block<unknown> = (): unknown => {
     // READ HERE, in the boundary's own body, rather than left to whatever the
     // child does with the cell. A child that puts the value in a hole would
     // park that hole and not this boundary, so the fallback would never show;
     // reading it here is what makes "pending" a fact about the region.
     settled();
-    return (props.children as unknown as (s: Scope | null, value: Cell<T>) => unknown)(
-      inner,
-      settled,
-    );
+    return (props.children as unknown as (value: Cell<T>) => unknown)(settled);
   };
 
   // The enclosing route's own fallback, walked outward from this depth exactly
@@ -1174,17 +1154,13 @@ function AwaitImpl<T>(scope: Scope | null, props: Incoming<AwaitProps<T>>): JSXE
   // — there is no chain to ask, and the region renders nothing rather than
   // taking the page.
   const match = read(RouteMatchContext)();
-  const errorFallback: Block<unknown> = ((
-    fallbackScope: Scope | null,
-    error: () => Error,
-    reset: () => void,
-  ): unknown => {
+  const errorFallback: Block<unknown> = ((error: () => Error, reset: () => void): unknown => {
     if (match === null) return null;
     const shown = errorFallbackFor(
       untrack(() => match.state.chain()),
       match.depth,
       () => match.state.params(),
-    )(fallbackScope, error, reset);
+    )(error, reset);
     return shown === null || shown === undefined ? null : shown;
   }) as Block<unknown>;
 
@@ -1196,9 +1172,9 @@ function AwaitImpl<T>(scope: Scope | null, props: Incoming<AwaitProps<T>>): JSXE
   // the reason it records: what is re-entered after a park is the loading
   // boundary's own content, so a catcher outside it is not in the path on the
   // retry.
-  const guarded: Block<unknown> = (contentScope: Scope | null): unknown =>
-    boundary(contentScope, null, null, "error", errorFallback, content, HYDRATE);
-  return boundary(scope, null, null, "loading", fallback, guarded, HYDRATE);
+  const guarded: Block<unknown> = (): unknown =>
+    boundary(null, null, "error", errorFallback, content, HYDRATE);
+  return boundary(null, null, "loading", fallback, guarded, HYDRATE);
 }
 
 export const Await = AwaitImpl as unknown as <T>(props: AwaitProps<T>) => JSXElement;
@@ -1220,7 +1196,7 @@ export interface MatchRouteProps extends MatchRouteOptions {
  * `<ClientOnly>` builds — so the string backend writes the arm the server
  * chose and the client claims the range rather than replacing it.
  */
-function MatchRouteImpl(scope: Scope | null, props: Incoming<MatchRouteProps>): JSXElement {
+function MatchRouteImpl(props: Incoming<MatchRouteProps>): JSXElement {
   const state = useRouter();
   const matched = (): Record<string, string> | false =>
     state.matchRoute({
@@ -1241,18 +1217,15 @@ function MatchRouteImpl(scope: Scope | null, props: Incoming<MatchRouteProps>): 
           : Boolean(readSlot(props.includeSearch, "MatchRoute.includeSearch")),
     });
 
-  const body: Block<unknown> = (inner: Scope | null): unknown => {
+  const body: Block<unknown> = (): unknown => {
     const found = matched();
     if (found === false) return null;
     const children = props.children;
     if (typeof children !== "function") return children ?? null;
-    return (children as (s: Scope | null, params: Cell<Record<string, string>>) => unknown)(
-      inner,
-      () => {
-        const now = matched();
-        return now === false ? {} : now;
-      },
-    );
+    return (children as (params: Cell<Record<string, string>>) => unknown)(() => {
+      const now = matched();
+      return now === false ? {} : now;
+    });
   };
 
   // An INDEX into the arms, as `ClientOnly` picks: a boolean key selects
@@ -1275,7 +1248,7 @@ function MatchRouteImpl(scope: Scope | null, props: Incoming<MatchRouteProps>): 
           )
     ) as JSXElement;
   }
-  return branch(scope, null, null, arm as Cell<number>, [block(() => null), block(body)]);
+  return branch(null, null, arm as Cell<number>, [block(() => null), block(body)]);
 }
 
 export const MatchRoute = MatchRouteImpl as unknown as (props: MatchRouteProps) => JSXElement;
@@ -1297,15 +1270,13 @@ export interface RouterProps {
  * `onLoaderError` and read the answer back, and the app renders that state
  * rather than making a second one.
  */
-function RouterProviderImpl(scope: Scope | null, props: Incoming<{ state: RouterState }>): unknown {
+function RouterProviderImpl(props: Incoming<{ state: RouterState }>): unknown {
   const state = readSlot(props.state, "RouterProvider.state") as RouterState;
   void state.start();
-  return provide(scope as Scope, RouterContext, cell(state), (inner: Scope | null) =>
-    renderDepth(inner, state, 0, null, null),
-  );
+  return provide(RouterContext, cell(state), () => renderDepth(state, 0, null, null));
 }
 
-function RouterImpl(scope: Scope | null, props: Incoming<RouterProps>): unknown {
+function RouterImpl(props: Incoming<RouterProps>): unknown {
   const state = createRouter({
     routeTree: readSlot(props.routeTree, "Router.routeTree") as RouterProps["routeTree"],
     history:
@@ -1330,9 +1301,7 @@ function RouterImpl(scope: Scope | null, props: Incoming<RouterProps>): unknown 
   });
   onCleanup(() => state.dispose());
   void state.start();
-  return provide(scope as Scope, RouterContext, cell(state), (inner: Scope | null) =>
-    renderDepth(inner, state, 0, null, null),
-  );
+  return provide(RouterContext, cell(state), () => renderDepth(state, 0, null, null));
 }
 
 /**
@@ -1625,7 +1594,6 @@ function searchRecordOf(state: RouterState): Record<string, string> {
 }
 
 function anchorElement(
-  scope: Scope | null,
   props: Incoming<LinkProps>,
   extra: (element: HTMLAnchorElement, target: () => string) => void,
 ): Node {
@@ -1636,9 +1604,9 @@ function anchorElement(
   // path it was built under forever.
   const target = (): string => resolveTo(state, props);
 
-  bindProp(scope, element, setAttr, "href", () => linkAttrHref(state, target()));
+  bindProp(element, setAttr, "href", () => linkAttrHref(state, target()));
   if (props.class !== undefined) {
-    bindProp(scope, element, setClass, "class", () => readSlot(props.class, "Link.class"));
+    bindProp(element, setClass, "class", () => readSlot(props.class, "Link.class"));
   }
 
   // EVERY OTHER PROP REACHES THE ANCHOR. A `<Link>` is an `<a>`, and an `<a>`
@@ -1654,12 +1622,12 @@ function anchorElement(
     // on a link is the ordinary case — a nav that closes a menu on click.
     const event = eventNameOf(name);
     if (event !== null) {
-      listen(scope, element, event, ((payload: Event) => {
+      listen(element, event, (payload: Event) => {
         (value as (e: Event) => void)(payload);
-      }) as EventListener);
+      });
       continue;
     }
-    bindProp(scope, element, setAttr, name, () => {
+    bindProp(element, setAttr, name, () => {
       const read = readSlot(value, `Link.${name}`);
       // `false` and `null` REMOVE, so `download={false}` is not the string
       // "false" — which is truthy as an attribute and would enable it.
@@ -1703,14 +1671,14 @@ function anchorElement(
     }, state.config.defaults?.preloadDelay ?? PRELOAD_DELAY);
   };
 
-  listen(scope, element, "mouseenter", onIntent);
-  listen(scope, element, "mouseleave", cancel);
+  listen(element, "mouseenter", onIntent);
+  listen(element, "mouseleave", cancel);
   // Keyboard and touch users preloaded not at all in the old router, which had
   // `mouseenter` and nothing else. A touch fires immediately: there is no hover
   // before a tap, so a delay is just latency.
-  listen(scope, element, "focusin", onIntent);
-  listen(scope, element, "blur", cancel);
-  listen(scope, element, "touchstart", () => {
+  listen(element, "focusin", onIntent);
+  listen(element, "blur", cancel);
+  listen(element, "touchstart", () => {
     if (strategy() !== "intent") return;
     cancel();
     warm();
@@ -1738,12 +1706,12 @@ function anchorElement(
   // not have. The click is refused below; this is what says so to a screen
   // reader.
   if (props.disabled !== undefined) {
-    bindProp(scope, element, setAttr, "aria-disabled", () =>
+    bindProp(element, setAttr, "aria-disabled", () =>
       flag(props.disabled, "Link.disabled") === true ? "true" : null,
     );
   }
 
-  listen(scope, element, "click", ((event: MouseEvent) => {
+  listen(element, "click", ((event: MouseEvent) => {
     if (flag(props.disabled, "Link.disabled") === true) {
       // Refused entirely: no navigation and no document load either.
       event.preventDefault();
@@ -1783,11 +1751,11 @@ function anchorElement(
   // link, which is `expected <!--]--> before the end of <a>, found the text
   // "Signals & State"`.
   const children = props.children;
-  if (children !== undefined) insert(scope, element, children as Child, null, WHOLE);
+  if (children !== undefined) insert(element, children as Child, null, WHOLE);
   return element;
 }
 
-function LinkImpl(scope: Scope | null, props: Incoming<LinkProps>): Node {
+function LinkImpl(props: Incoming<LinkProps>): Node {
   const backend = linkBackend();
   if (backend !== null) {
     const className =
@@ -1801,7 +1769,7 @@ function LinkImpl(scope: Scope | null, props: Incoming<LinkProps>): Node {
       linkExtraAttrs(props),
     ) as never;
   }
-  return anchorElement(scope, props, () => {});
+  return anchorElement(props, () => {});
 }
 
 /**
@@ -1839,7 +1807,7 @@ export interface NavLinkProps extends LinkProps {
   readonly inactiveProps?: Record<string, string | null>;
 }
 
-function NavLinkImpl(scope: Scope | null, props: Incoming<NavLinkProps>): Node {
+function NavLinkImpl(props: Incoming<NavLinkProps>): Node {
   const state = useRouter();
   const backend = linkBackend();
   if (backend !== null) {
@@ -1864,7 +1832,7 @@ function NavLinkImpl(scope: Scope | null, props: Incoming<NavLinkProps>): Node {
       linkExtraAttrs(props),
     ) as never;
   }
-  return anchorElement(scope, props, (element, target) => {
+  return anchorElement(props, (element, target) => {
     // ONE implementation, shared with the string backend. It used to be
     // duplicated here and compared the whole `to` against a pathname, so a link
     // carrying a query or a fragment — which `<Link>` now writes — never
@@ -1882,7 +1850,7 @@ function NavLinkImpl(scope: Scope | null, props: Incoming<NavLinkProps>): Node {
       props.activeClass === undefined
         ? "active"
         : (readSlot(props.activeClass, "NavLink.activeClass") as string);
-    bindProp(scope, element, setAttr, "aria-current", () => (active() ? "page" : null));
+    bindProp(element, setAttr, "aria-current", () => (active() ? "page" : null));
 
     // Every name from BOTH records gets a binding, so a name present in one and
     // absent from the other is REMOVED when the state flips rather than left
@@ -1906,11 +1874,11 @@ function NavLinkImpl(scope: Scope | null, props: Incoming<NavLinkProps>): Node {
       ...Object.keys(untrack(inactiveProps)),
     ]);
     for (const name of names) {
-      bindProp(scope, element, setAttr, name, () =>
+      bindProp(element, setAttr, name, () =>
         active() ? (activeProps()[name] ?? null) : (inactiveProps()[name] ?? null),
       );
     }
-    bindProp(scope, element, setClass, "class", () => {
+    bindProp(element, setClass, "class", () => {
       const base = props.class === undefined ? "" : (readSlot(props.class, "Link.class") as string);
       return active() ? `${base} ${activeClass()}`.trim() : base;
     });
@@ -1923,7 +1891,7 @@ export interface RedirectProps {
   readonly replace?: boolean;
 }
 
-function RedirectImpl(_scope: Scope | null, props: Incoming<RedirectProps>): null {
+function RedirectImpl(props: Incoming<RedirectProps>): null {
   const state = useRouter();
   void state.navigate(readSlot(props.to, "Redirect.to") as string, {
     replace:
@@ -1932,20 +1900,15 @@ function RedirectImpl(_scope: Scope | null, props: Incoming<RedirectProps>): nul
   return null;
 }
 
-/**
- * `block()` applied by hand and the type asserted props-first.
- *
- * This module is not compiled, so C1's rewrite of the declaration does not
- * happen to it. A generated route module needs neither.
- */
+/** The authored shape, asserted over an implementation written against the ABI. */
 type Authored<P> = (props: P) => JSXElement;
 
-export const Router = block(RouterImpl) as unknown as Authored<RouterProps>;
-export const RouterProvider = block(RouterProviderImpl) as unknown as Authored<{
+export const Router = RouterImpl as unknown as Authored<RouterProps>;
+export const RouterProvider = RouterProviderImpl as unknown as Authored<{
   state: RouterState;
 }>;
-export const Link = block(LinkImpl) as unknown as Authored<LinkProps>;
-export const NavLink = block(NavLinkImpl) as unknown as Authored<NavLinkProps>;
-export const Redirect = block(RedirectImpl) as unknown as Authored<RedirectProps>;
+export const Link = LinkImpl as unknown as Authored<LinkProps>;
+export const NavLink = NavLinkImpl as unknown as Authored<NavLinkProps>;
+export const Redirect = RedirectImpl as unknown as Authored<RedirectProps>;
 
 export { RouterContext };

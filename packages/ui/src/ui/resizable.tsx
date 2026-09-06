@@ -191,10 +191,7 @@ export function ResizablePanelGroup(props: Incoming<ResizablePanelGroupProps>) {
 
 /** The context, and nothing else; see the note in `input-otp.tsx`. */
 function GroupProvider(props: Incoming<{ value: PanelGroupValue; children?: Child }>) {
-  const owner = getOwner();
-  if (owner === null) return <>{props.children}</>;
   return provide(
-    owner,
     GroupContext,
     () => props.value(),
     () => props.children,
@@ -237,10 +234,7 @@ export function ResizablePanel(props: Incoming<ResizablePanelProps>) {
 }
 
 function IndexProvider(props: Incoming<{ value: number; children?: Child }>) {
-  const owner = getOwner();
-  if (owner === null) return <>{props.children}</>;
   return provide(
-    owner,
     IndexContext,
     () => props.value(),
     () => props.children,

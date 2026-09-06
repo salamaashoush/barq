@@ -283,10 +283,7 @@ export function Carousel(props: Incoming<CarouselProps>) {
  * the only place the scope exists.
  */
 function CarouselProvider(props: Incoming<{ value: CarouselValue; children?: Child }>) {
-  const owner = getOwner();
-  if (owner === null) return <>{props.children}</>;
   return provide(
-    owner,
     CarouselContext,
     () => props.value(),
     () => props.children,

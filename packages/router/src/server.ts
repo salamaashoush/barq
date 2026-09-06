@@ -108,7 +108,7 @@ import {
  * later frame to re-key into, so the chain is walked once, outermost first,
  * with each depth's `children` a Block the layout may place where it likes.
  */
-type Invoked = (s: Scope | null, props: unknown) => unknown;
+type Invoked = (props: unknown) => unknown;
 
 /**
  * `<Link>` and `<NavLink>`, as bytes.
@@ -150,7 +150,7 @@ const linkBackend = {
    * A bare fallback with no region is what a mismatch looks like.
    */
   clientOnly: (fallback: Block<unknown>, children: Block<unknown>): unknown =>
-    ssrBranch(getOwner(), null, null, () => 0, [fallback, children], HYDRATE),
+    ssrBranch(null, null, () => 0, [fallback, children], HYDRATE),
   /**
    * `<Await>`: the same loading boundary a route depth gets, one level down.
    *
@@ -166,10 +166,9 @@ const linkBackend = {
     children: Block<unknown>,
   ): unknown =>
     ssrLoading(
-      getOwner(),
       {
         fallback: fallback ?? undefined,
-        children: () => ssrErrored(getOwner(), { fallback: errorFallback, children }, HYDRATE),
+        children: () => ssrErrored({ fallback: errorFallback, children }, HYDRATE),
       },
       HYDRATE,
     ),
@@ -204,7 +203,6 @@ export function renderRoutes(state: RouterState): unknown {
   // the mismatch surfaced as `not-hydratable` on every page.
   const at = (depth: number): unknown =>
     ssrBranch(
-      getOwner(),
       null,
       null,
       () => chain[depth] ?? null,
@@ -221,10 +219,8 @@ export function renderRoutes(state: RouterState): unknown {
         // `block()`, so `invokeBlock` reads it as a Cell and calls it with no
         // arguments. `activate` has already entered the scope, so the ambient
         // owner IS the one to provide on.
-        const owner = getOwner();
-        if (owner === null) return bodyAt(depth);
-        return provide(owner, RouterContext, cell(state), (inner) =>
-          provide(inner as Scope, LinkBackendContext, cell(linkBackend), () => bodyAt(depth)),
+        return provide(RouterContext, cell(state), () =>
+          provide(LinkBackendContext, cell(linkBackend), () => bodyAt(depth)),
         );
       },
       HYDRATE,
@@ -256,15 +252,13 @@ export function renderRoutes(state: RouterState): unknown {
       // prefix of the path, then `config.notFound`, then a `<p>` holding the
       // default text as STATIC content — no range, so the client claims it.
       const own = errorFallbackFor(chain, depth - 1, () => state.params())(
-        getOwner(),
         () => NOT_FOUND_ERROR,
         NOOP_RESET,
       );
       if (own !== null && own !== undefined) return own;
       const fallback = state.config.notFound;
       if (fallback === undefined) return ssrHtml(`<p>${esc(NOT_FOUND)}</p>`);
-      return (fallback as unknown as (s: unknown, p: unknown) => unknown)(
-        getOwner(),
+      return (fallback as unknown as (p: unknown) => unknown)(
         routePropsFor(state, 0, null, EMPTY_CHILDREN),
       );
     }
@@ -276,11 +270,9 @@ export function renderRoutes(state: RouterState): unknown {
     // hooks work in a component that is rendered on BOTH sides — which is every
     // component. Without it a layout using `<Outlet />` rendered its own markup
     // and then nothing.
-    const inMatch = (fallback: Block<unknown>, body: (inner: Scope | null) => unknown): unknown => {
-      const owner = getOwner();
+    const inMatch = (fallback: Block<unknown>, body: () => unknown): unknown => {
       const match = { state, depth, route, children: fallback, blocking: true };
-      if (owner === null) return body(null);
-      return provide(owner, RouteMatchContext, cell(match), body);
+      return provide(RouteMatchContext, cell(match), body);
     };
     const content = (): unknown => {
       // As on the DOM path: a refused parameter throws inside this depth's
@@ -296,19 +288,13 @@ export function renderRoutes(state: RouterState): unknown {
       if (modes[depth] !== true) {
         if (pendingComponent === undefined) return ssrHtml("");
         const empty = (() => ssrHtml("")) as unknown as Block<unknown>;
-        return inMatch(empty, (inner) =>
-          (pendingComponent as unknown as Invoked)(
-            inner,
-            routePropsFor(state, depth, route, empty, true),
-          ),
+        return inMatch(empty, () =>
+          (pendingComponent as unknown as Invoked)(routePropsFor(state, depth, route, empty, true)),
         );
       }
       if (component === undefined) return at(depth + 1);
-      return inMatch(children, (inner) =>
-        (component as unknown as Invoked)(
-          inner,
-          routePropsFor(state, depth, route, children, true),
-        ),
+      return inMatch(children, () =>
+        (component as unknown as Invoked)(routePropsFor(state, depth, route, children, true)),
       );
     };
 
@@ -330,30 +316,23 @@ export function renderRoutes(state: RouterState): unknown {
     // found below it. That is why `useLocation` in a route component threw on
     // the server and the page rendered empty inside its own error boundary.
     return ssrLoading(
-      getOwner(),
       {
         fallback: () => {
           if (pendingComponent === undefined) return ssrHtml("");
           const empty = (() => ssrHtml("")) as unknown as Block<unknown>;
-          return inMatch(empty, (inner) =>
+          return inMatch(empty, () =>
             (pendingComponent as unknown as Invoked)(
-              inner,
               routePropsFor(state, depth, route, empty, true),
             ),
           );
         },
         children: () =>
           ssrErrored(
-            getOwner(),
             {
               // The string backend hands an error fallback `(error, reset)`
               // positionally, exactly as `flow.ts`'s does.
-              fallback: (fallbackScope: unknown, error: () => Error, reset: () => void) => {
-                const shown = errorFallbackFor(chain, depth, () => state.params())(
-                  fallbackScope,
-                  error,
-                  reset,
-                );
+              fallback: (error: () => Error, reset: () => void) => {
+                const shown = errorFallbackFor(chain, depth, () => state.params())(error, reset);
                 return shown === null || shown === undefined ? ssrHtml("") : shown;
               },
               children: content,
@@ -1040,15 +1019,14 @@ export function createPageHandler(
               // which claims the next node by TAG rather than by a delimited
               // range — so the wire carries the tags and nothing else, and the
               // enclosing `<head>` claim walks straight through them.
-              tagTree: (scope, list) =>
+              tagTree: (list) =>
                 ssrEach(
-                  scope,
                   null,
                   null,
                   list as never,
                   (tag: ManagedTag, index: number) => tagKey(tag, index),
-                  (rowScope: Scope | null, tag: () => ManagedTag, index: () => number) =>
-                    ssrDynamic(rowScope, {
+                  (tag: () => ManagedTag, index: () => number) =>
+                    ssrDynamic({
                       component: tag().tag,
                       ...tagProps(tag(), index()),
                     }),
@@ -1591,7 +1569,7 @@ export function chainVerifier(
  */
 export function renderShell(
   state: RouterState,
-  shell: ((scope: Scope | null, props: { children: unknown }) => unknown) | undefined,
+  shell: ((props: { children: unknown }) => unknown) | undefined,
   assets: HeadAssets,
 ): unknown {
   const body = (): unknown => renderRoutes(state);
@@ -1622,14 +1600,11 @@ export function renderShell(
   // and `lang` and `dir` are the attributes every localised application has to
   // set there. It reads the same state `renderRoutes` provides at depth 0, so
   // the two cannot disagree.
-  const build = (inner: Scope | null): unknown => {
+  const build = (): unknown => {
     const rendered = body();
-    return shell(inner, { children: () => rendered });
+    return shell({ children: () => rendered });
   };
-  if (owner === null) return build(null);
-  return provide(owner, HeadAssetsContext, cell(assets), (inner) =>
-    provide(inner as Scope, RouterContext, cell(state), (withRouter) => build(withRouter as Scope)),
-  );
+  return provide(HeadAssetsContext, cell(assets), () => provide(RouterContext, cell(state), build));
 }
 
 /**
@@ -1679,10 +1654,10 @@ async function settleLoader(
  */
 function shellComponentOf(
   routes: readonly AnyRouteDefinition[],
-): ((scope: Scope | null, props: { children: unknown }) => unknown) | undefined {
+): ((props: { children: unknown }) => unknown) | undefined {
   const declared = (routes[0] as { shellComponent?: unknown } | undefined)?.shellComponent;
   return typeof declared === "function"
-    ? (declared as (scope: Scope | null, props: { children: unknown }) => unknown)
+    ? (declared as (props: { children: unknown }) => unknown)
     : undefined;
 }
 

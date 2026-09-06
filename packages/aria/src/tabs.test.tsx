@@ -67,10 +67,7 @@ describe("a panel is a scope", () => {
   const Ctx = context<string | null>(null);
 
   function Provider(props: Incoming<{ children?: Child }>) {
-    const owner = getOwner();
-    if (owner === null) return <>{props.children}</>;
     return provide(
-      owner,
       Ctx,
       () => "provided",
       () => props.children,

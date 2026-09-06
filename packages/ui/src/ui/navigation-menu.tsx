@@ -462,10 +462,7 @@ export function NavigationMenu(props: Incoming<NavigationMenuProps>) {
  * it and every `useMenu` throws.
  */
 function MenuProvider(props: Incoming<{ value: MenuValue; children?: Child }>) {
-  const owner = getOwner();
-  if (owner === null) return <>{props.children}</>;
   return provide(
-    owner,
     MenuContext,
     () => props.value(),
     () => props.children,
@@ -502,10 +499,7 @@ export function NavigationMenuItem(props: Incoming<NavigationMenuItemProps>) {
 }
 
 function ItemProvider(props: Incoming<{ value: Key; children?: Child }>) {
-  const owner = getOwner();
-  if (owner === null) return <>{props.children}</>;
   return provide(
-    owner,
     ItemContext,
     () => props.value(),
     () => props.children,

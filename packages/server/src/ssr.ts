@@ -35,7 +35,6 @@ import {
   isBlock,
   isSsrHtml,
   omit,
-  requireScope,
   toString,
   untrack,
 } from "@barqjs/core";
@@ -814,9 +813,11 @@ function cellSlot(value: unknown, origin: string): void {
 }
 
 /** A Cell ignores every argument, so one spelling serves both. */
-function invokeBlock(scope: Scope | null, body: unknown, args: readonly unknown[]): unknown {
+function invokeBlock(body: unknown, args: readonly unknown[]): unknown {
   if (typeof body !== "function") return body;
-  return (body as (s: Scope | null, ...rest: readonly unknown[]) => unknown)(scope, ...args);
+  // The caller has already entered the scope this body belongs to; it reads
+  // its owner from the ambient like every other reactive primitive.
+  return (body as (...rest: readonly unknown[]) => unknown)(...args);
 }
 
 /**
@@ -836,11 +837,11 @@ function activate(
   kind: "branch" | "each" | "portal",
 ): string {
   if (body === null || body === undefined) return "";
-  if ((flags & NO_SCOPE) !== 0) return esc(invokeBlock(given, body, args));
+  if ((flags & NO_SCOPE) !== 0) return esc(invokeBlock(body, args));
   const scope = enter(given, kind);
   let built = false;
   try {
-    const out = esc(invokeBlock(scope, body, args));
+    const out = esc(invokeBlock(body, args));
     built = true;
     return out;
   } finally {
@@ -855,14 +856,13 @@ function activate(
  * no previous-key record to keep, and on this backend that is true of every key.
  */
 export function branch<K>(
-  s: Scope | null,
   parent: Node | null,
   anchor: Node | null,
   key: Cell<K>,
   bodies: Block<unknown> | readonly (Block<unknown> | null | undefined)[],
   flags = 0,
 ): SsrHtml {
-  const given = requireScope(s, "branch");
+  const given = getOwner();
   refuseASite(parent, anchor, "branch");
   cellSlot(key, "branch key");
   const k = untrack(key);
@@ -887,7 +887,6 @@ export function branch<K>(
  * through a spread reaches here with the carrier still unresolved.
  */
 export function each<T>(
-  s: Scope | null,
   parent: Node | null,
   anchor: Node | null,
   src: Cell<readonly T[] | null | undefined> | Cell<number>,
@@ -896,7 +895,7 @@ export function each<T>(
   flags = 0,
   fallback?: Block<unknown> | null,
 ): SsrHtml {
-  const given = requireScope(s, "each");
+  const given = getOwner();
   const keyOf = keyMode<T>(carrier);
   refuseASite(parent, anchor, "each");
   cellSlot(src, "each source");
@@ -949,7 +948,6 @@ export type BoundaryKind = "error" | "loading";
  * for exactly that reason, and M6's streaming path is the other answer.
  */
 export function boundary(
-  s: Scope | null,
   parent: Node | null,
   anchor: Node | null,
   kind: BoundaryKind,
@@ -958,7 +956,7 @@ export function boundary(
   flags = 0,
   on?: Cell<unknown>,
 ): SsrHtml {
-  const given = requireScope(s, "boundary");
+  const given = getOwner();
   refuseASite(parent, anchor, "boundary");
   if (on !== undefined) cellSlot(on, "boundary on");
   const inner =
@@ -992,12 +990,12 @@ function errorBoundary(
   // E2.1: the catcher is on the INSTANCE scope and is installed before the
   // body runs, so a throw routed to `s.catcher` from anywhere below reaches
   // this collector rather than the scope above the boundary.
-  const arm: Block<unknown> = (scope: Scope | null): unknown => {
-    provideOn(scope as Scope, ERROR_BOUNDARY, (err: unknown) => {
+  const arm: Block<unknown> = (): unknown => {
+    provideOn(getOwner() as Scope, ERROR_BOUNDARY, (err: unknown) => {
       if (err instanceof NotReadyError) throw err;
       collector.capture(err);
     });
-    return invokeBlock(scope, body, NO_ARGS);
+    return invokeBlock(body, NO_ARGS);
   };
 
   try {
@@ -1021,9 +1019,9 @@ function loadingBoundary(
   flags: number,
 ): SsrHtml {
   const pending = createPendingCollector();
-  const arm: Block<unknown> = (scope: Scope | null): unknown => {
-    pending.install(scope as Scope);
-    return invokeBlock(scope, body, NO_ARGS);
+  const arm: Block<unknown> = (): unknown => {
+    pending.install(getOwner() as Scope);
+    return invokeBlock(body, NO_ARGS);
   };
   try {
     const inner = activate(given, arm, NO_ARGS, 0, "branch");
@@ -1074,12 +1072,11 @@ function loadingBoundary(
  * client claims and fills.
  */
 export function portal(
-  s: Scope | null,
   target: Cell<Node | string | null | undefined>,
   _block: Block<unknown>,
   _flags = 0,
 ): SsrHtml {
-  requireScope(s, "portal");
+  getOwner();
   cellSlot(target, "portal target");
   // An empty range, and it earns its bytes. `portal` on the client returns a
   // marker at its LEXICAL position and builds elsewhere on a microtask, so the
@@ -1143,15 +1140,12 @@ function slotBlock(slot: unknown): Block<unknown> | null {
   return slot === null || slot === undefined ? null : (slot as Block<unknown>);
 }
 
-export function ssrShow(
-  s: Scope | null,
-  props: {
-    when?: unknown;
-    keyed?: unknown;
-    fallback?: unknown;
-    children?: unknown;
-  },
-): SsrHtml {
+export function ssrShow(props: {
+  when?: unknown;
+  keyed?: unknown;
+  fallback?: unknown;
+  children?: unknown;
+}): SsrHtml {
   const value = (): unknown => readValue(props.when, "Show.when");
   const keyed = readValue(props.keyed, "Show.keyed") === true;
   const key: Cell<unknown> = keyed
@@ -1161,31 +1155,27 @@ export function ssrShow(
   // value is read at ACTIVATION time, which is why the branch takes no slot
   // argument of its own. The DEFAULT is non-keyed, so children get the narrowed
   // accessor; `keyed` hands over the raw value.
-  const arm: Block<unknown> = (scope: Scope | null): unknown => {
+  const arm: Block<unknown> = (): unknown => {
     const current = untrack(value);
     return current
-      ? invokeBlock(scope, props.children, [keyed ? current : value])
-      : invokeBlock(scope, props.fallback, NO_ARGS);
+      ? invokeBlock(props.children, [keyed ? current : value])
+      : invokeBlock(props.fallback, NO_ARGS);
   };
-  return branch(s, null, null, key, arm);
+  return branch(null, null, key, arm);
 }
 
-export function ssrFor(
-  s: Scope | null,
-  props: {
-    each?: unknown;
-    fallback?: unknown;
-    keyed?: unknown;
-    children: (s: Scope | null, item: never, index: never) => unknown;
-  },
-): SsrHtml {
+export function ssrFor(props: {
+  each?: unknown;
+  fallback?: unknown;
+  keyed?: unknown;
+  children: (item: never, index: never) => unknown;
+}): SsrHtml {
   // `keyMode` in `flow.ts` owns the key rule, so the carrier crosses unresolved
   // and both backends reach one implementation of it.
-  return eachOf(s, props.each, props.keyed as Cell<unknown>, props, "For");
+  return eachOf(props.each, props.keyed as Cell<unknown>, props, "For");
 }
 
 function eachOf(
-  s: Scope | null,
   source: unknown,
   keyOf: ((item: never) => unknown) | false | null | Cell<unknown>,
   props: { children: unknown; fallback?: unknown },
@@ -1193,7 +1183,6 @@ function eachOf(
 ): SsrHtml {
   const list = (): readonly unknown[] => readValue(source, `${origin}.each`) as readonly unknown[];
   return each(
-    s,
     null,
     null,
     // `each` declares its source as `Cell<readonly never[]>` — the element type
@@ -1207,21 +1196,17 @@ function eachOf(
   );
 }
 
-export function ssrRepeat(
-  s: Scope | null,
-  props: {
-    count?: unknown;
-    from?: unknown;
-    fallback?: unknown;
-    children: (s: Scope | null, index: number) => unknown;
-  },
-): SsrHtml {
+export function ssrRepeat(props: {
+  count?: unknown;
+  from?: unknown;
+  fallback?: unknown;
+  children: (index: number) => unknown;
+}): SsrHtml {
   const from = (): number => (readValue(props.from, "Repeat.from") as number | undefined) ?? 0;
   const count = (): number => readValue(props.count, "Repeat.count") as number;
-  const shifted: Block<unknown> = (scope: Scope | null, index: unknown): unknown =>
-    invokeBlock(scope, props.children, [(index as number) + from()]);
+  const shifted: Block<unknown> = (index: unknown): unknown =>
+    invokeBlock(props.children, [(index as number) + from()]);
   return each(
-    s,
     null,
     null,
     count,
@@ -1233,16 +1218,13 @@ export function ssrRepeat(
 }
 
 /** `Match` is an identity function on the client too — `components.ts:249`. */
-export function ssrMatch<T>(_s: Scope | null, props: T): T {
+export function ssrMatch<T>(props: T): T {
   return props;
 }
 
-export function ssrSwitch(
-  s: Scope | null,
-  props: { fallback?: unknown; children?: unknown },
-): SsrHtml {
+export function ssrSwitch(props: { fallback?: unknown; children?: unknown }): SsrHtml {
   const arms = (): { index: number; value: unknown; match: Record<string, unknown> } | null => {
-    const resolved = invokeBlock(s, props.children, NO_ARGS);
+    const resolved = invokeBlock(props.children, NO_ARGS);
     const children = isArray<unknown>(resolved) ? resolved : [resolved];
     for (let i = 0; i < children.length; i++) {
       const child = children[i] as Record<string, unknown> | null;
@@ -1256,17 +1238,17 @@ export function ssrSwitch(
   // same table `passes/flow.rs` builds when it lowers a `Switch` itself.
   const found = arms();
   const key = (): number => (found === null ? 0 : found.index + 1);
-  const body: Block<unknown> = (scope: Scope | null): unknown => {
-    if (found === null) return invokeBlock(scope, props.fallback, NO_ARGS);
+  const body: Block<unknown> = (): unknown => {
+    if (found === null) return invokeBlock(props.fallback, NO_ARGS);
     // Non-keyed is the default, and its children take the narrowed accessor.
     // A server render has one frame, so the accessor is a constant thunk over
     // the value this arm matched on — the shape has to agree with the DOM
     // half's or the two backends hand the same body different arguments.
     const keyed = readValue(found.match.keyed, "Match.keyed") === true;
     const narrowed = (): unknown => found.value;
-    return invokeBlock(scope, found.match.children, [keyed ? found.value : narrowed]);
+    return invokeBlock(found.match.children, [keyed ? found.value : narrowed]);
   };
-  return branch(s, null, null, key, body);
+  return branch(null, null, key, body);
 }
 
 /**
@@ -1280,12 +1262,10 @@ export function ssrSwitch(
  * is the case these adapters were written for.
  */
 export function ssrLoading(
-  s: Scope | null,
   props: { fallback?: unknown; on?: unknown; children: unknown },
   flags = 0,
 ): SsrHtml {
   return boundary(
-    s,
     null,
     null,
     "loading",
@@ -1296,13 +1276,8 @@ export function ssrLoading(
   );
 }
 
-export function ssrErrored(
-  s: Scope | null,
-  props: { fallback: unknown; children: unknown },
-  flags = 0,
-): SsrHtml {
+export function ssrErrored(props: { fallback: unknown; children: unknown }, flags = 0): SsrHtml {
   return boundary(
-    s,
     null,
     null,
     "error",
@@ -1323,12 +1298,11 @@ export function ssrErrored(
  * key-based one does not.
  */
 /** The COMPONENT form, for a build whose flow pass is off. See `island`. */
-export function ssrIsland(s: Scope | null, props: { children: unknown }): SsrHtml {
-  return island(s, null, null, props.children as Block<unknown>);
+export function ssrIsland(props: { children: unknown }): SsrHtml {
+  return island(null, null, props.children as Block<unknown>);
 }
 
 export function island(
-  s: Scope | null,
   parent: Node | null,
   anchor: Node | null,
   block: Block<unknown>,
@@ -1339,13 +1313,12 @@ export function island(
   // line for both backends. A string has no insertion pair to honour.
   refuseASite(parent, anchor, "island");
   void flags;
-  const inner = activate(s, block, NO_ARGS, 0, "branch");
+  const inner = activate(getOwner(), block, NO_ARGS, 0, "branch");
   return html(`${OPEN}i:-->${inner}${CLOSE}`);
 }
 
-export function ssrPortal(s: Scope | null, props: { mount?: unknown; children: unknown }): SsrHtml {
+export function ssrPortal(props: { mount?: unknown; children: unknown }): SsrHtml {
   return portal(
-    s,
     (): Node | string | null | undefined =>
       readValue(props.mount, "Portal.mount") as Node | string | undefined,
     props.children as Block<unknown>,
@@ -1357,17 +1330,14 @@ export function ssrPortal(s: Scope | null, props: { mount?: unknown; children: u
  * same shape `components.ts` builds, with the error arm's bare-message case
  * emitting text instead of a text NODE.
  */
-export function ssrDynamic(
-  s: Scope | null,
-  props: { component?: unknown } & Record<string, unknown>,
-): SsrHtml {
+export function ssrDynamic(props: { component?: unknown } & Record<string, unknown>): SsrHtml {
   const component = (): unknown => readValue(props.component, "Dynamic.component");
-  const body: Block<unknown> = (scope: Scope | null): unknown => {
+  const body: Block<unknown> = (): unknown => {
     const resolved = untrack(component);
     if (!resolved) return null;
     // C3/C5: `rest` is a VIEW of the same carriers, not a copy.
     const rest = omit(props, "component");
-    if (typeof resolved !== "string") return invokeBlock(scope, resolved, [rest]);
+    if (typeof resolved !== "string") return invokeBlock(resolved, [rest]);
     // The tag is RUNTIME DATA here, which makes it the same injection the
     // attribute-name check exists for: `component={"div onload=alert(1)"}`
     // writes two attributes into markup where `document.createElement` throws
@@ -1391,7 +1361,7 @@ export function ssrDynamic(
     const open = `<${resolved}${spreadAttrs(omit(rest, "children"), resolved)}`;
     return raw(VOID_TAGS.has(resolved) ? `${open}>` : `${open}>${inner}</${resolved}>`);
   };
-  return branch(s, null, null, component, body);
+  return branch(null, null, component, body);
 }
 
 /**
@@ -1442,22 +1412,17 @@ const VOID_TAGS = new Set([
  * emits one call with one argument order; which module it is imported from is
  * the TARGET's decision and nothing else differs.
  */
-export function reveal(
-  s: Scope | null,
-  order: unknown,
-  collapsed: unknown,
-  block: unknown,
-): SsrHtml {
+export function reveal(order: unknown, collapsed: unknown, block: unknown): SsrHtml {
   const handle: RevealHandle = createRevealCoordinator(
     () =>
       (readValue(order, "reveal.order") as "sequential" | "together" | "natural") ?? "sequential",
     () => readValue(collapsed, "reveal.collapsed") === true,
-    outerRevealHandle(s),
+    outerRevealHandle(getOwner()),
   );
-  const scope = enter(s ?? null, "provide");
+  const scope = enter(getOwner(), "provide");
   try {
     provideOn(scope, REVEAL_COORD, handle);
-    return html(esc(invokeBlock(scope, block, NO_ARGS)));
+    return html(esc(invokeBlock(block, NO_ARGS)));
   } finally {
     exit(scope);
   }
@@ -1468,14 +1433,10 @@ export function reveal(
  * compiler's, so what is left here is the one question the value answers: a tag
  * name is serialised, anything else is invoked.
  */
-export function dynamic(
-  s: Scope | null,
-  component: unknown,
-  props: Record<string, unknown>,
-): unknown {
+export function dynamic(component: unknown, props: Record<string, unknown>): unknown {
   const resolved = untrack(() => readValue(component, "dynamic.component"));
   if (resolved === null || resolved === undefined || resolved === false) return null;
-  if (typeof resolved !== "string") return invokeBlock(s, resolved, [props]);
+  if (typeof resolved !== "string") return invokeBlock(resolved, [props]);
   // The tag is RUNTIME DATA here, which makes it the same injection the
   // attribute-name check exists for: `component={"div onload=alert(1)"}` writes
   // two attributes into markup where `document.createElement` throws
@@ -1487,22 +1448,23 @@ export function dynamic(
   return raw(VOID_TAGS.has(resolved) ? `${open}>` : `${open}>${inner}</${resolved}>`);
 }
 
-export function ssrReveal(
-  s: Scope | null,
-  props: { order?: unknown; collapsed?: unknown; children: unknown },
-): SsrHtml {
+export function ssrReveal(props: {
+  order?: unknown;
+  collapsed?: unknown;
+  children: unknown;
+}): SsrHtml {
   const handle: RevealHandle = createRevealCoordinator(
     () =>
       (readValue(props.order, "Reveal.order") as "sequential" | "together" | "natural") ??
       "sequential",
     () => readValue(props.collapsed, "Reveal.collapsed") === true,
-    outerRevealHandle(s),
+    outerRevealHandle(getOwner()),
   );
   // X1: enter, fork, write, invoke — in that order, and on a scope of its own.
-  const scope = enter(s ?? null, "provide");
+  const scope = enter(getOwner(), "provide");
   try {
     provideOn(scope, REVEAL_COORD, handle);
-    return html(esc(invokeBlock(scope, props.children, NO_ARGS)));
+    return html(esc(invokeBlock(props.children, NO_ARGS)));
   } finally {
     exit(scope);
   }

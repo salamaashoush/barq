@@ -722,10 +722,7 @@ export function useDateField(): DateFieldContextValue {
 }
 
 function DateFieldProvider(props: Incoming<{ value: DateFieldContextValue; children?: Child }>) {
-  const owner = getOwner();
-  if (owner === null) return <>{props.children}</>;
   return provide(
-    owner,
     DateFieldContext,
     () => props.value(),
     () => props.children as unknown,

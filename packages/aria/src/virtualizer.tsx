@@ -656,13 +656,9 @@ export function Virtualizer(props: Incoming<VirtualizerComponentProps>) {
     shouldMeasure: () => state.visible().some((info) => info.isEstimated),
   };
 
-  const owner = getOwner();
-  if (owner === null) return <>{props.children}</>;
-
   // `provide`, not `install`: two virtualised lists side by side both run
   // their bodies before either one's children are built.
   return provide(
-    owner,
     VirtualizerContext,
     () => value,
     () => props.children as unknown,

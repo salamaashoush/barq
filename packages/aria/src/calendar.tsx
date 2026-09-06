@@ -716,10 +716,7 @@ export function useCalendar(): CalendarContextValue {
 }
 
 function CalendarProvider(props: Incoming<{ value: CalendarContextValue; children?: Child }>) {
-  const owner = getOwner();
-  if (owner === null) return <>{props.children}</>;
   return provide(
-    owner,
     CalendarContext,
     () => props.value(),
     () => props.children as unknown,
