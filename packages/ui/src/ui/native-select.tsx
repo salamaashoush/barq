@@ -135,9 +135,18 @@ export interface NativeSelectProps extends UiProps {
 export function NativeSelect(props: Incoming<NativeSelectProps>) {
   const size = (): NativeSelectSize => props.size?.() ?? "default";
   return (
-    <div class={wrapper} data-slot="native-select-wrapper" data-size={size()}>
+    // `class` goes on the WRAPPER, because the wrapper is the box: it carries
+    // `width: fit-content`, and a caller writing `class` to widen the control
+    // was styling the `<select>` inside a wrapper that stayed shrink-wrapped,
+    // so nothing moved. Everything else, `id` and the ARIA attributes and the
+    // events, belongs to the control the label points at.
+    <div
+      class={ui(wrapper, props.class?.(), props.className?.())}
+      data-slot="native-select-wrapper"
+      data-size={size()}
+    >
       <select
-        {...controlProps("native-select", control, omit(props, ["size"]))}
+        {...controlProps("native-select", control, omit(props, ["size", "class", "className"]))}
         data-size={size()}
         ref={mergeRefs(props.ref?.())}
       >
