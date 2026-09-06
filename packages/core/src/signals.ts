@@ -3205,12 +3205,35 @@ export function setAsyncSession(session: symbol | null): symbol | null {
 export async function settle(session?: symbol): Promise<void> {
   flushIn(session);
   while (true) {
-    const waiting = inFlightOf(session);
+    const waiting = inFlightOf(session, abandoned);
     if (waiting.length === 0) break;
+    // ONE turn each for un-attributed work, recorded before the await rather
+    // than after, because the await may never return.
+    //
+    // Adopting it is right and unbounded waiting for it is not: a promise
+    // nobody ever settles — an abandoned page, a resource whose whole point is
+    // never to resolve — stays in `inFlight` for the life of the process, and
+    // every later `settle` then waits on it forever. One such fixture wedged
+    // 120 of 139 server renders in the compiler's own corpus, and in a server
+    // it is one dropped fetch away from wedging every request after it.
+    //
+    // The render that owns the promise still waits: this call is the turn.
+    // What is bounded is every call after it.
+    for (const [promise, owner] of inFlight) {
+      if (owner === null) abandoned.add(promise);
+    }
     await Promise.allSettled(waiting);
     flushIn(session);
   }
 }
+
+/**
+ * Un-attributed promises a `settle` has already waited a full turn on.
+ *
+ * Pruned against `inFlight`, which drops a promise when it settles and when its
+ * node is disposed, so this holds only work that is genuinely outstanding.
+ */
+const abandoned = new Set<PromiseLike<unknown>>();
 
 function flushIn(session: symbol | undefined): void {
   if (session === undefined) {
@@ -3226,9 +3249,18 @@ function flushIn(session: symbol | undefined): void {
   }
 }
 
-function inFlightOf(session: symbol | undefined): PromiseLike<unknown>[] {
+function inFlightOf(
+  session: symbol | undefined,
+  stale?: Set<PromiseLike<unknown>>,
+): PromiseLike<unknown>[] {
+  if (stale !== undefined) {
+    for (const promise of stale) {
+      if (!inFlight.has(promise)) stale.delete(promise);
+    }
+  }
   const waiting: PromiseLike<unknown>[] = [];
   for (const [promise, owner] of inFlight) {
+    if (owner === null && stale?.has(promise) === true) continue;
     // Un-attributed work counts. A fetch started by a flush that ran outside
     // any render — an eagerly scheduled memo whose microtask happened to land
     // first — still belongs to the page being built, and waiting for it can
