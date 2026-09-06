@@ -22,9 +22,9 @@
  */
 
 import {
-  authoritative,
   batch,
   flush,
+  group,
   markInMotion,
   notePendingLane,
   overrideWrite,
@@ -174,6 +174,7 @@ export function affects(target: () => unknown): void {
  */
 function claimLayer<L extends object>(
   layers: Signal<L[]>,
+  live: L[],
   owned: WeakMap<ActionContext, L>,
   make: () => L,
   onRetire?: () => void,
@@ -185,9 +186,16 @@ function claimLayer<L extends object>(
 
   const layer = make();
   owned.set(ctx, layer);
+  // `live` is the list the REBUILD walks and `layers` is the one a probe
+  // subscribes to. They are two views of the same claim because a signal write
+  // is not published until the flush, and the rebuild happens in the same
+  // statement that claimed the layer.
+  live.push(layer);
   layers.update((prev) => [...prev, layer]);
   ctx.retire.push(() => {
     owned.delete(ctx);
+    const at = live.indexOf(layer);
+    if (at >= 0) live.splice(at, 1);
     layers.update((prev) => prev.filter((entry) => entry !== layer));
     onRetire?.();
   });
@@ -225,7 +233,10 @@ export function optimistic<T>(
   const write = (patch: (prev: T) => T): void => {
     const ctx = activeAction;
     if (!ctx || ctx.done) {
-      target.set(patch(authoritative(target)));
+      // `update`, not `set(patch(authoritative))`: the base is the write this
+      // batch already staged, so two updates in one tick compose instead of
+      // both folding over the last commit.
+      target.update(patch);
       return;
     }
     overrideWrite(target, ctx, patch);
@@ -271,6 +282,23 @@ function writeInto(target: Record<PropertyKey, unknown>, next: Record<PropertyKe
   }
 }
 
+/** Structural equality over the plain data a store holds. */
+function sameShape(a: unknown, b: unknown): boolean {
+  if (Object.is(a, b)) return true;
+  if (a === null || b === null || typeof a !== "object" || typeof b !== "object") return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a);
+  const kb = Object.keys(b);
+  if (ka.length !== kb.length) return false;
+  for (const key of ka) {
+    if (!Object.hasOwn(b, key)) return false;
+    if (!sameShape((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key])) {
+      return false;
+    }
+  }
+  return true;
+}
+
 interface StoreLayer {
   calls: unknown[][];
 }
@@ -301,6 +329,7 @@ export function optimisticStore<T extends object>(
   const [base, setBase] = derived ? writableProjection(first, seed) : store(seed);
   const [view, setView] = store(structuredClone(unwrap(seed)));
   const layers = signal<StoreLayer[]>([]);
+  const liveLayers: StoreLayer[] = [];
   const owned = new WeakMap<ActionContext, StoreLayer>();
 
   const buffer = (): Record<PropertyKey, unknown> =>
@@ -310,7 +339,7 @@ export function optimisticStore<T extends object>(
     {},
     {
       get(_ignored, key) {
-        if (probingPending() && layers().length > 0) notePendingLane();
+        if (probingPending() && (layers().length > 0 || liveLayers.length > 0)) notePendingLane();
         return buffer()[key];
       },
       has: (_ignored, key) => key in buffer(),
@@ -324,18 +353,46 @@ export function optimisticStore<T extends object>(
     },
   ) as Store<T>[0];
 
+  // A rebuild passes THROUGH states no timeline contains: the view is first
+  // wound back to the authoritative value and then the layers are replayed
+  // over it, so a flush between those two steps shows a frame with the
+  // optimism gone. One batch, and re-entrant calls fold into the one already
+  // running rather than starting a second wind-back inside it.
+  let rebuilding = false;
+  let lastAuthoritative: unknown;
+  let lastCalls = -1;
   const derive = (): void => {
+    if (rebuilding) return;
     const next = structuredClone(unwrap(base as unknown as T)) as unknown as Record<
       PropertyKey,
       unknown
     >;
-    setView((draft) => {
-      writeInto(draft as Record<PropertyKey, unknown>, next);
-    });
-    for (const layer of layers.peek()) {
-      for (const call of layer.calls) {
-        (setView as (...a: unknown[]) => void)(...call);
-      }
+    // The rebuild is a pure function of the authoritative value and the claimed
+    // layers, so running it again on unchanged inputs can only write what is
+    // already there. Skipping it is what stops an async base from feeding
+    // itself: the wind-back and the replay each pass through a state the other
+    // undoes, and a `deep` reader woken by one of those halves would otherwise
+    // ask for the rebuild that wakes it again.
+    let calls = 0;
+    for (const layer of liveLayers) calls += layer.calls.length;
+    if (calls === lastCalls && sameShape(next, lastAuthoritative)) return;
+    lastAuthoritative = next;
+    lastCalls = calls;
+
+    rebuilding = true;
+    try {
+      group(() => {
+        setView((draft) => {
+          writeInto(draft as Record<PropertyKey, unknown>, next);
+        });
+        for (const layer of liveLayers) {
+          for (const call of layer.calls) {
+            (setView as (...a: unknown[]) => void)(...call);
+          }
+        }
+      });
+    } finally {
+      rebuilding = false;
     }
   };
 
@@ -350,7 +407,7 @@ export function optimisticStore<T extends object>(
   }
 
   const optimisticSet = ((...args: unknown[]) => {
-    const layer = claimLayer(layers, owned, () => ({ calls: [] }), derive);
+    const layer = claimLayer(layers, liveLayers, owned, () => ({ calls: [] }), derive);
     if (layer === null) {
       (setBase as (...a: unknown[]) => void)(...args);
     } else {

@@ -82,6 +82,7 @@ describe("deep", () => {
       setState((s) => {
         s.user.age = 37;
       });
+      flush();
       expect(view().user.age).toBe(37);
       expect(runs).toBe(2);
       return d;
@@ -111,12 +112,14 @@ describe("storePath", () => {
   test("sets a nested value", () => {
     const [state, setState] = store({ user: { name: "Ada" } });
     setState(storePath("user", "name", "Grace"));
+    flush();
     expect(state.user.name).toBe("Grace");
   });
 
   test("accepts an updater function", () => {
     const [state, setState] = store({ count: 1 });
     setState(storePath("count", (n: number) => n + 10));
+    flush();
     expect(state.count).toBe(11);
   });
 
@@ -125,6 +128,7 @@ describe("storePath", () => {
       user: { name: "Ada", nick: "A" },
     });
     setState(storePath("user", "nick", storePath.DELETE));
+    flush();
     expect(state.user.nick).toBeUndefined();
     expect("nick" in state.user).toBe(false);
   });
@@ -132,6 +136,7 @@ describe("storePath", () => {
   test("an array of keys writes several siblings", () => {
     const [state, setState] = store({ a: 0, b: 0, c: 0 });
     setState(storePath(["a", "c"], 5));
+    flush();
     expect([state.a, state.b, state.c]).toEqual([5, 0, 5]);
   });
 
@@ -144,24 +149,28 @@ describe("storePath", () => {
       ],
     });
     setState(storePath("todos", (t: { done: boolean }) => !t.done, "done", true));
+    flush();
     expect(state.todos.map((t) => t.done)).toEqual([true, true, true]);
   });
 
   test("a range targets a slice", () => {
     const [state, setState] = store({ nums: [0, 1, 2, 3, 4] });
     setState(storePath("nums", { from: 1, to: 3 }, 9));
+    flush();
     expect(state.nums).toEqual([0, 9, 9, 9, 4]);
   });
 
   test("a range with by steps", () => {
     const [state, setState] = store({ nums: [0, 1, 2, 3, 4] });
     setState(storePath("nums", { from: 0, to: 4, by: 2 }, 7));
+    flush();
     expect(state.nums).toEqual([7, 1, 7, 3, 7]);
   });
 
   test("a single argument merges into the root", () => {
     const [state, setState] = store({ a: 1, b: 2 });
     setState(storePath({ b: 20 }));
+    flush();
     expect([state.a, state.b]).toEqual([1, 20]);
   });
 
@@ -213,6 +222,7 @@ describe("store parity primitives interop", () => {
       expect(view()).toBe(-1);
       toggle.set(true);
       setState(storePath("n", 5));
+      flush();
       expect(view()).toBe(5);
       return d;
     }, true);

@@ -55,6 +55,7 @@ describe("mediaQuery", () => {
       expect(a).toBe(b);
       expect(a()).toBe(false);
       setMatches(q, true);
+      flush();
       expect(a()).toBe(true);
       return d;
     });
@@ -74,6 +75,7 @@ describe("mediaQuery", () => {
 
       window.matchMedia(second);
       setMatches(second, true);
+      flush();
       expect(matches()).toBe(false);
 
       which.set(second);
@@ -106,6 +108,7 @@ describe("breakpoints", () => {
       expect(bp.current()).toBe("md");
 
       setMatches(`(min-width: ${suffix}68px)`, false);
+      flush();
       setMatches(`(min-width: ${suffix}40px)`, false);
       flush();
       expect(bp.current()).toBeUndefined();

@@ -49,7 +49,7 @@ const selected = signal<number | null>(null)
 
 const run = () => data.set(buildData(1_000))
 const runLots = () => data.set(buildData(10_000))
-const add = () => data.set([...data(), ...buildData(1_000)])
+const add = () => data.update((prev) => [...prev, ...buildData(1_000)])
 const update = () =>
   batch(() => {
     const d = data()

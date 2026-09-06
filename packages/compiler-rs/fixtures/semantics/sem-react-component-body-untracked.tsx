@@ -9,7 +9,7 @@
  *
  * R1.
  */
-import { render, signal } from "@barqjs/core"
+import { flush, render, signal } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 
@@ -30,6 +30,9 @@ const Subject = () => <Snapshot />
 async function mount(kit: Kit) {
   bodies.length = 0
   count.set(0)
+  // Published before the render: the body reads the signal as everyone outside
+  // the graph does, and a staged write would hand it the previous claim's value.
+  flush()
   const host = kit.container()
   let dispose: (() => void) | undefined
   const thrown = await kit.attempt(() => {

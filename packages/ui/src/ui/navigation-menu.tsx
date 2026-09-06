@@ -434,7 +434,7 @@ export function NavigationMenu(props: Incoming<NavigationMenuProps>) {
       // Declaration order, and it has to be stable: the motion direction is an
       // index comparison, so a list that reorders itself would animate the
       // wrong way. An item registers once and stays where it was.
-      if (!order().includes(key)) order.set([...order(), key]);
+      if (!order().includes(key)) order.update((prev) => [...prev, key]);
     },
     hasViewport: () => props.viewport?.() ?? true,
     measured,

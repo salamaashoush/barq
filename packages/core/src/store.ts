@@ -9,7 +9,7 @@
  * when they re-run.
  */
 
-import { type Signal, batch, isTracking, renderEffect, signal } from "./signals.ts";
+import { type Signal, group, isTracking, renderEffect, signal } from "./signals.ts";
 
 /**
  * Deep readonly type for store state
@@ -126,7 +126,16 @@ export function isWrappable(value: unknown): value is object {
   return proto === Object.prototype || proto === null;
 }
 
-function trackProperty(target: StoreTarget, prop: PropertyKey, value: unknown): void {
+/**
+ * The signal standing for one property, created on demand and seeded with the
+ * value the property holds RIGHT NOW.
+ *
+ * A written property always has one, because the node is where the staged
+ * write lives: the raw object moves on at once so `unwrap` and `Object.keys`
+ * keep answering about the object itself, and the node is what remembers which
+ * value has been published and which has not.
+ */
+function nodeFor(target: StoreTarget, prop: PropertyKey, value: unknown): Signal<unknown> {
   let nodes = target[$NODES];
   if (!nodes) {
     nodes = new Map();
@@ -137,7 +146,11 @@ function trackProperty(target: StoreTarget, prop: PropertyKey, value: unknown): 
     node = signal(value);
     nodes.set(prop, node);
   }
-  node();
+  return node;
+}
+
+function trackProperty(target: StoreTarget, prop: PropertyKey, value: unknown): void {
+  nodeFor(target, prop, value)();
 }
 
 function trackSelf(target: StoreTarget): void {
@@ -163,6 +176,15 @@ const readHandler: ProxyHandler<object> = {
     }
     if (prop === Symbol.toStringTag) return "Store";
     if (typeof prop === "symbol") return Reflect.get(target, prop);
+
+    // A property that has a node reads THROUGH it, which is what routes the
+    // read by mode: a computation sees the staged write, everything else the
+    // last published value. Written properties always have one.
+    const node = (target as StoreTarget)[$NODES]?.get(prop);
+    if (node !== undefined) {
+      const held = node();
+      return isWrappable(held) ? wrap(held) : held;
+    }
 
     const value = (target as Record<string, unknown>)[prop];
 
@@ -228,21 +250,18 @@ function writeProperty(target: object, prop: PropertyKey, value: unknown): void 
   const isArray = Array.isArray(target);
   const prevLength = isArray ? (target as unknown[]).length : 0;
 
+  // Seeded with `prev` BEFORE the raw write, so the node holds the published
+  // value and the write stages over it.
+  const node = nodeFor(target, prop, prev);
   record[prop] = value;
-
-  const nodes = (target as StoreTarget)[$NODES];
-  if (nodes) {
-    const node = nodes.get(prop);
-    if (node) node.set(value);
-  }
+  node.set(value);
 
   if (!had) bumpSelf(target);
 
   if (isArray && prop !== "length") {
     const newLength = (target as unknown[]).length;
-    if (newLength !== prevLength && nodes) {
-      const lengthNode = nodes.get("length");
-      if (lengthNode) lengthNode.set(newLength);
+    if (newLength !== prevLength) {
+      nodeFor(target as StoreTarget, "length", prevLength).set(newLength);
     }
   }
 }
@@ -250,13 +269,9 @@ function writeProperty(target: object, prop: PropertyKey, value: unknown): void 
 function deletePropertyOnTarget(target: object, prop: PropertyKey): void {
   const record = target as Record<PropertyKey, unknown>;
   if (!(prop in record)) return;
+  const node = nodeFor(target, prop, record[prop]);
   delete record[prop];
-
-  const nodes = (target as StoreTarget)[$NODES];
-  if (nodes) {
-    const node = nodes.get(prop);
-    if (node) node.set(undefined);
-  }
+  node.set(undefined);
   bumpSelf(target);
 }
 
@@ -323,7 +338,7 @@ export function store<T extends object>(initialState: T): Store<T> {
   const state = wrap(initialState) as DeepReadonly<T>;
 
   const setState: StoreSetter<T> = (...args: unknown[]) => {
-    batch(() => {
+    group(() => {
       if (args.length === 0) return;
 
       if (args.length === 1) {

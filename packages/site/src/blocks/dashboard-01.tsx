@@ -712,7 +712,7 @@ export function Dashboard01() {
                   size="icon"
                   aria-label="Previous page"
                   isDisabled={page() === 1}
-                  onPress={() => page.set(Math.max(1, page() - 1))}
+                  onPress={() => page.update((n) => Math.max(1, n - 1))}
                 >
                   <ChevronLeft />
                 </Button>
@@ -721,7 +721,7 @@ export function Dashboard01() {
                   size="icon"
                   aria-label="Next page"
                   isDisabled={page() === 5}
-                  onPress={() => page.set(Math.min(5, page() + 1))}
+                  onPress={() => page.update((n) => Math.min(5, n + 1))}
                 >
                   <ChevronRight />
                 </Button>

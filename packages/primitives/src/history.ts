@@ -89,7 +89,7 @@ export function history<T>(source: Signal<T>, options?: HistoryOptions): History
       if (stack.length === 0) return;
       const value = stack[stack.length - 1] as T;
       past.set(stack.slice(0, -1));
-      future.set([...future.peek(), current]);
+      future.update((prev) => [...prev, current]);
       replay(value);
     },
     redo() {
@@ -98,7 +98,7 @@ export function history<T>(source: Signal<T>, options?: HistoryOptions): History
       if (stack.length === 0) return;
       const value = stack[stack.length - 1] as T;
       future.set(stack.slice(0, -1));
-      past.set([...past.peek(), current]);
+      past.update((prev) => [...prev, current]);
       replay(value);
     },
     canUndo: () => past().length > 0,
@@ -113,6 +113,11 @@ export function history<T>(source: Signal<T>, options?: HistoryOptions): History
       replaying = true;
       try {
         const out = fn();
+        // The write has to be PUBLISHED before the baseline is re-read: a
+        // staged write is invisible to an untracked read, so `current` would
+        // stay behind and the recording effect would then record the change
+        // the caller asked it not to see.
+        flush();
         current = untrack(source);
         return out;
       } finally {

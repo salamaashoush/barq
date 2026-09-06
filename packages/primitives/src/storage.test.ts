@@ -45,6 +45,7 @@ describe("persisted", () => {
           storageArea: localStorage,
         }),
       );
+      flush();
       expect(value()).toBe(9);
       return d;
     });
@@ -68,6 +69,7 @@ describe("persisted", () => {
             storageArea: localStorage,
           }),
         );
+        flush();
         expect(value()).toBe(9);
         flush();
         return d;
@@ -85,9 +87,11 @@ describe("persisted", () => {
       window.dispatchEvent(
         new StorageEvent("storage", { key: "other", newValue: "9", storageArea: localStorage }),
       );
+      flush();
       window.dispatchEvent(
         new StorageEvent("storage", { key: "mine", newValue: "9", storageArea: sessionStorage }),
       );
+      flush();
       expect(value()).toBe(1);
       return d;
     });
@@ -100,6 +104,7 @@ describe("persisted", () => {
       const value = persisted("gone", "fallback");
       expect(value()).toBe("x");
       clearPersisted("gone");
+      flush();
       expect(value()).toBe("fallback");
       return d;
     });

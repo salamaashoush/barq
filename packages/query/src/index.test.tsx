@@ -237,7 +237,13 @@ describe("results are fine-grained", () => {
     function Counter() {
       const query = useQuery<string>(() => ({
         queryKey: ["stable"],
-        queryFn: async () => "same",
+        // A tick, so `isFetching` is observably true between its two writes:
+        // a flag raised and lowered inside one tick publishes once, and the
+        // reader this test is about would never see it move.
+        queryFn: async () => {
+          await tick(20);
+          return "same";
+        },
       }));
       effect(() => {
         expect(query.data === undefined || typeof query.data === "string").toBe(true);
@@ -261,19 +267,27 @@ describe("results are fine-grained", () => {
       host,
     );
 
-    await tick(10);
+    await tick(60);
     flush();
     const afterFirst = dataRuns;
     expect(afterFirst).toBeGreaterThan(0);
 
     // The same value comes back, so structural sharing keeps the reference and
     // the store drops the write before it reaches a subscriber.
-    await queryClient.refetchQueries({ queryKey: ["stable"] });
-    await tick(10);
+    const refetch = queryClient.refetchQueries({ queryKey: ["stable"] });
+    // Mid-flight, and flushed: a flag raised and lowered inside ONE tick
+    // publishes once and moves nothing, so the control has to observe the
+    // fetch while it is actually in flight.
+    await tick(5);
+    flush();
+    const whileFetching = fetchingRuns;
+    await refetch;
+    await tick(60);
     flush();
 
     expect(dataRuns, "a refetch returning the same data woke the data reader").toBe(afterFirst);
-    expect(fetchingRuns, "isFetching never moved").toBeGreaterThan(afterFirst);
+    expect(whileFetching, "isFetching never rose").toBeGreaterThan(afterFirst);
+    expect(fetchingRuns, "isFetching never fell").toBeGreaterThan(whileFetching);
     dispose();
   });
 

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { root } from "@barqjs/core";
+import { flush, root } from "@barqjs/core";
 import { bounds, elementSize, visible, windowSize } from "./element.ts";
 
 let emitResize: (entries: unknown[]) => void = () => {};
@@ -68,6 +68,7 @@ describe("elementSize", () => {
           contentBoxSize: [{ inlineSize: 100, blockSize: 50 }],
         },
       ]);
+      flush();
       expect(size.width()).toBe(100);
       expect(size.height()).toBe(50);
       return d;
@@ -80,6 +81,7 @@ describe("elementSize", () => {
     const dispose = root((d) => {
       const size = elementSize(target);
       emitResize([{ target, contentRect: { width: 7, height: 9 } }]);
+      flush();
       expect(size.width()).toBe(7);
       expect(size.height()).toBe(9);
       return d;
@@ -96,6 +98,7 @@ describe("bounds", () => {
 
     const dispose = root((d) => {
       const rect = bounds(target);
+      flush();
       expect(rect.x()).toBe(1);
       expect(rect.width()).toBe(3);
       expect(rect.bottom()).toBe(6);
@@ -103,6 +106,7 @@ describe("bounds", () => {
       target.getBoundingClientRect = () =>
         ({ x: 10, y: 2, width: 3, height: 4, top: 2, right: 4, bottom: 6, left: 1 }) as DOMRect;
       rect.measure();
+      flush();
       expect(rect.x()).toBe(10);
       return d;
     });
@@ -119,6 +123,7 @@ describe("bounds", () => {
       const rect = bounds(target);
       x = 42;
       window.dispatchEvent(new Event("scroll"));
+      flush();
       expect(rect.x()).toBe(42);
       return d;
     });
@@ -133,8 +138,10 @@ describe("visible", () => {
       const showing = visible(target);
       expect(showing()).toBe(false);
       emitIntersection([{ target, isIntersecting: true }]);
+      flush();
       expect(showing()).toBe(true);
       emitIntersection([{ target, isIntersecting: false }]);
+      flush();
       expect(showing()).toBe(false);
       return d;
     });
@@ -146,8 +153,10 @@ describe("visible", () => {
     const dispose = root((d) => {
       const showing = visible(target, { once: true });
       emitIntersection([{ target, isIntersecting: true }]);
+      flush();
       expect(showing()).toBe(true);
       emitIntersection([{ target, isIntersecting: false }]);
+      flush();
       expect(showing()).toBe(true);
       return d;
     });

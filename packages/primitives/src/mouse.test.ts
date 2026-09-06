@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { root } from "@barqjs/core";
+import { flush, root } from "@barqjs/core";
 import { mouseInElement, mousePosition } from "./mouse.ts";
 
 const pointer = (type: string, init: Record<string, number>) =>
@@ -16,12 +16,14 @@ describe("mousePosition", () => {
       window.dispatchEvent(
         pointer("pointermove", { pageX: 10, pageY: 20, clientX: 5, clientY: 6 }),
       );
+      flush();
       expect(a.x()).toBe(10);
       expect(a.y()).toBe(20);
       expect(a.clientX()).toBe(5);
       expect(a.isInside()).toBe(true);
 
       document.dispatchEvent(pointer("pointerleave", {}));
+      flush();
       expect(a.isInside()).toBe(false);
       return d;
     });
@@ -38,13 +40,16 @@ describe("mouseInElement", () => {
     const dispose = root((d) => {
       const position = mouseInElement(box);
       box.dispatchEvent(pointer("pointerenter", {}));
+      flush();
       expect(position.isInside()).toBe(true);
 
       box.dispatchEvent(pointer("pointermove", { clientX: 130, clientY: 70 }));
+      flush();
       expect(position.x()).toBe(30);
       expect(position.y()).toBe(20);
 
       box.dispatchEvent(pointer("pointerleave", {}));
+      flush();
       expect(position.isInside()).toBe(false);
       // The last position is kept, so an animation back to rest has a start.
       expect(position.x()).toBe(30);

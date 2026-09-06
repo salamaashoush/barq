@@ -191,6 +191,7 @@ describe("packages/core/README.md", () => {
         todos[0].done = true;
       }),
     );
+    flush();
 
     expect(state.user.name).toBe("Grace");
     expect(state.todos[0]).toEqual({ id: 1, done: true });
@@ -514,6 +515,7 @@ describe("packages/primitives/README.md", () => {
           storageArea: localStorage,
         }),
       );
+      flush();
       expect(theme()).toBe("light");
       return release;
     }, true);

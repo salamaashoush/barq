@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { root, signal } from "@barqjs/core";
+import { flush, root, signal } from "@barqjs/core";
 import { scrollPosition, windowScroll } from "./scroll.ts";
 
 describe("windowScroll", () => {
@@ -11,6 +11,7 @@ describe("windowScroll", () => {
       Object.defineProperty(window, "scrollX", { value: 12, configurable: true });
       Object.defineProperty(window, "scrollY", { value: 34, configurable: true });
       window.dispatchEvent(new Event("scroll"));
+      flush();
 
       expect(a.x()).toBe(12);
       expect(a.y()).toBe(34);
@@ -28,11 +29,13 @@ describe("scrollPosition", () => {
 
     const dispose = root((d) => {
       const position = scrollPosition(box);
+      flush();
       expect(position.x()).toBe(5);
       expect(position.y()).toBe(7);
 
       (box as unknown as { scrollTop: number }).scrollTop = 99;
       box.dispatchEvent(new Event("scroll"));
+      flush();
       expect(position.y()).toBe(99);
       return d;
     });

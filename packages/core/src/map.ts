@@ -18,7 +18,13 @@ import type { Scope } from "./scope.ts";
 export type Maybe<T> = T | undefined | null | false;
 
 /** Row signals are written from inside the mapping computation by design */
-const ROW_SIGNAL = { ownedWrite: true } as const;
+/**
+ * A row's item and index channels. `immediate` because the reconcile writes
+ * them and the row's own accessors read them in the same synchronous step:
+ * position is a fact about the list as it is being rebuilt, not a value the
+ * next flush publishes.
+ */
+const ROW_SIGNAL = { ownedWrite: true, immediate: true } as const;
 
 interface Row<Item, MappedItem> {
   _dispose: () => void;

@@ -87,6 +87,10 @@ interface Timer {
 export function toastQueue(options: ToastQueueOptions = {}): ToastQueue {
   const toasts = signal<readonly Toast[]>([]);
   const paused = signal(false);
+  // The timers' own copy. `paused()` is a published value and the pause is not
+  // published until the flush, so `resume()` starting the clocks it just
+  // un-paused would read itself as still paused and start nothing.
+  let isPaused = false;
   const timers = new Map<number, Timer>();
   let nextId = 1;
 
@@ -101,14 +105,20 @@ export function toastQueue(options: ToastQueueOptions = {}): ToastQueue {
   const remove = (id: number): void => {
     stop(id);
     timers.delete(id);
-    const going = toasts().find((each) => each.id === id);
-    toasts.set(toasts().filter((each) => each.id !== id));
+    let going: Toast | undefined;
+    // `update`, not `set(...toasts()...)`: a read-modify-write through the
+    // accessor reads the PUBLISHED list, so two removals in one tick would
+    // each fold over the same starting point and the first would be undone.
+    toasts.update((prev) => {
+      going = prev.find((each) => each.id === id);
+      return prev.filter((each) => each.id !== id);
+    });
     going?.onDismiss?.();
   };
 
   const start = (id: number): void => {
     const timer = timers.get(id);
-    if (timer === undefined || paused()) return;
+    if (timer === undefined || isPaused) return;
     // `Infinity` is the documented way to keep one, and `setTimeout` would
     // treat it as zero and take it away at once.
     if (!Number.isFinite(timer.remaining)) return;
@@ -128,34 +138,39 @@ export function toastQueue(options: ToastQueueOptions = {}): ToastQueue {
         duration: given.duration ?? access(options.duration) ?? DEFAULT_DURATION,
       };
       const limit = access(options.limit) ?? DEFAULT_LIMIT;
-      // The OLDEST goes. Dropping the newest would mean the thing that just
-      // happened is the one nobody is told about.
-      const kept = [...toasts(), toast].slice(-Math.max(1, limit));
-      for (const each of toasts()) {
-        if (!kept.some((one) => one.id === each.id)) {
-          stop(each.id);
-          timers.delete(each.id);
+      toasts.update((prev) => {
+        // The OLDEST goes. Dropping the newest would mean the thing that just
+        // happened is the one nobody is told about.
+        const kept = [...prev, toast].slice(-Math.max(1, limit));
+        for (const each of prev) {
+          if (!kept.some((one) => one.id === each.id)) {
+            stop(each.id);
+            timers.delete(each.id);
+          }
         }
-      }
-      toasts.set(kept);
+        return kept;
+      });
       timers.set(id, { handle: null, remaining: toast.duration, startedAt: Date.now() });
       start(id);
       return id;
     },
     update(id, given) {
-      const at = toasts().findIndex((each) => each.id === id);
-      if (at < 0) return;
-      const before = toasts()[at] as Toast;
-      const next: Toast = {
-        ...before,
-        ...given,
-        id,
-        kind: given.kind ?? before.kind,
-        duration: given.duration ?? before.duration,
-      };
-      // In PLACE, so a "Saving" that becomes "Saved" does not jump to the
-      // bottom of the column and read as a second thing happening.
-      toasts.set(toasts().map((each) => (each.id === id ? next : each)));
+      let next: Toast | undefined;
+      toasts.update((prev) => {
+        const before = prev.find((each) => each.id === id);
+        if (before === undefined) return prev;
+        next = {
+          ...before,
+          ...given,
+          id,
+          kind: given.kind ?? before.kind,
+          duration: given.duration ?? before.duration,
+        };
+        // In PLACE, so a "Saving" that becomes "Saved" does not jump to the
+        // bottom of the column and read as a second thing happening.
+        return prev.map((each) => (each.id === id ? (next as Toast) : each));
+      });
+      if (next === undefined) return;
       stop(id);
       timers.set(id, { handle: null, remaining: next.duration, startedAt: Date.now() });
       start(id);
@@ -167,7 +182,8 @@ export function toastQueue(options: ToastQueueOptions = {}): ToastQueue {
       toasts.set([]);
     },
     pause() {
-      if (paused()) return;
+      if (isPaused) return;
+      isPaused = true;
       paused.set(true);
       const now = Date.now();
       for (const [id, timer] of timers) {
@@ -179,7 +195,8 @@ export function toastQueue(options: ToastQueueOptions = {}): ToastQueue {
       }
     },
     resume() {
-      if (!paused()) return;
+      if (!isPaused) return;
+      isPaused = false;
       paused.set(false);
       for (const id of timers.keys()) start(id);
     },

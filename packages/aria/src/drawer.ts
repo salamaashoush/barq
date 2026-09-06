@@ -74,8 +74,14 @@ function axisOf(direction: DrawerDirection): { vertical: boolean; sign: number }
 }
 
 export function drawerDrag(options: DrawerDragOptions = {}): DrawerDrag {
-  const offset = signal(0);
+  // The offset is where the pointer IS, and the gesture paints from it in the
+  // same handler that moved it, so it lands at once rather than at the flush.
+  const offset = signal(0, { immediate: true });
   const dragging = signal(false);
+  // The gesture's own copy of both. A pointer stream is read in the same tick
+  // it is written, and a signal write is not published until the flush, so the
+  // move after a `start` would find the drag not yet begun.
+  let isDragging = false;
   let from = { x: 0, y: 0 };
   let size = 0;
   let speed = 0;
@@ -97,11 +103,12 @@ export function drawerDrag(options: DrawerDragOptions = {}): DrawerDrag {
       speed = 0;
       lastAt = Date.now();
       lastOffset = 0;
+      isDragging = true;
       offset.set(0);
       dragging.set(true);
     },
     move(point) {
-      if (!dragging()) return;
+      if (!isDragging) return;
       const moved = raw(point);
       // Past the open position the drawer still moves, an eighth as far, so
       // the gesture is answered without the drawer leaving its edge.
@@ -120,10 +127,12 @@ export function drawerDrag(options: DrawerDragOptions = {}): DrawerDrag {
       offset.set(next);
     },
     end() {
-      if (!dragging()) return false;
+      if (!isDragging) return false;
+      isDragging = false;
       dragging.set(false);
-      const far = offset() > size * (access(options.threshold) ?? THRESHOLD);
+      const far = lastOffset > size * (access(options.threshold) ?? THRESHOLD);
       const fast = speed > (access(options.velocity) ?? VELOCITY);
+      lastOffset = 0;
       offset.set(0);
       if (far || fast) {
         options.onClose?.();
@@ -132,6 +141,8 @@ export function drawerDrag(options: DrawerDragOptions = {}): DrawerDrag {
       return false;
     },
     cancel() {
+      isDragging = false;
+      lastOffset = 0;
       dragging.set(false);
       offset.set(0);
     },

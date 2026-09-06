@@ -106,7 +106,7 @@ export function dialog(options: DialogOptions = {}): DialogResult {
     titleProps: { id: titleId },
     descriptionProps: { id: descriptionId },
     descriptionId,
-    describe: (has) => described.set(described() + (has ? 1 : -1)),
+    describe: (has) => described.update((n) => n + (has ? 1 : -1)),
     dialogProps: mergeProps(filterDOMProps(options, { labelable: true }), {
       role: () => access(options.role) ?? "dialog",
       tabIndex: -1,

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { root } from "@barqjs/core";
+import { flush, root } from "@barqjs/core";
 import { fullscreen, fullscreenElement } from "./fullscreen.ts";
 
 let current: Element | null = null;
@@ -18,6 +18,7 @@ beforeEach(() => {
     current = null;
     exits++;
     document.dispatchEvent(new Event("fullscreenchange"));
+    flush();
   };
 });
 
@@ -32,6 +33,7 @@ const el = () => {
     requested.push(node);
     current = node;
     document.dispatchEvent(new Event("fullscreenchange"));
+    flush();
   };
   document.body.append(node);
   return node;
@@ -42,6 +44,7 @@ document.documentElement.requestFullscreen = async () => {
   requested.push(document.documentElement);
   current = document.documentElement;
   document.dispatchEvent(new Event("fullscreenchange"));
+  flush();
 };
 
 describe("fullscreen", () => {
@@ -79,6 +82,7 @@ describe("fullscreen", () => {
     // derived from `enter`/`exit` alone.
     current = null;
     document.dispatchEvent(new Event("fullscreenchange"));
+    flush();
     expect(dispose[1].active()).toBe(false);
     dispose[0]();
     target.remove();

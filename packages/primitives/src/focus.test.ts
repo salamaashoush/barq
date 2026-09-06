@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { root } from "@barqjs/core";
+import { flush, root } from "@barqjs/core";
 import { activeElement, clickOutside, focusWithin, focused } from "./focus.ts";
 
 const mount = <T extends HTMLElement>(el: T): T => {
@@ -14,6 +14,7 @@ describe("activeElement", () => {
       const active = activeElement();
       input.focus();
       input.dispatchEvent(new Event("focusin", { bubbles: true }));
+      flush();
       expect(active()).toBe(input);
       return d;
     });
@@ -29,8 +30,10 @@ describe("focused", () => {
       const has = focused(input);
       expect(has()).toBe(false);
       input.dispatchEvent(new Event("focus"));
+      flush();
       expect(has()).toBe(true);
       input.dispatchEvent(new Event("blur"));
+      flush();
       expect(has()).toBe(false);
       return d;
     });
@@ -51,12 +54,15 @@ describe("focusWithin", () => {
       expect(inside()).toBe(false);
 
       first.dispatchEvent(new FocusEvent("focusin", { bubbles: true }));
+      flush();
       expect(inside()).toBe(true);
 
       first.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: second }));
+      flush();
       expect(inside()).toBe(true);
 
       second.dispatchEvent(new FocusEvent("focusout", { bubbles: true, relatedTarget: null }));
+      flush();
       expect(inside()).toBe(false);
       return d;
     });
@@ -79,13 +85,16 @@ describe("clickOutside", () => {
     });
 
     child.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    flush();
     expect(calls).toBe(0);
 
     outside.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    flush();
     expect(calls).toBe(1);
 
     dispose();
     outside.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    flush();
     expect(calls).toBe(1);
     box.remove();
     outside.remove();
@@ -100,6 +109,7 @@ describe("clickOutside", () => {
       return d;
     });
     trigger.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    flush();
     expect(calls).toBe(0);
     dispose();
     box.remove();
@@ -116,6 +126,7 @@ describe("clickOutside", () => {
       return d;
     });
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    flush();
     expect(withEscape).toBe(1);
     expect(without).toBe(0);
     dispose();
@@ -129,7 +140,9 @@ describe("clickOutside", () => {
     const clear = clickOutside(box, () => calls++);
     clear();
     outside.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    flush();
     document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    flush();
     expect(calls).toBe(0);
     box.remove();
     outside.remove();

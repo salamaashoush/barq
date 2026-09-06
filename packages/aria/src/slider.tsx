@@ -164,6 +164,10 @@ export function sliderState(options: SliderStateOptions): SliderState {
   };
 
   const dragging = signal<boolean[]>(new Array(values().length).fill(false));
+  // What the last write to `dragging` produced. A keyboard change starts and
+  // ends its gesture in one tick, and the signal does not publish until the
+  // flush, so reading it back would find the gesture never begun.
+  let liveDragging: boolean[] = new Array(values().length).fill(false);
   const editable: boolean[] = new Array(values().length).fill(true);
   const focused = signal<number | undefined>(undefined);
 
@@ -190,12 +194,13 @@ export function sliderState(options: SliderStateOptions): SliderState {
 
   const updateDragging = (index: number, isDragging: boolean): void => {
     if (isDisabled() || !isThumbEditable(index)) return;
-    const current = dragging();
+    const current = liveDragging;
     const wasDragging = current[index] === true;
     if (isDragging) live = values();
 
     const next = [...current];
     next[index] = isDragging;
+    liveDragging = next;
     dragging.set(next);
 
     // `onChangeEnd` fires once the whole gesture is over, not once per thumb:

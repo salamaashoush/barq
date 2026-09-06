@@ -60,6 +60,13 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
   const scrollable = signal(false);
   const autoscrolling = signal(false);
 
+  // The scroller's own copy of what the signals publish. A scroll event
+  // measures and then decides in the same tick, and a signal write is not
+  // published until the flush, so reading the signals back here would decide
+  // against the measurement the previous event left behind.
+  let isAtEnd = true;
+  let isAutoscrolling = false;
+
   let viewport: HTMLElement | null = null;
   let observer: ResizeObserver | null = null;
   let mutations: MutationObserver | null = null;
@@ -74,7 +81,8 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
     if (viewport === null) return;
     const room = viewport.scrollHeight - viewport.clientHeight;
     scrollable.set(room > (access(options.tolerance) ?? TOLERANCE));
-    atEnd.set(distance(viewport) <= (access(options.tolerance) ?? TOLERANCE));
+    isAtEnd = distance(viewport) <= (access(options.tolerance) ?? TOLERANCE);
+    atEnd.set(isAtEnd);
   };
 
   const onScroll = (): void => {
@@ -82,7 +90,7 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
     // Only a scroll the PERSON made changes the decision. The one `toEnd`
     // caused fires this too, and reading it as intent is how a scroller
     // decides the user scrolled away from the bottom it just moved them to.
-    if (!autoscrolling()) sticking = atEnd();
+    if (!isAutoscrolling) sticking = isAtEnd;
   };
 
   const follow = (): void => {
@@ -100,11 +108,13 @@ export function messageScroller(options: MessageScrollerOptions = {}): MessageSc
     // from the bottom this call is taking them to. A jump lands at the end and
     // whatever event follows finds it there.
     if (behavior === "smooth") {
+      isAutoscrolling = true;
       autoscrolling.set(true);
       if (settle !== null) clearTimeout(settle);
       // There is no event for a smooth scroll finishing, so the flag is held
       // long enough to cover it and then dropped.
       settle = setTimeout(() => {
+        isAutoscrolling = false;
         autoscrolling.set(false);
         measure();
       }, 400);

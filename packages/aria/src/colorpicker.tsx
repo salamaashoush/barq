@@ -930,23 +930,32 @@ export function colorField(
   const text = signal(state.value().toString(format()));
 
   let live = state.value().toString(format());
+  // What the field SHOWS. Enter commits in the same tick as the keystroke that
+  // produced the text, and a signal write is not published until the flush, so
+  // `text()` would hand the parser the value the typing replaced.
+  let typed = live;
+  const setText = (next: string): void => {
+    typed = next;
+    text.set(next);
+  };
+
   const sync = (): void => {
     const formatted = state.value().toString(format());
     if (formatted === live) return;
     live = formatted;
-    text.set(formatted);
+    setText(formatted);
   };
 
   const commit = (): void => {
     try {
-      const parsed = parseColor(text());
+      const parsed = parseColor(typed);
       live = parsed.toString(format());
-      text.set(live);
+      setText(live);
       state.setValue(parsed);
     } catch {
       // Not a colour: the field goes back to what it holds rather than
       // keeping text that means nothing.
-      text.set(state.value().toString(format()));
+      setText(state.value().toString(format()));
     }
   };
 
@@ -972,7 +981,7 @@ export function colorField(
         options.validate === undefined
           ? undefined
           : () => (options.validate as ValidateFunction<Color>)(state.value()),
-      onChange: (next) => text.set(next),
+      onChange: setText,
       autoComplete: "off",
     },
     ref,

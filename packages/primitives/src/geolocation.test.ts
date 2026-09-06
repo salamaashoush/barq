@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { root } from "@barqjs/core";
+import { flush, root } from "@barqjs/core";
 import { geolocation } from "./geolocation.ts";
 
 type Success = (reading: unknown) => void;
@@ -69,6 +69,7 @@ describe("geolocation", () => {
 
     const pending = dispose[1].locate();
     calls[0]!.success(reading(51.5));
+    flush();
     const found = await pending;
 
     expect(found.latitude).toBe(51.5);
@@ -87,6 +88,7 @@ describe("geolocation", () => {
     const pending = dispose[1].locate();
     const denial = denied(1, "User denied Geolocation");
     calls[0]!.failure(denial);
+    flush();
 
     await expect(pending).rejects.toEqual(denial);
     expect(dispose[1].error()).toEqual(denial);
@@ -98,10 +100,13 @@ describe("geolocation", () => {
     const dispose = root((d) => {
       const where = geolocation();
       where.start();
+      flush();
       expect(where.watching()).toBe(true);
       calls[0]!.success(reading(1));
+      flush();
       expect(where.position()?.latitude).toBe(1);
       calls[0]!.success(reading(2));
+      flush();
       expect(where.position()?.latitude).toBe(2);
       return d;
     });
@@ -114,8 +119,11 @@ describe("geolocation", () => {
     const dispose = root((d) => {
       const where = geolocation();
       where.start();
+      flush();
       where.start();
+      flush();
       where.start();
+      flush();
       return d;
     });
     expect(calls.filter((c) => c.kind === "watch")).toHaveLength(1);
@@ -126,8 +134,11 @@ describe("geolocation", () => {
     const dispose = root((d) => {
       const where = geolocation();
       where.start();
+      flush();
       where.stop();
+      flush();
       where.stop();
+      flush();
       expect(where.watching()).toBe(false);
       return d;
     });
@@ -139,9 +150,12 @@ describe("geolocation", () => {
     const dispose = root((d) => {
       const where = geolocation();
       where.start();
+      flush();
       calls[0]!.failure(denied(2, "position unavailable"));
+      flush();
       expect(where.error()).toBeDefined();
       calls[0]!.success(reading(9));
+      flush();
       expect(where.error()).toBeUndefined();
       expect(where.position()?.latitude).toBe(9);
       return d;

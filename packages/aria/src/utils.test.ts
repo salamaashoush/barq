@@ -47,6 +47,7 @@ describe("mergeProps", () => {
 
     expect((merged.class as () => string)()).toBe("base primary");
     variant.set("danger");
+    flush();
     expect((merged.class as () => string)()).toBe("base danger");
   });
 
@@ -136,6 +137,7 @@ describe("mergeIds", () => {
       const original = a();
 
       const merged = mergeIds(a, b);
+      flush();
 
       expect(a()).toBe(b());
       expect(typeof merged === "function" ? merged() : merged).toBe(b());
@@ -148,6 +150,7 @@ describe("mergeIds", () => {
     root((dispose) => {
       const ours = id();
       mergeIds("given", ours);
+      flush();
       expect(ours()).toBe("given");
       dispose();
     });
@@ -241,6 +244,7 @@ describe("controllable", () => {
 
       expect(value()).toBe(0);
       setValue(1);
+      flush();
       expect(value()).toBe(1);
       expect(changes).toEqual([1]);
       dispose();
@@ -258,10 +262,12 @@ describe("controllable", () => {
       );
 
       setValue(1);
+      flush();
       expect(changes).toEqual([1]);
       expect(value()).toBe(0);
 
       outer.set(1);
+      flush();
       expect(value()).toBe(1);
       dispose();
     });
@@ -272,6 +278,7 @@ describe("controllable", () => {
       const changes: number[] = [];
       const [, setValue] = controllable<number>(undefined, 3, (n) => changes.push(n));
       setValue(3);
+      flush();
       expect(changes).toEqual([]);
       dispose();
     });
@@ -288,7 +295,9 @@ describe("controllable", () => {
       );
 
       setValue((n) => n + 1);
+      flush();
       setValue((n) => n + 1);
+      flush();
 
       // Controlled, so the prop has not moved. Composing from the prop would
       // report 1 twice.

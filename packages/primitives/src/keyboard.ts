@@ -22,7 +22,7 @@ export const keysDown: () => Accessor<readonly string[]> = shared(() => {
   });
   on(window, "keyup", (event) => {
     const key = event.key.toLowerCase();
-    held.set(held.peek().filter((k) => k !== key));
+    held.update((prev) => prev.filter((k) => k !== key));
   });
   on(window, "blur", () => held.set([]));
 

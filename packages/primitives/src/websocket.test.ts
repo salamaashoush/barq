@@ -44,17 +44,20 @@ beforeEach(() => {
     open() {
       this.readyState = 1;
       this.dispatchEvent(new Event("open"));
+      flush();
     }
     deliver(data: unknown) {
       const event = new Event("message") as Event & { data: unknown };
       event.data = data;
       this.dispatchEvent(event);
+      flush();
     }
     drop(code: number) {
       this.readyState = 3;
       const event = new Event("close") as Event & { code: number };
       event.code = code;
       this.dispatchEvent(event);
+      flush();
     }
   }
   globalThis.WebSocket = FakeSocket as unknown as typeof WebSocket;
@@ -71,13 +74,16 @@ describe("websocket", () => {
   test("connects, reports state and publishes messages", () => {
     const dispose = root((d) => {
       const socket = websocket("wss://example.test/feed");
+      flush();
       expect(socket.state()).toBe("connecting");
       expect(sockets).toHaveLength(1);
 
       sockets[0]!.open();
+      flush();
       expect(socket.state()).toBe("open");
 
       sockets[0]!.deliver("hello");
+      flush();
       expect(socket.message()).toBe("hello");
       return d;
     });
@@ -144,6 +150,7 @@ describe("websocket", () => {
   test("honours a reconnect limit across CONSECUTIVE failures", async () => {
     const dispose = root((d) => {
       websocket("wss://example.test/feed", { backoff: 5, reconnect: 2 });
+      flush();
       return d;
     });
 
@@ -160,6 +167,7 @@ describe("websocket", () => {
   test("a successful connection restores the retry budget", async () => {
     const dispose = root((d) => {
       websocket("wss://example.test/feed", { backoff: 5, reconnect: 1 });
+      flush();
       return d;
     });
 
@@ -203,6 +211,7 @@ describe("websocket", () => {
   test("closes with its owner", () => {
     const dispose = root((d) => {
       websocket("wss://example.test/feed");
+      flush();
       sockets[0]!.open();
       return d;
     });
@@ -213,6 +222,7 @@ describe("websocket", () => {
   test("sends a heartbeat while open", async () => {
     const dispose = root((d) => {
       websocket("wss://example.test/feed", { heartbeat: { every: 10, message: "ping" } });
+      flush();
       sockets[0]!.open();
       return d;
     });

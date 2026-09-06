@@ -865,7 +865,7 @@ export function SidebarProvider(props: Incoming<SidebarProviderProps>) {
   };
 
   const toggle = (): void => {
-    if (narrow()) openMobile.set(!openMobile());
+    if (narrow()) openMobile.update((prev) => !prev);
     else setOpen(!open());
   };
 

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Scope, signal } from "@barqjs/core";
+import { type Scope, flush, signal } from "@barqjs/core";
 import type { Ui } from "./types.ts";
 import { cleanup, fireEvent, render, renderHook, screen, waitFor } from "./index.ts";
 
@@ -141,6 +141,7 @@ describe("renderHook", () => {
 
     expect(result.current.count()).toBe(0);
     result.current.increment();
+    flush();
     expect(result.current.count()).toBe(1);
   });
 

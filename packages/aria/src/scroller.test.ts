@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { flush } from "@barqjs/core";
 
 import { messageScroller } from "./scroller.ts";
 
@@ -34,6 +35,7 @@ describe("messageScroller", () => {
   test("a viewport with nothing to scroll is at its end and has no button", () => {
     const scroller = messageScroller();
     scroller.attach(viewport({ height: 100, content: 100 }));
+    flush();
     expect(scroller.isAtEnd()).toBe(true);
     expect(scroller.isScrollable()).toBe(false);
   });
@@ -41,6 +43,7 @@ describe("messageScroller", () => {
   test("content taller than the box is scrollable", () => {
     const scroller = messageScroller();
     scroller.attach(viewport({ height: 100, content: 500 }));
+    flush();
     expect(scroller.isScrollable()).toBe(true);
     expect(scroller.isAtEnd()).toBe(false);
   });
@@ -51,12 +54,14 @@ describe("messageScroller", () => {
     const scroller = messageScroller();
     const box = viewport({ height: 100, content: 500, top: 396 });
     scroller.attach(box);
+    flush();
     expect(scroller.isAtEnd()).toBe(true);
   });
 
   test("the tolerance can be tightened", () => {
     const scroller = messageScroller({ tolerance: 1 });
     scroller.attach(viewport({ height: 100, content: 500, top: 396 }));
+    flush();
     expect(scroller.isAtEnd()).toBe(false);
   });
 
@@ -64,7 +69,9 @@ describe("messageScroller", () => {
     const scroller = messageScroller();
     const box = viewport({ height: 100, content: 500 });
     scroller.attach(box);
+    flush();
     scroller.toEnd("auto");
+    flush();
     expect(box.scrollTop).toBe(500);
     expect(scroller.isAtEnd()).toBe(true);
   });
@@ -74,8 +81,11 @@ describe("messageScroller", () => {
     const scroller = messageScroller();
     const box = viewport({ height: 100, content: 500 });
     scroller.attach(box);
+    flush();
     scroller.toEnd("auto");
+    flush();
     scrollTo(box, 100);
+    flush();
     expect(scroller.isAtEnd()).toBe(false);
 
     box.firstElementChild?.append(document.createElement("p"));
@@ -87,7 +97,9 @@ describe("messageScroller", () => {
     const scroller = messageScroller();
     const box = viewport({ height: 100, content: 500 });
     scroller.attach(box);
+    flush();
     scroller.toEnd("auto");
+    flush();
     box.firstElementChild?.append(document.createElement("p"));
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(box.scrollTop).toBe(500);
@@ -99,8 +111,11 @@ describe("messageScroller", () => {
     const scroller = messageScroller();
     const box = viewport({ height: 100, content: 500 });
     scroller.attach(box);
+    flush();
     scrollTo(box, 0);
+    flush();
     scroller.toEnd("auto");
+    flush();
     expect(scroller.isAtEnd()).toBe(true);
     box.firstElementChild?.append(document.createElement("p"));
     return new Promise<void>((resolve) => {
@@ -115,7 +130,9 @@ describe("messageScroller", () => {
     const scroller = messageScroller({ follow: false });
     const box = viewport({ height: 100, content: 500 });
     scroller.attach(box);
+    flush();
     scrollTo(box, 200);
+    flush();
     box.firstElementChild?.append(document.createElement("p"));
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(box.scrollTop).toBe(200);
@@ -125,8 +142,11 @@ describe("messageScroller", () => {
     const scroller = messageScroller();
     const box = viewport({ height: 100, content: 500 });
     scroller.attach(box);
+    flush();
     scroller.toEnd("auto");
+    flush();
     scroller.toStart("auto");
+    flush();
     expect(box.scrollTop).toBe(0);
     box.firstElementChild?.append(document.createElement("p"));
     await new Promise((resolve) => setTimeout(resolve, 20));
@@ -137,13 +157,17 @@ describe("messageScroller", () => {
     const scroller = messageScroller();
     const box = viewport({ height: 100, content: 500 });
     scroller.attach(box);
+    flush();
     scroller.toEnd("auto");
+    flush();
     scroller.attach(null);
+    flush();
     box.firstElementChild?.append(document.createElement("p"));
     await new Promise((resolve) => setTimeout(resolve, 20));
     // Still where it was: nothing is watching it any more.
     expect(box.scrollTop).toBe(500);
     scrollTo(box, 0);
+    flush();
     expect(scroller.isAtEnd()).toBe(true);
   });
 });

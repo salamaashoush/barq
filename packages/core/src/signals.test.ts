@@ -17,16 +17,21 @@ describe("signal", () => {
     expect(count()).toBe(0);
   });
 
-  test("updates value with set", () => {
+  test("a write is staged until the flush that publishes it", () => {
     const count = signal(0);
     count.set(5);
+    expect(count()).toBe(0);
+    flush();
     expect(count()).toBe(5);
   });
 
-  test("updates value with update function", () => {
+  test("update composes over the staged write, not the commit", () => {
     const count = signal(10);
     count.update((n) => n + 5);
-    expect(count()).toBe(15);
+    count.update((n) => n + 5);
+    expect(count()).toBe(10);
+    flush();
+    expect(count()).toBe(20);
   });
 
   test("peek reads without tracking", () => {

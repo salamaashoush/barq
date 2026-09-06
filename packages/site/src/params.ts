@@ -367,7 +367,7 @@ export function installSite(): { params: Accessor<Params>; set(next: Partial<Par
   return {
     params: current,
     set(next) {
-      current.set({ ...current(), ...next });
+      current.update((prev) => ({ ...prev, ...next }));
       if (typeof history !== "undefined") {
         history.replaceState(null, "", `${location.pathname}${write(current())}`);
       }
@@ -434,7 +434,7 @@ export function design(): Design {
     params: committed,
     previewed,
     set(next) {
-      committed.set({ ...committed(), ...next });
+      committed.update((prev) => ({ ...prev, ...next }));
       hovered.clear();
       writeUrl();
     },
@@ -446,7 +446,7 @@ export function design(): Design {
     },
     item: () => committed().item,
     setItem(next) {
-      committed.set({ ...committed(), item: next });
+      committed.update((prev) => ({ ...prev, item: next }));
       writeUrl();
     },
     reset() {

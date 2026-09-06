@@ -16,14 +16,18 @@ describe("history", () => {
       expect(edits.canUndo()).toBe(true);
 
       edits.undo();
+      flush();
       expect(text()).toBe("b");
       edits.undo();
+      flush();
       expect(text()).toBe("a");
       expect(edits.canUndo()).toBe(false);
 
       edits.redo();
+      flush();
       expect(text()).toBe("b");
       edits.redo();
+      flush();
       expect(text()).toBe("c");
       expect(edits.canRedo()).toBe(false);
       return d;
@@ -38,6 +42,7 @@ describe("history", () => {
       value.set(1);
       // No flush: the recording effect has not run yet.
       edits.undo();
+      flush();
       expect(value()).toBe(0);
       return d;
     });
@@ -51,6 +56,7 @@ describe("history", () => {
       value.set(1);
       flush();
       edits.undo();
+      flush();
       expect(edits.canRedo()).toBe(true);
       value.set(9);
       flush();
@@ -71,7 +77,9 @@ describe("history", () => {
       }
       expect(edits.past()).toEqual([3, 4]);
       edits.undo();
+      flush();
       edits.undo();
+      flush();
       expect(value()).toBe(3);
       expect(edits.canUndo()).toBe(false);
       return d;
@@ -91,6 +99,7 @@ describe("history", () => {
       value.set(8);
       flush();
       edits.undo();
+      flush();
       expect(value()).toBe(7);
       return d;
     });
@@ -118,6 +127,7 @@ describe("history", () => {
       value.set(1);
       flush();
       edits.clear();
+      flush();
       expect(edits.canUndo()).toBe(false);
       expect(edits.canRedo()).toBe(false);
       return d;
@@ -130,7 +140,9 @@ describe("history", () => {
     const dispose = root((d) => {
       const edits = history(value);
       edits.undo();
+      flush();
       edits.redo();
+      flush();
       expect(value()).toBe(0);
       return d;
     });

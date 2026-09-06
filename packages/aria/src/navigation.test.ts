@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { flush } from "@barqjs/core";
 
 import { navigationMenuState } from "./navigation.ts";
 
@@ -18,6 +19,7 @@ describe("navigationMenuState", () => {
   test("the first panel waits, so brushing past the bar opens nothing", async () => {
     const state = navigationMenuState({ delay: 40 });
     state.openSoon("products");
+    flush();
     expect(state.value()).toBeNull();
     await after(40);
     expect(state.value()).toBe("products");
@@ -26,7 +28,9 @@ describe("navigationMenuState", () => {
   test("leaving before the delay is up opens nothing at all", async () => {
     const state = navigationMenuState({ delay: 40 });
     state.openSoon("products");
+    flush();
     state.close();
+    flush();
     await after(40);
     expect(state.value()).toBeNull();
   });
@@ -36,14 +40,18 @@ describe("navigationMenuState", () => {
     // one reads as not having meant it.
     const state = navigationMenuState({ delay: 1000 });
     state.open("products");
+    flush();
     state.openSoon("pricing");
+    flush();
     expect(state.value()).toBe("pricing");
   });
 
   test("closing waits, because the pointer has to cross the gap to the panel", async () => {
     const state = navigationMenuState({ closeDelay: 40 });
     state.open("products");
+    flush();
     state.closeSoon();
+    flush();
     expect(state.value()).toBe("products");
     await after(40);
     expect(state.value()).toBeNull();
@@ -52,7 +60,9 @@ describe("navigationMenuState", () => {
   test("entering the panel keeps it, which is what the gap is for", async () => {
     const state = navigationMenuState({ closeDelay: 40 });
     state.open("products");
+    flush();
     state.closeSoon();
+    flush();
     state.keep();
     await after(40);
     expect(state.value()).toBe("products");
@@ -61,15 +71,19 @@ describe("navigationMenuState", () => {
   test("the previous key is kept, because the animation depends on it", () => {
     const state = navigationMenuState();
     state.open("products");
+    flush();
     expect(state.previous()).toBeNull();
     state.open("pricing");
+    flush();
     expect(state.previous()).toBe("products");
   });
 
   test("a panel arriving knows which side it came from", () => {
     const state = navigationMenuState();
     state.open("products");
+    flush();
     state.open("pricing");
+    flush();
     // `pricing` is to the RIGHT of `products`, so it enters from the end.
     expect(state.motion("pricing", ORDER)).toBe("from-end");
     // And the one being replaced leaves towards the start.
@@ -79,7 +93,9 @@ describe("navigationMenuState", () => {
   test("and the other direction is the other way round", () => {
     const state = navigationMenuState();
     state.open("pricing");
+    flush();
     state.open("products");
+    flush();
     expect(state.motion("products", ORDER)).toBe("from-start");
     expect(state.motion("pricing", ORDER)).toBe("to-end");
   });
@@ -89,21 +105,27 @@ describe("navigationMenuState", () => {
     // than one it invented.
     const state = navigationMenuState();
     state.open("products");
+    flush();
     expect(state.motion("products", ORDER)).toBeNull();
   });
 
   test("an item the order does not know is not given a direction", () => {
     const state = navigationMenuState();
     state.open("products");
+    flush();
     state.open("pricing");
+    flush();
     expect(state.motion("nothing-like-this", ORDER)).toBeNull();
   });
 
   test("closing to nothing leaves no direction on the panel that goes", () => {
     const state = navigationMenuState();
     state.open("products");
+    flush();
     state.open("pricing");
+    flush();
     state.close();
+    flush();
     // Nothing took its place, so there is no side for it to leave towards.
     expect(state.motion("pricing", ORDER)).toBeNull();
   });
@@ -117,6 +139,7 @@ describe("navigationMenuState", () => {
     });
     expect(state.value()).toBe("products");
     state.open("pricing");
+    flush();
     // The state did not move itself; the owner was told to.
     expect(seen).toEqual(["pricing"]);
     expect(state.value()).toBe("products");
@@ -128,7 +151,9 @@ describe("navigationMenuState", () => {
     const seen: unknown[] = [];
     const state = navigationMenuState({ onValueChange: (next) => seen.push(next) });
     state.open("products");
+    flush();
     state.open("products");
+    flush();
     expect(seen).toEqual(["products"]);
     expect(state.previous()).toBeNull();
   });

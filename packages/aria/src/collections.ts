@@ -347,9 +347,14 @@ export interface MultipleSelectionState {
 export function multipleSelectionState(
   options: MultipleSelectionOptions = {},
 ): MultipleSelectionState {
-  const isFocused = signal(false);
-  const focusedKey = signal<Key | null>(null);
-  const childFocusStrategy = signal<FocusStrategy | null>(null);
+  // Roving focus is where the machine IS, not what it intends: a key handler
+  // moves it and the very next statement of the same gesture asks where it
+  // landed. A staged write would answer with the position before the move, so
+  // these three land at once and only the rendered view waits for the flush.
+  const ROVING = { immediate: true } as const;
+  const isFocused = signal(false, ROVING);
+  const focusedKey = signal<Key | null>(null, ROVING);
+  const childFocusStrategy = signal<FocusStrategy | null>(null, ROVING);
 
   const [selectedKeys, setSelectedKeys] = controllable<SelectionValue>(
     () => toSelection(access(options.selectedKeys)),

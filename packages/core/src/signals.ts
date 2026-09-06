@@ -191,6 +191,17 @@ export interface SignalOptions<T> {
   unobserved?: () => void;
   /** Suppress the REACTIVE_WRITE_IN_OWNED_SCOPE diagnostic for this signal */
   ownedWrite?: boolean;
+  /**
+   * Land writes on the committed value at once instead of staging them for the
+   * flush.
+   *
+   * For the runtime's own control channels — which arm of a boundary is live,
+   * how many rows a mapped list has — and never for application state. Those
+   * are read by a CONSTRUCTION in the same synchronous step that wrote them,
+   * and a construction runs under no observer, so it would otherwise build
+   * against the world the write was made to leave.
+   */
+  immediate?: boolean;
 }
 
 /** Options a derived node takes and a plain `signal()` has no use for. */
@@ -319,6 +330,12 @@ export const DEV = {
 export type ContextRecord = Record<string | symbol, unknown>;
 
 /**
+ * `_pending` holds no staged write. A symbol rather than `undefined`, which is
+ * a value a signal may legitimately hold.
+ */
+const NOT_STAGED: unique symbol = Symbol("barq.not-staged");
+
+/**
  * Base signal node. Every field is present on every instance: the engine
  * reads `_fn`/`_equals`/`_epoch` off both node kinds, so a missing slot
  * would make those loads polymorphic.
@@ -334,6 +351,7 @@ interface SignalNode<T> {
   _fn: ((prev?: T) => T) | undefined; // undefined on plain signals; discriminates the two kinds
   _affected: number; // affects() refcount; non-zero means the value reads as pending
   _override: PendingLayer<T>[] | null; // Pending lanes; null on every ordinary signal
+  _pending: T | typeof NOT_STAGED; // Staged write awaiting the commit at flush
 }
 
 /**
@@ -541,8 +559,6 @@ function adjustHeight(node: ComputedNode<unknown>, heap: Heap): void {
  */
 function runHeap(heap: Heap): void {
   while (heap._count > 0) {
-    // _min/_max are maintained by insert/delete, so a node re-inserted below
-    // the cursor lowers _min and is picked up by the next pass
     const end = heap._max;
     for (let height = heap._min; height <= end; height++) {
       let node = heap._heap[height];
@@ -1094,7 +1110,7 @@ function link(dep: SignalNode<unknown> | ComputedNode<unknown>, sub: ComputedNod
     // During recompute, try to reuse existing links
     nextDep = prevDep !== null ? prevDep._nextDep : sub._deps;
     if (nextDep !== null && nextDep._dep === dep) {
-      nextDep._lastValue = dep._value;
+      nextDep._lastValue = stagedValue(dep);
       nextDep._gen = sub._depGen;
       sub._depsTail = nextDep;
       return;
@@ -1124,7 +1140,7 @@ function link(dep: SignalNode<unknown> | ComputedNode<unknown>, sub: ComputedNod
     _nextDep: nextDep,
     _prevSub: prevSub,
     _nextSub: null,
-    _lastValue: dep._value,
+    _lastValue: stagedValue(dep),
     _gen: sub._depGen,
   };
 
@@ -1370,7 +1386,7 @@ function updateIfNecessary(node: ComputedNode<unknown>): void {
         return;
       }
     }
-    if (!depEquals(dep, d._lastValue, dep._value)) {
+    if (!depEquals(dep, d._lastValue, stagedValue(dep))) {
       recompute(node);
       return;
     }
@@ -1822,7 +1838,7 @@ function drainApplies(queue: ComputedNode<unknown>[]): void {
 function clearSelfMarks(node: ComputedNode<unknown>): void {
   if (node._flags & (REACTIVE_CHECK | REACTIVE_DIRTY)) {
     for (let d = node._deps; d !== null; d = d._nextDep) {
-      d._lastValue = d._dep._value;
+      d._lastValue = stagedValue(d._dep);
     }
     node._flags &= ~(REACTIVE_CHECK | REACTIVE_DIRTY);
     markEpoch++; // marks dropped: future writes must re-propagate
@@ -1886,6 +1902,72 @@ function disposeNode(node: ComputedNode<unknown>): void {
 // Scheduling
 // ============================================================================
 
+// ============================================================================
+// Write staging
+// ============================================================================
+
+/**
+ * Signals holding a staged write, in write order.
+ *
+ * A write does not land on `_value`; it lands here and is published at the top
+ * of the flush that the write scheduled. That is what makes a write BATCH: the
+ * value a reader outside the graph sees is the last committed one, so a click
+ * handler that writes three signals and then reads a fourth derived from them
+ * sees one consistent world rather than a half-applied one.
+ *
+ * A COMPUTATION reads through to the staged value instead, because the graph is
+ * mid-update by definition and a memo pulled during the batch has to answer
+ * about the world the batch is building. The two views are the same everywhere
+ * else, which is why the split costs one branch on a path that is already slow.
+ */
+const stagedNodes: SignalNode<unknown>[] = [];
+
+/** The value the GRAPH sees: the staged write if there is one, else the commit. */
+function stagedValue<T>(node: SignalNode<T>): T {
+  const pending = node._pending;
+  return pending === NOT_STAGED ? node._value : pending;
+}
+
+/**
+ * The value a READER sees. Inside a computation that is the staged write;
+ * everywhere else — event handlers, effect apply phases, plain top-level code —
+ * it is the last commit. `currentObserver` is the discriminator rather than
+ * `tracking`, so an `untrack()` inside a computation still reads the world its
+ * computation is being run against.
+ */
+function visibleValue<T>(node: SignalNode<T>): T {
+  const pending = node._pending;
+  if (pending === NOT_STAGED || currentObserver === null) return node._value;
+  return pending;
+}
+
+/** Stage `value` on `node`, arming the flush that will publish it. */
+function stageWrite<T>(node: SignalNode<T>, value: T): void {
+  if (node._pending === NOT_STAGED) {
+    slowSignalRead++;
+    stagedNodes.push(node as SignalNode<unknown>);
+  }
+  node._pending = value;
+}
+
+/**
+ * Publish every staged write. Silent: the write already propagated its marks,
+ * and the graph has been reading the staged value all along, so nothing
+ * downstream learns anything here that it was not already told.
+ */
+function commitStaged(): void {
+  while (stagedNodes.length !== 0) {
+    const due = stagedNodes.splice(0, stagedNodes.length);
+    for (let i = 0; i < due.length; i++) {
+      const node = due[i];
+      if (node._pending === NOT_STAGED) continue;
+      node._value = node._pending;
+      node._pending = NOT_STAGED;
+      slowSignalRead--;
+    }
+  }
+}
+
 let isFlushing = false;
 
 /** Schedule an async flush on the microtask queue (latches until flush) */
@@ -1910,6 +1992,7 @@ function flushSync(): void {
 
   flushError = null;
   try {
+    commitStaged();
     let count = 0;
     while (
       pureHeap._count > 0 ||
@@ -1927,12 +2010,21 @@ function flushSync(): void {
         throw new Error("Potential infinite loop detected");
       }
       clock++;
+      // Publish before deriving. An effect's write staged during the previous
+      // pass is what this pass is running for, so the pass has to open on the
+      // world that write made rather than on the one it replaced.
+      commitStaged();
       // Derive, then display. Effects compute against a settled graph and only
       // paint once the pass that produced their values is over.
       if (pureHeap._count > 0) runHeap(pureHeap);
       else if (renderHeap._count > 0) runHeap(renderHeap);
       else if (userHeap._count > 0) runHeap(userHeap);
 
+      // The pass is over: publish what it derived before anything paints from
+      // it. An apply reads the committed world (`runApply` clears the
+      // observer), so an unpublished write here would paint the value the
+      // pass replaced.
+      commitStaged();
       if (renderApplies.length !== 0) drainApplies(renderApplies);
       else if (userApplies.length !== 0 && pureHeap._count === 0 && renderHeap._count === 0)
         drainApplies(userApplies);
@@ -1944,6 +2036,9 @@ function flushSync(): void {
       throw pendingError.error;
     }
   } finally {
+    // A write to a signal nothing subscribes to queues no work, so the loop
+    // above can exit with it still staged.
+    commitStaged();
     isFlushing = false;
   }
 }
@@ -2004,6 +2099,7 @@ export function signal<T>(
     _fn: undefined,
     _affected: 0,
     _override: null,
+    _pending: NOT_STAGED,
   };
 
   const read = (): T => {
@@ -2018,6 +2114,7 @@ export function signal<T>(
   };
 
   const ownedWrite = options?.ownedWrite === true;
+  const immediate = options?.immediate === true;
 
   const write = (newValue: T): void => {
     if (
@@ -2036,14 +2133,22 @@ export function signal<T>(
     }
 
     const eq = node._equals;
-    const prev = node._value;
+    // Compose over the staged write, not the commit: two `update`s in one batch
+    // are two increments, and a second `set` of the value already staged is the
+    // no-op it looks like.
+    const prev = stagedValue(node);
     if (eq === defaultEquals) {
       if (prev === newValue || (prev !== prev && newValue !== newValue)) return;
     } else if (eq !== false && eq(prev, newValue)) {
       return;
     }
 
-    node._value = newValue;
+    if (immediate) {
+      node._value = newValue;
+    } else {
+      stageWrite(node, newValue);
+      schedule();
+    }
     if (node._subs !== null && node._epoch !== markEpoch) {
       node._epoch = markEpoch;
       propagate(node as SignalNode<unknown>, eq === false ? REACTIVE_DIRTY : REACTIVE_CHECK);
@@ -2052,11 +2157,16 @@ export function signal<T>(
 
   const accessor = read as Signal<T>;
   accessor.set = write;
-  accessor.update = (fn: (prev: T) => T) => write(fn(node._value));
+  accessor.update = (fn: (prev: T) => T) => write(fn(stagedValue(node)));
+  // `peek` reads the STAGED value, where a plain call reads the published one.
+  // The two are the same everywhere except between a write and its flush, and
+  // that window is exactly what `peek` is for: imperative code — a form control
+  // repairing a rejected keystroke inside the event that produced it — asking
+  // what the value is now rather than what everyone else can see yet.
   accessor.peek = () =>
     slowSignalRead !== 0 && node._override !== null && latestDepth === 0
       ? foldOverride(node)
-      : node._value;
+      : stagedValue(node);
   (accessor as unknown as { _node: SignalNode<T> })._node = node;
 
   return accessor;
@@ -2089,6 +2199,7 @@ function createComputedNode<T>(
     _subs: null,
     _subsTail: null,
     _override: null,
+    _pending: NOT_STAGED,
     _equals:
       kind === EFFECT_PURE
         ? options?.equals !== undefined
@@ -2782,6 +2893,25 @@ export function batch(fn: () => void): void {
     if (batchDepth === 0) {
       flushSync();
     }
+  }
+}
+
+/**
+ * Group writes the way `batch` does, and DO NOT publish them: the flush is left
+ * to the tick that was already coming.
+ *
+ * The difference matters for a setter that makes several writes to express one
+ * change — a store's, an optimistic view's rebuild. `batch` ends by flushing,
+ * which publishes the write before its tick and makes the setter's own caller
+ * the one reader in the program that sees a store write land early.
+ */
+export function group(fn: () => void): void {
+  batchDepth++;
+  try {
+    fn();
+  } finally {
+    batchDepth--;
+    if (batchDepth === 0) schedule();
   }
 }
 
@@ -3612,13 +3742,13 @@ function readSignalSlow<T>(node: SignalNode<T>): T {
     return foldOverride(node);
   }
 
-  if (!tracking) return node._value;
+  if (!tracking) return visibleValue(node);
 
   const observer = currentObserver;
-  if (observer === null || observer._flags & REACTIVE_DISPOSED) return node._value;
+  if (observer === null || observer._flags & REACTIVE_DISPOSED) return visibleValue(node);
   link(node as SignalNode<unknown>, observer);
 
-  return node._value;
+  return visibleValue(node);
 }
 
 /**

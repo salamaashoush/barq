@@ -194,6 +194,7 @@ describe("Drawer", () => {
       new PointerEvent("pointerdown", { bubbles: true, clientY: 0, button: 0 }),
     );
     window.dispatchEvent(new PointerEvent("pointermove", { clientY: 60 }));
+    flush();
     expect(element.style.transform).toBe("translateY(60px)");
     expect(element.getAttribute("data-dragging")).toBe("");
     // A transition here would leave the drawer a third of a second behind.
@@ -211,6 +212,7 @@ describe("Drawer", () => {
       new PointerEvent("pointerdown", { bubbles: true, clientX: 100, button: 0 }),
     );
     window.dispatchEvent(new PointerEvent("pointermove", { clientX: 40 }));
+    flush();
     expect(element.style.transform).toBe("translateX(-60px)");
     window.dispatchEvent(new PointerEvent("pointerup", { clientX: 40 }));
   });

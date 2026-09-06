@@ -30,7 +30,12 @@ import {
 } from "./signals.ts";
 
 /** Boundary-owned signals are written from inside computations by design */
-const BOUNDARY_SIGNAL = { ownedWrite: true } as const;
+/**
+ * A boundary's control channel. `immediate` because the construction that
+ * reacts to the flip reads it in the same synchronous step: a captured error
+ * is read by the fallback the capture selected, before any flush.
+ */
+const BOUNDARY_SIGNAL = { ownedWrite: true, immediate: true } as const;
 
 // ============================================================================
 // Reveal coordination

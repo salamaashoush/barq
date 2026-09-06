@@ -62,8 +62,9 @@ describe("optimistic", () => {
   test("writes outside an action behave like a signal", () => {
     const opt = optimistic(1);
     opt.set(5);
-    expect(opt()).toBe(5);
     opt.update((n) => n + 1);
+    expect(opt()).toBe(1);
+    flush();
     expect(opt()).toBe(6);
   });
 
@@ -285,6 +286,7 @@ describe("A5: overrides, lanes and the read surface", () => {
 
     const p = save();
     opt.set("from-server");
+    flush();
 
     expect(opt()).toBe("saving...");
     expect(latest(() => opt())).toBe("from-server");
@@ -447,6 +449,7 @@ describe("A5: overrides, lanes and the read surface", () => {
     });
 
     const p = run();
+    flush();
     expect(plain()).toBe(7);
     expect(overridden(plain)).toBe(false);
     expect(isPending(() => plain())).toBe(false);
@@ -591,11 +594,13 @@ describe("A5: overrides, lanes and the read surface", () => {
       setState((draft) => {
         draft.n = 1;
       });
+      flush();
       yield tick();
       commit(() => {
         setState((draft) => {
           draft.n = 7;
         });
+        flush();
       });
     });
 
@@ -611,6 +616,7 @@ describe("A5: overrides, lanes and the read surface", () => {
     const value = optimistic(1);
     expect(commit(() => value() + 1)).toBe(2);
     commit(() => value.set(4));
+    flush();
     expect(value()).toBe(4);
   });
 
@@ -703,6 +709,7 @@ describe("optimisticStore", () => {
   test("writes outside an action persist", () => {
     const [state, setState] = optimisticStore<{ n: number }>({ n: 0 });
     setState("n", 5);
+    flush();
     expect(state.n).toBe(5);
   });
 
@@ -717,6 +724,7 @@ describe("optimisticStore", () => {
 
     const save = action(function* () {
       setState("note", "saving...");
+      flush();
       yield tick();
       yield tick();
     });
@@ -745,6 +753,7 @@ describe("optimisticStore", () => {
     });
     const run = action(function* () {
       setState("n", 2);
+      flush();
       yield gate;
     });
 

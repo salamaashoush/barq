@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { root } from "@barqjs/core";
+import { flush, root } from "@barqjs/core";
 import { raf } from "./raf.ts";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -23,10 +23,12 @@ describe("raf", () => {
     expect(frames).toBe(0);
 
     loop.start();
+    flush();
     expect(loop.running()).toBe(true);
     await eventually(() => frames > 0, "the first frame");
 
     loop.stop();
+    flush();
     expect(loop.running()).toBe(false);
     const seen = frames;
     await sleep(80);
@@ -50,14 +52,18 @@ describe("raf", () => {
     let frames = 0;
     const loop = raf(() => frames++);
     loop.start();
+    flush();
     loop.start();
+    flush();
     loop.start();
+    flush();
 
     // One `stop` cancels one request. Three stacked loops would keep going
     // after it, which is the observation, and it does not depend on how many
     // frames a loaded machine managed to deliver first.
     await eventually(() => frames > 0, "the first frame");
     loop.stop();
+    flush();
     const seen = frames;
     await sleep(80);
     expect(frames, "a second loop survived stop()").toBe(seen);

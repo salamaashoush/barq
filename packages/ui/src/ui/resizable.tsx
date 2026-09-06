@@ -161,7 +161,7 @@ export function ResizablePanelGroup(props: Incoming<ResizablePanelGroupProps>) {
     register(defaultSize, min, max) {
       const index = declared.length;
       declared.push(defaultSize);
-      limits.set([...limits(), { min, max }]);
+      limits.update((prev) => [...prev, { min, max }]);
       // Whatever is left over, split between the panels that named no size.
       const named = declared.filter((each): each is number => each !== undefined);
       const spare = Math.max(0, 100 - named.reduce((sum, each) => sum + each, 0));

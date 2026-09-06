@@ -20,8 +20,10 @@ describe("online", () => {
       const connected = online();
       expect(connected).toBe(online());
       window.dispatchEvent(new Event("offline"));
+      flush();
       expect(connected()).toBe(false);
       window.dispatchEvent(new Event("online"));
+      flush();
       expect(connected()).toBe(true);
       return d;
     });
@@ -39,12 +41,14 @@ describe("pageVisible", () => {
         configurable: true,
       });
       document.dispatchEvent(new Event("visibilitychange"));
+      flush();
       expect(visible()).toBe(false);
       Object.defineProperty(document, "visibilityState", {
         value: "visible",
         configurable: true,
       });
       document.dispatchEvent(new Event("visibilitychange"));
+      flush();
       expect(visible()).toBe(true);
       return d;
     });
@@ -62,6 +66,7 @@ describe("userIdle", () => {
     await eventually(() => dispose[1](), "the idle timeout");
 
     document.dispatchEvent(new Event("keydown"));
+    flush();
     expect(dispose[1](), "input did not wake it").toBe(false);
     dispose[0]();
   });
@@ -75,6 +80,7 @@ describe("userIdle", () => {
         configurable: true,
       });
       document.dispatchEvent(new Event("visibilitychange"));
+      flush();
       expect(idle()).toBe(true);
 
       Object.defineProperty(document, "visibilityState", {
@@ -82,6 +88,7 @@ describe("userIdle", () => {
         configurable: true,
       });
       document.dispatchEvent(new Event("visibilitychange"));
+      flush();
       expect(idle()).toBe(false);
       return d;
     });
@@ -123,6 +130,7 @@ describe("languages", () => {
       const preferred = languages();
       expect(preferred().length).toBeGreaterThan(0);
       window.dispatchEvent(new Event("languagechange"));
+      flush();
       expect(preferred()).toEqual(navigator.languages);
       return d;
     });

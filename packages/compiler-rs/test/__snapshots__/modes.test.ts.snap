@@ -192,7 +192,7 @@ semantics/sem-own-slot-arguments  59ae469610c3 59ae469610c3 3df7f5f8dc58 3df7f5f
 semantics/sem-props-block-in-cell-slot  20ff51e7be14 da993fd8ad2a 3aaced9cab2e 3aaced9cab2e 6842a8b5f720 15a55f0eb4a4 3aaced9cab2e
 semantics/sem-props-cast-keeps-the-brand  2477aa6a120b 8726cdb58a80 e3fb4c41eff3 e3fb4c41eff3 c2bcef8804cd 7cd0e35bd3a6 e3fb4c41eff3
 semantics/sem-react-apply-is-untracked  4860fefab0c3 67a1d9adfdbb 15cfab2d330a 15cfab2d330a df56ae6857f0 4860fefab0c3 15cfab2d330a
-semantics/sem-react-component-body-untracked  1da9a9f427e6 58002bf8b59c c77d16e3a691 c77d16e3a691 b98b67570098 c723f07f70a2 c77d16e3a691
+semantics/sem-react-component-body-untracked  1eafdf4c1ae1 9360eea10057 636135e94313 636135e94313 c0bfa3e69530 c49692f7f634 636135e94313
 semantics/sem-react-untrack-keeps-owner  4528aa5a902f 4528aa5a902f 08020bfd3f67 08020bfd3f67 89fc04c6c825 4528aa5a902f 08020bfd3f67
 semantics/sem-reveal-nested-group  119cb7436ed6 74424e8e16d2 dae8a2d75a80 09bb766980d5 0b302561dead eff6827ddf4c 3b3ab308123b
 semantics/sem-show-nonkeyed-default  41d9f3364dfe 745a15de109d da1de4714705 3d253a6dbef3 b7ca373d4ae9 8619ba10484f 54a3233d1874

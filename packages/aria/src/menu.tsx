@@ -426,11 +426,11 @@ export function menuTriggerState(options: MenuTriggerStateOptions = {}): RootMen
     expandedKeys: expanded,
     openSubmenu: (triggerKey, level) => {
       if (level > expanded().length) return;
-      expanded.set([...expanded().slice(0, level), triggerKey]);
+      expanded.update((prev) => [...prev.slice(0, level), triggerKey]);
     },
     closeSubmenu: (triggerKey, level) => {
       if (expanded()[level] !== triggerKey) return;
-      expanded.set(expanded().slice(0, level));
+      expanded.update((prev) => prev.slice(0, level));
     },
     open(focusStrategy: FocusStrategy | null = null) {
       strategy.set(focusStrategy);

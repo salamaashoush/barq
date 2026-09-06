@@ -1126,8 +1126,16 @@ export function bindValue(element: Element, name: string, type: string, value: u
       set.call(value, target[name]);
     }
     if (edits === null) return;
-    // Synchronously, inside the event: see the paragraph above.
-    write(untrack(() => readSlot(value, `bind:${name}`)));
+    // Synchronously, inside the event: see the paragraph above. Through `peek`,
+    // because the setter's write is STAGED until the flush and a plain read
+    // would hand back the text the keystroke replaced — the repair would then
+    // re-assert exactly what it is meant to correct.
+    const held = (value as { peek?: () => unknown } | null)?.peek;
+    write(
+      typeof held === "function"
+        ? held.call(value)
+        : untrack(() => readSlot(value, `bind:${name}`)),
+    );
     // And once more at the next flush, through the counter every two-way
     // binding subscribes to. The EFFECT cannot be relied on for the rest of the
     // turn: if anything else — another handler for the same event, a veto in the
@@ -1143,7 +1151,7 @@ export function bindValue(element: Element, name: string, type: string, value: u
     // Each re-run costs one signal read and one DOM-compare that skips, which is
     // nothing against the keystroke that caused it, and it is the only mechanism
     // that sees a pair the scheduler cannot: (signal, element).
-    edits.set(edits.peek() + 1);
+    edits.update((n) => n + 1);
   });
 }
 

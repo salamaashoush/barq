@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import { flush } from "@barqjs/core";
 
 import { canDragFrom, drawerDrag } from "./drawer.ts";
 
@@ -14,21 +15,27 @@ describe("drawerDrag", () => {
   test("a bottom drawer measures a pull DOWN", () => {
     const drag = drawerDrag();
     drag.start(at(0, 100), 400);
+    flush();
     drag.move(at(0, 160));
+    flush();
     expect(drag.offset()).toBe(60);
   });
 
   test("a top drawer measures the other way", () => {
     const drag = drawerDrag({ direction: "top" });
     drag.start(at(0, 100), 400);
+    flush();
     drag.move(at(0, 40));
+    flush();
     expect(drag.offset()).toBe(60);
   });
 
   test("a right drawer measures across, not down", () => {
     const drag = drawerDrag({ direction: "right" });
     drag.start(at(100, 0), 400);
+    flush();
     drag.move(at(180, 500));
+    flush();
     expect(drag.offset()).toBe(80);
   });
 
@@ -37,13 +44,16 @@ describe("drawerDrag", () => {
     // eighth as far says this is as open as it gets.
     const drag = drawerDrag();
     drag.start(at(0, 100), 400);
+    flush();
     drag.move(at(0, 20));
+    flush();
     expect(drag.offset()).toBe(-10);
   });
 
   test("moving without starting does nothing", () => {
     const drag = drawerDrag();
     drag.move(at(0, 500));
+    flush();
     expect(drag.offset()).toBe(0);
   });
 
@@ -51,8 +61,11 @@ describe("drawerDrag", () => {
     let closed = 0;
     const drag = drawerDrag({ onClose: () => closed++ });
     drag.start(at(0, 0), 400);
+    flush();
     drag.move(at(0, 80));
+    flush();
     expect(drag.end()).toBe(false);
+    flush();
     expect(closed).toBe(0);
     expect(drag.offset()).toBe(0);
     expect(drag.isDragging()).toBe(false);
@@ -62,7 +75,9 @@ describe("drawerDrag", () => {
     let closed = 0;
     const drag = drawerDrag({ onClose: () => closed++ });
     drag.start(at(0, 0), 400);
+    flush();
     drag.move(at(0, 120));
+    flush();
     expect(drag.end()).toBe(true);
     expect(closed).toBe(1);
   });
@@ -84,8 +99,10 @@ describe("drawerDrag", () => {
     // Someone who throws the drawer down has already decided.
     const drag = drawerDrag();
     drag.start(at(0, 0), 1000);
+    flush();
     await new Promise((resolve) => setTimeout(resolve, 20));
     drag.move(at(0, 60));
+    flush();
     // 60px in ~20ms is 3px/ms, far past 0.4, and 60 of 1000 is nowhere near
     // the threshold.
     expect(drag.end()).toBe(true);
@@ -94,9 +111,11 @@ describe("drawerDrag", () => {
   test("a slow pull the same distance does not", async () => {
     const drag = drawerDrag();
     drag.start(at(0, 0), 1000);
+    flush();
     for (const y of [10, 20, 30, 40, 50, 60]) {
       await new Promise((resolve) => setTimeout(resolve, 30));
       drag.move(at(0, y));
+      flush();
     }
     expect(drag.end()).toBe(false);
   });
@@ -104,9 +123,12 @@ describe("drawerDrag", () => {
   test("a flick BACK does not close it", async () => {
     const drag = drawerDrag();
     drag.start(at(0, 0), 200);
+    flush();
     drag.move(at(0, 60));
+    flush();
     await new Promise((resolve) => setTimeout(resolve, 20));
     drag.move(at(0, 10));
+    flush();
     expect(drag.end()).toBe(false);
   });
 
@@ -114,7 +136,9 @@ describe("drawerDrag", () => {
     let closed = 0;
     const drag = drawerDrag({ onClose: () => closed++ });
     drag.start(at(0, 0), 100);
+    flush();
     drag.move(at(0, 90));
+    flush();
     expect(drag.end()).toBe(true);
     expect(drag.end()).toBe(false);
     expect(closed).toBe(1);
@@ -124,8 +148,11 @@ describe("drawerDrag", () => {
     let closed = 0;
     const drag = drawerDrag({ onClose: () => closed++ });
     drag.start(at(0, 0), 100);
+    flush();
     drag.move(at(0, 90));
+    flush();
     drag.cancel();
+    flush();
     expect(closed).toBe(0);
     expect(drag.offset()).toBe(0);
     expect(drag.end()).toBe(false);

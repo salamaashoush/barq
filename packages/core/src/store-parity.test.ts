@@ -16,6 +16,7 @@ describe("draft-first setters", () => {
       s.count++;
       s.user.age = 31;
     });
+    flush();
 
     expect(state.count).toBe(1);
     expect(state.user.age).toBe(31);
@@ -28,6 +29,7 @@ describe("draft-first setters", () => {
     setState((s) => {
       s.list.push("b");
     });
+    flush();
 
     expect(unwrap(state as { list: string[] }).list).toEqual(["a", "b"]);
   });
@@ -61,6 +63,7 @@ describe("draft-first setters", () => {
     const [state, setState] = store({ count: 0, label: "x" });
 
     setState((s) => ({ count: s.count + 5 }));
+    flush();
 
     expect(state.count).toBe(5);
     expect(state.label).toBe("x");
@@ -80,6 +83,7 @@ describe("draft-first setters", () => {
         "id",
       )(s.items);
     });
+    flush();
 
     const raw = unwrap(state as { items: { id: number; text: string }[] });
     expect(raw.items).toEqual([
@@ -99,6 +103,7 @@ describe("projection", () => {
       },
       { a: false, b: false },
     );
+    flush();
 
     expect(selected.a).toBe(true);
     expect(selected.b).toBe(false);

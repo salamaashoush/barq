@@ -4,7 +4,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { store, produce, reconcile, unwrap } from "./store.ts";
-import { effect, scope, batch } from "./signals.ts";
+import { effect, flush, scope, batch } from "./signals.ts";
 
 describe("store", () => {
   test("creates store with initial state", () => {
@@ -18,6 +18,7 @@ describe("store", () => {
     const [state, setState] = store({ count: 0 });
 
     setState("count", 5);
+    flush();
     expect(state.count).toBe(5);
   });
 
@@ -25,6 +26,7 @@ describe("store", () => {
     const [state, setState] = store({ count: 10 });
 
     setState("count", (prev) => prev + 5);
+    flush();
     expect(state.count).toBe(15);
   });
 
@@ -34,6 +36,7 @@ describe("store", () => {
     });
 
     setState("user", { name: "Jane" });
+    flush();
     expect(state.user.name).toBe("Jane");
     expect(state.user.age).toBe(30); // Should preserve existing
   });
@@ -42,6 +45,7 @@ describe("store", () => {
     const [state, setState] = store({ a: 1, b: 2, c: 3 });
 
     setState({ a: 10, b: 20 });
+    flush();
     expect(state.a).toBe(10);
     expect(state.b).toBe(20);
     expect(state.c).toBe(3); // Unchanged
@@ -51,6 +55,7 @@ describe("store", () => {
     const [state, setState] = store({ count: 0 });
 
     setState((s) => ({ count: s.count + 10 }));
+    flush();
     expect(state.count).toBe(10);
   });
 
@@ -66,9 +71,11 @@ describe("store", () => {
     expect(effectRuns).toBe(1);
 
     setState("count", 1);
+    flush();
     expect(effectRuns).toBe(2);
 
     setState("count", 2);
+    flush();
     expect(effectRuns).toBe(3);
   });
 
@@ -91,10 +98,12 @@ describe("store", () => {
     expect(bEffectRuns).toBe(1);
 
     setState("a", 1);
+    flush();
     expect(aEffectRuns).toBe(2);
     expect(bEffectRuns).toBe(1); // Should not trigger
 
     setState("b", 1);
+    flush();
     expect(aEffectRuns).toBe(2); // Should not trigger
     expect(bEffectRuns).toBe(2);
   });
@@ -127,6 +136,7 @@ describe("Nested store reactivity", () => {
     expect(effectRuns).toBe(1);
 
     setState("user", { address: { city: "LA" } });
+    flush();
     expect(effectRuns).toBe(2);
     expect(state.user.address.city).toBe("LA");
   });
@@ -148,6 +158,7 @@ describe("Nested store reactivity", () => {
     setState("level1", {
       level2: { level3: { value: 100 } },
     });
+    flush();
 
     expect(state.level1.level2.level3.value).toBe(100);
     expect(effectRuns).toBe(2);
@@ -169,6 +180,7 @@ describe("Nested store reactivity", () => {
       { id: 2, name: "two" },
       { id: 3, name: "three" },
     ]);
+    flush();
 
     expect(state.items[0].name).toBe("ONE");
     expect(state.items.length).toBe(3);
@@ -188,6 +200,7 @@ describe("Nested store reactivity", () => {
     expect(effectRuns).toBe(1);
 
     setState("items", ["x", "b", "c"]);
+    flush();
     expect(effectRuns).toBe(2);
   });
 
@@ -205,6 +218,7 @@ describe("Nested store reactivity", () => {
     expect(effectRuns).toBe(1);
 
     setState("items", [1, 2, 3, 4]);
+    flush();
     expect(effectRuns).toBe(2);
   });
 });
@@ -224,12 +238,15 @@ describe("Store batching", () => {
 
     // setState uses batch internally
     setState({ a: 1, b: 1 });
+    flush();
     expect(effectRuns).toBe(2); // Should run once, not twice
 
     // Multiple setState calls
     batch(() => {
       setState("a", 10);
+      flush();
       setState("b", 10);
+      flush();
     });
     expect(effectRuns).toBe(3); // Should run once after batch
   });
@@ -248,6 +265,7 @@ describe("produce function", () => {
         draft.score += 10;
       }),
     );
+    flush();
 
     expect(state.user.name).toBe("Jane");
     expect(state.user.score).toBe(10);
@@ -265,6 +283,7 @@ describe("produce function", () => {
         draft[0] = 100;
       }),
     );
+    flush();
 
     expect(state.items).toEqual([100, 2, 3, 4]);
   });
@@ -286,6 +305,7 @@ describe("produce function", () => {
         if (user) user.score = 100;
       }),
     );
+    flush();
 
     expect(state.data.users[0].score).toBe(100);
     expect(state.data.users[1].score).toBe(0);
@@ -311,6 +331,7 @@ describe("reconcile function", () => {
         { key: "id" },
       ),
     );
+    flush();
 
     expect(state.items.length).toBe(2);
     expect(state.items[0].name).toBe("ONE");
@@ -324,6 +345,7 @@ describe("reconcile function", () => {
     });
 
     setState("items", reconcile([{ id: 1, value: "new" }], "id"));
+    flush();
 
     expect(state.items[0].value).toBe("new");
   });
@@ -334,6 +356,7 @@ describe("reconcile function", () => {
     });
 
     setState("items", reconcile([{ id: 1, name: "ONE" }], { key: "id", merge: false }));
+    flush();
 
     expect(state.items[0].name).toBe("ONE");
     expect((state.items[0] as { extra?: string }).extra).toBeUndefined();
@@ -345,6 +368,7 @@ describe("reconcile function", () => {
     });
 
     setState("items", reconcile([{ c: 3 }] as never));
+    flush();
 
     expect(state.items).toEqual([{ c: 3 }] as never);
   });
@@ -363,6 +387,7 @@ describe("Store edge cases", () => {
     const [state, setState] = store<{ count: number; newProp?: string }>({ count: 0 });
 
     setState("newProp" as keyof typeof state, "hello" as never);
+    flush();
 
     expect(state.newProp).toBe("hello");
   });
@@ -380,6 +405,7 @@ describe("Store edge cases", () => {
     expect(effectRuns).toBe(1);
 
     setState("count" as never, 1 as never);
+    flush();
     // This may or may not trigger the effect depending on implementation
   });
 
@@ -396,10 +422,12 @@ describe("Store edge cases", () => {
     expect(state.value).toBeNull();
 
     setState("value", "not null");
+    flush();
     expect(effectRuns).toBe(2);
     expect(state.value).toBe("not null");
 
     setState("value", null);
+    flush();
     expect(effectRuns).toBe(3);
     expect(state.value).toBeNull();
   });
@@ -427,6 +455,7 @@ describe("Store edge cases", () => {
 
     // Update deep value
     setState("a", { b: { c: { d: { value: 100 } } } });
+    flush();
 
     // Both should trigger because c and d.value both changed
     expect(dEffectRuns).toBe(2);
@@ -443,6 +472,7 @@ describe("Store edge cases", () => {
     expect(state.data.value).toBe(1);
 
     setState("data", { value: 2 });
+    flush();
     expect(state.data.value).toBe(2);
   });
 
@@ -466,6 +496,7 @@ describe("Store edge cases", () => {
     // Rapid updates
     for (let i = 1; i <= 100; i++) {
       setState("count", i);
+      flush();
     }
 
     // Each update should trigger effect (unless batched)
@@ -487,6 +518,7 @@ describe("Store edge cases", () => {
     batch(() => {
       for (let i = 1; i <= 100; i++) {
         setState("count", i);
+        flush();
       }
     });
 
@@ -512,11 +544,13 @@ describe("Store with effects disposal", () => {
     expect(effectRuns).toBe(1);
 
     setState("count", 1);
+    flush();
     expect(effectRuns).toBe(2);
 
     dispose!();
 
     setState("count", 2);
+    flush();
     expect(effectRuns).toBe(2); // Should not increase
   });
 
@@ -550,20 +584,24 @@ describe("Store with effects disposal", () => {
     expect(innerRuns).toBe(1);
 
     setState("data", { value: 1 });
+    flush();
     expect(innerRuns).toBe(2);
 
     // Hide - inner effect should be recreated
     setState("show", false);
+    flush();
     expect(outerRuns).toBe(2);
 
     // Update data - inner shouldn't run since show is false
     setState("data", { value: 2 });
+    flush();
     expect(innerRuns).toBe(2);
 
     // Dispose all
     dispose!();
 
     setState("show", true);
+    flush();
     expect(outerRuns).toBe(2); // Should not increase
   });
 });
@@ -575,6 +613,7 @@ describe("Path-based setters", () => {
     });
 
     setState("user", "name", "Jane");
+    flush();
     expect(state.user.name).toBe("Jane");
     expect(state.user.age).toBe(30); // Should be preserved
   });
@@ -585,6 +624,7 @@ describe("Path-based setters", () => {
     });
 
     setState("user", "address", "city", "LA");
+    flush();
     expect(state.user.address.city).toBe("LA");
     expect(state.user.address.zip).toBe("10001"); // Should be preserved
   });
@@ -595,6 +635,7 @@ describe("Path-based setters", () => {
     });
 
     setState("a", "b", "c", "d", 100);
+    flush();
     expect(state.a.b.c.d).toBe(100);
   });
 
@@ -607,6 +648,7 @@ describe("Path-based setters", () => {
     });
 
     setState("items", 0, "name", "ONE");
+    flush();
     expect(state.items[0].name).toBe("ONE");
     expect(state.items[1].name).toBe("two"); // Should be preserved
   });
@@ -617,6 +659,7 @@ describe("Path-based setters", () => {
     });
 
     setState("list", 1, "B");
+    flush();
     expect(state.list[1]).toBe("B");
     expect(state.list).toEqual(["a", "B", "c"]);
   });
@@ -627,6 +670,7 @@ describe("Path-based setters", () => {
     });
 
     setState("user", "score", (prev: number) => prev + 5);
+    flush();
     expect(state.user.score).toBe(15);
   });
 
@@ -653,11 +697,13 @@ describe("Path-based setters", () => {
 
     // Update city - only city effect should run
     setState("user", "address", "city", "LA");
+    flush();
     expect(nameEffectRuns).toBe(1);
     expect(cityEffectRuns).toBe(2);
 
     // Update name - only name effect should run
     setState("user", "name", "Jane");
+    flush();
     expect(nameEffectRuns).toBe(2);
     expect(cityEffectRuns).toBe(2);
   });
@@ -671,6 +717,7 @@ describe("Path-based setters", () => {
     });
 
     setState("todos", 0, "done", true);
+    flush();
     expect(state.todos[0].done).toBe(true);
     expect(state.todos[1].done).toBe(false);
   });
@@ -732,6 +779,7 @@ describe("Improved produce (proxy-based)", () => {
         draft.a.value = 100;
       }),
     );
+    flush();
 
     // 'a' should be a new object, 'b' and 'c' should be same references
     expect(state.a.value).toBe(100);
@@ -761,6 +809,7 @@ describe("Improved produce (proxy-based)", () => {
         draft[0] = 100;
       }),
     );
+    flush();
 
     expect(state.items).toEqual([100, 2, 3, 4]);
   });
@@ -782,6 +831,7 @@ describe("Improved produce (proxy-based)", () => {
         }
       }),
     );
+    flush();
 
     expect(state.users[0].profile.age).toBe(26);
     expect(state.users[1].profile.age).toBe(30);
@@ -798,6 +848,7 @@ describe("Improved produce (proxy-based)", () => {
         delete draft.b;
       }) as never,
     );
+    flush();
 
     expect(state.data).toEqual({ a: 1, c: 3 } as never);
     expect("b" in state.data).toBe(false);
@@ -867,6 +918,7 @@ describe("Additional edge cases", () => {
     expect(state.value).toBeUndefined();
 
     setState("value", "hello");
+    flush();
     expect(effectRuns).toBe(2);
     expect(state.value).toBe("hello");
   });
@@ -877,6 +929,7 @@ describe("Additional edge cases", () => {
     expect(state.value).toBe("hello");
 
     setState("value", undefined);
+    flush();
     expect(state.value).toBeUndefined();
   });
 
@@ -895,6 +948,7 @@ describe("Additional edge cases", () => {
 
     // Replace entire user object
     setState("user", { name: "Jane", address: { city: "LA" } });
+    flush();
 
     expect(effectRuns).toBe(2);
     expect(state.user.address.city).toBe("LA");
@@ -914,6 +968,7 @@ describe("Additional edge cases", () => {
     expect(effectRuns).toBe(1);
 
     setState("items", []);
+    flush();
     expect(effectRuns).toBe(2);
     expect(state.items.length).toBe(0);
   });
@@ -935,8 +990,11 @@ describe("Additional edge cases", () => {
 
     batch(() => {
       setState("a", 1);
+      flush();
       setState("b", 2);
+      flush();
       setState("c", 3);
+      flush();
     });
 
     expect(effectRuns).toBe(2); // Should run once after batch
@@ -960,6 +1018,7 @@ describe("Additional edge cases", () => {
 
     // Using variadic path setter
     setState("level1", "level2", "level3", "level4", "value", 999);
+    flush();
     expect(state.level1.level2.level3.level4.value).toBe(999);
   });
 
@@ -970,6 +1029,7 @@ describe("Additional edge cases", () => {
 
     expect(() => {
       setState("user", "address", "city" as never, "NYC" as never);
+      flush();
     }).toThrow();
   });
 });

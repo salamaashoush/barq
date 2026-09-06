@@ -257,7 +257,7 @@ function NavRow(props: Incoming<{ item: NavItem }>) {
 
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton onClick={() => open.set(!open())} aria-expanded={open()}>
+      <SidebarMenuButton onClick={() => open.update((prev) => !prev)} aria-expanded={open()}>
         <Icon />
         <span>{item.name}</span>
         <ChevronRight class={chevron} data-open={open() ? "true" : "false"} />
