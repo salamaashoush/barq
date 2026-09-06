@@ -771,19 +771,19 @@ exports[`rendered DOM golden diagnostic-accessor-coercion: rendered DOM 1`] = `
 "initial: <div><p id="1">live attribute</p><b>1</b><span>total: () => {
     if (slowSignalRead !== 0)
       return readSignalSlow(node);
-    if (!tracking)
-      return node._value;
-    if (currentObserver && !(currentObserver._flags & 32))
+    if (tracking && currentObserver && !(currentObserver._flags & 32))
       link(node, currentObserver);
+    if (stagedCount !== 0 && currentObserver !== null && node._pending !== NOT_STAGED)
+      return node._pending;
     return node._value;
   }</span></div>
 step 0: <div><p id="2">live attribute</p><b>2</b><span>total: () => {
     if (slowSignalRead !== 0)
       return readSignalSlow(node);
-    if (!tracking)
-      return node._value;
-    if (currentObserver && !(currentObserver._flags & 32))
+    if (tracking && currentObserver && !(currentObserver._flags & 32))
       link(node, currentObserver);
+    if (stagedCount !== 0 && currentObserver !== null && node._pending !== NOT_STAGED)
+      return node._pending;
     return node._value;
   }</span></div>
 attrs 0: 0/0 p: id
@@ -1838,10 +1838,10 @@ exports[`marker channel diagnostic-accessor-coercion: anchor layout 1`] = `
 "<div><p>live attribute</p><b>1</b><span>total: () => {
     if (slowSignalRead !== 0)
       return readSignalSlow(node);
-    if (!tracking)
-      return node._value;
-    if (currentObserver && !(currentObserver._flags & 32))
+    if (tracking && currentObserver && !(currentObserver._flags & 32))
       link(node, currentObserver);
+    if (stagedCount !== 0 && currentObserver !== null && node._pending !== NOT_STAGED)
+      return node._pending;
     return node._value;
   }</span></div>"
 `;

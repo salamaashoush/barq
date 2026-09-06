@@ -354,6 +354,7 @@ interface SignalNode<T> {
   _affected: number; // affects() refcount; non-zero means the value reads as pending
   _override: PendingLayer<T>[] | null; // Pending lanes; null on every ordinary signal
   _pending: T | typeof NOT_STAGED; // Staged write awaiting the commit at flush
+  _nextStaged: SignalNode<unknown> | null; // Intrusive list of nodes awaiting commit
 }
 
 /**
@@ -1933,10 +1934,20 @@ function disposeNode(node: ComputedNode<unknown>): void {
  * about the world the batch is building. The two views are the same everywhere
  * else, which is why the split costs one branch on a path that is already slow.
  */
-const stagedNodes: SignalNode<unknown>[] = [];
+let stagedHead: SignalNode<unknown> | null = null;
+
+/**
+ * Whether anything is staged, as a single load for the read path.
+ *
+ * Deliberately NOT folded into `slowSignalRead`: staging is the ordinary case
+ * between any write and its flush, and routing every read through the slow path
+ * for it costs a call and three more branches on the hottest line in the engine.
+ */
+let stagedCount = 0;
 
 /** The value the GRAPH sees: the staged write if there is one, else the commit. */
 function stagedValue<T>(node: SignalNode<T>): T {
+  if (stagedCount === 0) return node._value;
   const pending = node._pending;
   return pending === NOT_STAGED ? node._value : pending;
 }
@@ -1949,18 +1960,9 @@ function stagedValue<T>(node: SignalNode<T>): T {
  * computation is being run against.
  */
 function visibleValue<T>(node: SignalNode<T>): T {
+  if (stagedCount === 0 || currentObserver === null) return node._value;
   const pending = node._pending;
-  if (pending === NOT_STAGED || currentObserver === null) return node._value;
-  return pending;
-}
-
-/** Stage `value` on `node`, arming the flush that will publish it. */
-function stageWrite<T>(node: SignalNode<T>, value: T): void {
-  if (node._pending === NOT_STAGED) {
-    slowSignalRead++;
-    stagedNodes.push(node as SignalNode<unknown>);
-  }
-  node._pending = value;
+  return pending === NOT_STAGED ? node._value : pending;
 }
 
 /**
@@ -1969,15 +1971,17 @@ function stageWrite<T>(node: SignalNode<T>, value: T): void {
  * downstream learns anything here that it was not already told.
  */
 function commitStaged(): void {
-  while (stagedNodes.length !== 0) {
-    const due = stagedNodes.splice(0, stagedNodes.length);
-    for (let i = 0; i < due.length; i++) {
-      const node = due[i];
-      if (node._pending === NOT_STAGED) continue;
+  let node = stagedHead;
+  stagedHead = null;
+  stagedCount = 0;
+  while (node !== null) {
+    const next = node._nextStaged;
+    node._nextStaged = null;
+    if (node._pending !== NOT_STAGED) {
       node._value = node._pending;
       node._pending = NOT_STAGED;
-      slowSignalRead--;
     }
+    node = next;
   }
 }
 
@@ -2113,6 +2117,7 @@ export function signal<T>(
     _affected: 0,
     _override: null,
     _pending: NOT_STAGED,
+    _nextStaged: null,
   };
 
   // `ownedWrite` marks the runtime's own control channels, which are not part
@@ -2124,9 +2129,12 @@ export function signal<T>(
     // One global load decides whether any of the rare read modes are live.
     // Zero in every ordinary app, so the common path stays two branches.
     if (slowSignalRead !== 0) return readSignalSlow(node as SignalNode<unknown>) as T;
-    if (!tracking) return node._value;
-    if (currentObserver && !(currentObserver._flags & REACTIVE_DISPOSED)) {
+    if (tracking && currentObserver && !(currentObserver._flags & REACTIVE_DISPOSED)) {
       link(node as SignalNode<unknown>, currentObserver);
+    }
+    // Two loads, and both are already in registers on the line above.
+    if (stagedCount !== 0 && currentObserver !== null && node._pending !== NOT_STAGED) {
+      return node._pending;
     }
     return node._value;
   };
@@ -2164,8 +2172,15 @@ export function signal<T>(
     if (immediate) {
       node._value = newValue;
     } else {
-      stageWrite(node, newValue);
-      schedule();
+      // Inlined: a thousand-write loop is one call per write otherwise, and
+      // both guards are a single global load each.
+      if (node._pending === NOT_STAGED) {
+        node._nextStaged = stagedHead;
+        stagedHead = node as SignalNode<unknown>;
+        stagedCount++;
+      }
+      node._pending = newValue;
+      if (!scheduled) schedule();
     }
     if (node._subs !== null && node._epoch !== markEpoch) {
       node._epoch = markEpoch;
@@ -2219,6 +2234,7 @@ function createComputedNode<T>(
     _subsTail: null,
     _override: null,
     _pending: NOT_STAGED,
+    _nextStaged: null,
     _equals:
       kind === EFFECT_PURE
         ? options?.equals !== undefined
