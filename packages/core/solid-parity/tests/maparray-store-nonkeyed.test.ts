@@ -1,0 +1,75 @@
+import { describe, expect, test } from "../vitest.ts";
+import { createRoot, createSignal, createStore, mapArray, flush } from "../harness.ts";
+
+describe("mapArray backed by derived store arrays", () => {
+  test("updates when same-length primitive array items are replaced", () => {
+    let setIssue!: (issue: number) => void;
+    let mapped!: () => string[];
+
+    const dispose = createRoot(dispose => {
+      const [issue, set] = createSignal(0);
+      const [comments] = createStore(
+        () => [`issue ${issue()} comment 0`, `issue ${issue()} comment 1`],
+        []
+      );
+      setIssue = set;
+      mapped = mapArray(
+        () => comments,
+        comment => comment
+      );
+      return dispose;
+    });
+
+    expect(mapped()).toEqual(["issue 0 comment 0", "issue 0 comment 1"]);
+
+    setIssue(1);
+    flush();
+
+    expect(mapped()).toEqual(["issue 1 comment 0", "issue 1 comment 1"]);
+    dispose();
+  });
+});
+
+describe("mapArray keyed:false backed by a store (#2687)", () => {
+  // Regression: mapArray's internal owner is a Root, so untracked store-proxy
+  // reads inside updateKeyedMap saw `_value` (committed) instead of
+  // `_pendingValue` (the write currently being processed) and the row signals
+  // were updated with stale data. Linking the internal owner's
+  // _parentComputed to the mapArray computed routes those reads through it.
+  test("row accessor reflects newly written store[i] within the same flush", () => {
+    let setStoreRef!: any;
+    let refresh!: () => void;
+    let snapshot: { items: string[]; direct: string[] } = { items: [], direct: [] };
+
+    const dispose = createRoot(d => {
+      const [store, setStore] = createStore<string[]>(["a", "b", "c"]);
+      setStoreRef = setStore;
+
+      const mapped = mapArray(
+        () => store,
+        (item, i) => ({ getItem: () => item(), getDirect: () => store[i] }),
+        { keyed: false }
+      );
+
+      refresh = () => {
+        const list = mapped();
+        snapshot = {
+          items: list.map(m => m.getItem()),
+          direct: list.map(m => m.getDirect())
+        };
+      };
+      refresh();
+
+      return d;
+    });
+
+    setStoreRef((x: string[]) => {
+      x[0] = "x";
+    });
+    flush();
+    refresh();
+
+    expect(snapshot).toEqual({ items: ["x", "b", "c"], direct: ["x", "b", "c"] });
+    dispose();
+  });
+});

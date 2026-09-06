@@ -1,0 +1,25 @@
+# White-box Solid tests, not ported (they import Solid internals)
+action-completion-race.test.ts  ../src/core/scheduler.js
+action-done-window.test.ts  ../src/core/scheduler.js
+attribution-benchmark-eval.test.ts  ../src/core/dev.js ../src/core/attribution.js
+attribution-unstable-memo.test.ts  ../src/core/dev.js
+attribution-waterfall-eval.test.ts  ../src/core/dev.js
+attribution-wide-write.test.ts  ../src/core/dev.js
+attribution.test.ts  ../src/core/attribution.js
+createRoot.test.ts  ../src/core/index.js
+dev.test.ts  ../src/core/index.js
+diagnostics.test.ts  ../src/core/dev.js
+enableExternalSource.test.ts  ../src/core/index.js
+graph-size-diagnostics.test.ts  ../src/core/dev.js
+scheduler-livelock.test.ts  ../src/core/constants.js ../src/core/scheduler.js ../src/core/types.js
+settle-walk-invariant.test.ts  ../src/core/async.js ../src/core/constants.js ../src/core/core.js
+shallow-store-proxy-children.test.ts  ../src/store/store.js
+store/child-companion-walk.test.ts  ../../src/core/scheduler.js
+store/flight-owned-transaction.test.ts  ../../src/store.js
+store/fold-scheduling.test.ts  ../../src/store/store.js
+store/next-smoke.test.ts  ../../src/store/next/store.js ../../src/store/next/target.js
+store/recursive-effects.test.ts  ./shared-clone.js
+store/shallow.test.ts  ../../src/store/store.js
+strict-read-pending-store.test.ts  ../src/core/error.js
+transition-corpse-revival.test.ts  ../src/core/index.js ../src/core/scheduler.js
+transitionMerge.test.ts  ../src/core/scheduler.js

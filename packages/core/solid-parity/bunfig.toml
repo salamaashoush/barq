@@ -1,0 +1,6 @@
+# The Solid 2.0 parity suite runs on its own bunfig so `bun test` in
+# packages/core stays the barq suite. Run it from this directory.
+[test]
+root = "./tests"
+preload = ["./preload.ts"]
+timeout = 15000
