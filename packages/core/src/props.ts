@@ -261,13 +261,67 @@ export function cell<T>(value: T): Cell<T> {
  * nothing: the result is a view over the same carriers, so a Cell that has not
  * been called still has not been called.
  */
+/**
+ * Whether reading a key from `source` has to go through a live lookup.
+ *
+ * A props VIEW resolves its keys from a source list on read, and a STORE
+ * resolves them from its own nodes, so copying either one flattens a thing
+ * whose whole point is not to be flattened. An ordinary object is not like
+ * that: its keys are already there, and its values are Cells that copying does
+ * not evaluate.
+ */
+function isLive(source: Source): boolean {
+  if (source === null || source === undefined || typeof source !== "object") return false;
+  if (SOURCES in source) return true;
+  return (source as { [Symbol.toStringTag]?: string })[Symbol.toStringTag] === "Store";
+}
+
+/**
+ * Merge sources that are all ordinary objects into an ordinary object, or
+ * `null` when one of them resolves on read and the view is needed.
+ *
+ * The view buys nothing over plain objects and costs the three things the
+ * specification asks about: a merge of ONE source is no longer that source,
+ * `Object.keys` goes through a trap rather than being the object's own, and a
+ * plain value stays LIVE — mutating the source after the merge changes what the
+ * merge answers, which nobody merging `{ type: "button" }` into props means.
+ */
+function fold(sources: readonly Source[], skipUndefined: boolean): Record<string, unknown> | null {
+  let last: Record<string, unknown> | null = null;
+  let lastIndex = -1;
+  for (let i = 0; i < sources.length; i++) {
+    const source = sources[i];
+    if (source === null || source === undefined) continue;
+    if (isLive(source)) return null;
+    last = source;
+    lastIndex = i;
+  }
+  if (last === null) return null;
+
+  const out: Record<string, unknown> = {};
+  let fromLastOnly = true;
+  for (let i = 0; i < sources.length; i++) {
+    const source = sources[i];
+    if (source === null || source === undefined) continue;
+    for (const key of Object.keys(source)) {
+      if (key === "__proto__" || key === "constructor") continue;
+      const value = source[key];
+      if (skipUndefined && value === undefined && key in out) continue;
+      if (i !== lastIndex) fromLastOnly = false;
+      out[key] = value;
+    }
+  }
+  // Every key came from the last source, so the merge IS that source.
+  return fromLastOnly && Object.keys(out).length === Object.keys(last).length ? last : out;
+}
+
 export function mergeProps(...sources: Source[]): Record<string, unknown> {
-  return view(sources, ALL_DEFINED);
+  return fold(sources, true) ?? view(sources, ALL_DEFINED);
 }
 
 /** `mergeProps` with `undefined` treated as a value (Solid 2.0's `merge`). */
 export function merge(...sources: Source[]): Record<string, unknown> {
-  return view(sources, ALL);
+  return fold(sources, false) ?? view(sources, ALL);
 }
 
 /** The props without `keys`. What a rest destructure would do, without copying. */

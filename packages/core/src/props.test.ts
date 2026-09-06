@@ -261,13 +261,23 @@ describe("the source list is a view, not a copy", () => {
   });
 
   test("a merge over a merge stays FLAT, so forwarding depth is not proxy depth", () => {
-    const one = props([{ x: () => 1 }]);
+    // Sources that resolve on READ keep the view, and the view splices the
+    // inner list in rather than nesting a proxy per hop.
+    const one = props([{ x: () => 1 }, { w: () => 0 }]);
     const two = merge(one, { y: () => 2 });
     const three = merge(two, { z: () => 3 });
     const list = three[SOURCES];
     expect(Array.isArray(list)).toBe(true);
     expect((list as unknown[]).some((s) => s === two)).toBe(false);
+    expect(Object.keys(three).toSorted()).toEqual(["w", "x", "y", "z"]);
+  });
+
+  test("a merge of ordinary objects is an ordinary object, so there is no hop at all", () => {
+    const one = props([{ x: () => 1 }]);
+    const three = merge(merge(one, { y: () => 2 }), { z: () => 3 });
+    expect(three[SOURCES]).toBeUndefined();
     expect(Object.keys(three).toSorted()).toEqual(["x", "y", "z"]);
+    expect((three.x as () => number)()).toBe(1);
   });
 });
 
