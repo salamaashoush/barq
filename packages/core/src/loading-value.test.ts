@@ -119,7 +119,6 @@ describe("A8: the loading window", () => {
       const el = boundary(
         null,
         null,
-        null,
         "loading",
         () => document.createTextNode("[fallback]"),
         () => document.createTextNode(node()),

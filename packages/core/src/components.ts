@@ -69,7 +69,7 @@
 import type { Child, JSXElement } from "./dom.ts";
 import { dynamic } from "./dom.ts";
 import { COUNT, boundary, branch, each, island, portal, reveal } from "./flow.ts";
-import type { Block, Cell, Scope, Slot } from "./scope.ts";
+import type { Block, Cell, Slot } from "./scope.ts";
 import { omit } from "./props.ts";
 import { computed, readSlot, resolve, runWithOwner, untrack } from "./signals.ts";
 
@@ -168,7 +168,7 @@ export interface PortalProps {
 
 export type DynamicComponent =
   | keyof HTMLElementTagNameMap
-  | ((s: Scope | null, props: Record<string, unknown>) => JSXElement);
+  | ((props: Record<string, unknown>) => JSXElement);
 
 /** A CELL-slot read: the value is called with no scope. */
 function readValue(slot: unknown, origin: string): unknown {
@@ -179,20 +179,22 @@ function slotBlock(slot: unknown): Block<unknown> | null {
   return slot === null || slot === undefined ? null : (slot as Block<unknown>);
 }
 
-function callSlot(slot: unknown, scope: Scope | null, ...args: unknown[]): unknown {
-  return typeof slot === "function" ? (slot as Block<unknown, unknown[]>)(scope, ...args) : slot;
+function callSlot(slot: unknown, ...args: unknown[]): unknown {
+  return typeof slot === "function" ? (slot as Block<unknown, unknown[]>)(...args) : slot;
 }
 
-export function Fragment(_s: Scope | null, props: { children?: Child | Child[] }): JSXElement {
+export function Fragment(props: { children?: Child | Child[] }): JSXElement {
   // C8: a fragment is an ARRAY of its parts. Nothing builds a DocumentFragment.
   const kids = props.children;
   return (Array.isArray(kids) ? kids : [kids]) as unknown as JSXElement;
 }
 
-export function Show(
-  _s: Scope | null,
-  props: { when: unknown; fallback?: unknown; keyed?: unknown; children: unknown },
-): JSXElement {
+export function Show(props: {
+  when: unknown;
+  fallback?: unknown;
+  keyed?: unknown;
+  children: unknown;
+}): JSXElement {
   const value = computed(() => readValue(props.when, "Show.when"));
   const keyed = readValue(props.keyed, "Show.keyed") === true;
   // The KEY decides a rebuild, so it carries exactly what the mode says it
@@ -207,13 +209,11 @@ export function Show(
   const key: Cell<unknown> = keyed
     ? (): unknown => value() || false
     : (): unknown => value() !== false && !!value();
-  const content: Block<unknown> = (scope: Scope | null): unknown => {
+  const content: Block<unknown> = (): unknown => {
     const current = untrack(value);
-    return current
-      ? callSlot(props.children, scope, keyed ? current : value)
-      : callSlot(props.fallback, scope);
+    return current ? callSlot(props.children, keyed ? current : value) : callSlot(props.fallback);
   };
-  return branch(_s, null, null, key, content);
+  return branch(null, null, key, content);
 }
 
 /**
@@ -241,16 +241,17 @@ export function Show(
  * call site that wants the type annotates its callback —
  * `{(row: Row) => …}` — which is what `routes/route.tsx` already did.
  */
-export function For(
-  _s: Scope | null,
-  props: { each: unknown; fallback?: unknown; keyed?: unknown; children: unknown },
-): JSXElement {
+export function For(props: {
+  each: unknown;
+  fallback?: unknown;
+  keyed?: unknown;
+  children: unknown;
+}): JSXElement {
   // The arity rule — a Cell declares no parameter and a key function declares
   // one — is `each`'s own, so the carrier goes through unresolved. This adapter
   // and the compiler's spread lowering therefore reach the primitive with the
   // same argument rather than with two implementations of one rule.
   return each(
-    _s,
     null,
     null,
     props.each as Cell<readonly unknown[]>,
@@ -261,16 +262,17 @@ export function For(
   );
 }
 
-export function Repeat(
-  _s: Scope | null,
-  props: { count: unknown; from?: unknown; fallback?: unknown; children: unknown },
-): JSXElement {
+export function Repeat(props: {
+  count: unknown;
+  from?: unknown;
+  fallback?: unknown;
+  children: unknown;
+}): JSXElement {
   const from = (): number => (readValue(props.from, "Repeat.from") as number | undefined) ?? 0;
   const count = (): number => readValue(props.count, "Repeat.count") as number;
-  const shifted: Block<unknown> = (scope: Scope | null, index: unknown): unknown =>
-    (props.children as (s: Scope | null, i: number) => unknown)(scope, (index as number) + from());
+  const shifted: Block<unknown> = (index: unknown): unknown =>
+    (props.children as (i: number) => unknown)((index as number) + from());
   return each(
-    _s,
     null,
     null,
     count as Cell<number>,
@@ -290,19 +292,13 @@ export function Repeat(
  * and falls back to the first — so `<Match when={…}>` checked its attributes
  * against `Scope` and reported every one of them missing.
  */
-export function Match(
-  _s: Scope | null,
-  props: { when: unknown; keyed?: unknown; children: unknown },
-): JSXElement {
+export function Match(props: { when: unknown; keyed?: unknown; children: unknown }): JSXElement {
   return props as unknown as JSXElement;
 }
 
-export function Switch(
-  _s: Scope | null,
-  props: { fallback?: unknown; children: unknown },
-): JSXElement {
+export function Switch(props: { fallback?: unknown; children: unknown }): JSXElement {
   const arms = computed(() => {
-    const resolved = callSlot(props.children, _s);
+    const resolved = callSlot(props.children);
     const children = (Array.isArray(resolved) ? resolved : [resolved]) as Array<{
       when?: unknown;
       keyed?: unknown;
@@ -336,9 +332,9 @@ export function Switch(
     return generation;
   });
 
-  const body: Block<unknown> = (scope: Scope | null): unknown => {
+  const body: Block<unknown> = (): unknown => {
     const found = untrack(arms);
-    if (found === null) return callSlot(props.fallback, scope);
+    if (found === null) return callSlot(props.fallback);
     // A `Match` follows `Show`: non-keyed by default, so its children are
     // handed the narrowed ACCESSOR and the arm's content updates in place
     // across a value change. A keyed arm gets the value, and the generation
@@ -348,20 +344,20 @@ export function Switch(
       const now = arms();
       return now === null ? undefined : now.value;
     };
-    return callSlot(found.match.children, scope, keyed ? found.value : narrowed);
+    return callSlot(found.match.children, keyed ? found.value : narrowed);
   };
 
-  return branch(_s, null, null, key, body);
+  return branch(null, null, key, body);
 }
 
 const UNSEEN: unique symbol = Symbol("unseen");
 
-export function Loading(
-  _s: Scope | null,
-  props: { fallback?: unknown; on?: unknown; children: unknown },
-): JSXElement {
+export function Loading(props: {
+  fallback?: unknown;
+  on?: unknown;
+  children: unknown;
+}): JSXElement {
   return boundary(
-    _s,
     null,
     null,
     "loading",
@@ -372,12 +368,8 @@ export function Loading(
   );
 }
 
-export function Errored(
-  _s: Scope | null,
-  props: { fallback: unknown; children: unknown },
-): JSXElement {
+export function Errored(props: { fallback: unknown; children: unknown }): JSXElement {
   return boundary(
-    _s,
     null,
     null,
     "error",
@@ -390,7 +382,7 @@ export function Errored(
  * `<NoHydration>` — an ISLAND: markup the server renders that the client never
  * hydrates.
  *
- * The compiler LOWERS this to `island(s, parent, anchor, block, flags)`, so this
+ * The compiler LOWERS this to `island(parent, anchor, block, flags)`, so this
  * function exists for two reasons only: the authoring surface has to typecheck,
  * and an un-compiled consumer has to get something that works. That is the same
  * arrangement `Portal` and `Show` are in.
@@ -399,16 +391,12 @@ export function Errored(
  * control-flow constructs: it decides who claims the markup, not what the page
  * contains.
  */
-export function NoHydration(_s: Scope | null, props: { children: unknown }): JSXElement {
-  return island(_s, null, null, props.children as Block<unknown>);
+export function NoHydration(props: { children: unknown }): JSXElement {
+  return island(null, null, props.children as Block<unknown>);
 }
 
-export function Portal(
-  _s: Scope | null,
-  props: { mount?: unknown; children: unknown },
-): JSXElement {
+export function Portal(props: { mount?: unknown; children: unknown }): JSXElement {
   return portal(
-    _s,
     () => readValue(props.mount, "Portal.mount") as Node | string | undefined,
     props.children as Block<unknown>,
   );
@@ -420,10 +408,7 @@ export function Portal(
  * resolved at compile time, so the choice is made at run time and nowhere else.
  * The swap and the teardown are the branch's.
  */
-export function Dynamic(
-  _s: Scope | null,
-  props: { component: unknown } & Record<string, unknown>,
-): JSXElement {
+export function Dynamic(props: { component: unknown } & Record<string, unknown>): JSXElement {
   // Read WITHOUT the Cell-slot Block guard, the way `dom.ts`'s `dynamic` reads
   // it. A compiled component is a Block, and one arriving here is the whole
   // point rather than a mistake: the value is invoked as a component with its
@@ -435,9 +420,7 @@ export function Dynamic(
     return typeof slot === "function" ? (slot as () => unknown)() : slot;
   });
   const rest = omit(props, "component");
-  return branch(_s, null, null, component, (scope: Scope | null) =>
-    dynamic(scope, component as unknown as Cell<never>, rest),
-  );
+  return branch(null, null, component, () => dynamic(component as unknown as Cell<never>, rest));
 }
 
 /**
@@ -445,12 +428,12 @@ export function Dynamic(
  * six scope creators. It coordinates how descendant `Loading` boundaries reveal
  * their content and owns no range of its own.
  */
-export function Reveal(
-  _s: Scope | null,
-  props: { order?: unknown; collapsed?: unknown; children: unknown },
-): JSXElement {
+export function Reveal(props: {
+  order?: unknown;
+  collapsed?: unknown;
+  children: unknown;
+}): JSXElement {
   return reveal(
-    _s,
     () =>
       (readValue(props.order, "Reveal.order") as
         | "sequential"
@@ -494,7 +477,7 @@ export function Reveal(
 export function lazy<P = unknown>(
   load: () => Promise<Record<string, unknown>>,
   pick: (module: Record<string, unknown>) => unknown = (module) => module.default,
-): ((s: Scope | null, props: P) => JSXElement) & {
+): ((props: P) => JSXElement) & {
   preload: () => Promise<void>;
   ready: () => void;
   loaded: () => boolean;
@@ -504,10 +487,10 @@ export function lazy<P = unknown>(
   const resolved = (): Cell<unknown> =>
     (cell ??= runWithOwner(null, () => computed(async () => pick(await load()))));
 
-  const component = (s: Scope | null, props: P): JSXElement => {
-    const Loaded = resolved()() as (s: Scope | null, props: P) => JSXElement;
+  const component = (props: P): JSXElement => {
+    const Loaded = resolved()() as (props: P) => JSXElement;
     here = true;
-    return Loaded(s, props);
+    return Loaded(props);
   };
 
   // Warms the SAME cell. `resolve` awaits the cell's first settled value rather

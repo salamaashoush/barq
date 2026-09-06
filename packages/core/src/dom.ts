@@ -12,12 +12,11 @@ import {
   lookupContext,
   NotReadyError,
   onCleanup,
-  requireScope,
+  getOwner,
   ScopeMissingError,
   enterRoot,
   exit,
   flush,
-  getOwner,
   ownRange,
   OWNERSHIP,
   readSlot,
@@ -77,7 +76,7 @@ export type Child =
   | Child[];
 export type Props = Record<string, unknown> & { children?: Child | Child[] };
 // Component type - generic over props like React's FunctionComponent
-export type Component<P = Props> = (s: Scope | null, props: P) => JSXElement;
+export type Component<P = Props> = (props: P) => JSXElement;
 
 // SVG namespace
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -478,8 +477,7 @@ export type { JSXElement as Element };
  * fifth element-creation path `createDynamicElement` used to be.
  */
 export function dynamic(
-  s: Scope | null,
-  component: Cell<string | ((s: Scope | null, props: Record<string, unknown>) => unknown)>,
+  component: Cell<string | ((props: Record<string, unknown>) => unknown)>,
   props: Record<string, unknown>,
 ): unknown {
   // The branch key already tracks this; reading it again inside the body would
@@ -487,9 +485,9 @@ export function dynamic(
   const resolved = untrack(component as () => unknown);
   if (resolved === null || resolved === undefined || resolved === false) return null;
   if (typeof resolved !== "string") {
-    return (resolved as (s: Scope | null, props: Record<string, unknown>) => unknown)(s, props);
+    return (resolved as (props: Record<string, unknown>) => unknown)(props);
   }
-  return element(s, resolved, props);
+  return element(resolved, props);
 }
 
 /**
@@ -507,14 +505,14 @@ export function dynamic(
  * string backend serialised it inline as one hole's value. `withoutClaim` says
  * so, and the enclosing `insert` reconciles the server's nodes away instead.
  */
-export function element(s: Scope | null, tag: string, props: Record<string, unknown>): Element {
+export function element(tag: string, props: Record<string, unknown>): Element {
   // CLAIMED when the server wrote one here. `<html>`, `<head>` and `<body>` reach
   // this function rather than a template — the parser strips them out of
   // `<template>` — so a document-hydrated page has its whole frame on this path,
   // and an unconditional `withoutClaim` here meant it claimed nothing at all.
   const claimed = claimElement(tag);
   if (claimed !== null) {
-    spread(s, claimed, props);
+    spread(claimed, props);
     const children = props.children;
     // `WHOLE`, because that is exactly what this position is: the server wrote
     // this element's children with no boundary comments, so the claim is every
@@ -522,16 +520,16 @@ export function element(s: Scope | null, tag: string, props: Record<string, unkn
     // for a `<!--]-->` that was never written — measured as "expected <!--]-->
     // before the end of <html>, found <body>".
     if (children !== undefined && children !== null) {
-      insert(s, claimed, children as Child, null, WHOLE);
+      insert(claimed, children as Child, null, WHOLE);
     }
     return claimed;
   }
   return withoutClaim(() => {
     const node =
       tag in SVG_TAGS ? document.createElementNS(SVG_NS, tag) : document.createElement(tag);
-    spread(s, node, props);
+    spread(node, props);
     const children = props.children;
-    if (children !== undefined && children !== null) insert(s, node, children as Child);
+    if (children !== undefined && children !== null) insert(node, children as Child);
     return node;
   });
 }
@@ -825,8 +823,8 @@ function applyRefs(element: Element, value: unknown): (() => void)[] {
  * callback that throws routes to the enclosing boundary instead of aborting
  * construction.
  */
-export function ref(s: Scope | null, element: Element, value: unknown): void {
-  const owner = requireScope(s, "ref");
+export function ref(element: Element, value: unknown): void {
+  const owner = getOwner();
   let undo: (() => void)[] = [];
   try {
     undo = applyRefs(element, value);
@@ -863,7 +861,7 @@ export function ref(s: Scope | null, element: Element, value: unknown): void {
  * the position rather than one per update. `listen` owns the removal (B4) and
  * routes a throw to the enclosing boundary (E2 #6).
  */
-export function formAction(s: Scope | null, form: HTMLFormElement, value: unknown): void {
+export function formAction(form: HTMLFormElement, value: unknown): void {
   const el = form as HTMLFormElement & { $$action?: unknown; $$actionBound?: true };
   if (typeof value !== "function") {
     el.$$action = undefined;
@@ -877,7 +875,7 @@ export function formAction(s: Scope | null, form: HTMLFormElement, value: unknow
   el.$$action = value;
   if (el.$$actionBound === true) return;
   el.$$actionBound = true;
-  listen(s, form, "submit", (event: Event): void => {
+  listen(form, "submit", (event: Event): void => {
     const handler = el.$$action;
     if (typeof handler !== "function") return;
     event.preventDefault();
@@ -900,13 +898,12 @@ export function formAction(s: Scope | null, form: HTMLFormElement, value: unknow
  * `delegateEvents` call per module, and that protocol is unchanged.
  */
 export function listen(
-  s: Scope | null,
   element: EventTarget,
   type: string,
   handler: EventListener,
   options?: boolean | AddEventListenerOptions,
 ): void {
-  const owner = requireScope(s, "listen");
+  const owner = getOwner();
   refuseBlock(handler, `on${type}`);
   const routed = routedListener(owner, element, handler);
   element.addEventListener(type, routed, options);
@@ -953,12 +950,11 @@ function routedListener(
  * through.
  */
 export function delegate(
-  s: Scope | null,
   element: Element,
   type: string,
   handler: DelegatedHandler | undefined,
 ): void {
-  const owner = requireScope(s, "delegate");
+  const owner = getOwner();
   refuseBlock(handler, `on${type}`);
   if (Array.isArray(handler)) refuseBlock(handler[0], `on${type}`);
   (element as Element & Record<string, unknown>)[`$$${type}`] = handler;
@@ -971,14 +967,8 @@ export function delegate(
  * whether the value that arrived is a live Cell. The CHANNEL is the compiler's,
  * passed in; only liveness is decided here.
  */
-export function bindProp(
-  s: Scope | null,
-  element: Element,
-  write: Channel,
-  name: string,
-  value: unknown,
-): void {
-  const given = requireScope(s, "setProp");
+export function bindProp(element: Element, write: Channel, name: string, value: unknown): void {
+  const given = getOwner();
   // An attribute is a CELL slot. A Block forwarded into one is the asymmetry
   // the rule is about, and it throws here rather than being invoked with
   // `undefined` and stringified into the attribute.
@@ -1024,11 +1014,10 @@ export function bindProp(
  * body whose only reactive work is an element binding now names `_s$`.
  */
 export function bindEffect<T>(
-  s: Scope | null,
   compute: (prev?: T) => T | void | (() => void),
   apply?: (value: T, prev: T | undefined) => void | (() => void),
 ): void {
-  const given = requireScope(s, "bindEffect");
+  const given = getOwner();
   ownedBy(given, "bindEffect", () => {
     renderEffect(compute, apply);
   });
@@ -1078,14 +1067,8 @@ function editsOf(value: object): Signal<number> {
  * the rejected character — and it is a no-op in the ordinary case because the
  * DOM already holds what the signal holds.
  */
-export function bindValue(
-  s: Scope | null,
-  element: Element,
-  name: string,
-  type: string,
-  value: unknown,
-): void {
-  const given = requireScope(s, "bind");
+export function bindValue(element: Element, name: string, type: string, value: unknown): void {
+  const given = getOwner();
   const target = element as Element & Record<string, unknown>;
   const set = (value as { set?: (next: unknown) => void } | null)?.set;
   if (typeof set !== "function") {
@@ -1119,7 +1102,7 @@ export function bindValue(
     write(value);
   }
   if (typeof set !== "function") return;
-  listen(given, element, type, () => {
+  listen(element, type, () => {
     // `bind:group` is the one channel whose reported value is not the property
     // it writes: a radio reports the VALUE of the button that is now checked,
     // and the one being turned OFF reports nothing — its newly-checked sibling
@@ -1738,7 +1721,6 @@ function ownedBy(given: Scope | null, origin: string, build: () => void): void {
  * that cannot fail.
  */
 export function insert(
-  s: Scope | null,
   parent: Node,
   value: Child | (() => Child),
   marker?: Node | null,
@@ -1749,7 +1731,7 @@ export function insert(
    */
   mode?: number,
 ): void {
-  const given = requireScope(s, "insert");
+  const given = getOwner();
   let anchor = marker ?? null;
 
   // An ARRAY holding a function is a live hole, and it is ONE hole.
@@ -1770,7 +1752,7 @@ export function insert(
   // instead of between them. That is the interleaving `Anchor::Marker` is
   // mandatory for (DESIGN P5 rule 2), and a single range has no way to hit it.
   if (isArray(value) && value.some(holdsAFunction)) {
-    insert(s, parent, () => value as Child, marker, mode);
+    insert(parent, () => value as Child, marker, mode);
     return;
   }
 
@@ -1933,8 +1915,7 @@ function detectTextDrift(claimed: readonly Node[], produced: Child): void {
  * `spread` need, plus the namespace syntax so the two paths accept the same
  * source.
  */
-export function setProp(s: Scope | null, element: Element, key: string, value: unknown): void {
-  const given = requireScope(s, "setProp");
+export function setProp(element: Element, key: string, value: unknown): void {
   const isSvg = element.namespaceURI === SVG_NS;
 
   const colon = key.indexOf(":");
@@ -1944,31 +1925,31 @@ export function setProp(s: Scope | null, element: Element, key: string, value: u
       case "on":
         // Verbatim: no lowercasing, which is the other half of the
         // custom-element story.
-        bindEvent(given, element, rest, value);
+        bindEvent(element, rest, value);
         return;
       case "capture":
         // `on:`'s capture-phase sibling, verbatim for the same reason.
-        bindEvent(given, element, rest, value, true);
+        bindEvent(element, rest, value, true);
         return;
       case "prop":
-        bindProp(given, element, setDomProp, rest, value);
+        bindProp(element, setDomProp, rest, value);
         return;
       case "attr":
-        bindProp(given, element, setAttr, attrNameOf(rest, isSvg), value);
+        bindProp(element, setAttr, attrNameOf(rest, isSvg), value);
         return;
       case "bool":
-        bindProp(given, element, setBool, attrNameOf(rest, isSvg), value);
+        bindProp(element, setBool, attrNameOf(rest, isSvg), value);
         return;
       case "style":
-        bindProp(given, element, setStyleProp, toKebabCase(rest), value);
+        bindProp(element, setStyleProp, toKebabCase(rest), value);
         return;
       case "bind": {
         if (rest === "this") {
-          ref(given, element, value);
+          ref(element, value);
           return;
         }
         const [name, type] = bindChannelOf(element, rest);
-        bindValue(given, element, name, type, value);
+        bindValue(element, name, type, value);
         return;
       }
       default:
@@ -1982,20 +1963,20 @@ export function setProp(s: Scope | null, element: Element, key: string, value: u
   // bubble-phase listener for an event called `keydowncapture`.
   const captured = captureTypeOf(key);
   if (captured !== null) {
-    bindEvent(given, element, captured, value, true);
+    bindEvent(element, captured, value, true);
     return;
   }
   if (key[0] === "o" && key[1] === "n") {
-    bindEvent(given, element, key.slice(2).toLowerCase(), value);
+    bindEvent(element, key.slice(2).toLowerCase(), value);
     return;
   }
 
   if (key === "ref") {
-    ref(given, element, value);
+    ref(element, value);
     return;
   }
 
-  bindProp(given, element, channelOf(key, isSvg, element.tagName), attrNameOf(key, isSvg), value);
+  bindProp(element, channelOf(key, isSvg, element.tagName), attrNameOf(key, isSvg), value);
 }
 
 /**
@@ -2029,21 +2010,15 @@ export function bindChannelOf(element: Element, name: string): [string, string] 
  * anything binds at all — which is the oracle's test, on a value neither side
  * can see.
  */
-export function bindEvent(
-  s: Scope | null,
-  element: Element,
-  type: string,
-  value: unknown,
-  capture = false,
-): void {
+export function bindEvent(element: Element, type: string, value: unknown, capture = false): void {
   if (!isEventHandlerValue(value)) return;
   // Delegation is one document-level listener in the BUBBLE phase, so it
   // cannot serve a capture binding at all.
   if (!capture && DELEGATED_EVENTS.has(type)) {
-    delegate(s, element, type, value as DelegatedHandler);
+    delegate(element, type, value as DelegatedHandler);
     return;
   }
-  listen(s, element, type, toListener(value as DelegatedHandler), capture);
+  listen(element, type, toListener(value as DelegatedHandler), capture);
 }
 
 /**
@@ -2059,11 +2034,10 @@ export function bindEvent(
  * bound raw.
  */
 export function spread(
-  s: Scope | null,
   element: Element,
   props: Record<string, unknown> | (() => Record<string, unknown>),
 ): void {
-  const given = requireScope(s, "spread");
+  const given = getOwner();
   const isSvg = element.namespaceURI === SVG_NS;
   const applied: Record<string, unknown> = {};
   const directListeners: Record<string, EventListener> = {};
@@ -2081,7 +2055,6 @@ export function spread(
       // A capture binding is always direct: delegation is bubble-phase only.
       if (captured === null && DELEGATED_EVENTS.has(eventName)) {
         delegate(
-          given,
           element,
           eventName,
           isEventHandlerValue(value) ? (value as DelegatedHandler) : undefined,
@@ -2122,6 +2095,12 @@ export function spread(
     // FUNCTION in the style key, and `setStyle` returns `prev` for one. A Cell
     // there applied nothing at all and a Block landed in the one Cell slot on
     // this surface that neither threw nor rendered.
+    //
+    // The Block refusal is spelled HERE rather than left to the invocation.
+    // Ownership is ambient, so a Block is an ordinary zero-arity function and
+    // calling one no longer throws for want of a scope; `style` would take the
+    // Node it built and read the DOM constants off it as css declarations.
+    refuseBlock(value, `spread ${key}`);
     const resolved = isSignalGetter(value) ? value() : value;
     applied[key] = channelOf(key, isSvg, element.tagName)(
       element,
@@ -2257,10 +2236,7 @@ export function childToNodes(child: Child, s: Scope | null = getOwner()): Node[]
  * disposer stop a library's ownerless effect that merely happened to be created
  * in the same turn. Pinned by `sem-own-render-disposer-disposes`.
  */
-export function render(
-  block: JSXElement | ((scope: Scope | null) => JSXElement),
-  container: HTMLElement,
-): () => void {
+export function render(block: JSXElement | (() => JSXElement), container: HTMLElement): () => void {
   container.textContent = ""; // Faster than innerHTML = ""
 
   const eager = typeof block !== "function";
@@ -2274,12 +2250,12 @@ export function render(
     emitDiagnostic(
       "RENDER_SUBTREE_NOT_OWNED",
       "warning",
-      "render() was given an already-built subtree while an owner was current, so that owner owns it and this disposer will only remove the range. Pass a function — render((scope) => <App/>, host) — to have the root own what it mounts.",
+      "render() was given an already-built subtree while an owner was current, so that owner owns it and this disposer will only remove the range. Pass a function — render(() => <App/>, host) — to have the root own what it mounts.",
     );
   }
   let element: JSXElement;
   try {
-    element = typeof block === "function" ? block(root) : block;
+    element = typeof block === "function" ? block() : block;
     insertRendered(root, element, container);
   } finally {
     exit(root);
@@ -2313,7 +2289,7 @@ function insertRendered(
   // `Out` admits `Cell<Out>`. A mount whose block returned one is a live
   // hole at the root, so it is inserted as one rather than stringified.
   if (typeof element === "function") {
-    insert(scope, container, element);
+    insert(container, element);
     return;
   }
   if (isSsrHtml(element)) {
@@ -2329,7 +2305,7 @@ function insertRendered(
     // first value and never moved again — and a component whose whole output
     // is a conditional is the ordinary shape for an overlay.
     if (element.some(holdsAFunction)) {
-      insert(scope, container, element as Child);
+      insert(container, element);
       return;
     }
     for (const child of element) {
@@ -2686,7 +2662,7 @@ function clearContainer(container: HTMLElement | Document): void {
 }
 
 function mount(
-  block: (scope: Scope | null) => JSXElement,
+  block: () => JSXElement,
   container: HTMLElement | Document,
   claiming: boolean,
 ): () => void {
@@ -2695,7 +2671,7 @@ function mount(
   // nothing to claim — see `render`.
   const root = enterRoot(false);
   try {
-    insertRendered(root, block(root), container);
+    insertRendered(root, block(), container);
   } finally {
     exit(root);
   }

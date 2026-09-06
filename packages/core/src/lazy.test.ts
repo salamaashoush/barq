@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 
 import { Loading, lazy } from "./index.ts";
 import { flush, render } from "./index.ts";
-import type { Scope } from "./scope.ts";
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -19,14 +18,14 @@ const settled = async () => {
   flush();
 };
 
-function mountWithFallback(component: (s: Scope | null, p: unknown) => unknown) {
+function mountWithFallback(component: (p: unknown) => unknown) {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const dispose = render(
-    (s: Scope | null) =>
-      Loading(s, {
+    () =>
+      Loading({
         fallback: () => document.createTextNode("loading"),
-        children: (inner: Scope | null) => component(inner, {}),
+        children: () => component({}),
       }),
     host,
   );

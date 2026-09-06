@@ -84,39 +84,17 @@ export class NoOwnerError extends Error {
 export const BLOCK: unique symbol = Symbol.for("barq.block");
 
 /**
- * C1/O4.5: the scope a Block is HANDED is the scope its body builds under.
+ * Mark a value as a deferred CONSTRUCTION rather than a deferred read.
  *
- * The guard alone made the argument decide only for the primitives that take it
- * explicitly — `insert`, `bindEffect`, the four flow primitives. Everything in
- * the same body that reads the AMBIENT owner instead — `getContext`,
- * `onCleanup`, `effect`, a `signal`'s owner — followed `CURRENT`, so one
- * component handed A while B was ambient split its ownership across both: its
- * hole under A, its cleanup under B. Nothing in the calling convention
- * established the ambient, because a component call is a plain call.
- *
- * Establishing it here costs one `try`/`finally` per activation and makes the
- * argument genuinely decide for every ambient-reading API at once. `null` is
- * left alone for the reason `dom.ts`'s `ownedBy` states: it names no owner, so
- * there is nothing for the argument to win, and forcing it would RELOCATE
- * ownership through the orphan list rather than decide it.
+ * The brand is all that is left. A Block used to take the scope it builds under
+ * as its first argument, and this wrapper established the ambient owner from
+ * it; the runtime enters that scope before invoking a body now, so the body
+ * reads its owner the way every other reactive primitive does. What the brand
+ * still buys is kind: a Block landing in a Cell slot is refused rather than
+ * invoked and stringified.
  */
 export function block<F extends (...args: never[]) => unknown>(fn: F): F {
-  const guarded = function (this: unknown, scope: unknown): unknown {
-    if (scope === undefined) throw new ScopeMissingError(blockOrigin(fn));
-    const body = fn as unknown as (...rest: unknown[]) => unknown;
-    if (scope === null) return body.apply(this, arguments as never);
-    const prevOwner = currentOwner;
-    const prevHost = currentHost;
-    currentOwner = scope as Scope;
-    currentHost = null;
-    try {
-      return body.apply(this, arguments as never);
-    } finally {
-      currentOwner = prevOwner;
-      currentHost = prevHost;
-    }
-  };
-  return brand(guarded) as unknown as F;
+  return brand(fn);
 }
 
 /** The brand without the entry guard, for the one value that legally ignores its scope. */
@@ -125,15 +103,11 @@ function brand<F>(fn: F): F {
   return fn;
 }
 
-/** Built only on the throw: naming the Block costs nothing until one is wrong. */
-function blockOrigin(fn: unknown): string {
-  const name = (fn as { name?: string }).name;
-  return name !== undefined && name !== "" ? `Block ${name}` : "a Block";
-}
-
-/** Whether `value` is a Block that declared it needs the scope it is handed. */
+/** Whether `value` is a Block: a deferred CONSTRUCTION rather than a read. */
 export function isBlock(value: unknown): boolean {
-  return typeof value === "function" && (value as unknown as Record<symbol, boolean>)[BLOCK];
+  return (
+    typeof value === "function" && (value as unknown as Record<symbol, unknown>)[BLOCK] === true
+  );
 }
 
 /**
@@ -221,6 +195,12 @@ export interface SignalOptions<T> {
 
 /** Options a derived node takes and a plain `signal()` has no use for. */
 export interface MemoOptions<T> extends SignalOptions<T> {
+  /**
+   * Defer the first computation to the first read. The default is eager: a
+   * derived value that owns async work starts it where it is declared.
+   */
+  lazy?: boolean;
+
   /**
    * Commit #0 (A8): a value the node is BORN with, served until the compute's
    * first real answer lands.
@@ -394,6 +374,7 @@ interface ComputedNode<T> extends SignalNode<T> {
   // shape - paying 6 slots on every computed costs more than the rare
   // structure transition on the few nodes that actually go async.
   _appliedValue?: unknown; // Last value passed to _apply
+  _queuedValue?: unknown; // Value awaiting its deferred apply
   _asyncId?: number; // Guards stale async resolutions
   _boundary?: LoadingBoundaryHandle | null; // Boundary this pending effect registered with
   _serializeKey?: string; // SSR: record resolved value under this key
@@ -437,11 +418,21 @@ function createHeap(): Heap {
   };
 }
 
+/**
+ * Derived nodes a write reached DIRECTLY. A memo that owns a fetch has to
+ * re-ask its question when its inputs change even if nothing reads it yet —
+ * otherwise "fetch high" means "fetch when something low finally reads", which
+ * is the waterfall the design exists to remove.
+ *
+ * Only the direct level lands here. Everything further downstream is marked
+ * CHECK and pulled, so depth costs one mark per level, not one recompute.
+ */
+const pureHeap = createHeap();
 const renderHeap = createHeap();
 const userHeap = createHeap();
 
 function heapFor(node: ComputedNode<unknown>): Heap {
-  return node._kind === EFFECT_USER ? userHeap : renderHeap;
+  return node._kind === EFFECT_PURE ? pureHeap : node._kind === EFFECT_USER ? userHeap : renderHeap;
 }
 
 /** Actually insert node into heap at its height level */
@@ -538,10 +529,7 @@ function adjustHeight(node: ComputedNode<unknown>, heap: Heap): void {
   if (node._height !== newHeight) {
     node._height = newHeight;
     for (let s = node._subs; s !== null; s = s._nextSub) {
-      const sub = s._sub;
-      if (sub._kind !== EFFECT_PURE) {
-        insertIntoHeapHeight(sub, heapFor(sub));
-      }
+      insertIntoHeapHeight(s._sub, heapFor(s._sub));
     }
   }
 }
@@ -1275,8 +1263,17 @@ function openWave(): void {
 function propagate(node: SignalNode<unknown>, state: number): void {
   openWave();
   for (let l = node._subs; l !== null; l = l._nextSub) {
-    markNode(l._sub, state);
+    const sub = l._sub;
+    markNode(sub, state);
+    if (sub._kind === EFFECT_PURE) scheduleDirect(sub);
   }
+}
+
+/** Queue a directly-reached derived node for this flush. */
+function scheduleDirect(sub: ComputedNode<unknown>): void {
+  if (sub._flags & REACTIVE_DISPOSED) return;
+  insertIntoHeap(sub, pureHeap);
+  schedule();
 }
 
 /**
@@ -1324,12 +1321,10 @@ function repropagate(node: ComputedNode<unknown>, state: number): void {
     if (current === 0) {
       openWave();
       markNode(sub, state);
-      continue;
-    }
-
-    if (current < state) {
+    } else if (current < state) {
       sub._flags = (flags & ~(REACTIVE_CHECK | REACTIVE_DIRTY)) | state;
     }
+    scheduleDirect(sub);
   }
 }
 
@@ -1513,13 +1508,13 @@ function handleEffectError(node: ComputedNode<unknown>, error: unknown): void {
   throw error;
 }
 
-function recompute(node: ComputedNode<unknown>): void {
+function recompute(node: ComputedNode<unknown>, create = false): void {
   if (node._flags & REACTIVE_DISPOSED) return;
 
   markEpoch++; // marks are being consumed: future writes must re-propagate
 
   const isEffect = node._kind !== EFFECT_PURE;
-  deleteFromHeap(node, isEffect ? heapFor(node) : renderHeap);
+  deleteFromHeap(node, heapFor(node));
 
   // Dispose inner computations / run cleanups from the previous run
   const owned = node._scope;
@@ -1741,38 +1736,78 @@ function recompute(node: ComputedNode<unknown>): void {
     }
   }
 
-  if (isEffect) {
-    if (node._apply) {
-      const prev = node._appliedValue;
-      node._appliedValue = newValue;
-      const apply = node._apply;
-      const prevT = tracking;
-      const prevO = currentObserver;
-      const applyOwner = currentOwner;
-      const applyHost = currentHost;
-      tracking = false;
-      currentObserver = null;
-      // O3.7: the apply is part of this effect's run, so what it creates is this
-      // effect's and dies with it — a class or style object carrying per-key
-      // getters opens those effects here.
-      currentOwner = node._scope;
-      currentHost = node;
-      try {
-        const cleanup = apply(newValue, prev);
-        if (typeof cleanup === "function") node._cleanup = cleanup;
-      } finally {
-        tracking = prevT;
-        currentObserver = prevO;
-        currentOwner = applyOwner;
-        currentHost = applyHost;
-      }
-    } else if (typeof newValue === "function") {
-      node._cleanup = newValue as () => void;
+  node._flags &= ~REACTIVE_UNINITIALIZED;
+
+  if (!isEffect) return;
+
+  if (node._apply !== undefined) {
+    // The apply is the DISPLAY half. A first run has to produce DOM before the
+    // caller returns; after that it waits for the pass that recomputed the
+    // graph to finish, so a frame is never painted from a graph half-way
+    // through an update.
+    //
+    // `clearSelfMarks` rides with it, because the apply is where an effect
+    // WRITES: dropping the self-mark before the write would leave the effect
+    // looking at its own output as if someone else had made it, and it would
+    // run again on it.
+    if (create) {
+      runApply(node, newValue);
+      return;
     }
+    node._queuedValue = newValue;
+    (node._kind === EFFECT_USER ? userApplies : renderApplies).push(node);
+    return;
   }
 
-  node._flags &= ~REACTIVE_UNINITIALIZED;
-  if (isEffect) clearSelfMarks(node);
+  if (typeof newValue === "function") node._cleanup = newValue as () => void;
+  clearSelfMarks(node);
+}
+
+/** Effect applies waiting for the pass that produced them to finish. */
+const renderApplies: ComputedNode<unknown>[] = [];
+const userApplies: ComputedNode<unknown>[] = [];
+
+function runApply(node: ComputedNode<unknown>, value: unknown): void {
+  const apply = node._apply;
+  if (apply === undefined) return;
+  const prev = node._appliedValue;
+  node._appliedValue = value;
+  const prevT = tracking;
+  const prevO = currentObserver;
+  const applyOwner = currentOwner;
+  const applyHost = currentHost;
+  tracking = false;
+  currentObserver = null;
+  // O3.7: the apply is part of this effect's run, so what it creates is this
+  // effect's and dies with it — a class or style object carrying per-key
+  // getters opens those effects here.
+  currentOwner = node._scope;
+  currentHost = node;
+  try {
+    const cleanup = apply(value, prev);
+    if (typeof cleanup === "function") node._cleanup = cleanup;
+  } catch (err) {
+    handleEffectError(node, err);
+  } finally {
+    tracking = prevT;
+    currentObserver = prevO;
+    currentOwner = applyOwner;
+    currentHost = applyHost;
+    clearSelfMarks(node);
+  }
+}
+
+function drainApplies(queue: ComputedNode<unknown>[]): void {
+  while (queue.length !== 0) {
+    const due = queue.splice(0, queue.length);
+    for (let i = 0; i < due.length; i++) {
+      const node = due[i];
+      if (node._flags & REACTIVE_DISPOSED) continue;
+      const value = node._queuedValue;
+      node._queuedValue = undefined;
+      runApply(node, value);
+    }
+  }
 }
 
 /**
@@ -1837,7 +1872,7 @@ function disposeNode(node: ComputedNode<unknown>): void {
   }
 
   // Remove from heap
-  deleteFromHeap(node, node._kind === EFFECT_USER ? userHeap : renderHeap);
+  deleteFromHeap(node, heapFor(node));
 
   // Cleanup deps
   cleanupDeps(node);
@@ -1876,7 +1911,13 @@ function flushSync(): void {
   flushError = null;
   try {
     let count = 0;
-    while (renderHeap._count > 0 || userHeap._count > 0) {
+    while (
+      pureHeap._count > 0 ||
+      renderHeap._count > 0 ||
+      userHeap._count > 0 ||
+      renderApplies.length !== 0 ||
+      userApplies.length !== 0
+    ) {
       if (++count === 100000) {
         emitDiagnostic(
           "INFINITE_LOOP",
@@ -1886,11 +1927,15 @@ function flushSync(): void {
         throw new Error("Potential infinite loop detected");
       }
       clock++;
-      if (renderHeap._count > 0) {
-        runHeap(renderHeap);
-      } else {
-        runHeap(userHeap);
-      }
+      // Derive, then display. Effects compute against a settled graph and only
+      // paint once the pass that produced their values is over.
+      if (pureHeap._count > 0) runHeap(pureHeap);
+      else if (renderHeap._count > 0) runHeap(renderHeap);
+      else if (userHeap._count > 0) runHeap(userHeap);
+
+      if (renderApplies.length !== 0) drainApplies(renderApplies);
+      else if (userApplies.length !== 0 && pureHeap._count === 0 && renderHeap._count === 0)
+        drainApplies(userApplies);
     }
     // TS can't see the handleEffectError assignment from inside runHeap
     const pendingError = flushError as { error: unknown } | null;
@@ -2091,6 +2136,11 @@ function createComputedNode<T>(
     orphans.push(node as ComputedNode<unknown>);
   }
 
+  // The render that DECLARED the node owns whatever it fetches, even if the
+  // flush that first runs it happens outside that render's session. Stamping
+  // at creation is what keeps `settle(session)` waiting for work it started.
+  if (activeAsyncSession !== null) node._session = activeAsyncSession;
+
   if (externalSource !== null) {
     wireExternalSource(node as ComputedNode<unknown>, owner);
   }
@@ -2275,6 +2325,28 @@ export function computed<T>(
   };
 
   const node = createComputedNode(compute, EFFECT_PURE, options);
+  // Eager, but at the next flush rather than at this call. Solid 2.0 computes
+  // a memo where it is declared, which is what makes "fetch high" mean
+  // anything — a memo that owns a fetch must start it where it is written, not
+  // where something eventually reads it. Running the body DURING the
+  // declaration is a stricter rule than that goal needs, and it breaks the one
+  // shape a lazy graph makes natural: a value that refers to a sibling
+  // declared below it. Deferring to the flush keeps the fetch early and keeps
+  // the forward reference legal.
+  // Eager, but at the next flush rather than during this call. Solid 2.0 runs
+  // a memo's body where it is declared; the GOAL of that is that a value which
+  // owns a fetch starts it where it is written rather than where something
+  // eventually reads it. Deferring to the flush delivers the same guarantee
+  // within the same tick, without running user code inside a declaration —
+  // which reorders a synchronous render and makes a reference to a sibling
+  // declared below it a dead-zone error.
+  //
+  // Not during a server render: there the string backend reads everything it
+  // is going to read before the render returns, so scheduling buys nothing and
+  // only moves a fetch out from under the boundary that is meant to park on it.
+  if (options?.lazy !== true && activeAsyncSession === null) {
+    scheduleDirect(node as ComputedNode<unknown>);
+  }
 
   const accessor = (() => computedRead(node)) as Computed<T>;
   accessor.peek = () => computedPeek(node);
@@ -2311,6 +2383,20 @@ export function linked<S, T>(
 /** Writable derived signal: signal(fn) */
 function writableComputed<T>(fn: (prev?: T) => T, options?: MemoOptions<T>): Signal<T> {
   const node = createComputedNode(fn, EFFECT_PURE, options);
+  // Eager, but at the next flush rather than during this call. Solid 2.0 runs
+  // a memo's body where it is declared; the GOAL of that is that a value which
+  // owns a fetch starts it where it is written rather than where something
+  // eventually reads it. Deferring to the flush delivers the same guarantee
+  // within the same tick, without running user code inside a declaration —
+  // which reorders a synchronous render and makes a reference to a sibling
+  // declared below it a dead-zone error.
+  //
+  // Not during a server render: there the string backend reads everything it
+  // is going to read before the render returns, so scheduling buys nothing and
+  // only moves a fetch out from under the boundary that is meant to park on it.
+  if (options?.lazy !== true && activeAsyncSession === null) {
+    scheduleDirect(node as ComputedNode<unknown>);
+  }
 
   const write = (newValue: T): void => {
     // Ensure initialized so a later dep change can recompute over the write
@@ -2320,6 +2406,12 @@ function writableComputed<T>(fn: (prev?: T) => T, options?: MemoOptions<T>): Sig
     const valueChanged = node._equals === false || !node._equals(node._value, newValue);
     if (!valueChanged) return;
     node._value = newValue;
+    // A manual write WINS over a recompute already queued for this tick: the
+    // caller has just said what the value is, and letting the flush re-derive
+    // it afterwards would silently discard the write. The next change of a
+    // dependency re-seeds normally.
+    deleteFromHeap(node as ComputedNode<unknown>, pureHeap);
+    node._flags &= ~(REACTIVE_CHECK | REACTIVE_DIRTY);
     if (node._subs !== null) {
       propagate(
         node as ComputedNode<unknown>,
@@ -2347,7 +2439,7 @@ function createEffectNode(
   node._apply = apply;
 
   // First run is synchronous at creation; subsequent runs are scheduled
-  recompute(node);
+  recompute(node, true);
 
   return () => disposeNode(node);
 }
@@ -2409,7 +2501,7 @@ export function trackedEffect(
   // Leaf effect: no graph position of its own, and no owned primitives
   node._height = 0;
   node._flags |= REACTIVE_CHILDREN_FORBIDDEN;
-  recompute(node);
+  recompute(node, true);
   return () => disposeNode(node);
 }
 
@@ -3137,7 +3229,14 @@ function flushIn(session: symbol | undefined): void {
 function inFlightOf(session: symbol | undefined): PromiseLike<unknown>[] {
   const waiting: PromiseLike<unknown>[] = [];
   for (const [promise, owner] of inFlight) {
-    if (session === undefined || owner === session) waiting.push(promise);
+    // Un-attributed work counts. A fetch started by a flush that ran outside
+    // any render — an eagerly scheduled memo whose microtask happened to land
+    // first — still belongs to the page being built, and waiting for it can
+    // only delay an answer. Attribution is strict where it decides what gets
+    // SERIALIZED (`getHydrationData`), because serving one render's value to
+    // another is corruption; it is deliberately loose here, because the only
+    // cost of waiting for something that was not ours is waiting.
+    if (session === undefined || owner === session || owner === null) waiting.push(promise);
   }
   return waiting;
 }
@@ -3633,8 +3732,8 @@ import type { JSXElement } from "./dom.ts";
 export interface Context<T> {
   readonly id: symbol;
   readonly defaultValue: T | undefined;
-  /** C1/X1: `Comp(s, props)`. `value` is a Cell, `children` a Block. */
-  Provider: (s: Scope, props: { value: MaybeAccessor<T>; children: unknown }) => JSXElement;
+  /** C1/X1: `Comp(props)`. `value` is a Cell, `children` a Block. */
+  Provider: (props: { value: MaybeAccessor<T>; children: unknown }) => JSXElement;
 }
 
 /**
@@ -3644,24 +3743,21 @@ export function context<T>(defaultValue?: T, description?: string): Context<T> {
   const id = Symbol(description ?? "context");
 
   /**
-   * X1: enter -> fork -> write -> INVOKE, in that order, under the scope the
-   * caller passed. `children` is a Block, so there is no expression in the
-   * emitted language that means "children, already built": the only party
-   * holding the instance scope is this function, and it writes the binding
-   * before it hands the scope over.
+   * X1: enter -> fork -> write -> INVOKE, in that order, under the ambient
+   * owner. `children` is a Block, so there is no expression in the emitted
+   * language that means "children, already built": the only party holding the
+   * instance scope is this function, and it writes the binding before it
+   * ENTERS that scope to invoke the body.
    */
-  const Provider = (
-    s: Scope,
-    props: { value: MaybeAccessor<T>; children: unknown },
-  ): JSXElement => {
-    const instance = enter(requireScope(s, "Ctx.Provider"), "provide");
+  const Provider = (props: { value: MaybeAccessor<T>; children: unknown }): JSXElement => {
+    const instance = enter(getOwner(), "provide");
     provideOn(instance, id, cellOf(props.value));
     let built = false;
     try {
       if (typeof props.children !== "function") return props.children as JSXElement;
       if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockEnter("Provider.children", instance);
       const out = unwrapBlocks(
-        (props.children as (scope: Scope) => JSXElement)(instance),
+        runWithOwner(instance, props.children as () => JSXElement),
         instance,
       );
       if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockExit("Provider.children");

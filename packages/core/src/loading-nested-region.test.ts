@@ -9,7 +9,7 @@
  *
  * It does not reproduce in the shape the compiler emits, and the two tests below
  * are what says so and why. `<Loading><Show/>…</Loading>` compiles to
- * `branch(s, null, null, …)` — parent NULL — so `siteFor` gives the region a
+ * `branch(null, null, …)` — parent NULL — so `siteFor` gives the region a
  * MARKER and the region inserts relative to it. The marker is one of the
  * boundary's own nodes, so it travels with the content on both moves and a
  * later swap lands wherever the marker now is.
@@ -25,7 +25,6 @@
 import { beforeEach, expect, test } from "bun:test";
 import { boundary, branch } from "./flow.ts";
 import { render } from "./dom.ts";
-import type { Scope } from "./scope.ts";
 import { computed, flush, scope, signal } from "./signals.ts";
 
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));
@@ -37,7 +36,7 @@ beforeEach(() => {
 });
 
 /** A boundary whose content holds a nested region and one suspending read. */
-function mount(nest: (inner: Scope | null, which: () => number) => Node | null) {
+function mount(nest: (which: () => number) => Node | null) {
   let resolve!: (v: string) => void;
   const promise = new Promise<string>((r) => {
     resolve = r;
@@ -45,15 +44,13 @@ function mount(nest: (inner: Scope | null, which: () => number) => Node | null) 
   const data = computed(() => promise);
   const which = signal(0);
 
-  scope((_dispose, s) => {
+  scope((_dispose) => {
     const el = boundary(
-      s,
       null,
       null,
       "loading",
       () => document.createTextNode("[busy]"),
-      (inner: Scope | null) =>
-        [nest(inner, () => which()), document.createTextNode(`:${data()}`)] as never,
+      () => [nest(() => which()), document.createTextNode(`:${data()}`)] as never,
     );
     render(el, container);
   });
@@ -63,11 +60,8 @@ function mount(nest: (inner: Scope | null, which: () => number) => Node | null) 
 
 test("a nested region swaps into the DOCUMENT after the boundary reveals", async () => {
   // The compiler's shape: parent `null`, so the region gets a marker.
-  const { resolve, which } = mount((inner, w) =>
-    branch(inner, null, null, w, [
-      () => document.createTextNode("A"),
-      () => document.createTextNode("B"),
-    ]),
+  const { resolve, which } = mount((w: () => number) =>
+    branch(null, null, w, [() => document.createTextNode("A"), () => document.createTextNode("B")]),
   );
 
   expect(container.textContent).toBe("[busy]");
@@ -85,9 +79,9 @@ test("a nested region swaps into the DOCUMENT after the boundary reveals", async
 });
 
 test("and the shape that DOES orphan it is a fragment handed over as a parent", async () => {
-  const { resolve, which } = mount((inner, w) => {
+  const { resolve, which } = mount((w: () => number) => {
     const frag = document.createDocumentFragment();
-    branch(inner, frag as unknown as Node, null, w, [
+    branch(frag as unknown as Node, null, w, [
       () => document.createTextNode("A"),
       () => document.createTextNode("B"),
     ]);

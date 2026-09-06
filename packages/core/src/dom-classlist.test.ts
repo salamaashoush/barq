@@ -28,7 +28,7 @@ function classes(el: Element): string[] {
 describe("classList", () => {
   test("truthy keys become classes, falsy ones do not", () => {
     const el = document.createElement("div");
-    setProp(null, el, "classList", { active: true, muted: false, big: 1 });
+    setProp(el, "classList", { active: true, muted: false, big: 1 });
     expect(classes(el)).toEqual(["active", "big"]);
     expect(el.hasAttribute("classlist")).toBe(false);
   });
@@ -36,7 +36,7 @@ describe("classList", () => {
   test("it is additive: an existing class survives", () => {
     const el = document.createElement("div");
     el.className = "card";
-    setProp(null, el, "classList", { active: true });
+    setProp(el, "classList", { active: true });
     expect(classes(el)).toEqual(["active", "card"]);
   });
 
@@ -44,7 +44,7 @@ describe("classList", () => {
     const el = document.createElement("div");
     el.className = "card";
     const state = signal<Record<string, unknown>>({ active: true, busy: true });
-    setProp(null, el, "classList", () => state());
+    setProp(el, "classList", () => state());
     expect(classes(el)).toEqual(["active", "busy", "card"]);
 
     state.set({ busy: true, done: true });
@@ -55,7 +55,7 @@ describe("classList", () => {
   test("a per-key accessor toggles on its own", () => {
     const el = document.createElement("div");
     const on = signal(false);
-    setProp(null, el, "classList", { active: () => on() });
+    setProp(el, "classList", { active: () => on() });
     expect(classes(el)).toEqual([]);
 
     on.set(true);
@@ -66,7 +66,7 @@ describe("classList", () => {
   test("a key naming several classes toggles all of them", () => {
     const el = document.createElement("div");
     const on = signal(true);
-    setProp(null, el, "classList", () => ({ "a b": on() }));
+    setProp(el, "classList", () => ({ "a b": on() }));
     expect(classes(el)).toEqual(["a", "b"]);
 
     on.set(false);
@@ -75,7 +75,7 @@ describe("classList", () => {
   });
 
   test("createElement applies it", () => {
-    const el = element(null, "div", { classList: { active: true } }) as HTMLElement;
+    const el = element("div", { classList: { active: true } }) as HTMLElement;
     expect(classes(el)).toEqual(["active"]);
     expect(el.hasAttribute("classlist")).toBe(false);
   });
@@ -83,7 +83,7 @@ describe("classList", () => {
   test("spread applies it", () => {
     const el = document.createElement("div");
     const props = signal<Record<string, unknown>>({ classList: { active: true } });
-    spread(null, el, () => props());
+    spread(el, () => props());
     expect(classes(el)).toEqual(["active"]);
 
     props.set({ classList: { done: true } });
@@ -93,7 +93,7 @@ describe("classList", () => {
 
   test("it lands on the class attribute of an SVG element, not on class-list", () => {
     const el = document.createElementNS(SVG_NS, "circle");
-    setProp(null, el, "classList", { ring: true });
+    setProp(el, "classList", { ring: true });
     expect(el.getAttribute("class")).toBe("ring");
     expect(el.hasAttribute("class-list")).toBe(false);
   });
@@ -102,7 +102,7 @@ describe("classList", () => {
     const el = document.createElement("div");
     el.className = "card";
     const state = signal<Record<string, unknown> | null>({ active: true });
-    setProp(null, el, "classList", () => state());
+    setProp(el, "classList", () => state());
     expect(classes(el)).toEqual(["active", "card"]);
 
     state.set(null);

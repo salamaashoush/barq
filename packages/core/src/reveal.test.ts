@@ -4,7 +4,6 @@
 
 import { beforeEach, describe, expect, test } from "bun:test";
 import { boundary, branch, reveal } from "./flow.ts";
-import type { Scope } from "./scope.ts";
 import { render } from "./dom.ts";
 import { NotReadyError, computed, scope, flush, signal } from "./signals.ts";
 
@@ -37,9 +36,8 @@ function asyncChild(data: () => string, label: string) {
 }
 
 /** One loading boundary under `s`: `[fX]` while pending, `X:value` once settled */
-function leaf(s: Scope | null, data: () => string, label: string) {
+function leaf(data: () => string, label: string) {
   return boundary(
-    s,
     null,
     null,
     "loading",
@@ -62,7 +60,6 @@ describe("Loading revalidation", () => {
 
     scope(() => {
       const el = boundary(
-        null,
         null,
         null,
         "loading",
@@ -100,18 +97,16 @@ describe("Reveal", () => {
     const dataA = computed(() => a.promise);
     const dataB = computed(() => b.promise);
 
-    scope((_dispose, scope) => {
+    scope((_dispose) => {
       // Children as a BLOCK: the boundaries are constructed under the scope
       // `reveal` hands over, which is the only way they reach the coordinator
       // it installed. A thunk that ignored the scope would build them under
       // whatever was ambient, and the coordinator would never be found.
       const el = reveal(
-        scope,
         () => order,
         () => collapsed,
-        (inner: Scope | null) => [
+        () => [
           boundary(
-            inner,
             null,
             null,
             "loading",
@@ -119,7 +114,6 @@ describe("Reveal", () => {
             asyncChild(() => dataA(), "A"),
           ),
           boundary(
-            inner,
             null,
             null,
             "loading",
@@ -194,12 +188,11 @@ describe("Reveal", () => {
     const dataA = computed(() => a.promise);
     const dataB = computed(() => b.promise);
 
-    scope((_dispose, s) => {
+    scope((_dispose) => {
       const el = reveal(
-        s,
         () => undefined,
         () => undefined,
-        (inner: Scope | null) => [leaf(inner, dataA, "A"), leaf(inner, dataB, "B")],
+        () => [leaf(dataA, "A"), leaf(dataB, "B")],
       );
       render(() => el, container);
     });
@@ -237,18 +230,16 @@ describe("Reveal nesting", () => {
     const dataB = computed(() => b.promise);
     const dataC = computed(() => c.promise);
 
-    scope((_dispose, s) => {
+    scope((_dispose) => {
       const el = reveal(
-        s,
         () => "sequential",
         () => false,
-        (outer: Scope | null) => [
-          leaf(outer, dataA, "A"),
+        () => [
+          leaf(dataA, "A"),
           reveal(
-            outer,
             () => "natural",
             () => false,
-            (inner: Scope | null) => [leaf(inner, dataB, "B"), leaf(inner, dataC, "C")],
+            () => [leaf(dataB, "B"), leaf(dataC, "C")],
           ),
         ],
       );
@@ -290,19 +281,17 @@ describe("Reveal nesting", () => {
     // `collapsed` is what makes "the frontier advanced" observable at all: past
     // the frontier a slot renders NOTHING rather than a fallback, so the moment
     // D's `[fD]` appears is the moment the outer decided the group was done.
-    scope((_dispose, s) => {
+    scope((_dispose) => {
       const el = reveal(
-        s,
         () => "sequential",
         () => true,
-        (outer: Scope | null) => [
+        () => [
           reveal(
-            outer,
             () => "sequential",
             () => false,
-            (inner: Scope | null) => [leaf(inner, dataB, "B"), leaf(inner, dataC, "C")],
+            () => [leaf(dataB, "B"), leaf(dataC, "C")],
           ),
-          leaf(outer, dataD, "D"),
+          leaf(dataD, "D"),
         ],
       );
       render(() => el, container);
@@ -341,18 +330,16 @@ describe("Reveal nesting", () => {
     const dataB = computed(() => b.promise);
     const dataC = computed(() => c.promise);
 
-    scope((_dispose, s) => {
+    scope((_dispose) => {
       const el = reveal(
-        s,
         () => "together",
         () => false,
-        (outer: Scope | null) => [
-          leaf(outer, dataA, "A"),
+        () => [
+          leaf(dataA, "A"),
           reveal(
-            outer,
             () => "sequential",
             () => false,
-            (inner: Scope | null) => [leaf(inner, dataB, "B"), leaf(inner, dataC, "C")],
+            () => [leaf(dataB, "B"), leaf(dataC, "C")],
           ),
         ],
       );
@@ -390,18 +377,16 @@ describe("Reveal nesting", () => {
     const dataB = computed(() => b.promise);
     const dataC = computed(() => c.promise);
 
-    scope((_dispose, s) => {
+    scope((_dispose) => {
       const el = reveal(
-        s,
         () => "natural",
         () => false,
-        (outer: Scope | null) => [
-          leaf(outer, dataA, "A"),
+        () => [
+          leaf(dataA, "A"),
           reveal(
-            outer,
             () => "natural",
             () => false,
-            (inner: Scope | null) => [leaf(inner, dataB, "B"), leaf(inner, dataC, "C")],
+            () => [leaf(dataB, "B"), leaf(dataC, "C")],
           ),
         ],
       );
@@ -430,18 +415,16 @@ describe("Reveal nesting", () => {
     const dataA = computed(() => a.promise);
     const dataB = computed(() => b.promise);
 
-    scope((_dispose, s) => {
+    scope((_dispose) => {
       const el = reveal(
-        s,
         () => "sequential",
         () => true,
-        (outer: Scope | null) => [
-          leaf(outer, dataA, "A"),
+        () => [
+          leaf(dataA, "A"),
           reveal(
-            outer,
             () => "natural",
             () => false,
-            (inner: Scope | null) => [leaf(inner, dataB, "B")],
+            () => [leaf(dataB, "B")],
           ),
         ],
       );
@@ -470,17 +453,13 @@ describe("Reveal nesting", () => {
     const dataB = computed(() => b.promise);
     const present = signal(0);
 
-    scope((_dispose, s) => {
+    scope((_dispose) => {
       const el = reveal(
-        s,
         () => "sequential",
         () => false,
-        (outer: Scope | null) => [
-          branch(outer, null, null, () => present(), [
-            (inner: Scope | null) => leaf(inner, dataA, "A"),
-            () => null,
-          ]),
-          leaf(outer, dataB, "B"),
+        () => [
+          branch(null, null, () => present(), [() => leaf(dataA, "A"), () => null]),
+          leaf(dataB, "B"),
         ],
       );
       render(() => el, container);

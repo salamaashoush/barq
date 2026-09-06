@@ -5,7 +5,6 @@ import { describe, expect, test } from "bun:test";
 import { boundary, branch } from "./flow.ts";
 import { render } from "./dom.ts";
 import { NotReadyError, block, computed, scope, signal } from "./signals.ts";
-import type { Scope } from "./scope.ts";
 
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));
 function deferred<T>() {
@@ -31,29 +30,28 @@ describe("M7's parked-boundary bug", () => {
     });
     const which = signal(0);
     const arms = [
-      block((_s: Scope | null) => {
+      block(() => {
         const n = document.createElement("b");
         n.textContent = "ARM0";
         return n;
       }),
-      block((_s: Scope | null) => {
+      block(() => {
         const n = document.createElement("i");
         n.textContent = "ARM1";
         return n;
       }),
     ];
-    const body = block((s: Scope | null) => {
+    const body = block(() => {
       try {
         data();
       } catch (err) {
         if (err instanceof NotReadyError) throw err;
         throw err;
       }
-      return branch(s, null, null, () => which(), arms);
+      return branch(null, null, () => which(), arms);
     });
     scope(() => {
       const el = boundary(
-        null,
         null,
         null,
         "loading",

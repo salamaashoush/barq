@@ -56,11 +56,10 @@ function mount<T>(build: (root: Scope) => T): { root: Scope; out: T } {
  * second call at one slot is visible as a count AND as a second subtree.
  */
 function counted(label: string): Block<unknown> & { calls: number } {
-  const block = ((scope: Scope | null): Node => {
+  const block = ((): Node => {
     block.calls++;
     const node = document.createElement("i");
     node.textContent = `${label}${block.calls}`;
-    void scope;
     return node;
   }) as Block<unknown> & { calls: number };
   block.calls = 0;
@@ -73,7 +72,7 @@ describe("C7 — a Block is invoked exactly once per activation", () => {
     const a = counted("a");
     const b = counted("b");
 
-    const { root } = mount((s) => branch(s, container, null, which, [a, b]));
+    const { root } = mount(() => branch(container, null, which, [a, b]));
 
     expect(a.calls).toBe(1);
     expect(b.calls).toBe(0);
@@ -98,9 +97,7 @@ describe("C7 — a Block is invoked exactly once per activation", () => {
     const body = counted("x");
     // The key reads the signal but folds every value onto one key, which is the
     // shape `Show` has for a non-keyed condition.
-    const { root } = mount((s) =>
-      branch(s, container, null, () => (source() >= 0 ? 0 : 1), [body]),
-    );
+    const { root } = mount(() => branch(container, null, () => (source() >= 0 ? 0 : 1), [body]));
 
     expect(body.calls).toBe(1);
     for (let i = 1; i <= 5; i++) {
@@ -117,7 +114,7 @@ describe("C7 — a Block is invoked exactly once per activation", () => {
     const rows = signal([1, 2]);
     const row = counted("r");
 
-    const { root } = mount((s) => each(s, container, null, rows, false, row));
+    const { root } = mount(() => each(container, null, rows, false, row));
 
     expect(row.calls).toBe(2);
     rows.set([1, 2, 3]);
@@ -132,12 +129,12 @@ describe("C7 — a Block is invoked exactly once per activation", () => {
     const content = counted("c");
     const fallback = counted("f");
     const boom = true;
-    const body: Block<unknown> = (scope: Scope | null): unknown => {
+    const body: Block<unknown> = (): unknown => {
       if (boom) throw new Error("boom");
-      return content(scope);
+      return content();
     };
 
-    const { root } = mount((s) => boundary(s, container, null, "error", fallback, body));
+    const { root } = mount(() => boundary(container, null, "error", fallback, body));
 
     expect(fallback.calls).toBe(1);
     expect(content.calls).toBe(0);
@@ -151,8 +148,8 @@ describe("C7 — a Block is invoked exactly once per activation", () => {
     document.body.appendChild(target);
     const body = counted("p");
 
-    const { root } = mount((s) => {
-      const marker = portal(s, () => target, body);
+    const { root } = mount(() => {
+      const marker = portal(() => target, body);
       container.appendChild(marker);
       return marker;
     });
@@ -173,19 +170,18 @@ describe("O3.7 / B4 — after disposal nothing is retained", () => {
     const runs: number[] = [];
     let cleanups = 0;
 
-    const body: Block<unknown> = (scope: Scope | null): Node => {
+    const body: Block<unknown> = (): Node => {
       effect(() => {
         runs.push(which());
       });
       onCleanup(() => {
         cleanups++;
       });
-      void scope;
       return document.createElement("i");
     };
 
     const root = enterRoot();
-    branch(root, container, null, which, body);
+    branch(container, null, which, body);
     exit(root);
     flush();
 
@@ -210,19 +206,18 @@ describe("O3.7 / B4 — after disposal nothing is retained", () => {
     let fired = 0;
     let button!: HTMLButtonElement;
 
-    const body: Block<unknown> = (scope: Scope | null): Node => {
+    const body: Block<unknown> = (): Node => {
       button = document.createElement("button");
       const handler = (): void => {
         fired++;
       };
       button.addEventListener("click", handler);
       onCleanup(() => button.removeEventListener("click", handler));
-      void scope;
       return button;
     };
 
     const root = enterRoot();
-    branch(root, container, null, which, body);
+    branch(container, null, which, body);
     exit(root);
     flush();
 
@@ -245,7 +240,7 @@ describe("O3.7 / B4 — after disposal nothing is retained", () => {
     let aborted = false;
     let landed = false;
 
-    const body: Block<unknown> = (scope: Scope | null): Node => {
+    const body: Block<unknown> = (): Node => {
       const controller = new AbortController();
       controller.signal.addEventListener("abort", () => {
         aborted = true;
@@ -255,12 +250,11 @@ describe("O3.7 / B4 — after disposal nothing is retained", () => {
         if (controller.signal.aborted) return;
         landed = true;
       });
-      void scope;
       return document.createElement("i");
     };
 
     const root = enterRoot();
-    branch(root, container, null, () => 0, body);
+    branch(container, null, () => 0, body);
     exit(root);
     flush();
 
@@ -275,17 +269,16 @@ describe("O3.7 / B4 — after disposal nothing is retained", () => {
     const rows = signal([1, 2, 3]);
     let alive = 0;
 
-    const row: Block<unknown> = (scope: Scope | null): Node => {
+    const row: Block<unknown> = (): Node => {
       alive++;
       onCleanup(() => {
         alive--;
       });
-      void scope;
       return document.createElement("li");
     };
 
     const root = enterRoot();
-    each(root, container, null, rows, false, row);
+    each(container, null, rows, false, row);
     exit(root);
     flush();
 
@@ -297,17 +290,16 @@ describe("O3.7 / B4 — after disposal nothing is retained", () => {
 
   test("a boundary's content scope is disposed when the boundary's owner is", () => {
     let alive = 0;
-    const body: Block<unknown> = (scope: Scope | null): Node => {
+    const body: Block<unknown> = (): Node => {
       alive++;
       onCleanup(() => {
         alive--;
       });
-      void scope;
       return document.createElement("i");
     };
 
     const root = enterRoot();
-    boundary(root, container, null, "error", null, body);
+    boundary(container, null, "error", null, body);
     exit(root);
     flush();
 
@@ -322,17 +314,16 @@ describe("O3.7 / B4 — after disposal nothing is retained", () => {
     document.body.appendChild(target);
     let alive = 0;
 
-    const body: Block<unknown> = (scope: Scope | null): Node => {
+    const body: Block<unknown> = (): Node => {
       alive++;
       onCleanup(() => {
         alive--;
       });
-      void scope;
       return document.createElement("i");
     };
 
     const root = enterRoot();
-    const marker = portal(root, () => target, body);
+    const marker = portal(() => target, body);
     container.appendChild(marker);
     exit(root);
     flush();
@@ -365,11 +356,11 @@ describe("the flags — what they skip, on an exact count", () => {
   const body: Block<unknown> = (): Node => document.createElement("i");
 
   test("NO_SCOPE allocates no Scope for the activation", () => {
-    const withScope = scopesFor((root) => {
-      branch(root, container, null, () => 0, body, STATIC_KEY);
+    const withScope = scopesFor(() => {
+      branch(container, null, () => 0, body, STATIC_KEY);
     });
-    const without = scopesFor((root) => {
-      branch(root, container, null, () => 0, body, STATIC_KEY | NO_SCOPE);
+    const without = scopesFor(() => {
+      branch(container, null, () => 0, body, STATIC_KEY | NO_SCOPE);
     });
     expect(withScope).toBe(1);
     expect(without).toBe(0);
@@ -384,7 +375,7 @@ describe("the flags — what they skip, on an exact count", () => {
     const key: Cell<number> = () => source();
 
     const root = enterRoot();
-    branch(root, container, null, key, [counter, counter], STATIC_KEY);
+    branch(container, null, key, [counter, counter], STATIC_KEY);
     exit(root);
     flush();
 
@@ -400,7 +391,7 @@ describe("the flags — what they skip, on an exact count", () => {
     const render = (flags: number): string => {
       const host = document.createElement("div");
       const root = enterRoot();
-      branch(root, host, null, () => 0, [body], flags);
+      branch(host, null, () => 0, [body], flags);
       exit(root);
       flush();
       const html = host.innerHTML;
@@ -416,7 +407,7 @@ describe("the flags — what they skip, on an exact count", () => {
 
   test("a region with no parent carries its own anchor and no comment node", () => {
     const root = enterRoot();
-    const out = branch(root, null, null, () => 0, [body]);
+    const out = branch(null, null, () => 0, [body]);
     exit(root);
     flush();
     container.appendChild(out as Node);
@@ -437,10 +428,10 @@ describe("O2 — a nested region is a child of the scope its Block was given", (
     const items = signal([1, 2, 3]);
 
     const root = enterRoot();
-    branch(root, container, null, () => (outer() ? 0 : 1), [
-      (scope: Scope | null): Node => {
+    branch(container, null, () => (outer() ? 0 : 1), [
+      (): Node => {
         const host = document.createElement("section");
-        each(scope, host, null, items, false, () => document.createElement("li"));
+        each(host, null, items, false, () => document.createElement("li"));
         return host;
       },
     ]);
@@ -463,7 +454,7 @@ describe("O2 — a nested region is a child of the scope its Block was given", (
   test("enter/exit around a region leaves the ambient owner where it found it", () => {
     const root = enterRoot();
     const outer = enter(root, "branch");
-    branch(outer, container, null, () => 0, [() => document.createElement("i")]);
+    branch(container, null, () => 0, [() => document.createElement("i")]);
     exit(outer);
     exit(root);
     flush();
@@ -485,7 +476,7 @@ describe("emptying a list removes only what the list owns", () => {
   test("a list that owns its parent is emptied", () => {
     const items = signal([1, 2, 3]);
     const root = enterRoot();
-    each(root, container, null, items, false, li);
+    each(container, null, items, false, li);
     exit(root);
     flush();
     expect(container.childNodes.length).toBe(3);
@@ -508,7 +499,7 @@ describe("emptying a list removes only what the list owns", () => {
     const items = signal([1, 2, 3]);
 
     const root = enterRoot();
-    each(root, container, null, items, false, li);
+    each(container, null, items, false, li);
     exit(root);
     flush();
     expect(container.childNodes.length).toBe(4);
@@ -527,7 +518,7 @@ describe("emptying a list removes only what the list owns", () => {
     const items = signal([1, 2, 3]);
 
     const root = enterRoot();
-    each(root, container, keep, items, false, li);
+    each(container, keep, items, false, li);
     exit(root);
     flush();
     expect(container.childNodes.length).toBe(4);
@@ -547,8 +538,8 @@ describe("emptying a list removes only what the list owns", () => {
     const root = enterRoot();
     const anchor = document.createElement("hr");
     container.appendChild(anchor);
-    each(root, container, anchor, a, false, li);
-    each(root, container, null, b, false, li);
+    each(container, anchor, a, false, li);
+    each(container, null, b, false, li);
     exit(root);
     flush();
     expect(container.childNodes.length).toBe(6);
@@ -564,7 +555,7 @@ describe("emptying a list removes only what the list owns", () => {
   test("disposing the owner of a list that owns its parent empties it", () => {
     const items = signal([1, 2, 3]);
     const root = enterRoot();
-    each(root, container, null, items, false, li);
+    each(container, null, items, false, li);
     exit(root);
     flush();
     expect(container.childNodes.length).toBe(3);
@@ -578,7 +569,7 @@ describe("emptying a list removes only what the list owns", () => {
     container.appendChild(keep);
     const items = signal([1, 2, 3]);
     const root = enterRoot();
-    each(root, container, null, items, false, li);
+    each(container, null, items, false, li);
     exit(root);
     flush();
 

@@ -57,7 +57,7 @@ import {
   provideOn,
   readSlot,
   renderEffect,
-  requireScope,
+  getOwner,
   ScopeMissingError,
   signal,
   underScope,
@@ -529,7 +529,13 @@ function build(scope: Scope | null, body: Block<unknown>, args: readonly unknown
  */
 function invoke(scope: Scope | null, body: Block<unknown>, args: readonly unknown[]): unknown {
   if (diagnosticsEnabled()) countCall(body);
-  return (body as (s: Scope | null, ...rest: readonly unknown[]) => unknown)(scope, ...args);
+  // The scope is already CURRENT — `attempt` entered it before calling here —
+  // so the body reads it the way every other reactive primitive does, from the
+  // ambient owner. It used to be handed over as an argument, which meant a
+  // component was declared `(scope, props)` and every call site had to thread a
+  // value the runtime already knew.
+  void scope;
+  return (body as (...rest: readonly unknown[]) => unknown)(...args);
 }
 
 // `activation` is bumped once per activation, so this asserts "once per
@@ -765,14 +771,13 @@ function cellSlot(value: unknown, origin: string): void {
  * Returns the anchor to insert when the caller supplied no `parent`, else `null`.
  */
 export function branch<K>(
-  s: Scope | null,
   parent: Node | null,
   anchor: Node | null,
   key: Cell<K>,
   bodies: Block<unknown> | readonly (Block<unknown> | null | undefined)[],
   flags = 0,
 ): Node | null {
-  const given = requireScope(s, "branch");
+  const given = getOwner();
   // The key ACCESSOR, not the key's value.
   //
   // A Block here is a mistimed construction and the guard is right. The VALUE
@@ -842,7 +847,6 @@ export function keyMode<T>(
 }
 
 export function each<T>(
-  s: Scope | null,
   parent: Node | null,
   anchor: Node | null,
   src: Cell<Maybe<readonly T[]>> | Cell<number>,
@@ -854,7 +858,7 @@ export function each<T>(
   flags = 0,
   fallback?: Block<unknown> | null,
 ): Node | null {
-  const given = requireScope(s, "each");
+  const given = getOwner();
   const keyOf = keyMode<T>(carrier);
   // The source is handed to `mapArray`/`repeat` BY IDENTITY, so the read
   // happens inside their own effects and there is no site here to test the
@@ -947,7 +951,30 @@ function inRow(cursor: Cursor | null, make: () => Node[]): Node[] {
     report("structure", "a row the server did not write");
     return withoutClaim(make);
   }
-  return atCursor(cursor, make);
+
+  const from = cursor.next;
+  const made = atCursor(cursor, make);
+
+  /*
+   * A row that ADOPTED the server's nodes created none of its own, so `build`
+   * hands back nothing and the row is, as far as `syncNodeOrder` can tell, a
+   * row with no extent. It cannot be moved, and worse, nothing can be inserted
+   * next to it: the walk that places a NEW row looks for the first node of the
+   * row after it, finds none the whole way down, and falls back on the list's
+   * own anchor. Every row added to a hydrated list therefore landed at the end
+   * of it, whatever its position in the array.
+   *
+   * What it occupies is what it claimed.
+   */
+  const claimed = spanBetween(from, cursor.next);
+  return claimed.length > 0 ? claimed : made;
+}
+
+/** The siblings from `from` up to, but not including, `to`. */
+function spanBetween(from: Node | null, to: Node | null): Node[] {
+  const out: Node[] = [];
+  for (let node = from; node !== null && node !== to; node = node.nextSibling) out.push(node);
+  return out;
 }
 
 /**
@@ -1091,7 +1118,6 @@ export type BoundaryKind = "error" | "loading";
  * it through to the nearest `Loading`.
  */
 export function boundary(
-  s: Scope | null,
   parent: Node | null,
   anchor: Node | null,
   kind: BoundaryKind,
@@ -1100,7 +1126,7 @@ export function boundary(
   flags = 0,
   on?: Cell<unknown>,
 ): Node | null {
-  const given = requireScope(s, "boundary");
+  const given = getOwner();
   if (on !== undefined) cellSlot(on, "boundary on");
   const { site, out } = siteFor(parent, anchor);
   claimSite(site, parent, anchor, flags, "boundary");
@@ -1152,15 +1178,16 @@ function errorBoundary(
     });
   };
 
-  const content: Block<unknown> = (scope: Scope | null): unknown => {
+  const content: Block<unknown> = (): unknown => {
+    const scope = getOwner();
     install(scope as Scope);
     return invoke(scope, body, EMPTY_ARGS);
   };
 
-  const recovered: Block<unknown> = (scope: Scope | null): unknown => {
+  const recovered: Block<unknown> = (): unknown => {
     if (fallback === null || fallback === undefined) return null;
     const error = (): Error => asError(collector.error());
-    return invoke(scope, fallback, [error, reset]);
+    return invoke(getOwner(), fallback, [error, reset]);
   };
 
   // The key IS the branch: 0 is the content, 1 is the fallback, and `reset` is a
@@ -1414,7 +1441,6 @@ function loadingBoundary(
  * island is a statement about hydration and not about what the page contains.
  */
 export function island(
-  s: Scope | null,
   parent: Node | null,
   anchor: Node | null,
   block: Block<unknown>,
@@ -1437,17 +1463,16 @@ export function island(
     // wrote differently. Give the claim back and build cold.
     if (claim !== null) releaseRange(claim);
   }
-  const instance = attempt(s, site, block, EMPTY_ARGS, flags, "branch", null);
+  const instance = attempt(getOwner(), site, block, EMPTY_ARGS, flags, "branch", null);
   return instance.nodes.length > 0 ? instance.nodes[0] : null;
 }
 
 export function portal(
-  s: Scope | null,
   target: Cell<Node | string | null | undefined>,
   block: Block<unknown>,
   flags = 0,
 ): Node {
-  const given = requireScope(s, "portal");
+  const given = getOwner();
   cellSlot(target, "portal target");
   const marker = document.createTextNode("");
 
@@ -1517,21 +1542,21 @@ export function portal(
  * fork is what shadows it (A6).
  */
 export function reveal(
-  s: Scope | null,
   order: Cell<RevealOrder | undefined>,
   collapsed: Cell<boolean | undefined>,
   block: Block<unknown>,
 ): Node[] {
+  const given = getOwner();
   const handle: RevealHandle = createRevealCoordinator(
     () => order() ?? "sequential",
     () => collapsed() === true,
-    outerRevealHandle(s),
+    outerRevealHandle(given),
   );
-  const scope = enter(s ?? null, "provide");
+  const scope = enter(given, "provide");
   try {
     onCleanup(() => handle.detach());
     provideOn(scope, REVEAL_COORD, handle);
-    return childToNodes(block(scope) as Child, scope);
+    return childToNodes((block as unknown as () => unknown)() as Child, scope);
   } finally {
     exit(scope);
   }

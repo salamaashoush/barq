@@ -213,7 +213,7 @@ describe("delegateEvents", () => {
     container.appendChild(el);
 
     let calls = 0;
-    setProp(null, el, "onClick", () => {
+    setProp(el, "onClick", () => {
       calls++;
     });
 
@@ -291,15 +291,18 @@ describe("a delegated handler runs under the scope stapled to its element", () =
     let sawOwner: unknown = "not run";
     const cleanups: number[] = [];
     let disposeRoot!: () => void;
+    // REGISTERED INSIDE the scope: `delegate` staples the owner that is ambient
+    // where the handler is bound, which for compiled output is the body doing
+    // the binding. Registering outside one staples null, and that is the orphan
+    // this test exists to refuse.
     const root = scope((dispose, scope) => {
       disposeRoot = dispose;
+      delegate(el, "click", () => {
+        sawOwner = getOwner();
+        onCleanup(() => cleanups.push(1));
+      });
       return scope;
     }, true);
-
-    delegate(root, el, "click", () => {
-      sawOwner = getOwner();
-      onCleanup(() => cleanups.push(1));
-    });
     delegateEvents(["click"]);
     el.dispatchEvent(new Event("click", { bubbles: true }));
 

@@ -78,7 +78,6 @@ export {
   install,
   read,
   stack,
-  requireScope,
 } from "./scope.ts";
 
 /**

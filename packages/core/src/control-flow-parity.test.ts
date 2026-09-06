@@ -8,7 +8,6 @@ import { For, Repeat, Show } from "./components.ts";
 import { cell } from "./props.ts";
 import { dynamic, element, render } from "./dom.ts";
 import { branch } from "./flow.ts";
-import type { Scope } from "./scope.ts";
 import { scope, flush, signal } from "./signals.ts";
 
 let container: HTMLDivElement;
@@ -23,12 +22,12 @@ describe("For keyed unification", () => {
     let renders = 0;
 
     scope(() => {
-      const el = For(null, {
+      const el = For({
         each: () => items(),
         keyed: false,
-        children: (_s: unknown, item: () => string, index: number) => {
+        children: (item: () => string, index: number) => {
           renders++;
-          return element(null, "li", { children: () => `${index}:${item()}` }) as Node;
+          return element("li", { children: () => `${index}:${item()}` }) as Node;
         },
       });
       render(el, container);
@@ -53,12 +52,12 @@ describe("For keyed unification", () => {
     let renders = 0;
 
     scope(() => {
-      const el = For(null, {
+      const el = For({
         each: () => items(),
         keyed: cell((item: { id: number; text: string }) => item.id),
-        children: (_s: unknown, item: () => { id: number; text: string }) => {
+        children: (item: () => { id: number; text: string }) => {
           renders++;
-          return element(null, "li", { children: () => item().text }) as Node;
+          return element("li", { children: () => item().text }) as Node;
         },
       });
       render(el, container);
@@ -82,10 +81,9 @@ describe("Repeat", () => {
     const count = signal(3);
 
     scope(() => {
-      const el = Repeat(null, {
+      const el = Repeat({
         count: () => count(),
-        children: (_s: Scope | null, i: number) =>
-          element(null, "span", { children: String(i) }) as Node,
+        children: (i: number) => element("span", { children: String(i) }) as Node,
       });
       render(el, container);
     });
@@ -105,12 +103,11 @@ describe("Repeat", () => {
     const count = signal(0);
 
     scope(() => {
-      const el = Repeat(null, {
+      const el = Repeat({
         count: () => count(),
         from: 10,
         fallback: document.createTextNode("empty"),
-        children: (_s: Scope | null, i: number) =>
-          element(null, "span", { children: String(i) }) as Node,
+        children: (i: number) => element("span", { children: String(i) }) as Node,
       });
       render(el, container);
     });
@@ -129,11 +126,11 @@ describe("Show keyed semantics", () => {
     let renders = 0;
 
     scope(() => {
-      const el = Show(null, {
+      const el = Show({
         when: () => user(),
-        children: (_s: unknown, u: () => { name: string }) => {
+        children: (u: () => { name: string }) => {
           renders++;
-          return element(null, "div", { children: () => u().name }) as Node;
+          return element("div", { children: () => u().name }) as Node;
         },
       });
       render(el, container);
@@ -163,12 +160,12 @@ describe("Show keyed semantics", () => {
     let renders = 0;
 
     scope(() => {
-      const el = Show(null, {
+      const el = Show({
         when: () => user(),
         keyed: true,
-        children: (_s: unknown, u: { name: string }) => {
+        children: (u: { name: string }) => {
           renders++;
-          return element(null, "div", { children: u.name }) as Node;
+          return element("div", { children: u.name }) as Node;
         },
       });
       render(el, container);
@@ -193,8 +190,8 @@ describe("dynamic — a tag chosen at run time (§3.13 item 4)", () => {
     const which = signal<"div" | "span">("div");
     const props = { class: "x", children: "hi" };
 
-    scope((_dispose, scope) => {
-      const el = branch(scope, null, null, which, (s: Scope | null) => dynamic(s, which, props));
+    scope((_dispose) => {
+      const el = branch(null, null, which, () => dynamic(which, props));
       render(el, container);
     });
     flush();
@@ -210,7 +207,7 @@ describe("dynamic — a tag chosen at run time (§3.13 item 4)", () => {
 describe("ref arrays", () => {
   test("ref={[a, b]} runs every ref with the element", () => {
     const seen: string[] = [];
-    const el = element(null, "div", {
+    const el = element("div", {
       ref: [
         (node: Element) => seen.push(`a:${node.tagName}`),
         (node: Element) => seen.push(`b:${node.tagName}`),

@@ -53,22 +53,21 @@ export function ValuePositionIsRefused(): void {
 }
 
 /**
- * C4's second: `props.children()` where `children` is a Block must be a type
- * error, because a Block REQUIRES a Scope (C3.8) and `()` supplies none.
+ * C4's second, inverted by ambient ownership: `props.children()` is now the
+ * CORRECT spelling, and a scope in the argument list is the type error.
  *
- * This is the type-level statement of the invariant `block()`'s entry guard
- * enforces at run time, and the reason the two exist together: the guard cannot
- * fire where the value is invoked with something that is not `undefined`, and
- * the type cannot see an un-compiled caller. Neither is redundant.
+ * A Block takes only what its construct hands it — a row's item and index, a
+ * fallback's error and reset — and every one of those is a Cell. Ownership is
+ * established by the runtime before the body is invoked, so there is no scope
+ * to supply and nothing left for an entry guard to catch.
  */
-export function ABlockNeedsItsScope(): void {
-  // @ts-expect-error a Block takes a Scope; calling it with none is C3.8's throw
-  const built = props.children();
+export function ABlockTakesOnlyItsConstructsArguments(): void {
+  const built: JSX.Element = props.children();
   void built;
 
-  // The same Block WITH its scope is the correct spelling and must compile.
-  const ok: JSX.Element = props.children(scopeValue);
-  void ok;
+  // @ts-expect-error a Block's arguments are Cells, and a Scope is not one
+  const wrong: JSX.Element = props.children(scopeValue);
+  void wrong;
 }
 
 /**

@@ -30,7 +30,7 @@ import {
   untrack,
   unwrapBlocks,
   provideOn,
-  requireScope,
+  runWithOwner,
   ScopeMissingError,
   type Context,
   type Scope,
@@ -42,13 +42,13 @@ export type { Boundary, Scope } from "./signals.ts";
 export type Cell<T> = (...ignored: never[]) => T;
 
 /**
- * A deferred CONSTRUCTION under a supplied scope. `s` is not OPTIONAL —
- * `undefined` is a missing argument and `ScopeMissingError` is the answer to it
- * — but it is nullable, because `null` is a scope value: it is the parent of a
- * root, and it is what the compiler emits for a module-level position
- * (`const _s$ = null`).
+ * A deferred CONSTRUCTION. It is invoked by the runtime, which enters the scope
+ * it belongs to first, so the body reads its owner from the ambient the way
+ * every other reactive primitive does. The scope used to be its first
+ * parameter; that made a component `(scope, props)` and made every call site
+ * thread a value the runtime already had.
  */
-export type Block<R, A extends unknown[] = Cell<unknown>[]> = (s: Scope | null, ...args: A) => R;
+export type Block<R, A extends unknown[] = Cell<unknown>[]> = (...args: A) => R;
 
 /**
  * A renderable slot takes either kind, because a Cell ignores the
@@ -57,8 +57,8 @@ export type Block<R, A extends unknown[] = Cell<unknown>[]> = (s: Scope | null, 
  */
 export type Slot<T> = Cell<T> | Block<T>;
 
-/** C1: the whole component surface. Scope first, so mistiming is a missing argument. */
-export type Component<P = Record<string, unknown>, R = unknown> = (s: Scope | null, props: P) => R;
+/** A component is a function of its props. Ownership is ambient. */
+export type Component<P = Record<string, unknown>, R = unknown> = (props: P) => R;
 
 export {
   /** Open a fresh child of the given scope and make it current. */
@@ -79,7 +79,7 @@ export {
   /** A construct invoked with no scope, named. */
   ScopeMissingError,
   /** The scope a construct was handed, or a throw naming where it was missing. */
-  requireScope,
+  runWithOwner,
 };
 
 /**
@@ -87,13 +87,8 @@ export {
  * on both paths (O4.1). The value stored is a `Cell`, so a provider whose
  * value changes does not re-render its children — consumers see it live (X2).
  */
-export function provide<T, R>(
-  scope: Scope,
-  context: Context<T>,
-  value: Cell<T>,
-  block: Block<R>,
-): R {
-  const instance = enter(requireScope(scope, "provide"));
+export function provide<T, R>(context: Context<T>, value: Cell<T>, block: Block<R>): R {
+  const instance = enter(getOwner());
   // C3.8: the provided value is PROBED here, not merely stored.
   //
   // `provide` used to file the Cell and never invoke it, so a laundered
@@ -119,7 +114,7 @@ export function provide<T, R>(
     // arrive as, is still a Block and has to run here, inside the scope that
     // carries the binding. `context`'s Provider walks the same way, and both
     // call the same function so they cannot drift apart again.
-    const out: R = unwrapBlocks(block(instance), instance);
+    const out: R = unwrapBlocks(runWithOwner(instance, block), instance);
     built = true;
     return out;
   } finally {

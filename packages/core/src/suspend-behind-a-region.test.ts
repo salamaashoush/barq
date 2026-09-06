@@ -22,7 +22,6 @@ import { Errored, Loading, Show } from "./components.ts";
 import { render } from "./dom.ts";
 import { resource } from "./async.ts";
 import { block, scope, signal } from "./signals.ts";
-import type { Scope } from "./scope.ts";
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));
 function mk() {
   const settled = signal<((v: string) => void) | null>(null);
@@ -45,20 +44,20 @@ describe("suspend behind a region", () => {
       const leaf = block(() => document.createTextNode(value()));
       scope(() => {
         render(
-          block((s: Scope | null) =>
-            Loading(s, {
+          block(() =>
+            Loading({
               fallback: block(() => document.createTextNode("BUSY")),
               children:
                 wrap === null
                   ? leaf
                   : wrap === "errored"
-                    ? block((s2) =>
-                        Errored(s2, {
+                    ? block(() =>
+                        Errored({
                           fallback: block(() => document.createTextNode("ERR")),
                           children: leaf,
                         }),
                       )
-                    : block((s2: Scope | null) => Show(s2, { when: () => true, children: leaf })),
+                    : block(() => Show({ when: () => true, children: leaf })),
             }),
           ),
           host,

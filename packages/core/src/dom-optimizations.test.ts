@@ -24,7 +24,7 @@ describe("insert: array reconciliation", () => {
     c.textContent = "c";
 
     const list = signal([a, b, c]);
-    insert(null, container, () => list());
+    insert(container, () => list());
     flush();
     expect(container.textContent).toBe("abc");
 
@@ -44,7 +44,7 @@ describe("insert: array reconciliation", () => {
       return el;
     });
     const list = signal(nodes.slice(0, 2));
-    insert(null, container, () => list());
+    insert(container, () => list());
     flush();
 
     list.set(nodes); // append at end
@@ -60,7 +60,7 @@ describe("insert: array reconciliation", () => {
 
   test("text nodes are reused positionally when content matches", () => {
     const items = signal(["a", "b", "c"]);
-    insert(null, container, () => items());
+    insert(container, () => items());
     flush();
 
     const firstText = container.firstChild?.nextSibling; // after start marker
@@ -84,7 +84,7 @@ describe("prev-value diffing", () => {
     };
 
     const styles = signal<Record<string, string>>({ color: "red", margin: "4px" });
-    setProp(null, el, "style", () => styles());
+    setProp(el, "style", () => styles());
     flush();
     expect(writes).toEqual(["color", "margin"]);
     expect(el.style.color).toBe("red");
@@ -108,7 +108,7 @@ describe("prev-value diffing", () => {
 
     const title = signal("x");
     const tick = signal(0);
-    setProp(null, el, "title", () => {
+    setProp(el, "title", () => {
       tick(); // extra dependency forcing re-runs
       return title();
     });
@@ -127,7 +127,7 @@ describe("prev-value diffing", () => {
   test("class objects diff the final string", () => {
     const el = document.createElement("div");
     const active = signal(true);
-    setProp(null, el, "class", () => ({ btn: true, active: active() }));
+    setProp(el, "class", () => ({ btn: true, active: active() }));
     flush();
     expect(el.className).toBe("btn active");
 
@@ -141,7 +141,7 @@ describe("spread", () => {
   test("applies, updates, and removes props reactively", () => {
     const el = document.createElement("div");
     const props = signal<Record<string, unknown>>({ id: "a", title: "t1" });
-    spread(null, el, () => props());
+    spread(el, () => props());
     flush();
     expect(el.getAttribute("id")).toBe("a");
     expect(el.getAttribute("title")).toBe("t1");
@@ -160,7 +160,7 @@ describe("spread", () => {
     const props = signal<Record<string, unknown>>({
       onClick: () => log.push("first"),
     });
-    spread(null, el, () => props());
+    spread(el, () => props());
     flush();
     el.click();
     expect(log).toEqual(["first"]);
@@ -180,7 +180,7 @@ describe("spread", () => {
     const el = document.createElement("div");
     let refCalls = 0;
     const n = signal(0);
-    spread(null, el, () => ({ "data-n": n(), ref: () => refCalls++ }));
+    spread(el, () => ({ "data-n": n(), ref: () => refCalls++ }));
     flush();
     expect(refCalls).toBe(1);
 
@@ -197,7 +197,7 @@ describe("[handler, data] delegation tuples", () => {
     const handler = (data: unknown, e: Event) => {
       seen.push([data, e.type]);
     };
-    const el = element(null, "button", { onClick: [handler, 42] }) as HTMLButtonElement;
+    const el = element("button", { onClick: [handler, 42] }) as HTMLButtonElement;
     container.appendChild(el);
     el.click();
     expect(seen).toEqual([[42, "click"]]);
@@ -205,7 +205,7 @@ describe("[handler, data] delegation tuples", () => {
 
   test("non-delegated tuple wraps into a listener", () => {
     const seen: unknown[] = [];
-    const el = element(null, "div", {
+    const el = element("div", {
       onMouseEnter: [(data: unknown) => seen.push(data), "hover-data"],
     }) as HTMLDivElement;
     container.appendChild(el);
@@ -217,8 +217,7 @@ describe("[handler, data] delegation tuples", () => {
 describe("pre-hydration event replay", () => {
   test("captured clicks replay against the hydrated DOM", () => {
     let clicks = 0;
-    const makeApp = () => () =>
-      element(null, "button", { onClick: () => clicks++, children: "go" });
+    const makeApp = () => () => element("button", { onClick: () => clicks++, children: "go" });
 
     // Simulate the inline capture script's leftovers
     let stopCalled = false;
@@ -279,7 +278,7 @@ describe("pre-hydration replay across a swap", () => {
     const g = globalThis as Record<string, unknown>;
     g.__BARQ_EVTS__ = queue;
     g.__BARQ_EVTS_STOP__ = (): void => {};
-    hydrate(() => element(null, "i", { children: "" }), container);
+    hydrate(() => element("i", { children: "" }), container);
   };
 
   /** Where a body-relative child-index path lands, for a node already in place. */

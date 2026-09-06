@@ -8,7 +8,6 @@ import { element } from "./dom.ts";
 import { block, signal, effect, computed, scope, batch, onCleanup, flush } from "./signals.ts";
 import { Dynamic, Errored, For, Loading, Match, Portal, Show, Switch } from "./components.ts";
 import { mergeProps, splitProps } from "./props.ts";
-import type { Scope } from "./scope.ts";
 import { resource } from "./async.ts";
 
 let container: HTMLDivElement;
@@ -35,9 +34,9 @@ describe("For component item updates", () => {
     let renderCount = 0;
     const renderedNames: string[] = [];
 
-    const node = For(null, {
+    const node = For({
       each: items,
-      children: (_s: unknown, item: { id: number; name: string }, _index: () => number) => {
+      children: (item: { id: number; name: string }, _index: () => number) => {
         renderCount++;
         // In SolidJS, `item` is the actual value, not reactive
         // But the component should re-render when the item changes
@@ -67,9 +66,9 @@ describe("For component item updates", () => {
   test("For should handle items with same key but different values", () => {
     const items = signal([{ id: 1, value: "a" }]);
 
-    const node = For(null, {
+    const node = For({
       each: items,
-      children: (_s: unknown, item: { value: string }) => {
+      children: (item: { value: string }) => {
         const span = document.createElement("span");
         span.textContent = item.value;
         return span;
@@ -96,9 +95,9 @@ describe("LIS algorithm performance", () => {
     const initialItems = Array.from({ length: size }, (_, i) => ({ id: i, value: `item-${i}` }));
     const items = signal(initialItems);
 
-    const node = For(null, {
+    const node = For({
       each: items,
-      children: (_s: unknown, item: { value: string }) => {
+      children: (item: { value: string }) => {
         const div = document.createElement("div");
         div.textContent = item.value;
         return div;
@@ -127,9 +126,9 @@ describe("LIS algorithm performance", () => {
     const size = 500;
     const items = signal(Array.from({ length: size }, (_, i) => ({ id: i })));
 
-    const node = For(null, {
+    const node = For({
       each: items,
-      children: (_s: unknown, item: { id: number }) => {
+      children: (item: { id: number }) => {
         const div = document.createElement("div");
         div.dataset.id = String(item.id);
         return div;
@@ -157,10 +156,10 @@ describe("For keyed={false} reactivity", () => {
     const items = signal(["a", "b", "c"]);
     const observedValues: string[] = [];
 
-    const node = For(null, {
+    const node = For({
       each: items,
       keyed: false,
-      children: (_s: Scope | null, itemAccessor: () => string, idx: number) => {
+      children: (itemAccessor: () => string, idx: number) => {
         const span = document.createElement("span");
         // itemAccessor is a signal that should update when items[idx] changes
         effect(() => {
@@ -187,10 +186,10 @@ describe("For keyed={false} reactivity", () => {
     const items = signal([1, 2, 3, 4, 5]);
     let effectRuns = 0;
 
-    const node = For(null, {
+    const node = For({
       each: items,
       keyed: false,
-      children: (_s: Scope | null, itemAccessor: () => number, _idx: number) => {
+      children: (itemAccessor: () => number, _idx: number) => {
         const span = document.createElement("span");
         effect(() => {
           effectRuns++;
@@ -230,9 +229,9 @@ describe("Loading component", () => {
     // `Await` was this, and went at M10: reading a resource throws `NotReady`
     // before it settles, so the boundary IS the loading state and the read is
     // the body. Solid 2.0 ships no `Await`.
-    const node = Loading(null, {
-      fallback: element(null, "div", { children: "Loading..." }),
-      children: (_s: unknown) => element(null, "div", { children: r() }),
+    const node = Loading({
+      fallback: element("div", { children: "Loading..." }),
+      children: () => element("div", { children: r() }),
     });
 
     container.appendChild(node as Node);
@@ -259,9 +258,9 @@ describe("Errored", () => {
 
     // The error arrives as an ACCESSOR, which is `Errored`'s signature and
     // Solid 2.0's. `ErrorBoundary` handed it over by value and went at M10.
-    const node = Errored(null, {
-      fallback: (_s: unknown, error: () => Error, _reset: () => void) =>
-        element(null, "div", { children: `Error: ${error().message}` }),
+    const node = Errored({
+      fallback: (error: () => Error, _reset: () => void) =>
+        element("div", { children: `Error: ${error().message}` }),
       children: ThrowingComponent,
     });
 
@@ -277,13 +276,13 @@ describe("Errored", () => {
 
     const MaybeThrow = () => {
       if (throwSignal()) throw new Error("Intentional error");
-      return element(null, "div", { children: "Success" });
+      return element("div", { children: "Success" });
     };
 
-    const node = Errored(null, {
-      fallback: (_s: unknown, error: () => Error, reset: () => void) => {
+    const node = Errored({
+      fallback: (error: () => Error, reset: () => void) => {
         resetFn = reset;
-        return element(null, "div", { children: `Error: ${error().message}` });
+        return element("div", { children: `Error: ${error().message}` });
       },
       children: MaybeThrow,
     });
@@ -312,9 +311,9 @@ describe("Portal component", () => {
     document.body.appendChild(target);
 
     try {
-      const node = Portal(null, {
+      const node = Portal({
         mount: "#portal-target",
-        children: element(null, "span", { children: "Portal content" }),
+        children: element("span", { children: "Portal content" }),
       });
 
       container.appendChild(node as Node);
@@ -336,16 +335,16 @@ describe("Portal component", () => {
       let disposed = false;
       let disposeScope!: () => void;
 
-      scope((dispose, scope) => {
+      scope((dispose) => {
         disposeScope = dispose;
 
-        const node = Portal(scope, {
+        const node = Portal({
           mount: "#portal-cleanup-target",
           children: () => {
             onCleanup(() => {
               disposed = true;
             });
-            return element(null, "span", { children: "Content" });
+            return element("span", { children: "Content" });
           },
         });
 
@@ -377,7 +376,7 @@ describe("Reactive styles", () => {
     const height = signal(100);
     let styleUpdates = 0;
 
-    const node = element(null, "div", {
+    const node = element("div", {
       style: {
         width: () => {
           styleUpdates++;
@@ -414,14 +413,14 @@ describe("Show keyed rendering", () => {
     const counter = signal(0);
     let effectRuns = 0;
 
-    const node = Show(null, {
+    const node = Show({
       when: show,
       children: () => {
         effect(() => {
           counter();
           effectRuns++;
         });
-        return element(null, "div", { children: "Content" });
+        return element("div", { children: "Content" });
       },
     });
 
@@ -567,19 +566,19 @@ describe("Switch/Match edge cases", () => {
   test("Switch handles dynamic match order", () => {
     const value = signal<"a" | "b" | "c">("a");
 
-    const node = Switch(null, {
+    const node = Switch({
       children: [
-        Match(null, {
+        Match({
           when: () => value() === "a",
-          children: () => element(null, "span", { children: "A" }),
+          children: () => element("span", { children: "A" }),
         }),
-        Match(null, {
+        Match({
           when: () => value() === "b",
-          children: () => element(null, "span", { children: "B" }),
+          children: () => element("span", { children: "B" }),
         }),
-        Match(null, {
+        Match({
           when: () => value() === "c",
-          children: () => element(null, "span", { children: "C" }),
+          children: () => element("span", { children: "C" }),
         }),
       ],
     });
@@ -603,12 +602,12 @@ describe("Switch/Match edge cases", () => {
   test("Switch fallback when no match", () => {
     const value = signal<string | null>(null);
 
-    const node = Switch(null, {
-      fallback: element(null, "span", { children: "No match" }),
+    const node = Switch({
+      fallback: element("span", { children: "No match" }),
       children: [
-        Match(null, {
+        Match({
           when: () => value() === "a",
-          children: () => element(null, "span", { children: "A" }),
+          children: () => element("span", { children: "A" }),
         }),
       ],
     });
@@ -634,9 +633,9 @@ describe("Event handler lifecycle", () => {
     const show = signal(true);
     let clickCount = 0;
 
-    const node = Show(null, {
+    const node = Show({
       when: show,
-      children: element(null, "button", { onClick: () => clickCount++, children: "Click me" }),
+      children: element("button", { onClick: () => clickCount++, children: "Click me" }),
     });
 
     container.appendChild(node as Node);
@@ -666,19 +665,18 @@ describe("Deep nested reactivity", () => {
 
     // O2/C6: a nested region runs under the scope its enclosing Block was
     // GIVEN, so the inner instance is a kid of the outer one and dies with it.
-    // Dropping the scope on the way down (`() => Show(null, …)`) leaves the
+    // Dropping the scope on the way down (`() => Show(…)`) leaves the
     // inner region owned by nobody, and the only thing that used to hide that
     // was the marker pair M4 deletes.
-    const node = Show(null, {
+    const node = Show({
       when: level1,
-      children: (outer: Scope | null) =>
-        Show(outer, {
+      children: () =>
+        Show({
           when: level2,
-          children: (inner: Scope | null) =>
-            For(inner, {
+          children: () =>
+            For({
               each: items,
-              children: (_s: unknown, item: unknown) =>
-                element(null, "span", { children: String(item) }),
+              children: (item: unknown) => element("span", { children: String(item) }),
             }),
         }),
     });
@@ -852,7 +850,7 @@ describe("Dynamic component", () => {
   test("renders intrinsic elements dynamically", () => {
     const tag = signal<"div" | "span">("div");
 
-    const node = Dynamic(null, {
+    const node = Dynamic({
       component: () => tag(),
       class: "test",
       children: "Hello",
@@ -872,15 +870,15 @@ describe("Dynamic component", () => {
   });
 
   test("renders function components dynamically", () => {
-    const ComponentA = (_s: unknown, props: { text: string }) =>
-      element(null, "div", { class: "a", children: props.text });
-    const ComponentB = (_s: unknown, props: { text: string }) =>
-      element(null, "span", { class: "b", children: props.text });
+    const ComponentA = (props: { text: string }) =>
+      element("div", { class: "a", children: props.text });
+    const ComponentB = (props: { text: string }) =>
+      element("span", { class: "b", children: props.text });
 
     // signal(fn) creates a writable derived signal; wrap to store a function value
     const current = signal<typeof ComponentA>(() => ComponentA);
 
-    const node = Dynamic(null, {
+    const node = Dynamic({
       component: () => current(),
       text: "Hello",
     });
@@ -908,12 +906,12 @@ describe("Dynamic component", () => {
    * components, which is the whole use, throw from inside `Dynamic` itself.
    */
   test("renders a branded Block component, which is what the compiler emits", () => {
-    const Compiled = block((_s: unknown, props: { text: string }) =>
-      element(null, "div", { class: "compiled", children: props.text }),
+    const Compiled = block((props: { text: string }) =>
+      element("div", { class: "compiled", children: props.text }),
     );
     const current = signal<typeof Compiled>(() => Compiled);
 
-    const node = Dynamic(null, {
+    const node = Dynamic({
       component: () => current(),
       text: "Hello",
     });
@@ -925,7 +923,7 @@ describe("Dynamic component", () => {
   test("handles null component gracefully", () => {
     const comp = signal<"div" | null>("div");
 
-    const node = Dynamic(null, {
+    const node = Dynamic({
       component: () => comp() as "div",
       children: "Content",
     });

@@ -16,7 +16,6 @@ import {
   refresh,
   render,
   signal,
-  type Scope,
 } from "./index.ts";
 import { Errored, Loading } from "./components.ts";
 
@@ -193,7 +192,7 @@ describe("Loading boundary", () => {
     });
 
     scope(() => {
-      const el = Loading(null, {
+      const el = Loading({
         fallback: document.createTextNode("loading..."),
         children: () => {
           // reactive child reading an async value
@@ -224,9 +223,8 @@ describe("Errored boundary", () => {
     const container = document.createElement("div");
 
     scope(() => {
-      const el = Errored(null, {
-        fallback: (_s: Scope | null, error: () => Error) =>
-          document.createTextNode(`error: ${error().message}`),
+      const el = Errored({
+        fallback: (error: () => Error) => document.createTextNode(`error: ${error().message}`),
         children: () => {
           throw new Error("render exploded");
         },
@@ -243,9 +241,8 @@ describe("Errored boundary", () => {
     const trigger = signal(false);
 
     scope(() => {
-      const el = Errored(null, {
-        fallback: (_s: Scope | null, error: () => Error) =>
-          document.createTextNode(`caught: ${error().message}`),
+      const el = Errored({
+        fallback: (error: () => Error) => document.createTextNode(`caught: ${error().message}`),
         children: () => {
           effect(() => {
             if (trigger()) throw new Error("effect exploded");
@@ -270,8 +267,8 @@ describe("Errored boundary", () => {
     let resetFn: (() => void) | null = null;
 
     scope(() => {
-      const el = Errored(null, {
-        fallback: (_s: Scope | null, error: () => Error, reset: () => void) => {
+      const el = Errored({
+        fallback: (error: () => Error, reset: () => void) => {
           resetFn = reset;
           return document.createTextNode(`error: ${error().message}`);
         },

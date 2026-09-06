@@ -67,7 +67,8 @@ import {
   type Channel,
 } from "./dom.ts";
 import { boundary, branch, each, island, portal } from "./flow.ts";
-import type { Cell, Scope } from "./scope.ts";
+import { getOwner } from "./signals.ts";
+import type { Cell } from "./scope.ts";
 
 export type Slot = () => unknown;
 
@@ -183,7 +184,7 @@ export const OFF_TEMPLATE: readonly string[] = [];
  * sibling walk taken after it — the same invariant `RefPlan::validate` enforces
  * on the compiler side. Then the patch program, in program order.
  */
-export function interp(s: Scope | null, unit: Unit, slots: readonly Slot[]): Node {
+export function interp(unit: Unit, slots: readonly Slot[]): Node {
   const [clone, refs, ops] = unit;
 
   const nodes: Node[] = [clone()];
@@ -191,7 +192,7 @@ export function interp(s: Scope | null, unit: Unit, slots: readonly Slot[]): Nod
     nodes[i] = walk(nodes, refs[i]);
   }
 
-  for (const op of ops) apply(s, op, nodes, slots);
+  for (const op of ops) apply(op, nodes, slots);
   return nodes[0];
 }
 
@@ -214,7 +215,7 @@ function walk(nodes: readonly Node[], step: Ref): Node {
   return node;
 }
 
-function apply(s: Scope | null, op: Op, nodes: readonly Node[], slots: readonly Slot[]): void {
+function apply(op: Op, nodes: readonly Node[], slots: readonly Slot[]): void {
   switch (op[0]) {
     // Two rows rather than one, mirroring the DOM backend. `SetOnce` is what P3
     // folds on, and keeping them apart is what stops a change to one silently
@@ -224,18 +225,18 @@ function apply(s: Scope | null, op: Op, nodes: readonly Node[], slots: readonly 
       CHANNEL[op[4]](nodes[op[1]] as Element, op[2], slots[op[3]](), undefined);
       return;
     case "setOpaque":
-      bindProp(s, nodes[op[1]] as Element, CHANNEL[op[4]], op[2], slots[op[3]]());
+      bindProp(nodes[op[1]] as Element, CHANNEL[op[4]], op[2], slots[op[3]]());
       return;
 
     // Ungrouped: one effect for one live prop, which is what a `SetLive` outside
     // a group lowers to — either because fusion is off (`-O0`), or because
     // fusion put it in a group of one.
     case "setLive":
-      fuse(s, [op], nodes, slots);
+      fuse([op], nodes, slots);
       return;
 
     case "setEvent":
-      bindEvent(s, nodes[op[1]] as Element, op[2], slots[op[3]]());
+      bindEvent(nodes[op[1]] as Element, op[2], slots[op[3]]());
       return;
 
     // The expando the delegated dispatcher reads, plus the scope beside it that
@@ -243,10 +244,10 @@ function apply(s: Scope | null, op: Op, nodes: readonly Node[], slots: readonly 
     // handler value, so there is no second property to write.
     case "delegate":
       (nodes[op[1]] as unknown as Record<string, unknown>)[op[2]] = slots[op[3]]();
-      (nodes[op[1]] as unknown as Record<string, unknown>).$$s = s;
+      (nodes[op[1]] as unknown as Record<string, unknown>).$$s = getOwner();
       return;
     case "listen":
-      listen(s, nodes[op[1]], op[2], slots[op[3]]() as EventListener);
+      listen(nodes[op[1]], op[2], slots[op[3]]() as EventListener);
       return;
 
     // B3. A writable binding is an ASSIGNMENT, and an assignment cannot be
@@ -256,26 +257,26 @@ function apply(s: Scope | null, op: Op, nodes: readonly Node[], slots: readonly 
       if (op[3] === "assign") {
         (slots[op[2]] as (el: Node) => void)(nodes[op[1]]);
       } else {
-        ref(s, nodes[op[1]] as Element, slots[op[2]]());
+        ref(nodes[op[1]] as Element, slots[op[2]]());
       }
       return;
 
     case "bind":
-      bindValue(s, nodes[op[1]] as Element, op[2], op[3], slots[op[4]]);
+      bindValue(nodes[op[1]] as Element, op[2], op[3], slots[op[4]]);
       return;
 
     // The slot is a nullary thunk over the value the author wrote, and
     // the runtime is what tells a URL from a submit handler — which is the
     // whole point of the op, so the interpreter hands it over unread.
     case "formAction":
-      formAction(s, nodes[op[1]] as HTMLFormElement, slots[op[2]]());
+      formAction(nodes[op[1]] as HTMLFormElement, slots[op[2]]());
       return;
 
     // The one channel whose NAMES are runtime data. `live` is the
     // compiler saying the source may change, and it is the same bit that makes
     // the DOM backend hand `spread` a thunk instead of an object.
     case "spread":
-      spread(s, nodes[op[1]] as Element, (op[3] ? slots[op[2]] : slots[op[2]]()) as never);
+      spread(nodes[op[1]] as Element, (op[3] ? slots[op[2]] : slots[op[2]]()) as never);
       return;
 
     case "insert": {
@@ -285,7 +286,7 @@ function apply(s: Scope | null, op: Op, nodes: readonly Node[], slots: readonly 
       // through and let `insert` decide, which is the same decision the
       // un-compiled path makes.
       const value = op[3] === "live" ? slots[op[2]] : slots[op[2]]();
-      insert(s, nodes[op[1]], value as never, anchor);
+      insert(nodes[op[1]], value as never, anchor);
       return;
     }
 
@@ -304,26 +305,26 @@ function apply(s: Scope | null, op: Op, nodes: readonly Node[], slots: readonly 
       const flags = op[9];
       switch (op[3]) {
         case "branch":
-          branch(s, parent, anchor, at(op[4]) as Cell<unknown>, at(op[5]), flags);
+          branch(parent, anchor, at(op[4]) as Cell<unknown>, at(op[5]), flags);
           return;
         case "each":
-          each(s, parent, anchor, at(op[4]), at(op[6]), at(op[5]), flags, at(op[7]));
+          each(parent, anchor, at(op[4]), at(op[6]), at(op[5]), flags, at(op[7]));
           return;
         case "error":
         case "loading":
-          boundary(s, parent, anchor, op[3], at(op[7]), at(op[5]), flags, at(op[8]));
+          boundary(parent, anchor, op[3], at(op[7]), at(op[5]), flags, at(op[8]));
           return;
         case "island":
-          island(s, parent, anchor, at(op[5]), flags);
+          island(parent, anchor, at(op[5]), flags);
           return;
         default:
-          insert(s, parent, portal(s, at(op[4]), at(op[5]), flags), anchor ?? undefined);
+          insert(parent, portal(at(op[4]), at(op[5]), flags), anchor ?? undefined);
           return;
       }
     }
 
     case "effectGroup":
-      fuse(s, op[1], nodes, slots);
+      fuse(op[1], nodes, slots);
       return;
   }
 }
@@ -341,14 +342,8 @@ function apply(s: Scope | null, op: Op, nodes: readonly Node[], slots: readonly 
  * Every read happens before any write, which is not a detail: a write can change
  * what a later prop on the same element would have read.
  */
-function fuse(
-  s: Scope | null,
-  members: readonly SetLive[],
-  nodes: readonly Node[],
-  slots: readonly Slot[],
-): void {
+function fuse(members: readonly SetLive[], nodes: readonly Node[], slots: readonly Slot[]): void {
   bindEffect(
-    s,
     () => members.map((member) => slots[member[3]]()),
     (values: unknown[], prev: unknown[] | undefined) => {
       for (let i = 0; i < members.length; i++) {

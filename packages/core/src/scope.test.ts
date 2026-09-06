@@ -274,7 +274,6 @@ describe("O4 — ambient hygiene", () => {
     const ctx = context<number>();
     expect(() =>
       provide(
-        root,
         ctx,
         () => 1,
         () => {
@@ -341,11 +340,10 @@ describe("O4 — ambient hygiene", () => {
 
     expect(() =>
       provide(
-        root,
         ctx,
         () => 1,
-        (s: Scope | null) => {
-          instance = s as Scope;
+        () => {
+          instance = getOwner() as Scope;
           onCleanup(() => ran.push("half-built"));
           throw new Error("built nothing");
         },
@@ -440,8 +438,8 @@ describe("O5 — render opens a root and returns a disposer that disposes", () =
   test("the Block form is invoked with the root scope", () => {
     const host = document.createElement("div");
     const given: Scope[] = [];
-    const disposer = render((scope: Scope | null) => {
-      given.push(scope as Scope);
+    const disposer = render(() => {
+      given.push(getOwner() as Scope);
       return document.createElement("i");
     }, host);
     expect(given.length).toBe(1);
@@ -464,7 +462,7 @@ describe("O5 — render opens a root and returns a disposer that disposes", () =
     });
 
     const host = document.createElement("div");
-    const disposer = render((_scope: Scope | null) => document.createElement("i"), host);
+    const disposer = render(() => document.createElement("i"), host);
     flush();
     const before = libraryRuns.length;
     expect(before).toBeGreaterThan(0);
@@ -539,11 +537,10 @@ describe("X — context on the scope", () => {
     const seen: number[] = [];
 
     const out = provide(
-      root,
       ctx,
       () => value(),
-      (inner: Scope | null) => {
-        const deep = enter(inner);
+      () => {
+        const deep = enter(getOwner());
         const nested = enter(deep);
         seen.push(read(ctx, nested)());
         exit(nested);
@@ -583,7 +580,6 @@ describe("X — context on the scope", () => {
     });
 
     const out = provide(
-      root,
       ctx,
       () => 7,
       () => ["first", child] as unknown,
@@ -605,7 +601,6 @@ describe("X — context on the scope", () => {
     });
 
     provide(
-      root,
       ctx,
       () => 3,
       () => ["a", ["b", child]] as unknown,
