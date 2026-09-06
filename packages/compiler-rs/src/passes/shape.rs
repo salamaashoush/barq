@@ -10,7 +10,7 @@ use oxc::ast::builder::AstBuilder;
 use oxc::ast_visit::VisitMut;
 use oxc::ast_visit::walk_mut::{walk_expression, walk_jsx_attribute_value, walk_jsx_child};
 use oxc::semantic::SymbolId;
-use oxc::span::Span;
+use oxc::span::{GetSpan, Span};
 
 use rustc_hash::FxHashMap;
 
@@ -1230,6 +1230,19 @@ fn literal_key(value: &Expression<'_>) -> Option<String> {
 
 impl<'a> VisitMut<'a> for Shaper<'a, '_> {
     fn visit_expression(&mut self, it: &mut Expression<'a>) {
+        // O5: a bare JSX argument in `render`/`hydrate`'s first position is the
+        // Block form written the other way, and the one shape the runtime
+        // cannot fix from the inside — the subtree is built before `render` is
+        // entered, so the root never owns it and the disposer only removes the
+        // range. Wrapping it makes the two spellings one program.
+        //
+        // `bind.rs` has always recorded the spans. `scope.rs` consumed them and
+        // is deleted, so the wrap went with it and `render(<App/>, host)` went
+        // back to building eagerly with nothing reporting it.
+        let mount = matches!(it, Expression::JSXElement(_) | Expression::JSXFragment(_))
+            .then(|| it.span())
+            .filter(|span| self.lift.env().root_jsx_args.contains(span));
+
         if let Expression::JSXElement(element) = it
             && self.is_component(element)
         {
@@ -1250,6 +1263,10 @@ impl<'a> VisitMut<'a> for Shaper<'a, '_> {
             };
         }
         walk_expression(self, it);
+        if let Some(span) = mount {
+            let built = it.take_in(&self.allocator);
+            *it = self.block(built, span);
+        }
     }
 
     fn visit_jsx_child(&mut self, it: &mut JSXChild<'a>) {

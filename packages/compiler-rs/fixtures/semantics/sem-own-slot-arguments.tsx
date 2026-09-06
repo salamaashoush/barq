@@ -40,8 +40,8 @@ const rows = signal<readonly Row[]>([
   { id: 2, label: "two" },
 ])
 
-/** A row Block written the way an author writes one: scope first, slots after. */
-function line(_s: Scope | null, item: Row, index: () => number) {
+/** A row Block written the way an author writes one: the slots and nothing else. */
+function line(item: Row, index: () => number) {
   return document.createTextNode(`${index()}:${item.label}`)
 }
 
@@ -50,37 +50,36 @@ export const Subject = () => <b class="slots">slot-arguments</b>
 /** Drive `each` under a root of its own and hand back what the row observed. */
 function drive(
   keyOf: ((item: Row) => unknown) | false | null,
-  row: (s: Scope | null, ...slots: never[]) => Node,
+  row: (...slots: never[]) => Node,
 ): { host: HTMLElement; done: () => void } {
   const host = document.createElement("div")
   const root = enterRoot()
-  each(root, host, null, () => rows(), keyOf as never, row as never)
+  each(host, null, () => rows(), keyOf as never, row as never)
   exit(root)
   return { host, done: () => dispose(root) }
 }
 
 export const claims: Claim[] = [
   {
-    id: "the-scope-comes-first-and-the-slots-follow-it",
+    id: "the-slots-are-the-whole-argument-list",
     rule: "C6",
-    says: "a row Block is invoked as `(scope, item, index)` — the scope is argument zero and the slot values are extra arguments after it, never in its place",
+    says: "a row Block is invoked as `(item, index)`: the slot values are the whole of what it is handed, with nothing of the runtime's own in front of them",
     check(kit) {
       const seen: string[] = []
-      const { host, done } = drive(null, ((s: Scope | null, item: Row, index: () => number) => {
-        seen.push(
-          `${s === null || s === undefined ? String(s) : "scope"}|` +
-            `${typeof item}|${typeof index}`,
-        )
-        return line(s, item, index)
+      const { host, done } = drive(null, ((...args: unknown[]) => {
+        const [item, index] = args as [Row, () => number]
+        seen.push(`${args.length}|${typeof item}|${typeof index}`)
+        return line(item, index)
       }) as never)
       try {
         kit.precondition(seen.length === 2, `the row Block ran ${seen.length} time(s), not 2`)
-        const wrong = seen.filter((shape) => shape !== "scope|object|function")
+        const wrong = seen.filter((shape) => shape !== "2|object|function")
         if (wrong.length > 0) {
           kit.fail(
             `a row Block was invoked with argument shapes ${JSON.stringify(seen)}. C6 says the ` +
-              `scope is FIRST and the slot values are extra arguments after it; guessing the ` +
-              `positions from arity is what handed a row callback the Scope where its item belongs`,
+              `slots are the WHOLE argument list; anything in front of them lands where the ` +
+              `author's first name is bound, which is what handed a row callback a Scope where ` +
+              `its item belongs`,
           )
         }
         if (host.textContent !== "0:one1:two") {
@@ -101,7 +100,7 @@ export const claims: Claim[] = [
     check(kit) {
       const kinds: Record<string, string> = {}
       const record = (mode: string) =>
-        ((_s: Scope | null, item: unknown, index: unknown) => {
+        ((item: unknown, index: unknown) => {
           kinds[mode] ??= `${typeof item}/${typeof index}`
           return document.createTextNode("x")
         }) as never

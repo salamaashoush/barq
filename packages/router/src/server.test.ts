@@ -2608,7 +2608,7 @@ describe("params.parse on the server", () => {
       path: "/",
       shellComponent: (props: { children: unknown }) =>
         ssrHtml(
-          `<html><head>${esc(HeadContent())}</head>` + `<body>${esc(props.children)}</body></html>`,
+          `<html><head>${esc(HeadContent())}</head><body>${esc(props.children)}</body></html>`,
         ),
       component: (props: { children: unknown }) => ssrHtml(esc(props.children)),
       children: [

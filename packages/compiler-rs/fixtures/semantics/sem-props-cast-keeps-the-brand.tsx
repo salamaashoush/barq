@@ -62,7 +62,13 @@ export const claims: Claim[] = [
         /[\w$]*block\(/.test(kit.emitted),
         "the emitted module contains no Block at all, so nothing here observed a brand",
       )
-      const thunks = [...kit.emitted.matchAll(/\(\)\s*=>\s*[\w$]*tmpl\$*\d+\(\)/g)].map((m) => m[0])
+      // NOT preceded by `block(`. A branded Block is `_$block(() => _tmpl$N())`
+      // now that ownership is ambient, so a bare `() => _tmpl$N()` test matches
+      // the branded form too and the claim fires on every fixture. The
+      // falsifier is the thunk that reaches a slot with no brand around it.
+      const thunks = [
+        ...kit.emitted.matchAll(/(?<!block\()\(\)\s*=>\s*[\w$]*tmpl\$*\d+\(\)/g),
+      ].map((m) => m[0])
       if (thunks.length > 0) {
         kit.fail(
           `the emitted module carries ${thunks.length} nullary thunk(s) building a template ` +

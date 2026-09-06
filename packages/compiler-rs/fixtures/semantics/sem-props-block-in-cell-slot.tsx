@@ -29,7 +29,7 @@
  *
  * C3.6, C3.7, C3.8, C3.9, C5.1.
  */
-import { block, delegate, dispose, enterRoot, exit, isBlock, listen, pin, ref, render, setProp } from "@barqjs/core"
+import { block, delegate, dispose, enterRoot, exit, isBlock, listen, pin, ref, render, runWithOwner, setProp } from "@barqjs/core"
 import { branch, boundary, each, onCleanup, portal, provide, context, useContext } from "@barqjs/core"
 import type { Scope } from "@barqjs/core"
 
@@ -40,9 +40,9 @@ export const rules = ["C3.6", "C3.7", "C3.8", "C3.9", "C5.1", "O2"]
 /** What a Block that fell back to the ambient owner would leave behind. */
 let ranWithoutScope = 0
 
-/** A branded Block: it declares it needs the scope it is handed. */
-const needsScope = block((s: Scope | null) => {
-  if (s === undefined) ranWithoutScope++
+/** A branded Block: a deferred CONSTRUCTION, refused wherever a Cell belongs. */
+const needsScope = block(() => {
+  ranWithoutScope++
   return document.createTextNode("built")
 })
 
@@ -116,27 +116,28 @@ export const Subject = () => <Tree />
  */
 function dispatched(
   s: Scope,
-  bind: (inner: Scope, node: HTMLElement) => void,
+  bind: (node: HTMLElement) => void,
   event: Event,
 ): void {
   const host = document.createElement("div")
   document.body.appendChild(host)
   const node = document.createElement("div")
   let caught: unknown = null
-  boundary(
-    s,
-    host,
-    null,
-    "error",
-    (_inner: Scope | null, error: () => Error) => {
-      caught = error()
-      return null
-    },
-    (inner: Scope | null) => {
-      host.appendChild(node)
-      bind(inner as Scope, node)
-      return null
-    },
+  runWithOwner(s, () =>
+    boundary(
+      host,
+      null,
+      "error",
+      (error: () => Error) => {
+        caught = error()
+        return null
+      },
+      () => {
+        host.appendChild(node)
+        bind(node)
+        return null
+      },
+    ),
   )
   node.dispatchEvent(event)
   host.remove()
@@ -146,31 +147,36 @@ function dispatched(
 function slots(carrier: () => unknown): Array<{ name: string; drive: (s: Scope) => void }> {
   const parent = document.createElement("div")
   const needsScope = carrier() as never
+  const under = (s: Scope, run: () => void) => runWithOwner(s, run)
   return [
     {
       name: "setProp value",
-      drive: (s) => setProp(s, document.createElement("div"), "id", needsScope as never),
+      drive: (s) =>
+        under(s, () => setProp(document.createElement("div"), "id", needsScope as never)),
     },
     {
       name: "branch key",
-      drive: (s) => void branch(s, parent, null, needsScope as never, [() => null]),
+      drive: (s) => under(s, () => void branch(parent, null, needsScope as never, [() => null])),
     },
     {
       name: "each source",
-      drive: (s) => void each(s, parent, null, needsScope as never, null, () => null),
+      drive: (s) =>
+        under(s, () => void each(parent, null, needsScope as never, null, () => null)),
     },
     {
       name: "portal target",
-      drive: (s) => void portal(s, needsScope as never, () => null),
+      drive: (s) => under(s, () => void portal(needsScope as never, () => null)),
     },
     {
       name: "boundary on",
       drive: (s) =>
-        void boundary(s, parent, null, "loading", null, () => null, 0, needsScope as never),
+        under(s, () =>
+          void boundary(parent, null, "loading", null, () => null, 0, needsScope as never),
+        ),
     },
     {
       name: "provide value",
-      drive: (s) => provide(s, Theme, needsScope as never, () => null),
+      drive: (s) => under(s, () => provide(Theme, needsScope as never, () => null)),
     },
     // The two slots where `block`'s entry guard is structurally unreachable,
     // because the value is invoked with something that is NOT `undefined`.
@@ -180,7 +186,7 @@ function slots(carrier: () => unknown): Array<{ name: string; drive: (s: Scope) 
     // the read, can answer here — which is what C3.8 says the rule is.
     {
       name: "ref value",
-      drive: (s) => ref(s, document.createElement("div"), needsScope as never),
+      drive: (s) => under(s, () => ref(document.createElement("div"), needsScope as never)),
     },
     // These two DISPATCH, and that is not a convenience — it is where the slot
     // is READ, which is what C3.8 says the test has to be on.
@@ -198,11 +204,17 @@ function slots(carrier: () => unknown): Array<{ name: string; drive: (s: Scope) 
     // satisfy without calling user code at the wrong time.
     {
       name: "delegated handler value",
-      drive: (s) => dispatched(s, (inner, node) => delegate(inner, node, "click", needsScope as never), new MouseEvent("click", { bubbles: true })),
+      drive: (s) =>
+        dispatched(
+          s,
+          (node) => delegate(node, "click", needsScope as never),
+          new MouseEvent("click", { bubbles: true }),
+        ),
     },
     {
       name: "direct listener value",
-      drive: (s) => dispatched(s, (inner, node) => listen(inner, node, "scroll", needsScope as never), new Event("scroll")),
+      drive: (s) =>
+        dispatched(s, (node) => listen(node, "scroll", needsScope as never), new Event("scroll")),
     },
   ]
 }
@@ -281,7 +293,14 @@ export const claims: Claim[] = [
               dispose(root)
             }
             await kit.settle()
-            if (thrown === null || (thrown as Error).name !== "ScopeMissingError") {
+            // `branch`'s KEY is deliberately unguarded against a Cell that
+            // YIELDS a Block, and `flow.ts` records why: the key's value is
+            // only ever compared with `===`, never invoked or inserted, and
+            // guarding it made `<Dynamic component={C} />` impossible because
+            // a compiled component IS a Block. An exception with a reason, not
+            // a hole: every other slot READS its value.
+            const exempt = shape === "laundered" && slot.name === "branch key"
+            if (!exempt && (thrown === null || (thrown as Error).name !== "ScopeMissingError")) {
               surviving.push(`${shape}/${slot.name}`)
             }
           }
@@ -337,21 +356,26 @@ export const claims: Claim[] = [
     },
   },
   {
-    id: "a-block-invoked-with-undefined-never-runs-under-the-ambient-scope",
+    id: "the-refusal-precedes-the-body-and-files-nothing",
     rule: "C3.8",
-    says: "the refusal is `block`'s own entry guard and not a downstream stringification: a Block whose body only registers a cleanup, reads context and returns a plain string throws while a scope is ambient, and files NOTHING on that scope",
+    says: "a Block reaching a Cell slot is refused BEFORE its body runs, so it registers no cleanup and reads no context on the scope that was current",
     async check(kit) {
-      // The claim beside this one observes the STRINGIFICATION — a built
-      // subtree's markup in an attribute — which is `toString`'s own brand test
-      // and not the entry guard. A Block that returns a string is invisible to
-      // it, and that Block is the Provider bug's actual shape: the cleanup and
-      // the context read go to whatever scope happened to be current.
+      // The claim beside this one observes the STRINGIFICATION, a built
+      // subtree's markup in an attribute, which is the WRITE's brand test. A
+      // Block that returns a plain string is invisible to it, and that Block is
+      // the Provider bug's actual shape: the cleanup and the context read go to
+      // whatever scope happened to be current.
+      //
+      // This used to be `block`'s entry guard, which fired on a scope argument
+      // of `undefined`. Ownership is ambient and there is no such argument, so
+      // the guard is gone and what stands in its place is the VALUE test at the
+      // slot. The property is the same one and it is stronger where it matters:
+      // the throw has to come before the body, or the filing already happened.
       let bodyRan = 0
       let sawContext: string | null = null
       const filed: string[] = []
-      const quiet = block((s: Scope | null) => {
+      const quiet = block(() => {
         bodyRan++
-        void s
         onCleanup(() => filed.push("quiet"))
         sawContext = useContext(Theme) ?? null
         return "a plain string"
@@ -360,7 +384,7 @@ export const claims: Claim[] = [
       const ambient = enterRoot()
       let thrown: unknown = null
       try {
-        ;(quiet as unknown as (s?: Scope | null) => unknown)(undefined)
+        setProp(document.createElement("div"), "id", quiet as never)
       } catch (error) {
         thrown = error
       }
@@ -371,11 +395,11 @@ export const claims: Claim[] = [
 
       if (thrown === null || (thrown as Error).name !== "ScopeMissingError") {
         kit.fail(
-          `a branded Block invoked with \`undefined\` while a scope was ambient ` +
+          `a branded Block reaching a Cell slot while a scope was ambient ` +
             `${thrown === null ? "did not throw at all" : `threw ${(thrown as Error).name}`}; its body ran ` +
-            `${bodyRan} time(s) and read ${JSON.stringify(sawContext)} from the ambient chain. C3.8's ` +
-            `negative half is that the fallback to CURRENT does not exist — not that a built subtree ` +
-            `is refused where it would have been stringified`,
+            `${bodyRan} time(s) and read ${JSON.stringify(sawContext)} from the ambient chain. C3.8 ` +
+            `refuses the VALUE at the slot, and a Block returning a string reaches no write that ` +
+            `could catch it later`,
         )
       }
       if (bodyRan !== 0 || filed.length !== 0) {
@@ -389,42 +413,39 @@ export const claims: Claim[] = [
     },
   },
   {
-    id: "a-primitive-handed-undefined-throws-before-it-does-anything",
+    id: "a-primitive-with-no-ambient-owner-still-builds",
     rule: "C3.8",
-    says: "`requireScope` is the other half of the same negative: every Cell-slot primitive refuses `undefined` itself, so a missing scope is named at the entry point rather than resolved against CURRENT",
+    says: "`null` is a scope VALUE, so a Cell-slot primitive run with no ambient owner builds under a root rather than throwing or silently detaching",
     async check(kit) {
-      // Every drive here carries a plain CELL, so nothing in the value can
-      // throw: the only thing under test is the primitive's own refusal of a
-      // missing scope. Without it `scope ?? null` reads as "no owner", which is
-      // a legal value and silently detaches everything the call builds.
+      // The inverse of what this claim used to say. `requireScope` refused an
+      // `undefined` scope ARGUMENT so that a missing one was named at the entry
+      // point instead of resolving to `CURRENT`. There is no argument now, so
+      // there is nothing to be missing: `null` is the parent of a root and the
+      // only reading of "no owner" left.
+      //
+      // What that costs is worth stating, because it is the reason the old rule
+      // existed: work built with no owner is owned by nobody until something
+      // adopts it. The orphan list is what bounds that, and `render`'s eager
+      // form claims it; O5 is where that is pinned.
+      //
+      // Every drive carries a plain CELL, so nothing in the value can throw and
+      // the only thing under test is the primitive's own tolerance of `null`.
       const cases = slots(() => () => "a cell")
-      const surviving: string[] = []
       const wrong: string[] = []
-      const ambient = enterRoot()
-      try {
-        for (const slot of cases) {
-          let thrown: unknown = null
-          try {
-            slot.drive(undefined as never)
-          } catch (error) {
-            thrown = error
-          }
-          if (thrown === null) surviving.push(slot.name)
-          else if ((thrown as Error).name !== "ScopeMissingError")
-            wrong.push(`${slot.name} -> ${(thrown as Error).name}: ${(thrown as Error).message}`)
+      for (const slot of cases) {
+        try {
+          slot.drive(null as never)
+        } catch (error) {
+          wrong.push(`${slot.name} -> ${(error as Error).name}: ${(error as Error).message}`)
         }
-      } finally {
-        exit(ambient)
-        dispose(ambient)
       }
       await kit.settle()
       kit.precondition(cases.length >= 9, "the slot list is empty, so nothing was driven")
-      if (surviving.length > 0 || wrong.length > 0) {
+      if (wrong.length > 0) {
         kit.fail(
-          `${surviving.length} of ${cases.length} primitives accepted \`undefined\` as their scope ` +
-            `(${surviving.join(", ") || "none"}); ${wrong.length} refused it with something other than ` +
-            `ScopeMissingError (${wrong.join(", ") || "none"}). A construct invoked with no scope is ` +
-            `named, not resolved against CURRENT and not silently detached`,
+          `${wrong.length} of ${cases.length} primitives refused to run with no ambient owner ` +
+            `(${wrong.join(", ")}). \`null\` is a scope value and the compiler emits it for a ` +
+            `module-level position, so refusing it makes the top of every module unreachable`,
         )
       }
     },

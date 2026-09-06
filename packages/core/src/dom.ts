@@ -576,6 +576,18 @@ function isEnumeratedAttr(name: string): boolean {
 
 export function setAttr(element: Element, name: string, value: unknown, prev?: unknown): unknown {
   if (value === prev) return prev;
+  // C5.1 item 2: a NODE is never an attribute value, so a Block that reached
+  // this channel and was built is caught here rather than serialised.
+  //
+  // The read is where the rule says the test belongs, and for a props member in
+  // an attribute the compiler emits a direct call — `() => props.badge()` —
+  // which no `readSlot` sees. While a Block refused to run without a scope the
+  // call itself threw; ownership is ambient now, so it runs, returns a subtree,
+  // and `toString` writes `title="<b>…</b>"`. This is the same refusal one step
+  // later, at the only place the value is visible.
+  if (value instanceof Node) {
+    throw new ScopeMissingError(`setAttr ${name} (a Block reached a Cell slot)`);
+  }
   if (isBoolean(value)) {
     if (isEnumeratedAttr(name)) {
       element.setAttribute(name, value ? "true" : "false");

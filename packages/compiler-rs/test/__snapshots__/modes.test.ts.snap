@@ -173,7 +173,7 @@ semantics/sem-async-stale-response  2a83ebe8af27 bf6bbd130851 a01622024b9a a0162
 semantics/sem-async-stream  a81760fe8faf b37dfc0dc0dc e5561b2cbe81 2f48b4ee82f2 258f4231b85f 84f538f29005 6c9a7066209f
 semantics/sem-calling-convention  bd3ea3373e50 b0723458dae0 a30b23e89a87 a30b23e89a87 99b7a21cdc5e 3725e6fa8de3 a5567bc17f91
 semantics/sem-ctx-provider-default-silent  1185d38b8802 7f31a5d76532 3576d1f50c30 a6fb57e923f3 0ced47ef3ec9 067813cd41ce 92ca9548375a
-semantics/sem-ctx-provider-direct-child  815577cda1f3 c4adfa7c8334 cc257831155c cc257831155c 0a9d17b6d2a4 78760b8a9a73 cc257831155c
+semantics/sem-ctx-provider-direct-child  ea835ed7d6a1 aabf55a667b1 c285a1eed457 c285a1eed457 3d66a43ccd3c 6ddb66c89ac8 c285a1eed457
 semantics/sem-ctx-provider-nested  42cd09a3e17a c3283d1ffaf2 79523fc6a90c 6644f361a108 e6c2c602308f 81e270a39957 79523fc6a90c
 semantics/sem-ctx-provider-wrapper-component  0aa943761107 792456676288 98ef990a7afe ef8fc86b787a b0b63b18d17f 668024b5e001 98ef990a7afe
 semantics/sem-ctx-value-is-live  43466380da20 fa7d3e626a25 f19f99846c85 f19f99846c85 1faa1d842c6e c2676b118785 f19f99846c85
@@ -186,11 +186,11 @@ semantics/sem-form-dom-compare  e491faa94582 bdc814b943ff 68b77d5e564d 68b77d5e5
 semantics/sem-form-selection-preserved  9673f517ce3c 7a21bc04e7ba bb8e905145e0 bb8e905145e0 874f45e934a2 5cbf7a1c37a7 bb8e905145e0
 semantics/sem-key-identity-default  75cede34d547 998bb950cd90 2095d8a4369b 84a7e94d4451 3080a733ea37 5ff814d32255 8973db51b6b7
 semantics/sem-loading-value  e4f1694ce64d bd9069b9f47d 001a21ad1cfb 9cc402e49bc8 e1b798f22db9 7dd0cd33e657 a5e0ebabfdb2
-semantics/sem-own-given-scope-wins  492e1b6573b6 095de62e37c3 d2edb61f8d17 d2edb61f8d17 dd49fe59ea0c 492e1b6573b6 d2edb61f8d17
-semantics/sem-own-render-disposer-disposes  55c927f5622f 9d6180c07146 f974db2f67b1 f974db2f67b1 898540f052a0 a140ce85dc04 b2f126290327
-semantics/sem-own-slot-arguments  777dd7461ce7 777dd7461ce7 685f5cbfd93e 685f5cbfd93e 3c58e9ba2d94 777dd7461ce7 685f5cbfd93e
-semantics/sem-props-block-in-cell-slot  e9c726550e14 88b9b09bb3e4 aa8698782d21 aa8698782d21 21c46be9905f db3b4e1545e7 aa8698782d21
-semantics/sem-props-cast-keeps-the-brand  85e3ba5089bd 561f4d85a970 b935fb1c16a4 b935fb1c16a4 60eab5191bcc 2e0a787f4ca8 b935fb1c16a4
+semantics/sem-own-given-scope-wins  c2a13c5856b0 2d3084bf4407 0d237505c7b0 0d237505c7b0 a97438815ecb c2a13c5856b0 0d237505c7b0
+semantics/sem-own-render-disposer-disposes  2b15bb4703c2 2c02855266af 5eb65740389c 5eb65740389c b0d45524c495 3d25fbcd88c3 ae96af722cc4
+semantics/sem-own-slot-arguments  59ae469610c3 59ae469610c3 3df7f5f8dc58 3df7f5f8dc58 92042df84c1c 59ae469610c3 3df7f5f8dc58
+semantics/sem-props-block-in-cell-slot  20ff51e7be14 da993fd8ad2a 3aaced9cab2e 3aaced9cab2e 6842a8b5f720 15a55f0eb4a4 3aaced9cab2e
+semantics/sem-props-cast-keeps-the-brand  2477aa6a120b 8726cdb58a80 e3fb4c41eff3 e3fb4c41eff3 c2bcef8804cd 7cd0e35bd3a6 e3fb4c41eff3
 semantics/sem-react-apply-is-untracked  4860fefab0c3 67a1d9adfdbb 15cfab2d330a 15cfab2d330a df56ae6857f0 4860fefab0c3 15cfab2d330a
 semantics/sem-react-component-body-untracked  1da9a9f427e6 58002bf8b59c c77d16e3a691 c77d16e3a691 b98b67570098 c723f07f70a2 c77d16e3a691
 semantics/sem-react-untrack-keeps-owner  4528aa5a902f 4528aa5a902f 08020bfd3f67 08020bfd3f67 89fc04c6c825 4528aa5a902f 08020bfd3f67
