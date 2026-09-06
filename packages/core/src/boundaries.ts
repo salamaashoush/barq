@@ -157,6 +157,11 @@ export function createRevealCoordinator(
       registrations.update((n) => n + 1);
 
       const display = computed<RevealDisplay>(() => {
+        // The register list, because a slot's own POSITION is what `held` reads
+        // and a removal ahead of it moves that without moving the frontier: the
+        // head going while the frontier stays at 0 promotes this slot from
+        // collapsed to the frontier itself.
+        registrations();
         // A hold from an enclosing group propagates through the whole subtree,
         // carrying whatever collapsed policy the outer asked for. This group's
         // own order is ignored while held and resumes once the outer releases.
@@ -300,11 +305,37 @@ export function loadingBoundary<T, U>(
   fallback: () => U,
   options?: { on?: () => unknown },
 ): Computed<T | U> {
+  // The group is read from the scope this boundary was GIVEN, before it forks
+  // one of its own: the fork is what would shadow the answer.
+  const group = currentRevealHandle();
   const own = owner("branch");
   const pending = createPendingCollector();
   pending.install(own);
 
   const content = runWithOwner(own, () => computed(fn));
+
+  /**
+   * What this slot reports UPWARD, and a fact about DATA rather than about what
+   * it is showing: the coordinator maps readiness onto display and never the
+   * reverse, which is what stops a held group deadlocking against its own hold.
+   *
+   * It PULLS the content, because a boundary whose body has not run yet has
+   * nothing pending and would otherwise report ready before it had asked.
+   */
+  const ready = (): boolean => {
+    try {
+      content();
+    } catch (err) {
+      // A throw is a settled outcome for ordering; only NOT-READY holds a slot.
+      if (err instanceof NotReadyError) return false;
+    }
+    return pending.count() === 0;
+  };
+
+  const slot = group?.register({ ready, minimallyReady: ready });
+  if (slot !== undefined) {
+    runWithOwner(own, () => onCleanup(() => slot.unregister()));
+  }
 
   const onFn = options?.on;
   let lastOn: unknown;
@@ -321,6 +352,13 @@ export function loadingBoundary<T, U>(
       lastOn = next;
       hasLastOn = true;
     }
+
+    // A group holding this slot outranks its own readiness: that is what an
+    // order means. `collapsed` is the difference between showing the fallback
+    // and showing nothing at all.
+    const shown = slot?.display();
+    if (shown === "nothing") return undefined as U;
+    if (shown === "fallback") return fallback();
 
     let value: T;
     try {
