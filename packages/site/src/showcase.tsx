@@ -491,7 +491,7 @@ export function Showcase() {
           <div class={stack}>
             <Field>
               <FieldLabel for="email">Email Address</FieldLabel>
-              <Input id="email" type="email" value="artist@studio.inc" />
+              <Input id="email" type="email" value="artist@example.com" />
             </Field>
             <Field>
               <FieldLabel for="password">Current Password</FieldLabel>
