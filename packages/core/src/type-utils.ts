@@ -2,7 +2,7 @@
  * Type-safe assertion and guard utilities
  * Use these instead of raw `as` assertions throughout the codebase
  */
-import { isBlock, ScopeMissingError } from "./signals.ts";
+import { isBlock, jsxAsValue } from "./signals.ts";
 
 // ============================================================================
 // Type Guards
@@ -83,10 +83,7 @@ export function toString(value: unknown): string {
   if (isNumber(value)) return String(value);
   if (isBoolean(value)) return value ? "true" : "false";
   if (isBlock(value)) {
-    throw new ScopeMissingError(
-      "a Block reached a text or attribute position, where its own source text would be " +
-        "written into the document (C5.1). Render it as a child, or hand the position a Cell",
-    );
+    throw jsxAsValue("A text or attribute position");
   }
   return String(value);
 }
@@ -179,7 +176,12 @@ export function assert<T>(value: unknown): T {
  */
 export function assertWith<T>(value: unknown, predicate: (v: unknown) => v is T): T {
   if (!predicate(value)) {
-    throw new TypeError(`Assertion failed: value does not satisfy predicate`);
+    throw new TypeError(
+      `\`assertWith\` was given a value of type \`${typeof value}\` that its predicate ` +
+        `${predicate.name === "" ? "" : `\`${predicate.name}\` `}rejects, so the value cannot be ` +
+        "used as the type the caller asked for. Check the value before the call, or pass the " +
+        "predicate that matches it.",
+    );
   }
   return value;
 }

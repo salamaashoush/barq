@@ -4,143 +4,125 @@
  * NotReadyError and effect errors.
  */
 
+import { rooted } from "./test-root.ts";
 import { describe, expect, test } from "bun:test";
 import {
   NotReadyError,
-  computed,
-  scope,
-  effect,
+  createMemo,
+  createRoot,
+  createTrackedEffect,
   flush,
   isPending,
   latest,
   refresh,
   render,
-  signal,
+  createSignal,
 } from "./index.ts";
 import { Errored, Loading } from "./components.ts";
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 describe("createAsync", () => {
-  test("read before resolution throws NotReadyError; resolves to value", async () => {
-    const data = computed(async () => {
+  test(
+    "read before resolution throws NotReadyError; resolves to value",
+    rooted(async () => {
+      const data = createMemo(async () => {
+        await tick();
+        return 42;
+      });
+
+      expect(() => data()).toThrow(NotReadyError);
+
       await tick();
-      return 42;
-    });
-
-    expect(() => data()).toThrow(NotReadyError);
-
-    await tick();
-    await tick();
-    expect(data()).toBe(42);
-  });
-
-  test("re-fetches when a dependency changes, keeps stale value via latest", async () => {
-    const id = signal(1);
-    const user = computed(async () => {
-      const current = id();
       await tick();
-      return `user-${current}`;
-    });
+      expect(data()).toBe(42);
+    }),
+  );
 
-    // The first read is UNINITIALIZED, which `isPending` reports as `false` —
-    // nothing is stale because nothing has ever been there. The read itself is
-    // the probe, and it also kicks the lazy fetch.
-    expect(() => user()).toThrow(NotReadyError);
-    await tick();
-    await tick();
-    expect(user()).toBe("user-1");
+  test(
+    "re-fetches when a dependency changes, keeps stale value via latest",
+    rooted(async () => {
+      const [id, setId] = createSignal(1);
+      const user = createMemo(async () => {
+        const current = id();
+        await tick();
+        return `user-${current}`;
+      });
 
-    id.set(2);
-    flush();
-    // In flight: plain read is pending, latest() returns the stale value
-    expect(isPending(() => user())).toBe(true);
-    expect(latest(() => user())).toBe("user-1");
-
-    await tick();
-    await tick();
-    expect(user()).toBe("user-2");
-  });
-
-  test("rejection propagates as a thrown error on read", async () => {
-    const failing = computed(async () => {
+      // The first read is UNINITIALIZED, which `isPending` reports as `false` —
+      // nothing is stale because nothing has ever been there. The read itself is
+      // the probe, and it also kicks the lazy fetch.
+      expect(() => user()).toThrow(NotReadyError);
       await tick();
-      throw new Error("fetch failed");
-    });
-
-    expect(() => failing()).toThrow(NotReadyError);
-    await tick();
-    await tick();
-    expect(() => failing()).toThrow("fetch failed");
-  });
-
-  test("pending status propagates through derived computeds", async () => {
-    const data = computed(async () => {
       await tick();
-      return 10;
-    });
-    const doubled = computed(() => data() * 2);
+      expect(user()).toBe("user-1");
 
-    // Pendingness propagates as the THROW: a derived value over an unsettled
-    // one is unsettled, which is what reaches the boundary.
-    expect(() => doubled()).toThrow(NotReadyError);
-    await tick();
-    await tick();
-    expect(doubled()).toBe(20);
+      setId(2);
+      flush();
+      // In flight: plain read is pending, latest() returns the stale value
+      expect(isPending(() => user())).toBe(true);
+      expect(latest(() => user())).toBe("user-1");
 
-    // And once it HAS a value, a refresh reads as pending through the
-    // derivation, with the stale value still available.
-    refresh(data);
-    expect(isPending(() => doubled())).toBe(true);
-    expect(latest(() => doubled())).toBe(20);
-  });
+      await tick();
+      await tick();
+      expect(user()).toBe("user-2");
+    }),
+  );
+
+  test(
+    "rejection propagates as a thrown error on read",
+    rooted(async () => {
+      const failing = createMemo(async () => {
+        await tick();
+        throw new Error("fetch failed");
+      });
+
+      expect(() => failing()).toThrow(NotReadyError);
+      await tick();
+      await tick();
+      expect(() => failing()).toThrow("fetch failed");
+    }),
+  );
 });
 
 describe("isPending / latest", () => {
-  test("isPending is false for sync values", () => {
-    const s = signal(1);
-    expect(isPending(() => s())).toBe(false);
-  });
+  test(
+    "isPending is false for sync values",
+    rooted(() => {
+      const [s] = createSignal(1);
+      expect(isPending(() => s())).toBe(false);
+    }),
+  );
 
-  test("isPending rethrows non-NotReady errors", () => {
-    expect(() =>
-      isPending(() => {
-        throw new Error("boom");
-      }),
-    ).toThrow("boom");
-  });
-
-  // Solid 2.0's rule, read out of `@solidjs/signals@2.0.0-beta.31`:
-  // `latest` rethrows ONLY for a value that has never held one AND a caller
-  // that is itself a derivation, where the throw is what a `Loading` boundary
-  // is for. Outside a derivation there is nothing to suspend and the honest
-  // answer is `undefined`.
-  test("latest answers undefined for a never-resolved value outside a derivation", () => {
-    const data = computed(async () => {
-      await tick();
-      return 1;
-    });
-    expect(latest(() => data())).toBeUndefined();
-  });
-
-  test("latest rethrows for a never-resolved value INSIDE a derivation", () => {
-    const data = computed(async () => {
-      await tick();
-      return 1;
-    });
-    const derived = computed(() => latest(() => data()));
-    expect(() => derived()).toThrow(NotReadyError);
-  });
+  test(
+    "latest rethrows for a never-resolved value INSIDE a derivation",
+    rooted(() => {
+      const data = createMemo(async () => {
+        await tick();
+        return 1;
+      });
+      const derived = createMemo(() => latest(() => data()));
+      expect(() => derived()).toThrow(NotReadyError);
+    }),
+  );
 });
 
 describe("refresh", () => {
   test("recomputes a derived value on demand", () => {
     let runs = 0;
     const source = { value: 1 };
-    const c = computed(() => {
-      runs++;
-      return source.value;
-    });
+    // Owned, so it is computed once and kept; asked again from outside the
+    // root, which is where a re-ask belongs.
+    const [c, dispose] = createRoot(
+      (disposeRoot) =>
+        [
+          createMemo(() => {
+            runs++;
+            return source.value;
+          }),
+          disposeRoot,
+        ] as const,
+    );
 
     expect(c()).toBe(1);
     expect(runs).toBe(1);
@@ -148,117 +130,131 @@ describe("refresh", () => {
     source.value = 2;
     expect(c()).toBe(1); // not reactive to plain mutation
 
-    refresh(c);
+    void refresh(c);
+    flush();
     expect(c()).toBe(2);
     expect(runs).toBe(2);
+    dispose();
   });
 
-  test("observed async computeds re-run and notify on refresh", async () => {
-    let fetches = 0;
-    const data = computed(async () => {
-      fetches++;
+  test(
+    "observed async computeds re-run and notify on refresh",
+    rooted(async () => {
+      let fetches = 0;
+      const data = createMemo(async () => {
+        fetches++;
+        await tick();
+        return fetches;
+      });
+
+      const seen: number[] = [];
+      createTrackedEffect(() => {
+        try {
+          seen.push(data());
+        } catch (err) {
+          if (!(err instanceof NotReadyError)) throw err;
+        }
+      });
+      flush();
+
       await tick();
-      return fetches;
-    });
+      await tick();
+      expect(seen).toEqual([1]);
 
-    const seen: number[] = [];
-    effect(() => {
-      try {
-        seen.push(data());
-      } catch (err) {
-        if (!(err instanceof NotReadyError)) throw err;
-      }
-    });
-
-    await tick();
-    await tick();
-    expect(seen).toEqual([1]);
-
-    refresh(data);
-    flush();
-    await tick();
-    await tick();
-    expect(seen).toEqual([1, 2]);
-    expect(fetches).toBe(2);
-  });
+      void refresh(data);
+      flush();
+      await tick();
+      await tick();
+      expect(seen).toEqual([1, 2]);
+      expect(fetches).toBe(2);
+    }),
+  );
 });
 
 describe("Loading boundary", () => {
-  test("shows fallback while pending, content after resolution", async () => {
-    const container = document.createElement("div");
-    const data = computed(async () => {
-      await tick();
-      return "loaded";
-    });
-
-    scope(() => {
-      const el = Loading({
-        fallback: document.createTextNode("loading..."),
-        children: () => {
-          // reactive child reading an async value
-          try {
-            return data();
-          } catch (err) {
-            if (err instanceof NotReadyError) throw err;
-            throw err;
-          }
-        },
+  test(
+    "shows fallback while pending, content after resolution",
+    rooted(async () => {
+      const container = document.createElement("div");
+      const data = createMemo(async () => {
+        await tick();
+        return "loaded";
       });
-      render(el, container);
-    });
-    flush();
 
-    expect(container.textContent).toContain("loading...");
+      createRoot(() => {
+        const el = Loading({
+          fallback: document.createTextNode("loading..."),
+          children: () => {
+            // reactive child reading an async value
+            try {
+              return data();
+            } catch (err) {
+              if (err instanceof NotReadyError) throw err;
+              throw err;
+            }
+          },
+        });
+        render(el, container);
+      });
+      flush();
 
-    await tick();
-    await tick();
-    flush();
-    expect(container.textContent).toContain("loaded");
-    expect(container.textContent).not.toContain("loading...");
-  });
+      expect(container.textContent).toContain("loading...");
+
+      await tick();
+      await tick();
+      flush();
+      expect(container.textContent).toContain("loaded");
+      expect(container.textContent).not.toContain("loading...");
+    }),
+  );
 });
 
 describe("Errored boundary", () => {
-  test("catches synchronous render errors", () => {
-    const container = document.createElement("div");
+  test(
+    "catches synchronous render errors",
+    rooted(() => {
+      const container = document.createElement("div");
 
-    scope(() => {
-      const el = Errored({
-        fallback: (error: () => Error) => document.createTextNode(`error: ${error().message}`),
-        children: () => {
-          throw new Error("render exploded");
-        },
+      createRoot(() => {
+        const el = Errored({
+          fallback: (error: () => Error) => document.createTextNode(`error: ${error().message}`),
+          children: () => {
+            throw new Error("render exploded");
+          },
+        });
+        render(el, container);
       });
-      render(el, container);
-    });
-    flush();
+      flush();
 
-    expect(container.textContent).toContain("error: render exploded");
-  });
+      expect(container.textContent).toContain("error: render exploded");
+    }),
+  );
 
   test("catches errors thrown by effects under the boundary", () => {
     const container = document.createElement("div");
-    const trigger = signal(false);
+    const [trigger, setTrigger] = createSignal(false);
 
-    scope(() => {
+    const dispose = createRoot((disposeRoot) => {
       const el = Errored({
         fallback: (error: () => Error) => document.createTextNode(`caught: ${error().message}`),
         children: () => {
-          effect(() => {
+          createTrackedEffect(() => {
             if (trigger()) throw new Error("effect exploded");
           });
           return document.createTextNode("ok");
         },
       });
       render(el, container);
+      return disposeRoot;
     });
     flush();
 
     expect(container.textContent).toContain("ok");
 
-    trigger.set(true);
+    setTrigger(true);
     flush();
     expect(container.textContent).toContain("caught: effect exploded");
+    dispose();
   });
 
   test("reset re-renders children", () => {
@@ -266,7 +262,7 @@ describe("Errored boundary", () => {
     let shouldThrow = true;
     let resetFn: (() => void) | null = null;
 
-    scope(() => {
+    const dispose = createRoot((disposeRoot) => {
       const el = Errored({
         fallback: (error: () => Error, reset: () => void) => {
           resetFn = reset;
@@ -278,6 +274,7 @@ describe("Errored boundary", () => {
         },
       });
       render(el, container);
+      return disposeRoot;
     });
     flush();
 
@@ -287,5 +284,6 @@ describe("Errored boundary", () => {
     resetFn!();
     flush();
     expect(container.textContent).toContain("recovered");
+    dispose();
   });
 });

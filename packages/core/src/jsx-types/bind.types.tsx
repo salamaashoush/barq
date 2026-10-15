@@ -11,19 +11,16 @@
  * refusal that stops firing is a rule that has quietly gone.
  */
 
-import { computed, linked, signal } from "../index.ts";
+import { createMemo, createSignal } from "../index.ts";
 
-const name = signal("Ada");
-const agreed = signal(false);
-const amount = signal(0);
-const when = signal<Date | null>(null);
-const picked = signal<FileList | null>(null);
-const size = signal("s");
-const showing = signal(false);
-const draft = linked(
-  () => name(),
-  (value) => value,
-);
+const name = createSignal("Ada");
+const agreed = createSignal(false);
+const amount = createSignal(0);
+const when = createSignal<Date | null>(null);
+const picked = createSignal<FileList | null>(null);
+const size = createSignal("s");
+const showing = createSignal(false);
+const draft = createSignal(() => name[0]());
 const element: { current: HTMLInputElement | null } = { current: null };
 
 // Every channel the compiler resolves, on the element it resolves it for.
@@ -41,7 +38,7 @@ export const accepted = (
     <div contenteditable="true" bind:value={name} />
     <dialog bind:open={showing} />
     <input type="checkbox" bind:checked={agreed} />
-    {/* A `linked` cell is writable, so it binds. */}
+    {/* A derived signal is writable, so it binds. */}
     <input type="text" bind:value={draft} />
     {/* `bind:this` is a ref, not a channel. */}
     <input type="text" bind:this={element} />
@@ -50,14 +47,14 @@ export const accepted = (
   </form>
 );
 
-const readOnly = computed(() => "Ada");
+const readOnly = createMemo(() => "Ada");
 const bare = (): string => "Ada";
 
 export const refused = (
   <form>
-    {/* @ts-expect-error a computed has no `set`, so it cannot be a bind target */}
+    {/* @ts-expect-error a memo is an accessor with no setter, so it cannot be a bind target */}
     <input type="text" bind:value={readOnly} />
-    {/* @ts-expect-error a bare accessor has no `set` either */}
+    {/* @ts-expect-error a bare accessor has no setter either */}
     <input type="text" bind:value={bare} />
     {/* @ts-expect-error a string signal is not a boolean channel */}
     <input type="checkbox" bind:checked={name} />

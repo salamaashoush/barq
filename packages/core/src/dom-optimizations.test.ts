@@ -6,7 +6,7 @@
 
 import { beforeEach, describe, expect, test } from "bun:test";
 import { element, hydrate, insert, setProp, spread } from "./dom.ts";
-import { flush, signal } from "./signals.ts";
+import { flush, createSignal } from "./signals.ts";
 
 let container: HTMLDivElement;
 beforeEach(() => {
@@ -23,12 +23,12 @@ describe("insert: array reconciliation", () => {
     const c = document.createElement("u");
     c.textContent = "c";
 
-    const list = signal([a, b, c]);
+    const [list, setList] = createSignal([a, b, c]);
     insert(container, () => list());
     flush();
     expect(container.textContent).toBe("abc");
 
-    list.set([c, a, b]);
+    setList([c, a, b]);
     flush();
     expect(container.textContent).toBe("cab");
     // identical node instances, just moved
@@ -43,30 +43,30 @@ describe("insert: array reconciliation", () => {
       el.textContent = String(n);
       return el;
     });
-    const list = signal(nodes.slice(0, 2));
+    const [list, setList] = createSignal(nodes.slice(0, 2));
     insert(container, () => list());
     flush();
 
-    list.set(nodes); // append at end
+    setList(nodes); // append at end
     flush();
     expect(container.textContent).toBe("012");
     expect(container.children[0]).toBe(nodes[0]); // untouched
 
-    list.set(nodes.slice(1)); // remove from start
+    setList(nodes.slice(1)); // remove from start
     flush();
     expect(container.textContent).toBe("12");
     expect(container.children[0]).toBe(nodes[1]);
   });
 
   test("text nodes are reused positionally when content matches", () => {
-    const items = signal(["a", "b", "c"]);
+    const [items, setItems] = createSignal(["a", "b", "c"]);
     insert(container, () => items());
     flush();
 
     const firstText = container.firstChild?.nextSibling; // after start marker
     expect(firstText?.nodeType).toBe(3);
 
-    items.set(["a", "b", "d"]); // only last changes
+    setItems(["a", "b", "d"]); // only last changes
     flush();
     expect(container.textContent).toBe("abd");
     expect(container.firstChild?.nextSibling).toBe(firstText); // "a" reused
@@ -83,14 +83,17 @@ describe("prev-value diffing", () => {
       return origSet(name, value);
     };
 
-    const styles = signal<Record<string, string>>({ color: "red", margin: "4px" });
+    const [styles, setStyles] = createSignal<Record<string, string>>({
+      color: "red",
+      margin: "4px",
+    });
     setProp(el, "style", () => styles());
     flush();
     expect(writes).toEqual(["color", "margin"]);
     expect(el.style.color).toBe("red");
 
     writes.length = 0;
-    styles.set({ color: "red", padding: "2px" }); // margin gone, color same
+    setStyles({ color: "red", padding: "2px" }); // margin gone, color same
     flush();
     expect(el.style.margin).toBe("");
     expect(el.style.padding).toBe("2px");
@@ -106,8 +109,8 @@ describe("prev-value diffing", () => {
       return origSetAttr(name, value);
     };
 
-    const title = signal("x");
-    const tick = signal(0);
+    const [title, setTitle] = createSignal("x");
+    const [tick, setTick] = createSignal(0);
     setProp(el, "title", () => {
       tick(); // extra dependency forcing re-runs
       return title();
@@ -115,23 +118,23 @@ describe("prev-value diffing", () => {
     flush();
     expect(sets).toBe(1);
 
-    tick.set(1); // re-run with same title value
+    setTick(1); // re-run with same title value
     flush();
     expect(sets).toBe(1); // no write
 
-    title.set("y");
+    setTitle("y");
     flush();
     expect(sets).toBe(2);
   });
 
   test("class objects diff the final string", () => {
     const el = document.createElement("div");
-    const active = signal(true);
+    const [active, setActive] = createSignal(true);
     setProp(el, "class", () => ({ btn: true, active: active() }));
     flush();
     expect(el.className).toBe("btn active");
 
-    active.set(false);
+    setActive(false);
     flush();
     expect(el.className).toBe("btn");
   });
@@ -140,13 +143,13 @@ describe("prev-value diffing", () => {
 describe("spread", () => {
   test("applies, updates, and removes props reactively", () => {
     const el = document.createElement("div");
-    const props = signal<Record<string, unknown>>({ id: "a", title: "t1" });
+    const [props, setProps] = createSignal<Record<string, unknown>>({ id: "a", title: "t1" });
     spread(el, () => props());
     flush();
     expect(el.getAttribute("id")).toBe("a");
     expect(el.getAttribute("title")).toBe("t1");
 
-    props.set({ id: "a", lang: "en" }); // title vanished, lang added
+    setProps({ id: "a", lang: "en" }); // title vanished, lang added
     flush();
     expect(el.getAttribute("title")).toBeNull();
     expect(el.getAttribute("lang")).toBe("en");
@@ -157,7 +160,7 @@ describe("spread", () => {
     const el = document.createElement("button");
     document.body.appendChild(el);
     const log: string[] = [];
-    const props = signal<Record<string, unknown>>({
+    const [props, setProps] = createSignal<Record<string, unknown>>({
       onClick: () => log.push("first"),
     });
     spread(el, () => props());
@@ -165,12 +168,12 @@ describe("spread", () => {
     el.click();
     expect(log).toEqual(["first"]);
 
-    props.set({ onClick: () => log.push("second") });
+    setProps({ onClick: () => log.push("second") });
     flush();
     el.click();
     expect(log).toEqual(["first", "second"]);
 
-    props.set({}); // handler removed
+    setProps({}); // handler removed
     flush();
     el.click();
     expect(log).toEqual(["first", "second"]);
@@ -179,12 +182,12 @@ describe("spread", () => {
   test("ref applies once on mount", () => {
     const el = document.createElement("div");
     let refCalls = 0;
-    const n = signal(0);
+    const [n, setN] = createSignal(0);
     spread(el, () => ({ "data-n": n(), ref: () => refCalls++ }));
     flush();
     expect(refCalls).toBe(1);
 
-    n.set(1);
+    setN(1);
     flush();
     expect(refCalls).toBe(1); // not re-applied
     expect(el.getAttribute("data-n")).toBe("1");

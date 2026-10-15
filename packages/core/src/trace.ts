@@ -1,22 +1,16 @@
 /**
  * The L2b ownership trace. DEV/test only, off by default.
  *
- * Every scope entry, exit and disposal, and every construction the runtime
+ * Every scope opened and disposed, and every construction the runtime
  * performs on someone else's behalf, appends one record. The oracle then asks
  * whether the tree that log describes is the tree the compiler said it was
  * emitting — an expected value derived from the source, so this channel needs
  * no reference implementation and cannot inherit a second implementation's
  * bugs.
  *
- * **Why the sink lives in `signals.ts` and this module installs into it,
- * rather than the other way round.** `signals.ts` must acquire neither a value
- * import nor a reassigned module-level binding: Bun's transpiler inlines a
- * module-scope numeric `const` only while a module has neither, and a signal
- * accessor's `Function.prototype.toString` is observable — one fixture renders
- * it into the DOM and snapshots it. Instrumenting `signals.ts` by importing
- * this module moved that snapshot. `signals.ts` therefore owns a `const`
- * holder, `OWNERSHIP`, and every site is `if (OWNERSHIP.sink !== null)`: one
- * property load and one compare when the trace is off.
+ * `signals.ts` owns the holder, `OWNERSHIP`, and every site is
+ * `if (OWNERSHIP.sink !== null)`: one property load and one compare when the
+ * trace is off.
  */
 
 import { OWNERSHIP } from "./signals.ts";
@@ -26,7 +20,6 @@ export type ScopeKind = "root" | "provide" | "branch" | "each" | "portal" | "sco
 
 export type OwnershipEventKind =
   | "enter"
-  | "exit"
   | "dispose"
   | "clone"
   | "own"
@@ -70,8 +63,6 @@ export interface OwnershipEvent {
  */
 export interface OwnershipSink {
   enter(scope: object, parent: object | null, kind: ScopeKind, attached: boolean): void;
-
-  exit(scope: object): void;
   dispose(scope: object): void;
   clone(html: string, owner: object | null): void;
   /**
@@ -116,32 +107,29 @@ function idOf(scope: object | null | undefined): number {
 }
 
 /**
- * Enough of `Scope`/`ComputedNode` to climb. A scope points at `parent`; a
- * computation points at the scope it was created under with `_owner`, and at
- * the one it owns — which no `enter` ever declared — with `_scope`.
+ * Who owns what, as the trace was told. The engine's owners are opaque, so the
+ * chain is recorded here at the two moments it is known: when a scope is
+ * opened under a parent, and when a reactive node is created under an owner.
  */
-interface Owned {
-  parent?: Owned | null;
-  _owner?: Owned | null;
-}
+let parents = new WeakMap<object, object | null>();
 
 /**
  * The nearest *entered scope* at or above `owner`.
  *
- * `currentOwner` is not always a scope: a computed makes itself the owner of
- * whatever its body creates (`signals.ts:880`), so `getOwner()` inside a
- * `renderEffect` is the effect node, not the `scope` that built it. The
- * ownership question is about the scope, so the chain is climbed until an
- * object the trace has actually seen `enter` turns up. Never mints an id:
- * minting one here would invent a scope that no `enter` event ever declared,
- * and the tree would silently gain a node.
+ * The ambient owner is not always a scope: a computation makes itself the
+ * owner of whatever its body creates, so `getOwner()` inside a `renderEffect`
+ * is the effect node, not the `scope` that built it. The ownership question is
+ * about the scope, so the chain is climbed until an object the trace has
+ * actually seen `enter` turns up. Never mints an id: minting one here would
+ * invent a scope that no `enter` event ever declared, and the tree would
+ * silently gain a node.
  */
-function scopeOf(owner: Owned | null | undefined): number {
-  let at: Owned | null | undefined = owner;
+function scopeOf(owner: object | null | undefined): number {
+  let at: object | null | undefined = owner;
   while (at) {
     const id = ids.get(at);
     if (id !== undefined) return id;
-    at = at.parent !== undefined ? at.parent : at._owner;
+    at = parents.get(at);
   }
   return -1;
 }
@@ -159,26 +147,16 @@ function push(
 
 const SINK: OwnershipSink = {
   enter(scope, parent, kind, attached) {
-    // The parentage recorded is the one the SCOPE stores, not the one the
-    // caller passed. Reading the argument makes both sides of the O2 check
-    // come from the same expression, and a runtime that files every scope
-    // under the wrong parent — or under none — produces a byte-identical
-    // trace. Verified: with `scope.parent` forced to null the corpus was
-    // unchanged; reading it here, that mutant is caught.
-    const stored = (scope as Owned).parent;
-    const above = stored !== undefined ? stored : parent;
+    parents.set(scope, parent);
     // `attached` is registration with whatever the current owner is. It counts
     // as OWNERSHIP only when that owner is the scope this event records as the
     // parent — otherwise an effect node sits between them and holds the
     // disposer, and the order this scope comes apart in is not the parent's.
-    const owned = attached && above !== null && above !== undefined && ids.has(above);
+    const owned = attached && parent !== null && ids.has(parent);
     // The parent is resolved BEFORE the child is minted, so a scope can never
     // be recorded as its own parent, and a parent pointing at an effect node
     // resolves to the scope that owns the effect rather than to nothing.
-    push("enter", idOf(scope), scopeOf(above), kind, kind, owned);
-  },
-  exit(scope) {
-    push("exit", idOf(scope), -1, "", "scope");
+    push("enter", idOf(scope), scopeOf(parent), kind, kind, owned);
   },
   dispose(scope) {
     const repeated = disposedOnce.has(scope);
@@ -195,15 +173,9 @@ const SINK: OwnershipSink = {
   clone(html, owner) {
     push("clone", scopeOf(owner), -1, html, "scope");
   },
-  /**
-   * The owner recorded is the node's OWN `_owner` slot, not the ambient read
-   * the caller happened to make — the same discipline `enter` follows, and for
-   * the same reason: both sides of the O2 check coming from one read cannot
-   * fail whatever the runtime does.
-   */
   own(node, owner, kind) {
-    const stored = (node as Owned)._owner;
-    push("own", scopeOf(stored !== undefined ? stored : owner), -1, kind, "scope");
+    parents.set(node, owner);
+    push("own", scopeOf(owner), -1, kind, "scope");
   },
   blockEnter(label, given) {
     push("block-enter", scopeOf(given), -1, label, "scope");
@@ -215,12 +187,16 @@ const SINK: OwnershipSink = {
 
 export function beginOwnershipTrace(): void {
   if (OWNERSHIP.sink !== null) {
-    throw new Error("ownership trace: a trace is already open — renders must not overlap");
+    throw new Error(
+      "`beginOwnershipTrace` was called while a trace is already open, and two traces at once " +
+        "would mix their events. Call `endOwnershipTrace` before starting the next one.",
+    );
   }
   events = [];
   seq = 0;
   nextId = 1;
   ids = new WeakMap();
+  parents = new WeakMap();
   disposedOnce = new WeakSet();
   OWNERSHIP.sink = SINK;
 }
@@ -230,6 +206,7 @@ export function endOwnershipTrace(): OwnershipEvent[] {
   const captured = events;
   events = [];
   ids = new WeakMap();
+  parents = new WeakMap();
   disposedOnce = new WeakSet();
   return captured;
 }

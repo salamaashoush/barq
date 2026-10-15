@@ -5,10 +5,19 @@
 
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { element } from "./dom.ts";
-import { block, signal, effect, computed, scope, batch, onCleanup, flush } from "./signals.ts";
+import {
+  block,
+  createMemo,
+  createRenderEffect,
+  createRoot,
+  createSignal,
+  createTrackedEffect,
+  flush,
+  onCleanup,
+  runWithOwner,
+} from "./signals.ts";
 import { Dynamic, Errored, For, Loading, Match, Portal, Show, Switch } from "./components.ts";
 import { mergeProps, splitProps } from "./props.ts";
-import { resource } from "./async.ts";
 
 let container: HTMLDivElement;
 
@@ -26,7 +35,7 @@ afterEach(() => {
 // ============================================================================
 describe("For component item updates", () => {
   test("ISSUE: For should provide reactive item access", () => {
-    const items = signal([
+    const [items, setItems] = createSignal([
       { id: 1, name: "Alice" },
       { id: 2, name: "Bob" },
     ]);
@@ -52,7 +61,7 @@ describe("For component item updates", () => {
     expect(renderCount).toBe(2);
 
     // Update an item's name while keeping same key
-    items.set([
+    setItems([
       { id: 1, name: "ALICE" }, // Changed name
       { id: 2, name: "Bob" },
     ]);
@@ -64,7 +73,7 @@ describe("For component item updates", () => {
   });
 
   test("For should handle items with same key but different values", () => {
-    const items = signal([{ id: 1, value: "a" }]);
+    const [items, setItems] = createSignal([{ id: 1, value: "a" }]);
 
     const node = For({
       each: items,
@@ -79,7 +88,7 @@ describe("For component item updates", () => {
     expect(container.textContent).toBe("a");
 
     // Same key, different value
-    items.set([{ id: 1, value: "b" }]);
+    setItems([{ id: 1, value: "b" }]);
     flush();
     expect(container.textContent).toBe("b");
   });
@@ -93,7 +102,7 @@ describe("LIS algorithm performance", () => {
     // Create a large list
     const size = 1000;
     const initialItems = Array.from({ length: size }, (_, i) => ({ id: i, value: `item-${i}` }));
-    const items = signal(initialItems);
+    const [items, setItems] = createSignal(initialItems);
 
     const node = For({
       each: items,
@@ -108,7 +117,7 @@ describe("LIS algorithm performance", () => {
 
     // Reverse the list - this should use LIS for minimal moves
     const start = performance.now();
-    items.set(initialItems.toReversed());
+    setItems(initialItems.toReversed());
     flush();
     const elapsed = performance.now() - start;
 
@@ -124,7 +133,7 @@ describe("LIS algorithm performance", () => {
 
   test("For should handle shuffle efficiently", () => {
     const size = 500;
-    const items = signal(Array.from({ length: size }, (_, i) => ({ id: i })));
+    const [items, setItems] = createSignal(Array.from({ length: size }, (_, i) => ({ id: i })));
 
     const node = For({
       each: items,
@@ -140,7 +149,7 @@ describe("LIS algorithm performance", () => {
     // Shuffle
     const shuffled = items().toSorted(() => Math.random() - 0.5);
     const start = performance.now();
-    items.set(shuffled);
+    setItems(shuffled);
     flush();
     const elapsed = performance.now() - start;
 
@@ -153,7 +162,7 @@ describe("LIS algorithm performance", () => {
 // ============================================================================
 describe("For keyed={false} reactivity", () => {
   test("the row item signal updates when the array value at that index changes", () => {
-    const items = signal(["a", "b", "c"]);
+    const [items, setItems] = createSignal(["a", "b", "c"]);
     const observedValues: string[] = [];
 
     const node = For({
@@ -162,28 +171,30 @@ describe("For keyed={false} reactivity", () => {
       children: (itemAccessor: () => string, idx: number) => {
         const span = document.createElement("span");
         // itemAccessor is a signal that should update when items[idx] changes
-        effect(() => {
+        createTrackedEffect(() => {
           const value = itemAccessor();
           observedValues.push(`${idx}:${value}`);
           span.textContent = value;
         });
+        flush();
         return span;
       },
     });
 
     container.appendChild(node as Node);
+    flush();
     expect(container.textContent).toBe("abc");
     expect(observedValues).toEqual(["0:a", "1:b", "2:c"]);
 
     // Change value at index 1
-    items.set(["a", "B", "c"]);
+    setItems(["a", "B", "c"]);
     flush();
     expect(container.textContent).toBe("aBc");
     expect(observedValues).toContain("1:B");
   });
 
   test("positional rows handle value updates without rebuilding", () => {
-    const items = signal([1, 2, 3, 4, 5]);
+    const [items, setItems] = createSignal([1, 2, 3, 4, 5]);
     let effectRuns = 0;
 
     const node = For({
@@ -191,19 +202,21 @@ describe("For keyed={false} reactivity", () => {
       keyed: false,
       children: (itemAccessor: () => number, _idx: number) => {
         const span = document.createElement("span");
-        effect(() => {
+        createTrackedEffect(() => {
           effectRuns++;
           span.textContent = String(itemAccessor());
         });
+        flush();
         return span;
       },
     });
 
     container.appendChild(node as Node);
+    flush();
     expect(effectRuns).toBe(5); // Initial render
 
     // Update only one value
-    items.set([1, 2, 30, 4, 5]); // Changed index 2
+    setItems([1, 2, 30, 4, 5]); // Changed index 2
     flush();
     expect(effectRuns).toBe(6); // Only one effect should re-run
   });
@@ -213,22 +226,16 @@ describe("For keyed={false} reactivity", () => {
 // Issue 4: the loading boundary
 // ============================================================================
 describe("Loading component", () => {
-  test("Loading shows its fallback until the resource settles", async () => {
+  test("Loading shows its fallback until the value settles", async () => {
     let resolvePromise!: (value: string) => void;
     const promise = new Promise<string>((resolve) => {
       resolvePromise = resolve;
     });
 
-    const r = resource(
-      () => null,
-      async () => {
-        return await promise;
-      },
-    );
+    const r = createMemo(() => promise);
 
-    // `Await` was this, and went at M10: reading a resource throws `NotReady`
-    // before it settles, so the boundary IS the loading state and the read is
-    // the body. Solid 2.0 ships no `Await`.
+    // Reading an async value before it settles throws `NotReady`, so the
+    // boundary IS the loading state and the read is the body.
     const node = Loading({
       fallback: element("div", { children: "Loading..." }),
       children: () => element("div", { children: r() }),
@@ -258,11 +265,13 @@ describe("Errored", () => {
 
     // The error arrives as an ACCESSOR, which is `Errored`'s signature and
     // Solid 2.0's. `ErrorBoundary` handed it over by value and went at M10.
-    const node = Errored({
-      fallback: (error: () => Error, _reset: () => void) =>
-        element("div", { children: `Error: ${error().message}` }),
-      children: ThrowingComponent,
-    });
+    const node = createRoot(() =>
+      Errored({
+        fallback: (error: () => Error, _reset: () => void) =>
+          element("div", { children: `Error: ${error().message}` }),
+        children: ThrowingComponent,
+      }),
+    );
 
     container.appendChild(node as Node);
 
@@ -271,7 +280,7 @@ describe("Errored", () => {
   });
 
   test("Errored reset should re-render children", () => {
-    const throwSignal = signal(true);
+    const [throwSignal, setThrowSignal] = createSignal(true);
     let resetFn: (() => void) | null = null;
 
     const MaybeThrow = () => {
@@ -279,19 +288,21 @@ describe("Errored", () => {
       return element("div", { children: "Success" });
     };
 
-    const node = Errored({
-      fallback: (error: () => Error, reset: () => void) => {
-        resetFn = reset;
-        return element("div", { children: `Error: ${error().message}` });
-      },
-      children: MaybeThrow,
-    });
+    const node = createRoot(() =>
+      Errored({
+        fallback: (error: () => Error, reset: () => void) => {
+          resetFn = reset;
+          return element("div", { children: `Error: ${error().message}` });
+        },
+        children: MaybeThrow,
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(container.textContent).toContain("Error");
 
     // Fix the error and reset
-    throwSignal.set(false);
+    setThrowSignal(false);
     flush();
     (resetFn as (() => void) | null)?.();
     flush();
@@ -335,7 +346,7 @@ describe("Portal component", () => {
       let disposed = false;
       let disposeScope!: () => void;
 
-      scope((dispose) => {
+      createRoot((dispose) => {
         disposeScope = dispose;
 
         const node = Portal({
@@ -372,8 +383,8 @@ describe("Portal component", () => {
 // ============================================================================
 describe("Reactive styles", () => {
   test("Multiple reactive style properties should batch updates", () => {
-    const width = signal(100);
-    const height = signal(100);
+    const [width, setWidth] = createSignal(100);
+    const [height, setHeight] = createSignal(100);
     let styleUpdates = 0;
 
     const node = element("div", {
@@ -393,12 +404,13 @@ describe("Reactive styles", () => {
     expect(styleUpdates).toBe(2); // Initial
 
     // Batch update both
-    batch(() => {
-      width.set(200);
-      height.set(200);
+    flush(() => {
+      setWidth(200);
+      setHeight(200);
     });
 
     // Should update both but efficiently
+    flush();
     expect((node as HTMLElement).style.width).toBe("200px");
     expect((node as HTMLElement).style.height).toBe("200px");
   });
@@ -409,40 +421,42 @@ describe("Reactive styles", () => {
 // ============================================================================
 describe("Show keyed rendering", () => {
   test("Show should dispose effects when condition changes", () => {
-    const show = signal(true);
-    const counter = signal(0);
+    const [show, setShow] = createSignal(true);
+    const [counter, setCounter] = createSignal(0);
     let effectRuns = 0;
 
     const node = Show({
       when: show,
       children: () => {
-        effect(() => {
+        createTrackedEffect(() => {
           counter();
           effectRuns++;
         });
+        flush();
         return element("div", { children: "Content" });
       },
     });
 
     container.appendChild(node as Node);
+    flush();
     expect(effectRuns).toBe(1);
 
     // Update counter - effect should run
-    counter.set(1);
+    setCounter(1);
     flush();
     expect(effectRuns).toBe(2);
 
     // Hide - effect should be disposed
-    show.set(false);
+    setShow(false);
     flush();
 
     // Update counter - effect should NOT run (disposed)
-    counter.set(2);
+    setCounter(2);
     flush();
     expect(effectRuns).toBe(2);
 
     // Show again - new effect created
-    show.set(true);
+    setShow(true);
     flush();
     expect(effectRuns).toBe(3);
   });
@@ -453,11 +467,11 @@ describe("Show keyed rendering", () => {
 // ============================================================================
 describe("Computed memoization", () => {
   test("Computed should cache value when dependencies unchanged", () => {
-    const a = signal(1);
-    const b = signal(2);
+    const [a, setA] = createSignal(1);
+    const [b] = createSignal(2);
     let computeCount = 0;
 
-    const sum = computed(() => {
+    const sum = createMemo(() => {
       computeCount++;
       return a() + b();
     });
@@ -470,28 +484,29 @@ describe("Computed memoization", () => {
     expect(computeCount).toBe(1); // Should not recompute
 
     // Change dependency
-    a.set(2);
+    setA(2);
+    flush();
     expect(sum()).toBe(4);
     expect(computeCount).toBe(2);
   });
 
   test("Computed should handle diamond dependencies", () => {
-    const source = signal(1);
+    const [source, setSource] = createSignal(1);
     let leftCount = 0;
     let rightCount = 0;
     let bottomCount = 0;
 
-    const left = computed(() => {
+    const left = createMemo(() => {
       leftCount++;
       return source() * 2;
     });
 
-    const right = computed(() => {
+    const right = createMemo(() => {
       rightCount++;
       return source() * 3;
     });
 
-    const bottom = computed(() => {
+    const bottom = createMemo(() => {
       bottomCount++;
       return left() + right();
     });
@@ -502,7 +517,8 @@ describe("Computed memoization", () => {
     expect(bottomCount).toBe(1);
 
     // Update source - all should recompute once
-    source.set(2);
+    setSource(2);
+    flush();
     expect(bottom()).toBe(10); // 4 + 6
     expect(leftCount).toBe(2);
     expect(rightCount).toBe(2);
@@ -515,46 +531,52 @@ describe("Computed memoization", () => {
 // ============================================================================
 describe("Batch behavior", () => {
   test("Batch prevents intermediate effect runs", () => {
-    const a = signal(1);
-    const b = signal(2);
+    const [a, setA] = createSignal(1);
+    const [b, setB] = createSignal(2);
     const values: number[] = [];
 
-    effect(() => {
+    createTrackedEffect(() => {
       values.push(a() + b());
     });
+    flush();
 
+    flush();
     expect(values).toEqual([3]);
 
-    batch(() => {
-      a.set(10);
-      b.set(20);
+    flush(() => {
+      setA(10);
+      setB(20);
     });
 
     // Should only see final value, not intermediate
+    flush();
     expect(values).toEqual([3, 30]);
   });
 
   test("Nested batches work correctly", () => {
-    const s = signal(0);
+    const [s, setS] = createSignal(0);
     const values: number[] = [];
 
-    effect(() => {
+    createTrackedEffect(() => {
       values.push(s());
     });
+    flush();
 
+    flush();
     expect(values).toEqual([0]);
 
-    batch(() => {
-      s.set(1);
-      batch(() => {
-        s.set(2);
-        batch(() => {
-          s.set(3);
+    flush(() => {
+      setS(1);
+      flush(() => {
+        setS(2);
+        flush(() => {
+          setS(3);
         });
       });
     });
 
     // Should only see final value after outermost batch
+    flush();
     expect(values).toEqual([0, 3]);
   });
 });
@@ -564,7 +586,7 @@ describe("Batch behavior", () => {
 // ============================================================================
 describe("Switch/Match edge cases", () => {
   test("Switch handles dynamic match order", () => {
-    const value = signal<"a" | "b" | "c">("a");
+    const [value, setValue] = createSignal<"a" | "b" | "c">("a");
 
     const node = Switch({
       children: [
@@ -586,21 +608,21 @@ describe("Switch/Match edge cases", () => {
     container.appendChild(node as Node);
     expect(container.textContent).toBe("A");
 
-    value.set("b");
+    setValue("b");
     flush();
     expect(container.textContent).toBe("B");
 
-    value.set("c");
+    setValue("c");
     flush();
     expect(container.textContent).toBe("C");
 
-    value.set("a");
+    setValue("a");
     flush();
     expect(container.textContent).toBe("A");
   });
 
   test("Switch fallback when no match", () => {
-    const value = signal<string | null>(null);
+    const [value, setValue] = createSignal<string | null>(null);
 
     const node = Switch({
       fallback: element("span", { children: "No match" }),
@@ -615,11 +637,11 @@ describe("Switch/Match edge cases", () => {
     container.appendChild(node as Node);
     expect(container.textContent).toBe("No match");
 
-    value.set("a");
+    setValue("a");
     flush();
     expect(container.textContent).toBe("A");
 
-    value.set(null);
+    setValue(null);
     flush();
     expect(container.textContent).toBe("No match");
   });
@@ -630,7 +652,7 @@ describe("Switch/Match edge cases", () => {
 // ============================================================================
 describe("Event handler lifecycle", () => {
   test("Event handlers should work with reactive conditions", () => {
-    const show = signal(true);
+    const [show, setShow] = createSignal(true);
     let clickCount = 0;
 
     const node = Show({
@@ -645,11 +667,12 @@ describe("Event handler lifecycle", () => {
     expect(clickCount).toBe(1);
 
     // Hide and show again
-    show.set(false);
-    show.set(true);
+    setShow(false);
+    setShow(true);
 
     const newButton = container.querySelector("button");
     newButton?.click();
+    flush();
     expect(clickCount).toBe(2);
   });
 });
@@ -659,9 +682,9 @@ describe("Event handler lifecycle", () => {
 // ============================================================================
 describe("Deep nested reactivity", () => {
   test("Deeply nested Show/For should work correctly", () => {
-    const level1 = signal(true);
-    const level2 = signal(true);
-    const items = signal([1, 2, 3]);
+    const [level1, setLevel1] = createSignal(true);
+    const [level2, setLevel2] = createSignal(true);
+    const [items, setItems] = createSignal([1, 2, 3]);
 
     // O2/C6: a nested region runs under the scope its enclosing Block was
     // GIVEN, so the inner instance is a kid of the outer one and dies with it.
@@ -684,19 +707,19 @@ describe("Deep nested reactivity", () => {
     container.appendChild(node as Node);
     expect(container.textContent).toBe("123");
 
-    level2.set(false);
+    setLevel2(false);
     flush();
     expect(container.textContent).toBe("");
 
-    level2.set(true);
+    setLevel2(true);
     flush();
     expect(container.textContent).toBe("123");
 
-    items.set([4, 5]);
+    setItems([4, 5]);
     flush();
     expect(container.textContent).toBe("45");
 
-    level1.set(false);
+    setLevel1(false);
     flush();
     expect(container.textContent).toBe("");
   });
@@ -707,57 +730,70 @@ describe("Deep nested reactivity", () => {
 // ============================================================================
 describe("Effect cleanup order", () => {
   test("Cleanup runs before next effect execution", () => {
-    const trigger = signal(0);
+    const [trigger, setTrigger] = createSignal(0);
     const log: string[] = [];
 
-    effect(() => {
-      const current = trigger();
-      log.push(`run:${current}`);
-      onCleanup(() => {
-        log.push(`cleanup:${current}`);
+    createRoot(() => {
+      createTrackedEffect(() => {
+        const current = trigger();
+        log.push(`run:${current}`);
+        return () => {
+          log.push(`cleanup:${current}`);
+        };
       });
     });
+    flush();
 
+    flush();
     expect(log).toEqual(["run:0"]);
 
-    trigger.set(1);
+    setTrigger(1);
     flush();
     expect(log).toEqual(["run:0", "cleanup:0", "run:1"]);
 
-    trigger.set(2);
+    setTrigger(2);
     flush();
     expect(log).toEqual(["run:0", "cleanup:0", "run:1", "cleanup:1", "run:2"]);
   });
 
   test("Nested effect cleanup order", () => {
-    const outer = signal(true);
-    const inner = signal(0);
+    const [outer, setOuter] = createSignal(true);
+    const [inner, setInner] = createSignal(0);
     const log: string[] = [];
 
-    scope(() => {
-      effect(() => {
-        if (outer()) {
-          log.push("outer:run");
-          onCleanup(() => log.push("outer:cleanup"));
+    // An effect that owns another does so through its compute, which is the
+    // half that may have children.
+    createRoot(() => {
+      createRenderEffect(
+        () => {
+          if (outer()) {
+            log.push("outer:run");
+            onCleanup(() => log.push("outer:cleanup"));
 
-          effect(() => {
-            const val = inner();
-            log.push(`inner:run:${val}`);
-            onCleanup(() => log.push(`inner:cleanup:${val}`));
-          });
-        }
-      });
+            createRenderEffect(
+              () => {
+                const val = inner();
+                log.push(`inner:run:${val}`);
+                onCleanup(() => log.push(`inner:cleanup:${val}`));
+              },
+              () => {},
+            );
+          }
+        },
+        () => {},
+      );
     });
 
+    flush();
     expect(log).toEqual(["outer:run", "inner:run:0"]);
 
-    inner.set(1);
+    setInner(1);
     flush();
     expect(log).toContain("inner:cleanup:0");
     expect(log).toContain("inner:run:1");
 
     // Hide outer - should dispose inner too
-    outer.set(false);
+    setOuter(false);
     flush();
     expect(log).toContain("outer:cleanup");
     expect(log).toContain("inner:cleanup:1");
@@ -769,59 +805,66 @@ describe("Effect cleanup order", () => {
 // ============================================================================
 describe("scope disposal", () => {
   test("scope disposes all children on dispose", () => {
-    const trigger = signal(0);
+    const [trigger, setTrigger] = createSignal(0);
     let effectRuns = 0;
     let dispose!: () => void;
 
-    scope((d) => {
+    createRoot((d) => {
       dispose = d;
-      effect(() => {
+      createTrackedEffect(() => {
         trigger();
         effectRuns++;
       });
+      flush();
     });
 
+    flush();
     expect(effectRuns).toBe(1);
 
-    trigger.set(1);
+    setTrigger(1);
     flush();
     expect(effectRuns).toBe(2);
 
     dispose();
 
-    trigger.set(2);
+    setTrigger(2);
     flush();
     expect(effectRuns).toBe(2); // Should not run after dispose
   });
 
   test("Detached scope is not disposed with parent", () => {
-    const trigger = signal(0);
+    const [trigger, setTrigger] = createSignal(0);
     let outerRuns = 0;
     let innerRuns = 0;
     let disposeOuter!: () => void;
     let disposeInner!: () => void;
 
-    scope((d) => {
+    createRoot((d) => {
       disposeOuter = d;
-      effect(() => {
+      createTrackedEffect(() => {
         trigger();
         outerRuns++;
       });
+      flush();
 
       // Detached scope
-      scope((dInner) => {
-        disposeInner = dInner;
-        effect(() => {
-          trigger();
-          innerRuns++;
-        });
-      }, true); // detached = true
+      runWithOwner(null, () =>
+        createRoot((dInner) => {
+          disposeInner = dInner;
+          createTrackedEffect(() => {
+            trigger();
+            innerRuns++;
+          });
+          flush();
+        }),
+      ); // detached = true
     });
 
+    flush();
     expect(outerRuns).toBe(1);
     expect(innerRuns).toBe(1);
 
-    trigger.set(1);
+    setTrigger(1);
     flush();
     expect(outerRuns).toBe(2);
     expect(innerRuns).toBe(2);
@@ -829,7 +872,7 @@ describe("scope disposal", () => {
     // Dispose outer - inner should still work (detached)
     disposeOuter();
 
-    trigger.set(2);
+    setTrigger(2);
     flush();
     expect(outerRuns).toBe(2); // Disposed
     expect(innerRuns).toBe(3); // Still running
@@ -837,7 +880,7 @@ describe("scope disposal", () => {
     // Manually dispose inner
     disposeInner();
 
-    trigger.set(3);
+    setTrigger(3);
     flush();
     expect(innerRuns).toBe(3); // Now disposed
   });
@@ -848,7 +891,7 @@ describe("scope disposal", () => {
 // ============================================================================
 describe("Dynamic component", () => {
   test("renders intrinsic elements dynamically", () => {
-    const tag = signal<"div" | "span">("div");
+    const [tag, setTag] = createSignal<"div" | "span">("div");
 
     const node = Dynamic({
       component: () => tag(),
@@ -862,7 +905,7 @@ describe("Dynamic component", () => {
     expect(el?.tagName).toBe("DIV");
     expect(el?.textContent).toBe("Hello");
 
-    tag.set("span");
+    setTag("span");
     flush();
     el = container.querySelector(".test");
     expect(el?.tagName).toBe("SPAN");
@@ -876,7 +919,7 @@ describe("Dynamic component", () => {
       element("span", { class: "b", children: props.text });
 
     // signal(fn) creates a writable derived signal; wrap to store a function value
-    const current = signal<typeof ComponentA>(() => ComponentA);
+    const [current, setCurrent] = createSignal<typeof ComponentA>(() => ComponentA);
 
     const node = Dynamic({
       component: () => current(),
@@ -888,7 +931,7 @@ describe("Dynamic component", () => {
     expect(container.querySelector(".a")?.textContent).toBe("Hello");
     expect(container.querySelector(".b")).toBeNull();
 
-    current.set(ComponentB);
+    setCurrent(() => ComponentB);
     flush();
 
     expect(container.querySelector(".a")).toBeNull();
@@ -909,7 +952,7 @@ describe("Dynamic component", () => {
     const Compiled = block((props: { text: string }) =>
       element("div", { class: "compiled", children: props.text }),
     );
-    const current = signal<typeof Compiled>(() => Compiled);
+    const [current] = createSignal<typeof Compiled>(() => Compiled);
 
     const node = Dynamic({
       component: () => current(),
@@ -921,7 +964,7 @@ describe("Dynamic component", () => {
   });
 
   test("handles null component gracefully", () => {
-    const comp = signal<"div" | null>("div");
+    const [comp, setComp] = createSignal<"div" | null>("div");
 
     const node = Dynamic({
       component: () => comp() as "div",
@@ -931,7 +974,7 @@ describe("Dynamic component", () => {
     container.appendChild(node as Node);
     expect(container.textContent).toContain("Content");
 
-    comp.set(null);
+    setComp(null);
     flush();
     expect(container.textContent).toBe("");
   });
@@ -983,7 +1026,7 @@ describe("mergeProps", () => {
 
   test("handles undefined props gracefully", () => {
     const a = { x: 1 };
-    const b = undefined as unknown as { y: number };
+    const b = undefined as { y: number } | undefined;
     const c = { z: 3 };
     const result = mergeProps(a, b, c);
 

@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 
+import { rooted } from "./test-root.ts";
 import { Loading, lazy } from "./index.ts";
 import { flush, render } from "./index.ts";
+import type { Child } from "./index.ts";
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -18,7 +20,7 @@ const settled = async () => {
   flush();
 };
 
-function mountWithFallback(component: (p: unknown) => unknown) {
+function mountWithFallback(component: (p: unknown) => Child) {
   const host = document.createElement("div");
   document.body.appendChild(host);
   const dispose = render(
@@ -34,73 +36,85 @@ function mountWithFallback(component: (p: unknown) => unknown) {
 }
 
 describe("lazy", () => {
-  test("shows the fallback, then the module, and loads once", async () => {
-    let loads = 0;
-    const Late = lazy(async () => {
-      loads++;
-      await tick();
-      return { default: () => document.createTextNode("arrived") };
-    });
+  test(
+    "shows the fallback, then the module, and loads once",
+    rooted(async () => {
+      let loads = 0;
+      const Late = lazy(async () => {
+        loads++;
+        await tick();
+        return { default: () => document.createTextNode("arrived") };
+      });
 
-    const { host, dispose } = mountWithFallback(Late);
-    expect(host.textContent).toBe("loading");
+      const { host, dispose } = mountWithFallback(Late);
+      expect(host.textContent).toBe("loading");
 
-    await settled();
-    expect(host.textContent).toBe("arrived");
-    expect(loads).toBe(1);
-    dispose();
-  });
+      await settled();
+      expect(host.textContent).toBe("arrived");
+      expect(loads).toBe(1);
+      dispose();
+    }),
+  );
 
-  test("preload warms the same cell, so rendering does not fetch again", async () => {
-    let loads = 0;
-    const Late = lazy(async () => {
-      loads++;
-      await tick();
-      return { default: () => document.createTextNode("arrived") };
-    });
+  test(
+    "preload warms the same cell, so rendering does not fetch again",
+    rooted(async () => {
+      let loads = 0;
+      const Late = lazy(async () => {
+        loads++;
+        await tick();
+        return { default: () => document.createTextNode("arrived") };
+      });
 
-    await Late.preload();
-    expect(loads).toBe(1);
+      await Late.preload();
+      expect(loads).toBe(1);
 
-    // Already settled, so the fallback is never shown.
-    const { host, dispose } = mountWithFallback(Late);
-    expect(host.textContent).toBe("arrived");
-    expect(loads).toBe(1);
-    dispose();
-  });
+      // Already settled, so the fallback is never shown.
+      const { host, dispose } = mountWithFallback(Late);
+      expect(host.textContent).toBe("arrived");
+      expect(loads).toBe(1);
+      dispose();
+    }),
+  );
 
-  test("`pick` takes a named export", async () => {
-    const Late = lazy(
-      async () => ({ Page: () => document.createTextNode("named") }),
-      (module) => module.Page,
-    );
-    await Late.preload();
-    const { host, dispose } = mountWithFallback(Late);
-    expect(host.textContent).toBe("named");
-    dispose();
-  });
+  test(
+    "`pick` takes a named export",
+    rooted(async () => {
+      const Late = lazy(
+        async () => ({ Page: () => document.createTextNode("named") }),
+        (module) => module.Page,
+      );
+      await Late.preload();
+      const { host, dispose } = mountWithFallback(Late);
+      expect(host.textContent).toBe("named");
+      dispose();
+    }),
+  );
 
-  test("the cell outlives the boundary that first read it", async () => {
-    // A cell owned by the content it was read inside dies when that content is
-    // discarded — which is what happens on a string render when a boundary
-    // parks. `lazy` creates its cell with no owner for that reason.
-    let loads = 0;
-    const Late = lazy(async () => {
-      loads++;
-      await tick();
-      return { default: () => document.createTextNode("arrived") };
-    });
+  test(
+    "the cell outlives the boundary that first read it",
+    rooted(async () => {
+      // A cell owned by the content it was read inside dies when that content is
+      // discarded — which is what happens on a string render when a boundary
+      // parks. `lazy` creates its cell with no owner for that reason.
+      let loads = 0;
+      const Late = lazy(async () => {
+        loads++;
+        await tick();
+        return { default: () => document.createTextNode("arrived") };
+      });
 
-    const first = mountWithFallback(Late);
-    expect(first.host.textContent).toBe("loading");
-    first.dispose();
+      const first = mountWithFallback(Late);
+      expect(first.host.textContent).toBe("loading");
+      first.dispose();
 
-    await settled();
+      await settled();
 
-    const second = mountWithFallback(Late);
-    flush();
-    expect(second.host.textContent).toBe("arrived");
-    expect(loads).toBe(1);
-    second.dispose();
-  });
+      const second = mountWithFallback(Late);
+      flush();
+      expect(second.host.textContent).toBe("arrived");
+      expect(loads).toBe(1);
+      second.dispose();
+    }),
+  );
 });

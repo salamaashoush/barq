@@ -1,35 +1,27 @@
 /**
  * A suspending read with a region between it and the loading boundary.
  *
- * `region` builds a body inside `untrack` — a body's own reads must not become
- * dependencies of the key, or every value the content displays would re-swap
- * the whole region instead of updating in place. That is right for a body that
- * builds and wrong for one that SUSPENDS: nothing was built, and the untracked
- * read registered no dependency, so the position could never wake and the
- * boundary sat on its fallback for good.
- *
- * Two things were needed and neither is sufficient alone: the suspended attempt
- * is retried TRACKED so the read lands somewhere, and the key effect's "the key
- * did not move" short-circuit learns that a suspended attempt left nothing
- * standing. `Loading > read` always worked and is the control.
- *
- * The third case also needed `loadingBoundary`'s `move` to stop relocating the
- * node list the last build returned: leaving the park takes everything in it,
- * because a nested region that swapped while parked is not in that list.
+ * `region` builds a body untracked — a body's own reads must not become
+ * dependencies of the region, or every value the content displays would rebuild
+ * it instead of updating in place. A body that SUSPENDS built nothing, so the
+ * position has to wake when the value it read arrives, and the boundary above
+ * has to leave its fallback then. `Loading > read` is the control.
  */
+import { rooted } from "./test-root.ts";
 import { describe, expect, test } from "bun:test";
 import { Errored, Loading, Show } from "./components.ts";
 import { render } from "./dom.ts";
-import { resource } from "./async.ts";
-import { block, scope, signal } from "./signals.ts";
+import { block, createMemo, createRoot } from "./signals.ts";
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));
 function mk() {
-  const settled = signal<((v: string) => void) | null>(null);
-  const value = resource<string>(
-    () => null,
-    () => new Promise<string>((r) => settled.set(r)),
+  let settle: (v: string) => void = () => {};
+  const value = createMemo(
+    () =>
+      new Promise<string>((r) => {
+        settle = r;
+      }),
   );
-  return { settled, value };
+  return { settled: () => settle, value };
 }
 describe("suspend behind a region", () => {
   for (const [name, wrap] of [
@@ -37,41 +29,44 @@ describe("suspend behind a region", () => {
     ["Loading > Errored > read", "errored"],
     ["Loading > Show > read", "show"],
   ] as const) {
-    test(name, async () => {
-      const host = document.createElement("div");
-      document.body.appendChild(host);
-      const { settled, value } = mk();
-      const leaf = block(() => document.createTextNode(value()));
-      scope(() => {
-        render(
-          block(() =>
-            Loading({
-              fallback: block(() => document.createTextNode("BUSY")),
-              children:
-                wrap === null
-                  ? leaf
-                  : wrap === "errored"
-                    ? block(() =>
-                        Errored({
-                          fallback: block(() => document.createTextNode("ERR")),
-                          children: leaf,
-                        }),
-                      )
-                    : block(() => Show({ when: () => true, children: leaf })),
-            }),
-          ),
-          host,
-        );
-      });
-      await tick();
-      const atMount = host.textContent;
-      settled()?.("READY");
-      await tick();
-      await tick();
-      await tick();
-      console.log(name.padEnd(26), "mount:", atMount.padEnd(6), "after:", host.textContent);
-      expect(atMount).toBe("BUSY");
-      expect(host.textContent).toBe("READY");
-    });
+    test(
+      name,
+      rooted(async () => {
+        const host = document.createElement("div");
+        document.body.appendChild(host);
+        const { settled, value } = mk();
+        const leaf = block(() => document.createTextNode(value()));
+        createRoot(() => {
+          render(
+            block(() =>
+              Loading({
+                fallback: block(() => document.createTextNode("BUSY")),
+                children:
+                  wrap === null
+                    ? leaf
+                    : wrap === "errored"
+                      ? block(() =>
+                          Errored({
+                            fallback: block(() => document.createTextNode("ERR")),
+                            children: leaf,
+                          }),
+                        )
+                      : block(() => Show({ when: () => true, children: leaf })),
+              }),
+            ),
+            host,
+          );
+        });
+        await tick();
+        const atMount = host.textContent;
+        settled()?.("READY");
+        await tick();
+        await tick();
+        await tick();
+        console.log(name.padEnd(26), "mount:", atMount.padEnd(6), "after:", host.textContent);
+        expect(atMount).toBe("BUSY");
+        expect(host.textContent).toBe("READY");
+      }),
+    );
   }
 });

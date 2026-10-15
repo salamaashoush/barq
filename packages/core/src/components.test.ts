@@ -7,7 +7,7 @@ import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { For, Fragment, Match, Show, Switch } from "./components.ts";
 import { childToNodes, insert } from "./dom.ts";
 import type { Child } from "./dom.ts";
-import { signal, effect, scope, batch, onCleanup, flush } from "./signals.ts";
+import { createSignal, createTrackedEffect, createRoot, onCleanup, flush } from "./signals.ts";
 
 // Simple DOM setup for testing
 let container: HTMLDivElement;
@@ -95,7 +95,7 @@ describe("childToNodes", () => {
   });
 
   test("Show keeps a multi-node eager body across a hide/show cycle", () => {
-    const on = signal(true);
+    const [on, setOn] = createSignal(true);
     const body = document.createDocumentFragment();
     body.appendChild(document.createElement("i"));
     body.appendChild(document.createElement("u"));
@@ -104,11 +104,11 @@ describe("childToNodes", () => {
     flush();
     expect(container.querySelectorAll("i, u").length).toBe(2);
 
-    on.set(false);
+    setOn(false);
     flush();
     expect(container.querySelectorAll("i, u").length).toBe(0);
 
-    on.set(true);
+    setOn(true);
     flush();
     expect(container.querySelectorAll("i, u").length).toBe(2);
   });
@@ -136,7 +136,7 @@ describe("childToNodes", () => {
 
 describe("Show component", () => {
   test("renders children when condition is truthy", () => {
-    const show = signal(true);
+    const [show] = createSignal(true);
     const node = Show({
       when: show,
       children: () => document.createTextNode("visible"),
@@ -147,7 +147,7 @@ describe("Show component", () => {
   });
 
   test("renders fallback when condition is falsy", () => {
-    const show = signal(false);
+    const [show] = createSignal(false);
     const node = Show({
       when: show,
       fallback: document.createTextNode("fallback"),
@@ -159,7 +159,7 @@ describe("Show component", () => {
   });
 
   test("toggles between children and fallback", () => {
-    const show = signal(true);
+    const [show, setShow] = createSignal(true);
     const node = Show({
       when: show,
       fallback: document.createTextNode("hidden"),
@@ -169,17 +169,17 @@ describe("Show component", () => {
     container.appendChild(node as Node);
     expect(container.textContent).toContain("shown");
 
-    show.set(false);
+    setShow(false);
     flush();
     expect(container.textContent).toContain("hidden");
 
-    show.set(true);
+    setShow(true);
     flush();
     expect(container.textContent).toContain("shown");
   });
 
   test("passes truthy value to render function", () => {
-    const value = signal<string | null>("hello");
+    const [value] = createSignal<string | null>("hello");
     let receivedValue: string | null = null;
 
     const node = Show({
@@ -199,7 +199,7 @@ describe("Show component", () => {
   });
 
   test("handles rapid condition changes", () => {
-    const show = signal(true);
+    const [show, setShow] = createSignal(true);
     const node = Show({
       when: show,
       fallback: document.createTextNode("off"),
@@ -210,7 +210,7 @@ describe("Show component", () => {
 
     // Rapid toggling
     for (let i = 0; i < 10; i++) {
-      show.set(i % 2 === 0);
+      setShow(i % 2 === 0);
     }
     flush();
 
@@ -219,7 +219,7 @@ describe("Show component", () => {
   });
 
   test("handles children as direct value (not function)", () => {
-    const show = signal(true);
+    const [show] = createSignal(true);
     const node = Show({
       when: show,
       children: document.createTextNode("direct"),
@@ -230,40 +230,42 @@ describe("Show component", () => {
   });
 
   test("disposes inner effects when condition changes", () => {
-    const show = signal(true);
-    const innerSignal = signal(0);
+    const [show, setShow] = createSignal(true);
+    const [innerSignal, setInnerSignal] = createSignal(0);
     let effectRunCount = 0;
 
     const node = Show({
       when: show,
       children: () => {
-        effect(() => {
+        createTrackedEffect(() => {
           innerSignal();
           effectRunCount++;
         });
+        flush();
         return document.createTextNode("content");
       },
     });
 
     container.appendChild(node as Node);
+    flush();
     expect(effectRunCount).toBe(1);
 
-    innerSignal.set(1);
+    setInnerSignal(1);
     flush();
     expect(effectRunCount).toBe(2);
 
     // Hide - should dispose inner effect
-    show.set(false);
+    setShow(false);
     flush();
 
     // Inner effect should not run anymore
-    innerSignal.set(2);
+    setInnerSignal(2);
     flush();
     expect(effectRunCount).toBe(2);
   });
 
   test("EDGE CASE: handles condition returning 0 (falsy but valid)", () => {
-    const count = signal(0);
+    const [count, setCount] = createSignal(0);
     const node = Show({
       when: count,
       keyed: true,
@@ -275,13 +277,13 @@ describe("Show component", () => {
     // 0 is falsy, should show fallback
     expect(container.textContent).toContain("empty");
 
-    count.set(5);
+    setCount(5);
     flush();
     expect(container.textContent).toContain("count: 5");
   });
 
   test("EDGE CASE: handles condition returning empty string (falsy)", () => {
-    const text = signal("");
+    const [text, setText] = createSignal("");
     const node = Show({
       when: text,
       keyed: true,
@@ -292,14 +294,14 @@ describe("Show component", () => {
     container.appendChild(node as Node);
     expect(container.textContent).toContain("empty");
 
-    text.set("hello");
+    setText("hello");
     flush();
     expect(container.textContent).toContain("hello");
   });
 
   test("EDGE CASE: children function with default parameters", () => {
     // Function.length is 0 for functions with default params
-    const show = signal({ name: "test" });
+    const [show] = createSignal({ name: "test" });
     let receivedValue: unknown = null;
 
     const node = Show({
@@ -319,23 +321,24 @@ describe("Show component", () => {
   });
 
   test("MEMORY LEAK: disposes content scope on unmount", () => {
-    const show = signal(true);
-    const innerSignal = signal(0);
+    const [show] = createSignal(true);
+    const [innerSignal, setInnerSignal] = createSignal(0);
     let effectRunCount = 0;
     let cleanupCalled = false;
 
     let disposeParent: (() => void) | undefined;
 
-    scope((dispose) => {
+    createRoot((dispose) => {
       disposeParent = dispose;
 
       const node = Show({
         when: show,
         children: () => {
-          effect(() => {
+          createTrackedEffect(() => {
             innerSignal();
             effectRunCount++;
           });
+          flush();
           onCleanup(() => {
             cleanupCalled = true;
           });
@@ -346,13 +349,15 @@ describe("Show component", () => {
       container.appendChild(node as Node);
     });
 
+    flush();
     expect(effectRunCount).toBe(1);
 
     // Dispose parent scope (simulating unmount)
     disposeParent!();
 
     // Inner effect should be disposed
-    innerSignal.set(1);
+    setInnerSignal(1);
+    flush();
     expect(effectRunCount).toBe(1); // Should not increase
 
     // Cleanup should have been called
@@ -362,7 +367,7 @@ describe("Show component", () => {
 
 describe("For component", () => {
   test("renders list of items", () => {
-    const items = signal(["a", "b", "c"]);
+    const [items] = createSignal(["a", "b", "c"]);
     const node = For({
       each: items,
       children: (item: string) => document.createTextNode(item),
@@ -373,7 +378,7 @@ describe("For component", () => {
   });
 
   test("updates when items change", () => {
-    const items = signal(["a", "b"]);
+    const [items, setItems] = createSignal(["a", "b"]);
     const node = For({
       each: items,
       children: (item: string) => document.createTextNode(item),
@@ -382,13 +387,13 @@ describe("For component", () => {
     container.appendChild(node as Node);
     expect(container.textContent).toContain("ab");
 
-    items.set(["x", "y", "z"]);
+    setItems(["x", "y", "z"]);
     flush();
     expect(container.textContent).toContain("xyz");
   });
 
   test("renders fallback for empty array", () => {
-    const items = signal<string[]>([]);
+    const [items] = createSignal<string[]>([]);
     const node = For({
       each: items,
       fallback: document.createTextNode("empty"),
@@ -400,7 +405,7 @@ describe("For component", () => {
   });
 
   test("switches between items and fallback", () => {
-    const items = signal<string[]>([]);
+    const [items, setItems] = createSignal<string[]>([]);
     const node = For({
       each: items,
       fallback: document.createTextNode("empty"),
@@ -410,42 +415,44 @@ describe("For component", () => {
     container.appendChild(node as Node);
     expect(container.textContent).toContain("empty");
 
-    items.set(["a"]);
+    setItems(["a"]);
     flush();
     expect(container.textContent).toContain("a");
     expect(container.textContent).not.toContain("empty");
 
-    items.set([]);
+    setItems([]);
     flush();
     expect(container.textContent).toContain("empty");
   });
 
   test("provides reactive index signal", () => {
-    const items = signal(["a", "b", "c"]);
+    const [items, setItems] = createSignal(["a", "b", "c"]);
     const indices: number[] = [];
 
     const node = For({
       each: items,
       children: (item: string, index: () => number) => {
-        effect(() => {
+        createTrackedEffect(() => {
           indices.push(index());
         });
+        flush();
         return document.createTextNode(item);
       },
     });
 
     container.appendChild(node as Node);
+    flush();
     expect(indices).toEqual([0, 1, 2]);
 
     // Reverse the array - indices should update
-    items.set(["c", "b", "a"]);
+    setItems(["c", "b", "a"]);
     flush();
     // New indices should be pushed
     expect(indices.length).toBeGreaterThan(3);
   });
 
   test("uses custom key function", () => {
-    const items = signal([
+    const [items, setItems] = createSignal([
       { id: 1, name: "one" },
       { id: 2, name: "two" },
     ]);
@@ -464,7 +471,7 @@ describe("For component", () => {
     expect(container.textContent).toContain("onetwo");
 
     // Reorder - should reuse existing nodes
-    items.set([
+    setItems([
       { id: 2, name: "two" },
       { id: 1, name: "one" },
     ]);
@@ -475,7 +482,7 @@ describe("For component", () => {
   });
 
   test("handles items added at beginning", () => {
-    const items = signal(["b", "c"]);
+    const [items, setItems] = createSignal(["b", "c"]);
     const node = For({
       each: items,
       children: (item: string) => {
@@ -488,13 +495,13 @@ describe("For component", () => {
     container.appendChild(node as Node);
     expect(container.textContent).toBe("bc");
 
-    items.set(["a", "b", "c"]);
+    setItems(["a", "b", "c"]);
     flush();
     expect(container.textContent).toBe("abc");
   });
 
   test("handles items added at end", () => {
-    const items = signal(["a", "b"]);
+    const [items, setItems] = createSignal(["a", "b"]);
     const node = For({
       each: items,
       children: (item: string) => {
@@ -507,13 +514,13 @@ describe("For component", () => {
     container.appendChild(node as Node);
     expect(container.textContent).toBe("ab");
 
-    items.set(["a", "b", "c"]);
+    setItems(["a", "b", "c"]);
     flush();
     expect(container.textContent).toBe("abc");
   });
 
   test("handles items removed from middle", () => {
-    const items = signal(["a", "b", "c"]);
+    const [items, setItems] = createSignal(["a", "b", "c"]);
     const node = For({
       each: items,
       children: (item: string) => {
@@ -526,13 +533,13 @@ describe("For component", () => {
     container.appendChild(node as Node);
     expect(container.textContent).toBe("abc");
 
-    items.set(["a", "c"]);
+    setItems(["a", "c"]);
     flush();
     expect(container.textContent).toBe("ac");
   });
 
   test("handles complete replacement", () => {
-    const items = signal(["a", "b", "c"]);
+    const [items, setItems] = createSignal(["a", "b", "c"]);
     const node = For({
       each: items,
       children: (item: string) => {
@@ -545,47 +552,49 @@ describe("For component", () => {
     container.appendChild(node as Node);
     expect(container.textContent).toBe("abc");
 
-    items.set(["x", "y"]);
+    setItems(["x", "y"]);
     flush();
     expect(container.textContent).toBe("xy");
   });
 
   test("disposes removed item effects", () => {
-    const items = signal(["a", "b"]);
+    const [items, setItems] = createSignal(["a", "b"]);
     const effectCounts: Record<string, number> = { a: 0, b: 0 };
-    const trigger = signal(0);
+    const [trigger, setTrigger] = createSignal(0);
 
     const node = For({
       each: items,
       children: (item: string) => {
-        effect(() => {
+        createTrackedEffect(() => {
           trigger();
           effectCounts[item]++;
         });
+        flush();
         return document.createTextNode(item);
       },
     });
 
     container.appendChild(node as Node);
+    flush();
     expect(effectCounts).toEqual({ a: 1, b: 1 });
 
-    trigger.set(1);
+    setTrigger(1);
     flush();
     expect(effectCounts).toEqual({ a: 2, b: 2 });
 
     // Remove 'b'
-    items.set(["a"]);
+    setItems(["a"]);
     flush();
 
     // Trigger again - only 'a' should update
-    trigger.set(2);
+    setTrigger(2);
     flush();
     expect(effectCounts.a).toBe(3);
     expect(effectCounts.b).toBe(2); // Should not increase
   });
 
   test("EDGE CASE: handles null/undefined each", () => {
-    const items = signal<string[] | null>(null);
+    const [items] = createSignal<string[] | null>(null);
     const node = For({
       each: items,
       fallback: document.createTextNode("empty"),
@@ -597,7 +606,7 @@ describe("For component", () => {
   });
 
   test("EDGE CASE: handles getter function for each", () => {
-    const items = signal(["a", "b"]);
+    const [items, setItems] = createSignal(["a", "b"]);
     const node = For({
       each: () => items(),
       children: (item: string) => document.createTextNode(item),
@@ -606,7 +615,7 @@ describe("For component", () => {
     container.appendChild(node as Node);
     expect(container.textContent).toContain("ab");
 
-    items.set(["x", "y", "z"]);
+    setItems(["x", "y", "z"]);
     flush();
     expect(container.textContent).toContain("xyz");
   });
@@ -614,7 +623,7 @@ describe("For component", () => {
   test("EDGE CASE: handles duplicate keys", () => {
     // With duplicate keys, only unique keys are rendered (Map-based cache)
     // This is a known limitation - use unique keys for correct behavior
-    const items = signal(["a", "a", "b"]);
+    const [items] = createSignal(["a", "a", "b"]);
     const node = For({
       each: items,
       children: (item: string) => document.createTextNode(item),
@@ -626,7 +635,7 @@ describe("For component", () => {
   });
 
   test("EDGE CASE: LIS algorithm with reversal", () => {
-    const items = signal([
+    const [items, setItems] = createSignal([
       { id: 1, v: "a" },
       { id: 2, v: "b" },
       { id: 3, v: "c" },
@@ -646,12 +655,13 @@ describe("For component", () => {
     });
 
     container.appendChild(node as Node);
+    flush();
     expect(container.textContent).toBe("abcd");
     expect(renderCount).toBe(4);
 
     // Reverse with new object references - triggers re-render because items changed
     // (Object.is() returns false for new objects even with same content)
-    items.set([
+    setItems([
       { id: 4, v: "d" },
       { id: 3, v: "c" },
       { id: 2, v: "b" },
@@ -676,7 +686,7 @@ describe("For component", () => {
     const b = { id: 2, v: "b" };
     const c = { id: 3, v: "c" };
     const d = { id: 4, v: "d" };
-    const items = signal([a, b, c, d]);
+    const [items, setItems] = createSignal([a, b, c, d]);
     let renderCount = 0;
 
     const node = For({
@@ -691,11 +701,12 @@ describe("For component", () => {
     });
 
     container.appendChild(node as Node);
+    flush();
     expect(container.textContent).toBe("abcd");
     expect(renderCount).toBe(4);
 
     // Reverse using SAME object references - should reorder, not re-render
-    items.set([d, c, b, a]);
+    setItems([d, c, b, a]);
     flush();
 
     expect(container.textContent).toBe("dcba");
@@ -711,7 +722,7 @@ describe("For component", () => {
   });
 
   test("EDGE CASE: interleaved insert and remove", () => {
-    const items = signal(["a", "c", "e"]);
+    const [items, setItems] = createSignal(["a", "c", "e"]);
     const node = For({
       each: items,
       children: (item: string) => {
@@ -725,48 +736,51 @@ describe("For component", () => {
     expect(container.textContent).toBe("ace");
 
     // Insert b and d
-    items.set(["a", "b", "c", "d", "e"]);
+    setItems(["a", "b", "c", "d", "e"]);
     flush();
     expect(container.textContent).toBe("abcde");
 
     // Remove b and d
-    items.set(["a", "c", "e"]);
+    setItems(["a", "c", "e"]);
     flush();
     expect(container.textContent).toBe("ace");
   });
 
   test("handles batch updates", () => {
-    const items = signal(["a"]);
+    const [items, setItems] = createSignal(["a"]);
     let effectRuns = 0;
 
     const node = For({
       each: items,
       children: (item: string) => {
-        effect(() => {
+        createTrackedEffect(() => {
           void item; // track
           effectRuns++;
         });
+        flush();
         return document.createTextNode(item);
       },
     });
 
     container.appendChild(node as Node);
+    flush();
     expect(effectRuns).toBe(1);
 
-    batch(() => {
-      items.set(["b"]);
-      items.set(["c"]);
-      items.set(["d"]);
+    flush(() => {
+      setItems(["b"]);
+      setItems(["c"]);
+      setItems(["d"]);
     });
 
     // Should only process final value
+    flush();
     expect(container.textContent).toContain("d");
   });
 });
 
 describe("For keyed={false} — the positional mode", () => {
   test("renders list with static indices", () => {
-    const items = signal(["a", "b", "c"]);
+    const [items] = createSignal(["a", "b", "c"]);
     const receivedIndices: number[] = [];
 
     const node = For({
@@ -784,31 +798,34 @@ describe("For keyed={false} — the positional mode", () => {
   });
 
   test("item signal updates when value changes", () => {
-    const items = signal(["a", "b", "c"]);
+    const [items, setItems] = createSignal(["a", "b", "c"]);
     let updateCount = 0;
 
     const node = For({
       each: items,
       keyed: false,
       children: (item: () => string, _index: number) => {
-        effect(() => {
+        createTrackedEffect(() => {
           item(); // subscribe
           updateCount++;
         });
+        flush();
         const span = document.createElement("span");
-        effect(() => {
+        createTrackedEffect(() => {
           span.textContent = item();
         });
+        flush();
         return span;
       },
     });
 
     container.appendChild(node as Node);
+    flush();
     expect(container.textContent).toBe("abc");
     expect(updateCount).toBe(3);
 
     // Update value at index 1
-    items.set(["a", "X", "c"]);
+    setItems(["a", "X", "c"]);
     flush();
     expect(container.textContent).toBe("aXc");
     // Only index 1's item signal should trigger
@@ -816,79 +833,85 @@ describe("For keyed={false} — the positional mode", () => {
   });
 
   test("handles array shrinking", () => {
-    const items = signal(["a", "b", "c", "d"]);
+    const [items, setItems] = createSignal(["a", "b", "c", "d"]);
     const node = For({
       each: items,
       keyed: () => false,
       children: (item: () => string) => {
         const span = document.createElement("span");
-        effect(() => {
+        createTrackedEffect(() => {
           span.textContent = item();
         });
+        flush();
         return span;
       },
     });
 
     container.appendChild(node as Node);
+    flush();
     expect(container.textContent).toBe("abcd");
 
-    items.set(["a", "b"]);
+    setItems(["a", "b"]);
     flush();
     expect(container.textContent).toBe("ab");
   });
 
   test("handles array growing", () => {
-    const items = signal(["a"]);
+    const [items, setItems] = createSignal(["a"]);
     const node = For({
       each: items,
       keyed: () => false,
       children: (item: () => string) => {
         const span = document.createElement("span");
-        effect(() => {
+        createTrackedEffect(() => {
           span.textContent = item();
         });
+        flush();
         return span;
       },
     });
 
     container.appendChild(node as Node);
+    flush();
     expect(container.textContent).toBe("a");
 
-    items.set(["a", "b", "c"]);
+    setItems(["a", "b", "c"]);
     flush();
     expect(container.textContent).toBe("abc");
   });
 
   test("disposes effects when items are removed", () => {
-    const items = signal(["a", "b", "c"]);
-    const trigger = signal(0);
+    const [items, setItems] = createSignal(["a", "b", "c"]);
+    const [trigger, setTrigger] = createSignal(0);
     const effectCounts = [0, 0, 0];
 
     const node = For({
       each: items,
       keyed: false,
       children: (item: () => string, index: number) => {
-        effect(() => {
+        createTrackedEffect(() => {
           item();
           trigger();
           effectCounts[index]++;
         });
+        flush();
         return document.createTextNode(item());
       },
     });
 
     container.appendChild(node as Node);
+    flush();
     expect(effectCounts).toEqual([1, 1, 1]);
 
-    trigger.set(1);
+    setTrigger(1);
     flush();
     expect(effectCounts).toEqual([2, 2, 2]);
 
     // Shrink to 1 item
-    items.set(["x"]);
+    setItems(["x"]);
     flush();
 
-    trigger.set(2);
+    setTrigger(2);
     flush();
     // Only index 0 should update
     expect(effectCounts[0]).toBe(4); // +1 for value change, +1 for trigger
@@ -897,7 +920,7 @@ describe("For keyed={false} — the positional mode", () => {
   });
 
   test("EDGE CASE: empty to non-empty transition", () => {
-    const items = signal<string[]>([]);
+    const [items, setItems] = createSignal<string[]>([]);
     const node = For({
       each: items,
       keyed: () => false,
@@ -908,7 +931,7 @@ describe("For keyed={false} — the positional mode", () => {
     container.appendChild(node as Node);
     expect(container.textContent).toContain("empty");
 
-    items.set(["first"]);
+    setItems(["first"]);
     flush();
     expect(container.textContent).toContain("first");
     expect(container.textContent).not.toContain("empty");
@@ -917,7 +940,7 @@ describe("For keyed={false} — the positional mode", () => {
 
 describe("Switch/Match components", () => {
   test("renders first matching condition", () => {
-    const value = signal(1);
+    const [value] = createSignal(1);
     const node = Switch({
       children: [
         Match({ when: () => value() === 1, children: () => document.createTextNode("one") }),
@@ -930,7 +953,7 @@ describe("Switch/Match components", () => {
   });
 
   test("updates when condition changes", () => {
-    const value = signal(1);
+    const [value, setValue] = createSignal(1);
     const node = Switch({
       children: [
         Match({ when: () => value() === 1, children: () => document.createTextNode("one") }),
@@ -945,18 +968,18 @@ describe("Switch/Match components", () => {
     container.appendChild(node as Node);
     expect(container.textContent).toContain("one");
 
-    value.set(2);
+    setValue(2);
     flush();
     expect(container.textContent).toContain("two");
     expect(container.textContent).not.toContain("one");
 
-    value.set(3);
+    setValue(3);
     flush();
     expect(container.textContent).toContain("three");
   });
 
   test("renders fallback when no match", () => {
-    const value = signal(99);
+    const [value] = createSignal(99);
     const node = Switch({
       fallback: document.createTextNode("default"),
       children: [
@@ -970,7 +993,7 @@ describe("Switch/Match components", () => {
   });
 
   test("keyed match re-renders on value change", () => {
-    const user = signal({ id: 1, name: "Alice" });
+    const [user, setUser] = createSignal({ id: 1, name: "Alice" });
     let renderCount = 0;
 
     const node = Switch({
@@ -991,14 +1014,14 @@ describe("Switch/Match components", () => {
     expect(renderCount).toBe(1);
 
     // Change value - should re-render because keyed
-    user.set({ id: 2, name: "Bob" });
+    setUser({ id: 2, name: "Bob" });
     flush();
     expect(container.textContent).toContain("Bob");
     expect(renderCount).toBe(2);
   });
 
   test("non-keyed match does not re-render on value change", () => {
-    const user = signal({ id: 1, name: "Alice" });
+    const [user, setUser] = createSignal({ id: 1, name: "Alice" });
     let renderCount = 0;
 
     const node = Switch({
@@ -1009,9 +1032,10 @@ describe("Switch/Match components", () => {
           children: () => {
             renderCount++;
             const span = document.createElement("span");
-            effect(() => {
+            createTrackedEffect(() => {
               span.textContent = user().name;
             });
+            flush();
             return span;
           },
         }),
@@ -1019,19 +1043,20 @@ describe("Switch/Match components", () => {
     });
 
     container.appendChild(node as Node);
+    flush();
     expect(container.textContent).toContain("Alice");
     expect(renderCount).toBe(1);
 
     // Change value - should NOT re-render, just update via effect
-    user.set({ id: 2, name: "Bob" });
+    setUser({ id: 2, name: "Bob" });
     flush();
     expect(container.textContent).toContain("Bob");
     expect(renderCount).toBe(1); // Still 1
   });
 
   test("disposes previous match effects", () => {
-    const value = signal(1);
-    const trigger = signal(0);
+    const [value, setValue] = createSignal(1);
+    const [trigger, setTrigger] = createSignal(0);
     let effect1Runs = 0;
     let effect2Runs = 0;
 
@@ -1040,20 +1065,22 @@ describe("Switch/Match components", () => {
         Match({
           when: () => value() === 1,
           children: () => {
-            effect(() => {
+            createTrackedEffect(() => {
               trigger();
               effect1Runs++;
             });
+            flush();
             return document.createTextNode("one");
           },
         }),
         Match({
           when: () => value() === 2,
           children: () => {
-            effect(() => {
+            createTrackedEffect(() => {
               trigger();
               effect2Runs++;
             });
+            flush();
             return document.createTextNode("two");
           },
         }),
@@ -1061,27 +1088,28 @@ describe("Switch/Match components", () => {
     });
 
     container.appendChild(node as Node);
+    flush();
     expect(effect1Runs).toBe(1);
     expect(effect2Runs).toBe(0);
 
-    trigger.set(1);
+    setTrigger(1);
     flush();
     expect(effect1Runs).toBe(2);
 
     // Switch to second match
-    value.set(2);
+    setValue(2);
     flush();
     expect(effect2Runs).toBe(1);
 
     // Trigger should only affect second match now
-    trigger.set(2);
+    setTrigger(2);
     flush();
     expect(effect1Runs).toBe(2); // Should not increase
     expect(effect2Runs).toBe(2);
   });
 
   test("EDGE CASE: multiple matches with same condition", () => {
-    const show = signal(true);
+    const [show] = createSignal(true);
     const node = Switch({
       children: [
         Match({ when: show, children: () => document.createTextNode("first") }),
@@ -1110,27 +1138,29 @@ describe("Switch/Match components", () => {
 
 describe("Memory and cleanup", () => {
   test("nested Show components dispose correctly", () => {
-    const outer = signal(true);
-    const inner = signal(true);
+    const [outer, setOuter] = createSignal(true);
+    const [inner] = createSignal(true);
     let outerEffectRuns = 0;
     let innerEffectRuns = 0;
-    const trigger = signal(0);
+    const [trigger, setTrigger] = createSignal(0);
 
-    const node = scope((_dispose) =>
+    const node = createRoot((_dispose) =>
       Show({
         when: outer,
         children: () => {
-          effect(() => {
+          createTrackedEffect(() => {
             trigger();
             outerEffectRuns++;
           });
+          flush();
           return Show({
             when: inner,
             children: () => {
-              effect(() => {
+              createTrackedEffect(() => {
                 trigger();
                 innerEffectRuns++;
               });
+              flush();
               return document.createTextNode("nested");
             },
           });
@@ -1139,41 +1169,43 @@ describe("Memory and cleanup", () => {
     ) as Node;
 
     container.appendChild(node);
+    flush();
     expect(outerEffectRuns).toBe(1);
     expect(innerEffectRuns).toBe(1);
 
-    trigger.set(1);
+    setTrigger(1);
     flush();
     expect(outerEffectRuns).toBe(2);
     expect(innerEffectRuns).toBe(2);
 
     // Hide outer - should dispose both
-    outer.set(false);
+    setOuter(false);
     flush();
 
-    trigger.set(2);
+    setTrigger(2);
     flush();
     expect(outerEffectRuns).toBe(2); // Should not increase
     expect(innerEffectRuns).toBe(2); // Should not increase
   });
 
   test("For inside Show disposes item effects", () => {
-    const show = signal(true);
-    const items = signal(["a", "b"]);
-    const trigger = signal(0);
+    const [show, setShow] = createSignal(true);
+    const [items] = createSignal(["a", "b"]);
+    const [trigger, setTrigger] = createSignal(0);
     let totalEffectRuns = 0;
 
-    const node = scope((_dispose) =>
+    const node = createRoot((_dispose) =>
       Show({
         when: show,
         children: () =>
           For({
             each: items,
             children: (item: string) => {
-              effect(() => {
+              createTrackedEffect(() => {
                 trigger();
                 totalEffectRuns++;
               });
+              flush();
               return document.createTextNode(item);
             },
           }),
@@ -1181,17 +1213,18 @@ describe("Memory and cleanup", () => {
     ) as Node;
 
     container.appendChild(node);
+    flush();
     expect(totalEffectRuns).toBe(2);
 
-    trigger.set(1);
+    setTrigger(1);
     flush();
     expect(totalEffectRuns).toBe(4);
 
     // Hide - should dispose all item effects
-    show.set(false);
+    setShow(false);
     flush();
 
-    trigger.set(2);
+    setTrigger(2);
     flush();
     expect(totalEffectRuns).toBe(4); // Should not increase
   });

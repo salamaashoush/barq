@@ -1,10 +1,11 @@
 /**
  * delegateEvents - the document-level listener install that makes
- * compiler-emitted `$$<type>` expandos live.
+ * compiler-emitted `__bq_<type>` expandos live.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { clearDelegatedEvents, delegateEvents, setProp } from "./dom.ts";
+import { DEV } from "./signals.ts";
 
 let container: HTMLDivElement;
 
@@ -32,7 +33,7 @@ function countInstalls<T>(type: string, fn: () => T): { result: T; installs: num
   }
 }
 
-/** The `$$<type>` expando surface the compiler writes to */
+/** The `__bq_<type>` expando surface the compiler writes to */
 function expando(el: Element): Record<string, unknown> {
   return el as unknown as Record<string, unknown>;
 }
@@ -66,7 +67,7 @@ describe("delegateEvents", () => {
     container.appendChild(el);
 
     const seen: Event[] = [];
-    expando(el).$$barqping3 = (e: Event) => {
+    expando(el).__bq_barqping3 = (e: Event) => {
       seen.push(e);
     };
 
@@ -79,7 +80,7 @@ describe("delegateEvents", () => {
     container.appendChild(el);
 
     let calls = 0;
-    expando(el).$$barqneverinstalled = () => {
+    expando(el).__bq_barqneverinstalled = () => {
       calls++;
     };
 
@@ -93,7 +94,7 @@ describe("delegateEvents", () => {
     container.appendChild(el);
 
     const args: unknown[] = [];
-    expando(el).$$barqping4 = [
+    expando(el).__bq_barqping4 = [
       (data: unknown, e: Event) => {
         args.push(data, e.type);
       },
@@ -115,7 +116,7 @@ describe("delegateEvents", () => {
     const receivers: unknown[] = [];
     let currentTarget: unknown;
     let target: unknown;
-    expando(outer).$$barqping5 = function (this: unknown, e: Event) {
+    expando(outer).__bq_barqping5 = function (this: unknown, e: Event) {
       receivers.push(this);
       currentTarget = e.currentTarget;
       target = e.target;
@@ -133,7 +134,7 @@ describe("delegateEvents", () => {
     container.appendChild(el);
 
     let during: unknown;
-    expando(el).$$barqping10 = (e: Event) => {
+    expando(el).__bq_barqping10 = (e: Event) => {
       during = e.currentTarget;
     };
 
@@ -143,20 +144,15 @@ describe("delegateEvents", () => {
   });
 
   test("a non-bubbling type is reported instead of silently installing a dead handler", () => {
-    const original = console.warn;
-    const warnings: string[] = [];
-    console.warn = (...args: unknown[]) => {
-      warnings.push(String(args[0]));
-    };
-    try {
-      delegateEvents(["focus"]);
-      delegateEvents(["focus"]);
-      delegateEvents(["click"]);
-    } finally {
-      console.warn = original;
-    }
-    expect(warnings.length).toBe(1);
-    expect(warnings[0]).toContain("focus");
+    clearDelegatedEvents(["focus", "click"]);
+    const capture = DEV.diagnostics.capture();
+    delegateEvents(["focus"]);
+    delegateEvents(["focus"]);
+    delegateEvents(["click"]);
+    const events = capture.stop();
+    expect(events.map((event) => event.code)).toEqual(["DELEGATED_EVENT_DOES_NOT_BUBBLE"]);
+    expect(events[0]?.message).toContain("the `focus` event does not bubble");
+    expect(events[0]?.message).toContain('`listen(element, "focus", handler)`');
   });
 
   test("walks ancestors from the target upward", () => {
@@ -167,8 +163,8 @@ describe("delegateEvents", () => {
     container.appendChild(outer);
 
     const order: string[] = [];
-    expando(inner).$$barqping6 = () => order.push("inner");
-    expando(outer).$$barqping6 = () => order.push("outer");
+    expando(inner).__bq_barqping6 = () => order.push("inner");
+    expando(outer).__bq_barqping6 = () => order.push("outer");
 
     fire(inner, "barqping6");
     expect(order).toEqual(["inner", "outer"]);
@@ -182,11 +178,11 @@ describe("delegateEvents", () => {
     container.appendChild(outer);
 
     const order: string[] = [];
-    expando(inner).$$barqping7 = (e: Event) => {
+    expando(inner).__bq_barqping7 = (e: Event) => {
       order.push("inner");
       e.stopPropagation();
     };
-    expando(outer).$$barqping7 = () => order.push("outer");
+    expando(outer).__bq_barqping7 = () => order.push("outer");
 
     fire(inner, "barqping7");
     expect(order).toEqual(["inner"]);
@@ -201,8 +197,8 @@ describe("delegateEvents", () => {
     container.appendChild(outer);
 
     const order: string[] = [];
-    expando(inner).$$barqping8 = () => order.push("inner");
-    expando(outer).$$barqping8 = () => order.push("outer");
+    expando(inner).__bq_barqping8 = () => order.push("inner");
+    expando(outer).__bq_barqping8 = () => order.push("outer");
 
     fire(inner, "barqping8");
     expect(order).toEqual(["outer"]);
@@ -217,7 +213,7 @@ describe("delegateEvents", () => {
       calls++;
     });
 
-    expect(expando(el).$$click).toBeDefined();
+    expect(expando(el).__bq_click).toBeDefined();
     fire(el, "click");
     expect(calls).toBe(1);
   });
@@ -229,11 +225,11 @@ describe("delegateEvents", () => {
     const slot = expando(el);
 
     const order: string[] = [];
-    slot.$$barqping9 = () => order.push("first");
+    slot.__bq_barqping9 = () => order.push("first");
     fire(el, "barqping9");
-    slot.$$barqping9 = () => order.push("second");
+    slot.__bq_barqping9 = () => order.push("second");
     fire(el, "barqping9");
-    slot.$$barqping9 = undefined;
+    slot.__bq_barqping9 = undefined;
     fire(el, "barqping9");
 
     expect(order).toEqual(["first", "second"]);
@@ -247,7 +243,7 @@ describe("clearDelegatedEvents", () => {
     container.appendChild(el);
 
     let calls = 0;
-    expando(el).$$barqping10 = () => {
+    expando(el).__bq_barqping10 = () => {
       calls++;
     };
     fire(el, "barqping10");
@@ -273,48 +269,55 @@ describe("clearDelegatedEvents", () => {
 });
 
 /**
- * The dispatcher's OWNER, which is what the `$$s` expando beside every `$$type`
- * expando was already carrying and only `routeError` was reading.
+ * The dispatcher's OWNER, which is what the `__bqs` expando beside every `__bq_type`
+ * expando carries: the scope a handler's throw is routed to.
  *
- * A handler used to run with `CURRENT === null`, so an `onCleanup` or an
- * `effect` created inside one became an ORPHAN: `flushSync`'s `dropOrphans`
- * clears the claim list without disposing anything, so the work was owned by
- * nobody and never came apart. C1's "the argument decides" has to hold at the
- * one entry point the user's own code reaches most.
+ * It is not what the handler runs under. A handler is where the application
+ * writes state, and the engine refuses a write made under an owner, because an
+ * owner is a scope still being built. So a handler runs under none, exactly as
+ * an effect's callback does, and one that creates something it wants owned
+ * names the owner for it.
  */
-describe("a delegated handler runs under the scope stapled to its element", () => {
-  test("work created in a handler is owned by that scope and dies with it", async () => {
-    const { scope, delegate, getOwner, onCleanup } = await import("./index.ts");
+describe("a delegated handler runs under no owner", () => {
+  test("it writes state, and what it creates is owned by the scope it names", async () => {
+    const { createRoot, createSignal, runWithOwner, delegate, flush, getOwner, onCleanup } =
+      await import("./index.ts");
     const el = document.createElement("div");
     container.appendChild(el);
 
     let sawOwner: unknown = "not run";
     const cleanups: number[] = [];
     let disposeRoot!: () => void;
-    // REGISTERED INSIDE the scope: `delegate` staples the owner that is ambient
-    // where the handler is bound, which for compiled output is the body doing
-    // the binding. Registering outside one staples null, and that is the orphan
-    // this test exists to refuse.
-    const root = scope((dispose, scope) => {
-      disposeRoot = dispose;
-      delegate(el, "click", () => {
-        sawOwner = getOwner();
-        onCleanup(() => cleanups.push(1));
-      });
-      return scope;
-    }, true);
+    const [clicks, setClicks] = createSignal(0);
+    const root = runWithOwner(null, () =>
+      createRoot((dispose) => {
+        disposeRoot = dispose;
+        const scope = getOwner();
+        delegate(el, "click", () => {
+          sawOwner = getOwner();
+          setClicks((n) => n + 1);
+          runWithOwner(scope, () => onCleanup(() => cleanups.push(1)));
+        });
+        return scope;
+      }),
+    );
     delegateEvents(["click"]);
     el.dispatchEvent(new Event("click", { bubbles: true }));
+    flush();
 
-    expect(sawOwner, "the handler ran with no owner at all").toBe(root);
+    expect(root, "the handler was bound under no scope, so nothing below means anything").not.toBe(
+      null,
+    );
+    expect(sawOwner, "the handler ran under an owner, where a write is refused").toBe(null);
+    expect(clicks(), "the handler's write did not land").toBe(1);
     expect(cleanups.length, "the cleanup ran before anything was disposed").toBe(0);
     disposeRoot();
-    expect(cleanups.length, "the handler's cleanup was owned by nobody").toBe(1);
+    expect(cleanups.length, "the cleanup the handler filed under the scope was not run").toBe(1);
     clearDelegatedEvents(["click"]);
   });
 
   test("a Block forwarded into a handler slot is refused rather than invoked with the Event", async () => {
-    const { block, scope } = await import("./index.ts");
+    const { block, createRoot, getOwner, runWithOwner } = await import("./index.ts");
     const el = document.createElement("div");
     container.appendChild(el);
 
@@ -323,12 +326,12 @@ describe("a delegated handler runs under the scope stapled to its element", () =
       invokedWith = scope;
       return null;
     });
-    const root = scope((_dispose, scope) => scope, true);
+    const root = runWithOwner(null, () => createRoot(() => getOwner()));
     // Written as the COMPILED path writes it — the expando directly, with no
     // `delegate` call to guard — because that is the only shape in which this
     // can reach the dispatcher at all.
-    (el as unknown as Record<string, unknown>).$$click = leaf;
-    (el as unknown as Record<string, unknown>).$$s = root;
+    (el as unknown as Record<string, unknown>).__bq_click = leaf;
+    (el as unknown as Record<string, unknown>).__bqs = root;
     delegateEvents(["click"]);
 
     const errors: unknown[] = [];
@@ -358,4 +361,27 @@ describe("a delegated handler runs under the scope stapled to its element", () =
     ).toBe(true);
     clearDelegatedEvents(["click"]);
   });
+});
+
+test("a delegated handler is not stored where another library's listener would call it", async () => {
+  const { delegate } = await import("./index.ts");
+  // Solid 1 keeps its delegated handlers on `$$<type>` and its document
+  // listener calls whatever it finds there. A page with one Solid 1 widget on
+  // it, a devtools panel, ran every barq handler a second time.
+  const element = document.createElement("button");
+  delegate(element, "click", () => {});
+  expect((element as unknown as Record<string, unknown>).$$click).toBeUndefined();
+  expect(typeof (element as unknown as Record<string, unknown>).__bq_click).toBe("function");
+});
+
+test("the pointer-capture events are bound under their own names, in the bubble phase", () => {
+  const element = document.createElement("div");
+  container.appendChild(element);
+  const seen: string[] = [];
+  setProp(element, "onGotPointerCapture", () => seen.push("got"));
+  setProp(element, "onLostPointerCapture", () => seen.push("lost"));
+  element.dispatchEvent(new Event("gotpointercapture"));
+  element.dispatchEvent(new Event("lostpointercapture"));
+  element.dispatchEvent(new Event("gotpointer"));
+  expect(seen).toEqual(["got", "lost"]);
 });

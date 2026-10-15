@@ -17,26 +17,25 @@ import { describe, expect, test } from "bun:test";
 import { Errored, For, Show } from "./components.ts";
 import {
   block,
-  context,
+  createContext,
   flush,
   getContext,
   getOwner,
   onCleanup,
   pin,
   provideOn,
-  scope,
-  signal,
+  createRoot,
+  createSignal,
+  runWithOwner,
+  CONTEXT_MISS,
+  lookupContext,
 } from "./signals.ts";
 import { provide } from "./scope.ts";
 import type { Scope } from "./scope.ts";
 import { insert } from "./dom.ts";
 
-function chain(s: Scope | null, names: Map<Scope, string>): string {
-  const out: string[] = [];
-  for (let at = s; at !== null; at = at.parent) out.push(names.get(at) ?? "anon");
-  out.push("null");
-  return out.join(" -> ");
-}
+/** A binding only the caller's scope carries, so anything that sees it descends from it. */
+const CALLER = Symbol("caller");
 
 describe("a construct's body runs under the scope the construct opened", () => {
   for (const [label, run] of [
@@ -48,29 +47,32 @@ describe("a construct's body runs under the scope the construct opened", () => {
     ],
   ] as const) {
     test(`${label}: the child's owner descends from the caller, and is not the caller`, () => {
-      const names = new Map<Scope, string>();
       let childOwner: Scope | null = null;
       let outerScope!: Scope;
 
-      scope((_dispose, outer) => {
-        outerScope = outer;
-        names.set(outer, "outer");
-        const kid = block((): Node => {
-          childOwner = getOwner();
-          return document.createTextNode("k");
-        });
-        // The body has not run yet, so nothing about the definition site can
-        // be mistaken for the answer.
-        expect(childOwner).toBeNull();
-        run(kid);
-        flush();
-      }, true);
+      runWithOwner(null, () =>
+        createRoot(() => {
+          const outer = getOwner() as Scope;
+          outerScope = outer;
+          provideOn(outer, CALLER, () => "outer");
+          const kid = block((): Node => {
+            childOwner = getOwner();
+            return document.createTextNode("k");
+          });
+          // The body has not run yet, so nothing about the definition site can
+          // be mistaken for the answer.
+          flush();
+          expect(childOwner).toBeNull();
+          run(kid);
+          flush();
+        }),
+      );
 
       expect(childOwner).not.toBeNull();
       // A fresh scope UNDER the caller, not the caller itself: that is what
       // makes one activation disposable without touching the next.
       expect(childOwner).not.toBe(outerScope);
-      expect(chain(childOwner, names)).toContain("outer");
+      expect(lookupContext(childOwner, CALLER)).not.toBe(CONTEXT_MISS);
     });
   }
 });
@@ -85,10 +87,12 @@ describe("a Block invoked outside a construct uses the ambient owner", () => {
 
     // Defined outside every scope, invoked inside one: the scope that owns the
     // cleanup is the one current at the CALL, which is the whole claim.
-    const dispose = scope((d) => {
-      body();
-      return d;
-    }, true);
+    const dispose = runWithOwner(null, () =>
+      createRoot((d) => {
+        body();
+        return d;
+      }),
+    );
 
     expect(disposed).toBe(0);
     dispose();
@@ -106,14 +110,16 @@ describe("insert owns what it places on the scope that is current", () => {
     const parent = document.createElement("div");
     let disposed = 0;
 
-    const dispose = scope((d) => {
-      insert(parent, () => {
-        onCleanup(() => disposed++);
-        return "x";
-      });
-      flush();
-      return d;
-    }, true);
+    const dispose = runWithOwner(null, () =>
+      createRoot((d) => {
+        insert(parent, () => {
+          onCleanup(() => disposed++);
+          return "x";
+        });
+        flush();
+        return d;
+      }),
+    );
 
     expect(parent.textContent).toBe("x");
     expect(disposed).toBe(0);
@@ -125,17 +131,19 @@ describe("insert owns what it places on the scope that is current", () => {
     const parent = document.createElement("div");
     let disposed = 0;
 
-    const dispose = scope((d) => {
-      insert(parent, [
-        () => {
-          onCleanup(() => disposed++);
-          return "a";
-        },
-        "b",
-      ]);
-      flush();
-      return d;
-    }, true);
+    const dispose = runWithOwner(null, () =>
+      createRoot((d) => {
+        insert(parent, [
+          () => {
+            onCleanup(() => disposed++);
+            return "a";
+          },
+          "b",
+        ]);
+        flush();
+        return d;
+      }),
+    );
 
     expect(parent.textContent).toBe("ab");
     dispose();
@@ -148,18 +156,22 @@ describe("pin overrides the ambient owner", () => {
     let pinnedOwner!: Scope | null;
     let target!: Scope;
 
-    scope((_d, a) => {
-      target = a;
-    }, true);
+    runWithOwner(null, () =>
+      createRoot(() => {
+        target = getOwner() as Scope;
+      }),
+    );
 
     const body = pin(target, () => {
       pinnedOwner = getOwner();
       return 1;
     });
 
-    scope(() => {
-      body();
-    }, true);
+    runWithOwner(null, () =>
+      createRoot(() => {
+        body();
+      }),
+    );
 
     expect(pinnedOwner).toBe(target);
   });
@@ -167,34 +179,38 @@ describe("pin overrides the ambient owner", () => {
 
 describe("a Provider binds on the scope its children run under", () => {
   test("a consumer under the provider reads the provided value", () => {
-    const ctx = context<string>("default");
+    const ctx = createContext<string>("default");
     const seen: string[] = [];
 
-    scope(() => {
-      provide(
-        ctx,
-        () => "provided",
-        () => {
-          seen.push(getContext(ctx));
-          return "built";
-        },
-      );
-    }, true);
+    runWithOwner(null, () =>
+      createRoot(() => {
+        provide(
+          ctx,
+          () => "provided",
+          () => {
+            seen.push(getContext(ctx));
+            return "built";
+          },
+        );
+      }),
+    );
 
     expect(seen).toEqual(["provided"]);
   });
 
   test("a binding installed on one scope is invisible to a sibling", () => {
-    const ctx = context<string>("default");
+    const ctx = createContext<string>("default");
     let inSibling = "";
 
-    scope(() => {
-      const a = scope((_d2, s) => s);
-      provideOn(a, ctx.id, () => "only-a");
-      scope(() => {
-        inSibling = getContext(ctx);
-      });
-    }, true);
+    runWithOwner(null, () =>
+      createRoot(() => {
+        const a = createRoot(() => getOwner() as Scope);
+        provideOn(a, ctx.id, () => "only-a");
+        createRoot(() => {
+          inSibling = getContext(ctx);
+        });
+      }),
+    );
 
     expect(inSibling).toBe("default");
   });
@@ -202,7 +218,7 @@ describe("a Provider binds on the scope its children run under", () => {
 
 describe("a component is a function of its props", () => {
   test("its reactive work is owned by the caller's scope and dies with it", () => {
-    const count = signal(0);
+    const [count, setCount] = createSignal(0);
     let runs = 0;
     let disposed = 0;
 
@@ -211,17 +227,19 @@ describe("a component is a function of its props", () => {
       return count() * props.by;
     }
 
-    const dispose = scope((d) => {
-      insert(document.createElement("div"), () => {
-        runs++;
-        return String(Counter({ by: 2 }));
-      });
-      flush();
-      return d;
-    }, true);
+    const dispose = runWithOwner(null, () =>
+      createRoot((d) => {
+        insert(document.createElement("div"), () => {
+          runs++;
+          return String(Counter({ by: 2 }));
+        });
+        flush();
+        return d;
+      }),
+    );
 
     expect(runs).toBe(1);
-    count.set(3);
+    setCount(3);
     flush();
     expect(runs).toBe(2);
     dispose();

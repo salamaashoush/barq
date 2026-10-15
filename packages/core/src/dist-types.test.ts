@@ -112,7 +112,7 @@ describe.if(built)("the published declarations, as a consumer sees them", () => 
 
   test("an accessor is still accepted where a value is", async () => {
     const { ok, output } = await check(`
-      import { signal } from "@barqjs/core";
+      import { createSignal } from "@barqjs/core";
       import type { Incoming } from "@barqjs/core";
 
       function Label(props: Incoming<{ text: string }>) {
@@ -120,7 +120,7 @@ describe.if(built)("the published declarations, as a consumer sees them", () => 
       }
 
       export function Use() {
-        const name = signal("x");
+        const [name] = createSignal("x");
         return <Label text={name} />;
       }
     `);

@@ -49,6 +49,7 @@ import {
   bindEffect,
   bindEvent,
   bindProp,
+  readKeys,
   bindValue,
   formAction,
   insert,
@@ -116,7 +117,7 @@ export type Op =
   | readonly ["ref", number, number, "assign" | "apply"]
   | readonly ["formAction", number, number]
   | readonly ["bind", number, string, string, number]
-  | readonly ["spread", number, number, boolean]
+  | readonly ["spread", number, number, boolean, (readonly string[])?]
   | readonly ["insert", number, number, Plan, number | null]
   | Region
   | readonly ["effectGroup", readonly SetLive[]];
@@ -199,7 +200,11 @@ export function interp(unit: Unit, slots: readonly Slot[]): Node {
 function walk(nodes: readonly Node[], step: Ref): Node {
   const [kind, base, hops] = step;
   if (kind === "root" || base === null) {
-    throw new Error(`barq interp: step ${kind} has no base to walk from`);
+    throw new Error(
+      `barq interp: a compiled template has a \`${kind}\` step with no node to start from, so ` +
+        "the component cannot be built. The compiler wrote this table, so this is a bug in barq " +
+        "or a stale build: rebuild, and report it if it remains.",
+    );
   }
   let node: Node | null = nodes[base];
   if (kind === "firstChild") node = node.firstChild;
@@ -210,7 +215,12 @@ function walk(nodes: readonly Node[], step: Ref): Node {
     node = backward ? node.previousSibling : node.nextSibling;
   }
   if (node === null) {
-    throw new Error(`barq interp: the walk ${kind}+${hops} left the template`);
+    throw new Error(
+      `barq interp: a compiled template looks for a node (\`${kind}\`, then ${hops} sibling ` +
+        "steps) that its markup does not have, so the component cannot be built. The compiler " +
+        "wrote both, so this is a bug in barq or a stale build: rebuild, and report it if it " +
+        "remains.",
+    );
   }
   return node;
 }
@@ -244,7 +254,7 @@ function apply(op: Op, nodes: readonly Node[], slots: readonly Slot[]): void {
     // handler value, so there is no second property to write.
     case "delegate":
       (nodes[op[1]] as unknown as Record<string, unknown>)[op[2]] = slots[op[3]]();
-      (nodes[op[1]] as unknown as Record<string, unknown>).$$s = getOwner();
+      (nodes[op[1]] as unknown as Record<string, unknown>).__bqs = getOwner();
       return;
     case "listen":
       listen(nodes[op[1]], op[2], slots[op[3]]() as EventListener);
@@ -276,7 +286,7 @@ function apply(op: Op, nodes: readonly Node[], slots: readonly Slot[]): void {
     // compiler saying the source may change, and it is the same bit that makes
     // the DOM backend hand `spread` a thunk instead of an object.
     case "spread":
-      spread(nodes[op[1]] as Element, (op[3] ? slots[op[2]] : slots[op[2]]()) as never);
+      spread(nodes[op[1]] as Element, (op[3] ? slots[op[2]] : slots[op[2]]()) as never, op[4]);
       return;
 
     case "insert": {
@@ -344,7 +354,12 @@ function apply(op: Op, nodes: readonly Node[], slots: readonly Slot[]): void {
  */
 function fuse(members: readonly SetLive[], nodes: readonly Node[], slots: readonly Slot[]): void {
   bindEffect(
-    () => members.map((member) => slots[member[3]]()),
+    () =>
+      members.map((member) =>
+        member[5] === "style" || member[5] === "classList"
+          ? readKeys(slots[member[3]]())
+          : slots[member[3]](),
+      ),
     (values: unknown[], prev: unknown[] | undefined) => {
       for (let i = 0; i < members.length; i++) {
         const [, node, key, , diff, chan] = members[i];

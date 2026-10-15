@@ -1,7 +1,7 @@
 import { defineConfig } from "tsdown";
 
 /**
- * ONE build for all four entries, so they SHARE the runtime.
+ * ONE build for all six entries, so they SHARE the runtime.
  *
  * This was four separate configs, to keep the `.d.ts` files from importing out
  * of a shared `.js` chunk. The cost was a second copy of `src/signals.ts` in
@@ -14,7 +14,14 @@ import { defineConfig } from "tsdown";
  * every `@barqjs/*` import to `src/` where there is only one copy.
  */
 export default defineConfig({
-  entry: ["./src/index.ts", "./src/jsx-runtime.ts", "./src/interp.ts", "./src/internal.ts"],
+  entry: [
+    "./src/index.ts",
+    "./src/dev.ts",
+    "./src/hot.ts",
+    "./src/jsx-runtime.ts",
+    "./src/interp.ts",
+    "./src/internal.ts",
+  ],
   format: ["esm"],
   // `exports` names `.js`/`.d.ts`; tsdown 0.22 defaults to `.mjs`/`.d.mts`.
   outExtensions: () => ({ js: ".js", dts: ".d.ts" }),

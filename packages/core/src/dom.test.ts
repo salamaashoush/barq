@@ -3,17 +3,18 @@
  */
 
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { element, insert, render, setProp, spread, template } from "./dom.ts";
+import { bindProp, element, insert, render, setProp, setStyle, spread, template } from "./dom.ts";
 import { boundary } from "./flow.ts";
 import {
   ScopeMissingError,
   block,
-  computed,
-  scope,
-  enterRoot,
-  exit,
+  createMemo,
+  createRoot,
+  disposeScope,
+  rootScope,
+  runWithOwner,
   flush,
-  signal,
+  createSignal,
 } from "./signals.ts";
 
 // Simple DOM setup for testing
@@ -255,25 +256,48 @@ describe("Style handling", () => {
   });
 
   test("reactive style properties", () => {
-    const color = signal("red");
+    const [color, setColor] = createSignal("red");
     const el = element("div", { style: { color } }) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.style.color).toBe("red");
 
-    color.set("blue");
+    setColor("blue");
     flush();
     expect(el.style.color).toBe("blue");
   });
 
+  test("a live key in an object that ARRIVES through a prop belongs to the binding", () => {
+    // The object is static and one key of it is live. It reaches the element
+    // through a Cell, so the write half is what first sees the getter, and the
+    // write half runs where nothing owns an effect: the key has to be read in
+    // the binding's own read half, and has to stop with the binding's scope.
+    const [color, setColor] = createSignal("red");
+    const [style] = createSignal({ color });
+    const el = document.createElement("div");
+    const root = rootScope();
+    runWithOwner(root, () => bindProp(el, setStyle, "style", style));
+    flush();
+    expect(el.style.color).toBe("red");
+
+    setColor("blue");
+    flush();
+    expect(el.style.color).toBe("blue");
+
+    disposeScope(root);
+    setColor("green");
+    flush();
+    expect(el.style.color, "the key outlived the scope that bound it").toBe("blue");
+  });
+
   test("removes style property when null", () => {
-    const width = signal<number | null>(100);
+    const [width, setWidth] = createSignal<number | null>(100);
     const el = element("div", { style: { width } }) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.style.width).toBe("100px");
 
-    width.set(null);
+    setWidth(null);
     flush();
     expect(el.style.width).toBe("");
   });
@@ -325,6 +349,7 @@ describe("Class handling", () => {
   test("repeated one-shot writes replace rather than accumulate", () => {
     const el = document.createElement("div");
     for (let i = 0; i < 5; i++) setProp(el, "class", `c${i}`);
+    flush();
     expect(el.getAttribute("class")).toBe("c4");
     expect(el.classList.length).toBe(1);
   });
@@ -336,56 +361,57 @@ describe("Class handling", () => {
     el.setAttribute("class", "from-markup");
     setProp(el, "class", "a");
     setProp(el, "class", "b");
+    flush();
     expect([...el.classList].toSorted()).toEqual(["b", "from-markup"]);
   });
 });
 
 describe("Reactive props", () => {
   test("updates prop when signal changes", () => {
-    const title = signal("initial");
+    const [title, setTitle] = createSignal("initial");
     const el = element("div", { title }) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.title).toBe("initial");
 
-    title.set("updated");
+    setTitle("updated");
     flush();
     expect(el.title).toBe("updated");
   });
 
   test("updates attribute when signal changes", () => {
-    const ariaLabel = signal("label 1");
+    const [ariaLabel, setAriaLabel] = createSignal("label 1");
     const el = element("div", { "aria-label": ariaLabel }) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.getAttribute("aria-label")).toBe("label 1");
 
-    ariaLabel.set("label 2");
+    setAriaLabel("label 2");
     flush();
     expect(el.getAttribute("aria-label")).toBe("label 2");
   });
 
   test("handles boolean attribute reactively", () => {
-    const disabled = signal(true);
+    const [disabled, setDisabled] = createSignal(true);
     const el = element("button", { disabled }) as HTMLButtonElement;
 
     container.appendChild(el);
     expect(el.hasAttribute("disabled")).toBe(true);
 
-    disabled.set(false);
+    setDisabled(false);
     flush();
     expect(el.hasAttribute("disabled")).toBe(false);
   });
 
   test("handles computed prop values", () => {
-    const count = signal(0);
-    const label = computed(() => `Count: ${count()}`);
+    const [count, setCount] = createSignal(0);
+    const label = createMemo(() => `Count: ${count()}`);
     const el = element("div", { title: label }) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.title).toBe("Count: 0");
 
-    count.set(5);
+    setCount(5);
     flush();
     expect(el.title).toBe("Count: 5");
   });
@@ -393,53 +419,53 @@ describe("Reactive props", () => {
 
 describe("Reactive children", () => {
   test("updates text content from signal", () => {
-    const text = signal("hello");
+    const [text, setText] = createSignal("hello");
     const el = element("div", { children: text }) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.textContent).toContain("hello");
 
-    text.set("world");
+    setText("world");
     flush();
     expect(el.textContent).toContain("world");
   });
 
   test("updates text from computed", () => {
-    const count = signal(0);
-    const label = computed(() => `Count: ${count()}`);
+    const [count, setCount] = createSignal(0);
+    const label = createMemo(() => `Count: ${count()}`);
     const el = element("div", { children: label }) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.textContent).toContain("Count: 0");
 
-    count.set(10);
+    setCount(10);
     flush();
     expect(el.textContent).toContain("Count: 10");
   });
 
   test("handles multiple reactive children", () => {
-    const a = signal("A");
-    const b = signal("B");
+    const [a, setA] = createSignal("A");
+    const [b, setB] = createSignal("B");
     // `element` takes its scope EXPLICITLY where `createElement` read the
     // ambient owner, and a reactive child needs an owner to bind under — `null`
     // names none. That is the whole of C1 at this entry point, so the port is a
     // real scope rather than a cast.
     let el!: HTMLDivElement;
-    scope((_d) => {
+    createRoot((_d) => {
       el = element("div", { children: [a, "-", b] }) as HTMLDivElement;
     });
 
     container.appendChild(el);
     expect(el.textContent).toContain("A-B");
 
-    a.set("X");
-    b.set("Y");
+    setA("X");
+    setB("Y");
     flush();
     expect(el.textContent).toContain("X-Y");
   });
 
   test("EDGE CASE: reactive child changes from text to array", () => {
-    const content = signal<string | string[]>("text");
+    const [content, setContent] = createSignal<string | string[]>("text");
     const el = element("div", {
       children: () => {
         const val = content();
@@ -453,19 +479,19 @@ describe("Reactive children", () => {
     container.appendChild(el);
     expect(el.textContent).toContain("text");
 
-    content.set(["a", "b", "c"]);
+    setContent(["a", "b", "c"]);
     flush();
     expect(el.querySelectorAll("span").length).toBe(3);
 
     // Switch back to text
-    content.set("back to text");
+    setContent("back to text");
     flush();
     expect(el.textContent).toContain("back to text");
     expect(el.querySelectorAll("span").length).toBe(0);
   });
 
   test("EDGE CASE: reactive child changes from node to primitive", () => {
-    const showNode = signal(true);
+    const [showNode, setShowNode] = createSignal(true);
     const el = element("div", {
       children: () => (showNode() ? element("span", { children: "node" }) : "primitive"),
     }) as HTMLDivElement;
@@ -473,24 +499,24 @@ describe("Reactive children", () => {
     container.appendChild(el);
     expect(el.querySelector("span")).not.toBeNull();
 
-    showNode.set(false);
+    setShowNode(false);
     flush();
     expect(el.querySelector("span")).toBeNull();
     expect(el.textContent).toContain("primitive");
 
-    showNode.set(true);
+    setShowNode(true);
     flush();
     expect(el.querySelector("span")).not.toBeNull();
   });
 
   test("EDGE CASE: rapid reactive child updates", () => {
-    const count = signal(0);
+    const [count, setCount] = createSignal(0);
     const el = element("div", { children: count }) as HTMLDivElement;
 
     container.appendChild(el);
 
     for (let i = 1; i <= 100; i++) {
-      count.set(i);
+      setCount(i);
     }
     flush();
 
@@ -498,24 +524,24 @@ describe("Reactive children", () => {
   });
 
   test("EDGE CASE: null/undefined reactive child", () => {
-    const content = signal<string | null>("visible");
+    const [content, setContent] = createSignal<string | null>("visible");
     const el = element("div", { children: () => content() }) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.textContent).toContain("visible");
 
-    content.set(null);
+    setContent(null);
     flush();
     // Should clear content
     expect(el.textContent).not.toContain("visible");
 
-    content.set("back");
+    setContent("back");
     flush();
     expect(el.textContent).toContain("back");
   });
 
   test("EDGE CASE: deeply nested reactive children", () => {
-    const inner = signal("deep");
+    const [inner, setInner] = createSignal("deep");
     const el = element("div", {
       children: element("div", { children: element("div", { children: inner }) }),
     }) as HTMLDivElement;
@@ -523,7 +549,7 @@ describe("Reactive children", () => {
     container.appendChild(el);
     expect(el.textContent).toContain("deep");
 
-    inner.set("updated");
+    setInner("updated");
     flush();
     expect(el.textContent).toContain("updated");
   });
@@ -553,25 +579,25 @@ describe("DOM properties vs attributes", () => {
   });
 
   test("reactive value property", () => {
-    const value = signal("initial");
+    const [value, setValue] = createSignal("initial");
     const el = element("input", { value }) as HTMLInputElement;
 
     container.appendChild(el);
     expect(el.value).toBe("initial");
 
-    value.set("changed");
+    setValue("changed");
     flush();
     expect(el.value).toBe("changed");
   });
 
   test("reactive checked property", () => {
-    const checked = signal(false);
+    const [checked, setChecked] = createSignal(false);
     const el = element("input", { type: "checkbox", checked }) as HTMLInputElement;
 
     container.appendChild(el);
     expect(el.checked).toBe(false);
 
-    checked.set(true);
+    setChecked(true);
     flush();
     expect(el.checked).toBe(true);
   });
@@ -632,7 +658,7 @@ describe("render function", () => {
   });
 
   test("a fragment root holding a Cell stays a live hole", () => {
-    const shown = signal(false);
+    const [shown, setShown] = createSignal(false);
     // What `render(() => <>{() => cond() ? <span/> : null}</>)` produces: an
     // array whose only member is a Cell. Appending its nodes once left a
     // component whose whole output is a conditional — an overlay — rendered at
@@ -641,17 +667,17 @@ describe("render function", () => {
 
     expect(container.textContent).toBe("");
 
-    shown.set(true);
+    setShown(true);
     flush();
     expect(container.textContent).toBe("in");
 
-    shown.set(false);
+    setShown(false);
     flush();
     expect(container.textContent).toBe("");
   });
 
   test("a fragment root keeps its static members in order around a Cell", () => {
-    const middle = signal("b");
+    const [middle, setMiddle] = createSignal("b");
     render(
       [element("span", { children: "a" }), () => middle(), element("span", { children: "c" })],
       container,
@@ -659,7 +685,7 @@ describe("render function", () => {
 
     expect(container.textContent).toBe("abc");
 
-    middle.set("B");
+    setMiddle("B");
     flush();
     expect(container.textContent).toBe("aBc");
   });
@@ -729,12 +755,12 @@ describe("template function", () => {
 
 describe("Memory and cleanup", () => {
   test("effect for reactive prop disposes with scope", () => {
-    const title = signal("initial");
+    const [title, setTitle] = createSignal("initial");
     let effectRuns = 0;
 
     let dispose: (() => void) | undefined;
 
-    scope((d) => {
+    createRoot((d) => {
       dispose = d;
 
       // Wrap createElement to track effect runs
@@ -749,24 +775,24 @@ describe("Memory and cleanup", () => {
 
     expect(effectRuns).toBe(1);
 
-    title.set("changed");
+    setTitle("changed");
     flush();
     expect(effectRuns).toBe(2);
 
     dispose!();
 
-    title.set("after dispose");
+    setTitle("after dispose");
     flush();
     expect(effectRuns).toBe(2); // Should not increase
   });
 
   test("effect for reactive child disposes with scope", () => {
-    const text = signal("initial");
+    const [text, setText] = createSignal("initial");
     let effectRuns = 0;
 
     let dispose: (() => void) | undefined;
 
-    scope((d) => {
+    createRoot((d) => {
       dispose = d;
 
       const trackedText = () => {
@@ -780,24 +806,24 @@ describe("Memory and cleanup", () => {
 
     expect(effectRuns).toBe(1);
 
-    text.set("changed");
+    setText("changed");
     flush();
     expect(effectRuns).toBe(2);
 
     dispose!();
 
-    text.set("after dispose");
+    setText("after dispose");
     flush();
     expect(effectRuns).toBe(2); // Should not increase
   });
 
   test("reactive styles dispose with scope", () => {
-    const color = signal("red");
+    const [color, setColor] = createSignal("red");
     let effectRuns = 0;
 
     let dispose: (() => void) | undefined;
 
-    scope((d) => {
+    createRoot((d) => {
       dispose = d;
 
       const trackedColor = () => {
@@ -811,13 +837,13 @@ describe("Memory and cleanup", () => {
 
     expect(effectRuns).toBe(1);
 
-    color.set("blue");
+    setColor("blue");
     flush();
     expect(effectRuns).toBe(2);
 
     dispose!();
 
-    color.set("green");
+    setColor("green");
     flush();
     expect(effectRuns).toBe(2); // Should not increase
   });
@@ -830,9 +856,9 @@ describe("Edge cases and error handling", () => {
   });
 
   test("handles mixed static and reactive children", () => {
-    const dynamic = signal("dynamic");
+    const [dynamic, setDynamic] = createSignal("dynamic");
     let el!: HTMLDivElement;
-    scope((_d) => {
+    createRoot((_d) => {
       el = element("div", {
         children: ["static1", dynamic, "static2", () => `computed: ${dynamic()}`],
       }) as HTMLDivElement;
@@ -844,7 +870,7 @@ describe("Edge cases and error handling", () => {
     expect(el.textContent).toContain("static2");
     expect(el.textContent).toContain("computed: dynamic");
 
-    dynamic.set("updated");
+    setDynamic("updated");
     flush();
     expect(el.textContent).toContain("updated");
     expect(el.textContent).toContain("computed: updated");
@@ -912,7 +938,7 @@ describe("BUG: isSignalGetter false positive", () => {
 describe("BUG: textNode stale reference", () => {
   test("textNode reference should be invalidated after complex content", () => {
     // This tests the potential bug where textNode reference becomes stale
-    const content = signal<string | Node>("initial");
+    const [content, setContent] = createSignal<string | Node>("initial");
 
     const el = element("div", { children: () => content() }) as HTMLDivElement;
     container.appendChild(el);
@@ -920,22 +946,22 @@ describe("BUG: textNode stale reference", () => {
     expect(el.textContent).toContain("initial");
 
     // Change to a node
-    content.set(element("span", { children: "node" }));
+    setContent(element("span", { children: "node" }));
     flush();
     expect(el.querySelector("span")).not.toBeNull();
 
     // Change back to primitive - should work correctly
-    content.set("back to text");
+    setContent("back to text");
     flush();
     expect(el.textContent).toContain("back to text");
     expect(el.querySelector("span")).toBeNull();
 
     // Rapid changes
-    content.set("text1");
-    content.set(element("div", { children: "div" }));
-    content.set("text2");
-    content.set(element("span", { children: "span" }));
-    content.set("final");
+    setContent("text1");
+    setContent(element("div", { children: "div" }));
+    setContent("text2");
+    setContent(element("span", { children: "span" }));
+    setContent("final");
     flush();
 
     expect(el.textContent).toContain("final");
@@ -962,27 +988,27 @@ describe("eager multi-node bodies survive a hide/show cycle", () => {
   }
 
   test("a reactive insert re-inserts the same nodes", () => {
-    const on = signal(true);
+    const [on, setOn] = createSignal(true);
     const body = twoNodeFragment();
     const first = Array.from(body.childNodes);
 
     insert(container, () => (on() ? body : null));
     expect(container.innerHTML).toBe("<i>i</i><u>u</u>");
 
-    on.set(false);
+    setOn(false);
     flush();
     expect(container.innerHTML).toBe("");
 
-    on.set(true);
+    setOn(true);
     flush();
     expect(container.innerHTML).toBe("<i>i</i><u>u</u>");
     // The same nodes, not rebuilt ones: the fragment was the only copy.
     expect(container.firstChild).toBe(first[0]);
     expect(container.lastChild).toBe(first[1]);
 
-    on.set(false);
+    setOn(false);
     flush();
-    on.set(true);
+    setOn(true);
     flush();
     expect(container.innerHTML).toBe("<i>i</i><u>u</u>");
   });
@@ -1046,7 +1072,7 @@ describe("spread — B4 and E2.2 on the one channel the corpus cannot reach", ()
   });
 
   test("B4: re-applying the same event name does not accumulate cleanups or listeners", () => {
-    const which = signal(1);
+    const [which, setWhich] = createSignal(1);
     let a = 0;
     let b = 0;
     const host = document.createElement("div");
@@ -1064,7 +1090,7 @@ describe("spread — B4 and E2.2 on the one channel the corpus cannot reach", ()
     el.dispatchEvent(new Event("mouseenter"));
     expect([a, b]).toEqual([1, 0]);
 
-    which.set(2);
+    setWhich(2);
     flush();
     el.dispatchEvent(new Event("mouseenter"));
     // The first handler was replaced, not stacked on top of.
@@ -1076,7 +1102,7 @@ describe("spread — B4 and E2.2 on the one channel the corpus cannot reach", ()
   });
 
   test("C3.8: the style key is a Cell slot like every other, not a hole", () => {
-    const tint = signal("color: red");
+    const [tint, setTint] = createSignal("color: red");
     const host = document.createElement("div");
     container.appendChild(host);
 
@@ -1088,7 +1114,7 @@ describe("spread — B4 and E2.2 on the one channel the corpus cannot reach", ()
 
     const el = host.querySelector("i") as HTMLElement;
     expect(el.getAttribute("style"), "a Cell in the style key applied nothing").toBe("color: red");
-    tint.set("color: blue");
+    setTint("color: blue");
     flush();
     expect(el.getAttribute("style")).toBe("color: blue");
     dispose();
@@ -1096,19 +1122,19 @@ describe("spread — B4 and E2.2 on the one channel the corpus cannot reach", ()
     // And the refusal that goes with it: `style` was the one key on this
     // surface where a Block neither threw nor rendered.
     const leaf = block(() => document.createTextNode("built"));
-    // `exit`ed in a `finally`: `enterRoot` sets `CURRENT` and the throw below
-    // walks past the restore, so without this the root stays current for every
-    // test file that runs after this one — which is how `context.test.ts`'s two
-    // "outside owner" cases came to pass only by file order.
-    const root = enterRoot();
-    try {
-      expect(() => {
+    const root = rootScope();
+    runWithOwner(root, () => {
+      // The refusal is raised inside the binding's own computation, so it
+      // arrives as the engine's wrapper around it.
+      let thrown: unknown;
+      try {
         const target = document.createElement("i");
         spread(target, () => ({ style: leaf }));
-      }).toThrow(ScopeMissingError);
-    } finally {
-      exit(root);
-    }
+      } catch (error) {
+        thrown = error;
+      }
+      expect((thrown as Error | undefined)?.cause).toBeInstanceOf(ScopeMissingError);
+    });
   });
 
   test("E2.2: a throw out of a spread-bound handler reaches the enclosing boundary", () => {
@@ -1167,15 +1193,15 @@ describe("enumerated attributes", () => {
   });
 
   test("the value follows a signal both ways", () => {
-    const pressed = signal(false);
+    const [pressed, setPressed] = createSignal(false);
     const el = element("button", { "aria-pressed": () => pressed() }) as HTMLButtonElement;
     container.appendChild(el);
 
     expect(el.getAttribute("aria-pressed")).toBe("false");
-    pressed.set(true);
+    setPressed(true);
     flush();
     expect(el.getAttribute("aria-pressed")).toBe("true");
-    pressed.set(false);
+    setPressed(false);
     flush();
     expect(el.getAttribute("aria-pressed")).toBe("false");
   });
@@ -1188,7 +1214,7 @@ describe("enumerated attributes", () => {
 
 describe("a component's construction is not a dependency of the hole that placed it", () => {
   test("changing a signal the body READ does not rebuild the subtree", () => {
-    const label = signal("a");
+    const [label, setLabel] = createSignal("a");
     let builds = 0;
 
     // What the compiler emits for `<Parent><Child/></Parent>`: the child is a
@@ -1201,26 +1227,29 @@ describe("a component's construction is not a dependency of the hole that placed
     });
 
     const parent = document.createElement("div");
-    scope((dispose) => {
+    const dispose = createRoot((disposeRoot) => {
       insert(parent, child);
+      return disposeRoot;
+    });
+    {
       flush();
 
       const first = parent.firstChild;
       expect(builds).toBe(1);
       expect(parent.textContent).toBe("a");
 
-      label.set("b");
+      setLabel("b");
       flush();
 
       expect(builds, "the body ran again").toBe(1);
       expect(parent.firstChild, "the element was replaced").toBe(first);
       expect(parent.textContent, "the update did not land").toBe("b");
       dispose();
-    });
+    }
   });
 
   test("DOM state the user owns survives a change the body read", () => {
-    const checked = signal(false);
+    const [checked, setChecked] = createSignal(false);
 
     const child = block(() => {
       const input = document.createElement("input");
@@ -1232,38 +1261,42 @@ describe("a component's construction is not a dependency of the hole that placed
 
     const parent = document.createElement("div");
     document.body.appendChild(parent);
-    scope((dispose) => {
+    const dispose = createRoot((disposeRoot) => {
       insert(parent, child);
+      return disposeRoot;
+    });
+    {
       flush();
 
       const input = parent.firstChild as HTMLInputElement;
       // The USER checks it. Nothing in the framework knows.
       input.checked = true;
 
-      checked.set(true);
+      setChecked(true);
       flush();
 
       expect((parent.firstChild as HTMLInputElement).checked).toBe(true);
       dispose();
-    });
+    }
     parent.remove();
   });
 
   test("an expression hole is still tracked", () => {
-    const count = signal(0);
+    const [count, setCount] = createSignal(0);
     const parent = document.createElement("div");
 
-    scope((dispose) => {
+    const dispose = createRoot((disposeRoot) => {
       // `<Foo>{count()}</Foo>` compiles to a plain arrow, not a Block.
       insert(parent, () => String(count()));
-      flush();
-      expect(parent.textContent).toBe("0");
-
-      count.set(1);
-      flush();
-      expect(parent.textContent).toBe("1");
-      dispose();
+      return disposeRoot;
     });
+    flush();
+    expect(parent.textContent).toBe("0");
+
+    setCount(1);
+    flush();
+    expect(parent.textContent).toBe("1");
+    dispose();
   });
 });
 
@@ -1314,6 +1347,7 @@ describe("capture-phase events", () => {
 
     child.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true }));
 
+    flush();
     expect(seen).toEqual(["capture"]);
   });
 
@@ -1340,9 +1374,10 @@ describe("capture-phase events", () => {
     parent.appendChild(child);
     container.appendChild(parent);
 
-    scope((dispose) => {
+    createRoot((dispose) => {
       setProp(parent, "onKeyDownCapture", () => seen.push("capture"));
       child.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true }));
+      flush();
       expect(seen).toEqual(["capture"]);
       dispose();
     });

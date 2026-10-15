@@ -1,89 +1,121 @@
 /**
  * Barq - Tiny JSX renderer with fine-grained reactivity via signals
  *
- * Core: signals, JSX/DOM rendering, components, async resources, stores
+ * Core: the reactive engine, JSX/DOM rendering, components, hydration
  * For scheduling, events, observers and browser APIs, see @barqjs/primitives
  */
 
-// Core reactivity - primitives
+// The reactive engine: `@solidjs/signals`, under its own names.
 export {
-  signal,
-  linked,
-  computed,
-  effect,
-  renderEffect,
-  batch,
-  untrack,
-  scope,
+  $PROXY,
+  $TARGET,
+  $TRACK,
+  ContextNotFoundError,
+  NoOwnerError,
+  NotReadyError,
+  TimeoutError,
+  action,
+  affects,
+  clearSnapshots,
+  createEffect,
+  createErrorBoundary,
+  createLoadingBoundary,
+  createMemo,
+  createOptimistic,
+  createOptimisticStore,
+  createOwner,
+  createProjection,
+  createReaction,
+  createRenderEffect,
+  createRevealOrder,
+  createRoot,
+  createSignal,
+  createStore,
+  createTrackedEffect,
+  deep,
+  enableExternalSource,
+  enforceLoadingBoundary,
+  flatten,
+  flush,
+  getNextChildId,
+  getObserver,
+  getOwner,
+  isDisposed,
+  isEqual,
+  isPending,
+  isWrappable,
+  latest,
+  mapArray,
+  markSnapshotScope,
   onCleanup,
-  onMount,
   onSettled,
-  context,
+  peekNextChildId,
+  reconcile,
+  refresh,
+  releaseSnapshotScope,
+  repeat,
+  resetErrorHalt,
+  resolve,
+  runWithOwner,
+  setSnapshotCapture,
+  snapshot,
+  storePath,
+  until,
+  untrack,
+} from "./signals.ts";
+export type {
+  Accessor,
+  ComputeFunction,
+  EffectBundle,
+  EffectFunction,
+  EffectOptions,
+  ExternalSource,
+  ExternalSourceConfig,
+  ExternalSourceFactory,
+  Maybe,
+  MemoOptions,
+  Part,
+  Refreshable,
+  RevealOrder,
+  Setter,
+  Signal,
+  SignalOptions,
+  SourceAccessor,
+  Store,
+  StorePathRange,
+  StoreSetter,
+  UntilOptions,
+} from "./signals.ts";
+
+// What barq adds beside the engine.
+export {
+  createContext,
   getContext,
+  setContext,
   useContext,
   hasContext,
-  flush,
-  getOwner,
-  runWithOwner,
-  // Async helpers
-  isPending,
-  latest,
-  refresh,
+  followAsync,
   settle,
-  // Boundary context keys (used by Loading/Errored components)
-  // Dev diagnostics
   DEV,
-  // Error classes
-  ContextNotFoundError,
-  NotReadyError,
   ScopeMissingError,
-} from "./signals.ts";
-export type { LoadingBoundaryHandle, DiagnosticEvent } from "./signals.ts";
-
-// Solid 2.0 parity primitives
-export {
-  owner,
-  reaction,
-  trackedEffect,
-  isTracking,
-  getNextChildId,
-  isDisposed,
-  peekNextChildId,
   scopeAllocations,
   effectAllocations,
   resetChildIds,
-  resolve,
-  until,
-  TimeoutError,
-  markInMotion,
-  setSnapshotCapture,
-  markSnapshotScope,
-  releaseSnapshotScope,
-  clearSnapshots,
+  createUniqueId,
 } from "./signals.ts";
-export type { ExternalSource, ExternalSourceConfig, ExternalSourceFactory } from "./signals.ts";
-
-// root: detached scope for SolidJS compatibility
-import { scope as _createScope } from "./signals.ts";
-export function root<T>(fn: (dispose: () => void) => T): T {
-  return _createScope(fn, true);
-}
-
-export type { SignalOptions, MemoOptions, Owner, ContextRecord } from "./signals.ts";
+export type { Context, ContextRecord, DiagnosticEvent, Owner } from "./signals.ts";
 
 // Scope — the ownership spine.
 export {
-  enter,
-  exit,
+  childScope,
   pin,
   dispose,
-  enterRoot,
+  rootScope,
   abortSignal,
   ownRange,
   provide,
   install,
   read,
-  stack,
 } from "./scope.ts";
 
 /**
@@ -92,7 +124,7 @@ export {
  * compiled path has and must refuse a Block in one the same way.
  */
 export { readSlot } from "./signals.ts";
-export type { Block, Boundary, Cell, Scope, Slot } from "./scope.ts";
+export type { Block, Cell, Scope, Slot } from "./scope.ts";
 
 // The props model. `props` and `cell` are the two
 // carriers the compiler emits; the four helpers are views over the same
@@ -109,46 +141,20 @@ export {
   splitProps,
   SOURCES,
 } from "./props.ts";
-export type { Source } from "./props.ts";
-
-// Types
-export type { Signal, Computed, Context } from "./signals.ts";
-export type { Resource, ResourceInfo, ResourceOptions, ResourceStatus } from "./async.ts";
-export type { Store } from "./store.ts";
+export type { Merge, MergeProps, Source } from "./props.ts";
 
 // What a JSX call site writes, and what a component body reads.
-export type { Incoming, StrictAccessor, StrictArrayAccessor, StrictChild } from "./config.ts";
+export type {
+  CallSite,
+  Incoming,
+  StrictAccessor,
+  StrictArrayAccessor,
+  StrictChild,
+} from "./config.ts";
 
-// Store - fine-grained nested reactivity
-export { isClient, isServer } from "./env.ts";
-
-export {
-  store,
-  produce,
-  reconcile,
-  unwrap,
-  snapshot,
-  projection,
-  writableProjection,
-  deep,
-} from "./store.ts";
-export type { Part, StorePathRange } from "./store.ts";
-
-// Actions & optimistic updates
-export { action, affects, commit, optimistic, optimisticStore } from "./actions.ts";
+export { isClient, isDev, isServer } from "./env.ts";
 
 // Server-side rendering
-
-// Core hooks
-export { errorBoundary, loadingBoundary, revealOrder, flatten } from "./boundaries.ts";
-export type { RevealDisplay, RevealOrder } from "./boundaries.ts";
-
-export { mapArray, repeat } from "./map.ts";
-export type { Maybe } from "./map.ts";
-
-// Async data loading, through one resource. `resource` is the
-// hook-shaped alias and nothing more.
-export { resource } from "./async.ts";
 
 // Claim-based hydration. The two walk helpers are emitted ONLY by a
 // `hydratable` compile — the index must cost nothing on the client-render path,
@@ -158,6 +164,8 @@ export {
   child,
   sib,
   hole,
+  hydrating as isHydrating,
+  onHydrationEnd,
   type HydrationReport,
   type Mismatch,
   type MismatchKind,
@@ -185,6 +193,7 @@ export {
   setHtml,
   setRef,
   bindProp,
+  readKeys,
   bindEffect,
   bindValue,
   bindEvent,
@@ -204,7 +213,6 @@ export {
   isSsrHtml,
   type Child,
   type Props,
-  type Component,
   type JSXElement,
   type Element,
   type ArrayElement,
@@ -267,7 +275,12 @@ export {
 export { lazy } from "./components.ts";
 export type {
   ShowProps,
+  ShowItem,
   ForProps,
+  ForCallSite,
+  ForKeyed,
+  ForItem,
+  ForIndex,
   MatchProps,
   RepeatProps,
   SwitchProps,
@@ -276,6 +289,10 @@ export type {
   ErroredProps,
   PortalProps,
   DynamicComponent,
+  DynamicProps,
+  DynamicTag,
+  DynamicTarget,
+  LazyComponent,
 } from "./components.ts";
 
 // JSX — the TYPES stay whole; `jsx`/`jsxs`/`jsxDEV` are gone. Bun's JSX
@@ -291,14 +308,16 @@ export { isArray, toString } from "./type-utils.ts";
 
 // Helper types for components (following SolidJS/React patterns)
 export type {
-  Accessor,
-  Setter,
   FunctionMaybe,
   MaybeAccessor,
   PropsWithChildren,
   ParentProps,
   VoidProps,
   FlowProps,
+  Component,
+  VoidComponent,
+  ParentComponent,
+  FlowComponent,
   ComponentProps,
   ValidComponent,
   IntrinsicElementProps,

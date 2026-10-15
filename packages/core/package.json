@@ -23,6 +23,7 @@
   },
   "files": [
     "dist",
+    "docs",
     "src"
   ],
   "type": "module",
@@ -31,8 +32,17 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
+      "development": {
+        "bun": "./src/dev.ts",
+        "import": "./dist/dev.js"
+      },
       "bun": "./src/index.ts",
       "import": "./dist/index.js"
+    },
+    "./hot": {
+      "types": "./dist/hot.d.ts",
+      "bun": "./src/hot.ts",
+      "import": "./dist/hot.js"
     },
     "./internal": {
       "types": "./dist/internal.d.ts",
@@ -58,14 +68,15 @@
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.conformance.json",
     "lint": "bunx @biomejs/biome check src",
     "lint:fix": "bunx @biomejs/biome check --write --unsafe src",
     "format": "bunx @biomejs/biome format --write src",
-    "test": "bun test",
+    "test": "bun test && bun test --conditions=development",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
+    "@solidjs/signals": "2.0.0-rc.14",
     "csstype": "^3.2.3"
   },
   "devDependencies": {

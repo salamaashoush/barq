@@ -16,8 +16,22 @@ import type { Cell } from "./scope.ts";
 
 export { BLOCK, block, isBlock } from "./signals.ts";
 
-/** One entry of a source list: a props record, or a nested source list's owner. */
-export type Source = Record<string, unknown> | null | undefined;
+type Held = Record<string, unknown> | null | undefined;
+
+/**
+ * One entry of a source list: a props record, a nested source list's owner, or
+ * a function that answers with one.
+ *
+ * The function is a spread whose object is itself read from something that
+ * moves, `<Foo {...rest()} />`. It is asked on every read, by whoever reads,
+ * so the reader's effect is what subscribes; evaluated at the call site the
+ * component held the first object for good.
+ */
+export type Source = Held | (() => Held);
+
+function recordOf(source: Source): Held {
+  return typeof source === "function" ? source() : source;
+}
 
 /** The key a source list is published under, so a merge over a merge stays flat. */
 export const SOURCES = "$";
@@ -60,7 +74,7 @@ function flatten(sources: readonly Source[]): Source[] {
   let nested = false;
   for (let i = 0; i < sources.length; i++) {
     const source = sources[i];
-    if (source !== null && source !== undefined && Array.isArray(source[SOURCES])) {
+    if (typeof source === "object" && source !== null && Array.isArray(source[SOURCES])) {
       nested = true;
       break;
     }
@@ -71,6 +85,10 @@ function flatten(sources: readonly Source[]): Source[] {
   for (let i = 0; i < sources.length; i++) {
     const source = sources[i];
     if (source === null || source === undefined) continue;
+    if (typeof source === "function") {
+      flat.push(source);
+      continue;
+    }
     const inner = source[SOURCES];
     if (Array.isArray(inner)) {
       const list = flatten(inner as readonly Source[]);
@@ -126,7 +144,7 @@ function carrier(
 function lookup(sources: readonly Source[], filter: Filter, key: string): unknown {
   if (!admits(filter, key)) return undefined;
   for (let i = sources.length - 1; i >= 0; i--) {
-    const source = sources[i];
+    const source = recordOf(sources[i]);
     if (source === null || source === undefined) continue;
     if (!(key in source)) continue;
     const value = source[key];
@@ -139,7 +157,7 @@ function lookup(sources: readonly Source[], filter: Filter, key: string): unknow
 function present(sources: readonly Source[], filter: Filter, key: string): boolean {
   if (!admits(filter, key)) return false;
   for (let i = sources.length - 1; i >= 0; i--) {
-    const source = sources[i];
+    const source = recordOf(sources[i]);
     if (source === null || source === undefined) continue;
     if (!(key in source)) continue;
     if (filter.skipUndefined && source[key] === undefined) continue;
@@ -151,7 +169,7 @@ function present(sources: readonly Source[], filter: Filter, key: string): boole
 function keysOf(sources: readonly Source[], filter: Filter): string[] {
   const seen = new Set<string>();
   for (let i = 0; i < sources.length; i++) {
-    const source = sources[i];
+    const source = recordOf(sources[i]);
     if (source === null || source === undefined) continue;
     for (const key of Object.keys(source)) {
       if (key === SOURCES) continue;
@@ -230,7 +248,12 @@ export function props(sources: readonly Source[]): Record<string, unknown> {
     // spread — `<Foo {...values} />` emits one source and nothing else — is
     // the one shape that would otherwise skip the read path entirely and hand
     // the callee raw values.
-    if (only !== null && only !== undefined && !Array.isArray(only[SOURCES]) && carriers(only)) {
+    if (
+      typeof only === "object" &&
+      only !== null &&
+      !Array.isArray(only[SOURCES]) &&
+      carriers(only)
+    ) {
       return only;
     }
   }
@@ -270,7 +293,7 @@ export function cell<T>(value: T): Cell<T> {
  * that: its keys are already there, and its values are Cells that copying does
  * not evaluate.
  */
-function isLive(source: Source): boolean {
+function isLive(source: Held): boolean {
   if (source === null || source === undefined || typeof source !== "object") return false;
   if (SOURCES in source) return true;
   return (source as { [Symbol.toStringTag]?: string })[Symbol.toStringTag] === "Store";
@@ -292,7 +315,7 @@ function fold(sources: readonly Source[], skipUndefined: boolean): Record<string
   for (let i = 0; i < sources.length; i++) {
     const source = sources[i];
     if (source === null || source === undefined) continue;
-    if (isLive(source)) return null;
+    if (typeof source === "function" || isLive(source)) return null;
     last = source;
     lastIndex = i;
   }
@@ -301,7 +324,7 @@ function fold(sources: readonly Source[], skipUndefined: boolean): Record<string
   const out: Record<string, unknown> = {};
   let fromLastOnly = true;
   for (let i = 0; i < sources.length; i++) {
-    const source = sources[i];
+    const source = recordOf(sources[i]);
     if (source === null || source === undefined) continue;
     for (const key of Object.keys(source)) {
       if (key === "__proto__" || key === "constructor") continue;
@@ -315,13 +338,87 @@ function fold(sources: readonly Source[], skipUndefined: boolean): Record<string
   return fromLastOnly && Object.keys(out).length === Object.keys(last).length ? last : out;
 }
 
-export function mergeProps(...sources: Source[]): Record<string, unknown> {
-  return fold(sources, true) ?? view(sources, ALL_DEFINED);
+/** What a source yields: itself, or what a function source answers with. */
+type Yielded<S> = S extends (...args: never[]) => infer R ? R : S;
+
+/**
+ * The record a source contributes. A source that may be absent contributes
+ * every key optionally, which is what makes a possibly `undefined` spread
+ * merge without claiming keys it may not have.
+ */
+type SourceRecord<S> =
+  undefined extends Yielded<S>
+    ? Partial<NonNullable<Yielded<S>>>
+    : null extends Yielded<S>
+      ? Partial<NonNullable<Yielded<S>>>
+      : NonNullable<Yielded<S>>;
+
+type Flatten<T> = T extends unknown ? { [K in keyof T]: T[K] } : never;
+
+type OptionalKeys<T> = { [K in keyof T]-?: object extends Pick<T, K> ? K : never }[keyof T];
+
+/** A later value with its `undefined` replaced by the earlier value. */
+type Defined<Later, Earlier> = Later extends undefined ? Earlier : Later;
+
+/**
+ * One source laid over another where a later `undefined` does not override.
+ * Both halves are homomorphic, so a key is required when either source
+ * requires it: that is how `mergeProps(defaults, props)` types a default.
+ */
+type OverDefined<T, U> = T extends unknown
+  ? U extends unknown
+    ? Flatten<
+        { [K in keyof T]: K extends keyof U ? Defined<U[K], T[K]> : T[K] } & {
+          [K in keyof U]: K extends keyof T ? Defined<U[K], T[K]> : U[K];
+        }
+      >
+    : never
+  : never;
+
+/**
+ * One source laid over another where `undefined` is a value. A key the later
+ * source requires is the later source's, whatever it holds. A key it declares
+ * optional may be absent, and then the earlier source still answers, so the
+ * result is either.
+ */
+type Over<T, U> = T extends unknown
+  ? U extends unknown
+    ? Flatten<
+        Pick<T, Exclude<keyof T, keyof U>> &
+          Pick<U, Exclude<keyof U, OptionalKeys<U>>> & {
+            [K in keyof Pick<T, OptionalKeys<U> & keyof T>]: T[K] | U[K & keyof U];
+          } & Pick<U, Exclude<OptionalKeys<U>, keyof T>>
+      >
+    : never
+  : never;
+
+/** What `mergeProps` answers with: its sources, each laid over the ones before it. */
+export type MergeProps<T extends unknown[]> = T extends []
+  ? Record<never, never>
+  : T extends [infer Only]
+    ? SourceRecord<Only>
+    : T extends [infer First, infer Second, ...infer Rest]
+      ? MergeProps<[OverDefined<SourceRecord<First>, SourceRecord<Second>>, ...Rest]>
+      : Record<string, unknown>;
+
+/** What `merge` answers with: the same fold, with `undefined` as a value. */
+export type Merge<T extends unknown[]> = T extends []
+  ? Record<never, never>
+  : T extends [infer Only]
+    ? SourceRecord<Only>
+    : T extends [infer First, infer Second, ...infer Rest]
+      ? Merge<[Over<SourceRecord<First>, SourceRecord<Second>>, ...Rest]>
+      : Record<string, unknown>;
+
+export function mergeProps<T extends unknown[]>(...sources: T): MergeProps<T> {
+  const list = sources as Source[];
+  return (fold(list, true) ?? view(list, ALL_DEFINED)) as MergeProps<T>;
 }
 
 /** `mergeProps` with `undefined` treated as a value (Solid 2.0's `merge`). */
-export function merge(...sources: Source[]): Record<string, unknown> {
-  return fold(sources, false) ?? view(sources, ALL);
+export function merge<T extends unknown[]>(...sources: T): Merge<T> {
+  const list = sources as Source[];
+  return (fold(list, false) ?? view(list, ALL)) as Merge<T>;
 }
 
 /** The props without `keys`. What a rest destructure would do, without copying. */

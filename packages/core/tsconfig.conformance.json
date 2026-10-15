@@ -1,0 +1,11 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // The suite's own sources are in this program and leave locals unread; the
+    // linter's `no-unused-vars` still covers the adapter in this package.
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": ["src/conformance.test.ts"],
+  "exclude": []
+}

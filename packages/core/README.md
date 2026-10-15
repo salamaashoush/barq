@@ -14,38 +14,63 @@ whatever generic JSX transform is configured and gets different semantics: props
 arrive as plain values instead of Cells, and children are built eagerly instead
 of being deferred.
 
-## The three primitives
+## Signals, memos and effects
+
+The reactive primitives are Solid 2.0's, from `@solidjs/signals`, exported under
+their own names.
 
 ```tsx
-import { computed, effect, signal } from "@barqjs/core";
+import { createEffect, createMemo, createRoot, createSignal, flush, untrack } from "@barqjs/core";
 
-const count = signal(0);
-const doubled = computed(() => count() * 2);
+const [count, setCount] = createSignal(0);
 
-effect(() => console.log(count(), doubled()));
+createRoot(() => {
+  const doubled = createMemo(() => count() * 2);
 
-count.set(1);
-count.update((n) => n + 1);
-count.peek(); // read without subscribing
+  createEffect(
+    () => doubled(), // compute: the tracked read
+    (value) => console.log(value), // apply: the side effect
+  );
+});
+
+setCount(1);
+count(); // still 0
+flush();
+count(); // 1, and the effect has logged 2
+
+setCount((n) => n + 1);
+untrack(count); // read without subscribing
 ```
 
-`signal(value)` is writable. `signal(fn)` is a writable DERIVED signal:
-recomputed from its dependencies, and writable until they next change.
-`computed` is read-only.
+`createSignal(value)` returns a `[read, write]` pair. `createMemo(fn)` is
+read-only: computed where it is declared, and again when something it read
+changes.
 
-Writes are batched on the microtask queue. A test that asserts on the DOM after
-a `set()` needs `flush()` first — that is what `fireEvent` and `act` in
-`@barqjs/testing` do for you.
+**A write is applied at the next flush.** That is a microtask after the write,
+or `flush()` to have it now. Until then a read returns the old value, so the
+line after `setCount(1)` still sees `0`. The setter returns the value it wrote,
+for code that needs it at once. `fireEvent` and `act` in `@barqjs/testing` flush
+for you.
+
+**An effect is two functions.** `createEffect(compute, apply)` tracks what
+`compute` reads and hands its result to `apply`, which does the side effect and
+may return a cleanup. A write belongs in `apply` or in an event handler. The
+development build throws on one made while a memo, a `compute`, a component
+body or a `createRoot` body is running.
+
+A memo or an effect belongs to an owner: a component body, or a `createRoot` as
+above. Created under none, a memo recomputes on every read and an effect is
+never disposed.
 
 ## Rendering
 
 ```tsx
-import { render, signal } from "@barqjs/core";
+import { createSignal, render } from "@barqjs/core";
 
 function Counter() {
-  const count = signal(0);
+  const [count, setCount] = createSignal(0);
   return (
-    <button type="button" onClick={() => count.update((n) => n + 1)}>
+    <button type="button" onClick={() => setCount((n) => n + 1)}>
       clicked {count} times
     </button>
   );
@@ -84,7 +109,7 @@ import { Errored, For, Loading, Match, Show, Switch } from "@barqjs/core";
 </Errored>
 ```
 
-`Loading` is the boundary an unsettled `resource` parks against — on the server
+`Loading` is the boundary an unsettled async memo parks against. On the server
 it is what streams a fallback and resumes when the value arrives.
 
 ### `keyed`, and why it changes the callback
@@ -115,7 +140,12 @@ keystroke:
 ## Two-way binding
 
 ```tsx
-<input type="text" bind:value={name} />
+import { createSignal } from "@barqjs/core";
+
+const [name, setName] = createSignal("Ada");
+const agreed = createSignal(false);
+
+<input type="text" bind:value={[name, setName]} />
 <input type="checkbox" bind:value={agreed} />
 <input type="number" bind:value={amount} />
 <input type="radio" name="size" value="s" bind:group={size} />
@@ -136,109 +166,121 @@ Two things it does that `value={x}` cannot, and they are why it is compiler
 syntax rather than a helper:
 
 - **It compares against the ELEMENT before writing.** A setter that rejects or
-  normalises a keystroke leaves the signal unchanged, so nothing re-runs — the
-  binding re-asserts the signal inside the event instead, and the field never
-  keeps text no signal held.
+  normalises a keystroke leaves the signal unchanged, so nothing re-runs. The
+  binding re-asserts the signal at the flush the edit scheduled, which is before
+  paint, so the field never keeps text no signal held.
 - **It preserves the caret.** Assigning `value` moves the cursor to the end of
   the control, so a write arriving while you type would otherwise discard your
   selection. The range, its direction and the focus all survive.
 
-The target must be writable: a signal, a `linked` cell, or anything with a
-`.set`. A read-only accessor is a `BIND_TARGET_NOT_WRITABLE` diagnostic.
+The target is a signal: the `[read, write]` pair `createSignal` returns, passed
+whole or put back together as `[name, setName]`. A memo or a bare accessor has
+no setter, which is a type error and a `BIND_TARGET_NOT_WRITABLE` diagnostic.
 
-## `linked` — writable state that re-seeds
-
-```tsx
-import { linked, resource } from "@barqjs/core";
-
-const user = resource(() => userId(), fetchUser);
-
-const draft = linked(
-  () => user.latest()?.name ?? "",
-  (name) => name,
-);
-
-<input type="text" bind:value={draft} />;
-```
-
-The write holds until `source` next changes; that change recomputes over it and
-the write is gone. It is the answer to the read-copy trap — a signal seeded from
-a prop freezes at the first value it ever saw — and to controlled inputs, which
-need both directions at once.
-
-`compute` receives the previous value, so a re-seed can keep a choice:
+## `createSignal(fn)`: writable state that re-seeds
 
 ```tsx
-const chosen = linked<string[], string>(options, (list, previous) =>
-  previous !== undefined && list.includes(previous) ? previous : list[0]!,
-);
+import { createSignal } from "@barqjs/core";
+
+const [saved, setSaved] = createSignal("Ada");
+const [draft, setDraft] = createSignal(() => saved());
+
+<input type="text" bind:value={[draft, setDraft]} />;
 ```
 
-Both type arguments are spelled because the compute's return mentions
-`previous`, so `T` has nothing to infer from but itself.
+Given a function, `createSignal` returns a writable DERIVED signal. A write
+holds until `saved` next changes; that change recomputes over it and the write
+is gone. It is the answer to the read-copy trap (a signal seeded from a prop
+freezes at the first value it ever saw) and to controlled inputs, which need
+both directions at once.
+
+The function receives the value the signal held, so a re-seed can keep a choice:
+
+```tsx
+const [chosen, setChosen] = createSignal<string>((held) => {
+  const list = options();
+  return held !== undefined && list.includes(held) ? held : list[0]!;
+});
+```
+
+`held` is `undefined` on the first run.
 
 ## Async
 
 ```tsx
-import { Loading, isPending, resource } from "@barqjs/core";
+import { Loading, createMemo, isPending, refresh } from "@barqjs/core";
 
-const user = resource(
-  () => userId(),
-  (id, { signal }) => fetch(`/api/users/${id}`, { signal }).then((r) => r.json()),
-);
+function Profile() {
+  const user = createMemo(async () => {
+    const response = await fetch(`/api/users/${userId()}`);
+    return response.json();
+  });
 
-<Loading fallback={<p>loading…</p>}>
-  <h1 class={{ stale: isPending(user) }}>{() => user().name}</h1>
-</Loading>;
+  return (
+    <Loading fallback={<p>loading…</p>}>
+      <h1 class={{ stale: isPending(user) }}>{() => user().name}</h1>
+      <button type="button" onClick={() => void refresh(user)}>
+        reload
+      </button>
+    </Loading>
+  );
+}
 ```
 
-The `AbortController` is a cleanup on the scope that created the resource, and
-the signal reaches the fetcher: disposing the scope aborts the request, and a
-re-run aborts the one it supersedes.
+An async value is a memo whose function returns a promise. Reading it before
+the promise settles throws `NotReadyError`, which the enclosing `Loading`
+catches to show its fallback. When `userId` changes the memo runs again: the
+heading keeps the name it had, and `isPending(user)` is true until the new one
+arrives. `refresh(user)` runs the memo again with nothing changed.
 
-There is one resource primitive. `createResource`, `useResource`, `Await` and
-`Suspense` do not exist.
+Read every dependency before the first `await`. A signal read after it is not
+tracked.
+
+There is no separate resource primitive, and no `createResource`, `Await` or
+`Suspense`.
 
 ## Stores
 
 ```tsx
-import { produce, store } from "@barqjs/core";
+import { createStore } from "@barqjs/core";
 
-const [state, setState] = store({ user: { name: "Ada" }, todos: [] as Todo[] });
+const [state, setState] = createStore({ user: { name: "Ada" }, todos: [] as Todo[] });
 
 state.user.name; // read: subscribes to that leaf alone
-setState("user", "name", "Grace"); // path write
-setState("todos", (todos) => [...todos, { id: 1, done: false }]);
 
-setState(
-  "todos",
-  produce((todos) => {
-    todos[0]!.done = true; // mutable syntax, immutable update
-  }),
-);
-```
-
-`store` returns a `[state, setState]` pair. The state is deeply READ-ONLY:
-assigning to it does nothing, and every write goes through the setter, which is
-what keeps the subscription set exact. `produce` wraps a mutating function into
-a setter argument.
-
-## batch, untrack and Portal
-
-```tsx
-import { Portal, batch, untrack } from "@barqjs/core";
-
-batch(() => {
-  first.set("Ada");
-  last.set("Lovelace"); // one flush, not two
+setState((draft) => {
+  draft.user.name = "Grace";
+  draft.todos.push({ id: 1, done: false });
 });
 
-const snapshot = untrack(() => count()); // read without subscribing
+setState((draft) => {
+  draft.todos[0]!.done = true;
+});
+```
+
+`createStore` returns a `[state, setState]` pair. The state is deeply READ-ONLY:
+assigning to it does nothing, and every write goes through the setter, which is
+what keeps the subscription set exact. The setter hands its function a draft to
+mutate, and the change is applied at the next flush, as a signal write is.
+
+## flush, untrack and Portal
+
+```tsx
+import { Portal, flush, untrack } from "@barqjs/core";
+
+setFirst("Ada");
+setLast("Lovelace");
+flush(); // both applied together: an effect reading the two runs once
+
+const current = untrack(count); // read without subscribing
 
 <Portal mount="#modal-root">
   <Dialog />
 </Portal>;
 ```
+
+Writes are always batched. However many are made before a flush, an effect that
+depends on them runs once.
 
 `Portal` places its children elsewhere in the document while keeping them in the
 LEXICAL scope chain, so a portalled modal reads the providers it is written
@@ -247,24 +289,36 @@ inside rather than the ones at the mount point.
 ## Scopes and cleanup
 
 ```tsx
-import { onCleanup, onMount, scope } from "@barqjs/core";
+import { createRoot, onCleanup, onSettled } from "@barqjs/core";
 
-onMount(() => {
-  const id = setInterval(tick, 1000);
-  onCleanup(() => clearInterval(id));
-});
+function Clock() {
+  onSettled(() => {
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  });
+
+  onCleanup(() => console.log("the clock is gone"));
+
+  return <time>…</time>;
+}
 ```
 
 A scope is the unit of ownership and the unit of death. Every effect, listener
-and subscription created under one is released when it is disposed. `scope(fn)`
-opens one by hand and hands back its disposer; `render` opens the root one.
+and subscription created under one is released when it is disposed.
+`createRoot(fn)` opens one by hand and passes `fn` its disposer; `render` opens
+the root one.
+
+`onSettled(fn)` runs `fn` once, at the flush after the component is built, and
+the function `fn` returns is its cleanup. `onCleanup` registers a cleanup on the
+scope that is running: a component body, a memo, an effect's `compute`. Inside
+`onSettled`, return the cleanup instead.
 
 ## Context
 
 ```tsx
-import { context, useContext } from "@barqjs/core";
+import { createContext, useContext } from "@barqjs/core";
 
-const Theme = context<"light" | "dark">("light");
+const Theme = createContext<"light" | "dark">("light");
 
 function App() {
   return (

@@ -10,7 +10,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { element, setProp, spread } from "./dom.ts";
-import { flush, signal } from "./signals.ts";
+import { flush, createSignal } from "./signals.ts";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -89,11 +89,11 @@ describe("SVG className is read-only in browsers", () => {
 
   test("reactive class on an SVG element updates on signal change", () => {
     const el = withReadOnlyClassName(svg("rect"));
-    const active = signal(false);
+    const [active, setActive] = createSignal(false);
     setProp(el, "class", () => (active() ? "on" : "off"));
 
     expect(el.getAttribute("class")).toBe("off");
-    active.set(true);
+    setActive(true);
     flush();
     expect(el.getAttribute("class")).toBe("on");
   });
@@ -110,24 +110,24 @@ describe("SVG className is read-only in browsers", () => {
 
   test("nullish class removes the attribute on SVG", () => {
     const el = withReadOnlyClassName(svg("circle"));
-    const cls = signal<string | null>("ring");
+    const [cls, setCls] = createSignal<string | null>("ring");
     setProp(el, "class", () => cls());
     expect(el.getAttribute("class")).toBe("ring");
 
-    cls.set(null);
+    setCls(null);
     flush();
     expect(el.hasAttribute("class")).toBe(false);
   });
 
   test("spread applies class to an SVG element", () => {
     const el = withReadOnlyClassName(svg("circle"));
-    const props = signal<Record<string, unknown>>({ class: "one", r: "4" });
+    const [props, setProps] = createSignal<Record<string, unknown>>({ class: "one", r: "4" });
     spread(el, () => props());
 
     expect(el.getAttribute("class")).toBe("one");
     expect(el.getAttribute("r")).toBe("4");
 
-    props.set({ class: "two", r: "4" });
+    setProps({ class: "two", r: "4" });
     flush();
     expect(el.getAttribute("class")).toBe("two");
   });
@@ -175,12 +175,12 @@ describe("SVG style", () => {
 
   test("reactive style object diffs and removes vanished properties on SVG", () => {
     const el = svg("circle");
-    const style = signal<Record<string, unknown>>({ fill: "red", opacity: 1 });
+    const [style, setStyle] = createSignal<Record<string, unknown>>({ fill: "red", opacity: 1 });
     setProp(el, "style", () => style());
     expect(el.style.getPropertyValue("fill")).toBe("red");
     expect(el.style.getPropertyValue("opacity")).toBe("1");
 
-    style.set({ fill: "green" });
+    setStyle({ fill: "green" });
     flush();
     expect(el.style.getPropertyValue("fill")).toBe("green");
     expect(el.style.getPropertyValue("opacity")).toBe("");
@@ -221,22 +221,22 @@ describe("SVG classList", () => {
   test("a reactive map removes the keys that vanished and leaves the rest", () => {
     const el = withReadOnlyClassName(svg("circle"));
     el.setAttribute("class", "dot");
-    const state = signal<Record<string, unknown>>({ ring: true, busy: true });
+    const [state, setState] = createSignal<Record<string, unknown>>({ ring: true, busy: true });
     setProp(el, "classList", () => state());
     expect(el.getAttribute("class")).toBe("dot ring busy");
 
-    state.set({ busy: true, done: true });
+    setState({ busy: true, done: true });
     flush();
     expect(el.getAttribute("class")).toBe("dot busy done");
   });
 
   test("a per-key accessor toggles on its own", () => {
     const el = withReadOnlyClassName(svg("circle"));
-    const on = signal(false);
+    const [on, setOn] = createSignal(false);
     setProp(el, "classList", { ring: () => on() });
     expect(el.getAttribute("class") ?? "").toBe("");
 
-    on.set(true);
+    setOn(true);
     flush();
     expect(el.getAttribute("class")).toBe("ring");
   });
@@ -252,11 +252,11 @@ describe("SVG classList", () => {
 
   test("spread applies it to an SVG element", () => {
     const el = withReadOnlyClassName(svg("circle"));
-    const props = signal<Record<string, unknown>>({ classList: { ring: true } });
+    const [props, setProps] = createSignal<Record<string, unknown>>({ classList: { ring: true } });
     spread(el, () => props());
     expect(el.getAttribute("class")).toBe("ring");
 
-    props.set({ classList: { done: true } });
+    setProps({ classList: { done: true } });
     flush();
     expect(el.getAttribute("class")).toBe("done");
   });

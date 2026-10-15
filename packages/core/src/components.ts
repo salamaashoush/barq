@@ -66,109 +66,196 @@
  * implementation of it rather than three.
  */
 
+import type { Accessor, AsDeclared, CallSite, StrictAccessor, StrictChild } from "./config.ts";
 import type { Child, JSXElement } from "./dom.ts";
 import { dynamic } from "./dom.ts";
 import { COUNT, boundary, branch, each, island, portal, reveal } from "./flow.ts";
-import type { Block, Cell, Slot } from "./scope.ts";
+import type { ComponentProps, JSX } from "./jsx-runtime.ts";
+import type { Block, Cell } from "./scope.ts";
 import { omit } from "./props.ts";
-import { computed, readSlot, resolve, runWithOwner, untrack } from "./signals.ts";
+import {
+  createMemo,
+  internalMemo,
+  createRoot,
+  isBlock,
+  readSlot,
+  resolve,
+  runWithOwner,
+  untrack,
+} from "./signals.ts";
 
 /**
- * Show props — discriminated on `keyed` so children params infer:
- * - omitted / true (keyed): function children get the raw value; content
- *   re-renders when the value changes
- * - false (Solid 2.0 non-keyed): function children get a narrowed accessor, so
- *   content only re-renders when truthiness flips
+ * The flow components' props take a value or an accessor in every reactive
+ * slot. A JSX call site writes the value and the compiler wraps it; compiled
+ * code hands over the Cell or the Block. They are `CallSite<AsDeclared>`, so
+ * attributes are checked against them as written. `For` and `Dynamic` declare
+ * a call-site type of their own beside what the adapter is handed.
  */
-export type ShowProps<T> =
-  | {
-      when: Cell<T | undefined | null | false>;
-      fallback?: Slot<Child>;
-      keyed?: Cell<false>;
-      children: Block<Child, [item: Cell<NonNullable<T>>]> | Cell<Child>;
-    }
-  | {
-      when: Cell<T | undefined | null | false>;
-      fallback?: Slot<Child>;
-      keyed: Cell<true>;
-      children: Block<Child, [item: NonNullable<T>]> | Cell<Child>;
-    };
+
+/**
+ * Content in a slot that also takes a callback.
+ *
+ * `Child` admits a function of any arity, which every callback matches, so
+ * beside it the callback's own signature is not the single one that types its
+ * parameters. The zero-arity accessor stands in for that member.
+ */
+type Content = Exclude<Child, (...args: never[]) => unknown> | Accessor<Child>;
+
+/**
+ * What `<Show>` and `<Match>` hand their children: a narrowed accessor, so the
+ * content updates in place while the value stays truthy, or under `keyed` the
+ * value itself, rebuilt when it changes.
+ */
+export type ShowItem<T, K extends boolean = false> = K extends true
+  ? NonNullable<T>
+  : Accessor<NonNullable<T>>;
+
+/**
+ * One shape rather than a union on `keyed`: a callback gets no contextual type
+ * from a union of differing signatures, so the mode is a type parameter and the
+ * callback's parameter is conditional on it.
+ */
+export interface ShowProps<T, K extends boolean = false> extends CallSite<AsDeclared> {
+  when: StrictAccessor<T | undefined | null | false>;
+  fallback?: StrictChild;
+  keyed?: StrictAccessor<K>;
+  children: Content | ((item: ShowItem<T, K>) => Child);
+}
 
 export type ForProps<T, U extends JSXElement> =
   | {
       each: Cell<readonly T[] | undefined | null>;
-      fallback?: Slot<Child>;
+      fallback?: Child;
       keyed?: Cell<true> | true;
       children: Block<U, [item: T, index: Cell<number>]>;
     }
   | {
       each: Cell<readonly T[] | undefined | null>;
-      fallback?: Slot<Child>;
+      fallback?: Child;
       keyed: Cell<(item: T) => unknown> | ((item: T) => unknown);
       children: Block<U, [item: Cell<T>, index: Cell<number>]>;
     }
   | {
       each: Cell<readonly T[] | undefined | null>;
-      fallback?: Slot<Child>;
+      fallback?: Child;
       keyed: Cell<false> | false;
       children: Block<U, [item: Cell<T>, index: number]>;
     };
 
-export type MatchProps<T> =
-  | {
-      when: Cell<T | undefined | null | false>;
-      keyed?: Cell<false>;
-      children: Block<Child, [item: Cell<NonNullable<T>>]> | Cell<Child>;
-    }
-  | {
-      when: Cell<T | undefined | null | false>;
-      keyed: Cell<true>;
-      children: Block<Child, [item: NonNullable<T>]> | Cell<Child>;
-    };
+/** `true` or omitted keys a row by its item, `false` by its index, a function by what it returns. */
+export type ForKeyed<T> = boolean | ((item: T) => unknown);
 
-export interface RepeatProps {
-  count: Cell<number>;
-  from?: Cell<number>;
-  fallback?: Slot<Child>;
-  children: Block<Child, [index: number]>;
+/** A row's item: the value when the row is keyed by it, an accessor otherwise. */
+export type ForItem<T, K> = K extends true ? T : Accessor<T>;
+
+/** A row's index: a number when the row is keyed by it, an accessor otherwise. */
+export type ForIndex<K> = K extends false ? number : Accessor<number>;
+
+/**
+ * `<For>` as a JSX call site writes it. `ForProps` is what the adapter is
+ * handed, three shapes on `keyed`; here the mode is `K`, so the row callback is
+ * one signature and its parameters infer.
+ */
+export interface ForCallSite<T, K extends ForKeyed<T> = true> {
+  each: StrictAccessor<readonly T[] | undefined | null | false>;
+  // `NoInfer`: the item type is `each`'s to decide. A key function or a row
+  // callback that annotates its parameter more narrowly would otherwise pull
+  // `T` down to the annotation.
+  keyed?: K | ((item: NoInfer<T>) => unknown);
+  fallback?: StrictChild;
+  children: (item: ForItem<NoInfer<T>, K>, index: ForIndex<K>) => Child;
 }
 
-export interface SwitchProps {
-  fallback?: Slot<Child>;
-  children: Slot<JSXElement | JSXElement[]>;
+export interface MatchProps<T, K extends boolean = false> extends CallSite<AsDeclared> {
+  when: StrictAccessor<T | undefined | null | false>;
+  keyed?: StrictAccessor<K>;
+  children: Content | ((item: ShowItem<T, K>) => Child);
 }
 
-export interface LoadingProps {
-  fallback?: Slot<Child>;
-  on?: Cell<unknown>;
-  children: Slot<Child>;
+export interface RepeatProps extends CallSite<AsDeclared> {
+  count: StrictAccessor<number>;
+  from?: StrictAccessor<number | undefined>;
+  fallback?: StrictChild;
+  children: (index: number) => Child;
 }
 
-export interface RevealProps {
-  order?: Cell<"sequential" | "together" | "natural">;
-  collapsed?: Cell<boolean>;
-  children: Slot<Child>;
+export interface SwitchProps extends CallSite<AsDeclared> {
+  fallback?: StrictChild;
+  children: StrictChild;
 }
 
-export interface ErroredProps {
-  fallback: Block<Child, [error: Cell<Error>, reset: () => void]>;
-  children: Slot<Child>;
+export interface LoadingProps extends CallSite<AsDeclared> {
+  fallback?: StrictChild;
+  on?: unknown;
+  children: StrictChild;
 }
 
-export interface PortalProps {
+export interface RevealProps extends CallSite<AsDeclared> {
+  order?: StrictAccessor<"sequential" | "together" | "natural" | undefined>;
+  collapsed?: StrictAccessor<boolean | undefined>;
+  children: StrictChild;
+}
+
+export interface ErroredProps extends CallSite<AsDeclared> {
+  fallback: Content | ((error: Accessor<Error>, reset: () => void) => Child);
+  children: StrictChild;
+}
+
+export interface PortalProps extends CallSite<AsDeclared> {
   /**
-   * Solid 2.0's name for this slot. It takes a selector STRING as well as an
-   * element, which Solid's does not — `resolveTarget` looks one up — and that
+   * Solid 2.0's name for this slot. It takes a selector STRING as well as a
+   * node, which Solid's does not — `resolveTarget` looks one up — and that
    * is the one place this is wider than the reference rather than different
    * from it.
    */
-  mount?: Cell<HTMLElement | string>;
-  children: Slot<Child>;
+  mount?: StrictAccessor<Node | string | null | undefined>;
+  children: StrictChild;
 }
 
 export type DynamicComponent =
   | keyof HTMLElementTagNameMap
   | ((props: Record<string, unknown>) => JSXElement);
+
+/** What `component` may hold: a tag name or a function of one props object. */
+export type DynamicTag = string | ((props: never) => unknown);
+
+/**
+ * What `component` resolves to. An accessor that yields a tag or a component
+ * is read for it, which is how a call site passes a choice that moves:
+ * `component={() => tag()}`. A function that yields anything else is the
+ * component itself.
+ */
+export type DynamicTarget<T> = T extends string
+  ? T
+  : T extends () => infer R
+    ? [R] extends [DynamicTag | null | undefined | false]
+      ? Exclude<R, null | undefined | false>
+      : T
+    : T;
+
+/**
+ * `<Dynamic>` as a JSX call site writes it: `component`, and beside it whatever
+ * a call site of that component or tag may write. A tag this file does not
+ * know, or one that is only known to be a string, takes any attribute.
+ */
+export type DynamicProps<T extends DynamicTag> = DynamicAttributes<DynamicTarget<T>> & {
+  component: T | null | undefined | false;
+};
+
+/**
+ * The tags' attributes behind a string index, so that looking one up by a tag
+ * not yet inferred answers with one loose record instead of a union of every
+ * element's attributes. TypeScript resolves a type parameter against its
+ * constraint before it infers it, and with that union as the contextual type
+ * a single `<Dynamic>` costs more to check than a 200-file package beside it.
+ */
+type TagAttributes = JSX.IntrinsicElements & { [tag: string]: Record<string, unknown> };
+
+type DynamicAttributes<T> = T extends string
+  ? TagAttributes[T]
+  : T extends (props: never) => unknown
+    ? JSX.LibraryManagedAttributes<T, ComponentProps<T>>
+    : Record<string, unknown>;
 
 /** A CELL-slot read: the value is called with no scope. */
 function readValue(slot: unknown, origin: string): unknown {
@@ -189,13 +276,8 @@ export function Fragment(props: { children?: Child | Child[] }): JSXElement {
   return (Array.isArray(kids) ? kids : [kids]) as unknown as JSXElement;
 }
 
-export function Show(props: {
-  when: unknown;
-  fallback?: unknown;
-  keyed?: unknown;
-  children: unknown;
-}): JSXElement {
-  const value = computed(() => readValue(props.when, "Show.when"));
+export function Show<T, K extends boolean = false>(props: ShowProps<T, K>): JSXElement {
+  const value = internalMemo(() => readValue(props.when, "Show.when"));
   const keyed = readValue(props.keyed, "Show.keyed") === true;
   // The KEY decides a rebuild, so it carries exactly what the mode says it
   // should. The DEFAULT is non-keyed (Solid 2.0): content re-renders only when
@@ -216,37 +298,9 @@ export function Show(props: {
   return branch(null, null, key, content);
 }
 
-/**
- * MEASURED AND ABANDONED: `<For>`'s callback cannot infer its item type.
- *
- * Not for want of a props type. Three were built and each failed for its own
- * reason, and the third failure is structural rather than fixable:
- *
- * 1. A union mirroring `ForProps`'s three arms — TypeScript gives a callback NO
- *    contextual type when the contextual type is a union of differing
- *    signatures, so every callback stayed an implicit `any`.
- * 2. One object with `children` conditional on a `keyed` type parameter — the
- *    callback is contextually typed now, and typed with `unknown`, because
- *    inferring the item through `StrictArrayAccessor`'s six-member union
- *    resolves to `unknown`.
- * 3. `each` inferred WHOLE with the item read back out of it — same answer, and
- *    this is where it stops. `LibraryManagedAttributes` reaches barq's props
- *    through `C extends (scope, props: infer Q) => any`, and `infer Q` against a
- *    GENERIC signature instantiates its parameters at their constraints. Type
- *    arguments are inferred from a component's FIRST parameter, which under
- * the calling convention is the scope. So no generic barq component can infer
- * anything from its JSX attributes, whatever its props type says.
- *
- * The props stay permissive, which is what `Show` and `Repeat` also do, and a
- * call site that wants the type annotates its callback —
- * `{(row: Row) => …}` — which is what `routes/route.tsx` already did.
- */
-export function For(props: {
-  each: unknown;
-  fallback?: unknown;
-  keyed?: unknown;
-  children: unknown;
-}): JSXElement {
+export function For<T, K extends ForKeyed<T> = true>(
+  props: ForProps<T, JSXElement> & CallSite<ForCallSite<T, K>>,
+): JSXElement {
   // The arity rule — a Cell declares no parameter and a key function declares
   // one — is `each`'s own, so the carrier goes through unresolved. This adapter
   // and the compiler's spread lowering therefore reach the primitive with the
@@ -262,12 +316,7 @@ export function For(props: {
   );
 }
 
-export function Repeat(props: {
-  count: unknown;
-  from?: unknown;
-  fallback?: unknown;
-  children: unknown;
-}): JSXElement {
+export function Repeat(props: RepeatProps): JSXElement {
   const from = (): number => (readValue(props.from, "Repeat.from") as number | undefined) ?? 0;
   const count = (): number => readValue(props.count, "Repeat.count") as number;
   const shifted: Block<unknown> = (index: unknown): unknown =>
@@ -283,23 +332,39 @@ export function Repeat(props: {
   );
 }
 
-/**
- * C8-adjacent: `Match` is an identity function — `Switch` reads its props.
- *
- * The parameter is a concrete shape and not a bare `T`, which is what `Show`
- * already does: `LibraryManagedAttributes` picks the props off the SECOND
- * parameter with `infer Q`, and an unresolved generic infers `unknown` there
- * and falls back to the first — so `<Match when={…}>` checked its attributes
- * against `Scope` and reported every one of them missing.
- */
-export function Match(props: { when: unknown; keyed?: unknown; children: unknown }): JSXElement {
+/** C8-adjacent: `Match` is an identity function — `Switch` reads its props. */
+export function Match<T, K extends boolean = false>(props: MatchProps<T, K>): JSXElement {
   return props as unknown as JSXElement;
 }
 
-export function Switch(props: { fallback?: unknown; children: unknown }): JSXElement {
-  const arms = computed(() => {
-    const resolved = callSlot(props.children);
-    const children = (Array.isArray(resolved) ? resolved : [resolved]) as Array<{
+export function Switch(props: SwitchProps): JSXElement {
+  // The arms are read as DATA, and what arrives is not always the data: a
+  // `<Match>` written after another is a Block that yields its descriptor, and
+  // one behind a condition is a Cell. A Block is run once and kept, since what
+  // it builds does not change; a Cell is read where the arms are chosen, so
+  // the choice follows it.
+  const yielded = new WeakMap<object, unknown>();
+  const once = (slot: () => unknown): unknown => {
+    if (!yielded.has(slot)) yielded.set(slot, untrack(slot));
+    return yielded.get(slot);
+  };
+  const descriptors = (): unknown[] => {
+    const out: unknown[] = [];
+    const visit = (entry: unknown): void => {
+      if (Array.isArray(entry)) {
+        for (const item of entry) visit(item);
+      } else if (typeof entry === "function") {
+        visit(isBlock(entry) ? once(entry as () => unknown) : (entry as () => unknown)());
+      } else {
+        out.push(entry);
+      }
+    };
+    visit(props.children);
+    return out;
+  };
+
+  const arms = internalMemo(() => {
+    const children = descriptors() as Array<{
       when?: unknown;
       keyed?: unknown;
       children?: unknown;
@@ -319,7 +384,7 @@ export function Switch(props: { fallback?: unknown; children: unknown }): JSXEle
   let generation = 0;
   let lastIndex: number | typeof UNSEEN = UNSEEN;
   let lastValue: unknown;
-  const key = computed(() => {
+  const key = internalMemo(() => {
     const found = arms();
     const index = found === null ? -1 : found.index;
     const value = found === null ? undefined : found.value;
@@ -352,11 +417,7 @@ export function Switch(props: { fallback?: unknown; children: unknown }): JSXEle
 
 const UNSEEN: unique symbol = Symbol("unseen");
 
-export function Loading(props: {
-  fallback?: unknown;
-  on?: unknown;
-  children: unknown;
-}): JSXElement {
+export function Loading(props: LoadingProps): JSXElement {
   return boundary(
     null,
     null,
@@ -368,7 +429,7 @@ export function Loading(props: {
   );
 }
 
-export function Errored(props: { fallback: unknown; children: unknown }): JSXElement {
+export function Errored(props: ErroredProps): JSXElement {
   return boundary(
     null,
     null,
@@ -395,7 +456,7 @@ export function NoHydration(props: { children: unknown }): JSXElement {
   return island(null, null, props.children as Block<unknown>);
 }
 
-export function Portal(props: { mount?: unknown; children: unknown }): JSXElement {
+export function Portal(props: PortalProps): JSXElement {
   return portal(
     () => readValue(props.mount, "Portal.mount") as Node | string | undefined,
     props.children as Block<unknown>,
@@ -408,14 +469,16 @@ export function Portal(props: { mount?: unknown; children: unknown }): JSXElemen
  * resolved at compile time, so the choice is made at run time and nowhere else.
  * The swap and the teardown are the branch's.
  */
-export function Dynamic(props: { component: unknown } & Record<string, unknown>): JSXElement {
+export function Dynamic<T extends DynamicTag>(
+  props: { component: unknown } & Record<string, unknown> & CallSite<DynamicProps<T>>,
+): JSXElement {
   // Read WITHOUT the Cell-slot Block guard, the way `dom.ts`'s `dynamic` reads
   // it. A compiled component is a Block, and one arriving here is the whole
   // point rather than a mistake: the value is invoked as a component with its
   // scope, never stringified into an attribute, so there is nothing for C3.8 to
   // protect. Guarding it made `Dynamic` reject every component the compiler
   // emits, which is every component in an application.
-  const component = computed(() => {
+  const component = internalMemo(() => {
     const slot = props.component;
     return typeof slot === "function" ? (slot as () => unknown)() : slot;
   });
@@ -428,11 +491,7 @@ export function Dynamic(props: { component: unknown } & Record<string, unknown>)
  * six scope creators. It coordinates how descendant `Loading` boundaries reveal
  * their content and owns no range of its own.
  */
-export function Reveal(props: {
-  order?: unknown;
-  collapsed?: unknown;
-  children: unknown;
-}): JSXElement {
+export function Reveal(props: RevealProps): JSXElement {
   return reveal(
     () =>
       (readValue(props.order, "Reveal.order") as
@@ -448,7 +507,7 @@ export function Reveal(props: {
 /**
  * A component whose module is fetched on first render.
  *
- * The whole of it is a `computed` over the import, and every mechanism it needs
+ * The whole of it is a memo over the import, and every mechanism it needs
  * already exists: a compute returning a Promise leaves the node pending, a read
  * before it settles throws `NotReadyError`, an effect that throws one registers
  * with the nearest `Loading` boundary, and a suspended body is retried TRACKED
@@ -471,24 +530,43 @@ export function Reveal(props: {
  * Named `default` because that is what a route module exports; pass a `pick` to
  * take something else.
  */
-// `P` is the props type of the component this RETURNS, which is the only
-// thing a caller can say about a module it has not loaded yet.
-// oxlint-disable-next-line typescript/no-unnecessary-type-parameters
-export function lazy<P = unknown>(
-  load: () => Promise<Record<string, unknown>>,
-  pick: (module: Record<string, unknown>) => unknown = (module) => module.default,
-): ((props: P) => JSXElement) & {
+/** What `lazy` returns: the component's own call signature, and the three probes. */
+export type LazyComponent<T> = T & {
   preload: () => Promise<void>;
   ready: () => void;
   loaded: () => boolean;
-} {
+};
+
+export function lazy<T extends (props: never) => unknown>(
+  load: () => Promise<{ default: T }>,
+): LazyComponent<T>;
+export function lazy<M, T extends (props: never) => unknown>(
+  load: () => Promise<M>,
+  pick: (module: M) => T,
+): LazyComponent<T>;
+// `P` is the props type of the component this RETURNS, which is the only
+// thing a caller can say about a module whose export is not typed as a component.
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters
+export function lazy<P = unknown>(
+  load: () => Promise<Record<string, unknown>>,
+  pick?: (module: Record<string, unknown>) => unknown,
+): LazyComponent<(props: P) => JSXElement>;
+export function lazy(
+  load: () => Promise<Record<string, unknown>>,
+  pick: (module: Record<string, unknown>) => unknown = (module) => module.default,
+): LazyComponent<(props: unknown) => JSXElement> {
   let cell: Cell<unknown> | null = null;
   let here = false;
   const resolved = (): Cell<unknown> =>
-    (cell ??= runWithOwner(null, () => computed(async () => pick(await load()))));
+    // Under a root of its own that nothing disposes: a memo with no owner is
+    // released whenever nothing is reading it, and the next read would import
+    // again.
+    (cell ??= runWithOwner(null, () =>
+      createRoot(() => createMemo(async () => pick(await load()))),
+    ));
 
-  const component = (props: P): JSXElement => {
-    const Loaded = resolved()() as (props: P) => JSXElement;
+  const component = (props: unknown): JSXElement => {
+    const Loaded = resolved()() as (props: unknown) => JSXElement;
     here = true;
     return Loaded(props);
   };

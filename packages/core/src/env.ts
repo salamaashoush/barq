@@ -41,3 +41,11 @@ export const isServer: boolean = typeof document === "undefined";
 
 /** The complement, so a reader never has to spell `!isServer`. */
 export const isClient: boolean = !isServer;
+
+/**
+ * True under the development entry, which is what the `development` export
+ * condition resolves `@barqjs/core` to. A literal here, so a production bundle
+ * folds `if (isDev)` away; the development entry exports its own `true` over
+ * this one.
+ */
+export const isDev: boolean = false;

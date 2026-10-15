@@ -18,15 +18,15 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { NO_SCOPE, STATIC_KEY, boundary, branch, each, portal } from "./flow.ts";
 import type { Block, Cell, Scope } from "./scope.ts";
 import {
+  childScope,
   disposeScope,
-  effect,
-  enter,
-  enterRoot,
-  exit,
+  createTrackedEffect,
   flush,
   onCleanup,
+  rootScope,
+  runWithOwner,
   scopeAllocations,
-  signal,
+  createSignal,
 } from "./signals.ts";
 
 let container: HTMLDivElement;
@@ -42,11 +42,10 @@ afterEach(() => {
 
 /** A root scope with the container as its parent, as `render` opens one. */
 function mount<T>(build: (root: Scope) => T): { root: Scope; out: T } {
-  const root = enterRoot();
+  const root = rootScope();
   try {
-    return { root, out: build(root) };
+    return { root, out: runWithOwner(root, () => build(root)) };
   } finally {
-    exit(root);
     flush();
   }
 }
@@ -68,7 +67,7 @@ function counted(label: string): Block<unknown> & { calls: number } {
 
 describe("C7 — a Block is invoked exactly once per activation", () => {
   test("branch calls the selected body once, and the other bodies not at all", () => {
-    const which = signal(0);
+    const [which, setWhich] = createSignal(0);
     const a = counted("a");
     const b = counted("b");
 
@@ -78,13 +77,13 @@ describe("C7 — a Block is invoked exactly once per activation", () => {
     expect(b.calls).toBe(0);
     expect(container.textContent).toBe("a1");
 
-    which.set(1);
+    setWhich(1);
     flush();
     expect(a.calls).toBe(1);
     expect(b.calls).toBe(1);
     expect(container.textContent).toBe("b1");
 
-    which.set(0);
+    setWhich(0);
     flush();
     expect(a.calls).toBe(2);
     expect(b.calls).toBe(1);
@@ -93,7 +92,7 @@ describe("C7 — a Block is invoked exactly once per activation", () => {
   });
 
   test("an unchanged key invokes nothing at all (K2)", () => {
-    const source = signal(0);
+    const [source, setSource] = createSignal(0);
     const body = counted("x");
     // The key reads the signal but folds every value onto one key, which is the
     // shape `Show` has for a non-keyed condition.
@@ -101,7 +100,7 @@ describe("C7 — a Block is invoked exactly once per activation", () => {
 
     expect(body.calls).toBe(1);
     for (let i = 1; i <= 5; i++) {
-      source.set(i);
+      setSource(i);
       flush();
     }
     expect(body.calls).toBe(1);
@@ -111,13 +110,13 @@ describe("C7 — a Block is invoked exactly once per activation", () => {
   });
 
   test("each calls the row Block once per row, and once more per row added", () => {
-    const rows = signal([1, 2]);
+    const [rows, setRows] = createSignal([1, 2]);
     const row = counted("r");
 
     const { root } = mount(() => each(container, null, rows, false, row));
 
     expect(row.calls).toBe(2);
-    rows.set([1, 2, 3]);
+    setRows([1, 2, 3]);
     flush();
     // Positional: the first two rows are the same slots and are not rebuilt.
     expect(row.calls).toBe(3);
@@ -166,12 +165,12 @@ describe("C7 — a Block is invoked exactly once per activation", () => {
 
 describe("O3.7 / B4 — after disposal nothing is retained", () => {
   test("a branch instance is a kid of the scope it was GIVEN, not of the effect that swapped it", () => {
-    const which = signal(0);
+    const [which, setWhich] = createSignal(0);
     const runs: number[] = [];
     let cleanups = 0;
 
     const body: Block<unknown> = (): Node => {
-      effect(() => {
+      createTrackedEffect(() => {
         runs.push(which());
       });
       onCleanup(() => {
@@ -180,9 +179,10 @@ describe("O3.7 / B4 — after disposal nothing is retained", () => {
       return document.createElement("i");
     };
 
-    const root = enterRoot();
-    branch(container, null, which, body);
-    exit(root);
+    const root = rootScope();
+    runWithOwner(root, () => {
+      branch(container, null, which, body);
+    });
     flush();
 
     expect(cleanups).toBe(0);
@@ -196,29 +196,34 @@ describe("O3.7 / B4 — after disposal nothing is retained", () => {
     expect(container.childNodes.length).toBe(0);
 
     // And nothing under it is live any more: a write reaches no effect.
-    which.set(9);
+    setWhich(9);
     flush();
     expect(runs.length).toBe(before);
   });
 
   test("a listener registered under a branch dies with the branch (B4)", () => {
-    const which = signal(0);
+    const [which, setWhich] = createSignal(0);
     let fired = 0;
     let button!: HTMLButtonElement;
 
+    // The cleanup closes over ITS OWN element. The next instance is built
+    // before this one is retired, so a shared variable would already name the
+    // new button by the time this runs.
     const body: Block<unknown> = (): Node => {
-      button = document.createElement("button");
+      const own = document.createElement("button");
+      button = own;
       const handler = (): void => {
         fired++;
       };
-      button.addEventListener("click", handler);
-      onCleanup(() => button.removeEventListener("click", handler));
-      return button;
+      own.addEventListener("click", handler);
+      onCleanup(() => own.removeEventListener("click", handler));
+      return own;
     };
 
-    const root = enterRoot();
-    branch(container, null, which, body);
-    exit(root);
+    const root = rootScope();
+    runWithOwner(root, () => {
+      branch(container, null, which, body);
+    });
     flush();
 
     const first = button;
@@ -227,7 +232,7 @@ describe("O3.7 / B4 — after disposal nothing is retained", () => {
 
     // A key change disposes the instance, which runs the cleanup that removes
     // the listener. The node that was there is detached AND deaf.
-    which.set(1);
+    setWhich(1);
     flush();
     first.click();
     expect(fired).toBe(1);
@@ -253,9 +258,10 @@ describe("O3.7 / B4 — after disposal nothing is retained", () => {
       return document.createElement("i");
     };
 
-    const root = enterRoot();
-    branch(container, null, () => 0, body);
-    exit(root);
+    const root = rootScope();
+    runWithOwner(root, () => {
+      branch(container, null, () => 0, body);
+    });
     flush();
 
     disposeScope(root);
@@ -266,7 +272,7 @@ describe("O3.7 / B4 — after disposal nothing is retained", () => {
   });
 
   test("every row scope of an each is gone when the each's owner is", () => {
-    const rows = signal([1, 2, 3]);
+    const [rows] = createSignal([1, 2, 3]);
     let alive = 0;
 
     const row: Block<unknown> = (): Node => {
@@ -277,9 +283,10 @@ describe("O3.7 / B4 — after disposal nothing is retained", () => {
       return document.createElement("li");
     };
 
-    const root = enterRoot();
-    each(container, null, rows, false, row);
-    exit(root);
+    const root = rootScope();
+    runWithOwner(root, () => {
+      each(container, null, rows, false, row);
+    });
     flush();
 
     expect(alive).toBe(3);
@@ -298,9 +305,10 @@ describe("O3.7 / B4 — after disposal nothing is retained", () => {
       return document.createElement("i");
     };
 
-    const root = enterRoot();
-    boundary(container, null, "error", null, body);
-    exit(root);
+    const root = rootScope();
+    runWithOwner(root, () => {
+      boundary(container, null, "error", null, body);
+    });
     flush();
 
     expect(alive).toBe(1);
@@ -322,10 +330,9 @@ describe("O3.7 / B4 — after disposal nothing is retained", () => {
       return document.createElement("i");
     };
 
-    const root = enterRoot();
-    const marker = portal(() => target, body);
+    const root = rootScope();
+    const marker = runWithOwner(root, () => portal(() => target, body));
     container.appendChild(marker);
-    exit(root);
     flush();
     await Promise.resolve();
     flush();
@@ -343,11 +350,10 @@ describe("O3.7 / B4 — after disposal nothing is retained", () => {
 describe("the flags — what they skip, on an exact count", () => {
   /** `Scope` allocations charged to one region, isolated from the root's own. */
   function scopesFor(build: (root: Scope) => void): number {
-    const root = enterRoot();
+    const root = rootScope();
     const before = scopeAllocations();
-    build(root);
+    runWithOwner(root, () => build(root));
     const cost = scopeAllocations() - before;
-    exit(root);
     flush();
     disposeScope(root);
     return cost;
@@ -367,20 +373,21 @@ describe("the flags — what they skip, on an exact count", () => {
   });
 
   test("STATIC_KEY opens no effect, so a write to what the key reads does nothing", () => {
-    const source = signal(0);
+    const [source, setSource] = createSignal(0);
     const counter = counted("s");
     // A key the compiler would refuse to call static; the flag is a PROOF and
     // this asserts what the runtime does when it is given one, which is to read
     // once and never subscribe.
     const key: Cell<number> = () => source();
 
-    const root = enterRoot();
-    branch(container, null, key, [counter, counter], STATIC_KEY);
-    exit(root);
+    const root = rootScope();
+    runWithOwner(root, () => {
+      branch(container, null, key, [counter, counter], STATIC_KEY);
+    });
     flush();
 
     expect(counter.calls).toBe(1);
-    source.set(1);
+    setSource(1);
     flush();
     expect(counter.calls).toBe(1);
 
@@ -390,9 +397,10 @@ describe("the flags — what they skip, on an exact count", () => {
   test("flags on and flags off render identical DOM — the L3 differential, in miniature", () => {
     const render = (flags: number): string => {
       const host = document.createElement("div");
-      const root = enterRoot();
-      branch(host, null, () => 0, [body], flags);
-      exit(root);
+      const root = rootScope();
+      runWithOwner(root, () => {
+        branch(host, null, () => 0, [body], flags);
+      });
       flush();
       const html = host.innerHTML;
       disposeScope(root);
@@ -406,9 +414,8 @@ describe("the flags — what they skip, on an exact count", () => {
   });
 
   test("a region with no parent carries its own anchor and no comment node", () => {
-    const root = enterRoot();
-    const out = branch(null, null, () => 0, [body]);
-    exit(root);
+    const root = rootScope();
+    const out = runWithOwner(root, () => branch(null, null, () => 0, [body]));
     flush();
     container.appendChild(out as Node);
 
@@ -424,39 +431,40 @@ describe("the flags — what they skip, on an exact count", () => {
 
 describe("O2 — a nested region is a child of the scope its Block was given", () => {
   test("disposing the outer instance takes the inner region's later content with it", () => {
-    const outer = signal(true);
-    const items = signal([1, 2, 3]);
+    const [outer, setOuter] = createSignal(true);
+    const [items, setItems] = createSignal([1, 2, 3]);
 
-    const root = enterRoot();
-    branch(container, null, () => (outer() ? 0 : 1), [
-      (): Node => {
-        const host = document.createElement("section");
-        each(host, null, items, false, () => document.createElement("li"));
-        return host;
-      },
-    ]);
-    exit(root);
+    const root = rootScope();
+    runWithOwner(root, () => {
+      branch(container, null, () => (outer() ? 0 : 1), [
+        (): Node => {
+          const host = document.createElement("section");
+          each(host, null, items, false, () => document.createElement("li"));
+          return host;
+        },
+      ]);
+    });
     flush();
     expect(container.querySelectorAll("li").length).toBe(3);
 
     // Content the inner region inserted AFTER the outer one recorded its nodes.
-    items.set([1, 2, 3, 4, 5]);
+    setItems([1, 2, 3, 4, 5]);
     flush();
     expect(container.querySelectorAll("li").length).toBe(5);
 
-    outer.set(false);
+    setOuter(false);
     flush();
     expect(container.innerHTML).toBe("");
 
     disposeScope(root);
   });
 
-  test("enter/exit around a region leaves the ambient owner where it found it", () => {
-    const root = enterRoot();
-    const outer = enter(root, "branch");
-    branch(container, null, () => 0, [() => document.createElement("i")]);
-    exit(outer);
-    exit(root);
+  test("a region built under a nested scope dies with the root above it", () => {
+    const root = rootScope();
+    const outer = childScope(root);
+    runWithOwner(outer, () => {
+      branch(container, null, () => 0, [() => document.createElement("i")]);
+    });
     flush();
 
     disposeScope(root);
@@ -474,19 +482,20 @@ describe("emptying a list removes only what the list owns", () => {
   const li = (): Node => document.createElement("li");
 
   test("a list that owns its parent is emptied", () => {
-    const items = signal([1, 2, 3]);
-    const root = enterRoot();
-    each(container, null, items, false, li);
-    exit(root);
+    const [items, setItems] = createSignal([1, 2, 3]);
+    const root = rootScope();
+    runWithOwner(root, () => {
+      each(container, null, items, false, li);
+    });
     flush();
     expect(container.childNodes.length).toBe(3);
 
-    items.set([]);
+    setItems([]);
     flush();
     expect(container.childNodes.length).toBe(0);
 
     // And the position still works afterwards.
-    items.set([1, 2]);
+    setItems([1, 2]);
     flush();
     expect(container.childNodes.length).toBe(2);
 
@@ -496,15 +505,16 @@ describe("emptying a list removes only what the list owns", () => {
   test("a static sibling BEFORE the list survives the list emptying", () => {
     const keep = document.createElement("header");
     container.appendChild(keep);
-    const items = signal([1, 2, 3]);
+    const [items, setItems] = createSignal([1, 2, 3]);
 
-    const root = enterRoot();
-    each(container, null, items, false, li);
-    exit(root);
+    const root = rootScope();
+    runWithOwner(root, () => {
+      each(container, null, items, false, li);
+    });
     flush();
     expect(container.childNodes.length).toBe(4);
 
-    items.set([]);
+    setItems([]);
     flush();
     expect(container.childNodes.length).toBe(1);
     expect(container.firstChild).toBe(keep);
@@ -515,16 +525,17 @@ describe("emptying a list removes only what the list owns", () => {
   test("a static sibling AFTER the list survives the list emptying", () => {
     const keep = document.createElement("footer");
     container.appendChild(keep);
-    const items = signal([1, 2, 3]);
+    const [items, setItems] = createSignal([1, 2, 3]);
 
-    const root = enterRoot();
-    each(container, keep, items, false, li);
-    exit(root);
+    const root = rootScope();
+    runWithOwner(root, () => {
+      each(container, keep, items, false, li);
+    });
     flush();
     expect(container.childNodes.length).toBe(4);
     expect(container.lastChild).toBe(keep);
 
-    items.set([]);
+    setItems([]);
     flush();
     expect(container.childNodes.length).toBe(1);
     expect(container.firstChild).toBe(keep);
@@ -533,18 +544,19 @@ describe("emptying a list removes only what the list owns", () => {
   });
 
   test("a second list in the same parent keeps its rows when the first empties", () => {
-    const a = signal([1, 2]);
-    const b = signal([1, 2, 3]);
-    const root = enterRoot();
+    const [a, setA] = createSignal([1, 2]);
+    const [b] = createSignal([1, 2, 3]);
+    const root = rootScope();
     const anchor = document.createElement("hr");
     container.appendChild(anchor);
-    each(container, anchor, a, false, li);
-    each(container, null, b, false, li);
-    exit(root);
+    runWithOwner(root, () => {
+      each(container, anchor, a, false, li);
+      each(container, null, b, false, li);
+    });
     flush();
     expect(container.childNodes.length).toBe(6);
 
-    a.set([]);
+    setA([]);
     flush();
     expect(container.childNodes.length).toBe(4);
     expect(container.querySelectorAll("li").length).toBe(3);
@@ -553,10 +565,11 @@ describe("emptying a list removes only what the list owns", () => {
   });
 
   test("disposing the owner of a list that owns its parent empties it", () => {
-    const items = signal([1, 2, 3]);
-    const root = enterRoot();
-    each(container, null, items, false, li);
-    exit(root);
+    const [items] = createSignal([1, 2, 3]);
+    const root = rootScope();
+    runWithOwner(root, () => {
+      each(container, null, items, false, li);
+    });
     flush();
     expect(container.childNodes.length).toBe(3);
 
@@ -567,10 +580,11 @@ describe("emptying a list removes only what the list owns", () => {
   test("disposing a list beside a static sibling leaves the sibling", () => {
     const keep = document.createElement("header");
     container.appendChild(keep);
-    const items = signal([1, 2, 3]);
-    const root = enterRoot();
-    each(container, null, items, false, li);
-    exit(root);
+    const [items] = createSignal([1, 2, 3]);
+    const root = rootScope();
+    runWithOwner(root, () => {
+      each(container, null, items, false, li);
+    });
     flush();
 
     disposeScope(root);

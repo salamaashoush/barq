@@ -1,5 +1,5 @@
 /**
- * The four published entries must share ONE runtime.
+ * The six published entries must share ONE runtime.
  *
  * `src/signals.ts` holds module state — `activeAsyncSession`, the in-flight
  * registry, the hydration store — and every entry reaches it. A build that
@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, test } from "bun:test";
 
-const ENTRIES = ["index", "internal", "interp", "jsx-runtime"] as const;
+const ENTRIES = ["index", "dev", "hot", "internal", "interp", "jsx-runtime"] as const;
 
 const distOf = (entry: string): string =>
   fileURLToPath(new URL(`../dist/${entry}.js`, import.meta.url));
@@ -30,9 +30,9 @@ const distOf = (entry: string): string =>
 const built = ENTRIES.every((entry) => existsSync(distOf(entry)));
 
 interface Index {
-  computed: (fn: () => Promise<unknown>, options?: { key?: string }) => () => unknown;
-  isPending: (read: () => unknown) => boolean;
-  scope: (fn: (dispose: () => void) => void, detached?: boolean) => unknown;
+  createMemo: (fn: () => Promise<unknown>, options?: { key?: string }) => () => unknown;
+  createRoot: (fn: (dispose: () => void) => void) => unknown;
+  runWithOwner: <T>(owner: object | null, fn: () => T) => T;
   settle: (session?: symbol) => Promise<void>;
 }
 
@@ -56,13 +56,13 @@ describe.if(built)("the published entries share one runtime", () => {
     const previous = internal.setAsyncSession(session);
     let dispose!: () => void;
     try {
-      index.scope((release) => {
-        dispose = release;
-        const user = index.computed(async () => "Ada", { key: "user" });
-        // Reading is what STARTS a lazy async computed, and `isPending` reads
-        // without asserting on a value that is not there yet.
-        index.isPending(user);
-      }, true);
+      index.runWithOwner(null, () =>
+        index.createRoot((release) => {
+          dispose = release;
+          // A memo is computed where it is declared, so creating it starts the work.
+          index.createMemo(async () => "Ada", { key: "user" });
+        }),
+      );
     } finally {
       internal.setAsyncSession(previous);
     }

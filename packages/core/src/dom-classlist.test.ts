@@ -6,7 +6,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { element, setProp, spread } from "./dom.ts";
-import { flush, signal } from "./signals.ts";
+import { flush, createSignal } from "./signals.ts";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -43,33 +43,33 @@ describe("classList", () => {
   test("a reactive object removes the keys that vanished, and nothing else", () => {
     const el = document.createElement("div");
     el.className = "card";
-    const state = signal<Record<string, unknown>>({ active: true, busy: true });
+    const [state, setState] = createSignal<Record<string, unknown>>({ active: true, busy: true });
     setProp(el, "classList", () => state());
     expect(classes(el)).toEqual(["active", "busy", "card"]);
 
-    state.set({ busy: true, done: true });
+    setState({ busy: true, done: true });
     flush();
     expect(classes(el)).toEqual(["busy", "card", "done"]);
   });
 
   test("a per-key accessor toggles on its own", () => {
     const el = document.createElement("div");
-    const on = signal(false);
+    const [on, setOn] = createSignal(false);
     setProp(el, "classList", { active: () => on() });
     expect(classes(el)).toEqual([]);
 
-    on.set(true);
+    setOn(true);
     flush();
     expect(classes(el)).toEqual(["active"]);
   });
 
   test("a key naming several classes toggles all of them", () => {
     const el = document.createElement("div");
-    const on = signal(true);
+    const [on, setOn] = createSignal(true);
     setProp(el, "classList", () => ({ "a b": on() }));
     expect(classes(el)).toEqual(["a", "b"]);
 
-    on.set(false);
+    setOn(false);
     flush();
     expect(classes(el)).toEqual([]);
   });
@@ -82,11 +82,13 @@ describe("classList", () => {
 
   test("spread applies it", () => {
     const el = document.createElement("div");
-    const props = signal<Record<string, unknown>>({ classList: { active: true } });
+    const [props, setProps] = createSignal<Record<string, unknown>>({
+      classList: { active: true },
+    });
     spread(el, () => props());
     expect(classes(el)).toEqual(["active"]);
 
-    props.set({ classList: { done: true } });
+    setProps({ classList: { done: true } });
     flush();
     expect(classes(el)).toEqual(["done"]);
   });
@@ -101,11 +103,11 @@ describe("classList", () => {
   test("a nullish value clears everything it applied", () => {
     const el = document.createElement("div");
     el.className = "card";
-    const state = signal<Record<string, unknown> | null>({ active: true });
+    const [state, setState] = createSignal<Record<string, unknown> | null>({ active: true });
     setProp(el, "classList", () => state());
     expect(classes(el)).toEqual(["active", "card"]);
 
-    state.set(null);
+    setState(null);
     flush();
     expect(classes(el)).toEqual(["card"]);
   });

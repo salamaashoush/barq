@@ -55,7 +55,63 @@ export type StrictAccessor<T> = T | Accessor<T>;
  * }
  * ```
  */
-export type Incoming<P> = { [K in keyof P]: Accessor<P[K]> };
+export type Incoming<P> = {
+  [K in keyof P]: K extends "children" ? IncomingChildren<P[K]> : Accessor<P[K]>;
+};
+
+/**
+ * `children` is the one prop that crosses as a Block rather than behind a
+ * Cell, so a children function that requires arguments reaches the body as
+ * written and is called with them: `props.children(item)`. Everything else in
+ * the slot is read like any other prop.
+ */
+export type IncomingChildren<C> =
+  | ChildrenCallback<C>
+  | ([Exclude<ChildrenContent<C>, undefined>] extends [never]
+      ? never
+      : Accessor<ChildrenContent<C>>);
+
+/** The members of a children type that cannot be called with no arguments. */
+type ChildrenCallback<C> = C extends (...args: never[]) => unknown
+  ? C extends () => unknown
+    ? never
+    : C
+  : never;
+
+/**
+ * Every other member. Decided by the same two tests rather than by excluding
+ * the callbacks: against a callback that mentions a type parameter, `Child`'s
+ * own function member is neither provably the same nor provably different, and
+ * the whole type would stay unresolved inside a generic component.
+ */
+type ChildrenContent<C> = C extends (...args: never[]) => unknown
+  ? C extends () => unknown
+    ? C
+    : never
+  : C;
+
+declare const CALL_SITE: unique symbol;
+declare const AS_DECLARED: unique symbol;
+
+/**
+ * Declares what a JSX call site of a component writes, for the component whose
+ * attributes are not `Incoming`'s inverse: `S` is that type, or `AsDeclared`
+ * when the props are already written the way a call site writes them.
+ *
+ * The flow components need it. `<For>` picks its row signature from `keyed`,
+ * and a type parameter standing alone in a prop is not inferred through the
+ * mapped type that widens `Incoming` props back to values. The property is
+ * never set.
+ */
+export interface CallSite<S> {
+  readonly [CALL_SITE]?: S;
+}
+
+/** The `CallSite` argument that means the props type itself. */
+export type AsDeclared = typeof AS_DECLARED;
+
+/** What a props type declares through `CallSite`, or `unknown` when it declares nothing. */
+export type DeclaredCallSite<P> = P extends CallSite<infer S> ? S : unknown;
 
 /**
  * The same, for a list prop: `For.each`, `Repeat.count`.

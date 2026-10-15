@@ -7,27 +7,33 @@ import {
   CONTEXT_MISS,
   disposeScope,
   emitDiagnostic,
+  followAsync,
   ERROR_BOUNDARY,
   isBlock,
   lookupContext,
   NotReadyError,
   onCleanup,
+  getObserver,
   getOwner,
+  isDisposed,
   ScopeMissingError,
-  enterRoot,
-  exit,
+  jsxAsValue,
   flush,
   ownRange,
   OWNERSHIP,
   readSlot,
   renderEffect,
   resetChildIds,
+  resetErrorHalt,
+  rootScope,
+  runWithOwner,
   unclaimedSeeds,
   underScope,
   untrack,
-  signal,
+  createSignal,
+  type Accessor,
   type Scope,
-  type Signal,
+  type Setter,
 } from "./signals.ts";
 import {
   isString,
@@ -41,23 +47,31 @@ import {
   isSignalGetter,
 } from "./type-utils.ts";
 import type { Cell } from "./scope.ts";
-import { writeLive } from "./forms.ts";
+import { coerceLive, writeLive } from "./forms.ts";
 import {
   HydrationMismatch,
+  adopted,
   beginHydration,
   built as builtNode,
   WHOLE,
   claimElement,
   claimNode,
   claimRange,
+  claimText,
   endHydration,
+  hole,
   hydrating,
+  mismatchIn,
   report,
+  usualCauses,
+  inDocumentOrder,
+  takenAtHole,
   wireIsMarked,
   withRangeTaken,
   withoutClaim,
   type HydrationReport,
   type Range,
+  type Taken,
 } from "./hydration.ts";
 
 /**
@@ -135,24 +149,50 @@ const SVG_TAGS: Record<string, 1> = {
   animate: 1,
   animateMotion: 1,
   animateTransform: 1,
+  desc: 1,
+  feDropShadow: 1,
+  metadata: 1,
+  mpath: 1,
+  set: 1,
+  switch: 1,
+  view: 1,
 };
 
-// CSS properties that don't need 'px' suffix
+// CSS properties whose bare number is a count or a ratio, not a length.
 const CSS_NUMBER_PROPS: Record<string, 1> = {
-  "z-index": 1,
-  opacity: 1,
+  "animation-iteration-count": 1,
+  "aspect-ratio": 1,
+  "border-image-outset": 1,
+  "border-image-slice": 1,
+  "border-image-width": 1,
+  "column-count": 1,
+  columns: 1,
+  "fill-opacity": 1,
   flex: 1,
   "flex-grow": 1,
   "flex-shrink": 1,
-  order: 1,
-  zoom: 1,
-  "line-height": 1,
+  "flood-opacity": 1,
   "font-weight": 1,
-  "column-count": 1,
-  "fill-opacity": 1,
-  "stroke-opacity": 1,
+  "grid-area": 1,
+  "grid-column": 1,
+  "grid-column-end": 1,
+  "grid-column-start": 1,
+  "grid-row": 1,
+  "grid-row-end": 1,
+  "grid-row-start": 1,
+  "line-clamp": 1,
+  "line-height": 1,
+  opacity: 1,
+  order: 1,
   orphans: 1,
+  scale: 1,
+  "stop-opacity": 1,
+  "stroke-miterlimit": 1,
+  "stroke-opacity": 1,
+  "tab-size": 1,
   widows: 1,
+  "z-index": 1,
+  zoom: 1,
 };
 
 // The properties the USER also writes. Their channel compares
@@ -179,6 +219,10 @@ const USER_MUTABLE_PROPS: Record<string, 1> = {
   "video:currentTime": 1,
   "audio:volume": 1,
   "video:volume": 1,
+  // The `muted` ATTRIBUTE is read once, when the parser creates the element;
+  // set afterwards it moves `defaultMuted` and the element goes on playing.
+  "audio:muted": 1,
+  "video:muted": 1,
   "*:scrollTop": 1,
   "*:scrollLeft": 1,
 };
@@ -210,7 +254,9 @@ const DOM_PROPS: Record<string, 1> = {
 };
 
 // Events delegated to a single document-level listener (Solid's list).
-// Handlers are stored on the element as `$$<type>`; the document listener
+// Handlers are stored on the element as `__bq_<type>`, and not under Solid's
+// `$$<type>`: a Solid 1 document listener calls what it finds there, so one
+// such widget on the page ran every handler here twice. The document listener
 // walks up from the event target calling them, respecting stopPropagation.
 const DELEGATED_EVENTS = new Set([
   "beforeinput",
@@ -263,12 +309,12 @@ const warnedNonBubbling = new Set<string>();
 type DelegatedHandler = EventListener | [(data: unknown, e: Event) => void, unknown];
 
 /**
- * The expando the compiler writes beside `$$<type>`: the scope that owned the
+ * The expando the compiler writes beside `__bq_<type>`: the scope that owned the
  * element when the handler was bound. One per element rather than one per event
- * type, so `$$<type>` keeps its shape exactly (a function or a `[fn, data]`
- * tuple, and no `$$<type>Data` in this runtime).
+ * type, so `__bq_<type>` keeps its shape exactly (a function or a `[fn, data]`
+ * tuple, and no `__bq_<type>Data` in this runtime).
  */
-const SCOPE_KEY = "$$s";
+const SCOPE_KEY = "__bqs";
 
 /**
  * E2 entry point #6. A handler is code the framework invoked, so the framework
@@ -282,7 +328,10 @@ const SCOPE_KEY = "$$s";
 function routeError(scope: Scope | null, error: unknown): void {
   const routed = scope === null ? CONTEXT_MISS : lookupContext(scope, ERROR_BOUNDARY);
   if (routed !== CONTEXT_MISS && typeof routed === "function") {
-    (routed as (err: unknown) => void)(error);
+    // Under no owner: a boundary takes a routed error by writing it down, and
+    // the throw may have come from a `ref` called while a scope is being
+    // built, or from a dispatch made inside one.
+    runWithOwner(null, () => (routed as (err: unknown) => void)(error));
     return;
   }
   throw error;
@@ -293,7 +342,7 @@ function scopeOf(node: Node): Scope | null {
 }
 
 function delegatedEventHandler(e: Event): void {
-  const key = `$$${e.type}`;
+  const key = `__bq_${e.type}`;
   let node: Node | null = ((e.composedPath?.()[0] as Node | undefined) ?? e.target) as Node | null;
 
   // Reflect the element whose handler is running, like native bubbling
@@ -310,18 +359,20 @@ function delegatedEventHandler(e: Event): void {
       if (handler && !(node as Partial<HTMLButtonElement>).disabled) {
         const owner = scopeOf(node);
         try {
-          // The compiled path writes this expando ITSELF — `_el$1.$$click = h` —
+          // The compiled path writes this expando ITSELF — `_el$1.__bq_click = h` —
           // so `delegate`'s guard never sees it and this is the only place a
           // Block forwarded into a handler slot can be caught. Invoked, it would
           // take the Event as its scope: rule 3's guard tests `undefined` and an
           // Event is not undefined.
-          refuseBlock(handler, `on${e.type}`);
-          if (Array.isArray(handler)) refuseBlock(handler[0], `on${e.type}`);
-          // O4.5/C1: the handler's own work is owned by the scope the compiler
-          // stapled to the element, not by `CURRENT` — which at dispatch is
-          // null, so an `effect` or an `onCleanup` created here became an
-          // ORPHAN that the next flush released, owned by nobody, forever.
-          ownedBy(owner, "handler", () => {
+          refuseBlock(handler, `The \`on${e.type}\` handler`);
+          if (Array.isArray(handler)) refuseBlock(handler[0], `The \`on${e.type}\` handler`);
+          // The owner is where a throw is ROUTED, and not what the handler
+          // runs under. A handler is the application's reply to the user, so it
+          // writes state, and the engine refuses a write made under an owner:
+          // an owner is a scope that is being built. It runs under none, as an
+          // effect's callback does, and one that needs to own what it creates
+          // names the owner itself.
+          runWithOwner(null, () => {
             // The RETURN is tested for the same reason `applyRefs` tests one:
             // the LAUNDERED shape, `() => aBlock`, carries no brand for the
             // value test above to see, and a handler is invoked with the Event
@@ -329,11 +380,12 @@ function delegatedEventHandler(e: Event): void {
             // as what the handler returned, and left alone it is a handler that
             // silently does nothing.
             if (typeof handler === "function") {
-              refuseBlock(handler.call(node, e), `on${e.type} (a Cell yielded a Block)`);
+              refuseBlock(handler.call(node, e), `The \`on${e.type}\` handler`, true);
             } else if (Array.isArray(handler) && typeof handler[0] === "function") {
               refuseBlock(
                 handler[0].call(node, handler[1], e),
-                `on${e.type} (a Cell yielded a Block)`,
+                `The \`on${e.type}\` handler`,
+                true,
               );
             }
           });
@@ -373,7 +425,11 @@ function captureTypeOf(key: string): string | null {
   if (key.length <= CAPTURE_SUFFIX.length + 3) return null;
   if (key.charCodeAt(0) !== 111 || key.charCodeAt(1) !== 110) return null;
   if (!key.endsWith(CAPTURE_SUFFIX)) return null;
-  return key.slice(2, -CAPTURE_SUFFIX.length).toLowerCase();
+  const type = key.slice(2, -CAPTURE_SUFFIX.length).toLowerCase();
+  // Two events are NAMED with the suffix: `onGotPointerCapture` is a bubble
+  // listener for `gotpointercapture`, not a capture one for `gotpointer`.
+  if (type === "gotpointer" || type === "lostpointer") return null;
+  return type;
 }
 
 /** Wrap a tuple handler for direct (non-delegated) listeners */
@@ -391,7 +447,7 @@ function ensureDelegatedListener(type: string): void {
 /**
  * Install the document-level listener for each event type, idempotently.
  *
- * Compiled output writes handlers straight to the element as `$$<type>`
+ * Compiled output writes handlers straight to the element as `__bq_<type>`
  * (a function, or a `[fn, data]` tuple) and calls this once per module for
  * the types it emitted; without it those expandos are dead, because nothing
  * is listening.
@@ -401,8 +457,12 @@ export function delegateEvents(types: string[]): void {
     const type = types[i];
     if (NON_BUBBLING_EVENTS.has(type) && !warnedNonBubbling.has(type)) {
       warnedNonBubbling.add(type);
-      console.warn(
-        `delegateEvents(["${type}"]): "${type}" does not bubble, so a $$${type} handler never runs. Bind it directly instead.`,
+      emitDiagnostic(
+        "DELEGATED_EVENT_DOES_NOT_BUBBLE",
+        "warning",
+        `\`delegateEvents(["${type}"])\` asks for one shared listener on the document, but ` +
+          `the \`${type}\` event does not bubble, so a handler registered this way never runs. ` +
+          `Attach it to the element itself: \`listen(element, "${type}", handler)\`.`,
       );
     }
     ensureDelegatedListener(type);
@@ -415,7 +475,7 @@ export function delegateEvents(types: string[]): void {
  *
  * `installedDelegatedEvents` is module state that outlives any scope, so two
  * renders in one process share it: the second inherits the first's listeners
- * and its `$$<type>` expandos work whether or not it called `delegateEvents`
+ * and its `__bq_<type>` expandos work whether or not it called `delegateEvents`
  * itself. That makes the call unfalsifiable by any test that renders twice —
  * a compiler that dropped it would still look green. Tear the state down
  * between renders and the assertion has teeth again.
@@ -424,6 +484,7 @@ export function clearDelegatedEvents(types?: string[]): void {
   const removing = types ?? [...installedDelegatedEvents];
   for (let i = 0; i < removing.length; i++) {
     const type = removing[i];
+    warnedNonBubbling.delete(type);
     if (!installedDelegatedEvents.delete(type)) continue;
     document.removeEventListener(type, delegatedEventHandler);
   }
@@ -431,6 +492,24 @@ export function clearDelegatedEvents(types?: string[]): void {
 
 // Cache for kebab-case conversions
 const kebabCache = new Map<string, string>();
+
+/**
+ * A style object's key as the declaration's name. A custom property is the
+ * author's own spelling and is case-sensitive, so it is written as given.
+ */
+function cssName(property: string): string {
+  return property.startsWith("--") ? property : toKebabCase(property);
+}
+
+/** A declaration's value as text: a bare number is a length unless the property counts. */
+function cssValue(cssProperty: string, raw: unknown): string {
+  return typeof raw === "number" &&
+    raw !== 0 &&
+    !(cssProperty in CSS_NUMBER_PROPS) &&
+    !cssProperty.startsWith("--")
+    ? `${raw}px`
+    : toString(raw);
+}
 
 /**
  * Convert camelCase to kebab-case (cached)
@@ -575,7 +654,11 @@ function isEnumeratedAttr(name: string): boolean {
 }
 
 export function setAttr(element: Element, name: string, value: unknown, prev?: unknown): unknown {
-  if (value === prev) return prev;
+  // Only a caller that PASSED what it last applied is asking for the compare.
+  // The compiled record makes its own and calls with three arguments, where an
+  // absent `prev` read as `undefined` made `"x"` to `undefined` look like no
+  // change: the attribute stayed.
+  if (value === prev && arguments.length > 3) return prev;
   // C5.1 item 2: a NODE is never an attribute value, so a Block that reached
   // this channel and was built is caught here rather than serialised.
   //
@@ -586,7 +669,25 @@ export function setAttr(element: Element, name: string, value: unknown, prev?: u
   // and `toString` writes `title="<b>…</b>"`. This is the same refusal one step
   // later, at the only place the value is visible.
   if (value instanceof Node) {
-    throw new ScopeMissingError(`setAttr ${name} (a Block reached a Cell slot)`);
+    throw new ScopeMissingError(
+      `setAttr ${name}`,
+      `The \`${name}\` attribute on \`<${element.localName}>\` was given a DOM node, and an ` +
+        "attribute can only hold text. This happens when JSX passed as a prop or as children " +
+        `is called and its result is written into an attribute, as in \`${name}={props.icon()}\`. ` +
+        "Render it as a child, `<span>{props.icon}</span>`, or pass a string.",
+    );
+  }
+  // An accessor that was not called is the commonest way here:
+  // `title={on() ? label : "x"}` picks the function, and its source text is
+  // what the page shows.
+  if (typeof value === "function") {
+    emitDiagnostic(
+      "FUNCTION_AS_ATTRIBUTE",
+      "warning",
+      `The \`${name}\` attribute on \`<${element.localName}>\` was given a function, so the ` +
+        "function's source text is written to the page instead of its value. Call the accessor " +
+        `where the value is chosen: \`${name}={open() ? label() : "closed"}\`.`,
+    );
   }
   if (isBoolean(value)) {
     if (isEnumeratedAttr(name)) {
@@ -619,8 +720,21 @@ export function setDomProp(
   value: unknown,
   prev?: unknown,
 ): unknown {
-  if (value === prev) return prev;
-  setProperty(element, name, value);
+  if (value === prev && arguments.length > 3) return prev;
+  // The `setHtml` rule, for `innerHTML` written as a prop: the server's nodes
+  // are already what this write would build.
+  if (
+    name === "innerHTML" &&
+    prev === undefined &&
+    typeof value === "string" &&
+    hydrating() &&
+    parsesTo(element, value)
+  ) {
+    return value;
+  }
+  // `undefined` is not a value a property has: assigned as it is, a string
+  // property spells it out and `innerHTML` renders the word.
+  setProperty(element, name, value === undefined ? coerceLive(name, value) : value);
   return value;
 }
 
@@ -682,7 +796,7 @@ export function setBool(element: Element, name: string, value: unknown, prev?: u
  * made every write after the first an additive diff that removed nothing:
  * twenty thousand `setProp(el, "class", …)` calls left twenty thousand tokens on
  * the element. The channel therefore remembers its own last write on the element
- * (`$$class`, beside `$$s`), which is what "what this channel last applied"
+ * (`$$class`, beside `__bqs`), which is what "what this channel last applied"
  * means when the caller cannot say. It still removes only what it OWNS, so a
  * token another channel put there survives.
  */
@@ -730,6 +844,9 @@ export function setStyle(element: Element, _name: string, value: unknown, prev?:
   const style = (element as Partial<ElementCSSInlineStyle>).style;
   if (!style) return prev;
   if (isObject(value)) {
+    // A string was the whole attribute, so nothing of it is in a map to diff
+    // against and all of it has to go before the object's declarations land.
+    if (isString(prev)) element.removeAttribute("style");
     return diffStyleObjects(style, value, isStyleMap(prev) ? prev : null);
   }
   if (isString(value)) {
@@ -741,7 +858,13 @@ export function setStyle(element: Element, _name: string, value: unknown, prev?:
     if (value !== prev) element.setAttribute("style", value);
     return value;
   }
-  return prev;
+  // Nothing to apply, so what the last value applied is taken back.
+  if (isString(prev)) {
+    element.removeAttribute("style");
+  } else if (isStyleMap(prev)) {
+    for (const cssProperty in prev) style.removeProperty(cssProperty);
+  }
+  return undefined;
 }
 
 /** One css declaration, with the property name resolved at compile time. */
@@ -751,7 +874,7 @@ export function setStyleProp(
   value: unknown,
   prev?: unknown,
 ): unknown {
-  if (value === prev) return prev;
+  if (value === prev && arguments.length > 3) return prev;
   const style = (element as Partial<ElementCSSInlineStyle>).style;
   if (style) setStylePropDirect(style, name, value);
   return value;
@@ -776,9 +899,27 @@ export function setHtml(element: Element, _name: string, value: unknown, prev?: 
   // sole-occupant `textContent` write does at a hole, in the one channel that
   // cannot go through `insert`. Comparing the serialisation is exactly what the
   // write would have produced, so skipping it is a no-op with the nodes kept.
-  if (prev === undefined && hydrating() && element.innerHTML === html) return html;
+  if (prev === undefined && hydrating() && parsesTo(element, html)) return html;
   if (html !== prev) element.innerHTML = html;
   return html;
+}
+
+let inert: Document | null = null;
+
+/**
+ * Whether `html`, parsed where `element` stands, gives the children it already
+ * has. The server wrote the author's bytes and the browser serialises what it
+ * parsed, so `<path/>` or an unquoted attribute never compares equal as a
+ * string. Parsed in a document with no scripting and no custom elements, with
+ * an element of the same namespace as the context, it is the write itself.
+ */
+function parsesTo(element: Element, html: string): boolean {
+  const own = element.innerHTML;
+  if (own === html) return true;
+  inert ??= document.implementation.createHTMLDocument("");
+  const probe = inert.createElementNS(element.namespaceURI, element.localName);
+  probe.innerHTML = html;
+  return probe.innerHTML === own;
 }
 
 /**
@@ -800,22 +941,22 @@ export function setRef(element: Element, _name: string, value: unknown, prev?: u
  * root disposal never reaches any of it. The brand is a property of the VALUE
  * (C3.8), so the test belongs here, at the read, exactly as `readSlot` puts it.
  */
-function refuseBlock(target: unknown, origin: string): void {
-  if (isBlock(target)) throw new ScopeMissingError(`${origin} (a Block reached a Cell slot)`);
+function refuseBlock(target: unknown, origin: string, returned = false): void {
+  if (isBlock(target)) throw jsxAsValue(origin, returned);
 }
 
 /** Every ref shape, returning whatever the callbacks handed back as cleanups. */
 function applyRefs(element: Element, value: unknown): (() => void)[] {
   const undo: (() => void)[] = [];
   const one = (target: unknown): void => {
-    refuseBlock(target, "ref");
+    refuseBlock(target, "A `ref`");
     if (isRefCallback(target)) {
       const back = target(element);
       // The LAUNDERED shape: an un-compiled caller wrapping a forwarded prop in
       // `() => x` carries no brand, so the test above walks past it and the
       // Block arrives here as the "cleanup" the callback returned. Registering
       // it as a cleanup would run a Block at disposal with no arguments at all.
-      refuseBlock(back, "ref");
+      refuseBlock(back, "A `ref`", true);
       if (typeof back === "function") undo.push(back);
     } else if (isObject(target) && "current" in target) {
       setProperty(target, "current", element);
@@ -831,18 +972,17 @@ function applyRefs(element: Element, value: unknown): (() => void)[] {
 
 /**
  * M3/E2 entry point #7. A ref registration owned by the scope the element
- * belongs to: a callback that returns a function has it run at disposal, and a
- * callback that throws routes to the enclosing boundary instead of aborting
- * construction.
+ * belongs to: a callback that returns a function has it run at disposal.
+ *
+ * A callback that throws is left to throw. A ref runs inside the computation
+ * that is building its element, and a throw out of a computation is what the
+ * engine already takes to the enclosing boundary. Routed by hand instead, the
+ * boundary's own content would be writing the error it is in the middle of
+ * reading, and nothing re-runs for that.
  */
 export function ref(element: Element, value: unknown): void {
   const owner = getOwner();
-  let undo: (() => void)[] = [];
-  try {
-    undo = applyRefs(element, value);
-  } catch (error) {
-    routeError(owner, error);
-  }
+  const undo = applyRefs(element, value);
   if (undo.length === 0 || owner === null) return;
   underScope(owner, "ref", () => {
     onCleanup(() => {
@@ -906,7 +1046,7 @@ export function formAction(form: HTMLFormElement, value: unknown): void {
  * cleanup on the scope the element belongs to, so removal costs no bookkeeping
  * and cannot be forgotten. A handler that throws routes to the boundary (E2 #6).
  *
- * The delegated set never reaches here: those are `$$<type>` expandos plus one
+ * The delegated set never reaches here: those are `__bq_<type>` expandos plus one
  * `delegateEvents` call per module, and that protocol is unchanged.
  */
 export function listen(
@@ -916,7 +1056,7 @@ export function listen(
   options?: boolean | AddEventListenerOptions,
 ): void {
   const owner = getOwner();
-  refuseBlock(handler, `on${type}`);
+  refuseBlock(handler, `The \`on${type}\` handler`);
   const routed = routedListener(owner, element, handler);
   element.addEventListener(type, routed, options);
   if (owner === null) return;
@@ -938,7 +1078,7 @@ function routedListener(
 ): EventListener {
   return function (this: unknown, e: Event): void {
     try {
-      ownedBy(owner, "handler", () => {
+      runWithOwner(null, () => {
         // C3.8's laundered shape, tested on the RETURN — the same move
         // `applyRefs` already makes for `ref`, and for the same reason: a
         // handler is invoked with the EVENT, so `block`'s entry guard can never
@@ -947,7 +1087,7 @@ function routedListener(
         // handler that silently does nothing, which is the failure this rule is
         // about; the cost is one property probe per dispatch, against a DOM
         // event.
-        refuseBlock(handler.call(element, e), `on${e.type} (a Cell yielded a Block)`);
+        refuseBlock(handler.call(element, e), `The \`on${e.type}\` handler`, true);
       });
     } catch (error) {
       routeError(owner, error);
@@ -957,7 +1097,7 @@ function routedListener(
 
 /**
  * The delegated half of the same registration. Compiled code writes the expando
- * itself — `_n1.$$click = h` — and this exists for the un-compiled walk and for
+ * itself — `_n1.__bq_click = h` — and this exists for the un-compiled walk and for
  * `spread`, so both record the owning scope the dispatcher routes a throw
  * through.
  */
@@ -965,11 +1105,16 @@ export function delegate(
   element: Element,
   type: string,
   handler: DelegatedHandler | undefined,
+  /**
+   * The scope a throw from the handler is routed through. A caller that binds
+   * from an effect's write has no ambient owner to read, and names the one it
+   * captured.
+   */
+  owner: Scope | null = getOwner(),
 ): void {
-  const owner = getOwner();
-  refuseBlock(handler, `on${type}`);
-  if (Array.isArray(handler)) refuseBlock(handler[0], `on${type}`);
-  (element as Element & Record<string, unknown>)[`$$${type}`] = handler;
+  refuseBlock(handler, `The \`on${type}\` handler`);
+  if (Array.isArray(handler)) refuseBlock(handler[0], `The \`on${type}\` handler`);
+  (element as Element & Record<string, unknown>)[`__bq_${type}`] = handler;
   (element as Element & Record<string, unknown>)[SCOPE_KEY] = owner;
   if (handler !== undefined) ensureDelegatedListener(type);
 }
@@ -985,7 +1130,7 @@ export function bindProp(element: Element, write: Channel, name: string, value: 
   // the rule is about, and it throws here rather than being invoked with
   // `undefined` and stringified into the attribute.
   if (isBlock(value)) {
-    throw new ScopeMissingError(`setProp ${name} (a Block reached a Cell slot)`);
+    throw jsxAsValue(`The \`${name}\` attribute on \`<${element.localName}>\``);
   }
   if (!isSignalGetter(value)) {
     write(element, name, value, undefined);
@@ -1000,17 +1145,26 @@ export function bindProp(element: Element, write: Channel, name: string, value: 
   // either. A single tracked function would make the two paths disagree about
   // what an element effect depends on, which is a divergence no DOM comparison
   // would show until something in a channel started reading.
-  ownedBy(given, "setProp", () => {
-    let prev: unknown;
-    renderEffect(
-      // C3.8 on the READ, not only on the value: a Cell that YIELDS a Block
-      // carries no brand, so only a test at the read site can see it.
-      () => readSlot(value, `setProp ${name}`),
-      (next) => {
-        prev = write(element, name, next, prev);
-      },
-    );
-  });
+  const keyed = write === setStyle || write === setClassList;
+  // A property is the one channel a function can be the VALUE of. Everywhere
+  // else a Cell that yields a Cell is read through, which is what a compiled
+  // call is when the call hands back an accessor: `title={labelOf(row)}`.
+  const read =
+    write === setDomProp
+      ? (): unknown => readSlot(value, `The \`${name}\` attribute`)
+      : (): unknown =>
+          readSlot(readSlot(value, `The \`${name}\` attribute`), `The \`${name}\` attribute`);
+  let prev: unknown;
+  effectUnder(
+    given,
+    "setProp",
+    // C3.8 on the READ, not only on the value: a Cell that YIELDS a Block
+    // carries no brand, so only a test at the read site can see it.
+    keyed ? () => readKeys(read()) : read,
+    (next) => {
+      prev = write(element, name, next, prev);
+    },
+  );
 }
 
 /**
@@ -1026,13 +1180,10 @@ export function bindProp(element: Element, write: Channel, name: string, value: 
  * body whose only reactive work is an element binding now names `_s$`.
  */
 export function bindEffect<T>(
-  compute: (prev?: T) => T | void | (() => void),
-  apply?: (value: T, prev: T | undefined) => void | (() => void),
+  compute: (prev: T | undefined) => T,
+  apply: (value: T, prev: T | undefined) => void | (() => void),
 ): void {
-  const given = getOwner();
-  ownedBy(given, "bindEffect", () => {
-    renderEffect(compute, apply);
-  });
+  effectUnder(getOwner(), "bindEffect", compute, apply);
 }
 
 /**
@@ -1050,12 +1201,12 @@ export function bindEffect<T>(
  * which is O(bound fields) per keystroke for no reachable case. The map is
  * weak, so a counter dies with the signal it belongs to.
  */
-const reportedEdits = new WeakMap<object, Signal<number>>();
+const reportedEdits = new WeakMap<object, [Accessor<number>, Setter<number>]>();
 
-function editsOf(value: object): Signal<number> {
+function editsOf(value: object): [Accessor<number>, Setter<number>] {
   let counter = reportedEdits.get(value);
   if (counter === undefined) {
-    counter = signal(0, { equals: false, ownedWrite: true });
+    counter = createSignal(0, { equals: false, ownedWrite: true });
     reportedEdits.set(value, counter);
   }
   return counter;
@@ -1066,6 +1217,10 @@ function editsOf(value: object): Signal<number> {
  * coercion are all resolved at compile time; what is left is the write, the
  * read-back, and the two things that make a controlled input actually work.
  *
+ * `value` is a signal as the engine hands one out: the `[read, write]` pair.
+ * `bind:value={name}` takes the pair `createSignal` returned, and
+ * `bind:value={[name, setName]}` one put back together.
+ *
  * **The write compares against the ELEMENT** (`writeLive`), not against the
  * last framework write, and it preserves the caret and the focus of whatever
  * the user is inside.
@@ -1073,21 +1228,27 @@ function editsOf(value: object): Signal<number> {
  * **The signal is re-asserted after every reported edit**, and that is the half
  * a DOM-compare alone cannot supply. When a setter REJECTS or NORMALISES a
  * keystroke the signal does not change, so the effect never re-runs and no
- * comparison of any kind gets a chance to run: without this line the element
- * keeps text the signal never held, permanently. With it the repair is
- * synchronous — inside the same event, before paint, so there is no flash of
- * the rejected character — and it is a no-op in the ordinary case because the
- * DOM already holds what the signal holds.
+ * comparison of any kind gets a chance to run: without it the element keeps
+ * text the signal never held, permanently. The repair lands at the flush the
+ * edit scheduled, which is a microtask and so before paint: there is no frame
+ * showing the rejected character.
  */
 export function bindValue(element: Element, name: string, type: string, value: unknown): void {
   const given = getOwner();
   const target = element as Element & Record<string, unknown>;
-  const set = (value as { set?: (next: unknown) => void } | null)?.set;
-  if (typeof set !== "function") {
+  const pair = Array.isArray(value) ? (value as [unknown, unknown]) : null;
+  const read = pair !== null && typeof pair[0] === "function" ? (pair[0] as () => unknown) : null;
+  const set =
+    pair !== null && typeof pair[1] === "function" ? (pair[1] as (next: unknown) => unknown) : null;
+  if (read === null || set === null) {
     emitDiagnostic(
       "BIND_TARGET_NOT_WRITABLE",
       "error",
-      `bind:${name} needs a writable signal; it was given ${typeof value}, which can be read but not written.`,
+      `\`bind:${name}\` on \`<${element.localName}>\` was given a value of type ` +
+        `\`${typeof value}\` instead of a signal, so the element does not follow the value and ` +
+        "what the user types is never written back. Pass the whole signal, the `[read, write]` " +
+        `pair \`createSignal\` returns: \`const text = createSignal("")\` and then ` +
+        `\`bind:${name}={text}\`.`,
     );
   }
   const write = (next: unknown): void => {
@@ -1102,18 +1263,21 @@ export function bindValue(element: Element, name: string, type: string, value: u
     writeLive(element, name, next);
   };
 
-  const edits = isSignalGetter(value) ? editsOf(value) : null;
-  if (edits !== null) {
-    ownedBy(given, "bind", () => {
-      renderEffect(() => {
-        edits();
-        write(readSlot(value, `bind:${name}`));
-      });
-    });
-  } else {
+  if (read === null) {
     write(value);
+    return;
   }
-  if (typeof set !== "function") return;
+  const [edits, reportEdit] = editsOf(read);
+  effectUnder(
+    given,
+    "bind",
+    () => {
+      edits();
+      return readSlot(read, `\`bind:${name}\``);
+    },
+    write,
+  );
+  if (set === null) return;
   listen(element, type, () => {
     // `bind:group` is the one channel whose reported value is not the property
     // it writes: a radio reports the VALUE of the button that is now checked,
@@ -1121,28 +1285,16 @@ export function bindValue(element: Element, name: string, type: string, value: u
     // fires its own `change` and that is the event carrying the answer.
     if (name === "group") {
       if (target.checked !== true) return;
-      set.call(value, target.value);
+      set(target.value);
     } else {
-      set.call(value, target[name]);
+      set(target[name]);
     }
-    if (edits === null) return;
-    // Synchronously, inside the event: see the paragraph above. Through `peek`,
-    // because the setter's write is STAGED until the flush and a plain read
-    // would hand back the text the keystroke replaced — the repair would then
-    // re-assert exactly what it is meant to correct.
-    const held = (value as { peek?: () => unknown } | null)?.peek;
-    write(
-      typeof held === "function"
-        ? held.call(value)
-        : untrack(() => readSlot(value, `bind:${name}`)),
-    );
-    // And once more at the next flush, through the counter every two-way
-    // binding subscribes to. The EFFECT cannot be relied on for the rest of the
-    // turn: if anything else — another handler for the same event, a veto in the
-    // author's own `onChange`, the sibling radio the browser just unchecked —
-    // leaves the signal holding the value it held BEFORE the edit, the scheduler
-    // sees no change at all and correctly declines to re-run, while the elements
-    // are holding what the user did. That is B6's two-writer problem one level
+    // The EFFECT cannot be relied on to re-assert the signal: if anything —
+    // another handler for the same event, a veto in the author's own
+    // `onChange`, the sibling radio the browser just unchecked — leaves the
+    // signal holding the value it held BEFORE the edit, the scheduler sees no
+    // change at all and correctly declines to re-run, while the elements are
+    // holding what the user did. That is B6's two-writer problem one level
     // down, in the dedupe rather than in the channel, and it cannot be fixed
     // per-element: a radio group is N elements and one signal, and the edit is
     // reported on exactly one of them.
@@ -1151,7 +1303,7 @@ export function bindValue(element: Element, name: string, type: string, value: u
     // Each re-run costs one signal read and one DOM-compare that skips, which is
     // nothing against the keystroke that caused it, and it is the only mechanism
     // that sees a pair the scheduler cannot: (signal, element).
-    edits.update((n) => n + 1);
+    reportEdit((n) => n + 1);
   });
 }
 
@@ -1182,6 +1334,18 @@ function channelOf(key: string, isSvg: boolean, tag: string): Channel {
  * The attribute name the channel is handed: `className`/`htmlFor` normalised,
  * and kebab-cased inside the SVG namespace with the two documented exemptions.
  */
+/**
+ * One spelling per thing a prop writes, so a name the compiler resolved can be
+ * compared with a key that only exists at run time: `onClick` and `onclick`
+ * are one listener, `className` and `class` one attribute.
+ */
+function spreadKey(key: string, isSvg: boolean): string {
+  const captured = captureTypeOf(key);
+  if (captured !== null) return `oncapture:${captured}`;
+  if (key[0] === "o" && key[1] === "n") return `on:${key.slice(2).toLowerCase()}`;
+  return attrNameOf(key, isSvg);
+}
+
 function attrNameOf(name: string, isSvg: boolean): string {
   let propKey = name === "className" ? "class" : name === "htmlFor" ? "for" : name;
   if (isSvg && propKey !== "class" && propKey !== "viewBox") {
@@ -1193,6 +1357,27 @@ function attrNameOf(name: string, isSvg: boolean): string {
 const STYLE_MAP = Symbol("barq-style-map");
 
 interface StyleMap extends Record<string, string> {}
+
+/**
+ * A `style` or `classList` object with every getter it holds called.
+ *
+ * A key may be live on its own, `{ color: () => tone() }`, and the read is the
+ * tracked half of a binding: called here, the key is a dependency of the
+ * binding that writes it. Left for the write half to find, it would need an
+ * effect of its own created where nothing owns one. The object comes back
+ * untouched when it holds no getter, which is every object but that shape.
+ */
+export function readKeys<T>(value: T): T {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return value;
+  let read: Record<string, unknown> | null = null;
+  for (const key in value) {
+    const held = (value as Record<string, unknown>)[key];
+    if (!isSignalGetter(held)) continue;
+    read ??= { ...(value as Record<string, unknown>) };
+    read[key] = held();
+  }
+  return read === null ? value : (read as T);
+}
 
 function isStyleMap(value: unknown): value is StyleMap {
   return typeof value === "object" && value !== null && STYLE_MAP in value;
@@ -1215,25 +1400,22 @@ function diffStyleObjects(
 
   for (const prop in next) {
     const raw = next[prop];
-    const cssProp = toKebabCase(prop);
+    const cssProp = cssName(prop);
 
     // Per-property reactive values keep their own effect (static object case)
     if (isSignalGetter(raw)) {
-      renderEffect(() => {
-        setStylePropDirect(style, cssProp, raw());
+      renderEffect(raw, (value) => {
+        setStylePropDirect(style, cssProp, value);
       });
       continue;
     }
 
     if (raw === null || raw === undefined || raw === false) continue;
 
-    const cssValue =
-      typeof raw === "number" && raw !== 0 && !(cssProp in CSS_NUMBER_PROPS)
-        ? `${raw}px`
-        : toString(raw);
-    applied[cssProp] = cssValue;
-    if (!prev || prev[cssProp] !== cssValue) {
-      style.setProperty(cssProp, cssValue);
+    const text = cssValue(cssProp, raw);
+    applied[cssProp] = text;
+    if (!prev || prev[cssProp] !== text) {
+      style.setProperty(cssProp, text);
     }
   }
 
@@ -1278,9 +1460,12 @@ function diffClassList(
 
     // Per-key reactive values keep their own effect (static object case)
     if (isSignalGetter(raw)) {
-      renderEffect(() => {
-        toggleClassTokens(tokens, key, Boolean(raw()));
-      });
+      renderEffect(
+        () => Boolean(raw()),
+        (on) => {
+          toggleClassTokens(tokens, key, on);
+        },
+      );
       continue;
     }
 
@@ -1339,12 +1524,8 @@ export function styleToString(value: unknown): string | null {
     let raw: unknown = value[prop];
     if (isSignalGetter(raw)) raw = raw();
     if (raw === null || raw === undefined || raw === false) continue;
-    const cssProp = toKebabCase(prop);
-    const cssValue =
-      typeof raw === "number" && raw !== 0 && !(cssProp in CSS_NUMBER_PROPS)
-        ? `${raw}px`
-        : toString(raw);
-    css += `${css ? " " : ""}${cssProp}: ${cssValue};`;
+    const cssProp = cssName(prop);
+    css += `${css ? " " : ""}${cssProp}: ${cssValue(cssProp, raw)};`;
   }
   return css === "" ? null : css;
 }
@@ -1387,11 +1568,7 @@ function setStylePropDirect(style: CSSStyleDeclaration, cssProperty: string, val
     return;
   }
 
-  if (typeof value === "number" && value !== 0 && !(cssProperty in CSS_NUMBER_PROPS)) {
-    style.setProperty(cssProperty, `${value}px`);
-  } else {
-    style.setProperty(cssProperty, toString(value));
-  }
+  style.setProperty(cssProperty, cssValue(cssProperty, value));
 }
 
 /**
@@ -1456,7 +1633,11 @@ function normalizeChildToNodes(value: Child, prev: Node[], s: Scope | null): Nod
       // effect placing the whole array, and the next change rebuilt all of it:
       // a popover constructed twice, two entries in the overlay stack, and the
       // one holding the mounted element no longer the top.
-      visit(buildChild(child as (s: unknown) => Child, s));
+      if (isBlock(child)) {
+        visit(buildChild(child as (s: unknown) => Child, s));
+        return;
+      }
+      for (const node of liveHole(child as (s: unknown) => Child, s)) out.push(node);
       return;
     }
 
@@ -1471,7 +1652,7 @@ function normalizeChildToNodes(value: Child, prev: Node[], s: Scope | null): Nod
     if (candidate && candidate.nodeType === 3 && (candidate as Text).data === text) {
       out.push(candidate);
     } else {
-      out.push(document.createTextNode(text));
+      out.push(claimText(text) ?? document.createTextNode(text));
     }
   };
 
@@ -1624,25 +1805,34 @@ function claimedItAll(produced: Child, taken: readonly Node[]): boolean {
   });
 }
 
+/** The hole adopted the server's nodes whole, so there is nothing to place. */
+const CLAIMED: unique symbol = Symbol("barq-claimed");
+
+/** What a hole resolved to: text it can write through, or the nodes it owns. */
+type Resolved = string | number | Node[];
+
 /**
- * Apply `value` into `parent`, replacing whatever this hole rendered last time
- * (`current`), anchored before `marker` (null = end of parent). Returns the
- * nodes the hole now owns.
+ * The READ half of a hole: call what has to be called and flatten to nodes.
+ * Everything a hole depends on is read here, inside its effect's compute, so
+ * the write half below touches the document and nothing else.
+ */
+function resolveInsert(value: Child, current: Node[], s: Scope | null): Resolved {
+  if (typeof value === "string" || typeof value === "number") return value;
+  return normalizeChildToNodes(value, current, s);
+}
+
+/**
+ * The WRITE half: put `value` into `parent`, replacing whatever this hole
+ * rendered last time (`current`), anchored before `marker` (null = end of
+ * parent). Returns the nodes the hole now owns.
  *
  * A hole tracks its own nodes instead of fencing them with comment markers, so
  * it costs the nodes it actually renders: a lone text hole is one text node,
  * not a text node between two comments.
  */
-function applyInsert(
-  parent: Node,
-  value: Child,
-  current: Node[],
-  marker: Node | null,
-  s: Scope | null,
-): Node[] {
-  const primitive = typeof value === "string" || typeof value === "number";
-
-  if (primitive) {
+function placeInsert(parent: Node, value: Resolved, current: Node[], marker: Node | null): Node[] {
+  let next: Node[];
+  if (typeof value === "string" || typeof value === "number") {
     // Same text node as last time: write through it
     if (current.length === 1 && current[0].nodeType === 3) {
       (current[0] as Text).data = String(value);
@@ -1654,9 +1844,10 @@ function applyInsert(
       const node = parent.firstChild;
       return node === null ? EMPTY_NODES : [node];
     }
+    next = [document.createTextNode(String(value))];
+  } else {
+    next = value;
   }
-
-  const next = normalizeChildToNodes(value, current, s);
 
   if (current.length === 0) {
     for (let i = 0; i < next.length; i++) parent.insertBefore(next[i], marker);
@@ -1673,20 +1864,24 @@ function applyInsert(
   return next;
 }
 
+function applyInsert(
+  parent: Node,
+  value: Child,
+  current: Node[],
+  marker: Node | null,
+  s: Scope | null,
+): Node[] {
+  return placeInsert(parent, resolveInsert(value, current, s), current, marker);
+}
+
 /**
  * Run `build` with `given` as `CURRENT`, so everything it creates is owned by
  * the scope the call was HANDED rather than by whatever the call site left
  * current. That is O4.5, and it is what the four flow primitives already do.
  *
- * `null` is left alone deliberately. `requireScope` admits it — the compiler
- * emits `const _s$ = null` for a module-level root — and it names NO owner, so
- * there is nothing for the argument to win. Forcing `CURRENT` to null there
- * turns the effect into an ORPHAN, which `enterRoot` then CLAIMS: ownership
- * would be RELOCATED rather than decided, and relocating it is the M2 bridge
- * O5's registry row is about. Measured, not assumed — doing it unconditionally
- * makes `render(<Tree/>, host)` stop emitting RENDER_SUBTREE_NOT_OWNED, because
- * the root ends up holding the argument's effects after all. That belongs to
- * O5's milestone, with the fixture re-cut in the same change.
+ * `null` is left alone deliberately: it names NO owner, so there is nothing for
+ * the argument to win, and forcing `CURRENT` to null would detach the build
+ * from an owner the call site does have.
  */
 /**
  * Build the value at a hole, with a COMPONENT's construction untracked.
@@ -1720,12 +1915,37 @@ function buildChild(value: (s: unknown) => Child, owner: Scope | null): Child {
   }
 }
 
-function ownedBy(given: Scope | null, origin: string, build: () => void): void {
-  if (given === null) {
-    build();
+/**
+ * What a Cell comes to once every Cell it yields has been read as well.
+ *
+ * `{() => value()}` where the value is itself a getter is ONE hole watching
+ * two reads, not a hole holding a second hole.
+ */
+function yielded(value: Child, owner: Scope | null): Child {
+  while (typeof value === "function" && !isBlock(value)) {
+    value = (value as (s: unknown) => Child)(owner);
+  }
+  return value;
+}
+
+/**
+ * A render effect owned by `given`. Entering `given` makes it current and the
+ * build untracked; when it already is both, entering it again changes nothing,
+ * and every binding of every row would pay two closures and a `runWithOwner`
+ * for it. A disposed `given` still goes through `runWithOwner`, whose
+ * development build reports it.
+ */
+function effectUnder<T>(
+  given: Scope | null,
+  origin: string,
+  compute: (prev: T | undefined) => T,
+  apply: (value: T, prev: T | undefined) => void | (() => void),
+): void {
+  if (given === null || (given === getOwner() && getObserver() === null && !isDisposed(given))) {
+    renderEffect(compute, apply);
     return;
   }
-  underScope(given, origin, build);
+  underScope(given, origin, () => renderEffect(compute, apply));
 }
 
 /**
@@ -1754,28 +1974,6 @@ export function insert(
   const given = getOwner();
   let anchor = marker ?? null;
 
-  // An ARRAY holding a function is a live hole, and it is ONE hole.
-  //
-  // Without this the array went straight to `childToNodes`, which calls each
-  // function exactly once and returns nodes — so `<table>{a()}-{b()}</table>`
-  // rendered `A-B` and never moved again. It is only reachable where the
-  // compiler cannot split the children into holes of their own: `element`'s
-  // props, `dynamic`'s, a component's `children`. Everywhere else P1 emits
-  // one `_$insert` per hole and never gets here.
-  //
-  // ONE effect for the whole array, not one per element, which is what Solid's
-  // `insertExpression` does with `normalizeIncomingArray`'s `dynamic` flag and
-  // is the right shape for two reasons. It is cheaper — N reads share one
-  // effect and one range instead of N of each. And it is the only one that
-  // keeps ORDER: N anchorless holes in one parent each append at the end, so
-  // the moment one of them re-renders from empty it lands after its siblings
-  // instead of between them. That is the interleaving `Anchor::Marker` is
-  // mandatory for (DESIGN P5 rule 2), and a single range has no way to hit it.
-  if (isArray(value) && value.some(holdsAFunction)) {
-    insert(parent, () => value as Child, marker, mode);
-    return;
-  }
-
   // H1 plus the single-hole blocker, in one line.
   //
   // `<span>{x}</span>` compiles to `<span></span>` and an `insert` with no
@@ -1802,6 +2000,28 @@ export function insert(
   // so appending is already writing at the end of the position.
   if (claim !== null && claim.close !== null) anchor = claim.close;
 
+  // A Block is a construction, so it is run ONCE and what it built is placed
+  // like any other value. Nothing here follows a signal: the parts of it that
+  // move are holes of their own, each with its own effect, and a hole wrapped
+  // around the whole of it re-ran the construction for every one of them.
+  if (typeof value === "function" && isBlock(value)) {
+    const build = value as (s: unknown) => Child;
+    if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockEnter("insert", given);
+    try {
+      if (claim !== null) {
+        placeClaimed(parent, claim, anchor, () => childToNodes(buildChild(build, given), given));
+        return;
+      }
+      value = buildChild(build, given);
+    } finally {
+      if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockExit("insert");
+    }
+    if (typeof value === "function") {
+      insert(parent, value, marker, mode);
+      return;
+    }
+  }
+
   if (typeof value === "function") {
     let current: Node[] = claim === null ? EMPTY_NODES : claim.nodes;
     let first = claim;
@@ -1811,54 +2031,68 @@ export function insert(
     // put its cleanup on B, so disposing A left the effect running and writing
     // into a detached tree. `branch`, `each`, `boundary` and `portal` have all
     // taken their scope this way since M4; this is the same line in `insert`.
-    ownedBy(given, "insert", () => {
-      renderEffect(() => {
+    effectUnder<Resolved | typeof CLAIMED>(
+      given,
+      "insert",
+      () => {
         const owner = getOwner();
         if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockEnter("insert", given);
         // The FIRST run is the claiming one, and only the first: the nodes it
         // produces are the server's, and every later run is an ordinary update
-        // against them. `first` is cleared before `applyInsert` so a value that
+        // against them. `first` is cleared before the build so a value that
         // throws does not leave the cursor open over a range nobody owns.
         const claiming = first;
         first = null;
         let produced: Child;
         let taken: Node[] | null = null;
         if (claiming === null) {
-          produced = buildChild(value as (s: unknown) => Child, owner);
+          produced = yielded(buildChild(value as (s: unknown) => Child, owner), owner);
         } else {
           const run = withRangeTaken(claiming, () => {
-            const built = buildChild(value as (s: unknown) => Child, owner);
+            const built = yielded(buildChild(value as (s: unknown) => Child, owner), owner);
             // RESOLVED INSIDE THE CURSOR. A thunk in the produced array is
-            // called by `childToNodes` on the way into `applyInsert`, which is
-            // AFTER `withRangeTaken` has closed the cursor — so a `template()`
-            // inside one claimed from the position after this range instead of
-            // from it. Measured on a document-hydrated page as "the server wrote
-            // <body> where the client builds <meta>": `<head>`'s children were
-            // resolved once `<head>`'s range had already been left.
+            // called on the way to the document, which is AFTER
+            // `withRangeTaken` has closed the cursor — so a `template()`
+            // inside one claimed from the position after this range instead
+            // of from it. Measured on a document-hydrated page as "the server
+            // wrote <body> where the client builds <meta>": `<head>`'s
+            // children were resolved once `<head>`'s range had already been
+            // left.
             //
             // Only on the CLAIMING run. Later runs re-call the thunks through
             // the ordinary path, so nothing about reactivity changes.
-            return isArray(built) && built.some(holdsAFunction)
-              ? childToNodes(built, given)
+            //
+            // A bare thunk as much as an array of them: a hole that hands
+            // back `props.children` produces the Block itself. And an array
+            // of strings as much as either: its text is the server's, and
+            // only the cursor knows which text node each string is.
+            return holdsAFunction(built) || isArray(built)
+              ? inDocumentOrder(() => childToNodes(built, given))
               : built;
           });
           produced = run.value;
           taken = run.taken;
         }
+        if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockExit("insert");
         // A value that CLAIMED the server's nodes and handed nothing back — a
         // nested region does exactly that, since a claimed site needs no
         // synthesised anchor to insert. Reconciling `null` against the claim
-        // would remove the whole subtree the region just adopted; measured on a
-        // router page as a `<div>shell:` with its route emptied out of it.
+        // would remove the whole subtree the region just adopted; measured on
+        // a router page as a `<div>shell:` with its route emptied out of it.
         if (taken !== null && taken.length > 0 && claimedItAll(produced, taken)) {
           current = taken;
-        } else {
-          if (claiming !== null) detectTextDrift(current, produced);
-          current = applyInsert(parent, produced, current, anchor, given);
+          return CLAIMED;
         }
-        if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockExit("insert");
-      });
-    });
+        if (claiming !== null) {
+          detectTextDrift(current, produced);
+          adoptText(current, produced);
+        }
+        return resolveInsert(produced, current, given);
+      },
+      (resolved) => {
+        if (resolved !== CLAIMED) current = placeInsert(parent, resolved, current, anchor);
+      },
+    );
     return;
   }
 
@@ -1871,7 +2105,25 @@ export function insert(
   // A static hole under a claim: the same reconcile, seeded with the server's
   // nodes, so a value that matches costs no write at all.
   if (claim !== null) {
+    const taken = takenAtHole(claim);
+    if (holdsAFunction(value)) {
+      placeClaimed(parent, claim, anchor, () => childToNodes(value, given), taken);
+      return;
+    }
+    // The same question the live path asks its cursor: a value that is all
+    // nodes the build took in place, or nothing at all beside them, was
+    // adopted where it stands. Reconciled, the range comments a region inside
+    // it anchors on would be removed, and the region would then insert beside
+    // a node that is no longer in the document.
+    if (taken.taken.length > 0 && claimedItAll(value, taken.taken)) return;
+    // An array's strings are made into nodes against the cursor, which is the
+    // only thing that knows which of the server's text nodes each one is.
+    if (isArray(value)) {
+      placeClaimed(parent, claim, anchor, () => childToNodes(value, given), taken);
+      return;
+    }
     detectTextDrift(claim.nodes, value);
+    adoptText(claim.nodes, value);
     applyInsert(parent, value, claim.nodes, anchor, given);
     return;
   }
@@ -1900,6 +2152,33 @@ export function insert(
 }
 
 /**
+ * Build a value over the range the server wrote for it, and leave the range
+ * holding exactly what was built.
+ *
+ * The build runs with the cursor open and in document order, so every template
+ * and every string in it takes the node it is level with. What comes back is
+ * the whole of the value in order, and placing it is by identity: a node the
+ * build took stays where it is, one it had to make goes in beside it, and one
+ * the server wrote that nothing took comes out.
+ */
+function placeClaimed(
+  parent: Node,
+  claim: Range,
+  anchor: Node | null,
+  build: () => Node[],
+  after?: Taken,
+): void {
+  const built = withRangeTaken(claim, () => inDocumentOrder(build), after).value;
+  placeInsert(parent, built, claim.nodes, anchor);
+}
+
+/** Text written through the one text node the server sent is that node, reused. */
+function adoptText(claimed: readonly Node[], produced: Child): void {
+  if (typeof produced !== "string" && typeof produced !== "number") return;
+  if (claimed.length === 1 && claimed[0].nodeType === 3) adopted();
+}
+
+/**
  * A hole whose server text and client text differ.
  *
  * This is the divergence that RECOVERS: `applyInsert` writes the client's value
@@ -1922,8 +2201,8 @@ function detectTextDrift(claimed: readonly Node[], produced: Child): void {
   report(
     "text",
     have === null
-      ? `the server wrote ${claimed.length} nodes where the client renders the text ${JSON.stringify(want)}`
-      : `the server wrote ${JSON.stringify(have)} where the client renders ${JSON.stringify(want)}`,
+      ? `The server sent ${claimed.length} nodes where the browser renders the text ${JSON.stringify(want)}. ${usualCauses("text")} The browser's text replaced what the server sent, so the page is correct but its content changed after load.`
+      : `The server sent the text ${JSON.stringify(have)} where the browser renders ${JSON.stringify(want)}. ${usualCauses("text")} The browser's text was written into the server's node, so the page is correct but its content changed after load.`,
   );
 }
 
@@ -1961,7 +2240,7 @@ export function setProp(element: Element, key: string, value: unknown): void {
         bindProp(element, setBool, attrNameOf(rest, isSvg), value);
         return;
       case "style":
-        bindProp(element, setStyleProp, toKebabCase(rest), value);
+        bindProp(element, setStyleProp, cssName(rest), value);
         return;
       case "bind": {
         if (rest === "this") {
@@ -2056,6 +2335,13 @@ export function bindEvent(element: Element, type: string, value: unknown, captur
 export function spread(
   element: Element,
   props: Record<string, unknown> | (() => Record<string, unknown>),
+  /**
+   * The names written on the element AFTER this spread, in `spreadKey`'s
+   * spelling. They are the later writer's: `<div {...rest} title={label()}>`
+   * keeps the explicit title, as the object it reads like would, and a spread
+   * that applied its own on every update took it back each time `rest` moved.
+   */
+  later?: readonly string[],
 ): void {
   const given = getOwner();
   const isSvg = element.namespaceURI === SVG_NS;
@@ -2078,6 +2364,7 @@ export function spread(
           element,
           eventName,
           isEventHandlerValue(value) ? (value as DelegatedHandler) : undefined,
+          given,
         );
       } else {
         // Keyed by the PROP, not the event type: `onKeyDown` and
@@ -2109,30 +2396,48 @@ export function spread(
       return;
     }
 
-    // Getter values unwrap inline: the surrounding effect already tracks.
-    // `style` was excluded so a style OBJECT reached `diffStyleObjects` whole —
-    // but an object is not a function, so the exclusion only ever reached a
-    // FUNCTION in the style key, and `setStyle` returns `prev` for one. A Cell
-    // there applied nothing at all and a Block landed in the one Cell slot on
-    // this surface that neither threw nor rendered.
-    //
-    // The Block refusal is spelled HERE rather than left to the invocation.
-    // Ownership is ambient, so a Block is an ordinary zero-arity function and
-    // calling one no longer throws for want of a scope; `style` would take the
-    // Node it built and read the DOM constants off it as css declarations.
-    refuseBlock(value, `spread ${key}`);
-    const resolved = isSignalGetter(value) ? value() : value;
     applied[key] = channelOf(key, isSvg, element.tagName)(
       element,
       attrNameOf(key, isSvg),
-      resolved,
+      value,
       applied[key],
     );
   };
 
-  renderEffect(() => {
-    const next = typeof props === "function" ? props() : props;
+  const isEventKey = (key: string): boolean =>
+    captureTypeOf(key) !== null || (key[0] === "o" && key[1] === "n");
 
+  /**
+   * The READ half: every getter a prop holds is called here, so the write half
+   * below sees values only. An event handler and a `ref` are functions that are
+   * NOT getters, and they pass through as they are.
+   */
+  const read = (): Record<string, unknown> => {
+    const next = typeof props === "function" ? props() : props;
+    const resolved: Record<string, unknown> = {};
+    for (const key in next) {
+      if (key === "children") continue;
+      if (later !== undefined && later.includes(spreadKey(key, isSvg))) continue;
+      const value = next[key];
+      if (key === "ref" || isEventKey(key)) {
+        resolved[key] = value;
+        continue;
+      }
+      // `style` included: a style OBJECT reaches `diffStyleObjects` whole, and
+      // a FUNCTION in the style key is a Cell like any other.
+      //
+      // The Block refusal is spelled HERE rather than left to the invocation.
+      // Ownership is ambient, so a Block is an ordinary zero-arity function and
+      // calling one no longer throws for want of a scope; `style` would take
+      // the Node it built and read the DOM constants off it as css declarations.
+      refuseBlock(value, `The \`${key}\` prop in a spread`);
+      const held = isSignalGetter(value) ? value() : value;
+      resolved[key] = key === "style" || key === "classList" ? readKeys(held) : held;
+    }
+    return resolved;
+  };
+
+  renderEffect(read, (next) => {
     // Removal pass: props that vanished since the last run are cleared
     for (const key in applied) {
       if (!(key in next)) {
@@ -2142,9 +2447,10 @@ export function spread(
     }
 
     for (const key in next) {
-      if (key === "children") continue;
       if (key === "ref") {
-        if (first) setRef(element, "ref", next[key]);
+        // Under the scope the spread was given, so what the callback hands
+        // back is run when that scope goes.
+        if (first) runWithOwner(given, () => ref(element, next[key]));
         continue;
       }
       applyOne(key, next[key]);
@@ -2168,6 +2474,91 @@ function holdsAFunction(child: Child): boolean {
   if (typeof child === "function") return true;
   return isArray(child) && child.some(holdsAFunction);
 }
+
+/**
+ * The nodes that stand at the END of something whose content changes after it
+ * is built: a live hole's text node, a region's anchor.
+ *
+ * Whoever built a list of nodes and kept it has, wherever one of these is in
+ * it, a snapshot of what stood before the edge on the day it was taken. `each`
+ * asks, so that a row it moves is the row as it stands.
+ */
+export const LIVE_EDGES = new WeakSet<Node>();
+
+/**
+ * A Cell that is not the whole value of a hole: one entry of a children array,
+ * or the body of a unit with no element around it.
+ *
+ * It gets an effect of its own and one text node to stand on, so it updates
+ * where it is without anything around it being asked again. Called inline, its
+ * reads became the enclosing hole's, and the next change to any of them
+ * re-ran that hole: every sibling in the array was built a second time, state
+ * and focus gone with the nodes, for a change that concerned one of them.
+ *
+ * The text node is the value when the value is text, and the edge the nodes
+ * are placed before when it is not.
+ */
+function liveHole(cell: (s: unknown) => Child, given: Scope | null): Node[] {
+  let tail: Text | null = null;
+  let current: Node[] = EMPTY_NODES;
+  // What the creating run resolved, which is taken here rather than in the
+  // write below: a hole made while another effect is computing has its write
+  // queued behind that effect's, and the caller needs the nodes now.
+  let initial = UNRESOLVED as Resolved | typeof UNRESOLVED;
+  let written = false;
+  let standing = false;
+
+  const write = (resolved: Resolved): void => {
+    if (typeof resolved !== "object") {
+      const text = String(resolved);
+      if (tail === null) {
+        tail = claimText(text) ?? document.createTextNode(text);
+        return;
+      }
+      if (current.length > 0) {
+        removeNodes(current);
+        current = EMPTY_NODES;
+      }
+      if (tail.data !== text) tail.data = text;
+      return;
+    }
+    if (tail === null) {
+      tail = document.createTextNode("");
+      current = resolved;
+      return;
+    }
+    if (tail.data !== "") tail.data = "";
+    const parent = tail.parentNode;
+    current = parent === null ? resolved : placeInsert(parent, resolved, current, tail);
+  };
+
+  renderEffect<Resolved>(
+    () => {
+      const owner = getOwner();
+      const resolved = resolveInsert(yielded(cell(owner), owner), current, given);
+      if (!standing) initial = resolved;
+      return resolved;
+    },
+    (resolved) => {
+      if (!standing) {
+        written = true;
+        return;
+      }
+      const first = resolved === initial;
+      initial = UNRESOLVED;
+      if (!first) write(resolved);
+    },
+  );
+  standing = true;
+  const took = initial;
+  if (written) initial = UNRESOLVED;
+  if (took !== UNRESOLVED) write(took);
+  tail ??= document.createTextNode("");
+  LIVE_EDGES.add(tail);
+  return current.length === 0 ? [tail] : [...current, tail];
+}
+
+const UNRESOLVED: unique symbol = Symbol("barq-unresolved");
 
 export function childToNodes(child: Child, s: Scope | null = getOwner()): Node[] {
   if (child === null || child === undefined || child === true || child === false) {
@@ -2214,6 +2605,10 @@ export function childToNodes(child: Child, s: Scope | null = getOwner()): Node[]
     // a component's construction, and it must no more be a dependency of the
     // hole that placed it here than it is anywhere else. A Cell stays tracked,
     // because a Cell in an array IS what the hole is watching.
+    if (!isBlock(child)) {
+      if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockExit("children");
+      return liveHole(child as (s: unknown) => Child, s);
+    }
     const built = buildChild(child as (s: unknown) => Child, s);
     if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockExit("children");
     return childToNodes(built, s);
@@ -2230,65 +2625,60 @@ export function childToNodes(child: Child, s: Scope | null = getOwner()): Node[]
     return nodes;
   }
 
-  return [document.createTextNode(String(child))];
+  const text = String(child);
+  return [claimText(text) ?? document.createTextNode(text)];
 }
 
 /**
  * O5: open a root scope, build under it, insert, flush, and return a disposer
  * that disposes the scope AND removes its range.
  *
- * `block` is the O5 shape: `(s: Scope) => Out`, invoked with the root, and it
- * is the only form under which O5 holds unconditionally.
+ * `block` is the O5 shape: a function, invoked with the root current, and it
+ * is the only form under which the root owns what it mounts.
  *
- * **The already-built form and its precondition.** `render(<Tree/>, host)`
- * constructs the subtree as an ARGUMENT, before `render` is entered. With no
- * ambient owner at the call site its effects are created with `CURRENT` null,
- * and `enterRoot` claims them (`adoptOrphans`), so the disposer disposes. With
- * an ambient owner they are that owner's kids at the instant they are created,
- * and no code running after the call can tell them from anything else that
- * owner holds — the watermark would have to have been taken before the
- * argument was evaluated. Ownership is not lost, it is RELOCATED: disposing
- * the ambient owner disposes the subtree. But this disposer cannot, so it says
- * so rather than pretending. M3's calling convention removes the form.
- *
- * **The claim is the eager form's alone.** The orphan list is bounded by TIME,
- * not by provenance, so claiming it from the Block form would let this mount's
- * disposer stop a library's ownerless effect that merely happened to be created
- * in the same turn. Pinned by `sem-own-render-disposer-disposes`.
+ * **The already-built form.** `render(<Tree/>, host)` constructs the subtree as
+ * an ARGUMENT, before `render` is entered, so whatever was current at the call
+ * site owns it: the surrounding owner if there is one, and nothing at all
+ * otherwise. Either way this disposer can only remove the range, and it says so
+ * rather than pretending.
  */
 export function render(block: JSXElement | (() => JSXElement), container: HTMLElement): () => void {
   container.textContent = ""; // Faster than innerHTML = ""
 
-  const eager = typeof block !== "function";
-  const ambient = eager ? getOwner() : null;
-  // Only the already-built form claims. The orphan list is bounded in time, not
-  // in provenance, so a Block-form mount that claimed it would adopt — and its
-  // disposer would destroy — whatever ownerless work the same synchronous turn
-  // happened to produce elsewhere. The Block builds under `root` anyway.
-  const root = enterRoot(eager);
-  if (ambient !== null && root.kids === null) {
+  if (typeof block !== "function") {
     emitDiagnostic(
       "RENDER_SUBTREE_NOT_OWNED",
       "warning",
-      "render() was given an already-built subtree while an owner was current, so that owner owns it and this disposer will only remove the range. Pass a function — render(() => <App/>, host) — to have the root own what it mounts.",
+      "`render` was given nodes that were built before the call, as in `const view = <App />` " +
+        "followed by `render(view, host)`, so the function it returns removes the nodes but " +
+        "cannot dispose their effects and listeners. Pass a function instead: " +
+        "`render(() => <App />, host)`.",
     );
   }
-  let element: JSXElement;
-  try {
-    element = typeof block === "function" ? block() : block;
-    insertRendered(root, element, container);
-  } finally {
-    exit(root);
-  }
-
+  const root = rootScope();
   ownRange(root, () => {
     container.textContent = "";
+  });
+  runWithOwner(root, () => {
+    insertRendered(root, typeof block === "function" ? block() : block, container);
   });
   flush();
 
   return () => {
     disposeScope(root);
   };
+}
+
+/**
+ * How a live hole at the ROOT claims the server's markup: all of it.
+ *
+ * The string backend writes a root's value straight into the container, with
+ * no comments around it, because nothing else is there to tell it from. A hole
+ * anywhere else claims the range the server delimited, and asked to do that
+ * here it found none and the whole page was thrown away and built again.
+ */
+function rootClaim(): number | undefined {
+  return hydrating() ? WHOLE : undefined;
 }
 
 function insertRendered(
@@ -2309,7 +2699,7 @@ function insertRendered(
   // `Out` admits `Cell<Out>`. A mount whose block returned one is a live
   // hole at the root, so it is inserted as one rather than stringified.
   if (typeof element === "function") {
-    insert(container, element);
+    insert(container, element, null, rootClaim());
     return;
   }
   if (isSsrHtml(element)) {
@@ -2324,16 +2714,32 @@ function insertRendered(
     // nodes, so `render(() => <>{() => cond() ? <A/> : null}</>)` rendered the
     // first value and never moved again — and a component whose whole output
     // is a conditional is the ordinary shape for an overlay.
-    if (element.some(holdsAFunction)) {
-      insert(container, element);
+    //
+    // Hydrating, every array is: `mount` built the page's value as the hole
+    // over the container's whole content, and the insert is that hole's second
+    // half, going on from where the build stopped.
+    if (element.some(holdsAFunction) || hydrating()) {
+      insert(container, element, null, rootClaim());
       return;
     }
-    for (const child of element) {
-      const nodes = childToNodes(child, scope);
-      for (const node of nodes) {
-        container.appendChild(node);
+    // Right to left against the node that follows, so one the claim left in
+    // position is not removed and put back: that blurs whatever inside it has
+    // focus, and appending it moved it past everything that claimed in place.
+    const nodes = inDocumentOrder(() => childToNodes(element, scope));
+    let before: Node | null = null;
+    for (let i = nodes.length; i--;) {
+      const node = nodes[i];
+      if (node.parentNode !== container || node.nextSibling !== before) {
+        container.insertBefore(node, before);
       }
+      before = node;
     }
+    return;
+  }
+  // Hydrating, the server's text is already the container's, and appended it
+  // would stand there twice.
+  if (hydrating()) {
+    insert(container, element, null, WHOLE);
     return;
   }
   container.appendChild(document.createTextNode(String(element)));
@@ -2564,14 +2970,24 @@ export function hydrate(
   const seeds = { ...(globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__ };
   beginHydration(container);
   const marked = wireIsMarked();
+  // The server numbered every scope it opened, whether or not a value was
+  // waiting under it, and an id is a position in that numbering. A page with
+  // nothing seeded counts the same way while it claims.
+  const followed = followAsync(true);
   try {
     clear = mount(fn, container, true);
   } catch (error) {
-    if (!(error instanceof HydrationMismatch)) {
+    failure = mismatchIn(error);
+    if (failure === null) {
       endHydration();
       throw error;
     }
-    failure = error;
+    // Wrapped means it left a computation with nothing to catch it, and the
+    // engine stops scheduling for good when that happens. The tree it stopped
+    // for is discarded below, so there is nothing left to protect.
+    if (failure !== error) resetErrorHalt();
+  } finally {
+    followAsync(followed);
   }
   const claimReport = endHydration();
 
@@ -2585,12 +3001,11 @@ export function hydrate(
     failure = new HydrationMismatch(
       "not-hydratable",
       marked
-        ? "the container held markup with range comments and the render claimed none of it — " +
-            "the CLIENT module was not compiled with `hydratable`"
-        : "the container held server markup the render claimed none of it, and there are no " +
-            "range comments to say which half is at fault — since `CODESIGN.md` §12 a page " +
-            "whose every position owns its element writes none, so this is either half " +
-            "compiled without `hydratable`",
+        ? "the container holds server-rendered markup with hydration markers and `hydrate` " +
+            "reused none of it, so the browser bundle was compiled without `hydratable: true`"
+        : "the container holds markup and `hydrate` reused none of it, so the server build or " +
+            "the browser bundle was compiled without `hydratable: true`, or the markup did not " +
+            "come from barq's server renderer",
     );
   }
 
@@ -2613,7 +3028,8 @@ export function hydrate(
     emitDiagnostic(
       "HYDRATION_MISMATCH",
       "warning",
-      `${failure.message} — the server's markup was discarded and the page rendered on the client.`,
+      `${failure.message} The server's markup was discarded and the whole page was rendered ` +
+        "again in the browser, so it works but the server-rendered first paint was thrown away.",
     );
   } else {
     hydrate.report = { ...claimReport, recovered: false };
@@ -2687,18 +3103,29 @@ function mount(
   claiming: boolean,
 ): () => void {
   if (!claiming) clearContainer(container);
-  // The Block form only, so there is nothing built before the root exists and
-  // nothing to claim — see `render`.
-  const root = enterRoot(false);
-  try {
-    insertRendered(root, block(), container);
-  } finally {
-    exit(root);
-  }
+  const root = rootScope();
   ownRange(root, () => {
     clearContainer(container);
   });
-  flush();
+  try {
+    runWithOwner(root, () => {
+      // The page's value is a hole over the whole container, built before
+      // anything places it: what the build claims has to be known to the
+      // insert that places the rest, as at every hole the compiler writes.
+      insertRendered(root, claiming ? hole(container, null, block, WHOLE) : block(), container);
+    });
+  } catch (error) {
+    // `hydrate` recovers from a mismatch by rendering again, and the bindings
+    // this attempt already filed must not outlive it beside the second tree.
+    if (mismatchIn(error) !== null) disposeScope(root);
+    throw error;
+  }
+  // The walk ends with the build. What the flush runs is the first round of
+  // effects, and a write one of them makes is a change the browser makes to the
+  // page it was sent: whatever that rebuilds is new, and the cursor the walk
+  // left behind is standing at the end of the container, not at the position
+  // being rebuilt. Left open, a template in the rebuild claimed from it.
+  withoutClaim(flush);
   return () => {
     disposeScope(root);
   };
@@ -2708,26 +3135,34 @@ function mount(
  * Create a template function for fast DOM cloning (like SolidJS)
  * The template is parsed once and cloned for each use
  */
-export function template(html: string, isSVG = false, detect = false): () => Node {
+export function template(html: string, foreign: boolean | 2 = false, detect = false): () => Node {
   let cached: Node | null = null;
 
   const create = (): Node => {
-    if (isSVG) {
-      // For SVG, wrap in svg element and extract
+    if (foreign !== false) {
+      // A root that is foreign content by position is parsed inside the parent
+      // that makes it so, and taken back out: `true` is `<svg>`, `2` `<math>`.
       const wrapper = document.createElement("template");
-      wrapper.innerHTML = `<svg xmlns="${SVG_NS}">${html}</svg>`;
-      const svgEl = wrapper.content.firstChild;
-      const innerEl = svgEl?.firstChild;
-      if (!innerEl) {
-        throw new Error("Invalid SVG template");
+      wrapper.innerHTML = foreign === 2 ? `<math>${html}</math>` : `<svg>${html}</svg>`;
+      const inner = wrapper.content.firstChild?.firstChild;
+      if (!inner) {
+        throw new Error(
+          `\`template\` was given ${foreign === 2 ? "MathML" : "SVG"} markup that parses to no ` +
+            `element: ${JSON.stringify(html)}. Nothing can be cloned from it, so the component ` +
+            'cannot render. Pass markup with one root element, such as `<circle r="4"></circle>`.',
+        );
       }
-      return innerEl;
+      return inner;
     }
     const t = document.createElement("template");
     t.innerHTML = html;
     const node = t.content.firstChild;
     if (!node) {
-      throw new Error("Invalid template");
+      throw new Error(
+        `\`template\` was given markup that parses to no node: ${JSON.stringify(html)}. Nothing ` +
+          "can be cloned from it, so the component cannot render. Pass markup with one root " +
+          "element, such as `<div></div>`.",
+      );
     }
     return node;
   };

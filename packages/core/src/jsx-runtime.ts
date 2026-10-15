@@ -14,8 +14,8 @@
 
 import type * as CSS from "csstype";
 import { Fragment } from "./components.ts";
-import type { ArrayElement, Child, Component, JSXElement, Props } from "./dom.ts";
-import type { Incoming, StrictAccessor } from "./config.ts";
+import type { ArrayElement, Child, JSXElement, Props } from "./dom.ts";
+import type { AsDeclared, CallSite, DeclaredCallSite, Incoming, StrictAccessor } from "./config.ts";
 
 export { Fragment };
 
@@ -61,32 +61,55 @@ export type MaybeAccessor<T> = FunctionMaybe<T>;
  *
  * The call site is unaffected: `LibraryManagedAttributes` widens back to values.
  */
-export type PropsWithChildren<P = Record<string, never>> = Incoming<P & { children?: Child }>;
+export type PropsWithChildren<P = NoProps> = Incoming<P & { children?: Child }>;
 
 /**
  * ParentProps - alias for PropsWithChildren (SolidJS naming)
  */
-export type ParentProps<P = Record<string, never>> = PropsWithChildren<P>;
+export type ParentProps<P = NoProps> = PropsWithChildren<P>;
 
 /**
  * VoidProps - props for components that don't accept children
  */
-export type VoidProps<P = Record<string, never>> = Incoming<P> & { children?: never };
+export type VoidProps<P = NoProps> = Incoming<P> & { children?: never };
 
 /**
  * FlowProps - props for components that must have children
  */
-export type FlowProps<P = Record<string, never>, C = Child> = Incoming<P & { children: C }>;
+export type FlowProps<P = NoProps, C = Child> = Incoming<P & { children: C }>;
+
+/** A props declaration with nothing in it, which intersects cleanly with `children`. */
+type NoProps = Record<never, never>;
 
 /**
- * ComponentProps - extract props type from a component
+ * A component, given the props its CALLER declares: the body receives each one
+ * as a Cell, so `props.title()` and not `props.title`.
  */
-export type ComponentProps<T extends Component<unknown>> = T extends Component<infer P> ? P : never;
+export type Component<P = NoProps> = (props: Incoming<P>) => JSXElement;
+
+/** A component that takes no children. */
+export type VoidComponent<P = NoProps> = (props: VoidProps<P>) => JSXElement;
+
+/** A component that may take children. */
+export type ParentComponent<P = NoProps> = (props: ParentProps<P>) => JSXElement;
+
+/** A component that must be given children, a callback or content as `C` says. */
+export type FlowComponent<P = NoProps, C = Child> = (props: FlowProps<P, C>) => JSXElement;
 
 /**
- * ValidComponent - union of valid component types
+ * ValidComponent - a tag name or any function of one props object
  */
-export type ValidComponent = keyof JSX.IntrinsicElements | Component<unknown>;
+export type ValidComponent = keyof JSX.IntrinsicElements | ((props: never) => unknown);
+
+/**
+ * ComponentProps - the props object a component's body receives, or the
+ * attributes of an intrinsic element
+ */
+export type ComponentProps<T extends ValidComponent> = T extends (props: infer P) => unknown
+  ? P
+  : T extends keyof JSX.IntrinsicElements
+    ? JSX.IntrinsicElements[T]
+    : never;
 
 /**
  * IntrinsicElementProps - get props for an intrinsic element
@@ -110,18 +133,20 @@ export type RefObject<T> = { current: T | null };
 
 // JSX namespace for TypeScript
 /**
- * A `bind:` target: readable by calling, and WRITABLE.
+ * A `bind:` target: a signal, which is the `[read, write]` pair `createSignal`
+ * returns.
  *
- * Structural rather than `Signal<T>` so that anything carrying a `.set` — a
- * `linked` cell, a store field wrapper, a project's own handle — is admitted.
- * A `Computed` and a bare accessor are not, which is the whole point: the
- * runtime answers those with `BIND_TARGET_NOT_WRITABLE`, and this is the same
- * refusal one step earlier.
+ * Structural rather than `Signal<T>` so that any pair is admitted — a derived
+ * signal, an accessor put together with a setter that validates. A memo and a
+ * bare accessor are not pairs, which is the whole point: the runtime answers
+ * those with `BIND_TARGET_NOT_WRITABLE`, and this is the same refusal one step
+ * earlier.
+ *
+ * The write half is declared as a method so it is checked bivariantly: one
+ * `bind:value` slot serves a text input and a number input, and a setter for
+ * `string` has to fit a slot that also admits `number`.
  */
-export type Bindable<T> = {
-  (): T;
-  set(value: T): void;
-};
+export type Bindable<T> = readonly [read: () => T, write: { write(value: T): unknown }["write"]];
 
 export namespace JSX {
   export type Element = JSXElement;
@@ -146,21 +171,28 @@ export namespace JSX {
    * component whose props are annotated honestly (`Incoming`) declares
    * accessors and its call sites write values.
    *
-   * The `Q` arm is what `For`, `Show` and `Match` take, and it must stay
-   * untouched: their declarations are generic, and a mapped type over an
-   * inferred type parameter is not invertible — widening there costs `<For>`
-   * the item type its callback infers, which is worse than what it buys.
+   * A props type that declares its call site through `CallSite` is checked
+   * against that instead. The flow components do, because `<For>` picks its row
+   * signature from `keyed` and a type parameter standing alone in a prop is not
+   * inferred through `Outgoing`'s conditional. So do the intrinsic elements:
+   * TypeScript runs this hook for a tag as well, and their attributes are
+   * already what a call site writes.
    */
-  export type LibraryManagedAttributes<C, P> = C extends (
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    scope: any,
-    props: infer Q,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ) => any
-    ? unknown extends Q
-      ? Outgoing<P>
-      : Q
-    : Outgoing<P>;
+  export type LibraryManagedAttributes<C, P> =
+    DeclaredCallSite<P> extends AsDeclared
+      ? P
+      : unknown extends DeclaredCallSite<P>
+        ? C extends (
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            scope: any,
+            props: infer Q,
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ) => any
+          ? unknown extends Q
+            ? Outgoing<P>
+            : Q
+          : Outgoing<P>
+        : DeclaredCallSite<P>;
 
   /**
    * The callee's props, as the CALL SITE is allowed to write them.
@@ -178,6 +210,10 @@ export namespace JSX {
    * `() => R`, so without it every optional prop fell through unwidened — and
    * the mapped type puts the `?` back on its own.
    *
+   * A prop declared `never` stays `never`: `VoidProps` forbids children that
+   * way, and `never` would otherwise pass the accessor test and widen to
+   * anything.
+   *
    * A zero-argument prop is an accessor and is unwrapped. A prop that declares
    * parameters is a SLOT — `<For>`'s `(item, index) => …`, a `ref` callback, an
    * event handler the caller writes inline — and is left exactly as declared,
@@ -186,8 +222,29 @@ export namespace JSX {
    * free: a function with a required parameter is not assignable to `() => R`.
    */
   type Outgoing<Q> = {
-    [K in keyof Q]: NonNullable<Q[K]> extends () => infer R ? StrictAccessor<R> : Q[K];
+    [K in keyof Q]: [NonNullable<Q[K]>] extends [never]
+      ? Q[K]
+      : NonNullable<Q[K]> extends () => infer R
+        ? StrictAccessor<R>
+        : OutgoingMember<Q[K]>;
   };
+
+  /**
+   * A prop that is an accessor OR a slot, member by member: `children` that is
+   * content or a row callback.
+   *
+   * The value side of the accessor member gives up its own any-arity function
+   * for a zero-arity one. `Child` admits `(...args: never[]) => Child`, which
+   * every arrow function matches whatever it declares, and beside it the slot
+   * member stops being the single signature that types a callback's parameters.
+   */
+  type OutgoingMember<M> = M extends () => infer R ? OutgoingValue<R> | Accessor<R> : M;
+
+  type OutgoingValue<R> = R extends (...args: never[]) => infer X
+    ? never[] extends Parameters<R>
+      ? Accessor<X>
+      : R
+    : R;
 
   // Core utility types (following SolidJS patterns)
 
@@ -245,45 +302,51 @@ export namespace JSX {
 
   // Intrinsic attributes shared by all elements
   export interface IntrinsicAttributes {
-    ref?: ((el: unknown) => void) | { current: unknown };
+    /**
+     * `unknown`, because TypeScript intersects this with a tag's own attributes
+     * as well as a component's. A narrower type here meets an element's `ref`
+     * as a second, different callback signature, and a `ref` written inline
+     * then has no contextual type for its parameter.
+     */
+    ref?: unknown;
   }
 
   export interface IntrinsicElements {
     // HTML elements
-    a: HTMLAttributes<HTMLAnchorElement>;
+    a: AnchorHTMLAttributes<HTMLAnchorElement>;
     abbr: HTMLAttributes<HTMLElement>;
     address: HTMLAttributes<HTMLElement>;
-    area: HTMLAttributes<HTMLAreaElement>;
+    area: AreaHTMLAttributes<HTMLAreaElement>;
     article: HTMLAttributes<HTMLElement>;
     aside: HTMLAttributes<HTMLElement>;
-    audio: HTMLAttributes<HTMLAudioElement>;
+    audio: AudioHTMLAttributes<HTMLAudioElement>;
     b: HTMLAttributes<HTMLElement>;
     base: BaseHTMLAttributes<HTMLBaseElement>;
     bdi: HTMLAttributes<HTMLElement>;
-    bdo: HTMLAttributes<HTMLElement>;
-    blockquote: HTMLAttributes<HTMLQuoteElement>;
-    body: HTMLAttributes<HTMLBodyElement>;
+    bdo: BdoHTMLAttributes<HTMLElement>;
+    blockquote: BlockquoteHTMLAttributes<HTMLQuoteElement>;
+    body: BodyHTMLAttributes<HTMLBodyElement>;
     br: HTMLAttributes<HTMLBRElement>;
-    button: HTMLAttributes<HTMLButtonElement>;
-    canvas: HTMLAttributes<HTMLCanvasElement>;
-    caption: HTMLAttributes<HTMLTableCaptionElement>;
+    button: ButtonHTMLAttributes<HTMLButtonElement>;
+    canvas: CanvasHTMLAttributes<HTMLCanvasElement>;
+    caption: CaptionHTMLAttributes<HTMLTableCaptionElement>;
     cite: HTMLAttributes<HTMLElement>;
     code: HTMLAttributes<HTMLElement>;
-    col: HTMLAttributes<HTMLTableColElement>;
-    colgroup: HTMLAttributes<HTMLTableColElement>;
-    data: HTMLAttributes<HTMLDataElement>;
+    col: ColHTMLAttributes<HTMLTableColElement>;
+    colgroup: ColgroupHTMLAttributes<HTMLTableColElement>;
+    data: DataHTMLAttributes<HTMLDataElement>;
     datalist: HTMLAttributes<HTMLDataListElement>;
     dd: HTMLAttributes<HTMLElement>;
-    del: HTMLAttributes<HTMLModElement>;
-    details: HTMLAttributes<HTMLDetailsElement>;
+    del: ModHTMLAttributes<HTMLModElement>;
+    details: DetailsHTMLAttributes<HTMLDetailsElement>;
     dfn: HTMLAttributes<HTMLElement>;
-    dialog: HTMLAttributes<HTMLDialogElement>;
+    dialog: DialogHTMLAttributes<HTMLDialogElement>;
     div: HTMLAttributes<HTMLDivElement>;
     dl: HTMLAttributes<HTMLDListElement>;
     dt: HTMLAttributes<HTMLElement>;
     em: HTMLAttributes<HTMLElement>;
-    embed: HTMLAttributes<HTMLEmbedElement>;
-    fieldset: HTMLAttributes<HTMLFieldSetElement>;
+    embed: EmbedHTMLAttributes<HTMLEmbedElement>;
+    fieldset: FieldsetHTMLAttributes<HTMLFieldSetElement>;
     figcaption: HTMLAttributes<HTMLElement>;
     figure: HTMLAttributes<HTMLElement>;
     footer: HTMLAttributes<HTMLElement>;
@@ -300,44 +363,45 @@ export namespace JSX {
     hr: HTMLAttributes<HTMLHRElement>;
     html: HtmlHTMLAttributes<HTMLHtmlElement>;
     i: HTMLAttributes<HTMLElement>;
-    iframe: HTMLAttributes<HTMLIFrameElement>;
-    img: HTMLAttributes<HTMLImageElement>;
-    input: HTMLAttributes<HTMLInputElement>;
-    ins: HTMLAttributes<HTMLModElement>;
+    iframe: IframeHTMLAttributes<HTMLIFrameElement>;
+    img: ImgHTMLAttributes<HTMLImageElement>;
+    input: InputHTMLAttributes<HTMLInputElement>;
+    ins: ModHTMLAttributes<HTMLModElement>;
     kbd: HTMLAttributes<HTMLElement>;
-    label: HTMLAttributes<HTMLLabelElement>;
+    label: LabelHTMLAttributes<HTMLLabelElement>;
     legend: HTMLAttributes<HTMLLegendElement>;
-    li: HTMLAttributes<HTMLLIElement>;
+    li: LiHTMLAttributes<HTMLLIElement>;
     link: LinkHTMLAttributes<HTMLLinkElement>;
     main: HTMLAttributes<HTMLElement>;
-    map: HTMLAttributes<HTMLMapElement>;
+    map: MapHTMLAttributes<HTMLMapElement>;
     mark: HTMLAttributes<HTMLElement>;
-    menu: HTMLAttributes<HTMLMenuElement>;
+    menu: MenuHTMLAttributes<HTMLMenuElement>;
     meta: MetaHTMLAttributes<HTMLMetaElement>;
-    meter: HTMLAttributes<HTMLMeterElement>;
+    meter: MeterHTMLAttributes<HTMLMeterElement>;
     nav: HTMLAttributes<HTMLElement>;
     noscript: HTMLAttributes<HTMLElement>;
-    object: HTMLAttributes<HTMLObjectElement>;
-    ol: HTMLAttributes<HTMLOListElement>;
-    optgroup: HTMLAttributes<HTMLOptGroupElement>;
-    option: HTMLAttributes<HTMLOptionElement>;
-    output: HTMLAttributes<HTMLOutputElement>;
+    object: ObjectHTMLAttributes<HTMLObjectElement>;
+    ol: OlHTMLAttributes<HTMLOListElement>;
+    optgroup: OptgroupHTMLAttributes<HTMLOptGroupElement>;
+    option: OptionHTMLAttributes<HTMLOptionElement>;
+    output: OutputHTMLAttributes<HTMLOutputElement>;
     p: HTMLAttributes<HTMLParagraphElement>;
     picture: HTMLAttributes<HTMLPictureElement>;
     pre: HTMLAttributes<HTMLPreElement>;
-    progress: HTMLAttributes<HTMLProgressElement>;
-    q: HTMLAttributes<HTMLQuoteElement>;
+    progress: ProgressHTMLAttributes<HTMLProgressElement>;
+    q: QuoteHTMLAttributes<HTMLQuoteElement>;
     rp: HTMLAttributes<HTMLElement>;
     rt: HTMLAttributes<HTMLElement>;
     ruby: HTMLAttributes<HTMLElement>;
     s: HTMLAttributes<HTMLElement>;
     samp: HTMLAttributes<HTMLElement>;
     script: ScriptHTMLAttributes<HTMLScriptElement>;
+    search: HTMLAttributes<HTMLElement>;
     section: HTMLAttributes<HTMLElement>;
-    select: HTMLAttributes<HTMLSelectElement>;
-    slot: HTMLAttributes<HTMLSlotElement>;
+    select: SelectHTMLAttributes<HTMLSelectElement>;
+    slot: SlotHTMLAttributes<HTMLSlotElement>;
     small: HTMLAttributes<HTMLElement>;
-    source: HTMLAttributes<HTMLSourceElement>;
+    source: SourceHTMLAttributes<HTMLSourceElement>;
     span: HTMLAttributes<HTMLSpanElement>;
     strong: HTMLAttributes<HTMLElement>;
     style: StyleHTMLAttributes<HTMLStyleElement>;
@@ -346,20 +410,20 @@ export namespace JSX {
     sup: HTMLAttributes<HTMLElement>;
     table: HTMLAttributes<HTMLTableElement>;
     tbody: HTMLAttributes<HTMLTableSectionElement>;
-    td: HTMLAttributes<HTMLTableCellElement>;
-    template: HTMLAttributes<HTMLTemplateElement>;
-    textarea: HTMLAttributes<HTMLTextAreaElement>;
+    td: TdHTMLAttributes<HTMLTableCellElement>;
+    template: TemplateHTMLAttributes<HTMLTemplateElement>;
+    textarea: TextareaHTMLAttributes<HTMLTextAreaElement>;
     tfoot: HTMLAttributes<HTMLTableSectionElement>;
-    th: HTMLAttributes<HTMLTableCellElement>;
+    th: ThHTMLAttributes<HTMLTableCellElement>;
     thead: HTMLAttributes<HTMLTableSectionElement>;
-    time: HTMLAttributes<HTMLTimeElement>;
-    title: HTMLAttributes<HTMLTitleElement>;
+    time: TimeHTMLAttributes<HTMLTimeElement>;
+    title: TitleHTMLAttributes<HTMLTitleElement>;
     tr: HTMLAttributes<HTMLTableRowElement>;
-    track: HTMLAttributes<HTMLTrackElement>;
+    track: TrackHTMLAttributes<HTMLTrackElement>;
     u: HTMLAttributes<HTMLElement>;
     ul: HTMLAttributes<HTMLUListElement>;
     var: HTMLAttributes<HTMLElement>;
-    video: HTMLAttributes<HTMLVideoElement>;
+    video: VideoHTMLAttributes<HTMLVideoElement>;
     wbr: HTMLAttributes<HTMLElement>;
 
     // SVG elements
@@ -389,6 +453,44 @@ export namespace JSX {
     animate: SVGAttributes<SVGAnimateElement>;
     animateMotion: SVGAttributes<SVGAnimateMotionElement>;
     animateTransform: SVGAttributes<SVGAnimateTransformElement>;
+
+    // MathML elements. `annotation-xml` is typed by the custom-element signature below,
+    // which its hyphen already matches.
+    annotation: MathMLAnnotationAttributes;
+    math: MathMLMathAttributes;
+    merror: MathMLAttributes<MathMLElement>;
+    mfrac: MathMLMfracAttributes;
+    mi: MathMLMiAttributes;
+    mmultiscripts: MathMLAttributes<MathMLElement>;
+    mn: MathMLAttributes<MathMLElement>;
+    mo: MathMLMoAttributes;
+    mover: MathMLMoverAttributes;
+    mpadded: MathMLMpaddedAttributes;
+    mphantom: MathMLAttributes<MathMLElement>;
+    mprescripts: MathMLAttributes<MathMLElement>;
+    mroot: MathMLAttributes<MathMLElement>;
+    mrow: MathMLAttributes<MathMLElement>;
+    ms: MathMLAttributes<MathMLElement>;
+    mspace: MathMLMspaceAttributes;
+    msqrt: MathMLAttributes<MathMLElement>;
+    mstyle: MathMLAttributes<MathMLElement>;
+    msub: MathMLAttributes<MathMLElement>;
+    msubsup: MathMLAttributes<MathMLElement>;
+    msup: MathMLAttributes<MathMLElement>;
+    mtable: MathMLMtableAttributes;
+    mtd: MathMLMtdAttributes;
+    mtext: MathMLAttributes<MathMLElement>;
+    mtr: MathMLMtrAttributes;
+    munder: MathMLMunderAttributes;
+    munderover: MathMLMunderoverAttributes;
+    semantics: MathMLAttributes<MathMLElement>;
+
+    /**
+     * A custom element. Its attributes are its own, so beyond the global ones
+     * any name is accepted; `prop:`, `attr:` and `bool:` say which channel a
+     * name the compiler cannot classify is written through.
+     */
+    [tag: `${string}-${string}`]: CustomElementAttributes;
   }
 
   export interface ElementChildrenAttribute {
@@ -414,278 +516,657 @@ export namespace JSX {
     [key: `--${string}`]: FunctionMaybe<string | number>;
   };
 
-  // Event handlers - CamelCase (React-style)
+  /** An attribute value: static, or an accessor the binding follows. Absent removes it. */
+  type Attr<T> = FunctionMaybe<T | undefined>;
+
+  type BooleanAttribute = boolean | "";
+  type EnumeratedPseudoBoolean = "false" | "true";
+  type EnumeratedAcceptsEmpty = "" | true;
+  /** `aria-*` is written as the words `true` and `false`, so a boolean is a value there. */
+  type AriaBoolean = boolean | "false" | "true";
+
+  /**
+   * What the `class` channel normalises: a string, a list of names with the
+   * falsy members dropped, or a map of name to whether it applies. A list is
+   * joined as written, so its members are names and not further lists or maps.
+   */
+  export type ClassValue =
+    | string
+    | false
+    | null
+    | undefined
+    | readonly (string | false | null | undefined)[]
+    | Record<string, boolean | null | undefined>;
+
   interface DOMEventHandlers<T> {
-    // Mouse events
-    onClick?: EventHandlerUnion<T, MouseEvent>;
-    onDblClick?: EventHandlerUnion<T, MouseEvent>;
-    onMouseDown?: EventHandlerUnion<T, MouseEvent>;
-    onMouseUp?: EventHandlerUnion<T, MouseEvent>;
-    onMouseEnter?: EventHandlerUnion<T, MouseEvent>;
-    onMouseLeave?: EventHandlerUnion<T, MouseEvent>;
-    onMouseMove?: EventHandlerUnion<T, MouseEvent>;
-    onMouseOver?: EventHandlerUnion<T, MouseEvent>;
-    onMouseOut?: EventHandlerUnion<T, MouseEvent>;
-    onContextMenu?: EventHandlerUnion<T, MouseEvent>;
-
-    // Keyboard events
-    onKeyDown?: EventHandlerUnion<T, KeyboardEvent>;
-    onKeyUp?: EventHandlerUnion<T, KeyboardEvent>;
-    onKeyPress?: EventHandlerUnion<T, KeyboardEvent>;
-
-    // Focus events
-    onFocus?: EventHandlerUnion<T, FocusEvent>;
+    onAbort?: EventHandlerUnion<T, UIEvent>;
+    onAnimationCancel?: EventHandlerUnion<T, AnimationEvent>;
+    onAnimationEnd?: EventHandlerUnion<T, AnimationEvent>;
+    onAnimationIteration?: EventHandlerUnion<T, AnimationEvent>;
+    onAnimationStart?: EventHandlerUnion<T, AnimationEvent>;
+    onAuxClick?: EventHandlerUnion<T, PointerEvent>;
+    onBeforeCopy?: EventHandlerUnion<T, ClipboardEvent>;
+    onBeforeCut?: EventHandlerUnion<T, ClipboardEvent>;
+    onBeforeInput?: InputEventHandlerUnion<T, InputEvent>;
+    onBeforeMatch?: EventHandlerUnion<T, Event>;
+    onBeforePaste?: EventHandlerUnion<T, ClipboardEvent>;
+    onBeforeToggle?: EventHandlerUnion<T, ToggleEvent>;
+    onBeforeXRSelect?: EventHandlerUnion<T, Event>;
     onBlur?: EventHandlerUnion<T, FocusEvent>;
-    onFocusIn?: EventHandlerUnion<T, FocusEvent>;
-    onFocusOut?: EventHandlerUnion<T, FocusEvent>;
-
-    // Form events
-    onInput?: InputEventHandlerUnion<T, InputEvent>;
+    onCancel?: EventHandlerUnion<T, Event>;
+    onCanPlay?: EventHandlerUnion<T, Event>;
+    onCanPlayThrough?: EventHandlerUnion<T, Event>;
     onChange?: InputEventHandlerUnion<T, Event>;
-    onSubmit?: EventHandlerUnion<T, SubmitEvent>;
-    onReset?: EventHandlerUnion<T, Event>;
-    onInvalid?: EventHandlerUnion<T, Event>;
-
-    // Clipboard events
+    onClick?: EventHandlerUnion<T, MouseEvent>;
+    onClose?: EventHandlerUnion<T, Event>;
+    onCommand?: EventHandlerUnion<T, CommandEvent>;
+    onCompositionEnd?: EventHandlerUnion<T, CompositionEvent>;
+    onCompositionStart?: EventHandlerUnion<T, CompositionEvent>;
+    onCompositionUpdate?: EventHandlerUnion<T, CompositionEvent>;
+    onContentVisibilityAutoStateChange?: EventHandlerUnion<
+      T,
+      ContentVisibilityAutoStateChangeEvent
+    >;
+    onContextLost?: EventHandlerUnion<T, Event>;
+    onContextMenu?: EventHandlerUnion<T, PointerEvent>;
+    onContextRestored?: EventHandlerUnion<T, Event>;
     onCopy?: EventHandlerUnion<T, ClipboardEvent>;
+    onCueChange?: EventHandlerUnion<T, Event>;
     onCut?: EventHandlerUnion<T, ClipboardEvent>;
-    onPaste?: EventHandlerUnion<T, ClipboardEvent>;
-
-    // Drag events
-    onDragStart?: EventHandlerUnion<T, DragEvent>;
+    onDblClick?: EventHandlerUnion<T, MouseEvent>;
     onDrag?: EventHandlerUnion<T, DragEvent>;
     onDragEnd?: EventHandlerUnion<T, DragEvent>;
     onDragEnter?: EventHandlerUnion<T, DragEvent>;
+    onDragExit?: EventHandlerUnion<T, DragEvent>;
     onDragLeave?: EventHandlerUnion<T, DragEvent>;
     onDragOver?: EventHandlerUnion<T, DragEvent>;
+    onDragStart?: EventHandlerUnion<T, DragEvent>;
     onDrop?: EventHandlerUnion<T, DragEvent>;
-
-    // Touch events
-    onTouchStart?: EventHandlerUnion<T, TouchEvent>;
-    onTouchMove?: EventHandlerUnion<T, TouchEvent>;
-    onTouchEnd?: EventHandlerUnion<T, TouchEvent>;
-    onTouchCancel?: EventHandlerUnion<T, TouchEvent>;
-
-    // Pointer events
-    onPointerDown?: EventHandlerUnion<T, PointerEvent>;
-    onPointerUp?: EventHandlerUnion<T, PointerEvent>;
-    onPointerMove?: EventHandlerUnion<T, PointerEvent>;
-    onPointerEnter?: EventHandlerUnion<T, PointerEvent>;
-    onPointerLeave?: EventHandlerUnion<T, PointerEvent>;
-    onPointerOver?: EventHandlerUnion<T, PointerEvent>;
-    onPointerOut?: EventHandlerUnion<T, PointerEvent>;
-    onPointerCancel?: EventHandlerUnion<T, PointerEvent>;
-    onGotPointerCapture?: EventHandlerUnion<T, PointerEvent>;
-    onLostPointerCapture?: EventHandlerUnion<T, PointerEvent>;
-
-    // Scroll/Wheel events
-    onScroll?: EventHandlerUnion<T, Event>;
-    onScrollEnd?: EventHandlerUnion<T, Event>;
-    onWheel?: EventHandlerUnion<T, WheelEvent>;
-
-    // Animation events
-    onAnimationStart?: EventHandlerUnion<T, AnimationEvent>;
-    onAnimationEnd?: EventHandlerUnion<T, AnimationEvent>;
-    onAnimationIteration?: EventHandlerUnion<T, AnimationEvent>;
-    onAnimationCancel?: EventHandlerUnion<T, AnimationEvent>;
-
-    // Transition events
-    onTransitionStart?: EventHandlerUnion<T, TransitionEvent>;
-    onTransitionEnd?: EventHandlerUnion<T, TransitionEvent>;
-    onTransitionRun?: EventHandlerUnion<T, TransitionEvent>;
-    onTransitionCancel?: EventHandlerUnion<T, TransitionEvent>;
-
-    // Media events
-    onLoad?: EventHandlerUnion<T, Event>;
-    onError?: EventHandlerUnion<T, ErrorEvent>;
-    onAbort?: EventHandlerUnion<T, UIEvent>;
-    onCanPlay?: EventHandlerUnion<T, Event>;
-    onCanPlayThrough?: EventHandlerUnion<T, Event>;
     onDurationChange?: EventHandlerUnion<T, Event>;
     onEmptied?: EventHandlerUnion<T, Event>;
     onEnded?: EventHandlerUnion<T, Event>;
+    onError?: EventHandlerUnion<T, ErrorEvent>;
+    onFocus?: EventHandlerUnion<T, FocusEvent>;
+    onFocusIn?: EventHandlerUnion<T, FocusEvent>;
+    onFocusOut?: EventHandlerUnion<T, FocusEvent>;
+    onFormData?: EventHandlerUnion<T, FormDataEvent>;
+    onFullscreenChange?: EventHandlerUnion<T, Event>;
+    onFullscreenError?: EventHandlerUnion<T, Event>;
+    onInput?: InputEventHandlerUnion<T, InputEvent>;
+    onInvalid?: EventHandlerUnion<T, Event>;
+    onKeyDown?: EventHandlerUnion<T, KeyboardEvent>;
+    onKeyPress?: EventHandlerUnion<T, KeyboardEvent>;
+    onKeyUp?: EventHandlerUnion<T, KeyboardEvent>;
+    onLoad?: EventHandlerUnion<T, Event>;
     onLoadedData?: EventHandlerUnion<T, Event>;
     onLoadedMetadata?: EventHandlerUnion<T, Event>;
     onLoadStart?: EventHandlerUnion<T, Event>;
+    onMouseDown?: EventHandlerUnion<T, MouseEvent>;
+    onMouseEnter?: EventHandlerUnion<T, MouseEvent>;
+    onMouseLeave?: EventHandlerUnion<T, MouseEvent>;
+    onMouseMove?: EventHandlerUnion<T, MouseEvent>;
+    onMouseOut?: EventHandlerUnion<T, MouseEvent>;
+    onMouseOver?: EventHandlerUnion<T, MouseEvent>;
+    onMouseUp?: EventHandlerUnion<T, MouseEvent>;
+    onPaste?: EventHandlerUnion<T, ClipboardEvent>;
     onPause?: EventHandlerUnion<T, Event>;
     onPlay?: EventHandlerUnion<T, Event>;
     onPlaying?: EventHandlerUnion<T, Event>;
+    onPointerCancel?: EventHandlerUnion<T, PointerEvent>;
+    onPointerDown?: EventHandlerUnion<T, PointerEvent>;
+    onPointerEnter?: EventHandlerUnion<T, PointerEvent>;
+    onPointerLeave?: EventHandlerUnion<T, PointerEvent>;
+    onPointerMove?: EventHandlerUnion<T, PointerEvent>;
+    onPointerOut?: EventHandlerUnion<T, PointerEvent>;
+    onPointerOver?: EventHandlerUnion<T, PointerEvent>;
+    onPointerRawUpdate?: EventHandlerUnion<T, PointerEvent>;
+    onPointerUp?: EventHandlerUnion<T, PointerEvent>;
     onProgress?: EventHandlerUnion<T, ProgressEvent>;
     onRateChange?: EventHandlerUnion<T, Event>;
+    onReset?: EventHandlerUnion<T, Event>;
+    onResize?: EventHandlerUnion<T, UIEvent>;
+    onScroll?: EventHandlerUnion<T, Event>;
+    onScrollEnd?: EventHandlerUnion<T, Event>;
+    onScrollSnapChange?: EventHandlerUnion<T, Event>;
+    onScrollSnapChanging?: EventHandlerUnion<T, Event>;
+    onSecurityPolicyViolation?: EventHandlerUnion<T, SecurityPolicyViolationEvent>;
     onSeeked?: EventHandlerUnion<T, Event>;
     onSeeking?: EventHandlerUnion<T, Event>;
+    onSelect?: EventHandlerUnion<T, Event>;
+    onSelectionChange?: EventHandlerUnion<T, Event>;
+    onSelectStart?: EventHandlerUnion<T, Event>;
+    onSlotChange?: EventHandlerUnion<T, Event>;
     onStalled?: EventHandlerUnion<T, Event>;
+    onSubmit?: EventHandlerUnion<T, SubmitEvent>;
     onSuspend?: EventHandlerUnion<T, Event>;
     onTimeUpdate?: EventHandlerUnion<T, Event>;
+    onToggle?: EventHandlerUnion<T, ToggleEvent>;
+    onTouchCancel?: EventHandlerUnion<T, TouchEvent>;
+    onTouchEnd?: EventHandlerUnion<T, TouchEvent>;
+    onTouchMove?: EventHandlerUnion<T, TouchEvent>;
+    onTouchStart?: EventHandlerUnion<T, TouchEvent>;
+    onTransitionCancel?: EventHandlerUnion<T, TransitionEvent>;
+    onTransitionEnd?: EventHandlerUnion<T, TransitionEvent>;
+    onTransitionRun?: EventHandlerUnion<T, TransitionEvent>;
+    onTransitionStart?: EventHandlerUnion<T, TransitionEvent>;
     onVolumeChange?: EventHandlerUnion<T, Event>;
     onWaiting?: EventHandlerUnion<T, Event>;
-
-    // Other events
-    onToggle?: EventHandlerUnion<T, Event>;
-    onClose?: EventHandlerUnion<T, Event>;
-    onSelect?: EventHandlerUnion<T, Event>;
-    onResize?: EventHandlerUnion<T, UIEvent>;
+    onWheel?: EventHandlerUnion<T, WheelEvent>;
   }
 
-  // Event handlers - lowercase (DOM-style, also supported)
+  interface WindowEventHandlers<T> {
+    onAfterPrint?: EventHandlerUnion<T, Event>;
+    onBeforePrint?: EventHandlerUnion<T, Event>;
+    onBeforeUnload?: EventHandlerUnion<T, BeforeUnloadEvent>;
+    onDeviceMotion?: EventHandlerUnion<T, DeviceMotionEvent>;
+    onDeviceOrientation?: EventHandlerUnion<T, DeviceOrientationEvent>;
+    onDeviceOrientationAbsolute?: EventHandlerUnion<T, DeviceOrientationEvent>;
+    onGamepadConnected?: EventHandlerUnion<T, GamepadEvent>;
+    onGamepadDisconnected?: EventHandlerUnion<T, GamepadEvent>;
+    onHashchange?: EventHandlerUnion<T, HashChangeEvent>;
+    onLanguageChange?: EventHandlerUnion<T, Event>;
+    onMessage?: EventHandlerUnion<T, MessageEvent>;
+    onMessageError?: EventHandlerUnion<T, MessageEvent>;
+    onOffline?: EventHandlerUnion<T, Event>;
+    onOnline?: EventHandlerUnion<T, Event>;
+    /** @deprecated */
+    onOrientationChange?: EventHandlerUnion<T, Event>;
+    onPageHide?: EventHandlerUnion<T, PageTransitionEvent>;
+    onPageReveal?: EventHandlerUnion<T, PageRevealEvent>;
+    onPageShow?: EventHandlerUnion<T, PageTransitionEvent>;
+    onPageSwap?: EventHandlerUnion<T, PageSwapEvent>;
+    onPopstate?: EventHandlerUnion<T, PopStateEvent>;
+    onRejectionHandled?: EventHandlerUnion<T, PromiseRejectionEvent>;
+    onStorage?: EventHandlerUnion<T, StorageEvent>;
+    onUnhandledRejection?: EventHandlerUnion<T, PromiseRejectionEvent>;
+    onUnload?: EventHandlerUnion<T, Event>;
+  }
+
   interface DOMEventHandlersLowerCase<T> {
+    onabort?: EventHandlerUnion<T, UIEvent>;
+    onanimationcancel?: EventHandlerUnion<T, AnimationEvent>;
+    onanimationend?: EventHandlerUnion<T, AnimationEvent>;
+    onanimationiteration?: EventHandlerUnion<T, AnimationEvent>;
+    onanimationstart?: EventHandlerUnion<T, AnimationEvent>;
+    onauxclick?: EventHandlerUnion<T, PointerEvent>;
+    onbeforecopy?: EventHandlerUnion<T, ClipboardEvent>;
+    onbeforecut?: EventHandlerUnion<T, ClipboardEvent>;
+    onbeforeinput?: InputEventHandlerUnion<T, InputEvent>;
+    onbeforematch?: EventHandlerUnion<T, Event>;
+    onbeforepaste?: EventHandlerUnion<T, ClipboardEvent>;
+    onbeforetoggle?: EventHandlerUnion<T, ToggleEvent>;
+    onbeforexrselect?: EventHandlerUnion<T, Event>;
+    onblur?: EventHandlerUnion<T, FocusEvent>;
+    oncancel?: EventHandlerUnion<T, Event>;
+    oncanplay?: EventHandlerUnion<T, Event>;
+    oncanplaythrough?: EventHandlerUnion<T, Event>;
+    onchange?: InputEventHandlerUnion<T, Event>;
     onclick?: EventHandlerUnion<T, MouseEvent>;
+    onclose?: EventHandlerUnion<T, Event>;
+    oncommand?: EventHandlerUnion<T, CommandEvent>;
+    oncompositionend?: EventHandlerUnion<T, CompositionEvent>;
+    oncompositionstart?: EventHandlerUnion<T, CompositionEvent>;
+    oncompositionupdate?: EventHandlerUnion<T, CompositionEvent>;
+    oncontentvisibilityautostatechange?: EventHandlerUnion<
+      T,
+      ContentVisibilityAutoStateChangeEvent
+    >;
+    oncontextlost?: EventHandlerUnion<T, Event>;
+    oncontextmenu?: EventHandlerUnion<T, PointerEvent>;
+    oncontextrestored?: EventHandlerUnion<T, Event>;
+    oncopy?: EventHandlerUnion<T, ClipboardEvent>;
+    oncuechange?: EventHandlerUnion<T, Event>;
+    oncut?: EventHandlerUnion<T, ClipboardEvent>;
     ondblclick?: EventHandlerUnion<T, MouseEvent>;
+    ondrag?: EventHandlerUnion<T, DragEvent>;
+    ondragend?: EventHandlerUnion<T, DragEvent>;
+    ondragenter?: EventHandlerUnion<T, DragEvent>;
+    ondragexit?: EventHandlerUnion<T, DragEvent>;
+    ondragleave?: EventHandlerUnion<T, DragEvent>;
+    ondragover?: EventHandlerUnion<T, DragEvent>;
+    ondragstart?: EventHandlerUnion<T, DragEvent>;
+    ondrop?: EventHandlerUnion<T, DragEvent>;
+    ondurationchange?: EventHandlerUnion<T, Event>;
+    onemptied?: EventHandlerUnion<T, Event>;
+    onended?: EventHandlerUnion<T, Event>;
+    onerror?: EventHandlerUnion<T, ErrorEvent>;
+    onfocus?: EventHandlerUnion<T, FocusEvent>;
+    onfocusin?: EventHandlerUnion<T, FocusEvent>;
+    onfocusout?: EventHandlerUnion<T, FocusEvent>;
+    onformdata?: EventHandlerUnion<T, FormDataEvent>;
+    onfullscreenchange?: EventHandlerUnion<T, Event>;
+    onfullscreenerror?: EventHandlerUnion<T, Event>;
+    oninput?: InputEventHandlerUnion<T, InputEvent>;
+    oninvalid?: EventHandlerUnion<T, Event>;
+    onkeydown?: EventHandlerUnion<T, KeyboardEvent>;
+    onkeypress?: EventHandlerUnion<T, KeyboardEvent>;
+    onkeyup?: EventHandlerUnion<T, KeyboardEvent>;
+    onload?: EventHandlerUnion<T, Event>;
+    onloadeddata?: EventHandlerUnion<T, Event>;
+    onloadedmetadata?: EventHandlerUnion<T, Event>;
+    onloadstart?: EventHandlerUnion<T, Event>;
     onmousedown?: EventHandlerUnion<T, MouseEvent>;
-    onmouseup?: EventHandlerUnion<T, MouseEvent>;
     onmouseenter?: EventHandlerUnion<T, MouseEvent>;
     onmouseleave?: EventHandlerUnion<T, MouseEvent>;
     onmousemove?: EventHandlerUnion<T, MouseEvent>;
-    onmouseover?: EventHandlerUnion<T, MouseEvent>;
     onmouseout?: EventHandlerUnion<T, MouseEvent>;
-    oncontextmenu?: EventHandlerUnion<T, MouseEvent>;
-    onkeydown?: EventHandlerUnion<T, KeyboardEvent>;
-    onkeyup?: EventHandlerUnion<T, KeyboardEvent>;
-    onkeypress?: EventHandlerUnion<T, KeyboardEvent>;
-    onfocus?: EventHandlerUnion<T, FocusEvent>;
-    onblur?: EventHandlerUnion<T, FocusEvent>;
-    oninput?: InputEventHandlerUnion<T, InputEvent>;
-    onchange?: InputEventHandlerUnion<T, Event>;
-    onsubmit?: EventHandlerUnion<T, SubmitEvent>;
-    onreset?: EventHandlerUnion<T, Event>;
-    oncopy?: EventHandlerUnion<T, ClipboardEvent>;
-    oncut?: EventHandlerUnion<T, ClipboardEvent>;
+    onmouseover?: EventHandlerUnion<T, MouseEvent>;
+    onmouseup?: EventHandlerUnion<T, MouseEvent>;
     onpaste?: EventHandlerUnion<T, ClipboardEvent>;
+    onpause?: EventHandlerUnion<T, Event>;
+    onplay?: EventHandlerUnion<T, Event>;
+    onplaying?: EventHandlerUnion<T, Event>;
+    onpointercancel?: EventHandlerUnion<T, PointerEvent>;
+    onpointerdown?: EventHandlerUnion<T, PointerEvent>;
+    onpointerenter?: EventHandlerUnion<T, PointerEvent>;
+    onpointerleave?: EventHandlerUnion<T, PointerEvent>;
+    onpointermove?: EventHandlerUnion<T, PointerEvent>;
+    onpointerout?: EventHandlerUnion<T, PointerEvent>;
+    onpointerover?: EventHandlerUnion<T, PointerEvent>;
+    onpointerrawupdate?: EventHandlerUnion<T, PointerEvent>;
+    onpointerup?: EventHandlerUnion<T, PointerEvent>;
+    onprogress?: EventHandlerUnion<T, ProgressEvent>;
+    onratechange?: EventHandlerUnion<T, Event>;
+    onreset?: EventHandlerUnion<T, Event>;
+    onresize?: EventHandlerUnion<T, UIEvent>;
     onscroll?: EventHandlerUnion<T, Event>;
+    onscrollend?: EventHandlerUnion<T, Event>;
+    onscrollsnapchange?: EventHandlerUnion<T, Event>;
+    onscrollsnapchanging?: EventHandlerUnion<T, Event>;
+    onsecuritypolicyviolation?: EventHandlerUnion<T, SecurityPolicyViolationEvent>;
+    onseeked?: EventHandlerUnion<T, Event>;
+    onseeking?: EventHandlerUnion<T, Event>;
+    onselect?: EventHandlerUnion<T, Event>;
+    onselectionchange?: EventHandlerUnion<T, Event>;
+    onselectstart?: EventHandlerUnion<T, Event>;
+    onslotchange?: EventHandlerUnion<T, Event>;
+    onstalled?: EventHandlerUnion<T, Event>;
+    onsubmit?: EventHandlerUnion<T, SubmitEvent>;
+    onsuspend?: EventHandlerUnion<T, Event>;
+    ontimeupdate?: EventHandlerUnion<T, Event>;
+    ontoggle?: EventHandlerUnion<T, ToggleEvent>;
+    ontouchcancel?: EventHandlerUnion<T, TouchEvent>;
+    ontouchend?: EventHandlerUnion<T, TouchEvent>;
+    ontouchmove?: EventHandlerUnion<T, TouchEvent>;
+    ontouchstart?: EventHandlerUnion<T, TouchEvent>;
+    ontransitioncancel?: EventHandlerUnion<T, TransitionEvent>;
+    ontransitionend?: EventHandlerUnion<T, TransitionEvent>;
+    ontransitionrun?: EventHandlerUnion<T, TransitionEvent>;
+    ontransitionstart?: EventHandlerUnion<T, TransitionEvent>;
+    onvolumechange?: EventHandlerUnion<T, Event>;
+    onwaiting?: EventHandlerUnion<T, Event>;
     onwheel?: EventHandlerUnion<T, WheelEvent>;
-    onload?: EventHandlerUnion<T, Event>;
-    onerror?: EventHandlerUnion<T, ErrorEvent>;
+  }
+
+  /** `onKeyDownCapture`: the same event, bound in the capture phase. */
+  interface DOMEventHandlersCapture<T> {
+    onAbortCapture?: EventHandlerUnion<T, UIEvent>;
+    onAnimationCancelCapture?: EventHandlerUnion<T, AnimationEvent>;
+    onAnimationEndCapture?: EventHandlerUnion<T, AnimationEvent>;
+    onAnimationIterationCapture?: EventHandlerUnion<T, AnimationEvent>;
+    onAnimationStartCapture?: EventHandlerUnion<T, AnimationEvent>;
+    onAuxClickCapture?: EventHandlerUnion<T, PointerEvent>;
+    onBeforeCopyCapture?: EventHandlerUnion<T, ClipboardEvent>;
+    onBeforeCutCapture?: EventHandlerUnion<T, ClipboardEvent>;
+    onBeforeInputCapture?: InputEventHandlerUnion<T, InputEvent>;
+    onBeforeMatchCapture?: EventHandlerUnion<T, Event>;
+    onBeforePasteCapture?: EventHandlerUnion<T, ClipboardEvent>;
+    onBeforeToggleCapture?: EventHandlerUnion<T, ToggleEvent>;
+    onBeforeXRSelectCapture?: EventHandlerUnion<T, Event>;
+    onBlurCapture?: EventHandlerUnion<T, FocusEvent>;
+    onCancelCapture?: EventHandlerUnion<T, Event>;
+    onCanPlayCapture?: EventHandlerUnion<T, Event>;
+    onCanPlayThroughCapture?: EventHandlerUnion<T, Event>;
+    onChangeCapture?: InputEventHandlerUnion<T, Event>;
+    onClickCapture?: EventHandlerUnion<T, MouseEvent>;
+    onCloseCapture?: EventHandlerUnion<T, Event>;
+    onCommandCapture?: EventHandlerUnion<T, CommandEvent>;
+    onCompositionEndCapture?: EventHandlerUnion<T, CompositionEvent>;
+    onCompositionStartCapture?: EventHandlerUnion<T, CompositionEvent>;
+    onCompositionUpdateCapture?: EventHandlerUnion<T, CompositionEvent>;
+    onContentVisibilityAutoStateChangeCapture?: EventHandlerUnion<
+      T,
+      ContentVisibilityAutoStateChangeEvent
+    >;
+    onContextLostCapture?: EventHandlerUnion<T, Event>;
+    onContextMenuCapture?: EventHandlerUnion<T, PointerEvent>;
+    onContextRestoredCapture?: EventHandlerUnion<T, Event>;
+    onCopyCapture?: EventHandlerUnion<T, ClipboardEvent>;
+    onCueChangeCapture?: EventHandlerUnion<T, Event>;
+    onCutCapture?: EventHandlerUnion<T, ClipboardEvent>;
+    onDblClickCapture?: EventHandlerUnion<T, MouseEvent>;
+    onDragCapture?: EventHandlerUnion<T, DragEvent>;
+    onDragEndCapture?: EventHandlerUnion<T, DragEvent>;
+    onDragEnterCapture?: EventHandlerUnion<T, DragEvent>;
+    onDragExitCapture?: EventHandlerUnion<T, DragEvent>;
+    onDragLeaveCapture?: EventHandlerUnion<T, DragEvent>;
+    onDragOverCapture?: EventHandlerUnion<T, DragEvent>;
+    onDragStartCapture?: EventHandlerUnion<T, DragEvent>;
+    onDropCapture?: EventHandlerUnion<T, DragEvent>;
+    onDurationChangeCapture?: EventHandlerUnion<T, Event>;
+    onEmptiedCapture?: EventHandlerUnion<T, Event>;
+    onEndedCapture?: EventHandlerUnion<T, Event>;
+    onErrorCapture?: EventHandlerUnion<T, ErrorEvent>;
+    onFocusCapture?: EventHandlerUnion<T, FocusEvent>;
+    onFocusInCapture?: EventHandlerUnion<T, FocusEvent>;
+    onFocusOutCapture?: EventHandlerUnion<T, FocusEvent>;
+    onFormDataCapture?: EventHandlerUnion<T, FormDataEvent>;
+    onFullscreenChangeCapture?: EventHandlerUnion<T, Event>;
+    onFullscreenErrorCapture?: EventHandlerUnion<T, Event>;
+    onInputCapture?: InputEventHandlerUnion<T, InputEvent>;
+    onInvalidCapture?: EventHandlerUnion<T, Event>;
+    onKeyDownCapture?: EventHandlerUnion<T, KeyboardEvent>;
+    onKeyPressCapture?: EventHandlerUnion<T, KeyboardEvent>;
+    onKeyUpCapture?: EventHandlerUnion<T, KeyboardEvent>;
+    onLoadCapture?: EventHandlerUnion<T, Event>;
+    onLoadedDataCapture?: EventHandlerUnion<T, Event>;
+    onLoadedMetadataCapture?: EventHandlerUnion<T, Event>;
+    onLoadStartCapture?: EventHandlerUnion<T, Event>;
+    onMouseDownCapture?: EventHandlerUnion<T, MouseEvent>;
+    onMouseEnterCapture?: EventHandlerUnion<T, MouseEvent>;
+    onMouseLeaveCapture?: EventHandlerUnion<T, MouseEvent>;
+    onMouseMoveCapture?: EventHandlerUnion<T, MouseEvent>;
+    onMouseOutCapture?: EventHandlerUnion<T, MouseEvent>;
+    onMouseOverCapture?: EventHandlerUnion<T, MouseEvent>;
+    onMouseUpCapture?: EventHandlerUnion<T, MouseEvent>;
+    onPasteCapture?: EventHandlerUnion<T, ClipboardEvent>;
+    onPauseCapture?: EventHandlerUnion<T, Event>;
+    onPlayCapture?: EventHandlerUnion<T, Event>;
+    onPlayingCapture?: EventHandlerUnion<T, Event>;
+    onPointerCancelCapture?: EventHandlerUnion<T, PointerEvent>;
+    onPointerDownCapture?: EventHandlerUnion<T, PointerEvent>;
+    onPointerEnterCapture?: EventHandlerUnion<T, PointerEvent>;
+    onPointerLeaveCapture?: EventHandlerUnion<T, PointerEvent>;
+    onPointerMoveCapture?: EventHandlerUnion<T, PointerEvent>;
+    onPointerOutCapture?: EventHandlerUnion<T, PointerEvent>;
+    onPointerOverCapture?: EventHandlerUnion<T, PointerEvent>;
+    onPointerRawUpdateCapture?: EventHandlerUnion<T, PointerEvent>;
+    onPointerUpCapture?: EventHandlerUnion<T, PointerEvent>;
+    onProgressCapture?: EventHandlerUnion<T, ProgressEvent>;
+    onRateChangeCapture?: EventHandlerUnion<T, Event>;
+    onResetCapture?: EventHandlerUnion<T, Event>;
+    onResizeCapture?: EventHandlerUnion<T, UIEvent>;
+    onScrollCapture?: EventHandlerUnion<T, Event>;
+    onScrollEndCapture?: EventHandlerUnion<T, Event>;
+    onScrollSnapChangeCapture?: EventHandlerUnion<T, Event>;
+    onScrollSnapChangingCapture?: EventHandlerUnion<T, Event>;
+    onSecurityPolicyViolationCapture?: EventHandlerUnion<T, SecurityPolicyViolationEvent>;
+    onSeekedCapture?: EventHandlerUnion<T, Event>;
+    onSeekingCapture?: EventHandlerUnion<T, Event>;
+    onSelectCapture?: EventHandlerUnion<T, Event>;
+    onSelectionChangeCapture?: EventHandlerUnion<T, Event>;
+    onSelectStartCapture?: EventHandlerUnion<T, Event>;
+    onSlotChangeCapture?: EventHandlerUnion<T, Event>;
+    onStalledCapture?: EventHandlerUnion<T, Event>;
+    onSubmitCapture?: EventHandlerUnion<T, SubmitEvent>;
+    onSuspendCapture?: EventHandlerUnion<T, Event>;
+    onTimeUpdateCapture?: EventHandlerUnion<T, Event>;
+    onToggleCapture?: EventHandlerUnion<T, ToggleEvent>;
+    onTouchCancelCapture?: EventHandlerUnion<T, TouchEvent>;
+    onTouchEndCapture?: EventHandlerUnion<T, TouchEvent>;
+    onTouchMoveCapture?: EventHandlerUnion<T, TouchEvent>;
+    onTouchStartCapture?: EventHandlerUnion<T, TouchEvent>;
+    onTransitionCancelCapture?: EventHandlerUnion<T, TransitionEvent>;
+    onTransitionEndCapture?: EventHandlerUnion<T, TransitionEvent>;
+    onTransitionRunCapture?: EventHandlerUnion<T, TransitionEvent>;
+    onTransitionStartCapture?: EventHandlerUnion<T, TransitionEvent>;
+    onVolumeChangeCapture?: EventHandlerUnion<T, Event>;
+    onWaitingCapture?: EventHandlerUnion<T, Event>;
+    onWheelCapture?: EventHandlerUnion<T, WheelEvent>;
   }
 
   /**
-   * What an `action()` hands back, and the only value shape B8's `action` slot
-   * accepts besides a URL. The arguments are the action's own; a `<form>`
-   * submission calls it with the `FormData`, so a zero-arity action is legal
-   * too.
+   * A handler for an event named verbatim. Declared as a method so its
+   * parameter is checked bivariantly: a custom event hands over a `CustomEvent`,
+   * and a handler written for one has to fit a slot that only knows `Event`.
    */
-  export type FormAction = (...args: never[]) => Promise<unknown>;
+  type NamedEventHandler<T> =
+    | { handle(event: Event): void }["handle"]
+    | BoundEventHandler<T, Event>;
 
   /**
-   * `<form>` is the one tag whose `action` is decided by the SLOT rather than
-   * by the value's shape (B8), so it is the one tag with attributes of its own.
-   * The compiler lowers a non-URL `action` to `Op::FormAction` and installs a
-   * submit listener owned by the position; `HTMLAttributes` types `action` as a
-   * URL, which is what it is on every other element, so without this a `<form
-   * action={fn}>` — the surface M10 built — did not typecheck anywhere the
-   * fixtures do not reach.
+   * The prefixes that override the channel the compiler would pick from the
+   * name: `on:` and `capture:` bind an event by its exact name, `prop:` writes a
+   * property, `attr:` an attribute, `bool:` presence by truthiness, `style:` one
+   * style property.
    */
-  interface FormHTMLAttributes<T extends HTMLElement> extends Omit<HTMLAttributes<T>, "action"> {
-    action?: FunctionMaybe<string> | FormAction;
+  interface NamespacedAttributes<T> {
+    [key: `on:${string}`]: NamedEventHandler<T> | undefined;
+    [key: `capture:${string}`]: NamedEventHandler<T> | undefined;
+    [key: `prop:${string}`]: unknown;
+    [key: `attr:${string}`]: Attr<string | number | boolean | null>;
+    [key: `bool:${string}`]: unknown;
+    [key: `style:${string}`]: Attr<string | number | null>;
   }
 
-  // Base HTML attributes
-
-  /**
-   * `<meta>`'s own attributes.
-   *
-   * These existed nowhere until the document became JSX: barq rendered the
-   * `<body>` and a string template held the head, so `charset` and `content`
-   * had never been written in TSX and nothing said they were missing.
-   */
-  interface MetaHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
-    charset?: FunctionMaybe<string>;
-    charSet?: FunctionMaybe<string>;
-    content?: FunctionMaybe<string>;
-    name?: FunctionMaybe<string>;
-    property?: FunctionMaybe<string>;
-    "http-equiv"?: FunctionMaybe<string>;
-    media?: FunctionMaybe<string>;
-    itemprop?: FunctionMaybe<string>;
+  interface AriaAttributes {
+    "aria-activedescendant"?: Attr<string>;
+    "aria-atomic"?: Attr<AriaBoolean>;
+    "aria-braillelabel"?: Attr<string>;
+    "aria-brailleroledescription"?: Attr<string>;
+    "aria-autocomplete"?: Attr<"none" | "inline" | "list" | "both">;
+    "aria-busy"?: Attr<AriaBoolean>;
+    "aria-checked"?: Attr<AriaBoolean | "mixed">;
+    "aria-colcount"?: Attr<number | string>;
+    "aria-colindex"?: Attr<number | string>;
+    "aria-colindextext"?: Attr<number | string>;
+    "aria-colspan"?: Attr<number | string>;
+    "aria-controls"?: Attr<string>;
+    "aria-current"?: Attr<AriaBoolean | "page" | "step" | "location" | "date" | "time">;
+    "aria-describedby"?: Attr<string>;
+    "aria-description"?: Attr<string>;
+    "aria-details"?: Attr<string>;
+    "aria-disabled"?: Attr<AriaBoolean>;
+    /** @deprecated */
+    "aria-dropeffect"?: Attr<"none" | "copy" | "execute" | "link" | "move" | "popup">;
+    "aria-errormessage"?: Attr<string>;
+    "aria-expanded"?: Attr<AriaBoolean>;
+    "aria-flowto"?: Attr<string>;
+    /** @deprecated */
+    "aria-grabbed"?: Attr<AriaBoolean>;
+    "aria-haspopup"?: Attr<AriaBoolean | "menu" | "listbox" | "tree" | "grid" | "dialog">;
+    "aria-hidden"?: Attr<AriaBoolean>;
+    "aria-invalid"?: Attr<AriaBoolean | "grammar" | "spelling">;
+    "aria-keyshortcuts"?: Attr<string>;
+    "aria-label"?: Attr<string>;
+    "aria-labelledby"?: Attr<string>;
+    "aria-level"?: Attr<number | string>;
+    "aria-live"?: Attr<"off" | "assertive" | "polite">;
+    "aria-modal"?: Attr<AriaBoolean>;
+    "aria-multiline"?: Attr<AriaBoolean>;
+    "aria-multiselectable"?: Attr<AriaBoolean>;
+    "aria-orientation"?: Attr<"horizontal" | "vertical">;
+    "aria-owns"?: Attr<string>;
+    "aria-placeholder"?: Attr<string>;
+    "aria-posinset"?: Attr<number | string>;
+    "aria-pressed"?: Attr<AriaBoolean | "mixed">;
+    "aria-readonly"?: Attr<AriaBoolean>;
+    "aria-relevant"?: Attr<
+      | "additions"
+      | "additions removals"
+      | "additions text"
+      | "all"
+      | "removals"
+      | "removals additions"
+      | "removals text"
+      | "text"
+      | "text additions"
+      | "text removals"
+    >;
+    "aria-required"?: Attr<AriaBoolean>;
+    "aria-roledescription"?: Attr<string>;
+    "aria-rowcount"?: Attr<number | string>;
+    "aria-rowindex"?: Attr<number | string>;
+    "aria-rowindextext"?: Attr<number | string>;
+    "aria-rowspan"?: Attr<number | string>;
+    "aria-selected"?: Attr<AriaBoolean>;
+    "aria-setsize"?: Attr<number | string>;
+    "aria-sort"?: Attr<"none" | "ascending" | "descending" | "other">;
+    "aria-valuemax"?: Attr<number | string>;
+    "aria-valuemin"?: Attr<number | string>;
+    "aria-valuenow"?: Attr<number | string>;
+    "aria-valuetext"?: Attr<string>;
+    role?: Attr<AriaRole | (string & {})>;
   }
 
-  interface LinkHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
-    rel?: FunctionMaybe<string>;
-    href?: FunctionMaybe<string>;
-    hreflang?: FunctionMaybe<string>;
-    type?: FunctionMaybe<string>;
-    sizes?: FunctionMaybe<string>;
-    media?: FunctionMaybe<string>;
-    as?: FunctionMaybe<string>;
-    crossorigin?: FunctionMaybe<"anonymous" | "use-credentials" | "">;
-    crossOrigin?: FunctionMaybe<"anonymous" | "use-credentials" | "">;
-    integrity?: FunctionMaybe<string>;
-    referrerpolicy?: FunctionMaybe<string>;
-    imagesrcset?: FunctionMaybe<string>;
-    imagesizes?: FunctionMaybe<string>;
-    color?: FunctionMaybe<string>;
-    disabled?: FunctionMaybe<boolean>;
-    fetchpriority?: FunctionMaybe<"high" | "low" | "auto">;
+  type AriaRole =
+    | "alert"
+    | "alertdialog"
+    | "application"
+    | "article"
+    | "banner"
+    | "button"
+    | "cell"
+    | "checkbox"
+    | "columnheader"
+    | "combobox"
+    | "complementary"
+    | "contentinfo"
+    | "definition"
+    | "dialog"
+    | "directory"
+    | "document"
+    | "feed"
+    | "figure"
+    | "form"
+    | "grid"
+    | "gridcell"
+    | "group"
+    | "heading"
+    | "img"
+    | "link"
+    | "list"
+    | "listbox"
+    | "listitem"
+    | "log"
+    | "main"
+    | "marquee"
+    | "math"
+    | "menu"
+    | "menubar"
+    | "menuitem"
+    | "menuitemcheckbox"
+    | "menuitemradio"
+    | "meter"
+    | "navigation"
+    | "none"
+    | "note"
+    | "option"
+    | "presentation"
+    | "progressbar"
+    | "radio"
+    | "radiogroup"
+    | "region"
+    | "row"
+    | "rowgroup"
+    | "rowheader"
+    | "scrollbar"
+    | "search"
+    | "searchbox"
+    | "separator"
+    | "slider"
+    | "spinbutton"
+    | "status"
+    | "switch"
+    | "tab"
+    | "table"
+    | "tablist"
+    | "tabpanel"
+    | "term"
+    | "textbox"
+    | "timer"
+    | "toolbar"
+    | "tooltip"
+    | "tree"
+    | "treegrid"
+    | "treeitem";
+
+  /** What every element takes, whatever its namespace. */
+  export interface ElementAttributes<T extends globalThis.Element>
+    extends
+      DOMEventHandlers<T>,
+      DOMEventHandlersLowerCase<T>,
+      DOMEventHandlersCapture<T>,
+      NamespacedAttributes<T>,
+      AriaAttributes,
+      CallSite<AsDeclared> {
+    /**
+     * Lowercase only: a name ending in `Capture` binds its event in the capture
+     * phase, so the camelCase spelling of these two would listen for `gotpointer`
+     * and `lostpointer`.
+     */
+    ongotpointercapture?: EventHandlerUnion<T, PointerEvent>;
+    onlostpointercapture?: EventHandlerUnion<T, PointerEvent>;
+
+    id?: Attr<string>;
+    class?: Attr<ClassValue>;
+    className?: Attr<ClassValue>;
+    classList?: Attr<Record<string, FunctionMaybe<boolean | undefined>>>;
+    style?: Attr<string | CSSProperties>;
+    tabindex?: Attr<number | string>;
+    tabIndex?: Attr<number | string>;
+    lang?: Attr<string>;
+    slot?: Attr<string>;
+    part?: Attr<string>;
+    nonce?: Attr<string>;
+    elementtiming?: Attr<string>;
+    autofocus?: Attr<BooleanAttribute>;
+    autoFocus?: Attr<BooleanAttribute>;
+
+    dangerouslySetInnerHTML?: { __html: string };
+    innerHTML?: Attr<string>;
+    textContent?: Attr<string | number>;
+
+    [key: `data-${string}`]: Attr<string | number | boolean>;
+
+    /** A callback, a `{ current }` holder, or a list of either. */
+    ref?: Ref<T> | readonly Ref<T>[];
+    children?: Child | Child[];
   }
 
-  interface ScriptHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
-    src?: FunctionMaybe<string>;
-    type?: FunctionMaybe<string>;
-    async?: FunctionMaybe<boolean>;
-    defer?: FunctionMaybe<boolean>;
-    nomodule?: FunctionMaybe<boolean>;
-    nonce?: FunctionMaybe<string>;
-    integrity?: FunctionMaybe<string>;
-    crossorigin?: FunctionMaybe<"anonymous" | "use-credentials" | "">;
-    crossOrigin?: FunctionMaybe<"anonymous" | "use-credentials" | "">;
-    referrerpolicy?: FunctionMaybe<string>;
-    fetchpriority?: FunctionMaybe<"high" | "low" | "auto">;
-  }
+  /** What every HTML element takes. */
+  export interface HTMLAttributes<T extends HTMLElement> extends ElementAttributes<T> {
+    innerText?: Attr<string | number>;
 
-  interface StyleHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
-    media?: FunctionMaybe<string>;
-    nonce?: FunctionMaybe<string>;
-    type?: FunctionMaybe<string>;
-  }
-
-  interface BaseHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
-    href?: FunctionMaybe<string>;
-    target?: FunctionMaybe<string>;
-  }
-
-  interface HtmlHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
-    manifest?: FunctionMaybe<string>;
-    xmlns?: FunctionMaybe<string>;
-  }
-
-  interface HTMLAttributes<T extends HTMLElement>
-    extends DOMEventHandlers<T>, DOMEventHandlersLowerCase<T> {
-    // Core attributes - all support reactive accessors
-    id?: FunctionMaybe<string>;
-    class?: FunctionMaybe<string | string[] | Record<string, boolean | undefined>>;
-    className?: FunctionMaybe<string | string[] | Record<string, boolean | undefined>>;
-    classList?: Record<string, FunctionMaybe<boolean | undefined>>;
-    style?: FunctionMaybe<string | CSSProperties>;
-    title?: FunctionMaybe<string>;
-    tabIndex?: FunctionMaybe<number>;
-    hidden?: FunctionMaybe<boolean>;
-    draggable?: FunctionMaybe<boolean | "true" | "false">;
-    contentEditable?: FunctionMaybe<boolean | "true" | "false" | "inherit">;
+    accesskey?: Attr<string>;
+    accessKey?: Attr<string>;
+    autocapitalize?: Attr<HTMLAutocapitalize>;
+    autocorrect?: Attr<"on" | "off">;
     // The HTML spelling, which is what `bind:value` on an editable host looks
     // for: the compiler reads either, so both are declared.
-    contenteditable?: FunctionMaybe<boolean | "true" | "false" | "inherit">;
-    spellcheck?: FunctionMaybe<boolean>;
-    dir?: FunctionMaybe<"ltr" | "rtl" | "auto">;
-    lang?: FunctionMaybe<string>;
-    slot?: FunctionMaybe<string>;
-    translate?: FunctionMaybe<"yes" | "no">;
-    inert?: FunctionMaybe<boolean>;
-    popover?: FunctionMaybe<"auto" | "manual" | boolean>;
+    contenteditable?: Attr<boolean | "true" | "false" | "inherit" | "plaintext-only" | "">;
+    contentEditable?: Attr<boolean | "true" | "false" | "inherit" | "plaintext-only" | "">;
+    dir?: Attr<HTMLDir>;
+    draggable?: Attr<boolean | "true" | "false">;
+    enterkeyhint?: Attr<"enter" | "done" | "go" | "next" | "previous" | "search" | "send">;
+    enterKeyHint?: Attr<"enter" | "done" | "go" | "next" | "previous" | "search" | "send">;
+    exportparts?: Attr<string>;
+    hidden?: Attr<boolean | "" | "hidden" | "until-found">;
+    inert?: Attr<BooleanAttribute>;
+    inputmode?: Attr<"none" | "text" | "tel" | "url" | "email" | "numeric" | "decimal" | "search">;
+    inputMode?: Attr<"none" | "text" | "tel" | "url" | "email" | "numeric" | "decimal" | "search">;
+    is?: Attr<string>;
+    popover?: Attr<boolean | "" | "auto" | "manual" | "hint">;
+    spellcheck?: Attr<boolean | "true" | "false" | "">;
+    title?: Attr<string>;
+    translate?: Attr<"yes" | "no">;
+    virtualkeyboardpolicy?: Attr<"" | "auto" | "manual">;
+    writingsuggestions?: Attr<EnumeratedPseudoBoolean>;
 
-    // Dangerous innerHTML
-    dangerouslySetInnerHTML?: { __html: string };
-    innerHTML?: FunctionMaybe<string>;
-    innerText?: FunctionMaybe<string>;
-    textContent?: FunctionMaybe<string>;
+    itemid?: Attr<string>;
+    itemprop?: Attr<string>;
+    itemref?: Attr<string>;
+    itemscope?: Attr<BooleanAttribute>;
+    itemtype?: Attr<string>;
 
-    // Data attributes
-    [key: `data-${string}`]: FunctionMaybe<string | number | boolean | undefined>;
-
-    // ARIA attributes
-    role?: FunctionMaybe<string>;
-    [key: `aria-${string}`]: FunctionMaybe<string | number | boolean | undefined>;
-
-    // Ref - callback or object
-    ref?: T | ((el: T) => void) | { current: T | null };
+    about?: Attr<string>;
+    datatype?: Attr<string>;
+    inlist?: Attr<unknown>;
+    prefix?: Attr<string>;
+    property?: Attr<string>;
+    resource?: Attr<string>;
+    typeof?: Attr<string>;
+    vocab?: Attr<string>;
 
     /**
      * `bind:` — the two-way channel.
@@ -721,278 +1202,1054 @@ export namespace JSX {
       | ((el: T) => void)
       | { current: T | null }
       | undefined;
+  }
 
-    // Children
-    children?: Child | Child[];
+  /** An element whose attributes this file cannot know. */
+  export interface CustomElementAttributes extends HTMLAttributes<HTMLElement> {
+    [name: string]: unknown;
+  }
 
-    // Form attributes - all support reactive accessors
-    name?: FunctionMaybe<string>;
-    value?: FunctionMaybe<string | number | boolean | string[]>;
-    checked?: FunctionMaybe<boolean>;
-    disabled?: FunctionMaybe<boolean>;
-    readonly?: FunctionMaybe<boolean>;
-    readOnly?: FunctionMaybe<boolean>;
-    required?: FunctionMaybe<boolean>;
-    placeholder?: FunctionMaybe<string>;
-    type?: FunctionMaybe<string>;
-    min?: FunctionMaybe<string | number>;
-    max?: FunctionMaybe<string | number>;
-    step?: FunctionMaybe<string | number>;
-    pattern?: FunctionMaybe<string>;
-    multiple?: FunctionMaybe<boolean>;
-    accept?: FunctionMaybe<string>;
-    autocomplete?: FunctionMaybe<string>;
-    autofocus?: FunctionMaybe<boolean>;
-    autoFocus?: FunctionMaybe<boolean>;
-    formAction?: FunctionMaybe<string>;
-    formMethod?: FunctionMaybe<string>;
-    formNoValidate?: FunctionMaybe<boolean>;
-    formTarget?: FunctionMaybe<string>;
+  type HTMLAutocapitalize = "off" | "none" | "on" | "sentences" | "words" | "characters";
+  type HTMLAutocomplete =
+    | "additional-name"
+    | "address-level1"
+    | "address-level2"
+    | "address-level3"
+    | "address-level4"
+    | "address-line1"
+    | "address-line2"
+    | "address-line3"
+    | "bday"
+    | "bday-day"
+    | "bday-month"
+    | "bday-year"
+    | "billing"
+    | "cc-additional-name"
+    | "cc-csc"
+    | "cc-exp"
+    | "cc-exp-month"
+    | "cc-exp-year"
+    | "cc-family-name"
+    | "cc-given-name"
+    | "cc-name"
+    | "cc-number"
+    | "cc-type"
+    | "country"
+    | "country-name"
+    | "current-password"
+    | "email"
+    | "family-name"
+    | "fax"
+    | "given-name"
+    | "home"
+    | "honorific-prefix"
+    | "honorific-suffix"
+    | "impp"
+    | "language"
+    | "mobile"
+    | "name"
+    | "new-password"
+    | "nickname"
+    | "off"
+    | "on"
+    | "organization"
+    | "organization-title"
+    | "pager"
+    | "photo"
+    | "postal-code"
+    | "sex"
+    | "shipping"
+    | "street-address"
+    | "tel"
+    | "tel-area-code"
+    | "tel-country-code"
+    | "tel-extension"
+    | "tel-local"
+    | "tel-local-prefix"
+    | "tel-local-suffix"
+    | "tel-national"
+    | "transaction-amount"
+    | "transaction-currency"
+    | "url"
+    | "username"
+    | "work"
+    | (string & {});
+  type HTMLDir = "ltr" | "rtl" | "auto";
+  type HTMLFormEncType = "application/x-www-form-urlencoded" | "multipart/form-data" | "text/plain";
+  type HTMLFormMethod = "post" | "get" | "dialog";
+  type HTMLCrossorigin = "anonymous" | "use-credentials" | EnumeratedAcceptsEmpty;
+  type HTMLFetchPriority = "high" | "low" | "auto";
+  type HTMLReferrerPolicy = ReferrerPolicy;
+  type HTMLIframeSandbox =
+    | "allow-downloads-without-user-activation"
+    | "allow-downloads"
+    | "allow-forms"
+    | "allow-modals"
+    | "allow-orientation-lock"
+    | "allow-pointer-lock"
+    | "allow-popups"
+    | "allow-popups-to-escape-sandbox"
+    | "allow-presentation"
+    | "allow-same-origin"
+    | "allow-scripts"
+    | "allow-storage-access-by-user-activation"
+    | "allow-top-navigation"
+    | "allow-top-navigation-by-user-activation"
+    | "allow-top-navigation-to-custom-protocols";
+  type HTMLPreloadAs = "fetch" | "font" | "image" | "script" | "style" | "track";
+  type HTMLLinkAs = HTMLPreloadAs | "audio" | "document" | "embed" | "object" | "video" | "worker";
 
-    // Link/anchor attributes
-    href?: FunctionMaybe<string>;
-    target?: FunctionMaybe<string>;
-    rel?: FunctionMaybe<string>;
-    download?: FunctionMaybe<string | boolean>;
-    ping?: FunctionMaybe<string>;
-    referrerPolicy?: FunctionMaybe<string>;
+  /**
+   * What an `action()` hands back, and the only value shape B8's `action` slot
+   * accepts besides a URL. The arguments are the action's own; a `<form>`
+   * submission calls it with the `FormData`, so a zero-arity action is legal
+   * too.
+   */
+  export type FormAction = (...args: never[]) => Promise<unknown>;
 
-    // Image attributes
-    src?: FunctionMaybe<string>;
-    alt?: FunctionMaybe<string>;
-    width?: FunctionMaybe<number | string>;
-    height?: FunctionMaybe<number | string>;
-    loading?: FunctionMaybe<"lazy" | "eager">;
-    decoding?: FunctionMaybe<"sync" | "async" | "auto">;
-    srcset?: FunctionMaybe<string>;
-    sizes?: FunctionMaybe<string>;
-    crossOrigin?: FunctionMaybe<"anonymous" | "use-credentials" | "">;
-    crossorigin?: FunctionMaybe<"anonymous" | "use-credentials" | "">;
-    fetchPriority?: FunctionMaybe<"high" | "low" | "auto">;
+  export interface HtmlHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    manifest?: Attr<string>;
+    xmlns?: Attr<string>;
+  }
 
-    // Form element attributes
-    action?: FunctionMaybe<string>;
-    method?: FunctionMaybe<string>;
-    enctype?: FunctionMaybe<string>;
-    novalidate?: FunctionMaybe<boolean>;
-    noValidate?: FunctionMaybe<boolean>;
-    for?: FunctionMaybe<string>;
-    htmlFor?: FunctionMaybe<string>;
+  export interface AnchorHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    xmlns?: Attr<string>;
+    download?: Attr<(string & {}) | EnumeratedAcceptsEmpty>;
+    href?: Attr<string>;
+    hreflang?: Attr<string>;
+    ping?: Attr<string>;
+    referrerpolicy?: Attr<HTMLReferrerPolicy>;
+    referrerPolicy?: Attr<HTMLReferrerPolicy>;
+    rel?: Attr<string>;
+    target?: Attr<"_self" | "_blank" | "_parent" | "_top" | (string & {})>;
+    type?: Attr<string>;
+    attributionsrc?: Attr<string>;
+    /** @deprecated */
+    charset?: Attr<string>;
+    /** @deprecated */
+    charSet?: Attr<string>;
+    /** @deprecated */
+    coords?: Attr<string>;
+    /** @deprecated */
+    name?: Attr<string>;
+    /** @deprecated */
+    rev?: Attr<string>;
+    /** @deprecated */
+    shape?: Attr<"rect" | "circle" | "poly" | "default">;
+  }
 
-    // Table attributes
-    colspan?: FunctionMaybe<number>;
-    colSpan?: FunctionMaybe<number>;
-    rowspan?: FunctionMaybe<number>;
-    rowSpan?: FunctionMaybe<number>;
-    scope?: FunctionMaybe<string>;
+  export interface AreaHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    alt?: Attr<string>;
+    coords?: Attr<string>;
+    download?: Attr<(string & {}) | EnumeratedAcceptsEmpty>;
+    href?: Attr<string>;
+    ping?: Attr<string>;
+    referrerpolicy?: Attr<HTMLReferrerPolicy>;
+    referrerPolicy?: Attr<HTMLReferrerPolicy>;
+    rel?: Attr<string>;
+    shape?: Attr<"rect" | "circle" | "poly" | "default">;
+    target?: Attr<"_self" | "_blank" | "_parent" | "_top" | (string & {})>;
+    attributionsrc?: Attr<string>;
+    /** @deprecated */
+    nohref?: Attr<BooleanAttribute>;
+  }
 
-    // Media attributes
-    autoplay?: FunctionMaybe<boolean>;
-    autoPlay?: FunctionMaybe<boolean>;
-    controls?: FunctionMaybe<boolean>;
-    loop?: FunctionMaybe<boolean>;
-    muted?: FunctionMaybe<boolean>;
-    preload?: FunctionMaybe<"none" | "metadata" | "auto" | "">;
-    poster?: FunctionMaybe<string>;
-    playsInline?: FunctionMaybe<boolean>;
-    playsinline?: FunctionMaybe<boolean>;
+  export interface AudioHTMLAttributes<T extends HTMLElement> extends MediaHTMLAttributes<T> {}
 
-    // Iframe attributes
-    sandbox?: FunctionMaybe<string>;
-    allow?: FunctionMaybe<string>;
-    allowFullScreen?: FunctionMaybe<boolean>;
-    allowfullscreen?: FunctionMaybe<boolean>;
+  export interface BaseHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    href?: Attr<string>;
+    target?: Attr<"_self" | "_blank" | "_parent" | "_top" | (string & {})>;
+  }
 
-    // Other common attributes
-    open?: FunctionMaybe<boolean>;
-    selected?: FunctionMaybe<boolean>;
-    label?: FunctionMaybe<string>;
-    rows?: FunctionMaybe<number>;
-    cols?: FunctionMaybe<number>;
-    wrap?: FunctionMaybe<"hard" | "soft" | "off">;
-    maxLength?: FunctionMaybe<number>;
-    maxlength?: FunctionMaybe<number>;
-    minLength?: FunctionMaybe<number>;
-    minlength?: FunctionMaybe<number>;
-    size?: FunctionMaybe<number>;
-    form?: FunctionMaybe<string>;
-    list?: FunctionMaybe<string>;
-    inputMode?: FunctionMaybe<
-      "none" | "text" | "tel" | "url" | "email" | "numeric" | "decimal" | "search"
+  export interface BdoHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    dir?: Attr<"ltr" | "rtl">;
+  }
+
+  export interface BlockquoteHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    cite?: Attr<string>;
+  }
+
+  export interface BodyHTMLAttributes<T extends HTMLElement>
+    extends HTMLAttributes<T>, WindowEventHandlers<T> {}
+
+  export interface ButtonHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    disabled?: Attr<BooleanAttribute>;
+    form?: Attr<string>;
+    formaction?: Attr<string>;
+    formAction?: Attr<string>;
+    formenctype?: Attr<HTMLFormEncType>;
+    formmethod?: Attr<HTMLFormMethod>;
+    formMethod?: Attr<HTMLFormMethod>;
+    formnovalidate?: Attr<BooleanAttribute>;
+    formNoValidate?: Attr<BooleanAttribute>;
+    formtarget?: Attr<"_self" | "_blank" | "_parent" | "_top" | (string & {})>;
+    formTarget?: Attr<"_self" | "_blank" | "_parent" | "_top" | (string & {})>;
+    name?: Attr<string>;
+    popovertarget?: Attr<string>;
+    popovertargetaction?: Attr<"hide" | "show" | "toggle">;
+    type?: Attr<"submit" | "reset" | "button" | "menu">;
+    value?: Attr<string | number>;
+    command?: Attr<
+      "show-modal" | "close" | "show-popover" | "hide-popover" | "toggle-popover" | (string & {})
     >;
-    inputmode?: FunctionMaybe<
-      "none" | "text" | "tel" | "url" | "email" | "numeric" | "decimal" | "search"
+    commandfor?: Attr<string>;
+  }
+
+  export interface CanvasHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    height?: Attr<number | string>;
+    width?: Attr<number | string>;
+    /** @deprecated */
+    "moz-opaque"?: Attr<BooleanAttribute>;
+  }
+
+  export interface CaptionHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    /** @deprecated */
+    align?: Attr<"left" | "center" | "right">;
+  }
+
+  export interface ColHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    span?: Attr<number | string>;
+    /** @deprecated */
+    align?: Attr<"left" | "center" | "right" | "justify" | "char">;
+    /** @deprecated */
+    bgcolor?: Attr<string>;
+    /** @deprecated */
+    char?: Attr<string>;
+    /** @deprecated */
+    charoff?: Attr<string>;
+    /** @deprecated */
+    valign?: Attr<"baseline" | "bottom" | "middle" | "top">;
+    /** @deprecated */
+    width?: Attr<number | string>;
+  }
+
+  export interface ColgroupHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    span?: Attr<number | string>;
+    /** @deprecated */
+    align?: Attr<"left" | "center" | "right" | "justify" | "char">;
+    /** @deprecated */
+    bgcolor?: Attr<string>;
+    /** @deprecated */
+    char?: Attr<string>;
+    /** @deprecated */
+    charoff?: Attr<string>;
+    /** @deprecated */
+    valign?: Attr<"baseline" | "bottom" | "middle" | "top">;
+    /** @deprecated */
+    width?: Attr<number | string>;
+  }
+
+  export interface DataHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    value?: Attr<string | string[] | number>;
+  }
+
+  export interface DetailsHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    name?: Attr<string>;
+    open?: Attr<BooleanAttribute>;
+  }
+
+  export interface DialogHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    open?: Attr<BooleanAttribute>;
+    tabindex?: Attr<never>;
+    tabIndex?: Attr<never>;
+    closedby?: Attr<"any" | "closerequest" | "none">;
+  }
+
+  export interface EmbedHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    height?: Attr<number | string>;
+    src?: Attr<string>;
+    type?: Attr<string>;
+    width?: Attr<number | string>;
+    /** @deprecated */
+    align?: Attr<"left" | "right" | "justify" | "center">;
+    /** @deprecated */
+    name?: Attr<string>;
+  }
+
+  export interface FieldsetHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    disabled?: Attr<BooleanAttribute>;
+    form?: Attr<string>;
+    name?: Attr<string>;
+  }
+
+  /**
+   * `<form>` is the one tag whose `action` is decided by the SLOT rather than
+   * by the value's shape: a URL, or the `action()` a submission calls. The
+   * compiler lowers the second to a submit listener owned by the position.
+   */
+  export interface FormHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    "accept-charset"?: Attr<string>;
+    autocomplete?: Attr<"on" | "off">;
+    encoding?: Attr<HTMLFormEncType>;
+    enctype?: Attr<HTMLFormEncType>;
+    method?: Attr<HTMLFormMethod>;
+    name?: Attr<string>;
+    novalidate?: Attr<BooleanAttribute>;
+    noValidate?: Attr<BooleanAttribute>;
+    rel?: Attr<string>;
+    target?: Attr<"_self" | "_blank" | "_parent" | "_top" | (string & {})>;
+    /** @deprecated */
+    accept?: Attr<string>;
+    action?: FunctionMaybe<string> | FormAction;
+  }
+
+  export interface IframeHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    allow?: Attr<string>;
+    allowfullscreen?: Attr<BooleanAttribute>;
+    allowFullScreen?: Attr<BooleanAttribute>;
+    height?: Attr<number | string>;
+    loading?: Attr<"eager" | "lazy">;
+    name?: Attr<string>;
+    referrerpolicy?: Attr<HTMLReferrerPolicy>;
+    referrerPolicy?: Attr<HTMLReferrerPolicy>;
+    sandbox?: Attr<HTMLIframeSandbox | (string & {})>;
+    src?: Attr<string>;
+    srcdoc?: Attr<string>;
+    width?: Attr<number | string>;
+    adauctionheaders?: Attr<BooleanAttribute>;
+    browsingtopics?: Attr<BooleanAttribute>;
+    credentialless?: Attr<BooleanAttribute>;
+    csp?: Attr<string>;
+    privatetoken?: Attr<string>;
+    sharedstoragewritable?: Attr<BooleanAttribute>;
+    /** @deprecated */
+    align?: Attr<string>;
+    /** @deprecated */
+    allowpaymentrequest?: Attr<BooleanAttribute>;
+    /** @deprecated */
+    allowtransparency?: Attr<BooleanAttribute>;
+    /** @deprecated */
+    frameborder?: Attr<number | string>;
+    /** @deprecated */
+    longdesc?: Attr<string>;
+    /** @deprecated */
+    marginheight?: Attr<number | string>;
+    /** @deprecated */
+    marginwidth?: Attr<number | string>;
+    /** @deprecated */
+    scrolling?: Attr<"yes" | "no" | "auto">;
+    /** @deprecated */
+    seamless?: Attr<BooleanAttribute>;
+  }
+
+  export interface ImgHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    alt?: Attr<string>;
+    browsingtopics?: Attr<string>;
+    crossorigin?: Attr<HTMLCrossorigin>;
+    crossOrigin?: Attr<HTMLCrossorigin>;
+    decoding?: Attr<"sync" | "async" | "auto">;
+    fetchpriority?: Attr<HTMLFetchPriority>;
+    fetchPriority?: Attr<HTMLFetchPriority>;
+    height?: Attr<number | string>;
+    ismap?: Attr<BooleanAttribute>;
+    loading?: Attr<"eager" | "lazy">;
+    referrerpolicy?: Attr<HTMLReferrerPolicy>;
+    referrerPolicy?: Attr<HTMLReferrerPolicy>;
+    sizes?: Attr<string>;
+    src?: Attr<string>;
+    srcset?: Attr<string>;
+    usemap?: Attr<string>;
+    width?: Attr<number | string>;
+    attributionsrc?: Attr<string>;
+    sharedstoragewritable?: Attr<BooleanAttribute>;
+    /** @deprecated */
+    align?: Attr<"top" | "middle" | "bottom" | "left" | "right">;
+    /** @deprecated */
+    border?: Attr<string>;
+    /** @deprecated */
+    hspace?: Attr<number | string>;
+    /** @deprecated */
+    intrinsicsize?: Attr<string>;
+    /** @deprecated */
+    longdesc?: Attr<string>;
+    /** @deprecated */
+    lowsrc?: Attr<string>;
+    /** @deprecated */
+    name?: Attr<string>;
+    /** @deprecated */
+    vspace?: Attr<number | string>;
+  }
+
+  export interface InputHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    accept?: Attr<string>;
+    alpha?: Attr<BooleanAttribute>;
+    alt?: Attr<string>;
+    autocomplete?: Attr<HTMLAutocomplete>;
+    capture?: Attr<"user" | "environment">;
+    colorspace?: Attr<string>;
+    dirname?: Attr<string>;
+    disabled?: Attr<BooleanAttribute>;
+    form?: Attr<string>;
+    formaction?: Attr<string>;
+    formAction?: Attr<string>;
+    formenctype?: Attr<HTMLFormEncType>;
+    formmethod?: Attr<HTMLFormMethod>;
+    formMethod?: Attr<HTMLFormMethod>;
+    formnovalidate?: Attr<BooleanAttribute>;
+    formNoValidate?: Attr<BooleanAttribute>;
+    formtarget?: Attr<string>;
+    formTarget?: Attr<string>;
+    height?: Attr<number | string>;
+    list?: Attr<string>;
+    max?: Attr<number | string>;
+    maxlength?: Attr<number | string>;
+    maxLength?: Attr<number | string>;
+    min?: Attr<number | string>;
+    minlength?: Attr<number | string>;
+    minLength?: Attr<number | string>;
+    multiple?: Attr<BooleanAttribute>;
+    name?: Attr<string>;
+    pattern?: Attr<string>;
+    placeholder?: Attr<string>;
+    popovertarget?: Attr<string>;
+    popovertargetaction?: Attr<"hide" | "show" | "toggle">;
+    readonly?: Attr<BooleanAttribute>;
+    readOnly?: Attr<BooleanAttribute>;
+    required?: Attr<BooleanAttribute>;
+    results?: Attr<number>;
+    size?: Attr<number | string>;
+    src?: Attr<string>;
+    step?: Attr<number | string>;
+    type?: Attr<
+      | "button"
+      | "checkbox"
+      | "color"
+      | "date"
+      | "datetime-local"
+      | "email"
+      | "file"
+      | "hidden"
+      | "image"
+      | "month"
+      | "number"
+      | "password"
+      | "radio"
+      | "range"
+      | "reset"
+      | "search"
+      | "submit"
+      | "tel"
+      | "text"
+      | "time"
+      | "url"
+      | "week"
     >;
-    enterKeyHint?: FunctionMaybe<"enter" | "done" | "go" | "next" | "previous" | "search" | "send">;
-    enterkeyhint?: FunctionMaybe<"enter" | "done" | "go" | "next" | "previous" | "search" | "send">;
+    width?: Attr<number | string>;
+    webkitdirectory?: Attr<BooleanAttribute>;
+    incremental?: Attr<BooleanAttribute>;
+    /** @deprecated */
+    align?: Attr<string>;
+    /** @deprecated */
+    usemap?: Attr<string>;
+    checked?: Attr<boolean>;
+    defaultChecked?: Attr<boolean>;
+    value?: Attr<string | number | boolean | string[]>;
+    defaultValue?: Attr<string | number | boolean | string[]>;
+  }
 
-    // Content security
-    nonce?: FunctionMaybe<string>;
-    integrity?: FunctionMaybe<string>;
+  export interface ModHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    cite?: Attr<string>;
+    datetime?: Attr<string>;
+  }
 
-    // Accessibility
-    accessKey?: FunctionMaybe<string>;
-    accesskey?: FunctionMaybe<string>;
+  export interface LabelHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    for?: Attr<string>;
+    htmlFor?: Attr<string>;
+  }
+
+  export interface LiHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    value?: Attr<number | string>;
+    /** @deprecated */
+    type?: Attr<"1" | "a" | "A" | "i" | "I">;
+  }
+
+  export interface LinkHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    as?: Attr<HTMLLinkAs>;
+    blocking?: Attr<"render">;
+    color?: Attr<string>;
+    crossorigin?: Attr<HTMLCrossorigin>;
+    crossOrigin?: Attr<HTMLCrossorigin>;
+    disabled?: Attr<BooleanAttribute>;
+    fetchpriority?: Attr<HTMLFetchPriority>;
+    fetchPriority?: Attr<HTMLFetchPriority>;
+    href?: Attr<string>;
+    hreflang?: Attr<string>;
+    imagesizes?: Attr<string>;
+    imagesrcset?: Attr<string>;
+    integrity?: Attr<string>;
+    media?: Attr<string>;
+    referrerpolicy?: Attr<HTMLReferrerPolicy>;
+    referrerPolicy?: Attr<HTMLReferrerPolicy>;
+    rel?: Attr<string>;
+    sizes?: Attr<string>;
+    type?: Attr<string>;
+    /** @deprecated */
+    charset?: Attr<string>;
+    /** @deprecated */
+    charSet?: Attr<string>;
+    /** @deprecated */
+    rev?: Attr<string>;
+    /** @deprecated */
+    target?: Attr<string>;
+  }
+
+  export interface MapHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    name?: Attr<string>;
+  }
+
+  export interface MediaHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    autoplay?: Attr<BooleanAttribute>;
+    autoPlay?: Attr<BooleanAttribute>;
+    controls?: Attr<BooleanAttribute>;
+    controlslist?: Attr<
+      "nodownload" | "nofullscreen" | "noplaybackrate" | "noremoteplayback" | (string & {})
+    >;
+    crossorigin?: Attr<HTMLCrossorigin>;
+    crossOrigin?: Attr<HTMLCrossorigin>;
+    disableremoteplayback?: Attr<BooleanAttribute>;
+    loop?: Attr<BooleanAttribute>;
+    preload?: Attr<"none" | "metadata" | "auto" | EnumeratedAcceptsEmpty>;
+    src?: Attr<string>;
+    onEncrypted?: EventHandlerUnion<T, MediaEncryptedEvent>;
+    onencrypted?: EventHandlerUnion<T, MediaEncryptedEvent>;
+    onWaitingForKey?: EventHandlerUnion<T, Event>;
+    onwaitingforkey?: EventHandlerUnion<T, Event>;
+    /** @deprecated */
+    mediagroup?: Attr<string>;
+    muted?: Attr<boolean>;
+    defaultMuted?: Attr<boolean>;
+  }
+
+  export interface MenuHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    /** @deprecated */
+    compact?: Attr<BooleanAttribute>;
+    /** @deprecated */
+    label?: Attr<string>;
+    /** @deprecated */
+    type?: Attr<"context" | "toolbar">;
+  }
+
+  export interface MetaHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    "http-equiv"?: Attr<
+      | "content-security-policy"
+      | "content-type"
+      | "default-style"
+      | "x-ua-compatible"
+      | "refresh"
+      | (string & {})
+    >;
+    charset?: Attr<string>;
+    charSet?: Attr<string>;
+    content?: Attr<string>;
+    media?: Attr<string>;
+    name?: Attr<string>;
+    /** @deprecated */
+    scheme?: Attr<string>;
+  }
+
+  export interface MeterHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    form?: Attr<string>;
+    high?: Attr<number | string>;
+    low?: Attr<number | string>;
+    max?: Attr<number | string>;
+    min?: Attr<number | string>;
+    optimum?: Attr<number | string>;
+    value?: Attr<string | string[] | number>;
+  }
+
+  export interface QuoteHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    cite?: Attr<string>;
+  }
+
+  export interface ObjectHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    data?: Attr<string>;
+    form?: Attr<string>;
+    height?: Attr<number | string>;
+    name?: Attr<string>;
+    type?: Attr<string>;
+    width?: Attr<number | string>;
+    wmode?: Attr<string>;
+    /** @deprecated */
+    align?: Attr<string>;
+    /** @deprecated */
+    archive?: Attr<string>;
+    /** @deprecated */
+    border?: Attr<string>;
+    /** @deprecated */
+    classid?: Attr<string>;
+    /** @deprecated */
+    code?: Attr<string>;
+    /** @deprecated */
+    codebase?: Attr<string>;
+    /** @deprecated */
+    codetype?: Attr<string>;
+    /** @deprecated */
+    declare?: Attr<BooleanAttribute>;
+    /** @deprecated */
+    hspace?: Attr<number | string>;
+    /** @deprecated */
+    standby?: Attr<string>;
+    /** @deprecated */
+    usemap?: Attr<string>;
+    /** @deprecated */
+    vspace?: Attr<number | string>;
+    /** @deprecated */
+    typemustmatch?: Attr<BooleanAttribute>;
+  }
+
+  export interface OlHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    reversed?: Attr<BooleanAttribute>;
+    start?: Attr<number | string>;
+    type?: Attr<"1" | "a" | "A" | "i" | "I">;
+    /** @deprecated */
+    compact?: Attr<BooleanAttribute>;
+  }
+
+  export interface OptgroupHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    disabled?: Attr<BooleanAttribute>;
+    label?: Attr<string>;
+  }
+
+  export interface OptionHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    disabled?: Attr<BooleanAttribute>;
+    label?: Attr<string>;
+    selected?: Attr<boolean>;
+    defaultSelected?: Attr<boolean>;
+    value?: Attr<string | number | boolean | string[]>;
+    defaultValue?: Attr<never>;
+  }
+
+  export interface OutputHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    for?: Attr<string>;
+    htmlFor?: Attr<string>;
+    form?: Attr<string>;
+    name?: Attr<string>;
+  }
+
+  export interface ProgressHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    max?: Attr<number | string>;
+    value?: Attr<string | string[] | number>;
+  }
+
+  export interface ScriptHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    xmlns?: Attr<string>;
+    async?: Attr<BooleanAttribute>;
+    blocking?: Attr<"render">;
+    crossorigin?: Attr<HTMLCrossorigin>;
+    crossOrigin?: Attr<HTMLCrossorigin>;
+    defer?: Attr<BooleanAttribute>;
+    fetchpriority?: Attr<HTMLFetchPriority>;
+    fetchPriority?: Attr<HTMLFetchPriority>;
+    for?: Attr<string>;
+    htmlFor?: Attr<string>;
+    integrity?: Attr<string>;
+    nomodule?: Attr<BooleanAttribute>;
+    referrerpolicy?: Attr<HTMLReferrerPolicy>;
+    referrerPolicy?: Attr<HTMLReferrerPolicy>;
+    src?: Attr<string>;
+    type?: Attr<"importmap" | "module" | "speculationrules" | (string & {})>;
+    attributionsrc?: Attr<string>;
+    /** @deprecated */
+    charset?: Attr<string>;
+    /** @deprecated */
+    charSet?: Attr<string>;
+    /** @deprecated */
+    event?: Attr<string>;
+    /** @deprecated */
+    language?: Attr<string>;
+  }
+
+  export interface SelectHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    autocomplete?: Attr<HTMLAutocomplete>;
+    disabled?: Attr<BooleanAttribute>;
+    form?: Attr<string>;
+    multiple?: Attr<BooleanAttribute>;
+    name?: Attr<string>;
+    required?: Attr<BooleanAttribute>;
+    size?: Attr<number | string>;
+    value?: Attr<string | number | boolean | string[]>;
+    defaultSelected?: Attr<never>;
+    selected?: Attr<never>;
+  }
+
+  export interface SlotHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    name?: Attr<string>;
+  }
+
+  export interface SourceHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    height?: Attr<number | string>;
+    media?: Attr<string>;
+    sizes?: Attr<string>;
+    src?: Attr<string>;
+    srcset?: Attr<string>;
+    type?: Attr<string>;
+    width?: Attr<number | string>;
+  }
+
+  export interface StyleHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    xmlns?: Attr<string>;
+    blocking?: Attr<"render">;
+    media?: Attr<string>;
+    /** @deprecated */
+    scoped?: Attr<BooleanAttribute>;
+    /** @deprecated */
+    type?: Attr<string>;
+  }
+
+  export interface TdHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    colspan?: Attr<number | string>;
+    colSpan?: Attr<number | string>;
+    headers?: Attr<string>;
+    rowspan?: Attr<number | string>;
+    rowSpan?: Attr<number | string>;
+    /** @deprecated */
+    abbr?: Attr<string>;
+    /** @deprecated */
+    align?: Attr<"left" | "center" | "right" | "justify" | "char">;
+    /** @deprecated */
+    axis?: Attr<string>;
+    /** @deprecated */
+    bgcolor?: Attr<string>;
+    /** @deprecated */
+    char?: Attr<string>;
+    /** @deprecated */
+    charoff?: Attr<string>;
+    /** @deprecated */
+    height?: Attr<number | string>;
+    /** @deprecated */
+    nowrap?: Attr<BooleanAttribute>;
+    /** @deprecated */
+    scope?: Attr<"col" | "row" | "rowgroup" | "colgroup">;
+    /** @deprecated */
+    valign?: Attr<"baseline" | "bottom" | "middle" | "top">;
+    /** @deprecated */
+    width?: Attr<number | string>;
+  }
+
+  export interface TemplateHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    shadowrootclonable?: Attr<BooleanAttribute>;
+    shadowrootdelegatesfocus?: Attr<BooleanAttribute>;
+    shadowrootmode?: Attr<"open" | "closed">;
+    shadowrootcustomelementregistry?: Attr<BooleanAttribute>;
+    shadowrootserializable?: Attr<BooleanAttribute>;
+  }
+
+  export interface TextareaHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    autocomplete?: Attr<HTMLAutocomplete>;
+    cols?: Attr<number | string>;
+    dirname?: Attr<string>;
+    disabled?: Attr<BooleanAttribute>;
+    form?: Attr<string>;
+    maxlength?: Attr<number | string>;
+    maxLength?: Attr<number | string>;
+    minlength?: Attr<number | string>;
+    minLength?: Attr<number | string>;
+    name?: Attr<string>;
+    placeholder?: Attr<string>;
+    readonly?: Attr<BooleanAttribute>;
+    readOnly?: Attr<BooleanAttribute>;
+    required?: Attr<BooleanAttribute>;
+    rows?: Attr<number | string>;
+    wrap?: Attr<"hard" | "soft" | "off">;
+    value?: Attr<string | number | boolean | string[]>;
+    defaultValue?: Attr<string | string[] | number>;
+  }
+
+  export interface ThHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    abbr?: Attr<string>;
+    colspan?: Attr<number | string>;
+    colSpan?: Attr<number | string>;
+    headers?: Attr<string>;
+    rowspan?: Attr<number | string>;
+    rowSpan?: Attr<number | string>;
+    scope?: Attr<"col" | "row" | "rowgroup" | "colgroup">;
+    /** @deprecated */
+    align?: Attr<"left" | "center" | "right" | "justify" | "char">;
+    /** @deprecated */
+    axis?: Attr<string>;
+    /** @deprecated */
+    bgcolor?: Attr<string>;
+    /** @deprecated */
+    char?: Attr<string>;
+    /** @deprecated */
+    charoff?: Attr<string>;
+    /** @deprecated */
+    height?: Attr<string>;
+    /** @deprecated */
+    nowrap?: Attr<BooleanAttribute>;
+    /** @deprecated */
+    valign?: Attr<"baseline" | "bottom" | "middle" | "top">;
+    /** @deprecated */
+    width?: Attr<number | string>;
+  }
+
+  export interface TimeHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    datetime?: Attr<string>;
+  }
+
+  export interface TitleHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    xmlns?: Attr<string>;
+  }
+
+  export interface TrackHTMLAttributes<T extends HTMLElement> extends HTMLAttributes<T> {
+    default?: Attr<BooleanAttribute>;
+    kind?: Attr<
+      | "alternative"
+      | "descriptions"
+      | "main"
+      | "main-desc"
+      | "translation"
+      | "commentary"
+      | "subtitles"
+      | "captions"
+      | "chapters"
+      | "metadata"
+    >;
+    label?: Attr<string>;
+    src?: Attr<string>;
+    srclang?: Attr<string>;
+    /** @deprecated */
+    mediagroup?: Attr<string>;
+  }
+
+  export interface VideoHTMLAttributes<T extends HTMLElement> extends MediaHTMLAttributes<T> {
+    disablepictureinpicture?: Attr<BooleanAttribute>;
+    height?: Attr<number | string>;
+    playsinline?: Attr<BooleanAttribute>;
+    playsInline?: Attr<BooleanAttribute>;
+    poster?: Attr<string>;
+    width?: Attr<number | string>;
+    onEnterPictureInPicture?: EventHandlerUnion<T, PictureInPictureEvent>;
+    onenterpictureinpicture?: EventHandlerUnion<T, PictureInPictureEvent>;
+    onLeavePictureInPicture?: EventHandlerUnion<T, PictureInPictureEvent>;
+    onleavepictureinpicture?: EventHandlerUnion<T, PictureInPictureEvent>;
+  }
+
+  // MathML attributes: the MathML Core set, as Solid's own JSX types spell it.
+  type MathMLAlign = "axis" | "baseline" | "bottom" | "center" | "top";
+  type MathMLColumnAlign = "center" | "left" | "right";
+  type MathMLLines = "dashed" | "none" | "solid";
+
+  export interface MathMLAttributes<T extends MathMLElement> extends ElementAttributes<T> {
+    dir?: Attr<"ltr" | "rtl">;
+    displaystyle?: Attr<BooleanAttribute>;
+    scriptlevel?: Attr<string>;
+    xmlns?: Attr<string>;
+  }
+
+  export interface MathMLAnnotationAttributes extends MathMLAttributes<MathMLElement> {
+    encoding?: Attr<string>;
+  }
+
+  export interface MathMLMathAttributes extends MathMLAttributes<MathMLElement> {
+    display?: Attr<"block" | "inline">;
+  }
+
+  export interface MathMLMfracAttributes extends MathMLAttributes<MathMLElement> {
+    linethickness?: Attr<string>;
+  }
+
+  export interface MathMLMiAttributes extends MathMLAttributes<MathMLElement> {
+    mathvariant?: Attr<"normal">;
+  }
+
+  export interface MathMLMoAttributes extends MathMLAttributes<MathMLElement> {
+    fence?: Attr<BooleanAttribute>;
+    form?: Attr<"prefix" | "infix" | "postfix">;
+    largeop?: Attr<BooleanAttribute>;
+    lspace?: Attr<string>;
+    maxsize?: Attr<string>;
+    minsize?: Attr<string>;
+    movablelimits?: Attr<BooleanAttribute>;
+    rspace?: Attr<string>;
+    separator?: Attr<BooleanAttribute>;
+    stretchy?: Attr<BooleanAttribute>;
+    symmetric?: Attr<BooleanAttribute>;
+  }
+
+  export interface MathMLMoverAttributes extends MathMLAttributes<MathMLElement> {
+    accent?: Attr<BooleanAttribute>;
+  }
+
+  export interface MathMLMpaddedAttributes extends MathMLAttributes<MathMLElement> {
+    depth?: Attr<string>;
+    height?: Attr<string>;
+    lspace?: Attr<string>;
+    voffset?: Attr<string>;
+    width?: Attr<string>;
+  }
+
+  export interface MathMLMspaceAttributes extends MathMLAttributes<MathMLElement> {
+    depth?: Attr<string>;
+    height?: Attr<string>;
+    width?: Attr<string>;
+  }
+
+  export interface MathMLMtableAttributes extends MathMLAttributes<MathMLElement> {
+    align?: Attr<MathMLAlign>;
+    columnalign?: Attr<MathMLColumnAlign>;
+    columnlines?: Attr<MathMLLines>;
+    columnspacing?: Attr<string>;
+    frame?: Attr<MathMLLines>;
+    framespacing?: Attr<string>;
+    rowalign?: Attr<MathMLAlign>;
+    rowlines?: Attr<MathMLLines>;
+    rowspacing?: Attr<string>;
+    width?: Attr<string>;
+  }
+
+  export interface MathMLMtdAttributes extends MathMLAttributes<MathMLElement> {
+    columnspan?: Attr<number | string>;
+    rowspan?: Attr<number | string>;
+    columnalign?: Attr<MathMLColumnAlign>;
+    rowalign?: Attr<MathMLAlign>;
+  }
+
+  export interface MathMLMtrAttributes extends MathMLAttributes<MathMLElement> {
+    columnalign?: Attr<MathMLColumnAlign>;
+    rowalign?: Attr<MathMLAlign>;
+  }
+
+  export interface MathMLMunderAttributes extends MathMLAttributes<MathMLElement> {
+    accentunder?: Attr<BooleanAttribute>;
+  }
+
+  export interface MathMLMunderoverAttributes extends MathMLAttributes<MathMLElement> {
+    accent?: Attr<BooleanAttribute>;
+    accentunder?: Attr<BooleanAttribute>;
   }
 
   // SVG attributes
-  interface SVGAttributes<T extends SVGElement>
-    extends DOMEventHandlers<T>, DOMEventHandlersLowerCase<T> {
-    // Core SVG attributes
-    id?: FunctionMaybe<string>;
-    class?: FunctionMaybe<string | string[] | Record<string, boolean | undefined>>;
-    className?: FunctionMaybe<string | string[] | Record<string, boolean | undefined>>;
-    classList?: Record<string, FunctionMaybe<boolean | undefined>>;
-    style?: FunctionMaybe<string | CSSProperties>;
-    tabIndex?: FunctionMaybe<number>;
-
-    // Ref and children
-    ref?: T | ((el: T) => void) | { current: T | null };
-    children?: Child | Child[];
-
-    /**
-     * The same three `HTMLAttributes` carries, because SVG takes all three.
-     *
-     * `role` and `aria-*` are how a drawing is described to a screen reader —
-     * `<svg role="img" aria-label="Revenue by month">` is the accessible way to
-     * label a chart — and `data-*` is universal. Naming them on the HTML bag
-     * alone made every one a type error on the elements that need them most,
-     * for markup the runtime has always written: `setAttr` does not consult
-     * this list.
-     */
-    role?: FunctionMaybe<string>;
-    [key: `aria-${string}`]: FunctionMaybe<string | number | boolean | undefined>;
-    [key: `data-${string}`]: FunctionMaybe<string | number | boolean | undefined>;
-
+  export interface SVGAttributes<T extends SVGElement> extends ElementAttributes<T> {
     // SVG-specific attributes
-    viewBox?: FunctionMaybe<string>;
-    xmlns?: FunctionMaybe<string>;
-    "xmlns:xlink"?: FunctionMaybe<string>;
-    fill?: FunctionMaybe<string>; // Also used for animation fill mode (freeze, remove)
-    stroke?: FunctionMaybe<string>;
-    strokeWidth?: FunctionMaybe<number | string>;
-    "stroke-width"?: FunctionMaybe<number | string>;
-    strokeLinecap?: FunctionMaybe<"butt" | "round" | "square">;
-    "stroke-linecap"?: FunctionMaybe<"butt" | "round" | "square">;
-    strokeLinejoin?: FunctionMaybe<"miter" | "round" | "bevel">;
-    "stroke-linejoin"?: FunctionMaybe<"miter" | "round" | "bevel">;
-    strokeDasharray?: FunctionMaybe<string>;
-    "stroke-dasharray"?: FunctionMaybe<string>;
-    strokeDashoffset?: FunctionMaybe<number | string>;
-    "stroke-dashoffset"?: FunctionMaybe<number | string>;
-    strokeOpacity?: FunctionMaybe<number | string>;
-    "stroke-opacity"?: FunctionMaybe<number | string>;
-    fillOpacity?: FunctionMaybe<number | string>;
-    "fill-opacity"?: FunctionMaybe<number | string>;
-    opacity?: FunctionMaybe<number | string>;
-    transform?: FunctionMaybe<string>;
-    transformOrigin?: FunctionMaybe<string>;
-    "transform-origin"?: FunctionMaybe<string>;
+    viewBox?: Attr<string>;
+    xmlns?: Attr<string>;
+    "xmlns:xlink"?: Attr<string>;
+    fill?: Attr<string>; // Also used for animation fill mode (freeze, remove)
+    stroke?: Attr<string>;
+    strokeWidth?: Attr<number | string>;
+    "stroke-width"?: Attr<number | string>;
+    strokeLinecap?: Attr<"butt" | "round" | "square">;
+    "stroke-linecap"?: Attr<"butt" | "round" | "square">;
+    strokeLinejoin?: Attr<"miter" | "round" | "bevel">;
+    "stroke-linejoin"?: Attr<"miter" | "round" | "bevel">;
+    strokeDasharray?: Attr<string>;
+    "stroke-dasharray"?: Attr<string>;
+    strokeDashoffset?: Attr<number | string>;
+    "stroke-dashoffset"?: Attr<number | string>;
+    strokeOpacity?: Attr<number | string>;
+    "stroke-opacity"?: Attr<number | string>;
+    fillOpacity?: Attr<number | string>;
+    "fill-opacity"?: Attr<number | string>;
+    opacity?: Attr<number | string>;
+    transform?: Attr<string>;
+    transformOrigin?: Attr<string>;
+    "transform-origin"?: Attr<string>;
 
     // Geometry attributes
-    cx?: FunctionMaybe<number | string>;
-    cy?: FunctionMaybe<number | string>;
-    r?: FunctionMaybe<number | string>;
-    rx?: FunctionMaybe<number | string>;
-    ry?: FunctionMaybe<number | string>;
-    x?: FunctionMaybe<number | string>;
-    y?: FunctionMaybe<number | string>;
-    x1?: FunctionMaybe<number | string>;
-    y1?: FunctionMaybe<number | string>;
-    x2?: FunctionMaybe<number | string>;
-    y2?: FunctionMaybe<number | string>;
-    width?: FunctionMaybe<number | string>;
-    height?: FunctionMaybe<number | string>;
-    d?: FunctionMaybe<string>;
-    points?: FunctionMaybe<string>;
-    pathLength?: FunctionMaybe<number>;
+    cx?: Attr<number | string>;
+    cy?: Attr<number | string>;
+    r?: Attr<number | string>;
+    rx?: Attr<number | string>;
+    ry?: Attr<number | string>;
+    x?: Attr<number | string>;
+    y?: Attr<number | string>;
+    x1?: Attr<number | string>;
+    y1?: Attr<number | string>;
+    x2?: Attr<number | string>;
+    y2?: Attr<number | string>;
+    width?: Attr<number | string>;
+    height?: Attr<number | string>;
+    d?: Attr<string>;
+    points?: Attr<string>;
+    pathLength?: Attr<number>;
 
     // Presentation attributes
-    preserveAspectRatio?: FunctionMaybe<string>;
-    clipPathUnits?: FunctionMaybe<"userSpaceOnUse" | "objectBoundingBox">;
-    maskUnits?: FunctionMaybe<"userSpaceOnUse" | "objectBoundingBox">;
-    maskContentUnits?: FunctionMaybe<"userSpaceOnUse" | "objectBoundingBox">;
-    patternUnits?: FunctionMaybe<"userSpaceOnUse" | "objectBoundingBox">;
-    patternContentUnits?: FunctionMaybe<"userSpaceOnUse" | "objectBoundingBox">;
-    gradientUnits?: FunctionMaybe<"userSpaceOnUse" | "objectBoundingBox">;
-    gradientTransform?: FunctionMaybe<string>;
-    spreadMethod?: FunctionMaybe<"pad" | "reflect" | "repeat">;
-    offset?: FunctionMaybe<number | string>;
-    stopColor?: FunctionMaybe<string>;
-    "stop-color"?: FunctionMaybe<string>;
-    stopOpacity?: FunctionMaybe<number | string>;
-    "stop-opacity"?: FunctionMaybe<number | string>;
+    preserveAspectRatio?: Attr<string>;
+    clipPathUnits?: Attr<"userSpaceOnUse" | "objectBoundingBox">;
+    maskUnits?: Attr<"userSpaceOnUse" | "objectBoundingBox">;
+    maskContentUnits?: Attr<"userSpaceOnUse" | "objectBoundingBox">;
+    patternUnits?: Attr<"userSpaceOnUse" | "objectBoundingBox">;
+    patternContentUnits?: Attr<"userSpaceOnUse" | "objectBoundingBox">;
+    gradientUnits?: Attr<"userSpaceOnUse" | "objectBoundingBox">;
+    gradientTransform?: Attr<string>;
+    spreadMethod?: Attr<"pad" | "reflect" | "repeat">;
+    offset?: Attr<number | string>;
+    stopColor?: Attr<string>;
+    "stop-color"?: Attr<string>;
+    stopOpacity?: Attr<number | string>;
+    "stop-opacity"?: Attr<number | string>;
 
     // Text attributes
-    textAnchor?: FunctionMaybe<"start" | "middle" | "end">;
-    "text-anchor"?: FunctionMaybe<"start" | "middle" | "end">;
-    dominantBaseline?: FunctionMaybe<string>;
-    "dominant-baseline"?: FunctionMaybe<string>;
-    alignmentBaseline?: FunctionMaybe<string>;
-    "alignment-baseline"?: FunctionMaybe<string>;
-    fontSize?: FunctionMaybe<string | number>;
-    "font-size"?: FunctionMaybe<string | number>;
-    fontFamily?: FunctionMaybe<string>;
-    "font-family"?: FunctionMaybe<string>;
-    fontWeight?: FunctionMaybe<string | number>;
-    "font-weight"?: FunctionMaybe<string | number>;
-    letterSpacing?: FunctionMaybe<string | number>;
-    "letter-spacing"?: FunctionMaybe<string | number>;
-    textDecoration?: FunctionMaybe<string>;
-    "text-decoration"?: FunctionMaybe<string>;
-    dx?: FunctionMaybe<string | number>;
-    dy?: FunctionMaybe<string | number>;
+    textAnchor?: Attr<"start" | "middle" | "end">;
+    "text-anchor"?: Attr<"start" | "middle" | "end">;
+    dominantBaseline?: Attr<string>;
+    "dominant-baseline"?: Attr<string>;
+    alignmentBaseline?: Attr<string>;
+    "alignment-baseline"?: Attr<string>;
+    fontSize?: Attr<string | number>;
+    "font-size"?: Attr<string | number>;
+    fontFamily?: Attr<string>;
+    "font-family"?: Attr<string>;
+    fontWeight?: Attr<string | number>;
+    "font-weight"?: Attr<string | number>;
+    letterSpacing?: Attr<string | number>;
+    "letter-spacing"?: Attr<string | number>;
+    textDecoration?: Attr<string>;
+    "text-decoration"?: Attr<string>;
+    dx?: Attr<string | number>;
+    dy?: Attr<string | number>;
 
     // xlink attributes
-    xlinkHref?: FunctionMaybe<string>;
-    "xlink:href"?: FunctionMaybe<string>;
-    xlinkShow?: FunctionMaybe<string>;
-    "xlink:show"?: FunctionMaybe<string>;
-    xlinkTitle?: FunctionMaybe<string>;
-    "xlink:title"?: FunctionMaybe<string>;
+    xlinkHref?: Attr<string>;
+    "xlink:href"?: Attr<string>;
+    xlinkShow?: Attr<string>;
+    "xlink:show"?: Attr<string>;
+    xlinkTitle?: Attr<string>;
+    "xlink:title"?: Attr<string>;
 
     // Filter attributes
-    filter?: FunctionMaybe<string>;
-    clipPath?: FunctionMaybe<string>;
-    "clip-path"?: FunctionMaybe<string>;
-    clipRule?: FunctionMaybe<"nonzero" | "evenodd">;
-    "clip-rule"?: FunctionMaybe<"nonzero" | "evenodd">;
-    fillRule?: FunctionMaybe<"nonzero" | "evenodd">;
-    "fill-rule"?: FunctionMaybe<"nonzero" | "evenodd">;
-    mask?: FunctionMaybe<string>;
-    markerStart?: FunctionMaybe<string>;
-    "marker-start"?: FunctionMaybe<string>;
-    markerMid?: FunctionMaybe<string>;
-    "marker-mid"?: FunctionMaybe<string>;
-    markerEnd?: FunctionMaybe<string>;
-    "marker-end"?: FunctionMaybe<string>;
+    filter?: Attr<string>;
+    clipPath?: Attr<string>;
+    "clip-path"?: Attr<string>;
+    clipRule?: Attr<"nonzero" | "evenodd">;
+    "clip-rule"?: Attr<"nonzero" | "evenodd">;
+    fillRule?: Attr<"nonzero" | "evenodd">;
+    "fill-rule"?: Attr<"nonzero" | "evenodd">;
+    mask?: Attr<string>;
+    markerStart?: Attr<string>;
+    "marker-start"?: Attr<string>;
+    markerMid?: Attr<string>;
+    "marker-mid"?: Attr<string>;
+    markerEnd?: Attr<string>;
+    "marker-end"?: Attr<string>;
 
     // Animation attributes
-    attributeName?: FunctionMaybe<string>;
-    attributeType?: FunctionMaybe<string>;
-    begin?: FunctionMaybe<string>;
-    dur?: FunctionMaybe<string>;
-    end?: FunctionMaybe<string>;
-    repeatCount?: FunctionMaybe<number | "indefinite">;
-    repeatDur?: FunctionMaybe<string>;
-    from?: FunctionMaybe<string>;
-    to?: FunctionMaybe<string>;
-    by?: FunctionMaybe<string>;
-    values?: FunctionMaybe<string>;
-    keyTimes?: FunctionMaybe<string>;
-    keySplines?: FunctionMaybe<string>;
-    calcMode?: FunctionMaybe<"discrete" | "linear" | "paced" | "spline">;
-    type?: FunctionMaybe<string>;
+    attributeName?: Attr<string>;
+    attributeType?: Attr<string>;
+    begin?: Attr<string>;
+    dur?: Attr<string>;
+    end?: Attr<string>;
+    repeatCount?: Attr<number | "indefinite">;
+    repeatDur?: Attr<string>;
+    from?: Attr<string>;
+    to?: Attr<string>;
+    by?: Attr<string>;
+    values?: Attr<string>;
+    keyTimes?: Attr<string>;
+    keySplines?: Attr<string>;
+    calcMode?: Attr<"discrete" | "linear" | "paced" | "spline">;
+    type?: Attr<string>;
 
     // Visibility
-    visibility?: FunctionMaybe<"visible" | "hidden" | "collapse">;
-    display?: FunctionMaybe<string>;
+    visibility?: Attr<"visible" | "hidden" | "collapse">;
+    display?: Attr<string>;
 
     // Misc
-    href?: FunctionMaybe<string>;
-    result?: FunctionMaybe<string>;
-    in?: FunctionMaybe<string>;
-    in2?: FunctionMaybe<string>;
-    mode?: FunctionMaybe<string>;
+    href?: Attr<string>;
+    result?: Attr<string>;
+    in?: Attr<string>;
+    in2?: Attr<string>;
+    mode?: Attr<string>;
   }
 }

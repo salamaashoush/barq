@@ -20,7 +20,7 @@
 
 import { describe, expect, test } from "bun:test";
 import { cell, merge, mergeProps, omit, props, splitProps, SOURCES } from "./props.ts";
-import { signal } from "./signals.ts";
+import { createSignal } from "./signals.ts";
 
 /** A Cell that records every call. Reading it is the only way to its value. */
 function counting<T>(value: T): { readonly carrier: () => T; reads: number } {
@@ -88,7 +88,7 @@ describe("laziness conformance: a counting Cell reads 0 after", () => {
 
     expect(box.reads).toBe(0);
     expect(other.reads).toBe(0);
-    expect((merged.x as () => string)()).toBe("v");
+    expect(merged.x()).toBe("v");
     expect(box.reads).toBe(1);
     expect(other.reads).toBe(0);
   });
@@ -218,7 +218,7 @@ describe("cell", () => {
   });
 
   test("a signal accessor is already a Cell, so forwarding needs no wrapper", () => {
-    const count = signal(3);
+    const [count] = createSignal(3);
     const view = props([{ n: count }]);
     expect(view.n).toBe(count);
     expect((view.n as () => number)()).toBe(3);

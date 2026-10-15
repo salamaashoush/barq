@@ -7,6 +7,7 @@
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "noEmit": true,
+    "noEmitOnError": true,
     "strict": true,
     "skipLibCheck": true,
     "types": ["@types/bun"],
@@ -26,5 +27,10 @@
   // reaches nothing from a subdirectory. It also carries deliberate
   // `@ts-expect-error`s, which only mean anything under a config that compiles
   // it alone — `form-action-types.test.ts` is what runs it.
-  "exclude": ["node_modules", "dist", "src/jsx-types"]
+  //
+  // `conformance.test.ts` imports a third-party suite that ships TypeScript
+  // source and fails `noUnusedLocals`; `skipLibCheck` does not reach a `.ts`
+  // file, so the suite would be checked as if it were this package.
+  // `tsconfig.conformance.json` checks that test against the suite instead.
+  "exclude": ["node_modules", "dist", "src/jsx-types", "src/conformance.test.ts"]
 }

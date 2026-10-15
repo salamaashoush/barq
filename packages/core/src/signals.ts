@@ -1,65 +1,159 @@
 /**
- * Reactive signals - push-pull reactivity aligned with Solid 2.0 semantics
+ * The reactive engine, and what barq's renderer adds beside it.
  *
- * - Writes push CHECK/DIRTY invalidation; pure computeds recompute lazily on read
- * - Only effects are scheduled (height-ordered heaps, render before user)
- * - Flushes are batched on a microtask by default; flush() drains synchronously
- * - Per-link value snapshots gate recomputation (reverted writes are no-ops)
- * - Async: computeds may return promises; pending/error status flows through
- *   the graph (NotReadyError) and is caught by Loading/Errored boundaries
+ * The graph, the scheduler, transitions and async status are
+ * `@solidjs/signals`', exported from here under its own names and untouched.
+ * What this module owns is what the engine has no opinion about: the Block
+ * brand, the scopes the flow primitives open, the context channel, and the
+ * crossing of async values from a server render to the client.
+ *
+ * The engine's production build mangles every underscore property, so nothing
+ * here may reach past its exported API.
  */
 
+import {
+  type Owner as EngineOwner,
+  type Context as EngineContext,
+  type MemoOptions,
+  type SourceAccessor,
+  ContextNotFoundError,
+  NoOwnerError,
+  NotReadyError,
+  createContext as engineCreateContext,
+  createEffect as engineCreateEffect,
+  createMemo as engineCreateMemo,
+  createTrackedEffect as engineCreateTrackedEffect,
+  onSettled as engineOnSettled,
+  createOwner,
+  createRenderEffect,
+  flush,
+  getContext as engineGetContext,
+  getOwner,
+  isDisposed,
+  onCleanup,
+  runWithOwner,
+  setContext as engineSetContext,
+} from "@solidjs/signals";
 import type { OwnershipSink, ScopeKind } from "./trace.ts";
+
+export {
+  $PROXY,
+  $TARGET,
+  $TRACK,
+  ContextNotFoundError,
+  NoOwnerError,
+  NotReadyError,
+  TimeoutError,
+  SUPPORTS_PROXY,
+  action,
+  affects,
+  clearSnapshots,
+  createErrorBoundary,
+  createLoadingBoundary,
+  createOptimistic,
+  createOptimisticStore,
+  createOwner,
+  createProjection,
+  createReaction,
+  createRenderEffect,
+  createRevealOrder,
+  createRoot,
+  createSignal,
+  createStore,
+  deep,
+  enableExternalSource,
+  enforceLoadingBoundary,
+  flatten,
+  flush,
+  getNextChildId,
+  getObserver,
+  getOwner,
+  isDisposed,
+  isEqual,
+  isPending,
+  isWrappable,
+  latest,
+  mapArray,
+  markSnapshotScope,
+  merge,
+  omit,
+  onCleanup,
+  peekNextChildId,
+  reconcile,
+  refresh,
+  releaseSnapshotScope,
+  repeat,
+  resetErrorHalt,
+  resolve,
+  runWithOwner,
+  setSnapshotCapture,
+  snapshot,
+  storePath,
+  until,
+  untrack,
+} from "@solidjs/signals";
+export type {
+  Accessor,
+  ComputeFunction,
+  EffectBundle,
+  EffectFunction,
+  EffectOptions,
+  ExternalSource,
+  ExternalSourceConfig,
+  ExternalSourceFactory,
+  Maybe,
+  MemoOptions,
+  Part,
+  Refreshable,
+  RevealOrder,
+  Setter,
+  Signal,
+  SignalOptions,
+  SourceAccessor,
+  Store,
+  StoreNode,
+  StorePathRange,
+  StoreSetter,
+  UntilOptions,
+} from "@solidjs/signals";
+
+/**
+ * `createEffect`, `createTrackedEffect` and `onSettled` do nothing while a page
+ * is being rendered on a server.
+ *
+ * An effect is where a component reaches outside itself: a listener on
+ * `document`, a timer, a measurement. A server render has none of those to
+ * reach, its markup is whatever the tree built, and the process it runs in is
+ * shared by every request, so a `document.addEventListener` in an `onSettled`
+ * took the whole server down from one page. This is Solid's rule, and the
+ * reason a component needs no `isServer` test around its effects.
+ */
+export const createEffect = ((...args: Parameters<typeof engineCreateEffect>): void => {
+  if (activeAsyncSession !== null) return;
+  engineCreateEffect(...args);
+}) as typeof engineCreateEffect;
+
+export const createTrackedEffect = (
+  ...args: Parameters<typeof engineCreateTrackedEffect>
+): void => {
+  if (activeAsyncSession !== null) return;
+  engineCreateTrackedEffect(...args);
+};
+
+export const onSettled = (...args: Parameters<typeof engineOnSettled>): void => {
+  if (activeAsyncSession !== null) return;
+  engineOnSettled(...args);
+};
 
 /**
  * The L2b ownership trace's attachment point. `null` until
  * `beginOwnershipTrace()` installs a sink.
- *
- * why: a `const` holder rather than an `export let`, and `import type` above
- * rather than a value import, because Bun inlines a module-scope numeric
- * `const` (`REACTIVE_DISPOSED` → `32`) only while a module has neither a value
- * import nor a reassigned top-level binding — and a signal accessor's
- * `toString()` is observable, since `diagnostic-accessor-coercion.tsx` renders
- * it into the DOM and snapshots it. Either of the obvious spellings moves that
- * snapshot.
  */
 export const OWNERSHIP: { sink: OwnershipSink | null } = { sink: null };
 
 // ============================================================================
-// Constants
+// The Block brand
 // ============================================================================
-
-const REACTIVE_CHECK = 1 << 0; // Might need update, verify deps first
-const REACTIVE_DIRTY = 1 << 1; // Definitely needs recompute
-const REACTIVE_RECOMPUTING_DEPS = 1 << 2; // Currently recomputing
-const REACTIVE_IN_HEAP = 1 << 3; // In a heap for recompute
-const REACTIVE_IN_HEAP_HEIGHT = 1 << 4; // In a heap for height adjustment only
-const REACTIVE_DISPOSED = 1 << 5; // Has been disposed
-const REACTIVE_UNINITIALIZED = 1 << 6; // Lazy computed not yet evaluated
-const STATUS_PENDING = 1 << 7; // Async value in flight
-const STATUS_ERROR = 1 << 8; // Last computation threw
-const REACTIVE_CHILDREN_FORBIDDEN = 1 << 9; // Leaf effect: may not own primitives
-const REACTIVE_AFFECTED = 1 << 10; // Declared in motion: reads as pending until released
-const REACTIVE_IN_SNAPSHOT = 1 << 11; // Reads snapshots rather than live values
-const REACTIVE_SNAPSHOT_STALE = 1 << 12; // Served a snapshot that the live value has left behind
-
-const EFFECT_PURE = 0;
-const EFFECT_RENDER = 1;
-const EFFECT_USER = 2;
-
-// ============================================================================
-// Error Classes
-// ============================================================================
-
-/**
- * Error thrown when trying to access context outside a reactive root
- */
-export class NoOwnerError extends Error {
-  constructor() {
-    super("Context can only be accessed under a reactive root.");
-    this.name = "NoOwnerError";
-  }
-}
 
 /**
  * The Block brand and its enforcement, in one value.
@@ -69,38 +163,18 @@ export class NoOwnerError extends Error {
  * `template()`, C6) — which is simultaneously a legal Cell, which is why rule 2
  * lets one call site serve both kinds. Kind travels with the value (rule 4),
  * so a forwarded Block is still branded and an arity guess is never consulted.
- *
- * C3.8 is a property of the VALUE, not of a call site. A marked-in-place `fn`
- * makes the brand readable but leaves "invoked without a scope" enforceable only
- * where someone remembered to ask, and six of the seven Cell slots on the
- * primitive surface did not — so a Block reaching one ran with `s === undefined`
- * and every ambient read inside it resolved against `CURRENT`, which is the
- * Provider bug at the one place nobody would look. The wrapper is one
- * closure per DEFINITION site and none per activation.
- *
- * It lives here rather than in `props.ts` for the reason `scope.ts` states at
- * the top of the file: this module may acquire no VALUE import, because Bun
- * stops inlining a module-scope numeric `const` once it has one, and a signal
- * accessor's own `toString()` is snapshotted by a fixture.
  */
 export const BLOCK: unique symbol = Symbol.for("barq.block");
 
 /**
  * Mark a value as a deferred CONSTRUCTION rather than a deferred read.
  *
- * The brand is all that is left. A Block used to take the scope it builds under
- * as its first argument, and this wrapper established the ambient owner from
- * it; the runtime enters that scope before invoking a body now, so the body
- * reads its owner the way every other reactive primitive does. What the brand
- * still buys is kind: a Block landing in a Cell slot is refused rather than
+ * The runtime enters the scope a Block belongs to before invoking it, so the
+ * body reads its owner the way every other reactive primitive does. What the
+ * brand buys is kind: a Block landing in a Cell slot is refused rather than
  * invoked and stringified.
  */
 export function block<F extends (...args: never[]) => unknown>(fn: F): F {
-  return brand(fn);
-}
-
-/** The brand without the entry guard, for the one value that legally ignores its scope. */
-function brand<F>(fn: F): F {
   (fn as unknown as Record<symbol, boolean>)[BLOCK] = true;
   return fn;
 }
@@ -117,127 +191,52 @@ export function isBlock(value: unknown): boolean {
  * to the ambient owner: that fallback is the Provider bug reintroduced at the
  * one place nobody would look for it.
  *
- * `null` is a scope VALUE, not a missing one — it is what the compiler emits
- * for a module-level root (`const _s$ = null`). Only `undefined` is missing.
+ * `null` is a scope VALUE, not a missing one. Only `undefined` is missing.
  */
 export class ScopeMissingError extends Error {
-  constructor(readonly origin: string) {
-    super(
-      `${origin} was invoked without a scope. A Block takes the scope it must run under as its ` +
-        `first argument; calling it with none is a mistimed construction, and falling back to ` +
-        `the ambient owner would put the subtree under whatever happened to be current instead.`,
-    );
+  constructor(
+    readonly origin: string,
+    message = `\`${origin}\` was called with \`undefined\` where its owner is expected, so ` +
+      "nothing would dispose the effects and listeners it creates. Pass the owner from " +
+      "`getOwner()`, or `null` to run without one on purpose.",
+  ) {
+    super(message);
     this.name = "ScopeMissingError";
   }
 }
 
 /**
- * Error thrown when context is not found and no default value provided
+ * The refusal for JSX arriving where a value is read. `origin` is either a
+ * `Component.prop` label or a phrase that already starts the sentence.
  */
-export class ContextNotFoundError extends Error {
-  constructor() {
-    super(
-      "Context must either be created with a default value or a value must be provided before accessing it.",
-    );
-    this.name = "ContextNotFoundError";
-  }
+export function jsxAsValue(origin: string, returned = false): ScopeMissingError {
+  const label = /^([A-Z]\w*)\.(\w+)$/.exec(origin);
+  const where = label === null ? origin : `The \`${label[2]}\` prop of \`<${label[1]}>\``;
+  return new ScopeMissingError(
+    origin,
+    `${where} ${returned ? "is a function that returned" : "was given"} JSX where a value is ` +
+      "expected. JSX passed as a prop or as children is built only where it is rendered, so " +
+      "there is no value to read from it here. Render it as a child, " +
+      "`<span>{props.children}</span>`, or pass a string, a number or an accessor.",
+  );
 }
 
 /**
- * Thrown when reading an async value that has not resolved yet.
- * Caught by Loading boundaries and by isPending()/latest().
+ * A CELL-slot read. A Cell is called with no arguments and yields its value; a
+ * Block reaching here throws rather than silently building under whatever is
+ * current or yielding `undefined`. The brand makes it a property test, so the
+ * throw names both ends instead of waiting for a downstream `TypeError`.
  */
-export class NotReadyError extends Error {
-  /**
-   * The node whose read threw, when there is one.
-   *
-   * `latest` and `isPending` both need it: their rule is not "was it pending"
-   * but "was it pending AND has it never held a value", and only the source
-   * knows the second half.
-   */
-  readonly source?: { _flags: number };
-
-  constructor(source?: { _flags: number }) {
-    super("Async value is not ready yet.");
-    this.name = "NotReadyError";
-    this.source = source;
-  }
-}
-
-// ============================================================================
-// Types
-// ============================================================================
-
-/** Linked list node for dependency tracking */
-interface Link {
-  _dep: SignalNode<unknown> | ComputedNode<unknown>;
-  _sub: ComputedNode<unknown>;
-  _nextDep: Link | null; // Next dependency of the subscriber
-  _prevSub: Link | null; // Previous subscriber of the dependency
-  _nextSub: Link | null; // Next subscriber of the dependency
-  _lastValue: unknown; // Dep value snapshot at link time (gates recompute)
-  /**
-   * `_sub._depGen` when this link was created or last revalidated in read
-   * order. A link stamped with the subscriber's current generation sits in
-   * the already-validated `[_deps.._depsTail]` prefix - an O(1) stand-in for
-   * scanning the dep list.
-   */
-  _gen: number;
-}
-
-/** Options for signal/computed creation */
-export interface SignalOptions<T> {
-  name?: string;
-  equals?: false | ((prev: T, next: T) => boolean);
-  /** Called when the computed loses its last subscriber */
-  unobserved?: () => void;
-  /** Suppress the REACTIVE_WRITE_IN_OWNED_SCOPE diagnostic for this signal */
-  ownedWrite?: boolean;
-  /**
-   * Land writes on the committed value at once instead of staging them for the
-   * flush.
-   *
-   * For the runtime's own control channels — which arm of a boundary is live,
-   * how many rows a mapped list has — and never for application state. Those
-   * are read by a CONSTRUCTION in the same synchronous step that wrote them,
-   * and a construction runs under no observer, so it would otherwise build
-   * against the world the write was made to leave.
-   */
-  immediate?: boolean;
-}
-
-/** Options a derived node takes and a plain `signal()` has no use for. */
-export interface MemoOptions<T> extends SignalOptions<T> {
-  /**
-   * Defer the first computation to the first read. The default is eager: a
-   * derived value that owns async work starts it where it is declared.
-   */
-  lazy?: boolean;
-
-  /**
-   * Commit #0 (A8): a value the node is BORN with, served until the compute's
-   * first real answer lands.
-   *
-   * While that first answer is in flight the node reads as a settled value
-   * everywhere — nothing suspends to a `Loading` boundary and `isPending` stays
-   * FALSE — because commit #0 answers the question by declaration. First-load
-   * affordances come from the value itself (a `null` placeholder, a
-   * `skeleton: true` field) rather than from a boundary.
-   *
-   * Once the first answer lands the loading value leaves the lineage FOREVER:
-   * a refetch is an ordinary revalidation, showing the stale value with
-   * `isPending` true. The two states are disjoint, so the guard that covers
-   * both is `value.skeleton || isPending(value)`.
-   *
-   * It is also the compute's first `prev`, so a `prev`-folding compute folds
-   * from it.
-   *
-   * Typed strictly as `T`. To use `null` as the placeholder, declare it in the
-   * node's type — `computed<User | null>(…, { loadingValue: null })` — so every
-   * consumer sees the nullable window honestly. A placeholder that stands in
-   * for real data should carry its own provenance rather than impersonate it.
-   */
-  loadingValue?: T;
+export function readSlot(value: unknown, origin: string): unknown {
+  if (typeof value !== "function") return value;
+  if (isBlock(value)) throw jsxAsValue(origin);
+  const read = (value as () => unknown)();
+  // A Cell that YIELDS a Block is the laundered form: an uncompiled caller
+  // wrapping a forwarded prop in `() => x` produces one, and it walks past the
+  // test above because the wrapper carries no brand. Stringifying it into an
+  // attribute is what the brand exists to prevent, so the same throw answers.
+  if (isBlock(read)) throw jsxAsValue(origin, true);
+  return read;
 }
 
 // ============================================================================
@@ -249,9 +248,13 @@ export interface DiagnosticEvent {
   code: string;
   severity: "error" | "warning";
   message: string;
+  docs?: string;
   nodeName?: string;
   data?: unknown;
 }
+
+const DIAGNOSTIC_DOCS =
+  "https://github.com/salamaashoush/barq/blob/main/packages/core/docs/diagnostics";
 
 let diagnosticSequence = 0;
 const diagnosticListeners = new Set<(event: DiagnosticEvent) => void>();
@@ -270,9 +273,7 @@ function removeDiagnosticListener(listener: (event: DiagnosticEvent) => void): v
 
 /**
  * The same single load `emitDiagnostic` short-circuits on, for a caller whose
- * CHECK is the expensive part rather than the message. `flow.ts`'s C7 counter
- * is the one such caller: building the argument costs a WeakMap probe per
- * activation and nobody is listening on the hot path.
+ * CHECK is the expensive part rather than the message.
  */
 export function diagnosticsEnabled(): boolean {
   return diagnosticsOn;
@@ -291,6 +292,7 @@ export function emitDiagnostic(
     code,
     severity,
     message,
+    docs: `${DIAGNOSTIC_DOCS}/${code}.md`,
     nodeName,
     data,
   };
@@ -300,11 +302,10 @@ export function emitDiagnostic(
 }
 
 /**
- * Structured dev diagnostics (Solid 2.0). Zero-cost when nothing is
- * subscribed. Codes: REACTIVE_WRITE_IN_OWNED_SCOPE,
- * ASYNC_OUTSIDE_LOADING_BOUNDARY, RUN_WITH_DISPOSED_OWNER,
- * INFINITE_LOOP, HYDRATION_SEED_DRIFT, HYDRATION_MISMATCH,
- * PRIMITIVE_IN_FORBIDDEN_SCOPE, RENDER_SUBTREE_NOT_OWNED.
+ * barq's own structured diagnostics, for what the renderer can see and the
+ * engine cannot: HYDRATION_SEED_DRIFT, HYDRATION_MISMATCH,
+ * RUN_WITH_DISPOSED_OWNER, BLOCK_EVALUATED_TWICE. Zero-cost when nothing is
+ * subscribed. The engine's own channel is `@solidjs/signals`'s `DEV`.
  */
 export const DEV = {
   diagnostics: {
@@ -328,2795 +329,242 @@ export const DEV = {
   },
 };
 
-/** Context record for owner */
-export type ContextRecord = Record<string | symbol, unknown>;
-
-/**
- * `_pending` holds no staged write. A symbol rather than `undefined`, which is
- * a value a signal may legitimately hold.
- */
-const NOT_STAGED: unique symbol = Symbol("barq.not-staged");
-
-/**
- * Base signal node. Every field is present on every instance: the engine
- * reads `_fn`/`_equals`/`_epoch` off both node kinds, so a missing slot
- * would make those loads polymorphic.
- */
-interface SignalNode<T> {
-  _value: T;
-  _subs: Link | null; // Head of subscribers linked list
-  _subsTail: Link | null; // Tail of subscribers linked list
-  _equals: false | ((a: T, b: T) => boolean);
-  _name: string | undefined;
-  _unobserved: (() => void) | undefined;
-  _epoch: number; // Last mark epoch this node propagated in (write dedupe)
-  _fn: ((prev?: T) => T) | undefined; // undefined on plain signals; discriminates the two kinds
-  _affected: number; // affects() refcount; non-zero means the value reads as pending
-  _override: PendingLayer<T>[] | null; // Pending lanes; null on every ordinary signal
-  _pending: T | typeof NOT_STAGED; // Staged write awaiting the commit at flush
-  _nextStaged: SignalNode<unknown> | null; // Intrusive list of nodes awaiting commit
-}
-
-/**
- * One lane's pending mutation of one signal. `lane` is the transaction that
- * owns it; `patch` is applied over the authoritative value at read time.
- */
-export interface PendingLayer<T> {
-  readonly lane: object;
-  patch: (prev: T) => T;
-}
-
-/** Computed node extends signal with computation state */
-interface ComputedNode<T> extends SignalNode<T> {
-  _fn: (prev?: T) => T;
-  _deps: Link | null; // Head of dependencies linked list
-  _depsTail: Link | null; // Tail of dependencies linked list
-  _flags: number;
-  _height: number; // Topological height for ordering
-  _nextHeap: ComputedNode<unknown> | undefined;
-  _prevHeap: ComputedNode<unknown>;
-  _kind: number; // EFFECT_PURE | EFFECT_RENDER | EFFECT_USER
-  _depGen: number; // Bumped when a recompute starts re-reading dependencies
-  _cleanup: (() => void) | undefined;
-  // The Scope split: two slots replace the six this node used to carry
-  // (cleanups, children, disposed, dispose, _parent, _context).
-  //
-  // The revert is these four edits and nothing else: put the six fields back
-  // in the literal below, drop `_owner`/`_scope`, make `hostScope` and
-  // `lookupNodeContext` treat the node as its own scope, and drop
-  // `currentHost` so `getCurrentOwner` is again a plain read of
-  // `currentOwner`. Every other site already goes through those three.
-  _owner: Scope | null; // the scope this node was created under
-  _scope: Scope | null; // what this node owns; allocated on first demand, usually null
-  _apply: ((value: unknown, prev: unknown) => void | (() => void)) | undefined; // Split-form effect phase
-  _error: unknown; // Stored error when STATUS_ERROR
-  _wave: number; // Last propagation epoch that visited this node
-  // Cold: only ever touched on async / SSR paths, so they stay off the base
-  // shape - paying 6 slots on every computed costs more than the rare
-  // structure transition on the few nodes that actually go async.
-  _appliedValue?: unknown; // Last value passed to _apply
-  _queuedValue?: unknown; // Value awaiting its deferred apply
-  _asyncId?: number; // Guards stale async resolutions
-  _boundary?: LoadingBoundaryHandle | null; // Boundary this pending effect registered with
-  _serializeKey?: string; // SSR: record resolved value under this key
-  _inFlight?: PromiseLike<unknown>; // Current async step (settle registry hygiene)
-  _closeAsync?: () => void; // Closes a streaming compute's iterator (A7)
-  _loadingWindow?: boolean; // Serving commit #0 until the first real answer (A8)
-  _session?: symbol | null; // Sticky async session (waterfall fetches keep attribution)
-}
-
-/** Handle that Loading boundaries provide via context */
-export interface LoadingBoundaryHandle {
-  add(node: object): void;
-  delete(node: object): void;
-}
-
-/** Context key for Loading boundaries (used by components) */
-export const LOADING_BOUNDARY: unique symbol = Symbol("loading-boundary");
-/** Context key for error boundaries; value is (err: unknown) => void */
-export const ERROR_BOUNDARY: unique symbol = Symbol("error-boundary");
-
-// ============================================================================
-// Heap Scheduler (height-ordered, effects only)
-// ============================================================================
-
-interface Heap {
-  _heap: (ComputedNode<unknown> | undefined)[];
-  _min: number; // Lowest occupied height (maintained by insert/delete)
-  _max: number; // Highest occupied height
-  _count: number;
-}
-
-/** Sentinel for "no occupied height"; any real height compares lower */
-const HEAP_EMPTY_MIN = 0x7fffffff;
-
-function createHeap(): Heap {
-  return {
-    _heap: new Array(256).fill(undefined),
-    _min: HEAP_EMPTY_MIN,
-    _max: 0,
-    _count: 0,
-  };
-}
-
-/**
- * Derived nodes a write reached DIRECTLY. A memo that owns a fetch has to
- * re-ask its question when its inputs change even if nothing reads it yet —
- * otherwise "fetch high" means "fetch when something low finally reads", which
- * is the waterfall the design exists to remove.
- *
- * Only the direct level lands here. Everything further downstream is marked
- * CHECK and pulled, so depth costs one mark per level, not one recompute.
- */
-const pureHeap = createHeap();
-const renderHeap = createHeap();
-const userHeap = createHeap();
-
-function heapFor(node: ComputedNode<unknown>): Heap {
-  return node._kind === EFFECT_PURE ? pureHeap : node._kind === EFFECT_USER ? userHeap : renderHeap;
-}
-
-/** Actually insert node into heap at its height level */
-function actualInsertIntoHeap(node: ComputedNode<unknown>, heap: Heap): void {
-  const height = node._height;
-
-  if (height >= heap._heap.length) {
-    heap._heap.length = height + 100;
-  }
-
-  const heapAtHeight = heap._heap[height];
-  if (heapAtHeight === undefined) {
-    heap._heap[height] = node;
-    node._prevHeap = node;
-    node._nextHeap = undefined;
-  } else {
-    // Add to end of circular list
-    const tail = heapAtHeight._prevHeap;
-    tail._nextHeap = node;
-    node._prevHeap = tail;
-    node._nextHeap = undefined;
-    heapAtHeight._prevHeap = node;
-  }
-
-  if (height > heap._max) heap._max = height;
-  if (height < heap._min) heap._min = height;
-  heap._count++;
-}
-
-/** Insert node into heap for recomputation */
-function insertIntoHeap(node: ComputedNode<unknown>, heap: Heap): void {
-  const flags = node._flags;
-  if (flags & (REACTIVE_IN_HEAP | REACTIVE_RECOMPUTING_DEPS)) return;
-
-  node._flags = flags | REACTIVE_IN_HEAP;
-
-  // Only insert if not already in heap for height adjustment
-  if (!(flags & REACTIVE_IN_HEAP_HEIGHT)) {
-    actualInsertIntoHeap(node, heap);
-  }
-}
-
-/** Insert node into heap for height adjustment only */
-function insertIntoHeapHeight(node: ComputedNode<unknown>, heap: Heap): void {
-  const flags = node._flags;
-  if (flags & (REACTIVE_IN_HEAP | REACTIVE_RECOMPUTING_DEPS | REACTIVE_IN_HEAP_HEIGHT)) return;
-
-  node._flags = flags | REACTIVE_IN_HEAP_HEIGHT;
-  actualInsertIntoHeap(node, heap);
-}
-
-/** Remove node from heap */
-function deleteFromHeap(node: ComputedNode<unknown>, heap: Heap): void {
-  const flags = node._flags;
-  if (!(flags & (REACTIVE_IN_HEAP | REACTIVE_IN_HEAP_HEIGHT))) return;
-
-  node._flags = flags & ~(REACTIVE_IN_HEAP | REACTIVE_IN_HEAP_HEIGHT);
-
-  const height = node._height;
-  const heapHead = heap._heap[height];
-  if (!heapHead) return;
-
-  if (node._prevHeap === node) {
-    // Only node at this height
-    heap._heap[height] = undefined;
-  } else {
-    const next = node._nextHeap;
-    const end = next ?? heapHead;
-    if (node === heapHead) {
-      heap._heap[height] = next;
-    } else {
-      node._prevHeap._nextHeap = next;
-    }
-    end._prevHeap = node._prevHeap;
-  }
-
-  node._prevHeap = node;
-  node._nextHeap = undefined;
-  heap._count--;
-}
-
-/** Adjust height of a node based on its dependencies */
-function adjustHeight(node: ComputedNode<unknown>, heap: Heap): void {
-  deleteFromHeap(node, heap);
-
-  let newHeight = node._height;
-  for (let d = node._deps; d !== null; d = d._nextDep) {
-    const dep = d._dep as ComputedNode<unknown>;
-    if (dep._fn !== undefined && dep._height >= newHeight) {
-      newHeight = dep._height + 1;
-    }
-  }
-
-  if (node._height !== newHeight) {
-    node._height = newHeight;
-    for (let s = node._subs; s !== null; s = s._nextSub) {
-      insertIntoHeapHeight(s._sub, heapFor(s._sub));
-    }
-  }
-}
-
-/**
- * Run heap - process all scheduled effects in topological (height) order.
- * Re-scans until fully drained: effects may write signals that re-insert
- * nodes at lower heights (feedback writes).
- */
-function runHeap(heap: Heap): void {
-  while (heap._count > 0) {
-    const end = heap._max;
-    for (let height = heap._min; height <= end; height++) {
-      let node = heap._heap[height];
-      while (node !== undefined) {
-        if (node._flags & REACTIVE_IN_HEAP) {
-          updateIfNecessary(node);
-          // updateIfNecessary may not recompute (deps reverted); ensure removal
-          deleteFromHeap(node, heap);
-        } else {
-          adjustHeight(node, heap);
-        }
-        node = heap._heap[height];
-      }
-    }
-  }
-  // Drained: widen the window back so stale bounds never shrink a later scan.
-  // (deleteFromHeap deliberately leaves them alone - it is inlined into the
-  // recompute/dispose paths and must stay small.)
-  heap._min = HEAP_EMPTY_MIN;
-  heap._max = 0;
-}
-
-// ============================================================================
-// Global State
-// ============================================================================
-
-let currentObserver: ComputedNode<unknown> | null = null;
-let tracking = false; // Only true during computation
-let batchDepth = 0;
-let scheduled = false;
-let latestDepth = 0; // Inside latest(): pending reads return stale values
-let probeDepth = 0; // Inside isPending()
-let probeObserver: ComputedNode<unknown> | null = null; // Observer at probe entry
-let probeSawLane = false; // A lane was seen by the probe's OWN reads
-// oxlint-disable-next-line no-unused-vars -- flush-pass counter, not read yet
-let clock = 0;
-
-const defaultContext: ContextRecord = {};
-
 // ============================================================================
 // Scope — the unit of ownership and the unit of death
 // ============================================================================
 
 /**
- * The nearest ancestor scope that catches, copied onto every scope at `enter`
- * so E1's lookup is O(1) and never walks. M2 lands the field and the copy; the
- * routing that reads it is M4's `boundary`.
+ * A scope is the engine's owner. A computation is one too, which is why
+ * `getOwner()` inside an effect answers with something that has no `dispose`:
+ * only a scope that was opened by hand can be closed by hand.
  */
-export interface Boundary {
-  handle(error: unknown, scope: Scope): void;
+export type Owner = EngineOwner;
+export type Scope = EngineOwner;
+
+interface Disposable {
+  dispose(): void;
 }
 
-/** A scope owns child scopes and child computations, in one ordered list. */
-type Kid = Scope | ComputedNode<unknown>;
-
-export interface Scope {
-  parent: Scope | null;
-  /** Prototype-chained; shared by reference until a provide forks it (X6). */
-  ctx: ContextRecord;
-  /** LIFO on disposal (O3.3); lazily allocated. */
-  cleanups: (() => void)[] | null;
-  /** Reverse creation order on disposal (O3.2); lazily allocated. */
-  kids: Kid[] | null;
-  catcher: Boundary | null;
-  /** Bumped by dispose and by every unwind; async continuations compare it. */
-  gen: number;
-  dead: boolean;
-  origin: string | undefined;
-  dispose: () => void;
-  /**
-   * O4.3's restore target. `CURRENT` as it stood on the statement before this
-   * scope's own `enter`, so `exit` puts back what was there rather than
-   * `parent` — which is a different scope whenever `pin` is involved.
-   *
-   * CURRENT is the pair (`currentOwner`, `currentHost`), not `currentOwner`
-   * alone: under Q6 a running computation whose scope is still unmaterialised
-   * has `currentOwner === null` and the owner recorded only by `currentHost`.
-   * Saving half of it made `exit` restore `null` and silently detach
-   * everything the computation created afterwards.
-   */
-  _prev: Scope | null;
-  /** The other half of O4.3's restore target; see `_prev`. */
-  _prevHost: ComputedNode<unknown> | null;
-  /** Whether `_prev`/`_prevHost` hold a live capture, so `exit` is idempotent. */
-  _open: boolean;
-  /** O3.4; allocated on the first `abortSignal()` read. */
-  _abort: AbortController | null;
-  /** O3.5; installed by whichever backend owns nodes under this scope. */
-  _range: (() => void) | null;
-  /** Whether `ctx` is this scope's own record rather than an inherited one. */
-  _forked: boolean;
-  /** `markSnapshotScope`: computations under this scope read snapshots. */
-  _snapshotScope?: boolean;
-}
-
-/** The pre-split name. `Owner` and `Scope` are the same object now. */
-export type Owner = Scope;
-
-/**
- * The ambient owner. O4.5: this is an OBSERVATION channel — user-written
- * `onCleanup()` and `Ctx.use()` find their owner through it — and never a
- * decision channel. A primitive with a `Scope` argument in scope that reads
- * this instead is the defect the redesign exists to remove.
- */
-let currentOwner: Scope | null = null;
-/**
- * The computation whose scope `currentOwner` stands for, while that scope is
- * still unallocated. Q6: a computation that owns nothing never pays for a
- * Scope, so the owner is materialised on the first thing that needs one.
- */
-let currentHost: ComputedNode<unknown> | null = null;
+export type ContextRecord = Record<string | symbol, unknown>;
 
 let scopesAllocated = 0;
 
-/**
- * O1's falsification procedure counts `Scope` ALLOCATIONS, and the ownership
- * trace counts scopes some construct *declared* through `enter`. Q6 makes
- * those different numbers: `hostScope` materialises a computation's scope
- * through no `enter`, so a backend that allocated one per component inside a
- * computation would satisfy the trace and falsify the rule. This is the other
- * count.
- */
+/** How many scopes barq has opened; the flag gate's `NO_SCOPE` row reads it. */
 export function scopeAllocations(): number {
   return scopesAllocated;
 }
 
-let effectsAllocated = 0;
+// A scope barq opens is transparent to the engine's numbering: the ids the
+// engine hands out depend on the computations alone and not on how many ranges
+// the renderer happened to open around them.
+const TRANSPARENT = { transparent: true } as const;
+const openTransparent = (): Scope => createOwner(TRANSPARENT);
 
 /**
- * The other half of the flag gate: `STATIC_KEY` skips an effect and no scope,
- * so `scopeAllocations` cannot see it and only a wall-clock number was left.
+ * A place in the tree of scopes, and the count of what has been declared
+ * directly under it.
+ *
+ * This is what an async value's key is made of, and it is deliberately not the
+ * engine's id. The engine numbers every computation, and the two halves of a
+ * render do not have the same computations: the DOM backend opens an effect per
+ * binding, a memo per branch key and the engine's own owners inside every
+ * boundary and list, and the string backend opens none of them. What both
+ * halves do have is the scopes the flow primitives open and the values the
+ * application declares, in the same order, so those are what is counted.
  */
-export function effectAllocations(): number {
-  return effectsAllocated;
+interface Numbering {
+  readonly id: string;
+  /**
+   * One count per kind of thing declared here. Shared, a memo that only the
+   * client declares, behind an `isServer` test in a library, moved the position
+   * of every branch and every id after it, and with them everything declared
+   * inside those branches.
+   */
+  scopes: number;
+  values: number;
+  ids: number;
 }
 
-function makeScope(parent: Scope | null): Scope {
-  scopesAllocated++;
-  return {
-    parent,
-    ctx: parent !== null ? parent.ctx : defaultContext,
-    cleanups: null,
-    kids: null,
-    catcher: parent !== null ? parent.catcher : null,
-    gen: 0,
-    dead: false,
-    origin: undefined,
-    dispose: null as unknown as () => void,
-    _prev: null,
-    _prevHost: null,
-    _open: false,
-    _abort: null,
-    _range: null,
-    _forked: false,
-  };
-}
+const NUMBERING = engineCreateContext<Numbering | null>(null);
 
-/** The scope a computation owns its children through, allocated on demand. */
-function hostScope(node: ComputedNode<unknown>): Scope {
-  let scope = node._scope;
-  if (scope === null) {
-    scope = makeScope(node._owner);
-    scope.dispose = () => disposeNode(node);
-    node._scope = scope;
-  }
-  return scope;
-}
-
-function getCurrentOwner(): Scope | null {
-  if (currentOwner === null && currentHost !== null) currentOwner = hostScope(currentHost);
-  return currentOwner;
+function numberingAt(id: string): Numbering {
+  return { id, scopes: 0, values: 0, ids: 0 };
 }
 
 /**
- * Get the current owner context.
- * Useful for capturing owner to restore later in async callbacks.
+ * The position `count` stands for under `numbering`. A count past one digit is
+ * prefixed with its length, so no position is a prefix of a sibling's.
  */
-export function getOwner(): Owner | null {
-  return getCurrentOwner();
+function positionUnder(numbering: Numbering, count: number): string {
+  const digits = count.toString(36);
+  const extra = digits.length - 1;
+  return numbering.id + (extra === 0 ? "" : String.fromCharCode(64 + extra)) + digits;
 }
 
+let unownedIds = 0;
+
 /**
- * Run a function with a specific owner context.
- * Errors propagate to the caller; the previous owner is always restored.
+ * An identifier for an element, the same on the server and on the client that
+ * hydrates it.
+ *
+ * It is the declaration's position among the scopes of its render, which is
+ * what an async value is keyed by and for the same reason: the engine's own
+ * ids count effects and owners only one backend has. Outside any render there
+ * is no other side to agree with, and a counter is enough.
  */
-export function runWithOwner<T>(owner: Owner | null, fn: () => T): T {
-  if (owner?.dead) {
-    emitDiagnostic(
-      "RUN_WITH_DISPOSED_OWNER",
-      "warning",
-      "runWithOwner called with a disposed owner; computations created inside will never be cleaned up by it.",
-    );
-  }
-  const prevOwner = currentOwner;
-  const prevHost = currentHost;
-  currentOwner = owner;
-  currentHost = null;
-  try {
-    return fn();
-  } finally {
-    currentOwner = prevOwner;
-    currentHost = prevHost;
-  }
+export function createUniqueId(): string {
+  const owner = getOwner();
+  const numbering = owner === null ? null : engineGetContext(NUMBERING, owner);
+  return numbering === null
+    ? `barq-u${(unownedIds++).toString(36)}`
+    : `barq-${positionUnder(numbering, numbering.ids++)}`;
 }
 
 /**
- * Open a fresh child of `parent`, make it current, and hand it back.
- * `exit` is the other half and is required on both paths (O4.1).
+ * Open a fresh child of `parent`. It is NOT made current: run a body under it
+ * with `runWithOwner`.
  *
  * `parent` has no default, deliberately. O4.5: a primitive that reads the
- * ambient owner where a `Scope` argument is in scope is the defect shape this
- * redesign removes, and a defaulted parameter is that read with a nicer name.
+ * ambient owner where a `Scope` argument is in scope is the defect shape the
+ * scope spine exists to remove, and a defaulted parameter is that read with a
+ * nicer name.
+ *
+ * While async values are being followed a BRANCH takes the next position under
+ * `parent` and counts what is declared under it from zero. Only a branch does,
+ * because a branch is the one scope both backends are made to open alike: the
+ * compiler emits the same region to each. A provider's scope is opened wherever
+ * the code that provides happens to stand, which a router's server and client
+ * halves do not agree on, and a list row is an owner the engine opens on the
+ * DOM backend and no scope of barq's at all. What either declares is counted
+ * where it stands.
+ *
+ * `counted` is for a body that is built more than once. The first build passes
+ * `{ id: undefined }` and gets the position written into it; every later build
+ * passes the same record, so the scope stands at the same position, its count
+ * starts from zero again, and each declaration gets the key the first build
+ * gave it. Without it a rebuild would stand at a new position and find nothing
+ * recorded under any of its keys.
  */
-export function enter(parent: Scope | null, kind: ScopeKind = "scope"): Scope {
-  if (parent !== null && parent.dead) {
-    emitDiagnostic(
-      "RUN_WITH_DISPOSED_OWNER",
-      "warning",
-      "enter() was called on a disposed scope; the child and everything created under it will never be cleaned up by it.",
-    );
+export function childScope(
+  parent: Scope | null,
+  kind: ScopeKind = "scope",
+  counted?: { id: string | undefined },
+): Scope {
+  scopesAllocated++;
+  const scope = runWithOwner(parent, openTransparent);
+  const outer =
+    parent !== null && kind === "branch" && seeding() ? engineGetContext(NUMBERING, parent) : null;
+  if (outer !== null) {
+    const id = counted?.id ?? positionUnder(outer, outer.scopes++);
+    if (counted !== undefined) counted.id = id;
+    engineSetContext(NUMBERING, numberingAt(id), scope);
   }
-  const scope = makeScope(parent);
-  scope.dispose = () => disposeScope(scope);
-  if (parent !== null) (parent.kids ??= []).push(scope);
-  scope._prev = currentOwner;
-  scope._prevHost = currentHost;
-  scope._open = true;
-  currentOwner = scope;
-  currentHost = null;
-  if (OWNERSHIP.sink !== null) OWNERSHIP.sink.enter(scope, parent, kind, parent !== null);
-  return scope;
-}
-
-/** The scope a construct was handed, or a throw naming where it was missing. */
-export function requireScope(scope: Scope | null | undefined, origin: string): Scope | null {
-  if (scope === undefined) throw new ScopeMissingError(origin);
+  if (OWNERSHIP.sink !== null) traceScope(scope, parent, kind, parent !== null);
   return scope;
 }
 
 /**
- * A CELL-slot read. A Cell is called with no scope and yields its value; a
- * Block reaching here would be called with `s === undefined`, which throws
- * rather than silently building under `CURRENT` or
- * silently yielding `undefined`. The brand makes it a property test, so the
- * throw names both ends instead of waiting for a downstream `TypeError`.
+ * Declare a scope to the ownership trace. `childScope` and `rootScope` do it
+ * for what they open; a scope the ENGINE opened, a list row, is declared by
+ * whoever builds under it. Call only while a trace is installed.
  */
-export function readSlot(value: unknown, origin: string): unknown {
-  if (typeof value !== "function") return value;
-  if (isBlock(value)) throw new ScopeMissingError(`${origin} (a Block reached a Cell slot)`);
-  const read = (value as () => unknown)();
-  // A Cell that YIELDS a Block is the laundered form: an uncompiled caller
-  // wrapping a forwarded prop in `() => x` produces one, and it walks past the
-  // test above because the wrapper carries no brand. Stringifying it into an
-  // attribute is what the brand exists to prevent, so the same throw answers.
-  if (isBlock(read)) throw new ScopeMissingError(`${origin} (a Cell yielded a Block)`);
-  return read;
+export function traceScope(
+  scope: Scope,
+  parent: Scope | null,
+  kind: ScopeKind,
+  attached: boolean,
+): void {
+  const sink = OWNERSHIP.sink!;
+  sink.enter(scope, parent, kind, attached);
+  // The engine runs a scope's cleanups after it has disposed what the scope
+  // owns, so a scope reached by a cascade reports here, on its way out.
+  runWithOwner(scope, () => onCleanup(() => reportDisposal(scope)));
+}
+
+/** Scopes whose disposal the trace has been told about, while one is open. */
+const disposalsReported = new WeakSet<Scope>();
+
+function reportDisposal(scope: Scope): void {
+  const sink = OWNERSHIP.sink;
+  if (sink === null || disposalsReported.has(scope)) return;
+  disposalsReported.add(scope);
+  sink.dispose(scope);
 }
 
 /**
- * O2/O4.5: run `fn` with the scope a construct was GIVEN as `CURRENT`, so every
- * ambient read below it resolves to that argument rather than to whatever
- * happened to be current at the call site. Handing a construct scope A while B
- * is ambient must put its subtree under A; without this the argument is
- * decoration and `pin` has nothing to override.
+ * The scope a construct was GIVEN, made current for `fn`, so every ambient read
+ * below it resolves to that argument rather than to whatever happened to be
+ * current at the call site (O2/O4.5).
  */
 export function underScope<T>(
   scope: Scope | null | undefined,
   origin: string,
   fn: (scope: Scope | null) => T,
 ): T {
-  const given = requireScope(scope, origin);
-  const prevOwner = currentOwner;
-  const prevHost = currentHost;
-  currentOwner = given;
-  currentHost = null;
-  try {
-    return fn(given);
-  } finally {
-    currentOwner = prevOwner;
-    currentHost = prevHost;
-  }
+  if (scope === undefined) throw new ScopeMissingError(origin);
+  return runWithOwner(scope, () => fn(scope));
 }
 
-/** Restore `CURRENT` to what it was before `scope`'s `enter` (O4.1, O4.3). */
-export function exit(scope: Scope): void {
-  if (!scope._open) return;
-  scope._open = false;
-  currentOwner = scope._prev;
-  currentHost = scope._prevHost;
-  scope._prev = null;
-  scope._prevHost = null;
-  if (OWNERSHIP.sink !== null) OWNERSHIP.sink.exit(scope);
-}
-
-/**
- * O3.2: kids in reverse creation order, depth-first.
- *
- * The array is detached from the scope BEFORE the walk, which is what tells a
- * child disposing inside it not to splice itself out of a list that is being
- * discarded whole. A module-global depth counter said the same thing for the
- * wrong scope: any disposal happening anywhere while some unrelated tree was
- * unwinding skipped its splice too, and a long-lived parent kept every dead
- * child forever — the leak the guard exists to prevent, at one remove.
- */
-function unwindKids(scope: Scope): void {
-  const kids = scope.kids;
-  if (kids === null) return;
-  scope.kids = null;
-  unwindKidsInner(kids);
-  kids.length = 0;
-}
-
-function unwindKidsInner(kids: Kid[]): void {
-  for (let i = kids.length - 1; i >= 0; i--) {
-    const kid = kids[i];
-    // `kids` is `null` on a scope that has none and absent on a computation,
-    // so one load discriminates the two without a tag field on either.
-    if ((kid as Scope).kids !== undefined) {
-      disposeScope(kid as Scope);
-    } else {
-      disposeNode(kid as ComputedNode<unknown>);
-    }
-  }
-}
-
-/** O3.3: cleanups LIFO, after every kid is gone. */
-function unwindCleanups(scope: Scope): void {
-  const cleanups = scope.cleanups;
-  if (cleanups === null) return;
-  for (let i = cleanups.length - 1; i >= 0; i--) {
-    runUntracked(cleanups[i], scope.catcher, scope);
-  }
-  cleanups.length = 0;
-}
-
-/**
- * O3: total and ordered, and idempotent. Mark dead and bump `gen` first, so a
- * cleanup that schedules work observes a dead scope; then kids, then cleanups,
- * then the abort signal, then the range.
- */
+/** O3: total, ordered and idempotent — kids first, then cleanups in reverse. */
 export function disposeScope(scope: Scope): void {
-  if (scope.dead) return;
-  scope.dead = true;
-  scope.gen++;
-  if (OWNERSHIP.sink !== null) OWNERSHIP.sink.dispose(scope);
-  // O3.7 for the PARENT: a scope disposed on its own leaves its slot behind
-  // otherwise, so repeatedly creating and disposing children of a long-lived
-  // scope retains every dead one. `unwindKids` detaches the array it is
-  // walking, so a child disposed by its own parent's unwind finds `null` here
-  // and a child disposed during someone ELSE's unwind still reclaims its slot.
-  const parent = scope.parent;
-  if (parent !== null && parent.kids !== null) {
-    const at = parent.kids.indexOf(scope);
-    if (at !== -1) parent.kids.splice(at, 1);
-  }
-  unwindKids(scope);
-  unwindCleanups(scope);
-  const abort = scope._abort;
-  if (abort !== null) {
-    scope._abort = null;
-    abort.abort();
-  }
-  const range = scope._range;
-  if (range !== null) {
-    scope._range = null;
-    range();
-  }
+  // Said BEFORE the cascade, so the trace sees a scope disposed by hand begin
+  // to unwind ahead of the kids that unwinding takes with it.
+  if (OWNERSHIP.sink !== null) reportDisposal(scope);
+  (scope as unknown as Disposable).dispose();
 }
+
+const aborts = new WeakMap<Scope, AbortController>();
 
 /**
  * O3.4: an `AbortSignal` that fires when the scope dies, so native listeners
  * and in-flight fetches are killed by the same act that kills the scope.
  */
 export function abortSignal(scope: Scope): AbortSignal {
-  const controller = (scope._abort ??= new AbortController());
+  let controller = aborts.get(scope);
+  if (controller === undefined) {
+    controller = new AbortController();
+    aborts.set(scope, controller);
+    const live = controller;
+    if (isDisposed(scope)) live.abort();
+    else runWithOwner(scope, () => onCleanup(() => live.abort()));
+  }
   return controller.signal;
 }
 
-/** O3.5: the range removal this scope owns; disposal runs it last. */
+/**
+ * O3.5: the range removal this scope owns.
+ *
+ * Cleanups run last-registered-first, so a caller that wants the range to
+ * outlive the body's own cleanups registers it BEFORE running the body.
+ */
 export function ownRange(scope: Scope, remove: () => void): void {
-  scope._range = remove;
-}
-
-/**
- * Share the parent record by reference until the first provide, then
- * `Object.create` once. A scope that provides nothing costs nothing, and a
- * provider costs one prototype link regardless of how many keys are in scope.
- */
-export function provideOn(scope: Scope, key: string | symbol, value: unknown): void {
-  // X2 makes a provided value a Cell, so a Block here is C5.1's Block-in-a-Cell
-  // slot. It is rejected at the INSTALL rather than at the read: a binding
-  // nobody reads until three components later reports the mistake three
-  // components away from the site that made it.
-  if (isBlock(value)) throw new ScopeMissingError("provide (a Block reached a Cell slot)");
-  if (!scope._forked) {
-    scope.ctx = Object.create(scope.ctx) as ContextRecord;
-    scope._forked = true;
-  }
-  scope.ctx[key] = value;
-}
-
-/** Returned by `lookupContext` for a key no scope on the chain binds. */
-export const CONTEXT_MISS: unique symbol = Symbol("context-miss");
-
-/**
- * X3: resolution is a walk of the scope chain, performed when the read
- * happens. Only a scope's OWN record counts, so a provider installed above a
- * consumer that already exists is still found — which is the whole point of
- * X3 and the reason `ErrorBoundary`'s build-then-install ordering is harmless.
- * Resolving through `ctx`'s prototype chain instead captures the record at
- * scope-creation time, which X3 forbids in as many words.
- */
-export function lookupContext(scope: Scope | null, key: string | symbol): unknown {
-  for (let at = scope; at !== null; at = at.parent) {
-    if (at._forked && Object.hasOwn(at.ctx, key)) return at.ctx[key];
-  }
-  return CONTEXT_MISS;
-}
-
-/** The same walk from a computation, which may not have materialised a scope. */
-function lookupNodeContext(node: ComputedNode<unknown>, key: string | symbol): unknown {
-  return lookupContext(node._scope !== null ? node._scope : node._owner, key);
-}
-
-/**
- * Effects and cleanups created while `CURRENT` was null, in creation order.
- *
- * O5 says `render(block, container)` opens the root scope and invokes the
- * block under it, and once M3's calling convention lands that is the whole
- * story. Until it does, the compiler emits `render(Tree({}), host)` — the
- * subtree is an ARGUMENT, so it is built before `render` is entered and there
- * is no owner in existence at the moment its effects are created. Dropping
- * them on the floor is what makes every barq mount leak its reactive graph.
- *
- * So they are held here instead, and the next root scope claims them. Pure
- * computeds are not collected: nothing schedules them, and disposing the
- * effects that read them unlinks them anyway, so a list would only retain
- * garbage.
- *
- * **The window is one turn.** A mount claims what the same synchronous turn
- * built, and `flushSync` drops whatever is still unclaimed when the turn's work
- * settles. Holding them for the lifetime of the process instead made every
- * ownerless effect immortal — 217 bytes retained per effect, measured, and a
- * 14–30% slowdown on the DOM rows — and let an unrelated later `render` adopt
- * and destroy work it had nothing to do with.
- *
- * **This list dies once every consumer is compiled.** The COMPILED path builds
- * under the root, but an un-compiled consumer still builds ownerless and its
- * `onCleanup` has nowhere else to go. Once they all go through the barq
- * compiler, `adoptOrphans` has nothing to find and the three functions below go
- * with it.
- */
-const orphans: Kid[] = [];
-
-/** Move everything built with no owner onto `scope`, oldest first. */
-function adoptOrphans(scope: Scope): void {
-  if (orphans.length === 0) return;
-  const kids = (scope.kids ??= []);
-  for (let i = 0; i < orphans.length; i++) {
-    const kid = orphans[i];
-    if ((kid as Scope).kids !== undefined) {
-      (kid as Scope).parent = scope;
-    } else {
-      (kid as ComputedNode<unknown>)._owner = scope;
-      const own = (kid as ComputedNode<unknown>)._scope;
-      if (own !== null) own.parent = scope;
-    }
-    kids.push(kid);
-  }
-  release(orphans);
-}
-
-/** Cleanups registered with no owner; adopted by the same root scope. */
-const orphanCleanups: (() => void)[] = [];
-
-function adoptOrphanCleanups(scope: Scope): void {
-  if (orphanCleanups.length === 0) return;
-  const cleanups = (scope.cleanups ??= []);
-  for (let i = 0; i < orphanCleanups.length; i++) cleanups.push(orphanCleanups[i]);
-  release(orphanCleanups);
-}
-
-/**
- * `list.length = 0` publishes a shorter length and leaves the old values in
- * the backing vector, where they go on holding everything they reference. On a
- * module-level list that is a permanent leak — 253 bytes per ownerless effect,
- * measured, with the list reading as empty the whole time — so the slots are
- * released before the length is.
- */
-function release(list: unknown[]): void {
-  for (let i = 0; i < list.length; i++) list[i] = undefined;
-  list.length = 0;
-}
-
-/** Close the claim window: unclaimed at flush time is unclaimed for good. */
-function dropOrphans(): void {
-  if (orphans.length !== 0) release(orphans);
-  if (orphanCleanups.length !== 0) release(orphanCleanups);
-}
-
-/**
- * O5: open the root scope a mount is owned by. It is a catcher by
- * construction, so E1's "the nearest catching scope always exists" is true
- * without a walk.
- *
- * `claimOrphans` is the ALREADY-BUILT form's bridge and nothing else. The
- * orphan list bounds the claim in TIME, not by PROVENANCE: a module that
- * initialises library state and mounts in the same synchronous turn puts that
- * library's ownerless effects on the same list, and a root that claims it
- * adopts — and later destroys — work it had nothing to do with. That trade is
- * only worth making when the argument was built before `render` was entered
- * and there is no other owner for it. When `render` is handed a Block the
- * subtree builds UNDER this scope, so there is nothing to claim and claiming
- * anyway is pure relocation.
- */
-export function enterRoot(claimOrphans = true): Scope {
-  const scope = makeScope(null);
-  scope.dispose = () => disposeScope(scope);
-  scope.catcher = { handle: rootCatch };
-  scope._prev = currentOwner;
-  scope._prevHost = currentHost;
-  scope._open = true;
-  currentOwner = scope;
-  currentHost = null;
-  if (OWNERSHIP.sink !== null) OWNERSHIP.sink.enter(scope, null, "root", false);
-  if (claimOrphans) {
-    adoptOrphans(scope);
-    adoptOrphanCleanups(scope);
-  }
-  return scope;
-}
-
-function rootCatch(error: unknown): void {
-  throw error;
-}
-
-// ============================================================================
-// Link Management (Dependency Graph)
-// ============================================================================
-
-function link(dep: SignalNode<unknown> | ComputedNode<unknown>, sub: ComputedNode<unknown>): void {
-  const prevDep = sub._depsTail;
-
-  // Quick check: if last dep is same, skip
-  if (prevDep !== null && prevDep._dep === dep) return;
-
-  let nextDep: Link | null = null;
-  const isRecomputing = sub._flags & REACTIVE_RECOMPUTING_DEPS;
-
-  if (isRecomputing) {
-    // During recompute, try to reuse existing links
-    nextDep = prevDep !== null ? prevDep._nextDep : sub._deps;
-    if (nextDep !== null && nextDep._dep === dep) {
-      nextDep._lastValue = stagedValue(dep);
-      nextDep._gen = sub._depGen;
-      sub._depsTail = nextDep;
-      return;
-    }
-  }
-
-  // Already subscribed, and the link was validated earlier in THIS pass, so
-  // it sits in the [_deps.._depsTail] prefix and needs no re-linking. A link
-  // left over from a previous pass does not qualify: the read order changed,
-  // and reusing it here would leave it beyond _depsTail, where the stale-dep
-  // trim at the end of recompute unsubscribes a dependency that was read.
-  const prevSub = dep._subsTail;
-  if (
-    prevSub !== null &&
-    prevSub._sub === sub &&
-    (!isRecomputing || prevSub._gen === sub._depGen)
-  ) {
-    return;
-  }
-
-  // Create new link. Topology changed: write-propagation dedupe must reset
-  // so the new subscriber sees the next write.
-  markEpoch++;
-  const newLink: Link = {
-    _dep: dep,
-    _sub: sub,
-    _nextDep: nextDep,
-    _prevSub: prevSub,
-    _nextSub: null,
-    _lastValue: stagedValue(dep),
-    _gen: sub._depGen,
-  };
-
-  // Add to subscriber's deps list
-  sub._depsTail = newLink;
-  if (prevDep !== null) {
-    prevDep._nextDep = newLink;
-  } else {
-    sub._deps = newLink;
-  }
-
-  // Add to dependency's subs list
-  dep._subsTail = newLink;
-  if (prevSub !== null) {
-    prevSub._nextSub = newLink;
-  } else {
-    dep._subs = newLink;
-  }
-}
-
-function unlinkSubs(linkNode: Link): Link | null {
-  const dep = linkNode._dep;
-  const nextDep = linkNode._nextDep;
-  const nextSub = linkNode._nextSub;
-  const prevSub = linkNode._prevSub;
-
-  if (nextSub !== null) {
-    nextSub._prevSub = prevSub;
-  } else {
-    dep._subsTail = prevSub;
-  }
-
-  if (prevSub !== null) {
-    prevSub._nextSub = nextSub;
-  } else {
-    dep._subs = nextSub;
-  }
-
-  if (dep._subs === null && dep._unobserved) {
-    dep._unobserved();
-  }
-
-  return nextDep;
-}
-
-function cleanupDeps(sub: ComputedNode<unknown>): void {
-  let dep = sub._deps;
-  while (dep !== null) {
-    dep = unlinkSubs(dep);
-  }
-  sub._deps = null;
-  sub._depsTail = null;
-}
-
-// ============================================================================
-// Invalidation (push phase)
-// ============================================================================
-
-/**
- * Bumped whenever any invalidation mark is consumed (recompute, validation,
- * self-mark drop) or the topology changes. While the epoch is unchanged,
- * marks already placed are still standing, so neither a signal that already
- * propagated nor a pure node already visited needs to be walked again.
- * Doubles as the propagation wave id.
- */
-let markEpoch = 1;
-let markWave = 0;
-let waveEpoch = 0;
-
-/**
- * Mark a node CHECK or DIRTY. Effects are inserted into their heap;
- * pure computeds propagate CHECK to their subscribers (lazy pull).
- *
- * Epoch stamps make a propagation re-traverse pure nodes that are still
- * marked from an earlier epoch (a downstream effect may have dropped its
- * self-mark since), while deduplicating within one epoch - diamonds visit
- * each node once, and so do repeated writes that consumed no marks.
- */
-function markNode(node: ComputedNode<unknown>, newState: number): void {
-  const flags = node._flags;
-  if (flags & REACTIVE_DISPOSED) return;
-
-  const current = flags & (REACTIVE_CHECK | REACTIVE_DIRTY);
-
-  // Effects have no subscribers: no wave bookkeeping, just flag + enqueue
-  if (node._kind !== EFFECT_PURE) {
-    if (current < newState) {
-      node._flags = (flags & ~(REACTIVE_CHECK | REACTIVE_DIRTY)) | newState;
-    } else if (flags & (REACTIVE_IN_HEAP | REACTIVE_RECOMPUTING_DEPS)) {
-      return; // already queued (or running) at equal-or-higher priority
-    }
-    insertIntoHeap(node, heapFor(node));
-    schedule();
-    return;
-  }
-
-  if (node._wave === markWave) {
-    // Already visited this epoch: only handle a CHECK -> DIRTY upgrade.
-    // Subscribers are already CHECK from that visit, which is enough.
-    if (current < newState) {
-      node._flags = (flags & ~(REACTIVE_CHECK | REACTIVE_DIRTY)) | newState;
-    }
-    return;
-  }
-
-  node._wave = markWave;
-  if (current < newState) {
-    node._flags = (flags & ~(REACTIVE_CHECK | REACTIVE_DIRTY)) | newState;
-  }
-
-  for (let l = node._subs; l !== null; l = l._nextSub) {
-    markNode(l._sub, REACTIVE_CHECK);
-  }
-}
-
-/**
- * Open a propagation wave. A wave is a traversal id, not a call id: while the
- * epoch is unchanged no mark has been consumed anywhere, so every node the
- * current wave already visited still carries the mark it was given and still
- * has its own subscribers marked. Re-opening the wave under those conditions
- * would only re-walk ground that is still standing, which is what made a
- * four-write batch cost four full traversals instead of one.
- */
-function openWave(): void {
-  if (waveEpoch !== markEpoch) {
-    markWave++;
-    waveEpoch = markEpoch;
-  }
-}
-
-/**
- * Notify subscribers of a changed node.
- * `state` is DIRTY for unconditional recompute (equals: false sources,
- * errors, async transitions), CHECK otherwise (value comparison gates).
- */
-function propagate(node: SignalNode<unknown>, state: number): void {
-  openWave();
-  // A source with a snapshot is not moving as far as a held reader is
-  // concerned, so the write does not reach it. The mark it would have carried
-  // becomes the stale bit `releaseSnapshotScope` re-runs it on.
-  const held = slowSignalRead !== 0 && snapshots.has(node);
-  for (let l = node._subs; l !== null; l = l._nextSub) {
-    const sub = l._sub;
-    if (held && sub._flags & REACTIVE_IN_SNAPSHOT) {
-      sub._flags |= REACTIVE_SNAPSHOT_STALE;
-      continue;
-    }
-    markNode(sub, state);
-    if (sub._kind === EFFECT_PURE) scheduleDirect(sub);
-  }
-}
-
-/** Queue a directly-reached derived node for this flush. */
-function scheduleDirect(sub: ComputedNode<unknown>): void {
-  if (sub._flags & REACTIVE_DISPOSED) return;
-  insertIntoHeap(sub, pureHeap);
-  schedule();
-}
-
-/**
- * Re-mark subscribers of a pure computed that just recomputed, WITHOUT
- * re-walking the closure below them.
- *
- * The invariant that makes this sound: `markNode` never marks a pure node
- * without also marking that node's subscribers, so a pure node that is
- * currently marked has its whole descendant closure marked at CHECK or above.
- * A recompute is always reached through such a mark, so by the time a value
- * changes here, everything downstream was already told to revalidate by the
- * write that started the pull. Walking it again is pure re-traversal - and it
- * is what made propagation quadratic in graph depth (F1): with 800 layers the
- * sweep spent 54M `markNode` calls to place marks that were already there.
- *
- * What the direct level still needs is the CHECK -> DIRTY upgrade, because
- * DIRTY is the only mark that survives an `equals` comparison against an
- * unchanged snapshot. One level below that, CHECK is sufficient: any change
- * must pass through a direct subscriber to reach them.
- *
- * A subscriber that is CLEAN is the one case the invariant says nothing about,
- * so it gets the full walk. It is reachable when a link outlived the mark that
- * created it - and being unreachable in the common case is exactly why it must
- * not be assumed away.
- */
-function repropagate(node: ComputedNode<unknown>, state: number): void {
-  for (let l = node._subs; l !== null; l = l._nextSub) {
-    const sub = l._sub;
-    const flags = sub._flags;
-    if (flags & REACTIVE_DISPOSED) continue;
-
-    const current = flags & (REACTIVE_CHECK | REACTIVE_DIRTY);
-
-    if (sub._kind !== EFFECT_PURE) {
-      if (current < state) {
-        sub._flags = (flags & ~(REACTIVE_CHECK | REACTIVE_DIRTY)) | state;
-      } else if (flags & (REACTIVE_IN_HEAP | REACTIVE_RECOMPUTING_DEPS)) {
-        continue;
-      }
-      insertIntoHeap(sub, heapFor(sub));
-      schedule();
-      continue;
-    }
-
-    if (current === 0) {
-      openWave();
-      markNode(sub, state);
-    } else if (current < state) {
-      sub._flags = (flags & ~(REACTIVE_CHECK | REACTIVE_DIRTY)) | state;
-    }
-    scheduleDirect(sub);
-  }
-}
-
-// ============================================================================
-// Validation / recompute (pull phase)
-// ============================================================================
-
-function depEquals(dep: SignalNode<unknown>, a: unknown, b: unknown): boolean {
-  const eq = dep._equals;
-  if (eq === false || eq === defaultEquals) {
-    return a === b || (a !== a && b !== b);
-  }
-  return eq(a, b);
-}
-
-/**
- * Resolve CHECK/DIRTY state. CHECK walks deps in read order: computed deps
- * are validated recursively, then each dep's current value is compared with
- * the snapshot taken at link time. Only an actual change recomputes.
- */
-function updateIfNecessary(node: ComputedNode<unknown>): void {
-  const flags = node._flags;
-  if (flags & REACTIVE_DISPOSED) return;
-  if (!(flags & (REACTIVE_CHECK | REACTIVE_DIRTY))) return;
-
-  if (flags & REACTIVE_DIRTY) {
-    recompute(node);
-    return;
-  }
-
-  for (let d = node._deps; d !== null; d = d._nextDep) {
-    const dep = d._dep;
-    if (dep._fn !== undefined) {
-      updateIfNecessary(dep as ComputedNode<unknown>);
-      // A recomputed dep may have marked this node DIRTY (e.g. equals: false)
-      if (node._flags & REACTIVE_DIRTY) {
-        recompute(node);
-        return;
-      }
-      // Pending/errored deps force recompute so status propagates
-      if ((dep as ComputedNode<unknown>)._flags & (STATUS_PENDING | STATUS_ERROR)) {
-        recompute(node);
-        return;
-      }
-    }
-    if (!depEquals(dep, d._lastValue, stagedValue(dep))) {
-      recompute(node);
-      return;
-    }
-  }
-
-  node._flags &= ~REACTIVE_CHECK;
-  markEpoch++; // a mark was consumed without recompute
-}
-
-/** Run disposal-phase callbacks untracked so reads don't leak into parents */
-/**
- * O3.6: a cleanup that throws routes to the scope's catcher and MUST NOT abort
- * the remaining cleanups. `catcher` is copied at `enter`, so reaching it is a
- * field read rather than a walk — and it is the reader that field was missing:
- * it was written by `makeScope` and `enterRoot` and consulted by nothing, which
- * made E1 look covered by a cost with no behaviour attached.
- *
- * A catcher that rethrows (the root's) still may not abort the unwind, so the
- * rethrow is caught here and reported. What routing buys is that a boundary
- * ABOVE the dying scope sees the error at all.
- */
-function runUntracked(fn: () => void, catcher: Boundary | null = null, scope?: Scope): void {
-  const prevTracking = tracking;
-  const prevObserver = currentObserver;
-  tracking = false;
-  currentObserver = null;
-  try {
-    fn();
-  } catch (err) {
-    if (catcher !== null) {
-      try {
-        catcher.handle(err, scope as Scope);
-        return;
-      } catch {
-        // The root's catcher rethrows. O3.6's second half says the remaining
-        // cleanups still run, so it lands in the report below rather than out.
-      }
-    }
-    console.error("Error in cleanup:", err);
-  } finally {
-    tracking = prevTracking;
-    currentObserver = prevObserver;
-  }
-}
-
-/** Effect cleanup before re-run/dispose: children first, then own cleanups */
-function runEffectCleanups(node: ComputedNode<unknown>): void {
-  const scope = node._scope;
-  if (scope !== null) {
-    scope.gen++;
-    unwindKids(scope);
-  }
-
-  if (node._cleanup) {
-    const cleanup = node._cleanup;
-    node._cleanup = undefined;
-    runUntracked(cleanup);
-  }
-
-  if (scope !== null) unwindCleanups(scope);
-}
-
-/** When set, a pending read with no Loading boundary above it is an error */
-let loadingBoundaryRequired = false;
-
-/**
- * Make a pending async read with no enclosing Loading boundary throw instead
- * of warning. Off by default.
- */
-export function enforceLoadingBoundary(enabled: boolean): void {
-  loadingBoundaryRequired = enabled;
-}
-
-/** Latched when an error escaped every boundary during a flush */
-let escapedError = false;
-
-/**
- * Clear the latched "an error escaped every boundary" state. barq rethrows
- * such errors rather than halting the graph, so this only drops the latch.
- */
-export function resetErrorHalt(): void {
-  escapedError = false;
-}
-
-/** Whether an error has escaped every boundary since the last reset */
-export function hasEscapedError(): boolean {
-  return escapedError;
-}
-
-function registerWithBoundary(node: ComputedNode<unknown>): void {
-  const found = lookupNodeContext(node, LOADING_BOUNDARY);
-  const handle = (found === CONTEXT_MISS ? undefined : found) as LoadingBoundaryHandle | undefined;
-  if (handle) {
-    node._boundary = handle;
-    handle.add(node);
-    return;
-  }
-  const message =
-    "An effect read a pending async value with no Loading boundary above it; it will retry when the value resolves but nothing renders a fallback.";
-  emitDiagnostic("ASYNC_OUTSIDE_LOADING_BOUNDARY", "warning", message, node._name);
-  if (loadingBoundaryRequired) {
-    throw new Error(`[ASYNC_OUTSIDE_LOADING_BOUNDARY] ${message}`);
-  }
-}
-
-function unregisterFromBoundary(node: ComputedNode<unknown>): void {
-  if (node._boundary) {
-    node._boundary.delete(node);
-    node._boundary = null;
-  }
-}
-
-let flushError: { error: unknown } | null = null;
-
-/**
- * Route an effect error to the nearest error boundary, else rethrow.
- * During a flush the rethrow is deferred to the end of the flush so the
- * remaining queued effects still run (a failed effect must not strand
- * unrelated work in the queue).
- */
-function handleEffectError(node: ComputedNode<unknown>, error: unknown): void {
-  const routed = lookupNodeContext(node, ERROR_BOUNDARY);
-  const handler = (routed === CONTEXT_MISS ? undefined : routed) as
-    | ((err: unknown) => void)
-    | undefined;
-  if (handler) {
-    handler(error);
-    return;
-  }
-  escapedError = true;
-  if (isFlushing) {
-    if (!flushError) flushError = { error };
-    return;
-  }
-  throw error;
-}
-
-function recompute(node: ComputedNode<unknown>, create = false): void {
-  if (node._flags & REACTIVE_DISPOSED) return;
-
-  markEpoch++; // marks are being consumed: future writes must re-propagate
-
-  const isEffect = node._kind !== EFFECT_PURE;
-  deleteFromHeap(node, heapFor(node));
-
-  // Dispose inner computations / run cleanups from the previous run
-  const owned = node._scope;
-  if (
-    node._cleanup !== undefined ||
-    (owned !== null &&
-      ((owned.cleanups !== null && owned.cleanups.length > 0) ||
-        (owned.kids !== null && owned.kids.length > 0)))
-  ) {
-    runEffectCleanups(node);
-  }
-
-  const wasPending = (node._flags & STATUS_PENDING) !== 0;
-
-  // Clear invalidation BEFORE running: anything set during the run is a
-  // feedback write and must survive to trigger another pass
-  // AFFECTED deliberately survives: it is released by its declarer, not by a run
-  node._flags &= ~(REACTIVE_CHECK | REACTIVE_DIRTY | STATUS_PENDING | STATUS_ERROR);
-  node._error = undefined;
-
-  // Reset deps tail for fresh tracking; the generation bump invalidates every
-  // link stamp from the previous pass so read-order changes are detected
-  node._depsTail = null;
-  node._depGen++;
-
-  const prevObserver = currentObserver;
-  const prevTracking = tracking;
-  const prevOwner = currentOwner;
-  const prevHost = currentHost;
-  currentObserver = node;
-  node._flags |= REACTIVE_RECOMPUTING_DEPS;
-  tracking = true;
-
-  // The node owns what its run creates. Q6: it stands in for a scope it may
-  // never allocate, so the scope is materialised only if something asks.
-  currentOwner = node._scope;
-  currentHost = node;
-
-  let newValue: unknown;
-  let threw = false;
-  let notReady = false;
-  let error: unknown;
-  try {
-    newValue = node._fn(node._flags & REACTIVE_UNINITIALIZED ? undefined : node._value);
-  } catch (err) {
-    threw = true;
-    if (err instanceof NotReadyError) {
-      notReady = true;
-    } else {
-      error = err;
-    }
-  } finally {
-    tracking = prevTracking;
-    currentObserver = prevObserver;
-    node._flags &= ~REACTIVE_RECOMPUTING_DEPS;
-    currentOwner = prevOwner;
-    currentHost = prevHost;
-  }
-
-  // Cleanup old unused deps (depsTail may have changed during fn execution)
-  const depsTail = node._depsTail as Link | null;
-  let toRemove = depsTail !== null ? depsTail._nextDep : node._deps;
-  if (toRemove !== null) {
-    if (depsTail !== null) {
-      depsTail._nextDep = null;
-    } else {
-      node._deps = null;
-    }
-    while (toRemove !== null) {
-      toRemove = unlinkSubs(toRemove);
-    }
-  }
-
-  if (threw) {
-    if (notReady) {
-      // A8: an unready SOURCE reached during the loading window is not this
-      // node's pendingness to report. Commit #0 keeps serving, nothing
-      // downstream is marked and no boundary is registered — the read that
-      // threw already linked the source, so its settle re-runs us.
-      if (!isEffect && node._loadingWindow === true) {
-        return;
-      }
-      node._flags |= STATUS_PENDING;
-      if (isEffect) {
-        registerWithBoundary(node);
-      } else {
-        // Remember the session even before the first real fetch: the fetch
-        // may start later from an unsessioned flush (waterfalls)
-        if (activeAsyncSession !== null) node._session = activeAsyncSession;
-        if (!wasPending) {
-          propagate(node, REACTIVE_DIRTY);
-        }
-      }
-    } else {
-      if (isEffect) {
-        clearSelfMarks(node);
-        handleEffectError(node, error);
-        return;
-      }
-      // A8: a throw is an answer, so it ends the window rather than being
-      // covered for by commit #0 forever.
-      node._loadingWindow = false;
-      node._error = error;
-      node._flags |= STATUS_ERROR;
-      propagate(node, REACTIVE_DIRTY);
-    }
-    if (isEffect) clearSelfMarks(node);
-    return;
-  }
-
-  // Async computed: keep previous value, mark pending, commit on settle.
-  //
-  // A compute may hand back a PROMISE, any other thenable, or an ASYNC
-  // ITERABLE, and all three are the same node in three arities (A7). The test
-  // was `instanceof Promise` until M11, so the other two were stored AS VALUES:
-  // the node settled instantly holding the thenable or the iterator object
-  // itself, and every read got that object where the awaited value belonged.
-  const source = isEffect ? null : asyncSourceOf(newValue);
-  if (source !== null) {
-    // Close a stream this run supersedes before installing its replacement,
-    // rather than when its next step happens to resolve — an interval-driven
-    // generator would otherwise keep pumping until it next yielded.
-    node._closeAsync?.();
-    node._closeAsync = undefined;
-
-    const id = (node._asyncId = (node._asyncId ?? 0) + 1);
-    // A8: during the loading window the flight still runs and is still
-    // registered with `settle()`, but the node publishes NO pendingness. That
-    // one omission is the whole rule — `STATUS_PENDING` is what makes a read
-    // throw, what a `Loading` boundary registers on and what `isPending`
-    // reports, so withholding it gives all three at once.
-    if (node._loadingWindow !== true) {
-      node._flags |= STATUS_PENDING;
-      if (!wasPending) {
-        propagate(node, REACTIVE_DIRTY);
-      }
-    }
-    const session = activeAsyncSession ?? node._session ?? null;
-    node._session = session;
-    // EAGERLY, before a byte of this value exists: the key goes on the wire as a
-    // pending promise so a client read finds something to await.
-    if (node._serializeKey !== undefined && session !== null) {
-      openPendingSeed(session, node._serializeKey);
-    }
-
-    /** The node is superseded, disposed, or was never this run's */
-    const stale = (): boolean => (node._flags & REACTIVE_DISPOSED) !== 0 || node._asyncId !== id;
-
-    const settled = (value: unknown): void => {
-      // The first real answer ends the window for good: a refetch is an
-      // ordinary revalidation, with the stale value shown and `isPending` true.
-      node._loadingWindow = false;
-      node._flags &= ~(STATUS_PENDING | REACTIVE_UNINITIALIZED);
-      node._value = value;
-      if (node._serializeKey !== undefined) {
-        recordHydrationValue(node._session ?? null, node._serializeKey, value);
-        closePendingSeed(node._session ?? null, node._serializeKey, value);
-      }
-      propagate(node, REACTIVE_DIRTY);
-      schedule();
-    };
-
-    const failed = (err: unknown): void => {
-      // A failure is an answer too: the window closes and the error is the
-      // node's, rather than commit #0 covering for it forever.
-      node._loadingWindow = false;
-      node._flags = (node._flags & ~STATUS_PENDING) | STATUS_ERROR;
-      node._error = err;
-      // The failure travels too. A client that refetched instead would run the
-      // same failing work a second time and report it a beat later.
-      if (node._serializeKey !== undefined) {
-        failPendingSeed(node._session ?? null, node._serializeKey, err);
-      }
-      propagate(node, REACTIVE_DIRTY);
-      schedule();
-    };
-
-    if (source.iterator === null) {
-      const awaited = source.thenable;
-      if (node._inFlight) inFlight.delete(node._inFlight);
-      node._inFlight = awaited;
-      inFlight.set(awaited, session);
-      awaited.then(
-        (value) => {
-          inFlight.delete(awaited);
-          if (stale()) return;
-          settled(value);
-        },
-        (err) => {
-          inFlight.delete(awaited);
-          if (stale()) return;
-          failed(err);
-        },
-      );
-      return;
-    }
-
-    pumpAsyncIterator(node, source.iterator, session, stale, settled, failed);
-    return;
-  }
-
-  if (isEffect && wasPending) {
-    unregisterFromBoundary(node);
-  }
-
-  // A8: a plain value IS the first real answer, so a synchronous compute
-  // closes the window on its first run and the option costs such a node
-  // nothing beyond the seeded `prev`.
-  node._loadingWindow = false;
-
-  const first = (node._flags & REACTIVE_UNINITIALIZED) !== 0;
-  if (first) captureSnapshot(node, newValue);
-  const valueChanged =
-    first || wasPending || node._equals === false || !node._equals(node._value, newValue);
-
-  if (valueChanged) {
-    node._value = newValue;
-    if (!isEffect) {
-      repropagate(node, node._equals === false || wasPending ? REACTIVE_DIRTY : REACTIVE_CHECK);
-    }
-  }
-
-  node._flags &= ~REACTIVE_UNINITIALIZED;
-
-  if (!isEffect) return;
-
-  if (node._apply !== undefined) {
-    // The apply is the DISPLAY half. A first run has to produce DOM before the
-    // caller returns; after that it waits for the pass that recomputed the
-    // graph to finish, so a frame is never painted from a graph half-way
-    // through an update.
-    //
-    // `clearSelfMarks` rides with it, because the apply is where an effect
-    // WRITES: dropping the self-mark before the write would leave the effect
-    // looking at its own output as if someone else had made it, and it would
-    // run again on it.
-    if (create) {
-      runApply(node, newValue);
-      return;
-    }
-    node._queuedValue = newValue;
-    (node._kind === EFFECT_USER ? userApplies : renderApplies).push(node);
-    return;
-  }
-
-  if (typeof newValue === "function") node._cleanup = newValue as () => void;
-  clearSelfMarks(node);
-}
-
-/** Effect applies waiting for the pass that produced them to finish. */
-const renderApplies: ComputedNode<unknown>[] = [];
-const userApplies: ComputedNode<unknown>[] = [];
-
-function runApply(node: ComputedNode<unknown>, value: unknown): void {
-  const apply = node._apply;
-  if (apply === undefined) return;
-  const prev = node._appliedValue;
-  node._appliedValue = value;
-  const prevT = tracking;
-  const prevO = currentObserver;
-  const applyOwner = currentOwner;
-  const applyHost = currentHost;
-  tracking = false;
-  currentObserver = null;
-  // O3.7: the apply is part of this effect's run, so what it creates is this
-  // effect's and dies with it — a class or style object carrying per-key
-  // getters opens those effects here.
-  currentOwner = node._scope;
-  currentHost = node;
-  try {
-    const cleanup = apply(value, prev);
-    if (typeof cleanup === "function") node._cleanup = cleanup;
-  } catch (err) {
-    handleEffectError(node, err);
-  } finally {
-    tracking = prevT;
-    currentObserver = prevO;
-    currentOwner = applyOwner;
-    currentHost = applyHost;
-    clearSelfMarks(node);
-  }
-}
-
-function drainApplies(queue: ComputedNode<unknown>[]): void {
-  while (queue.length !== 0) {
-    const due = queue.splice(0, queue.length);
-    for (let i = 0; i < due.length; i++) {
-      const node = due[i];
-      if (node._flags & REACTIVE_DISPOSED) continue;
-      const value = node._queuedValue;
-      node._queuedValue = undefined;
-      runApply(node, value);
-    }
-  }
-}
-
-/**
- * Writes from an effect to its own dependencies do not re-trigger the
- * effect (self-marks are dropped after the run). Pure computeds keep
- * self-marks so the next read revalidates.
- *
- * When a self-mark is dropped, dep snapshots are resynced to the values
- * the effect itself wrote — those count as "seen", so only a later
- * external change re-triggers the effect.
- */
-function clearSelfMarks(node: ComputedNode<unknown>): void {
-  if (node._flags & (REACTIVE_CHECK | REACTIVE_DIRTY)) {
-    for (let d = node._deps; d !== null; d = d._nextDep) {
-      d._lastValue = stagedValue(d._dep);
-    }
-    node._flags &= ~(REACTIVE_CHECK | REACTIVE_DIRTY);
-    markEpoch++; // marks dropped: future writes must re-propagate
-  }
-}
-
-function disposeNode(node: ComputedNode<unknown>): void {
-  if (node._flags & REACTIVE_DISPOSED) return;
-  node._flags |= REACTIVE_DISPOSED;
-
-  if (node._inFlight) {
-    inFlight.delete(node._inFlight);
-    node._inFlight = undefined;
-  }
-  // A1 reaches a stream through its iterator: disposal must run the producer's
-  // own `finally`, and an endless one keeps pumping until it does.
-  node._closeAsync?.();
-  node._closeAsync = undefined;
-
-  unregisterFromBoundary(node);
-
-  const scope = node._scope;
-  if (scope !== null) {
-    scope.dead = true;
-    scope.gen++;
-    unwindKids(scope);
-  }
-
-  if (node._cleanup) {
-    const cleanup = node._cleanup;
-    node._cleanup = undefined;
-    runUntracked(cleanup);
-  }
-
-  if (scope !== null) {
-    unwindCleanups(scope);
-    const abort = scope._abort;
-    if (abort !== null) {
-      scope._abort = null;
-      abort.abort();
-    }
-    const range = scope._range;
-    if (range !== null) {
-      scope._range = null;
-      range();
-    }
-  }
-
-  // Remove from heap
-  deleteFromHeap(node, heapFor(node));
-
-  // Cleanup deps
-  cleanupDeps(node);
-
-  // Clear subs
-  node._subs = null;
-  node._subsTail = null;
-}
-
-// ============================================================================
-// Scheduling
-// ============================================================================
-
-// ============================================================================
-// Write staging
-// ============================================================================
-
-/**
- * Signals holding a staged write, in write order.
- *
- * A write does not land on `_value`; it lands here and is published at the top
- * of the flush that the write scheduled. That is what makes a write BATCH: the
- * value a reader outside the graph sees is the last committed one, so a click
- * handler that writes three signals and then reads a fourth derived from them
- * sees one consistent world rather than a half-applied one.
- *
- * A COMPUTATION reads through to the staged value instead, because the graph is
- * mid-update by definition and a memo pulled during the batch has to answer
- * about the world the batch is building. The two views are the same everywhere
- * else, which is why the split costs one branch on a path that is already slow.
- */
-let stagedHead: SignalNode<unknown> | null = null;
-
-/**
- * Whether anything is staged, as a single load for the read path.
- *
- * Deliberately NOT folded into `slowSignalRead`: staging is the ordinary case
- * between any write and its flush, and routing every read through the slow path
- * for it costs a call and three more branches on the hottest line in the engine.
- */
-let stagedCount = 0;
-
-/** The value the GRAPH sees: the staged write if there is one, else the commit. */
-function stagedValue<T>(node: SignalNode<T>): T {
-  if (stagedCount === 0) return node._value;
-  const pending = node._pending;
-  return pending === NOT_STAGED ? node._value : pending;
-}
-
-/**
- * The value a READER sees. Inside a computation that is the staged write;
- * everywhere else — event handlers, effect apply phases, plain top-level code —
- * it is the last commit. `currentObserver` is the discriminator rather than
- * `tracking`, so an `untrack()` inside a computation still reads the world its
- * computation is being run against.
- */
-function visibleValue<T>(node: SignalNode<T>): T {
-  if (stagedCount === 0 || currentObserver === null) return node._value;
-  const pending = node._pending;
-  return pending === NOT_STAGED ? node._value : pending;
-}
-
-/**
- * Publish every staged write. Silent: the write already propagated its marks,
- * and the graph has been reading the staged value all along, so nothing
- * downstream learns anything here that it was not already told.
- */
-function commitStaged(): void {
-  let node = stagedHead;
-  stagedHead = null;
-  stagedCount = 0;
-  while (node !== null) {
-    const next = node._nextStaged;
-    node._nextStaged = null;
-    if (node._pending !== NOT_STAGED) {
-      node._value = node._pending;
-      node._pending = NOT_STAGED;
-    }
-    node = next;
-  }
-}
-
-let isFlushing = false;
-
-/** Schedule an async flush on the microtask queue (latches until flush) */
-function schedule(): void {
-  // Inside batch() no microtask is needed: the batch flushes synchronously
-  if (scheduled || isFlushing || batchDepth > 0) return;
-  scheduled = true;
-  queueMicrotask(() => {
-    scheduled = false;
-    flushSync();
-  });
-}
-
-/**
- * Synchronously drain all scheduled effects.
- * Render effects always run before user effects within each pass.
- */
-function flushSync(): void {
-  if (isFlushing || batchDepth > 0) return;
-  isFlushing = true;
-  dropOrphans();
-
-  flushError = null;
-  try {
-    commitStaged();
-    let count = 0;
-    while (
-      pureHeap._count > 0 ||
-      renderHeap._count > 0 ||
-      userHeap._count > 0 ||
-      renderApplies.length !== 0 ||
-      userApplies.length !== 0
-    ) {
-      if (++count === 100000) {
-        emitDiagnostic(
-          "INFINITE_LOOP",
-          "error",
-          "Flush did not settle after 100000 iterations; an effect is likely writing a value it depends on.",
-        );
-        throw new Error("Potential infinite loop detected");
-      }
-      clock++;
-      // Publish before deriving. An effect's write staged during the previous
-      // pass is what this pass is running for, so the pass has to open on the
-      // world that write made rather than on the one it replaced.
-      commitStaged();
-      // Derive, then display. Effects compute against a settled graph and only
-      // paint once the pass that produced their values is over.
-      if (pureHeap._count > 0) runHeap(pureHeap);
-      else if (renderHeap._count > 0) runHeap(renderHeap);
-      else if (userHeap._count > 0) runHeap(userHeap);
-
-      // The pass is over: publish what it derived before anything paints from
-      // it. An apply reads the committed world (`runApply` clears the
-      // observer), so an unpublished write here would paint the value the
-      // pass replaced.
-      commitStaged();
-      if (renderApplies.length !== 0) drainApplies(renderApplies);
-      else if (userApplies.length !== 0 && pureHeap._count === 0 && renderHeap._count === 0)
-        drainApplies(userApplies);
-    }
-    // TS can't see the handleEffectError assignment from inside runHeap
-    const pendingError = flushError as { error: unknown } | null;
-    if (pendingError) {
-      flushError = null;
-      throw pendingError.error;
-    }
-  } finally {
-    // A write to a signal nothing subscribes to queues no work, so the loop
-    // above can exit with it still staged.
-    commitStaged();
-    isFlushing = false;
-  }
-}
-
-/**
- * Synchronously flush all pending updates.
- * With a callback, runs it first so its writes are applied by the flush.
- */
-export function flush(fn?: () => void): void {
-  if (fn) fn();
-  flushSync();
-}
-
-// ============================================================================
-// Public API
-// ============================================================================
-
-export interface Signal<T> {
-  (): T;
-  set(value: T): void;
-  update(fn: (prev: T) => T): void;
-  peek(): T;
-}
-
-export interface Computed<T> {
-  (): T;
-  peek(): T;
-}
-
-function defaultEquals<T>(a: T, b: T): boolean {
-  // Strict equality with NaN === NaN for reactivity purposes
-  return a === b || (a !== a && b !== b);
-}
-
-/**
- * Create a reactive signal.
- *
- * `signal(value)` - plain writable signal
- * `signal(fn)` - writable derived signal: recomputed by fn(prev) when its
- * dependencies change, and writable via set/update until they do.
- */
-export function signal<T>(
-  initialValue: T | ((prev?: T) => T),
-  options?: SignalOptions<T>,
-): Signal<T> {
-  if (typeof initialValue === "function") {
-    return writableComputed(initialValue as (prev?: T) => T, options);
-  }
-
-  const node: SignalNode<T> = {
-    _value: initialValue,
-    _subs: null,
-    _subsTail: null,
-    _equals: options?.equals !== undefined ? options.equals : defaultEquals,
-    _name: options?.name,
-    _unobserved: options?.unobserved,
-    _epoch: 0,
-    _fn: undefined,
-    _affected: 0,
-    _override: null,
-    _pending: NOT_STAGED,
-    _nextStaged: null,
-  };
-
-  // `ownedWrite` marks the runtime's own control channels, which are not part
-  // of the frame a snapshot holds: a boundary that catches an error during a
-  // held render has to show its fallback, not the arm the capture froze.
-  if (options?.ownedWrite !== true) captureSnapshot(node as SignalNode<unknown>, initialValue);
-
-  const read = (): T => {
-    // One global load decides whether any of the rare read modes are live.
-    // Zero in every ordinary app, so the common path stays two branches.
-    if (slowSignalRead !== 0) return readSignalSlow(node as SignalNode<unknown>) as T;
-    if (tracking && currentObserver && !(currentObserver._flags & REACTIVE_DISPOSED)) {
-      link(node as SignalNode<unknown>, currentObserver);
-    }
-    // Two loads, and both are already in registers on the line above.
-    if (stagedCount !== 0 && currentObserver !== null && node._pending !== NOT_STAGED) {
-      return node._pending;
-    }
-    return node._value;
-  };
-
-  const ownedWrite = options?.ownedWrite === true;
-  const immediate = options?.immediate === true;
-
-  const write = (newValue: T): void => {
-    if (
-      diagnosticsOn &&
-      !ownedWrite &&
-      tracking &&
-      currentObserver !== null &&
-      currentObserver._kind === EFFECT_PURE
-    ) {
-      emitDiagnostic(
-        "REACTIVE_WRITE_IN_OWNED_SCOPE",
-        "warning",
-        "Signal written from inside a derived computation; derive the value instead, or create the signal with { ownedWrite: true }.",
-        node._name,
-      );
-    }
-
-    const eq = node._equals;
-    // Compose over the staged write, not the commit: two `update`s in one batch
-    // are two increments, and a second `set` of the value already staged is the
-    // no-op it looks like.
-    const prev = stagedValue(node);
-    if (eq === defaultEquals) {
-      if (prev === newValue || (prev !== prev && newValue !== newValue)) return;
-    } else if (eq !== false && eq(prev, newValue)) {
-      return;
-    }
-
-    if (immediate) {
-      node._value = newValue;
-    } else {
-      // Inlined: a thousand-write loop is one call per write otherwise, and
-      // both guards are a single global load each.
-      if (node._pending === NOT_STAGED) {
-        node._nextStaged = stagedHead;
-        stagedHead = node as SignalNode<unknown>;
-        stagedCount++;
-      }
-      node._pending = newValue;
-      if (!scheduled) schedule();
-    }
-    if (node._subs !== null && node._epoch !== markEpoch) {
-      node._epoch = markEpoch;
-      propagate(node as SignalNode<unknown>, eq === false ? REACTIVE_DIRTY : REACTIVE_CHECK);
-    }
-  };
-
-  const accessor = read as Signal<T>;
-  accessor.set = write;
-  accessor.update = (fn: (prev: T) => T) => write(fn(stagedValue(node)));
-  // `peek` reads the STAGED value, where a plain call reads the published one.
-  // The two are the same everywhere except between a write and its flush, and
-  // that window is exactly what `peek` is for: imperative code — a form control
-  // repairing a rejected keystroke inside the event that produced it — asking
-  // what the value is now rather than what everyone else can see yet.
-  accessor.peek = () =>
-    slowSignalRead !== 0 && node._override !== null && latestDepth === 0
-      ? foldOverride(node)
-      : stagedValue(node);
-  (accessor as unknown as { _node: SignalNode<T> })._node = node;
-
-  return accessor;
-}
-
-function createComputedNode<T>(
-  fn: (prev?: T) => T,
-  kind: number,
-  options?: MemoOptions<T>,
-): ComputedNode<T> {
-  const host = currentHost;
-  const owner = getCurrentOwner();
-
-  if (host !== null && host._flags & REACTIVE_CHILDREN_FORBIDDEN) {
-    emitDiagnostic(
-      "PRIMITIVE_IN_FORBIDDEN_SCOPE",
-      "error",
-      "Reactive primitives cannot be created inside trackedEffect; it is a leaf effect for wiring external sources.",
-      options?.name,
-    );
-  }
-
-  let initialHeight = 0;
-  if (currentObserver) {
-    initialHeight = currentObserver._height + 1;
-  }
-
-  const inSnapshot = snapshotCapture && inSnapshotScope(host !== null ? host._owner : currentOwner);
-  const node: ComputedNode<T> = {
-    _value: undefined as T,
-    _subs: null,
-    _subsTail: null,
-    _override: null,
-    _pending: NOT_STAGED,
-    _nextStaged: null,
-    _equals:
-      kind === EFFECT_PURE
-        ? options?.equals !== undefined
-          ? options.equals
-          : defaultEquals
-        : false,
-    _name: options?.name,
-    _unobserved: options?.unobserved,
-    _epoch: 0,
-    _fn: fn,
-    _affected: 0,
-    _deps: null,
-    _depsTail: null,
-    _flags: REACTIVE_DIRTY | REACTIVE_UNINITIALIZED | (inSnapshot ? REACTIVE_IN_SNAPSHOT : 0),
-    _height: initialHeight,
-    _nextHeap: undefined,
-    _prevHeap: null as never,
-    _kind: kind,
-    _depGen: 0,
-    // Q6: two slots, not six. What this node owns lives on `_scope`, which
-    // most nodes never allocate.
-    _owner: owner,
-    _scope: null,
-    _cleanup: undefined,
-    _apply: undefined,
-    _error: undefined,
-    _wave: 0,
-  };
-  node._prevHeap = node as ComputedNode<unknown>;
-
-  // A8. `in` rather than `!== undefined`, because `undefined` is a legal
-  // placeholder and the option's presence is what declares the window open.
-  // Clearing UNINITIALIZED is most of the rule: it is what makes the loading
-  // value the compute's first `prev`, and what stops `latest()` treating the
-  // node as one that has never held a value.
-  if (options !== undefined && "loadingValue" in options) {
-    node._value = options.loadingValue as T;
-    node._loadingWindow = true;
-    node._flags &= ~REACTIVE_UNINITIALIZED;
-  }
-
-  if (owner !== null) {
-    (owner.kids ??= []).push(node as ComputedNode<unknown>);
-  } else if (kind !== EFFECT_PURE) {
-    orphans.push(node as ComputedNode<unknown>);
-  }
-
-  // The render that DECLARED the node owns whatever it fetches, even if the
-  // flush that first runs it happens outside that render's session. Stamping
-  // at creation is what keeps `settle(session)` waiting for work it started.
-  if (activeAsyncSession !== null) node._session = activeAsyncSession;
-
-  if (externalSource !== null) {
-    wireExternalSource(node as ComputedNode<unknown>, owner);
-  }
-
-  if (OWNERSHIP.sink !== null) {
-    OWNERSHIP.sink.own(
-      node,
-      owner,
-      kind === EFFECT_RENDER ? "render" : kind === EFFECT_USER ? "user" : "pure",
-    );
-  }
-
-  return node;
-}
-
-/** Shared read implementation for computed/writable-derived accessors */
-/**
- * A computed's value AS READ: its own, or the lanes' folded over it.
- *
- * The same two buffers a signal has, at derived arity. A write inside an action
- * stages a patch under that action's lane; the recompute keeps landing in the
- * authoritative buffer underneath, so retiring the lane drops the patch onto a
- * value that is already correct and there is no revert target to stash.
- *
- * `latest()` reads through to the authoritative value exactly as it does for a
- * signal, which is what makes `isPending` and not the value the thing that
- * reports an answer is still coming.
- */
-function overriddenValue<T>(node: ComputedNode<T>): T {
-  if (slowSignalRead === 0 || node._override === null || latestDepth > 0) return node._value;
-  notePendingLane();
-  return foldOverride(node as unknown as SignalNode<T>);
-}
-
-function computedRead<T>(node: ComputedNode<T>): T {
-  const flags = node._flags;
-
-  // Fast path: clean, settled, not tracking
-  if (
-    !tracking &&
-    !(
-      flags &
-      (REACTIVE_CHECK |
-        REACTIVE_DIRTY |
-        REACTIVE_DISPOSED |
-        STATUS_PENDING |
-        STATUS_ERROR |
-        REACTIVE_AFFECTED)
-    )
-  ) {
-    return overriddenValue(node);
-  }
-
-  if (flags & REACTIVE_DISPOSED) {
-    return node._value;
-  }
-
-  if (flags & (REACTIVE_CHECK | REACTIVE_DIRTY)) {
-    updateIfNecessary(node as ComputedNode<unknown>);
-  }
-
-  if (slowSignalRead !== 0 && currentObserver !== null) {
-    const observer = currentObserver;
-    if (observer._flags & REACTIVE_IN_SNAPSHOT) {
-      const held = snapshots.get(node as SignalNode<unknown>);
-      if (held !== undefined) {
-        if (tracking && !(observer._flags & REACTIVE_DISPOSED)) {
-          link(node as ComputedNode<unknown>, observer);
-        }
-        const value = held === NO_SNAPSHOT ? undefined : held;
-        if (!Object.is(value, node._value)) observer._flags |= REACTIVE_SNAPSHOT_STALE;
-        return value as T;
-      }
-    }
-  }
-
-  // Link AFTER updating so the snapshot is the settled value, but BEFORE
-  // throwing so pending/error resolution re-notifies the reader
-  if (tracking && currentObserver && !(currentObserver._flags & REACTIVE_DISPOSED)) {
-    link(node as ComputedNode<unknown>, currentObserver);
-    if (node._height >= currentObserver._height) {
-      currentObserver._height = node._height + 1;
-    }
-  }
-
-  if (node._flags & STATUS_ERROR) {
-    throw node._error;
-  }
-
-  if (node._flags & (STATUS_PENDING | REACTIVE_AFFECTED)) {
-    // A5's read modes, and the rule is Solid 2.0's: `latest` yields the last
-    // visible value, and the ONE case it rethrows is a value that has never
-    // held one AND a caller that is itself a derivation — where the throw is
-    // how a `Loading` boundary learns there is nothing to show yet. Outside a
-    // derivation there is no boundary to catch it and nothing to suspend, so
-    // "what is the latest you have" answers `undefined` rather than exploding
-    // in a click handler.
-    if (latestDepth > 0 && (currentObserver === null || !(node._flags & REACTIVE_UNINITIALIZED))) {
-      return node._value;
-    }
-    throw new NotReadyError(node);
-  }
-
-  return overriddenValue(node);
-}
-
-function computedPeek<T>(node: ComputedNode<T>): T {
-  if (node._flags & (REACTIVE_CHECK | REACTIVE_DIRTY) && !(node._flags & REACTIVE_DISPOSED)) {
-    const prevTracking = tracking;
-    const prevObserver = currentObserver;
-    tracking = false;
-    currentObserver = null;
-    try {
-      updateIfNecessary(node as ComputedNode<unknown>);
-    } finally {
-      tracking = prevTracking;
-      currentObserver = prevObserver;
-    }
-  }
-  return overriddenValue(node);
-}
-
-/**
- * Create a computed signal that derives its value from other signals.
- * Lazy: evaluated on first read, revalidated on read after invalidation.
- *
- * **This is the async primitive too.** A compute that returns a Promise leaves
- * the computed pending until it resolves, and a read in the meantime throws
- * `NotReadyError` — which `Loading` catches, `isPending` reports and `latest`
- * reads through. There is no second constructor for async values, which is
- * also where Solid 2.0 landed: their signals package ships `createMemo` and no
- * async primitive at all.
- *
- * ## SSR seeding
- *
- * A pending value resolved on the server is recorded (`getHydrationData` /
- * `generateHydrationScript`) and consumed from `__BARQ_DATA__` on the client,
- * so the first read resolves synchronously with the server's answer instead of
- * refetching. The seeded first run does not track `fn`'s dependencies; use
- * `refresh()` to refetch.
- *
- * The serialization key is taken HERE, at creation, from the owner-tree id —
- * never at first read, because the two orders differ between server and client
- * and the id has to be the same on both. With no owner there is no tree to key
- * off and nothing is serialized.
- *
- * A position is not an identity: if the client tree diverges from the server's,
- * the ids after the divergence shift, and a read can claim the value recorded
- * for a DIFFERENT call and resolve synchronously with it. `name` folds an
- * identity into the auto-key — siblings only have to differ from each other,
- * and a drifted key then misses and refetches instead of seeding the wrong
- * value. `key` replaces the auto-key outright and has to be unique across the
- * page. `unclaimedSeeds()` reports the drift after the fact; `hydrate()` calls
- * it once the first render has settled.
- */
-export function computed<T>(
-  fn: (prev?: T) => T | PromiseLike<T> | AsyncIterable<T>,
-  options?: MemoOptions<T> & { key?: string },
-): Computed<T> {
-  // The slot is reserved at CREATION, in creation order, which is what makes
-  // the server's numbering and the client's the same. The STRING is not built
-  // here: `key()` formats it on the first read that needs it, so a synchronous
-  // computed — almost all of them — pays one integer and no allocation.
-  const owner = currentOwner;
-  const slot = options?.key === undefined && owner !== null ? reserveChildSlot(owner) : -1;
-  const key = (): string | undefined => {
-    if (options?.key !== undefined) return options.key;
-    return owner !== null && slot >= 0 ? formatReserved(owner, slot, options?.name) : undefined;
-  };
-
-  let trySeed = true;
-  const compute = (prev?: T): T => {
-    if (trySeed) {
-      trySeed = false;
-      const id = key();
-      if (id !== undefined) {
-        node._serializeKey = id;
-        // What THIS session already resolved for this key.
-        //
-        // It used to carry the string render's SECOND PASS, which re-invoked the
-        // page after `settle` because there was no later frame to swap a value
-        // into. That pass is gone — the buffered arm parks and resumes like the
-        // stream — so what is left is the ordinary case: a key read more than
-        // once inside one render answers from the session rather than fetching
-        // twice.
-        //
-        // Session-scoped, and deliberately never the `null` bucket: on the
-        // client `activeAsyncSession` is null and a hit here would let one
-        // keyed read answer another's, defeating the consume-on-read that makes
-        // `refresh()` refetch for real.
-        const settledHere = recordedInSession(id);
-        if (settledHere.found) return settledHere.value as T;
-        const seed = getSeed(id);
-        if (seed.found) {
-          const value = seed.value;
-          // A seeded value may be a PROMISE: the server writes a key the moment
-          // its flight starts, so a boundary that had not settled when the shell
-          // flushed is on the wire as something to await rather than as a hole.
-          // Returning it is all that is needed — a `compute` that hands back a
-          // promise is already an async node, which is why this replaced a
-          // waiter channel rather than needing one.
-          if (isThenable(value)) {
-            return (value as PromiseLike<T>).then((arrived: unknown) => {
-              // The server gave up on this key: fetch it, which is what a page
-              // with no seed at all does.
-              if (isAbandonedSeed(arrived)) return fn(prev) as T | PromiseLike<T>;
-              return arrived as T;
-            }) as T;
-          }
-          return value as T;
-        }
-      }
-    }
-    return fn(prev) as T;
-  };
-
-  const node = createComputedNode(compute, EFFECT_PURE, options);
-  // Eager, but at the next flush rather than at this call. Solid 2.0 computes
-  // a memo where it is declared, which is what makes "fetch high" mean
-  // anything — a memo that owns a fetch must start it where it is written, not
-  // where something eventually reads it. Running the body DURING the
-  // declaration is a stricter rule than that goal needs, and it breaks the one
-  // shape a lazy graph makes natural: a value that refers to a sibling
-  // declared below it. Deferring to the flush keeps the fetch early and keeps
-  // the forward reference legal.
-  // Eager, but at the next flush rather than during this call. Solid 2.0 runs
-  // a memo's body where it is declared; the GOAL of that is that a value which
-  // owns a fetch starts it where it is written rather than where something
-  // eventually reads it. Deferring to the flush delivers the same guarantee
-  // within the same tick, without running user code inside a declaration —
-  // which reorders a synchronous render and makes a reference to a sibling
-  // declared below it a dead-zone error.
-  //
-  // Not during a server render: there the string backend reads everything it
-  // is going to read before the render returns, so scheduling buys nothing and
-  // only moves a fetch out from under the boundary that is meant to park on it.
-  if (options?.lazy !== true && activeAsyncSession === null) {
-    scheduleDirect(node as ComputedNode<unknown>);
-  }
-
-  const accessor = (() => computedRead(node)) as Computed<T>;
-  accessor.peek = () => computedPeek(node);
-  (accessor as unknown as { _node: ComputedNode<T> })._node = node;
-
-  return accessor;
-}
-
-/**
- * Writable derived state that RE-SEEDS when its source changes. Written to, it
- * holds the write; the next change of `source` recomputes
- * over it and the write is gone.
- *
- * One primitive covering three problems the ergonomics work had listed
- * separately: the read-copy trap (`signal(props.value)` frozen at the first
- * value it ever saw), the controlled input whose signal must accept an edit and
- * still be re-seeded by the server's answer, and the two-way component prop.
- * Angular's `linkedSignal` is the shipped precedent.
- *
- * It is `signal(fn)` with the source split out, and the split is the point: as
- * `signal(() => compute(source()))` the re-seed is an emergent property of
- * whatever the closure happened to read, and nothing names it. `compute`
- * receives the previous value, so "keep the user's selection if the new list
- * still contains it" is expressible without a second signal to reconcile.
- */
-export function linked<S, T>(
-  source: () => S,
-  compute: (value: S, previous: T | undefined) => T,
-  options?: SignalOptions<T>,
-): Signal<T> {
-  return writableComputed<T>((previous) => compute(source(), previous), options);
-}
-
-/** Writable derived signal: signal(fn) */
-export function writableComputed<T>(fn: (prev?: T) => T, options?: MemoOptions<T>): Signal<T> {
-  const node = createComputedNode(fn, EFFECT_PURE, options);
-  // Eager, but at the next flush rather than during this call. Solid 2.0 runs
-  // a memo's body where it is declared; the GOAL of that is that a value which
-  // owns a fetch starts it where it is written rather than where something
-  // eventually reads it. Deferring to the flush delivers the same guarantee
-  // within the same tick, without running user code inside a declaration —
-  // which reorders a synchronous render and makes a reference to a sibling
-  // declared below it a dead-zone error.
-  //
-  // Not during a server render: there the string backend reads everything it
-  // is going to read before the render returns, so scheduling buys nothing and
-  // only moves a fetch out from under the boundary that is meant to park on it.
-  if (options?.lazy !== true && activeAsyncSession === null) {
-    scheduleDirect(node as ComputedNode<unknown>);
-  }
-
-  const write = (newValue: T): void => {
-    // Ensure initialized so a later dep change can recompute over the write
-    if (node._flags & REACTIVE_UNINITIALIZED) {
-      computedPeek(node);
-    }
-    const valueChanged = node._equals === false || !node._equals(node._value, newValue);
-    if (!valueChanged) return;
-    node._value = newValue;
-    // A manual write WINS over a recompute already queued for this tick: the
-    // caller has just said what the value is, and letting the flush re-derive
-    // it afterwards would silently discard the write. The next change of a
-    // dependency re-seeds normally.
-    deleteFromHeap(node as ComputedNode<unknown>, pureHeap);
-    node._flags &= ~(REACTIVE_CHECK | REACTIVE_DIRTY);
-    if (node._subs !== null) {
-      propagate(
-        node as ComputedNode<unknown>,
-        node._equals === false ? REACTIVE_DIRTY : REACTIVE_CHECK,
-      );
-    }
-  };
-
-  const accessor = (() => computedRead(node)) as Signal<T>;
-  accessor.set = write;
-  accessor.update = (f: (prev: T) => T) => write(f(computedPeek(node)));
-  accessor.peek = () => computedPeek(node);
-  (accessor as unknown as { _node: ComputedNode<T> })._node = node;
-
-  return accessor;
-}
-
-function createEffectNode(
-  compute: (prev?: unknown) => unknown,
-  apply: ((value: unknown, prev: unknown) => void | (() => void)) | undefined,
-  kind: number,
-): () => void {
-  effectsAllocated++;
-  const node = createComputedNode(compute, kind);
-  node._apply = apply;
-
-  // First run is synchronous at creation; subsequent runs are scheduled
-  recompute(node, true);
-
-  return () => disposeNode(node);
-}
-
-/**
- * Run a side effect when signals change.
- *
- * `effect(fn)` - fn is tracked; an optionally returned function is the cleanup
- * `effect(compute, apply)` - split form: compute is tracked and returns a
- * value; apply(value, prev) runs untracked afterwards and may return cleanup
- *
- * User effects run after render effects, batched on the microtask queue.
- * The first run is deferred to the next flush (use flush() to force).
- */
-export function effect<T>(
-  compute: (prev?: T) => T | void | (() => void),
-  apply?: (value: T, prev: T | undefined) => void | (() => void),
-): () => void {
-  return createEffectNode(
-    compute as (prev?: unknown) => unknown,
-    apply as ((value: unknown, prev: unknown) => void | (() => void)) | undefined,
-    EFFECT_USER,
-  );
-}
-
-/**
- * Render-phase effect: runs synchronously at creation and before user
- * effects on subsequent flushes. Used by the renderer for DOM bindings.
- */
-export function renderEffect<T>(
-  compute: (prev?: T) => T | void | (() => void),
-  apply?: (value: T, prev: T | undefined) => void | (() => void),
-): () => void {
-  return createEffectNode(
-    compute as (prev?: unknown) => unknown,
-    apply as ((value: unknown, prev: unknown) => void | (() => void)) | undefined,
-    EFFECT_RENDER,
-  );
-}
-
-/**
- * Effect for bridging external sources (event emitters, sockets, stores from
- * other libraries). Tracked like a normal effect, but pinned ahead of the
- * ordered user effects and forbidden from creating child reactive primitives,
- * so it stays a leaf that only wires subscriptions up.
- *
- * The returned function, if any, is the cleanup: it runs before each re-run
- * and on disposal.
- */
-export function trackedEffect(
-  compute: () => void | (() => void),
-  options?: { name?: string },
-): () => void {
-  const node = createComputedNode(
-    compute as (prev?: unknown) => unknown,
-    EFFECT_USER,
-    options as SignalOptions<unknown>,
-  );
-  // Leaf effect: no graph position of its own, and no owned primitives
-  node._height = 0;
-  node._flags |= REACTIVE_CHILDREN_FORBIDDEN;
-  recompute(node, true);
-  return () => disposeNode(node);
-}
-
-/**
- * Manual tracking: `track(fn)` subscribes to whatever `fn` reads and fires
- * `onInvalidate` once when any of it changes. The subscription is consumed by
- * that single fire - call `track` again to re-arm.
- *
- * `onInvalidate` may return a cleanup, run before the next fire and on
- * disposal of the owner that created the reaction.
- */
-export function reaction(onInvalidate: () => void | (() => void)): (tracking: () => void) => void {
-  let pendingCleanup: (() => void) | undefined;
-  const owner = getCurrentOwner();
-  let disposeArm: (() => void) | undefined;
-
-  if (owner !== null) {
-    (owner.cleanups ??= []).push(() => {
-      disposeArm?.();
-      disposeArm = undefined;
-      pendingCleanup?.();
-      pendingCleanup = undefined;
-    });
-  }
-
-  return (body: () => void): void => {
-    // Replacing an arm must dispose the old one, otherwise its sources stay
-    // live and a superseded dependency still fires the callback
-    disposeArm?.();
-    disposeArm = undefined;
-
-    runWithOwner(owner, () => {
-      let armed = false;
-      // Assigned once, but not until `dispose` exists below, and the closure
-      // above closes over the binding — so it cannot take an initialiser.
-      // oxlint-disable-next-line prefer-const
-      let disposeSelf: (() => void) | undefined;
-      const dispose = createEffectNode(
-        () => {
-          body();
-        },
-        () => {
-          // The arming run itself is not an invalidation
-          if (!armed) {
-            armed = true;
-            return;
-          }
-          disposeArm = undefined;
-          pendingCleanup?.();
-          pendingCleanup = onInvalidate() as (() => void) | undefined;
-          disposeSelf?.();
-        },
-        EFFECT_USER,
-      );
-      disposeSelf = dispose;
-      disposeArm = dispose;
-    });
-  };
-}
-
-/**
- * Resolve a reactive expression to its first fully settled value.
- * Pending async reads are awaited; the promise rejects if the expression
- * settles with an error. Does not subscribe - call it outside tracking.
- */
-export function resolve<T>(fn: () => T): Promise<T> {
-  if (tracking && currentObserver !== null) {
-    return Promise.reject(
-      new Error("resolve() cannot be called inside a tracked scope; it does not subscribe."),
-    );
-  }
-  return new Promise<T>((res, rej) => {
-    const owner = createOwnerScope(false);
-    let settled = false;
-    const finish = (): void => {
-      settled = true;
-      // Deferred: the effect node is mid-run, so tear down after it unwinds
-      queueMicrotask(() => owner.dispose());
-    };
-    // A private boundary pair: pending reads retry silently instead of warning
-    // about a missing Loading boundary, and errors reject rather than escape
-    provideOn(owner, LOADING_BOUNDARY, {
-      add() {},
-      delete() {},
-    } satisfies LoadingBoundaryHandle);
-    provideOn(owner, ERROR_BOUNDARY, (err: unknown) => {
-      if (settled) return;
-      finish();
-      rej(err);
-    });
-    runInOwner(owner, () => {
-      createEffectNode(
-        fn,
-        (value) => {
-          if (settled) return;
-          finish();
-          res(value as T);
-        },
-        EFFECT_USER,
-      );
-    });
-    schedule();
-  });
-}
-
-/** `until`'s deadline, as its own type so a caller can tell it from a rejection. */
-export class TimeoutError extends Error {
-  constructor(message = "Timed out waiting for condition") {
-    super(message);
-    this.name = "TimeoutError";
-  }
-}
-
-export interface UntilOptions {
-  /** Reject with `TimeoutError` if the predicate has not turned truthy in time. */
-  timeout?: number;
-  /** Reject with `signal.reason` on abort. */
-  signal?: AbortSignal;
-}
-
-/**
- * Await a reactive predicate; resolve the first time it settles TRUTHY.
- *
- * `resolve` answers "what is this value" and settles on the first value of any
- * kind. `until` answers "has this become true yet", so a falsy result and a
- * pending async read mean the same thing: not yet, stay subscribed, look again
- * when a source moves. That is the difference, and it is why a mutation
- * confirmed on a live channel — a socket, a subscription — waits on this rather
- * than on the response to its own request.
- *
- * A throw, an async source that rejects, the deadline and the abort signal all
- * reject. The deadline is worth passing wherever the confirming truth arrives
- * over a transport that can drop, because nothing else ends the wait.
- */
-export function until<T>(fn: () => T, options?: UntilOptions): Promise<T> {
-  // THROWS rather than rejecting, unlike `resolve`. A caller inside a tracked
-  // scope has written a bug, not asked a question whose answer is a rejection,
-  // and a rejected promise it never awaits is silence.
-  if (tracking && currentObserver !== null) {
-    throw new Error("until() cannot be called inside a reactive scope; it does not subscribe.");
-  }
-  return new Promise<T>((res, rej) => {
-    const abort = options?.signal;
-    if (abort?.aborted === true) {
-      rej(abort.reason);
-      return;
-    }
-    const owner = createOwnerScope(false);
-    let settled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    let onAbort: (() => void) | undefined;
-    const finish = (): void => {
-      settled = true;
-      if (timer !== undefined) clearTimeout(timer);
-      if (onAbort !== undefined) abort?.removeEventListener("abort", onAbort);
-      // Deferred: the effect node is mid-run, so tear down after it unwinds.
-      queueMicrotask(() => owner.dispose());
-    };
-    // The same private boundary pair `resolve` installs: a pending read retries
-    // silently rather than warning about a missing Loading boundary, and an
-    // error rejects rather than escaping to the page.
-    provideOn(owner, LOADING_BOUNDARY, {
-      add() {},
-      delete() {},
-    } satisfies LoadingBoundaryHandle);
-    provideOn(owner, ERROR_BOUNDARY, (err: unknown) => {
-      if (settled) return;
-      finish();
-      rej(err);
-    });
-    runInOwner(owner, () => {
-      createEffectNode(
-        fn,
-        (value) => {
-          // Falsy is "not yet": the subscription stays live and the next
-          // evaluation gets another turn. Only a truthy settled value resolves.
-          if (settled || !value) return;
-          finish();
-          res(value as T);
-        },
-        EFFECT_USER,
-      );
-    });
-    if (options?.timeout !== undefined) {
-      timer = setTimeout(() => {
-        if (settled) return;
-        finish();
-        rej(new TimeoutError());
-      }, options.timeout);
-    }
-    if (abort !== undefined) {
-      onAbort = (): void => {
-        if (settled) return;
-        finish();
-        rej(abort.reason);
-      };
-      abort.addEventListener("abort", onAbort, { once: true });
-    }
-    schedule();
-  });
-}
-
-/**
- * Register a cleanup function for the current owner.
- * Returns the function for convenience.
- */
-export function onCleanup<T extends () => void>(fn: T): T {
-  const owner = getCurrentOwner();
-  if (owner) {
-    (owner.cleanups ??= []).push(fn);
-  } else {
-    orphanCleanups.push(fn);
-  }
-  return fn;
-}
-
-/**
- * Schedule a callback to run after the current work settles.
- * Runs untracked in the captured owner context after the next flush.
- * Can return a cleanup function that runs when the owner is disposed.
- */
-export function onMount(fn: () => void | (() => void)): void {
-  let cleanup: (() => void) | void;
-  const owner = getCurrentOwner();
-
-  if (owner) {
-    onCleanup(() => cleanup?.());
-  }
-
-  queueMicrotask(() => {
-    flushSync();
-    if (owner && !owner.dead) {
-      const prevOwner = currentOwner;
-      currentOwner = owner;
-      try {
-        cleanup = untrack(fn);
-      } finally {
-        currentOwner = prevOwner;
-      }
-    } else if (!owner) {
-      cleanup = untrack(fn);
-      cleanup?.();
-    }
-  });
-}
-
-/** Solid 2.0 name for onMount */
-export const onSettled = onMount;
-
-/**
- * Compatibility shim: updates are batched on the microtask queue by default,
- * so batch() just runs fn and flushes synchronously at the end.
- */
-export function batch(fn: () => void): void {
-  batchDepth++;
-  try {
-    fn();
-  } finally {
-    batchDepth--;
-    if (batchDepth === 0) {
-      flushSync();
-    }
-  }
-}
-
-/**
- * Group writes the way `batch` does, and DO NOT publish them: the flush is left
- * to the tick that was already coming.
- *
- * The difference matters for a setter that makes several writes to express one
- * change — a store's, an optimistic view's rebuild. `batch` ends by flushing,
- * which publishes the write before its tick and makes the setter's own caller
- * the one reader in the program that sees a store write land early.
- */
-export function group(fn: () => void): void {
-  batchDepth++;
-  try {
-    fn();
-  } finally {
-    batchDepth--;
-    if (batchDepth === 0) schedule();
-  }
-}
-
-/**
- * Create a reactive scope with optional automatic disposal.
- *
- * - `scope(fn)` - Auto-disposed when parent disposes (default)
- * - `scope(fn, true)` - Detached, requires manual disposal
- */
-export function scope<T>(
-  fn: (dispose: () => void, scope: Scope) => T,
-  detached = false,
-  kind: ScopeKind = "scope",
-): T {
-  const owner = createOwnerScope(!detached, kind);
-  return runInOwner(owner, fn);
-}
-
-/**
- * Internal: create a scope, optionally registered with the scope above it.
- *
- * A child scope goes into `kids`, never into `cleanups`. O3 spells out why:
- * while a scope held its kids and its cleanups in one list, O3.2's ordering
- * claim and O3.3's had no observation that could tell them apart, so a
- * FIFO-cleanup bug reported as a kid-ordering violation.
- */
-function createOwnerScope(registerWithParent: boolean, kind: ScopeKind = "scope"): Scope {
-  const parent = getCurrentOwner();
-  const scope = makeScope(parent);
-  scope.dispose = () => disposeScope(scope);
-
-  const holder = registerWithParent ? parent : null;
-  if (holder !== null) (holder.kids ??= []).push(scope);
-
-  if (OWNERSHIP.sink !== null) {
-    OWNERSHIP.sink.enter(scope, parent, kind, holder !== null);
-  }
-  return scope;
-}
-
-/** Internal: Run function within an owner context */
-function runInOwner<T>(owner: Scope, fn: (dispose: () => void, scope: Scope) => T): T {
-  const prevOwner = currentOwner;
-  const prevHost = currentHost;
-  currentOwner = owner;
-  currentHost = null;
-  try {
-    return fn(owner.dispose, owner);
-  } finally {
-    currentOwner = prevOwner;
-    currentHost = prevHost;
-    if (OWNERSHIP.sink !== null) OWNERSHIP.sink.exit(owner);
-  }
-}
-
-/**
- * Whether a tracked computation is currently running.
- * Used by the store to skip node allocation on untracked reads.
- */
-export function isTracking(): boolean {
-  return tracking && currentObserver !== null;
-}
-
-/**
- * Create an owner scope without running anything in it; pair with
- * runWithOwner. Disposed with its parent, or manually via dispose().
- */
-export function owner(kind: ScopeKind = "scope"): Owner {
-  return createOwnerScope(true, kind);
+  runWithOwner(scope, () => onCleanup(remove));
 }
 
 /**
  * `pin(s, body)` — the one sanctioned way to break dynamic ownership (O2).
- * The returned Block ignores the scope it is handed and runs under `s`, and
+ * The returned Block runs under `s` whatever is current when it is invoked, and
  * because it is visible in the emitted text the exception is auditable.
- *
- * Branded but NOT guarded: the brand is what stops a pinned Block being invoked
- * as a Cell and stringified into an attribute, while `block`'s entry guard would
- * contradict the one thing `pin` promises — that the handed scope is ignored,
- * including when there is none.
  */
 export function pin<A extends unknown[], R>(
   scope: Scope,
   body: (owner: Scope, ...args: A) => R,
 ): (ignored?: Scope, ...args: A) => R {
-  return brand((_ignored?: Scope, ...args: A): R => {
-    const prevOwner = currentOwner;
-    const prevHost = currentHost;
-    currentOwner = scope;
-    currentHost = null;
-    try {
-      return body(scope, ...args);
-    } finally {
-      currentOwner = prevOwner;
-      currentHost = prevHost;
-    }
-  });
-}
-
-/**
- * The computation currently tracking reads, or null outside a tracked scope.
- * O6: the observer is a different ambient from the owner and a different kind
- * of thing — a reactive node, never a scope. `untrack` moves this one and
- * `enter`/`exit` move the other, and neither touches the other's.
- */
-export function getObserver(): object | null {
-  return tracking ? currentObserver : null;
-}
-
-/** Whether a scope has been disposed. */
-export function isDisposed(scope: Owner): boolean {
-  return scope.dead;
-}
-
-/** The default signal comparator: strict equality, with NaN equal to NaN. */
-export function isEqual<T>(a: T, b: T): boolean {
-  return a === b || (a !== a && b !== b);
-}
-
-/** Whether the runtime has Proxy (stores degrade without it). */
-export const SUPPORTS_PROXY: boolean = typeof Proxy === "function";
-
-// ============================================================================
-// Stable child ids (hydration / SSR correlation)
-// ============================================================================
-
-const childCounts = new WeakMap<Owner, number>();
-const ownerIds = new WeakMap<Owner, string>();
-const rootCounts = new Map<symbol | null, number>();
-
-function formatChildId(prefix: string, index: number): string {
-  const num = index.toString(36);
-  const len = num.length - 1;
-  return prefix + (len ? String.fromCharCode(64 + len) : "") + num;
+  return block((_ignored?: Scope, ...args: A): R =>
+    runWithOwner(scope, () => body(scope, ...args)),
+  );
 }
 
 // Root ids are numbered per render epoch, not per process: a server that
 // reuses its module graph across requests would otherwise hand out r1, r2, …
 // while every fresh client page starts again at r0, and the seeded data would
 // land under keys nobody looks up.
-function nextRootId(): string {
-  const epoch = activeAsyncSession;
-  const next = rootCounts.get(epoch) ?? 0;
-  rootCounts.set(epoch, next + 1);
-  return `r${next.toString(36)}`;
-}
+const rootCounts = new Map<symbol | null, number>();
 
-function ownerId(owner: Owner): string {
-  let id = ownerIds.get(owner);
-  if (id === undefined) {
-    const parent = owner.parent;
-    id = parent !== null ? getNextChildId(parent) : nextRootId();
-    ownerIds.set(owner, id);
-  }
-  return id;
+function nextRootId(): string {
+  const next = rootCounts.get(activeAsyncSession) ?? 0;
+  rootCounts.set(activeAsyncSession, next + 1);
+  return `r${next.toString(36)}`;
 }
 
 /**
@@ -3125,1047 +573,66 @@ function ownerId(owner: Owner): string {
  * processes and tests need to call this.
  */
 export function resetChildIds(session?: symbol): void {
-  if (session !== undefined) {
-    rootCounts.delete(session);
-  } else {
-    rootCounts.clear();
-  }
-}
-
-/** Allocate the next stable child id for `owner` (consumes the counter). */
-export function getNextChildId(owner: Owner): string {
-  const next = childCounts.get(owner) ?? 0;
-  childCounts.set(owner, next + 1);
-  return formatChildId(ownerId(owner), next);
+  if (session !== undefined) rootCounts.delete(session);
+  else rootCounts.clear();
 }
 
 /**
- * Consume an owner-tree slot WITHOUT formatting its id.
- *
- * Every `computed` reserves one, so the numbering is the same on both sides of
- * a render — but only a value that actually settles asynchronously is ever
- * serialised, and only then is the string built. Formatting eagerly would put a
- * string allocation on the hottest constructor in the system for a key almost
- * no node uses.
+ * O5: the root a mount is owned by. It carries the id every async value below
+ * it is numbered from, which is what lets a server render and the client that
+ * hydrates it agree on a key without either naming one.
  */
-function reserveChildSlot(owner: Owner): number {
-  const next = childCounts.get(owner) ?? 0;
-  childCounts.set(owner, next + 1);
-  return next;
-}
-
-/** The id `reserveChildSlot` reserved, formatted on demand. */
-function formatReserved(owner: Owner, index: number, name: string | undefined): string {
-  const id = formatChildId(ownerId(owner), index);
-  return name === undefined ? id : `${id}~${name}`;
-}
-
-/** The id getNextChildId would return next, without consuming it. */
-export function peekNextChildId(owner: Owner): string {
-  return formatChildId(ownerId(owner), childCounts.get(owner) ?? 0);
-}
-
-/**
- * Read signals without creating dependencies.
- * Note: Owner context is maintained (only tracking is disabled).
- */
-export function untrack<T>(fn: () => T): T {
-  if (externalSource !== null) {
-    return externalSource.untrack(() => untrackInner(fn));
+export function rootScope(): Scope {
+  scopesAllocated++;
+  const id = nextRootId();
+  const root = runWithOwner(null, () => createOwner({ id }));
+  engineSetContext(NUMBERING, numberingAt(id), root);
+  if (activeAsyncSession !== null) {
+    recordsOf(activeAsyncSession);
+    engineSetContext(RENDER_SESSION, activeAsyncSession, root);
   }
-  return untrackInner(fn);
-}
-
-function untrackInner<T>(fn: () => T): T {
-  const prevTracking = tracking;
-  tracking = false;
-  try {
-    return fn();
-  } finally {
-    tracking = prevTracking;
-  }
+  if (OWNERSHIP.sink !== null) traceScope(root, null, "root", false);
+  return root;
 }
 
 // ============================================================================
-// Async helpers (Solid 2.0)
+// Context
 // ============================================================================
 
-/** In-flight async computations, stamped with the session that started them */
-const inFlight = new Map<PromiseLike<unknown>, symbol | null>();
+/** Returned by `lookupContext` for a key no scope on the chain binds. */
+export const CONTEXT_MISS: unique symbol = Symbol("context-miss");
 
-/**
- * Promises/A+ shape. `instanceof Promise` is a test about the CONSTRUCTOR, and
- * a thenable from another realm, another library, or a transpiled async
- * function is none the less awaitable — `await` itself asks this question, so a
- * reactivity core that asks the narrower one disagrees with the language.
- */
-function isThenable(value: unknown): value is PromiseLike<unknown> {
-  return (
-    value !== null &&
-    (typeof value === "object" || typeof value === "function") &&
-    typeof (value as PromiseLike<unknown>).then === "function"
-  );
-}
+/** Context key for error boundaries; value is (err: unknown) => void */
+export const ERROR_BOUNDARY: unique symbol = Symbol("error-boundary");
 
-/**
- * What kind of async a compute's return value is, or `null` for a plain value.
- * An async iterable is checked FIRST: an async generator object is not a
- * thenable, but a hand-written source may be both, and the stream is the
- * stronger claim.
- *
- * The probe is untracked. The value may be a store proxy, and a `get` on one
- * registers a dependency — on whatever observer happens to be current, since by
- * here the recompute has already restored the outer one.
- */
-function asyncSourceOf(
-  value: unknown,
-):
-  | { iterator: AsyncIterator<unknown>; thenable: null }
-  | { iterator: null; thenable: PromiseLike<unknown> }
-  | null {
-  if (value === null || (typeof value !== "object" && typeof value !== "function")) return null;
-  const prevTracking = tracking;
-  const prevObserver = currentObserver;
-  tracking = false;
-  currentObserver = null;
-  try {
-    const method = (value as AsyncIterable<unknown>)[Symbol.asyncIterator];
-    if (typeof method === "function") {
-      return { iterator: method.call(value), thenable: null };
-    }
-    return isThenable(value) ? { iterator: null, thenable: value } : null;
-  } finally {
-    tracking = prevTracking;
-    currentObserver = prevObserver;
+const channels = new Map<string | symbol, EngineContext<unknown>>();
+
+function channel(key: string | symbol): EngineContext<unknown> {
+  let found = channels.get(key);
+  if (found === undefined) {
+    found = engineCreateContext<unknown>(CONTEXT_MISS);
+    channels.set(key, found);
   }
+  return found;
 }
 
 /**
- * Drain an async iterable into a computed, one yield at a time.
- *
- * The node is PENDING until the FIRST yield and settled from then on: a stream
- * is in flight until it has an answer, and after that it is a value that keeps
- * changing, which is a signal being written and not a boundary's business. The
- * alternative — re-suspending per step — flaps every `Loading` above it once
- * per element, and the fallback is exactly what a stream exists to avoid.
- *
- * `inFlight` therefore carries the FIRST step only, so `settle()` waits for the
- * stream's first answer rather than for a producer that may never finish.
- *
- * Disposal and supersession both close the iterator through `_closeAsync`,
- * which is what runs a generator's own `finally` and stops an endless producer.
+ * Bind `key` on `scope`. The engine copies a scope's bindings to its children
+ * when they are CREATED, so a binding is visible to everything opened under
+ * the scope afterwards and to nothing opened before: install, then build.
  */
-function pumpAsyncIterator(
-  node: ComputedNode<unknown>,
-  iterator: AsyncIterator<unknown>,
-  session: symbol | null,
-  stale: () => boolean,
-  settled: (value: unknown) => void,
-  failed: (err: unknown) => void,
-): void {
-  let closed = false;
-  let first = true;
-
-  const close = (): void => {
-    if (closed) return;
-    closed = true;
-    try {
-      const returned = iterator.return?.();
-      // A rejected `return()` is the producer's cleanup failing on a path
-      // nobody is awaiting; swallowing it beats an unhandled rejection.
-      if (isThenable(returned)) returned.then(undefined, () => {});
-    } catch {
-      // same
-    }
-  };
-  node._closeAsync = close;
-
-  const step = (): void => {
-    if (closed || stale()) {
-      close();
-      return;
-    }
-    let result: IteratorResult<unknown> | PromiseLike<IteratorResult<unknown>>;
-    try {
-      result = iterator.next();
-    } catch (err) {
-      closed = true;
-      if (!stale()) failed(err);
-      return;
-    }
-    // `for await` unwraps whatever `next()` returns, and a producer with a
-    // value already buffered is allowed to hand back a bare `IteratorResult` as
-    // a promise-free fast path. Assimilating it keeps `.then` off a non-thenable.
-    const awaited: PromiseLike<IteratorResult<unknown>> = isThenable(result)
-      ? result
-      : Promise.resolve(result);
-
-    if (first) {
-      if (node._inFlight) inFlight.delete(node._inFlight);
-      node._inFlight = awaited;
-      inFlight.set(awaited, session);
-    }
-
-    awaited.then(
-      (next) => {
-        if (first) {
-          inFlight.delete(awaited);
-          node._inFlight = undefined;
-        }
-        if (stale()) {
-          close();
-          return;
-        }
-        if (next.done === true) {
-          closed = true;
-          node._closeAsync = undefined;
-          // A stream that ends without ever yielding has no answer to give, and
-          // leaving it PENDING would hold every boundary above it for good.
-          if (first) settled(undefined);
-          return;
-        }
-        first = false;
-        settled(next.value);
-        step();
-      },
-      (err) => {
-        if (first) {
-          inFlight.delete(awaited);
-          node._inFlight = undefined;
-        }
-        closed = true;
-        node._closeAsync = undefined;
-        if (!stale()) failed(err);
-      },
-    );
-  };
-
-  step();
+export function provideOn(scope: Scope, key: string | symbol, value: unknown): void {
+  // X2 makes a provided value a Cell, so a Block here is C5.1's Block-in-a-Cell
+  // slot. It is rejected at the INSTALL rather than at the read: a binding
+  // nobody reads until three components later reports the mistake three
+  // components away from the site that made it.
+  if (isBlock(value)) throw jsxAsValue("The `value` of a context provider");
+  engineSetContext(channel(key), value, scope);
 }
 
-/** Resolved values of keyed async computeds, bucketed by session (SSR) */
-const hydrationData = new Map<symbol | null, Map<string, unknown>>();
-
-/**
- * A keyed async value this session has STARTED and not yet settled.
- *
- * Solid's shape, and the reason it is better than the waiter channel it
- * replaced. `registerFragment` writes the key into the payload the moment a
- * boundary parks, with the promise still pending, so the client's store holds a
- * PROMISE rather than a hole and the read of that promise IS the wait.
- *
- * barq used to emit a seed only once a value SETTLED, so a key still in flight
- * was simply absent and a second mechanism had to stand in for it. Registering
- * eagerly removes the need for one: an unsettled key is a promise on the wire,
- * and the ordinary async path awaits it because a `compute` that returns a
- * promise is already an async node.
- */
-interface PendingSeed {
-  readonly promise: Promise<unknown>;
-  resolve(value: unknown): void;
-  reject(error: unknown): void;
+export function lookupContext(scope: Scope | null, key: string | symbol): unknown {
+  return scope === null ? CONTEXT_MISS : engineGetContext(channel(key), scope);
 }
-
-const pendingSeeds = new Map<symbol | null, Map<string, PendingSeed>>();
-
-/**
- * What a pending seed the server gave up on RESOLVES with, so the read that is
- * waiting fetches rather than failing.
- *
- * Resolved and not rejected, which is not a style choice: the promise goes on
- * the wire through seroval, and on the client nobody is awaiting it until a read
- * happens to want that key. A rejection with no handler is an unhandled
- * rejection — a console error in the browser and a process kill on Node.
- * Measured on exactly that: `SeedAbandoned: [barq] the server did not send a
- * value for "r00"` thrown out of a page that was otherwise fine.
- *
- * Absent is not an error either way: it is what a page with no seed at all
- * answers with, and the read's job is to fetch.
- */
-export const SEED_ABANDONED = "__barq_seed_abandoned__";
-
-export function isAbandonedSeed(value: unknown): boolean {
-  return typeof value === "object" && value !== null && SEED_ABANDONED in value;
-}
-
-function openPendingSeed(session: symbol | null, key: string): void {
-  let bucket = pendingSeeds.get(session);
-  if (bucket === undefined) {
-    bucket = new Map();
-    pendingSeeds.set(session, bucket);
-  }
-  if (bucket.has(key)) return;
-  let settleWith!: (value: unknown) => void;
-  let failWith!: (error: unknown) => void;
-  const promise = new Promise<unknown>((res, rej) => {
-    settleWith = res;
-    failWith = rej;
-  });
-  // Nobody may be awaiting this yet — it exists to be SERIALIZED — and an
-  // unhandled rejection would take the process down on Node. A FAILED value is
-  // the one case that still rejects, and it rejects on both sides by design.
-  promise.catch(() => undefined);
-  bucket.set(key, { promise, resolve: settleWith, reject: failWith });
-}
-
-function closePendingSeed(session: symbol | null, key: string, value: unknown): void {
-  pendingSeeds.get(session)?.get(key)?.resolve(value);
-}
-
-function failPendingSeed(session: symbol | null, key: string, error: unknown): void {
-  pendingSeeds.get(session)?.get(key)?.reject(error);
-}
-
-/**
- * The promises to put on the wire for keys still in flight, so the client waits
- * on them instead of finding a hole and refetching.
- */
-export function pendingSeedsOf(session?: symbol): Record<string, Promise<unknown>> {
-  const bucket = pendingSeeds.get(session ?? null);
-  if (bucket === undefined) return {};
-  const out: Record<string, Promise<unknown>> = {};
-  for (const [key, seed] of bucket) out[key] = seed.promise;
-  return out;
-}
-
-/**
- * Give up on every key this session never sent, so no client read waits for a
- * value that is not coming. This is what Solid's `_$HY.done` is for; per-key
- * rather than one global flag, because the read that has to fall back is the
- * one whose key was abandoned and not every read on the page.
- */
-export function abandonPendingSeeds(session?: symbol): void {
-  const key = session ?? null;
-  const bucket = pendingSeeds.get(key);
-  if (bucket === undefined) return;
-  for (const [, seed] of bucket) seed.resolve({ [SEED_ABANDONED]: 1 });
-  pendingSeeds.delete(key);
-}
-
-/**
- * What THIS render already resolved for a key, so a second read of it inside the
- * same render answers rather than fetching again.
- *
- * IT USED TO SERVE THE STRING RENDER'S SECOND PASS, which re-invoked the whole
- * page after `settle` because there was no later frame to swap a value into.
- * That pass is gone — the buffered arm parks and resumes exactly as the stream
- * does — so what is left is the ordinary case, and the call site at `getKeyed`
- * says the same thing. This comment did not, which is how the drift showed.
- *
- * Not a cache: it is the same session's own recorded output, and it is not
- * consumed, because `getHydrationData` still has to emit it. Returns nothing
- * outside a render session, which is what keeps it off the client entirely.
- */
-function recordedInSession(key: string): { found: boolean; value?: unknown } {
-  if (activeAsyncSession === null) return { found: false };
-  const bucket = hydrationData.get(activeAsyncSession);
-  if (bucket === undefined || !bucket.has(key)) return { found: false };
-  return { found: true, value: bucket.get(key) };
-}
-
-function recordHydrationValue(session: symbol | null, key: string, value: unknown): void {
-  let bucket = hydrationData.get(session);
-  if (!bucket) {
-    bucket = new Map();
-    hydrationData.set(session, bucket);
-  }
-  bucket.set(key, value);
-}
-
-/** Session active while a fetch starts; lets settle() wait only its own work */
-let activeAsyncSession: symbol | null = null;
-
-/**
- * Set the active async session; fetches started while it's set are
- * attributed to it. Returns the previous session for restoring.
- * Used by renderToStringAsync to isolate concurrent server renders.
- */
-export function setAsyncSession(session: symbol | null): symbol | null {
-  const prev = activeAsyncSession;
-  activeAsyncSession = session;
-  return prev;
-}
-
-/**
- * Wait until the reactive graph is quiet: flushes synchronously, awaits
- * in-flight async computations, and repeats until nothing remains
- * (covers async waterfalls). The backbone of renderToStringAsync; also
- * handy in tests.
- *
- * With `session`, only waits for fetches attributed to that session (see
- * setAsyncSession) - required on servers where concurrent renders share
- * the module graph; fetches triggered by this settle's own flushes are
- * attributed automatically.
- */
-export async function settle(session?: symbol): Promise<void> {
-  flushIn(session);
-  while (true) {
-    const waiting = inFlightOf(session, abandoned);
-    if (waiting.length === 0) break;
-    // ONE turn each for un-attributed work, recorded before the await rather
-    // than after, because the await may never return.
-    //
-    // Adopting it is right and unbounded waiting for it is not: a promise
-    // nobody ever settles — an abandoned page, a resource whose whole point is
-    // never to resolve — stays in `inFlight` for the life of the process, and
-    // every later `settle` then waits on it forever. One such fixture wedged
-    // 120 of 139 server renders in the compiler's own corpus, and in a server
-    // it is one dropped fetch away from wedging every request after it.
-    //
-    // The render that owns the promise still waits: this call is the turn.
-    // What is bounded is every call after it.
-    for (const [promise, owner] of inFlight) {
-      if (owner === null) abandoned.add(promise);
-    }
-    await Promise.allSettled(waiting);
-    flushIn(session);
-  }
-}
-
-/**
- * Un-attributed promises a `settle` has already waited a full turn on.
- *
- * Pruned against `inFlight`, which drops a promise when it settles and when its
- * node is disposed, so this holds only work that is genuinely outstanding.
- */
-const abandoned = new Set<PromiseLike<unknown>>();
-
-function flushIn(session: symbol | undefined): void {
-  if (session === undefined) {
-    flushSync();
-    return;
-  }
-  const prev = activeAsyncSession;
-  activeAsyncSession = session;
-  try {
-    flushSync();
-  } finally {
-    activeAsyncSession = prev;
-  }
-}
-
-function inFlightOf(
-  session: symbol | undefined,
-  stale?: Set<PromiseLike<unknown>>,
-): PromiseLike<unknown>[] {
-  if (stale !== undefined) {
-    for (const promise of stale) {
-      if (!inFlight.has(promise)) stale.delete(promise);
-    }
-  }
-  const waiting: PromiseLike<unknown>[] = [];
-  for (const [promise, owner] of inFlight) {
-    if (owner === null && stale?.has(promise) === true) continue;
-    // Un-attributed work counts. A fetch started by a flush that ran outside
-    // any render — an eagerly scheduled memo whose microtask happened to land
-    // first — still belongs to the page being built, and waiting for it can
-    // only delay an answer. Attribution is strict where it decides what gets
-    // SERIALIZED (`getHydrationData`), because serving one render's value to
-    // another is corruption; it is deliberately loose here, because the only
-    // cost of waiting for something that was not ours is waiting.
-    if (session === undefined || owner === session || owner === null) waiting.push(promise);
-  }
-  return waiting;
-}
-
-const IGNORE = (): void => {};
-
-/**
- * One step of `settle`: wait for the FIRST of this session's in-flight promises,
- * then flush. `false` when nothing was in flight.
- *
- * Streaming needs the step and not the fixpoint. `settle` returns only once
- * every promise in the session has settled, so a stream driven by it holds every
- * parked boundary until the SLOWEST one resolves — measured at 281 ms of
- * head-of-line delay on a 20 ms boundary sharing a session with a 300 ms one.
- */
-export async function settleStep(session?: symbol): Promise<boolean> {
-  flushIn(session);
-  const waiting = inFlightOf(session);
-  if (waiting.length === 0) return false;
-  // The registration `.then(settled, failed)` already handles rejection on each
-  // of these; the derived promises exist so the race itself cannot reject.
-  await Promise.race(waiting.map((promise) => promise.then(IGNORE, IGNORE)));
-  flushIn(session);
-  return true;
-}
-
-/**
- * SSR: resolved values of keyed async computeds, for serialization.
- * With a session, returns that render's values (plus unsessioned ones).
- */
-export function getHydrationData(session?: symbol): Record<string, unknown> {
-  const result: Record<string, unknown> = {};
-  if (session !== undefined) {
-    // This render's values, and ONLY this render's.
-    //
-    // The unattributed bucket used to be merged in here too. A promise is
-    // attributed at its first READ (`activeAsyncSession` at the moment it
-    // enters `inFlight`), so anything first read outside a render — a prefetch,
-    // a module-level fetch, a warm-up — lands under `null`, and merging that
-    // put it in every subsequent render's seed. Nothing cleared it, so one such
-    // value was served to every user for the process's lifetime. Measured: a
-    // value from render A appeared in render B's seed and survived
-    // `clearHydrationData(B)` into a third render.
-    //
-    // A value that cannot be shown to belong to this render is not seeded into
-    // it. The way to have a preloaded value seeded is to read it inside the
-    // render, which attributes it.
-    const bucket = hydrationData.get(session);
-    if (bucket) {
-      for (const [key, value] of bucket) result[key] = value;
-    }
-    return result;
-  }
-  // No session named: the sync `renderToString` path, which sets none, so its
-  // own values are under `null` and belong in the answer.
-  for (const [, bucket] of hydrationData) {
-    for (const [key, value] of bucket) result[key] = value;
-  }
-  return result;
-}
-
-/** SSR: reset recorded async data (one session's, or everything) */
-export function clearHydrationData(session?: symbol): void {
-  if (session !== undefined) {
-    hydrationData.delete(session);
-    // And the unattributed bucket, which is nobody's and which nothing else
-    // ever clears — a long-lived server otherwise accumulates every value ever
-    // resolved outside a render.
-    hydrationData.delete(null);
-  } else {
-    hydrationData.clear();
-  }
-  resetChildIds(session);
-}
-
-/** Client: the payload emitted by generateHydrationScript, if present */
-function getSeed(key: string): { found: boolean; value?: unknown } {
-  const store = (globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__;
-  if (store && key in store) {
-    const value = store[key];
-    delete store[key]; // consume: a later refresh() refetches for real
-    return { found: true, value };
-  }
-  return { found: false };
-}
-
-/**
- * Seeded values the client never claimed, reported once hydration has settled.
- *
- * An auto-key is an owner-tree POSITION, so a client tree that is not the
- * server's shifts every key after the divergence: a read can then claim a value
- * recorded for a different call and resolve synchronously with it, which is
- * wrong data rather than a refetch. Nothing positional can tell those apart at
- * the moment of the read — the key carries no information about what was
- * fetched — but the leftovers prove it afterwards, because a shifted tree
- * always strands the tail of the payload.
- *
- * `{ name }` folds an identity into the auto-key, and `{ key }` replaces it
- * outright; either takes a read out of the positional scheme.
- */
-export function unclaimedSeeds(): string[] {
-  const store = (globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__;
-  const unclaimed = store === undefined ? [] : Object.keys(store);
-  if (unclaimed.length !== 0) {
-    emitDiagnostic(
-      "HYDRATION_SEED_DRIFT",
-      "warning",
-      `${unclaimed.length} seeded async value(s) were never claimed (${unclaimed.join(", ")}). ` +
-        "The client's owner tree is not the one the server rendered, so a positional auto-key " +
-        "may have resolved a read with another call's value. Give the reads a `name` or a `key`.",
-      undefined,
-      unclaimed,
-    );
-  }
-  return unclaimed;
-}
-
-/**
- * Returns whether an answer is coming for anything `fn` reads: an unsettled
- * async value, or a value a lane is overriding (A5).
- *
- * Reactive: subscribes to the values fn reads. A lane counts only when the
- * probe reads the overridden value ITSELF — a lane is not a status and does
- * not propagate through derivations, because a derivation carrying it would
- * make a `Loading` boundary suspend the very content the override exists to
- * show. `affects()` is the primitive that deliberately does propagate.
- */
-export function isPending(fn: () => unknown): boolean {
-  const prevObserver = probeObserver;
-  const prevSaw = probeSawLane;
-  probeObserver = currentObserver;
-  probeSawLane = false;
-  probeDepth++;
-  try {
-    fn();
-    return probeSawLane;
-  } catch (err) {
-    if (err instanceof NotReadyError) {
-      // Solid 2.0's rule, ported: a value that has NEVER held one is not
-      // "pending", it is absent — and inside a derivation the throw has to go
-      // on to the boundary rather than be answered as a boolean, or the probe
-      // silently converts "there is nothing to show" into "show stale content
-      // that does not exist". Outside a derivation the same read is simply
-      // not-yet, and the honest answer is whether a lane was seen at all.
-      const uninitialized =
-        err.source !== undefined && (err.source._flags & REACTIVE_UNINITIALIZED) !== 0;
-      // A value that HAS held one and is pending again is the stale-content
-      // case `isPending` exists to report — an in-flight refresh, or a node
-      // `affects()` marked, which is the primitive that deliberately does
-      // propagate pendingness.
-      if (!uninitialized) return true;
-      if (currentObserver !== null) throw err;
-      return probeSawLane;
-    }
-    throw err;
-  } finally {
-    probeDepth--;
-    probeObserver = prevObserver;
-    probeSawLane = prevSaw;
-  }
-}
-
-/**
- * Read the latest settled value of pending computations instead of
- * throwing NotReadyError. Falls through (throws) for values that have
- * never resolved.
- */
-export function latest<T>(fn: () => T): T {
-  latestDepth++;
-  try {
-    return fn();
-  } finally {
-    latestDepth--;
-  }
-}
-
-/**
- * Invalidate a derived/async computation and recompute it.
- * Observed computations re-run on the next flush; unobserved ones on next read.
- */
-export function refresh(target: () => unknown): void {
-  const node = (target as unknown as { _node?: ComputedNode<unknown> })._node;
-  if (!node || node._fn === undefined) return;
-  node._flags = (node._flags & ~REACTIVE_CHECK) | REACTIVE_DIRTY;
-  propagate(node, REACTIVE_DIRTY);
-  if (node._kind !== EFFECT_PURE) {
-    insertIntoHeap(node, heapFor(node));
-  }
-  schedule();
-}
-
-// ============================================================================
-// Rare read modes
-// ============================================================================
-
-/**
- * Non-zero while any rare read mode is live (an `affects` mark, a pending
- * override). The signal read tests this one global before doing anything
- * unusual, so the ordinary path stays two branches.
- *
- * Snapshot capture used to be the other occupant. M9 deleted it: it had
- * no consumer outside its own test, and it cost a `_snapshot` slot on EVERY
- * signal node, which is a hard budget because every field is
- * present on every instance to keep the shape monomorphic.
- */
-let slowSignalRead = 0;
-
-/**
- * The read path taken while an affects mark or a pending override is live.
- * Kept out of line so the ordinary read stays small enough to inline.
- */
-function readSignalSlow<T>(node: SignalNode<T>): T {
-  if (node._affected !== 0 && latestDepth === 0) {
-    if (tracking && currentObserver !== null && !(currentObserver._flags & REACTIVE_DISPOSED)) {
-      link(node as SignalNode<unknown>, currentObserver);
-    }
-    throw new NotReadyError(node as unknown as { _flags: number });
-  }
-
-  if (node._override !== null) {
-    if (tracking && currentObserver !== null && !(currentObserver._flags & REACTIVE_DISPOSED)) {
-      link(node as SignalNode<unknown>, currentObserver);
-    }
-    if (latestDepth > 0) return node._value;
-    notePendingLane();
-    return foldOverride(node);
-  }
-
-  const observer = currentObserver;
-  if (observer !== null && observer._flags & REACTIVE_IN_SNAPSHOT) {
-    const held = snapshots.get(node as SignalNode<unknown>);
-    if (held !== undefined) {
-      if (tracking && !(observer._flags & REACTIVE_DISPOSED)) {
-        link(node as SignalNode<unknown>, observer);
-      }
-      const value = held === NO_SNAPSHOT ? undefined : held;
-      // The reader is answering about a frame the source has left. Release has
-      // to re-run it; a reader the write never moved has nothing to redo.
-      if (!Object.is(value, stagedValue(node))) observer._flags |= REACTIVE_SNAPSHOT_STALE;
-      return value as T;
-    }
-  }
-
-  if (!tracking) return visibleValue(node);
-  if (observer === null || observer._flags & REACTIVE_DISPOSED) return visibleValue(node);
-  link(node as SignalNode<unknown>, observer);
-
-  return visibleValue(node);
-}
-
-/**
- * Declare that a derived value is in motion: it and everything downstream read
- * as pending (Loading boundaries show fallbacks, `latest()` keeps the last
- * settled value) until the returned release is called.
- *
- * Marks stack, so overlapping declarations each need their own release.
- * Targets must be derived (`computed` / `computed`); a plain signal has no
- * status channel to carry the mark.
- */
-export function markInMotion(target: () => unknown): () => void {
-  const node = (target as unknown as { _node?: SignalNode<unknown> })._node;
-  if (!node) {
-    throw new Error("affects() needs a signal or derived value created by this runtime.");
-  }
-
-  const derived = node._fn !== undefined;
-  const count = node._affected + 1;
-  node._affected = count;
-
-  if (count === 1) {
-    if (derived) {
-      (node as ComputedNode<unknown>)._flags |= REACTIVE_AFFECTED;
-    } else {
-      slowSignalRead++;
-    }
-    propagate(node, REACTIVE_DIRTY);
-    schedule();
-  }
-
-  let released = false;
-  return () => {
-    if (released) return;
-    released = true;
-    if (--node._affected > 0) return;
-    if (derived) {
-      (node as ComputedNode<unknown>)._flags &= ~REACTIVE_AFFECTED;
-    } else {
-      slowSignalRead--;
-    }
-    propagate(node, REACTIVE_DIRTY);
-    schedule();
-  };
-}
-
-// ============================================================================
-// Snapshot capture
-// ============================================================================
-
-/**
- * A transitional read mode: while a scope is MARKED, the computations under it
- * keep answering from the values their sources held when capture opened, and
- * everything else carries on against the live graph. It is how one subtree is
- * held at an old frame while the rest of the page moves.
- *
- * Removed at M9 for costing a `_snapshot` slot on every signal node, which is a
- * hard budget: every field is present on every instance to keep the shape
- * monomorphic. It is back on the pay-for-use terms `slowSignalRead` sets — the
- * values live in a WeakMap keyed by node, an app that never calls
- * `setSnapshotCapture` allocates nothing, and the ordinary read is unchanged.
- */
-let snapshotCapture = false;
-
-/** `undefined` is a value a signal may hold, so absence needs its own token. */
-const NO_SNAPSHOT: unique symbol = Symbol("barq.no-snapshot");
-
-const snapshots = new WeakMap<SignalNode<unknown>, unknown>();
-
-/** What `clearSnapshots` has to undo. Null while nothing has been captured. */
-let snapshotSources: SignalNode<unknown>[] | null = null;
-
-/**
- * Record what `node` holds right now, if capture is open. Called at creation,
- * which is what "the values as they stood when capture opened" means: a node
- * created before it has no snapshot and its writes are ordinary.
- */
-function captureSnapshot(node: SignalNode<unknown>, value: unknown): void {
-  if (!snapshotCapture || snapshots.has(node)) return;
-  snapshots.set(node, value === undefined ? NO_SNAPSHOT : value);
-  (snapshotSources ??= []).push(node);
-  slowSignalRead++;
-}
-
-/** Whether `scope` or anything above it is a marked snapshot scope. */
-function inSnapshotScope(scope: Scope | null): boolean {
-  for (let s = scope; s !== null; s = s.parent) {
-    if (s._snapshotScope === true) return true;
-  }
-  return false;
-}
-
-/**
- * Open or close capture. While open, every signal and computed CREATED records
- * the value it starts with.
- */
-export function setSnapshotCapture(active: boolean): void {
-  snapshotCapture = active;
-}
-
-/** Hold the computations under `owner` at the captured frame. */
-export function markSnapshotScope(owner: Owner): void {
-  owner._snapshotScope = true;
-}
-
-/**
- * Let them go. Anything that served a snapshot the live value had already left
- * behind is re-dirtied, because its cache is an answer about a frame that no
- * longer exists; anything that read the same value either way is left alone.
- */
-export function releaseSnapshotScope(owner: Owner): void {
-  owner._snapshotScope = false;
-  releaseSnapshotSubtree(owner);
-  schedule();
-}
-
-function releaseSnapshotSubtree(scope: Scope): void {
-  const kids = scope.kids;
-  if (kids === null) return;
-  for (let i = 0; i < kids.length; i++) {
-    const kid = kids[i];
-    if ("kids" in kid) {
-      // A nested mark is its own hold and outlives its parent's release.
-      if (kid._snapshotScope !== true) releaseSnapshotSubtree(kid);
-      continue;
-    }
-    const node = kid;
-    node._flags &= ~REACTIVE_IN_SNAPSHOT;
-    if (node._flags & REACTIVE_SNAPSHOT_STALE) {
-      node._flags &= ~REACTIVE_SNAPSHOT_STALE;
-      node._flags |= REACTIVE_DIRTY;
-      insertIntoHeap(node, heapFor(node));
-    }
-    if (node._scope !== null) releaseSnapshotSubtree(node._scope);
-  }
-}
-
-/** Drop every captured value and close capture. */
-export function clearSnapshots(): void {
-  const sources = snapshotSources;
-  if (sources !== null) {
-    for (let i = 0; i < sources.length; i++) {
-      if (snapshots.delete(sources[i])) slowSignalRead--;
-    }
-    snapshotSources = null;
-  }
-  snapshotCapture = false;
-}
-
-// ============================================================================
-// Overrides and lanes
-// ============================================================================
-
-/**
- * Which buffer a read wants. A read is not a dependency, so this cannot be
- * derived: a memo would cache one mode's answer and serve it to another,
- * which is why the override lives on the node and the switch happens below
- * memoization.
- */
-export function readingLatest(): boolean {
-  return latestDepth > 0;
-}
-
-export function probingPending(): boolean {
-  return probeDepth > 0 && latestDepth === 0;
-}
-
-/**
- * Report a live lane to an `isPending` probe, but only when the probe is the
- * one reading. A read made inside a computation the probe entered belongs to
- * that computation, not to the probe.
- */
-export function notePendingLane(): void {
-  if (probeDepth > 0 && currentObserver === probeObserver) probeSawLane = true;
-}
-
-function foldOverride<T>(node: SignalNode<T>): T {
-  const layers = node._override as PendingLayer<T>[];
-  const prevTracking = tracking;
-  tracking = false;
-  try {
-    let value = node._value;
-    for (let i = 0; i < layers.length; i++) value = layers[i].patch(value);
-    return value;
-  } finally {
-    tracking = prevTracking;
-  }
-}
-
-/** Every node a lane has an override on, so retiring is O(touched). */
-const laneNodes = new WeakMap<object, Set<SignalNode<unknown>>>();
-
-function overridableNode<T>(target: () => T): SignalNode<T> {
-  const node = (target as unknown as { _node?: SignalNode<T> })._node;
-  if (node === undefined) {
-    throw new Error("an override needs a signal or computed created by this runtime.");
-  }
-  // A COMPUTED qualifies. It used to be refused because a derived value has no
-  // buffer of its own to leave free, which was wrong: the recompute owns
-  // `_value` and the lane owns the patch folded over it, so the two never
-  // contend. Refusing it is what made `optimistic()` take a plain seed only.
-  return node;
-}
-
-/**
- * Write `patch` into `target`'s override buffer on behalf of `lane`. The
- * authoritative value is left alone, so a live write landing underneath is not
- * lost and needs no revert target: dropping the lane exposes a value that is
- * already correct.
- *
- * A lane holds ONE patch, and a second write COMPOSES over the first rather
- * than replacing it — `update(n => n + 1)` twice in one action is `+2`, which is
- * what the store form has always done by appending to its call list. A `set`
- * still wins outright: a constant patch ignores the value handed to it.
- */
-export function overrideWrite<T>(target: () => T, lane: object, patch: (prev: T) => T): void {
-  const node = overridableNode(target);
-  let layers = node._override;
-  if (layers === null) {
-    layers = [];
-    node._override = layers;
-    slowSignalRead++;
-  }
-  let claimed = false;
-  for (let i = 0; i < layers.length; i++) {
-    if (layers[i].lane === lane) {
-      const before = layers[i].patch;
-      layers[i].patch = (value: T) => patch(before(value));
-      claimed = true;
-      break;
-    }
-  }
-  if (!claimed) {
-    layers.push({ lane, patch });
-    let owned = laneNodes.get(lane);
-    if (owned === undefined) {
-      owned = new Set();
-      laneNodes.set(lane, owned);
-    }
-    owned.add(node as SignalNode<unknown>);
-  }
-  propagate(node as SignalNode<unknown>, REACTIVE_DIRTY);
-  schedule();
-}
-
-/** The authoritative value, whatever is layered over it. */
-export function authoritative<T>(target: () => T): T {
-  return overridableNode(target)._value;
-}
-
-/** True while any lane is overriding `target`. */
-export function overridden(target: () => unknown): boolean {
-  return overridableNode(target)._override !== null;
-}
-
-/**
- * Drop every override `lane` holds. Lanes never merge: a lane is an explicit
- * transaction lifetime, so two of them overriding one node stack in claim
- * order and retiring one leaves the other's patch folding over the current
- * authoritative value.
- */
-export function retireLane(lane: object): void {
-  const owned = laneNodes.get(lane);
-  if (owned === undefined) return;
-  laneNodes.delete(lane);
-  for (const node of owned) {
-    const layers = node._override;
-    if (layers === null) continue;
-    const next = layers.filter((layer) => layer.lane !== lane);
-    if (next.length === 0) {
-      node._override = null;
-      slowSignalRead--;
-    } else {
-      node._override = next;
-    }
-    propagate(node, REACTIVE_DIRTY);
-  }
-  schedule();
-}
-
-// ============================================================================
-// External reactive sources
-// ============================================================================
-
-export interface ExternalSource {
-  track: (prev: unknown) => unknown;
-  dispose: () => void;
-}
-
-export type ExternalSourceFactory = (
-  fn: (prev?: unknown) => unknown,
-  trigger: () => void,
-) => ExternalSource;
-
-export interface ExternalSourceConfig {
-  factory: ExternalSourceFactory;
-  untrack?: <T>(fn: () => T) => T;
-}
-
-let externalSource: { factory: ExternalSourceFactory; untrack: <T>(fn: () => T) => T } | null =
-  null;
-
-/**
- * Bridge another reactive library (MobX, Vue refs, ...) into the graph: every
- * computation created afterwards runs inside the external tracker, and an
- * external change re-runs it.
- *
- * Repeat calls compose - each factory wraps the previous one.
- */
-export function enableExternalSource(config: ExternalSourceConfig): void {
-  const factory = config.factory;
-  const untrackFn = config.untrack ?? (<T>(fn: () => T): T => fn());
-
-  if (externalSource !== null) {
-    const previous = externalSource;
-    externalSource = {
-      factory: (fn, trigger) => {
-        const outer = previous.factory(fn, trigger);
-        const inner = factory((prev) => outer.track(prev), trigger);
-        return {
-          track: (prev) => inner.track(prev),
-          dispose() {
-            inner.dispose();
-            outer.dispose();
-          },
-        };
-      },
-      untrack: <T>(fn: () => T): T => previous.untrack(() => untrackFn(fn)),
-    };
-  } else {
-    externalSource = { factory, untrack: untrackFn };
-  }
-}
-
-/** Remove any registered external source bridge (does not rewire existing nodes). */
-export function resetExternalSource(): void {
-  externalSource = null;
-}
-
-function wireExternalSource(node: ComputedNode<unknown>, owner: Scope | null): void {
-  const bridge = signal<undefined>(undefined, { equals: false, ownedWrite: true });
-  const source = externalSource!.factory(node._fn, () => bridge.set(undefined));
-  if (owner !== null) {
-    (owner.cleanups ??= []).push(() => source.dispose());
-  }
-  node._fn = (prev?: unknown): unknown => {
-    bridge();
-    return source.track(prev);
-  };
-}
-
-// ============================================================================
-// Context API
-// ============================================================================
 
 /** Value can be static or a reactive accessor */
 type MaybeAccessor<T> = T | (() => T);
@@ -4173,9 +640,6 @@ type MaybeAccessor<T> = T | (() => T);
 // Type-only: keeps Provider usable as a JSX component (no runtime cycle)
 import type { JSXElement } from "./dom.ts";
 
-/**
- * Context object type
- */
 export interface Context<T> {
   readonly id: symbol;
   readonly defaultValue: T | undefined;
@@ -4186,32 +650,28 @@ export interface Context<T> {
 /**
  * Create a context for dependency injection.
  */
-export function context<T>(defaultValue?: T, description?: string): Context<T> {
+export function createContext<T>(defaultValue?: T, description?: string): Context<T> {
   const id = Symbol(description ?? "context");
 
   /**
-   * X1: enter -> fork -> write -> INVOKE, in that order, under the ambient
-   * owner. `children` is a Block, so there is no expression in the emitted
-   * language that means "children, already built": the only party holding the
-   * instance scope is this function, and it writes the binding before it
-   * ENTERS that scope to invoke the body.
+   * X1: open -> bind -> INVOKE, in that order. `children` is a Block, so there
+   * is no expression in the emitted language that means "children, already
+   * built": the only party holding the instance scope is this function, and it
+   * writes the binding before it runs the body under that scope.
    */
   const Provider = (props: { value: MaybeAccessor<T>; children: unknown }): JSXElement => {
-    const instance = enter(getOwner(), "provide");
+    const instance = childScope(getOwner(), "provide");
     provideOn(instance, id, cellOf(props.value));
     let built = false;
     try {
       if (typeof props.children !== "function") return props.children as JSXElement;
+      const children = props.children as () => JSXElement;
       if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockEnter("Provider.children", instance);
-      const out = unwrapBlocks(
-        runWithOwner(instance, props.children as () => JSXElement),
-        instance,
-      );
+      const out = runWithOwner(instance, () => unwrapBlocks(children(), instance));
       if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockExit("Provider.children");
       built = true;
       return out;
     } finally {
-      exit(instance);
       // O4.4: a subtree that threw half-way is disposed, not abandoned.
       if (!built) disposeScope(instance);
     }
@@ -4227,19 +687,15 @@ export function context<T>(defaultValue?: T, description?: string): Context<T> {
 /**
  * A Block that arrived wrapped in a Cell — `children: () => props.children` —
  * is still a Block, and it has to run inside the scope that carries the
- * binding. Resolving it at the INSERTION site instead runs it after `exit`,
- * under the caller's scope, which is O2's negation with extra steps.
+ * binding. Resolving it at the INSERTION site instead runs it under the
+ * caller's scope, which is O2's negation with extra steps. Call this with
+ * `instance` current.
  *
- * Rule 4: kind travels with the value. Only a BRANDED Block is unwrapped, so a
- * live hole (`() => count()`) survives as the `Cell<Out>` that `Out` admits and
- * a row callback in a children slot is never handed the scope where its item
- * belongs. An arity guess would call both wrong, in opposite directions.
- *
- * The one speculative call left is an unbranded Cell whose value is a Block,
- * which only an uncompiled caller can produce: C5 forwards by identity, so a
- * compiled wrapper emits `children: props.children` and the brand arrives
- * intact. It is guarded on the RESULT being branded, so a hole is read once and
- * returned live rather than recursed into.
+ * Rule 4: kind travels with the value. Only a BRANDED Block is run here. A
+ * Cell (`() => count()`, `() => on() ? <A /> : null`) stays a Cell, as the one
+ * `Out` admits, and is re-homed rather than called: what it yields is read
+ * through a memo this scope owns. A function that TAKES something is a row
+ * callback in a children slot and is handed on untouched.
  */
 export function unwrapBlocks<R>(out: R, instance: Scope): R {
   let at = out;
@@ -4249,13 +705,7 @@ export function unwrapBlocks<R>(out: R, instance: Scope): R {
       continue;
     }
     // A children slot holding SEVERAL things is an array, and a Block inside
-    // one is still a Block that has to run under this scope. Only the outermost
-    // value was unwrapped, so a provider whose body was `<A /><B />` worked and
-    // one whose body was `<A />{props.children}` did not: literal siblings fold
-    // into a single Block the compiler emits, a forwarded child cannot, and the
-    // array that results left every element to be built later by `insert` —
-    // under the scope OUTSIDE the binding, which had already been exited. The
-    // consumer then reported the provider missing from inside it.
+    // one is still a Block that has to run under this scope.
     if (Array.isArray(at)) {
       let changed = false;
       const each = (at as unknown[]).map((item) => {
@@ -4266,9 +716,15 @@ export function unwrapBlocks<R>(out: R, instance: Scope): R {
       return (changed ? each : at) as R;
     }
     if (typeof at !== "function") return at;
-    const peeked = untrack(() => (at as unknown as (s: Scope) => R)(instance));
-    if (!isBlock(peeked)) return at;
-    at = peeked;
+    // A Cell is called later, by the hole that receives it, and that hole
+    // belongs to whoever placed the provider: under its owner the binding
+    // installed here is not in reach, so `{on() ? <Reads /> : null}` built a
+    // component that could not find the context it was written inside. A memo
+    // made HERE is owned by this scope and is still a Cell to the hole that
+    // reads it, so what the Cell builds is built where the binding is.
+    if ((at as unknown as { length: number }).length > 0) return at;
+    const cell = at as unknown as () => R;
+    return internalMemo(() => unwrapBlocks(cell(), getOwner() as Scope)) as unknown as R;
   }
 }
 
@@ -4339,14 +795,9 @@ export function cellOf(value: unknown): () => unknown {
  * is that low-level owner-targeted read and answers with the VALUE; this one is
  * what components call, and it answers with the accessor so the read stays
  * live. Two readers, two questions.
- *
- * It is also the one `use*` name kept, and the reason is that it is not an
- * alias of anything: the four that went — `useState`, `useMemo`, `useEffect`,
- * `useResource` — were one-line wrappers over `signal`, `computed`, `effect`
- * and `resource`. Reading a value the OWNER TREE provides is its own operation.
  */
 export function useContext<T>(context: Context<T>): () => T {
-  const stored = lookupContext(getCurrentOwner(), context.id);
+  const stored = lookupContext(getOwner(), context.id);
 
   if (stored !== CONTEXT_MISS) {
     return cellOf(stored) as () => T;
@@ -4356,5 +807,761 @@ export function useContext<T>(context: Context<T>): () => T {
     return () => context.defaultValue as T;
   }
 
-  throw new ContextNotFoundError();
+  throw contextNotFound(context);
+}
+
+/**
+ * The engine's miss, saying WHICH context. Its own message is the same for
+ * every context, and the description `createContext` was given is the only
+ * thing that tells one missing provider from another.
+ */
+export function contextNotFound(context: { readonly id: symbol }): ContextNotFoundError {
+  const error = new ContextNotFoundError();
+  const name = context.id.description;
+  if (name !== undefined && name !== "context") {
+    error.message =
+      `The context \`${name}\` was read with no provider above the component that reads it, ` +
+      `so there is no value to return. Wrap that component in the context's \`Provider\`, or ` +
+      `give \`createContext\` a default value. ${error.message}`;
+  }
+  return error;
+}
+
+// ============================================================================
+// The renderer's own effect, and the one gated creator
+// ============================================================================
+
+let effectsAllocated = 0;
+
+/**
+ * The other half of the flag gate: `STATIC_KEY` skips an effect and no scope,
+ * so `scopeAllocations` cannot see it and only a wall-clock number was left.
+ */
+export function effectAllocations(): number {
+  return effectsAllocated;
+}
+
+/**
+ * The error as the application threw it. One that left a computation is
+ * carried by the engine in a wrapper naming the node it left, with the
+ * original as its cause; a boundary hands on what is inside. The engine's own
+ * boundaries do this through their accessor, and this is the same step for
+ * code that catches a read with `try`.
+ */
+export function thrownBy(error: unknown): unknown {
+  return error instanceof Error && "source" in error && error.cause !== undefined
+    ? error.cause
+    : error;
+}
+
+/**
+ * Tell the ownership trace which owner a reactive node was created under. The
+ * node is only nameable from inside its own compute, where it is the ambient
+ * owner, so the first run reports it.
+ */
+function traced<V>(compute: (prev: V) => V, kind: "render" | "pure"): (prev: V) => V {
+  const creator = getOwner();
+  let reported = false;
+  return (prev) => {
+    if (!reported) {
+      reported = true;
+      const node = getOwner();
+      if (node !== null) OWNERSHIP.sink?.own(node, creator, kind);
+    }
+    return compute(prev);
+  };
+}
+
+/**
+ * The render effect every binding and every region is built on: `compute`
+ * reads, `apply` writes the DOM once the pass has committed. It is the engine's
+ * `createRenderEffect` plus the two counters the renderer is measured by.
+ */
+export function renderEffect<T>(
+  compute: (prev: T | undefined) => T,
+  apply: (value: T, prev: T | undefined) => void | (() => void),
+): void {
+  effectsAllocated++;
+  createRenderEffect<T>(
+    (OWNERSHIP.sink !== null ? traced(compute, "render") : compute) as never,
+    apply,
+  );
+}
+
+/**
+ * `createMemo` for the runtime's own bookkeeping.
+ *
+ * It takes no position. A memo only one backend needs, counted, moved every
+ * key and id declared after it on that side and on no other.
+ */
+export function internalMemo<T>(compute: (prev: T | undefined) => T): SourceAccessor<T> {
+  return engineCreateMemo<T>(
+    (OWNERSHIP.sink !== null ? traced(compute as never, "pure") : compute) as never,
+  );
+}
+
+/**
+ * `createMemo`, with one branch in front of it.
+ *
+ * While a server render is open, a seed payload is on the page, or a test has
+ * asked, an async memo's answers are followed: `settle` can wait for them and,
+ * under the memo's id, they cross from the server to the client. Otherwise this
+ * is the engine's function and nothing else, which is how `solid-js` gates its
+ * own creators for hydration.
+ *
+ * The id is the memo's position among the scopes and declarations of its
+ * render. A position is not an identity: if the client tree diverges from the
+ * server's, the ids after the divergence shift, and a read can claim the value
+ * recorded for a DIFFERENT call. `name` folds an identity into the id — siblings only have to differ
+ * from each other, and a drifted key then misses and refetches instead of
+ * seeding the wrong value. `key` replaces it outright and has to be unique
+ * across the page. `unclaimedSeeds()` reports the drift after the fact.
+ */
+export const createMemo: {
+  <T>(
+    compute: (prev: T) => T | PromiseLike<T> | AsyncIterable<T>,
+    options: MemoOptions<T> & { key?: string; loadingValue: T },
+  ): SourceAccessor<T>;
+  <T>(
+    compute: (prev: T | undefined) => T | PromiseLike<T> | AsyncIterable<T>,
+    options?: MemoOptions<T> & { key?: string },
+  ): SourceAccessor<T>;
+} = <T>(
+  compute: (prev: T | undefined) => T | PromiseLike<T> | AsyncIterable<T>,
+  options?: MemoOptions<T> & { key?: string },
+): SourceAccessor<T> => {
+  let fn = compute;
+  if (seeding()) fn = asyncAware(fn, options?.key, options?.name);
+  if (OWNERSHIP.sink !== null) fn = traced(fn as never, "pure") as typeof fn;
+  return engineCreateMemo<T>(fn as never, options);
+};
+
+let following = false;
+
+/** The payload a server render left on the page, while any of it is unclaimed. */
+function seeds(): Record<string, unknown> | undefined {
+  return (globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__;
+}
+
+/** Whether async values declared now are followed, and so need a key. */
+function seeding(): boolean {
+  return (
+    following || activeAsyncSession !== null || hydrationData.size !== 0 || seeds() !== undefined
+  );
+}
+
+/**
+ * Follow async memos created from here on, so `settle` can wait for them. A
+ * server render and a hydrating page turn this on for themselves; a test turns
+ * it on to await a graph it built by hand.
+ */
+export function followAsync(on: boolean): boolean {
+  const was = following;
+  following = on;
+  return was;
+}
+
+// ============================================================================
+// Async values across a server render
+// ============================================================================
+
+/** In-flight async computations, stamped with the session that started them */
+const inFlight = new Map<PromiseLike<unknown>, symbol | null>();
+
+/**
+ * The flight each async memo is waiting on, by the engine node that owns it.
+ *
+ * A `NotReadyError` names the node it came from, so this is how a reader finds
+ * the promise to wait for when the flight is not its own session's: a memo two
+ * renders share is stamped with whichever declared it.
+ */
+const flights = new WeakMap<object, PromiseLike<unknown>>();
+
+/** What a `NotReadyError` says about itself: the engine node that threw it. */
+interface Unready {
+  readonly source: unknown;
+}
+
+/** The flight a `NotReadyError` is waiting on, while it is still in the air. */
+function flightOf(error: Unready): PromiseLike<unknown> | undefined {
+  const source = error.source;
+  return typeof source === "object" && source !== null ? flights.get(source) : undefined;
+}
+
+/**
+ * Promises/A+ shape. `instanceof Promise` is a test about the CONSTRUCTOR, and
+ * a thenable from another realm, another library, or a transpiled async
+ * function is none the less awaitable — `await` itself asks this question, so a
+ * reactivity core that asks the narrower one disagrees with the language.
+ */
+function isThenable(value: unknown): value is PromiseLike<unknown> {
+  return (
+    value !== null &&
+    (typeof value === "object" || typeof value === "function") &&
+    typeof (value as PromiseLike<unknown>).then === "function"
+  );
+}
+
+/** Resolved values of keyed async computeds, bucketed by session (SSR) */
+const hydrationData = new Map<symbol | null, Map<string, unknown>>();
+
+/**
+ * The bucket a session records into, opened on first use.
+ *
+ * The bucket is also the session's lifetime. `clearHydrationData` drops it, and
+ * whatever was declared against it can tell from then on that its render has
+ * ended, even when the same symbol is in use again.
+ */
+function recordsOf(session: symbol): Map<string, unknown> {
+  let bucket = hydrationData.get(session);
+  if (bucket === undefined) {
+    bucket = new Map();
+    hydrationData.set(session, bucket);
+  }
+  return bucket;
+}
+
+/**
+ * A keyed async value this session has STARTED and not yet settled.
+ *
+ * Solid's shape. `registerFragment` writes the key into the payload the moment
+ * a boundary parks, with the promise still pending, so the client's store holds
+ * a PROMISE rather than a hole and the read of that promise IS the wait: an
+ * unsettled key is a promise on the wire, and the ordinary async path awaits it
+ * because a `compute` that returns a promise is already an async node.
+ */
+interface PendingSeed {
+  readonly promise: Promise<unknown>;
+  resolve(value: unknown): void;
+  reject(error: unknown): void;
+  /**
+   * Whether no flight stands behind the promise any more.
+   *
+   * A compute that reads a value still in flight is rejected with
+   * `NotReadyError` before it fetched anything. The string backend builds a
+   * parked body again rather than re-asking the memo that failed, so nothing
+   * will ever settle the seed on that memo's behalf: the next declaration of
+   * the key has to run for itself, and settles this same promise when it does.
+   */
+  vacant: boolean;
+}
+
+const pendingSeeds = new Map<symbol | null, Map<string, PendingSeed>>();
+
+/**
+ * What a pending seed the server gave up on RESOLVES with, so the read that is
+ * waiting fetches rather than failing.
+ *
+ * Resolved and not rejected, which is not a style choice: the promise goes on
+ * the wire through seroval, and on the client nobody is awaiting it until a read
+ * happens to want that key. A rejection with no handler is an unhandled
+ * rejection — a console error in the browser and a process kill on Node.
+ *
+ * Absent is not an error either way: it is what a page with no seed at all
+ * answers with, and the read's job is to fetch.
+ */
+export const SEED_ABANDONED = "__barq_seed_abandoned__";
+
+export function isAbandonedSeed(value: unknown): boolean {
+  return typeof value === "object" && value !== null && SEED_ABANDONED in value;
+}
+
+function openPendingSeed(session: symbol, key: string): PendingSeed {
+  let bucket = pendingSeeds.get(session);
+  if (bucket === undefined) {
+    bucket = new Map();
+    pendingSeeds.set(session, bucket);
+  }
+  const open = bucket.get(key);
+  if (open !== undefined) return open;
+  let settleWith!: (value: unknown) => void;
+  let failWith!: (error: unknown) => void;
+  const promise = new Promise<unknown>((res, rej) => {
+    settleWith = res;
+    failWith = rej;
+  });
+  // Nobody may be awaiting this yet — it exists to be SERIALIZED — and an
+  // unhandled rejection would take the process down on Node. A FAILED value is
+  // the one case that still rejects, and it rejects on both sides by design.
+  promise.catch(() => undefined);
+  const seed: PendingSeed = { promise, resolve: settleWith, reject: failWith, vacant: false };
+  bucket.set(key, seed);
+  return seed;
+}
+
+/**
+ * The promises to put on the wire for keys still in flight, so the client waits
+ * on them instead of finding a hole and refetching.
+ */
+export function pendingSeedsOf(session?: symbol): Record<string, Promise<unknown>> {
+  const bucket = pendingSeeds.get(session ?? null);
+  if (bucket === undefined) return {};
+  const out: Record<string, Promise<unknown>> = {};
+  for (const [key, seed] of bucket) out[key] = seed.promise;
+  return out;
+}
+
+/**
+ * Give up on every key this session never sent, so no client read waits for a
+ * value that is not coming. This is what Solid's `_$HY.done` is for; per-key
+ * rather than one global flag, because the read that has to fall back is the
+ * one whose key was abandoned and not every read on the page.
+ */
+export function abandonPendingSeeds(session?: symbol): void {
+  const key = session ?? null;
+  const bucket = pendingSeeds.get(key);
+  if (bucket === undefined) return;
+  for (const [, seed] of bucket) seed.resolve({ [SEED_ABANDONED]: 1 });
+  pendingSeeds.delete(key);
+}
+
+/**
+ * The render whose own code is running right now, for code no owner speaks for.
+ *
+ * One slot for the whole process, so it is only ever right inside a stretch
+ * that does not yield: a render building its tree, a boundary being resumed, a
+ * compute being run. Anything that awaits has to let go of it first and take it
+ * again afterwards, because every other request runs in the gap.
+ */
+let activeAsyncSession: symbol | null = null;
+
+/**
+ * Name the render the code that follows belongs to, and answer with the one
+ * named before so the caller can put it back. Bracket synchronous code only.
+ */
+export function setAsyncSession(session: symbol | null): symbol | null {
+  const prev = activeAsyncSession;
+  activeAsyncSession = session;
+  return prev;
+}
+
+/** Whether the code running now is part of a server render. */
+export function serverRendering(): boolean {
+  return activeAsyncSession !== null;
+}
+
+/**
+ * The render a root was opened for. Every scope and computation below the root
+ * inherits it, which is how a declaration made long after the render's own
+ * bracket has closed, by a recompute the engine scheduled or another render's
+ * flush happened to run, still finds the render it belongs to.
+ */
+const RENDER_SESSION = engineCreateContext<symbol | null>(null);
+
+/**
+ * The session a declaration made here belongs to: its render's, when the owner
+ * it is made under came from one, and the bracketed one otherwise. A render
+ * that has ended is nobody, and what is declared under it afterwards is not
+ * handed to whichever render is current instead.
+ */
+function declaringSession(owner: Owner | null): symbol | null {
+  if (owner !== null) {
+    const carried = engineGetContext(RENDER_SESSION, owner);
+    if (carried !== null) return hydrationData.has(carried) ? carried : null;
+  }
+  return activeAsyncSession;
+}
+
+/** Client: the payload emitted by generateHydrationScript, if present */
+function getSeed(key: string): { found: boolean; value?: unknown } {
+  const store = (globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__;
+  if (store && Object.hasOwn(store, key)) {
+    const value = store[key];
+    delete store[key]; // consume: a later refresh() refetches for real
+    return { found: true, value };
+  }
+  return { found: false };
+}
+
+/**
+ * Wrap a compute so its async answers are visible to `settle` and, under a key,
+ * cross from the server to the client.
+ *
+ * The session is taken where the value is DECLARED and kept. The engine's flush
+ * is one for the whole process: a re-ask it schedules on its own microtask runs
+ * outside any render's bracket, and one that is pending while another render
+ * flushes runs inside that render's. Neither is where the value belongs.
+ */
+function asyncAware<T>(
+  fn: (prev: T | undefined) => T | PromiseLike<T> | AsyncIterable<T>,
+  explicitKey: string | undefined,
+  name: string | undefined,
+): (prev: T | undefined) => T | PromiseLike<T> | AsyncIterable<T> {
+  const owner = getOwner();
+  const declaredIn = declaringSession(owner);
+  const records = declaredIn === null ? null : recordsOf(declaredIn);
+  // A position is taken whether or not the value is keyed by hand, so keying
+  // one read does not move the reads declared after it.
+  const numbering = owner === null ? null : engineGetContext(NUMBERING, owner);
+  const position = numbering === null ? undefined : positionUnder(numbering, numbering.values++);
+  const key =
+    explicitKey ??
+    (position === undefined ? undefined : name === undefined ? position : `${position}~${name}`);
+  let first = true;
+
+  const run = (prev: T | undefined, session: symbol | null): ReturnType<typeof fn> => {
+    const node = getOwner();
+    if (first) {
+      first = false;
+      if (key !== undefined) {
+        // What THIS render already has for the key, so a second declaration of
+        // it inside the same render answers rather than fetching again. It is
+        // the session's own recorded output and is not consumed, because
+        // `getHydrationData` still has to emit it.
+        //
+        // Session-scoped, and deliberately never the `null` bucket: on the
+        // client the session is null and a hit here would let one keyed read
+        // answer another's, defeating the consume-on-read that makes
+        // `refresh()` refetch for real.
+        if (session !== null && records !== null) {
+          if (records.has(key)) return records.get(key) as T;
+          // Asked and not answered yet: the string backend builds a parked
+          // boundary's body again on every resume, and the declaration inside
+          // it joins the flight the first build started.
+          const asked = pendingSeeds.get(session)?.get(key);
+          if (asked !== undefined && !asked.vacant) {
+            return follow(
+              asked.promise.then((arrived) => {
+                if (isAbandonedSeed(arrived)) return fn(prev) as T | PromiseLike<T>;
+                return arrived as T;
+              }),
+              session,
+              undefined,
+              node,
+            );
+          }
+        }
+        const seed = getSeed(key);
+        if (seed.found) {
+          const value = seed.value;
+          // A seeded value may be a PROMISE: the server writes a key the moment
+          // its flight starts, so a boundary that had not settled when the shell
+          // flushed is on the wire as something to await rather than as a hole.
+          if (isThenable(value)) {
+            // Followed without a key: the wait is this read's own work, and
+            // what arrives is the server's value, already on the page.
+            return follow(
+              (value as PromiseLike<T>).then((arrived: unknown) => {
+                // The server gave up on this key: fetch it, which is what a
+                // page with no seed at all does.
+                if (isAbandonedSeed(arrived)) return fn(prev) as T | PromiseLike<T>;
+                return arrived as T;
+              }),
+              session,
+              undefined,
+              node,
+            );
+          }
+          return value as T;
+        }
+      }
+    }
+
+    const result = fn(prev);
+    if (typeof result !== "object" || result === null) return result;
+    if (isThenable(result)) return follow(result, session, key, node);
+    if (typeof (result as AsyncIterable<T>)[Symbol.asyncIterator] === "function") {
+      return followStream(result as AsyncIterable<T>, session, key, node);
+    }
+    return result;
+  };
+
+  return (prev) => {
+    // A render that has ended dropped its bucket, and what it declared is
+    // nobody's from then on.
+    const session =
+      declaredIn !== null && hydrationData.get(declaredIn) === records ? declaredIn : null;
+    if (session === activeAsyncSession) return run(prev, session);
+    // Whoever is flushing is not who this value belongs to, and what the
+    // compute declares in passing, under a root of its own with no render
+    // above it, has only the slot to go by.
+    const outer = activeAsyncSession;
+    activeAsyncSession = session;
+    try {
+      return run(prev, session);
+    } finally {
+      activeAsyncSession = outer;
+    }
+  };
+}
+
+const IGNORE = (): void => {};
+
+function follow<T>(
+  promise: PromiseLike<T>,
+  session: symbol | null,
+  key: string | undefined,
+  node: object | null,
+): PromiseLike<T> {
+  inFlight.set(promise, session);
+  if (node !== null) flights.set(node, promise);
+  const landed = (): void => {
+    inFlight.delete(promise);
+    if (node !== null && flights.get(node) === promise) flights.delete(node);
+  };
+  if (key === undefined || session === null) {
+    promise.then(landed, landed);
+    return promise;
+  }
+  const records = recordsOf(session);
+  const seed = openPendingSeed(session, key);
+  seed.vacant = false;
+  promise.then(
+    (value) => {
+      landed();
+      // An answer that arrives after its render has ended is dropped: the
+      // bucket it would be written to is one nothing will clear again.
+      if (hydrationData.get(session) === records) records.set(key, value);
+      seed.resolve(value);
+    },
+    (error: unknown) => {
+      landed();
+      // Not an answer: the compute read a value that is still in flight.
+      // Rejected with this, every later declaration of the key joined a wait
+      // on a node from a build that is gone.
+      if (error instanceof NotReadyError) {
+        seed.vacant = true;
+        return;
+      }
+      seed.reject(error);
+    },
+  );
+  return promise;
+}
+
+/**
+ * A stream is in flight until its FIRST yield and a changing value from then
+ * on, so that is all `settle` waits for: a producer that never finishes must
+ * not hold a render open.
+ */
+function followStream<T>(
+  source: AsyncIterable<T>,
+  session: symbol | null,
+  key: string | undefined,
+  node: object | null,
+): AsyncIterable<T> {
+  let answered!: (value: unknown) => void;
+  const firstAnswer = new Promise<unknown>((res) => {
+    answered = res;
+  });
+  inFlight.set(firstAnswer, session);
+  if (node !== null) flights.set(node, firstAnswer);
+  const firstAnswered = (value: unknown): void => {
+    inFlight.delete(firstAnswer);
+    if (node !== null && flights.get(node) === firstAnswer) flights.delete(node);
+    answered(value);
+  };
+  const records = key === undefined || session === null ? null : recordsOf(session);
+  return {
+    [Symbol.asyncIterator](): AsyncIterator<T> {
+      const inner = source[Symbol.asyncIterator]();
+      return {
+        next: () =>
+          Promise.resolve(inner.next()).then(
+            (step) => {
+              if (
+                !step.done &&
+                key !== undefined &&
+                records !== null &&
+                hydrationData.get(session) === records
+              ) {
+                records.set(key, step.value);
+              }
+              firstAnswered(step.value);
+              return step;
+            },
+            (error: unknown) => {
+              firstAnswered(undefined);
+              throw error;
+            },
+          ),
+        return: (value?: unknown) => {
+          firstAnswered(undefined);
+          return inner.return !== undefined
+            ? Promise.resolve(inner.return(value))
+            : Promise.resolve({ done: true, value: undefined as T });
+        },
+      };
+    },
+  };
+}
+
+/**
+ * Un-attributed promises a `settle` has already waited a full turn on.
+ *
+ * Pruned against `inFlight`, which drops a promise when it settles, so this
+ * holds only work that is genuinely outstanding.
+ */
+const abandoned = new Set<PromiseLike<unknown>>();
+
+function inFlightOf(
+  session: symbol | undefined,
+  stale?: Set<PromiseLike<unknown>>,
+): PromiseLike<unknown>[] {
+  if (stale !== undefined) {
+    for (const promise of stale) {
+      if (!inFlight.has(promise)) stale.delete(promise);
+    }
+  }
+  const waiting: PromiseLike<unknown>[] = [];
+  for (const [promise, from] of inFlight) {
+    // A render waits for its own work and nothing else. A memo keeps the
+    // session it was declared in, so a re-ask the engine schedules later is
+    // still the render's; what belongs to no render is some other page's, or a
+    // test's, and one promise there that never settles must not hold this one.
+    if (session !== undefined) {
+      if (from === session) waiting.push(promise);
+      continue;
+    }
+    if (from === null && stale?.has(promise) === true) continue;
+    waiting.push(promise);
+  }
+  return waiting;
+}
+
+/**
+ * Wait until the reactive graph is quiet: flushes synchronously, awaits
+ * in-flight async computations, and repeats until nothing remains
+ * (covers async waterfalls). The backbone of renderToStringAsync; also
+ * handy in tests.
+ *
+ * With `session`, only waits for fetches attributed to that session (see
+ * setAsyncSession) - required on servers where concurrent renders share
+ * the module graph.
+ */
+export async function settle(session?: symbol): Promise<void> {
+  flush();
+  while (true) {
+    const waiting = inFlightOf(session, abandoned);
+    if (waiting.length === 0) break;
+    // With no session named, un-attributed work gets ONE turn, recorded before
+    // the await rather than after, because the await may never return: a
+    // promise nobody ever settles stays in `inFlight` for the life of the
+    // process, and every later `settle()` would otherwise wait on it forever.
+    if (session === undefined) {
+      for (const [promise, from] of inFlight) {
+        if (from === null) abandoned.add(promise);
+      }
+    }
+    await Promise.allSettled(waiting);
+    flush();
+  }
+}
+
+/**
+ * One step of `settle`: wait for the FIRST of this session's in-flight promises,
+ * then flush. `false` when nothing was in flight.
+ *
+ * Streaming needs the step and not the fixpoint. `settle` returns only once
+ * every promise in the session has settled, so a stream driven by it holds every
+ * parked boundary until the SLOWEST one resolves.
+ *
+ * `parkedOn` is what the caller's own reads threw. A read of a value another
+ * render declared is waiting on a flight this session never started, and the
+ * error is the only thing that names it.
+ */
+export async function settleStep(
+  session?: symbol,
+  parkedOn: readonly Unready[] = [],
+): Promise<boolean> {
+  flush();
+  const waiting = inFlightOf(session);
+  for (const error of parkedOn) {
+    const flight = flightOf(error);
+    if (flight !== undefined && !waiting.includes(flight)) waiting.push(flight);
+  }
+  if (waiting.length === 0) return false;
+  await Promise.race(waiting.map(landing));
+  flush();
+  return true;
+}
+
+/**
+ * When a flight has something to say.
+ *
+ * A compute that read a value still in flight is rejected with `NotReadyError`
+ * at once, having fetched nothing. Counted as an answer, it woke the caller,
+ * whose rebuild declared the same compute and was rejected the same way: a
+ * loop of microtasks in which the timer the first value was waiting on never
+ * ran. What that flight is waiting for is the one the error names.
+ */
+function landing(promise: PromiseLike<unknown>): PromiseLike<void> {
+  return promise.then(IGNORE, (error: unknown) => {
+    if (!(error instanceof NotReadyError)) return undefined;
+    const upstream = flightOf(error);
+    if (upstream !== undefined) return landing(upstream);
+    // Nothing names what it waits on. A turn of the event loop rather than of
+    // the microtask queue, so whatever it is has the chance to arrive.
+    return new Promise<void>((resolve) => setTimeout(resolve, 0));
+  });
+}
+
+/**
+ * SSR: resolved values of keyed async computeds, for serialization.
+ * With a session, returns that render's values and only that render's: a value
+ * that cannot be shown to belong to this render is not seeded into it.
+ */
+export function getHydrationData(session?: symbol): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  if (session !== undefined) {
+    const bucket = hydrationData.get(session);
+    if (bucket) {
+      for (const [key, value] of bucket) result[key] = value;
+    }
+    return result;
+  }
+  for (const [, bucket] of hydrationData) {
+    for (const [key, value] of bucket) result[key] = value;
+  }
+  return result;
+}
+
+/** SSR: reset recorded async data (one session's, or everything) */
+export function clearHydrationData(session?: symbol): void {
+  if (session !== undefined) {
+    hydrationData.delete(session);
+    // And the unattributed bucket, which is nobody's and which nothing else
+    // ever clears — a long-lived server otherwise accumulates every value ever
+    // resolved outside a render.
+    hydrationData.delete(null);
+    // A fetch that never answers is still registered when its render ends, and
+    // nothing else would ever let go of it.
+    for (const [promise, from] of inFlight) {
+      if (from === session) inFlight.delete(promise);
+    }
+  } else {
+    hydrationData.clear();
+    inFlight.clear();
+  }
+  resetChildIds(session);
+}
+
+/**
+ * Seeded values the client never claimed, reported once hydration has settled.
+ *
+ * An auto-key is a POSITION in the render's tree, so a client tree that is not the
+ * server's shifts every key after the divergence: a read can then claim a value
+ * recorded for a different call and resolve synchronously with it, which is
+ * wrong data rather than a refetch. Nothing positional can tell those apart at
+ * the moment of the read, but the leftovers prove it afterwards, because a
+ * shifted tree always strands the tail of the payload.
+ */
+export function unclaimedSeeds(): string[] {
+  const store = (globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__;
+  const unclaimed = store === undefined ? [] : Object.keys(store);
+  if (unclaimed.length !== 0) {
+    emitDiagnostic(
+      "HYDRATION_SEED_DRIFT",
+      "warning",
+      `The server sent ${unclaimed.length} async ${unclaimed.length === 1 ? "value" : "values"} ` +
+        `that no \`createMemo\` in the browser asked for (${unclaimed.join(", ")}). The browser ` +
+        "rendered a different set of components than the server did, so an async memo may be " +
+        "showing a value the server computed for another one. Render the same components on " +
+        "both sides, and name each async memo so that a mismatch fetches again instead: " +
+        '`createMemo(load, { name: "user" })`.',
+      undefined,
+      unclaimed,
+    );
+  }
+  return unclaimed;
 }

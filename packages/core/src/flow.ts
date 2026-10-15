@@ -3,30 +3,22 @@
  *
  * Two invariants the shape of this file exists to hold:
  *
- * - O2/O3.7: `enter(given)` is the only spelling used, so an instance is a child
- *   of the scope the construct was HANDED — never of the effect that swapped it,
- *   never of nothing.
+ * - O2/O3.7: `childScope(owner)` is the only spelling used, so an instance always
+ *   has an owner that leads back to the scope the construct was HANDED — never
+ *   nothing. `region` says why a swapped instance hangs off its effect.
  * - C7: every Block goes through `invoke`, including the two the error boundary
  *   hands `region` as its own arms.
  */
 
 import type { Child } from "./dom.ts";
-import { childToNodes } from "./dom.ts";
-import {
-  REVEAL_COORD,
-  type RevealHandle,
-  type RevealOrder,
-  createErrorCollector,
-  createPendingCollector,
-  createRevealCoordinator,
-  outerRevealHandle,
-} from "./boundaries.ts";
+import { LIVE_EDGES, childToNodes } from "./dom.ts";
 import {
   HydrationMismatch,
   atCursor,
   claimAt,
   cursorAtEnd,
   cursorRest,
+  inDocumentOrder,
   isScaffolding,
   openCursor,
   probeRange,
@@ -35,31 +27,42 @@ import {
   rangeKey,
   releaseRange,
   report,
+  usualCauses,
   WHOLE,
   withoutClaim,
   type Cursor,
   type Range,
 } from "./hydration.ts";
-import { type Maybe, mapArray, repeat } from "./map.ts";
 import type { Block, Cell, Scope } from "./scope.ts";
+import { createMemo } from "@solidjs/signals";
 import {
+  createEffect,
   ERROR_BOUNDARY,
+  type Maybe,
   NotReadyError,
+  type RevealOrder,
+  childScope,
+  createErrorBoundary,
+  createLoadingBoundary,
+  createRevealOrder,
+  createSignal,
   diagnosticsEnabled,
   disposeScope,
   emitDiagnostic,
-  enter,
-  exit,
+  flush,
   isBlock,
-  lookupContext,
   onCleanup,
   ownRange,
   provideOn,
   readSlot,
   renderEffect,
+  runWithOwner,
   getOwner,
-  ScopeMissingError,
-  signal,
+  mapArray,
+  OWNERSHIP,
+  repeat,
+  jsxAsValue,
+  traceScope,
   underScope,
   untrack,
 } from "./signals.ts";
@@ -106,9 +109,6 @@ export { WHOLE };
 /** `each`'s fourth mode: `src` is a count, not a list (`Repeat`). */
 export const COUNT: unique symbol = Symbol("barq-count");
 
-/** No key has been computed yet. `undefined` is a legal key, so it cannot say this. */
-const UNSET: unique symbol = Symbol("barq-unset");
-
 /**
  * What the wire says when the key it chose has no safe spelling in a comment.
  * The range is still claimed — positionally, which is all `<!--[-->` ever gave
@@ -148,6 +148,7 @@ interface Site {
 function siteFor(parent: Node | null, anchor: Node | null): { site: Site; out: Node | null } {
   if (parent !== null) return { site: { parent, anchor }, out: null };
   const own = document.createTextNode("");
+  LIVE_EDGES.add(own);
   const out = document.createDocumentFragment();
   out.appendChild(own);
   return { site: { parent: null, anchor: own }, out };
@@ -166,6 +167,15 @@ function siteFor(parent: Node | null, anchor: Node | null): { site: Site; out: N
  * comments meaningful for the rest of the page's life rather than only for the
  * first paint.
  */
+const WRITTEN_AS: Record<string, string> = {
+  branch: "a conditional such as `<Show>` or `<Switch>`",
+  each: "a list such as `<For>`",
+  boundary: "a `<Loading>` or `<Errored>` boundary",
+  portal: "a `<Portal>`",
+};
+
+const REST_REUSED = "and the rest of the server's markup was reused.";
+
 function claimSite(
   site: Site,
   parent: Node | null,
@@ -196,16 +206,27 @@ function claimSite(
     if (isScaffolding(anchor) || (anchor === null && isScaffolding(parent))) {
       throw new HydrationMismatch(
         "not-hydratable",
-        `${origin} was compiled without \`hydratable\` and the server's markup was compiled ` +
-          "with it — the two halves of this deployment are not the same build",
+        `the browser bundle renders ${WRITTEN_AS[origin]} compiled without ` +
+          "`hydratable: true` over server markup compiled with it, so the two were not built " +
+          "together",
       );
     }
-    report("not-hydratable", `${origin} reached its primitive without the hydratable flag`);
+    report(
+      "not-hydratable",
+      `The browser rendered ${WRITTEN_AS[origin]} that was not compiled with ` +
+        "`hydratable: true`, so it could not reuse the server's markup at its position. " +
+        `${usualCauses("not-hydratable")} It was built again in the browser ${REST_REUSED}`,
+    );
     site.cold = true;
     const stray = probeRange(parent, anchor);
     if (stray !== null) {
       if (stray.nodes.length > 0) {
-        report("structure", `${stray.nodes.length} server node(s) at a range with no flag`);
+        report(
+          "structure",
+          `The server sent ${stray.nodes.length} node(s) for ${WRITTEN_AS[origin]} that the ` +
+            "browser renders without `hydratable: true`. The nodes were removed, because the " +
+            "browser built that content again.",
+        );
       }
       releaseRange(stray);
       site.anchor = stray.close;
@@ -305,9 +326,30 @@ function takeUnsettledClaim(site: Site): Range | null {
  * empty text node and removes every node in it — measured on a router page as
  * `"5 server node(s) at a range the client rebuilt"` and an empty document.
  */
-function outFor(site: Site, out: Node | null): Node | null {
+function outFor(site: Site, out: Node | null, claimed: Range | null): Node | Node[] | null {
   if (out === null) return null;
-  return site.anchor !== null && site.anchor.parentNode === out ? out : null;
+  if (site.anchor !== null && site.anchor.parentNode === out) return out;
+  return claimed === null ? null : rangeNodes(claimed);
+}
+
+/**
+ * A claimed range as it stands, comments included.
+ *
+ * What a region that adopted the server's nodes hands its caller. The caller
+ * places by identity, so nodes already in position cost nothing — and a value
+ * that left them out read as "nothing here", which put a sibling built beside
+ * them on the wrong side and reconciled the range's own comments away.
+ */
+function rangeNodes(range: Range): Node[] {
+  const nodes: Node[] = [];
+  const { open, close } = range;
+  if (open === null || close === null || open.parentNode === null) return nodes;
+  for (let node: Node | null = open; node !== null; node = node.nextSibling) {
+    nodes.push(node);
+    if (node === close) break;
+  }
+  LIVE_EDGES.add(close);
+  return nodes;
 }
 
 function hostOf(site: Site): Node | null {
@@ -364,12 +406,6 @@ function allUnder(host: Node, nodes: readonly Node[]): boolean {
   return true;
 }
 
-function flatten(groups: readonly Node[][]): Node[] {
-  const out: Node[] = [];
-  for (const group of groups) for (const node of group) out.push(node);
-  return out;
-}
-
 // ============================================================================
 // One activation
 // ============================================================================
@@ -379,6 +415,9 @@ interface Instance {
   scope: Scope | null;
   nodes: readonly Node[];
 }
+
+/** Marks which arm a boundary's view is showing; the nodes are placed by hand. */
+const CONTENT: unique symbol = Symbol("barq-content");
 
 const NOTHING: Instance = { scope: null, nodes: EMPTY };
 
@@ -393,13 +432,14 @@ function activate(
   args: readonly unknown[],
   flags: number,
   kind: "branch" | "portal",
+  placed = true,
 ): Instance {
   // The FIRST activation at a claimed position builds under the server's
   // nodes; every later one is an ordinary build. Taking it off the site here is
   // what makes that true without any caller having to remember it.
   const claim = site.claim ?? null;
   site.claim = null;
-  if (claim === null) return attempt(given, site, body, args, flags, kind, null);
+  if (claim === null) return attempt(given, site, body, args, flags, kind, null, placed);
   // H4'S BLAST RADIUS, GENERALISED.
   //
   // `hydration.ts` says a mismatch has exactly two catchers: a region rebuilds
@@ -418,14 +458,24 @@ function activate(
   // It reports. A region that swallowed one would be the third catcher the
   // design says does not exist.
   try {
-    return attempt(given, site, body, args, flags, kind, claim);
+    return attempt(given, site, body, args, flags, kind, claim, placed);
   } catch (error) {
     if (!(error instanceof HydrationMismatch)) throw error;
-    report(error.kind, `${kind}: ${error.message} — the range was rebuilt`);
+    report(
+      error.kind,
+      `${error.message} Only the content of ${WRITTEN_AS[kind]} was rebuilt in the browser, ` +
+        REST_REUSED,
+    );
     releaseRange(claim);
-    return attempt(given, site, body, args, flags, kind, null);
+    return attempt(given, site, body, args, flags, kind, null, placed);
   }
 }
+
+/**
+ * Build one instance. With `placed` false the nodes are built and handed back
+ * for the caller's effect to put in the document once its pass has committed;
+ * a claimed build is in the document already, which is what a claim is.
+ */
 
 function attempt(
   given: Scope | null,
@@ -435,6 +485,7 @@ function attempt(
   flags: number,
   kind: "branch" | "portal",
   claim: Range | null,
+  placed = true,
 ): Instance {
   // No claim means COLD, always. A region whose first attempt threw has already
   // spent its claim, and the fallback it builds instead must not go on claiming
@@ -448,23 +499,28 @@ function attempt(
   const under = <T>(work: () => T): T => {
     if (claim === null) return withoutClaim(work);
     cursor = openCursor(claim);
-    return atCursor(cursor, work);
+    return atCursor(cursor, () => inDocumentOrder(work));
   };
 
   if ((flags & NO_SCOPE) !== 0) {
-    const nodes = under(() => build(given, body, args));
+    const nodes = under(() => asRow(build(given, body, args)));
     evictUnclaimed(claim, cursor);
-    insertAt(site, nodes);
+    if (placed) insertAt(site, nodes);
     return { scope: null, nodes };
   }
-  const scope = enter(given, kind);
-  let nodes: readonly Node[] = EMPTY;
+  const scope = childScope(given, kind);
+  const instance: { scope: Scope; nodes: readonly Node[] } = { scope, nodes: EMPTY };
+  // Installed before the body runs: a scope's cleanups unwind last-registered
+  // first, so the range is still in the document while the body's own run.
+  ownRange(scope, () => {
+    removeNodes(standingRow(instance.nodes));
+    instance.nodes = EMPTY;
+  });
   let built = false;
   try {
-    nodes = under(() => build(scope, body, args));
+    instance.nodes = runWithOwner(scope, () => under(() => asRow(build(scope, body, args))));
     built = true;
   } finally {
-    exit(scope);
     if (!built) {
       disposeScope(scope);
       // The claim goes with the attempt that failed. Its nodes are the server's
@@ -474,13 +530,8 @@ function attempt(
       if (claim !== null) releaseRange(claim);
     }
   }
-  const instance: Instance = { scope, nodes };
-  ownRange(scope, () => {
-    removeNodes(instance.nodes);
-    instance.nodes = EMPTY;
-  });
   evictUnclaimed(claim, cursor);
-  insertAt(site, nodes);
+  if (placed) insertAt(site, instance.nodes);
   return instance;
 }
 
@@ -509,7 +560,12 @@ function evictUnclaimed(claim: Range | null, cursor: Cursor | null): void {
   const stranded = cursorRest(cursor);
   if (stranded.length === 0) return;
   for (const node of stranded) node.parentNode?.removeChild(node);
-  report("structure", `${stranded.length} server node(s) at a range the client rebuilt`);
+  report(
+    "structure",
+    `The server sent ${stranded.length} more node(s) than the browser builds inside one ` +
+      `conditional or boundary. ${usualCauses("structure")} The extra nodes were removed ` +
+      REST_REUSED,
+  );
 }
 
 /** A Cell ignores every argument, so one spelling serves both. */
@@ -529,11 +585,9 @@ function build(scope: Scope | null, body: Block<unknown>, args: readonly unknown
  */
 function invoke(scope: Scope | null, body: Block<unknown>, args: readonly unknown[]): unknown {
   if (diagnosticsEnabled()) countCall(body);
-  // The scope is already CURRENT — `attempt` entered it before calling here —
-  // so the body reads it the way every other reactive primitive does, from the
-  // ambient owner. It used to be handed over as an argument, which meant a
-  // component was declared `(scope, props)` and every call site had to thread a
-  // value the runtime already knew.
+  // The scope is already CURRENT — `attempt` runs the build under it — so the
+  // body reads it the way every other reactive primitive does, from the ambient
+  // owner.
   void scope;
   return (body as (...rest: readonly unknown[]) => unknown)(...args);
 }
@@ -548,7 +602,10 @@ function countCall(body: object): void {
     emitDiagnostic(
       "BLOCK_EVALUATED_TWICE",
       "error",
-      "a Block was invoked twice for one activation: a second call at one compile-addressed slot builds a second subtree and discards one of them.",
+      "The content of one `<Show>`, `<For>`, `<Loading>` or `<Portal>` was built twice for a " +
+        "single render, so its effects exist twice and one copy of its DOM was thrown away. " +
+        "This is a bug in barq, not in your component: please report it with the component " +
+        "that triggered it.",
     );
   }
   lastSeen.set(body, activation);
@@ -561,7 +618,7 @@ function teardown(instance: Instance): void {
     disposeScope(instance.scope);
     return;
   }
-  removeNodes(instance.nodes);
+  removeNodes(standingRow(instance.nodes));
 }
 
 // ============================================================================
@@ -569,67 +626,36 @@ function teardown(instance: Instance): void {
 // ============================================================================
 
 /**
- * What `branch` and `boundary` share, and the only place a key is compared, an
- * instance is swapped or a throw is recovered from.
+ * The only place a key is compared and an instance is swapped.
  *
- * `recover` is E3's `try`: a construction throw inside the selected body asks
- * for the key to build instead, and `null` re-throws. `branch` passes none, so
- * a plain conditional has no error path to get wrong.
+ * It is the engine's shape for a conditional: a memo holds the key, an effect's
+ * compute builds the instance the key selects, and the effect's apply puts it
+ * in the document. Three things follow from that and none of them is done by
+ * hand here.
+ *
+ * - The instance is opened under the effect, so the engine retires it when the
+ *   effect runs again, and its range leaves with it.
+ * - A read inside the body is answered from the pass that selected the body. An
+ *   instance opened anywhere else reads the world as it was BEFORE the write
+ *   that selected it.
+ * - A body that reads a pending value leaves the instance already standing
+ *   where it is until the value arrives, and the effect is run again then.
+ *
+ * The memo is what makes the first of those safe: the effect may only run again
+ * when the key has actually moved.
  */
 function region<K>(
-  given: Scope | null,
   site: Site,
   key: Cell<K>,
   bodies: Block<unknown> | readonly (Block<unknown> | null | undefined)[],
   flags: number,
   args: readonly unknown[],
-  recover: ((error: unknown) => K | null) | null,
-): () => void {
-  let instance = NOTHING;
-  let previous: K | typeof UNSET = UNSET;
-  let swapping = false;
-  /**
-   * The last attempt at `previous` SUSPENDED, so there is nothing standing at
-   * this position and the key has not moved. Both halves have to be answered or
-   * the region wedges: see `attemptTracked` below for the dependency, and the
-   * `retry` test in the key effect for the rebuild.
-   */
-  let retry = false;
+): void {
+  /** The instance in the document, kept for the one case nothing else removes. */
+  let standing = NOTHING;
 
   const pick = (k: K): Block<unknown> | null | undefined =>
     typeof bodies === "function" ? bodies : bodies[k as unknown as number];
-
-  const swap = (k: K): void => {
-    swapping = true;
-    try {
-      swapInner(k);
-    } finally {
-      swapping = false;
-    }
-  };
-
-  /**
-   * A body build is UNTRACKED — a body's own reads must not become dependencies
-   * of the key, or every value the content displays would re-swap the whole
-   * region instead of updating in place. That is right for a body that builds,
-   * and wrong for one that SUSPENDS: a `NotReadyError` means nothing was built,
-   * and an untracked read registered no dependency, so nothing will ever wake
-   * this position again. The boundary above shows its fallback for good.
-   *
-   * So a suspended body is retried TRACKED. The read then lands on the key
-   * effect, the resource settling re-runs it, and `retry` is what stops the
-   * "key did not move" short-circuit from reading that as nothing to do. The
-   * cost is confined to the suspended case: a body that completes is never
-   * tracked, so nothing about the ordinary path changes.
-   */
-  const swapMaybeSuspending = (k: K): void => {
-    try {
-      untrack(() => swap(k));
-    } catch (error) {
-      if (!(error instanceof NotReadyError)) throw error;
-      swap(k);
-    }
-  };
 
   /**
    * H2. The written key decides what may be CLAIMED, never what is built.
@@ -644,92 +670,79 @@ function region<K>(
    * condition is what the reactive graph will go on maintaining, so a branch
    * held on the server's arm against the client's own read has nothing that
    * would ever repair it. What the wire buys is DETECTION and a bound on the
-   * damage. Keeping the server's arm until the client is seeded needs a
-   * seeding barrier nobody has specified, and H2 does not claim it.
+   * damage.
    */
-  const reconcileKey = (k: K): K => {
+  const reconcileKey = (k: K): void => {
     const claim = site.claim;
-    if (claim === undefined || claim === null) return k;
+    if (claim === undefined || claim === null) return;
     const wire = rangeKey(claim);
-    if (wire === null || wire === OPAQUE_KEY) return k;
-    if (wire === String(k)) return k;
-    report("key", `the server took branch ${JSON.stringify(wire)}, the client takes ${String(k)}`);
+    if (wire === null || wire === OPAQUE_KEY) return;
+    if (wire === String(k)) return;
+    report(
+      "key",
+      `The server rendered the branch \`${wire}\` of a conditional where the browser picks ` +
+        `\`${String(k)}\`. ${usualCauses("key")} The server's branch was replaced by the ` +
+        `browser's ${REST_REUSED}`,
+    );
     releaseRange(claim);
     site.claim = null;
-    return k;
   };
 
-  const swapInner = (k: K): void => {
-    if (instance !== NOTHING) {
-      teardown(instance);
-      instance = NOTHING;
-    }
-    k = reconcileKey(k);
+  const make = (k: K, placed: boolean): Instance => {
+    reconcileKey(k);
     activation++;
     const body = pick(k);
-    if (body === null || body === undefined) return;
-    if (recover === null) {
-      instance = activate(given, site, body, args, flags, "branch");
-      return;
+    if (body === null || body === undefined) {
+      // An empty arm is this position's first activation too. Left on the
+      // site, the claim would be taken by the next arm, built after the page
+      // hydrated, under a range the server wrote empty.
+      const claim = site.claim ?? null;
+      site.claim = null;
+      if (claim !== null && claim.nodes.length > 0) {
+        report(
+          "structure",
+          `The server sent ${claim.nodes.length} node(s) for ${WRITTEN_AS.branch} where the ` +
+            `browser renders nothing. The nodes were removed ${REST_REUSED}`,
+        );
+        releaseRange(claim);
+      }
+      return NOTHING;
     }
-    try {
-      instance = activate(given, site, body, args, flags, "branch");
-    } catch (error) {
-      const alternative = recover(error);
-      if (alternative === null) throw error;
-      previous = alternative;
-      const fallback = pick(alternative);
-      if (fallback === null || fallback === undefined) return;
-      activation++;
-      instance = activate(given, site, fallback, args, flags, "branch");
-    }
+    return activate(getOwner(), site, body, args, flags, "branch", placed);
   };
 
   if ((flags & STATIC_KEY) !== 0) {
-    // The compiler proved the key reads nothing reactive: no effect, no
-    // previous-key record, and — when `NO_SCOPE` is proved too — no allocation
-    // at all beyond the nodes themselves.
-    const k = untrack(key);
-    swap(k);
+    // The compiler proved the key reads nothing reactive: no memo, no effect,
+    // and — when `NO_SCOPE` is proved too — no allocation at all beyond the
+    // nodes themselves.
+    standing = make(untrack(key), true);
   } else {
-    renderEffect(() => {
-      const k = key();
-      if (previous !== UNSET && k === previous && !retry) return;
-      previous = k;
-      // Set before the attempt and cleared on the far side of one that
-      // returned, so a throw leaves it standing and the next run is a retry.
-      retry = true;
-      swapMaybeSuspending(k);
-      retry = false;
-    });
+    const selected = createMemo<K>(() => key());
+    renderEffect<Instance>(
+      () => {
+        const k = selected();
+        // Untracked: a body's own reads must not become dependencies of the
+        // region, or every value the content displays would rebuild it instead
+        // of updating in place.
+        return untrack(() => make(k, false));
+      },
+      (next, previous) => {
+        // An instance with a scope was retired by the engine along with the
+        // pass that replaced it. One without has nothing else to remove it.
+        if (previous !== undefined && previous.scope === null) {
+          removeNodes(standingRow(previous.nodes));
+        }
+        insertAt(site, next.nodes);
+        standing = next;
+      },
+    );
   }
 
   if ((flags & NO_SCOPE) !== 0) {
     // With no instance scope there is no `ownRange` to run, so the region's
     // last nodes come out with the scope that owns the region itself.
-    onCleanup(() => teardown(instance));
+    onCleanup(() => removeNodes(standingRow(standing.nodes)));
   }
-
-  /**
-   * Re-read the key and swap if it moved, outside the effect.
-   *
-   * E2 routes an error to `s.catcher`, and a catcher that only WRITES a signal
-   * is at the mercy of the flush it was called from: an error raised by an
-   * effect during the very flush that created this region marks a render effect
-   * that has already run, and the mark is consumed by nothing. A boundary that
-   * recovers on the second flush and not the first is not a boundary. So the
-   * catcher acts, and the key it re-reads is the same expression the effect
-   * reads — one decision procedure, two entry points.
-   */
-  return (): void => {
-    if (swapping) return;
-    const k = untrack(key);
-    if (previous !== UNSET && k === previous && !retry) return;
-    previous = k;
-    retry = true;
-    swapMaybeSuspending(k);
-    retry = false;
-  };
 }
 
 // ============================================================================
@@ -752,8 +765,8 @@ function region<K>(
  * `STATIC_KEY` path and inside a `renderEffect` otherwise, and `readSlot` would
  * decide that for them.
  */
-function cellSlot(value: unknown, origin: string): void {
-  if (isBlock(value)) throw new ScopeMissingError(`${origin} (a Block reached a Cell slot)`);
+function cellSlot(value: unknown, origin: string, returned = false): void {
+  if (isBlock(value)) throw jsxAsValue(origin, returned);
 }
 
 /**
@@ -776,7 +789,7 @@ export function branch<K>(
   key: Cell<K>,
   bodies: Block<unknown> | readonly (Block<unknown> | null | undefined)[],
   flags = 0,
-): Node | null {
+): Node | Node[] | null {
   const given = getOwner();
   // The key ACCESSOR, not the key's value.
   //
@@ -787,11 +800,12 @@ export function branch<K>(
   // a branch keyed on the component, and a compiled component IS a Block — so
   // rendering a component held in data threw from inside the construct that
   // exists to do exactly that.
-  cellSlot(key, "branch key");
+  cellSlot(key, "The condition of a `<Show>`, `<Match>` or `<Dynamic>`");
   const { site, out } = siteFor(parent, anchor);
   claimSite(site, parent, anchor, flags, "branch");
-  underScope(given, "branch", () => region(given, site, key, bodies, flags, EMPTY_ARGS, null));
-  return outFor(site, out);
+  const claimed = site.claim ?? null;
+  underScope(given, "branch", () => region(site, key, bodies, flags, EMPTY_ARGS));
+  return outFor(site, out, claimed);
 }
 
 const EMPTY_ARGS: readonly unknown[] = [];
@@ -841,7 +855,7 @@ export function keyMode<T>(
   const resolved =
     typeof carrier === "function" && (carrier as { length: number }).length >= 1
       ? carrier
-      : readSlot(carrier, "each keyOf");
+      : readSlot(carrier, "For.keyed");
   if (typeof resolved === "function") return resolved as (item: T) => unknown;
   return resolved === false ? false : null;
 }
@@ -857,18 +871,22 @@ export function each<T>(
   // `NO_SCOPE` would have to reach the row scopes `mapArray`/`repeat` own.
   flags = 0,
   fallback?: Block<unknown> | null,
-): Node | null {
+): Node | Node[] | null {
   const given = getOwner();
   const keyOf = keyMode<T>(carrier);
-  // The source is handed to `mapArray`/`repeat` BY IDENTITY, so the read
-  // happens inside their own effects and there is no site here to test the
-  // yielded value at. Wrapping it would cost a closure per construction on the
-  // list path; the value test is what closes the branded case, and the
-  // laundered `() => aBlock` form is registered rather than described —
-  // `sem-props-block-in-cell-slot`'s `each source` row.
-  cellSlot(src, "each source");
+  // The branded case is refused here. The laundered one, `() => aBlock`, is
+  // only visible in what the source YIELDS, so the read is wrapped: one closure
+  // per list, and a Block arriving where rows were expected is refused instead
+  // of rendering as an empty list.
+  cellSlot(src, "For.each");
+  const source = (): unknown => {
+    const yielded = (src as () => unknown)();
+    cellSlot(yielded, "For.each", true);
+    return yielded;
+  };
   const { site, out } = siteFor(parent, anchor);
   claimSite(site, parent, anchor, flags, "each");
+  const claimed = site.claim ?? null;
   // ONE cursor over the list's range, shared by every row.
   //
   // A row used to be delimited on the wire so the client could hand row `i` its
@@ -882,58 +900,124 @@ export function each<T>(
   // cold; a client that renders fewer leaves nodes nobody adopted. Both are
   // reported and both are cleaned up below.
   const claim = site.claim ?? null;
-  const rowCursor: Cursor | null = claim === null ? null : openCursor(claim);
+  let rowCursor: Cursor | null = claim === null ? null : openCursor(claim);
   const body = row as Block<unknown>;
+  // A list with nothing to claim builds its rows cold, and says so to each
+  // one: a row is built by the list's own node, under whatever cursor the
+  // page left current, and a template there would claim from it.
+  let cold = claim === null && hydrating();
 
-  return underScope(given, "each", (): Node | null => {
+  return underScope(given, "each", (): Node | Node[] | null => {
     const fallbackRows =
       fallback === null || fallback === undefined
         ? undefined
-        : (scope: Scope): Node[] => {
+        : (): Node[] => {
             activation++;
-            return build(scope, fallback, EMPTY_ARGS);
+            if (OWNERSHIP.sink !== null) traceRow(given);
+            // Under the list's cursor like any row: the server wrote the
+            // fallback inside the list's range, and built outside it the
+            // fallback's template claimed whatever the page had next.
+            if (rowCursor === null) {
+              return cold
+                ? withoutClaim(() => build(getOwner(), fallback, EMPTY_ARGS))
+                : build(getOwner(), fallback, EMPTY_ARGS);
+            }
+            return inRow(rowCursor, () => build(getOwner(), fallback, EMPTY_ARGS));
           };
 
+    // A row IS the scope the engine opens for it, so the body is built under
+    // whatever is current when the mapper runs.
     let rows: () => Node[][];
     if (keyOf === COUNT) {
       rows = repeat(
-        src as Cell<number>,
-        (index: number, scope: Scope): Node[] => {
+        source as Cell<number>,
+        (index: number): Node[] => {
           activation++;
+          if (OWNERSHIP.sink !== null) traceRow(given);
           // The closure exists only for the hydrating cursor to wrap, and it is
           // one allocation PER ROW. Nothing is hydrating in the ordinary case.
-          if (rowCursor === null) return build(scope, body, [index]);
-          return inRow(rowCursor, () => build(scope, body, [index]));
+          if (rowCursor === null) {
+            return cold
+              ? withoutClaim(() => asRow(build(getOwner(), body, [index])))
+              : asRow(build(getOwner(), body, [index]));
+          }
+          return inRow(rowCursor, () => asRow(build(getOwner(), body, [index])));
         },
         { fallback: fallbackRows },
       );
     } else {
-      const mapper = (item: unknown, index: unknown, scope: Scope): Node[] => {
+      const one = (item: unknown): Node[] => {
         activation++;
-        if (rowCursor === null) return build(scope, body, [item, index]);
-        return inRow(rowCursor, () => build(scope, body, [item, index]));
+        if (OWNERSHIP.sink !== null) traceRow(given);
+        if (rowCursor === null) {
+          return cold
+            ? withoutClaim(() => asRow(build(getOwner(), body, [item])))
+            : asRow(build(getOwner(), body, [item]));
+        }
+        return inRow(rowCursor, () => asRow(build(getOwner(), body, [item])));
       };
-      rows = mapArray(src as Cell<Maybe<readonly T[]>>, mapper as never, {
-        keyed: (keyOf ?? true) as never,
-        fallback: fallbackRows,
-      });
+      const two = (item: unknown, index: unknown): Node[] => {
+        activation++;
+        if (OWNERSHIP.sink !== null) traceRow(given);
+        if (rowCursor === null) {
+          return cold
+            ? withoutClaim(() => asRow(build(getOwner(), body, [item, index])))
+            : asRow(build(getOwner(), body, [item, index]));
+        }
+        return inRow(rowCursor, () => asRow(build(getOwner(), body, [item, index])));
+      };
+      // The engine reads the mapper's arity to decide whether a row needs an
+      // index at all, and an index is a whole signal per row. The row Block's
+      // own parameter list is the only thing that knows, and only a row that
+      // declares exactly one parameter has said it takes no index: a variadic
+      // one declares none and reads them all.
+      rows = mapArray(
+        source as Cell<Maybe<readonly T[]>>,
+        ((row as { length: number }).length === 1 ? one : two) as never,
+        { keyed: (keyOf ?? true) as never, fallback: fallbackRows },
+      ) as () => Node[][];
     }
 
-    syncRows(site, rows);
     // Nodes the server wrote that no row adopted. They are in the document and
     // nothing owns them, so they go — H4's blast radius, at row granularity.
     // With no per-row comments the leftover is simply whatever the shared cursor
     // still holds, which is a stronger statement than the old row count: it
     // catches a row that consumed FEWER nodes than the server wrote for it as
     // well as a list that was shorter on the client.
-    if (site.cold !== true && rowCursor !== null && !cursorAtEnd(rowCursor)) {
-      const stranded = cursorRest(rowCursor);
-      report("structure", `the server wrote ${stranded.length} node(s) no row claimed`);
+    //
+    // Once the rows are built and BEFORE they are placed: a claimed row is
+    // already where it belongs only while nothing stands between it and the
+    // row after it, and the leftovers are exactly what would.
+    syncRows(site, rows, () => {
+      // The server's rows are spent by the first pass. A row the list gains
+      // after it is new, built cold like any later change, and not a row the
+      // server failed to send.
+      const cursor = rowCursor;
+      rowCursor = null;
+      if (cursor !== null) cold = true;
+      if (site.cold === true || cursor === null || cursorAtEnd(cursor)) return;
+      const stranded = cursorRest(cursor);
+      report(
+        "structure",
+        `The server sent ${stranded.length} node(s) in a list that no row in the browser ` +
+          `matches, so the list is shorter in the browser. ${usualCauses("structure")} The ` +
+          `extra nodes were removed ${REST_REUSED}`,
+      );
       for (const node of stranded) node.parentNode?.removeChild(node);
-    }
+    });
     site.claim = null;
-    return outFor(site, out);
+    return outFor(site, out, claimed);
   });
+}
+
+/**
+ * A row is a scope the engine opened; say so to the ownership trace. It is the
+ * list's to dispose and not the handed scope's, so it is reported as held
+ * elsewhere: rows go in the list's order, which is not creation order.
+ */
+function traceRow(list: Scope | null): void {
+  const row = getOwner();
+  if (row !== null) traceScope(row, list, "each", false);
 }
 
 /**
@@ -948,12 +1032,18 @@ export function each<T>(
 function inRow(cursor: Cursor | null, make: () => Node[]): Node[] {
   if (cursor === null) return make();
   if (cursorAtEnd(cursor)) {
-    report("structure", "a row the server did not write");
+    report(
+      "structure",
+      "The browser's list has a row the server did not send, so the list is longer in the " +
+        `browser. ${usualCauses("structure")} The row was built in the browser ${REST_REUSED}`,
+    );
     return withoutClaim(make);
   }
 
   const from = cursor.next;
-  const made = atCursor(cursor, make);
+  // A row is made into nodes here, in order, so a row that is a string takes
+  // the text it is level with.
+  const made = atCursor(cursor, () => inDocumentOrder(make));
 
   /*
    * A row that ADOPTED the server's nodes created none of its own, so `build`
@@ -965,9 +1055,16 @@ function inRow(cursor: Cursor | null, make: () => Node[]): Node[] {
    * of it, whatever its position in the array.
    *
    * What it occupies is what it claimed.
+   *
+   * Unless the build handed back all of that and more. A live hole in the row
+   * makes the node its content is placed before, and a row holding one is given
+   * a node to be read from (`asRow`); neither is the server's, and a row cut
+   * down to its claimed span lost both, so the hole's next write had nowhere
+   * in the document to go.
    */
   const claimed = spanBetween(from, cursor.next);
-  return claimed.length > 0 ? claimed : made;
+  if (claimed.length === 0) return made;
+  return claimed.every((node) => made.includes(node)) ? made : claimed;
 }
 
 /** The siblings from `from` up to, but not including, `to`. */
@@ -982,35 +1079,110 @@ function spanBetween(from: Node | null, to: Node | null): Node[] {
  * group's ARRAY IDENTITY is what tracks a row — which is why a keyed move
  * preserves the moved row's nodes (K2).
  */
-function syncRows(site: Site, rows: () => Node[][]): void {
-  let current: Node[][] = [];
+/**
+ * Rows whose content changes after they are built, which are the ones a
+ * captured node list stops describing. A branch's arm is one too: the arm is
+ * removed by the nodes it built, and `<Match>{on() ? <b/> : "no"}</Match>` left
+ * the `<b>` it wrote after that behind when the match moved on.
+ *
+ * `<For>{(row) => <Show when={row.open()}>…</Show>}</For>`: the list is told
+ * what the row built, and the branch goes on to put content beside its anchor
+ * that the list never hears about. Moved by the captured nodes, the row left
+ * that content behind; and a row whose content had gone was moved by a node no
+ * longer in the document, which is an `insertBefore` that throws.
+ *
+ * Such a row is given a node to start at, and is read off the document from
+ * there to its last node — which is an edge, or something that never moves.
+ */
+const LIVE_ROWS = new WeakSet<readonly Node[]>();
 
-  renderEffect(() => {
-    const next = rows();
+function asRow(nodes: Node[]): Node[] {
+  for (let i = 0; i < nodes.length; i++) {
+    const node = nodes[i];
+    if (node.nodeType === 1 || !LIVE_EDGES.has(node)) continue;
+    const row = [document.createTextNode("") as Node, ...nodes];
+    LIVE_ROWS.add(row);
+    return row;
+  }
+  return nodes;
+}
+
+/** A row as it stands. */
+function standingRow(row: readonly Node[]): readonly Node[] {
+  if (!LIVE_ROWS.has(row)) return row;
+  const first = row[0];
+  const last = row[row.length - 1];
+  if (first.parentNode === null || first.parentNode !== last.parentNode) return row;
+  const nodes: Node[] = [];
+  for (let node: Node | null = first; node !== null; node = node.nextSibling) {
+    nodes.push(node);
+    if (node === last) break;
+  }
+  return nodes;
+}
+
+function standingRows(rows: readonly Node[][]): Node[] {
+  const out: Node[] = [];
+  for (const row of rows) for (const node of standingRow(row)) out.push(node);
+  return out;
+}
+
+function syncRows(site: Site, rows: () => Node[][], beforeFirst: () => void): void {
+  let current: Node[][] = [];
+  let first = true;
+
+  renderEffect(rows, (next) => {
+    if (first) {
+      first = false;
+      beforeFirst();
+    }
     const host = hostOf(site);
     if (host === null) return;
 
-    if (current.length > 0) {
+    // The rows both lists start and end with are where they were, so only what
+    // lies between is compared. An append, a prepend or one row removed is then
+    // the row itself rather than a set and an index of the whole list.
+    const shared = Math.min(current.length, next.length);
+    let head = 0;
+    while (head < shared && current[head] === next[head]) head++;
+    let was = current.length;
+    let now = next.length;
+    while (was > head && now > head && current[was - 1] === next[now - 1]) {
+      was--;
+      now--;
+    }
+    const leaving = head === 0 && was === current.length ? current : current.slice(head, was);
+    const arriving = head === 0 && now === next.length ? next : next.slice(head, now);
+
+    if (leaving.length > 0) {
       // Emptying the list is its own case, and not only to skip a `Set` of
       // every group: it is the one removal that can go through `removeNodes`'s
       // single-call path, which is what `clear rows` is.
-      if (next.length === 0) {
-        removeNodes(flatten(current));
+      if (arriving.length === 0) {
+        removeNodes(standingRows(leaving));
       } else {
-        const kept = new Set(next);
-        for (const group of current) {
+        const kept = new Set(arriving);
+        for (const group of leaving) {
           if (kept.has(group)) continue;
-          for (const node of group) node.parentNode?.removeChild(node);
+          for (const node of standingRow(group)) node.parentNode?.removeChild(node);
         }
       }
     }
 
-    syncNodeOrder(host, site.anchor, current, next);
+    if (arriving.length > 0) {
+      let after = site.anchor;
+      for (let i = now; i < next.length; i++) {
+        if (next[i].length === 0) continue;
+        after = next[i][0];
+        break;
+      }
+      syncNodeOrder(host, after, leaving, arriving);
+    }
     current = next;
   });
 
   onCleanup(() => {
-    removeNodes(flatten(current));
+    removeNodes(standingRows(current));
     current = [];
   });
 }
@@ -1024,8 +1196,15 @@ function syncNodeOrder(
   const newLen = next.length;
 
   if (previous.length === 0) {
-    for (let i = 0; i < newLen; i++) {
-      for (const node of next[i]) parent.insertBefore(node, anchor);
+    // Last to first against the node that follows, so a row the claim left in
+    // position is not taken out and put back.
+    let before = anchor;
+    for (let i = newLen - 1; i >= 0; i--) {
+      const row = standingRow(next[i]);
+      for (let j = row.length - 1; j >= 0; j--) {
+        place(parent, row[j], before);
+        before = row[j];
+      }
     }
     return;
   }
@@ -1048,8 +1227,12 @@ function syncNodeOrder(
     if (sources[i] !== -1 && lisIndex >= 0 && lis[lisIndex] === sources[i]) {
       lisIndex--; // already in the right place
     } else {
-      for (let j = group.length - 1; j >= 0; j--) {
-        parent.insertBefore(group[j], nextNode);
+      // First to last, each before the same node, which is what keeps a row
+      // of several nodes in its own order: last to first put them down
+      // reversed.
+      const standing = standingRow(group);
+      for (let j = 0; j < standing.length; j++) {
+        parent.insertBefore(standing[j], nextNode);
       }
     }
 
@@ -1108,14 +1291,12 @@ function longestIncreasingSubsequence(arr: number[]): number[] {
 export type BoundaryKind = "error" | "loading";
 
 /**
- * E3: a boundary is a `branch` keyed on `{content | fallback}` plus a `try`.
- *
  * E2.1 is why the content Block is called INSIDE this function rather than
- * handed to it already built: the catcher is installed on the instance scope
- * before the Block runs, so a construction throw lands in this `try`.
+ * handed to it already built: the engine's boundary is in place before the
+ * Block runs, so a construction throw lands in it.
  *
- * E2.3: `NotReadyError` is re-thrown, never captured — an error boundary passes
- * it through to the nearest `Loading`.
+ * E2.3: a pending read is never captured by an error boundary — it passes
+ * through to the nearest `Loading`.
  */
 export function boundary(
   parent: Node | null,
@@ -1125,134 +1306,70 @@ export function boundary(
   body: Block<unknown>,
   flags = 0,
   on?: Cell<unknown>,
-): Node | null {
+): Node | Node[] | null {
   const given = getOwner();
-  if (on !== undefined) cellSlot(on, "boundary on");
+  if (on !== undefined) cellSlot(on, "Loading.on");
   const { site, out } = siteFor(parent, anchor);
   claimSite(site, parent, anchor, flags, "boundary");
-  if (kind === "error") {
-    errorBoundary(given, site, fallback, body, flags);
-  } else {
-    loadingBoundary(given, site, fallback, body, on);
-  }
-  // A claim nobody spent — which after M13 means a boundary that DECLINED one,
-  // not every loading boundary. `loadingBoundary` takes a settled range and
-  // builds into the document under it; it leaves a deferred `<!--[b:N-->` range
-  // alone, because the stream has not swapped that one yet and its nodes are
-  // still the fallback. `errorBoundary` goes through `activate` and has always
-  // claimed. What reaches here is the declined case, and the server's nodes go
-  // rather than standing beside the rebuilt ones — without it the page showed
-  // the fallback TWICE.
+  const claimed = site.claim ?? null;
+  underScope(given, "boundary", () => {
+    if (kind === "error") {
+      guarded(given, site, kind, fallback, body, on);
+      return;
+    }
+    // A loading boundary has a scope of its own, and each arm is an instance
+    // below it: what the boundary holds has to outlive any one build.
+    const own = childScope(given, "branch");
+    runWithOwner(own, () => guarded(own, site, kind, fallback, body, on));
+  });
+  // A claim nobody spent, which means a boundary that DECLINED one: a settled
+  // range is built into where it stands, and a deferred `<!--[b:N-->` range is
+  // the fallback's. What reaches here is the declined case, and the server's
+  // nodes go rather than standing beside the rebuilt ones — without it the page
+  // showed the fallback TWICE.
   if (site.claim !== undefined && site.claim !== null) {
     const stranded = site.claim;
     site.claim = null;
     if (stranded.nodes.length > 0) {
-      report("structure", `${stranded.nodes.length} server node(s) at a boundary that parks`);
+      report(
+        "structure",
+        `The server sent ${stranded.nodes.length} node(s) for a \`<Loading>\` or \`<Errored>\` ` +
+          "boundary whose content is not ready in the browser. This usually means an async " +
+          "value the server resolved did not reach the browser (the `data` option of `hydrate` " +
+          "is missing or comes from another render). The server's nodes were removed and the " +
+          "boundary shows its fallback until the value loads.",
+      );
       releaseRange(stranded);
     }
   }
-  return outFor(site, out);
-}
-
-function errorBoundary(
-  given: Scope | null,
-  site: Site,
-  fallback: Block<unknown> | null | undefined,
-  body: Block<unknown>,
-  flags: number,
-): void {
-  const collector = createErrorCollector();
-  const reset = (): void => collector.clear();
-  const asError = (err: unknown): Error => (err instanceof Error ? err : new Error(String(err)));
-  let refresh: () => void = () => {};
-
-  // E2/E2.3. The catcher installed on the INSTANCE scope is what every routed
-  // entry point below the boundary reaches — effect body, cleanup, handler,
-  // async continuation — and it both records and acts, because a catcher that
-  // only writes a signal cannot recover during the flush it was called from.
-  const install = (scope: Scope): void => {
-    provideOn(scope, ERROR_BOUNDARY, (err: unknown) => {
-      if (err instanceof NotReadyError || err instanceof HydrationMismatch) throw err;
-      collector.capture(err);
-      refresh();
-    });
-  };
-
-  const content: Block<unknown> = (): unknown => {
-    const scope = getOwner();
-    install(scope as Scope);
-    return invoke(scope, body, EMPTY_ARGS);
-  };
-
-  const recovered: Block<unknown> = (): unknown => {
-    if (fallback === null || fallback === undefined) return null;
-    const error = (): Error => asError(collector.error());
-    return invoke(getOwner(), fallback, [error, reset]);
-  };
-
-  // The key IS the branch: 0 is the content, 1 is the fallback, and `reset` is a
-  // flip back to 0 — a fresh scope and a fresh build, by K6.
-  const key = (): number => (collector.failed() ? 1 : 0);
-  const recover = (error: unknown): number | null => {
-    // A `HydrationMismatch` is not the application's error and this is not the
-    // thing that recovers from it. `hydrate` does — by throwing the whole
-    // attempt away and rendering the page cold — and it can only do that if the
-    // throw reaches it. Caught here instead, the boundary showed its fallback
-    // (or nothing) and the page stayed broken with the recovery never run:
-    // measured on a route whose two halves disagreed, as an empty region and one
-    // console line. `NotReadyError` is re-thrown for the same reason a level up.
-    if (error instanceof NotReadyError || error instanceof HydrationMismatch) return null;
-    collector.capture(error);
-    return 1;
-  };
-
-  underScope(given, "boundary", () => {
-    refresh = region(given, site, key, [content, recovered], flags, EMPTY_ARGS, recover);
-    // A user effect runs synchronously at creation, so a catcher can fire while
-    // the region is still being constructed and find nothing to call. One
-    // re-read settles it, and it is a no-op when the key did not move.
-    refresh();
-  });
+  return outFor(site, out, claimed);
 }
 
 /**
- * One scope, entered once: the collector's home and the owner of both arms, so
- * the static ownership tree — ONE `branch` node per `Loading` — is what the
- * runtime produces.
+ * Both kinds, because they are one shape: the content is built ONCE, under the
+ * engine's boundary, and stays alive while the fallback shows. What differs is
+ * what the engine routes here — a pending read or a throw — and what the
+ * fallback is handed.
  *
- * The content is a live hole rather than a branch arm, and that is forced:
- * `NotReadyError` registers the EFFECT that threw with the nearest
- * `LOADING_BOUNDARY` on its own scope chain, so a build outside an effect under
- * this scope can never be known to be pending.
- *
- * The content is PARKED, not disposed, while the fallback shows. That
- * parking deliberately does NOT reach `branch`: transitions are unspecified (A5).
+ * The content is PARKED in a fragment while it is not showing, rather than
+ * detached: a region nested inside it swaps its own nodes relative to an anchor,
+ * and an anchor with no parent has nowhere to put them.
  */
-function loadingBoundary(
+function guarded(
   given: Scope | null,
   site: Site,
+  kind: BoundaryKind,
   fallback: Block<unknown> | null | undefined,
   body: Block<unknown>,
   on?: Cell<unknown>,
 ): void {
-  const pending = createPendingCollector();
-  const revealed = signal(false);
-  const stored = lookupContext(given, REVEAL_COORD);
-  const handle =
-    typeof stored === "object" && stored !== null ? (stored as RevealHandle) : undefined;
-
-  const own = enter(given, "branch");
   const park: Site = { parent: document.createDocumentFragment(), anchor: null };
   // The server's nodes at this position, when the server actually SETTLED here.
   //
-  // This is the whole of H4's loading case and it was missing until M13. A
-  // loading boundary parks its content so that an unready body never sits in
-  // the document — but on the FIRST build of a hydration there is nothing to
-  // protect: the server already ran the body to completion and its markup is at
-  // `site`, so parking means building a second copy beside markup that is
-  // already correct and then throwing the server's away. Measured on the router,
-  // whose every route depth is one of these: `claimed: 0` on every page, the
-  // seed unconsumed, and the loader refetched.
+  // On the FIRST build of a hydration there is nothing to protect by parking:
+  // the server already ran the body to completion and its markup is at `site`,
+  // so parking means building a second copy beside markup that is already
+  // correct and then throwing the server's away.
   //
   // A DEFERRED range is the one case where parking is still right. `<!--[b:N-->`
   // means the shell flushed before the body was ready and the stream will swap
@@ -1260,158 +1377,182 @@ function loadingBoundary(
   // claiming them would claim the wrong markup. `swapDeferredRange` rewrites the
   // open comment to the plain `[` once the content lands, so a swapped range
   // reads as settled here — which it is.
-  const settled = takeSettledClaim(site);
+  let firstClaim: Range | null = takeSettledClaim(site);
   // The server's own fallback, when it wrote one. Consumed by the first build of
   // this boundary's fallback, which is the only thing entitled to it.
-  let fallbackClaim: Range | null = settled === null ? takeUnsettledClaim(site) : null;
-  let live: Site = settled === null ? park : site;
-  let firstClaim: Range | null = settled;
-  let instance: Instance = NOTHING;
-  let shown: readonly Node[] = EMPTY;
+  let fallbackClaim: Range | null = firstClaim === null ? takeUnsettledClaim(site) : null;
+  let live: Site = firstClaim === null ? park : site;
+  let content: Instance = NOTHING;
+  let standIn: Instance = NOTHING;
+  // Not the application's error, and this is not the thing that recovers from
+  // it: `hydrate` does, by throwing the whole attempt away and rendering the
+  // page cold, and it can only do that if the throw reaches it.
+  let mismatch: HydrationMismatch | null = null;
+
+  // The node the content stands after while it is at the site, `null` for the
+  // start of the host. Everything from there to the site's anchor is the
+  // content: the position is this boundary's alone.
+  let lead: Node | null = null;
+  // A site with no parent is one node in a fragment the caller adopts, and once
+  // it has, nothing says where this boundary's content begins: whatever the
+  // caller placed before it is now its sibling. Such a site is given a node to
+  // begin at, which travels with the fragment.
+  let pinned = false;
+  const fragment = site.anchor?.parentNode ?? null;
+  if (site.anchor !== null && fragment !== null && fragment.nodeType === 11) {
+    lead = document.createTextNode("");
+    fragment.insertBefore(lead, site.anchor);
+    pinned = true;
+  }
+  const leadOf = (first: Node | undefined): Node | null => {
+    if (first !== undefined) return first.previousSibling;
+    const host = hostOf(site);
+    return site.anchor !== null ? site.anchor.previousSibling : (host?.lastChild ?? null);
+  };
+  if (firstClaim !== null && !pinned) lead = leadOf(firstClaim.nodes[0]);
+
+  const standing = (): Node[] => {
+    const host = hostOf(site);
+    if (host === null) return [...content.nodes];
+    const out: Node[] = [];
+    let node = lead === null ? host.firstChild : lead.nextSibling;
+    for (; node !== null && node !== site.anchor; node = node.nextSibling) out.push(node);
+    return out;
+  };
 
   const move = (target: Site): void => {
     if (live === target) return;
-    // Leaving the park takes EVERYTHING in it, not the node list the last build
-    // returned. The fragment holds this boundary's content and nothing else, so
-    // its child list is the truth — including whatever a nested region swapped
-    // in while the content was parked, which the build's own list has never
-    // heard of. Moving the list instead left those nodes in a fragment that
-    // never reaches the document, which is the orphan half of M7's report.
-    const moving = live === park ? [...park.parent!.childNodes] : instance.nodes;
+    // Either way it is what is THERE that moves, not the node list the last
+    // build returned: a region inside the content swaps arms on its own, and
+    // the build's list still names the arm that left. The park holds this
+    // boundary's content and nothing else, so its child list is the truth; at
+    // the site the truth is everything between the lead and the anchor.
+    const moving = live === park ? [...park.parent!.childNodes] : standing();
     live = target;
+    if (target === site && !pinned) lead = leadOf(undefined);
     insertAt(target, moving);
   };
 
-  try {
-    pending.install(own);
+  // E2 entry point for what the engine cannot see: a handler, a cleanup, an
+  // async continuation. Routing one here re-runs the content, which throws it
+  // where the boundary is listening.
+  const routed = kind === "error" ? createSignal<{ error: unknown } | null>(null) : null;
 
-    // ONE INSTANCE PER BUILD, torn down through its own scope — which is what
-    // `activate` does for every other consumer of `region`, and what this
-    // rebuilt by hand until M10.
-    //
-    // The hand-rolled version kept a NODE LIST and removed it directly. Both
-    // halves were wrong the moment the body contained a region of its own,
-    // because a nested region swaps its own nodes and the list is a snapshot
-    // taken at the last build: it names nodes that are gone and omits the ones
-    // that are there. A revalidation then removed a stale list, left the
-    // nested region's current arm in the document, and inserted a fresh build
-    // beside it — a DUPLICATED subtree, and one accumulating undisposed scope
-    // per revalidation, since the body's own scope was entered once and never
-    // re-entered.
-    //
-    // Going through `attempt` fixes both by not tracking anything: disposal
-    // reaches the instance scope, every nested region under it is a CHILD, and
-    // each removes whatever it currently owns through its own `ownRange`.
-    //
-    // Build BEFORE tearing down: a revalidation that throws `NotReadyError`
-    // leaves the previous instance exactly where it is, which is what
-    // "revalidation keeps stale content" means. Clearing first and rebuilding
-    // second showed a blank frame for every refresh.
-    renderEffect(() => {
-      const claim = firstClaim;
-      firstClaim = null;
-      let next: Instance;
-      try {
-        next = attempt(own, live, body, EMPTY_ARGS, 0, "branch", claim);
-      } catch (error) {
-        // The server settled this range and the client could not — a seed that
-        // never arrived, or a value only a browser can read. `attempt` has
-        // already released the claim and disposed the scope it opened, so from
-        // here this boundary is an ordinary cold one, and an ordinary cold one
-        // parks. Without this line the retry would build the ready content
-        // straight into the document while `mode()` still says fallback.
-        if (claim !== null) live = park;
-        throw error;
-      }
-      if (instance !== NOTHING) teardown(instance);
-      instance = next;
-    });
-
-    renderEffect(() => {
-      if (pending.count() === 0) revealed.set(true);
-    });
-    if (on !== undefined) {
-      let first = true;
-      let last: unknown;
-      renderEffect(() => {
-        const value = on();
-        cellSlot(value, "boundary on");
-        if (!first && value !== last && untrack(() => pending.count()) > 0) revealed.set(false);
-        last = value;
-        first = false;
+  const compose = (): typeof CONTENT => {
+    if (routed !== null) {
+      const thrown = routed[0]();
+      if (thrown !== null) throw thrown.error;
+    }
+    const own = getOwner();
+    if (OWNERSHIP.sink !== null && own !== null) OWNERSHIP.sink.own(own, given, "pure");
+    if (routed !== null && own !== null) {
+      provideOn(own, ERROR_BOUNDARY, (error: unknown) => {
+        if (error instanceof NotReadyError || error instanceof HydrationMismatch) throw error;
+        routed[1]({ error });
       });
     }
-
-    // A leaf's two predicates are one accessor: a boundary that has settled has
-    // its own first visible content, and that IS its full readiness (A6).
-    const slot = handle?.register({ ready: () => revealed(), minimallyReady: () => revealed() });
-    // 0 content, 1 fallback, 2 nothing — the third is a collapsed `Reveal`,
-    // which is a display decision and not a third kind of boundary.
-    const mode = (): number => {
-      if (slot !== undefined) {
-        const display = slot.display();
-        return display === "content" ? 0 : display === "fallback" ? 1 : 2;
+    // The build is untracked: a body's own reads must not become dependencies
+    // of the boundary, or every value the content displays would rebuild it.
+    untrack(() => {
+      const claim = firstClaim;
+      firstClaim = null;
+      activation++;
+      try {
+        content = attempt(own, live, body, EMPTY_ARGS, 0, "branch", claim);
+      } catch (error) {
+        content = NOTHING;
+        // The server settled this range and the client could not — a seed that
+        // never arrived, or a value only a browser can read. `attempt` has
+        // already released the claim, so from here this boundary is an ordinary
+        // cold one, and an ordinary cold one parks.
+        if (claim !== null) live = park;
+        if (!(error instanceof HydrationMismatch)) throw error;
+        mismatch = error;
       }
-      return pending.count() > 0 && !revealed() ? 1 : 0;
-    };
-
-    let showing = -1;
-    renderEffect(() => {
-      const next = mode();
-      if (next === showing) return;
-      showing = next;
-      untrack(() => {
-        if (shown.length !== 0) {
-          removeNodes(shown);
-          shown = EMPTY;
-        }
-        if (next === 0) {
-          // The server's fallback is DEAD once content shows, and it has to go
-          // or it stands beside the content. This is the nested case: an outer
-          // boundary owns the `[f:` range, a boundary INSIDE it absorbs the
-          // pendingness, so the outer renders content and never builds the
-          // fallback its claim was being held for. Measured as a fallback
-          // rendered twice — `<span class="loading">` beside itself.
-          if (fallbackClaim !== null) {
-            removeNodes(fallbackClaim.nodes);
-            fallbackClaim = null;
-          }
-          move(site);
-          return;
-        }
-        move(park);
-        if (next === 1 && fallback !== null && fallback !== undefined) {
-          activation++;
-          const claim = fallbackClaim;
-          fallbackClaim = null;
-          if (claim === null) {
-            shown = build(own, fallback, EMPTY_ARGS);
-          } else {
-            // HYDRATED, not rebuilt: these are the server's fallback nodes and
-            // this is the same fallback. `place` is a no-op for a node already
-            // in position, so `insertAt` below keeps their identity.
-            const cursor = openCursor(claim);
-            shown = atCursor(cursor, () => build(own, fallback, EMPTY_ARGS));
-            evictUnclaimed(claim, cursor);
-          }
-          insertAt(site, shown);
-        }
-      });
     });
+    return CONTENT;
+  };
 
-    onCleanup(() => {
-      removeNodes(shown);
-      shown = EMPTY;
-      // A slot list that only ever grows is not a contract: a boundary that
-      // dies inside a `Show` would hold its group's frontier at its own index
-      // for the rest of the page, and nothing reports it.
-      slot?.unregister();
-      // The instance's own nodes go with its scope, which is a child of `own`
-      // and is disposed by the same cascade that runs this.
-    });
-  } finally {
-    exit(own);
+  // The error is read where the engine hands it over, inside the boundary's
+  // own pass. By the time the effect below acts the read would be an outside
+  // one, answered from before the throw.
+  interface Failure {
+    thrown: unknown;
+    reset: () => void;
   }
+
+  const view: () => unknown =
+    kind === "error"
+      ? createErrorBoundary(compose, (error, reset): Failure => {
+          const thrown = error();
+          // Not the application's error: thrown on, it reaches `hydrate`.
+          if (thrown instanceof HydrationMismatch) throw thrown;
+          return {
+            thrown,
+            reset: () => {
+              routed![1](null);
+              // A retry reads what the caller has just written, which is still
+              // staged: retried before it is published the content throws on
+              // the old value and is built a second time at the flush.
+              flush();
+              reset();
+            },
+          };
+        })
+      : createLoadingBoundary(
+          compose,
+          () => fallback,
+          on === undefined
+            ? undefined
+            : {
+                on: () => {
+                  const value = on();
+                  cellSlot(value, "Loading.on", true);
+                  return value;
+                },
+              },
+        );
+
+  if (mismatch !== null) throw mismatch as HydrationMismatch;
+
+  const asError = (thrown: unknown): Error =>
+    thrown instanceof Error ? thrown : new Error(String(thrown));
+
+  const dropStandIn = (): void => {
+    if (standIn === NOTHING) return;
+    teardown(standIn);
+    standIn = NOTHING;
+  };
+
+  renderEffect(view, (showing: unknown) => {
+    dropStandIn();
+    if (showing === CONTENT) {
+      // The server's fallback is DEAD once content shows, and it has to go or
+      // it stands beside the content. This is the nested case: an outer
+      // boundary owns the `[f:` range, a boundary INSIDE it absorbs the
+      // pendingness, so the outer renders content and never builds the
+      // fallback its claim was being held for.
+      if (fallbackClaim !== null) {
+        removeNodes(fallbackClaim.nodes);
+        fallbackClaim = null;
+      }
+      move(site);
+      return;
+    }
+    move(park);
+    // `undefined` is a collapsed `Reveal`: neither arm, by the group's order.
+    if (showing === undefined || fallback === null || fallback === undefined) return;
+    const claim = fallbackClaim;
+    fallbackClaim = null;
+    activation++;
+    const args =
+      kind === "error"
+        ? [(): Error => asError((showing as Failure).thrown), (showing as Failure).reset]
+        : EMPTY_ARGS;
+    // HYDRATED, not rebuilt, when the server wrote this fallback: `place` is a
+    // no-op for a node already in position, so the claim keeps their identity.
+    standIn = attempt(given, site, fallback, args, 0, "branch", claim);
+  });
 }
 
 // ============================================================================
@@ -1467,24 +1608,38 @@ export function island(
   return instance.nodes.length > 0 ? instance.nodes[0] : null;
 }
 
+export function portal(target: Cell<Node | string | null | undefined>, block: Block<unknown>): Node;
+export function portal(
+  target: Cell<Node | string | null | undefined>,
+  block: Block<unknown>,
+  flags: number,
+): Node | Node[];
 export function portal(
   target: Cell<Node | string | null | undefined>,
   block: Block<unknown>,
   flags = 0,
-): Node {
+): Node | Node[] {
   const given = getOwner();
-  cellSlot(target, "portal target");
-  const marker = document.createTextNode("");
+  cellSlot(target, "Portal.mount");
+  // Read once here as well as in the effect below: what the Cell YIELDS is
+  // refused on the read, and the effect's first read is the engine's to
+  // schedule, where a refusal would surface a turn late and away from the
+  // construct that caused it.
+  cellSlot(untrack(target), "Portal.mount", true);
 
   // A portal is the one construct whose server bytes are in the WRONG PLACE by
   // construction: the string backend has no second insertion point, so it wrote
   // an EMPTY range at the lexical position and the content is the client's to
-  // build on a microtask. Nothing is claimed here — the `insert` that places
-  // this marker claims that range, finds it empty, and puts the marker in it.
+  // build. The range is still this portal's to take: left at the cursor, it is
+  // two nodes the enclosing region did not build and reports as a mismatch.
+  const claimed = hydrating() && (flags & HYDRATE) !== 0 ? probeRange(null, null) : null;
+  if (claimed !== null) releaseRange(claimed);
+  const marker: Node = claimed?.close ?? document.createTextNode("");
 
   underScope(given, "portal", () => {
     let instance = NOTHING;
     let container: HTMLElement | null = null;
+    let request = 0;
     const site: Site = { parent: null, anchor: null };
 
     const clear = (): void => {
@@ -1497,17 +1652,27 @@ export function portal(
       site.parent = null;
     };
 
-    renderEffect(() => {
-      const requested = target();
-      cellSlot(requested, "portal target");
-      untrack(() => {
+    // An EFFECT, not a render effect, and that is where the mount's timing
+    // comes from. It runs once the pass that placed the marker has written the
+    // document, so a target inside the tree being built is there to be found;
+    // and under a boundary that is still showing its fallback the engine holds
+    // it until the content is revealed, which is the moment a portal the
+    // content declares should appear. Deferred to a microtask instead, it asked
+    // once whether the marker was connected, found the parked content was not,
+    // and never asked again.
+    createEffect(
+      () => {
+        const requested = target();
+        cellSlot(requested, "Portal.mount", true);
+        return requested;
+      },
+      (requested) => {
         clear();
-        // A portal target is very often a node the very tree being built will
-        // contain, and that tree is still detached at this instant. The marker
-        // IS the portal's lexical position, so its connectedness is the exact
-        // predicate for "the surrounding tree has been mounted".
-        queueMicrotask(() => {
-          if (!marker.isConnected) return;
+        const mine = ++request;
+        const mount = (): void => {
+          // The marker IS the portal's lexical position, so a tree that was
+          // never put in a document mounts nothing outside itself either.
+          if (mine !== request || !marker.isConnected) return;
           const host = resolveTarget(requested);
           if (host === null) return;
           container = document.createElement("div");
@@ -1516,30 +1681,26 @@ export function portal(
           activation++;
           instance = activate(given, site, block, EMPTY_ARGS, flags, "portal");
           host.appendChild(container);
-        });
-      });
-    });
+        };
+        // A portal nothing owns has no scope to build under, and the engine
+        // refuses one made from inside an effect's write. It mounts a turn
+        // later, outside it, and only if it is still the one being asked for.
+        if (given === null) queueMicrotask(mount);
+        else mount();
+      },
+    );
 
     onCleanup(clear);
   });
 
-  return marker;
+  return claimed === null ? marker : rangeNodes(claimed);
 }
 
 /**
  * Reveal ordering — the fifth thing `flow.ts` owns, and the one that is not a
- * range.
- *
- * It creates a PROVIDE scope: the coordinator every `Loading` boundary below it
- * asks how to time its reveal. That is why it is not `branch` and never was —
- * `ownership.rs` lists `provide` separately, and there is no conditional here.
- * What M9 removed is the COMPONENT around it: the order and the collapsed flag
- * arrive as Cells the compiler computed, the children as the Block they already
- * were, and nothing reads a props record to find them.
- *
- * X1's order is the whole of it: enter, fork, write, invoke — with the outer
- * group looked up from the scope this was GIVEN, before the fork, because the
- * fork is what shadows it (A6).
+ * range: it opens the scope every `Loading` boundary below it asks how to time
+ * its reveal. The order and the collapsed flag arrive as Cells the compiler
+ * computed, the children as the Block they already were.
  */
 export function reveal(
   order: Cell<RevealOrder | undefined>,
@@ -1547,19 +1708,15 @@ export function reveal(
   block: Block<unknown>,
 ): Node[] {
   const given = getOwner();
-  const handle: RevealHandle = createRevealCoordinator(
-    () => order() ?? "sequential",
-    () => collapsed() === true,
-    outerRevealHandle(given),
+  return createRevealOrder(
+    () => {
+      // The group's scope is the engine's; say so to the ownership trace.
+      const group = getOwner();
+      if (OWNERSHIP.sink !== null && group !== null) traceScope(group, given, "provide", true);
+      return childToNodes((block as unknown as () => unknown)() as Child, group);
+    },
+    { order: () => order() ?? "sequential", collapsed: () => collapsed() === true },
   );
-  const scope = enter(given, "provide");
-  try {
-    onCleanup(() => handle.detach());
-    provideOn(scope, REVEAL_COORD, handle);
-    return childToNodes((block as unknown as () => unknown)() as Child, scope);
-  } finally {
-    exit(scope);
-  }
 }
 
 function resolveTarget(requested: Node | string | null | undefined): Node | null {

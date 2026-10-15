@@ -28,6 +28,7 @@ export function coerceLive(name: string, value: unknown): unknown {
     // `[LegacyNullToEmptyString] DOMString` — the DOM answers "" for null, and
     // "undefined" for undefined, which no author ever means.
     case "value":
+    case "defaultValue":
     case "textContent":
     case "innerText":
     case "innerHTML":
@@ -267,6 +268,9 @@ const REFLECTS_DEFAULT: Record<string, string> = {
   valueAsNumber: "value",
 };
 
+const CHECKED_DECIDED = new WeakSet<Element>();
+const VALUE_DECIDED = new WeakSet<Element>();
+
 /**
  * Write the content attribute the FIRST time this property is set, and never
  * again.
@@ -289,6 +293,12 @@ function reflectDefault(element: Element, name: string, next: unknown): void {
   const attribute = REFLECTS_DEFAULT[name];
   if (attribute === undefined) return;
   if (name === "value" && element.nodeName !== "INPUT") return;
+  // Asked of a record rather than of the attribute: a box first written
+  // `false` has no `checked` attribute to find, so the write that checks it
+  // looked like the first one and moved the default.
+  const decided = attribute === "checked" ? CHECKED_DECIDED : VALUE_DECIDED;
+  if (decided.has(element)) return;
+  decided.add(element);
   if (element.hasAttribute(attribute)) return;
   if (typeof next === "boolean") {
     if (next) element.setAttribute(attribute, "");
@@ -302,8 +312,83 @@ function reflectDefault(element: Element, name: string, next: unknown): void {
   element.setAttribute(attribute, String(next));
 }
 
+interface Choice {
+  /** The value the select is meant to show. */
+  wanted: string;
+  /** Whether an option carried it the last time anything looked. */
+  held: boolean;
+}
+
+const CHOICES = new WeakMap<Element, Choice>();
+
+function carries(node: Node, value: string): boolean {
+  if (node.nodeName === "OPTION") return (node as HTMLOptionElement).value === value;
+  if (node.nodeName !== "OPTGROUP") return false;
+  for (let child = node.firstChild; child !== null; child = child.nextSibling) {
+    if (carries(child, value)) return true;
+  }
+  return false;
+}
+
+/**
+ * A `<select>`'s value is whichever option is selected, so it can only be set
+ * to something an option already carries, and it is lost again when that
+ * option is replaced. Options that arrive from a request, or a list that is
+ * rebuilt, therefore left the first option showing while the signal still named
+ * another.
+ *
+ * The select keeps what it was asked to show and takes it up when its options
+ * change. A choice made by the user, or written by anything else while the
+ * option was there, replaces what is kept rather than being fought.
+ */
+function keepChoice(select: HTMLSelectElement, wanted: string): void {
+  const kept = CHOICES.get(select);
+  if (kept !== undefined) {
+    kept.wanted = wanted;
+    kept.held = select.value === wanted;
+    return;
+  }
+  if (typeof MutationObserver === "undefined") return;
+  const choice: Choice = { wanted, held: select.value === wanted };
+  CHOICES.set(select, choice);
+  select.addEventListener("change", () => {
+    choice.wanted = select.value;
+    choice.held = true;
+  });
+  new MutationObserver((records) => {
+    if (select.value === choice.wanted) {
+      choice.held = true;
+      return;
+    }
+    const replaced = records.some((record) => {
+      for (const node of record.removedNodes) {
+        if (carries(node, choice.wanted)) return true;
+      }
+      return false;
+    });
+    if (choice.held && !replaced) {
+      choice.wanted = select.value;
+      return;
+    }
+    select.value = choice.wanted;
+    choice.held = select.value === choice.wanted;
+  }).observe(select, { childList: true, subtree: true });
+}
+
+function writeChoice(select: HTMLSelectElement, wanted: string): boolean {
+  const moved = select.value !== wanted;
+  if (moved) select.value = wanted;
+  // A multiple select has no one value to keep: `value` names its first
+  // selected option and says nothing of the rest.
+  if (!select.multiple) keepChoice(select, wanted);
+  return moved;
+}
+
 export function writeLive(element: Element, name: string, value: unknown): boolean {
   const next = coerceLive(name, value);
+  if (name === "value" && element.nodeName === "SELECT") {
+    return writeChoice(element as HTMLSelectElement, next as string);
+  }
   // Before the equality check: a field whose first value equals the property's
   // own default still needs the attribute, or the `value=""` the server wrote
   // has no counterpart on the client.

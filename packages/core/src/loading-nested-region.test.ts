@@ -22,10 +22,11 @@
  * without the shape that does.
  */
 
+import { rooted } from "./test-root.ts";
 import { beforeEach, expect, test } from "bun:test";
 import { boundary, branch } from "./flow.ts";
 import { render } from "./dom.ts";
-import { computed, flush, scope, signal } from "./signals.ts";
+import { createMemo, flush, createRoot, createSignal } from "./signals.ts";
 
 const tick = () => new Promise<void>((r) => setTimeout(r, 0));
 
@@ -36,15 +37,15 @@ beforeEach(() => {
 });
 
 /** A boundary whose content holds a nested region and one suspending read. */
-function mount(nest: (which: () => number) => Node | null) {
+function mount(nest: (which: () => number) => Node | Node[] | null) {
   let resolve!: (v: string) => void;
   const promise = new Promise<string>((r) => {
     resolve = r;
   });
-  const data = computed(() => promise);
-  const which = signal(0);
+  const data = createMemo(() => promise);
+  const [which, setWhich] = createSignal(0);
 
-  scope((_dispose) => {
+  createRoot((_dispose) => {
     const el = boundary(
       null,
       null,
@@ -55,51 +56,61 @@ function mount(nest: (which: () => number) => Node | null) {
     render(el, container);
   });
   flush();
-  return { resolve, which };
+  return { resolve, setWhich };
 }
 
-test("a nested region swaps into the DOCUMENT after the boundary reveals", async () => {
-  // The compiler's shape: parent `null`, so the region gets a marker.
-  const { resolve, which } = mount((w: () => number) =>
-    branch(null, null, w, [() => document.createTextNode("A"), () => document.createTextNode("B")]),
-  );
+test(
+  "a nested region swaps into the DOCUMENT after the boundary reveals",
+  rooted(async () => {
+    // The compiler's shape: parent `null`, so the region gets a marker.
+    const { resolve, setWhich } = mount((w: () => number) =>
+      branch(null, null, w, [
+        () => document.createTextNode("A"),
+        () => document.createTextNode("B"),
+      ]),
+    );
 
-  expect(container.textContent).toBe("[busy]");
+    expect(container.textContent).toBe("[busy]");
 
-  resolve("ok");
-  await tick();
-  flush();
-  expect(container.textContent).toBe("A:ok");
+    resolve("ok");
+    await tick();
+    flush();
+    expect(container.textContent).toBe("A:ok");
 
-  // The half M7 reported. The arm must REPLACE the old one on the page, not be
-  // built into a fragment that never reaches it.
-  which.set(1);
-  flush();
-  expect(container.textContent).toBe("B:ok");
-});
+    // The half M7 reported. The arm must REPLACE the old one on the page, not be
+    // built into a fragment that never reaches it.
+    setWhich(1);
+    flush();
+    expect(container.textContent).toBe("B:ok");
+  }),
+);
 
-test("and the shape that DOES orphan it is a fragment handed over as a parent", async () => {
-  const { resolve, which } = mount((w: () => number) => {
-    const frag = document.createDocumentFragment();
-    branch(frag as unknown as Node, null, w, [
-      () => document.createTextNode("A"),
-      () => document.createTextNode("B"),
-    ]);
-    return frag;
-  });
+test(
+  "and the shape that DOES orphan it is a fragment handed over as a parent",
+  rooted(async () => {
+    const { resolve, setWhich } = mount((w: () => number) => {
+      const frag = document.createDocumentFragment();
+      branch(frag as unknown as Node, null, w, [
+        () => document.createTextNode("A"),
+        () => document.createTextNode("B"),
+      ]);
+      return frag;
+    });
 
-  resolve("ok");
-  await tick();
-  flush();
-  expect(container.textContent).toBe("A:ok");
+    resolve("ok");
+    await tick();
+    flush();
+    // Asserted as it IS, not as it should be: the fragment drained when it was
+    // inserted, and a region places its arm once its pass has committed, which
+    // is after that. The arm is written somewhere detached, from the first one.
+    expect(container.textContent).toBe(":ok");
 
-  which.set(1);
-  flush();
-  // Asserted as it IS, not as it should be: the fragment drained when it was
-  // inserted, so the region's parent has been empty ever since and the new arm
-  // is written somewhere detached. Nothing the compiler emits reaches here —
-  // `siteFor(null, null)` produces a marker and a real parent is a real element
-  // — so this is a statement about a hand-written call, and it is the whole
-  // reason the test above is worth having.
-  expect(container.textContent).toBe(":ok");
-});
+    setWhich(1);
+    flush();
+    // And every later arm with it. Nothing the compiler emits reaches here —
+    // `siteFor(null, null)` produces a marker and a real parent is a real element
+    // — so this is a statement about a hand-written call, and it is the whole
+    // reason the test above is worth having.
+    expect(container.textContent).toBe(":ok");
+  }),
+);

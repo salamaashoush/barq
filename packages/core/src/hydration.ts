@@ -69,10 +69,51 @@ export interface Mismatch {
 export class HydrationMismatch extends Error {
   readonly kind: MismatchKind;
   constructor(kind: MismatchKind, detail: string) {
-    super(`hydration mismatch (${kind}): ${detail}`);
+    super(`Hydration mismatch (${kind}): ${detail}. ${CAUSES[kind]}`);
     this.name = "HydrationMismatch";
     this.kind = kind;
   }
+}
+
+const CAUSES: Record<MismatchKind, string> = {
+  structure:
+    "This usually means the component renders different elements on the server and in the " +
+    "browser (a branch on `typeof window`, on the time, or on data only one side has), the " +
+    "markup nests elements the browser's HTML parser moves (a `<div>` inside a `<p>`), or a " +
+    "browser extension changed the page before it hydrated.",
+  text:
+    "This usually means the value differs between the server and the browser (`Date.now()`, " +
+    "`Math.random()`, or `toLocaleString()` in another locale or time zone), a browser " +
+    "extension or page translator rewrote the text, or the server and the browser bundle were " +
+    "built from different sources.",
+  range:
+    "The server writes the comments `<!--[-->` and `<!--]-->` around dynamic content, so this " +
+    "usually means something removed HTML comments from the response (an HTML minifier, a proxy " +
+    "or a CDN), a script changed the page before it hydrated, or the server and the browser " +
+    "bundle were built from different sources.",
+  key:
+    "This usually means the condition reads something that differs between the server and the " +
+    "browser, such as `typeof window`, `localStorage`, a media query or the time.",
+  portal:
+    "This usually means the `mount` target of a `<Portal>` differs between the server and the " +
+    "browser.",
+  "not-hydratable":
+    "Set `hydratable: true` in the `@barqjs/compiler` options of both the server build and the " +
+    "browser build, and deploy the two together.",
+};
+
+export function usualCauses(kind: MismatchKind): string {
+  return CAUSES[kind];
+}
+
+/**
+ * The mismatch an error is, or carries. One raised inside a computation leaves
+ * it wrapped by the engine, with the mismatch as its cause.
+ */
+export function mismatchIn(error: unknown): HydrationMismatch | null {
+  if (error instanceof HydrationMismatch) return error;
+  const cause = error instanceof Error ? error.cause : undefined;
+  return cause instanceof HydrationMismatch ? cause : null;
 }
 
 /**
@@ -122,6 +163,24 @@ export interface Cursor {
   next: Node | null;
   /** Exclusive; `null` means "to the end of `parent`". */
   end: Node | null;
+  /**
+   * Text a template claim stepped over, in document order.
+   *
+   * `["Label ", <i/>]` is evaluated left to right, so the element is claimed
+   * before anything has turned the string into a node, and what the cursor is
+   * standing on at that moment is the string's text. It is the string's to
+   * take, so it waits here for `claimText`.
+   */
+  held?: Text[];
+  /**
+   * Children are being made into nodes HERE, in document order, so a string
+   * arriving now owns the text the cursor is standing on.
+   *
+   * Not the general case: a string is usually made into a node after its
+   * cursor has closed, where the one on the stack is an ancestor's and its
+   * next node is a neighbour's.
+   */
+  ordered?: boolean;
 }
 
 interface Session {
@@ -133,6 +192,8 @@ interface Session {
   claimed: number;
   ranges: number;
   built: number;
+  /** Every range claimed so far, for `split` to keep their node lists whole. */
+  taken: Range[];
 }
 
 let SESSION: Session | null = null;
@@ -196,6 +257,7 @@ export function beginHydration(container: Node): void {
     claimed: 0,
     ranges: 0,
     built: 0,
+    taken: [],
   };
 }
 
@@ -245,9 +307,35 @@ function hasRanges(root: Node): boolean {
   return false;
 }
 
+let afterHydration: (() => void)[] | null = null;
+
+/**
+ * Run `callback` once the hydration in progress is over, or on the next
+ * microtask when none is.
+ *
+ * A microtask later in both cases. `hydrate` is synchronous to its end, and
+ * what follows the claim there is the recovery render and the flush: a callback
+ * run from `endHydration` itself would see the tree before either.
+ */
+export function onHydrationEnd(callback: () => void): void {
+  if (SESSION === null) {
+    queueMicrotask(callback);
+    return;
+  }
+  (afterHydration ??= []).push(callback);
+}
+
 export function endHydration(): HydrationReport {
   const session = SESSION;
   SESSION = null;
+  holeTaken = null;
+  if (afterHydration !== null) {
+    const callbacks = afterHydration;
+    afterHydration = null;
+    queueMicrotask(() => {
+      for (const callback of callbacks) callback();
+    });
+  }
   if (session === null) return { mismatches: [], claimed: 0, ranges: 0, built: 0 };
   return {
     mismatches: session.mismatches,
@@ -289,7 +377,7 @@ export function openCursor(range: Range): Cursor {
   const parent = range.open?.parentNode ?? range.parent;
   return {
     parent,
-    next: range.open === null ? parent.firstChild : range.open.nextSibling,
+    next: range.open === null ? firstClaimable(parent) : range.open.nextSibling,
     end: range.close,
   };
 }
@@ -307,12 +395,14 @@ export function atCursor<T>(cursor: Cursor, body: () => T): T {
 
 /** Whether `cursor` has anything left to claim. */
 export function cursorAtEnd(cursor: Cursor): boolean {
+  if (cursor.held !== undefined && cursor.held.length > 0) return false;
   return cursor.next === null || cursor.next === cursor.end;
 }
 
-/** Everything `cursor` still holds, consumed. */
+/** Everything `cursor` still holds, consumed: text nobody took included. */
 export function cursorRest(cursor: Cursor): Node[] {
-  const rest: Node[] = [];
+  const rest: Node[] = cursor.held === undefined ? [] : cursor.held;
+  cursor.held = undefined;
   for (let node = cursor.next; node !== null && node !== cursor.end; node = node.nextSibling) {
     rest.push(node);
   }
@@ -335,13 +425,44 @@ export function withRange<T>(range: Range, body: () => T): T {
  * its caller no node to insert. Comparing produced-lists removes the page;
  * asking the cursor does not. `flow.ts`'s `attempt` asks the same question.
  */
-export function withRangeTaken<T>(range: Range, body: () => T): { value: T; taken: Node[] } {
-  if (SESSION === null) return { value: body(), taken: [] };
-  const all = range.nodes.slice();
+export function withRangeTaken<T>(
+  range: Range,
+  body: () => T,
+  /**
+   * What an earlier pass over this range already took. The value at a hole is
+   * built in two steps when part of it is a thunk: whatever is written before
+   * the thunk claims as the value is evaluated, and the thunk claims when the
+   * value is placed. The second step goes on from where the first stopped,
+   * text it stepped over included.
+   */
+  after?: Taken,
+): { value: T; taken: Node[]; held: Text[] } {
+  if (SESSION === null) return { value: body(), taken: [], held: [] };
   const cursor = openCursor(range);
+  if (after !== undefined && after.taken.length > 0) {
+    cursor.next = after.taken[after.taken.length - 1].nextSibling;
+    if (after.held.length > 0) cursor.held = after.held.slice();
+  }
   const value = atCursor(cursor, body);
+  const held = cursor.held === undefined ? [] : cursor.held.slice();
   const rest = new Set<Node>(cursorRest(cursor));
-  return { value, taken: all.filter((node) => !rest.has(node)) };
+  // Read once the body is done: a text node it cut in two is two of the
+  // range's nodes now, and the second is as much taken as the first.
+  return { value, taken: range.nodes.filter((node) => !rest.has(node)), held };
+}
+
+/**
+ * What one pass over a range claimed, and the text it stepped over on the way
+ * that a string still to be made into a node owns.
+ *
+ * `["Label ", <i/>, () => x()]` evaluated at a hole claims the `<i>` and steps
+ * over the label's text to reach it; the label is made into a node when the
+ * value is placed, by the second pass, and that pass has to be handed the text
+ * or it starts after the `<i>` and builds the label again.
+ */
+export interface Taken {
+  taken: readonly Node[];
+  held: readonly Text[];
 }
 
 /**
@@ -359,11 +480,20 @@ export function claimNode(template: Node, detect?: boolean): Node | null {
   const cursor = SESSION.stack[SESSION.stack.length - 1];
   if (cursor === undefined) return null;
   const expect = template.nodeName;
-  const node = cursor.next;
+  let node = cursor.next;
+  // An element being claimed where the server wrote text: the text belongs to
+  // a string beside the element, which has not been made into a node yet.
+  if (template.nodeType === 1) {
+    while (node !== null && node !== cursor.end && node.nodeType === 3) {
+      (cursor.held ??= []).push(node as Text);
+      node = node.nextSibling;
+    }
+    cursor.next = node;
+  }
   if (node === null || node === cursor.end) {
     throw new HydrationMismatch(
       "structure",
-      `the server's markup ran out where the client expected <${expect.toLowerCase()}>`,
+      `the server's markup ends where the browser builds ${describe(template)}`,
     );
   }
   // The ROOT name is compared in every build, and that is not a hedge: the
@@ -373,13 +503,97 @@ export function claimNode(template: Node, detect?: boolean): Node | null {
   if (node.nodeName !== expect) {
     throw new HydrationMismatch(
       "structure",
-      `the server wrote ${describe(node)} where the client builds <${expect.toLowerCase()}>`,
+      `the server sent ${describe(node)} where the browser builds ${describe(template)}`,
     );
   }
   if (detect === true) verifySubtree(template, node, expect.toLowerCase());
   cursor.next = node.nextSibling;
   SESSION.claimed++;
   return node;
+}
+
+/**
+ * The text node the server wrote for a string child, when a template claim
+ * stepped over it on the way to its own element.
+ *
+ * Only what was stepped over, and only when it says the same thing: a string
+ * is also made into a node long after its cursor has closed, where the one on
+ * the stack belongs to something else, and taking that one's next node would
+ * be taking a neighbour's.
+ */
+export function claimText(value: string): Text | null {
+  if (SESSION === null) return null;
+  const cursor = SESSION.stack[SESSION.stack.length - 1];
+  if (cursor === undefined) return null;
+  const held = cursor.held;
+  if (held !== undefined && held.length > 0 && leads(held[0], value)) {
+    SESSION.claimed++;
+    const node = held[0];
+    if (node.data.length === value.length) held.shift();
+    else held[0] = split(node, value.length);
+    return node;
+  }
+  if (cursor.ordered !== true) return null;
+  const node = cursor.next;
+  if (node === null || node === cursor.end || node.nodeType !== 3) return null;
+  if (!leads(node as Text, value)) return null;
+  if ((node as Text).data.length > value.length) split(node as Text, value.length);
+  cursor.next = node.nextSibling;
+  SESSION.claimed++;
+  return node as Text;
+}
+
+/**
+ * Whether the server's text node begins with `value`.
+ *
+ * Strings that stand next to each other with nothing between them reach the
+ * parser as one run of characters, and it makes them one text node: rows of a
+ * list that are text, a string beside a hole's text inside a component's
+ * children. The client still makes one node per string, and they are the
+ * server's run in order, so the first string takes its own length off the front
+ * and leaves the rest standing for the next.
+ */
+function leads(node: Text, value: string): boolean {
+  if (value === "") return node.data === "";
+  return node.data.startsWith(value);
+}
+
+/**
+ * Cut the server's text node at `at`, and give the rest to every claimed range
+ * that holds the node. A range's node list is what its position reconciles
+ * against once it is built, and the rest is the server's node as much as the
+ * front is: left out, it reads as a node the client made and is moved.
+ */
+function split(node: Text, at: number): Text {
+  const rest = node.splitText(at);
+  if (SESSION !== null) {
+    for (const range of SESSION.taken) {
+      if (range.parent !== node.parentNode) continue;
+      const index = range.nodes.indexOf(node);
+      if (index >= 0) range.nodes.splice(index + 1, 0, rest);
+    }
+  }
+  return rest;
+}
+
+/**
+ * Run `body`, which makes children into nodes in document order at the open
+ * cursor, so that a string among them takes the text it is level with.
+ *
+ * `[() => name, <Badge/>]` where the badge's root is a region: the region asks
+ * the cursor for its `<!--[-->`, and the cursor is still standing on the name
+ * unless the string before it took that text on its way past.
+ */
+export function inDocumentOrder<T>(body: () => T): T {
+  const cursor = SESSION?.stack[SESSION.stack.length - 1];
+  if (cursor === undefined) return body();
+  const outer = cursor.ordered;
+  cursor.ordered = true;
+  try {
+    return body();
+  } finally {
+    cursor.ordered = outer;
+  }
 }
 
 /**
@@ -409,7 +623,7 @@ export function claimElement(tag: string): Element | null {
   if (node.nodeName !== expect && node.nodeName.toUpperCase() !== expect) {
     throw new HydrationMismatch(
       "structure",
-      `the server wrote ${describe(node)} where the client builds <${tag}>`,
+      `the server sent ${describe(node)} where the browser builds \`<${tag}>\``,
     );
   }
   cursor.next = node.nextSibling;
@@ -484,7 +698,7 @@ function verifySubtree(want: Node, have: Node, path: string): void {
         continue;
       }
       if (data === CLOSE) {
-        if (depth === 0) throw new HydrationMismatch("range", "a range closed that never opened");
+        if (depth === 0) throw new HydrationMismatch("range", UNOPENED);
         depth--;
         continue;
       }
@@ -494,35 +708,35 @@ function verifySubtree(want: Node, have: Node, path: string): void {
     if (a === undefined) {
       throw new HydrationMismatch(
         "structure",
-        `<${path}> has more nodes than the client's template — the server wrote ` +
-          `${describe(node)} where the template ends`,
+        `inside \`${path}\` the server sent ${describe(node)} where the browser builds ` +
+          "nothing more",
       );
     }
     if (a.nodeName !== node.nodeName) {
       throw new HydrationMismatch(
         "structure",
-        `at ${path} child ${i}: the server wrote ${describe(node)} where the client builds ` +
-          a.nodeName.toLowerCase(),
+        `at node ${i + 1} inside \`${path}\` the server sent ${describe(node)} where the ` +
+          `browser builds ${describe(a)}`,
       );
     }
     if (node.nodeType === TEXT && (a as Text).data !== (node as Text).data) {
       throw new HydrationMismatch(
         "text",
-        `at ${path} child ${i}: the server wrote ${JSON.stringify((node as Text).data)} where ` +
-          `the client's template has ${JSON.stringify((a as Text).data)}`,
+        `at node ${i + 1} inside \`${path}\` the server sent ${describe(node)} where the ` +
+          `browser builds ${describe(a)}`,
       );
     }
     verifySubtree(a, node, `${path} > ${a.nodeName.toLowerCase()}`);
     i++;
   }
   if (depth !== 0) {
-    throw new HydrationMismatch("range", `${depth} range(s) opened and never closed`);
+    throw new HydrationMismatch("range", unclosed(depth));
   }
   if (i !== wanted.length) {
     throw new HydrationMismatch(
       "structure",
-      `<${path}> has ${i} node(s) where the client's template has ${wanted.length} — ` +
-        "the server's tree is not the one this walk addresses",
+      `\`${path}\` holds ${i} node(s) from the server where the browser builds ` +
+        `${wanted.length}`,
     );
   }
 }
@@ -559,7 +773,42 @@ export function hole<T>(
   // A hole in a tree the client built has nothing to claim, and its contents
   // must not claim either — otherwise the next `template()` inside it would
   // take a node belonging to a position further along the server's document.
-  return range === null ? withoutClaim(build) : withRange(range, build);
+  if (range === null) return withoutClaim(build);
+  const { value, taken, held } = withRangeTaken(range, build);
+  holeTaken = taken.length === 0 ? null : { parent: range.parent, close: range.close, taken, held };
+  return value;
+}
+
+/**
+ * What the build inside the last `hole` took in place, kept for the `insert`
+ * that receives its value.
+ *
+ * A region claims the server's nodes where they stand and hands back nothing,
+ * so the value that reaches `insert` says less than the build did: `[null]`
+ * is both "nothing here" and "a branch adopted its range". Only the cursor
+ * knows which, and it closed when `hole` returned.
+ */
+let holeTaken: ({ parent: Node; close: Comment | null } & Taken) | null = null;
+
+/** What the `hole` at this range took, once: the next caller gets none. */
+export function takenAtHole(range: Range): Taken {
+  const last = holeTaken;
+  holeTaken = null;
+  return last !== null && last.parent === range.parent && last.close === range.close
+    ? last
+    : NONE_TAKEN;
+}
+
+const NONE_TAKEN: Taken = { taken: [], held: [] };
+
+/**
+ * A server text node a hole kept by writing its value through it rather than
+ * taking it at a cursor. It is reused all the same, and a page whose only
+ * server node is one, `hydrate(() => <Pass>{label()}</Pass>)`, otherwise read
+ * as one that reused nothing.
+ */
+export function adopted(): void {
+  if (SESSION !== null) SESSION.claimed++;
 }
 
 /** A node the client had to build because no claim was possible. */
@@ -568,9 +817,19 @@ export function built(): void {
 }
 
 function describe(node: Node): string {
-  if (node.nodeType === COMMENT) return `<!--${(node as Comment).data}-->`;
+  if (node.nodeType === COMMENT) return `the comment \`<!--${(node as Comment).data}-->\``;
   if (node.nodeType === TEXT) return `the text ${JSON.stringify((node as Text).data)}`;
-  return `<${node.nodeName.toLowerCase()}>`;
+  return `\`<${node.nodeName.toLowerCase()}>\``;
+}
+
+const UNOPENED =
+  "the server's markup has a closing marker `<!--]-->` with no opening `<!--[-->` before it";
+
+function unclosed(depth: number): string {
+  return (
+    `the server's markup has ${depth} opening marker(s) \`<!--[-->\` with no closing ` +
+    "`<!--]-->` after them"
+  );
 }
 
 // ── the logical walk (H3) ────────────────────────────────────────────────
@@ -598,7 +857,7 @@ function logicalChildren(parent: Node): Node[] {
       }
       if (data === CLOSE) {
         if (depth === 0) {
-          throw new HydrationMismatch("range", "a range closed that never opened");
+          throw new HydrationMismatch("range", UNOPENED);
         }
         depth--;
         continue;
@@ -607,7 +866,7 @@ function logicalChildren(parent: Node): Node[] {
     if (depth === 0) out.push(node);
   }
   if (depth !== 0) {
-    throw new HydrationMismatch("range", `${depth} range(s) opened and never closed`);
+    throw new HydrationMismatch("range", unclosed(depth));
   }
   return out;
 }
@@ -647,7 +906,8 @@ export function child(parent: Node, k: number, back?: number): Node | null {
     }
     throw new HydrationMismatch(
       "structure",
-      `no logical child ${k} of <${parent.nodeName.toLowerCase()}> — the server wrote ${seen}`,
+      `${describe(parent)} holds ${seen} node(s) from the server where the browser builds ` +
+        `at least ${k + 1}`,
     );
   }
   const children = logicalChildren(parent);
@@ -655,8 +915,8 @@ export function child(parent: Node, k: number, back?: number): Node | null {
   if (node === undefined) {
     throw new HydrationMismatch(
       "structure",
-      `no logical child ${k} from the end of <${parent.nodeName.toLowerCase()}> — ` +
-        `the server wrote ${children.length}`,
+      `${describe(parent)} holds ${children.length} node(s) from the server where the ` +
+        `browser builds at least ${k + 1}`,
     );
   }
   return node;
@@ -673,18 +933,26 @@ export function sib(node: Node, k: number, back?: number): Node | null {
   }
   const parent = node.parentNode;
   if (parent === null) {
-    throw new HydrationMismatch("structure", "a logical sibling step from a detached node");
+    throw new HydrationMismatch(
+      "structure",
+      `the browser reached ${describe(node)}, which is no longer in the document`,
+    );
   }
   const children = logicalChildren(parent);
   const at = children.indexOf(node);
   if (at < 0) {
-    throw new HydrationMismatch("structure", "a logical sibling step from inside a claimed range");
+    throw new HydrationMismatch(
+      "structure",
+      `the server sent ${describe(node)} inside dynamic content where the browser builds it as ` +
+        "static markup",
+    );
   }
   const out = children[back === undefined ? at + k : at - k];
   if (out === undefined) {
     throw new HydrationMismatch(
       "structure",
-      `no logical sibling ${back === undefined ? "+" : "-"}${k} of ${describe(node)}`,
+      `the server's markup ends ${back === undefined ? "after" : "before"} ` +
+        `${describe(node)} where the browser builds ${k} more node(s)`,
     );
   }
   return out;
@@ -708,7 +976,10 @@ export function sib(node: Node, k: number, back?: number): Node | null {
 export function claimRange(parent: Node | null, anchor: Node | null, mode?: number): Range | null {
   const host = anchor !== null ? anchor.parentNode : parent;
   if (host === null) {
-    throw new HydrationMismatch("range", "a claim at a position with no parent");
+    throw new HydrationMismatch(
+      "range",
+      "the browser looked for server-rendered content at a node that is not in the document",
+    );
   }
   // The position has to be somewhere the SERVER wrote. A parent the client just
   // built — `createElement`'s element, a template clone nothing claimed — is
@@ -727,16 +998,16 @@ export function claimRange(parent: Node | null, anchor: Node | null, mode?: numb
   // exists to refuse.
   if (mode === WHOLE) {
     const nodes: Node[] = [];
-    for (let node = host.firstChild; node !== null; node = node.nextSibling) nodes.push(node);
-    SESSION.ranges++;
-    return { open: null, close: null, parent: host, nodes };
+    for (let node = firstClaimable(host); node !== null; node = node.nextSibling) nodes.push(node);
+    return took({ open: null, close: null, parent: host, nodes });
   }
   const close = anchor !== null ? anchor.previousSibling : host.lastChild;
   if (close === null || close.nodeType !== COMMENT || (close as Comment).data !== CLOSE) {
     throw new HydrationMismatch(
       "range",
-      `expected <!--]--> before ${anchor === null ? "the end of " : ""}` +
-        `<${host.nodeName.toLowerCase()}>, found ${close === null ? "nothing" : describe(close)}`,
+      `the browser expected a closing marker \`<!--]-->\` ` +
+        `${anchor === null ? "at the end of" : `before ${describe(anchor)} inside`} ` +
+        `${describe(host)} and found ${close === null ? "nothing" : describe(close)}`,
     );
   }
   let depth = 0;
@@ -748,15 +1019,29 @@ export function claimRange(parent: Node | null, anchor: Node | null, mode?: numb
       else if (data.charAt(0) === OPEN) {
         if (depth === 0) {
           nodes.reverse();
-          SESSION.ranges++;
-          return { open: node as Comment, close: close as Comment, parent: host, nodes };
+          return took({ open: node as Comment, close: close as Comment, parent: host, nodes });
         }
         depth--;
       }
     }
     nodes.push(node);
   }
-  throw new HydrationMismatch("range", "a <!--]--> whose <!--[--> is not in the same parent");
+  throw new HydrationMismatch(
+    "range",
+    `a closing marker \`<!--]-->\` inside ${describe(host)} has no opening \`<!--[-->\` in ` +
+      "the same element",
+  );
+}
+
+function took(range: Range): Range {
+  if (SESSION !== null) {
+    // The container's own child list is where every page's value goes, not a
+    // range the server wrote. Counted, it made a page nothing was reused from
+    // read as one that claimed something, and `hydrate` never said so.
+    if (range.open !== null || range.parent !== SESSION.container) SESSION.ranges++;
+    SESSION.taken.push(range);
+  }
+  return range;
 }
 
 /**
@@ -767,10 +1052,29 @@ export function claimRange(parent: Node | null, anchor: Node | null, mode?: numb
  */
 export function claimAt(parent: Node | null, anchor: Node | null, mode?: number): Range | null {
   if (parent !== null || anchor !== null) return claimRange(parent, anchor, mode);
-  if (SESSION === null) throw new HydrationMismatch("range", "a claim outside a hydration");
+  if (SESSION === null) {
+    throw new HydrationMismatch(
+      "range",
+      "a component looked for server-rendered content while no `hydrate` call is running",
+    );
+  }
   const cursor = SESSION.stack[SESSION.stack.length - 1];
-  if (cursor === undefined) throw new HydrationMismatch("range", "a claim with no cursor");
-  const open = cursor.next;
+  if (cursor === undefined) {
+    throw new HydrationMismatch(
+      "range",
+      "a component looked for server-rendered content in a part of the page that is being " +
+        "built in the browser",
+    );
+  }
+  // As in `claimNode`: text before the range belongs to a string beside it
+  // that has not been made into a node yet. Held only once the range is
+  // found, so a probe that finds none leaves the cursor as it was.
+  let open = cursor.next;
+  let stepped: Text[] | null = null;
+  while (open !== null && open !== cursor.end && open.nodeType === 3) {
+    (stepped ??= []).push(open as Text);
+    open = open.nextSibling;
+  }
   if (
     open === null ||
     open === cursor.end ||
@@ -779,7 +1083,8 @@ export function claimAt(parent: Node | null, anchor: Node | null, mode?: number)
   ) {
     throw new HydrationMismatch(
       "range",
-      `expected <!--[--> at a root region, found ${open === null ? "nothing" : describe(open)}`,
+      "the browser expected an opening marker `<!--[-->` at the root of a component and " +
+        `found ${stepped !== null ? describe(stepped[0]) : open === null ? "nothing" : describe(open)}`,
     );
   }
   let depth = 0;
@@ -790,21 +1095,24 @@ export function claimAt(parent: Node | null, anchor: Node | null, mode?: number)
       if (data.charAt(0) === OPEN) depth++;
       else if (data === CLOSE) {
         if (depth === 0) {
+          if (stepped !== null) (cursor.held ??= []).push(...stepped);
           cursor.next = node.nextSibling;
-          SESSION.ranges++;
-          return {
+          return took({
             open: open as Comment,
             close: node as Comment,
             parent: cursor.parent,
             nodes,
-          };
+          });
         }
         depth--;
       }
     }
     nodes.push(node);
   }
-  throw new HydrationMismatch("range", "a <!--[--> at a root region that never closed");
+  throw new HydrationMismatch(
+    "range",
+    "an opening marker `<!--[-->` at the root of a component has no closing `<!--]-->` after it",
+  );
 }
 
 /**
