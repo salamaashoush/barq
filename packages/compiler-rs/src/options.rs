@@ -166,8 +166,10 @@ impl Opt {
 /// What one import resolved to, on the way in from an integration.
 #[derive(Debug, Clone, PartialEq)]
 pub enum ImportedValue {
-    /// A string, a number's text, or a class the other module generated.
+    /// A string, or a class the other module generated.
     Text(String),
+    /// A number, as its text: it takes a unit where the same text would not.
+    Number(String),
     /// A `create` group or a `defineVars` token set, as `(member, value)`.
     Group(Vec<(String, String)>),
     /// A `layer("…")` binding, as the layer it names.
@@ -191,6 +193,11 @@ impl ImportedValue {
                 "text" => {
                     out.push((specifier.clone(), name.clone(), ImportedValue::Text(value.clone())))
                 }
+                "number" => out.push((
+                    specifier.clone(),
+                    name.clone(),
+                    ImportedValue::Number(value.clone()),
+                )),
                 "layer" => {
                     out.push((specifier.clone(), name.clone(), ImportedValue::Layer(value.clone())))
                 }
@@ -395,8 +402,10 @@ pub fn unknown_option(key: &str) -> String {
         known_lower.contains(&lower) || lower.contains(&known_lower)
     });
     match near {
-        Some(known) => format!("unknown option `{key}` (did you mean `{known}`?)"),
-        None => format!("unknown option `{key}`"),
+        Some(known) => format!(
+            "`{key}` is not a compiler option, so nothing would read it. Did you mean `{known}`?"
+        ),
+        None => format!("`{key}` is not a compiler option, so nothing would read it."),
     }
 }
 
@@ -605,10 +614,13 @@ mod tests {
     fn unknown_option_names_the_nearest_key() {
         // The case that motivated the check: `target` is not an option and the
         // caller meant a backend, but nothing here is close enough to guess.
-        assert_eq!(unknown_option("target"), "unknown option `target`");
+        assert_eq!(
+            unknown_option("target"),
+            "`target` is not a compiler option, so nothing would read it."
+        );
         // A spelling, which is the common case.
-        assert!(unknown_option("Hydratable").contains("did you mean `hydratable`"));
-        assert!(unknown_option("sourcemaps").contains("did you mean `sourcemap`"));
+        assert!(unknown_option("Hydratable").contains("Did you mean `hydratable`?"));
+        assert!(unknown_option("sourcemaps").contains("Did you mean `sourcemap`?"));
     }
 
     use super::*;

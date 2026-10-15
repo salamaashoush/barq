@@ -25,10 +25,10 @@ import { census, compileText, host, reuse, shape, wire } from "./hydration.ts";
  */
 
 const SOURCE = `
-import { For, Show, signal } from "@barqjs/core";
-export const on = signal(true);
-export const label = signal("alpha");
-export const rows = signal(["one", "two", "three"]);
+import { For, Show, createSignal } from "@barqjs/core";
+export const [on, setOn] = createSignal(true);
+export const [label, setLabel] = createSignal("alpha");
+export const [rows, setRows] = createSignal(["one", "two", "three"]);
 export default function Page() {
   return (
     <main class="page">
@@ -409,6 +409,40 @@ describe("hydrating a page the compiler never made hydratable", () => {
   });
 
   /**
+   * A mismatch raised INSIDE a computation: a row is built by the list's own
+   * node, so the claim that fails there does not unwind to `hydrate` as itself.
+   * The engine takes it for an error, and the nearest `Errored` is the
+   * application's — which would show its fallback for a failure that is not the
+   * application's, on a page that then reports a clean hydration.
+   */
+  test("raised inside a list under an Errored, it recovers and shows no fallback", async () => {
+    const compiled = await compileText(GUARDED_LIST, "mut-guarded-list", true);
+    const core = await import("@barqjs/core");
+    const served = wire(compiled.ssr);
+    const drifted = served.replace("<li", "<p").replace("</li>", "</p>");
+    expect(drifted, "the mutation changed nothing, so nothing below is about a mismatch").not.toBe(
+      served,
+    );
+    const container = host(drifted);
+    const dispose = core.hydrate(compiled.dom.default as never, container);
+    const report = core.hydrate.report;
+    const failed = container.querySelector(".failed");
+    const hydrated = shape(container);
+    dispose();
+    container.remove();
+
+    const cold = host("");
+    const rendered = core.render(compiled.dom.default as never, cold);
+    const coldShape = shape(cold);
+    rendered();
+    cold.remove();
+
+    expect(report.recovered || report.mismatches.length > 0).toBe(true);
+    expect(failed, "the application's fallback was shown for a hydration mismatch").toBeNull();
+    expect(hydrated).toBe(coldShape);
+  });
+
+  /**
    * The other direction, and the one a deployment can actually get wrong: the
    * SERVER was built hydratable and the CLIENT was not. The client's walk is
    * native `.firstChild`/`.nextSibling`, so it steps straight onto a boundary
@@ -499,3 +533,208 @@ describe("hydrating a page the compiler never made hydratable", () => {
     );
   });
 });
+
+/**
+ * Text written beside an element, in every slot that takes more than one child.
+ *
+ * `["Label ", <i/>]` is evaluated left to right, so the element is claimed
+ * before the string beside it is a node: the cursor is standing on the string's
+ * text when the template asks for `<i>`. That read as the server having written
+ * text where the client builds an element, and the whole page was thrown away
+ * and rendered cold for markup that was exactly right.
+ */
+describe("text beside an element is the string's, not a mismatch", () => {
+  const SHAPES: Record<string, string> = {
+    "text then element, as a component's children": `
+      function Badge(props) { return <span class="b">{props.children}</span>; }
+      export default function Page() { return <div><Badge>Label <i>x</i></Badge></div>; }
+    `,
+    "element then text, as a component's children": `
+      function Badge(props) { return <span class="b">{props.children}</span>; }
+      export default function Page() { return <div><Badge><i>x</i> Label</Badge></div>; }
+    `,
+    "text then a component, as a component's children": `
+      function Icon(props) { return <svg width={props.size()}><path d="M0 0" /></svg>; }
+      function Badge(props) { return <span class="b">{props.children}</span>; }
+      export default function Page() { return <div><Badge>Label <Icon size={12} /></Badge></div>; }
+    `,
+    "a live string then a component whose root is a region": `
+      import { Show } from "@barqjs/core";
+      function Badge(props) {
+        return (
+          <Show when={props.href?.() !== undefined} fallback={<span class="b">{props.children}</span>}>
+            <a href={props.href?.()}>{props.children}</a>
+          </Show>
+        );
+      }
+      function Trigger(props) { return <button type="button">{props.children}</button>; }
+      function List(props) { return <div role="tablist">{props.children(props.tab())}</div>; }
+      const TAB = { name: "Members", count: 2 };
+      export default function Page() {
+        return (
+          <main>
+            <List tab={TAB}>
+              {(tab) => (
+                <Trigger>
+                  {tab.name}
+                  {tab.count === undefined ? null : <Badge>{String(tab.count)}</Badge>}
+                </Trigger>
+              )}
+            </List>
+          </main>
+        );
+      }
+    `,
+    "text then element, as a branch's body": `
+      import { Show, createSignal } from "@barqjs/core";
+      const [on] = createSignal(true);
+      export default function Page() { return <div><Show when={on()}>Label <i>x</i></Show></div>; }
+    `,
+  };
+
+  for (const [shape_, source] of Object.entries(SHAPES)) {
+    test(shape_, async () => {
+      const tag = `mut-text-${shape_.replaceAll(/[^a-z]+/g, "-")}`;
+      const compiled = await compileText(source, tag, true);
+      const core = await import("@barqjs/core");
+      const container = host(wire(compiled.ssr));
+      const before = census(container);
+      const served = shape(container);
+      const dispose = core.hydrate(compiled.dom.default as never, container);
+      const report = core.hydrate.report;
+      const hydrated = shape(container);
+      const claim = reuse(before, container);
+      dispose();
+      container.remove();
+
+      expect({ recovered: report.recovered, mismatches: report.mismatches }).toEqual({
+        recovered: false,
+        mismatches: [],
+      });
+      // Not a second copy beside the first, and not a rebuilt one in its place.
+      expect(hydrated).toBe(served);
+      expect(claim.percent).toBe(100);
+    });
+  }
+});
+
+/**
+ * A live hole that hands back the children it was given.
+ *
+ * `{() => (props.children === undefined ? <Default /> : props.children)}` is
+ * how a component offers a default layout, and what the hole produces is the
+ * Block itself rather than an array holding one. Resolved once the hole's
+ * cursor had closed, its templates claimed from the position after the range:
+ * "the server's markup ran out where the client expected <output>", on markup
+ * that was exactly right.
+ */
+describe("a live hole that returns its children claims them", () => {
+  test("the children's templates take the nodes inside the hole's range", async () => {
+    const compiled = await compileText(CHILDREN_OR_DEFAULT, "mut-children-or-default", true);
+    const core = await import("@barqjs/core");
+    const container = host(wire(compiled.ssr));
+    const before = census(container);
+    const served = shape(container);
+    const dispose = core.hydrate(compiled.dom.default as never, container);
+    const report = core.hydrate.report;
+    const hydrated = shape(container);
+    const claim = reuse(before, container);
+    dispose();
+    container.remove();
+
+    expect({ recovered: report.recovered, mismatches: report.mismatches }).toEqual({
+      recovered: false,
+      mismatches: [],
+    });
+    expect(hydrated).toBe(served);
+    expect(claim.percent).toBe(100);
+  });
+});
+
+/**
+ * A region that adopted its range in place, inside a hole whose value is an
+ * array.
+ *
+ * `<><Show when={open()}>…</Show></>` reaches its parent as `[null]`: the
+ * branch claimed the server's empty range where it stands and has nothing to
+ * hand back. The hole that received `[null]` reconciled it against what the
+ * server wrote there, which was that very range, and removed its comments. The
+ * report stayed clean, and the first time the branch had something to show it
+ * inserted beside a node that was no longer in the document.
+ */
+describe("a region that claimed in place survives the hole around it", () => {
+  test("it shows its content when the condition turns, after a clean hydration", async () => {
+    const compiled = await compileText(CLAIMED_IN_PLACE, "mut-claimed-in-place", true);
+    const core = await import("@barqjs/core");
+    const container = host(wire(compiled.ssr));
+    const dispose = core.hydrate(compiled.dom.default as never, container);
+    const report = core.hydrate.report;
+
+    expect({ recovered: report.recovered, mismatches: report.mismatches }).toEqual({
+      recovered: false,
+      mismatches: [],
+    });
+    expect(container.querySelector('[role="dialog"]')).toBeNull();
+
+    (compiled.dom as unknown as { setOpen: (next: boolean) => void }).setOpen(true);
+    core.flush();
+    const dialog = container.querySelector('[role="dialog"]');
+    expect(dialog?.textContent, "the branch built its arm somewhere that is not the page").toBe(
+      "content",
+    );
+
+    dispose();
+    container.remove();
+  });
+});
+
+const GUARDED_LIST = `
+import { Errored, For, createSignal } from "@barqjs/core";
+export const [rows] = createSignal(["a", "b", "c"]);
+export default function Page() {
+  return (
+    <main>
+      <Errored fallback={() => <p class="failed">failed</p>}>
+        {() => (
+          <ul>
+            <For each={rows()}>{(row) => <li class="row">{row}</li>}</For>
+          </ul>
+        )}
+      </Errored>
+    </main>
+  );
+}
+`;
+
+const CHILDREN_OR_DEFAULT = `
+function Value() { return <output>25</output>; }
+function Track() { return <div class="track">t</div>; }
+function Group(props) {
+  return (
+    <div class="group">
+      <span>{props.label}</span>
+      {() => (props.children === undefined ? <><Value /><Track /></> : props.children)}
+    </div>
+  );
+}
+export default function Page() {
+  return <main><Group><Value /><Track /></Group></main>;
+}
+`;
+
+const CLAIMED_IN_PLACE = `
+import { Show, createSignal } from "@barqjs/core";
+export const [open, setOpen] = createSignal(false);
+export default function Page() {
+  return (
+    <div>
+      <button type="button">open</button>
+      <>
+        <Show when={open()}>
+          <div role="dialog">content</div>
+        </Show>
+      </>
+    </div>
+  );
+}
+`;

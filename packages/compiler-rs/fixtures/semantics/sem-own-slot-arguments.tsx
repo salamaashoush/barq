@@ -23,7 +23,7 @@
  *
  * C6.
  */
-import { each, enterRoot, exit, dispose, signal } from "@barqjs/core"
+import { createSignal, dispose, each, rootScope, runWithOwner } from "@barqjs/core"
 import type { Scope } from "@barqjs/core"
 
 import type { Claim } from "../../test/semantics-support.ts"
@@ -35,7 +35,7 @@ interface Row {
   readonly label: string
 }
 
-const rows = signal<readonly Row[]>([
+const [rows] = createSignal<readonly Row[]>([
   { id: 1, label: "one" },
   { id: 2, label: "two" },
 ])
@@ -53,9 +53,8 @@ function drive(
   row: (...slots: never[]) => Node,
 ): { host: HTMLElement; done: () => void } {
   const host = document.createElement("div")
-  const root = enterRoot()
-  each(host, null, () => rows(), keyOf as never, row as never)
-  exit(root)
+  const root = rootScope()
+  runWithOwner(root, () => each(host, null, () => rows(), keyOf as never, row as never))
   return { host, done: () => dispose(root) }
 }
 

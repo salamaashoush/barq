@@ -157,9 +157,13 @@ export async function runSemanticFixture(
   const containers: HTMLElement[] = [];
   const kit = makeKit(emitted, containers);
 
+  const core = await import("@barqjs/core");
   for (const claim of claims) {
     let failure: string | null = null;
     let crashed = false;
+    // A claim that provokes an uncaught error halts the engine, which is the
+    // claim's own observation and not a condition the next one starts from.
+    core.resetErrorHalt();
     try {
       await claim.check(bindRule(kit, claim.rule));
     } catch (error) {

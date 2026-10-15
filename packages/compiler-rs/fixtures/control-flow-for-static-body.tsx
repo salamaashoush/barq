@@ -1,6 +1,6 @@
-import { For, signal } from "@barqjs/core"
+import { For, createSignal } from "@barqjs/core"
 
-export const rows = signal([1, 2])
+export const [rows, setRows] = createSignal([1, 2])
 
 /**
  * Target 8 on the list side. The row body reads nothing at all — not the item,
@@ -21,7 +21,7 @@ export default function ControlFlowForStaticBody() {
   )
 }
 
-export const steps = [() => rows.set([1, 2, 3]), () => rows.set([1]), () => rows.set([])]
+export const steps = [() => setRows([1, 2, 3]), () => setRows([1]), () => setRows([])]
 
 export const optimality = {
   target: 8,

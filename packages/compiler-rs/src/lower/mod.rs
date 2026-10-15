@@ -10,7 +10,8 @@ use std::collections::VecDeque;
 use oxc::allocator::{Allocator, Box as ArenaBox, TakeIn, Vec as ArenaVec};
 use oxc::ast::ast::{
     ArrayExpressionElement, ArrowFunctionExpression, Expression, JSXAttributeItem,
-    JSXAttributeValue, JSXChild, JSXElement, JSXExpression, ReturnStatement, VariableDeclarator,
+    JSXAttributeValue, JSXChild, JSXElement, JSXExpression, ObjectProperty, ObjectPropertyKind,
+    PropertyKey, PropertyKind, ReturnStatement, SpreadElement, StringLiteral, VariableDeclarator,
 };
 use oxc::ast::builder::AstBuilder;
 use oxc::ast_visit::VisitMut;
@@ -45,6 +46,10 @@ pub fn lower<'a>(
         source,
         use_templates: options.templates,
         module,
+        in_svg: false,
+        svg_roots: std::collections::HashSet::new(),
+        in_math: false,
+        math_roots: std::collections::HashSet::new(),
     };
     // Nested JSX inside a hole becomes a root of its own, appended as it is
     // found, so the loop re-reads the length every turn.
@@ -74,6 +79,17 @@ struct Lower<'a, 'm> {
     source: &'a str,
     use_templates: bool,
     module: &'m mut Module<'a>,
+    /// Whether the JSX being scanned is written inside SVG content. A root
+    /// found there is an SVG element whatever its tag says: `<a>`, `<title>`
+    /// and every element the table has never heard of are HTML by name and
+    /// SVG by position, and position is what a parser goes by.
+    in_svg: bool,
+    /// The roots found while `in_svg` was set, which are lowered later and out
+    /// of the position they were found in.
+    svg_roots: std::collections::HashSet<u32>,
+    /// The same two facts for MathML content.
+    in_math: bool,
+    math_roots: std::collections::HashSet<u32>,
 }
 
 /// Everything one unit needs while its skeleton is being built. Allocated once
@@ -100,6 +116,9 @@ struct TmpAttr<'a> {
     kind: AttrKind,
     value: TmpAttrValue<'a>,
     span: Span,
+    /// The name as the author wrote it, for an attribute a spread could also
+    /// name: a plain attribute or event, with no channel prefix of its own.
+    written: Option<&'a str>,
 }
 
 /// The instruction the attribute becomes, decided at P1: every attribute
@@ -173,10 +192,10 @@ impl<'a> Lower<'a, '_> {
             self.module.roots[index as usize] = taken;
             return;
         };
+        self.in_svg = self.svg_roots.contains(&index);
+        self.in_math = self.math_roots.contains(&index);
         let lowered = match expression {
-            Expression::JSXElement(element)
-                if self.inlinable(&element, parse::Context::default()) =>
-            {
+            Expression::JSXElement(element) if self.inlinable(&element, self.root_context()) => {
                 Root::Unit(self.unit(element, site))
             }
             mut other => {
@@ -206,9 +225,10 @@ impl<'a> Lower<'a, '_> {
         }
         let svg = names::is_svg_tag(tag);
         if at.in_svg {
-            // A non-SVG tag closes foreign content, which would move it out of
-            // the subtree the JSX puts it in.
-            if !svg {
+            // These start tags close foreign content, which would move the
+            // element out of the subtree the JSX puts it in. Every other tag
+            // is inserted where it stands, in the SVG namespace.
+            if parse::leaves_foreign_content(tag) {
                 return false;
             }
         } else if svg && tag != "svg" && at.parent.is_some() {
@@ -358,7 +378,13 @@ impl<'a> Lower<'a, '_> {
 
     fn unit(&mut self, element: ArenaBox<'a, JSXElement<'a>>, site: Site) -> UnitId {
         let tag = intrinsic_tag(&element.opening_element.name).expect("checked by inlinable");
-        let ns = if names::is_svg_tag(tag) { Ns::Svg } else { Ns::Html };
+        let ns = if names::is_svg_tag(tag) || self.in_svg {
+            Ns::Svg
+        } else if names::is_math_tag(tag) || self.in_math {
+            Ns::Math
+        } else {
+            Ns::Html
+        };
         let mut build = Build {
             unit: Unit::new_in(self.allocator, ns, site),
             queue: VecDeque::new(),
@@ -367,7 +393,7 @@ impl<'a> Lower<'a, '_> {
             next_slot: 0,
         };
 
-        let root = self.element_node(&mut build, element, NONE, 0, parse::Context::default());
+        let root = self.element_node(&mut build, element, NONE, 0, self.root_context());
         build.unit.skeleton.roots = (root, root + 1);
 
         while let Some(group) = build.queue.pop_front() {
@@ -381,19 +407,40 @@ impl<'a> Lower<'a, '_> {
 
         // Attributes before children: `insert` splices nodes, and nothing the
         // attribute patches touch can be invalidated by it.
+        //
+        // Two writes read what is written after them, and go where it exists.
+        // `bind:group` compares the field's own `value`, so it follows every
+        // other attribute; a `<select>`'s value names one of its options, so
+        // it follows the children that build them.
         let mut unit = build.unit;
-        unit.patch.extend(build.attribute_patches);
+        let mut grouped = Vec::new();
+        let mut selecting = Vec::new();
+        for patch in build.attribute_patches {
+            if self.binds_group(&patch) {
+                grouped.push(patch);
+            } else if self.selects_an_option(&unit, &patch) {
+                selecting.push(patch);
+            } else {
+                unit.patch.push(patch);
+            }
+        }
+        unit.patch.extend(grouped);
         unit.patch.extend(build.insert_patches);
+        unit.patch.extend(selecting);
         debug_assert_eq!(unit.skeleton.validate(), Ok(()));
         debug_assert_eq!(unit.spans.len(), unit.skeleton.len());
 
         // In patch order, so a nested unit is numbered where it will be emitted.
         for index in 0..unit.patch.len() {
             let Some(id) = unit.patch[index].op.value() else { continue };
+            self.in_svg = self.svg_content(&unit, unit.patch[index].target);
+            self.in_math = self.math_content(&unit, unit.patch[index].target);
             if let Some(expression) = unit.exprs.entry_mut(id).src.expression_mut() {
                 self.visit_expression(expression);
             }
         }
+        self.in_svg = false;
+        self.in_math = false;
 
         let id = self.module.units.len() as UnitId;
         self.module.units.push(unit);
@@ -416,11 +463,49 @@ impl<'a> Lower<'a, '_> {
         let tag_id = self.module.interner.intern_tag(tag);
 
         let ordered = self.ordered_attributes(opening.attributes, inside.in_svg, tag);
+        for (index, attr) in ordered.iter().enumerate() {
+            if !matches!(attr.kind, AttrKind::Spread) {
+                continue;
+            }
+            let later = ordered[index + 1..]
+                .iter()
+                .filter_map(|entry| self.spread_key(entry))
+                .collect::<Vec<_>>();
+            if !later.is_empty() {
+                let later = self.allocator.alloc_slice_copy(&later) as &'a [&'a str];
+                build.unit.spread_later.push((attr.span, later));
+            }
+        }
         let input_type = self.literal_type_attribute(&ordered);
         let editable = self.is_contenteditable(&ordered);
         let mut attrs = ArenaVec::with_capacity_in(ordered.len(), &self.allocator);
         let mut dynamic = Vec::new();
-        for (order, attr) in ordered.into_iter().enumerate() {
+        // An attribute written BEFORE a spread is the spread's to write: the
+        // list reads like an object, where the later key wins while it is there
+        // and the earlier one is what is left when it goes. Written as a patch
+        // of its own it lost on both counts: its effect wrote over the spread's
+        // value the next time it ran, and a key the spread dropped was cleared
+        // instead of handed back. So it joins the object the spread reads.
+        let last_spread = ordered.iter().rposition(|attr| matches!(attr.kind, AttrKind::Spread));
+        let mut held: Vec<ObjectPropertyKind<'a>> = Vec::new();
+        for (order, mut attr) in ordered.into_iter().enumerate() {
+            let before_a_spread = last_spread.is_some_and(|last| order < last);
+            if before_a_spread && let Some(written) = attr.written {
+                let TmpAttrValue::Dynamic(value) = attr.value else { unreachable!() };
+                held.push(self.object_property(written, value, attr.span));
+                continue;
+            }
+            if matches!(attr.kind, AttrKind::Spread) && !held.is_empty() {
+                let TmpAttrValue::Dynamic(argument) = attr.value else { unreachable!() };
+                held.push(ObjectPropertyKind::SpreadProperty(ArenaBox::new_in(
+                    SpreadElement::new(attr.span, argument, &self.ast),
+                    &self.allocator,
+                )));
+                let properties = ArenaVec::from_iter_in(held.drain(..), &self.allocator);
+                attr.value = TmpAttrValue::Dynamic(Expression::new_object_expression(
+                    attr.span, properties, &self.ast,
+                ));
+            }
             let order = order as u32;
             let kind = attr.kind;
             match attr.baked(order) {
@@ -437,7 +522,13 @@ impl<'a> Lower<'a, '_> {
                 tag: tag_id,
                 attrs: attrs.into_arena_slice(),
                 children: (0, 0),
-                ns: if inside.in_svg { Ns::Svg } else { Ns::Html },
+                ns: if inside.in_svg {
+                    Ns::Svg
+                } else if inside.in_math {
+                    Ns::Math
+                } else {
+                    Ns::Html
+                },
                 mat_kids: 0,
             }),
             parent,
@@ -508,6 +599,7 @@ impl<'a> Lower<'a, '_> {
                         kind: AttrKind::Spread,
                         value: TmpAttrValue::Dynamic(spread.argument),
                         span: spread.span,
+                        written: None,
                     });
                     continue;
                 }
@@ -529,7 +621,7 @@ impl<'a> Lower<'a, '_> {
                         crate::ir::Chan::Attr | crate::ir::Chan::Bool => {
                             names::attr_name(name, in_svg, self.allocator)
                         }
-                        crate::ir::Chan::StyleProp => names::to_kebab(name, self.allocator),
+                        crate::ir::Chan::StyleProp => names::css_name(name, self.allocator),
                         _ => name,
                     },
                 ),
@@ -537,9 +629,9 @@ impl<'a> Lower<'a, '_> {
                 // binding for `keydown`, not a bubble one for `keydowncapture`.
                 names::Prefixed::Plain(name) if names::capture_event(name).is_some() => (
                     AttrKind::CaptureEvent,
-                    self.allocator.alloc_str(
-                        &names::capture_event(name).expect("checked by the guard"),
-                    ) as &'a str,
+                    self.allocator
+                        .alloc_str(&names::capture_event(name).expect("checked by the guard"))
+                        as &'a str,
                 ),
                 names::Prefixed::Plain(name) if name.starts_with("on") => (
                     AttrKind::Event,
@@ -579,6 +671,13 @@ impl<'a> Lower<'a, '_> {
                     }
                     _ => false,
                 };
+            let written = match (kind, names::prefixed(raw)) {
+                (
+                    AttrKind::Chan(_) | AttrKind::Event | AttrKind::CaptureEvent,
+                    names::Prefixed::Plain(name),
+                ) if !names::replaces_children(name) => Some(name),
+                _ => None,
+            };
             let key = self.module.interner.intern_name(key);
             // `None` once the value is not a literal, once the name may not be
             // baked, and once the parser would not hand these bytes back.
@@ -600,16 +699,29 @@ impl<'a> Lower<'a, '_> {
                         kind,
                         value: TmpAttrValue::Baked(SkelAttrValue::Bare),
                         span: attribute.span,
+                        written,
                     }
                 }
                 None => {
                     let value = Expression::new_boolean_literal(attribute.span, true, &self.ast);
-                    TmpAttr { key, kind, value: TmpAttrValue::Dynamic(value), span: attribute.span }
+                    TmpAttr {
+                        key,
+                        kind,
+                        value: TmpAttrValue::Dynamic(value),
+                        span: attribute.span,
+                        written,
+                    }
                 }
                 Some(JSXAttributeValue::StringLiteral(literal)) if baked.is_some() => {
                     let text = baked.expect("checked by the guard");
                     let value = SkelAttrValue::Str(self.module.interner.intern_arena_str(text));
-                    TmpAttr { key, kind, value: TmpAttrValue::Baked(value), span: literal.span }
+                    TmpAttr {
+                        key,
+                        kind,
+                        value: TmpAttrValue::Baked(value),
+                        span: literal.span,
+                        written,
+                    }
                 }
                 // A JSX attribute string is not a JS string: backslashes are
                 // literal and character references ARE resolved, by the
@@ -625,12 +737,12 @@ impl<'a> Lower<'a, '_> {
                             self.allocator.alloc_str(&decoded)
                         });
                     let value = Expression::new_string_literal(span, text, None, &self.ast);
-                    TmpAttr { key, kind, value: TmpAttrValue::Dynamic(value), span }
+                    TmpAttr { key, kind, value: TmpAttrValue::Dynamic(value), span, written }
                 }
                 Some(value) => {
                     let span = value.span();
                     let value = attribute_expression(value, &self.ast, self.allocator);
-                    TmpAttr { key, kind, value: TmpAttrValue::Dynamic(value), span }
+                    TmpAttr { key, kind, value: TmpAttrValue::Dynamic(value), span, written }
                 }
             };
             // A spread names nothing, so it never collapses with anything and
@@ -647,6 +759,88 @@ impl<'a> Lower<'a, '_> {
             ordered.push(attr);
         }
         ordered
+    }
+
+    fn object_property(
+        &self,
+        name: &'a str,
+        value: Expression<'a>,
+        span: Span,
+    ) -> ObjectPropertyKind<'a> {
+        let key = PropertyKey::StringLiteral(ArenaBox::new_in(
+            StringLiteral::new(span, name, None, &self.ast),
+            &self.allocator,
+        ));
+        ObjectPropertyKind::ObjectProperty(ArenaBox::new_in(
+            ObjectProperty::new(
+                span,
+                PropertyKind::Init,
+                key,
+                value,
+                false,
+                false,
+                false,
+                &self.ast,
+            ),
+            &self.allocator,
+        ))
+    }
+
+    /// Where a root with nothing above it in its own unit is parsed.
+    fn root_context(&self) -> parse::Context<'a> {
+        parse::Context { in_svg: self.in_svg, in_math: self.in_math, ..parse::Context::default() }
+    }
+
+    /// Whether what is written inside this element is MathML content.
+    fn math_content(&self, unit: &Unit<'a>, node: NodeId) -> bool {
+        let SkelNode::Element(element) = &unit.skeleton.nodes[node as usize] else {
+            return false;
+        };
+        matches!(element.ns, Ns::Math)
+    }
+
+    /// Whether what is written inside this element is SVG content. A
+    /// `<foreignObject>` is an SVG element whose children are HTML again.
+    fn svg_content(&self, unit: &Unit<'a>, node: NodeId) -> bool {
+        let SkelNode::Element(element) = &unit.skeleton.nodes[node as usize] else {
+            return false;
+        };
+        matches!(element.ns, Ns::Svg)
+            && self.module.interner.tag(element.tag).text != "foreignObject"
+    }
+
+    fn binds_group(&self, patch: &Patch) -> bool {
+        matches!(patch.op, Op::Bind { prop, .. } if self.module.interner.name(prop).text == "group")
+    }
+
+    fn selects_an_option(&self, unit: &Unit<'a>, patch: &Patch) -> bool {
+        let name = match patch.op {
+            Op::SetOpaque { name, .. } => name,
+            Op::Bind { prop, .. } => prop,
+            _ => return false,
+        };
+        if self.module.interner.name(name).text != "value" {
+            return false;
+        }
+        let SkelNode::Element(element) = &unit.skeleton.nodes[patch.target as usize] else {
+            return false;
+        };
+        self.module.interner.tag(element.tag).text == "select"
+    }
+
+    /// `spreadKey` (`dom.ts`): the name an attribute written beside a spread is
+    /// known by, or `None` for one a props object has no key for.
+    fn spread_key(&self, attr: &TmpAttr<'a>) -> Option<&'a str> {
+        let name = self.module.interner.name(attr.key).text;
+        let key = match attr.kind {
+            AttrKind::Event => format!("on:{name}"),
+            AttrKind::CaptureEvent => format!("oncapture:{name}"),
+            AttrKind::Ref => "ref".to_string(),
+            AttrKind::Chan(crate::ir::Chan::StyleProp) => return None,
+            AttrKind::Chan(_) => name.to_string(),
+            _ => return None,
+        };
+        Some(self.allocator.alloc_str(&key))
     }
 
     /// Whether an attribute on this element writes its whole content, which is
@@ -871,6 +1065,12 @@ impl<'a> Lower<'a, '_> {
 
     fn placeholder(&mut self, taken: Expression<'a>, span: Span, site: Site) -> Expression<'a> {
         let index = self.module.push_root(Root::Pending(taken, site));
+        if self.in_svg {
+            self.svg_roots.insert(index);
+        }
+        if self.in_math {
+            self.math_roots.insert(index);
+        }
         let name = self.module.uids.root(index, self.allocator);
         Expression::new_identifier(span, name, &self.ast)
     }
@@ -884,7 +1084,7 @@ impl<'a> Lower<'a, '_> {
             inner = &parens.expression;
         }
         let Expression::JSXElement(element) = inner else { return false };
-        if !self.inlinable(element, parse::Context::default()) {
+        if !self.inlinable(element, self.root_context()) {
             return false;
         }
         let span = it.span();
@@ -935,7 +1135,7 @@ impl<'a> VisitMut<'a> for Lower<'a, '_> {
 
     fn visit_jsx_child(&mut self, it: &mut JSXChild<'a>) {
         if let JSXChild::Element(element) = it
-            && self.inlinable(element, parse::Context::default())
+            && self.inlinable(element, self.root_context())
         {
             let span = element.span;
             let JSXChild::Element(element) = it.take_in(&self.allocator) else { unreachable!() };
@@ -953,7 +1153,7 @@ impl<'a> VisitMut<'a> for Lower<'a, '_> {
 
     fn visit_jsx_attribute_value(&mut self, it: &mut JSXAttributeValue<'a>) {
         if let JSXAttributeValue::Element(element) = it
-            && self.inlinable(element, parse::Context::default())
+            && self.inlinable(element, self.root_context())
         {
             let span = element.span;
             let JSXAttributeValue::Element(element) = it.take_in(&self.allocator) else {

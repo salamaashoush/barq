@@ -6,11 +6,11 @@
  * built goes. The component's output IS the switch, so the frame and the region
  * are the same thing and `rebuilds` is exact.
  */
-import { Match, Switch, signal } from "@barqjs/core"
+import { Match, Switch, createSignal } from "@barqjs/core"
 
 export const log: string[] = []
 
-export const status = signal<"loading" | "ready" | "error">("loading")
+export const [status, setStatus] = createSignal<"loading" | "ready" | "error">("loading")
 
 export default function SwitchArm() {
   return (
@@ -46,9 +46,9 @@ export default function SwitchArm() {
 }
 
 export const steps = [
-  () => status.set("ready"),
-  () => status.set("error"),
-  () => status.set("loading"),
+  () => setStatus("ready"),
+  () => setStatus("error"),
+  () => setStatus("loading"),
 ]
 
 export const metamorphic = {

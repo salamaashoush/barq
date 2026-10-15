@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const tail = signal("one")
+export const [tail, setTail] = createSignal("one")
 
 /**
  * O9 in the MAIN corpus: text that really does begin with a newline, inside the
@@ -33,7 +33,7 @@ export default function PreLeadingNewline() {
   )
 }
 
-export const steps = [() => tail.set("two"), () => tail.set("")]
+export const steps = [() => setTail("two"), () => setTail("")]
 
 export const optimality = {
   target: 3,

@@ -1,6 +1,6 @@
-import { For, store } from "@barqjs/core"
+import { For, createStore } from "@barqjs/core"
 
-const [state, setState] = store({ items: [{ name: "a", active: true }, { name: "b", active: false }] })
+const [state, setState] = createStore({ items: [{ name: "a", active: true }, { name: "b", active: false }] })
 
 /**
  * `each` bound to a LOCAL function that derives the list. `For` unwraps a
@@ -19,8 +19,14 @@ export default function ForEachLocalFunction() {
 }
 
 export const steps = [
-  () => setState("items", 1, "active", true),
-  () => setState("items", [{ name: "c", active: true }]),
+  () =>
+    setState((state) => {
+      state.items[1].active = true
+    }),
+  () =>
+    setState((state) => {
+      state.items = [{ name: "c", active: true }]
+    }),
 ]
 export const optimality = {
   target: 1,
@@ -28,8 +34,8 @@ export const optimality = {
   templates: 2,
   // `each` η-reduces through a LOCAL arrow with no primitive call in it: the
   // binding is proved to be an accessor by its initialiser, and `activeItems`
-  // goes in bare. The row parameter is a plain value, so the row's hole takes
-  // `item.name` with no thunk (DESIGN O3).
-  emits: ["each(", ", activeItems, null, ", "(item: {"],
-  absent: ["each: ", "() => activeItems()", "() => item.name"],
+  // goes in bare. The row here is a store's item, so its name is read where it
+  // is shown rather than once when the row is built.
+  emits: ["each(", ", activeItems, null, ", "(item: {", "() => item.name"],
+  absent: ["each: ", "() => activeItems()", ", item.name)"],
 }

@@ -11,7 +11,7 @@
  * a rebuild: both produce byte-identical markup, so `html`, `markers`,
  * `attributes` and `anchors` are all invariant under the difference.
  */
-import { For, signal } from "@barqjs/core"
+import { For, createSignal } from "@barqjs/core"
 
 export const log: string[] = []
 
@@ -27,7 +27,7 @@ const C: Row = { id: 3, text: "gamma" }
 const ROTATED = [C, A, B]
 const REVERSED = [C, B, A]
 
-export const rows = signal<Row[]>([A, B, C])
+export const [rows, setRows] = createSignal<Row[]>([A, B, C])
 
 export default function KeyedMove() {
   return (
@@ -42,7 +42,7 @@ export default function KeyedMove() {
   )
 }
 
-export const steps = [() => rows.set(ROTATED), () => rows.set(REVERSED)]
+export const steps = [() => setRows(ROTATED), () => setRows(REVERSED)]
 
 export const metamorphic = {
   why: "the same three row objects in a different order: every node moves, none is built",

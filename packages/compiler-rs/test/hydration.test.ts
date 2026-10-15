@@ -49,6 +49,10 @@ async function hydrateFixture(name: string, dev = false): Promise<Result> {
   const hot = summarize(trace);
   const report = core.hydrate.report;
   const hydratedShape = shape(container);
+  // Out of the document before the cold page goes in: both carry the same ids,
+  // and a portal aimed at `#portal-target` mounts into the first one it finds.
+  hydrated();
+  container.remove();
 
   const cold = host("");
   trace = beginTrace();
@@ -61,9 +65,7 @@ async function hydrateFixture(name: string, dev = false): Promise<Result> {
   const coldSummary = summarize(trace);
   const coldShape = shape(cold);
 
-  hydrated();
   rendered();
-  container.remove();
   cold.remove();
 
   return {
@@ -419,8 +421,8 @@ function strip(markup: string): string {
 }
 
 const PAGE = `
-import { For, signal } from "@barqjs/core";
-const rows = signal(
+import { For, createSignal } from "@barqjs/core";
+const [rows] = createSignal(
   Array.from({ length: 100 }, (_, i) => ({ id: i, label: "row " + i, tag: i % 7 })),
 );
 export default function Page() {
@@ -450,8 +452,8 @@ export default function Page() {
  * the page that says what the split costs everywhere else.
  */
 const MIXED_PAGE = `
-import { For, Show, signal } from "@barqjs/core";
-const rows = signal(
+import { For, Show, createSignal } from "@barqjs/core";
+const [rows] = createSignal(
   Array.from({ length: 100 }, (_, i) => ({ id: i, label: "row " + i, tag: i % 7 })),
 );
 export default function Page() {
@@ -495,12 +497,12 @@ async function realPage(
 // ---------------------------------------------------------------------------
 
 const FORM = `
-import { signal } from "@barqjs/core";
-export const seen = signal(0);
+import { createSignal } from "@barqjs/core";
+export const [seen, setSeen] = createSignal(0);
 export default function Form() {
   return (
     <form class="f">
-      <input class="name" type="text" value="" onInput={() => seen.set(seen() + 1)} />
+      <input class="name" type="text" value="" onInput={() => setSeen(seen() + 1)} />
       <button type="submit">go</button>
     </form>
   );
@@ -596,9 +598,9 @@ describe("H6 focus and typed input survive hydration", () => {
     const container = host(wire(compiled.ssr));
     const input = container.querySelector("input") as HTMLInputElement;
 
-    let saw: EventTarget | null = null;
+    const saw: (EventTarget | null)[] = [];
     input.addEventListener("keydown", (event) => {
-      saw = event.target;
+      saw.push(event.target);
     });
 
     const path: number[] = [];
@@ -624,7 +626,7 @@ describe("H6 focus and typed input survive hydration", () => {
     globals.__BARQ_EVTS_STOP__ = (): void => {};
 
     const dispose = core.hydrate(compiled.dom.default as never, container);
-    expect(saw).toBe(input);
+    expect(saw.at(-1)).toBe(input);
     dispose();
     container.remove();
   });
@@ -682,8 +684,8 @@ describe("claim against replace", () => {
 
 function ROWS(n: number): string {
   return `
-import { For, signal } from "@barqjs/core";
-export const rows = signal(Array.from({ length: ${n} }, (_, i) => ({ id: i, label: "row " + i })));
+import { For, createSignal } from "@barqjs/core";
+export const [rows] = createSignal(Array.from({ length: ${n} }, (_, i) => ({ id: i, label: "row " + i })));
 export default function Page() {
   return (
     <table class="rows"><tbody>

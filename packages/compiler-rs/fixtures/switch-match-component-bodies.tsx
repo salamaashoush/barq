@@ -1,6 +1,6 @@
-import { Match, Switch, signal } from "@barqjs/core"
+import { Match, Switch, createSignal } from "@barqjs/core"
 
-export const status = signal<"loading" | "ready">("loading")
+export const [status, setStatus] = createSignal<"loading" | "ready">("loading")
 
 function Spinner() {
   return <span class="spinner">…</span>
@@ -29,7 +29,7 @@ export default function SwitchMatchComponentBodies() {
   )
 }
 
-export const steps = [() => status.set("ready"), () => status.set("loading")]
+export const steps = [() => setStatus("ready"), () => setStatus("loading")]
 export const optimality = {
   target: 8,
   milestone: 5,

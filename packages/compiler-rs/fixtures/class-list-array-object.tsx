@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const on = signal(false)
+export const [on, setOn] = createSignal(false)
 
 export default function ClassListArrayObject() {
   return (
@@ -11,7 +11,7 @@ export default function ClassListArrayObject() {
   )
 }
 
-export const steps = [() => on.set(true), () => on.set(false)]
+export const steps = [() => setOn(true), () => setOn(false)]
 export const optimality = {
   target: 4,
   milestone: 5,

@@ -1,6 +1,6 @@
-import { Show, signal } from "@barqjs/core"
+import { Show, createSignal } from "@barqjs/core"
 
-export const on = signal(true)
+export const [on, setOn] = createSignal(true)
 
 /**
  * A control-flow component sitting BETWEEN two static siblings inside an
@@ -20,7 +20,7 @@ export default function ComponentChildOfElement() {
   )
 }
 
-export const steps = [() => on.set(false), () => on.set(true)]
+export const steps = [() => setOn(false), () => setOn(true)]
 export const optimality = {
   target: 9,
   milestone: 5,

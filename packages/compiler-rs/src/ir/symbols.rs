@@ -8,61 +8,16 @@ use crate::diag::Code;
 
 use super::{AVec, Const, react::BIT_OVERFLOW};
 
-/// Members of an `Accessor` binding that are NOT tracked reads: `.set`, `.peek`,
-/// `.update`. `count.set` and `count()` are the same identifier with two
-/// verdicts, which is the fact a name heuristic cannot represent.
-#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
-pub struct MemberMask(u8);
-
-impl MemberMask {
-    pub const EMPTY: Self = Self(0);
-    pub const SET: Self = Self(1 << 0);
-    pub const PEEK: Self = Self(1 << 1);
-    pub const UPDATE: Self = Self(1 << 2);
-    /// what `signal()` returns
-    pub const SIGNAL: Self = Self(0b111);
-
-    #[inline]
-    pub const fn contains(self, other: Self) -> bool {
-        self.0 & other.0 == other.0
-    }
-
-    #[inline]
-    pub const fn union(self, other: Self) -> Self {
-        Self(self.0 | other.0)
-    }
-
-    #[inline]
-    pub fn of_member(name: &str) -> Self {
-        match name {
-            "set" => Self::SET,
-            "peek" => Self::PEEK,
-            "update" => Self::UPDATE,
-            _ => Self::EMPTY,
-        }
-    }
-
-    /// `Member(o, m)` where `o: Accessor` is `Static` exactly when `m` is masked.
-    #[inline]
-    pub fn is_inert_member(self, name: &str) -> bool {
-        self.contains(Self::of_member(name)) && Self::of_member(name) != Self::EMPTY
-    }
-}
-
 /// What a resolved binding IS. Assigned per `SymbolId`, so shadowing is free,
 /// name collisions are impossible, and `import { signal as sig }` just works.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
 pub enum SourceKind {
-    /// Calling it is a reactive read. `nonreactive` masks members that are NOT
-    /// tracked reads.
-    Accessor { nonreactive: MemberMask },
+    /// Calling it is a reactive read: what `createSignal()[0]` and
+    /// `createMemo()` hand back.
+    Accessor,
     /// ANY member read is a reactive read: `useStore()[0]`, `projection`,
     /// `optimisticStore()[0]`.
     ReactiveObject,
-    /// Members are accessors: member READ is inert, member CALL is reactive.
-    /// `Resource<T>`: `.state()` `.loading()` `.error()` `.latest()`;
-    /// `.refetch` and `.mutate` are inert.
-    AccessorRecord,
     /// A compiled component's props parameter. Member reads are ⊤-reactive
     /// because our own component emit lowers props to getters.
     PropsParam,
@@ -79,7 +34,7 @@ pub enum SourceKind {
     Inert,
     /// Bound to a function or arrow expression and never reassigned, so the
     /// binding IS the handler: `const h = () => …; <button onClick={h}/>` can
-    /// take the `$$click` expando instead of going through `setProp`. Inert in
+    /// take the `__bq_click` expando instead of going through `setProp`. Inert in
     /// every other respect — creating a reference to it reads nothing.
     ///
     /// `nullary` is the arity discriminator, and it is the ONLY thing that
@@ -111,7 +66,6 @@ pub enum Prim {
     Signal,
     Computed,
     Store,
-    Resource,
     UseContext,
     Optimistic,
     OptimisticStore,
@@ -119,8 +73,6 @@ pub enum Prim {
     MapArray,
     Repeat,
     Untrack,
-    Batch,
-    Peek,
     /// `isPending(fn)` / `latest(fn)` — A5 (f)'s read surface. They INVOKE
     /// their argument, so the read is theirs and not the call site's.
     ReadMode,
@@ -133,17 +85,16 @@ impl Prim {
     /// user-defined `const signal = 1` does not.
     pub fn of_export(name: &str) -> Option<Self> {
         Some(match name {
-            "signal" => Prim::Signal,
-            "computed" => Prim::Computed,
-            "store" => Prim::Store,
-            "resource" => Prim::Resource,
+            "createSignal" => Prim::Signal,
+            "createMemo" => Prim::Computed,
+            "createStore" => Prim::Store,
             // The one `use*` that stays, because it is not an alias of a
             // constructor — reading what the owner tree provides is its own
             // operation, and it answers with the Cell compiled code wants.
             "useContext" => Prim::UseContext,
-            "optimistic" => Prim::Optimistic,
-            "optimisticStore" => Prim::OptimisticStore,
-            "projection" => Prim::Projection,
+            "createOptimistic" => Prim::Optimistic,
+            "createOptimisticStore" => Prim::OptimisticStore,
+            "createProjection" => Prim::Projection,
             "mapArray" => Prim::MapArray,
             "repeat" => Prim::Repeat,
             "untrack" => Prim::Untrack,
@@ -153,7 +104,6 @@ impl Prim {
             // a nested arrow, which is deferred everywhere else — that deferral
             // is what makes a handler hoistable.
             "isPending" | "latest" => Prim::ReadMode,
-            "batch" => Prim::Batch,
             "For" => Prim::Flow(Flow::For),
             "Repeat" => Prim::Flow(Flow::Repeat),
             "Show" => Prim::Flow(Flow::Show),
@@ -391,6 +341,13 @@ pub struct ReactiveEnv<'a> {
     /// subtree, because a hand-written caller can still hand it one — that is
     /// what the fixture's controls drive.
     pub root_jsx_args: Vec<Span>,
+    /// Zero-arity functions whose body reads something tracked, sorted.
+    ///
+    /// `const double = () => count() * 2` is a function and stays one: a
+    /// reference to it is a handler like any other. CALLING it is a tracked
+    /// read, and knowing that is the difference between one effect per
+    /// attribute that calls it and one effect for all of them.
+    pub derived: Vec<SymbolId>,
 }
 
 /// One proven Cell slot. `read` is where the callee consumes it, so the
@@ -423,7 +380,13 @@ impl<'a> ReactiveEnv<'a> {
             cell_slots: Vec::new(),
             root_blocks: Vec::new(),
             root_jsx_args: Vec::new(),
+            derived: Vec::new(),
         }
+    }
+
+    #[inline]
+    pub fn is_derived(&self, symbol: SymbolId) -> bool {
+        self.derived.binary_search(&symbol).is_ok()
     }
 
     /// The flow component `object.property` names, when `object` is a namespace
@@ -465,31 +428,13 @@ impl<'a> ReactiveEnv<'a> {
     /// `DepSet` bit.
     #[inline]
     pub fn is_reactive(kind: SourceKind) -> bool {
-        matches!(
-            kind,
-            SourceKind::Accessor { .. }
-                | SourceKind::ReactiveObject
-                | SourceKind::AccessorRecord
-                | SourceKind::PropsParam
-        )
+        matches!(kind, SourceKind::Accessor | SourceKind::ReactiveObject | SourceKind::PropsParam)
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn the_signal_member_mask_separates_a_write_from_a_read() {
-        let mask = MemberMask::SIGNAL;
-        assert!(mask.is_inert_member("set"));
-        assert!(mask.is_inert_member("peek"));
-        assert!(mask.is_inert_member("update"));
-        // `count.value` is not in the mask, so it stays a reactive read.
-        assert!(!mask.is_inert_member("value"));
-        assert!(!MemberMask::EMPTY.is_inert_member("set"));
-        assert_eq!(MemberMask::SET.union(MemberMask::PEEK).union(MemberMask::UPDATE), mask);
-    }
 
     #[test]
     fn an_unbound_symbol_answers_opaque() {

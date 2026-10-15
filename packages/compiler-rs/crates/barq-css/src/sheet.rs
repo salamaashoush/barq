@@ -82,8 +82,9 @@ impl<'a> Sheet<'a> {
                 Statement::Declaration(declaration) => {
                     if scope.is_empty() {
                         return Err(self.error(
-                            "a declaration at the top level of `globalCss` has no element to \
-                             apply to; wrap it in a selector",
+                            "This declaration is at the top level of `globalCss`, where it has \
+                             no element to apply to. Wrap it in a selector, such as \
+                             `body { color: black }`.",
                             declaration.span,
                         ));
                     }
@@ -119,8 +120,8 @@ impl<'a> Sheet<'a> {
                 if self.kind != Kind::Global {
                     return Err(self.error(
                         format!(
-                            "`@{name}` has to lead the stylesheet, so it cannot be scoped to a \
-                             class; move it to `globalCss`"
+                            "`@{name}` must come first in a stylesheet, so it cannot go in a \
+                             block that is scoped to a class. Move it to a `globalCss` block."
                         ),
                         at_rule.span,
                     ));
@@ -202,7 +203,8 @@ impl<'a> Sheet<'a> {
             if parents.is_empty() {
                 if let Some(&at) = ampersands.first() {
                     return Err(self.error(
-                        "`&` at the top level of `globalCss` has no parent selector to stand for",
+                        "`&` stands for the parent selector, and at the top level of `globalCss` \
+                         there is no parent selector. Write the selector out in full.",
                         Span { start: at, end: at + 1 },
                     ));
                 }
@@ -292,19 +294,23 @@ fn collect_compound(compound: &CompoundSelector<'_>, out: &mut Vec<usize>) {
 /// into something the browser will not run.
 fn not_css(statement: &Statement<'_>) -> String {
     let construct = match statement {
-        Statement::SassVariableDeclaration(_) => "a Sass variable (`$name: …`)",
-        Statement::SassIfAtRule(_) => "a Sass `@if`",
-        Statement::UnknownSassAtRule(_) => "a Sass at-rule",
-        Statement::PostcssSimpleVarDeclaration(_) => "a postcss-simple-vars variable",
+        Statement::SassVariableDeclaration(_) => "A Sass variable (`$name: value`)",
+        Statement::SassIfAtRule(_) => "A Sass `@if`",
+        Statement::UnknownSassAtRule(_) => "A Sass at-rule",
+        Statement::PostcssSimpleVarDeclaration(_) => "A postcss-simple-vars variable",
         Statement::Placeholder(_) => {
-            return "an interpolation at statement position cannot be compiled: its text is not \
-                    known until the program runs. Put the interpolation in a declaration value, \
-                    or select between two whole blocks with a ternary."
+            return "This `${...}` stands where a whole declaration or rule would go, and its \
+                    text is only known when the program runs, so it cannot be compiled. \
+                    Interpolate inside a value, such as `color: ${color}`, or write two blocks \
+                    and choose between their classes."
                 .to_string();
         }
-        _ => "a Less construct",
+        _ => "A Less construct",
     };
-    format!("{construct} is not CSS, and this compiles CSS only")
+    format!(
+        "{construct} is preprocessor syntax, and `@barqjs/css` compiles plain CSS only. Rewrite \
+         it as CSS; for a variable, use a custom property: `--brand: red` and `var(--brand)`."
+    )
 }
 
 fn statement_span(statement: &Statement<'_>) -> Span {

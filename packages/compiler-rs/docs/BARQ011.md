@@ -1,58 +1,88 @@
-# BARQ011 — a positional row holds DOM state
+# BARQ011: `keyed={false}` keeps element state in place when the list reorders
 
-**Level:** note · **Dev builds only** · [all codes](README.md)
+**Level:** note · [all codes](README.md)
 
-## What fires
+## Message
 
-A `<For keyed={false}>` — the positional mode — whose row markup contains an element whose
-state lives in the element rather than in any attribute the compiler writes: `input`,
-`textarea`, `select`, `video`, `audio`, `details`, `canvas`, `dialog`, or a custom element.
+> `keyed={false}` reuses each row's elements by position, so what the user did inside
+> `<input>` (typed text, the caret, a selection, playback, open or closed) stays in that
+> position when the list reorders and ends up on a different item. Remove
+> `keyed={false}` so a row moves with its item, or key by a stable field: `keyed={(row)
+> => row.id}`.
 
-```jsx
-<For each={todos} keyed={false}>
-  {(todo) => <li><input value={todo().text} /></li>}   // BARQ011
-</For>
+## Failing example
+
+```tsx
+import { For, createSignal } from "@barqjs/core";
+
+const [todos] = createSignal([{ id: 1, text: "Write the docs" }]);
+
+export const Todos = () => (
+  <ul>
+    <For each={todos} keyed={false}>
+      {(todo) => (
+        <li>
+          <input value={todo().text} />
+        </li>
+      )}
+    </For>
+  </ul>
+);
 ```
 
-## What it means
+## Fixed example
 
-`keyed={false}` makes a row's identity its **position**. Slot 0 is reused for whatever item
-is at index 0, so the caret, the selection, the playback offset and the open/closed toggle
-belong to the slot rather than to the item that happens to be in it. Reorder the list and
-that state stays behind.
+```tsx
+import { For, createSignal } from "@barqjs/core";
 
-## The fix
+const [todos] = createSignal([{ id: 1, text: "Write the docs" }]);
 
-Drop `keyed={false}` — the default is identity keying, where the row travels with its item
-(SEMANTICS K1):
-
-```jsx
-<For each={todos}>{(todo) => <li><input value={todo.text} /></li>}</For>
+export const Todos = () => (
+  <ul>
+    <For each={todos} keyed={(todo) => todo.id}>
+      {(todo) => (
+        <li>
+          <input value={todo().text} />
+        </li>
+      )}
+    </For>
+  </ul>
+);
 ```
 
-or key on a stable field, which keeps the row across an item replacement too:
+## Why this rule exists
 
-```jsx
-<For each={todos} keyed={(todo) => todo.id}>
-  {(todo) => <li><input value={todo().text} /></li>}
-</For>
+With `keyed={false}` the first row is always the first `<li>`, whichever item is in it.
+What barq writes follows the item, but what the browser keeps inside an element does not:
+the text being typed, the caret, a selection, a `<video>`'s position, an open `<details>`.
+After a reorder or a removal that state sits on a different item.
+
+The note looks at elements written directly in the row: `input`, `textarea`, `select`,
+`video`, `audio`, `details`, `canvas`, `dialog` and custom elements. It cannot see inside
+a component used in the row, so its silence does not mean a row holds no such state.
+
+## Silencing one line
+
+```tsx
+import { For, createSignal } from "@barqjs/core";
+
+const [todos] = createSignal([{ id: 1, text: "Write the docs" }]);
+
+export const Todos = () => (
+  <ul>
+    <For each={todos} keyed={false}>
+      {(todo) => (
+        <li>
+          {/* barq-ignore-next-line BARQ011 (this list is append-only) */}
+          <input value={todo().text} />
+        </li>
+      )}
+    </For>
+  </ul>
+);
 ```
 
-## What this note is not
-
-It is a hint, not a safety net, and the difference is the reason the keying default is
-identity rather than index. This note sees **inline markup only**. A component compiles to
-an opaque call, so `{todo => <TodoRow todo={todo}/>}` with an `<input>` inside `TodoRow`
-produces nothing here — and neither does a scroll offset on a plain `<div>`, a running
-animation, or a third-party widget behind a `ref`. A default that relied on this note to
-stay correct would have been silently wrong for every one of those.
-
-Nothing rests on it now: `keyed={false}` is written by hand, and this only says what that
-spelling means for the state the compiler happens to be able to see.
-
-## Silencing it
-
-```jsx
-{/* barq-ignore-next-line BARQ011 (this list never reorders) */}
-<For each={rows} keyed={false}>{(row) => <li><input value={row()} /></li>}</For>
-```
+The reason in parentheses is required and has to be at least 10 characters. Between JSX
+children, write the comment as `{/* barq-ignore-next-line BARQ011 (reason) */}` on the line
+above: a `//` line there is text and would be rendered on the page. To change the level
+for the whole project, see [the index](README.md#changing-a-level-for-the-whole-project).

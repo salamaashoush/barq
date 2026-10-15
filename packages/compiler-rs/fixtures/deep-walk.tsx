@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const leaf = signal("L")
+export const [leaf, setLeaf] = createSignal("L")
 
 export default function DeepWalk() {
   return (
@@ -19,7 +19,7 @@ export default function DeepWalk() {
   )
 }
 
-export const steps = [() => leaf.set("LL")]
+export const steps = [() => setLeaf("LL")]
 
 export const optimality = {
   target: 5,

@@ -1,12 +1,13 @@
-import { Errored, Loading, resource, signal } from "@barqjs/core"
+import { Errored, Loading, createMemo } from "@barqjs/core"
 
-export const settled = signal<((value: string) => void) | null>(null)
+// A plain binding, not a signal: it is assigned while the memo computes, and
+// a computation does not write reactive state.
+let settle: ((value: string) => void) | null = null
 
-const value = resource<string>(
-  () => null,
+const value = createMemo<string>(
   () =>
     new Promise<string>((resolve) => {
-      settled.set(resolve)
+      settle = resolve
     }),
 )
 
@@ -17,9 +18,9 @@ const value = resource<string>(
  * Solid 2.0 ships ten control-flow constructs and neither is among them —
  * `Suspense` was `Loading` under its pre-2.0 name and forwarded to it verbatim,
  * and `Await` was this nesting, which is what the compiler already lowered it
- * to. Reading a resource throws `NotReady` before it settles and throws the
+ * to. Reading an async value throws `NotReady` before it settles and throws the
  * error after it fails, so the two boundaries ARE the three states and the
- * resource is referenced ONCE, where the body reads it.
+ * value is referenced ONCE, where the body reads it.
  */
 export default function ControlFlowAwaitSuspense() {
   return (
@@ -35,7 +36,7 @@ export default function ControlFlowAwaitSuspense() {
   )
 }
 
-export const steps = [() => settled()?.("ready")]
+export const steps = [() => settle?.("ready")]
 
 export const optimality = {
   target: 8,

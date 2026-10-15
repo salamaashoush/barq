@@ -1,8 +1,8 @@
-import { context, signal, useContext } from "@barqjs/core"
+import { createContext, createSignal, useContext } from "@barqjs/core"
 
-const Theme = context<() => string>(() => "light")
+const Theme = createContext<() => string>(() => "light")
 
-export const theme = signal("dark")
+export const [theme, setTheme] = createSignal("dark")
 
 function Badge() {
   const value = useContext(Theme)
@@ -18,7 +18,7 @@ export default function ContextProvider() {
   )
 }
 
-export const steps = [() => theme.set("sepia")]
+export const steps = [() => setTheme("sepia")]
 
 export const optimality = {
   target: 1,

@@ -1,4 +1,4 @@
-import { Match, Switch, signal } from "@barqjs/core"
+import { Match, Switch, createSignal } from "@barqjs/core"
 
 /**
  * `STATIC_KEY` on the INTEGER-key path, which is a different proof from the
@@ -14,7 +14,7 @@ import { Match, Switch, signal } from "@barqjs/core"
  */
 const MODE: "compact" | "full" = "full"
 
-export const count = signal(0)
+export const [count, setCount] = createSignal(0)
 
 export default function ControlFlowSwitchStaticKey() {
   return (
@@ -27,7 +27,7 @@ export default function ControlFlowSwitchStaticKey() {
   )
 }
 
-export const steps = [() => count.set(1), () => count.set(2)]
+export const steps = [() => setCount(1), () => setCount(2)]
 
 export const optimality = {
   target: 8,

@@ -1,6 +1,6 @@
-import { Show, signal } from "@barqjs/core"
+import { Show, createSignal } from "@barqjs/core"
 
-export const value = signal<string | null>("alpha")
+export const [value, setValue] = createSignal<string | null>("alpha")
 
 /**
  * `<Show keyed={false}>` written EXPLICITLY, which is the default since M10 —
@@ -31,9 +31,9 @@ export default function ControlFlowShowKeyedFalse() {
 
 export const steps = [
   // The frame that tells a live read from a frozen one.
-  () => value.set("beta"),
-  () => value.set(null),
-  () => value.set("gamma"),
+  () => setValue("beta"),
+  () => setValue(null),
+  () => setValue("gamma"),
 ]
 
 export const optimality = {

@@ -4,8 +4,21 @@ import * as dom from "./register-dom.ts";
 
 void dom;
 
-import { mock } from "bun:test";
+import { afterEach, mock } from "bun:test";
 import { installTracer } from "./tracer.ts";
+
+// The engine hands an error nothing caught to `reportError`, which is what a
+// crashed page should do. A fixture that provokes one is asserting on it, and
+// the report must not fail the run from between two tests.
+globalThis.reportError = () => {};
+// It also stops scheduling for good, and every file here shares one engine: the
+// halt one test provokes must not be what the next file starts under.
+// Imported inside the hook: the tracer below has to replace the engine's
+// modules before anything loads them.
+afterEach(async () => {
+  const core = (await import("@barqjs/core")) as unknown as { resetErrorHalt(): void };
+  core.resetErrorHalt();
+});
 
 const { signalsPath, domPath } = installTracer((path, factory) => {
   mock.module(path, factory);

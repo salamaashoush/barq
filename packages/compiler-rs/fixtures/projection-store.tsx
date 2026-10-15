@@ -1,12 +1,12 @@
-import { projection, signal } from "@barqjs/core"
+import { createProjection, createSignal } from "@barqjs/core"
 
-export const on = signal(false)
+export const [on, setOn] = createSignal(false)
 
 /**
  * `projection` returns the store PROXY directly, not a tuple and not an
  * accessor: `selected.on` is the tracked read and `selected()` would throw.
  */
-const selected = projection<{ on: boolean }>(
+const selected = createProjection<{ on: boolean }>(
   (draft) => {
     draft.on = on()
   },
@@ -21,7 +21,7 @@ export default function CreateProjectionStore() {
   )
 }
 
-export const steps = [() => on.set(true), () => on.set(false)]
+export const steps = [() => setOn(true), () => setOn(false)]
 
 export const optimality = {
   target: 1,

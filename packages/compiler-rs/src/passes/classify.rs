@@ -359,16 +359,14 @@ impl<'a> Lift<'a, '_> {
                 rx
             }
 
-            Expression::StaticMemberExpression(member) => {
-                self.member(&member.object, Some(member.property.name.as_str()))
-            }
+            Expression::StaticMemberExpression(member) => self.member(&member.object),
             Expression::ComputedMemberExpression(member) => {
-                let mut rx = self.member(&member.object, None);
+                let mut rx = self.member(&member.object);
                 rx = join(rx, self.rx(&member.expression));
                 rx.konst = None;
                 rx
             }
-            Expression::PrivateFieldExpression(member) => self.member(&member.object, None),
+            Expression::PrivateFieldExpression(member) => self.member(&member.object),
 
             Expression::CallExpression(call) => self.call(call),
 
@@ -380,7 +378,26 @@ impl<'a> Lift<'a, '_> {
                     Some(deps) => {
                         Rx { react: React::Reactive, deps, cost: Cost::Expensive, ..Rx::OPAQUE }
                     }
-                    None => Rx { cost: Cost::Expensive, ..Rx::OPAQUE },
+                    None => {
+                        // An unknown read or call among the arguments is spent
+                        // when the object is built, as it is anywhere else.
+                        let mut thunk = Thunk::None;
+                        for argument in &new.arguments {
+                            let part = match argument {
+                                oxc::ast::ast::Argument::SpreadElement(spread) => {
+                                    self.rx(&spread.argument)
+                                }
+                                _ => match argument.as_expression() {
+                                    Some(expression) => self.rx(expression),
+                                    None => continue,
+                                },
+                            };
+                            if part.thunk == Thunk::Arrow {
+                                thunk = Thunk::Arrow;
+                            }
+                        }
+                        Rx { cost: Cost::Expensive, thunk, ..Rx::OPAQUE }
+                    }
                 }
             }
 
@@ -501,7 +518,7 @@ impl<'a> Lift<'a, '_> {
         match self.env.kind_of(symbol) {
             // Creating a reference to an accessor reads nothing; CALLING it is
             // the read. The body's dep set travels in `inner`.
-            SourceKind::Accessor { .. } => Rx {
+            SourceKind::Accessor => Rx {
                 react: React::Static,
                 shape: Shape::Accessor,
                 inner: self.dep(symbol),
@@ -509,9 +526,6 @@ impl<'a> Lift<'a, '_> {
             },
             SourceKind::ReactiveObject | SourceKind::PropsParam => {
                 Rx { react: React::Reactive, deps: self.dep(symbol), ..Rx::OPAQUE }
-            }
-            SourceKind::AccessorRecord => {
-                Rx { react: React::Static, shape: Shape::Obj, ..Rx::OPAQUE }
             }
             // The row is recreated by `mapArray` when the item changes, so
             // reading it tracks nothing (DESIGN O3).
@@ -537,19 +551,13 @@ impl<'a> Lift<'a, '_> {
         DepSet::single(self.env.bit_of(symbol))
     }
 
-    fn member(&mut self, object: &Expression<'a>, property: Option<&str>) -> Rx<'a> {
+    fn member(&mut self, object: &Expression<'a>) -> Rx<'a> {
         if let Some(symbol) = symbol_of(self.scoping, object) {
             match self.env.kind_of(symbol) {
-                SourceKind::Accessor { nonreactive } => {
-                    // `count.set` and `count()` are the same identifier with two
-                    // verdicts — the fact a name heuristic cannot represent.
-                    return match property {
-                        Some(name) if nonreactive.is_inert_member(name) => {
-                            Rx { react: React::Static, shape: Shape::Handler, ..Rx::OPAQUE }
-                        }
-                        _ => Rx::OPAQUE,
-                    };
-                }
+                // An accessor is a function and carries nothing of barq's: a
+                // member read off one is not something this can say anything
+                // about.
+                SourceKind::Accessor => return Rx::OPAQUE,
                 SourceKind::ReactiveObject => {
                     return Rx { react: React::Reactive, deps: self.dep(symbol), ..Rx::OPAQUE };
                 }
@@ -567,20 +575,26 @@ impl<'a> Lift<'a, '_> {
                         ..Rx::OPAQUE
                     };
                 }
-                // `Resource<T>`: the member READ is inert, the CALL is the read.
-                SourceKind::AccessorRecord => {
-                    return Rx {
-                        react: React::Static,
-                        shape: Shape::Accessor,
-                        inner: self.dep(symbol),
-                        ..Rx::OPAQUE
-                    };
-                }
                 _ => {}
             }
         }
         let inner = self.rx(object);
-        Rx { react: inner.react, deps: inner.deps, cost: inner.cost, ..Rx::OPAQUE }
+        // A member read off a value nothing is known about may be a store's:
+        // the object a hook handed back, an import, an item of a list. A
+        // store's read is a tracked read, so it is no more a value to spend at
+        // the call site than a call is, and it crosses as the read. A list row
+        // is the case that matters most: the row is the same object when a
+        // field of it is written in place, so `{row.label}` evaluated once was
+        // a label that never changed.
+        let row = symbol_of(self.scoping, object)
+            .is_some_and(|symbol| self.env.kind_of(symbol) == SourceKind::RowValue);
+        let unknown = row || inner.react == React::Opaque;
+        // `Arrow` travels through a member read as it does through any other
+        // container: `label().name` runs `label()` exactly as `label()` does,
+        // and spent once it is a value that never moves again.
+        let thunk = if unknown || inner.thunk == Thunk::Arrow { Thunk::Arrow } else { Thunk::None };
+        let react = if row { React::Opaque } else { inner.react };
+        Rx { react, deps: inner.deps, cost: inner.cost, thunk, ..Rx::OPAQUE }
     }
 
     /// One link of an optional chain, classified as the non-optional spelling is.
@@ -592,16 +606,14 @@ impl<'a> Lift<'a, '_> {
         match element {
             ChainElement::CallExpression(call) => self.call(call),
             ChainElement::TSNonNullExpression(inner) => self.rx(&inner.expression),
-            ChainElement::StaticMemberExpression(member) => {
-                self.member(&member.object, Some(member.property.name.as_str()))
-            }
+            ChainElement::StaticMemberExpression(member) => self.member(&member.object),
             ChainElement::ComputedMemberExpression(member) => {
-                let mut rx = self.member(&member.object, None);
+                let mut rx = self.member(&member.object);
                 rx = join(rx, self.rx(&member.expression));
                 rx.konst = None;
                 rx
             }
-            ChainElement::PrivateFieldExpression(member) => self.member(&member.object, None),
+            ChainElement::PrivateFieldExpression(member) => self.member(&member.object),
         }
     }
 
@@ -651,7 +663,18 @@ impl<'a> Lift<'a, '_> {
             && let Some(symbol) = symbol_of(self.scoping, &call.callee)
         {
             match self.env.kind_of(symbol) {
-                SourceKind::Accessor { .. } => {
+                SourceKind::Accessor => {
+                    return Rx {
+                        react: React::Reactive,
+                        deps: self.dep(symbol),
+                        thunk: Thunk::Eta,
+                        ..Rx::OPAQUE
+                    };
+                }
+                // A function the binder proved reads something tracked. It is
+                // no accessor by reference, but called with nothing it is the
+                // same read, and `() => double()` is `double`.
+                SourceKind::Fn { nullary: true } if self.env.is_derived(symbol) => {
                     return Rx {
                         react: React::Reactive,
                         deps: self.dep(symbol),
@@ -692,26 +715,12 @@ impl<'a> Lift<'a, '_> {
                 // carries neither, because the CALL is inside the callee.
                 deps = deps.join(inner.deps).join(inner.inner);
                 if let Some(argument_symbol) = symbol_of(self.scoping, argument)
-                    && matches!(self.env.kind_of(argument_symbol), SourceKind::Accessor { .. })
+                    && matches!(self.env.kind_of(argument_symbol), SourceKind::Accessor)
                 {
                     deps = deps.join(self.dep(argument_symbol));
                 }
             }
             return Rx { react: React::Reactive, deps, ..Rx::OPAQUE };
-        }
-
-        // A member call on a `Resource<T>` — `.state()`, `.loading()` — is the
-        // tracked read; `.refetch` / `.mutate` are inert.
-        if let Expression::StaticMemberExpression(member) = &call.callee
-            && let Some(symbol) = symbol_of(self.scoping, &member.object)
-            && self.env.kind_of(symbol) == SourceKind::AccessorRecord
-        {
-            let inert = matches!(member.property.name.as_str(), "refetch" | "mutate");
-            return Rx {
-                react: if inert { React::Static } else { React::Reactive },
-                deps: if inert { DepSet::EMPTY } else { self.dep(symbol) },
-                ..Rx::OPAQUE
-            };
         }
 
         // The settled spelling: `props.x()` is how a Cell is READ,
@@ -783,7 +792,11 @@ impl<'a> Lift<'a, '_> {
         };
         let inner = argument.map(|expression| self.rx(expression));
         if let Some(inner) = inner {
-            rx = Rx { react: inner.react, deps: inner.deps, ..rx };
+            // The conversion runs what it converts: a call or an unknown read
+            // inside `String(…)` is spent at the call site exactly as it would
+            // be bare, so it crosses the same way.
+            let thunk = if inner.thunk == Thunk::Arrow { Thunk::Arrow } else { Thunk::None };
+            rx = Rx { react: inner.react, deps: inner.deps, thunk, ..rx };
         }
         rx.konst = match (name, inner.and_then(|inner| inner.fold())) {
             ("String", Some(value)) => {
@@ -933,7 +946,17 @@ fn konst<'a>(value: Const<'a>, shape: Shape) -> Rx<'a> {
 
 fn join<'a>(left: Rx<'a>, right: Rx<'a>) -> Rx<'a> {
     Rx {
-        react: left.react.join(right.react),
+        // A read PROVED to be tracked stays proved beside a part nothing is
+        // known about. Taking the lattice's top instead made
+        // `on() ? styles.on : styles.off` an unknown, emitted unwrapped and
+        // evaluated once: the signal read inside it subscribed nothing. It is
+        // the rule `proven_reactive_parts` already applies to a call's
+        // arguments.
+        react: if left.react == React::Reactive || right.react == React::Reactive {
+            React::Reactive
+        } else {
+            left.react.join(right.react)
+        },
         deps: left.deps.join(right.deps),
         inner: left.inner.join(right.inner),
         konst: None,

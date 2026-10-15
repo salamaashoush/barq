@@ -24,13 +24,13 @@
  * leak that survives the root. The guard is the wrong place for the test; the
  * brand is a property of the VALUE, so `applyRefs`, `listen`, `delegate` and the
  * delegated dispatcher each test it where they read. The dispatcher is not
- * redundant with the other three: the compiled path writes `_el$1.$$click = h`
+ * redundant with the other three: the compiled path writes `_el$1.__bq_click = h`
  * itself and never calls `delegate`.
  *
  * C3.6, C3.7, C3.8, C3.9, C5.1.
  */
-import { block, delegate, dispose, enterRoot, exit, isBlock, listen, pin, ref, render, runWithOwner, setProp } from "@barqjs/core"
-import { branch, boundary, each, onCleanup, portal, provide, context, useContext } from "@barqjs/core"
+import { block, delegate, dispose, flush, isBlock, listen, pin, ref, render, resetErrorHalt, rootScope, runWithOwner, setProp } from "@barqjs/core"
+import { branch, boundary, each, onCleanup, portal, provide, createContext, useContext } from "@barqjs/core"
 import type { Scope } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
@@ -64,7 +64,7 @@ type Shape = "guarded" | "pinned" | "laundered"
 /** A Cell in a Block slot: arity-tolerant, so `cell($s)` and `cell()` agree (C3.6). */
 const arityTolerant = () => "tolerated"
 
-const Theme = context<string>("default")
+const Theme = createContext<string>("default")
 
 interface Slotted extends Record<string, unknown> {
   thing: () => unknown
@@ -140,6 +140,8 @@ function dispatched(
     ),
   )
   node.dispatchEvent(event)
+  // The boundary shows its fallback at the flush the routed error scheduled.
+  flush()
   host.remove()
   if (caught !== null) throw caught
 }
@@ -219,6 +221,36 @@ function slots(carrier: () => unknown): Array<{ name: string; drive: (s: Scope) 
   ]
 }
 
+/**
+ * Drive one slot under a root of its own and hand back how it was refused.
+ *
+ * A Block the slot can see is refused where it stands, which is a throw. One
+ * laundered through a Cell is only seen when the slot's effect reads it, and an
+ * error in an effect that nothing catches is REPORTED: the engine halts and
+ * hands it to `reportError`. Both are the Block not rendering, so both count.
+ */
+function refusalOf(drive: (root: Scope) => void): unknown {
+  let refused: unknown = null
+  const report = globalThis.reportError
+  globalThis.reportError = (error: unknown) => {
+    refused ??= error
+  }
+  const root = rootScope()
+  try {
+    // A slot that is refused halts the engine; the next starts from a live one.
+    resetErrorHalt()
+    runWithOwner(root, () => drive(root))
+  } catch (error) {
+    // The report carries the error itself; what the engine throws beside it is
+    // its own wrapper.
+    refused ??= error
+  } finally {
+    dispose(root)
+    globalThis.reportError = report
+  }
+  return refused
+}
+
 export const claims: Claim[] = [
   {
     id: "a-block-in-every-cell-slot-throws",
@@ -231,16 +263,7 @@ export const claims: Claim[] = [
       const cases = slots(() => needsScope)
       kit.precondition(cases.length >= 6, "the slot list is empty, so nothing was driven")
       for (const slot of cases) {
-        let thrown: unknown = null
-        const root = enterRoot()
-        try {
-          slot.drive(root)
-        } catch (error) {
-          thrown = error
-        } finally {
-          exit(root)
-          dispose(root)
-        }
+        const thrown = refusalOf(slot.drive)
         await kit.settle()
         if (thrown === null) {
           surviving.push(slot.name)
@@ -263,8 +286,7 @@ export const claims: Claim[] = [
     rule: "C3.8",
     says: "C3.8 is a property of the VALUE: a pinned Block and a laundered Cell-yielding-a-Block reach the same nine slots and get the same answer as a guarded one",
     async check(kit) {
-      const home = enterRoot()
-      exit(home)
+      const home = rootScope()
       const carriers: Record<Shape, () => unknown> = {
         guarded: () => needsScope,
         pinned: () =>
@@ -282,16 +304,7 @@ export const claims: Claim[] = [
           kit.precondition(cases.length >= 6, "the slot list is empty, so nothing was driven")
           for (const slot of cases) {
             driven++
-            let thrown: unknown = null
-            const root = enterRoot()
-            try {
-              slot.drive(root)
-            } catch (error) {
-              thrown = error
-            } finally {
-              exit(root)
-              dispose(root)
-            }
+            const thrown = refusalOf(slot.drive)
             await kit.settle()
             // `branch`'s KEY is deliberately unguarded against a Cell that
             // YIELDS a Block, and `flow.ts` records why: the key's value is
@@ -325,10 +338,8 @@ export const claims: Claim[] = [
     rule: "O2",
     says: "O2's one sanctioned escape hatch is total: a pinned Block's cleanups and effects belong to the PINNED scope even when it is handed a different live one",
     async check(kit) {
-      const home = enterRoot()
-      exit(home)
-      const other = enterRoot()
-      exit(other)
+      const home = rootScope()
+      const other = rootScope()
       const filed: string[] = []
       const pinned = pin(home, (owner: Scope) => {
         void owner
@@ -381,15 +392,14 @@ export const claims: Claim[] = [
         return "a plain string"
       })
 
-      const ambient = enterRoot()
+      const ambient = rootScope()
       let thrown: unknown = null
       try {
-        setProp(document.createElement("div"), "id", quiet as never)
+        runWithOwner(ambient, () => setProp(document.createElement("div"), "id", quiet as never))
       } catch (error) {
         thrown = error
       }
       await kit.settle()
-      exit(ambient)
       dispose(ambient)
       await kit.settle()
 

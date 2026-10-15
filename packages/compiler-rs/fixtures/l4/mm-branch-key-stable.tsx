@@ -12,12 +12,12 @@
  * its own, so a `Show` that rebuilt its body on every write of `label` would
  * have to be rebuilt by BOTH paths before anything went red.
  */
-import { Show, signal } from "@barqjs/core"
+import { Show, createSignal } from "@barqjs/core"
 
 export const log: string[] = []
 
-export const open = signal(true)
-export const label = signal("one")
+export const [open] = createSignal(true)
+export const [label, setLabel] = createSignal("one")
 
 export default function BranchKeyStable() {
   return (
@@ -37,7 +37,7 @@ export default function BranchKeyStable() {
   )
 }
 
-export const steps = [() => label.set("two"), () => label.set("three")]
+export const steps = [() => setLabel("two"), () => setLabel("three")]
 
 export const metamorphic = {
   why: "the key expression never moves, so the branch is never re-activated",

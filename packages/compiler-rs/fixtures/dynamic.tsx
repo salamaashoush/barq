@@ -1,6 +1,6 @@
-import { Dynamic, signal } from "@barqjs/core"
+import { Dynamic, createSignal } from "@barqjs/core"
 
-export const tag = signal<"span" | "b">("span")
+export const [tag, setTag] = createSignal<"span" | "b">("span")
 
 export default function DynamicFixture() {
   return (
@@ -12,7 +12,7 @@ export default function DynamicFixture() {
   )
 }
 
-export const steps = [() => tag.set("b"), () => tag.set("span")]
+export const steps = [() => setTag("b"), () => setTag("span")]
 export const optimality = {
   target: 8,
   milestone: 9,

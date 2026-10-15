@@ -23,20 +23,7 @@
  *
  * O4.5.
  */
-import {
-  block,
-  branch,
-  dispose,
-  effect,
-  enterRoot,
-  exit,
-  getOwner,
-  insert,
-  onCleanup,
-  runWithOwner,
-  setProp,
-  signal,
-} from "@barqjs/core"
+import { block, branch, createSignal, createTrackedEffect, dispose, getOwner, insert, onCleanup, rootScope, runWithOwner, setProp } from "@barqjs/core"
 import type { Scope } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
@@ -55,7 +42,7 @@ export const Subject = () => <i class="o45">given-scope-wins</i>
  * the path the design exists for. Driving the emission rather than the helper
  * beside it is what makes the claim about the shipped code.
  */
-export const tone = signal("one")
+export const [tone, setTone] = createSignal("one")
 
 export const Live = () => <i class={tone()}>compiled</i>
 
@@ -68,14 +55,14 @@ export const Live = () => <i class={tone()}>compiled</i>
  * while B is ambient splits its ownership across both: its hole under A, its
  * cleanup under B.
  */
-export const pulse = signal(0)
+export const [pulse, setPulse] = createSignal(0)
 export const ambientRuns: string[] = []
 export const ambientCleanups: string[] = []
 
 /** A compiled component whose body reads the ambient owner. */
 function AmbientBody() {
   onCleanup(() => ambientCleanups.push("ambient"))
-  effect(() => {
+  createTrackedEffect(() => {
     ambientRuns.push(`effect:${pulse()}`)
   })
   return <i class="ambient">ambient</i>
@@ -90,19 +77,16 @@ function AmbientBody() {
 export const Ambient = block(() => AmbientBody())
 
 /**
- * A and B, disjoint. A is entered and left, so it is a live scope nobody is
- * standing in; B is entered and stays current, so it is what `CURRENT` answers
- * for the rest of the test. Work run under A must therefore die with A.
+ * A and B, disjoint: two live roots, and work is run under A alone. Work run
+ * under A must therefore die with A, whatever else is alive.
  */
 function twoScopes(): { a: Scope; b: Scope; done: () => void } {
-  const a = enterRoot()
-  exit(a)
-  const b = enterRoot()
+  const a = rootScope()
+  const b = rootScope()
   return {
     a,
     b,
     done: () => {
-      exit(b)
       dispose(b)
       dispose(a)
     },
@@ -118,8 +102,8 @@ async function verdict(
 ): Promise<void> {
   const { a, done } = twoScopes()
   try {
-    // UNDER A, and only for the call. B is current before and after, so the
-    // owner a primitive files on is the one it read at the call or nothing.
+    // UNDER A, and only for the call, so the owner a primitive files on is the
+    // one it read at the call or nothing.
     runWithOwner(a, drive)
     await kit.settle()
     kit.precondition(read() === "one", `${what} never ran: it reads ${JSON.stringify(read())}`)
@@ -149,14 +133,14 @@ export const claims: Claim[] = [
     rule: "O4.5",
     says: "`insert` opens its render effect under the owner current at the call, so disposing that owner stops the hole even while another is current",
     async check(kit) {
-      const value = signal("one")
+      const [value, setValue] = createSignal("one")
       const host = document.createElement("div")
       await verdict(
         kit,
         "insert",
         () => host.textContent ?? "",
         () => insert(host, () => value()),
-        (next) => value.set(next),
+        (next) => setValue(next),
       )
     },
   },
@@ -165,14 +149,14 @@ export const claims: Claim[] = [
     rule: "O4.5",
     says: "`setProp` opens its render effect under the owner current at the call, so disposing that owner stops the attribute even while another is current",
     async check(kit) {
-      const value = signal("one")
+      const [value, setValue] = createSignal("one")
       const element = document.createElement("div")
       await verdict(
         kit,
         "setProp",
         () => element.id,
         () => setProp(element, "id", () => value()),
-        (next) => value.set(next),
+        (next) => setValue(next),
       )
     },
   },
@@ -181,7 +165,7 @@ export const claims: Claim[] = [
     rule: "O4.5",
     says: "the four flow primitives capture their owner the same way, which is what makes the two above comparable rather than merely different",
     async check(kit) {
-      const value = signal("one")
+      const [value, setValue] = createSignal("one")
       const host = document.createElement("div")
       await verdict(
         kit,
@@ -190,7 +174,7 @@ export const claims: Claim[] = [
         // The body as a FUNCTION, not a table: the key here is the value
         // itself, so `bodies[k]` would index an array by a string.
         () => void branch(host, null, () => value(), () => document.createTextNode(value())),
-        (next) => value.set(next),
+        (next) => setValue(next),
       )
     },
   },
@@ -199,7 +183,7 @@ export const claims: Claim[] = [
     rule: "O4.5",
     says: "the effect the COMPILER emits for a live attribute opens under the owner the body ran under, so disposing it stops the attribute even while another is current",
     async check(kit) {
-      tone.set("one")
+      setTone("one")
       const { a, done } = twoScopes()
       try {
         const element = runWithOwner(a, () => Live() as unknown as Element)
@@ -213,14 +197,14 @@ export const claims: Claim[] = [
         // IR data and emits no call for it at all, so a text probe would be a
         // claim about the DOM backend's spelling. A binding that is not live
         // would satisfy the assertion below for the wrong reason.
-        tone.set("two")
+        setTone("two")
         await kit.settle()
         kit.precondition(
           element.getAttribute("class") === "two",
           "the class binding is not live, so nothing about its ownership is observable here",
         )
         dispose(a)
-        tone.set("three")
+        setTone("three")
         await kit.settle()
         if (element.getAttribute("class") === "three") {
           kit.fail(
@@ -241,7 +225,7 @@ export const claims: Claim[] = [
     async check(kit) {
       ambientRuns.length = 0
       ambientCleanups.length = 0
-      pulse.set(0)
+      setPulse(0)
       const { a, done } = twoScopes()
       try {
         runWithOwner(a, () => (Ambient as unknown as () => unknown)())
@@ -253,7 +237,7 @@ export const claims: Claim[] = [
 
         dispose(a)
         await kit.settle()
-        pulse.set(1)
+        setPulse(1)
         await kit.settle()
 
         if (ambientRuns.length !== 1 || ambientCleanups.length !== 1) {

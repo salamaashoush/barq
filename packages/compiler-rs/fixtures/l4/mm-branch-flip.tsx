@@ -8,11 +8,11 @@
  * C7: A → B → A shows A's Block invoked twice — two activations, two subtrees —
  * and the replayed step in between shows no additional invocation (K2).
  */
-import { Show, signal } from "@barqjs/core"
+import { Show, createSignal } from "@barqjs/core"
 
 export const log: string[] = []
 
-export const open = signal(true)
+export const [open, setOpen] = createSignal(true)
 
 export default function BranchFlip() {
   return (
@@ -36,7 +36,7 @@ export default function BranchFlip() {
   )
 }
 
-export const steps = [() => open.set(false), () => open.set(true)]
+export const steps = [() => setOpen(false), () => setOpen(true)]
 
 export const metamorphic = {
   why: "each step flips the key, and a fresh activation may hand back no node of the old one",

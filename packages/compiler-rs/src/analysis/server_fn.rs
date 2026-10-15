@@ -148,7 +148,7 @@ pub fn scan(program: &Program<'_>, start_source: &str) -> Scan {
                             middleware: declarator
                                 .init
                                 .as_ref()
-                                .map(|init| declared_middleware(init, factory, &scoping))
+                                .map(|init| declared_middleware(init, factory, &scoping, &locals))
                                 .unwrap_or_default(),
                         });
                     }
@@ -187,7 +187,7 @@ pub fn scan(program: &Program<'_>, start_source: &str) -> Scan {
                         name: name.name.to_string(),
                         span: specifier.span,
                         server_fn: local_symbol(&specifier.local, &scoping)
-                            .is_some_and(|symbol| locals.get(&symbol).copied().unwrap_or(false)),
+                            .is_some_and(|symbol| matches!(locals.get(&symbol), Some(Some(_)))),
                         // A re-exported binding's chain is declared where the
                         // binding is, and this module cannot see through the
                         // alias to it.
@@ -212,7 +212,7 @@ pub fn scan(program: &Program<'_>, start_source: &str) -> Scan {
                     middleware: export
                         .declaration
                         .as_expression()
-                        .map(|init| declared_middleware(init, factory, &scoping))
+                        .map(|init| declared_middleware(init, factory, &scoping, &locals))
                         .unwrap_or_default(),
                 });
             }
@@ -234,8 +234,17 @@ fn declaration_name(declaration: &Declaration<'_>) -> Option<(String, Span)> {
     }
 }
 
-/// The local symbol `createServerFn` was imported as, if it was.
-fn imported_factory(program: &Program<'_>, start_source: &str) -> Option<SymbolId> {
+/// How this module can reach `createServerFn`: by the name it imported it
+/// under, or as a member of a namespace import of the package.
+#[derive(Clone, Copy)]
+struct Factory {
+    named: Option<SymbolId>,
+    namespace: Option<SymbolId>,
+}
+
+/// The local symbols `createServerFn` can be reached through, if any.
+fn imported_factory(program: &Program<'_>, start_source: &str) -> Option<Factory> {
+    let mut factory = Factory { named: None, namespace: None };
     for statement in &program.body {
         let Statement::ImportDeclaration(declaration) = statement else { continue };
         if declaration.source.value.as_str() != start_source {
@@ -243,29 +252,44 @@ fn imported_factory(program: &Program<'_>, start_source: &str) -> Option<SymbolI
         }
         let Some(specifiers) = declaration.specifiers.as_ref() else { continue };
         for specifier in specifiers {
-            let ImportDeclarationSpecifier::ImportSpecifier(imported) = specifier else { continue };
-            let ModuleExportName::IdentifierName(name) = &imported.imported else { continue };
-            if name.name.as_str() != "createServerFn" {
-                continue;
-            }
-            if let Some(symbol) = imported.local.symbol_id.get() {
-                return Some(symbol);
+            match specifier {
+                ImportDeclarationSpecifier::ImportSpecifier(imported) => {
+                    let ModuleExportName::IdentifierName(name) = &imported.imported else {
+                        continue;
+                    };
+                    if name.name.as_str() == "createServerFn" && factory.named.is_none() {
+                        factory.named = imported.local.symbol_id.get();
+                    }
+                }
+                ImportDeclarationSpecifier::ImportNamespaceSpecifier(star) => {
+                    if factory.namespace.is_none() {
+                        factory.namespace = star.local.symbol_id.get();
+                    }
+                }
+                ImportDeclarationSpecifier::ImportDefaultSpecifier(_) => {}
             }
         }
     }
-    None
+    (factory.named.is_some() || factory.namespace.is_some()).then_some(factory)
 }
 
-/// Every top-level binding, and whether its initialiser holds a server function.
+/// Every top-level binding: the chain it was initialised with, when that chain
+/// is rooted at the factory.
 ///
-/// One pass, because an export may name a binding declared after it and a
-/// second walk to answer that would be the same walk.
-fn local_bindings(
-    program: &Program<'_>,
-    factory: SymbolId,
+/// A binding is both things a later statement can do with one. Exported, it is
+/// a server function; continued — `base.handler(…)` — it is the builder the
+/// chain goes on from, and a chain that starts at such a name is rooted where
+/// the name's own chain is.
+type Locals<'p, 'a> = FxHashMap<SymbolId, Option<&'p Expression<'a>>>;
+
+/// One pass, in source order: a builder is declared before the chain that
+/// continues it, and a name used before its declaration is in the dead zone.
+fn local_bindings<'p, 'a>(
+    program: &'p Program<'a>,
+    factory: Factory,
     scoping: &Scoping,
-) -> FxHashMap<SymbolId, bool> {
-    let mut locals = FxHashMap::default();
+) -> Locals<'p, 'a> {
+    let mut locals: Locals<'p, 'a> = FxHashMap::default();
     for statement in &program.body {
         let declaration = match statement {
             Statement::VariableDeclaration(declaration) => &**declaration,
@@ -279,7 +303,7 @@ fn local_bindings(
             let BindingPattern::BindingIdentifier(id) = &declarator.id else { continue };
             let Some(symbol) = id.symbol_id.get() else { continue };
             let held =
-                declarator.init.as_ref().is_some_and(|init| rooted_at(init, factory, scoping));
+                declarator.init.as_ref().filter(|init| rooted_at(init, factory, scoping, &locals));
             locals.insert(symbol, held);
         }
     }
@@ -300,19 +324,37 @@ fn local_symbol(name: &ModuleExportName<'_>, scoping: &Scoping) -> Option<Symbol
 /// itself, or a name bound to one earlier in the module.
 fn holds_server_fn(
     expression: &Expression<'_>,
-    factory: SymbolId,
+    factory: Factory,
     scoping: &Scoping,
-    locals: &FxHashMap<SymbolId, bool>,
+    locals: &Locals<'_, '_>,
 ) -> bool {
-    if rooted_at(expression, factory, scoping) {
-        return true;
+    rooted_at(expression, factory, scoping, locals)
+}
+
+/// The expression with everything that is not a value taken off it: parentheses
+/// and the TypeScript forms that assert, check or instantiate a type.
+///
+/// `createServerFn().handler(f) as Typed` is the chain it wraps. Read as some
+/// other expression, the module was not recognised as holding a server function
+/// at all, and the client build shipped it whole — handler body included.
+fn unwrapped<'p, 'a>(expression: &'p Expression<'a>) -> &'p Expression<'a> {
+    let mut current = expression;
+    loop {
+        current = match current {
+            Expression::ParenthesizedExpression(inner) => &inner.expression,
+            Expression::TSAsExpression(inner) => &inner.expression,
+            Expression::TSSatisfiesExpression(inner) => &inner.expression,
+            Expression::TSNonNullExpression(inner) => &inner.expression,
+            Expression::TSTypeAssertion(inner) => &inner.expression,
+            Expression::TSInstantiationExpression(inner) => &inner.expression,
+            _ => return current,
+        };
     }
-    let Expression::Identifier(reference) = expression else { return false };
-    reference
-        .reference_id
-        .get()
-        .and_then(|id| scoping.get_reference(id).symbol_id())
-        .is_some_and(|symbol| locals.get(&symbol).copied().unwrap_or(false))
+}
+
+fn symbol_of(expression: &Expression<'_>, scoping: &Scoping) -> Option<SymbolId> {
+    let Expression::Identifier(reference) = unwrapped(expression) else { return None };
+    reference.reference_id.get().and_then(|id| scoping.get_reference(id).symbol_id())
 }
 
 /// The identifiers `.middleware([…])` named, walking the builder chain.
@@ -324,16 +366,16 @@ fn holds_server_fn(
 /// records nothing.
 fn declared_middleware(
     expression: &Expression<'_>,
-    factory: SymbolId,
+    factory: Factory,
     scoping: &Scoping,
+    locals: &Locals<'_, '_>,
 ) -> Vec<String> {
-    if !rooted_at(expression, factory, scoping) {
+    if !rooted_at(expression, factory, scoping, locals) {
         return Vec::new();
     }
     let mut current = expression;
     loop {
-        match current {
-            Expression::ParenthesizedExpression(inner) => current = &inner.expression,
+        match unwrapped(current) {
             Expression::CallExpression(call) => {
                 if let Expression::StaticMemberExpression(member) = &call.callee
                     && member.property.name == "middleware"
@@ -356,33 +398,49 @@ fn declared_middleware(
                 current = &call.callee;
             }
             Expression::StaticMemberExpression(member) => current = &member.object,
-            _ => return Vec::new(),
+            // The chain goes on from a builder bound earlier, and so does this.
+            other => match symbol_of(other, scoping).and_then(|symbol| locals.get(&symbol)) {
+                Some(Some(init)) => current = init,
+                _ => return Vec::new(),
+            },
         }
     }
 }
 
-/// Whether an expression is a call chain whose root callee is `factory`.
+/// Whether an expression is a call chain rooted at the factory.
 ///
 /// `createServerFn().validator(s).handler(f)` is a `CallExpression` whose callee
 /// is a member of a call of a member of … of an `IdentifierReference`. Walking
 /// to that identifier and comparing symbols is what makes `.handler(` on some
 /// unrelated object not a match — the shape TanStack's regex prescan
 /// (`\.\s*handler\s*\(`) cannot tell apart.
-fn rooted_at(expression: &Expression<'_>, factory: SymbolId, scoping: &Scoping) -> bool {
+///
+/// The root is the imported name, a member of a namespace import of the
+/// package, or a name bound earlier to a chain that is itself rooted there.
+fn rooted_at(
+    expression: &Expression<'_>,
+    factory: Factory,
+    scoping: &Scoping,
+    locals: &Locals<'_, '_>,
+) -> bool {
     let mut current = expression;
     loop {
-        match current {
-            Expression::ParenthesizedExpression(inner) => current = &inner.expression,
+        match unwrapped(current) {
             Expression::CallExpression(call) => current = &call.callee,
-            Expression::StaticMemberExpression(member) => current = &member.object,
-            Expression::Identifier(reference) => {
-                return reference
-                    .reference_id
-                    .get()
-                    .and_then(|id| scoping.get_reference(id).symbol_id())
-                    .is_some_and(|symbol| symbol == factory);
+            Expression::StaticMemberExpression(member) => {
+                if member.property.name == "createServerFn"
+                    && factory.namespace.is_some()
+                    && symbol_of(&member.object, scoping) == factory.namespace
+                {
+                    return true;
+                }
+                current = &member.object;
             }
-            _ => return false,
+            other => {
+                let Some(symbol) = symbol_of(other, scoping) else { return false };
+                return Some(symbol) == factory.named
+                    || matches!(locals.get(&symbol), Some(Some(_)));
+            }
         }
     }
 }
@@ -439,6 +497,47 @@ mod tests {
              export const nope = createServerFn().handler(async () => 1);",
         );
         assert_eq!(scan.server_fns().count(), 0);
+    }
+
+    /// A chain is the chain whatever type is asserted over it. Read as some
+    /// other expression, the export was not a server function at all, and the
+    /// client build then shipped the module whole.
+    #[test]
+    fn a_type_asserted_or_checked_chain_is_still_a_server_function() {
+        let scan = scan_of(&format!(
+            "{IMPORT}export const cast = createServerFn().handler(async () => 1) as unknown as () => Promise<number>;\n\
+             export const checked = createServerFn().handler(async () => 2) satisfies () => Promise<number>;\n\
+             export const sure = createServerFn().handler(async () => 3)!;"
+        ));
+        let names: Vec<&str> = scan.server_fns().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["cast", "checked", "sure"]);
+    }
+
+    #[test]
+    fn a_member_of_a_namespace_import_is_the_factory() {
+        let scan = scan_of(
+            "import * as start from '@barqjs/start';\n\
+             export const go = start.createServerFn().handler(async () => 1);\n\
+             export const other = start.somethingElse().handler(async () => 2);",
+        );
+        let names: Vec<&str> = scan.server_fns().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["go"]);
+    }
+
+    /// A builder bound to a name and continued from it is one chain written in
+    /// two statements, and its middleware is the builder's.
+    #[test]
+    fn a_chain_continued_from_a_held_builder_is_rooted_where_the_builder_is() {
+        let scan = scan_of(&format!(
+            "{IMPORT}const guarded = createServerFn().middleware([requireSession]);\n\
+             export const load = guarded.handler(async () => 1);\n\
+             const unrelated = somethingElse();\n\
+             export const nope = unrelated.handler(async () => 2);"
+        ));
+        let names: Vec<&str> = scan.server_fns().map(|e| e.name.as_str()).collect();
+        assert_eq!(names, vec!["load"]);
+        let load = scan.server_fns().next().expect("found above");
+        assert_eq!(load.middleware, vec!["requireSession".to_string()]);
     }
 
     /// The other half of the same reason: an alias is still the same symbol, and

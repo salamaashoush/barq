@@ -1,9 +1,9 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const picked = signal("none")
+export const [picked, setPicked] = createSignal("none")
 
 /** The [handler, data] form: one shared function, no per-row closure. */
-const pick = (label: unknown) => picked.set(String(label))
+const pick = (label: unknown) => setPicked(String(label))
 
 export default function DelegatedHandlerTuple() {
   return (

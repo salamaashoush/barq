@@ -5,11 +5,11 @@
  * again: growing the count activates only the new positions, shrinking it
  * activates none.
  */
-import { Repeat, signal } from "@barqjs/core"
+import { Repeat, createSignal } from "@barqjs/core"
 
 export const log: string[] = []
 
-export const n = signal(2)
+export const [n, setN] = createSignal(2)
 
 export default function C7Repeat() {
   return (
@@ -24,7 +24,7 @@ export default function C7Repeat() {
   )
 }
 
-export const steps = [() => n.set(4), () => n.set(1)]
+export const steps = [() => setN(4), () => setN(1)]
 
 export const metamorphic = {
   why: "positions 0 and 1 exist throughout; 2 and 3 are built then dropped",

@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const rows = signal(["a", "b"])
+export const [rows, setRows] = createSignal(["a", "b"])
 
 /**
  * A hole whose value is an ARRAY of nodes, built by `.map` rather than by a
@@ -31,10 +31,10 @@ export default function ArrayHole() {
 }
 
 export const steps = [
-  () => rows.set(["a", "b", "c"]),
-  () => rows.set(["c"]),
-  () => rows.set([]),
-  () => rows.set(["x", "y"]),
+  () => setRows(["a", "b", "c"]),
+  () => setRows(["c"]),
+  () => setRows([]),
+  () => setRows(["x", "y"]),
 ]
 
 const frame = (items: string[]): string =>

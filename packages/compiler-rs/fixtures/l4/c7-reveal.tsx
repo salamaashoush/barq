@@ -6,12 +6,12 @@
  * exactly the one where "invoked once per activation" is easiest to get wrong
  * without anything noticing.
  */
-import { Reveal, Show, signal } from "@barqjs/core"
+import { Reveal, Show, createSignal } from "@barqjs/core"
 
 export const log: string[] = []
 
-export const label = signal("one")
-export const open = signal(true)
+export const [label, setLabel] = createSignal("one")
+export const [open, setOpen] = createSignal(true)
 
 export default function C7Reveal() {
   return (
@@ -28,7 +28,7 @@ export default function C7Reveal() {
   )
 }
 
-export const steps = [() => label.set("two"), () => open.set(false)]
+export const steps = [() => setLabel("two"), () => setOpen(false)]
 
 export const c7 = {
   why: "one activation; a write inside the body is none and closing the branch is none",

@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const extra = signal<Record<string, unknown>>({ role: "button", "data-n": "1" })
+export const [extra, setExtra] = createSignal<Record<string, unknown>>({ role: "button", "data-n": "1" })
 
 /**
  * A spread between two literal attributes — the shape that decides the ORDER
@@ -25,7 +25,7 @@ export default function SpreadStaticMix() {
   )
 }
 
-export const steps = [() => extra.set({ role: "link", "data-n": "2" }), () => extra.set({})]
+export const steps = [() => setExtra({ role: "link", "data-n": "2" }), () => setExtra({})]
 export const optimality = {
   target: 2,
   milestone: 9,

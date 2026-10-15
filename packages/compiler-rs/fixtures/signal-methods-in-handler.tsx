@@ -1,13 +1,12 @@
-import { signal } from "@barqjs/core"
+import { createSignal, untrack } from "@barqjs/core"
 
-export const count = signal(0)
-export const seen = signal(0)
+export const [count, setCount] = createSignal(0)
+export const [seen, setSeen] = createSignal(0)
 
 /**
- * `count()` is a tracked read and `count.set` / `count.update` / `count.peek`
- * are not — the same identifier, three verdicts, decided by the member name
- * against the Accessor's non-reactive mask. Mangling any of them into a call
- * (`count().set`) throws at runtime.
+ * `count()` in the hole is a tracked read. The setter is a function the
+ * handler calls, and `untrack(count)` is a read that subscribes nothing: the
+ * same signal, three verdicts, and none of them decided from a name.
  */
 export default function SignalMethodsInHandler() {
   return (
@@ -16,8 +15,8 @@ export default function SignalMethodsInHandler() {
       class="methods"
       data-seen={() => String(seen())}
       onClick={() => {
-        count.update((n) => n + 1)
-        seen.set(count.peek())
+        setCount((n) => n + 1)
+        setSeen(untrack(count))
       }}
     >
       {() => count()}
@@ -35,8 +34,8 @@ export const optimality = {
   milestone: 4,
   templates: 1,
   patchCalls: 2,
-  // The same identifier, three verdicts. `count()` is the tracked read; the
-  // three members are not, and mangling any of them into a call throws.
-  emits: ["count.update(", "count.peek()", "seen.set("],
-  absent: ["count().update", "count().peek", "seen().set"],
+  // One signal, three verdicts: the hole's read is tracked, the setter call and
+  // the untracked read are not.
+  emits: ["setCount(", "untrack(count)", "setSeen("],
+  absent: ["count().", "seen()."],
 }

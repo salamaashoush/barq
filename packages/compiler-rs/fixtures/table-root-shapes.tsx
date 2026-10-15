@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const revision = signal(1)
+export const [revision, setRevision] = createSignal(1)
 
 /**
  * Every table-scoped tag as a template ROOT, one per hole.
@@ -45,7 +45,7 @@ export default function TableRootShapes() {
   )
 }
 
-export const steps = [() => revision.set(2), () => revision.set(3)]
+export const steps = [() => setRevision(2), () => setRevision(3)]
 
 export const optimality = {
   target: 2,

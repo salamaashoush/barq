@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const label = signal("mid")
+export const [label, setLabel] = createSignal("mid")
 
 export default function NestedFragments() {
   return (
@@ -17,7 +17,7 @@ export default function NestedFragments() {
   )
 }
 
-export const steps = [() => label.set("changed")]
+export const steps = [() => setLabel("changed")]
 export const optimality = {
   target: 2,
   milestone: 5,

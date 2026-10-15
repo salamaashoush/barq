@@ -1,9 +1,9 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const picked = signal("none")
+export const [picked, setPicked] = createSignal("none")
 
 function pick(label: unknown, _event: MouseEvent): void {
-  picked.set(String(label))
+  setPicked(String(label))
 }
 
 /**
@@ -14,7 +14,7 @@ function pick(label: unknown, _event: MouseEvent): void {
  *
  *  - `cb={[props.handler(), props.label()]}` — an array, so `identity_matters`
  *  evaluates it ONCE into a cell. The runtime installs that array as
- *  the `$$click` expando, so a carrier that rebuilt it per read would install
+ *  the `__bq_click` expando, so a carrier that rebuilt it per read would install
  *  a different listener on every frame.
  *  - `render={() => …}` — an author-written zero-arity arrow, which the arity rule
  *  says already IS a Cell, so it forwards untouched and reads the same object

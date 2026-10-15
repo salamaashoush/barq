@@ -1,7 +1,7 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const label = signal("")
-export const extra = signal(false)
+export const [label, setLabel] = createSignal("")
+export const [extra, setExtra] = createSignal(false)
 
 /**
  * An empty class is PRESENT; an absent class is not, and `classList` is neither.
@@ -39,7 +39,7 @@ export default function ClassEmptyString() {
   )
 }
 
-export const steps = [() => label.set("b"), () => extra.set(true)]
+export const steps = [() => setLabel("b"), () => setExtra(true)]
 
 export const optimality = {
   target: 4,

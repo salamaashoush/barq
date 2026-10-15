@@ -7,7 +7,7 @@
  * fallback slot twice per activation would build two subtrees and drop one, and
  * the DOM would be identical.
  */
-import { For, signal } from "@barqjs/core"
+import { For, createSignal } from "@barqjs/core"
 
 export const log: string[] = []
 
@@ -22,7 +22,7 @@ const B: Row = { id: 2, text: "beta" }
 const FULL = [A, B]
 const EMPTY: Row[] = []
 
-export const rows = signal<Row[]>(EMPTY)
+export const [rows, setRows] = createSignal<Row[]>(EMPTY)
 
 export default function C7EachFallback() {
   return (
@@ -45,7 +45,7 @@ export default function C7EachFallback() {
   )
 }
 
-export const steps = [() => rows.set(FULL), () => rows.set(EMPTY)]
+export const steps = [() => setRows(FULL), () => setRows(EMPTY)]
 
 export const c7 = {
   why: "two rows activated once each; the fallback is a slot of its own",

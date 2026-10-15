@@ -1,6 +1,6 @@
-import { Match, Switch, signal } from "@barqjs/core"
+import { Match, Switch, createSignal } from "@barqjs/core"
 
-export const status = signal<"loading" | "ready" | "error">("loading")
+export const [status, setStatus] = createSignal<"loading" | "ready" | "error">("loading")
 
 export default function ControlFlowSwitchMatch() {
   return (
@@ -14,9 +14,9 @@ export default function ControlFlowSwitchMatch() {
 }
 
 export const steps = [
-  () => status.set("ready"),
-  () => status.set("error"),
-  () => status.set("loading"),
+  () => setStatus("ready"),
+  () => setStatus("error"),
+  () => setStatus("loading"),
 ]
 
 export const optimality = {

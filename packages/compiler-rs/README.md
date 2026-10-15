@@ -71,7 +71,7 @@ const doubled = () => count() * 2   // was: const doubled = count * 2
 That is the contract `config.ts` documents through `IsCompilerMode`/`StrictAccessor`, and it is
 what makes target #1 possible: a compiler that has to guess whether `count` is a signal is back to
 the name heuristic this one exists to replace. `fixtures/derived-local-thunk.tsx` and
-`fixtures/use-state-tuple.tsx` are the shapes, pinned.
+`fixtures/signal-object.tsx` are the shapes, pinned.
 
 Option keys are camelCase on the JS side and snake_case in Rust; napi-derive converts them.
 `map` is **absent**, not `null`, when no sourcemap was requested — use `result.map ?? null`.

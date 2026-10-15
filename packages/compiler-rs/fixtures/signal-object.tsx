@@ -1,4 +1,4 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
 /**
  * `signal` returns ONE binding that is both the read and the write: `count()`
@@ -7,20 +7,20 @@ import { signal } from "@barqjs/core"
  * reactive as a CALL and inert as a MEMBER — so the handler that only writes
  * captures nothing and hoists to module scope.
  */
-const count = signal(0)
+const [count, setCount] = createSignal(0)
 
 export default function SignalObject() {
   return (
     <div class="tuple">
       <span data-plus-one={() => String(count() + 1)}>{() => count() + 1}</span>
-      <button type="button" onClick={() => count.update((n) => n + 1)}>
+      <button type="button" onClick={() => setCount((n) => n + 1)}>
         bump
       </button>
     </div>
   )
 }
 
-export const steps = [() => count.set(5), () => count.update((n) => n * 2)]
+export const steps = [() => setCount(5), () => setCount((n) => n * 2)]
 
 export const events = [(root: HTMLElement) => root.querySelector("button")?.click()]
 
@@ -31,6 +31,6 @@ export const optimality = {
   // The return-shape row: one binding, two verdicts. `count()` reads live, and
   // `count.update` is a write rather than a tracked read — so the handler that
   // only writes hoists to module scope with no closure at all.
-  emits: ["() => count() + 1", "= () => count.update("],
-  absent: ["() => count.set()"],
+  emits: ["() => count() + 1", "= () => setCount("],
+  absent: ["() => setCount()"],
 }

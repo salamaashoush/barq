@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const label = signal("first")
+export const [label, setLabel] = createSignal("first")
 
 /**
  * The same flattening, one statement later: destructured in the BODY rather
@@ -25,7 +25,7 @@ export default function PropsDestructuredBody() {
   )
 }
 
-export const steps = [() => label.set("second")]
+export const steps = [() => setLabel("second")]
 
 export const optimality = {
   target: 1,

@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const suffix = signal("un")
+export const [suffix, setSuffix] = createSignal("un")
 
 /**
  * A template whose html carries multi-byte characters PAST byte 100.
@@ -22,4 +22,4 @@ export default function UnicodeLongTemplate() {
   )
 }
 
-export const steps = [() => suffix.set("deux"), () => suffix.set("")]
+export const steps = [() => setSuffix("deux"), () => setSuffix("")]

@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const label = signal("one")
+export const [label, setLabel] = createSignal("one")
 
 /**
  * A module whose SOURCE spells the compiler's own uid prefixes, so every emitted
@@ -22,4 +22,4 @@ export default function HygieneShiftedUids() {
   )
 }
 
-export const steps = [() => label.set("two"), () => label.set("")]
+export const steps = [() => setLabel("two"), () => setLabel("")]

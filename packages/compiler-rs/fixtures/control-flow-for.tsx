@@ -1,6 +1,6 @@
-import { For, signal } from "@barqjs/core"
+import { For, createSignal } from "@barqjs/core"
 
-export const items = signal([
+export const [items, setItems] = createSignal([
   { id: 1, name: "alpha" },
   { id: 2, name: "beta" },
 ])
@@ -20,9 +20,9 @@ export default function ControlFlowFor() {
 }
 
 export const steps = [
-  () => items.update((v) => [...v, { id: 3, name: "gamma" }]),
-  () => items.update((v) => v.slice(1)),
-  () => items.set([]),
+  () => setItems((v) => [...v, { id: 3, name: "gamma" }]),
+  () => setItems((v) => v.slice(1)),
+  () => setItems([]),
 ]
 
 export const optimality = {

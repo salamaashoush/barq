@@ -19,7 +19,9 @@
 //! 0-1-0 as soon as the two sat in different sub-layers. Reordering moves 8,
 //! and every one is a rule under an at-rule that a later base rule was beating.
 
-use crate::atoms::Tier;
+use std::cmp::Ordering;
+
+use crate::atoms::{Atom, Tier};
 
 /// Every atom in `css`, ordered by tier within the layer it sits in.
 ///
@@ -138,21 +140,174 @@ pub fn with_layer_order(css: &str, order: &[String]) -> String {
     }
 }
 
+/// Where a rule sorts against another: its tier, and inside the media tier
+/// the query it is under.
+///
+/// Two queries that both match are two rules of one specificity, so the later
+/// one wins, and without this "later" is whichever query a page happened to
+/// use first. Mobile-first is the order in which the more specific query is
+/// always the later one:
+///
+/// 1. `min-width` queries, narrowest floor first; from one floor, the widest
+///    ceiling first and no ceiling before any.
+/// 2. `max-width` queries with no floor, widest ceiling first.
+/// 3. Everything else: `print`, `prefers-*`, `@supports`, `@container`, a width
+///    in a unit that is not `px`, `em` or `rem`.
+///
+/// Ties, and the whole of the third group, go by the at-rule text itself, which
+/// is arbitrary and the same on every page. `sheet.ts` in `@barqjs/css` sorts
+/// what the runtime registers by this rule, read off the same text.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Rank<'a> {
+    tier: Tier,
+    group: u8,
+    first: f64,
+    second: f64,
+    prelude: &'a str,
+}
+
+impl Eq for Rank<'_> {}
+
+impl PartialOrd for Rank<'_> {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for Rank<'_> {
+    fn cmp(&self, other: &Self) -> Ordering {
+        self.tier
+            .cmp(&other.tier)
+            .then(self.group.cmp(&other.group))
+            .then(self.first.total_cmp(&other.first))
+            .then(self.second.total_cmp(&other.second))
+            // By UTF-16 code unit, which is how the runtime's `<` compares.
+            .then_with(|| self.prelude.encode_utf16().cmp(other.prelude.encode_utf16()))
+    }
+}
+
+/// The [`Rank`] of a rule already known to sit in `tier`.
+pub fn rank(tier: Tier, rule: &str) -> Rank<'_> {
+    let plain = Rank { tier, group: 0, first: 0.0, second: 0.0, prelude: "" };
+    if tier != Tier::Media {
+        return plain;
+    }
+    let rule = without_layer(rule).trim_start();
+    let mut at = 0;
+    while rule[at..].starts_with('@') {
+        let Some(brace) = rule[at..].find('{') else { break };
+        at += brace + 1;
+    }
+    let prelude = &rule[..at];
+    let floor = bound(prelude, "min-width", b'>');
+    let ceiling = bound(prelude, "max-width", b'<');
+    match (floor, ceiling) {
+        (Some(floor), ceiling) => Rank {
+            group: 0,
+            first: floor,
+            second: ceiling.map_or(f64::NEG_INFINITY, |ceiling| -ceiling),
+            prelude,
+            ..plain
+        },
+        (None, Some(ceiling)) => Rank { group: 1, first: -ceiling, prelude, ..plain },
+        (None, None) => Rank { group: 2, prelude, ..plain },
+    }
+}
+
+/// The first width a prelude bounds from one side, in pixels: `min-width: 40em`
+/// or its range spelling `width >= 40em`.
+fn bound(prelude: &str, feature: &str, operator: u8) -> Option<f64> {
+    let bytes = prelude.as_bytes();
+    for (at, _) in prelude.match_indices(feature) {
+        let colon = past_space(bytes, at + feature.len());
+        if bytes.get(colon) != Some(&b':') {
+            continue;
+        }
+        if let Some(found) = pixels(prelude, past_space(bytes, colon + 1)) {
+            return Some(found);
+        }
+    }
+    for (at, _) in prelude.match_indices("width") {
+        let before = at.checked_sub(1).map(|index| bytes[index]);
+        if !before.is_some_and(|byte| byte == b'(' || is_space(byte)) {
+            continue;
+        }
+        let mut next = past_space(bytes, at + "width".len());
+        if bytes.get(next) != Some(&operator) {
+            continue;
+        }
+        next += if bytes.get(next + 1) == Some(&b'=') { 2 } else { 1 };
+        if let Some(found) = pixels(prelude, past_space(bytes, next)) {
+            return Some(found);
+        }
+    }
+    None
+}
+
+fn is_space(byte: u8) -> bool {
+    matches!(byte, b' ' | b'\t' | b'\n' | b'\r' | 0x0c)
+}
+
+fn past_space(bytes: &[u8], from: usize) -> usize {
+    let mut at = from;
+    while bytes.get(at).is_some_and(|byte| is_space(*byte)) {
+        at += 1;
+    }
+    at
+}
+
+/// A length at `from` as pixels, at the 16px an `em` is in a media query.
+fn pixels(text: &str, from: usize) -> Option<f64> {
+    let bytes = text.as_bytes();
+    let digit = |at: usize| bytes.get(at).is_some_and(u8::is_ascii_digit);
+    let mut at = from;
+    while digit(at) {
+        at += 1;
+    }
+    if bytes.get(at) == Some(&b'.') && digit(at + 1) {
+        at += 1;
+        while digit(at) {
+            at += 1;
+        }
+    }
+    if at == from {
+        return None;
+    }
+    let value: f64 = text[from..at].parse().ok()?;
+    let mut end = at;
+    while bytes.get(end).is_some_and(u8::is_ascii_alphabetic) {
+        end += 1;
+    }
+    match text[at..end].to_ascii_lowercase().as_str() {
+        "px" => Some(value),
+        "em" | "rem" => Some(value * 16.0),
+        _ => None,
+    }
+}
+
+/// One call's atoms in the order their rules are written: by [`Rank`], and
+/// within one rank the order the author wrote them in.
+pub fn arranged(atoms: &[Atom]) -> Vec<&Atom> {
+    let mut sorted: Vec<&Atom> = atoms.iter().collect();
+    sorted.sort_by(|a, b| rank(a.tier, &a.rule).cmp(&rank(b.tier, &b.rule)));
+    sorted
+}
+
 /// One layer's contents, with its atoms tier-ordered and everything else fixed.
 fn order_rules(body: &str) -> String {
     let rules: Vec<&str> = statements(body);
-    let mut movable: Vec<(Tier, usize, &str)> = Vec::new();
+    let mut movable: Vec<(Rank<'_>, usize, &str)> = Vec::new();
     let mut slots: Vec<usize> = Vec::new();
     for (index, rule) in rules.iter().enumerate() {
         if let Some(tier) = tier_of_rule(rule) {
-            movable.push((tier, index, rule));
+            movable.push((rank(tier, rule), index, rule));
             slots.push(index);
         }
     }
     if movable.len() < 2 {
         return body.to_string();
     }
-    movable.sort_by_key(|(tier, index, _)| (*tier, *index));
+    movable.sort_by(|a, b| a.0.cmp(&b.0).then(a.1.cmp(&b.1)));
 
     let mut placed: Vec<&str> = rules.clone();
     for (slot, (.., rule)) in slots.iter().zip(movable.iter()) {
@@ -469,6 +624,59 @@ mod tests {
         let ordered = order_atoms(&with_layer_order(&sheet, &order));
         assert!(ordered.starts_with("@layer barq.reset, barq.base, barq.ui;@layer barq.ui{"));
         assert!(ordered.find(&base.class) < ordered.find(&media.class), "{ordered}");
+    }
+
+    /// The order `sheet.ts` documents, query by query.
+    #[test]
+    fn the_media_tier_is_mobile_first() {
+        let preludes = [
+            "@media (width >= 320px)",
+            "@media (min-width: 40em)",
+            "@media (min-width: 640px)",
+            "@media (min-width: 640px) and (max-width: 900px)",
+            "@media (min-width:1024px)",
+            "@media (max-width: 800px)",
+            "@media (width<500px)",
+            "@container (min-width: 10cqw)",
+            "@media (min-width: 0)",
+            "@media print",
+            "@supports (display: grid)",
+        ];
+        let rules: Vec<String> =
+            preludes.iter().map(|prelude| atom_in("", "color", prelude, "red").rule).collect();
+        for pair in rules.windows(2) {
+            assert!(rank(Tier::Media, &pair[0]) < rank(Tier::Media, &pair[1]), "{pair:?}");
+        }
+        // Whatever order they were written in.
+        let shuffled: String = rules.iter().rev().map(String::as_str).collect();
+        assert_eq!(order_atoms(&shuffled), rules.concat());
+        // And inside a layer, where the rule wears its wrapper.
+        let layered = atom_in("barq.ui", "color", preludes[4], "red");
+        let narrow = atom_in("barq.ui", "color", preludes[2], "red");
+        assert!(rank(Tier::Media, &narrow.rule) < rank(Tier::Media, &layered.rule));
+    }
+
+    /// Only the media tier is ranked: a base rule's text is never read as a
+    /// query, and two base rules keep the order they were written in.
+    #[test]
+    fn nothing_outside_the_media_tier_is_reordered() {
+        let first = atom_in("", "width", "default", "2px");
+        let second = atom_in("", "color", "default", "red");
+        assert_eq!(rank(Tier::Base, &first.rule), rank(Tier::Base, &second.rule));
+        let css = format!("{}{}", first.rule, second.rule);
+        assert_eq!(order_atoms(&css), css);
+    }
+
+    #[test]
+    fn a_calls_atoms_are_arranged_by_rank_and_then_as_written() {
+        let atoms = [
+            atom_in("", "color", "@media (min-width: 900px)", "a"),
+            atom_in("", "width", "default", "1px"),
+            atom_in("", "color", "@media (min-width: 300px)", "b"),
+            atom_in("", "color", "default", "c"),
+        ];
+        let order: Vec<&str> = arranged(&atoms).iter().map(|atom| atom.rule.as_str()).collect();
+        assert_eq!(order, [&atoms[1].rule, &atoms[3].rule, &atoms[2].rule, &atoms[0].rule]);
     }
 
     #[test]

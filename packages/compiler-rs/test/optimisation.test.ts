@@ -357,30 +357,30 @@ const REACTIVITY_PROBES: Array<{ what: string; source: string; before: string; a
   {
     what: "a direct read in a child hole is live",
     source:
-      'import { signal } from "@barqjs/core"\n' +
-      "export const c = signal(1)\n" +
+      'import { createSignal } from "@barqjs/core"\n' +
+      "export const [c, setC] = createSignal(1)\n" +
       'export default function P() { return <p class="probe">{c()}</p> }\n' +
-      "export const steps = [() => c.set(2)]\n",
+      "export const steps = [() => setC(2)]\n",
     before: '<p class="probe">1</p>',
     after: '<p class="probe">2</p>',
   },
   {
     what: "a direct read in an attribute is live",
     source:
-      'import { signal } from "@barqjs/core"\n' +
-      'export const c = signal("one")\n' +
+      'import { createSignal } from "@barqjs/core"\n' +
+      'export const [c, setC] = createSignal("one")\n' +
       'export default function P() { return <p class="probe" title={c()}>x</p> }\n' +
-      'export const steps = [() => c.set("two")]\n',
+      'export const steps = [() => setC("two")]\n',
     before: '<p class="probe" title="one">x</p>',
     after: '<p class="probe" title="two">x</p>',
   },
   {
     what: "the explicit thunk the corpus is written in is live too",
     source:
-      'import { signal } from "@barqjs/core"\n' +
-      "export const c = signal(1)\n" +
+      'import { createSignal } from "@barqjs/core"\n' +
+      "export const [c, setC] = createSignal(1)\n" +
       'export default function P() { return <p class="probe">{() => c()}</p> }\n' +
-      "export const steps = [() => c.set(2)]\n",
+      "export const steps = [() => setC(2)]\n",
     before: '<p class="probe">1</p>',
     after: '<p class="probe">2</p>',
   },
@@ -394,35 +394,35 @@ const REACTIVITY_PROBES: Array<{ what: string; source: string; before: string; a
     // wrong in exactly the same way — which is why the probe is here.
     what: "a normalising channel still REMOVES what vanished",
     source:
-      'import { signal } from "@barqjs/core"\n' +
-      "export const on = signal(true)\n" +
+      'import { createSignal } from "@barqjs/core"\n' +
+      "export const [on, setOn] = createSignal(true)\n" +
       "export default function P() {\n" +
       '  return <p data-probe="yes" classList={() => ({ a: on(), b: !on() })} />\n' +
       "}\n" +
-      "export const steps = [() => on.set(false)]\n",
+      "export const steps = [() => setOn(false)]\n",
     before: '<p class="a" data-probe="yes"></p>',
     after: '<p class="b" data-probe="yes"></p>',
   },
   {
     what: "a normalising channel replaces its own class and keeps nothing stale",
     source:
-      'import { signal } from "@barqjs/core"\n' +
-      "export const on = signal(true)\n" +
+      'import { createSignal } from "@barqjs/core"\n' +
+      "export const [on, setOn] = createSignal(true)\n" +
       "export default function P() {\n" +
       '  return <p data-probe="yes" class={() => (on() ? "x" : "y")} />\n' +
       "}\n" +
-      "export const steps = [() => on.set(false)]\n",
+      "export const steps = [() => setOn(false)]\n",
     before: '<p class="x" data-probe="yes"></p>',
     after: '<p class="y" data-probe="yes"></p>',
   },
   {
     what: "a snapshot of a read is NOT live, however reactive its source was",
     source:
-      'import { signal } from "@barqjs/core"\n' +
-      "export const c = signal(1)\n" +
+      'import { createSignal } from "@barqjs/core"\n' +
+      "export const [c, setC] = createSignal(1)\n" +
       "const snapshot = c()\n" +
       'export default function P() { return <p class="probe">{snapshot}</p> }\n' +
-      "export const steps = [() => c.set(2)]\n",
+      "export const steps = [() => setC(2)]\n",
     before: '<p class="probe">1</p>',
     after: '<p class="probe">1</p>',
   },

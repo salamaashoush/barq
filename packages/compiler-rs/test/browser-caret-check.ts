@@ -38,16 +38,16 @@ const PRAGMA = "/** @jsxImportSource @barqjs/core */\n";
  * write — which is the whole scenario: something other than the user changes
  * the bound value while the user is inside the field.
  */
-const FIXTURE = `import { render, signal } from "@barqjs/core"
+const FIXTURE = `import { render, createSignal } from "@barqjs/core"
 
-export const text = signal("hello world")
-export const notes = signal("first line")
+export const [text, setText] = createSignal("hello world")
+export const [notes, setNotes] = createSignal("first line")
 
 function Form() {
   return (
     <div>
-      <input type="text" id="field" bind:value={text} />
-      <textarea id="area" bind:value={notes} />
+      <input type="text" id="field" bind:value={[text, setText]} />
+      <textarea id="area" bind:value={[notes, setNotes]} />
     </div>
   )
 }
@@ -58,8 +58,8 @@ render(Form as never, host)
 
 Object.assign(window, {
   __barqWrite: (which: string, value: string) => {
-    if (which === "field") text.set(value)
-    else notes.set(value)
+    if (which === "field") setText(value)
+    else setNotes(value)
   },
   __barqRead: (which: string) => (which === "field" ? text() : notes()),
   __barqReady: true,
@@ -75,9 +75,10 @@ Object.assign(window, {
 const NAIVE_SHIM = `export * from "@barqjs/core"
 import { bindEffect, listen } from "@barqjs/core"
 
-export function bindValue(s, element, name, type, value) {
-  bindEffect(s, () => { element[name] = value() })
-  listen(s, element, type, () => { value.set(element[name]) })
+export function bindValue(element, name, type, value) {
+  const [read, write] = value
+  bindEffect(() => read(), (next) => { element[name] = next })
+  listen(element, type, () => { write(element[name]) })
 }
 `;
 

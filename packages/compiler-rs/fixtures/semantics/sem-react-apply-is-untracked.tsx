@@ -21,16 +21,16 @@
  * is the precondition for the first, and without it "no dependency" would be
  * satisfied by an apply that read nothing at all.
  */
-import { render, signal } from "@barqjs/core"
+import { render, createSignal } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 
 export const rules = ["R2"]
 
 /** Changes in the COMPUTE. Its read is tracked and the effect depends on it. */
-export const version = signal("a")
+export const [version, setVersion] = createSignal("a")
 /** Read only from inside `toString`, which the CHANNEL calls in the apply. */
-export const probe = signal(0)
+export const [probe, setProbe] = createSignal(0)
 
 let coercions = 0
 
@@ -60,8 +60,8 @@ function Subject() {
 
 async function mount(kit: Kit) {
   coercions = 0
-  version.set("a")
-  probe.set(0)
+  setVersion("a")
+  setProbe(0)
   const host = kit.container()
   let dispose: (() => void) | undefined
   const thrown = await kit.attempt(() => {
@@ -103,7 +103,7 @@ export const claims: Claim[] = [
       const seen = await mount(kit)
       kit.precondition(coercions > 0, `the channel never coerced the value (${coercions})`)
       const before = coercions
-      probe.set(1)
+      setProbe(1)
       await kit.settle()
       if (coercions !== before) {
         kit.fail(
@@ -124,8 +124,8 @@ export const claims: Claim[] = [
     async check(kit) {
       const seen = await mount(kit)
       const before = coercions
-      probe.set(2)
-      version.set("b")
+      setProbe(2)
+      setVersion("b")
       await kit.settle()
       if (coercions <= before) {
         kit.fail(

@@ -1,11 +1,12 @@
 /**
- * R7 — `linked(source, compute)` is writable derived state that RE-SEEDS.
+ * R7 — a derived signal, `createSignal(fn)`, is writable derived state that
+ * RE-SEEDS.
  *
- * The read-copy trap, which is the problem it exists for: `signal(props.x)`
+ * The read-copy trap, which is the problem it exists for: `createSignal(props.x())`
  * reads the prop once and freezes at whatever it was, so the local copy and the
  * thing it was copied from drift apart for the rest of the component's life. A
- * plain `computed` does not drift, and cannot be written. `linked` is the pair:
- * writable, and re-derived the next time its source moves.
+ * memo does not drift, and cannot be written. A derived signal is the pair:
+ * writable, and re-derived the next time what it reads moves.
  *
  * Both directions are claims, because a framework that only does one of them
  * passes half of this and is wrong in a way the other half names. A signal that
@@ -18,24 +19,31 @@
  *
  * R7.
  */
-import { linked, render, signal } from "@barqjs/core"
+import { createOwner, createSignal, flush, render, runWithOwner } from "@barqjs/core"
 import type { Block } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 
 export const rules = ["R7"]
 
-const serverName = signal("ada")
-const draft = linked(serverName, (name) => name)
+// Under an owner, as they would be inside a component: a derived value nothing
+// owns is released whenever nothing reads it, and a write to it goes with it.
+const module = createOwner()
+
+const [serverName, setServerName] = createSignal("ada")
+const [draft, setDraft] = runWithOwner(module, () => createSignal(() => serverName()))
 
 /** `compute` receives the previous value, so a re-seed can keep a choice. */
-const options = signal(["a", "b", "c"])
-const chosen = linked(options, (list, previous) =>
-  previous !== undefined && list.includes(previous) ? previous : list[0]!,
+const [options, setOptions] = createSignal(["a", "b", "c"])
+const [chosen, setChosen] = runWithOwner(module, () =>
+  createSignal<string>((previous) => {
+    const list = options()
+    return previous !== undefined && list.includes(previous) ? previous : list[0]!
+  }),
 )
 
 function Draft() {
-  return <input type="text" class="draft" bind:value={draft} />
+  return <input type="text" class="draft" bind:value={[draft, setDraft]} />
 }
 
 function Chosen() {
@@ -56,14 +64,16 @@ export const claims: Claim[] = [
   {
     id: "a-write-holds-until-the-source-moves",
     rule: "R7",
-    says: "linked is WRITABLE: a write to it wins over the derivation for as long as the source is unchanged",
+    says: "a derived signal is WRITABLE: a write to it wins over the derivation for as long as the source is unchanged",
     async check(kit) {
-      serverName.set("ada")
+      setServerName("ada")
+      flush()
       kit.precondition(draft() === "ada", `the seed did not take: ${JSON.stringify(draft())}`)
-      draft.set("adamant")
+      setDraft("adamant")
+      flush()
       if (draft() !== "adamant") {
         kit.fail(
-          `the write was discarded: reading back gives ${JSON.stringify(draft())}. A linked cell ` +
+          `the write was discarded: reading back gives ${JSON.stringify(draft())}. A derived signal ` +
             "that ignores writes is a `computed` with extra steps",
         )
       }
@@ -77,9 +87,12 @@ export const claims: Claim[] = [
     rule: "R7",
     says: "the next change of the source recomputes over the write — which is the read-copy trap, closed",
     async check(kit) {
-      serverName.set("ada")
-      draft.set("adamant")
-      serverName.set("grace")
+      setServerName("ada")
+      flush()
+      setDraft("adamant")
+      flush()
+      setServerName("grace")
+      flush()
       if (draft() !== "grace") {
         kit.fail(
           `the cell still reads ${JSON.stringify(draft())} after its source became "grace". ` +
@@ -94,17 +107,17 @@ export const claims: Claim[] = [
     rule: "R7",
     says: "the re-seed is a function of the source AND the previous value, so `keep the choice if it is still available` needs no second signal to reconcile",
     async check(kit) {
-      options.set(["a", "b", "c"])
+      setOptions(["a", "b", "c"])
       const host = await mount(kit, Chosen as never)
       const shown = () => host.querySelector("b.chosen")?.textContent
       kit.precondition(shown() === "a", `the seed did not take: ${JSON.stringify(shown())}`)
 
-      chosen.set("c")
+      setChosen("c")
       await kit.settle()
       if (shown() !== "c") kit.fail(`the write did not reach the DOM: ${JSON.stringify(shown())}`)
 
       // "c" survives, because it is still in the list.
-      options.set(["c", "d"])
+      setOptions(["c", "d"])
       await kit.settle()
       if (shown() !== "c") {
         kit.fail(
@@ -115,7 +128,7 @@ export const claims: Claim[] = [
       }
 
       // And is dropped when it is not.
-      options.set(["e", "f"])
+      setOptions(["e", "f"])
       await kit.settle()
       if (shown() !== "e") {
         kit.fail(`the choice was kept although it left the list: ${JSON.stringify(shown())}`)
@@ -125,9 +138,9 @@ export const claims: Claim[] = [
   {
     id: "the-controlled-input-it-was-designed-for",
     rule: "R7",
-    says: "a `bind:` over a linked cell accepts the user's edit AND is re-seeded by the source, with no second copy and no reconcile step",
+    says: "a `bind:` over a derived signal accepts the user's edit AND is re-seeded by the source, with no second copy and no reconcile step",
     async check(kit) {
-      serverName.set("ada")
+      setServerName("ada")
       const host = await mount(kit, Draft as never)
       const field = host.querySelector("input.draft") as HTMLInputElement | null
       if (field === null) kit.fail("the input never rendered")
@@ -141,12 +154,12 @@ export const claims: Claim[] = [
       }
       if (draft() !== "adamant") kit.fail(`the edit never reached the cell: ${draft()}`)
 
-      serverName.set("grace")
+      setServerName("grace")
       await kit.settle()
       if (field.value !== "grace") {
         kit.fail(
           `the source moved and the field still reads ${JSON.stringify(field.value)}. The whole ` +
-            "point of a linked cell behind a controlled input is that the answer from elsewhere " +
+            "point of a derived signal behind a controlled input is that the answer from elsewhere " +
             "wins the next time it changes",
         )
       }

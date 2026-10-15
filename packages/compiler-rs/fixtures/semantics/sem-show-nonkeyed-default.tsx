@@ -16,13 +16,13 @@
  *
  * K1.1.
  */
-import { Show, render, signal } from "@barqjs/core"
+import { Show, render, createSignal } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 
 export const rules = ["K1.1"]
 
-export const user = signal<{ name: string } | null>({ name: "alice" })
+export const [user, setUser] = createSignal<{ name: string } | null>({ name: "alice" })
 
 let previous: (() => void) | null = null
 
@@ -59,7 +59,7 @@ function Default() {
 async function mount(kit: Kit, which: "default" | "keyed"): Promise<HTMLElement> {
   previous?.()
   previous = null
-  user.set({ name: "alice" })
+  setUser({ name: "alice" })
   const host = kit.container()
   let dispose: (() => void) | undefined
   const thrown = await kit.attempt(() => {
@@ -83,7 +83,7 @@ export const claims: Claim[] = [
       before!.value = "typed by the user"
 
       // A NEW object, still truthy — the everyday immutable update.
-      user.set({ name: "bob" })
+      setUser({ name: "bob" })
       await kit.settle()
 
       const after = host.querySelector("input.probe") as HTMLInputElement | null
@@ -117,7 +117,7 @@ export const claims: Claim[] = [
       kit.precondition(before !== null, "the probe input did not render")
       before!.value = "typed by the user"
 
-      user.set({ name: "bob" })
+      setUser({ name: "bob" })
       await kit.settle()
 
       const after = host.querySelector("input.probe") as HTMLInputElement | null

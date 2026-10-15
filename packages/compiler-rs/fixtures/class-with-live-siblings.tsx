@@ -1,7 +1,7 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const tone = signal("red")
-export const label = signal("first")
+export const [tone, setTone] = createSignal("red")
+export const [label, setLabel] = createSignal("first")
 
 /**
  * B1 and B2 on one element, and the fixture the wipe used to be reproduced on.
@@ -36,7 +36,7 @@ export default function ClassWithLiveSiblings() {
   )
 }
 
-export const steps = [() => label.set("second"), () => tone.set("blue")]
+export const steps = [() => setLabel("second"), () => setTone("blue")]
 
 export const optimality = {
   target: 4,

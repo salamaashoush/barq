@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const flag = signal<boolean>(false)
+export const [flag, setFlag] = createSignal<boolean>(false)
 
 export default function BooleanAndNullishProps() {
   return (
@@ -13,7 +13,7 @@ export default function BooleanAndNullishProps() {
   )
 }
 
-export const steps = [() => flag.set(true), () => flag.set(false)]
+export const steps = [() => setFlag(true), () => setFlag(false)]
 export const optimality = {
   target: 3,
   milestone: 5,

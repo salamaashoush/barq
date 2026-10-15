@@ -7,13 +7,13 @@
  * and a provider that re-invoked its Block on a value change would be caught by
  * the log and by nothing else — the markup is identical either way.
  */
-import { context, signal, useContext } from "@barqjs/core"
+import { createContext, createSignal, useContext } from "@barqjs/core"
 
 export const log: string[] = []
 
-const Locale = context<() => string>()
+const Locale = createContext<() => string>()
 
-export const locale = signal("fr")
+export const [locale, setLocale] = createSignal("fr")
 
 function Label() {
   const value = useContext(Locale)
@@ -33,7 +33,7 @@ export default function C7Provider() {
   )
 }
 
-export const steps = [() => locale.set("nl"), () => locale.set("de")]
+export const steps = [() => setLocale("nl"), () => setLocale("de")]
 
 export const metamorphic = {
   why: "a provider-value change is read at the consumer's own position and rebuilds nothing",

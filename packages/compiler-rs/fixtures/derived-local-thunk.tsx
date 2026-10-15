@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const count = signal(1)
+export const [count, setCount] = createSignal(1)
 
 /**
  * A chain of plain local arrows, each reading the one before it. No primitive
@@ -19,7 +19,7 @@ export default function DerivedLocalThunk() {
   )
 }
 
-export const steps = [() => count.set(3), () => count.set(0)]
+export const steps = [() => setCount(3), () => setCount(0)]
 export const optimality = {
   target: 1,
   milestone: 5,

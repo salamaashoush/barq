@@ -21,7 +21,7 @@
  *
  * B6.
  */
-import { render, signal } from "@barqjs/core"
+import { createSignal, flush, render, untrack } from "@barqjs/core"
 import type { Block } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
@@ -29,28 +29,24 @@ import type { Claim, Kit } from "../../test/semantics-support.ts"
 export const rules = ["B6"]
 
 /** Digits are refused. The signal does not change, so nothing re-runs. */
-const guarded = signal("")
+const [guarded, setGuarded] = createSignal("")
 const guardedSet = (next: unknown): void => {
-  guarded.set(String(next).replace(/[0-9]/g, ""))
+  setGuarded(String(next).replace(/[0-9]/g, ""))
 }
 
-const plain = signal("start")
-const ticked = signal(false)
-
-const writable = {
-  guarded: Object.assign(() => guarded(), { set: guardedSet, peek: () => guarded.peek() }),
-}
+const [plain, setPlain] = createSignal("start")
+const [ticked, setTicked] = createSignal(false)
 
 function Guarded() {
-  return <input type="text" class="guarded" bind:value={writable.guarded} />
+  return <input type="text" class="guarded" bind:value={[guarded, guardedSet]} />
 }
 
 function Plain() {
-  return <input type="text" class="plain" bind:value={plain} />
+  return <input type="text" class="plain" bind:value={[plain, setPlain]} />
 }
 
 function Box() {
-  return <input type="checkbox" class="box" bind:value={ticked} />
+  return <input type="checkbox" class="box" bind:value={[ticked, setTicked]} />
 }
 
 /**
@@ -86,27 +82,29 @@ function type(element: HTMLInputElement, text: string): void {
 
 export const claims: Claim[] = [
   {
-    id: "a-rejected-keystroke-is-repaired-inside-the-event",
+    id: "a-rejected-keystroke-is-repaired-before-paint",
     rule: "B6",
-    says: "when the setter refuses an edit the element holds the signal's value again by the time the event returns, even though the signal never changed and no effect re-ran",
+    says: "when the setter refuses an edit the element holds the signal's value again at the flush the edit scheduled, which is before paint, even though the signal's value did not move",
     async check(kit) {
-      guarded.set("")
+      setGuarded("")
       const host = await mount(kit, Guarded as never)
       const input = host.querySelector("input.guarded") as HTMLInputElement | null
       if (input === null) kit.fail("the guarded input never rendered")
       kit.precondition(input.value === "", `the input started at ${JSON.stringify(input.value)}`)
 
       type(input, "a1")
-      // Synchronously, with no settle: the repair is inside the event, before
-      // paint, so the rejected character is never displayed.
-      if (guarded.peek() !== "a") {
-        kit.fail(`the setter did not run: the signal reads ${JSON.stringify(guarded.peek())}`)
+      // One flush and no timer: a write is published at the flush the event
+      // scheduled, which is a microtask, so the rejected character is gone
+      // before the browser paints.
+      flush()
+      if (untrack(guarded) !== "a") {
+        kit.fail(`the setter did not run: the signal reads ${JSON.stringify(untrack(guarded))}`)
       }
       if (input.value !== "a") {
         kit.fail(
           `the element still reads ${JSON.stringify(input.value)} after the setter refused the ` +
-            "digit. The signal did not change, so the effect never re-ran and no cached compare " +
-            "could have repaired it — B6 says the write is re-asserted inside the reported edit",
+            "digit. A cached compare could not have repaired it — B6 says the signal is " +
+            "re-asserted on every reported edit",
         )
       }
       await kit.settle()
@@ -120,17 +118,19 @@ export const claims: Claim[] = [
     rule: "B6",
     says: "the repair is not a one-shot: a framework that cached its last write would compare equal on the second rejection and stop repairing",
     async check(kit) {
-      guarded.set("")
+      setGuarded("")
       const host = await mount(kit, Guarded as never)
       const input = host.querySelector("input.guarded") as HTMLInputElement | null
       if (input === null) kit.fail("the guarded input never rendered")
       type(input, "a1")
+      flush()
       type(input, "a2")
+      flush()
       if (input.value !== "a") {
         kit.fail(
           `the second rejection was not repaired: the element reads ` +
             `${JSON.stringify(input.value)} while the signal reads ` +
-            `${JSON.stringify(guarded.peek())}`,
+            `${JSON.stringify(untrack(guarded))}`,
         )
       }
     },
@@ -143,7 +143,7 @@ export const claims: Claim[] = [
       // Behavioural, not emitted: the same claim has to hold through the
       // reference backend, whose ops table names no channel a regex can find.
       // The EMISSION half of the partition is `tables.test.ts`'s per-pair row.
-      plain.set("start")
+      setPlain("start")
       const host = await mount(kit, Partition as never)
       await kit.settle()
       const option = host.querySelector("option")
@@ -166,7 +166,7 @@ export const claims: Claim[] = [
     rule: "B6",
     says: "the compare SKIPS the write — counted on the element itself, because `the DOM ends up correct` is satisfied by writing every time and is not what the rule says",
     async check(kit) {
-      plain.set("start")
+      setPlain("start")
       const host = await mount(kit, Plain as never)
       const input = host.querySelector("input.plain") as HTMLInputElement | null
       if (input === null) kit.fail("the plain input never rendered")
@@ -200,7 +200,7 @@ export const claims: Claim[] = [
 
       // A value the element does NOT hold: exactly one write, so the compare is
       // a compare rather than an unconditional refusal.
-      plain.set("moved")
+      setPlain("moved")
       await kit.settle()
       if (writes !== 1) {
         kit.fail(`a genuine change produced ${writes} write(s), not 1; the element holds ${held}`)
@@ -209,12 +209,12 @@ export const claims: Claim[] = [
       // And the coercion is part of the compare: `input.value` is a DOMString,
       // so a signal moving from "moved" to the NUMBER 7 must write once, and
       // moving from 7 to the string "7" must not write at all.
-      ;(plain as unknown as { set(next: unknown): void }).set(7)
+      ;(setPlain as unknown as (next: unknown) => void)(7)
       await kit.settle()
       if (writes !== 2 || held !== "7") {
         kit.fail(`the number did not land as "7": ${writes} write(s), the element holds ${held}`)
       }
-      plain.set("7")
+      setPlain("7")
       await kit.settle()
       if (writes !== 2) {
         kit.fail(
@@ -222,7 +222,7 @@ export const claims: Claim[] = [
             `(${writes} writes). \`coerceLive\` is part of the compare, not a nicety`,
         )
       }
-      plain.set("start")
+      setPlain("start")
     },
   },
   {
@@ -230,14 +230,15 @@ export const claims: Claim[] = [
     rule: "B6",
     says: "an edit the setter accepts lands in the signal and is NOT overwritten — without this the two claims above are also satisfied by a channel that simply refuses to let the user type",
     async check(kit) {
-      plain.set("start")
-      ticked.set(false)
+      setPlain("start")
+      setTicked(false)
       const host = await mount(kit, Plain as never)
       const input = host.querySelector("input.plain") as HTMLInputElement | null
       if (input === null) kit.fail("the plain input never rendered")
       type(input, "edited")
-      if (plain.peek() !== "edited") {
-        kit.fail(`the edit never reached the signal: it reads ${JSON.stringify(plain.peek())}`)
+      flush()
+      if (untrack(plain) !== "edited") {
+        kit.fail(`the edit never reached the signal: it reads ${JSON.stringify(untrack(plain))}`)
       }
       await kit.settle()
       if (input.value !== "edited") {
@@ -250,15 +251,16 @@ export const claims: Claim[] = [
     rule: "B6",
     says: "`bind:value` on a checkbox resolves to `checked`/`change`, and the boolean round-trips both ways",
     async check(kit) {
-      ticked.set(false)
+      setTicked(false)
       const host = await mount(kit, Box as never)
       const box = host.querySelector("input.box") as HTMLInputElement | null
       if (box === null) kit.fail("the checkbox never rendered")
       if (box.checked !== false) kit.fail("the checkbox did not start unchecked")
       box.checked = true
       box.dispatchEvent(new Event("change", { bubbles: true }))
-      if (ticked.peek() !== true) kit.fail("the tick never reached the signal")
-      ticked.set(false)
+      flush()
+      if (untrack(ticked) !== true) kit.fail("the tick never reached the signal")
+      setTicked(false)
       await kit.settle()
       if (box.checked !== false) kit.fail("writing the signal did not clear the checkbox")
     },

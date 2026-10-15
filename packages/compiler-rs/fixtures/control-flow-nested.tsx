@@ -1,7 +1,7 @@
-import { For, Show, signal } from "@barqjs/core"
+import { For, Show, createSignal } from "@barqjs/core"
 
-export const visible = signal(true)
-export const items = signal([1, 2, 3])
+export const [visible, setVisible] = createSignal(true)
+export const [items, setItems] = createSignal([1, 2, 3])
 
 /**
  * Control flow inside control flow. The `For` is built inside the `Show`'s
@@ -24,10 +24,10 @@ export default function ControlFlowNested() {
 }
 
 export const steps = [
-  () => items.set([1, 2]),
-  () => visible.set(false),
-  () => visible.set(true),
-  () => items.set([4, 5, 6]),
+  () => setItems([1, 2]),
+  () => setVisible(false),
+  () => setVisible(true),
+  () => setItems([4, 5, 6]),
 ]
 
 export const optimality = {

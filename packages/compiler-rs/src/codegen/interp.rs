@@ -166,6 +166,13 @@ impl<'a> Interp<'a, '_, '_, '_, '_> {
         self.push(nullary(self.ctx, expression, span), span)
     }
 
+    /// `once`, for the value `bindProp` decides about: the same expression the
+    /// DOM backend hands it, which for a call is the function that makes it.
+    fn opaque(&mut self, value: ExprId, span: Span) -> Expression<'a> {
+        let expression = crate::codegen::dom::opaque_value(self.ctx, self.unit, value, span);
+        self.push(nullary(self.ctx, expression, span), span)
+    }
+
     /// A slot that yields the value a LIVE binding resolves to. It is built by
     /// the DOM backend's own thunk rule — an author's `() => …` is handed on
     /// rather than wrapped, and η-reduction still applies — because the two
@@ -228,7 +235,7 @@ impl<'a> Backend<'a> for Interp<'a, '_, '_, '_, '_> {
     fn set_opaque(&mut self, at: At<'_>, name: NameId, value: ExprId, chan: Chan) -> Self::Out {
         let span = at.span();
         let (node, key) = (self.node(at.target(), span), self.key(name, span));
-        let slot = self.once(value, span);
+        let slot = self.opaque(value, span);
         let chan = text(self.ctx, chan_name(chan), span);
         Some(self.record("setOpaque", vec![node, key, slot, chan], span))
     }
@@ -258,13 +265,7 @@ impl<'a> Backend<'a> for Interp<'a, '_, '_, '_, '_> {
     }
 
     /// The resolved type with a value the compiler could not prove is a handler.
-    fn set_event(
-        &mut self,
-        at: At<'_>,
-        event: NameId,
-        value: ExprId,
-        capture: bool,
-    ) -> Self::Out {
+    fn set_event(&mut self, at: At<'_>, event: NameId, value: ExprId, capture: bool) -> Self::Out {
         let span = at.span();
         let (node, key) = (self.node(at.target(), span), self.key(event, span));
         let slot = self.once(value, span);
@@ -372,7 +373,7 @@ impl<'a> Backend<'a> for Interp<'a, '_, '_, '_, '_> {
         ))
     }
 
-    /// `el.$$click = h`. The tuple form lives inside the handler expression, so
+    /// `el.__bq_click = h`. The tuple form lives inside the handler expression, so
     /// `data` is carried by the IR and read by neither backend (V2).
     fn delegate(
         &mut self,
@@ -384,7 +385,7 @@ impl<'a> Backend<'a> for Interp<'a, '_, '_, '_, '_> {
         let span = at.span();
         let node = self.node(at.target(), span);
         let key = self.ctx.module.interner.name(event).text;
-        let key = self.ctx.allocator.alloc_str(&format!("$${key}")) as &'a str;
+        let key = self.ctx.allocator.alloc_str(&format!("__bq_{key}")) as &'a str;
         let key = self.ctx.string(key, span);
         let slot = self.handler(handler, span);
         Some(self.record("delegate", vec![node, key, slot], span))
@@ -436,7 +437,11 @@ impl<'a> Backend<'a> for Interp<'a, '_, '_, '_, '_> {
         let node = self.node(at.target(), span);
         let slot = if live { self.read(value, span) } else { self.once(value, span) };
         let live = Expression::new_boolean_literal(span, live, &self.ctx.ast);
-        Some(self.record("spread", vec![node, slot, live], span))
+        let mut fields = vec![node, slot, live];
+        if let Some(later) = super::dom::spread_later(self.ctx, self.unit, span) {
+            fields.push(later);
+        }
+        Some(self.record("spread", fields, span))
     }
 }
 

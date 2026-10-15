@@ -1,47 +1,21 @@
-> **REMOVED IN M3.** This code no longer exists: `diagnosticCodes()` does not
-> advertise it, nothing emits it, and `barq-ignore-next-line BARQ006` now reports
-> BARQ008 (a suppression that matched nothing).
->
-> The rule's premise was getters. Under `CODESIGN.md` C3 every prop crosses a
-> component boundary as a **Cell**, and C3.4 says a copy of a Cell is the same
-> Cell — so `Dynamic` spreading its props reads nothing at all and there is no
-> "read every getter once" left to warn about. Warning anyway would be a lie
-> about the emitted module (`src/passes/shape.rs`, and `src/compile.rs` pins
-> that the source below now produces no codes).
->
-> The page is kept because the rule is the reason a shape people still write is
-> safe now, and because deleting the page would leave the removal unexplained.
+# BARQ006: removed
 
-# BARQ006 — `Dynamic` spreads its props
+The compiler does not report this code. [All codes](README.md)
 
-**Level:** warning · **Dev builds only** · [all codes](README.md)
+BARQ006 warned that `<Dynamic>` read every prop once and handed the component it rendered
+values that never updated. `<Dynamic>` passes each prop through as the same Cell it
+received, so the component it renders reads current values and there is nothing to warn
+about:
 
-## What fires
+```tsx
+import { Dynamic, createSignal } from "@barqjs/core";
 
-A `<Dynamic>` whose props object carries at least one getter — that is, at least one prop
-the compiler proved reactive and lowered to a getter.
+const [total] = createSignal(0);
 
-```jsx
-<Dynamic component="div" total={count()} />    // BARQ006
+export const Total = () => <Dynamic component="output" value={total()} />;
 ```
 
-## What it means
+## If a comment still names it
 
-`Dynamic` does `const { component: _, ...rest } = props` internally. That rest pattern
-reads every getter exactly once and hands the rendered component dead values, so
-fine-grained flow stops at the `Dynamic` boundary (DESIGN §12 O7).
-
-## The fix
-
-Pass an accessor, so the reader decides when to read:
-
-```jsx
-<Dynamic component="div" total={count} />
-```
-
-## Silencing it
-
-```jsx
-{/* barq-ignore-next-line BARQ006 (this subtree is rebuilt on every change anyway) */}
-<Dynamic component={tag()} total={count()} />
-```
+`BARQ006` is not a code the compiler knows, so a comment that names it is reported as
+[BARQ009](BARQ009.md) and silences nothing. Delete the comment.

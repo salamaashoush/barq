@@ -260,7 +260,7 @@ const OPTIMALITY_DECLARATION = /\n?export const optimality = \{[\s\S]*?\n\}\n?/;
 /**
  * The fixture compiled WITHOUT its own optimality declaration. The declaration
  * is source like any other and reaches the emitted module, where `absent:
- * ["=>"]` would satisfy a search for `=>` and `$$click` in a needle would
+ * ["=>"]` would satisfy a search for `=>` and `__bq_click` in a needle would
  * satisfy a search for an expando. Every code-level assertion runs against
  * this; the differential harness runs the whole fixture, declaration included.
  */
@@ -525,15 +525,19 @@ export async function renderModule(mod: FixtureModule): Promise<RenderResult> {
     return frame.html;
   };
 
+  // An error nothing caught halts the engine for good. That is one fixture's
+  // outcome, and the next render must not inherit it.
+  core.resetErrorHalt();
   try {
-    core.scope((d: () => void) => {
-      dispose = d;
-      // C1: the default export is a component and takes the scope it runs
-      // under, so `render` is handed the BLOCK and opens that scope itself.
-      // Calling it here would construct the subtree before any scope existed —
-      // the argument form the whole redesign exists to remove.
-      core.render(mod.default as never, container);
-    }, true);
+    core.runWithOwner(null, () =>
+      core.createRoot((d: () => void) => {
+        dispose = d;
+        // C1: the default export is a component, so `render` is handed the
+        // BLOCK and opens the scope it runs under itself. Calling it here would
+        // construct the subtree before any scope existed.
+        core.render(mod.default as never, container);
+      }),
+    );
 
     await settle();
     const html = snapshot();

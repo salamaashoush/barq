@@ -1,10 +1,10 @@
-import { signal } from "@barqjs/core"
+import { createSignal, untrack } from "@barqjs/core"
 
-export const count = signal(1)
+export const [count, setCount] = createSignal(1)
 /** `const c = count` — the alias is an Accessor because its RHS is one. */
 const alias = count
 /** And calling it once at module scope is NOT: `total` is a plain number. */
-const total = count.peek() + 40
+const total = untrack(count) + 40
 
 export default function SignalAlias() {
   return (
@@ -14,7 +14,7 @@ export default function SignalAlias() {
   )
 }
 
-export const steps = [() => count.set(4), () => count.set(-1)]
+export const steps = [() => setCount(4), () => setCount(-1)]
 
 export const optimality = {
   target: 1,

@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const on = signal(false)
+export const [on, setOn] = createSignal(false)
 
 /**
  * `classList` is additive per key and diffed against the previous map, so it is
@@ -18,7 +18,7 @@ export default function ClassListProp() {
   )
 }
 
-export const steps = [() => on.set(true), () => on.set(false)]
+export const steps = [() => setOn(true), () => setOn(false)]
 export const optimality = {
   target: 4,
   milestone: 5,

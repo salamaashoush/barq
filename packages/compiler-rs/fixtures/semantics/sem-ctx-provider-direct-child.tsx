@@ -11,16 +11,16 @@
  *
  * O2, O2.1 and X1; C6.
  */
-import { context, getOwner, hasContext, render, signal, useContext } from "@barqjs/core"
+import { createContext, getOwner, hasContext, render, createSignal, useContext } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 import { formatThrown } from "../../test/semantics-support.ts"
 
 export const rules = ["O2", "O2.1", "X1", "C6"]
 
-const Ctx = context<() => string>()
+const Ctx = createContext<() => string>()
 
-const provided = signal("provided")
+const [provided] = createSignal("provided")
 
 let ownerAtBody: unknown = "not reached"
 let boundAtBody: unknown = "not reached"

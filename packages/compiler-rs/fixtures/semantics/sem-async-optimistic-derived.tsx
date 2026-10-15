@@ -19,11 +19,18 @@
  *
  * A4.
  */
-import { action, optimistic, render } from "@barqjs/core"
+import { action, createOptimistic, createOwner, createSignal, render, runWithOwner } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 
-export const status = optimistic("saved")
+// The settled state is an ordinary signal, and what everyone reads is the
+// optimistic value derived from it: a guess shows over it while an action is in
+// flight and gives way to whatever it holds when the action ends. Under an
+// owner, as it would be inside a component.
+const [settled, setSettled] = createSignal("saved")
+export const [status, setStatus] = runWithOwner(createOwner(), () =>
+  createOptimistic(() => settled()),
+)
 
 let release: (() => void) | null = null
 let previous: (() => void) | null = null
@@ -31,14 +38,14 @@ let previous: (() => void) | null = null
 export const rules = ["A4"]
 
 const save = action(function* () {
-  status.set("saving…")
+  setStatus("saving…")
   yield new Promise<void>((resolve) => {
     release = resolve
   })
 })
 
 const failing = action(function* () {
-  status.set("saving…")
+  setStatus("saving…")
   yield Promise.reject(new Error("the server refused"))
 })
 
@@ -50,7 +57,7 @@ async function mount(kit: Kit) {
   previous?.()
   previous = null
   release = null
-  status.set("saved")
+  setSettled("saved")
   const host = kit.container()
   let dispose: (() => void) | undefined
   const thrown = await kit.attempt(() => {
@@ -81,7 +88,7 @@ export const claims: Claim[] = [
       )
 
       // Outside the action context: a push, a refresh, another user's edit.
-      status.set("from-server")
+      setSettled("from-server")
       await kit.settle()
 
       release?.()
@@ -124,7 +131,7 @@ export const claims: Claim[] = [
       const { host, thrown } = await mount(kit)
       if (thrown.length > 0) kit.fail(`the mount itself threw: ${thrown[0].message}`)
 
-      status.set("edited")
+      setSettled("edited")
       await kit.settle()
       if (shown(host) !== "edited") {
         kit.fail(`an ordinary write did not render; the element reads ${JSON.stringify(shown(host))}`)

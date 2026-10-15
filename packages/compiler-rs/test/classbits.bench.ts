@@ -23,7 +23,8 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-const { setClass, signal, renderEffect, flush } = await import("@barqjs/core");
+const { setClass, createSignal, createRenderEffect, createRoot, flush } =
+  await import("@barqjs/core");
 
 const ROWS = Number(process.env.BARQ_BENCH_ROWS ?? 200);
 const FRAMES = Number(process.env.BARQ_BENCH_FRAMES ?? 400);
@@ -152,13 +153,16 @@ interface Frame {
 function endToEnd(label: string, build: (el: Element, sel: () => boolean) => void): number {
   const samples: number[] = [];
   for (let r = 0; r < REPEATS; r++) {
-    const selected = signal(false);
+    const [selected, setSelected] = createSignal(false);
     const rows = makeRows();
-    for (const el of rows) build(el, () => selected());
+    // Under a root: an effect nothing owns is dormant and would measure nothing.
+    createRoot(() => {
+      for (const el of rows) build(el, () => selected());
+    });
     flush();
     const drive: Frame = () => {
       for (let frame = 0; frame < FRAMES; frame++) {
-        selected.set(frame % 2 === 0);
+        setSelected(frame % 2 === 0);
         flush();
       }
     };
@@ -178,7 +182,7 @@ function endToEnd(label: string, build: (el: Element, sel: () => boolean) => voi
 console.log(`\n--- end to end: ${ROWS} rows, ${FRAMES} frames, one signal driving every row ---\n`);
 
 const liveObject = endToEnd("emitted today", (el, sel) => {
-  renderEffect(
+  createRenderEffect(
     () => ({ a: { row: true, "row--selected": sel(), "row--dirty": false } }),
     (v: { a: unknown }, p: { a?: unknown } = {}) => {
       v.a = setClass(el, "class", v.a, p.a);
@@ -187,10 +191,10 @@ const liveObject = endToEnd("emitted today", (el, sel) => {
 });
 
 const liveBits = endToEnd("emitted with classBits", (el, sel) => {
-  renderEffect(
+  createRenderEffect(
     () => 1 | (sel() ? 2 : 0),
-    (v: number, p: number) => {
-      if (v !== p) setClassBits(el, v, NAMES, "", p);
+    (v: number, p: number | undefined) => {
+      if (v !== p) setClassBits(el, v, NAMES, "", p ?? 0);
     },
   );
 });

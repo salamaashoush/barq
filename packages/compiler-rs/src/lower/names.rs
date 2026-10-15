@@ -127,6 +127,11 @@ pub fn to_kebab<'a>(name: &str, allocator: &'a Allocator) -> &'a str {
     allocator.alloc_str(&out)
 }
 
+/// `cssName` (`dom.ts`): a custom property is written as the author spelled it.
+pub fn css_name<'a>(name: &'a str, allocator: &'a Allocator) -> &'a str {
+    if name.starts_with("--") { name } else { to_kebab(name, allocator) }
+}
+
 /// `setElementAttr` kebab-cases every SVG attribute except `class` and
 /// `viewBox` (`dom.ts:481`).
 pub fn attr_name<'a>(name: &'a str, is_svg: bool, allocator: &'a Allocator) -> &'a str {
@@ -211,12 +216,29 @@ pub fn capture_event(name: &str) -> Option<String> {
     if middle.is_empty() {
         return None;
     }
-    Some(middle.to_ascii_lowercase())
+    let event = middle.to_ascii_lowercase();
+    // Two events are NAMED with the suffix: `onGotPointerCapture` is a bubble
+    // listener for `gotpointercapture`, not a capture one for `gotpointer`.
+    if event == "gotpointer" || event == "lostpointer" {
+        return None;
+    }
+    Some(event)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_two_events_named_capture_are_not_capture_bindings() {
+        assert_eq!(capture_event("onKeyDownCapture").as_deref(), Some("keydown"));
+        assert_eq!(capture_event("onGotPointerCapture"), None);
+        assert_eq!(capture_event("onLostPointerCapture"), None);
+        assert_eq!(
+            capture_event("onGotPointerCaptureCapture").as_deref(),
+            Some("gotpointercapture")
+        );
+    }
 
     #[test]
     fn svg_and_dom_prop_membership_matches_dom_ts() {
@@ -284,6 +306,9 @@ mod tests {
         assert_eq!(channel_of("selected", false, "option"), Chan::Live);
         assert_eq!(channel_of("open", false, "details"), Chan::Live);
         assert_eq!(channel_of("open", false, "div"), Chan::Attr);
+        assert_eq!(channel_of("muted", false, "video"), Chan::Live);
+        assert_eq!(channel_of("muted", false, "audio"), Chan::Live);
+        assert_eq!(channel_of("muted", false, "div"), Chan::Attr);
         // `*` in the table: no tag restricts these.
         assert_eq!(channel_of("scrollTop", false, "div"), Chan::Live);
         assert_eq!(channel_of("scrollLeft", false, "span"), Chan::Live);

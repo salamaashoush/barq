@@ -6,9 +6,10 @@ use oxc::ast::ast::{
     VariableDeclarator,
 };
 use oxc::span::{SPAN, Span};
+use oxc::syntax::number::NumberBase;
 
 use super::{Emit, Helper, IMPORTED, Target};
-use crate::ir::{Hoisted, TemplateId};
+use crate::ir::{Hoisted, Ns, TemplateId};
 use oxc::allocator::CloneIn;
 
 /// The module preamble: the helper import, then one hoisted
@@ -41,7 +42,7 @@ pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
     // before any event can fire.
     //
     // Both are DOM concepts. P8b drops every event patch, so the wire carries no
-    // `$$click`, the document listener has nothing to serve, and a hoisted
+    // `__bq_click`, the document listener has nothing to serve, and a hoisted
     // handler would be a module-scope binding with no reader.
     // A constant prop Cell is an ABI fact, not a DOM one: both backends call the
     // same component with the same props object, so `_k$N` is declared for every
@@ -93,9 +94,10 @@ pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
                 emit,
                 (0..super::FIRST_SERVER_HELPER)
                     .filter(shared_here)
-                    // `getOwner` sits past the interp entry in the table but is
-                    // a module-source helper like the rest of the DOM surface.
-                    .chain(std::iter::once(super::Helper::GetOwner as usize)),
+                    // `getOwner` and what follows it sit past the interp entry
+                    // in the table but are module-source helpers like the rest
+                    // of the DOM surface.
+                    .chain((super::Helper::GetOwner as usize)..super::HELPER_COUNT),
             ),
         ),
         (
@@ -106,7 +108,10 @@ pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
                     .chain(super::SHARED_ABI.filter(|index| !shared_here(index))),
             ),
         ),
-        (emit.interp_source, helper_specifiers(emit, super::FIRST_INTERP_HELPER..(super::Helper::GetOwner as usize))),
+        (
+            emit.interp_source,
+            helper_specifiers(emit, super::FIRST_INTERP_HELPER..(super::Helper::GetOwner as usize)),
+        ),
     ];
     let allocator = emit.allocator;
     let mut body = std::mem::replace(&mut program.body, ArenaVec::new_in(&allocator));
@@ -267,7 +272,6 @@ fn helper_import<'a>(
     )
 }
 
-
 fn hoisted_declaration<'a>(emit: &mut Emit<'a, '_>, index: usize) -> Statement<'a> {
     let (id, expr, span, cell) = match &emit.module.hoisted[index] {
         Hoisted::Handler { id, expr, span } | Hoisted::Frozen { id, expr, span } => {
@@ -308,6 +312,7 @@ fn template_declaration<'a>(
         emit.allocator.alloc_str(&emit.module.html[range.0 as usize..range.1 as usize]) as &'a str;
     let meta = &emit.module.template_meta[id as usize];
     let (span, wrapped) = (origin.unwrap_or(meta.span), meta.wrapped);
+    let math = emit.module.templates[id as usize].ns == Ns::Math;
 
     let callee = emit.helper(Helper::Template, span);
     let raw = super::mappings::template_raw(html, emit.allocator);
@@ -324,7 +329,15 @@ fn template_declaration<'a>(
         &emit.ast,
     ));
     let mut arguments = vec![Argument::from(literal)];
-    if wrapped {
+    if wrapped && math {
+        arguments.push(Argument::from(Expression::new_numeric_literal(
+            span,
+            2.0,
+            None,
+            NumberBase::Decimal,
+            &emit.ast,
+        )));
+    } else if wrapped {
         arguments.push(Argument::from(Expression::new_boolean_literal(span, true, &emit.ast)));
     }
     // The detection axis, threaded where the claim is made. `template()` is

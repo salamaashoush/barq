@@ -102,7 +102,7 @@ fn scope_ranges(scoping: &Scoping, module: &mut Module<'_>) {
 mod tests {
     use super::*;
     use crate::compile::source_type_for;
-    use crate::ir::{BIT_OVERFLOW, Const, MemberMask, Prim, SourceKind};
+    use crate::ir::{BIT_OVERFLOW, Const, Prim, SourceKind};
     use oxc::parser::Parser;
     use oxc::semantic::SymbolId;
 
@@ -144,17 +144,16 @@ mod tests {
         module.env.kind_of(symbol)
     }
 
-    const ACCESSOR: SourceKind = SourceKind::Accessor { nonreactive: MemberMask::EMPTY };
-    const SIGNAL: SourceKind = SourceKind::Accessor { nonreactive: MemberMask::SIGNAL };
+    const ACCESSOR: SourceKind = SourceKind::Accessor;
 
     #[test]
     fn every_binding_gets_a_symbol_id_and_the_import_resolves_by_specifier() {
         let allocator = Allocator::new();
-        let source = "import { signal } from \"@barqjs/core\";\n\
-                      export function Card() {\n  const count = signal(0);\n  return count;\n}\n";
+        let source = "import { createSignal } from \"@barqjs/core\";\n\
+                      export function Card() {\n  const [count, setCount] = createSignal(0);\n  return [count, setCount];\n}\n";
         let module = module_of(&allocator, source);
 
-        let signal = root_binding(&module.scoping, "signal").expect("the import binding");
+        let signal = root_binding(&module.scoping, "createSignal").expect("the import binding");
         let card = root_binding(&module.scoping, "Card").expect("the function binding");
         assert_ne!(signal, card);
         // `count` is local to Card, so it is not a root binding — but it is a
@@ -163,7 +162,12 @@ mod tests {
         assert_eq!(module.env.kind.len(), module.scoping.symbols_len());
 
         assert_eq!(module.env.kind_of(signal), SourceKind::Primitive(Prim::Signal));
-        assert_eq!(local(&module, "count"), SIGNAL);
+        assert_eq!(local(&module, "count"), ACCESSOR);
+        assert_eq!(
+            local(&module, "setCount"),
+            SourceKind::Fn { nullary: false },
+            "the write half is a handler by reference, and reads nothing"
+        );
         assert_ne!(module.env.bit_of(root_binding(&module.scoping, "Card").unwrap()), 0);
     }
 
@@ -172,22 +176,22 @@ mod tests {
     #[test]
     fn aliasing_classifies_and_a_user_binding_of_the_same_name_does_not() {
         let allocator = Allocator::new();
-        let source = "import { signal as sig, computed } from \"@barqjs/core\";\n\
-                      const count = sig(0);\n\
+        let source = "import { createSignal as sig, createMemo } from \"@barqjs/core\";\n\
+                      const [count] = sig(0);\n\
                       const alias = count;\n\
                       const snapshot = count();\n\
-                      const doubled = computed(() => count() * 2);\n";
+                      const doubled = createMemo(() => count() * 2);\n";
         let module = module_of(&allocator, source);
-        assert_eq!(local(&module, "count"), SIGNAL);
-        assert_eq!(local(&module, "alias"), SIGNAL, "an alias IS the accessor");
+        assert_eq!(local(&module, "count"), ACCESSOR);
+        assert_eq!(local(&module, "alias"), ACCESSOR, "an alias IS the accessor");
         assert_eq!(local(&module, "snapshot"), SourceKind::Inert, "a call is a snapshot");
         assert_eq!(local(&module, "doubled"), ACCESSOR);
 
-        // A user's `const signal = 1` is a number, not the primitive, so calling
+        // A user's `const createSignal = 1` is a number, not the primitive, so calling
         // it produces nothing reactive.
         let shadowed = module_of(
             &allocator,
-            "const signal = 1;\nconst count = signal;\nconst c2 = signal(0);\n",
+            "const createSignal = 1;\nconst count = createSignal;\nconst c2 = createSignal(0);\n",
         );
         assert_eq!(local(&shadowed, "count"), SourceKind::ConstLit);
         assert_eq!(
@@ -200,10 +204,10 @@ mod tests {
     #[test]
     fn a_barrel_import_and_a_reassigned_binding_stay_opaque() {
         let allocator = Allocator::new();
-        let source = "import { signal } from \"./barrel\";\n\
-                      import { signal as real } from \"@barqjs/core\";\n\
-                      const fake = signal(0);\n\
-                      let moving = real(0);\n\
+        let source = "import { createMemo } from \"./barrel\";\n\
+                      import { createMemo as real } from \"@barqjs/core\";\n\
+                      const fake = createMemo(() => 0);\n\
+                      let moving = real(() => 0);\n\
                       moving = null;\n";
         let module = module_of(&allocator, source);
         assert_eq!(local(&module, "fake"), SourceKind::Opaque, "a barrel cannot be seen through");
@@ -213,47 +217,32 @@ mod tests {
     #[test]
     fn the_return_shape_table_follows_the_real_signatures() {
         let allocator = Allocator::new();
-        let source = "import { signal, store, resource, projection } from \"@barqjs/core\";\n\
-                      const value = signal(0);\n\
-                      const [state, setState] = store({});\n\
-                      const loaded = resource(() => 1, async () => 2);\n\
-                      const projected = projection(() => ({}));\n";
+        let source = "import { createSignal, createMemo, createStore, createProjection } from \"@barqjs/core\";\n\
+                      const [value, setValue] = createSignal(0);\n\
+                      const pair = createSignal(0);\n\
+                      const derived = createMemo(() => value());\n\
+                      const [state, setState] = createStore({});\n\
+                      const projected = createProjection(() => ({}));\n";
         let module = module_of(&allocator, source);
-        assert_eq!(local(&module, "value"), SIGNAL);
+        assert_eq!(local(&module, "value"), ACCESSOR);
+        assert_eq!(local(&module, "setValue"), SourceKind::Fn { nullary: false });
+        // The pair kept whole is a plain array: holding it reads nothing.
+        assert_eq!(local(&module, "pair"), SourceKind::Inert);
+        assert_eq!(local(&module, "derived"), ACCESSOR);
         assert_eq!(local(&module, "state"), SourceKind::ReactiveObject);
         assert_eq!(local(&module, "setState"), SourceKind::Inert);
-        assert_eq!(local(&module, "loaded"), SourceKind::AccessorRecord);
         assert_eq!(local(&module, "projected"), SourceKind::ReactiveObject);
-    }
-
-    /// The async primitives collapsed onto one `resource`, and the `use*`
-    /// spelling of every constructor is gone, so `resource` is the only name
-    /// that reaches that row and a LOCAL binding of the same name must still be
-    /// whatever it was bound to.
-    #[test]
-    fn the_one_resource_classifies_under_its_only_spelling() {
-        let allocator = Allocator::new();
-        let source = "import { resource } from \"@barqjs/core\";\n\
-                      const direct = resource(() => 1, async () => 2);\n";
-        let module = module_of(&allocator, source);
-        assert_eq!(local(&module, "direct"), SourceKind::AccessorRecord);
-
-        let allocator = Allocator::new();
-        let shadowed = "const resource = 4;\n\
-                        const shadow = resource;\n";
-        let module = module_of(&allocator, shadowed);
-        assert_ne!(local(&module, "shadow"), SourceKind::AccessorRecord);
     }
 
     #[test]
     fn a_namespace_import_resolves_and_a_literal_const_carries_its_value() {
         let allocator = Allocator::new();
         let source = "import * as core from \"@barqjs/core\";\n\
-                      const count = core.signal(0);\n\
+                      const [count] = core.createSignal(0);\n\
                       const SIZE = \"lg\";\n\
                       const COLUMNS = 4;\n";
         let module = module_of(&allocator, source);
-        assert_eq!(local(&module, "count"), SIGNAL);
+        assert_eq!(local(&module, "count"), ACCESSOR);
 
         let size = root_binding(&module.scoping, "SIZE").unwrap();
         let columns = root_binding(&module.scoping, "COLUMNS").unwrap();
@@ -333,12 +322,57 @@ mod tests {
 
     /// D1's POSITION ALLOWLIST, as implemented. Every arm is a slot where no
     /// correct program could put an accessor; `vue/no-ref-as-operand` is the
+    /// The same rule one step out: a prop is a Cell, and the positions that
+    /// turn an accessor into a value turn `props.x` into one too. Asking
+    /// whether a prop was passed at all is not one of them.
+    #[test]
+    fn a_prop_used_as_a_value_without_being_called_is_reported() {
+        let allocator = Allocator::new();
+        let fires = [
+            ("props.count + 1", "BARQ001"),
+            ("`hello ${props.name}`", "BARQ001"),
+            ("props.count > 3", "BARQ001"),
+            ("props.user.name", "BARQ003"),
+            ("props.items.length", "BARQ003"),
+            ("props.items.map((item) => item)", "BARQ003"),
+        ];
+        for (expression, code) in fires {
+            let source = allocator.alloc_str(&format!(
+                "export function Card(props) {{ const v = {expression}; return <p>{{v}}</p>; }}\n"
+            ));
+            let module = module_with(&allocator, source, &diagnosing());
+            assert_eq!(codes_of(&module), vec![code], "expected {code} for `{expression}`");
+        }
+
+        let silent = [
+            "props.count() + 1",
+            "props.user().name",
+            "props.title ? 1 : 2",
+            "props.title === undefined",
+            "props.onPress.call(null)",
+            "props.onPress?.()",
+            "<p title={props.title}>{props.title}</p>",
+        ];
+        for expression in silent {
+            let source = allocator.alloc_str(&format!(
+                "export function Card(props) {{ const v = {expression}; return <p>{{v}}</p>; }}\n"
+            ));
+            let module = module_with(&allocator, source, &diagnosing());
+            assert_eq!(codes_of(&module), Vec::<&str>::new(), "`{expression}` is correct code");
+        }
+
+        // An object that merely happens to be called `props` is not one.
+        let source = "const props = { count: 1 };\nexport const total = props.count + 1;\n";
+        let module = module_with(&allocator, source, &diagnosing());
+        assert_eq!(codes_of(&module), Vec::<&str>::new());
+    }
+
     /// model, and every narrowing below is a refusal to guess.
     #[test]
     fn d1_fires_only_in_the_position_allowlist() {
         let allocator = Allocator::new();
-        let head = "import { signal, computed, useMemo } from \"@barqjs/core\";\n\
-                    const count = signal(0);\n";
+        let head = "import { createSignal } from \"@barqjs/core\";\n\
+                    const [count] = createSignal(0);\n";
         let fires = [
             ("`total: ${count}`", "BARQ001"),
             ("count + \"\"", "BARQ001"),
@@ -354,6 +388,11 @@ mod tests {
             ("count && 7", "BARQ002"),
             ("count.value", "BARQ003"),
             ("count.toFixed(2)", "BARQ003"),
+            // Written for a callable signal. The write half is the second
+            // element of the pair, and an accessor has no members of barq's.
+            ("count.set(1)", "BARQ003"),
+            ("count.peek()", "BARQ003"),
+            ("count.update((n) => n + 1)", "BARQ003"),
         ];
         for (expression, code) in fires {
             let source = allocator.alloc_str(&format!("{head}const v = {expression};\n"));
@@ -372,10 +411,7 @@ mod tests {
             "count() + 1",
             "-count()",
             "count() ? 1 : 2",
-            // the accessor's own API, and Function.prototype's
-            "count.set(1)",
-            "count.peek()",
-            "count.update((n) => n + 1)",
+            // an accessor is a function, and these are Function.prototype's
             "count.call(null)",
             "count.name",
             // right operand of ||: passing an accessor along is normal
@@ -406,16 +442,6 @@ mod tests {
             let module = module_with(&allocator, source, &diagnosing());
             assert_eq!(codes_of(&module), Vec::<&str>::new(), "`{expression}` must be silent");
         }
-
-        // The cited false positive: `useMemo(…).peek()` is a typed public API
-        // (`Computed<T>` declares `peek`), and `MemberMask` cannot be widened
-        // to exempt it without turning a tracked read into `Static`. D1 carries
-        // its own member list for exactly this.
-        let source = "import { useMemo, computed } from \"@barqjs/core\";\n\
-                      const a = useMemo(() => 1);\nconst b = computed(() => 2);\n\
-                      const v = a.peek() + b.peek();\n";
-        let module = module_with(&allocator, source, &diagnosing());
-        assert_eq!(codes_of(&module), Vec::<&str>::new());
     }
 
     /// The condition arms, which take STATEMENTS and so cannot live in the
@@ -424,8 +450,8 @@ mod tests {
     #[test]
     fn d1_covers_every_always_truthy_statement_test() {
         let allocator = Allocator::new();
-        let head = "import { signal } from \"@barqjs/core\";\n\
-                    const count = signal(0);\nconst other = 1;\n";
+        let head = "import { createSignal } from \"@barqjs/core\";\n\
+                    const [count] = createSignal(0);\nconst other = 1;\n";
         let fires = [
             "if (count) { }",
             "switch (count) { }",
@@ -492,13 +518,12 @@ mod tests {
 
     /// The one thing that separates this from `solid/reactivity`: the rule is
     /// keyed on the BINDING, never on a name and never on `React::Reactive`.
-    /// `props.count * 2` is correct code — props lower to getters.
     #[test]
     fn d1_keys_on_the_binding_and_stays_silent_where_it_cannot_see() {
         let allocator = Allocator::new();
         let cases = [
-            // a props member read is ⊤-reactive and correct in every position
-            "export function Card(props) { return <p>{props.total * 2}</p>; }",
+            // a prop that is CALLED is a value, correct in every position
+            "export function Card(props) { return <p>{props.total() * 2}</p>; }",
             // cross-module: P0 Bind is module-scoped, so this is invisible. The
             // documented false negative — NOT covered by a name heuristic, which
             // is the proximate cause of eslint-plugin-solid #184/#190/#199.
@@ -557,8 +582,8 @@ mod tests {
     #[test]
     fn the_rules_do_not_run_when_diagnostics_are_off() {
         let allocator = Allocator::new();
-        let source = "import { signal } from \"@barqjs/core\";\n\
-                      const count = signal(0);\nconst v = `${count}`;\n";
+        let source = "import { createSignal } from \"@barqjs/core\";\n\
+                      const [count] = createSignal(0);\nconst v = `${count}`;\n";
         let off = module_with(&allocator, source, &ResolvedOptions::default());
         assert_eq!(codes_of(&off), Vec::<&str>::new());
         let on = module_with(&allocator, source, &diagnosing());
@@ -584,8 +609,8 @@ mod tests {
     #[test]
     fn reactive_symbols_get_a_dense_bit_and_nothing_else_does() {
         let allocator = Allocator::new();
-        let source = "import { signal } from \"@barqjs/core\";\n\
-                      const a = signal(0);\nconst b = signal(1);\nconst plain = 2;\n";
+        let source = "import { createSignal } from \"@barqjs/core\";\n\
+                      const [a] = createSignal(0);\nconst [b] = createSignal(1);\nconst plain = 2;\n";
         let module = module_of(&allocator, source);
         let a = root_binding(&module.scoping, "a").unwrap();
         let b = root_binding(&module.scoping, "b").unwrap();

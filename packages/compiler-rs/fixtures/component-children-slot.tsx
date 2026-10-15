@@ -1,7 +1,7 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 import type { Child } from "@barqjs/core"
 
-export const badge = signal(3)
+export const [badge, setBadge] = createSignal(3)
 
 /**
  * A user-defined component with JSX CHILDREN, sitting between static siblings —
@@ -43,7 +43,7 @@ export default function ComponentChildrenSlot() {
   )
 }
 
-export const steps = [() => badge.set(7), () => badge.set(0)]
+export const steps = [() => setBadge(7), () => setBadge(0)]
 
 export const optimality = {
   target: 1,

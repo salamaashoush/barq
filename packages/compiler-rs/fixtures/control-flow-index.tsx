@@ -1,6 +1,6 @@
-import { For, signal } from "@barqjs/core"
+import { For, createSignal } from "@barqjs/core"
 
-export const nums = signal([1, 2, 3])
+export const [nums, setNums] = createSignal([1, 2, 3])
 
 /**
  * The positional mode, which since M7b has ONE spelling: `keyed={false}`.
@@ -23,7 +23,7 @@ export default function ControlFlowIndex() {
   )
 }
 
-export const steps = [() => nums.set([9, 2, 3]), () => nums.set([9]), () => nums.set([1, 2, 3, 4])]
+export const steps = [() => setNums([9, 2, 3]), () => setNums([9]), () => setNums([1, 2, 3, 4])]
 
 export const optimality = {
   target: 8,

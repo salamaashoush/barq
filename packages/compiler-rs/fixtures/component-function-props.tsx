@@ -1,9 +1,9 @@
-import { signal } from "@barqjs/core"
+import { createSignal, untrack } from "@barqjs/core"
 
-export const n = signal(0)
+export const [n, setN] = createSignal(0)
 
 function bump(step: unknown, _event: MouseEvent): void {
-  n.set(n.peek() + Number(step))
+  setN(untrack(n) + Number(step))
   document.querySelector(".count")?.setAttribute("data-clicked", String(step))
 }
 
@@ -16,7 +16,7 @@ function bump(step: unknown, _event: MouseEvent): void {
  * accessor, a plain `function () {}` expression — must cross the boundary as a
  * VALUE. Wrapping one in an accessor property rebuilds it on every property
  * read, so `props.cb === props.cb` becomes false and the array the runtime
- * installs as the `$$click` expando is a different array each time. `data-same`
+ * installs as the `__bq_click` expando is a different array each time. `data-same`
  * is that comparison, rendered: it reads the prop twice and says whether the two
  * reads agreed.
  */

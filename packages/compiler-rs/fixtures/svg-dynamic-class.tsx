@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const active = signal(false)
+export const [active, setActive] = createSignal(false)
 
 /**
  * O5: `element.className` is a get-only SVGAnimatedString on an SVGElement, so
@@ -24,4 +24,4 @@ export default function SvgDynamicClass() {
   )
 }
 
-export const steps = [() => active.set(true), () => active.set(false)]
+export const steps = [() => setActive(true), () => setActive(false)]

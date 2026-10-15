@@ -298,14 +298,6 @@ export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
   // strips `<html>`, `<head>` and `<body>` out of a `<template>`, so the whole
   // document frame can only be emitted as `element()` and every one of those
   // positions used to build cold.
-  "control-flow-await-suspense": {
-    kinds: [],
-    recovered: false,
-    reuse: 60,
-    shape: null,
-    why: "the STRUCTURE mismatch is gone: an unsettled `<!--[f:-->` range now hands its claim to the boundary's own fallback build (`takeUnsettledClaim`), so the walk no longer runs off the end of markup it declined to claim. What is left is a NESTED case and not a mismatch — the outer boundary owns the range, a boundary inside it absorbs the pendingness, so the outer renders content and its held claim is evicted rather than used. 60% is the server's fallback subtree being rebuilt by the inner boundary, which is the arm that actually shows",
-  },
-
   // ── a boundary that parks, and a boundary that recovers ────────────────
   "flow-prop-eta-boundary": {
     kinds: [],

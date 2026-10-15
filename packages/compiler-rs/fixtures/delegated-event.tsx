@@ -1,16 +1,16 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const count = signal(0)
+export const [count, setCount] = createSignal(0)
 
 export default function DelegatedEvent() {
   return (
-    <button type="button" onClick={() => count.update((n) => n + 1)}>
+    <button type="button" onClick={() => setCount((n) => n + 1)}>
       clicked {() => count()}
     </button>
   )
 }
 
-export const steps = [() => count.set(1)]
+export const steps = [() => setCount(1)]
 
 export const events = [
   (root: HTMLElement) => root.querySelector("button")?.click(),
@@ -20,6 +20,6 @@ export const events = [
 export const optimality = {
   target: 7,
   milestone: 3,
-  emits: ["$$click", "delegateEvents("],
+  emits: ["__bq_click", "delegateEvents("],
   absent: ["addEventListener"],
 }

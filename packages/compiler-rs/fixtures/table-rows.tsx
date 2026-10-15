@@ -1,10 +1,10 @@
-import { For, signal } from "@barqjs/core"
+import { For, createSignal } from "@barqjs/core"
 
-export const rows = signal([
+export const [rows, setRows] = createSignal([
   { id: 1, label: "alpha" },
   { id: 2, label: "beta" },
 ])
-export const selected = signal(0)
+export const [selected, setSelected] = createSignal(0)
 
 /**
  * The canonical list shape: a row callback that returns a bare `<tr>`.
@@ -43,10 +43,10 @@ export default function TableRows() {
 }
 
 export const steps = [
-  () => rows.update((v) => [...v, { id: 3, label: "gamma" }]),
-  () => selected.set(3),
-  () => rows.update((v) => v.slice(1)),
-  () => rows.set([]),
+  () => setRows((v) => [...v, { id: 3, label: "gamma" }]),
+  () => setSelected(3),
+  () => setRows((v) => v.slice(1)),
+  () => setRows([]),
 ]
 
 export const optimality = {

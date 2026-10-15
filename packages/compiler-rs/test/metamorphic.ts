@@ -263,8 +263,8 @@ function mm1(session: Session, report: MetamorphicReport): void {
  * Whether re-applying a step is the same INPUT again, decided from the step's
  * own source text rather than from what the run did.
  *
- * A step that reads the signal it writes — `count.set(count() + 1)`,
- * `rows.set([...rows(), row])`, `rows.set((prev) => …)` — is an increment, and
+ * A step that reads the signal it writes — `setCount(count() + 1)`,
+ * `setRows([...rows(), row])`, `setRows((prev) => …)` — is an increment, and
  * applying it twice is two different inputs. A step that writes a value it did
  * not derive from the current one is idempotent by construction.
  *
@@ -275,10 +275,13 @@ function mm1(session: Session, report: MetamorphicReport): void {
  * so a defect that changes those frames turns the check off.
  */
 export function replayableStep(source: string): boolean {
-  const written = [...source.matchAll(/([A-Za-z_$][\w$]*)\s*\.\s*set\s*\(/g)].map((m) => m[1]);
+  // A setter is named for the signal it writes: `setCount` writes `count`.
+  const written = [...source.matchAll(/\bset([A-Z][\w$]*)\s*\(/g)].map(
+    (m) => m[1]![0]!.toLowerCase() + m[1]!.slice(1),
+  );
   if (written.length === 0) return false;
   // A functional update reads the previous value by definition.
-  if (/\.\s*set\s*\(\s*(?:\([^)]*\)|[\w$]+)\s*=>/.test(source)) return false;
+  if (/\bset[A-Z][\w$]*\s*\(\s*(?:\([^)]*\)|[\w$]+)\s*=>/.test(source)) return false;
   for (const name of written) {
     if (new RegExp(`\\b${name}\\s*\\(`).test(source)) return false;
   }
@@ -290,17 +293,17 @@ const PRIMITIVE = /^\s*(?:true|false|null|undefined|-?\d+(?:\.\d+)?|"[^"\\]*"|'[
 /**
  * A replayable step every one of whose writes is a PRIMITIVE LITERAL.
  *
- * `visible.set(false)` written twice writes the same value both times, and a
+ * `setVisible(false)` written twice writes the same value both times, and a
  * signal is equality-gated, so the second write cannot propagate at all — which
  * makes "every node survives the replay" a statement about the runtime rather
- * than about the fixture's data. `rows.set([{…}])` is replayable in the DOM
+ * than about the fixture's data. `setRows([{…}])` is replayable in the DOM
  * sense and NOT here: the literal builds a fresh object each time, so a by-item
  * keyed list correctly rebuilds and demanding identity would be demanding that
  * keying strategy not exist.
  */
 export function primitiveReplayStep(source: string): boolean {
   if (!replayableStep(source)) return false;
-  const args = [...source.matchAll(/\.\s*set\s*\(([^()]*)\)/g)].map((m) => m[1]);
+  const args = [...source.matchAll(/\bset[A-Z][\w$]*\s*\(([^()]*)\)/g)].map((m) => m[1]);
   if (args.length === 0) return false;
   return args.every((arg) => PRIMITIVE.test(arg));
 }

@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const text = signal("hi")
+export const [text, setText] = createSignal("hi")
 
 /**
  * The `bind:` CHANNEL. The property a user edit lands on and
@@ -16,13 +16,13 @@ export const text = signal("hi")
 export default function BindValueChannel() {
   return (
     <label>
-      <input type="text" bind:value={text} />
+      <input type="text" bind:value={[text, setText]} />
       <b>{() => text()}</b>
     </label>
   )
 }
 
-export const steps = [() => text.set("edited")]
+export const steps = [() => setText("edited")]
 
 export const events = [
   (root: HTMLElement) => {

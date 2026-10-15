@@ -21,31 +21,31 @@
  *
  * B7.
  */
-import { render, signal } from "@barqjs/core"
+import { flush, render, createSignal, untrack } from "@barqjs/core"
 import type { Block } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 
 export const rules = ["B7"]
 
-const text = signal("hello world")
-const area = signal("first line")
-const choice = signal("b")
-const ticked = signal(false)
-const group = signal("y")
-const rich = signal("editable text")
+const [text, setText] = createSignal("hello world")
+const [area, setArea] = createSignal("first line")
+const [choice, setChoice] = createSignal("b")
+const [ticked, setTicked] = createSignal(false)
+const [group, setGroup] = createSignal("y")
+const [rich, setRich] = createSignal("editable text")
 
 function Field() {
-  return <input type="text" class="field" bind:value={text} />
+  return <input type="text" class="field" bind:value={[text, setText]} />
 }
 
 function Area() {
-  return <textarea class="area" bind:value={area} />
+  return <textarea class="area" bind:value={[area, setArea]} />
 }
 
 function Picker() {
   return (
-    <select class="picker" bind:value={choice}>
+    <select class="picker" bind:value={[choice, setChoice]}>
       <option value="a">a</option>
       <option value="b">b</option>
       <option value="c">c</option>
@@ -54,20 +54,20 @@ function Picker() {
 }
 
 function Box() {
-  return <input type="checkbox" class="box" bind:value={ticked} />
+  return <input type="checkbox" class="box" bind:value={[ticked, setTicked]} />
 }
 
 function Radios() {
   return (
     <form>
-      <input type="radio" class="rx" name="g" value="x" bind:group={group} />
-      <input type="radio" class="ry" name="g" value="y" bind:group={group} />
+      <input type="radio" class="rx" name="g" value="x" bind:group={[group, setGroup]} />
+      <input type="radio" class="ry" name="g" value="y" bind:group={[group, setGroup]} />
     </form>
   )
 }
 
 function Rich() {
-  return <div class="rich" contenteditable="true" bind:value={rich} />
+  return <div class="rich" contenteditable="true" bind:value={[rich, setRich]} />
 }
 
 async function mount(kit: Kit, build: Block<unknown>) {
@@ -107,7 +107,7 @@ export const claims: Claim[] = [
     rule: "B7",
     says: "the caret and the selection range survive a write that arrives from elsewhere while the user is inside the field",
     async check(kit) {
-      text.set("hello world")
+      setText("hello world")
       const host = await mount(kit, Field as never)
       const field = find<TextControl>(kit, host, "input.field")
 
@@ -121,7 +121,7 @@ export const claims: Claim[] = [
       )
 
       // From elsewhere, mid-typing, and long enough that no clamp is involved.
-      text.set("hello there world")
+      setText("hello there world")
       await kit.settle()
 
       if (field.value !== "hello there world") {
@@ -148,12 +148,12 @@ export const claims: Claim[] = [
     rule: "B7",
     says: "a restore is clamped to the text that is now there, so a write that shortens the value puts the caret at the end instead of throwing or landing past it",
     async check(kit) {
-      text.set("hello world")
+      setText("hello world")
       const host = await mount(kit, Field as never)
       const field = find<TextControl>(kit, host, "input.field")
       field.focus()
       field.setSelectionRange(6, 11)
-      text.set("hi")
+      setText("hi")
       await kit.settle()
       if (field.value !== "hi") kit.fail(`the write never landed: ${JSON.stringify(field.value)}`)
       if (field.selectionStart !== 2 || field.selectionEnd !== 2) {
@@ -166,13 +166,13 @@ export const claims: Claim[] = [
     rule: "B7",
     says: "a textarea's caret survives an external write exactly as an input's does",
     async check(kit) {
-      area.set("first line")
+      setArea("first line")
       const host = await mount(kit, Area as never)
       const box = find<TextControl>(kit, host, "textarea.area")
       box.focus()
       typeInto(box, "first lines", 5)
       box.setSelectionRange(3, 5)
-      area.set("second line here")
+      setArea("second line here")
       await kit.settle()
       if (box.value !== "second line here") {
         kit.fail(`the write never landed: ${JSON.stringify(box.value)}`)
@@ -187,7 +187,7 @@ export const claims: Claim[] = [
     rule: "B7",
     says: "a select has no caret, so what must survive is the focus — the next keystroke has to still reach it",
     async check(kit) {
-      choice.set("b")
+      setChoice("b")
       const host = await mount(kit, Picker as never)
       const picker = find<HTMLSelectElement>(kit, host, "select.picker")
       kit.precondition(picker.value === "b", `the select started at ${picker.value}`)
@@ -196,7 +196,7 @@ export const claims: Claim[] = [
         host.ownerDocument.activeElement === picker,
         "the select never took focus, so there is nothing to preserve",
       )
-      choice.set("c")
+      setChoice("c")
       await kit.settle()
       if (picker.value !== "c") kit.fail(`the write never landed: the select reads ${picker.value}`)
       if (host.ownerDocument.activeElement !== picker) {
@@ -205,7 +205,8 @@ export const claims: Claim[] = [
       // And the other direction, through the event it reports on.
       picker.value = "a"
       picker.dispatchEvent(new Event("change", { bubbles: true }))
-      if (choice.peek() !== "a") kit.fail(`the change never reached the signal: ${choice.peek()}`)
+      flush()
+      if (untrack(choice) !== "a") kit.fail(`the change never reached the signal: ${untrack(choice)}`)
     },
   },
   {
@@ -213,12 +214,12 @@ export const claims: Claim[] = [
     rule: "B7",
     says: "the same for a checkbox, whose write is a boolean and whose focus is just as losable",
     async check(kit) {
-      ticked.set(false)
+      setTicked(false)
       const host = await mount(kit, Box as never)
       const box = find<HTMLInputElement>(kit, host, "input.box")
       box.focus()
       kit.precondition(host.ownerDocument.activeElement === box, "the checkbox never took focus")
-      ticked.set(true)
+      setTicked(true)
       await kit.settle()
       if (box.checked !== true) kit.fail("the write never landed")
       if (host.ownerDocument.activeElement !== box) kit.fail("the checkbox lost focus to the write")
@@ -229,7 +230,7 @@ export const claims: Claim[] = [
     rule: "B7",
     says: "`bind:group` writes `checked` from the member's own value and reports the value of whichever member the user turned ON — and the focused member keeps the focus across a write",
     async check(kit) {
-      group.set("y")
+      setGroup("y")
       const host = await mount(kit, Radios as never)
       const x = find<HTMLInputElement>(kit, host, "input.rx")
       const y = find<HTMLInputElement>(kit, host, "input.ry")
@@ -242,9 +243,10 @@ export const claims: Claim[] = [
       x.checked = true
       y.checked = false
       x.dispatchEvent(new Event("change", { bubbles: true }))
-      if (group.peek() !== "x") kit.fail(`the group signal reads ${JSON.stringify(group.peek())}`)
+      flush()
+      if (untrack(group) !== "x") kit.fail(`the group signal reads ${JSON.stringify(untrack(group))}`)
 
-      group.set("y")
+      setGroup("y")
       await kit.settle()
       if (y.checked !== true || x.checked !== false) {
         kit.fail(`an external write did not move the group: x=${x.checked} y=${y.checked}`)
@@ -257,7 +259,7 @@ export const claims: Claim[] = [
     rule: "B7",
     says: "a contenteditable has no `value` and no selectionStart, so its caret is saved as a TEXT OFFSET and survives the replacement of the very text node it was in",
     async check(kit) {
-      rich.set("editable text")
+      setRich("editable text")
       const host = await mount(kit, Rich as never)
       const editor = find<HTMLElement>(kit, host, "div.rich")
       if (editor.textContent !== "editable text") {
@@ -285,7 +287,7 @@ export const claims: Claim[] = [
         `the selection did not take: ${seeded.startOffset}..${seeded.endOffset}`,
       )
 
-      rich.set("editable words here")
+      setRich("editable words here")
       await kit.settle()
 
       if (editor.textContent !== "editable words here") {
@@ -311,7 +313,7 @@ export const claims: Claim[] = [
     rule: "B7",
     says: "the preservation is not doing the compare's job: when the value is already what the signal holds, nothing is written and the caret is untouched — without this claim a channel that saved and restored on EVERY run would pass all of the above",
     async check(kit) {
-      text.set("hello world")
+      setText("hello world")
       const host = await mount(kit, Field as never)
       const field = find<TextControl>(kit, host, "input.field")
       field.focus()

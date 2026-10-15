@@ -1,4 +1,4 @@
-import { store } from "@barqjs/core"
+import { createStore } from "@barqjs/core"
 
 /**
  * `store` returns `[proxy, setter]` and ANY member read on the proxy is a
@@ -6,7 +6,7 @@ import { store } from "@barqjs/core"
  * says so, and a nested read (`state.user.name`) has to stay reactive to the
  * depth it was written at.
  */
-const [state, setState] = store({ user: { name: "John" }, count: 0 })
+const [state, setState] = createStore({ user: { name: "John" }, count: 0 })
 
 export default function StoreMember() {
   return (
@@ -18,9 +18,18 @@ export default function StoreMember() {
 }
 
 export const steps = [
-  () => setState("user", "name", "Jane"),
-  () => setState("count", 3),
-  () => setState({ count: 7 }),
+  () =>
+    setState((state) => {
+      state.user.name = "Jane"
+    }),
+  () =>
+    setState((state) => {
+      state.count = 3
+    }),
+  () =>
+    setState((state) => {
+      state.count = 7
+    }),
 ]
 
 export const optimality = {

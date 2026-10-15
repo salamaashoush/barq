@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const active = signal(false)
+export const [active, setActive] = createSignal(false)
 
 /**
  * Attribute values that are not strings: a number literal, a boolean-shaped
@@ -19,7 +19,7 @@ export default function NumericAndBooleanAttrs() {
   )
 }
 
-export const steps = [() => active.set(true), () => active.set(false)]
+export const steps = [() => setActive(true), () => setActive(false)]
 export const optimality = {
   target: 3,
   milestone: 5,

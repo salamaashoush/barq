@@ -26,6 +26,7 @@ use oxc::ast::ast::{
     TemplateLiteral,
 };
 use oxc::span::{GetSpan, Span};
+use oxc::syntax::number::NumberBase;
 
 use crate::codegen::backend::{At, Backend, lower};
 use crate::codegen::{Emit, Helper};
@@ -312,6 +313,15 @@ fn open_tag<'a>(
     for (index, attr) in element.attrs.iter().enumerate() {
         items.push((attr.order, Item::Baked(index)));
     }
+    // A spread names nothing, so its position is found by count: the nth spread
+    // patch on this element is the nth spread the author wrote on it.
+    let mut spreads = unit
+        .attr_order
+        .iter()
+        .filter(|(owner, key, _)| *owner == node && ctx.module.interner.name(*key).text == "...")
+        .map(|(_, _, order)| *order)
+        .collect::<Vec<_>>()
+        .into_iter();
     for index in 0..unit.patch.len() {
         if unit.patch[index].target != node || Some(index) == content {
             continue;
@@ -321,8 +331,12 @@ fn open_tag<'a>(
             Slot::Named(name) => {
                 items.push((attribute_order(unit, node, name), Item::Patch(index)))
             }
-            // Writes attributes but names none of them, so it goes last — a
-            // spread's own keys carry the order inside it.
+            // Where the author wrote it too. Sent to the end, a spread took
+            // back every attribute written after it, on the server only: the
+            // DOM backend keeps those, so the two halves disagreed.
+            Slot::Unnamed if matches!(unit.patch[index].op, Op::Spread { .. }) => {
+                items.push((spreads.next().unwrap_or(u32::MAX), Item::Patch(index)))
+            }
             Slot::Unnamed => items.push((u32::MAX, Item::Patch(index))),
             Slot::Elsewhere => {}
         }
@@ -733,16 +747,33 @@ impl<'a> Backend<'a> for Ssr<'a, '_, '_, '_, '_> {
     }
 
     /// The `bind:` channel is a listener plus a property write, and a server
-    /// render has neither. The INITIAL value does reach the wire — as the
-    /// property's own attribute — and that is M6's hydration work, not this
-    /// milestone's; emitting half of it now would put a value on the wire the
-    /// client has no claim rule for yet.
-    /// The READ half. `attr` decides whether the property has a content
-    /// attribute at all — `value` does on `<input>` and does not on a
-    /// `<textarea>`, whose value is its child text — so the element-dependent
-    /// part stays in one place and this says only which name is written.
+    /// render has neither. The INITIAL value does reach the wire, as the
+    /// property's own attribute.
+    ///
+    /// A bound value is a signal, which is the pair `[read, write]`, so the
+    /// READ half is what is written: element `0`. `attr` decides whether the
+    /// property has a content attribute at all — `value` does on `<input>` and
+    /// does not on a `<textarea>`, whose value is its child text — so the
+    /// element-dependent part stays in one place and this says only which name
+    /// is written and what reads it.
     fn bind(&mut self, at: At<'_>, prop: NameId, _event: NameId, value: ExprId) {
-        self.named(at, prop, value);
+        let span = at.span();
+        let key = self.ctx.module.interner.name(prop).text;
+        let tag = self.open_tag();
+        let pair = take(self.ctx, self.unit, value, span);
+        let zero =
+            Expression::new_numeric_literal(span, 0.0, None, NumberBase::Decimal, &self.ctx.ast);
+        let read =
+            Expression::new_computed_member_expression(span, pair, zero, false, &self.ctx.ast);
+        let name = self.ctx.string(key, span);
+        let tag = self.ctx.string(tag, span);
+        let callee = self.ctx.helper(Helper::Attr, span);
+        let call = self.ctx.call(
+            callee,
+            vec![Argument::from(name), Argument::from(read), Argument::from(tag)],
+            span,
+        );
+        self.chunks.hole(call);
     }
 
     fn effect_group(&mut self, _at: At<'_>, _len: u16) {}
@@ -800,7 +831,12 @@ fn fold_style(value: &Expression<'_>) -> Option<String> {
             _ => return None,
         };
         kebab.clear();
+        let custom = prop.starts_with("--");
         for (index, byte) in prop.bytes().enumerate() {
+            if custom {
+                kebab.push(byte as char);
+                continue;
+            }
             if byte.is_ascii_uppercase()
                 && index > 0
                 && prop.as_bytes()[index - 1].is_ascii_lowercase()
@@ -818,7 +854,7 @@ fn fold_style(value: &Expression<'_>) -> Option<String> {
             Expression::StringLiteral(literal) => literal.value.to_string(),
             Expression::NumericLiteral(literal) => {
                 let raw = literal.raw_str();
-                if literal.value == 0.0 || crate::tables::css_number_prop(&kebab) {
+                if literal.value == 0.0 || custom || crate::tables::css_number_prop(&kebab) {
                     raw.to_string()
                 } else {
                     format!("{raw}px")
@@ -1606,12 +1642,12 @@ mod tests {
              export const V = () => <div><Switch {...p}><Match when={o}>a</Match></Switch></div>;\n")
         .code;
         assert!(switched.contains("_$ssrSwitch("), "{switched}");
-        assert!(switched.contains("Match(_s$, {"), "{switched}");
+        assert!(switched.contains("Match({"), "{switched}");
 
         // By SymbolId and never by name.
         let local =
             ssr("const Show = (p) => p.when;\nexport const V = () => <Show when={1} />;\n").code;
-        assert!(local.contains("_$esc(Show(_s$, {"), "{local}");
+        assert!(local.contains("_$esc(Show({"), "{local}");
         assert!(!local.contains("_$ssrShow"), "{local}");
     }
 
@@ -1693,9 +1729,9 @@ mod tests {
         let code = ssr("import { Show } from \"@barqjs/core\";\n\
              export const V = () => <div><Show when={on}><p class=\"y\">yes</p></Show></div>;\n")
         .code;
-        // C6: the body is a BLOCK taking a scope, and its unit is spliced into
-        // the arrow rather than built as an argument.
-        assert!(code.contains("_$block((_s$) => _$html(`<p class=\"y\">yes</p>`))"), "{code}");
+        // C6: the body is a BLOCK, and its unit is spliced into the arrow rather
+        // than built as an argument.
+        assert!(code.contains("_$block(() => _$html(`<p class=\"y\">yes</p>`))"), "{code}");
         assert!(code.contains("_$html(`<div>${_$branch("), "{code}");
     }
 
@@ -1833,11 +1869,11 @@ mod tests {
         assert!(core_import(&kept).contains("Dynamic"), "{kept}");
 
         // And a binding the backend never rewrote is untouched.
-        let other = ssr("import { Dynamic, signal } from \"@barqjs/core\";\n\
-             export const n = signal(0);\n\
+        let other = ssr("import { Dynamic, createSignal } from \"@barqjs/core\";\n\
+             export const [n] = createSignal(0);\n\
              export const V = () => <div><Dynamic {...p}/></div>;\n")
         .code;
-        assert!(core_import(&other).contains("signal"), "{other}");
+        assert!(core_import(&other).contains("createSignal"), "{other}");
         assert!(!core_import(&other).contains("Dynamic"), "{other}");
     }
 

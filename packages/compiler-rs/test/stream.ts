@@ -120,9 +120,9 @@ export async function assemble(mod: FixtureModule, container: HTMLElement): Prom
 export const STREAM_SOURCES: Readonly<Record<string, string>> = Object.freeze({
   /** One boundary, settling after the shell. The basic swap. */
   "stream-one-boundary": `
-import { Loading, resource } from "@barqjs/core"
+import { Loading, createMemo } from "@barqjs/core"
 export default function StreamOneBoundary() {
-  const late = resource(() => null, () => new Promise((r) => setTimeout(() => r("LATE"), 0)))
+  const late = createMemo(() => new Promise((r) => setTimeout(() => r("LATE"), 0)))
   return (
     <div>
       <p>before</p>
@@ -137,10 +137,10 @@ export default function StreamOneBoundary() {
 
   /** Two SIBLING boundaries whose promises settle in the opposite order. */
   "stream-two-boundaries": `
-import { Loading, resource } from "@barqjs/core"
+import { Loading, createMemo } from "@barqjs/core"
 export default function StreamTwoBoundaries() {
-  const slow = resource(() => null, () => new Promise((r) => setTimeout(() => r("SLOW"), 12)))
-  const fast = resource(() => null, () => new Promise((r) => setTimeout(() => r("FAST"), 0)))
+  const slow = createMemo(() => new Promise((r) => setTimeout(() => r("SLOW"), 12)))
+  const fast = createMemo(() => new Promise((r) => setTimeout(() => r("FAST"), 0)))
   return (
     <div>
       <Loading fallback={<span class="s1">skel-one</span>}>
@@ -163,9 +163,9 @@ export default function StreamTwoBoundaries() {
    * (`ReactDOMFizzInstructionSetShared.js`); barq spells it `<!--[b:N-->`.
    */
   "stream-dehydrated-boundary": `
-import { Loading, resource } from "@barqjs/core"
+import { Loading, createMemo } from "@barqjs/core"
 export default function StreamDehydratedBoundary() {
-  const never = resource(() => null, () => new Promise(() => {}))
+  const never = createMemo(() => new Promise(() => {}))
   return (
     <div>
       <p class="before">before</p>
@@ -180,10 +180,10 @@ export default function StreamDehydratedBoundary() {
 
   /** A boundary INSIDE a boundary, the inner one settling last. */
   "stream-nested-boundaries": `
-import { Loading, resource } from "@barqjs/core"
+import { Loading, createMemo } from "@barqjs/core"
 export default function StreamNestedBoundaries() {
-  const outer = resource(() => null, () => new Promise((r) => setTimeout(() => r("OUTER"), 0)))
-  const inner = resource(() => null, () => new Promise((r) => setTimeout(() => r("INNER"), 10)))
+  const outer = createMemo(() => new Promise((r) => setTimeout(() => r("OUTER"), 0)))
+  const inner = createMemo(() => new Promise((r) => setTimeout(() => r("INNER"), 10)))
   return (
     <div>
       <Loading fallback={<span class="o">skel-outer</span>}>

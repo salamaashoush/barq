@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const value = signal("v1")
+export const [value, setValue] = createSignal("v1")
 
 export default function CustomElements() {
   return (
@@ -12,7 +12,7 @@ export default function CustomElements() {
   )
 }
 
-export const steps = [() => value.set("v2")]
+export const steps = [() => setValue("v2")]
 export const optimality = {
   target: 2,
   milestone: 5,

@@ -147,17 +147,20 @@ export async function renderSsr(mod: FixtureModule): Promise<SsrRender> {
   // bundler's hands. It is the same module every compiled SSR module imports
   // its helpers from.
   const server = await import("@barqjs/server");
-  // C1: a compiled module root takes its scope first, and `null` is the value
-  // the compiler itself emits for one. `undefined` is what a MISSING argument
-  // looks like, and `requireScope` throws on it precisely so a mistimed
-  // construction cannot fall back to CURRENT.
-  const value: unknown = (mod.default as unknown as (s: unknown) => unknown)(null);
+  // Built INSIDE the render, which is what opens the root: a page built before
+  // it is owned by nothing, and everything a boundary makes afterwards has no
+  // scope to be filed under.
+  let value: unknown;
+  const html = server.renderToString(() => {
+    value = (mod.default as unknown as () => unknown)();
+    return value as never;
+  });
   // A compiled SSR module returns branded markup, not a bare string — the brand
   // is what keeps user data (escaped) apart from compiler output (not), so
   // `typeof value === "string"` would classify every module as a fallback and
   // quietly turn "the string backend does no DOM work" into a claim about
   // nothing. `renderToString` accepts both shapes.
-  return { html: server.renderToString(() => value as never), string: isSsrHtml(value) };
+  return { html, string: isSsrHtml(value) };
 }
 
 /**

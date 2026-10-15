@@ -1,6 +1,6 @@
-import { NoHydration, signal } from "@barqjs/core"
+import { NoHydration, createSignal } from "@barqjs/core"
 
-export const clicks = signal(0)
+export const [clicks, setClicks] = createSignal(0)
 
 /**
  * `<NoHydration>` — an ISLAND. The server renders the subtree and the client
@@ -22,7 +22,7 @@ export default function NoHydrationIsland() {
       <NoHydration>
         <p class="static">never hydrated</p>
       </NoHydration>
-      <button class="live" onClick={() => clicks.set(clicks() + 1)}>
+      <button class="live" onClick={() => setClicks(clicks() + 1)}>
         {() => String(clicks())}
       </button>
     </div>

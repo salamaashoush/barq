@@ -1,7 +1,7 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const count = signal("1")
-export const label = signal("c1")
+export const [count, setCount] = createSignal("1")
+export const [label, setLabel] = createSignal("c1")
 
 /**
  * η-reduction's negative half, on the plainest shape there is.
@@ -32,7 +32,7 @@ export default function LiveCallHole() {
   )
 }
 
-export const steps = [() => count.set("5"), () => label.set("c2")]
+export const steps = [() => setCount("5"), () => setLabel("c2")]
 
 export const optimality = {
   target: 1,

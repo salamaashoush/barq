@@ -1,6 +1,6 @@
-import { For, signal } from "@barqjs/core"
+import { For, createSignal } from "@barqjs/core"
 
-export const rows = signal(["alpha", "beta"])
+export const [rows, setRows] = createSignal(["alpha", "beta"])
 
 const opts = { each: () => ["stale"], keyed: false as const }
 
@@ -34,9 +34,9 @@ export default function ControlFlowSpreadPrecedence() {
 }
 
 export const steps = [
-  () => rows.set(["ALPHA", "BETA"]),
-  () => rows.set(["ALPHA", "BETA", "gamma"]),
-  () => rows.set(["only"]),
+  () => setRows(["ALPHA", "BETA"]),
+  () => setRows(["ALPHA", "BETA", "gamma"]),
+  () => setRows(["only"]),
 ]
 
 export const optimality = {

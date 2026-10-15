@@ -11,12 +11,12 @@
  * growth and a pure shrink rather than a swap: the class then says exactly one
  * thing about every element in the frame.
  */
-import { Show, signal } from "@barqjs/core"
+import { Show, createSignal } from "@barqjs/core"
 
 export const log: string[] = []
 
-export const outer = signal(true)
-export const inner = signal(false)
+export const [outer] = createSignal(true)
+export const [inner, setInner] = createSignal(false)
 
 export default function NestedBranch() {
   return (
@@ -40,7 +40,7 @@ export default function NestedBranch() {
   )
 }
 
-export const steps = [() => inner.set(true), () => inner.set(false)]
+export const steps = [() => setInner(true), () => setInner(false)]
 
 export const metamorphic = {
   why: "the inner key moves and the outer one does not, so only the inner arm's node changes",

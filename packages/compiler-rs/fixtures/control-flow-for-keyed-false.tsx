@@ -1,6 +1,6 @@
-import { For, signal } from "@barqjs/core"
+import { For, createSignal } from "@barqjs/core"
 
-export const rows = signal(["alpha", "beta"])
+export const [rows, setRows] = createSignal(["alpha", "beta"])
 
 /**
  * `keyed={false}` — the positional mode, and since M7b its ONLY spelling.
@@ -26,9 +26,9 @@ export default function ControlFlowForKeyedFalse() {
 export const steps = [
   // The slots stay put and their contents change, which is the whole of what a
   // positional row is for.
-  () => rows.set(["ALPHA", "BETA"]),
-  () => rows.set(["ALPHA", "BETA", "gamma"]),
-  () => rows.set(["only"]),
+  () => setRows(["ALPHA", "BETA"]),
+  () => setRows(["ALPHA", "BETA", "gamma"]),
+  () => setRows(["only"]),
 ]
 
 export const optimality = {

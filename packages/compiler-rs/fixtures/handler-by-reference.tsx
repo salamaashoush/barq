@@ -1,8 +1,8 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const n = signal(0)
+export const [n, setN] = createSignal(0)
 
-const bump = () => n.update((v) => v + 1)
+const bump = () => setN((v) => v + 1)
 
 /**
  * The commonest handler shape in real code, and the one target #7 used to miss:
@@ -15,7 +15,7 @@ const bump = () => n.update((v) => v + 1)
  * the reference is emitted where it stands.
  */
 export default function HandlerByReference() {
-  const reset = () => n.set(0)
+  const reset = () => setN(0)
   return (
     <div>
       <button type="button" onClick={bump}>
@@ -38,6 +38,6 @@ export const optimality = {
   target: 7,
   milestone: 3,
   templates: 1,
-  emits: ["$$click = bump", "$$click = reset"],
+  emits: ["__bq_click = bump", "__bq_click = reset"],
   absent: ["addEventListener", '"onClick"'],
 }

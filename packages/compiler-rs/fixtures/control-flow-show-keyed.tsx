@@ -1,6 +1,6 @@
-import { Show, signal } from "@barqjs/core"
+import { Show, createSignal } from "@barqjs/core"
 
-export const value = signal<{ name: string } | null>({ name: "alpha" })
+export const [value, setValue] = createSignal<{ name: string } | null>({ name: "alpha" })
 
 /**
  * `<Show keyed>` — the arm that OPTS IN to rebuilding on a value change, and
@@ -32,9 +32,9 @@ export default function ControlFlowShowKeyed() {
 
 export const steps = [
   // A NEW object, same truthiness. Keyed rebuilds; the default would not.
-  () => value.set({ name: "beta" }),
-  () => value.set(null),
-  () => value.set({ name: "gamma" }),
+  () => setValue({ name: "beta" }),
+  () => setValue(null),
+  () => setValue({ name: "gamma" }),
 ]
 
 export const optimality = {

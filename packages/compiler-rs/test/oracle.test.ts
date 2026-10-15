@@ -463,7 +463,7 @@ describe("node-identity self-check", () => {
     const unwrapThunk = (code: string): string => {
       const out = code.replace(
         /([\w$]*block)\(\(\) => (_tmpl\$\d+)\(\)\)/g,
-        "$1(() => ($2.$$n ??= $2()))",
+        "$1(() => ($2.__bq_n ??= $2()))",
       );
       if (out === code) {
         throw new Error("self-check corruption is stale: no `_$block(() => _tmpl$N())` to memoise");
@@ -751,12 +751,15 @@ describe("harness self-check", () => {
   });
 
   it("detects a dropped reactive binding only after a scripted update (step-dom)", async () => {
-    // `.peek()` is the runtime's own escape hatch: a read that is deliberately
-    // not tracked, so the hole can never update. `{count()}` used to serve here
-    // and no longer does — O4 auto-thunking makes the compiler keep THAT one
-    // live, which is a fix, not a corruption.
+    // `untrack` is the escape hatch: a read that is deliberately not tracked,
+    // so the hole can never update. `{count()}` used to serve here and no
+    // longer does — O4 auto-thunking makes the compiler keep THAT one live,
+    // which is a fix, not a corruption.
     const result = await compareToClean("text-hole-trailing", {
-      source: (src) => src.replace("{() => count()}", "{count.peek()}"),
+      source: (src) =>
+        src
+          .replace("{() => count()}", "{untrack(count)}")
+          .replace("import { createSignal }", "import { createSignal, untrack }"),
     });
     expect(result.ok).toBe(false);
     // The initial render is identical — this is precisely the corruption that a
@@ -804,7 +807,7 @@ describe("harness self-check", () => {
 
   it("detects a dropped delegated handler (event-dom)", async () => {
     const result = await compareToClean("delegated-event", {
-      source: drop("onClick={() => count.update((n) => n + 1)}"),
+      source: drop("onClick={() => setCount((n) => n + 1)}"),
     });
     expect(result.ok).toBe(false);
     expect(result.divergences.map((d) => d.kind)).toContain("event-dom");
@@ -816,7 +819,7 @@ describe("harness self-check", () => {
 
   it("detects a dropped non-delegated handler (event-dom)", async () => {
     const result = await compareToClean("non-delegated-event", {
-      source: drop("onMouseLeave={() => hovered.set(false)}"),
+      source: drop("onMouseLeave={() => setHovered(false)}"),
     });
     expect(result.ok).toBe(false);
     expect(result.divergences.map((d) => d.kind)).toContain("event-dom");

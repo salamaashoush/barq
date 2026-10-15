@@ -21,7 +21,7 @@
  * element, because `rebuilds` means no element of the previous frame survives
  * and a container that outlives every row would satisfy it trivially in reverse.
  */
-import { For, signal } from "@barqjs/core"
+import { For, createSignal } from "@barqjs/core"
 
 export const log: string[] = []
 
@@ -41,7 +41,7 @@ const REPLACED: Row[] = [
   { id: 2, text: "beta" },
 ]
 
-export const rows = signal<Row[]>([A, B, C])
+export const [rows, setRows] = createSignal<Row[]>([A, B, C])
 
 export default function IdentityDefaultMove() {
   return (
@@ -54,7 +54,7 @@ export default function IdentityDefaultMove() {
   )
 }
 
-export const steps = [() => rows.set(ROTATED), () => rows.set(REPLACED)]
+export const steps = [() => setRows(ROTATED), () => setRows(REPLACED)]
 
 export const metamorphic = {
   why: "the default keys on the item: the same objects reordered move, and fresh objects with the same fields are new rows",

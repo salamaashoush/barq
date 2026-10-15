@@ -10,8 +10,10 @@ import {
   type ShapeDivergence,
   type Template,
 } from "./browser-parse-check.ts";
+import { checkSelect, formatSelect, type SelectReport } from "./browser-select-check.ts";
 import { checkSvgClass, svgClassClaims, type SvgClassResult } from "./browser-svg-class-check.ts";
 import { checkDifferential, compareRuns, type DifferentialReport } from "./browser-differential.ts";
+import { checkMathml, type MathReport } from "./browser-mathml-check.ts";
 import { checkCaret, formatCaret, type CaretReport } from "./browser-caret-check.ts";
 import { listBrowserOnlyFixtures, listFixtures } from "./harness.ts";
 
@@ -42,6 +44,8 @@ let reordered: DifferentialReport;
 let truncated: DifferentialReport;
 let unanchored: DifferentialReport;
 let caret: CaretReport;
+let select: SelectReport;
+let mathml: MathReport;
 
 /** Reverse the attribute order every template bakes in, exactly as oracle.test.ts does. */
 function reverseBakedAttributes(code: string): string {
@@ -111,6 +115,8 @@ beforeAll(async () => {
     // B7, and the only channel in this repository that can type. See
     // browser-caret-check.ts for why a `dispatchEvent` cannot.
     caret = await checkCaret(page);
+    select = await checkSelect(page);
+    mathml = await checkMathml(page);
   });
 }, 600_000);
 
@@ -287,5 +293,32 @@ describe("real browser: the caret (B7)", () => {
       "the control runs a bindValue with neither the compare nor the restore; if THAT keeps the " +
         "caret then this whole check is measuring nothing",
     ).toBe("");
+  });
+});
+
+describe("real browser: a select whose options change", () => {
+  it("shows the value it was given once an option carries it", () => {
+    console.log(`select, against options that change:\n${formatSelect(select)}`);
+    expect(select.rows.length, "the select check has to drive something").toBeGreaterThanOrEqual(5);
+    expect(
+      select.rows
+        .filter((row) => !row.ok)
+        .map((row) => `${row.what}: shows ${row.shows}, wanted ${row.wanted}`),
+    ).toEqual([]);
+  });
+
+  it("and the check can see the loss: a bare property write shows another option", () => {
+    expect(
+      select.control.ok ? "" : `the naive channel shows ${select.control.shows}`,
+      "the control writes the property and keeps nothing; if THAT shows the value, the browser " +
+        "is not the one being measured",
+    ).toBe("");
+  });
+});
+
+describe("real browser: MathML built from its own template", () => {
+  it("a list row and a component's root inside <math> are MathML elements", () => {
+    const namespace = "http://www.w3.org/1998/Math/MathML";
+    expect(mathml.identifiers).toEqual(["x", "y", "w", "z"].map((name) => `${name}@${namespace}`));
   });
 });

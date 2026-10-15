@@ -18,14 +18,14 @@
  * O2 and X3.
  */
 import type { Block } from "@barqjs/core"
-import { context, effect, Errored, hasContext, getOwner, render, useContext } from "@barqjs/core"
+import { createContext, createTrackedEffect, Errored, hasContext, getOwner, render, useContext } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 import { formatThrown } from "../../test/semantics-support.ts"
 
 export const rules = ["O2", "X3"]
 
-const Locale = context<string>()
+const Locale = createContext<string>()
 
 let boundAtFallback: unknown = "not reached"
 
@@ -35,7 +35,7 @@ const RAISED =
   "the child under test never threw, so no boundary ever recovered and no fallback ever ran"
 
 function Late() {
-  effect(() => {
+  createTrackedEffect(() => {
     raised++
     throw new Error("late")
   })

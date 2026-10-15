@@ -79,6 +79,11 @@ function mulberry32(seed: number): () => number {
   };
 }
 
+/** The setter a generated signal is paired with: `n1` is written by `setN1`. */
+function setterOf(name: string): string {
+  return `set${name[0]!.toUpperCase()}${name.slice(1)}`;
+}
+
 export interface GeneratedProgram {
   seed: number;
   name: string;
@@ -263,16 +268,16 @@ class Gen {
       this.features.add("capturing handler");
       const name = this.number();
       const id = this.row === "positional" ? "item().id" : "item.id";
-      return `${target} onClick={() => ${name}.set(${id} + ${this.int(5)})}`;
+      return `${target} onClick={() => ${setterOf(name)}(${id} + ${this.int(5)})}`;
     }
     const name = this.number();
     this.readNumbers.add(name);
     if (this.chance(3)) {
       this.features.add("non-delegated handler");
-      return `${target} onMouseEnter={() => ${name}.update((v) => v + 1)}`;
+      return `${target} onMouseEnter={() => ${setterOf(name)}((v) => v + 1)}`;
     }
     this.features.add("capture-free delegated handler");
-    return `${target} onClick={() => ${name}.update((v) => v + 1)}`;
+    return `${target} onClick={() => ${setterOf(name)}((v) => v + 1)}`;
   }
 
   // -------------------------------------------------------------------------
@@ -439,36 +444,42 @@ class Gen {
 
     const signals: string[] = [];
     for (const signal of [...this.readNumbers].sort()) {
-      signals.push(`const ${signal} = signal(${Number(signal.slice(1)) + 1})`);
+      signals.push(
+        `const [${signal}, ${setterOf(signal)}] = createSignal(${Number(signal.slice(1)) + 1})`,
+      );
     }
     for (const signal of [...this.readStrings].sort()) {
-      signals.push(`const ${signal} = signal("${WORDS[Number(signal.slice(1)) % WORDS.length]}")`);
+      signals.push(
+        `const [${signal}, ${setterOf(signal)}] = createSignal("${WORDS[Number(signal.slice(1)) % WORDS.length]}")`,
+      );
     }
     for (const signal of [...this.readFlags].sort()) {
-      signals.push(`const ${signal} = signal(${Number(signal.slice(1)) % 2 === 0})`);
+      signals.push(
+        `const [${signal}, ${setterOf(signal)}] = createSignal(${Number(signal.slice(1)) % 2 === 0})`,
+      );
     }
     for (const signal of [...this.readRows].sort()) {
       signals.push(
-        `const ${signal} = signal([{ id: 1, name: "a" }, { id: 2, name: "b" }, { id: 3, name: "c" }])`,
+        `const [${signal}, ${setterOf(signal)}] = createSignal([{ id: 1, name: "a" }, { id: 2, name: "b" }, { id: 3, name: "c" }])`,
       );
     }
 
     const steps: string[] = [];
     for (const signal of [...this.readNumbers].sort()) {
-      steps.push(`() => ${signal}.update((v) => v + 7)`);
+      steps.push(`() => ${setterOf(signal)}((v) => v + 7)`);
     }
     for (const signal of [...this.readStrings].sort()) {
-      steps.push(`() => ${signal}.set("changed-${signal}")`);
+      steps.push(`() => ${setterOf(signal)}("changed-${signal}")`);
     }
     for (const signal of [...this.readFlags].sort()) {
-      steps.push(`() => ${signal}.update((v) => !v)`, `() => ${signal}.update((v) => !v)`);
+      steps.push(`() => ${setterOf(signal)}((v) => !v)`, `() => ${setterOf(signal)}((v) => !v)`);
     }
     for (const signal of [...this.readRows].sort()) {
       steps.push(
-        `() => ${signal}.update((v) => [...v, { id: v.length + 1, name: "z" }])`,
-        `() => ${signal}.update((v) => v.slice(1))`,
-        `() => ${signal}.set([])`,
-        `() => ${signal}.set([{ id: 9, name: "back" }])`,
+        `() => ${setterOf(signal)}((v) => [...v, { id: v.length + 1, name: "z" }])`,
+        `() => ${setterOf(signal)}((v) => v.slice(1))`,
+        `() => ${setterOf(signal)}([])`,
+        `() => ${setterOf(signal)}([{ id: 9, name: "back" }])`,
       );
     }
 
@@ -480,7 +491,7 @@ class Gen {
       );
     }
 
-    const imports = ["signal"];
+    const imports = ["createSignal"];
     if (this.features.has("Show")) imports.push("Show");
     if (this.features.has("For") || this.features.has("For keyed={false}")) imports.push("For");
     if (this.features.has("Switch/Match")) imports.push("Switch", "Match");

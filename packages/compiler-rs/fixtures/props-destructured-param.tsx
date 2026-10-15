@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const label = signal("first")
+export const [label, setLabel] = createSignal("first")
 
 /**
  * Props destructured in the PARAMETER LIST. The compiler lowers reactive props
@@ -26,7 +26,7 @@ export default function PropsDestructuredParam() {
   )
 }
 
-export const steps = [() => label.set("second")]
+export const steps = [() => setLabel("second")]
 
 export const optimality = {
   target: 1,

@@ -1,6 +1,6 @@
-import { Show, signal } from "@barqjs/core"
+import { Show, createSignal } from "@barqjs/core"
 
-export const on = signal(false)
+export const [on, setOn] = createSignal(false)
 
 /**
  * The BOUNDARY of target #8: a static body the author wrote as a thunk, which
@@ -31,7 +31,7 @@ export default function ControlFlowShowStaticBody() {
   )
 }
 
-export const steps = [() => on.set(true), () => on.set(false), () => on.set(true)]
+export const steps = [() => setOn(true), () => setOn(false), () => setOn(true)]
 
 export const optimality = {
   target: 8,

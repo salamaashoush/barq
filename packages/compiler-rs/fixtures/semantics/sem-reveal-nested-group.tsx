@@ -20,7 +20,7 @@
  *
  * A6.
  */
-import { Loading, Reveal, render, resource } from "@barqjs/core"
+import { Loading, Reveal, render, createMemo } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 
@@ -36,8 +36,7 @@ const answers = new Map<string, (value: string) => void>()
  */
 function Leaf(props: { name: string }) {
   const name = props.name()
-  const data = resource(
-    () => null,
+  const data = createMemo(
     () =>
       new Promise<string>((resolve) => {
         answers.set(name, resolve)

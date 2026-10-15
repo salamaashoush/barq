@@ -171,7 +171,7 @@ function ruleFor(tree: StaticTree, positions: readonly StaticPosition[]): string
 
 export interface OwnershipEvent {
   seq: number;
-  kind: "enter" | "exit" | "dispose" | "clone" | "own" | "block-enter" | "block-exit";
+  kind: "enter" | "dispose" | "clone" | "own" | "block-enter" | "block-exit";
   /** on `block-enter`, the scope the block was GIVEN */
   scope: number;
   parent: number;
@@ -309,7 +309,9 @@ export interface OwnershipRun {
 
 interface CoreLike {
   flush(): void;
-  scope<T>(fn: (dispose: () => void) => T, detached?: boolean, kind?: string): T;
+  childScope(parent: unknown, kind: string): object;
+  dispose(scope: object): void;
+  runWithOwner<T>(owner: unknown, fn: () => T): T;
   render(node: unknown, container: Element): () => void;
   clearDelegatedEvents(): void;
   beginOwnershipTrace(): void;
@@ -366,14 +368,11 @@ export async function trace(
     // runs under. `render` opens that scope, so the mount is handed over as a
     // BLOCK — `mod.default` itself, by identity — rather than called here,
     // which would construct the whole subtree before any scope existed.
-    core.scope(
-      (d: () => void) => {
-        dispose = d;
-        clear = core.render(mod.default as never, container);
-      },
-      true,
-      "root",
-    );
+    const outer = core.childScope(null, "root");
+    dispose = () => core.dispose(outer);
+    core.runWithOwner(outer, () => {
+      clear = core.render(mod.default as never, container);
+    });
     await settle(core);
     for (const step of mod.steps ?? []) {
       step();
@@ -573,64 +572,6 @@ export function checkTrace(
         detail: `the parent chain above scope ${scope.id} (${scope.kind}) does not reach a root`,
       });
     }
-  }
-
-  // O4.1: `enter` and `exit` are two halves of one primitive and the pairing is
-  // what restores `CURRENT`. `exit` events were recorded and never inspected,
-  // so making `exit` a complete no-op cost this channel nothing at all.
-  const opened: number[] = [];
-  const exited = new Set<number>();
-  for (const event of events) {
-    if (event.kind === "enter") {
-      opened.push(event.scope);
-      continue;
-    }
-    if (event.kind !== "exit") continue;
-    if (exited.has(event.scope)) {
-      findings.push({
-        id: "exited-twice",
-        rule: "O4.1",
-        kind: "exited-twice",
-        detail: `scope ${event.scope} raised a second exit at seq ${event.seq}`,
-      });
-      continue;
-    }
-    exited.add(event.scope);
-    const at = opened.lastIndexOf(event.scope);
-    if (at < 0) {
-      findings.push({
-        id: "exit-without-enter",
-        rule: "O4.1",
-        kind: "exit-without-enter",
-        detail: `scope ${event.scope} exited at seq ${event.seq} but no enter event declared it`,
-      });
-      continue;
-    }
-    if (at !== opened.length - 1) {
-      findings.push({
-        id: "exits-interleaved",
-        rule: "O4.1",
-        kind: "exits-interleaved",
-        detail:
-          `scope ${event.scope} exited at seq ${event.seq} while ` +
-          `${opened.slice(at + 1).join(", ")} were still open above it; ` +
-          "an exit that is not the innermost open scope restores CURRENT to the wrong owner",
-      });
-    }
-    opened.splice(at, 1);
-  }
-  // O4.1's other half: `exit` is required on BOTH paths, so a scope still open
-  // when the window closes is a `CURRENT` that was never restored. Without this
-  // an `exit` that does nothing at all costs the channel nothing at all.
-  for (const scope of opened) {
-    findings.push({
-      id: "entered-without-exit",
-      rule: "O4.1",
-      kind: "entered-without-exit",
-      detail:
-        `scope ${scope} (${runtime.scopes.get(scope)?.kind ?? "?"}) was entered and never ` +
-        "exited, so CURRENT was left pointing at it",
-    });
   }
 
   for (const event of events) {

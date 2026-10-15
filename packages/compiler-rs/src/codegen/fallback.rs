@@ -37,11 +37,7 @@ impl<'a> Emit<'a, '_> {
         let callee = self.helper(Helper::Element, span);
         let tag = self.element_name(opening.name);
         let props = self.props_with_children(opening.attributes, children, span);
-        let call = self.call(
-            callee,
-            vec![Argument::from(tag), Argument::from(props)],
-            span,
-        );
+        let call = self.call(callee, vec![Argument::from(tag), Argument::from(props)], span);
         if cold { self.cold_call(call, span) } else { call }
     }
 

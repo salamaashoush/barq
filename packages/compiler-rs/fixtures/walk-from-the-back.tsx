@@ -1,7 +1,7 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const last = signal("Z")
-export const penultimate = signal("Y")
+export const [last, setLast] = createSignal("Z")
+export const [penultimate, setPenultimate] = createSignal("Y")
 
 /**
  * Target #5, from the other end. Both holes are near the END of a wide row, so
@@ -27,7 +27,7 @@ export default function WalkFromTheBack() {
   )
 }
 
-export const steps = [() => last.set("ZZ"), () => penultimate.set("YY")]
+export const steps = [() => setLast("ZZ"), () => setPenultimate("YY")]
 
 export const optimality = {
   target: 5,

@@ -16,6 +16,7 @@ use oxc::allocator::{Allocator, Vec as ArenaVec};
 use oxc::ast::ast::{
     Expression, ImportDeclarationSpecifier, LogicalOperator, ModuleExportName, ObjectProperty,
     ObjectPropertyKind, Program, PropertyKey, PropertyKind, Statement, TemplateLiteral,
+    UnaryOperator,
 };
 use oxc::ast::builder::AstBuilder;
 use oxc::ast_visit::VisitMut;
@@ -43,6 +44,7 @@ enum Tag {
     CreateIn,
     FirstThatWorks,
     Props,
+    DefineConditions,
     DefineVars,
     GlobalVars,
     CreateTheme,
@@ -65,6 +67,7 @@ impl Tag {
             "firstThatWorks" => Tag::FirstThatWorks,
             "props" => Tag::Props,
             "propsIn" => Tag::PropsIn,
+            "defineConditions" => Tag::DefineConditions,
             "defineVars" => Tag::DefineVars,
             "globalVars" => Tag::GlobalVars,
             "createTheme" => Tag::CreateTheme,
@@ -99,8 +102,13 @@ pub struct Extracted {
 /// A value one module exports and another can fold against.
 #[derive(Debug, Clone)]
 pub enum Resolved {
-    /// A string, a number's text, or a class this pass generated.
+    /// A string, or a class this pass generated.
     Text(String),
+    /// A number, as its text. Kept apart from `Text` because a length written
+    /// as a number takes a unit and the same digits written as a string do
+    /// not: `export const GAP = 8` folded as text gave `padding:8` in the
+    /// module that imported it, where the runtime writes `8px`.
+    Number(String),
     /// A `create` group or a `defineVars` token set, as `(member, value)`.
     Group(Vec<(String, String)>),
     /// A `layer("…")` binding, as the layer it names.
@@ -160,6 +168,8 @@ pub fn run<'a>(
         debug: options.dev,
         css: String::new(),
         emitted: FxHashSet::default(),
+        atoms: barq_css::atoms::Emitted::default(),
+        site: Span::default(),
         reports: Vec::new(),
         name: None,
     };
@@ -222,6 +232,11 @@ struct Css<'a, 'b> {
     css: String,
     /// One rule per class, however many times the module writes the block.
     emitted: FxHashSet<String>,
+    /// The same for atoms, with each class's rule kept: a second rule under a
+    /// class this holds is two declarations that hash alike.
+    atoms: barq_css::atoms::Emitted,
+    /// The call being folded, which is where such a pair is reported.
+    site: Span,
     reports: Vec<Report>,
     /// The binding the template is being assigned to, for a readable dev class.
     name: Option<String>,
@@ -302,9 +317,10 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
                     };
                     group.insert(name.name.to_string(), value.value.to_string());
                 }
-                if !group.is_empty() {
-                    self.groups.insert(symbol, group);
-                }
+                // Added to what the seed read rather than put in its place: a
+                // `defineConditions` call is this object by the time the walk
+                // is here, and the seed read keys this arm does not.
+                self.groups.entry(symbol).or_default().extend(group);
             }
             // `const ui = layer("barq.ui")`. The call is left standing: a
             // sibling call this pass declines still has to reach the runtime,
@@ -325,7 +341,18 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
 
         if let Expression::CallExpression(call) = expression {
             let span = call.span;
+            self.site = span;
             match self.tag_of(&call.callee) {
+                // `defineConditions({ … })` is the object it was handed, so a
+                // call the pass can read leaves nothing for the runtime to run.
+                Some(Tag::DefineConditions) => {
+                    if self.conditions_of(call).is_some()
+                        && let Some(argument) = call.arguments.pop()
+                    {
+                        *expression = argument.into_expression();
+                    }
+                    return;
+                }
                 Some(Tag::Atoms) => {
                     if let Some(replacement) = self.compile_atoms(call, span, "") {
                         *expression = replacement;
@@ -412,7 +439,11 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
                         Some(replacement) => *expression = replacement,
                         None => self.decline(
                             span,
-                            "a token's value is not a literal this compiler can read",
+                            (
+                                "A token value in this `globalVars` call is not a literal or a \
+                                 `const` from this file.",
+                                "Write the value out, or name a `const` declared in this module.",
+                            ),
                         ),
                     }
                     return;
@@ -431,8 +462,12 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
                         Some(replacement) => *expression = replacement,
                         None => self.decline(
                             span,
-                            "a theme reads the token set it overrides, and this one was not \
-                             declared in this module",
+                            (
+                                "This `createTheme` call overrides a token set the compiler \
+                                 cannot read in this file.",
+                                "Declare the theme in the module that declares its tokens with \
+                                 `defineVars`, and write the overrides as literals.",
+                            ),
                         ),
                     }
                     return;
@@ -442,7 +477,11 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
                         Some(replacement) => *expression = replacement,
                         None => self.decline(
                             span,
-                            "a token's value is not a literal this compiler can read",
+                            (
+                                "A token value in this `defineVars` call is not a literal or a \
+                                 `const` from this file.",
+                                "Write the value out, or name a `const` declared in this module.",
+                            ),
                         ),
                     }
                     return;
@@ -452,8 +491,12 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
                         Some(replacement) => *expression = replacement,
                         None => self.decline(
                             span,
-                            "a dynamic group's body must be an object literal of unconditional \
-                             declarations",
+                            (
+                                "The function passed to `dynamic` does not return an object \
+                                 literal directly.",
+                                "Write it as `(color) => ({ backgroundColor: color })`, with no \
+                                 conditions or computed parts.",
+                            ),
                         ),
                     }
                     return;
@@ -501,7 +544,11 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
         if tag == Tag::Global {
             self.decline(
                 span,
-                "a `globalCss` outside statement position has no value to be rewritten to",
+                (
+                    "This `globalCss` block is used inside an expression, and it returns \
+                     nothing, so the compiler cannot remove it.",
+                    "Write it as a statement of its own.",
+                ),
             );
             return;
         }
@@ -512,8 +559,11 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
 }
 
 /// What a group says when one of its style objects will not read.
-const GROUP_UNREADABLE: &str = "a group holds a value, a key or a nesting this compiler cannot \
-                                read";
+const GROUP_UNREADABLE: (&str, &str) = (
+    "A style in this `create` or `createIn` call has a value, a key or a nested object the \
+     compiler cannot read in this file, such as an imported value or a function call.",
+    "Write literals, or name a `const` declared in this module.",
+);
 
 /// `(property, condition path, value)`, where `None` REMOVES what an earlier
 /// argument applied — StyleX's rule for `null`, and the reason it is one:
@@ -680,9 +730,40 @@ impl<'a> Css<'a, '_> {
                     let (entries, ..) = Self::token_entries(&tokens, false);
                     self.groups.insert(symbol, entries.into_iter().collect());
                 }
+                Some(Tag::DefineConditions) => {
+                    if let Some(conditions) = self.conditions_of(call) {
+                        self.groups.insert(symbol, conditions.into_iter().collect());
+                    }
+                }
                 _ => {}
             }
         }
+    }
+
+    /// `defineConditions`' argument as `(name, condition)`, when every entry is
+    /// text this pass can read and a condition the runtime would accept.
+    ///
+    /// A name is then a group member like any other, so `[when.md]` folds by
+    /// the path `styles.root` does, and crosses a module boundary the same way.
+    fn conditions_of(
+        &self,
+        call: &oxc::ast::ast::CallExpression<'_>,
+    ) -> Option<Vec<(String, String)>> {
+        let [argument] = call.arguments.as_slice() else { return None };
+        let Expression::ObjectExpression(object) = without_type_wrappers(argument.as_expression()?)
+        else {
+            return None;
+        };
+        let mut conditions = Vec::new();
+        for property in &object.properties {
+            let ObjectPropertyKind::ObjectProperty(property) = property else { return None };
+            let condition = self.text_of(&property.value)?;
+            if !is_condition(&condition) {
+                return None;
+            }
+            conditions.push((self.key_text(property)?, condition));
+        }
+        Some(conditions)
     }
 
     /// What an integration resolved this module's imports to.
@@ -709,6 +790,10 @@ impl<'a> Css<'a, '_> {
             match value {
                 ImportedValue::Text(text) => {
                     self.folded.insert(symbol, text.clone());
+                }
+                ImportedValue::Number(text) => {
+                    self.folded.insert(symbol, text.clone());
+                    self.numeric.insert(symbol);
                 }
                 ImportedValue::Group(members) => {
                     self.groups.insert(symbol, members.iter().cloned().collect());
@@ -785,7 +870,12 @@ impl<'a> Css<'a, '_> {
                 members.sort_by(|a, b| a.0.cmp(&b.0));
                 out.push((name.clone(), Resolved::Group(members)));
             } else if let Some(text) = self.folded.get(symbol) {
-                out.push((name.clone(), Resolved::Text(text.clone())));
+                let value = if self.numeric.contains(symbol) {
+                    Resolved::Number(text.clone())
+                } else {
+                    Resolved::Text(text.clone())
+                };
+                out.push((name.clone(), value));
             }
         }
         out.sort_by(|a, b| a.0.cmp(&b.0));
@@ -805,12 +895,12 @@ impl<'a> Css<'a, '_> {
     /// over strings behind, which reaches none of the machinery this is about.
     /// Reporting them would fire 127 times in `@barqjs/ui` on the documented
     /// idiom.
-    fn decline(&mut self, span: Span, reason: &str) {
+    fn decline(&mut self, span: Span, (what, how): (&str, &str)) {
         self.reports.push(Report {
             code: Code::Barq017,
             message: format!(
-                "{reason}, so `@barqjs/css`'s runtime evaluates this call and its style objects \
-                 are walked in the browser"
+                "{what} The call is left as written, and `@barqjs/css` works out its classes in \
+                 the browser each time it runs. {how}"
             ),
             span,
         });
@@ -835,8 +925,12 @@ impl<'a> Css<'a, '_> {
         if holds_an_object {
             self.decline(
                 span,
-                "the layer joins every class name, so it has to be a literal in the module that \
-                 names it — bind it once with `layer()`",
+                (
+                    "The layer name passed here is not a string literal in this file, and it \
+                     becomes part of every class name.",
+                    "Bind it once in this module, `const ui = layer(\"app.ui\")`, then call \
+                     `ui(...)` or `ui.create(...)`.",
+                ),
             );
         }
     }
@@ -861,14 +955,14 @@ impl<'a> Css<'a, '_> {
         for (at, argument) in call.arguments.iter().enumerate() {
             // A spread is not an argument list this pass can count through.
             let Some(expression) = argument.as_expression() else {
-                self.reports.push(Report {
-                    code: Code::Barq017,
-                    message: "a spread argument is not an argument list this compiler can count \
-                              through, so `@barqjs/css`'s runtime evaluates this call and its \
-                              style objects are walked in the browser"
-                        .to_string(),
+                self.decline(
                     span,
-                });
+                    (
+                        "This call spreads its arguments (`...args`), so the compiler cannot \
+                         tell how many there are or what they hold.",
+                        "Write the arguments out, or spread an array literal.",
+                    ),
+                );
                 return None;
             };
             match crate::analysis::without_type_wrappers(expression) {
@@ -944,8 +1038,12 @@ impl<'a> Css<'a, '_> {
             if let Some(at) = object_declined {
                 self.decline(
                     at,
-                    "this style object holds a value, a key or a nesting this \
-                                  compiler cannot read",
+                    (
+                        "This style object has a value, a key or a nested object the compiler \
+                         cannot read in this file, such as an imported value or a function call.",
+                        "Write literals or a `const` declared in this module; for a value that \
+                         changes, use `var(--name)` and set it through `style`.",
+                    ),
                 );
             }
             slots.push(match read {
@@ -966,9 +1064,11 @@ impl<'a> Css<'a, '_> {
             self.reports.push(Report {
                 code: Code::Barq016,
                 message: format!(
-                    "`atoms` has {conditionals} conditional arguments, so it stays on the \
-                     runtime; merge them into one object, or apply the second with a separate \
-                     `atoms` call"
+                    "`atoms` has {conditionals} conditional arguments and the compiler handles \
+                     one, so this call is left as written and `@barqjs/css` works out its \
+                     classes in the browser each time it runs. Merge the conditions into one \
+                     object, or apply the second with its own call: \
+                     `atoms(atoms(base, a && x), b && y)`."
                 ),
                 span,
             });
@@ -1012,8 +1112,12 @@ impl<'a> Css<'a, '_> {
         if unsafe_removal {
             self.decline(
                 span,
-                "a `null` removal has to see what came before it and an earlier argument is \
-                 opaque here",
+                (
+                    "A `null` value removes a property an earlier argument set, and an earlier \
+                     argument here is one the compiler cannot read.",
+                    "Put the object that holds `null` before that argument, or apply it with a \
+                     separate `atoms` call.",
+                ),
             );
             return None;
         }
@@ -1386,8 +1490,8 @@ impl<'a> Css<'a, '_> {
             let ObjectPropertyKind::ObjectProperty(property) = property else { return None };
             let name = self.key_text(property)?;
             let value = match crate::analysis::without_type_wrappers(&property.value) {
-                Expression::NumericLiteral(literal) => {
-                    barq_css::atoms::TokenValue::Number(literal.value)
+                other if number_of(other).is_some() => {
+                    barq_css::atoms::TokenValue::Number(number_of(other)?)
                 }
                 other if self.is_numeric(other) => {
                     barq_css::atoms::TokenValue::Number(self.text_of(other)?.parse().ok()?)
@@ -1475,8 +1579,8 @@ impl<'a> Css<'a, '_> {
                 // What an absent optional produces, and the runtime skips it.
                 Expression::Identifier(identifier) if identifier.name == "undefined" => continue,
                 // `String(8.0)` is `8`, whatever the source wrote, and the two
-                // sides have to hash the same text.
-                Expression::NumericLiteral(literal) => barq_css::atoms::number_text(literal.value),
+                // sides have to hash the same text. `text_of` prints a number
+                // that way.
                 other => self.text_of(other)?,
             };
             // A token the set does not carry has no property to redeclare, and
@@ -1597,10 +1701,7 @@ impl<'a> Css<'a, '_> {
                 continue;
             }
             for atom in argument.atoms.iter().cloned() {
-                match applied.iter_mut().find(|slot| slot.key == atom.key) {
-                    Some(slot) => *slot = atom,
-                    None => applied.push(atom),
-                }
+                barq_css::atoms::apply(&mut applied, atom);
             }
             for (property, condition, value) in &argument.declarations {
                 // `"0"` is a stand-in: a removal only needs the KEY, and the key
@@ -1611,10 +1712,7 @@ impl<'a> Css<'a, '_> {
                         applied.retain(|slot| slot.key != atom.key);
                         continue;
                     }
-                    match applied.iter_mut().find(|slot| slot.key == atom.key) {
-                        Some(slot) => *slot = atom,
-                        None => applied.push(atom),
-                    }
+                    barq_css::atoms::apply(&mut applied, atom);
                 }
             }
         }
@@ -1631,13 +1729,21 @@ impl<'a> Css<'a, '_> {
     /// Emitted in TIER order, which is the one ordering specificity cannot
     /// give: `@media` adds none, so a base and the same property under one are
     /// separated by source order alone. A stable sort, so everything within a
-    /// tier keeps the order the author wrote it in.
+    /// tier keeps the order the author wrote it in, except under an at-rule,
+    /// where `barq_css::order::Rank` puts the narrower query later.
     fn emit_rules(&mut self, atoms: &[barq_css::atoms::Atom]) {
-        let mut sorted: Vec<&barq_css::atoms::Atom> = atoms.iter().collect();
-        sorted.sort_by_key(|atom| atom.tier);
-        for atom in sorted {
-            if !atom.rule.is_empty() && self.emitted.insert(atom.class.clone()) {
-                self.css.push_str(&atom.rule);
+        for atom in barq_css::order::arranged(atoms) {
+            if atom.rule.is_empty() {
+                continue;
+            }
+            match self.atoms.insert(atom) {
+                Ok(true) => self.css.push_str(&atom.rule),
+                Ok(false) => {}
+                Err(collision) => self.reports.push(Report {
+                    code: Code::Barq014,
+                    message: format!("This CSS could not be compiled. {collision}"),
+                    span: self.site,
+                }),
             }
         }
     }
@@ -1798,14 +1904,10 @@ impl<'a> Css<'a, '_> {
             Expression::Identifier(identifier) if identifier.name == "undefined" => {
                 Some(Vec::new())
             }
-            Expression::NumericLiteral(literal) => {
-                let raw =
-                    literal.raw.map_or_else(|| literal.value.to_string(), |raw| raw.to_string());
-                Some(vec![(
-                    property.to_string(),
-                    condition.to_string(),
-                    Some(barq_css::atoms::number_value(property, &raw)),
-                )])
+            // By VALUE: `.5`, `1e3` and `0x10` are `0.5`, `1000` and `16` to the
+            // runtime, which never sees how the source spelled them.
+            other if number_of(other).is_some() => {
+                Some(self.number_declaration(property, condition, number_of(other)?))
             }
             // `firstThatWorks(…)`: the declaration repeated, best last.
             Expression::CallExpression(call)
@@ -1814,12 +1916,17 @@ impl<'a> Css<'a, '_> {
                 let mut values = Vec::new();
                 for argument in &call.arguments {
                     let expression = argument.as_expression()?;
-                    values.push(match crate::analysis::without_type_wrappers(expression) {
-                        Expression::NumericLiteral(literal) => literal
-                            .raw
-                            .map_or_else(|| literal.value.to_string(), |raw| raw.to_string()),
-                        other => self.text_of(other)?,
-                    });
+                    let expression = crate::analysis::without_type_wrappers(expression);
+                    let text = self.text_of(expression)?;
+                    // Each value is written as its own declaration would be,
+                    // so a number takes the unit the property gives one.
+                    values.push(
+                        if number_of(expression).is_some() || self.is_numeric(expression) {
+                            barq_css::atoms::number_value(property, &text)
+                        } else {
+                            text
+                        },
+                    );
                 }
                 Some(vec![(
                     property.to_string(),
@@ -1832,14 +1939,20 @@ impl<'a> Css<'a, '_> {
                 // `{ padding: GAP }` where `GAP` is `8` is `8px`, exactly as
                 // `{ padding: 8 }` is: `cssValue` asks the value's TYPE, not
                 // its spelling.
-                let value = if self.is_numeric(other) {
-                    barq_css::atoms::number_value(property, &text)
-                } else {
-                    text
-                };
-                Some(vec![(property.to_string(), condition.to_string(), Some(value))])
+                if self.is_numeric(other) {
+                    return Some(self.number_declaration(property, condition, text.parse().ok()?));
+                }
+                Some(vec![(property.to_string(), condition.to_string(), Some(text))])
             }
         }
+    }
+
+    /// A number as the one declaration it is, or none when it is not finite.
+    fn number_declaration(&self, property: &str, condition: &str, value: f64) -> Vec<Declaration> {
+        barq_css::atoms::number_declaration(property, value)
+            .map(|text| (property.to_string(), condition.to_string(), Some(text)))
+            .into_iter()
+            .collect()
     }
 
     fn tag_of(&self, tag: &Expression<'_>) -> Option<Tag> {
@@ -1907,7 +2020,7 @@ impl<'a> Css<'a, '_> {
                 // source the author is looking at.
                 self.reports.push(Report {
                     code: Code::Barq014,
-                    message: format!("this CSS could not be compiled: {}", error.message),
+                    message: format!("This CSS could not be compiled. {}", error.message),
                     span,
                 });
                 None
@@ -1932,9 +2045,11 @@ impl<'a> Css<'a, '_> {
                 None => {
                     self.reports.push(Report {
                         code: Code::Barq015,
-                        message: "this interpolation is not known at compile time, so the block \
-                                  stays on the runtime; move the value into a CSS custom property \
-                                  and set it through `style`"
+                        message: "This block interpolates a value that is only known when the \
+                                  program runs, so it cannot be compiled and `@barqjs/css` builds \
+                                  its CSS in the browser instead. To compile it, write \
+                                  `var(--name)` in the block and set the value on the element: \
+                                  `style={{ \"--name\": value }}`."
                             .to_string(),
                         span,
                     });
@@ -1983,8 +2098,8 @@ impl<'a> Css<'a, '_> {
     fn text_of(&self, expression: &Expression<'_>) -> Option<String> {
         match without_type_wrappers(expression) {
             Expression::StringLiteral(literal) => Some(literal.value.to_string()),
-            Expression::NumericLiteral(literal) => {
-                Some(literal.raw.map_or_else(|| literal.value.to_string(), |raw| raw.to_string()))
+            other if number_of(other).is_some() => {
+                number_of(other).map(barq_css::atoms::number_text)
             }
             Expression::TemplateLiteral(template) if template.expressions.is_empty() => {
                 template.quasis.first().map(|quasi| {
@@ -2008,13 +2123,26 @@ impl<'a> Css<'a, '_> {
             // here. Without it a block interpolating a token stayed on the
             // runtime, which is the one thing tokens exist to avoid.
             Expression::StaticMemberExpression(member) => {
-                let symbol = crate::analysis::symbol_of(self.scoping, &member.object)?;
-                match self.groups.get(&symbol) {
-                    Some(group) => group.get(member.property.name.as_str()).cloned(),
-                    None => self.miss(symbol),
-                }
+                self.member_text(&member.object, member.property.name.as_str())
+            }
+            // `when["2xl"]`: a member whose name is not an identifier, which
+            // is what a breakpoint is usually called.
+            Expression::ComputedMemberExpression(member) => {
+                let Expression::StringLiteral(name) = without_type_wrappers(&member.expression)
+                else {
+                    return None;
+                };
+                self.member_text(&member.object, name.value.as_str())
             }
             _ => None,
+        }
+    }
+
+    fn member_text(&self, object: &Expression<'_>, name: &str) -> Option<String> {
+        let symbol = crate::analysis::symbol_of(self.scoping, object)?;
+        match self.groups.get(&symbol) {
+            Some(group) => group.get(name).cloned(),
+            None => self.miss(symbol),
         }
     }
 }
@@ -2073,10 +2201,9 @@ fn array_of<'a, 'b>(
 fn literal_text(expression: &Expression<'_>) -> Option<(String, bool)> {
     match without_type_wrappers(expression) {
         Expression::StringLiteral(literal) => Some((literal.value.to_string(), false)),
-        Expression::NumericLiteral(literal) => Some((
-            literal.raw.map_or_else(|| literal.value.to_string(), |raw| raw.to_string()),
-            true,
-        )),
+        other if number_of(other).is_some() => {
+            number_of(other).map(|value| (barq_css::atoms::number_text(value), true))
+        }
         Expression::TemplateLiteral(template) if template.expressions.is_empty() => {
             template.quasis.first().map(|quasi| {
                 (
@@ -2089,6 +2216,24 @@ fn literal_text(expression: &Expression<'_>) -> Option<(String, bool)> {
                 )
             })
         }
+        _ => None,
+    }
+}
+
+/// A numeric literal's VALUE, through any sign in front of it.
+///
+/// The value and not the source text, because the runtime is handed a number
+/// and prints it: `1.50` and `0x10` are `1.5` and `16` there. `-4` is a unary
+/// expression over a literal rather than a literal, and it is the commonest
+/// number a margin takes.
+fn number_of(expression: &Expression<'_>) -> Option<f64> {
+    match without_type_wrappers(expression) {
+        Expression::NumericLiteral(literal) => Some(literal.value),
+        Expression::UnaryExpression(unary) => match unary.operator {
+            UnaryOperator::UnaryNegation => number_of(&unary.argument).map(|value| -value),
+            UnaryOperator::UnaryPlus => number_of(&unary.argument),
+            _ => None,
+        },
         _ => None,
     }
 }
@@ -2182,24 +2327,15 @@ fn matching_brace(text: &str, from: usize) -> Option<usize> {
     None
 }
 
-/// A declaration, expanded through any shorthand it is.
-///
-/// An unexpandable shorthand is left whole rather than half-expanded: its
-/// values go to sub-properties by TYPE, so counting them cannot say which one
-/// a value belongs to, and guessing is worse than not expanding.
+/// A declaration as the atoms it is: `barq_css::atoms::resolve`, which is where
+/// the runtime's own rules for a shorthand and for a value live.
 fn expand_atoms(
     layer: &str,
     property: &str,
     condition: &str,
     value: &str,
 ) -> Vec<barq_css::atoms::Atom> {
-    match barq_css::atoms::expand(property, value) {
-        Some(longhands) => longhands
-            .into_iter()
-            .map(|(name, own)| barq_css::atoms::atom_in(layer, &name, condition, &own))
-            .collect(),
-        None => vec![barq_css::atoms::atom_in(layer, property, condition, value)],
-    }
+    barq_css::atoms::resolve(layer, property, condition, value)
 }
 
 /// What every OTHER import binding names: `symbol -> (specifier, exported name)`.
@@ -3179,6 +3315,13 @@ mod cross_file_tests {
                     String::new(),
                     text.clone(),
                 ]),
+                Resolved::Number(text) => rows.push(vec![
+                    specifier.to_string(),
+                    name.clone(),
+                    "number".to_string(),
+                    String::new(),
+                    text.clone(),
+                ]),
                 Resolved::Layer(layer) => rows.push(vec![
                     specifier.to_string(),
                     name.clone(),
@@ -3232,6 +3375,32 @@ mod cross_file_tests {
             false,
         );
         assert!(out.css_wanted.is_empty(), "{:?}", out.css_wanted);
+    }
+
+    /// A number keeps its kind across the boundary: a length written as a
+    /// number takes a unit in the importing module exactly as it does where it
+    /// is declared, and the same digits exported as a string do not.
+    #[test]
+    fn an_imported_number_is_still_a_number() {
+        let mut imports = rows(
+            &run("export const GAP = 8;\nexport const RATIO = \"8\";", Vec::new(), true),
+            "./tokens.ts",
+        );
+        assert!(imports.iter().any(|row| row[1] == "GAP" && row[2] == "number"), "{imports:?}");
+        assert!(imports.iter().any(|row| row[1] == "RATIO" && row[2] == "text"), "{imports:?}");
+        imports.retain(|row| row[1] == "GAP" || row[1] == "RATIO");
+
+        let out = run(
+            "import { atoms } from \"@barqjs/css\";\n\
+             import { GAP, RATIO } from \"./tokens.ts\";\n\
+             export const box = atoms({ padding: GAP, flexGrow: RATIO });",
+            imports,
+            false,
+        );
+        let css = out.css.as_deref().unwrap_or_default();
+        assert!(css.contains("padding-top:8px"), "{css}");
+        assert!(css.contains("flex-grow:8"), "{css}");
+        assert!(!css.contains("flex-grow:8px"), "{css}");
     }
 
     /// A token set, a plain constant, a group and a layer binding: the four
@@ -3606,5 +3775,200 @@ mod dynamic_tests {
         let out = run("export const bg = dynamic((c) => build(c));");
         assert_eq!(out.css, None);
         assert!(out.code.contains("dynamic("), "{}", out.code);
+    }
+}
+
+/// What `@barqjs/css`'s runtime does with a value, done here to a literal.
+/// `test/css-parity.test.ts` runs the same sources through both; these pin the
+/// folds that file cannot reach, a diagnostic and a module boundary.
+#[cfg(test)]
+mod runtime_mirror_tests {
+    use crate::compile::{CompileOutput, compile};
+    use crate::css::Resolved;
+    use crate::options::{ResolvedOptions, TransformOptions};
+
+    const IMPORT: &str = "import { atoms, css, defineConditions, firstThatWorks } from \
+                          \"@barqjs/css\";\n";
+
+    fn run(body: &str) -> CompileOutput {
+        compile(&format!("{IMPORT}{body}"), &ResolvedOptions::with_filename("m.ts"))
+            .expect("compiles")
+    }
+
+    fn css_of(body: &str) -> String {
+        let out = run(body);
+        assert!(!out.code.contains("atoms("), "a call survived: {}", out.code);
+        out.css.unwrap_or_default()
+    }
+
+    #[test]
+    fn a_numeric_literal_folds_by_value() {
+        let css = css_of(
+            "export const a = atoms({ opacity: .5, width: 1e3, height: 1.50, top: 0x10, \
+             left: 1_000, bottom: 0.0 });",
+        );
+        for rule in
+            ["{opacity:0.5}", "{width:1000px}", "{height:1.5px}", "{top:16px}", "{left:1000px}"]
+        {
+            assert!(css.contains(rule), "{rule}: {css}");
+        }
+        assert!(css.contains("{bottom:0}"), "{css}");
+    }
+
+    #[test]
+    fn a_sign_in_front_of_a_literal_folds_too() {
+        let css = css_of(
+            "const GAP = -4;\nexport const a = atoms({ margin: GAP, zIndex: -1, top: +8, left: -0 });",
+        );
+        for rule in ["{margin-top:-4px}", "{z-index:-1}", "{top:8px}", "{left:0}"] {
+            assert!(css.contains(rule), "{rule}: {css}");
+        }
+    }
+
+    #[test]
+    fn an_interpolated_number_is_printed_as_javascript_prints_it() {
+        let css = run("export const a = css`opacity: ${.5}; width: ${0x10}px; top: ${-1e3}px`;")
+            .css
+            .unwrap_or_default();
+        assert!(css.contains("opacity: 0.5;width: 16px;top: -1000px"), "{css}");
+    }
+
+    #[test]
+    fn a_fallback_list_writes_each_number_as_its_own_declaration_would() {
+        let css = css_of("export const a = atoms({ width: firstThatWorks(1.50, \"3em\") });");
+        assert!(css.contains("{width:3em;width:1.5px}"), "{css}");
+    }
+
+    #[test]
+    fn a_value_the_runtime_refuses_declares_nothing_here_either() {
+        let css = css_of(
+            "export const a = atoms({ color: \"red;} body{display:none\", width: 1e999, \
+             height: 2 });",
+        );
+        assert!(!css.contains("display"), "{css}");
+        assert!(!css.contains("Infinity"), "{css}");
+        assert!(css.ends_with("{height:2px}"), "{css}");
+    }
+
+    #[test]
+    fn the_later_of_a_logical_and_a_physical_key_is_the_one_in_the_class_string() {
+        let out = run("export const a = atoms({ padding: 4 }, { paddingInline: 8 });\n\
+             export const b = atoms(a, { paddingLeft: 0 });");
+        let css = out.css.as_deref().unwrap_or_default();
+        // Displaced before it was emitted, so it left no rule behind.
+        assert!(!css.contains("padding-right:4px"), "{css}");
+        assert!(out.code.contains("a-padding-inline-start_"), "{}", out.code);
+        let second = out.code.split("const b = ").nth(1).unwrap_or_default();
+        assert!(!second.contains("inline"), "{second}");
+        assert!(second.contains("a-padding-left_"), "{second}");
+    }
+
+    #[test]
+    fn a_calls_media_rules_are_written_mobile_first() {
+        let css = css_of(
+            "export const a = atoms({ color: { \"@media (min-width: 900px)\": \"red\", \
+             \"@media print\": \"teal\", \"@media (min-width: 300px)\": \"blue\", \
+             default: \"black\" } });",
+        );
+        let at = |needle: &str| css.find(needle).unwrap_or_else(|| panic!("{needle}: {css}"));
+        assert!(at("{color:black}") < at("300px"));
+        assert!(at("300px") < at("900px"));
+        assert!(at("900px") < at("print"));
+    }
+
+    /// FNV-1a over 32 bits gives `40189px` and `797186px` one suffix.
+    #[test]
+    fn two_declarations_that_hash_to_one_class_are_an_error_naming_both() {
+        let out = run("export const a = atoms({ width: 40189 });\n\
+             export const b = atoms({ width: 797186 });");
+        let collision = out
+            .warnings
+            .iter()
+            .find(|warning| warning.code == Some(crate::diag::Code::Barq014))
+            .unwrap_or_else(|| panic!("no collision reported: {:?}", out.warnings));
+        assert!(collision.message.contains("width:40189px"), "{}", collision.message);
+        assert!(collision.message.contains("width:797186px"), "{}", collision.message);
+        assert_eq!(collision.severity, crate::diag::Level::Error);
+        // The same declaration twice is one rule and no collision.
+        let twice = run("export const a = atoms({ width: 40189 });\n\
+             export const b = atoms({ width: 40189 });");
+        assert!(twice.warnings.is_empty(), "{:?}", twice.warnings);
+    }
+
+    const WHEN: &str = "const when = defineConditions({ md: \"@media (min-width: 768px)\", \
+                        dark: \"[data-theme=dark] &\", \"2xl\": \"@media (min-width: 1536px)\" });\n";
+
+    #[test]
+    fn a_named_condition_is_the_condition_written_out() {
+        let named = css_of(&format!(
+            "{WHEN}export const a = atoms({{ color: {{ default: \"red\", [when.md]: \"blue\" }}, \
+             [when.dark]: {{ color: \"white\" }}, [when[\"2xl\"]]: {{ gap: 4 }} }});"
+        ));
+        let written = css_of(
+            "export const a = atoms({ color: { default: \"red\", \
+             \"@media (min-width: 768px)\": \"blue\" }, \"[data-theme=dark] &\": { color: \
+             \"white\" }, \"@media (min-width: 1536px)\": { gap: 4 } });",
+        );
+        assert_eq!(named, written);
+    }
+
+    #[test]
+    fn the_definition_is_read_wherever_in_the_file_it_stands_and_leaves_no_call() {
+        let out = run(&format!(
+            "export const card = () => atoms({{ [when.md]: {{ gap: 4 }} }});\n{WHEN}"
+        ));
+        assert!(!out.code.contains("atoms("), "{}", out.code);
+        assert!(!out.code.contains("defineConditions("), "{}", out.code);
+        assert!(out.code.contains("md: \"@media (min-width: 768px)\""), "{}", out.code);
+    }
+
+    #[test]
+    fn a_value_that_is_not_a_condition_is_left_for_the_runtime_to_refuse() {
+        let out = run("const when = defineConditions({ md: \"min-width: 768px\" });\n\
+             export const a = atoms({ [when.md]: { gap: 4 } });");
+        assert!(out.code.contains("defineConditions("), "{}", out.code);
+        assert!(out.code.contains("atoms("), "{}", out.code);
+    }
+
+    #[test]
+    fn a_named_condition_crosses_a_module_boundary_as_a_group() {
+        let declared = compile(
+            "import { defineConditions } from \"@barqjs/css\";\n\
+             export const when = defineConditions({ md: \"@media (min-width: 768px)\" });",
+            &ResolvedOptions::with_filename("when.ts"),
+        )
+        .expect("compiles");
+        let mut imports = Vec::new();
+        for (name, value) in &declared.css_exports {
+            let Resolved::Group(members) = value else { panic!("{name} is not a group") };
+            for (member, condition) in members {
+                imports.push(vec![
+                    "./when.ts".to_string(),
+                    name.clone(),
+                    "group".to_string(),
+                    member.clone(),
+                    condition.clone(),
+                ]);
+            }
+        }
+        assert_eq!(imports.len(), 1, "{:?}", declared.css_exports);
+
+        let options = TransformOptions {
+            filename: Some("card.ts".to_string()),
+            css_imports: Some(imports),
+            ..TransformOptions::default()
+        };
+        let source = "import { atoms } from \"@barqjs/css\";\nimport { when } from \"./when.ts\";\n\
+                      export const a = atoms({ [when.md]: { gap: 4 } });";
+        let out = compile(source, &options.resolve()).expect("compiles");
+        assert!(!out.code.contains("atoms("), "{}", out.code);
+        assert!(
+            out.css.as_deref().unwrap_or_default().starts_with("@media (min-width: 768px){"),
+            "{:?}",
+            out.css
+        );
+        // And unresolved, the module says which import the fold needed.
+        let alone = compile(source, &ResolvedOptions::with_filename("card.ts")).expect("compiles");
+        assert_eq!(alone.css_wanted, vec![("./when.ts".to_string(), "when".to_string())]);
     }
 }

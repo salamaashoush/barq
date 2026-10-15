@@ -1,6 +1,6 @@
-import { Reveal, signal } from "@barqjs/core"
+import { Reveal, createSignal } from "@barqjs/core"
 
-export const label = signal("one")
+export const [label, setLabel] = createSignal("one")
 
 /**
  * `Reveal` on its own. It is one of the eight flow components with real
@@ -19,7 +19,7 @@ export default function ControlFlowReveal() {
   )
 }
 
-export const steps = [() => label.set("two")]
+export const steps = [() => setLabel("two")]
 export const optimality = {
   target: 8,
   milestone: 9,

@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const tone = signal("red")
+export const [tone, setTone] = createSignal("red")
 
 /**
  * B1's falsification procedure, written as a fixture: `<b class={s()} id={s()}
@@ -20,7 +20,7 @@ export default function EqualLiveness() {
   return <b class={tone()} id={tone()} title={tone()} />
 }
 
-export const steps = [() => tone.set("blue"), () => tone.set("green")]
+export const steps = [() => setTone("blue"), () => setTone("green")]
 
 export const optimality = {
   target: 4,

@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const n = signal(1)
+export const [n, setN] = createSignal(1)
 
 /**
  * A component that is an arrow with a concise BODY, not a function declaration
@@ -18,4 +18,4 @@ export default function ArrowBodyComponent() {
   )
 }
 
-export const steps = [() => n.set(2), () => n.set(3)]
+export const steps = [() => setN(2), () => setN(3)]

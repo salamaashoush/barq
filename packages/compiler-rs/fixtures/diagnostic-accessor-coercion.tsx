@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core";
+import { createSignal } from "@barqjs/core";
 
-export const count = signal("1");
+export const [count, setCount] = createSignal("1");
 
 /**
  * BARQ001's premise, rendered.
@@ -34,7 +34,7 @@ export default function DiagnosticAccessorCoercion() {
   );
 }
 
-export const steps = [() => count.set("2")];
+export const steps = [() => setCount("2")];
 
 export const optimality = {
   target: 1,

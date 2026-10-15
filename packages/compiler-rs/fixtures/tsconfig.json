@@ -1,0 +1,32 @@
+{
+  "extends": "../tsconfig.json",
+  "include": ["**/*.tsx"],
+  "exclude": [
+    // Props declared as the compiler's lowered calling convention rather than as
+    // anything an author writes: `props.tone()` on a prop typed `string`, and
+    // handler tuples called as cells. The shapes are what these fixtures test.
+    "component-forwarded-handler-tuple.tsx",
+    "component-function-props.tsx",
+    "component-spread.tsx",
+    "semantics/sem-reveal-nested-group.tsx",
+
+    // Ill-typed on purpose: a JSX node cast to `never` or checked with
+    // `satisfies never`, a boundary body handed where a Block is expected, and
+    // an attribute value that is an object with its own `toString`.
+    "semantics/sem-props-cast-keeps-the-brand.tsx",
+    "semantics/sem-props-block-in-cell-slot.tsx",
+    "semantics/sem-react-apply-is-untracked.tsx",
+
+    // A unitless number for a length, which the style channel passes through and
+    // the CSS types (csstype, as Solid's) admit only as `0`.
+    "style-object.tsx",
+
+    // DOM claims TypeScript cannot follow. `kit` is contextually typed, so
+    // `kit.fail()` does not narrow; annotated, a property that is read, changed
+    // through an event or a flush and read again keeps the first read's
+    // narrowing, so the second comparison is reported as impossible.
+    "semantics/sem-form-dom-compare.tsx",
+    "semantics/sem-form-selection-preserved.tsx",
+    "semantics/sem-state-linked-reseeds.tsx"
+  ]
+}

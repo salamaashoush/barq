@@ -1,4 +1,4 @@
-import { Show, signal } from "@barqjs/core"
+import { Show, createSignal } from "@barqjs/core"
 
 /**
  * The `STATIC_KEY` half of the flag catalogue, which had no fixture at all
@@ -23,7 +23,7 @@ import { Show, signal } from "@barqjs/core"
  */
 const VERBOSE: boolean = true
 
-export const label = signal("ready")
+export const [label, setLabel] = createSignal("ready")
 
 export default function ControlFlowShowStaticKey() {
   return (
@@ -41,7 +41,7 @@ export default function ControlFlowShowStaticKey() {
 // The key cannot move, so nothing here may flip a branch — what the step drives
 // is the body's own hole, which is exactly the read the elided effect must not
 // have been subscribing to.
-export const steps = [() => label.set("done")]
+export const steps = [() => setLabel("done")]
 
 export const optimality = {
   target: 8,

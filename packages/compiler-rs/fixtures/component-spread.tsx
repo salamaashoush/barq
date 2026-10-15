@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const label = signal("first")
+export const [label, setLabel] = createSignal("first")
 
 function Chip(props: { label: () => string; tone: string; id: string }) {
   return (
@@ -23,7 +23,7 @@ export default function ComponentSpread() {
   )
 }
 
-export const steps = [() => label.set("second")]
+export const steps = [() => setLabel("second")]
 
 export const optimality = {
   target: 4,

@@ -1,6 +1,6 @@
-import { Show, signal } from "@barqjs/core"
+import { Show, createSignal } from "@barqjs/core"
 
-export const value = signal<string | null>("alpha")
+export const [value, setValue] = createSignal<string | null>("alpha")
 
 const opts = { when: () => value(), fallback: () => "none" }
 
@@ -28,9 +28,9 @@ export default function ControlFlowSpreadShow() {
 }
 
 export const steps = [
-  () => value.set("beta"),
-  () => value.set(null),
-  () => value.set("gamma"),
+  () => setValue("beta"),
+  () => setValue(null),
+  () => setValue("gamma"),
 ]
 
 export const optimality = {

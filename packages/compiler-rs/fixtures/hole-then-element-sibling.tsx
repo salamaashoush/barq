@@ -1,7 +1,7 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const a = signal("A")
-export const b = signal("B")
+export const [a, setA] = createSignal("A")
+export const [b, setB] = createSignal("B")
 
 /**
  * A hole whose next materialising sibling is an ELEMENT, followed by a hole at
@@ -19,7 +19,7 @@ export default function HoleThenElementSibling() {
   )
 }
 
-export const steps = [() => a.set("Z"), () => b.set("Y"), () => a.set("")]
+export const steps = [() => setA("Z"), () => setB("Y"), () => setA("")]
 
 export const optimality = {
   target: 9,

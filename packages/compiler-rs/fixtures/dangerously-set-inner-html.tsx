@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const html = signal("<b>bold</b>")
+export const [html] = createSignal("<b>bold</b>")
 
 /**
  * O4 on the `html` channel. `{ __html: html() }` carries a tracked read, so the

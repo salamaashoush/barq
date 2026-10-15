@@ -56,7 +56,7 @@ impl Target {
     }
 }
 
-pub const HELPER_COUNT: usize = 61;
+pub const HELPER_COUNT: usize = 62;
 
 /// The first helper that lives in `<server_source>` rather than in the
 /// module source itself. The string backend calls into `ssr.ts`, which the DOM
@@ -271,10 +271,15 @@ pub enum Helper {
     Interp = 59,
     /// `_$getOwner()` — the ambient owner, read where a scope VALUE is needed
     /// rather than a construction under one. The delegated-event dispatcher
-    /// stores it on the element (`$$s`) so a throw routes to the scope's
+    /// stores it on the element (`__bqs`) so a throw routes to the scope's
     /// catcher; nothing else needs it, because every construct reads the
     /// ambient itself.
     GetOwner = 60,
+    /// `_$readKeys(value)` — a `style` or `classList` object with the getters
+    /// it holds called, in the READ half of the binding that writes it. A key
+    /// may be live on its own, and the read is where that becomes a
+    /// dependency; the write half is handed values only.
+    ReadKeys = 61,
 }
 
 const IMPORTED: [&str; HELPER_COUNT] = [
@@ -339,6 +344,7 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "formAttr",
     "interp",
     "getOwner",
+    "readKeys",
 ];
 
 /// The name a helper is imported under, for a test that has to check the table

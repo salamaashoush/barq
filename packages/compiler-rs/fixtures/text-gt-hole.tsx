@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const tail = signal("x")
+export const [tail, setTail] = createSignal("x")
 
 /**
  * A text run carrying `>`, followed by an element, a hole and another element —
@@ -23,4 +23,4 @@ export default function TextGtHole() {
   )
 }
 
-export const steps = [() => tail.set("y"), () => tail.set("")]
+export const steps = [() => setTail("y"), () => setTail("")]

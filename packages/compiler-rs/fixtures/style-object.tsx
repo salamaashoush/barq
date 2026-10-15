@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const size = signal(12)
+export const [size, setSize] = createSignal(12)
 
 export default function StyleObject() {
   return (
@@ -10,4 +10,4 @@ export default function StyleObject() {
   )
 }
 
-export const steps = [() => size.set(30)]
+export const steps = [() => setSize(30)]

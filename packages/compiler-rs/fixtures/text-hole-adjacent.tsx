@@ -1,7 +1,7 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const a = signal("a")
-export const b = signal("b")
+export const [a, setA] = createSignal("a")
+export const [b, setB] = createSignal("b")
 
 export default function TextHoleAdjacent() {
   return (
@@ -12,7 +12,7 @@ export default function TextHoleAdjacent() {
   )
 }
 
-export const steps = [() => a.set("A"), () => b.set("B"), () => a.set("")]
+export const steps = [() => setA("A"), () => setB("B"), () => setA("")]
 
 export const optimality = {
   target: 9,

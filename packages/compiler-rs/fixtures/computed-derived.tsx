@@ -1,8 +1,8 @@
-import { computed, signal } from "@barqjs/core"
+import { createMemo, createSignal } from "@barqjs/core"
 
-const count = signal(2)
+const [count, setCount] = createSignal(2)
 /** A `Computed<T>`: an Accessor whose dep set is its body's, one level removed. */
-const doubled = computed(() => count() * 2)
+const doubled = createMemo(() => count() * 2)
 
 export default function ComputedDerived() {
   return (
@@ -13,7 +13,7 @@ export default function ComputedDerived() {
   )
 }
 
-export const steps = [() => count.set(5), () => count.set(0)]
+export const steps = [() => setCount(5), () => setCount(0)]
 
 export const optimality = {
   target: 1,

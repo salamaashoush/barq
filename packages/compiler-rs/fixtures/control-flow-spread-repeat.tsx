@@ -1,6 +1,6 @@
-import { Repeat, signal } from "@barqjs/core"
+import { Repeat, createSignal } from "@barqjs/core"
 
-export const n = signal(2)
+export const [n, setN] = createSignal(2)
 
 const opts = { count: () => n(), from: () => 10 }
 
@@ -22,7 +22,7 @@ export default function ControlFlowSpreadRepeat() {
   )
 }
 
-export const steps = [() => n.set(4), () => n.set(1)]
+export const steps = [() => setN(4), () => setN(1)]
 
 export const optimality = {
   target: 8,

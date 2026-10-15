@@ -1,7 +1,7 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const tone = signal("red")
-export const label = signal("first")
+export const [tone, setTone] = createSignal("red")
+export const [label, setLabel] = createSignal("first")
 
 /**
  * The wipe, made unrepresentable — and this is the fixture it used to be
@@ -41,8 +41,8 @@ export default function ClassOwnsOnlyItsTokens() {
 }
 
 export const steps = [
-  () => label.set("second"),
-  () => tone.set("blue"),
+  () => setLabel("second"),
+  () => setTone("blue"),
 ]
 
 /**

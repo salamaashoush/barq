@@ -1,13 +1,13 @@
-import { linked, signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const name = signal("ada")
-export const notes = signal("first")
-export const agreed = signal(false)
-export const amount = signal(2)
+export const [name, setName] = createSignal("ada")
+export const [notes, setNotes] = createSignal("first")
+export const [agreed, setAgreed] = createSignal(false)
+export const [amount, setAmount] = createSignal(2)
 
 /** R7 behind a control: the user's edit is a write, the source is a re-seed. */
-export const server = signal("seeded")
-export const draft = linked(server, (value) => value)
+export const [server, setServer] = createSignal("seeded")
+export const [draft, setDraft] = createSignal(() => server())
 
 /**
  * The `bind:` family, resolved at compile time from the tag
@@ -35,20 +35,20 @@ export const draft = linked(server, (value) => value)
 export default function BindFamily() {
   return (
     <form class="bind-family">
-      <input type="text" class="name" bind:value={name} />
-      <textarea class="notes" bind:value={notes} />
-      <input type="checkbox" class="agreed" bind:value={agreed} />
-      <input type="number" class="amount" bind:value={amount} />
-      <input type="text" class="draft" bind:value={draft} />
+      <input type="text" class="name" bind:value={[name, setName]} />
+      <textarea class="notes" bind:value={[notes, setNotes]} />
+      <input type="checkbox" class="agreed" bind:value={[agreed, setAgreed]} />
+      <input type="number" class="amount" bind:value={[amount, setAmount]} />
+      <input type="text" class="draft" bind:value={[draft, setDraft]} />
       <b class="echo">{() => `${name()}/${amount()}`}</b>
     </form>
   )
 }
 
 export const steps = [
-  () => name.set("grace"),
-  () => amount.set(9),
-  () => server.set("reseeded"),
+  () => setName("grace"),
+  () => setAmount(9),
+  () => setServer("reseeded"),
 ]
 
 export const events = [

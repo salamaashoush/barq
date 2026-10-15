@@ -134,7 +134,7 @@ done" is a fact about the corpus rather than about whichever fixture got looked 
 | 4 one effect per element | `multi-prop-one-element`, `class-with-live-siblings`, `reactive-attribute`, `sibling-live-props` | live props on one element share one effect; a runtime-diffed prop (`class`) never joins it; and the group never crosses to the next element |
 | 5 walk elision | `sibling-walk`, `deep-walk`, `walk-from-the-back` | the cheapest route to each hole: chained from the previous hole, reached from `lastChild`, and minimal where a `firstChild` chain already is |
 | 6 template dedup | `dedup-identical-markup`, `two-components-two-templates` | two components emitting byte-identical markup share one `template()`, and two differing by one byte do not |
-| 7 delegated events | `delegated-event`, `non-delegated-event`, `handler-closure`, `handler-no-closure`, `handler-by-reference`, `delegated-handler-tuple` | `$$click` expando writes, one `delegateEvents` per module, closure-free handlers hoisted, and a handler bound to a *variable* at either scope |
+| 7 delegated events | `delegated-event`, `non-delegated-event`, `handler-closure`, `handler-no-closure`, `handler-by-reference`, `delegated-handler-tuple` | `__bq_click` expando writes, one `delegateEvents` per module, closure-free handlers hoisted, and a handler bound to a *variable* at either scope |
 | 8 thunk elision | `control-flow-show-static-body`, `control-flow-for-static-body`, `control-flow-nested` | a static `Show` body is passed as a built node; a `For` ROW body keeps its thunk however static it is, because `For` calls it per row; a body with a hole keeps it too |
 | 9 marker elision | `text-hole-trailing`, `text-hole-followed`, `text-hole-fused`, `text-hole-adjacent`, `marker-literal-text`, `hole-then-element-sibling`, `two-nested-holes` | no anchor when nothing follows, no anchor when what follows is an element, an anchor only where the text either side would fuse, and ONE anchor for two adjacent holes |
 | 8 thunk elision (cont.) | `control-flow-reveal`, `control-flow-show-eager-children`, `control-flow-show-fragment-body`, `portal`, `dynamic`, `for-unkeyed-rows`, `switch-match-component-bodies`, `flow-prop-eta-boundary` | an eager body is handed over as built nodes; `Match` stays a real call; and η-reduction fires on the five props the runtime unwraps and on NOTHING else |
@@ -155,13 +155,13 @@ now the only record of them** — the plugin and its tests were deleted at M6, s
 shape that leaves this directory leaves the project. The rows worth knowing about
 are:
 
-- **the P0 return-shape table** — `signal-object` (a callable `Signal` with `.set` / `.update`),
-  `store-member` (proxy, member reads), `computed-derived` (`Computed`),
-  `async-value` (behind a call), `optimistic-signal` (a `Signal`,
-  not a tuple), `projection-store` (the proxy directly). Each primitive
+- **the P0 return-shape table** — `signal-object` (the `[read, write]` pair `createSignal` returns),
+  `store-member` (proxy, member reads), `computed-derived` (a memo, which is an accessor),
+  `async-value` (behind a call), `optimistic-signal` (`createOptimistic`, a pair
+  again), `projection-store` (the proxy directly). Each primitive
   returns a different shape and every one of them is a different lifting rule.
 - **resolution by SymbolId, never by name** — `renamed-core-import` imports
-  `signal as sig`, `Show as When` and `For as Each`, so nothing in the module is
+  `createSignal as sig`, `Show as When` and `For as Each`, so nothing in the module is
   spelled the way a regex would look for it; `signal-alias` puts a reactive and
   a non-reactive `const` side by side in one scope.
 - **props, every shape** — `component-boundary-props` (plain),

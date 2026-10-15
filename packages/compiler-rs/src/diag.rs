@@ -88,21 +88,21 @@ macro_rules! codes {
 }
 
 codes! {
-    Barq001 = "BARQ001", Warning, "an accessor binding is coerced to a value instead of being called";
-    Barq002 = "BARQ002", Warning, "an accessor binding is used as a condition, where a function is always truthy";
-    Barq003 = "BARQ003", Warning, "a property is read off an accessor binding instead of off its value";
-    Barq004 = "BARQ004", Note, "`For`: the origin of `each` cannot be proved to be values `mapArray` recreates";
-    Barq005 = "BARQ005", Warning, "props are destructured in the parameter list, which flattens every getter";
-    Barq008 = "BARQ008", Warning, "a `barq-ignore-next-line` matched no diagnostic";
-    Barq009 = "BARQ009", Warning, "a `barq-ignore-next-line` could not be parsed";
-    Barq010 = "BARQ010", Warning, "a Block is forwarded into a slot the callee reads as a Cell, where it throws";
-    Barq011 = "BARQ011", Note, "`keyed={false}` binds the row's DOM state to the position, and this row holds some";
-    Barq012 = "BARQ012", Error, "a module mixes server functions with other exports, so no client half can be synthesized for it";
-    Barq013 = "BARQ013", Warning, "`<Link to>` names a path no route matches";
-    Barq014 = "BARQ014", Error, "a `css` block is not CSS this compiler can compile";
-    Barq015 = "BARQ015", Note, "a `css` block interpolates a value known only at run time, so it stays on the runtime";
-    Barq016 = "BARQ016", Note, "`atoms` has more than one conditional argument, so it stays on the runtime";
-    Barq017 = "BARQ017", Note, "a call this compiler could not fold, so `@barqjs/css`'s runtime evaluates it";
+    Barq001 = "BARQ001", Warning, "An accessor is used as a value without being called";
+    Barq002 = "BARQ002", Warning, "An accessor is used as a condition, which is always true";
+    Barq003 = "BARQ003", Warning, "A property is read from an accessor instead of from its value";
+    Barq004 = "BARQ004", Note, "`<For>` rows may show stale fields when `each` holds store objects";
+    Barq005 = "BARQ005", Warning, "Props are destructured in the parameter list, so each name is a function";
+    Barq008 = "BARQ008", Warning, "A `barq-ignore-next-line` comment silences nothing on the next line";
+    Barq009 = "BARQ009", Warning, "A `barq-ignore-next-line` comment is malformed and silences nothing";
+    Barq010 = "BARQ010", Warning, "JSX is passed to a prop the component reads as a value, which throws";
+    Barq011 = "BARQ011", Note, "`keyed={false}` keeps element state in place when the list reorders";
+    Barq012 = "BARQ012", Error, "A module exports server functions together with other things";
+    Barq013 = "BARQ013", Warning, "`<Link to>` names a path that no route matches";
+    Barq014 = "BARQ014", Error, "A `css`, `keyframes` or `globalCss` block is not valid CSS";
+    Barq015 = "BARQ015", Note, "A `css` block interpolates a runtime value, so the browser builds it";
+    Barq016 = "BARQ016", Note, "`atoms` has several conditional arguments, so the browser evaluates it";
+    Barq017 = "BARQ017", Note, "A `@barqjs/css` call cannot be compiled, so the browser evaluates it";
 }
 
 /// Where the pages live. A consumer gets this string verbatim — the Vite panel
@@ -297,10 +297,18 @@ fn parse_directive(rest: &str) -> Result<Vec<Code>, String> {
     let (codes, reason) = match rest.find('(') {
         Some(open) => {
             let close = rest.rfind(')').ok_or_else(|| {
-                format!("`{DIRECTIVE}` opens a reason with `(` and never closes it")
+                format!(
+                    "This `{DIRECTIVE}` opens its reason with `(` and never closes it, so it \
+                     silences nothing. Close the parenthesis: `// {DIRECTIVE} BARQ001 (why this \
+                     is correct here)`."
+                )
             })?;
             if close < open {
-                return Err(format!("`{DIRECTIVE}`'s reason parentheses are the wrong way round"));
+                return Err(format!(
+                    "This `{DIRECTIVE}` has `)` before `(`, so its reason cannot be read and it \
+                     silences nothing. Write the reason last, in parentheses: `// {DIRECTIVE} \
+                     BARQ001 (why this is correct here)`."
+                ));
             }
             (&rest[..open], rest[open + 1..close].trim())
         }
@@ -313,7 +321,8 @@ fn parse_directive(rest: &str) -> Result<Vec<Code>, String> {
             Some(code) => parsed.push(code),
             None => {
                 return Err(format!(
-                    "`{token}` is not a barq diagnostic code — write one of {}",
+                    "`{token}` is not a barq diagnostic code, so this `{DIRECTIVE}` silences \
+                     nothing. Use one of these codes: {}.",
                     Code::ALL.iter().map(|code| code.as_str()).collect::<Vec<_>>().join(", ")
                 ));
             }
@@ -321,14 +330,15 @@ fn parse_directive(rest: &str) -> Result<Vec<Code>, String> {
     }
     if parsed.is_empty() {
         return Err(format!(
-            "`{DIRECTIVE}` must name the code it silences, because a codeless form silences \
-             diagnostics nobody read (microsoft/TypeScript#38288)"
+            "This `{DIRECTIVE}` names no diagnostic code, so it silences nothing. Name the code \
+             it is for: `// {DIRECTIVE} BARQ001 (why this is correct here)`."
         ));
     }
     if reason.chars().count() < MIN_REASON {
         return Err(format!(
-            "`{DIRECTIVE}` needs a reason of at least {MIN_REASON} characters in parentheses — \
-             `// {DIRECTIVE} {} (why this is correct here)`",
+            "This `{DIRECTIVE}` has no reason of at least {MIN_REASON} characters, so it \
+             silences nothing. Add one in parentheses: `// {DIRECTIVE} {} (why this is correct \
+             here)`.",
             parsed[0].as_str()
         ));
     }
@@ -448,10 +458,22 @@ mod tests {
             parse_directive(" BARQ001, BARQ003 (both are deliberate)").unwrap(),
             vec![Code::Barq001, Code::Barq003]
         );
-        assert!(parse_directive(" (no code at all here)").unwrap_err().contains("must name"));
-        assert!(parse_directive(" BARQ001").unwrap_err().contains("reason"));
-        assert!(parse_directive(" BARQ001 (short)").unwrap_err().contains("reason"));
-        assert!(parse_directive(" BARQ042 (a reason of substance)").unwrap_err().contains("not a"));
+        assert!(
+            parse_directive(" (no code at all here)")
+                .unwrap_err()
+                .contains("names no diagnostic code")
+        );
+        assert!(parse_directive(" BARQ001").unwrap_err().contains("has no reason of at least 10"));
+        assert!(
+            parse_directive(" BARQ001 (short)")
+                .unwrap_err()
+                .contains("has no reason of at least 10")
+        );
+        assert!(
+            parse_directive(" BARQ042 (a reason of substance)")
+                .unwrap_err()
+                .contains("`BARQ042` is not a barq diagnostic code")
+        );
         assert!(parse_directive(" BARQ001 (unclosed reason").unwrap_err().contains("never closes"));
     }
 

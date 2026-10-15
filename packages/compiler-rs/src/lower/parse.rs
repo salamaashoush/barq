@@ -59,10 +59,67 @@ impl<'a> Context<'a> {
         Self {
             parent: Some(tag),
             open: self.open.after(tag),
-            in_svg: self.in_svg || is_svg,
+            // `<foreignObject>` is an HTML integration point: an SVG element
+            // whose children are parsed as HTML again.
+            in_svg: tag != "foreignObject" && (self.in_svg || is_svg),
             in_math: self.in_math || tag == "math",
         }
     }
+}
+
+/// HTML "in foreign content": a start tag named here pops the stack back to
+/// HTML before it is inserted. `font` does so only with a `color`, `face` or
+/// `size` attribute, and is refused outright rather than read for them.
+const LEAVES_FOREIGN_CONTENT: [&str; 45] = [
+    "b",
+    "big",
+    "blockquote",
+    "body",
+    "br",
+    "center",
+    "code",
+    "dd",
+    "div",
+    "dl",
+    "dt",
+    "em",
+    "embed",
+    "font",
+    "h1",
+    "h2",
+    "h3",
+    "h4",
+    "h5",
+    "h6",
+    "head",
+    "hr",
+    "i",
+    "img",
+    "li",
+    "listing",
+    "menu",
+    "meta",
+    "nobr",
+    "ol",
+    "p",
+    "pre",
+    "ruby",
+    "s",
+    "small",
+    "span",
+    "strike",
+    "strong",
+    "sub",
+    "sup",
+    "table",
+    "tt",
+    "u",
+    "ul",
+    "var",
+];
+
+pub fn leaves_foreign_content(tag: &str) -> bool {
+    LEAVES_FOREIGN_CONTENT.binary_search(&tag).is_ok()
 }
 
 /// Start tags that close an open `<p>`: HTML "in body", "if the stack of open

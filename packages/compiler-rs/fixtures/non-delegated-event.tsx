@@ -1,20 +1,20 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const hovered = signal(false)
+export const [hovered, setHovered] = createSignal(false)
 
 export default function NonDelegatedEvent() {
   return (
     <div
-      onMouseEnter={() => hovered.set(true)}
-      onMouseLeave={() => hovered.set(false)}
-      onFocus={() => hovered.set(true)}
+      onMouseEnter={() => setHovered(true)}
+      onMouseLeave={() => setHovered(false)}
+      onFocus={() => setHovered(true)}
     >
       {() => (hovered() ? "in" : "out")}
     </div>
   )
 }
 
-export const steps = [() => hovered.set(true)]
+export const steps = [() => setHovered(true)]
 
 export const events = [
   (root: HTMLElement) => root.firstElementChild?.dispatchEvent(new Event("mouseleave")),
@@ -27,5 +27,5 @@ export const optimality = {
   target: 7,
   milestone: 3,
   emits: ["listen("],
-  absent: ["$$mouseenter", "$$mouseleave", "$$focus", "addEventListener"],
+  absent: ["__bq_mouseenter", "__bq_mouseleave", "__bq_focus", "addEventListener"],
 }

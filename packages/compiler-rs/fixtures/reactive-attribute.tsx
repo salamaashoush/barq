@@ -1,7 +1,7 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const href = signal("/home")
-export const active = signal(false)
+export const [href, setHref] = createSignal("/home")
+export const [active, setActive] = createSignal(false)
 
 export default function ReactiveAttribute() {
   return (
@@ -11,7 +11,7 @@ export default function ReactiveAttribute() {
   )
 }
 
-export const steps = [() => active.set(true), () => href.set("/about"), () => active.set(false)]
+export const steps = [() => setActive(true), () => setHref("/about"), () => setActive(false)]
 
 /**
  * ONE effect, and that is the M5 answer. It was two.

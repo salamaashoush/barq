@@ -1,6 +1,6 @@
-import { Show, signal } from "@barqjs/core"
+import { Show, createSignal } from "@barqjs/core"
 
-export const visible = signal(true)
+export const [visible, setVisible] = createSignal(true)
 
 export default function ControlFlowShow() {
   return (
@@ -13,7 +13,7 @@ export default function ControlFlowShow() {
   )
 }
 
-export const steps = [() => visible.set(false), () => visible.set(true)]
+export const steps = [() => setVisible(false), () => setVisible(true)]
 
 export const optimality = {
   target: 8,

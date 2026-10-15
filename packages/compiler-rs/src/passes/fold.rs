@@ -199,7 +199,7 @@ fn fold_unit<'a>(
             continue;
         };
         let tag = interner.tag(element.tag).text;
-        if !bakeable(interner, name, element.ns != Ns::Html, tag, chan, konst) {
+        if !bakeable(interner, name, element.ns == Ns::Svg, tag, chan, konst) {
             continue;
         }
         // P1 keeps a spread-carrying element out of the template for an

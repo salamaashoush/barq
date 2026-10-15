@@ -7,11 +7,11 @@ import { dirname, join } from "node:path";
  * reports error/warning codes, not effect creation. So we instrument at the
  * module boundary: `signals.ts` is replaced (via bun's `mock.module`, from the
  * preload script, before any core module is loaded) with a namespace whose
- * `renderEffect` and `effect` wrap the real ones and count creations and runs.
+ * effect creators wrap the real ones and count creations and runs.
  *
- * Everything downstream — `dom.ts`, `components.ts`, `map.ts`, and compiled
- * output — imports `renderEffect` from that module, so the count is the real
- * total for both the oracle and the compiled path, not an estimate.
+ * Everything downstream — `dom.ts`, `flow.ts`, and compiled output — takes its
+ * effects from that module, so the count is the real total for both the oracle
+ * and the compiled path, not an estimate.
  *
  * `dom.ts` is replaced the same way, for `template`. The marker bound used to
  * ask "does this module clone each template exactly once?" and, whenever it
@@ -116,10 +116,10 @@ export function summarize(trace: Trace): TraceSummary {
   return { created: trace.effects.length, renderEffects, userEffects, totalRuns };
 }
 
-type EffectFn = (compute: unknown, apply?: unknown) => () => void;
+type EffectFn = (compute: unknown, apply?: unknown, options?: unknown) => void;
 
 function wrap(real: EffectFn, kind: EffectKind): EffectFn {
-  return (compute: unknown, apply?: unknown) => {
+  return (compute: unknown, apply?: unknown, options?: unknown) => {
     // Effects created outside a trace window belong to nobody; still real, just
     // not attributed. Binding the record at creation (not at run) means later
     // re-runs keep landing in the session that created the effect, which is
@@ -127,13 +127,13 @@ function wrap(real: EffectFn, kind: EffectKind): EffectFn {
     const record: EffectRecord | null = current ? { kind, runs: 0 } : null;
     if (record && current) current.effects.push(record);
 
-    if (typeof compute !== "function") return real(compute, apply);
+    if (typeof compute !== "function") return real(compute, apply, options);
 
     const counted = (prev?: unknown) => {
       if (record) record.runs++;
       return (compute as (p?: unknown) => unknown)(prev);
     };
-    return real(counted, apply);
+    return real(counted, apply, options);
   };
 }
 
@@ -178,20 +178,24 @@ export function installTracer(
   // Snapshot eagerly: mock.module overwrites the namespace in place, so the
   // originals have to be captured before the factory can ever be invoked.
   const snapshot: Record<string, unknown> = { ...real };
-  const realRenderEffect = snapshot.renderEffect as EffectFn;
-  const realEffect = snapshot.effect as EffectFn;
-
-  if (typeof realRenderEffect !== "function" || typeof realEffect !== "function") {
-    throw new Error(
-      `tracer: ${signalsPath} does not export renderEffect/effect as functions — the runtime moved, fix the tracer`,
-    );
+  // `renderEffect`, the renderer's own, is not in this list: it is built on
+  // `createRenderEffect`, and the replacement below reaches that call too, so
+  // wrapping both counts every binding twice.
+  const creators: [name: string, kind: EffectKind][] = [
+    ["createRenderEffect", "render"],
+    ["createEffect", "user"],
+    ["createTrackedEffect", "user"],
+  ];
+  const patched: Record<string, unknown> = { ...snapshot };
+  for (const [name, kind] of creators) {
+    const real = snapshot[name];
+    if (typeof real !== "function") {
+      throw new Error(
+        `tracer: ${signalsPath} does not export ${name} as a function — the runtime moved, fix the tracer`,
+      );
+    }
+    patched[name] = wrap(real as EffectFn, kind);
   }
-
-  const patched: Record<string, unknown> = {
-    ...snapshot,
-    renderEffect: wrap(realRenderEffect, "render"),
-    effect: wrap(realEffect, "user"),
-  };
 
   mockModule(signalsPath, () => patched);
 

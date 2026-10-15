@@ -543,10 +543,10 @@ describe("target 1 — semantic reactivity (never name regexes)", () => {
     const code = compileFixtureBody("handler-closure");
     // Positive first: the handler still has to become an expando write, or
     // "it is not hoisted" is satisfied by output that binds nothing at all.
-    expect(code).toMatch(/_el\$\d+\.\$\$click = \(\) => n\.update/);
+    expect(code).toMatch(/_el\$\d+\.__bq_click = \(\) => setN\(/);
     expect(code, "no module-scope handler constant for a closure").not.toMatch(/^const _h\$/m);
 
-    const handlerAt = code.indexOf("n.update");
+    const handlerAt = code.indexOf("setN(");
     const componentAt = code.indexOf("function HandlerClosure");
     expect(handlerAt).toBeGreaterThan(componentAt);
   });
@@ -868,9 +868,9 @@ describe("target 6 — template dedup by content hash", () => {
 });
 
 describe("target 7 — delegated events as expando writes", () => {
-  it("delegated-event: onClick emits a $$click assignment, never addEventListener", () => {
+  it("delegated-event: onClick emits a __bq_click assignment, never addEventListener", () => {
     const code = compileFixtureBody("delegated-event");
-    expect(code).toMatch(/\$\$click\s*=/);
+    expect(code).toMatch(/__bq_click\s*=/);
     expect(code).not.toContain("addEventListener");
   });
 
@@ -888,8 +888,8 @@ describe("target 7 — delegated events as expando writes", () => {
       "delegateEvents",
     );
 
-    expect(code).not.toMatch(/\$\$mouseenter/);
-    expect(code).not.toMatch(/\$\$focus\b/);
+    expect(code).not.toMatch(/__bq_mouseenter/);
+    expect(code).not.toMatch(/__bq_focus\b/);
   });
 
   it("handler-by-reference: a handler bound to a name is an expando write at either scope", () => {
@@ -897,8 +897,8 @@ describe("target 7 — delegated events as expando writes", () => {
     // `const h = () => …; <button onClick={h}/>` fell all the way back to
     // setProp, getting neither the expando nor the hoist.
     const code = compileFixtureBody("handler-by-reference");
-    expect(code).toMatch(/_el\$\d+\.\$\$click = bump/);
-    expect(code).toMatch(/_el\$\d+\.\$\$click = reset/);
+    expect(code).toMatch(/_el\$\d+\.__bq_click = bump/);
+    expect(code).toMatch(/_el\$\d+\.__bq_click = reset/);
     expect(code, "no runtime isEventHandlerValue check for either").not.toContain('"onClick"');
 
     // The module-scope one stays at module scope and the component-scope one
@@ -918,9 +918,9 @@ describe("target 7 — delegated events as expando writes", () => {
     // The tuple itself is the expando value. One shared `pick`, and no arrow
     // allocated per row to close over the label — which is the whole point of
     // the `[handler, data]` form.
-    expect(code).toMatch(/_el\$\d+\.\$\$click = \[pick, "a"\]/);
-    expect(code).toMatch(/_el\$\d+\.\$\$click = \[pick, "b"\]/);
-    expect(code, "no per-row closure").not.toMatch(/\$\$click = \(\) =>/);
+    expect(code).toMatch(/_el\$\d+\.__bq_click = \[pick, "a"\]/);
+    expect(code).toMatch(/_el\$\d+\.__bq_click = \[pick, "b"\]/);
+    expect(code, "no per-row closure").not.toMatch(/__bq_click = \(\) =>/);
     expect(code, "never a bare addEventListener").not.toContain("addEventListener");
     // One registration for the module, not one per row.
     expect(count(code, /delegateEvents\(/)).toBe(1);
@@ -933,16 +933,16 @@ describe("target 7 — delegated events as expando writes", () => {
 
   it("delegated-two-types: the scope expando is written once per ELEMENT, not once per type", () => {
     const code = compileFixtureBody("delegated-two-types");
-    // Two delegated types on one element. The `$$s` write is idempotent, so a
+    // Two delegated types on one element. The `__bqs` write is idempotent, so a
     // duplicate is invisible at runtime and only this counts it.
-    expect(count(code, /\$\$click\s*=/), "the click expando").toBe(1);
-    expect(count(code, /\$\$input\s*=/), "the input expando").toBe(1);
-    expect(count(code, /\$\$s\s*=/), "one scope expando for the element").toBe(1);
+    expect(count(code, /__bq_click\s*=/), "the click expando").toBe(1);
+    expect(count(code, /__bq_input\s*=/), "the input expando").toBe(1);
+    expect(count(code, /__bqs\s*=/), "one scope expando for the element").toBe(1);
   });
 
   it("every element in the corpus writes its scope expando at most once", () => {
     // The claim as a property of the whole corpus rather than of one fixture:
-    // for every emitted element, the number of `$$s` writes is 1 when it
+    // for every emitted element, the number of `__bqs` writes is 1 when it
     // carries a delegated handler and 0 when it does not.
     const offenders: string[] = [];
     let elementsSeen = 0;
@@ -950,7 +950,7 @@ describe("target 7 — delegated events as expando writes", () => {
     for (const name of listFixtures()) {
       const code = stripComments(compileFixtureBody(name));
       const writes = new Map<string, string[]>();
-      for (const match of code.matchAll(/(_el\$\d+)\.\$\$([A-Za-z]+)\s*=/g)) {
+      for (const match of code.matchAll(/(_el\$\d+)\.__bq(s|_[A-Za-z]+)\s*=/g)) {
         const list = writes.get(match[1]!) ?? [];
         list.push(match[2]!);
         writes.set(match[1]!, list);
@@ -962,7 +962,7 @@ describe("target 7 — delegated events as expando writes", () => {
         if (delegated > 1) multiType++;
         if (scopes !== (delegated > 0 ? 1 : 0)) {
           offenders.push(
-            `${name}: ${element} has ${delegated} delegated type(s) and ${scopes} $$s write(s)`,
+            `${name}: ${element} has ${delegated} delegated type(s) and ${scopes} __bqs write(s)`,
           );
         }
       }
@@ -1476,11 +1476,13 @@ describe("open questions the harness must be able to state", () => {
     // M9. A spread no longer takes the element off the template path: it takes
     // its ATTRIBUTES off it, because the parser applies baked bytes before any
     // patch runs and duplicate attributes in markup collapse the opposite way
-    // from a props object. What is left is one clone plus one call per name, in
-    // the order the author wrote them.
+    // from a props object. What is left is one clone and the list in the order
+    // the author wrote it: a name before the spread is a key of the object the
+    // spread reads, ahead of what is spread into it, and a name after it is a
+    // call of its own.
     const code = compileFixtureBody("spread-static-mix");
     expect(templateHtml(code)).toEqual(["<div>spread</div>"]);
-    const order = ['_$setAttr(_el$1, "id"', "_$spread(_el$1,", '_$setClass(_el$1, "class"'];
+    const order = ["_$spread(_el$1,", '"id": "fixed"', "...extra()", '_$setClass(_el$1, "class"'];
     let cursor = -1;
     for (const needle of order) {
       const at = code.indexOf(needle);

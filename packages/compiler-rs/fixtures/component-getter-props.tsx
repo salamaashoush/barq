@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const total = signal(0)
+export const [total, setTotal] = createSignal(0)
 
 /**
  * The whole of "fine-grained flow across a component boundary", stated as a
@@ -31,7 +31,7 @@ export default function ComponentGetterProps() {
   )
 }
 
-export const steps = [() => total.set(7)]
+export const steps = [() => setTotal(7)]
 
 export const optimality = {
   target: 1,

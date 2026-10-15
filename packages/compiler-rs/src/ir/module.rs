@@ -28,6 +28,11 @@ pub struct Unit<'a> {
     /// wrote it; `(element, attribute)` is unique because P1 already collapsed
     /// the duplicates the props object would have.
     pub attr_order: AVec<'a, (NodeId, NameId, u32)>,
+    /// A spread, by its span, and what is written on its element after it — in
+    /// the spelling `dom.ts`'s `spreadKey` gives a prop. Those names are the
+    /// later writer's, and the runtime cannot know them: by the time a spread
+    /// re-applies, the attribute beside it is one more value on the element.
+    pub spread_later: AVec<'a, (Span, &'a [&'a str])>,
     /// assigned by P7; `NONE` until then
     pub template: TemplateId,
     pub site: Site,
@@ -43,6 +48,7 @@ impl<'a> Unit<'a> {
             refs: RefPlan::new_in(allocator),
             spans: AVec::new_in(&allocator),
             attr_order: AVec::new_in(&allocator),
+            spread_later: AVec::new_in(&allocator),
             template: NONE,
             site,
         }

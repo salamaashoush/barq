@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const radius = signal(4)
+export const [radius, setRadius] = createSignal(4)
 
 export default function Svg() {
   return (
@@ -13,4 +13,4 @@ export default function Svg() {
   )
 }
 
-export const steps = [() => radius.set(8)]
+export const steps = [() => setRadius(8)]

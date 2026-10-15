@@ -51,6 +51,7 @@
   },
   "devDependencies": {
     "@barqjs/core": "workspace:*",
+    "@happy-dom/global-registrator": "^20.11.6",
     "@types/bun": "^1.4.0",
     "typescript": "^7.0.2"
   },

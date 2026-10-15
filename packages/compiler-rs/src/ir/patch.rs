@@ -53,8 +53,8 @@ pub enum Op {
         /// document listener in the BUBBLE phase and cannot serve it.
         capture: bool,
     },
-    /// `el.$$click = h`, or `el.$$click = [h, data]` for the bound-tuple form.
-    /// THE TUPLE LIVES IN `$$<type>`. There is no `$$<type>Data` in this runtime.
+    /// `el.__bq_click = h`, or `el.__bq_click = [h, data]` for the bound-tuple form.
+    /// THE TUPLE LIVES IN `__bq_<type>`. There is no `__bq_<type>Data` in this runtime.
     Delegate {
         event: NameId,
         handler: HandlerRef,

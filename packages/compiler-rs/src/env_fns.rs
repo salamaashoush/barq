@@ -89,13 +89,6 @@ pub fn rewrite(source: &str, filename: &str, start_source: &str, env: Env) -> Op
             collect_refs(program, &scoping, keeps, &mut still_used);
         }
     }
-    for statement in &program.body {
-        let Statement::ImportDeclaration(import) = statement else { continue };
-        if let Some(edit) = drop_unused(import, &still_used, source) {
-            edits.push(edit);
-        }
-    }
-
     // …AND WHATEVER ONLY THE DELETED BODY REACHED, which is the same rule
     // `middleware_split` enforces and for the same measured reason. Without it
     // a `const SECRET = "…"` that only the server half read stays in the client
@@ -114,6 +107,16 @@ pub fn rewrite(source: &str, filename: &str, start_source: &str, env: Env) -> Op
         .into_iter()
         .filter(|symbol| !kept.contains(symbol))
         .collect();
+    // An IMPORT only the deleted body read goes the same way, and for a module
+    // with side effects it is the whole point: `import { db } from "./db"`
+    // left standing keeps the driver, its pool and its connection string in
+    // the browser bundle with nothing in the module referring to them.
+    for statement in &program.body {
+        let Statement::ImportDeclaration(import) = statement else { continue };
+        if let Some(edit) = drop_unused(import, &still_used, &gone) {
+            edits.push(edit);
+        }
+    }
     for statement in &program.body {
         if matches!(statement, Statement::ImportDeclaration(_)) {
             continue;
@@ -139,45 +142,67 @@ pub fn rewrite(source: &str, filename: &str, start_source: &str, env: Env) -> Op
 
 /// Rewrite an import statement without the specifiers nothing references any
 /// more, or blank it when none survive. `None` when it is unchanged.
+///
+/// A specifier goes when it is one of the three factories and no call to it
+/// is left, or when the only thing that read it was a body this pass deleted.
+/// One the author never used is not this pass's to judge and stays.
 fn drop_unused(
     import: &oxc::ast::ast::ImportDeclaration<'_>,
     still_used: &FxHashSet<SymbolId>,
-    source: &str,
+    gone: &FxHashSet<SymbolId>,
 ) -> Option<Edit> {
     let specifiers = import.specifiers.as_ref()?;
-    let mut kept: Vec<String> = Vec::new();
+    let orphaned = |symbol: Option<SymbolId>, factory: bool| {
+        symbol.is_some_and(|symbol| {
+            !still_used.contains(&symbol) && (factory || gone.contains(&symbol))
+        })
+    };
+    let mut default: Option<String> = None;
+    let mut namespace: Option<String> = None;
+    let mut named: Vec<String> = Vec::new();
+    let mut kept = 0;
     for specifier in specifiers {
-        let ImportDeclarationSpecifier::ImportSpecifier(named) = specifier else {
-            // A default or namespace binding is not in a brace list, so a
-            // statement holding one is left exactly as it stands.
-            return None;
-        };
-        let symbol = named.local.symbol_id.get();
-        if symbol.is_some_and(|symbol| !still_used.contains(&symbol))
-            && NAMES.contains(&named.imported.name().as_str())
-        {
-            continue;
+        match specifier {
+            ImportDeclarationSpecifier::ImportSpecifier(one) => {
+                let factory = NAMES.contains(&one.imported.name().as_str());
+                if orphaned(one.local.symbol_id.get(), factory) {
+                    continue;
+                }
+                let bare = if one.imported.name() == one.local.name {
+                    one.local.name.to_string()
+                } else {
+                    format!("{} as {}", one.imported.name(), one.local.name)
+                };
+                named.push(if one.import_kind.is_type() { format!("type {bare}") } else { bare });
+            }
+            ImportDeclarationSpecifier::ImportDefaultSpecifier(one) => {
+                if orphaned(one.local.symbol_id.get(), false) {
+                    continue;
+                }
+                default = Some(one.local.name.to_string());
+            }
+            ImportDeclarationSpecifier::ImportNamespaceSpecifier(one) => {
+                if orphaned(one.local.symbol_id.get(), false) {
+                    continue;
+                }
+                namespace = Some(format!("* as {}", one.local.name));
+            }
         }
-        let bare = if named.imported.name() == named.local.name {
-            named.local.name.to_string()
-        } else {
-            format!("{} as {}", named.imported.name(), named.local.name)
-        };
-        kept.push(if named.import_kind.is_type() { format!("type {bare}") } else { bare });
+        kept += 1;
     }
-    if kept.len() == specifiers.len() {
+    if kept == specifiers.len() {
         return None;
     }
-    let _ = source;
-    Some(Edit {
-        keeps: None,
-        span: import.span,
-        text: if kept.is_empty() {
-            String::new()
-        } else {
-            format!("import {{ {} }} from {:?};", kept.join(", "), import.source.value.as_str())
-        },
-    })
+    let text = if kept == 0 {
+        String::new()
+    } else {
+        let mut clauses: Vec<String> = default.into_iter().chain(namespace).collect();
+        if !named.is_empty() {
+            clauses.push(format!("{{ {} }}", named.join(", ")));
+        }
+        format!("import {} from {:?};", clauses.join(", "), import.source.value.as_str())
+    };
+    Some(Edit { keeps: None, span: import.span, text })
 }
 
 #[derive(Default)]
@@ -275,8 +300,20 @@ fn collect(
                         format!(
                             "(()=>{{throw new Error({:?})}})",
                             format!(
-                                "[barq] {label}() may only be called on the {}",
-                                env_name(wanted)
+                                "[barq] A function made with `{label}` was called {}, and its \
+                                 body exists only {}. Call it only from {} code, or use \
+                                 `createIsomorphicFn` to give each side its own body.",
+                                if wanted == Env::Server {
+                                    "in the browser"
+                                } else {
+                                    "on the server"
+                                },
+                                if wanted == Env::Server {
+                                    "on the server"
+                                } else {
+                                    "in the browser"
+                                },
+                                env_name(wanted),
                             ),
                         )
                     },
@@ -439,7 +476,12 @@ export const secret = createServerOnlyFn(() => process.env.TOKEN);
         let client = on(source, Env::Client).expect("rewritten");
         assert!(!client.contains("TOKEN"), "{client}");
         assert!(client.contains("throw new Error"), "{client}");
-        assert!(client.contains("only be called on the server"), "{client}");
+        assert!(
+            client.contains(
+                "made with `createServerOnlyFn` was called in the browser, and its body exists only on the server"
+            ),
+            "{client}"
+        );
     }
 
     #[test]
@@ -452,7 +494,12 @@ export const measure = createClientOnlyFn(() => window.innerWidth);
 
         let server = on(source, Env::Server).expect("rewritten");
         assert!(!server.contains("innerWidth"), "{server}");
-        assert!(server.contains("only be called on the client"), "{server}");
+        assert!(
+            server.contains(
+                "made with `createClientOnlyFn` was called on the server, and its body exists only in the browser"
+            ),
+            "{server}"
+        );
     }
 
     /// By SYMBOL, so an unrelated function of the same name is not a match —
@@ -539,6 +586,27 @@ export const secret = createServerOnlyFn(() => process.env.TOKEN);
         )
         .expect("rewritten");
         assert!(!out.contains("@barqjs/start"), "{out}");
+    }
+
+    /// What only the deleted body read goes with it, imports included. A
+    /// driver module has side effects, so the statement left standing keeps
+    /// the whole of it in the browser bundle with nothing referring to it.
+    #[test]
+    fn an_import_only_the_deleted_body_read_goes_with_it() {
+        let source = format!(
+            "import {{ createServerOnlyFn }} from {START:?};\n\
+             import {{ db, label }} from \"./db\";\n\
+             import pool from \"./pool\";\n\
+             export const read = createServerOnlyFn(() => db.query(pool));\n\
+             export const shown = label;\n"
+        );
+        let client = on(&source, Env::Client).expect("rewritten");
+        assert!(!client.contains("db,") && !client.contains("{ db"), "{client}");
+        assert!(!client.contains("./pool"), "{client}");
+        assert!(client.contains("import { label } from \"./db\";"), "{client}");
+        let server = on(&source, Env::Server).expect("rewritten");
+        assert!(server.contains("import { db, label } from \"./db\";"), "{server}");
+        assert!(server.contains("./pool"), "{server}");
     }
 
     /// …and a specifier something ELSE uses stays, with the statement rebuilt

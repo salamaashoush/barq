@@ -1,30 +1,30 @@
-import { optimistic } from "@barqjs/core"
+import { action, createOptimistic } from "@barqjs/core"
 
-/** `optimistic` returns a `Signal<T>`, not a tuple — `.set` is a method. */
-export const pending = optimistic(0)
+export const [pending, setPending] = createOptimistic(0)
 
 /**
- * The second button is the one that DISCRIMINATES, and it did not exist until
- * M11. A `.set` inside a closure hoists whatever the compiler believes about
- * the member, because the call is not in a reactive position at all — so the
- * first button was satisfied by both verdicts, and the comment below it
- * asserted a rule nothing observed.
- *
- * By REFERENCE the two verdicts differ visibly: a static member reference goes
- * on the delegated path as a `$$click` expando, and a member the compiler
- * thinks is a tracked read has to be re-read per dispatch, so the position
- * falls out of the delegated set into an `addEventListener` of its own (B4).
- * `optimistic` sat under the plain-accessor shape until M11 and took the second
- * of those, which is a divergence from `signal` in the one place `optimistic`
- * is supposed to be a `signal`.
+ * An optimistic write is a guess over an action that is still running, so the
+ * handler starts one and leaves it open for the guess to show.
+ */
+const bump = action(function* () {
+  setPending(pending() + 1)
+  yield new Promise<void>(() => {})
+})
+
+/**
+ * The second button is the one that DISCRIMINATES. A setter handed over BY
+ * REFERENCE is a function the compiler can see is not a tracked read, so it goes
+ * on the delegated path as a `__bq_click` expando. A value it took for a tracked
+ * read would have to be re-read per dispatch, and the position would fall out
+ * of the delegated set into an `addEventListener` of its own (B4).
  */
 export default function CreateOptimisticSignal() {
   return (
     <div>
-      <button type="button" class="optimistic" onClick={() => pending.set(pending() + 1)}>
+      <button type="button" class="optimistic" onClick={() => void bump()}>
         {() => pending()}
       </button>
-      <button type="button" class="by-reference" onClick={pending.set}>
+      <button type="button" class="by-reference" onClick={setPending}>
         set
       </button>
     </div>
@@ -37,12 +37,10 @@ export const optimality = {
   target: 1,
   milestone: 5,
   templates: 1,
-  // `optimistic` returns an Accessor with signal-shaped write members, so
-  // `pending.set` is NOT a tracked read: the handler closes over nothing the
-  // component owns and hoists to module scope.
-  // The hoisted handler is a module-scope const above the component; the read
-  // inside the hole is the live one.
-  emits: ["= () => pending.set", "() => pending()", "$$click = pending.set"],
+  // The setter is a function the compiler can see through, so the handler that
+  // calls the action hoists to module scope and the one handed over by
+  // reference is the expando itself. The read inside the hole is the live one.
+  emits: ["= () => void bump()", "() => pending()", "__bq_click = setPending"],
   // The whole claim of the second button: the delegated set, not a listener of
   // its own, and no per-dispatch re-read of the member.
   absent: ["addEventListener", "bindEvent"],

@@ -14,6 +14,8 @@
 //! knows the grammar well enough to shorten values safely.
 
 pub mod atoms;
+#[cfg(test)]
+mod css_ts;
 mod hash;
 pub mod order;
 mod sheet;
@@ -123,7 +125,9 @@ pub fn compile(source: &str, kind: Kind, options: &Options<'_>) -> Result<Compil
         Kind::Scoped => {
             let Some(Statement::QualifiedRule(rule)) = stylesheet.statements.first() else {
                 return Err(Error {
-                    message: "expected a block of declarations".to_string(),
+                    message: "This block is not a list of declarations. Write declarations and \
+                              nested rules, such as `color: red; &:hover { color: blue }`."
+                        .to_string(),
                     start: 0,
                     end: source.len(),
                 });
@@ -133,14 +137,18 @@ pub fn compile(source: &str, kind: Kind, options: &Options<'_>) -> Result<Compil
         Kind::Keyframes => {
             let Some(Statement::AtRule(at_rule)) = stylesheet.statements.first() else {
                 return Err(Error {
-                    message: "expected keyframe selectors".to_string(),
+                    message: "This `keyframes` block has no steps. Write them as \
+                              `from { opacity: 0 } to { opacity: 1 }`."
+                        .to_string(),
                     start: 0,
                     end: source.len(),
                 });
             };
             let Some(block) = at_rule.block.as_ref() else {
                 return Err(Error {
-                    message: "expected keyframe selectors".to_string(),
+                    message: "This `keyframes` block has no steps. Write them as \
+                              `from { opacity: 0 } to { opacity: 1 }`."
+                        .to_string(),
                     start: 0,
                     end: source.len(),
                 });
@@ -161,5 +169,5 @@ pub fn compile(source: &str, kind: Kind, options: &Options<'_>) -> Result<Compil
 fn from_parser(error: &oxc_css_parser::error::Error, offset: usize, source: &str) -> Error {
     let start = error.span.start.saturating_sub(offset).min(source.len());
     let end = error.span.end.saturating_sub(offset).min(source.len());
-    Error { message: error.kind.to_string(), start, end }
+    Error { message: format!("The CSS parser reports: {}.", error.kind), start, end }
 }

@@ -31,7 +31,7 @@ export const MATRIX_EXCEPTIONS = {
     // Its default export is one half of a two-module fixture; the harness
     // compiles the sibling with it and nothing else can.
     "ownership/own-cross-module",
-    // 30 of the 31 L1 fixtures. Their default export is not a page: it is a
+    // 26 of the 27 L1 fixtures. Their default export is not a page: it is a
     // probe the claim runner drives with a scope and a container it controls,
     // and several of them exist to throw. The near-universality is the fact this
     // list is really recording — L1 is almost the only thing that has ever
@@ -40,10 +40,7 @@ export const MATRIX_EXCEPTIONS = {
     // rule about what the two backends WRITE, and it has been rendering since
     // M10; the "every one of them" this comment used to claim stopped being true
     // then and the count went on being bumped.
-    "semantics/sem-async-abort-on-dispose",
     "semantics/sem-async-optimistic-derived",
-    "semantics/sem-async-read-mode",
-    "semantics/sem-async-stale-response",
     "semantics/sem-async-stream",
     "semantics/sem-calling-convention",
     "semantics/sem-ctx-provider-default-silent",
@@ -58,7 +55,6 @@ export const MATRIX_EXCEPTIONS = {
     "semantics/sem-form-dom-compare",
     "semantics/sem-form-selection-preserved",
     "semantics/sem-key-identity-default",
-    "semantics/sem-loading-value",
     "semantics/sem-own-given-scope-wins",
     "semantics/sem-own-render-disposer-disposes",
     "semantics/sem-own-slot-arguments",
@@ -174,10 +170,16 @@ export const MATRIX_EXCEPTIONS = {
 // implementation on each backend under ONE name — the server's takes the
 // insertion pair it has no use for so that `region_call` stays a single emission,
 // which is what `SHARED_ABI` is for.
+// And -4 fixtures / -28 cells / -4 renderableOnNeither: `sem-async-abort-on-dispose`,
+// `sem-async-stale-response`, `sem-async-read-mode` and `sem-loading-value` are
+// gone. Each held claims about barq's own async node — the abort signal it
+// handed a fetcher, the response it discarded, the read modes on its accessor,
+// the value it kept while reloading — and that node is `@solidjs/signals`' now,
+// whose own suite is where those behaviours are specified.
 export const MODE_MATRIX_REACH: Readonly<Record<string, number>> = Object.freeze({
-  fixtures: 196,
+  fixtures: 192,
   modes: 7,
-  cells: 1372,
+  cells: 1344,
   renderableOnBoth: 164,
-  renderableOnNeither: 32,
+  renderableOnNeither: 28,
 });

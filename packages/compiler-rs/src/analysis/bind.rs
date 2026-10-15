@@ -15,8 +15,7 @@ use oxc::span::Span;
 
 use crate::diag::Code;
 use crate::ir::{
-    BIT_OVERFLOW, CellSlot, Const, Diag, Flow, Keyed, MemberMask, Module, Prim, ReactiveEnv,
-    SourceKind,
+    BIT_OVERFLOW, CellSlot, Const, Diag, Flow, Keyed, Module, Prim, ReactiveEnv, SourceKind,
 };
 use crate::options::ResolvedOptions;
 
@@ -133,6 +132,7 @@ pub fn classify<'a>(
         exported: Vec::new(),
         rules: options.diagnostics,
         suspects: Vec::new(),
+        bodies: Vec::new(),
         assumed: Vec::new(),
         destructured: Vec::new(),
         components: Vec::new(),
@@ -150,6 +150,7 @@ pub fn classify<'a>(
     // can feed back into this.
     binder.props_params();
     binder.fixpoint();
+    binder.derive();
     binder.report();
     binder.publish_components();
     binder.publish_cell_slots();
@@ -163,7 +164,7 @@ fn number_reactive_symbols(env: &mut ReactiveEnv<'_>) {
     let mut next = 0u8;
     for index in 0..env.kind.len() {
         let symbol = SymbolId::from_usize(index);
-        if !ReactiveEnv::is_reactive(env.kind[symbol]) {
+        if !ReactiveEnv::is_reactive(env.kind[symbol]) && !env.is_derived(symbol) {
             continue;
         }
         env.bit[symbol] = if next < 64 { next } else { BIT_OVERFLOW };
@@ -175,7 +176,7 @@ struct Binder<'p, 'a> {
     allocator: &'a Allocator,
     scoping: &'p Scoping,
     env: &'p mut ReactiveEnv<'a>,
-    /// `import * as core from "@barqjs/core"` — `core.signal(0)` still resolves.
+    /// `import * as core from "@barqjs/core"` — `core.createSignal(0)` still resolves.
     namespaces: Vec<SymbolId>,
     decls: Vec<Decl<'a>>,
     /// `(owner, props)` for every function shaped like a component. Applied
@@ -214,6 +215,9 @@ struct Binder<'p, 'a> {
     /// the walk records `(position, span, symbol)` and the verdict is taken
     /// afterwards — which keeps the rule at zero new traversals.
     suspects: Vec<Suspect<'a>>,
+    /// What each zero-arity function binding's body calls and reads members
+    /// of, for [`Binder::derive`] to judge once every kind is settled.
+    bodies: Vec<BodyReads>,
     /// Row parameters whose `Accessor` kind is an ASSUMPTION rather than a
     /// reading: `<For keyed={KEYED}>` and `<For {...opts}>` take the arm that is
     /// safe when wrong, and telling the author to call a row that may be a plain
@@ -257,22 +261,21 @@ struct Suspect<'a> {
     symbol: SymbolId,
     /// The member being read, for the member-position arm.
     member: Option<&'a str>,
+    /// `props.<prop>`, when what was written is a member of a binding rather
+    /// than the binding itself. `symbol` is then the props object.
+    prop: Option<&'a str>,
 }
 
-/// Members a barq accessor legitimately has. `Signal<T>` declares
-/// `set`/`update`/`peek` (`signals.ts:1136`) and `Computed<T>` declares `peek`
-/// (`:1143`); an accessor is a FUNCTION, so `Function.prototype`'s own members
-/// are legitimate reads too.
-///
-/// This list is D1's own and is deliberately the UNION over every primitive
-/// rather than `MemberMask`: masking a member a primitive does not have turns a
-/// tracked read into `Static` (`Binder::returns`), so `MemberMask` cannot be
-/// widened to cover `useMemo(…).peek()` — and an unexempted `.peek()` on a
-/// typed public API would be a false positive on correct code.
+/// What a prop's Cell is legitimately asked for without being called. Narrower
+/// than [`ACCESSOR_MEMBERS`]: `props.user.name` and `props.items.length` read a
+/// function's own `name` and `length`, which nobody means.
+const CELL_MEMBERS: &[&str] = &["apply", "bind", "call"];
+
+/// Members an accessor legitimately has. It is a FUNCTION and nothing more, so
+/// `Function.prototype`'s own members are the whole list: a `.set` or a `.peek`
+/// read off one is code written for a callable signal, and the write half is
+/// the second element of the pair `createSignal` returned.
 const ACCESSOR_MEMBERS: &[&str] = &[
-    "set",
-    "update",
-    "peek",
     "apply",
     "arguments",
     "bind",
@@ -483,12 +486,38 @@ impl<'a> Binder<'_, 'a> {
             return;
         }
         for index in 0..self.suspects.len() {
-            let Suspect { code, span, symbol, member } = self.suspects[index];
-            // Keyed on the BINDING, never on `React::Reactive`: `props.count * 2`
-            // is correct code — props lower to getters — and a rule keyed on "a
-            // reactive read in a binary expression" fires on the commonest
-            // correct pattern in the codebase.
-            let SourceKind::Accessor { .. } = self.env.kind[symbol] else { continue };
+            let Suspect { code, span, symbol, member, prop } = self.suspects[index];
+            if let Some(prop) = prop {
+                // A prop is a Cell: `props.count * 2` multiplies a function and
+                // `props.user.name` is the function's own name.
+                if self.env.kind[symbol] != SourceKind::PropsParam {
+                    continue;
+                }
+                if member.is_some_and(|name| CELL_MEMBERS.contains(&name)) {
+                    continue;
+                }
+                let name = self.scoping.symbol_name(symbol);
+                let message = match (code, member) {
+                    (Code::Barq003, Some(member)) => format!(
+                        "`{name}.{prop}` is a Cell, a function you call to read the prop, so \
+                         `.{member}` is read from the function and not from the prop's value: \
+                         the result is `undefined` or the function's own `name` or `length`. \
+                         Call it first: `{name}.{prop}().{member}`."
+                    ),
+                    _ => format!(
+                        "`{name}.{prop}` is a Cell, a function you call to read the prop, and \
+                         here the function itself is used as the value. In a string it prints \
+                         its own source text and in arithmetic it gives `NaN`. Call it: \
+                         `{name}.{prop}()`."
+                    ),
+                };
+                self.diagnose(code, span, &message);
+                continue;
+            }
+            // Keyed on the BINDING, never on `React::Reactive`: a rule keyed on
+            // "a reactive read in a binary expression" fires on every correct
+            // `count() * 2`.
+            let SourceKind::Accessor = self.env.kind[symbol] else { continue };
             // An assumed accessor is not evidence. `<For keyed={KEYED}>` takes
             // the accessor arm because it is the safe one, not because the row
             // is one, and `KEYED === true` makes `row()` a TypeError.
@@ -508,17 +537,17 @@ impl<'a> Binder<'_, 'a> {
             };
             let message = match code {
                 Code::Barq001 => format!(
-                    "`{name}` is an accessor, and this position turns it into a value: a function \
-                     stringifies to its own source text and arithmetic on one is NaN. Call it — \
-                     `{fix}`."
+                    "`{name}` is an accessor, and here the function itself is used as the value. \
+                     In a string it prints its own source text and in arithmetic it gives `NaN`. \
+                     Call it: `{fix}`."
                 ),
                 Code::Barq002 => format!(
                     "`{name}` is an accessor, and a function is always truthy, so this condition \
-                     can never take its other branch. Call it — `{fix}`."
+                     is always true and its other branch never runs. Call it: `{fix}`."
                 ),
                 _ => format!(
-                    "`{name}` is an accessor, so `.{}` reads a property of the function rather \
-                     than of the value it returns. Call it first — `{fix}`.",
+                    "`{name}` is an accessor, so `.{}` is read from the function and not from \
+                     the value it returns, and the result is `undefined`. Call it first: `{fix}`.",
                     member.unwrap_or_default()
                 ),
             };
@@ -533,12 +562,12 @@ impl<'a> Binder<'_, 'a> {
             self.diagnose(
                 Code::Barq005,
                 span,
-                "this component destructures its props in the parameter list, so every prop is \
-                 read once when the component is called and the names it binds are snapshots. \
-                 barq cannot make them reactive: lowering takes no Program and codegen only \
-                 splices at recorded sites. Read them where they are used — `props.text` — or \
-                 take them apart with `splitProps(props, [\"text\"])`. A prop whose VALUE is \
-                 itself an accessor is unaffected.",
+                "This component takes its props apart in the parameter list, so each name is \
+                 the prop's Cell (a function you call), not its value. Using one as a value \
+                 prints the function's source text or gives `NaN`, and a default such as \
+                 `{ text = \"x\" }` is a plain value only when the prop is missing. Take one \
+                 `props` parameter and call each prop where it is used, for example \
+                 `props.text()`, or separate some with `splitProps(props, [\"text\"])`.",
             );
         }
     }
@@ -579,13 +608,8 @@ impl<'a> Binder<'_, 'a> {
     /// `(scope, props)`, so a function written at one of them has the same
     /// calling convention as a component written anywhere else and has to be
     /// compiled with the same one.
-    const ROUTE_COMPONENT_KEYS: [&'static str; 5] = [
-        "component",
-        "pendingComponent",
-        "errorComponent",
-        "notFoundComponent",
-        "shellComponent",
-    ];
+    const ROUTE_COMPONENT_KEYS: [&'static str; 5] =
+        ["component", "pendingComponent", "errorComponent", "notFoundComponent", "shellComponent"];
 
     /// A component written INLINE in a route's options object.
     ///
@@ -673,9 +697,32 @@ impl<'a> Binder<'_, 'a> {
         if !self.rules {
             return;
         }
-        let Expression::Identifier(identifier) = expression else { return };
-        let Some(symbol) = symbol_of(self.scoping, expression) else { return };
-        self.suspects.push(Suspect { code, span: identifier.span, symbol, member });
+        match expression {
+            Expression::Identifier(identifier) => {
+                let Some(symbol) = symbol_of(self.scoping, expression) else { return };
+                self.suspects.push(Suspect {
+                    code,
+                    span: identifier.span,
+                    symbol,
+                    member,
+                    prop: None,
+                });
+            }
+            // `props.x` in the same position. Not the truthiness arm: a prop
+            // the caller left out is `undefined`, so `props.x ? … : …` is how
+            // its presence is asked about.
+            Expression::StaticMemberExpression(read) if code != Code::Barq002 => {
+                let Some(symbol) = symbol_of(self.scoping, &read.object) else { return };
+                self.suspects.push(Suspect {
+                    code,
+                    span: read.span,
+                    symbol,
+                    member,
+                    prop: Some(read.property.name.as_str()),
+                });
+            }
+            _ => {}
+        }
     }
 
     /// Aliasing needs the alias target's answer, so the declaration list runs to
@@ -712,13 +759,48 @@ impl<'a> Binder<'_, 'a> {
         }
     }
 
+    /// Which zero-arity function bindings read something tracked when they are
+    /// called. A function that calls another such function is one too, so this
+    /// runs until nothing is added.
+    fn derive(&mut self) {
+        let mut derived: Vec<SymbolId> = Vec::new();
+        loop {
+            let before = derived.len();
+            for body in &self.bodies {
+                if derived.contains(&body.owner)
+                    || self.scoping.symbol_is_mutated(body.owner)
+                    || self.env.kind_of(body.owner) != (SourceKind::Fn { nullary: true })
+                {
+                    continue;
+                }
+                let calls = body.calls.iter().any(|callee| {
+                    self.env.kind_of(*callee) == SourceKind::Accessor || derived.contains(callee)
+                });
+                let reads = body.members.iter().any(|object| {
+                    matches!(
+                        self.env.kind_of(*object),
+                        SourceKind::ReactiveObject | SourceKind::PropsParam
+                    )
+                });
+                if calls || reads {
+                    derived.push(body.owner);
+                }
+            }
+            if derived.len() == before {
+                break;
+            }
+        }
+        derived.sort_unstable();
+        self.env.derived = derived;
+    }
+
     /// C3.1/C3.9. `const { text } = props` binds the Cell `props.text` yields,
     /// so the binding answers what a props member read answers and forwards by
     /// identity out of the component. Every other object pattern stays Opaque.
     fn destructured_member(&self, init: InitOf<'a>) -> SourceKind {
         let InitOf::Alias(source) = init else { return SourceKind::Opaque };
         match self.env.kind_of(source) {
-            SourceKind::PropsParam => SourceKind::Accessor { nonreactive: MemberMask::EMPTY },
+            SourceKind::PropsParam => SourceKind::Accessor,
             _ => SourceKind::Opaque,
         }
     }
@@ -735,7 +817,7 @@ impl<'a> Binder<'_, 'a> {
                 SourceKind::Primitive(prim) => self.returns(prim),
                 // `const c = count()` snapshots the value; reading `c` later
                 // tracks nothing.
-                SourceKind::Accessor { .. } => Produced::kind(SourceKind::Inert),
+                SourceKind::Accessor => Produced::kind(SourceKind::Inert),
                 _ => Produced::OPAQUE,
             },
             InitOf::NamespaceCall(prim) => self.returns(prim),
@@ -745,28 +827,23 @@ impl<'a> Binder<'_, 'a> {
         }
     }
 
-    /// The per-primitive return-shape table, verified against the runtime: V3
-    /// says `signal()` is a callable `Signal<T>` with `.set`/`.update`/`.peek`,
-    /// not a tuple, and `useState` is the tuple form.
+    /// The per-primitive return-shape table, which is `@solidjs/signals`':
+    /// `createSignal` and `createOptimistic` return the `[read, write]` pair,
+    /// and `createMemo` the accessor alone.
     fn returns(&self, prim: Prim) -> Produced<'a> {
-        let signal = SourceKind::Accessor { nonreactive: MemberMask::SIGNAL };
-        // Only `signal()` documents the write members. Masking a member a
-        // primitive does not have would turn a tracked read into `Static`.
-        let accessor = SourceKind::Accessor { nonreactive: MemberMask::EMPTY };
         match prim {
-            // `optimistic()` returns a `Signal<T>` — `actions.ts` builds the
-            // reader and hangs `.set`, `.update` and `.peek` off it, which is
-            // exactly the SIGNAL mask. It sat under `accessor` until M11, so
-            // `optimistic.set` was a tracked read where `signal.set` is static,
-            // and a handler passed by reference left the DELEGATED set for an
-            // `addEventListener` of its own (B4).
-            Prim::Signal | Prim::Optimistic => Produced::kind(signal),
-            Prim::Computed | Prim::MapArray | Prim::Repeat => Produced::kind(accessor),
+            // The write half is a function nothing reassigns, so a handler
+            // slot can take it by reference: `onClick={setCount}` goes on the
+            // delegated path like any other named handler. It declares a
+            // parameter, which is what keeps it from being read as a Cell.
+            Prim::Signal | Prim::Optimistic => {
+                Produced::tuple(SourceKind::Accessor, SourceKind::Fn { nullary: false })
+            }
+            Prim::Computed | Prim::MapArray | Prim::Repeat => Produced::kind(SourceKind::Accessor),
             Prim::Store | Prim::OptimisticStore => {
                 Produced::tuple(SourceKind::ReactiveObject, SourceKind::Inert)
             }
             Prim::Projection => Produced::kind(SourceKind::ReactiveObject),
-            Prim::Resource => Produced::kind(SourceKind::AccessorRecord),
             // `useContext` hands back whatever was provided; guessing is the one
             // kind of wrong verdict that produces a silently dead UI.
             Prim::UseContext => Produced::OPAQUE,
@@ -774,9 +851,7 @@ impl<'a> Binder<'_, 'a> {
             // binding initialised from either holds a plain value, so READING
             // that binding is not a tracked read. What IS a tracked read is the
             // call itself, and that is `classify`'s to say (A5 (f)).
-            Prim::Untrack | Prim::Batch | Prim::Peek | Prim::ReadMode => {
-                Produced::kind(SourceKind::Inert)
-            }
+            Prim::Untrack | Prim::ReadMode => Produced::kind(SourceKind::Inert),
             Prim::Flow(_) => Produced::OPAQUE,
         }
     }
@@ -805,6 +880,14 @@ impl<'a> Binder<'_, 'a> {
                 .map_or(InitOf::Inert, |cooked| InitOf::Literal(Const::Str(cooked.as_str()))),
             Expression::Identifier(_) => {
                 symbol_of(self.scoping, expression).map_or(InitOf::Unknown, InitOf::Alias)
+            }
+            // A literal holding nothing but literals and functions is a table
+            // of constants: a member read off it reads nothing tracked, which
+            // is what keeps `styles.root` and `labels[kind]` out of an effect.
+            Expression::ObjectExpression(_) | Expression::ArrayExpression(_)
+                if plain_data(expression) =>
+            {
+                InitOf::Inert
             }
             Expression::ArrowFunctionExpression(arrow) => InitOf::Fn {
                 // `nullary` is the arity rule, which is about a value that
@@ -845,9 +928,21 @@ impl<'a> Binder<'_, 'a> {
             match init {
                 Expression::ArrowFunctionExpression(arrow) => {
                     self.declarations.push((owner, arrow.span, identifier.name.as_str()));
+                    if matches!(self.init_of(init), InitOf::Fn { nullary: true }) {
+                        let mut scan = ReadScan::new(self.scoping);
+                        scan.visit_arrow_function_expression(arrow);
+                        self.bodies.push(scan.into_reads(owner));
+                    }
                 }
                 Expression::FunctionExpression(function) => {
                     self.declarations.push((owner, function.span, identifier.name.as_str()));
+                    if matches!(self.init_of(init), InitOf::Fn { nullary: true })
+                        && let Some(body) = &function.body
+                    {
+                        let mut scan = ReadScan::new(self.scoping);
+                        scan.visit_function_body(body);
+                        self.bodies.push(scan.into_reads(owner));
+                    }
                 }
                 _ => {}
             }
@@ -1105,7 +1200,7 @@ impl<'a> Binder<'_, 'a> {
             _ => (Keyed::ByItem, true),
         });
 
-        let accessor = SourceKind::Accessor { nonreactive: MemberMask::EMPTY };
+        let accessor = SourceKind::Accessor;
         let params: &[SourceKind] = match (flow, keyed) {
             (Flow::For, Keyed::ByItem) => &[SourceKind::RowValue, accessor],
             (Flow::For, Keyed::ByFn) => &[accessor, accessor],
@@ -1176,12 +1271,11 @@ impl<'a> Binder<'_, 'a> {
             Code::Barq011,
             span,
             &format!(
-                "`keyed={{false}}` makes a row's identity its POSITION, so `<{tag}>`'s state — a \
-                 caret, a selection, playback, an open/closed toggle — belongs to slot N rather \
-                 than to the item that happens to be in it, and a reorder leaves it behind \
-                 (SEMANTICS K3). Drop `keyed={{false}}` for the identity default, or key on the \
-                 item with `keyed={{r => r.id}}`. This sees inline markup only: state inside a \
-                 component, behind a `ref`, or on a scrolled element is invisible to it."
+                "`keyed={{false}}` reuses each row's elements by position, so what the user \
+                 did inside `<{tag}>` (typed text, the caret, a selection, playback, open or \
+                 closed) stays in that position when the list reorders and ends up on a \
+                 different item. Remove `keyed={{false}}` so a row moves with its item, or key \
+                 by a stable field: `keyed={{(row) => row.id}}`."
             ),
         );
     }
@@ -1573,6 +1667,91 @@ fn stateful_tag(tag: &str) -> bool {
         tag,
         "input" | "textarea" | "select" | "video" | "audio" | "details" | "canvas" | "dialog"
     ) || tag.contains('-')
+}
+
+/// Whether an initialiser is data all the way down: literals, functions, and
+/// object or array literals of the same. A getter, a spread, a call or a name
+/// could each put something reactive inside, so any of them makes it unknown.
+fn plain_data(expression: &Expression<'_>) -> bool {
+    match expression {
+        Expression::StringLiteral(_)
+        | Expression::NumericLiteral(_)
+        | Expression::BooleanLiteral(_)
+        | Expression::NullLiteral(_)
+        | Expression::BigIntLiteral(_)
+        | Expression::RegExpLiteral(_)
+        | Expression::ArrowFunctionExpression(_)
+        | Expression::FunctionExpression(_) => true,
+        Expression::TemplateLiteral(literal) => literal.expressions.is_empty(),
+        Expression::UnaryExpression(unary) => plain_data(&unary.argument),
+        Expression::TSAsExpression(cast) => plain_data(&cast.expression),
+        Expression::TSSatisfiesExpression(cast) => plain_data(&cast.expression),
+        Expression::ParenthesizedExpression(inner) => plain_data(&inner.expression),
+        Expression::ArrayExpression(array) => {
+            array.elements.iter().all(|element| element.as_expression().is_some_and(plain_data))
+        }
+        Expression::ObjectExpression(object) => object.properties.iter().all(|property| {
+            let ObjectPropertyKind::ObjectProperty(property) = property else { return false };
+            property.kind == oxc::ast::ast::PropertyKind::Init
+                && !property.computed
+                && plain_data(&property.value)
+        }),
+        _ => false,
+    }
+}
+
+/// What one function body calls by name and reads members of.
+struct BodyReads {
+    owner: SymbolId,
+    calls: Vec<SymbolId>,
+    members: Vec<SymbolId>,
+}
+
+/// Collects [`BodyReads`]. It goes into nested functions too: a callback handed
+/// to `map` runs during the call, and one that does not only makes the verdict
+/// "may read", which costs an effect and never a missed update.
+struct ReadScan<'p> {
+    scoping: &'p Scoping,
+    calls: Vec<SymbolId>,
+    members: Vec<SymbolId>,
+}
+
+impl<'p> ReadScan<'p> {
+    fn new(scoping: &'p Scoping) -> Self {
+        Self { scoping, calls: Vec::new(), members: Vec::new() }
+    }
+
+    fn into_reads(self, owner: SymbolId) -> BodyReads {
+        BodyReads { owner, calls: self.calls, members: self.members }
+    }
+}
+
+impl<'a> Visit<'a> for ReadScan<'_> {
+    fn visit_call_expression(&mut self, it: &oxc::ast::ast::CallExpression<'a>) {
+        if it.arguments.is_empty()
+            && let Some(symbol) = symbol_of(self.scoping, &it.callee)
+        {
+            self.calls.push(symbol);
+        }
+        walk::walk_call_expression(self, it);
+    }
+
+    fn visit_static_member_expression(&mut self, it: &StaticMemberExpression<'a>) {
+        if let Some(symbol) = symbol_of(self.scoping, &it.object) {
+            self.members.push(symbol);
+        }
+        walk::walk_static_member_expression(self, it);
+    }
+
+    fn visit_computed_member_expression(
+        &mut self,
+        it: &oxc::ast::ast::ComputedMemberExpression<'a>,
+    ) {
+        if let Some(symbol) = symbol_of(self.scoping, &it.object) {
+            self.members.push(symbol);
+        }
+        walk::walk_computed_member_expression(self, it);
+    }
 }
 
 /// The first stateful tag in a row's markup, with its span. Deliberately not a

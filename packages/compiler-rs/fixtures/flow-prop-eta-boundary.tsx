@@ -1,9 +1,9 @@
-import { Errored, For, Show, signal } from "@barqjs/core"
+import { Errored, For, Show, createSignal } from "@barqjs/core"
 
-export const items = signal<string[]>(["a", "b"])
-export const on = signal(true)
-export const failing = signal(true)
-export const note = signal("recovering")
+export const [items, setItems] = createSignal<string[]>(["a", "b"])
+export const [on, setOn] = createSignal(true)
+export const [failing] = createSignal(true)
+export const [note, setNote] = createSignal("recovering")
 
 function Flaky() {
   if (failing()) throw new Error("nope")
@@ -45,11 +45,11 @@ export default function FlowPropEtaBoundary() {
 }
 
 export const steps = [
-  () => on.set(false),
-  () => items.set([]),
-  () => note.set("still recovering"),
-  () => on.set(true),
-  () => items.set(["c"]),
+  () => setOn(false),
+  () => setItems([]),
+  () => setNote("still recovering"),
+  () => setOn(true),
+  () => setItems(["c"]),
 ]
 
 export const optimality = {

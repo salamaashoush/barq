@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const count = signal(0)
+export const [count, setCount] = createSignal(0)
 
 export default function TextHoleFollowed() {
   return (
@@ -11,7 +11,7 @@ export default function TextHoleFollowed() {
   )
 }
 
-export const steps = [() => count.set(3), () => count.set(7)]
+export const steps = [() => setCount(3), () => setCount(7)]
 
 export const optimality = {
   target: 9,

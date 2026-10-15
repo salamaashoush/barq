@@ -14,14 +14,14 @@
  *
  * O5, O3.7.
  */
-import { scope, DEV, effect, onCleanup, render, renderEffect, signal } from "@barqjs/core"
+import { createRoot, DEV, createTrackedEffect, onCleanup, render, createRenderEffect, createSignal, runWithOwner } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 import { formatThrown } from "../../test/semantics-support.ts"
 
 export const rules = ["O5", "O3.7"]
 
-export const count = signal(0)
+export const [count, setCount] = createSignal(0)
 export const runs: string[] = []
 export const cleanups: string[] = []
 
@@ -35,7 +35,7 @@ function painted(): string | null {
 }
 
 function Leaf() {
-  effect(() => {
+  createTrackedEffect(() => {
     runs.push(`effect:${count()}`)
   })
   onCleanup(() => cleanups.push("leaf"))
@@ -46,9 +46,9 @@ function Painter() {
   const node = document.createElement("b")
   node.className = "painted"
   escaped = node
-  renderEffect(() => {
+  createRenderEffect(() => {
     node.textContent = String(count())
-  })
+  }, () => {})
   return <span class="painter">painter</span>
 }
 
@@ -62,7 +62,7 @@ function Tree() {
 }
 
 async function mountAndDispose(kit: Kit) {
-  count.set(0)
+  setCount(0)
   runs.length = 0
   cleanups.length = 0
   escaped = null
@@ -74,7 +74,7 @@ async function mountAndDispose(kit: Kit) {
   const before = runs.length
   dispose?.()
   await kit.settle()
-  count.set(1)
+  setCount(1)
   await kit.settle()
   return { host, thrown, before, after: runs.length, painted: painted() }
 }
@@ -123,7 +123,7 @@ const MOUNTED =
 type Form = "jsx" | "block" | "built"
 
 async function mountInsideAScope(kit: Kit, form: Form) {
-  count.set(0)
+  setCount(0)
   runs.length = 0
   cleanups.length = 0
   escaped = null
@@ -132,7 +132,7 @@ async function mountInsideAScope(kit: Kit, form: Form) {
   let outer: (() => void) | undefined
   const capture = DEV.diagnostics.capture()
   const thrown = await kit.attempt(() => {
-    outer = scope((d: () => void) => {
+    outer = runWithOwner(null, () => createRoot((d: () => void) => {
       if (form === "built") {
         // Built BEFORE `render` is entered, and through a LOCAL so the wrap
         // does not reach it. The shape a hand-written caller still produces.
@@ -144,18 +144,18 @@ async function mountInsideAScope(kit: Kit, form: Form) {
         clear = render(<Tree />, host)
       }
       return d
-    }, true)
+    }))
   })
   const diagnostics = capture.stop().map((event) => event.code)
   const before = runs.length
   clear?.()
   await kit.settle()
-  count.set(1)
+  setCount(1)
   await kit.settle()
   const afterClear = runs.length
   outer?.()
   await kit.settle()
-  count.set(2)
+  setCount(2)
   await kit.settle()
   return { host, thrown, before, afterClear, afterOuter: runs.length, diagnostics }
 }
@@ -295,17 +295,17 @@ export const claims: Claim[] = [
     rule: "O5",
     says: "a Block-form mount adopts no ownerless work it did not build, so its disposer cannot stop a library's effect that merely happened to be created in the same turn",
     async check(kit) {
-      count.set(0)
+      setCount(0)
       runs.length = 0
       cleanups.length = 0
       escaped = null
-      const pulse = signal(0)
+      const [pulse, setPulse] = createSignal(0)
       const library: number[] = []
       let libraryCleanups = 0
       // Ownerless, and in the same synchronous turn as the mount below: the
       // orphan list bounds the claim in TIME, not by PROVENANCE, so this is the
       // ordinary module-initialisation shape and not a contrived one.
-      effect(() => {
+      createTrackedEffect(() => {
         library.push(pulse())
       })
       onCleanup(() => {
@@ -324,7 +324,7 @@ export const claims: Claim[] = [
 
       dispose?.()
       await kit.settle()
-      pulse.set(1)
+      setPulse(1)
       await kit.settle()
 
       if (library.length === before || libraryCleanups !== 0) {

@@ -7,6 +7,7 @@
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "noEmit": true,
+    "noEmitOnError": true,
     "strict": true,
     "skipLibCheck": true,
     "noFallthroughCasesInSwitch": true,
@@ -16,6 +17,8 @@
     "jsx": "react-jsx",
     "jsxImportSource": "@barqjs/core"
   },
-  "include": ["test/**/*.ts", "test/**/*.tsx", "fixtures/**/*.tsx"],
+  // `fixtures/` is its own project, `fixtures/tsconfig.json`: some fixtures are
+  // compiler input that is deliberately not valid TypeScript.
+  "include": ["test/**/*.ts", "test/**/*.tsx"],
   "exclude": ["node_modules", "target", "test/.tmp"]
 }

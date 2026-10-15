@@ -20,7 +20,7 @@ pub use region::{
     DETECT, HYDRATE, NO_SCOPE, Region, RegionId, RegionKind, STATIC_KEY, TAGGED, WHOLE,
 };
 pub use skeleton::{Materialisation, Ns, SkelAttr, SkelAttrValue, SkelElement, SkelNode, Skeleton};
-pub use symbols::{CellSlot, Diag, Flow, Keyed, MemberMask, Prim, ReactiveEnv, SourceKind};
+pub use symbols::{CellSlot, Diag, Flow, Keyed, Prim, ReactiveEnv, SourceKind};
 
 /// Index into [`Skeleton::nodes`], document order.
 pub type NodeId = u32;

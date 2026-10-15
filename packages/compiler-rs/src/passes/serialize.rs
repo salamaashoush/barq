@@ -47,7 +47,7 @@ pub fn run(module: &mut Module<'_>, share: bool) {
         let ns = unit.skeleton.ns;
         // `template(html, isSVG)` returns a DIFFERENT node for the same bytes,
         // so the wrapper flag is part of the template's identity, not metadata.
-        let wrapped = needs_svg_wrapper(&unit.skeleton, interner);
+        let wrapped = needs_wrapper(&unit.skeleton, interner);
         let hash = identity(&html[start as usize..end as usize], ns, wrapped);
 
         // The hash is a probe, not the answer: two templates merged by a
@@ -186,19 +186,21 @@ impl Writer<'_, '_> {
     }
 }
 
-/// `template(html, isSVG)` wraps the markup in `<svg xmlns>` and returns its
-/// first child, so it is for a template rooted at an SVG *child*. A template
-/// rooted at `<svg>` itself parses correctly as inline HTML (`dom.ts:1000`).
-fn needs_svg_wrapper(skeleton: &Skeleton<'_>, interner: &Interner<'_>) -> bool {
-    if skeleton.ns != Ns::Svg {
-        return false;
-    }
+/// `template(html, ns)` wraps the markup in `<svg>` or `<math>` and returns its
+/// first child, so it is for a template rooted at a foreign CHILD. A template
+/// rooted at `<svg>` or `<math>` itself parses correctly as inline HTML.
+fn needs_wrapper(skeleton: &Skeleton<'_>, interner: &Interner<'_>) -> bool {
+    let own = match skeleton.ns {
+        Ns::Html => return false,
+        Ns::Svg => "svg",
+        Ns::Math => "math",
+    };
     let (lo, hi) = skeleton.roots;
     if hi - lo != 1 {
         return false;
     }
     match skeleton.node(lo) {
-        SkelNode::Element(element) => interner.tag(element.tag).text != "svg",
+        SkelNode::Element(element) => interner.tag(element.tag).text != own,
         _ => false,
     }
 }

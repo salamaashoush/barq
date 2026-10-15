@@ -1,38 +1,43 @@
-# BARQ008 — this `barq-ignore-next-line` matched no diagnostic
+# BARQ008: A `barq-ignore-next-line` comment silences nothing on the next line
 
-**Level:** warning, always · [all codes](README.md)
+**Level:** warning · [all codes](README.md)
 
-## What fires
+## Message
 
-A well-formed suppression comment whose codes were not raised on the line it covers.
+> This `barq-ignore-next-line` names BARQ001, and nothing on the line below reports it,
+> so the comment does nothing. Delete it, or move it to the line directly above the
+> diagnostic; inside JSX, write it as `{/* barq-ignore-next-line ... */}`.
 
-```jsx
-{/* barq-ignore-next-line BARQ001 (fixed this last week) */}   {/* ← BARQ008 */}
-<p>{count()}</p>
+## Failing example
+
+```tsx
+// barq-ignore-next-line BARQ001 (the debug panel shows the source text)
+export const Label = () => <p>ok</p>;
 ```
 
-Two shapes produce this without the directive being stale, and both are worth checking
-before deleting it:
+## Fixed example
 
-- **A `//` line in JSX child position is text, not a comment.** It silences nothing, and it
-  is baked into the template and rendered onto the page. Use `{/* … */}`.
-- **The directive covers one line, not one statement.** A diagnostic on the third line of a
-  multi-line statement is not covered by a directive above the first, so you get BARQ008 and
-  the original both. Move the directive directly above the reported line.
+```tsx
+export const Label = () => <p>ok</p>;
+```
 
-## The fix
+## Why this rule exists
 
-Delete the directive.
+A suppression that silences nothing is a leftover: the code it covered was fixed or moved.
+Left in place, it would hide the next diagnostic with that code on that line without
+anyone deciding that it should.
 
-## Why it can never be an error
+Two things produce this by accident. A comment covers the next line only, not the whole
+statement, so it has to sit directly above the line the diagnostic points at. And between
+JSX children a `//` line is text, so the comment has to be written as
+`{/* barq-ignore-next-line BARQ001 (reason) */}`.
 
-This code is clamped to warning level. `checks: { BARQ008: "error" }` and
-`defaultCategory: "error"` both leave it at warning, and a test pins that.
+## Turning it off
 
-`@ts-expect-error` becoming unused "halts the entire build/CI pipeline when the suppression
-becomes unused" ([microsoft/TypeScript#62579][ts62579]), and the documented consequence is
-that teams switch to `@ts-ignore`, which then silently swallows *new* errors. A stale
-suppression is a tidiness problem; a suppression people are afraid to use is a correctness
-problem.
+This code has no per-line form, because a suppression of a suppression would need its own
+check. It stays a warning even with `defaultCategory: "error"`, so a stale comment cannot
+fail a build. To stop reporting it for the whole project:
 
-[ts62579]: https://github.com/microsoft/TypeScript/issues/62579
+```ts
+barqVitePlugin({ checks: { BARQ008: "suppress" } });
+```

@@ -186,6 +186,13 @@ fn read_config(options: &oxc::ast::ast::ObjectExpression) -> RouteConfig {
         match name {
             "ssr" => match literal_ssr(&property.value) {
                 Some(value) => config.ssr = Some(value),
+                // A function decides per request. The table has nothing to say
+                // about it and need not: the route's own options carry the
+                // function to the router, which asks it.
+                None if matches!(
+                    &property.value,
+                    Expression::ArrowFunctionExpression(_) | Expression::FunctionExpression(_)
+                ) => {}
                 None => config.refused.push("ssr".to_owned()),
             },
             "prerender" => match &property.value {
@@ -289,6 +296,16 @@ mod tests {
     fn data_only_is_the_one_string_ssr_accepts() {
         let module = read("export const Route = createFileRoute('/a')({ ssr: 'data-only' });");
         assert_eq!(module.config.ssr.as_deref(), Some("\"data-only\""));
+    }
+
+    /// A function-valued `ssr` is the per-request form, decided at run time.
+    #[test]
+    fn a_function_valued_ssr_is_left_to_the_router() {
+        let module = read(
+            "export const Route = createFileRoute(\"/x\")({ ssr: ({ search }) => search.fast ? false : true });\n",
+        );
+        assert!(module.config.refused.is_empty());
+        assert_eq!(module.config.ssr, None);
     }
 
     /// A value the table cannot read is refused rather than guessed at.

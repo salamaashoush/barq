@@ -10,15 +10,15 @@
  * O2 and X3; C6.
  */
 import type { Block } from "@barqjs/core"
-import { context, render, useContext } from "@barqjs/core"
+import { createContext, render, useContext } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 import { formatThrown } from "../../test/semantics-support.ts"
 
 export const rules = ["O2", "X3", "C6"]
 
-const Outer = context<string>("outer-default")
-const Inner = context<string>("inner-default")
+const Outer = createContext<string>("outer-default")
+const Inner = createContext<string>("inner-default")
 
 let leafRuns = 0
 

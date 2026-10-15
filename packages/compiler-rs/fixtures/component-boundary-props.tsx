@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const name = signal("world")
+export const [name, setName] = createSignal("world")
 
 function Greeting(props: { name: () => string; punctuation: string }) {
   return (
@@ -20,7 +20,7 @@ export default function ComponentBoundaryProps() {
   )
 }
 
-export const steps = [() => name.set("barq")]
+export const steps = [() => setName("barq")]
 
 export const optimality = {
   target: 1,

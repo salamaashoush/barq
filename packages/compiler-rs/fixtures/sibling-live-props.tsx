@@ -1,7 +1,7 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const left = signal("l1")
-export const right = signal("r1")
+export const [left, setLeft] = createSignal("l1")
+export const [right, setRight] = createSignal("r1")
 
 /**
  * Two elements, two live props each, driven by DIFFERENT signals.
@@ -30,7 +30,7 @@ export default function SiblingLiveProps() {
   )
 }
 
-export const steps = [() => left.set("l2"), () => right.set("r2")]
+export const steps = [() => setLeft("l2"), () => setRight("r2")]
 
 export const optimality = {
   target: 4,

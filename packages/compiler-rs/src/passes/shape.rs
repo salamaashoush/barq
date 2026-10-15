@@ -2,9 +2,9 @@ use oxc::allocator::{Allocator, Box as ArenaBox, CloneIn, TakeIn, Vec as ArenaVe
 use oxc::ast::ast::{
     Argument, ArrayExpressionElement, ArrowFunctionBody, BindingPattern, Expression,
     FormalParameter, FormalParameterKind, FormalParameters, IdentifierName, JSXAttributeItem,
-    JSXAttributeValue, JSXChild, JSXElement, JSXElementName, JSXExpression, JSXMemberExpression,
-    JSXMemberExpressionObject, NumberBase, ObjectProperty, ObjectPropertyKind, PropertyKey,
-    PropertyKind, SpreadElement, StringLiteral,
+    JSXAttributeValue, JSXChild, JSXElement, JSXElementName, JSXExpression, JSXFragment,
+    JSXMemberExpression, JSXMemberExpressionObject, NumberBase, ObjectProperty, ObjectPropertyKind,
+    PropertyKey, PropertyKind, SpreadElement, Statement, StringLiteral,
 };
 use oxc::ast::builder::AstBuilder;
 use oxc::ast_visit::VisitMut;
@@ -76,7 +76,7 @@ pub fn run<'a>(
             ast: AstBuilder::new(allocator),
             lift: Lift::new(allocator, env, scoping),
             source,
-                uids,
+            uids,
             hoisted,
             regions,
             flow_rewrites,
@@ -320,7 +320,7 @@ impl<'a> Shaper<'a, '_> {
             }
         }
 
-        let mut kids = self.children(children);
+        let kids = self.children(children);
 
         // A `children=` attribute is OVERWRITTEN by JSX children. Emitting both
         // spells that as a duplicate key: right by evaluation order, and
@@ -335,7 +335,7 @@ impl<'a> Shaper<'a, '_> {
                 if self.builds_dom(&value) || self.is_block(&value) {
                     self.block_into_cell_slot(symbol, "children", at);
                 }
-                let cell = self.cell_value(value, at);
+                let cell = self.cell_at(value, at, Some("children"));
                 Some(self.property("children", cell, at))
             } else if live {
                 Some(self.discarded(value, at))
@@ -353,61 +353,7 @@ impl<'a> Shaper<'a, '_> {
             // scope of the construct that receives them. This is the line that
             // makes the Provider bug unrepresentable: there is no expression in
             // the emitted language meaning "children, already built".
-            let builds = kids.iter().any(|kid| self.builds_dom(kid));
-            // A lone child that CHOOSES which DOM to build cannot stay a lone
-            // child.
-            //
-            // `buildChild` untracks a Block on purpose, so `_$block((_s$) =>
-            // on() ? <A/> : <B/>)` picks its branch once and never again; a bare
-            // `() => …` tracks but captures the scope at the CALL site, which is
-            // the Provider bug. An ARRAY holding a function is neither: `insert`
-            // treats it as one live hole, and the thunk sits inside the Block,
-            // where `_s$` has already been rebound to the receiving scope. So
-            // this one case becomes the many-child case.
-            //
-            // `chooses_dom` and not "reactive": a plain `<Child />` is an opaque
-            // CALL, so any weaker test wrapped `<Ctx.Provider><Child /></…>` and
-            // took the child back out of its Block.
-            let lone_hole =
-                kids.len() == 1 && kids.first().is_some_and(|kid| self.chooses_dom(kid));
-            let value = if kids.len() == 1 && !lone_hole {
-                kids.remove(0)
-            } else {
-                // An opaque CALL among several children is wrapped here and
-                // nowhere else. The array goes into a BLOCK, and `buildChild`
-                // runs a block untracked on purpose — a component's
-                // construction must not be a dependency of the hole that places
-                // it — so a read left bare in the array is spent once and never
-                // subscribed. An array holding a FUNCTION is a live hole the
-                // runtime already knows how to keep.
-                //
-                // When the array is a BLOCK the per-element wrap is the ONLY
-                // thing that can keep a read live, because nothing re-runs the
-                // block. Without it one child that builds DOM froze every other
-                // child beside it: `<Comp><Icon />{label()}</Comp>` rendered
-                // `label()`'s first value and never moved again.
-                //
-                // A moving child is THUNKED, never branded as a Block of its
-                // own. A second Block shadows the `_s$` this one just rebound,
-                // which is the Provider bug from the other side: it stopped
-                // `<ContextMenuTrigger>` finding the `<ContextMenu>` that
-                // installed its context. A thunk CAPTURES that binding instead,
-                // so a construction inside it is built under the receiving
-                // scope and its condition is still a dependency of the hole.
-                let elements = kids
-                    .into_iter()
-                    .map(|kid| {
-                        let rx = self.lift.rx(&kid);
-                        let moves = rx.thunk == Thunk::Arrow
-                            || self.chooses_dom(&kid)
-                            || (builds && rx.react != React::Static && !self.builds_dom(&kid));
-                        let kid = if moves { self.thunk(kid, span, None) } else { kid };
-                        ArrayExpressionElement::from(kid)
-                    })
-                    .collect::<Vec<_>>();
-                let elements = ArenaVec::from_iter_in(elements, &self.allocator);
-                Expression::new_array_expression(span, elements, &self.ast)
-            };
+            let (value, builds) = self.children_value(kids, span, false);
             if builds {
                 self.block_into_cell_slot(symbol, "children", span);
             }
@@ -437,9 +383,10 @@ impl<'a> Shaper<'a, '_> {
             self.diagnose(
                 Code::Barq004,
                 at,
-                "For: the origin of `each` cannot be proved to be values `mapArray` recreates, so \
-                 a member read on the row item is applied once with no effect (DESIGN O3). If \
-                 these rows are store proxies, read them through an accessor instead.",
+                "`<For>` reads a row's fields once, when the row is created, and the compiler cannot \
+                 tell where the items in `each` come from. If they are store objects, changing a field \
+                 in place leaves the row showing the old value. Key the list and read the row by \
+                 calling it: `keyed={(row) => row.id}` with `row().name`.",
             );
         }
 
@@ -453,6 +400,104 @@ impl<'a> Shaper<'a, '_> {
         let props = self.source_list(sources, span);
         let arguments = ArenaVec::from_iter_in([Argument::from(props)], &self.allocator);
         Expression::new_call_expression(span, callee, None, arguments, false, &self.ast)
+    }
+
+    /// JSX children as the ONE value a construction slot carries, and whether
+    /// any of them builds DOM. A component's `children` and a flow construct's
+    /// body are the same slot, so they are folded by the same rule.
+    ///
+    /// `body` is the difference between them. A component reads `children` as a
+    /// Cell and places it in a hole, so a lone read handed over as a Cell stays
+    /// live. A construct INVOKES its body, once, under `untrack`: a read left
+    /// as the body itself is spent there, so a body with anything in it that
+    /// moves is a Block whose moving parts are holes of their own.
+    pub(super) fn children_value(
+        &mut self,
+        mut kids: Vec<Expression<'a>>,
+        span: Span,
+        body: bool,
+    ) -> (Expression<'a>, bool) {
+        let builds = kids.iter().any(|kid| self.builds_dom(kid));
+        let live = builds || body;
+        let moves = kids
+            .iter()
+            .map(|kid| {
+                let rx = self.lift.rx(kid);
+                rx.thunk == Thunk::Arrow
+                    || self.chooses_dom(kid)
+                    || (live && rx.react != React::Static && !self.builds_dom(kid))
+            })
+            .collect::<Vec<_>>();
+        let deferred = moves.contains(&true);
+        // A lone child that CHOOSES which DOM to build cannot stay a lone
+        // child.
+        //
+        // `buildChild` untracks a Block on purpose, so `_$block((_s$) =>
+        // on() ? <A/> : <B/>)` picks its branch once and never again; a bare
+        // `() => …` tracks but captures the scope at the CALL site, which is
+        // the Provider bug. A function IN AN ARRAY is neither: it is a live
+        // hole of its own, and the thunk sits inside the Block, where `_s$`
+        // has already been rebound to the receiving scope. So this one case
+        // becomes the many-child case.
+        //
+        // `chooses_dom` and not "reactive": a plain `<Child />` is an opaque
+        // CALL, so any weaker test wrapped `<Ctx.Provider><Child /></…>` and
+        // took the child back out of its Block.
+        let lone_hole = kids.len() == 1
+            && kids.first().is_some_and(|kid| self.chooses_dom(kid) || (body && moves[0]));
+        let value = if kids.len() == 1 && !lone_hole {
+            kids.remove(0)
+        } else {
+            // An opaque CALL among several children is wrapped here and
+            // nowhere else. The array goes into a BLOCK, and `buildChild`
+            // runs a block untracked on purpose — a component's
+            // construction must not be a dependency of the hole that places
+            // it — so a read left bare in the array is spent once and never
+            // subscribed. A FUNCTION in the array is a live hole the runtime
+            // keeps on its own, beside siblings it never asks again.
+            //
+            // When the array is a BLOCK the per-element wrap is the ONLY
+            // thing that can keep a read live, because nothing re-runs the
+            // block. Without it one child that builds DOM froze every other
+            // child beside it: `<Comp><Icon />{label()}</Comp>` rendered
+            // `label()`'s first value and never moved again.
+            //
+            // A moving child is THUNKED, never branded as a Block of its
+            // own. A second Block shadows the `_s$` this one just rebound,
+            // which is the Provider bug from the other side: it stopped
+            // `<ContextMenuTrigger>` finding the `<ContextMenu>` that
+            // installed its context. A thunk CAPTURES that binding instead,
+            // so a construction inside it is built under the receiving
+            // scope and its condition is still a dependency of the hole.
+            //
+            // An array's parts are built in the order they are written, and a
+            // construction is the one kind that is not by default: the array is
+            // evaluated before anything calls a thunk in it, and a component
+            // may hand back something that builds only when it is placed. So
+            // once a part may build LATER, every construction after it is
+            // deferred to the same moment. Left bare it was built first, and a
+            // hydrating page claims in document order:
+            // `{label() ? <Label/> : null}<Content/>` gave `<Content/>` the
+            // label's node, and every id minted inside the two came out in the
+            // opposite order from the server's.
+            let mut later = false;
+            let mut elements = Vec::with_capacity(kids.len());
+            for (kid, moves) in kids.into_iter().zip(moves) {
+                let builds_later = moves || self.may_build_later(&kid);
+                let kid = if moves {
+                    self.thunk(kid, span, None)
+                } else if later && self.builds_dom(&kid) {
+                    self.block(kid, span)
+                } else {
+                    kid
+                };
+                later |= builds_later;
+                elements.push(ArrayExpressionElement::from(kid));
+            }
+            let elements = ArenaVec::from_iter_in(elements, &self.allocator);
+            Expression::new_array_expression(span, elements, &self.ast)
+        };
+        (value, builds || (body && deferred))
     }
 
     /// One record → the object itself, which is the overwhelming case and pays
@@ -478,7 +523,7 @@ impl<'a> Shaper<'a, '_> {
                 }
                 Source::Spread(expression) => {
                     spreads += 1;
-                    parts.push(expression);
+                    parts.push(self.spread_source(expression, span));
                 }
             }
         }
@@ -498,6 +543,26 @@ impl<'a> Shaper<'a, '_> {
         let callee = self.helper(Helper::Props, span);
         let arguments = ArenaVec::from_iter_in([Argument::from(list)], &self.allocator);
         Expression::new_call_expression(span, callee, None, arguments, false, &self.ast)
+    }
+
+    /// A spread whose object is READ from something that moves crosses as the
+    /// function that reads it, which `props` asks on every read. Evaluated at
+    /// the call site, `<Foo {...rest()} />` handed the component the first
+    /// object and nothing after it, where the same spread on an element has
+    /// always followed its source.
+    ///
+    /// A bare name is left as it is: it is either an object, which has nothing
+    /// to re-read, or an accessor, which is already that function.
+    fn spread_source(&mut self, value: Expression<'a>, span: Span) -> Expression<'a> {
+        if matches!(strip_wrappers(&value), Expression::Identifier(_)) {
+            return value;
+        }
+        let rx = self.lift.rx(&value);
+        if rx.react != React::Reactive && rx.thunk != Thunk::Arrow {
+            return value;
+        }
+        let read = self.thunk(value, span, None);
+        self.eta(&read).unwrap_or(read)
     }
 
     /// The Cell a prop crosses the boundary as — the whole of C3 and C5 in one
@@ -534,19 +599,24 @@ impl<'a> Shaper<'a, '_> {
         if self.builds_dom(&value) {
             return self.block(value, span);
         }
-        // An UNNAMED slot is a construction slot, and among named ones only
-        // the construct's own body channels are: `fallback`'s `(error, reset)`
-        // is a deferred construction and has to stay one, because the -O0
-        // adapter reaches a flow construct's slots by name and wrapping that
-        // arrow as a Cell handed the fallback its own props record where the
-        // error accessor belonged.
+        // Among named slots only the construct's own body channels are
+        // construction slots: `fallback`'s `(error, reset)` is a deferred
+        // construction and has to stay one, because the -O0 adapter reaches a
+        // flow construct's slots by name and wrapping that arrow as a Cell
+        // handed the fallback its own props record where the error accessor
+        // belonged.
         //
         // An ALLOWLIST, not "everything but `ref` and `on*`". Every other named
         // channel is an attribute or an ordinary component prop, and a function
         // arriving there is the VALUE — `setApi={(api) => …}` is a callback the
         // consumer calls with the thing it made, and branding it had the
         // runtime invoke it with a construct's arguments instead.
-        if channel.is_none_or(is_construction_channel) && self.is_block(&value) {
+        //
+        // An UNNAMED slot is a data slot too: `each`'s source, `when`, a
+        // `Dynamic`'s component. A parameterised function there is a value the
+        // primitive reads, and branded it is refused as a Block in a Cell slot.
+        // The unnamed construction slots go through `construction_slot`.
+        if channel.is_some_and(is_construction_channel) && self.takes_arguments(&value) {
             return self.brand(value, span);
         }
         // Before the Cell test, because `() => s()` satisfies both and the
@@ -560,6 +630,16 @@ impl<'a> Shaper<'a, '_> {
         }
         if let Some(hoisted) = self.konst(&value, span) {
             return hoisted;
+        }
+        // An array holding a construction is a construction, whatever its
+        // identity: as a Cell it was evaluated at the call site, so
+        // `<Comp>{[label, <b/>]}</Comp>` built the `<b>` before the component
+        // had made the element it goes in. Rendered, that is a node built
+        // early; hydrating, its template claimed the node the component's own
+        // root stood on. `builds_dom_eagerly` in `compile.rs` counts an array
+        // for the same reason.
+        if self.holds_construction(&value) && !self.rebuilds(&value) {
+            return self.block(value, span);
         }
         if identity_matters(&value) && !self.rebuilds(&value) {
             let callee = self.helper(Helper::Cell, span);
@@ -644,6 +724,15 @@ impl<'a> Shaper<'a, '_> {
         }
     }
 
+    fn holds_construction(&self, value: &Expression<'a>) -> bool {
+        let Expression::ArrayExpression(array) = strip_wrappers(value) else { return false };
+        array.elements.iter().any(|element| {
+            element
+                .as_expression()
+                .is_some_and(|each| self.builds_dom(each) || self.holds_construction(each))
+        })
+    }
+
     /// Whether this expression builds DOM only through a CHOICE — a ternary, a
     /// `&&`, a comma — rather than being a construction written directly.
     ///
@@ -700,24 +789,102 @@ impl<'a> Shaper<'a, '_> {
         // Over DOM, and not over anything else: `{() => props.items()}` in a
         // children slot is a Cell carrying DATA, and branding it made every
         // consumer that reads its children as a value receive a Block instead.
-        if self.thunk_builds_dom(&value) {
+        //
+        // Unless what it builds is a CHOICE. Branded, the thunk is the Block's
+        // own body, which a construct runs once and untracked, so
+        // `{() => (on() ? <A/> : <B/>)}` picked its arm at construction and
+        // never again. In an array inside the Block it is a live hole, the same
+        // shape a bare `{on() ? <A/> : <B/>}` already lowers to.
+        if self.thunk_chooses_dom(&value) {
+            let elements =
+                ArenaVec::from_iter_in([ArrayExpressionElement::from(value)], &self.allocator);
+            let array = Expression::new_array_expression(span, elements, &self.ast);
+            return self.block(array, span);
+        }
+        if self.thunk_builds_dom(&value) || self.takes_arguments(&value) {
             return self.brand(value, span);
         }
         self.cell_value(value, span)
     }
 
-    /// A zero-argument function literal whose BODY builds DOM — `{() => <p/>}`.
-    ///
-    /// The expression body only. A statement body could build DOM too, and
-    /// answering that needs a walk this pass has no reason to carry; refusing
-    /// it forwards the thunk as a Cell, which is what happened to every author
-    /// thunk before this rule existed.
-    fn thunk_builds_dom(&self, value: &Expression<'a>) -> bool {
-        let body = match strip_wrappers(value) {
-            Expression::ArrowFunctionExpression(arrow) => arrow.body.as_expression(),
-            _ => None,
+    /// A zero-argument function literal whose body decides WHICH DOM to build:
+    /// a choice as its expression, or a statement body that branches before it
+    /// returns.
+    fn thunk_chooses_dom(&self, value: &Expression<'a>) -> bool {
+        let Expression::ArrowFunctionExpression(arrow) = strip_wrappers(value) else {
+            return false;
         };
-        body.is_some_and(|body| self.builds_dom(body))
+        if !arrow.params.items.is_empty() || arrow.params.rest.is_some() {
+            return false;
+        }
+        match &arrow.body {
+            ArrowFunctionBody::FunctionBody(body) => {
+                self.thunk_builds_dom(value)
+                    && body.statements.iter().any(|statement| match statement {
+                        Statement::IfStatement(_) | Statement::SwitchStatement(_) => true,
+                        Statement::ReturnStatement(it) => {
+                            it.argument.as_ref().is_some_and(|argument| self.chooses_dom(argument))
+                        }
+                        _ => false,
+                    })
+            }
+            body => body.as_expression().is_some_and(|body| self.chooses_dom(body)),
+        }
+    }
+
+    /// A function that TAKES something, written here or bound to a name: a row
+    /// callback, a fallback handed `(error, reset)`. Arity is what separates
+    /// it from a Cell, and a binding does not change arity — wrapped as
+    /// `() => row`, the construct's call hands back the function instead of
+    /// running it, and the row's item never arrives.
+    fn takes_arguments(&self, value: &Expression<'a>) -> bool {
+        if self.is_block(value) {
+            return true;
+        }
+        matches!(strip_wrappers(value), Expression::Identifier(_))
+            && symbol_of(self.lift.scoping(), strip_wrappers(value)).is_some_and(|s| {
+                matches!(self.lift.env().kind_of(s), SourceKind::Fn { nullary: false })
+            })
+    }
+
+    /// A zero-argument function literal whose BODY builds DOM — `{() => <p/>}`,
+    /// or a statement body that RETURNS one.
+    ///
+    /// A statement body is read at its own top level and no deeper, which is
+    /// exactly as far as the verifier in `compile.rs` reads it
+    /// (`builds_dom_eagerly`): a pass that decides less than the pass that
+    /// checks leaves a thunk the checker calls a construction crossing as a
+    /// Cell, evaluated once at the call site.
+    fn thunk_builds_dom(&self, value: &Expression<'a>) -> bool {
+        let Expression::ArrowFunctionExpression(arrow) = strip_wrappers(value) else {
+            return false;
+        };
+        match &arrow.body {
+            ArrowFunctionBody::FunctionBody(body) => {
+                body.statements.iter().any(|statement| match statement {
+                    Statement::ReturnStatement(it) => {
+                        it.argument.as_ref().is_some_and(|argument| self.yields_dom(argument))
+                    }
+                    _ => false,
+                })
+            }
+            body => body.as_expression().is_some_and(|body| self.yields_dom(body)),
+        }
+    }
+
+    /// What a thunk hands back builds DOM: a construction, or an array holding
+    /// one. `{() => [<A/>, <B/>]}` is as much a deferred construction as
+    /// `{() => <A/>}`, and read as a Cell it is a value some hole follows —
+    /// built inside that hole's effect, where a throw part-way leaves the half
+    /// that was built standing until the hole is asked again.
+    fn yields_dom(&self, value: &Expression<'a>) -> bool {
+        match strip_wrappers(value) {
+            Expression::ArrayExpression(array) => array
+                .elements
+                .iter()
+                .any(|element| element.as_expression().is_some_and(|each| self.yields_dom(each))),
+            other => self.builds_dom(other),
+        }
     }
 
     fn is_block(&self, value: &Expression<'a>) -> bool {
@@ -777,7 +944,7 @@ impl<'a> Shaper<'a, '_> {
             Expression::ComputedMemberExpression(member) => self.reads_props(&member.object),
             Expression::Identifier(_) => symbol_of(self.lift.scoping(), value).is_some_and(|s| {
                 match self.lift.env().kind_of(s) {
-                    SourceKind::Accessor { .. } => true,
+                    SourceKind::Accessor => true,
                     SourceKind::Fn { nullary: true } => !handler,
                     _ => false,
                 }
@@ -923,7 +1090,8 @@ impl<'a> Shaper<'a, '_> {
         }
         let Expression::Identifier(identifier) = &call.callee else { return None };
         let symbol = symbol_of(self.lift.scoping(), &call.callee)?;
-        matches!(self.lift.env().kind_of(symbol), SourceKind::Accessor { .. })
+        let env = self.lift.env();
+        (env.kind_of(symbol) == SourceKind::Accessor || env.is_derived(symbol))
             .then(|| self.ident(identifier.name.as_str(), identifier.span))
     }
 
@@ -1006,6 +1174,71 @@ impl<'a> Shaper<'a, '_> {
         out
     }
 
+    /// A fragment's holes, made live where they stand.
+    ///
+    /// A fragment is an array, and an array is evaluated once: `<>{count()}<i/></>`
+    /// read `count()` at the call site and never again, where the same hole one
+    /// level down inside an element follows the signal. A thunk in an array is a
+    /// hole of its own, and a construction after anything that may build later
+    /// is deferred for the reason a component's children are.
+    fn live_fragment(&mut self, fragment: &mut JSXFragment<'a>) {
+        let mut later = false;
+        for index in 0..fragment.children.len() {
+            let child = &mut fragment.children[index];
+            let span = child.span();
+            let (moves, builds, builds_later) = match &*child {
+                JSXChild::Element(_) | JSXChild::Fragment(_) => (false, true, true),
+                JSXChild::ExpressionContainer(container) => {
+                    let Some(value) = container.expression.as_expression() else { continue };
+                    let rx = self.lift.rx(value);
+                    let builds = self.builds_dom(value);
+                    let moves = rx.thunk == Thunk::Arrow
+                        || self.chooses_dom(value)
+                        || (rx.react != React::Static && !builds);
+                    (moves, builds, moves || self.may_build_later(value))
+                }
+                _ => continue,
+            };
+            let defer = !moves && later && builds;
+            later |= builds_later;
+            if !moves && !defer {
+                continue;
+            }
+            let value = match child.take_in(&self.allocator) {
+                JSXChild::Element(element) => Expression::JSXElement(element),
+                JSXChild::Fragment(inner) => Expression::JSXFragment(inner),
+                JSXChild::ExpressionContainer(container) => {
+                    expression_of(container.unbox().expression).expect("read above")
+                }
+                _ => unreachable!("matched above"),
+            };
+            let value = if moves { self.thunk(value, span, None) } else { self.block(value, span) };
+            fragment.children[index] =
+                JSXChild::new_expression_container(span, JSXExpression::from(value), &self.ast);
+        }
+    }
+
+    /// Whether evaluating this where it is written may leave something to be
+    /// built when it is PLACED: a component, whose return value this pass
+    /// cannot see into; a fragment; a function; any value it knows nothing
+    /// about. A literal cannot, and neither can a unit the lowering already
+    /// took, which is a template and builds where it stands.
+    fn may_build_later(&self, value: &Expression<'a>) -> bool {
+        match strip_wrappers(value) {
+            Expression::StringLiteral(_)
+            | Expression::NumericLiteral(_)
+            | Expression::BooleanLiteral(_)
+            | Expression::NullLiteral(_)
+            | Expression::BigIntLiteral(_) => false,
+            Expression::TemplateLiteral(literal) => !literal.expressions.is_empty(),
+            Expression::Identifier(identifier) => {
+                identifier.name != "undefined"
+                    && self.uids.root_index(identifier.name.as_str()).is_none()
+            }
+            _ => true,
+        }
+    }
+
     fn decoded(&self, text: &'a str) -> &'a str {
         match entity::decode(text) {
             Some(std::borrow::Cow::Borrowed(same)) => same,
@@ -1033,35 +1266,37 @@ impl<'a> Shaper<'a, '_> {
             return;
         };
         let channel = read.channel;
-        let (name, read) = (self.lift.scoping().symbol_name(callee).to_string(), read.read);
+        let name = self.lift.scoping().symbol_name(callee).to_string();
         // The refusal is a test on the VALUE, not on the scope argument, and the
         // message has to say so: at `ref` the Block would be invoked with the
         // ELEMENT and at `on*` with the EVENT, so "invoked with no scope" is
         // false at exactly the two positions where it is easiest to forward one.
         let refusal = if channel == "ref" || channel.starts_with("on") {
-            "A Block reaching a Cell slot is REFUSED with ScopeMissingError (C3.8) — here by a              test on the value, because this position would invoke it with the element or the              event rather than with no scope at all"
+            "JSX is neither an element reference nor an event handler"
         } else {
-            "A Block invoked with no scope throws ScopeMissingError (C3.8); it does not fall back              to the ambient owner and it does not stringify"
+            "JSX cannot be read as a value"
         };
         // A flow construct's Cell slot is the same compile-time fact as an
         // attribute, and it is NOT on an intrinsic element — naming the wrong
         // position sends the reader to the wrong line.
         let position = match channel {
-            "each source" | "branch key" | "portal target" | "boundary on" => {
-                "the `{channel}` argument of the primitive that flow construct lowers to"
+            "each source" => "as the list a `<For>` or `<Repeat>` goes through".to_string(),
+            "branch key" => {
+                "as a value in an attribute of a flow component, such as `when` on `<Show>`"
+                    .to_string()
             }
-            _ => "the `{channel}` position on an intrinsic element",
-        }
-        .replace("{channel}", channel);
+            "portal target" => "as the `mount` of a `<Portal>`".to_string(),
+            "boundary on" => "as the `on` of a `<Loading>`".to_string(),
+            _ => format!("as a value in the `{channel}` attribute of an element"),
+        };
         self.diagnose(
             Code::Barq010,
             at,
             &format!(
-                "`{slot}` is JSX here, which lowers to a Block, and `{name}` reads `props.{slot}` \
-                 as a Cell at byte {}..{} — {position}. \
-                 {refusal}. Render it as a child, or hand `{name}` \
-                 a Cell — `{slot}={{() => value}}` — instead of JSX.",
-                read.start, read.end
+                "`{slot}` is JSX here, and `{name}` reads `props.{slot}` {position}. {refusal}, \
+                 so `{name}` throws `ScopeMissingError` when it reads the prop. Pass a value \
+                 instead of JSX, or change `{name}` to render the prop as a child: \
+                 `{{props.{slot}}}`."
             ),
         );
     }
@@ -1243,6 +1478,10 @@ impl<'a> VisitMut<'a> for Shaper<'a, '_> {
             .then(|| it.span())
             .filter(|span| self.lift.env().root_jsx_args.contains(span));
 
+        if let Expression::JSXFragment(fragment) = it {
+            self.live_fragment(fragment);
+        }
+
         if let Expression::JSXElement(element) = it
             && self.is_component(element)
         {
@@ -1278,6 +1517,9 @@ impl<'a> VisitMut<'a> for Shaper<'a, '_> {
             let value = self.shape_jsx(Expression::JSXElement(element));
             *it = JSXChild::new_expression_container(span, JSXExpression::from(value), &self.ast);
             return;
+        }
+        if let JSXChild::Fragment(fragment) = it {
+            self.live_fragment(fragment);
         }
         walk_jsx_child(self, it);
     }
@@ -1324,12 +1566,11 @@ mod tests {
         compile(source, &options).expect("compiles")
     }
 
-    /// C1, and the headline of M3. Scope FIRST, on every call, so a component
-    /// that is handed no scope is a MISSING ARGUMENT in the emitted text rather
-    /// than a runtime surprise — and so the L2b trace can check the argument
-    /// against the tree the compiler built.
+    /// C1. Props ALONE, on every call and in every declaration: a component
+    /// reads its owner from the ambient scope, so the emitted text names no
+    /// scope anywhere.
     #[test]
-    fn every_component_call_takes_its_scope_first() {
+    fn every_component_call_takes_its_props_and_nothing_else() {
         let code = emit(
             "const Card = () => <b>x</b>;\n\
              const V = () => <div><Card /></div>;\n\
@@ -1337,19 +1578,20 @@ mod tests {
              const X = () => <W tone=\"w\" />;\n",
         )
         .code;
-        assert!(code.contains("const Card = (_s$) =>"), "{code}");
-        assert!(code.contains("Card(_s$, {})"), "{code}");
-        assert!(code.contains("function W(_s$, props)"), "{code}");
-        assert!(code.contains("Card(_s$, { tone: props.tone })"), "{code}");
+        assert!(code.contains("const Card = () =>"), "{code}");
+        assert!(code.contains("Card({})"), "{code}");
+        assert!(code.contains("function W(props)"), "{code}");
+        assert!(code.contains("Card({ tone: props.tone })"), "{code}");
+        assert!(!code.contains("_s$"), "{code}");
     }
 
     /// The reason the whole redesign exists: the child may not be an ARGUMENT,
     /// because an argument is evaluated at the call site, before the provider's
     /// scope exists and before its context binding is installed. The emitted
-    /// shape is a Block taking a scope, and the only party that can hand it one
-    /// is `provide`.
+    /// shape is a Block taking nothing, which the provider runs once its own
+    /// scope is the ambient one.
     #[test]
-    fn a_child_is_a_block_taking_a_scope_never_a_built_node() {
+    fn a_child_is_a_block_taking_nothing_never_a_built_node() {
         let code = emit(
             "import { context } from \"@barqjs/core\";\n\
              const Ctx = context();\n\
@@ -1357,10 +1599,11 @@ mod tests {
              export const App = () => <Ctx.Provider value={1}><Child /></Ctx.Provider>;\n",
         )
         .code;
-        assert!(code.contains("children: _$block((_s$) => Child(_s$, {})"), "{code}");
+        assert!(code.contains("children: _$block(() => Child({})"), "{code}");
         // O2's negation, written down: the child as a syntactic argument.
         assert!(!code.contains("children: Child("), "{code}");
-        assert!(code.contains("(0, Ctx.Provider)(_s$, {"), "{code}");
+        assert!(code.contains("(0, Ctx.Provider)({"), "{code}");
+        assert!(!code.contains("_s$"), "{code}");
     }
 
     /// C6's other half: markup children are a Block whose body is the compiled
@@ -1368,7 +1611,7 @@ mod tests {
     #[test]
     fn markup_children_are_a_block_whose_body_is_the_unit() {
         let code = emit("const V = () => <Panel><b>x</b></Panel>;\n").code;
-        assert!(code.contains("children: _$block((_s$) => _tmpl$1()"), "{code}");
+        assert!(code.contains("children: _$block(() => _tmpl$1()"), "{code}");
         assert!(!code.contains("children: _tmpl$1()"), "{code}");
     }
 
@@ -1380,12 +1623,12 @@ mod tests {
     #[test]
     fn a_reactive_prop_crosses_the_boundary_as_a_cell() {
         let code = emit(
-            "import { signal } from \"@barqjs/core\";\n\
-             const n = signal(0);\n\
+            "import { createSignal } from \"@barqjs/core\";\n\
+             const [n] = createSignal(0);\n\
              export const V = () => <Badge total={n()} label=\"x\" fn={() => n()} />;\n",
         )
         .code;
-        assert!(code.contains("Badge(_s$, {"), "{code}");
+        assert!(code.contains("Badge({"), "{code}");
         assert!(code.contains("total: () => n()"), "{code}");
         assert!(!code.contains("get total()"), "{code}");
         // A literal hoists (C3.1 + the constant-thunk graft); an author-written
@@ -1406,8 +1649,8 @@ mod tests {
     #[test]
     fn a_container_literal_holding_a_reactive_read_is_rebuilt_not_frozen() {
         let code = emit(
-            "import { signal } from \"@barqjs/core\";\n\
-             const n = signal(0);\n\
+            "import { createSignal } from \"@barqjs/core\";\n\
+             const [n] = createSignal(0);\n\
              const fixed = { a: 1 };\n\
              export const V = () => (\n\
                <>\n\
@@ -1441,9 +1684,9 @@ mod tests {
     #[test]
     fn an_opaque_call_at_a_hole_is_thunked_rather_than_spent() {
         let code = emit(
-            "import { signal } from \"@barqjs/core\";\n\
-             const n = signal(0);\n\
-             const label = () => \"n\" + n();\n\
+            "import { createSignal } from \"@barqjs/core\";\n\
+             import { label } from \"./labels\";\n\
+             const [n] = createSignal(0);\n\
              export const V = () => (\n\
                <>\n\
                  <div>{label()}</div>\n\
@@ -1456,7 +1699,142 @@ mod tests {
         // Both holes, alone and beside a sibling.
         assert_eq!(code.matches("() => label()").count(), 2, "{code}");
         // A proven accessor still η-reduces: no closure where none is needed.
-        assert!(code.contains("_$insert(_s$, _el$4, n, _el$5)"), "{code}");
+        assert!(code.contains("_$insert(_el$4, n, _el$5)"), "{code}");
+    }
+
+    /// The same call in an ATTRIBUTE crosses as the function that makes it.
+    ///
+    /// Left bare it was run at the call site and the result handed to
+    /// `bindProp`, which saw a value and wrote it once: a derived function was
+    /// live at a hole and dead in the attribute beside it.
+    #[test]
+    fn an_opaque_call_in_an_attribute_is_thunked_rather_than_spent() {
+        let code = emit(
+            "import { label } from \"./labels\";\n\
+             const fixed = { text: \"x\" };\n\
+             export const V = () => (\n\
+               <p title={label()} lang={`${label()}!`} id={fixed.text} />\n\
+             );\n",
+        )
+        .code;
+        assert!(code.contains("\"title\", () => label())"), "{code}");
+        assert!(code.contains("\"lang\", () => `${label()}!`)"), "{code}");
+        // A member read runs nothing, so the runtime is still handed the value.
+        assert!(code.contains("\"id\", fixed.text)"), "{code}");
+    }
+
+    /// A zero-arity function whose body reads a signal is proved, not guessed:
+    /// calling it is a tracked read, so the attributes that call it share one
+    /// effect and a hole takes the function itself. A handler that happens to
+    /// read is still bound as the handler it is.
+    #[test]
+    fn a_call_to_a_derived_function_is_a_proven_read() {
+        let code = emit(
+            "import { createSignal } from \"@barqjs/core\";\n\
+             const [n, setN] = createSignal(0);\n\
+             const double = () => n() * 2;\n\
+             const quad = () => double() * 2;\n\
+             const bump = () => setN(n() + 1);\n\
+             const fixed = () => 4;\n\
+             export const V = () => (\n\
+               <p title={double()} lang={quad()} id={fixed()} onClick={bump}>{quad()}</p>\n\
+             );\n",
+        )
+        .code;
+        assert!(code.contains("a: double(),"), "{code}");
+        assert!(code.contains("b: quad()"), "{code}");
+        assert_eq!(code.matches("_$bindEffect(").count(), 1, "{code}");
+        assert!(code.contains("_$insert(_el$1, quad)"), "{code}");
+        assert!(code.contains("__bq_click = bump"), "{code}");
+        // Reads nothing tracked, so nothing is claimed about it.
+        assert!(code.contains("\"id\", () => fixed())"), "{code}");
+    }
+
+    /// `String(…)`, `Number(…)` and `Boolean(…)` run what they convert, so an
+    /// unknown call or read inside one is live exactly as it is bare.
+    #[test]
+    fn a_conversion_around_an_unknown_read_is_still_a_read() {
+        let code = emit(
+            "import { table } from \"./table\";\n\
+             export const V = () => (\n\
+               <p title={String(table.getState().page)}>{String(table.state.page)}</p>\n\
+             );\n",
+        )
+        .code;
+        assert!(code.contains("\"title\", () => String(table.getState().page))"), "{code}");
+        assert!(code.contains("_$insert(_el$1, () => String(table.state.page))"), "{code}");
+    }
+
+    /// A read the analysis proved stays proved beside one it cannot classify.
+    ///
+    /// `on() ? styles.on : styles.off` joined a tracked read with two unknown
+    /// members, the unknown won, and the whole expression was emitted bare: the
+    /// signal read inside it subscribed nothing, at a hole or in an attribute.
+    #[test]
+    fn a_tracked_read_beside_an_unknown_member_is_still_tracked() {
+        let code = emit(
+            "import { createSignal } from \"@barqjs/core\";\n\
+             const [on] = createSignal(true);\n\
+             const styles = { on: \"a\", off: \"b\" };\n\
+             export const V = () => (\n\
+               <p class={on() ? styles.on : styles.off}>{on() ? styles.on : styles.off}</p>\n\
+             );\n",
+        )
+        .code;
+        assert!(
+            code.contains("_$bindEffect(() => ({ a: on() ? styles.on : styles.off })"),
+            "{code}"
+        );
+        assert!(code.contains("_$insert(_el$1, () => on() ? styles.on : styles.off)"), "{code}");
+    }
+
+    /// A component spread whose object is read from something that moves
+    /// crosses as the read, and a bare name is left alone.
+    #[test]
+    fn a_component_spread_that_reads_is_a_source_function() {
+        let code = emit(
+            "import { createSignal } from \"@barqjs/core\";\n\
+             const [rest] = createSignal({});\n\
+             const [wide] = createSignal(false);\n\
+             const bag = { a: 1 };\n\
+             const Row = (props) => <p {...props} />;\n\
+             export const V = (props) => (\n\
+               <>\n\
+                 <Row {...rest()} />\n\
+                 <Row {...(wide() ? bag : null)} />\n\
+                 <Row {...bag} {...props} />\n\
+               </>\n\
+             );\n",
+        )
+        .code;
+        assert!(code.contains("_$props([rest])"), "{code}");
+        assert!(code.contains("_$props([() => wide() ? bag : null])"), "{code}");
+        assert!(code.contains("_$props([bag, props])"), "{code}");
+    }
+
+    /// A member read off the same call, bare and inside a template literal.
+    ///
+    /// `label().text` runs `label()` exactly as `label()` does. The verdict
+    /// used to stop at the member, so the bare call was a live hole and the
+    /// read one property deeper was applied once and never moved.
+    #[test]
+    fn a_member_read_off_an_opaque_call_is_thunked_too() {
+        let code = emit(
+            "import { createSignal } from \"@barqjs/core\";\n\
+             const [n] = createSignal(0);\n\
+             const label = () => ({ text: \"n\" + n() });\n\
+             export const V = () => (\n\
+               <>\n\
+                 <div>{label().text}</div>\n\
+                 <div>{label()?.text}</div>\n\
+                 <div>{`${label().text}!`}</div>\n\
+               </>\n\
+             );\n",
+        )
+        .code;
+        assert!(code.contains("() => label().text"), "{code}");
+        assert!(code.contains("() => label()?.text"), "{code}");
+        assert!(code.contains("() => `${label().text}!`"), "{code}");
     }
 
     /// The same call among a COMPONENT's children, where the array is a block.
@@ -1468,8 +1846,8 @@ mod tests {
     #[test]
     fn an_opaque_call_among_a_components_children_is_its_own_hole() {
         let code = emit(
-            "import { signal } from \"@barqjs/core\";\n\
-             const n = signal(0);\n\
+            "import { createSignal } from \"@barqjs/core\";\n\
+             const [n] = createSignal(0);\n\
              const label = () => \"n\" + n();\n\
              export const V = () => <Box>{label()}<b>y</b></Box>;\n",
         )
@@ -1492,8 +1870,8 @@ mod tests {
     #[test]
     fn a_choice_between_two_constructions_still_builds_dom() {
         let code = emit(
-            "import { signal } from \"@barqjs/core\";\n\
-             const on = signal(false);\n\
+            "import { createSignal } from \"@barqjs/core\";\n\
+             const [on] = createSignal(false);\n\
              const label = () => \"x\";\n\
              export const V = () => (\n\
                <>\n\
@@ -1506,7 +1884,7 @@ mod tests {
         // A Block, exactly as the plain-element case already was. `_$cell([` is
         // the frozen shape: the array built once, the branch chosen once.
         assert!(!code.contains("_$cell(["), "{code}");
-        assert_eq!(code.matches("children: _$block((_s$) => [").count(), 2, "{code}");
+        assert_eq!(code.matches("children: _$block(() => [").count(), 2, "{code}");
     }
 
     /// A moving child stays a HOLE, however many siblings it has.
@@ -1517,16 +1895,18 @@ mod tests {
     /// DOM froze every other child beside it: `<Comp><Icon />{label()}</Comp>`
     /// rendered `label()`'s first value and never moved again.
     ///
-    /// A construction written DIRECTLY is left bare — it is built under the
-    /// Block's own scope and its identity never changes. One reached through a
-    /// CHOICE is thunked, which is why a lone one becomes an array of one:
-    /// a Block around it would be untracked and a bare arrow would capture the
-    /// scope at the call site, which is the Provider bug.
+    /// A construction written DIRECTLY is left bare while nothing before it may
+    /// build later, and is a Block of its own once something does — a thunk, or
+    /// a component, whose return value may hold one — so the array's parts are
+    /// built in the order they are written. One reached through a CHOICE is
+    /// thunked, which is why a lone one becomes an array of one: a Block around
+    /// it would be untracked and a bare arrow would capture the scope at the
+    /// call site, which is the Provider bug.
     #[test]
     fn a_moving_child_is_a_hole_beside_a_sibling_that_builds() {
         let code = emit(
-            "import { signal } from \"@barqjs/core\";\n\
-             const on = signal(false);\n\
+            "import { createSignal } from \"@barqjs/core\";\n\
+             const [on] = createSignal(false);\n\
              export const V = () => (\n\
                <>\n\
                  <Box><Icon />{on() ? \"a\" : \"b\"}</Box>\n\
@@ -1537,12 +1917,14 @@ mod tests {
         )
         .code;
         // The read beside a construction is a live hole, and the construction
-        // beside it is untouched.
-        assert!(code.contains("[Icon(_s$, {}), () => on() ? \"a\" : \"b\"]"), "{code}");
+        // before it is untouched.
+        assert!(code.contains("[Icon({}), () => on() ? \"a\" : \"b\"]"), "{code}");
         // A lone CHOICE becomes an array of one, so `insert` sees a live hole.
-        assert!(code.contains("[() => on() ? A(_s$, {}) : B(_s$, {})]"), "{code}");
-        // Nothing moves here, so nothing is wrapped: two bare constructions.
-        assert!(code.contains("[Icon(_s$, {}), Other(_s$, {})]"), "{code}");
+        assert!(code.contains("[() => on() ? A({}) : B({})]"), "{code}");
+        // Nothing moves here, and the first is built where it is written. The
+        // second waits for it: what a component hands back may build only when
+        // it is placed, and the one after it must not get there first.
+        assert!(code.contains("[Icon({}), _$block(() => Other({}))]"), "{code}");
     }
 
     /// A CHOICE that may build DOM is handed over as a choice.
@@ -1560,8 +1942,8 @@ mod tests {
     #[test]
     fn a_choice_of_components_at_a_hole_is_a_choice_rather_than_a_result() {
         let code = emit(
-            "import { signal } from \"@barqjs/core\";\n\
-             const on = signal(false);\n\
+            "import { createSignal } from \"@barqjs/core\";\n\
+             const [on] = createSignal(false);\n\
              export const V = () => (\n\
                <>\n\
                  <div>{on() ? <A /> : <B />}</div>\n\
@@ -1571,10 +1953,10 @@ mod tests {
              );\n",
         )
         .code;
-        assert!(code.contains("() => on() ? A(_s$, {}) : B(_s$, {})"), "{code}");
-        assert!(code.contains("() => on() ? A(_s$, {}) : null"), "{code}");
+        assert!(code.contains("() => on() ? A({}) : B({})"), "{code}");
+        assert!(code.contains("() => on() ? A({}) : null"), "{code}");
         // A child written directly is still placed once, with no closure.
-        assert!(!code.contains("() => A(_s$, {}))"), "{code}");
+        assert!(!code.contains("() => A({}))"), "{code}");
     }
 
     /// C3.2. An opaque expression still crosses as a Cell: the ABI is TOTAL, so
@@ -1584,7 +1966,7 @@ mod tests {
     #[test]
     fn an_unresolvable_prop_crosses_as_a_cell_like_every_other() {
         let code = emit("const V = () => <Badge total={compute()} />;\n").code;
-        assert!(code.contains("Badge(_s$, { total: () => compute() })"), "{code}");
+        assert!(code.contains("Badge({ total: () => compute() })"), "{code}");
         assert!(!code.contains("get total()"), "{code}");
     }
 
@@ -1616,8 +1998,8 @@ mod tests {
     #[test]
     fn a_forwarded_prop_is_the_same_cell_not_a_new_closure() {
         let code = emit(
-            "import { signal } from \"@barqjs/core\";\n\
-             const n = signal(0);\n\
+            "import { createSignal } from \"@barqjs/core\";\n\
+             const [n] = createSignal(0);\n\
              const A = (props) => <B x={props.x} y={props.y} />;\n\
              const C = () => <A x={n} />;\n",
         )
@@ -1626,7 +2008,7 @@ mod tests {
         assert!(code.contains("y: props.y"), "{code}");
         assert!(!code.contains("() => props.x"), "{code}");
         // A signal getter IS a Cell (R6), so it forwards by name too.
-        assert!(code.contains("A(_s$, { x: n })"), "{code}");
+        assert!(code.contains("A({ x: n })"), "{code}");
     }
 
     /// C3.1 reaches `onClick` like everything else, and C5's identity claim has
@@ -1670,17 +2052,17 @@ mod tests {
     /// `(parent, anchor)` went with it (K5).
     #[test]
     fn a_static_control_flow_body_costs_one_clone_and_nothing_else() {
-        let source = "import { Show, signal } from \"@barqjs/core\";\n\
-                      const on = signal(false);\n\
+        let source = "import { Show, createSignal } from \"@barqjs/core\";\n\
+                      const [on] = createSignal(false);\n\
                       export const A = () => <Show when={() => on()}><p class=\"s\">x</p></Show>;\n\
                       export const B = () => <Show when={() => on()}><p class=\"s\">{on()}</p></Show>;\n";
         let code = emit(source).code;
         // Non-keyed is the default since M10, so the key is the truthiness
         // INDEX and the bodies are a two-row table whose falsy row is the
         // (absent) fallback.
-        assert!(code.contains("_$branch(_s$, null, null, () => on() ? 1 : 0"), "{code}");
-        assert!(code.contains("[null, _$block((_s$) => _tmpl$1())]"), "{code}");
-        assert!(code.contains("_$insert(_s$, _el$1, on)"), "{code}");
+        assert!(code.contains("_$branch(null, null, () => on() ? 1 : 0"), "{code}");
+        assert!(code.contains("[null, _$block(() => _tmpl$1())]"), "{code}");
+        assert!(code.contains("_$insert(_el$1, on)"), "{code}");
         assert!(!code.contains("Show("), "{code}");
         assert!(!code.contains("when:"), "{code}");
 
@@ -1688,28 +2070,28 @@ mod tests {
         // η-reduction that used to be the only observable here is still what
         // fills the prop: a signal getter IS a Cell (C5.2).
         let code = o0(source).code;
-        assert!(code.contains("Show(_s$, {"), "{code}");
+        assert!(code.contains("Show({"), "{code}");
         assert!(code.contains("when: on"), "{code}");
         assert!(!code.contains("_$branch"), "{code}");
     }
 
     /// The boundary of η-reduction, and what M3 changes about it. An arrow the
-    /// AUTHOR wrote is a Cell already and is forwarded untouched; a row
-    /// callback is a BLOCK already — `scope.rs` gave it the scope parameter —
-    /// and is likewise forwarded, never wrapped.
+    /// AUTHOR wrote is a Cell already and is forwarded untouched; a thunk over
+    /// DOM in a body slot is a BLOCK already, branded where it stands and
+    /// likewise never wrapped.
     #[test]
     fn an_author_written_thunk_and_a_row_callback_are_forwarded_untouched() {
-        let source = "import { For, Show, signal } from \"@barqjs/core\";\n\
-                      const on = signal(false);\n\
-                      const rows = signal([1]);\n\
+        let source = "import { For, Show, createSignal } from \"@barqjs/core\";\n\
+                      const [on] = createSignal(false);\n\
+                      const [rows] = createSignal([1]);\n\
                       export const A = () => <Show when={() => on()}>{() => <p class=\"s\">x</p>}</Show>;\n\
                       export const B = () => <For each={() => rows()}>{() => <li>x</li>}</For>;\n";
         let code = emit(source).code;
-        assert!(code.contains("_$block((_s$) => _tmpl$1())"), "{code}");
-        assert!(code.contains("_$block((_s$) => _tmpl$2())"), "{code}");
+        assert!(code.contains("_$block(() => _tmpl$1())"), "{code}");
+        assert!(code.contains("_$block(() => _tmpl$2())"), "{code}");
         // The source `each` is the primitive's fourth argument now, and it is
         // still the accessor itself rather than a Cell wrapped around one.
-        assert!(code.contains("_$each(_s$, null, null, rows, null,"), "{code}");
+        assert!(code.contains("_$each(null, null, rows, null,"), "{code}");
     }
 
     /// A body with a hole is not static, so the Block's body is the compiled
@@ -1717,13 +2099,13 @@ mod tests {
     #[test]
     fn a_body_with_a_patch_keeps_its_block() {
         let code = emit(
-            "import { Show, signal } from \"@barqjs/core\";\n\
-             const on = signal(false);\n\
+            "import { Show, createSignal } from \"@barqjs/core\";\n\
+             const [on] = createSignal(false);\n\
              const V = () => <Show when={() => on()}>{() => <p>{value}</p>}</Show>;\n",
         )
         .code;
-        assert!(code.contains("_$block((_s$) => {"), "{code}");
-        assert!(code.contains("_$insert(_s$, _el$1, value)"), "{code}");
+        assert!(code.contains("_$block(() => {"), "{code}");
+        assert!(code.contains("_$insert(_el$1, value)"), "{code}");
         // The two-row table of the non-keyed default, which is what a `Show`
         // with no `keyed` emits since M10.
         assert!(code.contains("[null, _$block("), "{code}");
@@ -1742,7 +2124,7 @@ mod tests {
         let code =
             emit("const V = () => <Panel children=\"lit\" tone=\"w\"><b>x</b></Panel>;\n").code;
         assert_eq!(code.matches("children:").count(), 1, "{code}");
-        assert!(code.contains("children: _$block((_s$) => _tmpl$1()"), "{code}");
+        assert!(code.contains("children: _$block(() => _tmpl$1()"), "{code}");
         assert!(!code.contains("\"lit\""), "{code}");
 
         let code =
@@ -1750,7 +2132,7 @@ mod tests {
         assert_eq!(code.matches("children:").count(), 1, "{code}");
         let discard = code.find("...(f(), null)").expect("the discarded evaluation");
         let tone = code.find("tone: _k$1").expect("the prop after it");
-        let kids = code.find("children: _$block((_s$) => _tmpl$1()").expect("the JSX children");
+        let kids = code.find("children: _$block(() => _tmpl$1()").expect("the JSX children");
         assert!(discard < tone && tone < kids, "{code}");
 
         // With no JSX children there is nothing to overwrite it, and the
@@ -1773,16 +2155,16 @@ mod tests {
     #[test]
     fn a_props_read_is_live_inside_and_forwards_by_identity_out() {
         let code = emit(
-            "import { signal } from \"@barqjs/core\";\n\
-             const n = signal(0);\n\
+            "import { createSignal } from \"@barqjs/core\";\n\
+             const [n] = createSignal(0);\n\
              function Badge(props) { return <span>{props.total()}</span>; }\n\
              function Outer(props) { return <Chip tone={props.tone} />; }\n\
              export default function App() { return <div><Badge total={n()} /><Outer tone=\"w\" /></div>; }\n",
         )
         .code;
-        assert!(code.contains("_$insert(_s$, _el$1, props.total)"), "{code}");
+        assert!(code.contains("_$insert(_el$1, props.total)"), "{code}");
         assert!(!code.contains("() => props.total"), "{code}");
-        assert!(code.contains("Chip(_s$, { tone: props.tone })"), "{code}");
+        assert!(code.contains("Chip({ tone: props.tone })"), "{code}");
         assert!(!code.contains("get tone()"), "{code}");
 
         // The bare reference in the same slot is the same Cell, emitted the
@@ -1793,7 +2175,7 @@ mod tests {
              export default function App() { return <Badge total={1} />; }\n",
         )
         .code;
-        assert!(bare.contains("_$insert(_s$, _el$1, props.total)"), "{bare}");
+        assert!(bare.contains("_$insert(_el$1, props.total)"), "{bare}");
     }
 
     /// The arity rule through a BINDING. A zero-arity function the author wrote
@@ -1805,13 +2187,13 @@ mod tests {
     #[test]
     fn a_named_zero_arity_function_forwards_by_identity() {
         let code = emit(
-            "import { For, signal } from \"@barqjs/core\";\n\
-             const items = signal([1]);\n\
+            "import { For, createSignal } from \"@barqjs/core\";\n\
+             const [items] = createSignal([1]);\n\
              const rows = () => items().filter(Boolean);\n\
              export const V = () => <For each={rows}>{(row) => <li>{row()}</li>}</For>;\n",
         )
         .code;
-        assert!(code.contains("_$each(_s$, null, null, rows, null,"), "{code}");
+        assert!(code.contains("_$each(null, null, rows, null,"), "{code}");
         assert!(!code.contains("() => rows"), "{code}");
 
         // A PARAMETERISED binding is not a Cell — it is a key FUNCTION, and the
@@ -1819,13 +2201,13 @@ mod tests {
         // `keyOf` directly, where the adapter had to re-derive that at run time
         // from `typeof carrier === "function" && carrier.length >= 1`.
         let keyed = emit(
-            "import { For, signal } from \"@barqjs/core\";\n\
-             const items = signal([1]);\n\
+            "import { For, createSignal } from \"@barqjs/core\";\n\
+             const [items] = createSignal([1]);\n\
              const byId = (row) => row.id;\n\
              export const V = () => <For each={items} keyed={byId}>{(row) => <li>x</li>}</For>;\n",
         )
         .code;
-        assert!(keyed.contains("_$each(_s$, null, null, items, byId,"), "{keyed}");
+        assert!(keyed.contains("_$each(null, null, items, byId,"), "{keyed}");
         assert!(!keyed.contains("() => byId"), "{keyed}");
     }
 
@@ -1899,13 +2281,13 @@ mod tests {
             ),
             // an argument means the arrow is not the identity of the call
             (
-                "const f = signal([1]);\nexport const V = () => <For each={() => f(1)}>{r}</For>;",
+                "const [f] = createSignal([1]);\nexport const V = () => <For each={() => f(1)}>{r}</For>;",
                 "null, null, () => f(1), null,",
             ),
             // a parameter means the arrow is not zero-arity, so it is a VALUE
             // whose identity the consumer may compare
             (
-                "const f = signal([1]);\nexport const V = () => <For each={(x) => f()}>{r}</For>;",
+                "const [f] = createSignal([1]);\nexport const V = () => <For each={(x) => f()}>{r}</For>;",
                 "null, null, _$cell((x) => f()), null,",
             ),
             // a member call is not an identifier reference
@@ -1916,7 +2298,7 @@ mod tests {
         ];
         for (body, expected) in cases {
             let source = format!(
-                "import {{ For, signal }} from \"@barqjs/core\";\nconst r = (x) => x;\n{body}\n"
+                "import {{ For, createSignal }} from \"@barqjs/core\";\nconst r = (x) => x;\n{body}\n"
             );
             let code = emit(&source).code;
             assert!(code.contains(expected), "{expected} not in:\n{code}");
@@ -1944,15 +2326,18 @@ mod tests {
     #[test]
     fn a_row_callback_parameter_is_not_a_props_object() {
         let code = emit(
-            "import { For, signal } from \"@barqjs/core\";\n\
-             const rows = signal([{ id: 1, n: \"a\" }]);\n\
+            "import { For, createSignal } from \"@barqjs/core\";\n\
+             const [rows] = createSignal([{ id: 1, n: \"a\" }]);\n\
              const row = (item) => <li>{item.n}</li>;\n\
              export const V = () => <For each={rows}>{row}</For>;\n",
         )
         .code;
-        assert!(code.contains("_$insert(_s$, _el$1, item.n)"), "{code}");
+        assert!(code.contains("_$insert(_el$1, item.n)"), "{code}");
         assert!(!code.contains("() => item.n"), "{code}");
-        assert!(code.contains("const row = _$block((_s$, item) =>"), "{code}");
+        // Branded where it enters the slot, by name: wrapped as `() => row` the
+        // construct's call hands back the function and the item never arrives.
+        assert!(code.contains("_$each(null, null, rows, null, _$block(row))"), "{code}");
+        assert!(!code.contains("() => row"), "{code}");
     }
 
     /// O3 is the one documented divergence M3 leaves standing, so it is not
@@ -1966,7 +2351,7 @@ mod tests {
         )
         .warnings;
         assert_eq!(notes.len(), 1, "{notes:?}");
-        assert!(notes[0].message.contains("origin of `each`"), "{notes:?}");
+        assert!(notes[0].message.contains("where the items in `each` come from"), "{notes:?}");
 
         // The case the `Opaque` gate stayed silent for, and the one O3's own
         // message names: a RESOLVABLE store, whose rows `mapArray` never
@@ -1983,8 +2368,8 @@ mod tests {
 
         // A signal of plain rows IS what mapArray recreates, so there is
         // nothing to say and the note stays out of the way.
-        let quiet = dev("import { For, signal } from \"@barqjs/core\";\n\
-             const rows = signal([]);\n\
+        let quiet = dev("import { For, createSignal } from \"@barqjs/core\";\n\
+             const [rows] = createSignal([]);\n\
              export const V = () => <For each={rows}>{(item) => <li>{item.n}</li>}</For>;\n")
         .warnings;
         assert!(quiet.is_empty(), "{quiet:?}");
@@ -2022,8 +2407,8 @@ mod tests {
         );
 
         // O7's shape, now silent, and the emitted module says why: no getter.
-        let dynamic = dev("import { Dynamic, signal } from \"@barqjs/core\";\n\
-             const n = signal(0);\n\
+        let dynamic = dev("import { Dynamic, createSignal } from \"@barqjs/core\";\n\
+             const [n] = createSignal(0);\n\
              const V = () => <Dynamic component=\"b\" total={n()} />;\n");
         assert!(dynamic.warnings.is_empty(), "{:?}", dynamic.warnings);
         assert!(!dynamic.code.contains("get total()"), "{}", dynamic.code);

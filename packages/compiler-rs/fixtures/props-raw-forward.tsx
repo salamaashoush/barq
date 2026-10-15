@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const tone = signal("warm")
+export const [tone, setTone] = createSignal("warm")
 
 /**
  * The second half of "fine-grained flow across a component boundary", and the
@@ -37,7 +37,7 @@ export default function PropsRawForward() {
   )
 }
 
-export const steps = [() => tone.set("cool")]
+export const steps = [() => setTone("cool")]
 
 export const optimality = {
   target: 1,

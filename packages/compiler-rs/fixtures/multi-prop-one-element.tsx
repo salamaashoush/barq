@@ -1,17 +1,17 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const id = signal("a")
-export const title = signal("first")
-export const width = signal(10)
+export const [id, setId] = createSignal("a")
+export const [title, setTitle] = createSignal("first")
+export const [width, setWidth] = createSignal(10)
 
 export default function MultiPropOneElement() {
   return <div id={() => id()} title={() => title()} data-width={() => String(width())} />
 }
 
 export const steps = [
-  () => id.set("b"),
-  () => title.set("second"),
-  () => width.set(20),
+  () => setId("b"),
+  () => setTitle("second"),
+  () => setWidth(20),
 ]
 
 export const optimality = {

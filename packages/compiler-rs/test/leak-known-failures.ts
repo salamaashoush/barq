@@ -160,11 +160,25 @@ export const LEAK_FAILURES: readonly LeakKnownFailure[] = Object.freeze(
  * three bindings from opposite ends. The fourth element in that fixture is the
  * control and contributes none, which is what says the fix did not simply wrap
  * every attribute. Survivors stay at zero: a read-mode call creates no owner.
+ *
+ * The engine becoming `@solidjs/signals`: 294 effects to 282 and 499 scope
+ * entries to 501, over the same 158 sessions and the same 32 listeners. An
+ * effect counted here is one the renderer asks for, and a list, a reveal group
+ * and a boundary's switch are the engine's own nodes now, so they are no longer
+ * asked for. Survivors stay at zero, which is the column this channel is for.
+ *
+ * Then 282 to 284: `{error().message}` in a fallback is a member read off a
+ * call the compiler knows nothing about, and it is a live hole like the bare
+ * call beside it rather than a value applied once. Two sessions hold one.
+ *
+ * Then 284 to 283: a component's children are a Block, and a Block is built
+ * once and placed, where it used to sit inside an effect that had nothing to
+ * follow. Each live hole among the children has an effect of its own instead.
  */
 export const LEAK_REACH: Readonly<Record<string, number>> = Object.freeze({
   sessions: 158,
-  scopesEntered: 499,
-  effectsCreated: 294,
+  scopesEntered: 501,
+  effectsCreated: 324,
   listeners: 32,
 });
 

@@ -1,46 +1,52 @@
-# BARQ016 — `atoms` has more than one conditional argument
+# BARQ016: `atoms` has several conditional arguments, so the browser evaluates it
 
-**Level:** note. Raise it with `checks: { BARQ016: "warning" }`.
+**Level:** note · [all codes](README.md)
 
-An `atoms` call with two or more `cond && { … }` arguments is left for the
-runtime, because compiling it means emitting every outcome.
+## Message
+
+> `atoms` has 2 conditional arguments and the compiler handles one, so this call is left
+> as written and `@barqjs/css` works out its classes in the browser each time it runs.
+> Merge the conditions into one object, or apply the second with its own call:
+> `atoms(atoms(base, a && x), b && y)`.
+
+## Failing example
 
 ```tsx
 import { atoms } from "@barqjs/css";
 
-// compiles: one ternary of two class strings
-atoms({ color: "red" }, active() && { color: "blue" });
-
-// BARQ016: four outcomes
-atoms({ color: "red" }, active() && { color: "blue" }, wide() && { padding: 8 });
+export const button = (active: boolean, wide: boolean) =>
+  atoms({ color: "red" }, active && { color: "blue" }, wide && { padding: 8 });
 ```
 
-One conditional is two outcomes and one ternary. Two is four, three is eight,
-and a nested ternary over eight class strings is larger than the runtime call it
-replaces — so past one, the runtime keeps it. Nothing is broken: `atoms` at run
-time computes exactly what the compiler would have, into the same registry and
-under the same class names, which is what the parity test in
-`crates/barq-css/src/atoms.rs` pins.
-
-## Fixing it
-
-Merge the conditions into one object, which is usually what was meant:
+## Fixed example
 
 ```tsx
-atoms({ color: "red" }, active() && { color: "blue", ...(wide() ? { padding: 8 } : {}) });
+import { atoms } from "@barqjs/css";
+
+export const button = (active: boolean, wide: boolean) =>
+  atoms(atoms({ color: "red" }, active && { color: "blue" }), wide && { padding: 8 });
 ```
 
-Or apply the second with its own call, since a class string is an `atoms`
-argument like any other and merges by the key each name carries:
+## Why this rule exists
+
+One conditional argument compiles to a choice between two class strings. Each further
+condition doubles the number of outcomes, and writing all of them out would be larger
+than the call it replaces, so the compiler leaves the call as it is.
+
+Nothing is broken: `atoms` produces the same classes in the browser. The note marks a
+call that could be compiled.
+
+## Silencing one line
 
 ```tsx
-const base = atoms({ color: "red" }, active() && { color: "blue" });
-<div class={atoms(base, wide() && { padding: 8 })} />;
+import { atoms } from "@barqjs/css";
+
+export const button = (active: boolean, wide: boolean) =>
+  // barq-ignore-next-line BARQ016 (all four combinations are used)
+  atoms({ color: "red" }, active && { color: "blue" }, wide && { padding: 8 });
 ```
 
-Or name the combinations with `create`, and choose between them:
-
-```tsx
-const styles = create({ calm: { color: "red" }, loud: { color: "blue", padding: 8 } });
-<div class={active() ? styles.loud : styles.calm} />;
-```
+The reason in parentheses is required and has to be at least 10 characters. Between JSX
+children, write the comment as `{/* barq-ignore-next-line BARQ016 (reason) */}` on the line
+above: a `//` line there is text and would be rendered on the page. To change the level
+for the whole project, see [the index](README.md#changing-a-level-for-the-whole-project).

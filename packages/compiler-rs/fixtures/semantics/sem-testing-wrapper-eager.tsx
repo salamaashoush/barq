@@ -25,7 +25,7 @@
  *
  * O2, O2.1 and C6.
  */
-import { context, useContext } from "@barqjs/core"
+import { createContext, useContext } from "@barqjs/core"
 
 import { cleanup, render } from "../../../testing/src/index.ts"
 import type { Claim, Kit } from "../../test/semantics-support.ts"
@@ -33,7 +33,7 @@ import { formatThrown } from "../../test/semantics-support.ts"
 
 export const rules = ["O2", "O2.1", "C6"]
 
-const Theme = context<string>("light")
+const Theme = createContext<string>("light")
 
 export const order: string[] = []
 

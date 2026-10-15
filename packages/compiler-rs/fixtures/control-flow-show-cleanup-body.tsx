@@ -1,9 +1,14 @@
-import { onCleanup, Show, signal } from "@barqjs/core"
+import { onCleanup, Show, createSignal, untrack } from "@barqjs/core"
 
-export const on = signal(false)
+export const [on, setOn] = createSignal(false)
 
-/** How many activations are alive. The cleanup is the only thing that lowers it. */
-export const live = signal(0)
+/**
+ * How many activations are alive. The cleanup is the only thing that lowers it.
+ *
+ * `ownedWrite`, because the body is what raises it: a write made while a scope
+ * is being built is refused unless the signal says it is written from one.
+ */
+export const [live, setLive] = createSignal(0, { ownedWrite: true })
 
 /**
  * `NO_SCOPE`'s negative case: the corpus had no `Show` whose body registered a
@@ -36,8 +41,8 @@ export default function ControlFlowShowCleanupBody() {
       <span class="live">{() => live()}</span>
       <Show when={() => on()}>
         {() => {
-          live.set(live.peek() + 1)
-          onCleanup(() => live.set(live.peek() - 1))
+          setLive(untrack(live) + 1)
+          onCleanup(() => setLive(untrack(live) - 1))
           return <p class="panel">open</p>
         }}
       </Show>
@@ -45,7 +50,7 @@ export default function ControlFlowShowCleanupBody() {
   )
 }
 
-export const steps = [() => on.set(true), () => on.set(false), () => on.set(true)]
+export const steps = [() => setOn(true), () => setOn(false), () => setOn(true)]
 
 export const optimality = {
   target: 8,

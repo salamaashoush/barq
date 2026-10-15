@@ -1,9 +1,8 @@
 /**
  * A component referenced through a TYPE CAST is still a component.
  *
- * `{ component: Home as never }` is how a hand-written route table spells this,
- * and `as never` is what `routeTree.gen.ts` itself emits for a route with no
- * component of its own. The scan that marks a binding used-as-a-value matched
+ * `{ component: Home as never }` is how a hand-written route table may spell
+ * this. The scan that marks a binding used-as-a-value matched
  * `Expression::Identifier` and saw a `TSAsExpression`, so the cast form marked
  * nothing.
  *
@@ -14,8 +13,10 @@
  *
  * The hole is the whole symptom now. Ownership is ambient, so a detected
  * component gains no scope parameter and no `block()` wrapper to tell it apart
- * from an undetected one — what still separates them is whether `props.data()`
- * crossed as `() => props.data()` or as its value.
+ * from an undetected one. What still separates them is what the compiler KNOWS
+ * about `props.label()`: in a component it is a Cell being read, so the Cell
+ * itself is handed over; anywhere else it is a call nothing is known about, and
+ * is wrapped so that running it stays the hole's business.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -24,7 +25,7 @@ import { compileSource } from "./harness.ts";
 
 // `(props)`, which is both the authored form and the emitted one: ownership is
 // ambient, so the parameter list a component declares is the one it keeps.
-const component = `function Home(props) { return <h1>{props.data()?.title}</h1>; }`;
+const component = `function Home(props) { return <h1>{props.data()?.title}{props.label()}</h1>; }`;
 
 const shapes = {
   "a bare reference": `${component}\nexport const tree = [{ component: Home }];`,
@@ -47,18 +48,20 @@ describe("a component referenced through a type cast", () => {
       // runs again, which is the failure that has no error attached to it.
       expect(out).toMatch(/_\$insert\([^,]+, \(\) =>/);
       expect(out).not.toMatch(/_\$insert\([^,]+, props\.data\(\)/);
+      // And the prop read on its own is the Cell, forwarded by identity.
+      expect(out).toMatch(/_\$insert\([^,]+, props\.label[,)]/);
     });
   }
 
   /**
    * The other half of the rule, so the fix cannot be "call everything a
-   * component". A function nothing references is not one, so its holes stay
-   * VALUES — which is the difference the tests above measure from the other
-   * side.
+   * component". A function nothing references is not one, so its parameter is
+   * not a props object: `props.label()` is an opaque call, wrapped, where the
+   * tests above see a Cell handed over as it is.
    */
   it("but a local function nothing references is still not one", () => {
     const out = compileSource(component, "tree.tsx");
-    expect(out).toMatch(/_\$insert\([^,]+, props\.data\(\)/);
-    expect(out).not.toMatch(/_\$insert\([^,]+, \(\) =>/);
+    expect(out).toMatch(/_\$insert\([^,]+, \(\) => props\.label\(\)/);
+    expect(out).not.toMatch(/_\$insert\([^,]+, props\.label[,)]/);
   });
 });

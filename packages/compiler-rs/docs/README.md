@@ -1,142 +1,103 @@
 # barq compiler diagnostics
 
-Every message the compiler can produce has a stable code, a level, and a page here.
+Every diagnostic the compiler reports has a stable code, a level and a page here. Each
+page shows the message, an example that raises it, the fixed example, why the rule
+exists and how to silence it.
 
-| code | level | rule |
+| code | level | what it reports |
 | --- | --- | --- |
-| [BARQ001](BARQ001.md) | warning | an accessor binding is coerced to a value instead of being called |
-| [BARQ002](BARQ002.md) | warning | an accessor binding is used as a condition, where a function is always truthy |
-| [BARQ003](BARQ003.md) | warning | a property is read off an accessor binding instead of off its value |
-| [BARQ004](BARQ004.md) | note | `For`: the origin of `each` cannot be proved to be values `mapArray` recreates |
-| [BARQ005](BARQ005.md) | warning | props are destructured in the parameter list, which flattens every getter |
-| [BARQ008](BARQ008.md) | warning | a `barq-ignore-next-line` matched no diagnostic |
-| [BARQ009](BARQ009.md) | warning | a `barq-ignore-next-line` could not be parsed |
-| [BARQ010](BARQ010.md) | warning | a Block is forwarded into a slot the callee reads as a Cell, where it throws |
-| [BARQ011](BARQ011.md) | note | `keyed={false}` binds the row's DOM state to the position, and this row holds some |
-| [BARQ012](BARQ012.md) | error | a module mixes server functions with other exports, so no client half can be synthesized for it |
-| [BARQ013](BARQ013.md) | warning | `<Link to>` names a path no route matches |
-| [BARQ014](BARQ014.md) | error | a `css` block is not CSS this compiler can compile |
-| [BARQ015](BARQ015.md) | note | a `css` block interpolates a value known only at run time, so it stays on the runtime |
-| [BARQ016](BARQ016.md) | note | `atoms` has more than one conditional argument, so it stays on the runtime |
-| [BARQ017](BARQ017.md) | note | a call this compiler could not fold, so `@barqjs/css`'s runtime evaluates it |
+| [BARQ001](BARQ001.md) | warning | An accessor is used as a value without being called |
+| [BARQ002](BARQ002.md) | warning | An accessor is used as a condition, which is always true |
+| [BARQ003](BARQ003.md) | warning | A property is read from an accessor instead of from its value |
+| [BARQ004](BARQ004.md) | note | `<For>` rows may show stale fields when `each` holds store objects |
+| [BARQ005](BARQ005.md) | warning | Props are destructured in the parameter list, so each name is a function |
+| [BARQ008](BARQ008.md) | warning | A `barq-ignore-next-line` comment silences nothing on the next line |
+| [BARQ009](BARQ009.md) | warning | A `barq-ignore-next-line` comment is malformed and silences nothing |
+| [BARQ010](BARQ010.md) | warning | JSX is passed to a prop the component reads as a value, which throws |
+| [BARQ011](BARQ011.md) | note | `keyed={false}` keeps element state in place when the list reorders |
+| [BARQ012](BARQ012.md) | error | A module exports server functions together with other things |
+| [BARQ013](BARQ013.md) | warning | `<Link to>` names a path that no route matches |
+| [BARQ014](BARQ014.md) | error | A `css`, `keyframes` or `globalCss` block is not valid CSS |
+| [BARQ015](BARQ015.md) | note | A `css` block interpolates a runtime value, so the browser builds it |
+| [BARQ016](BARQ016.md) | note | `atoms` has several conditional arguments, so the browser evaluates it |
+| [BARQ017](BARQ017.md) | note | A `@barqjs/css` call cannot be compiled, so the browser evaluates it |
 
-BARQ001, BARQ002, BARQ003 and BARQ005 are the source-level rules. They run when
-`diagnostics` is on, which defaults to `dev`. BARQ004, BARQ010 and BARQ011 are
-compiler notes about what the emitted code will do; they run under `dev`. BARQ008
-and BARQ009 are the engine reporting on your suppression comments.
+BARQ001, BARQ002, BARQ003, BARQ005 and BARQ011 are reported when the `diagnostics` option
+is on, which it is in development builds. BARQ004 and BARQ010 are reported in development
+builds only.
+BARQ012 to BARQ017 are reported in every build, so they can fail CI. BARQ008 and BARQ009
+report on your own suppression comments.
 
-## A code is a public API
+[BARQ006](BARQ006.md) was removed and is not reported.
 
-Codes are **never renamed and never reused.** Svelte 5 renamed every warning code from
-dashes to underscores and silently invalidated every `svelte-ignore` comment in every
-codebase, breaking CI and blocking upgrades ([sveltejs/svelte#11414][s11414]). An ignore
-comment sitting in your source is a call into this table.
+## Codes are stable
 
-Adding a code is a **minor** change and the new code must ship at warning level or below.
-Angular's own caveat applies: with `defaultCategory: "error"`, a code added in a minor
-release turns a minor upgrade into a build break.
+A code is never renamed and never reused, because a suppression comment in your source
+refers to it by name. A new code arrives in a minor release at warning level or below.
+With `defaultCategory: "error"`, a new code can therefore turn a minor upgrade into a
+failing build.
 
-## Silencing one occurrence
+## Silencing one line
 
-In statement position, a line comment:
+In statement position, write a line comment directly above the reported line:
 
 ```ts
-// barq-ignore-next-line BARQ001 (the source text is what this debug panel wants)
-const label = `${count}`
+// barq-ignore-next-line BARQ001 (the debug panel shows the source text)
+const label = `${count}`;
 ```
 
-**Inside JSX, use a JSX comment.** A `//` line between JSX children is TEXT, not a comment:
-it silences nothing and the directive is baked into the template and rendered onto the
-page.
+Between JSX children, write a JSX comment. A `//` line there is text: it silences
+nothing and it is rendered on the page.
 
-```jsx
+```tsx
 <div>
-  {/* barq-ignore-next-line BARQ001 (the source text is what this debug panel wants) */}
+  {/* barq-ignore-next-line BARQ001 (the debug panel shows the source text) */}
   <pre>{`${count}`}</pre>
 </div>
 ```
 
-- **The code is mandatory.** A codeless directive silences whatever happens to land on that
-  line, including a diagnostic added after you wrote it. TypeScript shipped the codeless
-  form and has been unable to undo it since 2020 ([microsoft/TypeScript#38288][ts38288]).
-- **Several codes are allowed**, comma- or space-separated: `BARQ001, BARQ003`.
-- **A reason is required**, in parentheses, at least 10 characters. typescript-eslint's
-  `ban-ts-comment` uses the same floor in its strict config, "because it forces developers
-  to articulate why."
-- **The directive is scoped to the code AND to the line it covers** — the next line that is
-  neither blank nor another comment, so two stacked directives both reach the statement
-  below them. Naming the code is what stops a directive swallowing an unrelated diagnostic;
-  TypeScript labelled the codeless version of this a Design Limitation and closed it
-  ([microsoft/TypeScript#47551][ts47551]).
-- **One line, not one statement.** A diagnostic reported on the third line of a multi-line
-  statement is not covered by a directive above the first, and you get BARQ008 for the
-  unused directive on top of the original. `@ts-expect-error` behaves identically, for the
-  same reason: line granularity is what makes the scope readable without an AST. Put the
-  directive immediately above the line the diagnostic points at — which, inside JSX, means
-  the `{/* … */}` form.
-- **An unused directive is reported as BARQ008, at warning level, always.** It cannot be
-  escalated to an error even by `defaultCategory: "error"`. An unused suppression that
-  fails CI is exactly what pushes teams onto the unsafe form that then silently swallows
-  new diagnostics ([microsoft/TypeScript#62579][ts62579]).
-- **A directive never changes what the compiler emits.** The React Compiler treated the
-  mere presence of an `eslint-disable` as grounds to bail out of optimising a component
-  ([facebook/react#34261][r34261]); barq resolves suppressions after codegen has already
-  run, and a test pins the emitted bytes.
+- The code is required. A comment without one would also hide a diagnostic added to that
+  line later.
+- Several codes can be listed, separated by commas or spaces: `BARQ001, BARQ003`.
+- A reason in parentheses is required and has to be at least 10 characters.
+- The comment covers the next line that is not blank and not a comment, so two comments
+  stacked above one line both apply to it. It covers one line, not one statement: a
+  diagnostic on the third line of a long statement needs the comment directly above that
+  line.
+- A comment that silences nothing is reported as [BARQ008](BARQ008.md), and a comment
+  that cannot be read as [BARQ009](BARQ009.md). Both stay warnings whatever the project
+  settings say, so a comment cannot fail a build.
+- A comment never changes the code the compiler produces.
 
-## Silencing a code project-wide
+## Changing a level for the whole project
 
 ```ts
 barqVitePlugin({
   checks: { BARQ004: "suppress", BARQ001: "error" },
   defaultCategory: "warning",
-})
+});
 ```
 
-`suppress` | `note` | `warning` | `error`, the shape Angular's extended diagnostics use. An
-explicit per-code entry wins over `defaultCategory`, which wins over the code's own level.
+A level is `suppress`, `note`, `warning` or `error`. An entry in `checks` wins over
+`strictCss`, which makes BARQ014 to BARQ017 errors; that wins over `defaultCategory`,
+which applies to every code; and that wins over the code's own level. The compiler and
+the Vite plugin read the same settings, so a code silenced here is silent everywhere.
 
-There is **one** resolution of this, shared by the compiler, the Vite plugin and any CLI.
-Svelte's split between `onwarn` and `svelte-check` means a code silenced in one channel
-stays loud in the other, and people file issues about it
-([sveltejs/language-tools#650][lt650]).
+The compiler prints each fix as text and never rewrites your source.
 
-## No autofix, ever
+## What the rules cannot see
 
-`exhaustive-deps` ships an autofix that **removes** a dependency to satisfy the analyser,
-which changes runtime behaviour and can introduce the bug it warns about. Each page here
-prints the rewrite as text and stops. barq's codegen only splices at recorded sites, so it
-could not autofix even if that were wanted.
+The checks report only what they can prove from one file, so silence is not a guarantee.
 
-## What these rules deliberately cannot see
-
-Recorded rather than papered over, because the alternative is a name heuristic and a name
-heuristic is the proximate cause of most of eslint-plugin-solid's open false-positive
-reports:
-
-- **Cross-module.** `import { count } from "./barrel"` resolves to `Opaque`; P0 Bind is
-  module-scoped. Same limitation as
-  [eslint-plugin-solid#127](https://github.com/solidjs-community/eslint-plugin-solid/issues/127).
-- **Non-JSX files.** `analysis::bind` only runs when the source type is JSX.
-- **Anything reassigned.** A binding that is written to joins ⊤ and stops being an accessor
-  as far as the analysis is concerned.
-- **A component used only as a VALUE.** BARQ005 needs evidence that a function is a
-  component, and that evidence is "written as a JSX tag, or exported". `const Wrapper = ({
-  children }) => …` that is only ever passed as a prop is silent — a one-parameter
-  JSX-returning arrow is otherwise indistinguishable from a `<For>` row callback.
-- **A row whose `keyed` cannot be read.** `<For keyed={KEYED}>` and `<For {...opts}>` put
-  the row parameters on the accessor arm because that is the arm that is safe when wrong,
-  not because the row is known to be one. BARQ001–3 say nothing about such a row: if
-  `KEYED` holds `true`, the row is a plain object and `row()` throws.
-
-[s11414]: https://github.com/sveltejs/svelte/issues/11414
-[ts38288]: https://github.com/microsoft/TypeScript/issues/38288
-[ts47551]: https://github.com/microsoft/TypeScript/issues/47551
-[ts62579]: https://github.com/microsoft/TypeScript/issues/62579
-[r34261]: https://github.com/facebook/react/issues/34261
-[lt650]: https://github.com/sveltejs/language-tools/issues/650
-
-## Removed
-
-| code | removed in | why |
-| --- | --- | --- |
-| [BARQ006](BARQ006.md) | M3 | its premise was getters, and C3 replaced every prop with a Cell |
+- **Other files.** An accessor imported from another module is not known to be one, so
+  BARQ001 to BARQ003 say nothing about it, and BARQ010 does not follow a prop into a
+  component declared in another file.
+- **Files without JSX.** The accessor and props rules run on `.jsx` and `.tsx` files.
+- **A reassigned name.** A `let` that is assigned again is not treated as an
+  accessor.
+- **A component only ever passed as a value.** BARQ005 needs to know that a function is
+  a component, which it learns from a JSX tag, an export, or a route option such as
+  `component`. A function that is only passed to another function is not reported.
+- **A row whose `keyed` is not written out.** With `<For keyed={KEYED}>` or
+  `<For {...options}>` the compiler does not know whether the row is an accessor, so
+  BARQ001 to BARQ003 say nothing about that row.

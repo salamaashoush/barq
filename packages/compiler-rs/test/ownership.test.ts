@@ -443,43 +443,17 @@ describe("the channel is not inert", () => {
 describe("the trace costs nothing when it is off", () => {
   it("adds no field to the scope object, in either state", async () => {
     const core = (await import("@barqjs/core")) as unknown as {
-      scope: <T>(fn: (d: () => void) => T, detached?: boolean, kind?: string) => T;
-      getOwner: () => object | null;
+      childScope: (parent: object | null, kind: string) => object;
       beginOwnershipTrace: () => void;
       endOwnershipTrace: () => unknown[];
     };
-    const shape = (): string[] => core.scope(() => Object.keys(core.getOwner() ?? {}).sort(), true);
+    // The scope is the engine's object, so WHICH fields it has is the engine's
+    // business. What is asserted is that tracing adds none.
+    const shape = (): string[] => Object.keys(core.childScope(null, "scope")).sort();
     const off = shape();
     core.beginOwnershipTrace();
     const on = shape();
     core.endOwnershipTrace();
-    // M2 replaced the ad-hoc owner record with `Scope`, so
-    // this list moved: `_context`/`_parent`/`children`/`disposed` became
-    // `ctx`/`parent`/`kids`/`dead`, and `catcher` (E1), `gen` (A2), `origin`
-    // (X5), `_prev`/`_prevHost`/`_open` (O4.3), `_abort` (O3.4), `_range`
-    // (O3.5) and `_forked` (X6) are the fields the O-family rules name.
-    // `_prevHost` and `_open` are the M2-gate fix: CURRENT is the pair
-    // (owner, host), so saving only half of it made `exit` restore null inside
-    // a computation, and `_open` is what makes a second `exit` a no-op rather
-    // than a silent detach. What this test asserts is unchanged and is the
-    // line below: tracing adds none of them.
-    expect(off).toEqual([
-      "_abort",
-      "_forked",
-      "_open",
-      "_prev",
-      "_prevHost",
-      "_range",
-      "catcher",
-      "cleanups",
-      "ctx",
-      "dead",
-      "dispose",
-      "gen",
-      "kids",
-      "origin",
-      "parent",
-    ]);
     expect(
       on,
       "tracing must not add a field: the scope object is allocated once per branch " +
@@ -490,11 +464,10 @@ describe("the trace costs nothing when it is off", () => {
 
   it("mints no identity for a scope created while it is off", async () => {
     const core = (await import("@barqjs/core")) as unknown as {
-      scope: <T>(fn: (d: () => void) => T, detached?: boolean, kind?: string) => T;
-      getOwner: () => object | null;
+      childScope: (parent: object | null, kind: string) => object;
       ownershipIdOf: (scope: object | null) => number;
     };
-    const owner = core.scope(() => core.getOwner(), true);
+    const owner = core.childScope(null, "scope");
     expect(
       core.ownershipIdOf(owner),
       "a scope built outside a trace window must carry no trace identity; the WeakMap " +
@@ -517,16 +490,17 @@ describe("the trace costs nothing when it is off", () => {
 
   it("records nothing at all while it is off", async () => {
     const core = (await import("@barqjs/core")) as unknown as {
-      scope: <T>(fn: (d: () => void) => T, detached?: boolean, kind?: string) => T;
+      childScope: (parent: object | null, kind: string) => object;
+      dispose: (scope: object) => void;
+      runWithOwner: <T>(owner: object | null, fn: () => T) => T;
       template: (html: string) => () => Node;
       beginOwnershipTrace: () => void;
       endOwnershipTrace: () => unknown[];
     };
     const make = core.template("<b>x</b>");
-    core.scope((d: () => void) => {
-      make();
-      d();
-    }, true);
+    const scope = core.childScope(null, "scope");
+    core.runWithOwner(scope, () => make());
+    core.dispose(scope);
     core.beginOwnershipTrace();
     const captured = core.endOwnershipTrace();
     expect(captured, "work done outside the window must leave no record").toEqual([]);
@@ -669,11 +643,12 @@ describe("self-check: the assertion would notice", () => {
     // has that block build under the root instead. Nothing is edited after the
     // fact; the events are whatever the runtime produced.
     const core = (await import("@barqjs/core")) as unknown as {
-      scope: <T>(fn: (d: () => void, s: object) => T, detached?: boolean, kind?: string) => T;
+      childScope: (parent: object | null, kind: string) => object;
+      dispose: (scope: object) => void;
       getOwner: () => object | null;
       runWithOwner: <T>(owner: object | null, fn: () => T) => T;
       template: (html: string) => () => Node;
-      insert: (s: object | null, parent: Node, value: unknown, marker?: Node | null) => void;
+      insert: (parent: Node, value: unknown, marker?: Node | null) => void;
       flush: () => void;
       beginOwnershipTrace: () => void;
       endOwnershipTrace: () => OwnershipEvent[];
@@ -687,27 +662,17 @@ describe("self-check: the assertion would notice", () => {
       core.beginOwnershipTrace();
       try {
         let dispose: (() => void) | undefined;
-        core.scope(
-          (d: () => void, root: object) => {
-            dispose = d;
-            core.scope(
-              (_d: () => void, _provide: object) => {
-                // `insert` reads the AMBIENT owner, which `scope` has already
-                // entered — so what is compared is the scope the construction
-                // actually ran under against the one that was current when the
-                // body was handed over, and `runWithOwner` below is what makes
-                // those two disagree.
-                core.insert(host, () =>
-                  elsewhere ? core.runWithOwner(root, () => make()) : make(),
-                );
-              },
-              false,
-              "provide",
-            );
-          },
-          true,
-          "root",
-        );
+        const root = core.childScope(null, "root");
+        dispose = () => core.dispose(root);
+        const provide = core.childScope(root, "provide");
+        core.runWithOwner(provide, () => {
+          // `insert` reads the AMBIENT owner, which `scope` has already
+          // entered — so what is compared is the scope the construction
+          // actually ran under against the one that was current when the
+          // body was handed over, and `runWithOwner` below is what makes
+          // those two disagree.
+          core.insert(host, () => (elsewhere ? core.runWithOwner(root, () => make()) : make()));
+        });
         core.flush();
         dispose?.();
         return core.endOwnershipTrace();
@@ -748,12 +713,13 @@ describe("self-check: the assertion would notice", () => {
     // a check that reported the cheating run through the clone arm would pass
     // this test without ever looking at an effect.
     const core = (await import("@barqjs/core")) as unknown as {
-      scope: <T>(fn: (d: () => void, s: object) => T, detached?: boolean, kind?: string) => T;
+      childScope: (parent: object | null, kind: string) => object;
+      dispose: (scope: object) => void;
       runWithOwner: <T>(owner: object | null, fn: () => T) => T;
       template: (html: string) => () => Node;
-      insert: (s: object | null, parent: Node, value: unknown, marker?: Node | null) => void;
-      renderEffect: (compute: () => unknown) => () => void;
-      signal: <T>(value: T) => (() => T) & { set(next: T): void };
+      insert: (parent: Node, value: unknown, marker?: Node | null) => void;
+      bindEffect: (compute: () => unknown, apply: () => void) => void;
+      createSignal: <T>(value: T) => [() => T, (next: T) => T];
       flush: () => void;
       beginOwnershipTrace: () => void;
       endOwnershipTrace: () => OwnershipEvent[];
@@ -764,30 +730,27 @@ describe("self-check: the assertion would notice", () => {
       const host = document.createElement("div");
       document.body.appendChild(host);
       const make = core.template("<b>x</b>");
-      const value = core.signal("one");
+      const [value] = core.createSignal("one");
       core.beginOwnershipTrace();
       try {
         let dispose: (() => void) | undefined;
-        core.scope(
-          (d: () => void, root: object) => {
-            dispose = d;
-            core.scope(
-              (_d: () => void, _provide: object) => {
-                core.insert(host, () => {
-                  const node = make();
-                  const bind = (): void => void core.renderEffect(() => value());
-                  if (elsewhere) core.runWithOwner(root, bind);
-                  else bind();
-                  return node;
-                });
-              },
-              false,
-              "provide",
-            );
-          },
-          true,
-          "root",
-        );
+        const root = core.childScope(null, "root");
+        dispose = () => core.dispose(root);
+        const provide = core.childScope(root, "provide");
+        core.runWithOwner(provide, () => {
+          core.insert(host, () => {
+            const node = make();
+            // `bindEffect` is the call the compiler emits for a live attribute.
+            const bind = (): void =>
+              core.bindEffect(
+                () => value(),
+                () => {},
+              );
+            if (elsewhere) core.runWithOwner(root, bind);
+            else bind();
+            return node;
+          });
+        });
         core.flush();
         dispose?.();
         return core.endOwnershipTrace();

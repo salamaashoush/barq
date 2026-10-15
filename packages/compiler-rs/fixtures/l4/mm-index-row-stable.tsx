@@ -6,11 +6,11 @@
  * update that row in place rather than rebuild it. Every node survives both
  * writes, and the row Block is invoked once per position and never again.
  */
-import { For, signal } from "@barqjs/core"
+import { For, createSignal } from "@barqjs/core"
 
 export const log: string[] = []
 
-export const nums = signal([1, 2, 3])
+export const [nums, setNums] = createSignal([1, 2, 3])
 
 export default function IndexRowStable() {
   return (
@@ -29,7 +29,7 @@ export default function IndexRowStable() {
   )
 }
 
-export const steps = [() => nums.set([9, 2, 3]), () => nums.set([9, 8, 7])]
+export const steps = [() => setNums([9, 2, 3]), () => setNums([9, 8, 7])]
 
 export const metamorphic = {
   why: "a positional list updates the value at a position and keeps the node at it",

@@ -14,11 +14,11 @@
  * markup here — the oracle, the SSR backend and the L3 differential all stay
  * green — and destroys every node in the branch on every write.
  */
-import { Show, signal } from "@barqjs/core"
+import { Show, createSignal } from "@barqjs/core"
 
 export const log: string[] = []
 
-export const label = signal("one")
+export const [label, setLabel] = createSignal("one")
 
 export default function BranchNonKeyedTruthy() {
   return (
@@ -37,7 +37,7 @@ export default function BranchNonKeyedTruthy() {
   )
 }
 
-export const steps = [() => label.set("two"), () => label.set("three")]
+export const steps = [() => setLabel("two"), () => setLabel("three")]
 
 export const metamorphic = {
   why: "the driving effect re-runs on every write and the truthiness key never moves",

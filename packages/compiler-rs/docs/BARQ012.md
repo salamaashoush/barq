@@ -1,87 +1,81 @@
-# BARQ012 — a module mixes server functions with other exports
+# BARQ012: A module exports server functions together with other things
 
 **Level:** error · [all codes](README.md)
 
-## What fires
+## Message
 
-A module that exports at least one server function **and** at least one other thing.
+> This module exports a server function and also `TodoList`. The browser build replaces
+> a module that exports server functions with request stubs, so it cannot keep anything
+> else the module exports. Move the server functions into a file that exports nothing
+> else, and import them from here.
 
-```ts
+## Failing example
+
+```tsx
 import { createServerFn } from "@barqjs/start";
 
-export const saveTodo = createServerFn().validator(TodoInput).handler(async ({ data: todo }) => {
-  await db.todos.insert(todo);
+export const saveTodo = createServerFn().handler(async () => {
+  return { saved: true };
 });
 
-export function TodoList() {   // BARQ012
-  return <ul>…</ul>;
+export function TodoList() {
+  return <button onClick={() => saveTodo()}>Save</button>;
 }
 ```
 
-## What it means
+## Fixed example
 
-The client build does not *prune* a server-function module. It **synthesizes** one: a new
-module with the same export names, each of them an RPC stub, and nothing else. No handler
-body, no validator, and none of the imports the body needed.
+`todos.server.ts`, where every export is a server function. The file name is yours to choose:
 
-That is what makes the separation structural rather than analytical. The alternative —
-keeping the module and deleting what the client should not see — is dead-code elimination,
-and every implementation surveyed that relies on it leaks. The specific hole is a bare
-side-effect import:
-
-```ts
-import "./db";                 // no binding, so nothing is "unreferenced"
-```
-
-`babel-dead-code-elimination` removes an import declaration only once it has removed a
-specifier from it. A bare import has none, so the guard never fires and the declaration
-survives into the client bundle, pulling `./db` and everything it imports with it. React
-Router's own documentation concedes the general point — *"tree-shaking alone is
-insufficient"* — and adds `.server.ts` naming as a second, opt-in net.
-
-Synthesis has no equivalent hole, because the module is never consulted. But it only works
-when every export is replaceable by a stub. A component is not: replacing it with an RPC
-stub deletes your page, and keeping it means keeping the module, which is the strategy this
-refuses.
-
-So the compiler refuses the shape instead of proving it safe.
-
-## The fix
-
-Move the server functions into a module of their own.
-
-```ts
-// todos.server.ts — every export is a server function
+```tsx
 import { createServerFn } from "@barqjs/start";
 
-export const saveTodo = createServerFn().validator(TodoInput).handler(async ({ data: todo }) => {
-  await db.todos.insert(todo);
+export const saveTodo = createServerFn().handler(async () => {
+  return { saved: true };
 });
 ```
 
+`TodoList.tsx`:
+
 ```tsx
-// TodoList.tsx
 import { saveTodo } from "./todos.server.ts";
 
 export function TodoList() {
-  return <form action={saveTodo}>…</form>;
+  return <button onClick={() => saveTodo()}>Save</button>;
 }
 ```
 
-The filename is yours; the compiler decides by **content**, not by name. SvelteKit enforces
-the same rule keyed on the filename — a `.remote.ts` may export nothing else — so the
-guarantee is the same one and it costs no naming convention here.
+## Why this rule exists
 
-## What is not a mix
+In the browser build, a module whose exports are all server functions is replaced by one
+that exports a request stub under each name. The handler code, its validators and what
+they import (a database client, a secret) never reach the browser. That replacement only
+works when every export can be a stub. A component cannot be one, and keeping the module
+to keep the component would ship the handlers with it, so the build stops.
 
-- A **non-exported** server function. It is never mounted, has no id and no endpoint, and is
-  still callable from its siblings — which is the only genuine notion of an internal server
-  function in this space.
-- Types. `export type` and `export interface` are erased before the client build sees them.
+Types (`export type`, `export interface`) do not count as other exports, and neither does
+a server function that is not exported.
 
-## Why it is an error and not a warning
+## Silencing one line
 
-A warning here would be advice about a security boundary, delivered at the moment the
-boundary is being crossed and ignored by default. The whole point of synthesis is that the
-unsafe shape is unrepresentable rather than merely discouraged — `CODESIGN.md` §7.1's method,
-applied to what reaches the browser.
+```tsx
+import { createServerFn } from "@barqjs/start";
+
+export const saveTodo = createServerFn().handler(async () => {
+  return { saved: true };
+});
+
+// barq-ignore-next-line BARQ012 (this module is only ever imported by server code)
+export function TodoList() {
+  return <button onClick={() => saveTodo()}>Save</button>;
+}
+```
+
+The comment goes above the first export that is not a server function, which is where the
+diagnostic points. Silencing it does not split the module: the browser build then keeps
+the whole file, handlers included, so use it only for a module the browser never imports.
+
+The reason in parentheses is required and has to be at least 10 characters. Between JSX
+children, write the comment as `{/* barq-ignore-next-line BARQ012 (reason) */}` on the line
+above: a `//` line there is text and would be rendered on the page. To change the level
+for the whole project, see [the index](README.md#changing-a-level-for-the-whole-project).

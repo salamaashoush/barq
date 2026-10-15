@@ -1129,7 +1129,8 @@ export const Route = createFileRoute("/admin")({
   component: Page,
 });
 "#;
-        let client = split(source, "src/routes/admin.tsx", "/src/routes/admin.tsx?barq-split", true, true);
+        let client =
+            split(source, "src/routes/admin.tsx", "/src/routes/admin.tsx?barq-split", true, true);
         assert!(
             !client.reference.contains("requireSession"),
             "the client half kept the chain and the import that reaches async_hooks:\n{}",
@@ -1139,7 +1140,8 @@ export const Route = createFileRoute("/admin")({
 
         // The SERVER build keeps it, because the verifier is the only reader and
         // it runs inside that bundle.
-        let server = split(source, "src/routes/admin.tsx", "/src/routes/admin.tsx?barq-split", false, true);
+        let server =
+            split(source, "src/routes/admin.tsx", "/src/routes/admin.tsx?barq-split", false, true);
         assert!(server.reference.contains("requireSession"), "{}", server.reference);
         assert!(server.reference.contains("middleware"), "{}", server.reference);
     }

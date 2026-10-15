@@ -21,9 +21,9 @@
  * O2, O2.1 and X1, X3; C6.
  * Registered in `ownership-known-failures.ts`.
  */
-import { context, useContext } from "@barqjs/core"
+import { createContext, useContext } from "@barqjs/core"
 
-const Theme = context<() => string>(() => "fallback-theme")
+const Theme = createContext<() => string>(() => "fallback-theme")
 
 function Label() {
   const value = useContext(Theme)

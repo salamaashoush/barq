@@ -539,12 +539,15 @@ pub fn generate_route_tree(tree: &[RouteNode], out_dir: &str) -> String {
         let Some(file) = file_of(tree, id) else { continue };
         out.push_str(&format!(
             "import {{ Route as {name} }} from {};\n",
-            json_string(&import_specifier(out_dir, &file)),
+            js_string(&import_specifier(out_dir, &file)),
         ));
+    }
+    if !names.is_empty() {
+        out.push('\n');
     }
 
     out.push_str(
-        "\n/**\n * The table, exactly the shape `createRouter` and `createPageHandler` take.\n",
+        "/**\n * The table, exactly the shape `createRouter` and `createPageHandler` take.\n",
     );
     out.push_str(
         " *\n * `...Route.options` FIRST, so the generator's `id`, `path` and `src` win over\n",
@@ -553,15 +556,9 @@ pub fn generate_route_tree(tree: &[RouteNode], out_dir: &str) -> String {
     out.push_str(
         " * decides those, and a route that disagrees is already refused by the id check.\n */\n",
     );
-    out.push_str("export const routeTree: AnyRouteDefinition[] = [\n");
-    for (index, node) in tree.iter().enumerate() {
-        emit_node(&mut out, node, 1, &names);
-        if index + 1 < tree.len() {
-            out.push(',');
-        }
-        out.push('\n');
-    }
-    out.push_str("];\n\nexport default routeTree;\n\n");
+    let table: Vec<Vec<Prop>> = tree.iter().map(|node| props_of(node, &names)).collect();
+    print_array(&mut out, "export const routeTree: AnyRouteDefinition[] = ", &table, 0, ";");
+    out.push_str("\nexport default routeTree;\n\n");
 
     emit_types(&mut out, tree, &names);
     out
@@ -728,10 +725,13 @@ fn declares(node: &RouteNode, option: &str) -> bool {
     node.declared.iter().any(|declared| declared == option)
 }
 
-fn emit_node(out: &mut String, node: &RouteNode, depth: usize, names: &[(String, String)]) {
-    let pad = "  ".repeat(depth);
-    out.push_str(&pad);
-    out.push_str("{ ");
+/// One property of a route object: printed text, or the `children` array.
+enum Prop {
+    Text(String),
+    Children(Vec<Vec<Prop>>),
+}
+
+fn props_of(node: &RouteNode, names: &[(String, String)]) -> Vec<Prop> {
     let mut parts: Vec<String> = Vec::new();
     if let Some(file) = &node.file {
         let name = names
@@ -741,9 +741,9 @@ fn emit_node(out: &mut String, node: &RouteNode, depth: usize, names: &[(String,
         // FIRST, so the generator's own keys below override anything the module
         // spells for itself.
         parts.push(format!("...{name}.options"));
-        parts.push(format!("id: {}", json_string(&node.id)));
+        parts.push(format!("id: {}", js_string(&node.id)));
         if let Some(path) = &node.path {
-            parts.push(format!("path: {}", json_string(path)));
+            parts.push(format!("path: {}", js_string(path)));
         } else {
             // A pathless layout contributes no segment, and a module that
             // declared a `path` must not reintroduce one through the spread.
@@ -753,22 +753,13 @@ fn emit_node(out: &mut String, node: &RouteNode, depth: usize, names: &[(String,
         // it and a bundler manifest is keyed by exactly this string. It is what
         // maps a route to its chunk for `<link rel="modulepreload">` and what
         // the route-action manifest walks the module graph from.
-        parts.push(format!("src: {}", json_string(&format!("/{file}"))));
+        parts.push(format!("src: {}", js_string(&format!("/{file}"))));
         // A route that declares no component renders its child, not nothing —
         // `route.options.component ?? defaultComponent` falling through to
         // `<Outlet />` in theirs (`react-router/src/Match.tsx:211-212`). A layout
         // that declares only a loader would otherwise swallow its whole subtree.
         if !declares(node, "component") {
-            // `as never` at the ABI seam, for the reason `RouteComponent`'s own
-            // header gives: the real calling convention is `(scope, props)` and
-            // the type is declared PROPS-FIRST so an authored component
-            // typechecks the way it is written. The router casts at every one of
-            // its own call sites; this is the generator's.
-            //
-            // It first fired when an API route landed — `/api/health` declares
-            // handlers and no component, which no route in the project had done
-            // before, so the fallback had never been typechecked.
-            parts.push("component: Outlet as never".to_owned());
+            parts.push("component: Outlet".to_owned());
         }
         // LIFTED, not read off the module: both are wanted before anything runs
         // — the prerenderer decides whether a page is a file on a CDN, and the
@@ -781,25 +772,112 @@ fn emit_node(out: &mut String, node: &RouteNode, depth: usize, names: &[(String,
             parts.push(format!("prerender: {prerender}"));
         }
     } else {
-        parts.push(format!("id: {}", json_string(&node.id)));
+        parts.push(format!("id: {}", js_string(&node.id)));
         if let Some(path) = &node.path {
-            parts.push(format!("path: {}", json_string(path)));
+            parts.push(format!("path: {}", js_string(path)));
         }
     }
-    out.push_str(&parts.join(", "));
+    let mut props: Vec<Prop> = parts.into_iter().map(Prop::Text).collect();
     if !node.children.is_empty() {
-        out.push_str(", children: [\n");
-        for (index, child) in node.children.iter().enumerate() {
-            emit_node(out, child, depth + 1, names);
-            if index + 1 < node.children.len() {
-                out.push(',');
-            }
-            out.push('\n');
-        }
-        out.push_str(&pad);
-        out.push(']');
+        props.push(Prop::Children(
+            node.children.iter().map(|child| props_of(child, names)).collect(),
+        ));
     }
-    out.push_str(" }");
+    props
+}
+
+/// The column `oxfmt` wraps at, its default and the one this repository uses.
+///
+/// The table is printed the way the formatter would print it, so a project that
+/// formats its sources leaves the generated file as written and a regeneration
+/// is not a diff. The rules are Prettier's for these shapes: a group goes on one
+/// line when it fits, a broken array or object puts one member per line with a
+/// trailing comma, and an array of more than one object of more than one
+/// property always breaks.
+const PRINT_WIDTH: usize = 100;
+
+/// Display columns, which is what the formatter measures: a wide character takes
+/// two and a combining mark none.
+fn width(text: &str) -> usize {
+    text.chars()
+        .map(|character| match character as u32 {
+            0x0300..=0x036F | 0x200B..=0x200F | 0xFE00..=0xFE0F => 0,
+            0x1100..=0x115F
+            | 0x2E80..=0x303E
+            | 0x3041..=0x33FF
+            | 0x3400..=0x4DBF
+            | 0x4E00..=0x9FFF
+            | 0xA000..=0xA4CF
+            | 0xAC00..=0xD7A3
+            | 0xF900..=0xFAFF
+            | 0xFE30..=0xFE4F
+            | 0xFF00..=0xFF60
+            | 0xFFE0..=0xFFE6
+            | 0x1F300..=0x1F64F
+            | 0x1F900..=0x1F9FF
+            | 0x20000..=0x3FFFD => 2,
+            _ => 1,
+        })
+        .sum()
+}
+
+fn fits(indent: usize, line: &str, suffix: &str) -> bool {
+    indent + width(line) + width(suffix) <= PRINT_WIDTH
+}
+
+fn always_breaks(objects: &[Vec<Prop>]) -> bool {
+    objects.len() > 1 && objects.iter().all(|props| props.len() > 1)
+}
+
+/// The one-line form, or `None` when something inside can never be on one line.
+fn flat_object(props: &[Prop]) -> Option<String> {
+    let mut parts = Vec::with_capacity(props.len());
+    for prop in props {
+        match prop {
+            Prop::Text(text) => parts.push(text.clone()),
+            Prop::Children(children) => parts.push(format!("children: {}", flat_array(children)?)),
+        }
+    }
+    Some(format!("{{ {} }}", parts.join(", ")))
+}
+
+fn flat_array(objects: &[Vec<Prop>]) -> Option<String> {
+    if always_breaks(objects) {
+        return None;
+    }
+    let items = objects.iter().map(|props| flat_object(props)).collect::<Option<Vec<_>>>()?;
+    Some(format!("[{}]", items.join(", ")))
+}
+
+fn print_object(out: &mut String, props: &[Prop], indent: usize, suffix: &str) {
+    let pad = " ".repeat(indent);
+    if let Some(flat) = flat_object(props).filter(|flat| fits(indent, flat, suffix)) {
+        out.push_str(&format!("{pad}{flat}{suffix}\n"));
+        return;
+    }
+    out.push_str(&format!("{pad}{{\n"));
+    for prop in props {
+        match prop {
+            Prop::Text(text) => out.push_str(&format!("{pad}  {text},\n")),
+            Prop::Children(children) => print_array(out, "children: ", children, indent + 2, ","),
+        }
+    }
+    out.push_str(&format!("{pad}}}{suffix}\n"));
+}
+
+fn print_array(out: &mut String, prefix: &str, objects: &[Vec<Prop>], indent: usize, suffix: &str) {
+    let pad = " ".repeat(indent);
+    if let Some(flat) =
+        flat_array(objects).filter(|flat| fits(indent, &format!("{prefix}{flat}"), suffix))
+    {
+        out.push_str(&format!("{pad}{prefix}{flat}{suffix}\n"));
+        return;
+    }
+    out.push_str(&format!("{pad}{prefix}[\n"));
+    for props in objects {
+        print_object(out, props, indent + 2, ",");
+    }
+    out.push_str(&format!("{pad}]{suffix}\n"));
 }
 
 /// The types, in the SAME file as the table.
@@ -820,9 +898,12 @@ fn emit_node(out: &mut String, node: &RouteNode, depth: usize, names: &[(String,
 /// `typeof import(...)` that had to fail closed on everything it could not
 /// prove.
 fn emit_types(out: &mut String, tree: &[RouteNode], names: &[(String, String)]) {
-    out.push_str("export interface FileRoutesById {\n");
+    out.push_str("export interface FileRoutesById {");
+    if !names.is_empty() {
+        out.push('\n');
+    }
     for (id, name) in names {
-        out.push_str(&format!("  {}: typeof {name};\n", json_string(id)));
+        out.push_str(&format!("  {}: typeof {name};\n", property_key(id)));
     }
     out.push_str("}\n\n");
 
@@ -835,15 +916,11 @@ fn emit_types(out: &mut String, tree: &[RouteNode], names: &[(String, String)]) 
     out.push_str(
         "  /** Every route id, layouts included — what `useMatch` and `Link`'s `to` address. */\n",
     );
-    out.push_str("  id: ");
-    out.push_str(&union_of(names.iter().map(|(id, _)| id.as_str())));
-    out.push_str(";\n");
+    print_union(out, "id", &union_members(names.iter().map(|(id, _)| id.as_str())));
     out.push_str(
         "  /** Every ADDRESSABLE pattern — a leaf, since a layout is reached through one. */\n",
     );
-    out.push_str("  fullPaths: ");
-    out.push_str(&union_of(patterns.iter().map(String::as_str)));
-    out.push_str(";\n");
+    print_union(out, "fullPaths", &union_members(patterns.iter().map(String::as_str)));
     out.push_str("  fileRoutesById: FileRoutesById;\n");
     out.push_str("}\n\n");
 
@@ -853,16 +930,41 @@ fn emit_types(out: &mut String, tree: &[RouteNode], names: &[(String, String)]) 
     out.push_str("  }\n}\n");
 }
 
-/// A string-literal union, or `never` when there is nothing to union.
-fn union_of<'a>(values: impl Iterator<Item = &'a str>) -> String {
+/// The members of a string-literal union, deduplicated, or `never` alone.
+fn union_members<'a>(values: impl Iterator<Item = &'a str>) -> Vec<String> {
     let mut seen: Vec<String> = Vec::new();
     for value in values {
-        let quoted = json_string(value);
+        let quoted = js_string(value);
         if !seen.iter().any(|existing| existing == &quoted) {
             seen.push(quoted);
         }
     }
-    if seen.is_empty() { "never".to_owned() } else { seen.join(" | ") }
+    if seen.is_empty() { vec!["never".to_owned()] } else { seen }
+}
+
+/// An interface member typed as a union: one line when it fits, else one
+/// member per line, each led by its `|`.
+fn print_union(out: &mut String, key: &str, members: &[String]) {
+    let flat = members.join(" | ");
+    if members.len() == 1 || fits(2, &format!("{key}: {flat}"), ";") {
+        out.push_str(&format!("  {key}: {flat};\n"));
+        return;
+    }
+    out.push_str(&format!("  {key}:\n"));
+    for (index, member) in members.iter().enumerate() {
+        let end = if index + 1 == members.len() { ";" } else { "" };
+        out.push_str(&format!("    | {member}{end}\n"));
+    }
+}
+
+/// A property name as the formatter leaves it: bare when it is an identifier.
+fn property_key(name: &str) -> String {
+    let mut characters = name.chars();
+    let identifier = characters
+        .next()
+        .is_some_and(|first| first.is_ascii_alphabetic() || first == '_' || first == '$')
+        && characters.all(|rest| rest.is_ascii_alphanumeric() || rest == '_' || rest == '$');
+    if identifier { name.to_owned() } else { js_string(name) }
 }
 
 /// Route id to source file, for EVERY node including layouts.
@@ -981,25 +1083,28 @@ pub fn refusals(files: &[RouteFile]) -> Vec<String> {
     for file in files {
         for refused in &file.module.config.refused {
             out.push(format!(
-                "{}: `{refused}` is not a literal, so the route table cannot carry it — write \
-                 `true`, `false` or (for `ssr`) \"data-only\"",
+                "{}: `{refused}` is not a literal here, so the route table cannot read it and \
+                 the route keeps the default instead of your setting. Write `true` or `false`; \
+                 `ssr` also accepts `\"data-only\"`.",
                 file.file
             ));
         }
         if file.module.kind.is_none() {
             out.push(format!(
-                "{}: exports no `Route`, so it declares nothing — write \
-                 `export const Route = createFileRoute(\"{}\")({{…}})`, or rename it with a \
-                 leading `-` to keep it out of the route tree",
+                "{}: this file is in the routes directory and exports no `Route`, so it adds \
+                 no route. Add `export const Route = createFileRoute(\"{}\")({{ component: \
+                 Page }})`, or start the file name with `-` to keep it out of the routes.",
                 file.file,
                 route_id(&file.name)
             ));
         }
         for legacy in &file.module.legacy {
             out.push(format!(
-                "{}: `export const {legacy}` is no longer read — move it into the route's \
-                 options, `createFileRoute(id)({{ {legacy}: … }})`",
-                file.file
+                "{}: `export const {legacy}` at the top level of a route file is not read, so \
+                 the route keeps the default `{legacy}` setting. Set it in the route's options, \
+                 for example `createFileRoute(\"{}\")({{ {legacy}: false }})`.",
+                file.file,
+                route_id(&file.name)
             ));
         }
     }
@@ -1025,18 +1130,27 @@ fn collect_patterns(node: &RouteNode, parent: &str, out: &mut Vec<String>) {
     }
 }
 
-fn json_string(value: &str) -> String {
+/// A string literal in the quotes the formatter picks: double, unless the value
+/// holds more double quotes than single ones.
+fn js_string(value: &str) -> String {
+    let doubles = value.matches('"').count();
+    let singles = value.matches('\'').count();
+    let quote = if doubles > singles { '\'' } else { '"' };
     let mut out = String::with_capacity(value.len() + 2);
-    out.push('"');
+    out.push(quote);
     for character in value.chars() {
         match character {
-            '"' => out.push_str("\\\""),
             '\\' => out.push_str("\\\\"),
             '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            _ if character == quote => {
+                out.push('\\');
+                out.push(character);
+            }
             _ => out.push(character),
         }
     }
-    out.push('"');
+    out.push(quote);
     out
 }
 
@@ -1206,10 +1320,7 @@ mod tests {
             "files.{$name}[.]csv.tsx",
             "blob.{$}.tsx",
         ]));
-        assert_eq!(
-            ids(&tree),
-            ["/blob/{$}", "/files/{$name}.csv", "/posts/{-$category}/detail"]
-        );
+        assert_eq!(ids(&tree), ["/blob/{$}", "/files/{$name}.csv", "/posts/{-$category}/detail"]);
     }
 
     /// `[_]` is a literal underscore, so the segment is NOT a pathless layout.
@@ -1307,7 +1418,7 @@ mod tests {
             &build_tree(&declaring(&[("users.tsx", &[]), ("users.$id.tsx", &["component"])])),
             "src",
         );
-        assert_eq!(source.matches("component: Outlet as never").count(), 1, "{source}");
+        assert_eq!(source.matches("component: Outlet").count(), 1, "{source}");
         // …and it is IMPORTED. A generated file that referenced a free
         // identifier would not run, and the emit did exactly that until this
         // test was written.
@@ -1440,10 +1551,7 @@ mod tests {
     #[test]
     fn an_empty_tree_still_emits_a_file_that_compiles() {
         let source = generate_route_tree(&[], "src");
-        assert!(
-            source.contains("export const routeTree: AnyRouteDefinition[] = [\n];"),
-            "{source}"
-        );
+        assert!(source.contains("export const routeTree: AnyRouteDefinition[] = [];"), "{source}");
         assert!(source.contains("id: never;"), "{source}");
         assert!(source.contains("fullPaths: never;"), "{source}");
     }
@@ -1551,7 +1659,10 @@ mod tests {
         let files = scan(&base, "routes");
         let reported = refusals(&files);
         assert_eq!(reported.len(), 1, "{reported:?}");
-        assert!(reported[0].contains("`export const ssr` is no longer read"), "{reported:?}");
+        assert!(
+            reported[0].contains("`export const ssr` at the top level of a route file is not read"),
+            "{reported:?}"
+        );
 
         let module = generate_route_tree(&build_tree(&files), "src");
         assert!(!module.contains("ssr:"), "{module}");

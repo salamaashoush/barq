@@ -37,7 +37,7 @@ export const L4_DIR = join(import.meta.dir, "..", "fixtures", "l4");
 
 export interface OwnershipEvent {
   seq: number;
-  kind: "enter" | "exit" | "dispose" | "clone" | "block-enter" | "block-exit";
+  kind: "enter" | "dispose" | "clone" | "block-enter" | "block-exit";
   scope: number;
   parent: number;
   label: string;
@@ -60,10 +60,11 @@ export const FRAME_MARKER = "l4-frame";
 interface CoreLike {
   flush(): void;
   render(block: unknown, container: Node): () => void;
-  scope<T>(fn: (dispose: () => void) => T, detached?: boolean, kind?: string): T;
+  createRoot<T>(fn: (dispose: () => void) => T): T;
+  resetErrorHalt(): void;
+  runWithOwner<T>(owner: unknown, fn: () => T): T;
   clearDelegatedEvents(): void;
-  enter(parent: unknown, kind: string): object;
-  exit(scope: object): void;
+  childScope(parent: unknown, kind: string): object;
   dispose(scope: object): void;
   beginOwnershipTrace(): void;
   endOwnershipTrace(): OwnershipEvent[];
@@ -165,24 +166,30 @@ export interface SessionOptions {
 // ---------------------------------------------------------------------------
 
 interface WritableSignal {
-  (): unknown;
+  read(): unknown;
   set(value: unknown): void;
 }
 
-function isWritableSignal(value: unknown): value is WritableSignal {
-  return (
-    typeof value === "function" &&
-    typeof (value as { set?: unknown }).set === "function" &&
-    (value as { length: number }).length === 0
-  );
-}
-
+/**
+ * A fixture exports a signal as the pair it destructured:
+ * `export const [count, setCount] = createSignal(0)`. The two halves are
+ * separate exports, so they are put back together by the name the pair was
+ * given.
+ */
 function exportedSignals(mod: Record<string, unknown>): WritableSignal[] {
   const found: WritableSignal[] = [];
   for (const key of Object.keys(mod)) {
     if (key === "default") continue;
-    const value = mod[key];
-    if (isWritableSignal(value)) found.push(value);
+    const read = mod[key];
+    const write = mod[`set${key[0]!.toUpperCase()}${key.slice(1)}`];
+    if (typeof read !== "function" || typeof write !== "function") continue;
+    if ((read as { length: number }).length !== 0) continue;
+    found.push({
+      read: read as () => unknown,
+      // A function handed to a setter is an updater, so a value is always
+      // written through one.
+      set: (value) => (write as (update: () => unknown) => unknown)(() => value),
+    });
   }
   return found;
 }
@@ -464,9 +471,7 @@ export async function openSession(
 
   const snapshot = (label: string, kind: FrameKind, index: number): void => {
     const channel = normalizeChannels(container);
-    const marker = core.enter(null, FRAME_MARKER);
-    core.exit(marker);
-    core.dispose(marker);
+    core.dispose(core.childScope(null, FRAME_MARKER));
     frames.push({
       label,
       kind,
@@ -478,15 +483,13 @@ export async function openSession(
     });
   };
 
+  core.resetErrorHalt();
   try {
-    core.scope(
-      (d: () => void) => {
-        dispose = d;
-        clear = core.render(mod.default as never, container);
-      },
-      true,
-      "root",
-    );
+    const outer = core.childScope(null, "root");
+    dispose = () => core.dispose(outer);
+    core.runWithOwner(outer, () => {
+      clear = core.render(mod.default as never, container);
+    });
     await settle();
     snapshot("mount", "mount", -1);
 
@@ -495,7 +498,7 @@ export async function openSession(
     const signals = exportedSignals(mod);
     for (const sig of signals) {
       try {
-        sig.set(sig());
+        sig.set(sig.read());
       } catch {
         // A writable computed can refuse a write it cannot invert. That is not
         // what this pass is about, and a refusal changes nothing either way.
@@ -533,7 +536,7 @@ export async function openSession(
 
     for (const sig of signals) {
       try {
-        sig.set(differentValue(sig()));
+        sig.set(differentValue(sig.read()));
       } catch (error) {
         threwAfterDispose.push(error instanceof Error ? error.message : String(error));
       }

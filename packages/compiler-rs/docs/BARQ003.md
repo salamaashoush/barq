@@ -1,77 +1,56 @@
-# BARQ003 — a property is read off the accessor rather than off its value
+# BARQ003: A property is read from an accessor instead of from its value
 
-**Level:** warning · **Rule family:** D1 · [all codes](README.md)
+**Level:** warning · [all codes](README.md)
 
-## What fires
+## Message
 
-A static, non-computed member read whose object is a binding the compiler resolved to an
-accessor, where the member is not part of an accessor's own API.
+> `user` is an accessor, so `.email` is read from the function and not from the value it
+> returns, and the result is `undefined`. Call it first: `user().email`.
 
-```jsx
-const user = signal({ email: "ada@example.com" })
+## Failing example
 
-<p>{user.email}</p>       // BARQ003 — undefined; the property is on the VALUE
-<p>{user.value}</p>       // BARQ003 — the Vue habit; barq accessors have no `.value`
+```tsx
+import { createSignal } from "@barqjs/core";
+
+const [user] = createSignal({ email: "salama@example.com" });
+
+export const Email = () => <p>{user.email}</p>;
 ```
 
-## The fix
+## Fixed example
 
-Call it first.
+```tsx
+import { createSignal } from "@barqjs/core";
 
-```jsx
-<p>{user().email}</p>
+const [user] = createSignal({ email: "salama@example.com" });
+
+export const Email = () => <p>{user().email}</p>;
 ```
 
-## The member allowlist
+## Why this rule exists
 
-These are **not** reported, because they are the accessor's own typed API or the API every
-function has:
+The value is behind the call, so `user.email` asks the function for a property it does
+not have and the page shows nothing. Habits from other libraries land here too: an
+accessor has no `.value`, `.set` or `.peek`, and writing goes through the setter that
+`createSignal` returns beside it. A prop works the same way: `props.user.email` has to be
+`props.user().email`.
 
-```
-set  update  peek
-apply  arguments  bind  call  caller  constructor  length  name  prototype  toString  valueOf
-```
+Two reads on an accessor are not reported, because every function has them: `items.length`
+and `user.name` give the function's own length and name. Write `items().length` and
+`user().name`.
 
-`Signal<T>` declares `set`/`update`/`peek` (`signals.ts:1136`) and `Computed<T>` declares
-`peek` (`signals.ts:1143`). This list is **D1's own**, deliberately the union over every
-primitive rather than the compiler's `MemberMask`: masking a member a primitive does not
-have would turn a tracked read into `Static`, so `MemberMask` cannot be widened to cover
-`useMemo(…).peek()` — and an unexempted `.peek()` would be a false positive on a
-type-checked public API.
+## Silencing one line
 
-The consequence is a set of deliberate false **negatives**, and two of them are worth
-naming because they are exactly the reads people write:
+```tsx
+import { createSignal } from "@barqjs/core";
 
-- **`items.length`** on an accessor to an array. `length` is `Function.prototype` surface,
-  so it reads the accessor's arity — `0` — instead of the array's length, and this rule
-  says nothing. `tsc` does not either: an accessor really does have a `length`. Write
-  `items().length`.
-- **`user.name`** likewise reads the function's own name. The allowlist cannot distinguish
-  "reading `Function.prototype.name` on purpose" from "meaning the value's `name`", and
-  reporting it would fire on `count.name` in a debug panel.
-- `computed(…).set(1)` is not reported here; `tsc` reports it as TS2339, which is the right
-  tool for a member a type does not declare.
+const [user] = createSignal({ email: "salama@example.com" });
 
-## What does not fire, and why
-
-- **Computed access** — `count[key]`. The key is not visible to the analysis, and
-  `vue/no-ref-as-operand` excludes computed access for the same reason.
-- **`props.total`** — props lower to getters; a props member read is ⊤-reactive and
-  correct.
-- **A store proxy** — `useStore()[0].n` is `ReactiveObject`, where any member read *is* the
-  reactive read. Not an accessor, not reported.
-- **A row whose `keyed` cannot be read** — `<For keyed={KEYED}>{(row) => row.text}</For>`,
-  or a `keyed` arriving through a spread. The row parameters take the accessor arm because
-  it is the arm that is safe when wrong; if `KEYED` holds `true` the row is a plain object
-  and `row()` is a `TypeError`, so this rule stays out. A key function written out —
-  `keyed={(r) => r.id}` — is proof, and there the read *is* reported.
-
-## Silencing it
-
-```ts
-// barq-ignore-next-line BARQ003 (reading the function's own metadata on purpose)
-const label = count.displayName
+// barq-ignore-next-line BARQ003 (reading a label attached to the function)
+export const label = user.label;
 ```
 
-Inside JSX, the directive has to be a JSX comment — `{/* barq-ignore-next-line … */}` — on
-the line immediately above the one the diagnostic points at.
+The reason in parentheses is required and has to be at least 10 characters. Between JSX
+children, write the comment as `{/* barq-ignore-next-line BARQ003 (reason) */}` on the line
+above: a `//` line there is text and would be rendered on the page. To change the level
+for the whole project, see [the index](README.md#changing-a-level-for-the-whole-project).

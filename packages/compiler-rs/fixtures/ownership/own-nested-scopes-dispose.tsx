@@ -33,9 +33,9 @@
  * a root. Nothing in this package could state either before L2b, because there
  * was no channel that could see a scope at all.
  */
-import { Loading, signal } from "@barqjs/core"
+import { Loading, createSignal } from "@barqjs/core"
 
-export const label = signal("one")
+export const [label, setLabel] = createSignal("one")
 
 export default function OwnNestedScopesDispose() {
   return (
@@ -47,4 +47,4 @@ export default function OwnNestedScopesDispose() {
   )
 }
 
-export const steps = [() => label.set("two")]
+export const steps = [() => setLabel("two")]

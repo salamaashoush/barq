@@ -1,7 +1,7 @@
-import { action, commit, optimistic, signal } from "@barqjs/core"
+import { action, createOptimistic, createSignal } from "@barqjs/core"
 
-export const saved = signal("")
-export const draft = optimistic("")
+export const [saved, setSaved] = createSignal("")
+export const [draft, setDraft] = createOptimistic("")
 export const log: string[] = []
 
 /**
@@ -16,17 +16,16 @@ export const log: string[] = []
  * target as `action="[object Promise]"`, with no console error. The SLOT decides
  * now, as it does for `on*`.
  *
- * The body is A5 clause (e): the guess lands in the override buffer, the answer
- * after the `yield` goes through `commit` so it reaches the authoritative one,
- * and retiring the lane drops the override onto a value that is already right.
- * Written without `commit` the answer would retire with the lane.
+ * The body is an action with a guess in it: `setDraft` is optimistic, so it
+ * shows at once and goes when the action ends, while `setSaved` is an ordinary
+ * write the action holds and publishes when it returns.
  */
 const submit = action(function* (data: FormData) {
   const text = String(data.get("title") ?? "")
   log.push(`start:${text}`)
-  draft.set(text)
+  setDraft(text)
   const answer = (yield Promise.resolve(text.toUpperCase())) as string
-  commit(() => saved.set(answer))
+  setSaved(answer)
   log.push(`done:${answer}`)
 })
 

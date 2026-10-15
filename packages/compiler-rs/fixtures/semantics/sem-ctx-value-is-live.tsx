@@ -13,16 +13,16 @@
  * X2.
  */
 import type { Block } from "@barqjs/core"
-import { context, render, signal, useContext } from "@barqjs/core"
+import { createContext, render, createSignal, useContext } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 import { formatThrown } from "../../test/semantics-support.ts"
 
 export const rules = ["X2"]
 
-const Locale = context<() => string>()
+const Locale = createContext<() => string>()
 
-export const locale = signal("fr")
+export const [locale, setLocale] = createSignal("fr")
 
 function Label() {
   const value = useContext(Locale)
@@ -49,14 +49,14 @@ interface Update {
 }
 
 async function drive(kit: Kit, build: Block<unknown>): Promise<Update> {
-  locale.set("fr")
+  setLocale("fr")
   const host = kit.container()
   const thrown = await kit.attempt(() => {
     render(build as never, host)
   })
   const before = host.querySelector(".label")
   const first = before?.textContent ?? ""
-  locale.set("nl")
+  setLocale("nl")
   await kit.settle()
   const after = host.querySelector(".label")
   return {

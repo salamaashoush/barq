@@ -34,7 +34,7 @@ function userMutableOn(tag: string, prop: string): boolean {
 
 function compile(jsx: string): string {
   return compileSource(
-    `import { signal } from "@barqjs/core";\nconst live = signal("x");\nconst handler = () => {};\nconst Probe = () => ${jsx};\n`,
+    `import { createSignal } from "@barqjs/core";\nconst [live] = createSignal("x");\nconst handler = () => {};\nconst Probe = () => ${jsx};\n`,
     "probe.tsx",
   );
 }
@@ -61,7 +61,7 @@ describe("the compiler's tables against dom.ts as it is on disk", () => {
     const missed: string[] = [];
     for (const event of DELEGATED_EVENTS) {
       const code = compile(`<div ${jsxEventName(event)}={handler} />`);
-      const expando = new RegExp(`\\$\\$${event}\\s*=`).test(code);
+      const expando = new RegExp(`__bq_${event}\\s*=`).test(code);
       const registered = code.includes(`delegateEvents([`) && code.includes(`"${event}"`);
       if (!expando || !registered) missed.push(event);
     }
@@ -77,8 +77,8 @@ describe("the compiler's tables against dom.ts as it is on disk", () => {
     const wrong: string[] = [];
     for (const event of NON_BUBBLING_EVENTS) {
       const code = compile(`<div ${jsxEventName(event)}={handler} onClick={handler} />`);
-      if (new RegExp(`\\$\\$${event}\\b`).test(code)) wrong.push(event);
-      if (!/\$\$click\s*=/.test(code)) wrong.push(`${event} (the compiler emitted nothing)`);
+      if (new RegExp(`__bq_${event}\\b`).test(code)) wrong.push(event);
+      if (!/__bq_click\s*=/.test(code)) wrong.push(`${event} (the compiler emitted nothing)`);
       if (!/delegateEvents\(\[\s*"click"\s*\]\)/.test(code)) {
         wrong.push(`${event} (click was not registered)`);
       }

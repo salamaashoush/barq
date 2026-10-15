@@ -97,7 +97,7 @@ pub struct TransformResult {
     pub css_wanted: Vec<Vec<String>>,
     /// `[exported name, kind, member, value]` for what this module exports that
     /// another can fold against, under `cssExports: true` or whenever the
-    /// module writes CSS. `kind` is `text`, `group` or `layer`.
+    /// module writes CSS. `kind` is `text`, `number`, `group` or `layer`.
     pub css_exports: Vec<Vec<String>>,
 }
 
@@ -109,6 +109,9 @@ fn css_export_rows(exports: Vec<(String, crate::css::Resolved)>) -> Vec<Vec<Stri
         match value {
             crate::css::Resolved::Text(text) => {
                 out.push(vec![name, "text".to_string(), String::new(), text]);
+            }
+            crate::css::Resolved::Number(text) => {
+                out.push(vec![name, "number".to_string(), String::new(), text]);
             }
             crate::css::Resolved::Layer(layer) => {
                 out.push(vec![name, "layer".to_string(), String::new(), layer]);
@@ -159,7 +162,7 @@ fn reject_unknown_options(raw: &Object) -> napi::Result<()> {
     unknown.sort();
     let reasons: Vec<String> = unknown.iter().map(|key| options::unknown_option(key)).collect();
     Err(napi::Error::from_reason(format!(
-        "[barq-compiler] {}\n  known options: {}",
+        "[barq-compiler] {}\n  The options are: {}.",
         reasons.join("\n[barq-compiler] "),
         options::OPTION_KEYS.join(", ")
     )))
@@ -425,8 +428,12 @@ pub fn route_tree(
             match routes::write_id(root_path, file) {
                 Ok(true) => rewritten.push(file.file.clone()),
                 Ok(false) => {}
-                Err(error) => warnings
-                    .push(format!("{}: could not rewrite the route id — {error}", file.file)),
+                Err(error) => warnings.push(format!(
+                    "{}: the id passed to `createFileRoute` does not match this file's path, and \
+                     the file could not be rewritten to correct it: {error}. Make the file \
+                     writable, or correct the id by hand.",
+                    file.file
+                )),
             }
         }
         // Re-read, so what the table carries is what is now on disk.

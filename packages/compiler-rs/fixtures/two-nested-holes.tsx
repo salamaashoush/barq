@@ -1,7 +1,7 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const a = signal("A")
-export const b = signal("B")
+export const [a, setA] = createSignal("A")
+export const [b, setB] = createSignal("B")
 
 /**
  * Two holes in two different parents, each preceded by literal text and
@@ -17,7 +17,7 @@ export default function TwoNestedHoles() {
   )
 }
 
-export const steps = [() => b.set("Z"), () => a.set("Y")]
+export const steps = [() => setB("Z"), () => setA("Y")]
 
 export const optimality = {
   target: 9,

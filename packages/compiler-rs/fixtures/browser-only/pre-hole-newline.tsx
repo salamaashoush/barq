@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const head = signal("A")
+export const [head, setHead] = createSignal("A")
 
 /**
  * O9 against target #9: a hole in front of the newline-eating position.
@@ -17,4 +17,4 @@ export default function PreHoleNewline() {
   return <pre>{() => head()}&#10;hello</pre>
 }
 
-export const steps = [() => head.set("B"), () => head.set("")]
+export const steps = [() => setHead("B"), () => setHead("")]

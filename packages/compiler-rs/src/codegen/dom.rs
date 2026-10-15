@@ -2,7 +2,8 @@ use oxc::allocator::{Allocator, Box as ArenaBox, Vec as ArenaVec};
 use oxc::ast::ast::{
     Argument, ArrayExpressionElement, ArrowFunctionBody, ArrowFunctionExpression, AssignmentTarget,
     BindingPattern, Expression, FormalParameter, FormalParameterKind, FormalParameters,
-    IdentifierName, MemberExpression, Statement, VariableDeclarationKind, VariableDeclarator,
+    IdentifierName, MemberExpression, ObjectPropertyKind, Statement, VariableDeclarationKind,
+    VariableDeclarator,
 };
 use oxc::span::Span;
 use rustc_hash::FxHashSet;
@@ -94,9 +95,9 @@ pub fn emit_unit<'a>(ctx: &mut Emit<'a, '_>, unit: &mut Unit<'a>, span: Span) ->
 pub struct Dom<'a, 'e, 'm, 'u> {
     pub ctx: &'e mut Emit<'a, 'm>,
     pub unit: &'u mut Unit<'a>,
-    /// The elements whose `$$s` this unit has already written. The scope
+    /// The elements whose `__bqs` this unit has already written. The scope
     /// expando is per ELEMENT, not per delegated type, so a second handler on
-    /// the same element writes only its own `$$<type>`.
+    /// the same element writes only its own `__bq_<type>`.
     pub owned: &'u mut FxHashSet<NodeId>,
 }
 
@@ -154,7 +155,7 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
     /// the channel and asks the one remaining question.
     fn set_opaque(&mut self, at: At<'_>, name: NameId, value: ExprId, chan: Chan) -> Self::Out {
         let span = at.span();
-        let value = take(self.ctx, self.unit, value, span);
+        let value = opaque_value(self.ctx, self.unit, value, span);
         let element = ref_ident(self.ctx, self.unit, at.target(), span);
         let key = self.ctx.module.interner.name(name).text;
         let key = self.ctx.string(key, span);
@@ -228,8 +229,7 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
             value
         };
         let callee = self.ctx.helper(Helper::Insert, span);
-        let mut arguments =
-            vec![Argument::from(parent), Argument::from(value)];
+        let mut arguments = vec![Argument::from(parent), Argument::from(value)];
         if whole {
             // Positional, and `whole` implies `Anchor::End` — a slot that owns
             // the child list has nothing after it to anchor against — so the
@@ -261,12 +261,12 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
     }
 
     /// Target #7: a direct expando write, and the protocol is unchanged —
-    /// `$$<type>` plus one `delegateEvents` call per module, never
+    /// `__bq_<type>` plus one `delegateEvents` call per module, never
     /// `addEventListener` for the delegated set. `delegatedEventHandler` reads
-    /// `$$<type>` and accepts either a function or a `[fn, data]` tuple, so the
+    /// `__bq_<type>` and accepts either a function or a `[fn, data]` tuple, so the
     /// tuple needs no second property (V2).
     ///
-    /// The scope goes beside it in `$$s` — one expando per ELEMENT, not per type
+    /// The scope goes beside it in `__bqs` — one expando per ELEMENT, not per type
     /// — so the dispatcher can route a throw to `scope.catcher` (E2 #6) instead
     /// of letting it escape to `window.onerror`.
     fn delegate(
@@ -279,7 +279,7 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         let span = at.span();
         let element = ref_ident(self.ctx, self.unit, at.target(), span);
         let key = self.ctx.module.interner.name(event).text;
-        let key = self.ctx.allocator.alloc_str(&format!("$${key}")) as &'a str;
+        let key = self.ctx.allocator.alloc_str(&format!("__bq_{key}")) as &'a str;
         let target = expando_target(self.ctx, element, key, span);
         let handler = handler_expression(self.ctx, self.unit, handler, span);
         let write = Expression::new_assignment_expression(
@@ -298,7 +298,7 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         let owner = Expression::new_assignment_expression(
             span,
             oxc::ast::ast::AssignmentOperator::Assign,
-            expando_target(self.ctx, element, "$$s", span),
+            expando_target(self.ctx, element, "__bqs", span),
             scope,
             &self.ctx.ast,
         );
@@ -327,11 +327,8 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         let key = self.ctx.string(key, span);
         let handler = handler_expression(self.ctx, self.unit, handler, span);
         let callee = self.ctx.helper(Helper::Listen, span);
-        let mut arguments = vec![
-            Argument::from(element),
-            Argument::from(key),
-            Argument::from(handler),
-        ];
+        let mut arguments =
+            vec![Argument::from(element), Argument::from(key), Argument::from(handler)];
         // `listen`'s fifth parameter is `addEventListener`'s options, and the
         // bare `true` is its capture spelling. Omitted entirely for a bubble
         // binding, so nothing about the ordinary path's output moves.
@@ -350,24 +347,15 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
     /// runtime's own `isEventHandlerValue` test decides whether anything binds
     /// — exactly as the un-compiled path does. The delegated/direct split is
     /// still the compiler's, made from the resolved type.
-    fn set_event(
-        &mut self,
-        at: At<'_>,
-        event: NameId,
-        value: ExprId,
-        capture: bool,
-    ) -> Self::Out {
+    fn set_event(&mut self, at: At<'_>, event: NameId, value: ExprId, capture: bool) -> Self::Out {
         let span = at.span();
         let element = ref_ident(self.ctx, self.unit, at.target(), span);
         let key = self.ctx.module.interner.name(event).text;
         let key = self.ctx.string(key, span);
         let value = take(self.ctx, self.unit, value, span);
         let callee = self.ctx.helper(Helper::BindEvent, span);
-        let mut arguments = vec![
-            Argument::from(element),
-            Argument::from(key),
-            Argument::from(value),
-        ];
+        let mut arguments =
+            vec![Argument::from(element), Argument::from(key), Argument::from(value)];
         if capture {
             arguments.push(Argument::from(Expression::new_boolean_literal(
                 span,
@@ -415,11 +403,8 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         let element = ref_ident(self.ctx, self.unit, at.target(), span);
         let value = take(self.ctx, self.unit, value, span);
         let callee = self.ctx.helper(Helper::FormAction, span);
-        let call = self.ctx.call(
-            callee,
-            vec![Argument::from(element), Argument::from(value)],
-            span,
-        );
+        let call =
+            self.ctx.call(callee, vec![Argument::from(element), Argument::from(value)], span);
         Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
     }
 
@@ -438,11 +423,8 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
             return Some(Statement::new_expression_statement(span, assign, &self.ctx.ast));
         }
         let callee = self.ctx.helper(Helper::Ref, span);
-        let call = self.ctx.call(
-            callee,
-            vec![Argument::from(element), Argument::from(value)],
-            span,
-        );
+        let call =
+            self.ctx.call(callee, vec![Argument::from(element), Argument::from(value)], span);
         Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
     }
 
@@ -470,13 +452,28 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
             take(self.ctx, self.unit, value, span)
         };
         let callee = self.ctx.helper(Helper::Spread, span);
-        let call = self.ctx.call(
-            callee,
-            vec![Argument::from(element), Argument::from(value)],
-            span,
-        );
+        let mut arguments = vec![Argument::from(element), Argument::from(value)];
+        if let Some(later) = spread_later(self.ctx, self.unit, span) {
+            arguments.push(Argument::from(later));
+        }
+        let call = self.ctx.call(callee, arguments, span);
         Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
     }
+}
+
+/// The names written after the spread at `span`, as the array `spread` takes.
+pub(super) fn spread_later<'a>(
+    ctx: &Emit<'a, '_>,
+    unit: &Unit<'a>,
+    span: Span,
+) -> Option<Expression<'a>> {
+    let (_, later) = unit.spread_later.iter().find(|(at, _)| *at == span)?;
+    let elements = later
+        .iter()
+        .map(|name| ArrayExpressionElement::from(ctx.string(name, span)))
+        .collect::<Vec<_>>();
+    let elements = ArenaVec::from_iter_in(elements, &ctx.allocator);
+    Some(Expression::new_array_expression(span, elements, &ctx.ast))
 }
 
 /// The stand-in a claimed region leaves behind. A `Unit` is printed once, so
@@ -555,10 +552,30 @@ pub fn region_call<'a>(
         }
         let call = ctx.call(callee, arguments, span);
         let Some(parent) = parent else { return bind_sources(ctx, sources, call, span) };
+        // The string half wrote the portal's range at this position, or nothing
+        // at all when the position owns its parent's child list, so the insert
+        // claims it the way the string half wrote it. And the portal is built
+        // inside that claim, as any value JavaScript evaluates before `insert`
+        // is entered: built outside it, the portal asked the cursor for its
+        // range and took the next region's instead.
+        let whole = flags & WHOLE != 0;
+        let call = if ctx.hydratable {
+            let parent = oxc::allocator::CloneIn::clone_in(&parent, ctx.allocator);
+            let anchor =
+                anchor.as_ref().map(|it| oxc::allocator::CloneIn::clone_in(it, ctx.allocator));
+            hole_call(ctx, parent, anchor, call, whole, span)
+        } else {
+            call
+        };
         let callee = ctx.helper(Helper::Insert, span);
-        let mut arguments =
-            vec![Argument::from(parent), Argument::from(call)];
-        arguments.extend(anchor.map(Argument::from));
+        let mut arguments = vec![Argument::from(parent), Argument::from(call)];
+        if whole {
+            let null = Expression::new_null_literal(span, &ctx.ast);
+            arguments.push(Argument::from(anchor.unwrap_or(null)));
+            arguments.push(Argument::from(number(ctx, WHOLE, span)));
+        } else {
+            arguments.extend(anchor.map(Argument::from));
+        }
         let call = ctx.call(callee, arguments, span);
         return bind_sources(ctx, sources, call, span);
     }
@@ -785,7 +802,7 @@ fn fused_effect<'a>(
     if let [(patch, name, one, chan, diff)] = rows[..]
         && diff != Diff::Thread
     {
-        let read = value_expression(ctx, unit, one, patch.span);
+        let read = keyed_read(ctx, unit, one, chan, patch.span);
         let compute = arrow(ctx, no_params(ctx, span), ArrowFunctionBody::from(read), span);
         let held = ctx.ident(value, patch.span);
         let write = channel_write(ctx, unit, patch, name, chan, vec![held], patch.span);
@@ -817,7 +834,7 @@ fn fused_effect<'a>(
 
     for (index, (patch, name, one, chan, diff)) in rows.iter().copied().enumerate() {
         let key = slot_key(index, ctx.allocator);
-        let read = value_expression(ctx, unit, one, patch.span);
+        let read = keyed_read(ctx, unit, one, chan, patch.span);
         properties.push(property(ctx, key, read, patch.span));
 
         let mine = ctx.member(ctx.ident(value, patch.span), key, patch.span);
@@ -955,11 +972,7 @@ fn effect_call<'a>(
     span: Span,
 ) -> Statement<'a> {
     let callee = ctx.helper(Helper::BindEffect, span);
-    let call = ctx.call(
-        callee,
-        vec![Argument::from(compute), Argument::from(apply)],
-        span,
-    );
+    let call = ctx.call(callee, vec![Argument::from(compute), Argument::from(apply)], span);
     Statement::new_expression_statement(span, call, &ctx.ast)
 }
 
@@ -1106,6 +1119,49 @@ pub(super) fn handler_expression<'a>(
 /// The value a live prop resolves to, read INSIDE the coalesced effect. A
 /// user-written `() => expr` is unwrapped rather than called, which deletes the
 /// closure the source allocated per element.
+/// The read half of one live prop, with a `style` or `classList` object's own
+/// getters called there too.
+///
+/// `style={{ color: () => tone() }}` keeps a key live on its own, and the
+/// object can arrive from anywhere — a prop, a spread, a variable. The write
+/// half runs after the pass has committed, where nothing owns an effect, so a
+/// getter it found there could only be given one that is never disposed. Read
+/// here, the key is a dependency of this binding instead.
+///
+/// A literal whose values are all computed in place holds no getter, and is
+/// left as it is: that is the common spelling and it costs no call.
+fn keyed_read<'a>(
+    ctx: &mut Emit<'a, '_>,
+    unit: &mut Unit<'a>,
+    value: ExprId,
+    chan: Chan,
+    span: Span,
+) -> Expression<'a> {
+    let read = value_expression(ctx, unit, value, span);
+    if !matches!(chan, Chan::Style | Chan::ClassList) || holds_no_getter(&read) {
+        return read;
+    }
+    let callee = ctx.helper(Helper::ReadKeys, span);
+    ctx.call(callee, vec![Argument::from(read)], span)
+}
+
+/// An object literal no property of which can be a function: every value is
+/// written out as something other than a function, a name or a member read.
+fn holds_no_getter(value: &Expression<'_>) -> bool {
+    let Expression::ObjectExpression(object) = value else { return false };
+    object.properties.iter().all(|property| match property {
+        ObjectPropertyKind::ObjectProperty(property) => !matches!(
+            property.value,
+            Expression::ArrowFunctionExpression(_)
+                | Expression::FunctionExpression(_)
+                | Expression::Identifier(_)
+                | Expression::StaticMemberExpression(_)
+                | Expression::ComputedMemberExpression(_)
+        ),
+        ObjectPropertyKind::SpreadProperty(_) => false,
+    })
+}
+
 fn value_expression<'a>(
     ctx: &mut Emit<'a, '_>,
     unit: &mut Unit<'a>,
@@ -1136,6 +1192,28 @@ fn is_plain_thunk(arrow: &ArrowFunctionExpression<'_>) -> bool {
         && arrow.params.items.is_empty()
         && arrow.params.rest.is_none()
         && !matches!(arrow.body, ArrowFunctionBody::FunctionBody(_))
+}
+
+/// What `bindProp` is handed for a value the analysis could not classify.
+///
+/// Unwrapped, so the runtime sees what the author wrote and decides: a function
+/// is a Cell and is subscribed to, anything else is written once. A CALL is the
+/// exception, because unwrapping it means running it. `title={double()}` over
+/// `const double = () => count() * 2` reached the runtime as a number with the
+/// read already spent, and the attribute never moved again while the same call
+/// at a hole did. It crosses as the function that makes the call, which is a
+/// Cell like any other.
+pub(super) fn opaque_value<'a>(
+    ctx: &mut Emit<'a, '_>,
+    unit: &mut Unit<'a>,
+    value: ExprId,
+    span: Span,
+) -> Expression<'a> {
+    if unit.exprs.rx(value).thunk == Thunk::Arrow {
+        thunk(ctx, unit, value, span)
+    } else {
+        take(ctx, unit, value, span)
+    }
 }
 
 /// The `setProp(el, k, thunk)` form: the runtime sees a function and keeps its

@@ -46,7 +46,7 @@ function Boom(): never {
 
 function Suspending(): never {
   raised++
-  throw new NotReadyError()
+  throw new NotReadyError(undefined)
 }
 
 function Tracked() {

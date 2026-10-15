@@ -30,7 +30,7 @@
  *
  * K1, K3.
  */
-import { For, render, signal } from "@barqjs/core"
+import { For, render, createSignal } from "@barqjs/core"
 import type { Block } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
@@ -46,8 +46,8 @@ const A: Row = { id: 1, text: "alpha" }
 const B: Row = { id: 2, text: "beta" }
 const C: Row = { id: 3, text: "gamma" }
 
-const keyless = signal<readonly Row[]>([A, B, C])
-const positional = signal<readonly Row[]>([A, B, C])
+const [keyless, setKeyless] = createSignal<readonly Row[]>([A, B, C])
+const [positional, setPositional] = createSignal<readonly Row[]>([A, B, C])
 
 /** `keyed` absent: identity keying, so the row VALUE is a plain value (O3). */
 function Keyless() {
@@ -123,7 +123,7 @@ export const claims: Claim[] = [
     rule: "K1",
     says: "with `keyed` absent the row's identity is the ITEM, so reordering the same objects moves each row's nodes — and the DOM state inside them — rather than rewriting the values through fixed slots",
     async check(kit) {
-      keyless.set([A, B, C])
+      setKeyless([A, B, C])
       const host = await mount(kit, Keyless as never)
       const before = observe(kit, host, "ul.keyless")
       kit.precondition(
@@ -138,7 +138,7 @@ export const claims: Claim[] = [
 
       // The SAME three objects, in a different order. Nothing about any row
       // changed; only their positions did.
-      keyless.set([C, A, B])
+      setKeyless([C, A, B])
       await kit.settle()
       const after = observe(kit, host, "ul.keyless")
 
@@ -171,14 +171,14 @@ export const claims: Claim[] = [
     rule: "K1",
     says: "identity keying's cost is stated rather than assumed: an immutable update that replaces the row objects rebuilds every row, even when the new objects are structurally equal",
     async check(kit) {
-      keyless.set([A, B, C])
+      setKeyless([A, B, C])
       const host = await mount(kit, Keyless as never)
       const before = observe(kit, host, "ul.keyless")
       typeIntoEachRow(before)
 
       // Structurally equal, freshly allocated — the shape an immutable update
       // produces, and the case `keyed={r => r.id}` exists for.
-      keyless.set([
+      setKeyless([
         { id: 1, text: "alpha" },
         { id: 2, text: "beta" },
         { id: 3, text: "gamma" },
@@ -210,7 +210,7 @@ export const claims: Claim[] = [
     rule: "K3",
     says: "`keyed={false}` binds the row to the SLOT, so a reorder rewrites the values through fixed nodes and the DOM state inside them stays at the position — which is what BARQ011 hints at, and all it claims",
     async check(kit) {
-      positional.set([A, B, C])
+      setPositional([A, B, C])
       const host = await mount(kit, Positional as never)
       const before = observe(kit, host, "ul.positional")
       kit.precondition(
@@ -219,7 +219,7 @@ export const claims: Claim[] = [
       )
       typeIntoEachRow(before)
 
-      positional.set([C, A, B])
+      setPositional([C, A, B])
       await kit.settle()
       const after = observe(kit, host, "ul.positional")
 

@@ -9,11 +9,11 @@
  * The old `ErrorBoundary` built its fallback twice on a construction throw: once
  * inline in the `catch` and once when the effect re-ran on the captured error.
  */
-import { Errored, signal } from "@barqjs/core"
+import { Errored, createSignal } from "@barqjs/core"
 
 export const log: string[] = []
 
-export const broken = signal(true)
+export const [broken, setBroken] = createSignal(true)
 
 function Fragile() {
   if (broken()) throw new Error("boom")
@@ -41,7 +41,7 @@ export default function C7ErrorBoundary() {
 
 export const events = [
   (root: HTMLElement) => {
-    broken.set(false)
+    setBroken(false)
     root.querySelector("button")?.click()
   },
 ]

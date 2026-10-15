@@ -800,9 +800,10 @@ fn list<'a>(
         shaper.diagnose(
             crate::diag::Code::Barq004,
             source.span,
-            "For: the origin of `each` cannot be proved to be values `mapArray` recreates, so a \
-             member read on the row item is applied once with no effect (DESIGN O3). If these \
-             rows are store proxies, read them through an accessor instead.",
+            "`<For>` reads a row's fields once, when the row is created, and the compiler cannot \
+             tell where the items in `each` come from. If they are store objects, changing a field \
+             in place leaves the row showing the old value. Key the list and read the row by \
+             calling it: `keyed={(row) => row.id}` with `row().name`.",
         );
     }
 
@@ -1023,17 +1024,10 @@ pub(super) fn reveal<'a>(
 /// there is one rule for it (C6).
 fn body_slot<'a>(
     shaper: &mut Shaper<'a, '_>,
-    mut kids: Vec<Expression<'a>>,
+    kids: Vec<Expression<'a>>,
     span: Span,
 ) -> Expression<'a> {
-    let builds = kids.iter().any(|kid| shaper.builds_dom(kid));
-    let value = if kids.len() == 1 {
-        kids.remove(0)
-    } else {
-        let elements = kids.into_iter().map(ArrayExpressionElement::from).collect::<Vec<_>>();
-        let elements = ArenaVec::from_iter_in(elements, &shaper.allocator);
-        Expression::new_array_expression(span, elements, &shaper.ast)
-    };
+    let (value, builds) = shaper.children_value(kids, span, true);
     shaper.construction_slot(value, span, builds)
 }
 

@@ -1,6 +1,6 @@
-import { Show, signal } from "@barqjs/core"
+import { Show, createSignal } from "@barqjs/core"
 
-export const visible = signal(true)
+export const [visible, setVisible] = createSignal(true)
 
 /**
  * `Show` whose children and fallback are JSX ELEMENTS rather than thunks. Both
@@ -19,7 +19,7 @@ export default function ControlFlowShowEagerChildren() {
   )
 }
 
-export const steps = [() => visible.set(false), () => visible.set(true)]
+export const steps = [() => setVisible(false), () => setVisible(true)]
 export const optimality = {
   target: 8,
   milestone: 5,

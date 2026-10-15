@@ -9,13 +9,13 @@
  *
  * R1.
  */
-import { flush, render, signal } from "@barqjs/core"
+import { flush, render, createSignal } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 
 export const rules = ["R1"]
 
-const count = signal(0)
+const [count, setCount] = createSignal(0)
 const bodies: number[] = []
 
 /** The read is in the BODY, not in a hole: the rendered text is a snapshot. */
@@ -29,7 +29,7 @@ const Subject = () => <Snapshot />
 
 async function mount(kit: Kit) {
   bodies.length = 0
-  count.set(0)
+  setCount(0)
   // Published before the render: the body reads the signal as everyone outside
   // the graph does, and a staged write would hand it the previous claim's value.
   flush()
@@ -50,7 +50,7 @@ export const claims: Claim[] = [
     async check(kit) {
       const seen = await mount(kit)
       kit.precondition(bodies.length === 1, `the body ran ${bodies.length} time(s) at mount, expected 1`)
-      count.set(1)
+      setCount(1)
       await kit.settle()
       if (bodies.length !== 1) {
         kit.fail(
@@ -70,7 +70,7 @@ export const claims: Claim[] = [
       const seen = await mount(kit)
       const before = seen.host.innerHTML
       kit.precondition(before.includes("0"), `the mount rendered ${JSON.stringify(before)}, expected the snapshot 0`)
-      count.set(1)
+      setCount(1)
       await kit.settle()
       const after = seen.host.innerHTML
       if (after !== before) {

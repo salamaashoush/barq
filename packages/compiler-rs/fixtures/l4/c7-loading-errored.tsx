@@ -4,11 +4,11 @@
  * `Loading` parks its content while something below is pending; `Errored`
  * catches. Both are the same `region` driver, so both owe the same count.
  */
-import { Errored, Loading, signal } from "@barqjs/core"
+import { Errored, Loading, createSignal } from "@barqjs/core"
 
 export const log: string[] = []
 
-export const failing = signal(true)
+export const [failing, setFailing] = createSignal(true)
 
 function Flaky() {
   if (failing()) throw new Error("nope")
@@ -38,7 +38,7 @@ export default function C7LoadingErrored() {
 
 export const events = [
   (root: HTMLElement) => {
-    failing.set(false)
+    setFailing(false)
     root.querySelector("button")?.click()
   },
 ]

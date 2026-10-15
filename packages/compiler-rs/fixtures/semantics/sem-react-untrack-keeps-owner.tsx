@@ -9,13 +9,13 @@
  *
  * O6.
  */
-import { effect, onCleanup, render, signal, untrack } from "@barqjs/core"
+import { createTrackedEffect, onCleanup, render, createSignal, untrack } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 
 export const rules = ["O6"]
 
-const count = signal(0)
+const [count, setCount] = createSignal(0)
 const cleanups: string[] = []
 const runs: number[] = []
 
@@ -23,7 +23,7 @@ const Subject = () => {
   untrack(() => {
     onCleanup(() => cleanups.push("registered-inside-untrack"))
   })
-  effect(() => {
+  createTrackedEffect(() => {
     runs.push(untrack(() => count()))
   })
   return <span class="subject">subject</span>
@@ -32,7 +32,7 @@ const Subject = () => {
 async function mount(kit: Kit) {
   cleanups.length = 0
   runs.length = 0
-  count.set(0)
+  setCount(0)
   const host = kit.container()
   let dispose: (() => void) | undefined
   const thrown = await kit.attempt(() => {
@@ -68,7 +68,7 @@ export const claims: Claim[] = [
     async check(kit) {
       const seen = await mount(kit)
       kit.precondition(runs.length === 1, `the effect ran ${runs.length} time(s) at mount, expected 1`)
-      count.set(1)
+      setCount(1)
       await kit.settle()
       if (runs.length !== 1) {
         kit.fail(

@@ -109,7 +109,7 @@ backend! {
     /// An event whose TYPE is resolved but whose value is not provably a
     /// handler: the delegated/direct choice is still the compiler's.
     SetEvent { event: NameId, value: ExprId, capture: bool } => set_event;
-    /// `el.$$click = h` plus a module-level delegation of the names used.
+    /// `el.__bq_click = h` plus a module-level delegation of the names used.
     Delegate { event: NameId, handler: HandlerRef, data: Option<ExprId> } => delegate;
     /// `addEventListener`, for everything outside the delegated set and for
     /// every capture binding, which delegation cannot serve at all.

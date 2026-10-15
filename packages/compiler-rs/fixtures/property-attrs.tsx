@@ -1,7 +1,7 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const text = signal("typed")
-export const checked = signal(false)
+export const [text, setText] = createSignal("typed")
+export const [checked, setChecked] = createSignal(false)
 
 export default function PropertyAttrs() {
   return (
@@ -13,4 +13,4 @@ export default function PropertyAttrs() {
   )
 }
 
-export const steps = [() => checked.set(true), () => text.set("edited")]
+export const steps = [() => setChecked(true), () => setText("edited")]

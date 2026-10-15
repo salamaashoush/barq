@@ -1,12 +1,12 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const count = signal(0)
+export const [count, setCount] = createSignal(0)
 
 export default function TextHoleTrailing() {
   return <div class="counter">{() => count()}</div>
 }
 
-export const steps = [() => count.set(1), () => count.set(42), () => count.set(0)]
+export const steps = [() => setCount(1), () => setCount(42), () => setCount(0)]
 
 export const optimality = {
   target: 9,

@@ -78,7 +78,7 @@ step 0: <form class="bind-family"><input .checked=false .defaultValue="ada" .ind
 step 1: <form class="bind-family"><input .checked=false .defaultValue="ada" .indeterminate=false .value="grace" class="name" type="text" value="ada"><textarea .defaultValue="" .value="first" class="notes"></textarea><input .checked=false .defaultValue="" .indeterminate=false .value="on" class="agreed" type="checkbox"><input .checked=false .defaultValue="2" .indeterminate=false .value="9" class="amount" type="number" value="2"><input .checked=false .defaultValue="seeded" .indeterminate=false .value="seeded" class="draft" type="text" value="seeded"><b class="echo">grace/9</b></form>
 step 2: <form class="bind-family"><input .checked=false .defaultValue="ada" .indeterminate=false .value="grace" class="name" type="text" value="ada"><textarea .defaultValue="" .value="first" class="notes"></textarea><input .checked=false .defaultValue="" .indeterminate=false .value="on" class="agreed" type="checkbox"><input .checked=false .defaultValue="2" .indeterminate=false .value="9" class="amount" type="number" value="2"><input .checked=false .defaultValue="seeded" .indeterminate=false .value="reseeded" class="draft" type="text" value="seeded"><b class="echo">grace/9</b></form>
 event 0: <form class="bind-family"><input .checked=false .defaultValue="ada" .indeterminate=false .value="typed" class="name" type="text" value="ada"><textarea .defaultValue="" .value="first" class="notes"></textarea><input .checked=false .defaultValue="" .indeterminate=false .value="on" class="agreed" type="checkbox"><input .checked=false .defaultValue="2" .indeterminate=false .value="9" class="amount" type="number" value="2"><input .checked=false .defaultValue="seeded" .indeterminate=false .value="reseeded" class="draft" type="text" value="seeded"><b class="echo">typed/9</b></form>
-event 1: <form class="bind-family"><input .checked=false .defaultValue="ada" .indeterminate=false .value="typed" class="name" type="text" value="ada"><textarea .defaultValue="" .value="first" class="notes"></textarea><input .checked=true .defaultValue="" .indeterminate=false .value="on" checked="" class="agreed" type="checkbox"><input .checked=false .defaultValue="2" .indeterminate=false .value="9" class="amount" type="number" value="2"><input .checked=false .defaultValue="seeded" .indeterminate=false .value="reseeded" class="draft" type="text" value="seeded"><b class="echo">typed/9</b></form>
+event 1: <form class="bind-family"><input .checked=false .defaultValue="ada" .indeterminate=false .value="typed" class="name" type="text" value="ada"><textarea .defaultValue="" .value="first" class="notes"></textarea><input .checked=true .defaultValue="" .indeterminate=false .value="on" class="agreed" type="checkbox"><input .checked=false .defaultValue="2" .indeterminate=false .value="9" class="amount" type="number" value="2"><input .checked=false .defaultValue="seeded" .indeterminate=false .value="reseeded" class="draft" type="text" value="seeded"><b class="echo">typed/9</b></form>
 attrs 0: 0 form: class
 attrs 0: 0/0 input: type,class,value
 attrs 0: 0/1 textarea: class
@@ -117,7 +117,7 @@ attrs 4: 0/5 b: class
 attrs 5: 0 form: class
 attrs 5: 0/0 input: type,class,value
 attrs 5: 0/1 textarea: class
-attrs 5: 0/2 input: type,class,checked
+attrs 5: 0/2 input: type,class
 attrs 5: 0/3 input: type,class,value
 attrs 5: 0/4 input: type,class,value
 attrs 5: 0/5 b: class"
@@ -145,7 +145,7 @@ attrs 2: 0/0 button: type"
 exports[`rendered DOM golden class-empty-string: rendered DOM 1`] = `
 "initial: <div class="host"><span class="" data-p="static"></span><span class="" data-p="dynamic"></span><span class="" data-p="merged"></span><span data-p="not-an-object"></span></div>
 step 0: <div class="host"><span class="" data-p="static"></span><span class="b" data-p="dynamic"></span><span class="" data-p="merged"></span><span data-p="not-an-object"></span></div>
-step 1: <div class="host"><span class="" data-p="static"></span><span class="b" data-p="dynamic"></span><span class="hit on" data-p="merged"></span><span data-p="not-an-object"></span></div>
+step 1: <div class="host"><span class="" data-p="static"></span><span class="b" data-p="dynamic"></span><span class="on hit" data-p="merged"></span><span data-p="not-an-object"></span></div>
 attrs 0: 0 div: class
 attrs 0: 0/0 span: data-p,class
 attrs 0: 0/1 span: data-p,class
@@ -768,24 +768,8 @@ attrs 2: 0 p: class"
 `;
 
 exports[`rendered DOM golden diagnostic-accessor-coercion: rendered DOM 1`] = `
-"initial: <div><p id="1">live attribute</p><b>1</b><span>total: () => {
-    if (slowSignalRead !== 0)
-      return readSignalSlow(node);
-    if (tracking && currentObserver && !(currentObserver._flags & 32))
-      link(node, currentObserver);
-    if (stagedCount !== 0 && currentObserver !== null && node._pending !== NOT_STAGED)
-      return node._pending;
-    return node._value;
-  }</span></div>
-step 0: <div><p id="2">live attribute</p><b>2</b><span>total: () => {
-    if (slowSignalRead !== 0)
-      return readSignalSlow(node);
-    if (tracking && currentObserver && !(currentObserver._flags & 32))
-      link(node, currentObserver);
-    if (stagedCount !== 0 && currentObserver !== null && node._pending !== NOT_STAGED)
-      return node._pending;
-    return node._value;
-  }</span></div>
+"initial: <div><p id="1">live attribute</p><b>1</b><span>total: function read() { [native code] }</span></div>
+step 0: <div><p id="2">live attribute</p><b>2</b><span>total: function read() { [native code] }</span></div>
 attrs 0: 0/0 p: id
 attrs 1: 0/0 p: id"
 `;
@@ -1235,14 +1219,14 @@ attrs 2: 0 div: class,data-on"
 
 exports[`rendered DOM golden property-attrs: rendered DOM 1`] = `
 "initial: <form><input .checked=false .defaultValue="typed" .indeterminate=false .value="typed" readonly="" type="text" value="typed"><input .checked=false .defaultValue="" .indeterminate=false .value="on" disabled="" type="checkbox"><textarea .defaultValue="" .value="static"></textarea></form>
-step 0: <form><input .checked=false .defaultValue="typed" .indeterminate=false .value="typed" readonly="" type="text" value="typed"><input .checked=true .defaultValue="" .indeterminate=false .value="on" checked="" disabled="" type="checkbox"><textarea .defaultValue="" .value="static"></textarea></form>
-step 1: <form><input .checked=false .defaultValue="typed" .indeterminate=false .value="edited" readonly="" type="text" value="typed"><input .checked=true .defaultValue="" .indeterminate=false .value="on" checked="" disabled="" type="checkbox"><textarea .defaultValue="" .value="static"></textarea></form>
+step 0: <form><input .checked=false .defaultValue="typed" .indeterminate=false .value="typed" readonly="" type="text" value="typed"><input .checked=true .defaultValue="" .indeterminate=false .value="on" disabled="" type="checkbox"><textarea .defaultValue="" .value="static"></textarea></form>
+step 1: <form><input .checked=false .defaultValue="typed" .indeterminate=false .value="edited" readonly="" type="text" value="typed"><input .checked=true .defaultValue="" .indeterminate=false .value="on" disabled="" type="checkbox"><textarea .defaultValue="" .value="static"></textarea></form>
 attrs 0: 0/0 input: type,value,readonly
 attrs 0: 0/1 input: type,disabled
 attrs 1: 0/0 input: type,value,readonly
-attrs 1: 0/1 input: type,disabled,checked
+attrs 1: 0/1 input: type,disabled
 attrs 2: 0/0 input: type,value,readonly
-attrs 2: 0/1 input: type,disabled,checked"
+attrs 2: 0/1 input: type,disabled"
 `;
 
 exports[`rendered DOM golden props-destructured-body: rendered DOM 1`] = `
@@ -1412,8 +1396,8 @@ attrs 2: 0 div: class,data-total"
 
 exports[`rendered DOM golden signal-methods-in-handler: rendered DOM 1`] = `
 "initial: <button class="methods" data-seen="0" type="button">0</button>
-event 0: <button class="methods" data-seen="1" type="button">1</button>
-event 1: <button class="methods" data-seen="2" type="button">2</button>
+event 0: <button class="methods" data-seen="0" type="button">1</button>
+event 1: <button class="methods" data-seen="1" type="button">2</button>
 attrs 0: 0 button: type,class,data-seen
 attrs 1: 0 button: type,class,data-seen
 attrs 2: 0 button: type,class,data-seen"
@@ -1834,17 +1818,7 @@ exports[`marker channel delegated-two-types: anchor layout 1`] = `"<button>0/0</
 
 exports[`marker channel derived-local-thunk: anchor layout 1`] = `"<p><span>2</span><b>4</b></p>"`;
 
-exports[`marker channel diagnostic-accessor-coercion: anchor layout 1`] = `
-"<div><p>live attribute</p><b>1</b><span>total: () => {
-    if (slowSignalRead !== 0)
-      return readSignalSlow(node);
-    if (tracking && currentObserver && !(currentObserver._flags & 32))
-      link(node, currentObserver);
-    if (stagedCount !== 0 && currentObserver !== null && node._pending !== NOT_STAGED)
-      return node._pending;
-    return node._value;
-  }</span></div>"
-`;
+exports[`marker channel diagnostic-accessor-coercion: anchor layout 1`] = `"<div><p>live attribute</p><b>1</b><span>total: function read() { [native code] }</span></div>"`;
 
 exports[`marker channel dom-prop-static-value: anchor layout 1`] = `"<form><input><input></form>"`;
 

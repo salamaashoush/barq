@@ -1,6 +1,6 @@
-import { For, signal } from "@barqjs/core"
+import { For, createSignal } from "@barqjs/core"
 
-export const rows = signal([
+export const [rows, setRows] = createSignal([
   { id: 1, text: "alpha" },
   { id: 2, text: "beta" },
 ])
@@ -34,17 +34,17 @@ export const steps = [
   // Same keys, new item objects. Every row survives, `_item.set(item)` re-points
   // it, and nothing but a live binding can notice.
   () =>
-    rows.set([
+    setRows([
       { id: 1, text: "ALPHA" },
       { id: 2, text: "BETA" },
     ]),
   // A reorder: the rows keep their DOM and the index accessor is what moves.
   () =>
-    rows.set([
+    setRows([
       { id: 2, text: "BETA" },
       { id: 1, text: "ALPHA" },
     ]),
-  () => rows.set([]),
+  () => setRows([]),
 ]
 
 export const optimality = {

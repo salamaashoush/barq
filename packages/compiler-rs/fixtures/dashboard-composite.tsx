@@ -1,8 +1,8 @@
-import { For, Show, signal, store } from "@barqjs/core"
+import { For, Show, createSignal, createStore } from "@barqjs/core"
 
-const tab = signal("posts")
-const [state, setState] = store({ filters: { search: "" }, user: { name: "John" } })
-const rows = signal(["alpha", "beta"])
+const [tab, setTab] = createSignal("posts")
+const [state, setState] = createStore({ filters: { search: "" }, user: { name: "John" } })
+const [rows, setRows] = createSignal(["alpha", "beta"])
 
 /**
  * The dead plugin's "complete component", rebuilt as one module: a ternary
@@ -23,11 +23,13 @@ export default function DashboardComposite() {
         class="search"
         value={() => state.filters.search}
         onInput={(event: InputEvent) =>
-          setState("filters", "search", (event.target as HTMLInputElement).value)
+          setState((state) => {
+            state.filters.search = (event.target as HTMLInputElement).value
+          })
         }
       />
 
-      <button type="button" class="tab" onClick={() => tab.set("other")}>
+      <button type="button" class="tab" onClick={() => setTab("other")}>
         switch
       </button>
 
@@ -39,9 +41,15 @@ export default function DashboardComposite() {
 }
 
 export const steps = [
-  () => setState("filters", "search", "q"),
-  () => setState("user", "name", "Ada"),
-  () => rows.set(["gamma"]),
+  () =>
+    setState((state) => {
+      state.filters.search = "q"
+    }),
+  () =>
+    setState((state) => {
+      state.user.name = "Ada"
+    }),
+  () => setRows(["gamma"]),
 ]
 
 export const events = [
@@ -67,8 +75,8 @@ export const optimality = {
     "delegateEvents([",
     '"click"',
     '"input"',
-    "$$input = ",
-    "$$click = ",
+    "__bq_input = ",
+    "__bq_click = ",
     '"value"',
     ", rows, null, ",
     // K5, in the company of everything else: both constructs are regions. The

@@ -1,6 +1,6 @@
-import { Show, signal } from "@barqjs/core"
+import { Show, createSignal } from "@barqjs/core"
 
-export const on = signal(false)
+export const [on, setOn] = createSignal(false)
 
 /**
  * Target #8, in the shape it is actually about: a control-flow child written as
@@ -34,7 +34,7 @@ export default function ControlFlowShowEagerStaticBody() {
   )
 }
 
-export const steps = [() => on.set(true), () => on.set(false), () => on.set(true)]
+export const steps = [() => setOn(true), () => setOn(false), () => setOn(true)]
 
 export const optimality = {
   target: 8,

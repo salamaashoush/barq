@@ -1,72 +1,64 @@
-# BARQ015 — a `css` block interpolates a value known only at run time
+# BARQ015: A `css` block interpolates a runtime value, so the browser builds it
 
-**Level:** note. Raise it with `checks: { BARQ015: "warning" }`.
+**Level:** note · [all codes](README.md)
 
-An interpolation in a `css` block is not a literal and does not name a
-module-level `const` holding one, so the block's text is not known until the
-program runs. The call is left where it is and `@barqjs/css`'s runtime evaluates
-it.
+## Message
+
+> This block interpolates a value that is only known when the program runs, so it cannot
+> be compiled and `@barqjs/css` builds its CSS in the browser instead. To compile it,
+> write `var(--name)` in the block and set the value on the element: `style={{ "--name":
+> value }}`.
+
+## Failing example
+
+```tsx
+import { css } from "@barqjs/css";
+
+export const panel = (background: string) => css`
+  padding: 12px;
+  background: ${background};
+`;
+```
+
+## Fixed example
 
 ```tsx
 import { css } from "@barqjs/css";
 
 const panel = css`
   padding: 12px;
-  background: ${theme() === "dark" ? "#1e293b" : "#f1f5f9"};   // BARQ015
-`;
-```
-
-Nothing is broken: the block still applies, and the class is still the hash of
-the text it produced, so a compiled block and a runtime block never disagree
-about a name. What is lost is the compilation — that block's CSS is built in the
-browser on every evaluation, and it is why `@barqjs/css` ships a runtime at all.
-
-## What does fold
-
-- **A literal.** `${8}`, `${"red"}`, and a template literal with no
-  interpolations of its own.
-- **A module-level `const` holding one.** `const GAP = "8px"` then `${GAP}`,
-  wherever in the file the `const` is written. A number and a template with no
-  substitutions of its own both count, and so does a binding naming another
-  binding.
-- **Another block's class.** `const button = css\`…\`` then
-  `` css`.${button} & { … }` ``, because the pass records each class as it
-  generates it. That one has to come first in the file: knowing a block's class
-  means compiling the block, and the fold reads a table the same walk is
-  filling.
-
-## Fixing it
-
-Move the value into a CSS custom property and set it through `style`, which is a
-channel the compiler already binds per property:
-
-```tsx
-const panel = css`
-  padding: 12px;
   background: var(--panel-bg);
 `;
 
-<div class={panel} style={{ "--panel-bg": theme() === "dark" ? "#1e293b" : "#f1f5f9" }} />
+export function Panel(props) {
+  return <div class={panel} style={{ "--panel-bg": props.background() }} />;
+}
 ```
 
-The block is then static, compiles away, and the only thing that changes at
-runtime is one custom property on one element rather than a whole stylesheet.
+## Why this rule exists
 
-Write the property name in kebab-case. `dom.ts` runs every style-object key
-through `toKebabCase`, so `--panel-bg` arrives intact and `--panelBg` becomes
-`--panel-bg` on the way.
+A block whose text is fixed is compiled away: its CSS goes into the stylesheet and the
+call becomes a class name. An interpolation that is a literal, or a `const` in the same
+file that holds one, still counts as fixed. Any other value is only known when the
+program runs, so the block's CSS is put together in the browser every time it is
+evaluated, and `@barqjs/css` has to ship the code that does it.
 
-## Selecting between two whole blocks
+Nothing is broken, and the styles still apply. The note marks a block that could be
+static.
 
-An interpolation that stands where a declaration would go — a ternary of two
-blocks — is refused rather than left to the runtime, because a template
-placeholder at statement position has no CSS grammar to sit in. Write it as two
-blocks and choose the class:
+## Silencing one line
 
 ```tsx
-const base = css`padding: 20px;`;
-const primary = css`background: #3b82f6; color: white;`;
-const muted = css`background: #475569; color: #e2e8f0;`;
+import { css } from "@barqjs/css";
 
-<div class={`${base} ${props.variant() === "primary" ? primary : muted}`} />
+// barq-ignore-next-line BARQ015 (the colour comes from user settings)
+export const panel = (background: string) => css`
+  padding: 12px;
+  background: ${background};
+`;
 ```
+
+The reason in parentheses is required and has to be at least 10 characters. Between JSX
+children, write the comment as `{/* barq-ignore-next-line BARQ015 (reason) */}` on the line
+above: a `//` line there is text and would be rendered on the page. To change the level
+for the whole project, see [the index](README.md#changing-a-level-for-the-whole-project).

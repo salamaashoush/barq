@@ -1,8 +1,8 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const markup = signal('<img src=x onerror="alert(1)">')
-export const quoted = signal('" onmouseover="alert(1)" data-x="')
-export const amp = signal("a & b &amp; c &#38; d")
+export const [markup, setMarkup] = createSignal('<img src=x onerror="alert(1)">')
+export const [quoted, setQuoted] = createSignal('" onmouseover="alert(1)" data-x="')
+export const [amp, setAmp] = createSignal("a & b &amp; c &#38; d")
 
 /**
  * Values that are themselves markup, in every context that escapes them
@@ -54,10 +54,10 @@ export default function EscapingAdversarial() {
 }
 
 export const steps = [
-  () => markup.set("</p><script>alert(1)</script>"),
-  () => quoted.set("]]> --> &lt; <!--"),
-  () => amp.set("\u{1F600}\u{20B9E} &nbsp;"),
-  () => markup.set("plain"),
+  () => setMarkup("</p><script>alert(1)</script>"),
+  () => setQuoted("]]> --> &lt; <!--"),
+  () => setAmp("\u{1F600}\u{20B9E} &nbsp;"),
+  () => setMarkup("plain"),
 ]
 
 export const optimality = {

@@ -19,7 +19,7 @@
  *
  * A3, E2.3.
  */
-import { Errored, Loading, render, resource } from "@barqjs/core"
+import { Errored, Loading, render, createMemo } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 
@@ -30,8 +30,7 @@ let refuse: ((error: Error) => void) | null = null
 let previous: (() => void) | null = null
 
 function Data() {
-  const data = resource(
-    () => null,
+  const data = createMemo(
     () =>
       new Promise<string>((resolve, reject) => {
         answer = resolve

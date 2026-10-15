@@ -1,7 +1,7 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const body = signal("\nfirst line\nsecond line")
-export const draft = signal("\ndraft")
+export const [body, setBody] = createSignal("\nfirst line\nsecond line")
+export const [draft, setDraft] = createSignal("\ndraft")
 
 /**
  * O9 where the compiler cannot see the newline: a HOLE leading a newline-eating
@@ -38,7 +38,7 @@ export default function PreDynamicLeadingNewline() {
   )
 }
 
-export const steps = [() => body.set("no newline"), () => draft.set("")]
+export const steps = [() => setBody("no newline"), () => setDraft("")]
 
 export const optimality = {
   target: 3,

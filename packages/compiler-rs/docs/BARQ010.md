@@ -1,121 +1,76 @@
-# BARQ010 — a Block forwarded into a Cell slot
+# BARQ010: JSX is passed to a prop the component reads as a value, which throws
 
-**Level:** warning · **Rule family:** C5.1 item 1 · [all codes](README.md)
+**Level:** warning · [all codes](README.md)
 
-## What fires
+## Message
 
-A JSX value — which lowers to a `Block`, a deferred construction taking the receiving
-scope (C6) — written into a slot the callee reads as a `Cell`.
+> `heading` is JSX here, and `Card` reads `props.heading` as a value in the `title`
+> attribute of an element. JSX cannot be read as a value, so `Card` throws
+> `ScopeMissingError` when it reads the prop. Pass a value instead of JSX, or change
+> `Card` to render the prop as a child: `{props.heading}`.
 
-```jsx
-function Sink(props) {
-  return <div title={props.children} />      // props.children is read as a Cell here
+## Failing example
+
+```tsx
+function Card(props) {
+  return <section title={props.heading}>{props.children}</section>;
 }
 
-export function App() {
-  return <Sink><b>hello</b></Sink>           // BARQ010
-}
+export const Page = () => <Card heading={<b>Today</b>}>Hello</Card>;
 ```
 
-The diagnostic is reported at the **forwarding site**, because that is where the fix is
-written, and its message names the consuming position inside the callee.
+## Fixed example
 
-## Why it is a compile-time question at all
+Pass a value:
 
-`SEMANTICS.md` C5.1 says a Block landing in a Cell slot arises exactly two ways, and each
-has a defined outcome:
-
-1. **Within a module**, the compiler knows both ends — the value's kind, because it lowered
-   it, and what the callee does with it, because the callee is right there. That is this
-   code.
-2. **Across a module boundary**, the compiler cannot know
-   ([`CODESIGN.md` §3.13 item 1](../CODESIGN.md)). The consumer's `props.x()` then hits
-   C3.8 and throws `ScopeMissingError`.
-
-Item 2 is the safety net and it always fires. This code is item 1: the same defect, found
-before the program runs, in the case where finding it is possible.
-
-## What actually happens without it
-
-A `Cell` is invoked with no argument. A `Block` reaching a Cell slot is **refused** with
-`ScopeMissingError` naming the Block's origin — it does not fall back to `CURRENT` and it
-does not stringify. So the program that produces this diagnostic is a program that throws
-on the first render of that element.
-
-At an ordinary attribute the refusal is the Block's own entry guard: it is invoked with no
-scope, and `scope === undefined` throws. At **`ref` and `on*` it cannot be**, because those
-two positions invoke the value with the ELEMENT and with the EVENT — neither is
-`undefined`, so the guard is structurally unreachable and a forwarded Block would have run
-with a DOM node or an Event as its scope, parenting everything it built to something root
-disposal never reaches. The refusal there is a test on the VALUE's brand, taken where the
-value is read: in `applyRefs`, in `listen`/`delegate`, and in the delegated dispatcher —
-which is the only place a compiled `_el$1.$$click = h` expando can be seen at all.
-
-Before M4b's fix round it did not even throw in one spelling: `builds_dom` in `shape.rs`
-did not see through a TypeScript assertion, so `<Sink>{<b>C</b> as never}</Sink>` emitted
-an unbranded nullary thunk, `_$setProp` invoked it, and the built subtree was stringified
-into the attribute — `<div title="<b>C</b>">`. That is C5.1 item 2's stated MUST NOT, and a
-type cast was enough to reach it.
-
-## The fix
-
-Render it where a Block belongs — a child position takes either kind (C3.7):
-
-```jsx
-function Sink(props) {
-  return <div>{props.children}</div>
-}
-```
-
-or hand the callee a **Cell**, which is what an attribute slot wants:
-
-```jsx
-function Sink(props) {
-  return <div title={props.label} />
+```tsx
+function Card(props) {
+  return <section title={props.heading}>{props.children}</section>;
 }
 
-export function App() {
-  return <Sink label={() => "hello"} />
+export const Page = () => <Card heading="Today">Hello</Card>;
+```
+
+Or keep the JSX and render the prop as a child:
+
+```tsx
+function Card(props) {
+  return (
+    <section>
+      <h2>{props.heading}</h2>
+      {props.children}
+    </section>
+  );
 }
+
+export const Page = () => <Card heading={<b>Today</b>}>Hello</Card>;
 ```
 
-## What is a "Cell slot"
+## Why this rule exists
 
-Any **attribute on an intrinsic element**, which lowers to `_$setProp` / `_$spread` or to
-a resolved channel — including `ref` and `on*`, which are channels rather than props but
-are still positions that consume a value rather than a Block. A child position is not one — C3.7 makes a Cell in a Block slot
-degrade harmlessly, so both kinds are legal there. An attribute on a **component** is not
-one either; it is a forward, and its verdict is the callee's.
+A prop written as JSX is not a value. It is markup that is built at the place the
+component renders it, so the only thing a component can do with it is render it as a
+child. An attribute, an event handler, a `ref`, and the `each`, `when` or `mount` of a
+flow component all need a value, and barq throws `ScopeMissingError` there instead of
+writing something meaningless into the page.
 
-The verdict propagates through forwards to any depth inside the module:
+Inside one file the compiler sees both ends, the JSX being passed and the place that
+reads it, so it reports the mismatch before the page runs. It follows a prop that one
+component hands to another in the same file. Across files, or through a spread, only the
+run-time error reports it.
 
-```jsx
-function Sink(props) { return <div title={props.thing} /> }
-function Mid(props)  { return <Sink thing={props.thing} /> }   // Mid.thing is a Cell slot too
-export function App() { return <Mid thing={<b/>} /> }          // BARQ010
+## Silencing one line
+
+```tsx
+function Card(props) {
+  return <section title={props.heading}>{props.children}</section>;
+}
+
+// barq-ignore-next-line BARQ010 (this branch is replaced before it renders)
+export const Page = () => <Card heading={<b>Today</b>}>Hello</Card>;
 ```
 
-## What does not fire
-
-- **Anything cross-module.** `analysis::bind` is module-scoped, so a callee imported from
-  another file has no known slots at all. Item 2's runtime throw is what answers there.
-- **A slot read only in a child position**, or read through a spread, a computed member
-  (`props[key]`) or a destructure — none of those is a proven Cell position.
-- **Anything on the far side of a spread.** `analysis::bind` collects a pair only from a
-  NAMED attribute, so a spreading wrapper (`<Sink {...props} />`) and a spread at the
-  forwarding site both end the fixpoint's chain and compile clean. Item 2 fires in both.
-- **A production build.** The code is DEV-only; item 2 is what a release build has.
-- **A flow component.** `<Show when={…}>` is not an in-module declaration; the primitives'
-  slots are typed, and a Block reaching one of them throws under C3.8.
-- **A callee this module never declares**, including a member tag (`<ns.Comp/>`) and a
-  `this` tag, which resolve to no `SymbolId`.
-
-The rule is deliberately one-sided: it fires only where the compiler has proof, and stays
-silent everywhere else. Silence is not a claim that the slot is safe.
-
-## Silencing it
-
-```jsx
-{/* barq-ignore-next-line BARQ010 (Sink stringifies deliberately, for the debug panel) */}
-<Sink><b>hello</b></Sink>
-```
+The reason in parentheses is required and has to be at least 10 characters. Between JSX
+children, write the comment as `{/* barq-ignore-next-line BARQ010 (reason) */}` on the line
+above: a `//` line there is text and would be rendered on the page. To change the level
+for the whole project, see [the index](README.md#changing-a-level-for-the-whole-project).

@@ -6,11 +6,11 @@
  * container, so a second invocation would leave no trace anywhere the DOM
  * channels look.
  */
-import { Portal, signal } from "@barqjs/core"
+import { Portal, createSignal } from "@barqjs/core"
 
 export const log: string[] = []
 
-export const label = signal("over here")
+export const [label, setLabel] = createSignal("over here")
 
 export default function C7Portal() {
   return (
@@ -26,7 +26,7 @@ export default function C7Portal() {
   )
 }
 
-export const steps = [() => label.set("still here")]
+export const steps = [() => setLabel("still here")]
 
 export const c7 = {
   why: "one activation, and a write inside the portal's body is not another one",

@@ -1,50 +1,61 @@
-# BARQ014 — a `css` block is not CSS this compiler can compile
+# BARQ014: A `css`, `keyframes` or `globalCss` block is not valid CSS
 
-**Level:** error.
+**Level:** error · [all codes](README.md)
 
-A `css`, `keyframes` or `globalCss` block imported from `@barqjs/css` could not
-be compiled. The message carries the parser's own reason.
+## Message
 
-```ts
+> This CSS could not be compiled. A Sass variable (`$name: value`) is preprocessor
+> syntax, and `@barqjs/css` compiles plain CSS only. Rewrite it as CSS; for a variable,
+> use a custom property: `--brand: red` and `var(--brand)`.
+
+## Failing example
+
+```tsx
 import { css } from "@barqjs/css";
 
-const card = css`
-  $brand: #3b82f6;      // BARQ014: a Sass variable is not CSS
+export const card = css`
+  $brand: #3b82f6;
   color: $brand;
 `;
 ```
 
-The grammar is `oxc-css-parser`'s, which is the parser Oxfmt formats CSS with
-and whose tests come from Web Platform Tests, the SWC CSS suite, esbuild,
-sass-spec and the Less suite. `@container`, `@layer`, `@scope`,
-`@starting-style`, `@property`, native nesting and functional pseudo-classes all
-parse; a preprocessor's syntax does not.
+## Fixed example
 
-## Why a preprocessor's syntax reaches this check at all
+```tsx
+import { css } from "@barqjs/css";
 
-The parser runs in SCSS mode, because that is the only dialect its template
-placeholders are legal in — an interpolation is marked with a backtick, which is
-Less's inline-JS delimiter and is not valid CSS at all. SCSS mode therefore
-accepts `$variable`, `@mixin` and `@if`, none of which any browser runs. Each
-one is named and refused here rather than compiled into a rule that silently
-matches nothing.
-
-## The rules that are about position rather than syntax
-
-- **`@import`, `@charset` and `@namespace` must lead a stylesheet**, so they
-  cannot be scoped to a generated class. Move them to `globalCss`.
-- **A declaration needs a selector.** `globalCss` writes whole rules;
-  `color: red` at its top level has no element to apply to.
-- **`&` needs a parent.** At the top level of `globalCss` there is none.
-
-## Fixing it
-
-Write CSS. Where a preprocessor's variable was doing the work, a CSS custom
-property does it at runtime and without a build step:
-
-```ts
-const card = css`
+export const card = css`
   --brand: #3b82f6;
   color: var(--brand);
 `;
 ```
+
+## Why this rule exists
+
+`css`, `keyframes` and `globalCss` blocks are compiled into a stylesheet at build time,
+so a block has to be CSS a browser understands. Sass and Less syntax would be written out
+as rules no browser applies, and the element would lose its styles without any error.
+
+Three placement rules are reported under this code as well: `@import`, `@charset` and
+`@namespace` belong in a `globalCss` block; a declaration at the top level of `globalCss`
+needs a selector around it; and `&` needs a parent selector to stand for.
+
+## Silencing one line
+
+```tsx
+import { css } from "@barqjs/css";
+
+// barq-ignore-next-line BARQ014 (kept as written until the Sass migration lands)
+export const card = css`
+  $brand: #3b82f6;
+  color: $brand;
+`;
+```
+
+Silencing it does not make the block valid. The call is left as written, and
+`@barqjs/css` meets the same text in the browser.
+
+The reason in parentheses is required and has to be at least 10 characters. Between JSX
+children, write the comment as `{/* barq-ignore-next-line BARQ014 (reason) */}` on the line
+above: a `//` line there is text and would be rendered on the page. To change the level
+for the whole project, see [the index](README.md#changing-a-level-for-the-whole-project).

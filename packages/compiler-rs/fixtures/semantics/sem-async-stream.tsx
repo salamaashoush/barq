@@ -15,7 +15,7 @@
  *
  * A7, A3.
  */
-import { Loading, computed, render } from "@barqjs/core"
+import { Loading, createMemo, render } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 
@@ -33,7 +33,7 @@ function gate(): Promise<void> {
 }
 
 function Streamed() {
-  const data = computed<number>(() =>
+  const data = createMemo<number>(() =>
     (async function* () {
       try {
         let n = 0

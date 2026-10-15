@@ -3,18 +3,17 @@ use oxc::span::Span;
 
 use super::{AVec, NONE, NameId, NodeId, SlotId, StrId, TagId};
 
-/// There is no MathML member, and that is a fact about the RUNTIME rather than
-/// an omission here: `createElement` reaches `createElementNS` only for
-/// `tag in SVG_TAGS` (`dom.ts:324`), so a MathML-namespace node is not something
-/// the oracle can produce. `<math>` is refused outright by
-/// [`crate::lower::parse`] for the matching parse reason — inside a `<template>`
-/// it switches the tokenizer into foreign content, where the same bytes DO parse
-/// into the MathML namespace and stop matching `document.createElement`.
+/// The namespace a unit's root is created in. `Math` exists for the same reason
+/// `Svg` does: a template is parsed from its own bytes, so a root that is a
+/// foreign element only by POSITION, a `<mi>` returned by a `<For>` inside
+/// `<math>`, has to be parsed inside that parent or it comes back an unknown
+/// HTML element.
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug, Default)]
 pub enum Ns {
     #[default]
     Html,
     Svg,
+    Math,
 }
 
 impl Ns {
@@ -22,7 +21,7 @@ impl Ns {
     /// same bytes leave the element open and swallow its following siblings.
     #[inline]
     pub fn self_closes(self) -> bool {
-        matches!(self, Ns::Svg)
+        matches!(self, Ns::Svg | Ns::Math)
     }
 }
 

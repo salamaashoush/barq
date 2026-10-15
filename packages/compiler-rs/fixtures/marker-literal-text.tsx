@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const note = signal("<!---->")
+export const [note, setNote] = createSignal("<!---->")
 
 /**
  * A fixture whose SOURCE legitimately contains the characters the marker bound
@@ -33,7 +33,7 @@ export default function MarkerLiteralText() {
   )
 }
 
-export const steps = [() => note.set("<!---->x"), () => note.set("plain")]
+export const steps = [() => setNote("<!---->x"), () => setNote("plain")]
 
 export const optimality = {
   target: 9,

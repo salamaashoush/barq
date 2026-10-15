@@ -423,9 +423,11 @@ and each is separately observable:
   same body — without it a single component handed A while B was ambient put its HOLE under A and its
   CLEANUP under B, because a component call is a plain call and nothing in the calling convention
   made the argument ambient;
-- the delegated dispatcher runs a handler under the scope the compiler stapled to the element, rather
-  than with `CURRENT === null` — work created in a handler used to be an orphan the next flush
-  released, owned by nobody, forever.
+- the delegated dispatcher runs a handler under NO owner, and the scope the compiler stapled to the
+  element is where a throw from it is routed (E2 #6). A handler is where the application writes
+  state, and the engine refuses a write made under an owner, so the two cannot share one; a handler
+  that creates something it wants owned names the owner with `runWithOwner`, and one that needs a
+  context value reads it during setup.
 
 The channel that could not see any of this now can: the L2b trace records an `own` event for every
 reactive node created, so `blockFindings` holds an effect to the same "at or below the scope this
@@ -2183,59 +2185,16 @@ installs.
 
 ## 10. A — Async
 
-`CODESIGN.md` §11 Q7 left transitions deliberately underspecified, on the ground that nothing could be
-built until three questions about parked subtrees were answered. §12 closed it the other way: the
-reference implementation parks nothing, so the questions dissolved rather than being answered, and A5
-below is a specification instead of a named gap. This section has no unspecified rules.
+The reactive engine is `@solidjs/signals`, so the async model is Solid 2.0's and is specified and
+tested there: a pending read throws `NotReady` to the nearest `Loading`, a later re-ask keeps serving
+the settled value while `isPending` reports the one in flight, a write made inside an `action` is held
+until the action returns, and an optimistic write shows over that hold and gives way when it ends.
 
-### A1 — cancellation is structural
-
-**Rule.** The `AbortController` is a cleanup on the scope that created the resource. Dispose aborts.
-A re-run aborts the previous. The signal is **passed to the fetcher**.
-
-**Falsified by.** Dispose during an in-flight fetch; the request must abort.
-
-**Status.** `HOLDS` since M7. The controller is created per RUN and registered as a cleanup on the
-scope `resource()` was called under, so disposal aborts it; a re-run aborts the controller it
-supersedes before issuing the next request; and `info.signal` is the third argument the fetcher
-receives. All four of `sem-async-abort-on-dispose`'s claims hold, including the CONTROL — a request
-that had already answered is *not* aborted by a later disposal, without which `aborted` would carry
-no information at all. Before M7 the controller was created inside `load()` and handed nowhere, so
-"abort" meant "ignore the answer": the request itself ran to completion.
-
-**Pinned by.** `sem-async-abort-on-dispose.tsx`, `async-value.tsx` (existing),
-`packages/core/src/async.test.ts` (`A1: cancellation is structural`).
-
-### A2 — staleness is decided by `s.gen` captured at call time
-
-**Rule.** A continuation compares the `gen` it captured at call time against the scope's current `gen`
-and drops if they differ. It MUST NOT read a mutable outer variable that by then points at the newest
-controller.
-
-**Falsified by.** Start a slow request, start a fast one, let the fast one settle first, then the slow
-one; the slow response MUST NOT overwrite the fresh one.
-
-**Status.** `HOLDS` since M7. Two guards, both captured at call time and neither of them a variable a
-later request can move: the run's own generation, and the creating scope's `gen`. The old guard read
-`abortController.signal.aborted` — by then the NEWEST controller, which is live — so a slow first
-answer passed the check and overwrote a fresh second one. `sem-async-stale-response` drives the
-out-of-order case deliberately, in both directions (a stale RESOLUTION and a stale REJECTION), and
-its third claim is the control that settles the same two requests IN ORDER; without it the rule would
-also be satisfied by a framework that believes whatever it was told last, which is the bug.
-
-Those three claims hold through the MEMO, though, not through the guards: a superseded promise is
-discarded whatever its continuation writes, so deleting the guard outright left every one of them —
-and all 36 rows of `async.test.ts` — green. Measured, in the M7 gate, as
-`let-a-stale-response-win | survived everything`. Two more claims OBSERVE the guard itself and are
-what make this status a statement about the mechanism: a stale continuation may not retire a
-`mutate()` overlay written after it was already superseded, and it may not clear the in-flight
-controller, which by then names the LIVE request — clearing it leaves that request outliving the
-scope that owns it, which is A1's leak reached through A2's guard. The mutant is now KILLED by
-exactly those two.
-
-**Pinned by.** `sem-async-stale-response.tsx`,
-`packages/core/src/async.test.ts` (`A2: a response arriving after a newer request was issued never
-wins`).
+What is left in this section is what barq's own layer has to get right ON TOP of that model: how a
+boundary and a reveal group place nodes, and what a string render does with a value that has not
+arrived. Four rules that described barq's former implementation (structural cancellation and
+generation guards on `resource`, the lane model, and the loading-value window) went with the code they
+described.
 
 ### A3 — `NotReady` is a control signal, not an error
 
@@ -2268,187 +2227,6 @@ existed only to be written back is gone.
 
 **Pinned by.** `sem-async-optimistic-derived.tsx`, `optimistic-signal.tsx` (existing,
 re-pinned), `packages/core/src/actions.test.ts`.
-
-### A5 — a transition is a lane on an opt-in value, not a fork of the graph
-
-**Rule.** Seven clauses.
-
-**(a) There is no transition API and no second scope.** `startTransition` and `useTransition` do
-not exist and are not planned. Nothing forks the reactive graph.
-
-**(b) Nothing is parked.** A `Loading` boundary keeps live DOM mounted showing stale content.
-There is no detached-fragment state and no suspended-effect state. The three questions the previous
-entry could not answer — what a write to a parked subtree does, whether parked effects are suspended
-or merely detached, and what happens when the live scope and a pending transition scope both write
-one signal — do not arise, because neither a parked subtree nor a pending scope exists.
-
-**(c) Double buffering is opt-in, per value.** `optimistic` and `optimisticStore`
-allocate a second buffer. `signal` does not. A plain signal written inside an action writes straight
-through: it does not revert when the action settles and it never reports pending. The restraint is
-the design, not an omission from it — making every signal transition-aware would put a second slot
-and a mode switch on the hottest object in the runtime to serve the few values that need one.
-
-**(d) Two buffers on one node.** The authoritative buffer is the node's value. The override buffer
-holds at most one patch per lane, and a read folds those patches over the authoritative value in
-claim order. The buffers live on the NODE rather than in a derivation over two signals; clause (f) says why
-they must.
-
-A lane's second write to the same value **composes** over its first rather than replacing it, so
-`update(n => n + 1)` twice inside one action is `+2`. The store form has always accumulated this way
-— its lane layer is a list of setter calls replayed over the authoritative store — and the value
-form agrees with it. A `set` still wins outright: a constant patch ignores the value handed to it.
-The two arities disagreeing here is what this clause is written against; before M7b the value form
-kept only the last write and the obvious optimistic-increment pattern silently lost one.
-
-**(e) No revert target is stashed, and a lane write is not an authoritative one.** A write from
-outside the action lands in the authoritative buffer *underneath* a live override, so nothing is lost
-and nothing is overwritten. Retiring the lane drops the override onto a value that is already
-correct. Rollback on failure is that same drop rather than a second code path — which is A4's
-"derived, never restored" restated at the level of the slot.
-
-The constraint this puts on the action itself is stated rather than hidden: a SYNC generator
-**resumes in-context**, so a write made after a `yield` is still a LANE write and retires with the
-lane. Writing the server's answer as `value.set(answer)` after the yield therefore reverts to the
-pre-action value. `commit(fn)` is the way an action writes authoritatively: it runs `fn` with the
-lane suspended, so writes inside it go to the authoritative buffer exactly as they would outside the
-action. It is the write-side counterpart of `latest`, which reads that same buffer. A plain `signal`
-needs none of this — by clause (c) it was never double-buffered and its post-yield write was always
-authoritative.
-
-**And the three shapes `action()` accepts do not agree about this, which is a fact about where a
-runtime can put a hook rather than a policy.** The lane is entered around each synchronous segment;
-an `await` inside an async function or an async generator resumes on a microtask the lane no longer
-spans, because there is no hook inside an async function's own await continuations. So:
-
-| shape | a write after the async gap |
-|---|---|
-| `function*`, after `yield` | a LANE write — retires, `commit()` required |
-| `async function*`, after `await` | AUTHORITATIVE — commits, `commit()` unnecessary |
-| `async function`, after `await` | AUTHORITATIVE — commits, `commit()` unnecessary |
-
-`commit()` is a no-op where the lane has already ended, so writing it always is correct in all three
-and is what keeps an action's shape a private choice. The reference implementation has the same
-asymmetry and documents it as the opposite hazard — for Solid the escape is the surprise, and the
-remedy is a bare `yield` before the write to re-enter the transaction, because their default is that
-a write *should* be transactional. Neither default is better; what is not acceptable is leaving the
-rule stated for "an action" when it is true of one shape in three.
-
-**(f) The read surface is a mode, and a mode is not a dependency.** A normal read sees the
-override; `latest(fn)` reads through it to the authoritative value; `isPending(fn)` reports that an
-answer is coming.
-
-**Both of them INVOKE their argument, and that is a compiler fact as well as a runtime one.** The
-tracked read happens at the call, inside the callee, so a classifier that does not know the callee
-sees nothing reactive at the site: `isPending(user)` only REFERENCES the accessor, and
-`isPending(() => user())` puts the read in a nested arrow, which is deferred everywhere else —
-that deferral is exactly what lets a handler hoist to module scope. Without the rule
-`class={{ stale: isPending(user) }}` — the reference's own documented shape — binds BY VALUE and is
-applied once at construction, for the life of the page, which violates B1. `Prim::ReadMode` is the
-entry that names them, and it is the mirror of `Prim::Untrack`: one says the reads inside do not
-happen here, the other says they do. The reference gets the same case right by being CONSERVATIVE —
-`@dom-expressions/compiler` treats ANY call in an attribute as dynamic — where barq is precise, so
-what is free there has to be declared here. The switch applies **at the node the override lives on** and does not reach through
-a derivation: a memo would cache the answer it computed in one mode and serve it in another, and
-keying a memo on the read mode would mean a value slot per mode on every computed. This is also why
-the buffers cannot be a derivation over a settled signal and a pending-layer signal — that shape has
-exactly one mode. `affects()` remains the primitive that deliberately *does* propagate pendingness
-through a derivation, and it is unchanged.
-
-The consequence, which is stronger than "the switch does not reach through a derivation" and is
-stated because it is observable: **a memo answers in whichever mode first computed it.** Two identical
-programs read in opposite orders give opposite answers in both modes — `normal=18, latest=18` against
-`latest=2, normal=2` for the same `computed(() => v() * 2)` over an overridden `v`. Neither answer is
-a bug in the memo; the memo has one value slot and a read mode is not an input to it. Code that needs
-the authoritative value of a derivation reads the node it derives from under `latest`, not the
-derivation. `isPending(() => memo())` is correct either way — it reports on the nodes the probe
-actually reaches — but the probe itself computes the memo, so it fixes the mode for every later read.
-
-**(g) A lane is an action's lifetime, and lanes never merge.** Two lanes overriding one value stack
-in claim order; retiring one leaves the other folding over the current authoritative value; neither
-blocks the other. Solid's union-find — which merges lanes when their dependency graphs overlap and
-makes an active override a merge barrier so that the merge stops there — answers a question this
-design answers by construction. Their transactions are implicit and must be recovered from
-reachability; `action()` is explicit and delimits itself, so the lane is known exactly and there is
-nothing to infer, merge, or barrier.
-
-**Falsified by.** Nine procedures, one per failure mode.
-
-1. Write an optimistic value inside an action. Before it settles, a normal read MUST give the
-   optimistic value and `latest()` MUST give the pre-action value. *(Fails if the override is not a
-   distinct buffer.)*
-2. While that override is live, land a write from **outside** the action. `latest()` MUST show it
-   immediately, and the value remaining after the lane retires MUST be it — not the pre-action value.
-   *(Fails if any revert target is stashed; this is the procedure that distinguishes clause (e) from a
-   snapshot, and it is the bug A4 was written against, reached one layer lower.)*
-3. Run two actions writing two different optimistic values that one memo derives from, and settle
-   them out of order. Retiring the first MUST leave `isPending` false on its value and true on the
-   other's, and the memo MUST show the first's authoritative value folded with the second's override.
-   *(Fails if lanes merge on graph overlap: the first could not then retire alone.)*
-4. Write a plain `signal` inside an action. It MUST NOT revert and MUST NOT report pending.
-   *(Fails if every signal is transition-aware.)*
-5. Read a memo derived from an overridden value. It MUST NOT throw `NotReady`, and a `Loading`
-   boundary above it MUST NOT show a fallback. *(Fails if a lane is propagated as a status. A lane
-   that set `STATUS_PENDING` downstream would suspend exactly the content the override exists to
-   show, which is clause (b) reaching down into the status channel.)*
-6. After the action settles, the override slot MUST be released, not merely emptied. *(Fails if the
-   rare-read-mode counter is left incremented, which silently moves every signal in the program onto
-   the slow read path for the rest of its life.)*
-7. Inside a SYNC-generator action, after a `yield`, write the server's answer through `commit()`. It
-   MUST survive the lane's retirement. Written WITHOUT `commit()`, the same write MUST NOT survive —
-   it is a lane write and the value returns to its pre-action state. Then write the same action as an
-   `async function*` and as an `async function`, with a plain `await` in place of the `yield` and no
-   `commit()`: in BOTH of those the write MUST survive, because the lane does not span an await
-   continuation. *(Fails if there is no way to write authoritatively from inside an action, which is
-   the canonical pattern the API exists for: the value reverts and the server's answer is written
-   nowhere. Procedure 2 lands its write from OUTSIDE the action and cannot see this. The second half
-   fails as a DOCUMENTATION claim: with only the generator arm pinned, the clause reads as a rule
-   about actions, and an author applying it to the other two shapes concludes their answer reverts
-   when it does not.)*
-8. Call `update()` twice on one optimistic value inside one action. The second MUST compose over the
-   first, and the store form at the same arity MUST agree. *(Fails if a lane's second write replaces
-   its first: the obvious optimistic-increment pattern then silently loses one, and the two arities
-   disagree.)*
-9. Read a memo over an overridden value under `latest()` FIRST, then normally. Both reads MUST give
-   the authoritative answer; run the same program reading normally first and both MUST give the
-   override. *(Fails as a documentation claim, not as an implementation one: clause (f) would be
-   understated if only one order were pinned, and one order alone reads like the mode reaching
-   through the memo.)*
-
-**Status.** `HOLDS` since M7b. What changed, and what did not:
-
-M7 already had the mechanism at two arities without naming it as one. `optimistic` was a
-settled signal, a `layers` signal and a memo folding one over the other; `resource` was a memo with a
-single `override` signal beside it. The pending-layer list **is** the override buffer, and the
-resource's one slot is the degenerate case — so the answer to "does the override slot subsume the
-layer list or sit beside it" is neither: they are one mechanism, and M7b unified the storage rather
-than adding a second. What M7 could not express is the read mode, and that is what moved the buffer
-onto the node (clause (f)).
-
-The resource keeps its slot as a signal beside the memo, and that is correct rather than a leftover:
-`mutate()` writes **both** buffers, so all three read modes agree there and no switch is needed. An
-authoritative arrival then commits into `settled` and drops the override — the same "already correct"
-invariant as clause (e), which is why the resource never needed a revert target either.
-
-Cost, both halves of it. `optimistic` went from three reactive nodes to one. A program with **no
-lane in flight** pays the same two branches it paid at M7 — the override sits behind the
-`slowSignalRead` global that already gated snapshot capture and `affects()`, and `_override` is `null`
-on every node `signal()` creates. While **any lane is in flight**, that global is non-zero, so every
-signal read in the program takes the out-of-line slow path, including signals no lane has ever
-touched: measured at **1.70x** (2,000,000 reads over 128 unrelated plain signals, 0.74 → 1.25 ns a
-read, best of 9 in Bun; it returns to 0.74 ns once the lane retires). The gate is global rather than
-per-node because the ordinary read must stay small enough to inline, which is the same trade snapshot
-capture already made. An action whose promise never settles pins the program on that path for good:
-`completeAction` is the only caller of `retireLane`.
-
-**Pinned by.** `packages/core/src/actions.test.ts` (`A5: overrides, lanes and the read surface`,
-sixteen claims, plus the three store-form claims in `optimisticStore`). The compiler side is
-`form-action` and `sem-form-action-slot` for B8's slot, and `sem-async-read-mode` and
-`read-mode-binding` for clause (f)'s read surface. The forward reference to a
-`sem-async-optimistic-lane` fixture is dropped, and the claim it rested on — that A5 is "entirely
-runtime behaviour, since there is no transition API to emit" — was half wrong. There is still no
-transition API to emit (§12's M11 table enumerates why), and clause (f) is a compiler surface all
-the same: `isPending` and `latest` invoke their arguments, and a classifier that does not know it
-binds the reference's own documented example by value.
 
 ### A6 — reveal ordering is a slot contract, and a nested group is ONE composite slot
 
@@ -2589,8 +2367,8 @@ stream's first answer rather than for a producer that may never finish.
 **The iterator is CLOSED by disposal and by supersession**, through `iterator.return()` — which is
 what runs a generator's own `finally` and what stops an endless producer. Supersession closes the
 old stream when its replacement is INSTALLED, not when its next step happens to resolve, or an
-interval-driven producer keeps running until it next yields. This is A1 (cancellation is structural)
-reaching a stream through the only handle it has.
+interval-driven producer keeps running until it next yields. Cancellation is structural, and this is
+it reaching a stream through the only handle it has.
 
 **A bare `IteratorResult` from `next()` is assimilated, not awaited as a thenable.** `for await`
 unwraps whatever `next()` returns, and a producer with a value already buffered is entitled to skip
@@ -2636,95 +2414,6 @@ restricting the branch to `instanceof Promise` kills all eight, and abandoning t
 first yield kills the three that observe more than one. `sem-async-stream.tsx` drives a stream
 through compiled JSX and a `Loading` boundary, which is the claim procedure 3 makes about the
 boundary rather than about the node.
-
-### A8 — commit #0: a node may be born holding a value, and that window closes once
-
-**Rule.** `loadingValue` on a derived node declares a value the node is BORN with, served until the
-compute's first real answer lands.
-
-**During the window the node is SETTLED in every observable.** A read does not throw, `isPending` is
-false, `latest()` gives the same value a normal read gives, and no `Loading` boundary above it shows
-a fallback. Commit #0 answers the question by declaration, so there is nothing to wait on. First-load
-affordances come from the value itself — a `null` placeholder, a `skeleton: true` field — rather than
-from a boundary.
-
-The mechanism is one omission and not a second state: during the window the node never sets
-`STATUS_PENDING`. That flag is what makes a read throw (R1/A3), what a boundary registers on, and
-what `isPending` reports, so withholding it gives all three at once. The flight still runs and is
-still registered with `settle()`, so a server render still waits for it.
-
-**The window closes on the first ANSWER, whatever the answer is, and never reopens.** A resolved
-value, a synchronous value, a rejection and a synchronous throw all end it. After that the node is
-ordinary: a refetch shows the stale value, `isPending` is true, and a read throws unless it is under
-`latest()`.
-
-**The two states are disjoint**, which is the whole reason the option is worth having and the reason
-every procedure below observes the SECOND flight as well as the first. A guard that covers both is
-`value.skeleton || isPending(value)`.
-
-| | first flight | every later flight |
-|---|---|---|
-| a read | commit #0 | THROWS |
-| `latest()` | commit #0 | the stale value |
-| `isPending` | `false` | `true` |
-| a `Loading` above it | content | keeps stale content |
-
-**Commit #0 is also the compute's first `prev`**, so a `prev`-folding compute folds from it rather
-than from `undefined`.
-
-**An unready SOURCE during the window is not this node's pendingness.** A synchronous `NotReady`
-throw from a dependency leaves commit #0 serving and marks nothing downstream. The read that threw
-has already linked the source, so its settle re-runs this node; nothing else is needed.
-
-**The option's PRESENCE opens the window, not its value.** `undefined` is a legal placeholder, so the
-test is `"loadingValue" in options`.
-
-**Typed strictly as `T`.** To use `null`, declare it in the node's type —
-`computed<User | null>(…, { loadingValue: null })` — so every consumer sees the nullable window
-honestly. A placeholder standing in for real data should carry its own provenance rather than
-impersonate it.
-
-**Falsified by.** Ten procedures.
-
-1. A node with a `loadingValue` over an unsettled promise. The read MUST give commit #0, `isPending`
-   MUST be false and `latest()` MUST agree. *(Fails if the window is a readable kind of pending
-   rather than settled.)*
-2. Settle it, then invalidate it and start a second flight. The read MUST now THROW, `latest()` MUST
-   give the stale value and `isPending` MUST be true. *(Fails if the window never closes — and a node
-   that simply never reports pending passes procedure 1 and fails only here, which is why the
-   disjoint state has to be observed.)*
-3. The same under a `Loading` boundary whose body reads directly. The first frame MUST be content and
-   never the fallback; the second flight MUST keep stale content. *(Fails if the window is invisible
-   to reads but not to the boundary channel.)*
-4. A `prev`-taking compute. The first `prev` MUST be the loading value. *(Fails if the node is born
-   `UNINITIALIZED`, which is also what would make `latest()` throw.)*
-5. A compute reading an unsettled DEPENDENCY. Commit #0 MUST keep serving and `isPending` MUST be
-   false, and the node MUST re-run when the dependency settles. *(Fails if a source's pendingness is
-   reported as this node's; the second half fails if the fix is to swallow the throw without keeping
-   the link.)*
-6. Reject the first flight. The error MUST become the node's. *(Fails if commit #0 covers for a
-   failure forever, which turns a broken first load into a permanent skeleton.)*
-7. `loadingValue: undefined`, against the same compute with no option at all. The first MUST read
-   `undefined` and the second MUST throw. *(Fails on a `!== undefined` test, which would make the
-   documented `null`/`undefined` placeholder unreachable.)*
-8. A SYNCHRONOUS compute with a `loadingValue`. It MUST close the window on its first run and behave
-   ordinarily after. *(Fails if the window survives a compute that was never async, which would make
-   the option a permanent pending-suppressor.)*
-9. Through `resource`: during the first fetch `loading()` MUST be false and `state()` MUST be
-   `"ready"`. *(Fails if the option is reachable only from `computed`, which is not where an
-   application declares a skeleton.)*
-10. The same resource, refetched after it settled. `state()` MUST be `"refreshing"` and `latest()`
-    MUST give the previous value. *(Fails if closing the window is not threaded through the
-    resource's own status channel.)*
-
-**Status.** `HOLDS` since M11. Read out of `solid-js@2.0.0-rc.0`'s `signals.d.ts` (`MemoOptions`)
-and `@solidjs/signals`' `handleAsync`/`parkLoadingWindow`, not from documentation.
-
-**Pinned by.** `packages/core/src/loading-value.test.ts`, whose ten claims are the ten procedures.
-Three mutants were run against it: never closing the window kills procedure 2; publishing
-pendingness during the window kills five; and propagating an unready source kills procedure 5.
-
----
 
 ## 11. H — Hydration
 
@@ -3134,14 +2823,10 @@ green, which is why L1 exists.
 | B5 | property-vs-attribute is a stated rule | P (M5) | `attribute-namespaces`, `bind-value-channel`, `custom-elements`, `property-attrs` |
 | B6 | a user-mutable property is compared against the element | H (M7) | `sem-form-dom-compare`, `bind-family`, `property-attrs`, `dom-prop-static-value` |
 | B7 | a write preserves the selection and the focus | H (M7) | `sem-form-selection-preserved`, `browser-caret-check.ts` |
-| A1 | cancellation is structural | H (M7) | `sem-async-abort-on-dispose`, `async-value` |
-| A2 | staleness by `gen` captured at call time | H (M7) | `sem-async-stale-response` |
 | A3 | `NotReady` is a control signal | H (M7) | `sem-err-notready-passthrough`, `control-flow-await-suspense` |
 | A4 | optimistic state is derived, never restored | H (M7) | `sem-async-optimistic-derived`, `optimistic-signal` |
-| A5 | a transition is a lane on an opt-in value, not a fork of the graph | H (M7b) | `form-action`, `sem-form-action-slot` (B8's slot, M10), `sem-async-read-mode` and `read-mode-binding` (clause (f)'s read surface, M11); all nine falsification procedures run in packages/core/src/actions.test.ts (§14) |
 | A6 | reveal ordering is a slot contract, and a nested group is one composite slot | H (M11) | `sem-reveal-nested-group`, `control-flow-reveal`, `l4/c7-reveal` |
 | A7 | a compute returns a value, any thenable, or an async iterable | H (M11) | `sem-async-stream`, and the eight procedures in packages/core/src/async-source.test.ts |
-| A8 | commit #0: a node may be born holding a value, and that window closes once | H (M11) | `sem-loading-value`, and the ten procedures in packages/core/src/loading-value.test.ts |
 | B8 | `action` on a `<form>` is decided by the slot, not by the value's shape | H (M10) | `sem-form-action-slot`, `form-action` |
 | H1 | hydration is claim-based | **H** (with registry) | node-identity census (corpus-wide), with a registry of the shortfalls |
 | H2 | the wire carries what recovery needs; the key is a dev-only axis | **H** (M7b) | the branch-key comparison in both builds + L6's two tables + the three-wire byte measurement |
@@ -3170,7 +2855,7 @@ being a sentence in this document. Corpus coverage moves 32 → 37 of 88.
 
 **29 violated rules is the finding.** They are not 29 independent bugs; they cluster. O2 and its
 consequences (O2.1, X1, C6, C8, E2.1) are one defect with six faces — children evaluated at the call
-site. O5 and its consequences (O3.7, B4, A1) are one defect with four — nothing owns anything, so
+site. O5 and its consequences (O3.7, B4) are one defect with three faces — nothing owns anything, so
 nothing can be disposed. B1, B3 and R6 are the classify-pass exclusions. That three defects can
 present as twenty-nine violated rules is the argument for writing the rules down: each face was
 individually plausible and none of them was individually wrong *against anything*.
@@ -3219,9 +2904,8 @@ absence is not.
 **Reactivity (4).** `sem-react-untrack-keeps-owner`, `sem-react-component-body-untracked`,
 `sem-react-apply-is-untracked`, `sem-react-cell-neutrality`.
 
-**Async (3).** `sem-async-abort-on-dispose`, `sem-async-stale-response`, `sem-async-optimistic-lane`
-(A5, added at M7b: an action overriding a value a template reads, driving A5's nine procedures through
-compiled JSX rather than through `optimistic` called by hand).
+**Async (2).** `sem-async-optimistic-derived` (an action's optimistic write over a value a template
+reads, driven through compiled JSX) and `sem-async-stream`.
 
 **Hydration (0).** The five planned fixtures were not written, and the rules were struck off anyway —
 by CHANNELS, which is §14.2's category and the honest one for this family. A single fixture cannot
@@ -3267,7 +2951,6 @@ Recorded so that "unpinned" does not silently mean "unenforced".
 | K8 | a lint rule: no module-level mutable insertion state in `packages/core` |
 | R5 | the ablation benchmark in `packages/core`, with correctness assertions per variant |
 | R8 | `packages/core/src/signals.test.ts` "propagation cost in graph depth" — ms per layer at 800 layers against ms per layer at 100, which FAILS on the pre-fix build — with `eleven-cases.ts`'s twelfth case (`chain(500)`) and the `__jrbDepth` sweep in `packages/benchmark/src/tier2/jrb.ts` as the Tier-1 and Tier-2 channels. The rule's observable form is a COST, so a compiler fixture cannot reach it: emission is byte-identical either side of the fix, which is exactly why the defect survived 110 fixtures and eleven reactivity cases. |
-| A5 | `packages/core/src/actions.test.ts`, which runs all nine of A5's falsification procedures, and remains the discriminating channel for eight of them. **The claim that there is no transition API for the compiler to emit was withdrawn at M10**: `<form action={fn}>` is one (B8), and `form-action.tsx` is the corpus fixture that reaches an action through compiled JSX. Driven in a real browser and sampled per microtask across one submit, it observes clauses (d) and (e) and procedure 7 as a sequence — the guess live in the override, `commit` writing the answer underneath it, the lane retiring onto a value that is already right. The forward reference to a `sem-async-optimistic-lane` fixture was never built and is dropped. **M11 withdraws the other half of the same claim.** Clause (f)'s READ SURFACE is a compiler surface too: `isPending(fn)` and `latest(fn)` invoke their argument, so the tracked read happens inside the callee and a classifier that does not know them sees nothing reactive at the site. `class={{ stale: isPending(user) }}` — the reference's own documented example — bound BY VALUE and was applied once at construction. `read-mode-binding` pins the emission and `sem-async-read-mode` pins the behaviour, and A5 is struck off `unpinned-rules.ts`. |
 
 ---
 

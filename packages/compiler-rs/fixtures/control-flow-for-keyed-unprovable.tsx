@@ -1,6 +1,6 @@
-import { For, signal } from "@barqjs/core"
+import { For, createSignal } from "@barqjs/core"
 
-export const rows = signal([
+export const [rows, setRows] = createSignal([
   { id: 1, text: "alpha" },
   { id: 2, text: "beta" },
 ])
@@ -27,11 +27,11 @@ export default function ControlFlowForKeyedUnprovable() {
 
 export const steps = [
   () =>
-    rows.set([
+    setRows([
       { id: 1, text: "ALPHA" },
       { id: 2, text: "BETA" },
     ]),
-  () => rows.set([{ id: 2, text: "BETA" }]),
+  () => setRows([{ id: 2, text: "BETA" }]),
 ]
 
 export const optimality = {

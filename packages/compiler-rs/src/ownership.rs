@@ -591,10 +591,9 @@ impl<'a, 'p> Builder<'a, 'p, '_> {
         // exactly one shape: a component whose body forwards `props.children`
         // into a construct that DOES own — the provider wrapper.
         let mut children_owner = None;
-        // A LOADING boundary owns two scopes, so a prop of it can belong to
-        // either: its `fallback` is built under the boundary's own scope —
-        // `loadingBoundary` builds `shown` there, beside the collector — and
-        // everything else belongs to the content instance.
+        // A LOADING boundary owns a scope of its own, and each of its two arms
+        // is an instance below it: the content is one, and the `fallback` is
+        // another, built when it is shown and disposed when it leaves.
         let mut outer: Option<u32> = None;
         let inner = match self.classify(name) {
             Tag::Intrinsic => owner,
@@ -604,22 +603,11 @@ impl<'a, 'p> Builder<'a, 'p, '_> {
             // activation. A node here made the static tree claim a scope the
             // runtime has never had and never will.
             Tag::Flow(Flow::Match, _) => owner,
-            // A LOADING boundary is TWO scopes, and the reason is O2 rather
-            // than bookkeeping. The outer one is the boundary's own, entered at
-            // call time: it holds the pending collector, the reveal
-            // registration and the mode effects, all of which have to outlive
-            // any one build. The inner one is the CONTENT INSTANCE, and O2 says
-            // each activation gets a fresh one — a revalidation is an
-            // activation, so the body's scope is per-build.
-            //
-            // Until M10 `loadingBoundary` had only the outer one and rebuilt
-            // the body into it, which is why the trace was one step shallower
-            // than this. It was also the defect: nested regions under a
-            // rebuilt body were never disposed, and the node list the boundary
-            // removed instead was a snapshot that a nested swap made wrong in
-            // both directions — it named nodes that were gone and omitted the
-            // ones that were there, so a revalidation left the nested arm in
-            // the document and inserted a second copy beside it.
+            // A LOADING boundary is a scope with an instance below it, and the
+            // reason is O2 rather than bookkeeping. The outer one is the
+            // boundary's own: it holds what has to outlive any one build. The
+            // inner one is the CONTENT INSTANCE, and O2 says each activation
+            // gets a fresh one.
             Tag::Flow(Flow::Loading, label) => {
                 let boundary = self.tree.push(
                     owner,
@@ -670,11 +658,18 @@ impl<'a, 'p> Builder<'a, 'p, '_> {
             let inner = match (&attribute.name, outer) {
                 // The fallback is the boundary's, not the content's: it is what
                 // stands at the position while the content is not there, so it
-                // cannot be owned by the instance that is missing.
+                // cannot be owned by the instance that is missing. It is an
+                // instance of its own below the boundary.
                 (oxc::ast::ast::JSXAttributeName::Identifier(name), Some(outer))
                     if name.name == "fallback" =>
                 {
-                    outer
+                    self.tree.push(
+                        outer,
+                        OwnKind::Branch,
+                        "Loading.fallback".into(),
+                        element.span,
+                        self.module,
+                    )
                 }
                 _ => inner,
             };

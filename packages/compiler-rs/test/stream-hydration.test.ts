@@ -128,15 +128,17 @@ async function streamSource(name: string, source: string): Promise<StreamResult>
   const claim = reuse(before, container);
   const report = core.hydrate.report;
   const hydratedShape = shape(container);
+  // Out of the document before the cold page goes in: both carry the same ids,
+  // and a portal aimed at `#portal-target` mounts into the first one it finds.
+  dispose();
+  container.remove();
 
   const cold = host("");
   core.resetChildIds();
   const rendered = core.render(compiled.dom.default as never, cold);
   const coldShape = shape(cold);
 
-  dispose();
   rendered();
-  container.remove();
   cold.remove();
 
   return {
@@ -279,10 +281,12 @@ describe("L5-S the streaming mechanism itself", () => {
       });
 
       // 1. CONVERGENCE — the assembled page IS the buffered page.
-      expect({ name, shape: result.streamedShape }).toEqual({
-        name,
-        shape: result.bufferedShape,
-      });
+      expect<{ name: string; shape: string | null }>({ name, shape: result.streamedShape }).toEqual(
+        {
+          name,
+          shape: result.bufferedShape,
+        },
+      );
 
       // The fallback is gone and the settled content is in: a convergence check
       // against a buffered render that ALSO failed would pass on two identical

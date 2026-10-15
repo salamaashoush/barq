@@ -232,11 +232,29 @@ export const WRAPPER_GATE_FIXTURE = "own-provider-wrapper";
  * CONTROL and contributes none: `determined` moving in step with `clones` is
  * what says the channel still resolves every one of them, and a static class
  * staying static is what says the fix did not simply wrap every attribute.
+ *
+ * The engine becoming `@solidjs/signals` takes 277 effects to 251 and 415
+ * scopes to 416, and leaves the fixtures, clones, determined and unattributed
+ * columns exactly where they were, which is the assertion: every template is
+ * still instantiated under the scope the compiler placed it under. An effect
+ * here is an `own` event, and one is raised by a render effect, by a memo and
+ * by a boundary's content computation. A list, a reveal group and a boundary's
+ * own switch are the engine's nodes now and raise none, where each was an
+ * effect the runtime allocated. The scope column nets one more: a `Loading`
+ * opens a scope of its own and gives its fallback a branch, and a boundary's
+ * content runs under the engine's node instead of a scope opened for it.
+ *
+ * Then 251 to 252: `control-flow-errored-loading`'s `{error().message}` is a
+ * member read off an opaque call, which is a live hole now and was a value
+ * applied once.
+ *
+ * Then 252 to 250: a Block handed to a hole is built once and placed rather
+ * than wrapped in an effect that had nothing to follow.
  */
 export const OWNERSHIP_REACH: Readonly<Record<string, number>> = Object.freeze({
   fixtures: 144,
-  scopes: 415,
-  effects: 277,
+  scopes: 416,
+  effects: 275,
   clones: 320,
   determined: 318,
   unattributed: 1,

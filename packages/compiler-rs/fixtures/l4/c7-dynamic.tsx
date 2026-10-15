@@ -9,11 +9,11 @@
  * region are then the same thing, so `rebuilds` says something exact about every
  * element in the frame rather than about a subset a class cannot name.
  */
-import { Dynamic, signal } from "@barqjs/core"
+import { Dynamic, createSignal } from "@barqjs/core"
 
 export const log: string[] = []
 
-export const tag = signal<"span" | "b">("span")
+export const [tag, setTag] = createSignal<"span" | "b">("span")
 
 export default function C7Dynamic() {
   return (
@@ -26,7 +26,7 @@ export default function C7Dynamic() {
   )
 }
 
-export const steps = [() => tag.set("b"), () => tag.set("span")]
+export const steps = [() => setTag("b"), () => setTag("span")]
 
 export const metamorphic = {
   why: "the element type changes, so the element itself cannot survive a key change",

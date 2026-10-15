@@ -1,6 +1,6 @@
-import { isPending, latest, optimistic } from "@barqjs/core"
+import { action, createOptimistic, isPending, latest } from "@barqjs/core"
 
-export const guess = optimistic("a")
+export const [guess, setGuess] = createOptimistic("a")
 
 /** A module constant, so the control below is provably static. */
 const flagIsSet = false
@@ -40,7 +40,17 @@ export default function ReadModeBinding() {
   )
 }
 
-export const steps = [() => guess.set("b")]
+/**
+ * An optimistic write is a guess over an action that is still running, so the
+ * step starts one and leaves it open: the guess shows, and `isPending` says an
+ * answer is coming.
+ */
+const hold = action(function* () {
+  setGuess("b")
+  yield new Promise<void>(() => {})
+})
+
+export const steps = [() => void hold()]
 
 export const optimality = {
   target: 1,

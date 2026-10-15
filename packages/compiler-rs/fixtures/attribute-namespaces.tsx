@@ -1,8 +1,8 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const rows = signal(2)
-export const compact = signal(true)
-export const beeps = signal(0)
+export const [rows, setRows] = createSignal(2)
+export const [compact, setCompact] = createSignal(true)
+export const [beeps, setBeeps] = createSignal(0)
 
 let grid: Element | null = null
 
@@ -31,7 +31,7 @@ export default function AttributeNamespaces() {
       />
       <button
         type="button"
-        on:my-beep={() => beeps.set(beeps() + 1)}
+        on:my-beep={() => setBeeps(beeps() + 1)}
         data-beeps={() => String(beeps())}
       >
         beep
@@ -41,8 +41,8 @@ export default function AttributeNamespaces() {
 }
 
 export const steps = [
-  () => rows.set(5),
-  () => compact.set(false),
+  () => setRows(5),
+  () => setCompact(false),
   () => grid?.setAttribute("data-rows", String((grid as unknown as { rows?: unknown }).rows)),
 ]
 

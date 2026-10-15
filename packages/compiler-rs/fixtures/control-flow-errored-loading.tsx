@@ -1,6 +1,6 @@
-import { Errored, Loading, Reveal, signal } from "@barqjs/core"
+import { Errored, Loading, Reveal, createSignal } from "@barqjs/core"
 
-export const failing = signal(true)
+export const [failing, setFailing] = createSignal(true)
 
 function Flaky() {
   if (failing()) throw new Error("nope")
@@ -27,7 +27,7 @@ export default function ControlFlowErroredLoading() {
 
 export const events = [
   (root: HTMLElement) => {
-    failing.set(false)
+    setFailing(false)
     root.querySelector("button")?.click()
   },
 ]

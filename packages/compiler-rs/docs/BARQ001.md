@@ -1,83 +1,55 @@
-# BARQ001 — an accessor is coerced to a value instead of being called
+# BARQ001: An accessor is used as a value without being called
 
-**Level:** warning · **Rule family:** D1 · [all codes](README.md)
+**Level:** warning · [all codes](README.md)
 
-## What fires
+## Message
 
-A binding the compiler resolved to an accessor — `signal()`, `computed()`, `useMemo()`,
-`useState()[0]`, `createAsync()` — appearing as an operand in a position that turns it into
-a value:
+> `count` is an accessor, and here the function itself is used as the value. In a string
+> it prints its own source text and in arithmetic it gives `NaN`. Call it: `count()`.
 
-| position | example |
-| --- | --- |
-| template literal, untagged | `` `total: ${count}` `` |
-| arithmetic, concatenation, relational | `count + ""` · `"x" + count` · `count * 2` · `count < 5` |
-| unary `-` `+` `~` | `-count` · `+count` · `~count` |
+## Failing example
 
-```jsx
-const count = signal(0)
+```tsx
+import { createSignal } from "@barqjs/core";
 
-<p>{`total: ${count}`}</p>   // BARQ001
+const [count] = createSignal(0);
+
+export const Total = () => <p>{`total: ${count}`}</p>;
 ```
 
-`` `${count}` `` renders the accessor's **own source text** into the DOM. `-count` is
-`NaN`. Neither throws, so nothing tells you.
+## Fixed example
 
-## The fix
+```tsx
+import { createSignal } from "@barqjs/core";
 
-Call it.
+const [count] = createSignal(0);
 
-```jsx
-<p>{`total: ${count()}`}</p>
+export const Total = () => <p>{`total: ${count()}`}</p>;
 ```
 
-## Why this is not TypeScript's job
+## Why this rule exists
 
-`tsc --strict` already reports `count * 2` (TS2362), `count > 1` (TS2365), `count === 5`
-(TS2367) and `count.toFixed(2)` (TS2339) against barq's `Signal<T>`. What it reports
-**zero** errors on, verified against this repo's own tsc:
+An accessor is a function, and JavaScript turns a function into a string or a number
+without complaint: `` `${count}` `` puts the accessor's source text on the page and
+`count * 2` is `NaN`. Neither throws, and TypeScript accepts the string forms. The same
+applies to a prop, which is a Cell: write `props.count()`, not `props.count`, inside a
+string or a calculation.
 
-`` `${count}` `` · `count + ""` · `"x" + count` · `-count` · `+count` · `String(count)` ·
-`JSON.stringify({count})`
+Passing the accessor itself to JSX is correct and is not reported: `<p>{count}</p>` and
+`<div id={count}>` both stay up to date.
 
-That coercion family, plus every position above for JavaScript users, is what this code is
-for.
+## Silencing one line
 
-## What does not fire, and why
+```tsx
+import { createSignal } from "@barqjs/core";
 
-- `<p>{count}</p>` and `<div id={count}>` — **correct barq code.** `insert()` does
-  `if (typeof value === "function") { renderEffect(…) }` (`dom.ts:954`) and the attribute
-  path does the same, so a function value in either position is the fine-grained path.
-  eslint-plugin-solid's `badSignal` has a JSX arm; porting it would make this rule fire on
-  the framework's own idiom in the first fixture anyone writes.
-- `count === other`, `count !== other`, `count == null` — **identity, not coercion.**
-  Filtering a collection of accessors by reference — `all.filter((s) => s !== count)` — is
-  correct code, and the fix this page prints would silently turn an identity comparison into
-  a value comparison. `vue/no-ref-as-operand` fires here (its selector is a bare
-  `BinaryExpression>Identifier` with no operator narrowing); dropping the four equality
-  operators is a deliberate divergence, and it is the whole of the divergence.
-- `count instanceof X`, `"k" in count` — a function is a legitimate operand of both.
-- `` tag`${count}` `` — a tagged template hands the tag the raw value and the tag decides.
-- `props.count + 1` — props lower to getters, so a props member read is correct in every
-  position. The rule keys on the **binding**, never on "a reactive read".
-- `import { count } from "./barrel"` — invisible; P0 Bind is module-scoped. See
-  [the index](README.md#what-these-rules-deliberately-cannot-see).
+const [count] = createSignal(0);
 
-## Silencing it
-
-```jsx
-{/* barq-ignore-next-line BARQ001 (the debug panel wants the source text) */}
-<pre>{`${count}`}</pre>
+// barq-ignore-next-line BARQ001 (the debug panel shows the source text)
+export const source = `${count}`;
 ```
 
-Inside JSX the directive has to be a JSX comment: a `//` line between children is text, and
-it would be baked into the template. In statement position, `// barq-ignore-next-line …`.
-
-## Prior art
-
-The position allowlist is [`vue/no-ref-as-operand`][vue]'s. That rule has a handful of
-known issues where `solid/reactivity` has ~25 open false-positive reports, and the reason
-is the *shape* of the question: it reports only where no correct program could put the
-value, rather than inferring where a value "can never re-run".
-
-[vue]: https://eslint.vuejs.org/rules/no-ref-as-operand.html
+The reason in parentheses is required and has to be at least 10 characters. Between JSX
+children, write the comment as `{/* barq-ignore-next-line BARQ001 (reason) */}` on the line
+above: a `//` line there is text and would be rendered on the page. To change the level
+for the whole project, see [the index](README.md#changing-a-level-for-the-whole-project).

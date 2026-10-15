@@ -278,7 +278,7 @@ describe("dual render: the compiled SSR string", () => {
       // channel resolution/the event channel gave `ref` and the listener their own entry points, so the
       // dropped opcodes are named by the CALL rather than by a string argument.
       const clientOnly =
-        /\$\$[a-z]+\s*=/.test(stripLiterals(code)) ||
+        /__bq(s|_[a-z]+)\s*=/.test(stripLiterals(code)) ||
         /_\$+(ref|listen|bindEvent|bindValue)\(/.test(code);
       if (!clientOnly) unexplained.push(name);
     }
@@ -1167,7 +1167,7 @@ describe("SSR emit shape", () => {
       "probe.tsx",
       { ssr: true },
     );
-    expect(code).not.toContain("$$click");
+    expect(code).not.toContain("__bq_click");
     expect(code).not.toContain("addEventListener");
     expect(code).toMatch(/`<button class="btn">Bump<\/button>`/);
   });

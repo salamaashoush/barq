@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const label = signal("mid")
+export const [label, setLabel] = createSignal("mid")
 
 /**
  * A component whose ROOT is a fragment. `template()` returns `content.firstChild`
@@ -18,7 +18,7 @@ export default function FragmentRoot() {
   )
 }
 
-export const steps = [() => label.set("changed")]
+export const steps = [() => setLabel("changed")]
 
 export const optimality = {
   target: 2,

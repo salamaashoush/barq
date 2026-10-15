@@ -1,6 +1,6 @@
-import { Show, signal } from "@barqjs/core"
+import { Show, createSignal } from "@barqjs/core"
 
-export const on = signal(true)
+export const [on, setOn] = createSignal(true)
 
 /**
  * A flow component whose children AND fallback are multi-node fragments, driven
@@ -40,7 +40,7 @@ export default function ControlFlowShowFragmentBody() {
   )
 }
 
-export const steps = [() => on.set(false), () => on.set(true), () => on.set(false)]
+export const steps = [() => setOn(false), () => setOn(true), () => setOn(false)]
 
 export const optimality = {
   target: 8,

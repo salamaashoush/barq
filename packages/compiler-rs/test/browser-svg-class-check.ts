@@ -23,8 +23,8 @@ import { withChrome, type Page } from "./chrome.ts";
 import { compileFixture } from "./harness.ts";
 
 const PROBE = `
-import Component, { active } from "./fixture.js"
-import { scope, flush, render, setProp } from "@barqjs/core"
+import Component, { setActive } from "./fixture.js"
+import { flush, render, setProp } from "@barqjs/core"
 
 const SVG = "http://www.w3.org/2000/svg"
 const result = { probes: {}, fixture: {} }
@@ -45,30 +45,28 @@ try {
 
 // The runtime's two SVG branches, driven directly.
 const one = document.createElementNS(SVG, "circle")
-setProp(null, one, "class", "dot dot--on")
+setProp(one, "class", "dot dot--on")
 result.probes.setPropClass = one.getAttribute("class")
 
 const two = document.createElementNS(SVG, "circle")
 two.setAttribute("class", "keep")
-setProp(null, two, "classList", { ring: true, hidden: false })
+setProp(two, "classList", { ring: true, hidden: false })
 result.probes.setPropClassList = two.getAttribute("class")
 
 // The compiled fixture, rendered and driven.
 const root = document.createElement("div")
 document.body.appendChild(root)
-scope((_dispose, scope) => {
-  render((s) => Component(s), root)
-}, true)
+render(Component, root)
 flush()
 
 const circle = root.querySelector("circle")
 result.fixture.initial = circle.getAttribute("class")
 result.fixture.initialStrokeWidth = circle.getAttribute("stroke-width")
-active.set(true)
+setActive(true)
 flush()
 result.fixture.on = circle.getAttribute("class")
 result.fixture.onStrokeWidth = circle.getAttribute("stroke-width")
-active.set(false)
+setActive(false)
 flush()
 result.fixture.off = circle.getAttribute("class")
 

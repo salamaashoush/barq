@@ -1,8 +1,16 @@
 import { existsSync, readFileSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
-import { dirname, join } from "node:path";
-import type { Plugin, TransformResult, ViteDevServer } from "vite";
+import { dirname, join, resolve } from "node:path";
+
+import { frameAround, overlayModule, type OverlayFrame } from "./overlay.ts";
+import {
+  type Plugin,
+  type TransformResult,
+  type ViteDevServer,
+  defaultClientConditions,
+  defaultServerConditions,
+} from "vite";
 
 const NATIVE_PACKAGE = "@barqjs/compiler-rs";
 
@@ -30,6 +38,8 @@ export interface BarqDiagnostic {
   pos: number;
   end: number;
   docs?: string;
+  /** The source lines around it, added by the plugin for the overlay. */
+  frame?: OverlayFrame;
 }
 
 export interface BarqTemplateLabel {
@@ -199,6 +209,13 @@ export interface BarqCompilerOptions {
    * Vite's own mode when left unset.
    */
   dev?: boolean;
+
+  /**
+   * Replace an edited component in place on the development server, keeping
+   * the state of everything above it. On by default while serving; the server
+   * half and a production build never get it.
+   */
+  hmr?: boolean;
 
   /**
    * Run the source-level rules (BARQ001-BARQ003, BARQ005). Defaults to `dev`.
@@ -465,12 +482,15 @@ export interface BarqVitePluginOptions extends BarqCompilerOptions {
   cssMode?: "asset" | "inline";
 
   /**
-   * The in-page diagnostics panel, in dev. Deliberately not Vite's own overlay:
-   * `ErrorOverlay` takes `ErrorPayload['err']`, has one red border and no
-   * warning payload type at all. `"warning"` opens the panel on the first
-   * warning or error, `true` opens it on anything including notes, `"error"`
-   * only on an error, `false` turns it off.
-   * @default "warning"
+   * The in-page diagnostics overlay, in dev: compiler diagnostics with the
+   * source they are about, runtime diagnostics, and errors nothing caught.
+   * Deliberately not Vite's own overlay, which takes one error, has no warning
+   * payload type at all and covers the page.
+   *
+   * It is a pill in the corner that counts what there is. The value says what
+   * opens it without being asked: `"error"` an error, `"warning"` a warning or
+   * an error, `true` anything including a note. `false` turns it off.
+   * @default "error"
    */
   overlay?: boolean | "warning" | "error";
 }
@@ -608,7 +628,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
   const {
     include = [".tsx", ".jsx"],
     exclude = [/node_modules/],
-    overlay = "warning",
+    overlay = "error",
     cssMode,
     resolveImports = true,
     compilePackages = true,
@@ -630,6 +650,8 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
   // all, because nothing else in the chain sets it.
   let dev = compilerOptions.dev;
   let server: ViteDevServer | undefined;
+  let serving = false;
+  let root = process.cwd();
 
   // Per module, so a file that stops reporting clears its own rows. A terminal
   // warning fires once per transform and is gone after a reload; this is the
@@ -637,6 +659,16 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
   const byModule = new Map<string, BarqDiagnostic[]>();
   const labelsByModule = new Map<string, BarqTemplateLabel[]>();
   const cssByModule = new Map<string, string>();
+  /**
+   * Every stylesheet id a module has registered rules under in `"inline"` mode.
+   *
+   * The registry replaces an entry only when it is registered again, so a
+   * module whose rules are all gone has to say so or its last version's rules
+   * stay on the page. Never forgotten once added: the client's registry and
+   * the server's are two, each transform pass speaks to one of them, and
+   * registering nothing twice costs a line.
+   */
+  const inlined = new Set<string>();
 
   function publish(): void {
     if (!server) return;
@@ -657,6 +689,8 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
 
     config(config: { root?: string; resolve?: { noExternal?: unknown } }, env) {
       if (dev === undefined) dev = env.command === "serve" || env.mode !== "production";
+      serving = env.command === "serve";
+      root = resolve(config.root ?? process.cwd());
 
       // A barq package ships SOURCE, so Vite must not externalise it: node
       // would be handed the `.ts` the condition resolved to and refuse it.
@@ -682,11 +716,21 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
      * compile it for themselves, so the condition goes in front of Vite's own
      * defaults on both. Putting it on the client alone is how a library ends up
      * pre-compiled for the DOM and served to a server render.
+     *
+     * In front of the defaults, which therefore have to be NAMED: Vite applies
+     * its own list only where none was given, so a list holding `barq` alone
+     * is the whole list. `development` goes with them, and with it the build
+     * of every dependency that publishes one for `vite dev`.
      */
-    configEnvironment(_name: string, config: { resolve?: { conditions?: string[] } }) {
+    configEnvironment(
+      name: string,
+      config: { consumer?: "client" | "server"; resolve?: { conditions?: string[] } },
+    ) {
       if (!compilePackages) return;
       config.resolve ??= {};
-      config.resolve.conditions = [BARQ_CONDITION, ...(config.resolve.conditions ?? [])];
+      const consumer = config.consumer ?? (name === "client" ? "client" : "server");
+      const defaults = consumer === "client" ? defaultClientConditions : defaultServerConditions;
+      config.resolve.conditions = [BARQ_CONDITION, ...(config.resolve.conditions ?? defaults)];
     },
 
     // A server-function id is derived relative to the project root, so an id
@@ -712,7 +756,12 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
     },
 
     load(id) {
-      if (id === RESOLVED_CLIENT_ID) return panelClient();
+      if (id === RESOLVED_CLIENT_ID) {
+        return overlayModule(
+          { event: DIAGNOSTICS_EVENT, ready: "barq:diagnostics:ready", root },
+          compilerOptions.moduleSource ?? "@barqjs/core",
+        );
+      }
       if (!id.includes(CSS_QUERY)) return null;
       return cssByModule.get(id) ?? "";
     },
@@ -800,6 +849,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
           importer?: string,
         ): Promise<{ id: string; external?: boolean | string } | null>;
         addWatchFile?(file: string): void;
+        parse?(code: string, options?: { lang?: "ts" }): unknown;
       },
       code: string,
       id: string,
@@ -838,7 +888,12 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       // alone would skip exactly the file the CSS is in. Naming the package is
       // the cheap gate; the compiler then resolves the tag by symbol.
       const shouldTransform = include.some((ext) => path.endsWith(ext)) || code.includes(cssSource);
-      if (!shouldTransform) return null;
+      if (!shouldTransform) {
+        // The package's name was the only reason this module was compiled, and
+        // an edit that takes the last rule out usually takes the import too.
+        if (!inlined.has(stylesheet)) return null;
+        return { code: code + cssRegistrations([[stylesheet, ""]], cssSource), map: null };
+      }
 
       // `node_modules` is excluded by default and a barq package inside it is
       // not: it published SOURCE precisely so this build would compile it, for
@@ -854,9 +909,9 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       const compiler = loadNativeCompiler();
       if (!compiler) {
         throw new Error(
-          `[barq-compiler] ${NATIVE_PACKAGE} could not be loaded: ${nativeLoadError}. ` +
-            `Its native binary is a build artifact — run ` +
-            `\`bun install && bun run --cwd packages/compiler-rs build\`.`,
+          `[barq-compiler] \`${NATIVE_PACKAGE}\` could not be loaded (${nativeLoadError}), so no JSX file can be compiled. ` +
+            `Reinstall dependencies with \`bun install\`. In a checkout of the barq repository, build the native binary with ` +
+            `\`bun run --cwd packages/compiler-rs build\`.`,
         );
       }
 
@@ -1008,7 +1063,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
         result = await compileWithImports(code, id, 6, new Set([id]));
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        throw new Error(`[barq-compiler] Failed to transform ${id}: ${message}`, {
+        throw new Error(`[barq-compiler] \`${id}\` could not be compiled: ${message}`, {
           cause: error,
         });
       }
@@ -1033,8 +1088,17 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
 
       // Only the client pass, or a file compiled twice reports twice.
       if (!transformOptions?.ssr) {
-        if (diagnostics.length > 0) byModule.set(id, diagnostics);
-        else byModule.delete(id);
+        if (diagnostics.length > 0) {
+          byModule.set(
+            id,
+            diagnostics.map((diagnostic) => ({
+              ...diagnostic,
+              frame: frameAround(code, diagnostic.line, diagnostic.endLine),
+            })),
+          );
+        } else {
+          byModule.delete(id);
+        }
         if (result.labels?.length) labelsByModule.set(id, result.labels);
         else labelsByModule.delete(id);
         publish();
@@ -1050,6 +1114,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       if (result.css != null && result.css !== "") {
         if (mode === "inline") {
           inline.push([stylesheet, result.css]);
+          inlined.add(stylesheet);
         } else {
           const changed = cssByModule.get(stylesheet) !== result.css;
           cssByModule.set(stylesheet, result.css);
@@ -1061,6 +1126,8 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
             if (module) server.moduleGraph.invalidateModule(module);
           }
         }
+      } else if (mode === "inline") {
+        if (inlined.has(stylesheet)) inline.push([stylesheet, ""]);
       } else if (cssByModule.delete(stylesheet) && server !== undefined) {
         const module = server.moduleGraph.getModuleById(stylesheet);
         if (module) server.moduleGraph.invalidateModule(module);
@@ -1083,6 +1150,36 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
 
       emitted += cssRegistrations(inline, cssSource);
 
+      // The client half of an application's own module, while serving. A
+      // dependency's components are read as data by the library that owns
+      // them, and the server builds each page once.
+      const own = id.split("?", 1)[0] ?? id;
+      if (
+        serving &&
+        forClient &&
+        (compilerOptions.hmr ?? true) &&
+        this.parse !== undefined &&
+        own.startsWith(root) &&
+        !own.includes("/node_modules/")
+      ) {
+        const components = new Set<string>();
+        for (const label of result.labels ?? []) {
+          if (label.component !== undefined) components.add(label.component);
+        }
+        // The compiler leaves the types in for the bundler to erase, so this is
+        // still TypeScript. A module the parser will not take is served as it
+        // is: it reloads the page on an edit, which is what it did before.
+        let program: HotProgram | undefined;
+        try {
+          program = this.parse(emitted, { lang: "ts" }) as HotProgram;
+        } catch {
+          program = undefined;
+        }
+        if (program !== undefined) {
+          emitted = withHotComponents(emitted, componentsIn(program, components), program);
+        }
+      }
+
       return {
         code: emitted,
         map: result.map ? (JSON.parse(result.map) as TransformResult["map"]) : null,
@@ -1091,110 +1188,242 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
   };
 }
 
+interface HotNode {
+  type: string;
+  exportKind?: string;
+  start: number;
+  end: number;
+  kind?: string;
+  id?: { type: string; name: string; start: number; end: number } | null;
+  declaration?: HotNode | null;
+  declarations?: HotNode[];
+  init?: { type: string } | null;
+  source?: unknown;
+  specifiers?: { local: { name: string }; exportKind?: string }[];
+  name?: string;
+}
+
+interface HotProgram {
+  body: HotNode[];
+}
+
 /**
- * The second channel. A terminal warning fires exactly once per transform and is
- * gone after a reload — three successive page loads produce one occurrence — and
- * `logLevel: 'error'` silences plugin warnings entirely, in both modes. So the
- * panel is fed by a custom HMR event and owes Vite's logger nothing.
+ * Hand each of a module's components out through `hot`, and let the module
+ * take its own updates when components are all it exports.
  *
- * Deliberately not Vite's own overlay: `ErrorOverlay` takes `ErrorPayload['err']`
- * and has one red border, with no warning payload type at all.
+ * Each rebinding is written on the line its declaration ends on, a `const`
+ * becomes a `let` of the same width, and the import goes last, so no position
+ * the compiler's source map knows about moves.
+ *
+ * A module that also exports a store or a constant does NOT accept itself: the
+ * modules that import that value would go on holding the old one while the
+ * components here closed over the new. The update travels to its importers
+ * instead, and stops at the first one that is components only.
  */
-function panelClient(): string {
-  return `
-const RANK = { note: 0, warning: 1, error: 2 }
-const COLOR = { note: "#6b7cff", warning: "#e0a336", error: "#e05561" }
-let open = false
-let seen = ""
-let state = { diagnostics: [], labels: {}, overlay: "warning" }
+export function withHotComponents(
+  code: string,
+  components: ReadonlySet<string>,
+  program: HotProgram,
+): string {
+  const edits: [start: number, end: number, text: string][] = [];
+  let wrapped = 0;
+  let exported = 0;
+  let onlyComponents = true;
+  const signatureOf = hotSignatures(code, components, program);
+  const rebind = (name: string, at: number): void => {
+    wrapped++;
+    const signature = JSON.stringify(signatureOf(name));
+    edits.push([
+      at,
+      at,
+      ` if (import.meta.hot) ${name} = __barq_hot(import.meta.hot, ${JSON.stringify(name)}, ${name}, ${signature});`,
+    ]);
+  };
 
-const host = document.createElement("div")
-host.id = "barq-diagnostics"
-const root = host.attachShadow({ mode: "open" })
-const style = document.createElement("style")
-style.textContent = \`
-:host { all: initial }
-.bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 2147483646;
-  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
-  background: #16181d; color: #d7dae0; border-top: 1px solid #2b2f38 }
-.bar button { all: unset; cursor: pointer; padding: 6px 10px; display: block; width: 100% ;
-  box-sizing: border-box; text-align: left }
-.list { max-height: 45vh; overflow: auto; border-top: 1px solid #2b2f38 }
-.row { padding: 8px 10px; border-bottom: 1px solid #21242b; display: grid; gap: 2px }
-.row a { color: inherit }
-.code { font-weight: 700 }
-.where { opacity: .65 }
-.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px }
-\`
-root.append(style)
-const bar = document.createElement("div")
-bar.className = "bar"
-root.append(bar)
-
-function render() {
-  const items = state.diagnostics
-  if (items.length === 0) { host.remove(); return }
-  if (!host.isConnected) document.body.append(host)
-  const counts = { note: 0, warning: 0, error: 0 }
-  for (const item of items) counts[item.severity]++
-  const worst = items.reduce((a, b) => (RANK[b.severity] > RANK[a.severity] ? b : a))
-  bar.textContent = ""
-  const toggle = document.createElement("button")
-  const dot = document.createElement("span")
-  dot.className = "dot"
-  dot.style.background = COLOR[worst.severity]
-  toggle.append(dot, document.createTextNode(
-    "barq — " + counts.error + " error, " + counts.warning + " warning, " +
-    counts.note + " note" + (open ? "  ▾" : "  ▸")))
-  toggle.onclick = () => { open = !open; render() }
-  bar.append(toggle)
-  if (!open) return
-  const list = document.createElement("div")
-  list.className = "list"
-  for (const item of items) {
-    const row = document.createElement("div")
-    row.className = "row"
-    const head = document.createElement("div")
-    const badge = document.createElement("span")
-    badge.className = "code"
-    badge.style.color = COLOR[item.severity]
-    badge.textContent = (item.code ? item.code + " " : "") + item.severity
-    head.append(badge)
-    const where = document.createElement("span")
-    where.className = "where"
-    where.textContent = "  " + item.file + ":" + item.line + ":" + item.column
-    head.append(where)
-    row.append(head, document.createTextNode(item.message))
-    if (item.docs) {
-      const docs = document.createElement("div")
-      docs.className = "where"
-      docs.textContent = item.docs
-      row.append(docs)
+  for (const statement of program.body) {
+    let declaration: HotNode | null | undefined = statement;
+    let isExport = false;
+    // A type is gone before the module runs: exporting one changes nothing
+    // about what the module hands out.
+    if (statement.exportKind === "type" || ERASED.has(statement.declaration?.type ?? "")) continue;
+    if (statement.type === "ExportAllDeclaration") {
+      exported++;
+      onlyComponents = false;
+      continue;
     }
-    list.append(row)
+    if (statement.type === "ExportNamedDeclaration") {
+      isExport = true;
+      declaration = statement.declaration;
+      if (declaration === null || declaration === undefined) {
+        for (const specifier of statement.specifiers ?? []) {
+          if (specifier.exportKind === "type") continue;
+          exported++;
+          const local =
+            (statement.source === null || statement.source === undefined) &&
+            components.has(specifier.local.name);
+          if (!local) onlyComponents = false;
+        }
+        continue;
+      }
+    } else if (statement.type === "ExportDefaultDeclaration") {
+      isExport = true;
+      declaration = statement.declaration;
+      if (declaration?.type === "Identifier") {
+        exported++;
+        if (!components.has(declaration.name ?? "")) onlyComponents = false;
+        continue;
+      }
+    }
+    if (declaration === null || declaration === undefined) continue;
+
+    if (declaration.type === "FunctionDeclaration" && declaration.id) {
+      const name = declaration.id.name;
+      if (isExport) exported++;
+      if (components.has(name)) rebind(name, statement.end);
+      else if (isExport) onlyComponents = false;
+      continue;
+    }
+    if (declaration.type === "VariableDeclaration") {
+      let any = false;
+      for (const declarator of declaration.declarations ?? []) {
+        if (isExport) exported++;
+        const name = declarator.id?.type === "Identifier" ? declarator.id.name : undefined;
+        if (name !== undefined && components.has(name)) {
+          any = true;
+          rebind(name, statement.end);
+        } else if (isExport) {
+          onlyComponents = false;
+        }
+      }
+      if (any && declaration.kind === "const") {
+        edits.push([declaration.start, declaration.start + 5, "let  "]);
+      }
+      continue;
+    }
+    if (isExport) {
+      exported++;
+      onlyComponents = false;
+    }
   }
-  bar.append(list)
+  if (wrapped === 0) return code;
+
+  let out = code;
+  for (const [start, end, text] of edits.toSorted((a, b) => b[0] - a[0] || b[1] - a[1])) {
+    out = out.slice(0, start) + text + out.slice(end);
+  }
+  out += `\nimport { hot as __barq_hot } from "@barqjs/core/hot";\n`;
+  if (exported > 0 && onlyComponents) out += `if (import.meta.hot) import.meta.hot.accept();\n`;
+  return out;
 }
 
-if (import.meta.hot) {
-  import.meta.hot.on("${DIAGNOSTICS_EVENT}", (data) => {
-    state = data
-    const threshold = data.overlay === true ? 0 : data.overlay === "error" ? 2 : 1
-    // Auto-open on a CHANGED payload only. \`publish()\` runs on every transform,
-    // so re-opening on every payload made the collapse toggle un-clickable for
-    // as long as the diagnostics stood.
-    const digest = data.diagnostics
-      .map((item) => item.file + ":" + item.line + ":" + item.column + ":" + item.code)
-      .join("|")
-    if (digest !== seen) {
-      seen = digest
-      if (data.diagnostics.some((item) => RANK[item.severity] >= threshold)) open = true
+const ERASED = new Set(["TSTypeAliasDeclaration", "TSInterfaceDeclaration"]);
+
+const FUNCTIONS = new Set(["ArrowFunctionExpression", "FunctionExpression"]);
+
+/**
+ * The module-level functions that are components: the ones the compiler
+ * labelled, and any other that is named as one.
+ *
+ * The compiler labels a component by the template it owns, and a component
+ * that only arranges others owns none: a page is usually exactly that. A
+ * capital letter is the convention JSX itself reads a component by, so it is
+ * the one used here for the rest.
+ */
+function componentsIn(program: HotProgram, labelled: ReadonlySet<string>): Set<string> {
+  const found = new Set(labelled);
+  const named = (name: string | undefined): void => {
+    if (name !== undefined && /^[A-Z]/.test(name)) found.add(name);
+  };
+  for (const statement of program.body) {
+    const declaration =
+      statement.type === "ExportNamedDeclaration" || statement.type === "ExportDefaultDeclaration"
+        ? statement.declaration
+        : statement;
+    if (declaration === null || declaration === undefined) continue;
+    if (declaration.type === "FunctionDeclaration") named(declaration.id?.name);
+    if (declaration.type !== "VariableDeclaration") continue;
+    for (const declarator of declaration.declarations ?? []) {
+      if (declarator.id?.type === "Identifier" && FUNCTIONS.has(declarator.init?.type ?? "")) {
+        named(declarator.id.name);
+      }
     }
-    render()
-  })
-  import.meta.hot.send("barq:diagnostics:ready")
+  }
+  return found;
 }
-`;
+
+/** The compiler's own module-level constants: templates, constant cells, hoisted handlers. */
+const HOISTED = /^_\$*[a-z]+\$+\d+$/;
+
+const IDENTIFIER = /[A-Za-z_$][\w$]*/g;
+
+/**
+ * What each component is made of, as a string that moves when it does.
+ *
+ * A component is its own text plus the compiler constants that text names, a
+ * template above all. Anything else at module level that it names, a helper or
+ * a signal, is state or code the next evaluation makes afresh, and a component
+ * left pointing at the old one would no longer share it with its neighbours:
+ * that component answers `null` and is replaced on every update.
+ */
+function hotSignatures(
+  code: string,
+  components: ReadonlySet<string>,
+  program: HotProgram,
+): (name: string) => string | null {
+  const own = new Map<string, string>();
+  const hoisted = new Map<string, string>();
+  const local = new Set<string>();
+  for (const statement of program.body) {
+    const declaration =
+      statement.type === "ExportNamedDeclaration" || statement.type === "ExportDefaultDeclaration"
+        ? statement.declaration
+        : statement;
+    if (declaration === null || declaration === undefined) continue;
+    const text = code.slice(statement.start, statement.end);
+    if (declaration.type === "FunctionDeclaration" && declaration.id) {
+      if (components.has(declaration.id.name)) own.set(declaration.id.name, text);
+      else local.add(declaration.id.name);
+      continue;
+    }
+    if (declaration.type === "ClassDeclaration" && declaration.id) {
+      local.add(declaration.id.name);
+      continue;
+    }
+    if (declaration.type !== "VariableDeclaration") continue;
+    for (const declarator of declaration.declarations ?? []) {
+      const name = declarator.id?.type === "Identifier" ? declarator.id.name : undefined;
+      if (name === undefined) {
+        // A destructuring pattern: every name inside it is module state.
+        const pattern = declarator.id ?? declarator;
+        for (const found of code.slice(pattern.start, pattern.end).match(IDENTIFIER) ?? []) {
+          local.add(found);
+        }
+      } else if (components.has(name)) own.set(name, text);
+      else if (HOISTED.test(name)) hoisted.set(name, text);
+      else local.add(name);
+    }
+  }
+  return (name) => {
+    const text = own.get(name);
+    if (text === undefined) return null;
+    const named = new Set(text.match(IDENTIFIER) ?? []);
+    for (const found of named) {
+      if (found !== name && local.has(found)) return null;
+    }
+    const parts = [text];
+    for (const [constant, source] of hoisted) {
+      if (named.has(constant)) parts.push(source);
+    }
+    return hash(parts.join("\n"));
+  };
+}
+
+function hash(text: string): string {
+  let value = 0x811c9dc5;
+  for (let index = 0; index < text.length; index++) {
+    value = Math.imul(value ^ text.charCodeAt(index), 0x01000193);
+  }
+  return (value >>> 0).toString(36);
 }
 
 export default barqVitePlugin;

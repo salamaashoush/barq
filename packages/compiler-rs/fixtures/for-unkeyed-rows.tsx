@@ -1,6 +1,6 @@
-import { For, signal } from "@barqjs/core"
+import { For, createSignal } from "@barqjs/core"
 
-export const words = signal(["a", "b"])
+export const [words, setWords] = createSignal(["a", "b"])
 
 /**
  * `<For keyed={false}>` INVERTS the row callback's contract against the identity
@@ -24,7 +24,7 @@ export default function ForUnkeyedRows() {
   )
 }
 
-export const steps = [() => words.set(["z", "b"]), () => words.set(["z", "b", "c"])]
+export const steps = [() => setWords(["z", "b"]), () => setWords(["z", "b", "c"])]
 export const optimality = {
   target: 8,
   milestone: 5,

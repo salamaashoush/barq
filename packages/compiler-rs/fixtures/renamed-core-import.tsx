@@ -1,12 +1,12 @@
-import { For as Each, Show as When, signal as sig } from "@barqjs/core"
+import { For as Each, Show as When, createSignal as sig } from "@barqjs/core"
 
 /**
  * Every name in this module is wrong for a name-matching compiler: the signal
  * factory is `sig`, `Show` is `When` and `For` is `Each`. Resolution is by
  * SymbolId against the import specifier, so all three still classify.
  */
-export const count = sig(0)
-export const rows = sig(["a", "b"])
+export const [count, setCount] = sig(0)
+export const [rows, setRows] = sig(["a", "b"])
 
 export default function RenamedCoreImport() {
   return (
@@ -21,7 +21,7 @@ export default function RenamedCoreImport() {
   )
 }
 
-export const steps = [() => count.set(2), () => rows.set(["a", "b", "c"]), () => count.set(0)]
+export const steps = [() => setCount(2), () => setRows(["a", "b", "c"]), () => setCount(0)]
 export const optimality = {
   target: 1,
   milestone: 5,

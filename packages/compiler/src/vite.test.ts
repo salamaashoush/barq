@@ -94,6 +94,38 @@ function withoutTheNativePackage<T>(fn: () => T): T {
 }
 
 describe("barqVitePlugin", () => {
+  /**
+   * Vite applies its default conditions only where none were given, so a plugin
+   * that sets the list to `["barq"]` has removed `module`, `browser` or `node`,
+   * and `development|production` from every environment. The last of those is
+   * what selects a dependency's development build under `vite dev`.
+   */
+  test("the barq condition goes in front of Vite's defaults, which it keeps", () => {
+    const plugin = barqVitePlugin();
+    const hook = plugin.configEnvironment as unknown as (
+      name: string,
+      config: { consumer?: "client" | "server"; resolve?: { conditions?: string[] } },
+    ) => void;
+
+    const client: { resolve?: { conditions?: string[] } } = {};
+    hook.call(plugin, "client", client);
+    expect(client.resolve?.conditions?.[0]).toBe("barq");
+    expect(client.resolve?.conditions).toContain("browser");
+    expect(client.resolve?.conditions).toContain("development|production");
+
+    const server: { resolve?: { conditions?: string[] } } = {};
+    hook.call(plugin, "ssr", server);
+    expect(server.resolve?.conditions?.[0]).toBe("barq");
+    expect(server.resolve?.conditions).toContain("node");
+    expect(server.resolve?.conditions).not.toContain("browser");
+    expect(server.resolve?.conditions).toContain("development|production");
+
+    // A list the application wrote is the application's: only `barq` is added.
+    const own = { resolve: { conditions: ["custom"] } };
+    hook.call(plugin, "client", own);
+    expect(own.resolve.conditions).toEqual(["barq", "custom"]);
+  });
+
   test("only transforms the configured extensions", async () => {
     const plugin = barqVitePlugin();
     expect((await run(plugin, SOURCE, "/a/app.css")).result).toBe(null);
@@ -159,7 +191,8 @@ describe("barqVitePlugin", () => {
       configure(plugin, { command: "serve", mode: "development" });
       const { warnings } = await run(plugin, DEV_NOTE, "/a/app.tsx");
       expect(warnings.length).toBeGreaterThan(0);
-      expect(warnings.join("\n")).toContain("DESIGN O3");
+      expect(warnings.join("\n")).toContain("BARQ004");
+      expect(warnings.join("\n")).toContain("where the items in `each` come from");
     });
 
     test("a production build does not", async () => {
@@ -185,8 +218,8 @@ describe("barqVitePlugin", () => {
    */
   describe("diagnostics reach both channels", () => {
     const COERCED =
-      `import { signal } from "@barqjs/core";\n` +
-      `const count = signal(0);\n` +
+      `import { createSignal } from "@barqjs/core";\n` +
+      `const [count] = createSignal(0);\n` +
       "export const V = () => <p>{`total: ${count}`}</p>;\n";
 
     function dev(options: Parameters<typeof barqVitePlugin>[0] = {}) {
@@ -256,11 +289,8 @@ describe("barqVitePlugin", () => {
       expect(source).toContain("import.meta.hot");
       expect(load.call(plugin, "/a/app.tsx")).toBe(null);
 
-      // `publish()` runs on every transform, so an unconditional auto-open makes
-      // the collapse toggle un-clickable: the next payload re-opens the panel.
-      // `open = open || true` is `true` for every value of `open`.
-      expect(source).not.toContain("open = open ||");
-      expect(source).toContain("digest !== seen");
+      // That a repeated payload leaves a closed overlay closed is asserted by
+      // driving it, in `overlay.test.ts`.
 
       // The injection is gated on dev, so no byte of the panel can reach a
       // production bundle even if someone imports the plugin there.
@@ -333,8 +363,8 @@ describe("barqVitePlugin", () => {
    */
   describe("the optimisation level reaches the compiler", () => {
     const FUSED =
-      `import { signal } from "@barqjs/core";\n` +
-      `const n = signal(0);\n` +
+      `import { createSignal } from "@barqjs/core";\n` +
+      `const [n] = createSignal(0);\n` +
       `export const V = () => <b id={n()} title={n()}>x</b>;\n`;
 
     async function build(options: Parameters<typeof barqVitePlugin>[0] = {}) {
@@ -396,8 +426,8 @@ describe("barqVitePlugin", () => {
 
   describe("the reference backend reaches the compiler", () => {
     const SOURCE =
-      `import { signal } from "@barqjs/core";\n` +
-      `const n = signal(0);\n` +
+      `import { createSignal } from "@barqjs/core";\n` +
+      `const [n] = createSignal(0);\n` +
       `export const V = () => <b id={n()}>x</b>;\n`;
 
     async function build(
@@ -722,6 +752,38 @@ export const card = css\`color: red\`;
     // path alone gave both the same rules.
     expect(code).toContain('_$registerCss("/a/styles.ts.barq.css"');
     expect(code).toContain("color: red");
+  });
+
+  test("a module whose rules are all gone clears the ones it registered", async () => {
+    // The registry is keyed by the module's stylesheet id and only a
+    // registration replaces an entry, so a module that says nothing keeps
+    // every rule its last version had until the page is reloaded.
+    const plugin = barqVitePlugin({ dev: true });
+    const bare = `import { css } from "@barqjs/css";\nexport const card = "plain";\n`;
+    await run(plugin, CSS_SOURCE, "/a/styles.ts");
+    const code = (await run(plugin, bare, "/a/styles.ts")).result?.code ?? "";
+    expect(code).toContain('_$registerCss("/a/styles.ts.barq.css", "");');
+    // The server's registry is a second one, and it is cleared the same way.
+    const served = (await run(plugin, bare, "/a/styles.ts", { ssr: true })).result?.code ?? "";
+    expect(served).toContain('_$registerCss("/a/styles.ts.barq.css", "");');
+  });
+
+  test("and so does one that stopped naming the package at all", async () => {
+    const plugin = barqVitePlugin({ dev: true });
+    await run(plugin, CSS_SOURCE, "/a/styles.ts");
+    const result = (await run(plugin, `export const card = "plain";\n`, "/a/styles.ts")).result;
+    expect(result?.code).toBe(
+      'export const card = "plain";\n' +
+        '\nimport { registerCss as _$registerCss } from "@barqjs/css";\n' +
+        '_$registerCss("/a/styles.ts.barq.css", "");\n',
+    );
+  });
+
+  test("a module that never registered a rule is given nothing to clear", async () => {
+    const plugin = barqVitePlugin({ dev: true });
+    const bare = `import { css } from "@barqjs/css";\nexport const card = "plain";\n`;
+    expect((await run(plugin, bare, "/a/other.ts")).result?.code).not.toContain("registerCss");
+    expect((await run(plugin, `export const x = 1;\n`, "/a/plain.ts")).result).toBeNull();
   });
 
   test("the mode can be forced against the environment", async () => {

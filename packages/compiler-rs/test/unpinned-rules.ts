@@ -90,15 +90,13 @@ export const FICTION_PINS: readonly string[] = Object.freeze([
 ]);
 
 export const UNPINNED_RULES: readonly string[] = Object.freeze([
-  // A — M7 struck A1–A4, and M11 struck A5. The reason A5 sat here was that it
-  // was "entirely runtime behaviour, since there is no transition API to emit".
-  // Half of that survived and half did not. There is still no transition API to
-  // emit, and the M11 table enumerates why. But clause (f)'s READ SURFACE is a
-  // compiler surface: `isPending(fn)` and `latest(fn)` invoke their argument, so
-  // the tracked read happens at the call, and a classifier that cannot see it
-  // binds `class={{ stale: isPending(user) }}` BY VALUE — applied once at
-  // construction, for the life of the page. `sem-async-read-mode` is the fixture
-  // and it caught exactly that. A6 and A7 were written already pinned.
+  // A — every rule left in the section is pinned: A3 and A4 by their own
+  // fixtures, A6 and A7 written already pinned. The read surface is still a
+  // compiler surface — `isPending(fn)` and `latest(fn)` invoke their argument,
+  // so the tracked read happens at the call, and a classifier that cannot see
+  // it binds `class={{ stale: isPending(user) }}` BY VALUE, applied once at
+  // construction for the life of the page — and `read-mode-binding` is the
+  // fixture that holds it.
   // B
   // B6 and B7 are M7's and are struck: `sem-form-dom-compare` and
   // `sem-form-selection-preserved` pin them, with the real-browser caret

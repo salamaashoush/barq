@@ -170,10 +170,11 @@ describe("L4 — C7, single evaluation", () => {
     document.body.appendChild(host);
     const capture = core.DEV.diagnostics.capture();
     try {
-      core.scope((d: () => void) => {
+      const owner = core.rootScope();
+      core.runWithOwner(owner, () => {
         core.render(document.createElement("p") as never, host);
-        d();
-      }, true);
+      });
+      core.dispose(owner);
     } finally {
       const seen = capture.stop();
       host.remove();

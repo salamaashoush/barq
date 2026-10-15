@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const count = signal(1)
+export const [count, setCount] = createSignal(1)
 
 /**
  * O4 auto-thunking, and the ONE fixture that reaches the thunk the COMPILER
@@ -30,7 +30,7 @@ export default function AutoThunkedRead() {
   )
 }
 
-export const steps = [() => count.set(2)]
+export const steps = [() => setCount(2)]
 
 export const optimality = {
   target: 1,

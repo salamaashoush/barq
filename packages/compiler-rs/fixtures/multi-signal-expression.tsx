@@ -1,7 +1,7 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const a = signal(1)
-export const b = signal(2)
+export const [a, setA] = createSignal(1)
+export const [b, setB] = createSignal(2)
 
 /** Two independent dep sets joined into one hole and one attribute. */
 export default function MultiSignalExpression() {
@@ -12,7 +12,7 @@ export default function MultiSignalExpression() {
   )
 }
 
-export const steps = [() => a.set(10), () => b.set(20)]
+export const steps = [() => setA(10), () => setB(20)]
 export const optimality = {
   target: 4,
   milestone: 5,

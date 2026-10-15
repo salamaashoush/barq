@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const mode = signal<"a" | "b" | "none">("a")
+export const [mode, setMode] = createSignal<"a" | "b" | "none">("a")
 
 export default function ConditionalChildren() {
   return (
@@ -11,5 +11,5 @@ export default function ConditionalChildren() {
   )
 }
 
-export const steps = [() => mode.set("b"), () => mode.set("none"), () => mode.set("a")]
+export const steps = [() => setMode("b"), () => setMode("none"), () => setMode("a")]
 

@@ -253,7 +253,11 @@ pub fn compile(source: &str, options: &ResolvedOptions) -> Result<CompileOutput,
     if depth > MAX_NESTING_DEPTH {
         return Err(internal(
             filename,
-            format!("source nests {depth} levels deep; the compiler stops at {MAX_NESTING_DEPTH}"),
+            format!(
+                "This file nests brackets {depth} levels deep, and the compiler stops at \
+                 {MAX_NESTING_DEPTH} so that it cannot run out of stack. Split the deepest \
+                 expression into smaller pieces."
+            ),
         ));
     }
 
@@ -263,10 +267,25 @@ pub fn compile(source: &str, options: &ResolvedOptions) -> Result<CompileOutput,
             .stack_size(guard_stack_size(source.len(), depth))
             .spawn_scoped(scope, || compile_on_this_stack(source, options))
             .map_err(|error| {
-                internal(filename, format!("could not spawn the compile thread: {error}"))
+                internal(
+                    filename,
+                    format!(
+                        "The compiler could not start a thread for this deeply nested file: \
+                         {error}. Run the build again, or split the deepest expression into \
+                         smaller pieces."
+                    ),
+                )
             })?;
         handle.join().unwrap_or_else(|payload| {
-            Err(internal(filename, format!("the compiler panicked: {}", panic_message(&payload))))
+            Err(internal(
+                filename,
+                format!(
+                    "The barq compiler crashed on this file, which is a bug in the compiler and \
+                     not in your code: {}. Please report it with this file at \
+                     https://github.com/salamaashoush/barq/issues.",
+                    panic_message(&payload)
+                ),
+            ))
         })
     })
 }
@@ -322,7 +341,12 @@ fn compile_on_this_stack(
     let (errors, warnings) = split_diagnostics(&diagnostics, source, filename);
     if panicked || !errors.is_empty() {
         return Err(if errors.is_empty() {
-            internal(filename, "the parser could not recover from a syntax error".to_string())
+            internal(
+                filename,
+                "This file has a syntax error the parser could not locate. Check for an \
+                 unclosed bracket, string or JSX tag."
+                    .to_string(),
+            )
         } else {
             errors
         });
@@ -446,15 +470,21 @@ fn compile_on_this_stack(
         && let Some(span) = analysis::server_fn::first_other(scan)
     {
         let names: Vec<&str> = scan.others().map(|export| export.name.as_str()).collect();
+        let count = scan.server_fns().count();
         warnings.push(located(
             Code::Barq012.default_level(),
             Code::Barq012,
             format!(
-                "this module exports {} server function(s) and also {}; move the server functions \
-                 into a module of their own, so the client half can be synthesized rather than \
-                 pruned",
-                scan.server_fns().count(),
-                names.join(", ")
+                "This module exports {} and also `{}`. The browser build replaces a module that \
+                 exports server functions with request stubs, so it cannot keep anything else \
+                 the module exports. Move the server functions into a file that exports nothing \
+                 else, and import them from here.",
+                if count == 1 {
+                    "a server function".to_string()
+                } else {
+                    format!("{count} server functions")
+                },
+                names.join("`, `")
             ),
             span,
             filename,
@@ -465,7 +495,11 @@ fn compile_on_this_stack(
         warnings.push(located(
             Code::Barq013.default_level(),
             Code::Barq013,
-            format!("`<Link to=\"{}\">` matches no route in this project", unknown.to),
+            format!(
+                "`to=\"{}\"` matches none of this project's routes, so following this link shows \
+                 the not-found page. Correct the path, or add a route for it.",
+                unknown.to
+            ),
             unknown.span,
             filename,
             &mut lines,
@@ -476,7 +510,8 @@ fn compile_on_this_stack(
         warnings.push(Diagnostic::at(
             Severity::Warning,
             format!(
-                "unknown optimisation pass `{name}`; this build has {}",
+                "`{name}` is not an optimisation pass, so the `passes` option ignored it. The \
+                 passes are: {}.",
                 crate::options::Opt::NAMES.join(", ")
             ),
             filename,
@@ -717,10 +752,10 @@ fn resolve_diagnostics(
                 level,
                 Code::Barq008,
                 format!(
-                    "this `barq-ignore-next-line` silences {} and nothing on the next line \
-                     reports it — delete it. This is a warning and never an error: an unused \
-                     suppression that fails CI is what pushes teams onto the form that then \
-                     swallows new diagnostics (microsoft/TypeScript#62579).",
+                    "This `barq-ignore-next-line` names {}, and nothing on the line below \
+                     reports it, so the comment does nothing. Delete it, or move it to the line \
+                     directly above the diagnostic; inside JSX, write it as \
+                     `{{/* barq-ignore-next-line ... */}}`.",
                     entry.codes.iter().map(|code| code.as_str()).collect::<Vec<_>>().join(", ")
                 ),
                 entry.span,
@@ -744,7 +779,11 @@ fn resolve_diagnostics(
     for unknown in &options.severities.unknown {
         out.push(Diagnostic::at(
             Severity::Warning,
-            format!("the barq severity map does not know `{unknown}`; it was ignored"),
+            format!(
+                "The `checks` and `defaultCategory` options do not understand `{unknown}`, so \
+                 it was ignored. A code is `BARQ` and three digits, and a level is `suppress`, \
+                 `note`, `warning` or `error`."
+            ),
             filename,
         ));
     }
@@ -1299,8 +1338,8 @@ mod tests {
         output.warnings.iter().filter_map(|d| d.code.map(|c| c.as_str())).collect()
     }
 
-    const COERCED: &str = "import { signal } from \"@barqjs/core\";\n\
-                           const count = signal(0);\n\
+    const COERCED: &str = "import { createSignal } from \"@barqjs/core\";\n\
+                           const [count] = createSignal(0);\n\
                            export const V = () => <p>{`total: ${count}`}</p>;\n";
 
     /// The whole point of the engine: a span that survives as STRUCTURED data.
@@ -1329,8 +1368,8 @@ mod tests {
     /// AND the span, and an unused one is reported.
     #[test]
     fn a_suppression_needs_a_code_and_a_reason_and_is_scoped_to_both() {
-        let silenced = "import { signal } from \"@barqjs/core\";\n\
-                        const count = signal(0);\n\
+        let silenced = "import { createSignal } from \"@barqjs/core\";\n\
+                        const [count] = createSignal(0);\n\
                         // barq-ignore-next-line BARQ001 (rendering the source text on purpose)\n\
                         export const V = () => <p>{`total: ${count}`}</p>;\n";
         let output = compile(silenced, &diagnosing("App.tsx")).expect("compiles");
@@ -1363,8 +1402,8 @@ mod tests {
             "// barq-ignore-next-line BARQ999 (a reason of real substance)",
         ] {
             let source = format!(
-                "import {{ signal }} from \"@barqjs/core\";\n\
-                 const count = signal(0);\n\
+                "import {{ createSignal }} from \"@barqjs/core\";\n\
+                 const [count] = createSignal(0);\n\
                  {directive}\n\
                  export const V = () => <p>{{`total: ${{count}}`}}</p>;\n"
             );
@@ -1449,8 +1488,8 @@ mod tests {
     /// would be the same defect with the evidence removed.
     #[test]
     fn the_two_diagnostics_that_no_longer_have_anything_to_report() {
-        let o7 = "import { Dynamic, signal } from \"@barqjs/core\";\n\
-                  const n = signal(0);\n\
+        let o7 = "import { Dynamic, createSignal } from \"@barqjs/core\";\n\
+                  const [n] = createSignal(0);\n\
                   export const V = () => <Dynamic component=\"div\" total={n()} />;\n";
         let output = compile(o7, &diagnosing("App.tsx")).expect("compiles");
         assert!(codes(&output).is_empty(), "{:?}", codes(&output));
@@ -1613,15 +1652,10 @@ mod tests {
         assert!(!output.code.contains("<div class=\"c\">{"), "{}", output.code);
     }
 
-    /// A component written INLINE in a route's options object takes a scope.
-    ///
-    /// Every other position was already covered — a `function` statement, a
-    /// tagged or exported `const`, an `export default`, and any arrow inside
-    /// JSX. A plain object literal was none of them, and route options are a
-    /// plain object literal, so `notFoundComponent: ({ error }) => …` kept the
-    /// signature the author wrote while the router called it `(scope, props)`.
-    /// The scope landed on `error` and the render died with `error is not a
-    /// function`, at run time, from a file that compiled clean.
+    /// A component written INLINE in a route's options object is compiled where
+    /// it stands, in both function spellings: its unit is spliced into the body
+    /// and its parameter list stays the props the author wrote, with nothing
+    /// put in front of them.
     #[test]
     fn a_route_option_written_inline_is_compiled_as_a_component() {
         let source = r#"import { createFileRoute } from "@barqjs/router";
@@ -1632,15 +1666,16 @@ export const Route = createFileRoute("/x")({
 "#;
         let output = compile_ok(source, "a.tsx");
         assert!(
-            output.code.contains("notFoundComponent: _$block((_s$, { error }) =>"),
-            "the inline arrow did not take a scope:\n{}",
+            output.code.contains("notFoundComponent: ({ error }) => {"),
+            "the inline arrow does not take its props alone:\n{}",
             output.code
         );
         assert!(
-            output.code.contains("errorComponent: _$block(function Boom(_s$, { error })"),
-            "the inline function expression did not take a scope:\n{}",
+            output.code.contains("errorComponent: function Boom({ error }) {"),
+            "the inline function expression does not take its props alone:\n{}",
             output.code
         );
+        assert!(!output.code.contains("_s$"), "a scope name was emitted:\n{}", output.code);
     }
 
     /// The CAPTURE phase, in both spellings.
@@ -1670,7 +1705,7 @@ export const Route = createFileRoute("/x")({
         );
         // `click` is in the delegated set and must NOT be delegated here.
         assert!(
-            !output.code.contains("$$click"),
+            !output.code.contains("__bq_click"),
             "a capture binding was delegated:\n{}",
             output.code
         );
@@ -1689,20 +1724,19 @@ export const Route = createFileRoute("/x")({
 }
 "#;
         let output = compile_ok(source, "a.tsx");
-        assert!(output.code.contains("$$click"), "{}", output.code);
+        assert!(output.code.contains("__bq_click"), "{}", output.code);
         assert!(!output.code.contains(", true)"), "a bubble binding grew a flag:\n{}", output.code);
     }
 
-    /// A `<For>` row that DELEGATES still takes the scope.
+    /// A `<For>` row that DELEGATES is still a Block taking only its row.
     ///
     /// The evidence a slot literal on an unknown component needs — that it
     /// builds JSX — is not needed on a construct this compiler lowers itself:
-    /// `each` calls the row `(scope, item, index)` whatever the row does with
-    /// them. Without the parameter the author's first binding receives the
-    /// SCOPE, and since both are objects nothing fails until a property read
-    /// comes back undefined somewhere else entirely.
+    /// `each` calls the row `(item, index)` whatever the row does with them, so
+    /// the author's first binding is the item and the row is branded as the
+    /// construction it is.
     #[test]
-    fn a_flow_row_that_builds_no_jsx_still_takes_a_scope() {
+    fn a_flow_row_that_builds_no_jsx_is_a_block_taking_only_its_row() {
         let source = r#"import { For } from "@barqjs/core";
 export function List(props) {
   return <ul><For each={() => props.rows()}>{(row) => render(row)}</For></ul>;
@@ -1710,10 +1744,11 @@ export function List(props) {
 "#;
         let output = compile_ok(source, "a.tsx");
         assert!(
-            output.code.contains("_$block((_s$, row) => render(row))"),
-            "the delegating row did not take a scope:\n{}",
+            output.code.contains("_$block((row) => render(row))"),
+            "the delegating row is not a Block over its own parameters:\n{}",
             output.code
         );
+        assert!(!output.code.contains("_s$"), "a scope name was emitted:\n{}", output.code);
     }
 
     /// `keyed` is a KEY function, called with the item and nothing else.
@@ -1736,34 +1771,32 @@ export function List(props) {
     ///
     /// `render(() => <App/>)` in a test is the same position as
     /// `render(() => <App/>, host)` in an application: the callee opens a root
-    /// scope and invokes the argument with it. Left uncompiled, the arrow
-    /// ignores the scope and the whole tree is built against the module-level
-    /// `null` — no ownership, no context, and a `<For>` whose rows are parented
-    /// to nothing.
+    /// scope and invokes the argument under it. The arrow takes nothing and the
+    /// component inside it is called with its props alone, because the tree
+    /// reads its owner from the root the callee made current.
     #[test]
-    fn a_testing_render_takes_a_scope_too() {
+    fn a_testing_render_callback_takes_nothing_and_calls_with_props_alone() {
         let source = r#"import { render } from "@barqjs/testing";
 render(() => <App />);
 "#;
         let output = compile_ok(source, "a.test.tsx");
         assert!(
-            output.code.contains("render((_s$) => App(_s$, {}))"),
-            "the test's root arrow did not take a scope:\n{}",
+            output.code.contains("render(() => App({}))"),
+            "the test's root arrow is not a bare thunk over a props-only call:\n{}",
             output.code
         );
+        assert!(!output.code.contains("_s$"), "a scope name was emitted:\n{}", output.code);
     }
 
-    /// The server's renderers open a root too, and this one had been missed.
+    /// The server's renderers open a root too.
     ///
     /// `renderToString(() => <App/>)` is the same position as
-    /// `render(() => <App/>, host)`. Left uncompiled the arrow takes no scope,
-    /// so the root ran against the module-level `null` and every `each` and
-    /// `branch` under it opened a scope parented to NOTHING. A provider
-    /// installs on the ambient owner; its consumer inside a row found nothing,
-    /// and on the server an accordion, a tab list and a menu each threw "must
-    /// be rendered inside" while the client was fine.
+    /// `render(() => <App/>, host)`: the renderer opens a root scope and invokes
+    /// the argument under it. The arrow takes nothing and the component inside
+    /// it is called with its props alone, so every `each`, `branch` and provider
+    /// under it finds the root as its ambient owner.
     #[test]
-    fn a_server_render_takes_a_scope_too() {
+    fn a_server_render_callback_takes_nothing_and_calls_with_props_alone() {
         let source = r#"import { renderToString } from "@barqjs/server";
 export const page = () => renderToString(() => <App />);
 "#;
@@ -1773,15 +1806,11 @@ export const page = () => renderToString(() => <App />);
         )
         .unwrap_or_else(|diagnostics| panic!("{}", format_diagnostics(&diagnostics)));
         assert!(
-            output.code.contains("renderToString((_s$) =>"),
-            "the server root arrow did not take a scope:\n{}",
+            output.code.contains("renderToString(() => _$html(`${_$esc(App({}))}`))"),
+            "the server root arrow is not a bare thunk over a props-only call:\n{}",
             output.code
         );
-        assert!(
-            !output.code.contains("const _s$ = null"),
-            "the root still fell back to the module-level null:\n{}",
-            output.code
-        );
+        assert!(!output.code.contains("_s$"), "a scope name was emitted:\n{}", output.code);
     }
 
     /// Every one of them, since an application picks by what it needs.
@@ -1797,10 +1826,11 @@ export const page = () => renderToString(() => <App />);
             )
             .unwrap_or_else(|diagnostics| panic!("{}", format_diagnostics(&diagnostics)));
             assert!(
-                output.code.contains(&format!("{name}((_s$) =>")),
-                "{name} did not take a scope:\n{}",
+                output.code.contains(&format!("{name}(() => _$html(`${{_$esc(App({{}}))}}`))")),
+                "{name}'s root arrow is not a bare thunk over a props-only call:\n{}",
                 output.code
             );
+            assert!(!output.code.contains("_s$"), "{name} emitted a scope name:\n{}", output.code);
         }
     }
 
@@ -1812,7 +1842,7 @@ render(() => <App />);
 "#;
         let output = compile_ok(source, "a.tsx");
         assert!(
-            output.code.contains("render(() => App(_s$, {}))"),
+            output.code.contains("render(() => App({}))"),
             "a local function's callback was rewritten:\n{}",
             output.code
         );
@@ -1848,7 +1878,7 @@ export const Route = createFileRoute("/x")({ component: Page });
 "#;
         let output = compile_ok(source, "a.tsx");
         assert!(output.code.contains("component: Page"), "{}", output.code);
-        assert!(output.code.contains("function Page(_s$, props)"), "{}", output.code);
+        assert!(output.code.contains("function Page(props)"), "{}", output.code);
     }
 
     #[test]
@@ -1860,18 +1890,18 @@ export const Route = createFileRoute("/x")({ component: Page });
         // component to do.
         assert!(output.code.contains("const V = () => [(0, Foo.Bar)("), "{}", output.code);
         assert!(!output.code.contains("createElement"), "{}", output.code);
-        // C1/C9. A component is called with its scope first, and a spread is a
+        // C1/C9. A component is called with its props alone, and a spread is a
         // SOURCE LIST rather than a JavaScript spread — there is no object to
         // copy, so there is no getter for a copy to read.
         assert!(output.code.contains("_$props([rest, {"), "{}", output.code);
         assert!(!output.code.contains("...rest"), "{}", output.code);
         assert!(output.code.contains("x: _k$1"), "{}", output.code);
         assert!(output.code.contains("const _k$1 = () => 1"), "{}", output.code);
-        assert!(output.code.contains("A(_s$, {})"), "{}", output.code);
+        assert!(output.code.contains("A({})"), "{}", output.code);
         assert!(!output.code.contains("_$createElement(A"), "{}", output.code);
         // `createElement` calls `tag(finalProps)` with no receiver, so a member
         // tag must not pick up a `this` the un-compiled path never had.
-        assert!(output.code.contains("(0, Foo.Bar)(_s$, "), "{}", output.code);
+        assert!(output.code.contains("(0, Foo.Bar)(_$props([rest, {"), "{}", output.code);
         // The component identifier is the binding, not a name-matched string.
         assert!(!output.code.contains("\"Foo.Bar\""), "{}", output.code);
     }
@@ -1887,22 +1917,22 @@ export const Route = createFileRoute("/x")({ component: Page });
         assert!(!output.code.contains("_$insert"), "{}", output.code);
         assert!(!output.code.contains("_$setProp"), "{}", output.code);
         // No walk, no arrow, no statements: the clone IS the component body.
-        // No brand either: the compiler brands the Blocks that USE their scope,
-        // and a body that is one clone reads nothing.
-        assert!(
-            output.code.trim_end().ends_with("const V = (_s$) => _tmpl$1();"),
-            "{}",
-            output.code
-        );
+        // No brand either: a brand marks a Block in a slot, never a declaration.
+        assert!(output.code.trim_end().ends_with("const V = () => _tmpl$1();"), "{}", output.code);
         assert!(!output.code.contains("_$block"), "{}", output.code);
     }
 
     #[test]
     fn helpers_extend_an_existing_import_instead_of_adding_a_second_one() {
-        let source = "import { signal } from \"@barqjs/core\";\nconst V = () => <i>{signal}</i>;\n";
+        let source =
+            "import { createSignal } from \"@barqjs/core\";\nconst V = () => <i>{signal}</i>;\n";
         let output = compile_ok(source, "V.tsx");
         assert_eq!(output.code.matches("from \"@barqjs/core\"").count(), 1, "{}", output.code);
-        assert!(output.code.contains("import { signal, template as _$template"), "{}", output.code);
+        assert!(
+            output.code.contains("import { createSignal, template as _$template"),
+            "{}",
+            output.code
+        );
     }
 
     #[test]
@@ -1997,7 +2027,7 @@ export const Route = createFileRoute("/x")({ component: Page });
         // The hole is followed by an ELEMENT, so `<b>` is its own anchor and the
         // comment node is elided (target #9).
         assert!(output.code.contains("`<p>Total: <b>x</b> <i>y</i></p>`"), "{}", output.code);
-        assert!(output.code.contains("_$insert(_s$, _el$1, n, _el$2)"), "{}", output.code);
+        assert!(output.code.contains("_$insert(_el$1, n, _el$2)"), "{}", output.code);
     }
 
     #[test]
@@ -2036,19 +2066,19 @@ export const Route = createFileRoute("/x")({ component: Page });
         // the only child, so nothing follows it and `insert` takes two arguments.
         let output = compile_ok("const V = () => <pre>{a}</pre>;\n", "V.tsx");
         assert!(output.code.contains("_$template(`<pre></pre>`)"), "{}", output.code);
-        assert!(output.code.contains("_$insert(_s$, _el$1, a)"), "{}", output.code);
+        assert!(output.code.contains("_$insert(_el$1, a)"), "{}", output.code);
 
         // `<textarea>` is RCDATA, so the `<!---->` would be literal TEXT in the
         // field — which is why the whole child list is ONE insert with no
         // anchor rather than a hole among baked siblings.
         let output = compile_ok("const V = () => <textarea>{a}</textarea>;\n", "V.tsx");
         assert!(output.code.contains("_$template(`<textarea></textarea>`)"), "{}", output.code);
-        assert!(output.code.contains("_$insert(_s$, _el$1, a)"), "{}", output.code);
+        assert!(output.code.contains("_$insert(_el$1, a)"), "{}", output.code);
         assert!(!output.code.contains("<!---->"), "{}", output.code);
 
         let output = compile_ok("const V = () => <textarea>x {a} y</textarea>;\n", "V.tsx");
         assert!(output.code.contains("_$template(`<textarea></textarea>`)"), "{}", output.code);
-        for part in ["_$insert(_s$, _el$1, [", "\"x \",", "\" y\""] {
+        for part in ["_$insert(_el$1, [", "\"x \",", "\" y\""] {
             assert!(output.code.contains(part), "{part}\n{}", output.code);
         }
     }
@@ -2197,7 +2227,7 @@ export const Route = createFileRoute("/x")({ component: Page });
             ResolvedOptions { templates: false, ..ResolvedOptions::with_filename("V.tsx") };
         let output = compile("const V = () => <div class=\"c\">x</div>;\n", &options).unwrap();
         assert!(!output.code.contains("_$template"), "{}", output.code);
-        assert!(output.code.contains("_$element(_s$, \"div\""), "{}", output.code);
+        assert!(output.code.contains("_$element(\"div\""), "{}", output.code);
     }
 
     /// The flag was accepted and refused from M1 to M5, because emitting the
@@ -2268,7 +2298,7 @@ export const Route = createFileRoute("/x")({ component: Page });
             "{}",
             output.code
         );
-        assert!(output.code.contains("_$insert(_s$, _el$2, css)"), "{}", output.code);
+        assert!(output.code.contains("_$insert(_el$2, css)"), "{}", output.code);
         assert!(!output.code.contains("<!---->"), "{}", output.code);
 
         let source = "const V = () => <div><style>{\"a\"}&lt;/style&gt;</style></div>;\n";
@@ -2285,7 +2315,7 @@ export const Route = createFileRoute("/x")({ component: Page });
         assert!(ssr.code.contains("_$rawText([\"a\", \"</style>\"], \"style\")"), "{}", ssr.code);
 
         let output = compile_ok("const V = () => <script>{\"var a = 1;\"}</script>;\n", "V.tsx");
-        assert!(output.code.contains("_$insert(_s$, _el$1, \"var a = 1;\")"), "{}", output.code);
+        assert!(output.code.contains("_$insert(_el$1, \"var a = 1;\")"), "{}", output.code);
 
         // literal-only: baked, references resolved at compile time because the
         // tokenizer will not resolve them inside raw text.
@@ -2321,7 +2351,7 @@ export const Route = createFileRoute("/x")({ component: Page });
         // and a direct channel write is unconditional. `bindProp` keeps the
         // decision where the un-compiled path makes it.
         assert!(
-            output.code.contains("_$bindProp(_s$, _el$1, _$setClass, \"class\", x)"),
+            output.code.contains("_$bindProp(_el$1, _$setClass, \"class\", x)"),
             "{}",
             output.code
         );
@@ -2819,7 +2849,7 @@ export const Route = createFileRoute("/x")({ component: Page });
         for (statement, jsx) in [
             ("const _el$1 = _tmpl$1();", "<div class=\"card\">"),
             ("const _el$2 = _el$1.lastChild;", "<p>{props.body}</p>"),
-            ("_$insert(_s$, _el$2, props.body);", "props.body}</p>"),
+            ("_$insert(_el$2, props.body);", "props.body}</p>"),
         ] {
             let line = mapped.line_of(statement);
             let indent = mapped.code.split('\n').nth(line as usize).unwrap();
@@ -3341,45 +3371,37 @@ export const Route = createFileRoute("/x")({ component: Page });
              export function Slot() { return <Sink a={<i/> as never} b={(<i/>)} c={<i/> satisfies never} /> }\n";
         for opt in [crate::options::Opt::ALL, crate::options::Opt::NONE] {
             let output = compile(source, &at(opt, false)).expect("compiles");
-            let thunks = output.code.matches("() => _tmpl$").count();
+            let thunks = output.code.matches("() => _tmpl$").count()
+                - output.code.matches("_$block(() => _tmpl$").count();
             assert_eq!(
                 thunks, 0,
                 "a JSX slot crossed as a nullary thunk at {opt:?}:\n{}",
                 output.code
             );
             // Four JSX values, four brands: the children cast, and the three
-            // wrapper spellings on a non-children slot. Counted as the SLOT
-            // spelling, because `codegen::brand` brands the three component
-            // declarations here too and a bare `_$block(` count would no
-            // longer separate the two.
+            // wrapper spellings on a non-children slot.
             assert_eq!(
-                output.code.matches("_$block((_s$) =>").count(),
+                output.code.matches("_$block(() =>").count(),
                 4,
                 "not every JSX slot is branded at {opt:?}:\n{}",
                 output.code
             );
-            // All three components construct through their scope, so all three
-            // carry the definition-site brand. `Sink` reaches it through its
-            // live `title` binding: `bindEffect` takes the scope FIRST (O4.5),
-            // which is what makes a component whose only reactive work is an
-            // element binding visible to `UsesScope` — it emitted a bare
-            // `renderEffect` before, mentioned `_s$` nowhere, and went
-            // unbranded while owning an effect. Four slots plus three
-            // declarations.
+            // The four slots are the only brands: a declaration takes its
+            // props alone and carries no brand of its own.
             assert_eq!(
                 output.code.matches("_$block(").count(),
-                7,
-                "not every scope-using component declaration is branded at {opt:?}:\n{}",
+                4,
+                "a component declaration is branded at {opt:?}:\n{}",
                 output.code
             );
-            for branded in ["Cast = _$block(Cast)", "Slot = _$block(Slot)", "Sink = _$block(Sink)"]
-            {
+            for declared in ["function Sink(props) {", "function Cast() {", "function Slot() {"] {
                 assert!(
-                    output.code.contains(branded),
-                    "{branded} missing at {opt:?}:\n{}",
+                    output.code.contains(declared),
+                    "{declared} missing at {opt:?}:\n{}",
                     output.code
                 );
             }
+            assert!(!output.code.contains("_s$"), "a scope name at {opt:?}:\n{}", output.code);
         }
     }
 
@@ -3423,9 +3445,9 @@ export const Route = createFileRoute("/x")({ component: Page });
     #[test]
     fn o0_removes_exactly_the_transformations_it_names() {
         use crate::options::Opt;
-        const SOURCE: &str = "import { signal } from \"@barqjs/core\";\n\
+        const SOURCE: &str = "import { createSignal } from \"@barqjs/core\";\n\
              const WIDTH = 4;\n\
-             const n = signal(0);\n\
+             const [n] = createSignal(0);\n\
              export const A = () => <b class=\"c\">x</b>;\n\
              export const B = () => <b class=\"c\">x</b>;\n\
              export const C = () => (\n\
@@ -3454,15 +3476,15 @@ export const Route = createFileRoute("/x")({ component: Page });
         assert!(ox.contains(".lastChild"), "{ox}");
         assert!(!o0.contains(".lastChild") && o0.contains(".firstChild"), "{o0}");
         // eta: the accessor stands in for the thunk, then does not.
-        assert!(ox.contains("_$insert(_s$, _el$2, n,"), "{ox}");
+        assert!(ox.contains("_$insert(_el$2, n,"), "{ox}");
         assert!(o0.contains("() => n()"), "{o0}");
         // hoist: the capture-free handler is a module constant, then is inline.
         assert!(ox.contains("const _h$1 = () => 1"), "{ox}");
         assert!(!o0.contains("_h$1"), "{o0}");
         // splice: the unit's statements are flat in the arrow that hosts them,
         // then wrapped in an IIFE of their own.
-        assert!(ox.contains("export const C = _$block((_s$) => {"), "{ox}");
-        assert!(o0.contains("export const C = _$block((_s$) => (() => {"), "{o0}");
+        assert!(ox.contains("export const C = () => {"), "{ox}");
+        assert!(o0.contains("export const C = () => (() => {"), "{o0}");
     }
 
     /// A knob nobody can name is a knob that silently does nothing, which is the
@@ -3541,7 +3563,7 @@ export const Route = createFileRoute("/x")({ component: Page });
 
     // ── M3: the analysis passes ───────────────────────────────────────────
 
-    const CORE: &str = "import { signal, computed, useStore } from \"@barqjs/core\";\n";
+    const CORE: &str = "import { createSignal, createMemo, useStore } from \"@barqjs/core\";\n";
 
     /// Target #1. Both bindings are `const` in the same scope and only one of
     /// them is reactive, so no name heuristic can separate them. `count.set` is
@@ -3550,7 +3572,7 @@ export const Route = createFileRoute("/x")({ component: Page });
     #[test]
     fn a_provably_static_value_gets_no_effect_and_a_tracked_read_does() {
         let source = format!(
-            "{CORE}const theme = \"dark\";\nconst count = signal(0);\n\
+            "{CORE}const theme = \"dark\";\nconst [count] = createSignal(0);\n\
              const V = () => <p id={{theme}} title={{() => count()}} />;\n"
         );
         let output = compile_ok(&source, "V.tsx");
@@ -3563,8 +3585,9 @@ export const Route = createFileRoute("/x")({ component: Page });
 
         // `count.set` is masked as non-tracking, so it folds nowhere and creates
         // no effect: it goes through setProp unwrapped, exactly as the oracle does.
-        let source =
-            format!("{CORE}const count = signal(0);\nconst V = () => <p onx={{count.set}} />;\n");
+        let source = format!(
+            "{CORE}const [count] = createSignal(0);\nconst V = () => <p onx={{count.set}} />;\n"
+        );
         let output = compile_ok(&source, "V.tsx");
         assert!(!output.code.contains("_$bindEffect"), "{}", output.code);
     }
@@ -3581,7 +3604,7 @@ export const Route = createFileRoute("/x")({ component: Page });
             "{}",
             output.code
         );
-        assert!(output.code.contains("const V = (_s$) => _tmpl$1();"), "{}", output.code);
+        assert!(output.code.contains("const V = () => _tmpl$1();"), "{}", output.code);
         assert!(!output.code.contains("_$setProp"), "{}", output.code);
         assert!(!output.code.contains("_el$"), "{}", output.code);
         assert!(!output.code.contains("_$block"), "{}", output.code);
@@ -3622,14 +3645,14 @@ export const Route = createFileRoute("/x")({ component: Page });
     #[test]
     fn two_live_props_on_one_element_share_a_single_effect() {
         let source = format!(
-            "{CORE}const a = signal(0);\nconst b = signal(1);\n\
+            "{CORE}const [a] = createSignal(0);\nconst [b] = createSignal(1);\n\
              const V = () => <p title={{() => a()}} lang={{() => b()}} />;\n"
         );
         let output = compile_ok(&source, "V.tsx");
         assert_eq!(output.code.matches("_$bindEffect(").count(), 1, "{}", output.code);
         // B2's shape: one COMPUTE returning the flat record, one APPLY reached
         // with it. The apply is not a tracking scope and cannot become one.
-        assert!(output.code.contains("_$bindEffect(_s$, () => ({"), "{}", output.code);
+        assert!(output.code.contains("_$bindEffect(() => ({"), "{}", output.code);
         assert!(output.code.contains("(_v$, _p$ = {}) =>"), "{}", output.code);
         assert!(output.code.contains("a: a()"), "{}", output.code);
         assert!(output.code.contains("b: b()"), "{}", output.code);
@@ -3653,7 +3676,7 @@ export const Route = createFileRoute("/x")({ component: Page });
     #[test]
     fn a_prop_whose_applied_value_is_normalised_threads_it_through_the_record() {
         let source = format!(
-            "{CORE}const s = signal({{}});\n\
+            "{CORE}const [s] = createSignal({{}});\n\
              const V = () => <p style={{() => s()}} classList={{() => s()}} title={{() => s()}} />;\n"
         );
         let output = compile_ok(&source, "V.tsx");
@@ -3683,12 +3706,16 @@ export const Route = createFileRoute("/x")({ component: Page });
     fn a_delegated_event_is_an_expando_write_and_the_rest_are_listeners() {
         let source = "const V = () => <b onClick={() => log(1)} onChange={() => log(2)}>x</b>;\n";
         let output = compile_ok(source, "V.tsx");
-        assert!(output.code.contains("_el$1.$$click = _h$1, _el$1.$$s = _s$;"), "{}", output.code);
-        assert!(output.code.contains("_$listen(_s$, _el$1, \"change\", _h$2)"), "{}", output.code);
+        assert!(
+            output.code.contains("_el$1.__bq_click = _h$1, _el$1.__bqs = _$getOwner();"),
+            "{}",
+            output.code
+        );
+        assert!(output.code.contains("_$listen(_el$1, \"change\", _h$2)"), "{}", output.code);
         assert!(!output.code.contains("addEventListener"), "{}", output.code);
         assert_eq!(output.code.matches("_$delegateEvents(").count(), 1, "{}", output.code);
         assert!(output.code.contains("_$delegateEvents([\"click\"])"), "{}", output.code);
-        assert!(!output.code.contains("$$change"), "{}", output.code);
+        assert!(!output.code.contains("__bq_change"), "{}", output.code);
     }
 
     /// Target #7's second half, and its boundary. A closure that captures only
@@ -3719,18 +3746,18 @@ export const Route = createFileRoute("/x")({ component: Page });
         // the delegated/direct choice it implies. What the runtime is left with
         // is `isEventHandlerValue`, which is the oracle's own test on a value
         // neither side can see.
-        assert!(output.code.contains("_$bindEvent(_s$, _el$1, \"click\", p.h)"), "{}", output.code);
-        assert!(!output.code.contains("$$click ="), "{}", output.code);
+        assert!(output.code.contains("_$bindEvent(_el$1, \"click\", p.h)"), "{}", output.code);
+        assert!(!output.code.contains("__bq_click ="), "{}", output.code);
         assert!(output.code.contains("_$delegateEvents([\"click\"])"), "{}", output.code);
     }
 
-    /// V2: the bound-handler tuple lives in `$$<type>` itself. Emitting a
-    /// `$$clickData` compiles cleanly and does nothing.
+    /// V2: the bound-handler tuple lives in `__bq_<type>` itself. Emitting a
+    /// `__bq_clickData` compiles cleanly and does nothing.
     #[test]
     fn a_bound_handler_tuple_is_written_whole_into_the_expando() {
         let output =
             compile_ok("const V = (item) => <b onClick={[remove, item]}>x</b>;\n", "V.tsx");
-        assert!(output.code.contains("_el$1.$$click = [remove, item]"), "{}", output.code);
+        assert!(output.code.contains("_el$1.__bq_click = [remove, item]"), "{}", output.code);
         assert!(!output.code.contains("Data"), "{}", output.code);
     }
 
@@ -3741,14 +3768,15 @@ export const Route = createFileRoute("/x")({ component: Page });
     /// the hole costs no closure.
     #[test]
     fn a_bare_tracked_read_in_an_attribute_becomes_a_live_binding() {
-        let source =
-            format!("{CORE}const count = signal(0);\nconst V = () => <p title={{count()}} />;\n");
+        let source = format!(
+            "{CORE}const [count] = createSignal(0);\nconst V = () => <p title={{count()}} />;\n"
+        );
         let output = compile_ok(&source, "V.tsx");
         // The effect is the compiler's now: with the channel resolved there is
         // no dispatcher left to open one. One live prop needs no record at all —
         // its previous value is a scalar, and it is the compute's own return.
         assert!(
-            output.code.contains("_$bindEffect(_s$, () => count(), (_v$, _p$) =>"),
+            output.code.contains("_$bindEffect(() => count(), (_v$, _p$) =>"),
             "{}",
             output.code
         );
@@ -3761,15 +3789,17 @@ export const Route = createFileRoute("/x")({ component: Page });
     }
 
     /// An unresolvable origin must stay CORRECT, never optimistic: a barrel
-    /// re-export is invisible, so the value goes through setProp unwrapped and
-    /// the runtime makes the oracle's decision.
+    /// re-export is invisible, so nothing is claimed about `c` and the runtime
+    /// decides. What it is handed is the CALL, not the call's result: run at
+    /// the call site, a signal read behind a barrel was spent before the
+    /// runtime saw anything and the attribute never moved.
     #[test]
-    fn an_unresolvable_origin_is_opaque_and_costs_the_runtime_nothing_extra() {
-        let source = "import { signal } from \"./barrel\";\nconst c = signal(0);\n\
+    fn an_unresolvable_origin_is_opaque_and_its_call_crosses_as_a_cell() {
+        let source = "import { createSignal } from \"./barrel\";\nconst [c] = createSignal(0);\n\
                       const V = () => <p title={c()} />;\n";
         let output = compile_ok(source, "V.tsx");
         assert!(
-            output.code.contains("_$bindProp(_s$, _el$1, _$setAttr, \"title\", c())"),
+            output.code.contains("_$bindProp(_el$1, _$setAttr, \"title\", () => c())"),
             "{}",
             output.code
         );
@@ -3798,7 +3828,7 @@ export const Route = createFileRoute("/x")({ component: Page });
         );
         assert!(output.code.contains("\"dangerouslySetInnerHTML\", HTML"), "{}", output.code);
         // B3: `ref` is a channel of its own, never a prop.
-        assert!(output.code.contains("_$ref(_s$, _el$1, REF)"), "{}", output.code);
+        assert!(output.code.contains("_$ref(_el$1, REF)"), "{}", output.code);
 
         // A literal STRING class or style is the documented exception: both
         // reach the DOM identically through the parser and through the runtime.
@@ -3840,7 +3870,7 @@ export const Route = createFileRoute("/x")({ component: Page });
         // In TEXT there is no patch channel to fall back to, so the element
         // leaves the template altogether and is BUILT by tag name instead.
         let output = compile_ok("const V = () => <div>x&#0;y</div>;\n", "V.tsx");
-        assert!(output.code.contains("_$element(_s$, \"div\""), "{}", output.code);
+        assert!(output.code.contains("_$element(\"div\""), "{}", output.code);
         assert!(!output.code.contains("_$template("), "{}", output.code);
     }
 
@@ -3854,11 +3884,7 @@ export const Route = createFileRoute("/x")({ component: Page });
         // A lone-surrogate literal is `InitOf::Inert`: no constant, and no
         // shape either, so the value could still be a Cell as far as the
         // analysis knows and its liveness stays the runtime's question.
-        assert!(
-            output.code.contains("_$bindProp(_s$, _el$1, _$setAttr, \"id\", x)"),
-            "{}",
-            output.code
-        );
+        assert!(output.code.contains("_$bindProp(_el$1, _$setAttr, \"id\", x)"), "{}", output.code);
         assert!(output.code.contains("_$template(`<div>t</div>`)"), "{}", output.code);
 
         let source = "const V = () => <div id={`\\ud800`}>t</div>;\n";
@@ -3872,7 +3898,7 @@ export const Route = createFileRoute("/x")({ component: Page });
     #[test]
     fn class_joins_the_fused_record_and_the_wipe_becomes_unrepresentable() {
         let source = format!(
-            "{CORE}const a = signal(\"x\");\nconst b = signal(\"y\");\n\
+            "{CORE}const [a] = createSignal(\"x\");\nconst [b] = createSignal(\"y\");\n\
              const V = () => <div class={{() => a()}} title={{() => b()}} id={{() => b()}} />;\n"
         );
         let output = compile_ok(&source, "V.tsx");
@@ -3906,7 +3932,7 @@ export const Route = createFileRoute("/x")({ component: Page });
     #[test]
     fn a_record_field_is_positional_so_a_hostile_attribute_name_is_not_a_key() {
         let source = format!(
-            "{CORE}const a = signal(\"x\");\nconst b = signal(\"y\");\n\
+            "{CORE}const [a] = createSignal(\"x\");\nconst [b] = createSignal(\"y\");\n\
              const V = () => <div __proto__={{() => a()}} title={{() => b()}} />;\n"
         );
         let output = compile_ok(&source, "V.tsx");
@@ -3930,7 +3956,7 @@ export const Route = createFileRoute("/x")({ component: Page });
             );
             let output = compile_ok(&source, "V.tsx");
             assert!(!output.code.contains("const _h$1"), "{body}\n{}", output.code);
-            assert!(output.code.contains("$$click = () =>"), "{body}\n{}", output.code);
+            assert!(output.code.contains("__bq_click = () =>"), "{body}\n{}", output.code);
         }
 
         // The contrast: a handler that only reads module scope still hoists.
@@ -4027,7 +4053,7 @@ export const Route = createFileRoute("/x")({ component: Page });
         let source = "function log() {}\nconst h = () => log();\n\
                       const V = () => <button onClick={h}>b</button>;\n";
         let output = compile_ok(source, "V.tsx");
-        assert!(output.code.contains("_el$1.$$click = h"), "{}", output.code);
+        assert!(output.code.contains("_el$1.__bq_click = h"), "{}", output.code);
         assert!(output.code.contains("_$delegateEvents([\"click\"])"), "{}", output.code);
         assert!(!output.code.contains("_$bindEvent"), "{}", output.code);
         // Never RE-hoisted: the reference is emitted where it stands, which is
@@ -4037,7 +4063,7 @@ export const Route = createFileRoute("/x")({ component: Page });
         let source = "function log() {}\n\
                       function V() { const h = () => log(); return <button onClick={h}>b</button>; }\n";
         let output = compile_ok(source, "V.tsx");
-        assert!(output.code.contains("_el$1.$$click = h"), "{}", output.code);
+        assert!(output.code.contains("_el$1.__bq_click = h"), "{}", output.code);
         assert!(!output.code.contains("const _h$1"), "{}", output.code);
 
         // A reassigned binding, and a binding holding a plain value, both stay
@@ -4047,12 +4073,8 @@ export const Route = createFileRoute("/x")({ component: Page });
             "const h = 1;\nconst V = () => <button onClick={h}>b</button>;\n",
         ] {
             let output = compile_ok(source, "V.tsx");
-            assert!(
-                output.code.contains("_$bindEvent(_s$, _el$1, \"click\", h)"),
-                "{}",
-                output.code
-            );
-            assert!(!output.code.contains("$$click ="), "{}", output.code);
+            assert!(output.code.contains("_$bindEvent(_el$1, \"click\", h)"), "{}", output.code);
+            assert!(!output.code.contains("__bq_click ="), "{}", output.code);
         }
     }
 }

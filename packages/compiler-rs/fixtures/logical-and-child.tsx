@@ -1,8 +1,8 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const show = signal(true)
-export const label = signal("hello")
-export const maybe = signal<string | null>(null)
+export const [show, setShow] = createSignal(true)
+export const [label, setLabel] = createSignal("hello")
+export const [maybe, setMaybe] = createSignal<string | null>(null)
 
 /**
  * The short-circuit conditional child — `{cond && <jsx/>}` — and its two
@@ -21,7 +21,7 @@ export const maybe = signal<string | null>(null)
  * a compiler that folded the guard into a boolean would silently delete a
  * character the un-compiled path renders.
  */
-export const count = signal(0)
+export const [count, setCount] = createSignal(0)
 
 export default function LogicalAndChild() {
   return (
@@ -37,12 +37,12 @@ export default function LogicalAndChild() {
 }
 
 export const steps = [
-  () => show.set(false),
-  () => label.set(""),
-  () => maybe.set("given"),
-  () => count.set(2),
-  () => show.set(true),
-  () => count.set(0),
+  () => setShow(false),
+  () => setLabel(""),
+  () => setMaybe("given"),
+  () => setCount(2),
+  () => setShow(true),
+  () => setCount(0),
 ]
 
 // The bare short-circuit hole is appended by `createElement` with `marker =

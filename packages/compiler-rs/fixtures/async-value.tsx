@@ -1,13 +1,13 @@
-import { computed, signal } from "@barqjs/core"
+import { createMemo, createSignal } from "@barqjs/core"
 
-export const who = signal("ada")
+export const [who, setWho] = createSignal("ada")
 
 /**
  * `computed` without a key is a `Computed<T>`, so the value is behind a CALL
  * and `user.name` is a member read on the accessor itself — the read has to be
  * `user().name`, and `user` alone is inert.
  */
-const user = computed(() => ({ name: who() }))
+const user = createMemo(() => ({ name: who() }))
 
 export default function AsyncValue() {
   return (
@@ -17,7 +17,7 @@ export default function AsyncValue() {
   )
 }
 
-export const steps = [() => who.set("grace"), () => who.set("hopper")]
+export const steps = [() => setWho("grace"), () => setWho("hopper")]
 
 export const optimality = {
   target: 1,

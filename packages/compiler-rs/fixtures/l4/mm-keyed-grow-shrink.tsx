@@ -6,7 +6,7 @@
  * Both directions are asserted: a `grows` step that destroyed something and a
  * `grows` step that built nothing are both failures.
  */
-import { For, signal } from "@barqjs/core"
+import { For, createSignal } from "@barqjs/core"
 
 export const log: string[] = []
 
@@ -22,7 +22,7 @@ const C: Row = { id: 3, text: "gamma" }
 const THREE = [A, B, C]
 const ONE = [B]
 
-export const rows = signal<Row[]>([A, B])
+export const [rows, setRows] = createSignal<Row[]>([A, B])
 
 export default function KeyedGrowShrink() {
   return (
@@ -37,7 +37,7 @@ export default function KeyedGrowShrink() {
   )
 }
 
-export const steps = [() => rows.set(THREE), () => rows.set(ONE)]
+export const steps = [() => setRows(THREE), () => setRows(ONE)]
 
 export const metamorphic = {
   why: "append one keyed row, then drop two: the survivors are the same objects throughout",

@@ -1,70 +1,53 @@
-# BARQ002 — an accessor is used as a condition
+# BARQ002: An accessor is used as a condition, which is always true
 
-**Level:** warning · **Rule family:** D1 · [all codes](README.md)
+**Level:** warning · [all codes](README.md)
 
-## What fires
+## Message
 
-A binding the compiler resolved to an accessor in a position that tests it for truthiness.
-A function is **always truthy**, so the condition can never take its other branch.
+> `loading` is an accessor, and a function is always truthy, so this condition is always
+> true and its other branch never runs. Call it: `loading()`.
 
-| position | example |
-| --- | --- |
-| `if` test | `if (loading) { … }` |
-| `switch` discriminant | `switch (mode) { … }` |
-| loop test | `while (loading) …` · `do … while (loading)` · `for (; loading; )` |
-| conditional **test** | `loading ? <Spinner/> : <List/>` |
-| logical **left** operand | `loading \|\| fallback` · `loading && <Spinner/>` |
-| `!` | `!loading` |
+## Failing example
 
-```jsx
-const loading = signal(true)
+```tsx
+import { createSignal } from "@barqjs/core";
 
-if (loading) render()      // BARQ002 — always taken
+const [loading] = createSignal(true);
+
+export const Status = () => <p>{loading ? "Loading" : "Ready"}</p>;
 ```
 
-## The fix
+## Fixed example
 
-Call it.
+```tsx
+import { createSignal } from "@barqjs/core";
 
-```jsx
-if (loading()) render()
+const [loading] = createSignal(true);
+
+export const Status = () => <p>{loading() ? "Loading" : "Ready"}</p>;
 ```
 
-## What does not fire, and why
+## Why this rule exists
 
-Every narrowing below is a refusal to guess, taken from
-[`vue/no-ref-as-operand`][vue]:
+A function is always truthy. `if (loading)`, `loading ? a : b`, `loading && x`, `!loading`
+and a loop that tests an accessor therefore never change with the signal: one branch is
+dead from the start, and a `while (loading)` never ends.
 
-- **Right operand of `||` / `&&`** — `other || count` is a normal way to pass an accessor
-  along to a consumer that will call it.
-- **Consequent and alternate of `?:`** — `flag() ? count : other` likewise.
-- **`typeof count === "function"`** — that is how a caller checks whether it was handed an
-  accessor at all.
-- **`props.loading ? a : b`** — props lower to getters, so a props member read is a value.
-- **A `case` test** — `switch (x) { case count: }` compares by identity, which is the same
-  refusal the equality operators get in [BARQ001](BARQ001.md).
-- **`for (const x of items)`** — not a test position.
-- A binding that is written to anywhere never reaches accessor classification, so a `let`
-  reassigned to a plain value cannot be reported here.
-- **A row whose `keyed` cannot be read** — `<For keyed={KEYED}>`, `<For {...opts}>`. The row
-  is on the accessor arm because that arm is safe when wrong, which is not evidence that it
-  is an accessor.
+A prop is not reported here, because `props.label ? a : b` is how a component asks whether
+an optional prop was passed at all.
 
-The loop arms are the one place this rule is **wider** than `vue/no-ref-as-operand`, which
-has only `IfStatement>Identifier` and `SwitchStatement>Identifier`. A loop test reads its
-operand as a boolean and nothing else — the same argument as `if` — and the failure is
-worse, because the loop never ends.
+## Silencing one line
 
-`loading ? a : b` is also reported by `tsc --strict` as TS2774, *"This condition will
-always return true since this function is always defined. Did you mean to call it
-instead?"* — the `if`/`switch`/logical arms and every JavaScript user are what this code
-adds.
+```tsx
+import { createSignal } from "@barqjs/core";
 
-## Silencing it
+const [loading] = createSignal(true);
 
-```ts
-// barq-ignore-next-line BARQ002 (deliberately testing that the accessor exists)
-if (maybeAccessor) …
+// barq-ignore-next-line BARQ002 (checking that the accessor exists)
+export const present = loading ? "yes" : "no";
 ```
 
-[vue]: https://eslint.vuejs.org/rules/no-ref-as-operand.html
+The reason in parentheses is required and has to be at least 10 characters. Between JSX
+children, write the comment as `{/* barq-ignore-next-line BARQ002 (reason) */}` on the line
+above: a `//` line there is text and would be rendered on the page. To change the level
+for the whole project, see [the index](README.md#changing-a-level-for-the-whole-project).

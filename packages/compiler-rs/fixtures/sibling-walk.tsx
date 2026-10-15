@@ -1,7 +1,7 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const a = signal("1")
-export const b = signal("2")
+export const [a, setA] = createSignal("1")
+export const [b, setB] = createSignal("2")
 
 export default function SiblingWalk() {
   return (
@@ -15,7 +15,7 @@ export default function SiblingWalk() {
   )
 }
 
-export const steps = [() => a.set("A"), () => b.set("B")]
+export const steps = [() => setA("A"), () => setB("B")]
 
 export const optimality = {
   target: 5,

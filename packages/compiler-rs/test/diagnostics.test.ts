@@ -41,8 +41,8 @@ function codes(raw: Raw): string[] {
 }
 
 const COERCED =
-  `import { signal } from "@barqjs/core";\n` +
-  `const count = signal(0);\n` +
+  `import { createSignal } from "@barqjs/core";\n` +
+  `const [count] = createSignal(0);\n` +
   "export const V = () => <p>{`total: ${count}`}</p>;\n";
 
 describe("the diagnostic engine", () => {
@@ -80,8 +80,8 @@ describe("the diagnostic engine", () => {
       ["-count", "BARQ001"],
     ] as const) {
       const raw = diagnose(
-        `import { signal } from "@barqjs/core";\n` +
-          `const count = signal(0);\n` +
+        `import { createSignal } from "@barqjs/core";\n` +
+          `const [count] = createSignal(0);\n` +
           `export const V = () => <p>{${expression}}</p>;\n`,
       );
       expect(codes(raw)).toEqual([code]);
@@ -93,8 +93,8 @@ describe("the diagnostic engine", () => {
   /** The framework's own idiom. A JSX arm here would fire on correct code. */
   it("says nothing about a bare accessor in a JSX hole or attribute", () => {
     const raw = diagnose(
-      `import { signal } from "@barqjs/core";\n` +
-        `const count = signal(0);\n` +
+      `import { createSignal } from "@barqjs/core";\n` +
+        `const [count] = createSignal(0);\n` +
         "export const V = () => <div id={count}>{count}</div>;\n",
     );
     expect(raw.diagnostics).toEqual([]);
@@ -103,8 +103,8 @@ describe("the diagnostic engine", () => {
     // this assertion cannot tell "the JSX arm is correctly absent" from "the
     // rule is switched off".
     const armed = diagnose(
-      `import { signal } from "@barqjs/core";\n` +
-        `const count = signal(0);\n` +
+      `import { createSignal } from "@barqjs/core";\n` +
+        `const [count] = createSignal(0);\n` +
         "export const V = () => <div id={count}>{`${count}`}</div>;\n",
     );
     expect(codes(armed)).toEqual(["BARQ001"]);
@@ -206,16 +206,16 @@ describe("the diagnostic engine", () => {
     type Reachable = string | { source: string; options: Record<string, unknown> };
     const reachable: Record<string, Reachable> = {
       BARQ001:
-        `import { signal } from "@barqjs/core";\n` +
-        `const count = signal(0);\n` +
+        `import { createSignal } from "@barqjs/core";\n` +
+        `const [count] = createSignal(0);\n` +
         "export const V = () => <p>{`total: ${count}`}</p>;\n",
       BARQ002:
-        `import { signal } from "@barqjs/core";\n` +
-        `const on = signal(false);\n` +
+        `import { createSignal } from "@barqjs/core";\n` +
+        `const [on] = createSignal(false);\n` +
         'export const V = () => <p>{on ? "y" : "n"}</p>;\n',
       BARQ003:
-        `import { signal } from "@barqjs/core";\n` +
-        `const user = signal({ email: \"a\" });\n` +
+        `import { createSignal } from "@barqjs/core";\n` +
+        `const [user] = createSignal({ email: \"a\" });\n` +
         "export const V = () => <p>{user.email}</p>;\n",
       BARQ004:
         `import { For, useStore } from "@barqjs/core";\n` +
@@ -230,8 +230,8 @@ describe("the diagnostic engine", () => {
         "function Sink(props) { return <div title={props.children} />; }\n" +
         "export const V = () => <Sink><b>x</b></Sink>;\n",
       BARQ011:
-        `import { For, signal } from "@barqjs/core";\n` +
-        "const rows = signal([]);\n" +
+        `import { For, createSignal } from "@barqjs/core";\n` +
+        "const [rows] = createSignal([]);\n" +
         "export const V = () =>\n" +
         "  <For each={rows} keyed={false}>{(row) => <li><input value={row()} /></li>}</For>;\n",
       BARQ012:
@@ -330,8 +330,8 @@ describe("the diagnostic engine", () => {
     const raw = diagnose(each);
     expect(codes(raw)).toContain("BARQ010");
     const named = raw.diagnostics.find((entry) => entry.code === "BARQ010")!;
-    expect(named.message).toContain("each source");
-    expect(named.message).not.toContain("intrinsic element");
+    expect(named.message).toContain("`Rows` reads `props.thing` as the list a `<For>`");
+    expect(named.message).not.toContain("attribute of an element");
 
     const when =
       'import { Show } from "@barqjs/core";\n' +
@@ -395,6 +395,78 @@ describe("the diagnostic engine", () => {
         .trim(),
     ).toBe(diagnose(COERCED).code.trim());
   });
+});
+
+/**
+ * A docs page is the second half of a message, and it rots the same way: the
+ * example stops raising the code, or the fix it prints stops compiling. Every
+ * page is therefore run. The quoted message has to be the one the failing
+ * example produces, the failing example has to raise its code and nothing
+ * else, and the fixed and silenced examples have to compile clean.
+ */
+describe("the docs pages", () => {
+  const PAGE_OPTIONS: Record<string, Record<string, unknown>> = {
+    BARQ013: { routes: ["/", "/users", "/users/$id"] },
+  };
+
+  function section(page: string, heading: string): string | undefined {
+    const start = page.indexOf(`\n## ${heading}\n`);
+    if (start === -1) return undefined;
+    const from = start + heading.length + 5;
+    const next = page.indexOf("\n## ", from);
+    return page.slice(from, next === -1 ? undefined : next);
+  }
+
+  function fences(body: string): string[] {
+    return [...body.matchAll(/```[a-z]*\n([\s\S]*?)```/g)].map((match) => match[1] ?? "");
+  }
+
+  function quoted(body: string): string {
+    return body
+      .split("\n")
+      .filter((line) => line.startsWith("> "))
+      .map((line) => line.slice(2))
+      .join(" ");
+  }
+
+  for (const entry of native.diagnosticCodes()) {
+    const { code } = entry;
+    const options = PAGE_OPTIONS[code] ?? {};
+
+    it(`${code}: the page's examples do what the page says`, () => {
+      const page = readFileSync(join(PACKAGE_ROOT, "docs", `${code}.md`), "utf8");
+      expect(page.split("\n")[0]).toBe(`# ${code}: ${entry.summary}`);
+      expect(section(page, "Why this rule exists"), "a why section").toBeDefined();
+
+      const failing = fences(section(page, "Failing example") ?? "");
+      expect(failing.length, "a failing example").toBeGreaterThan(0);
+      for (const source of failing) {
+        expect(codes(diagnose(source, options)), source).toEqual([code]);
+      }
+      const [first] = failing;
+      expect(quoted(section(page, "Message") ?? "")).toBe(
+        diagnose(first!, options).diagnostics[0]!.message,
+      );
+
+      const fixed = fences(section(page, "Fixed example") ?? "");
+      expect(fixed.length, "a fixed example").toBeGreaterThan(0);
+      for (const source of fixed) {
+        expect(codes(diagnose(source, options)), source).toEqual([]);
+      }
+
+      const silenced = section(page, "Silencing one line");
+      if (silenced === undefined) {
+        expect(section(page, "Turning it off"), "a way to silence it").toBeDefined();
+        return;
+      }
+      const ignored = fences(silenced);
+      expect(ignored.length, "a silenced example").toBeGreaterThan(0);
+      for (const source of ignored) {
+        expect(source).toContain(`barq-ignore-next-line ${code} (`);
+        expect(codes(diagnose(source, options)), source).toEqual([]);
+      }
+    });
+  }
 });
 
 /**

@@ -1,6 +1,6 @@
-import { signal } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
 
-export const label = signal("first")
+export const [label, setLabel] = createSignal("first")
 
 /**
  * A rest element collects everything the pattern did not name, and the rest
@@ -26,7 +26,7 @@ export default function PropsRestSpread() {
   )
 }
 
-export const steps = [() => label.set("second")]
+export const steps = [() => setLabel("second")]
 
 export const optimality = {
   target: 1,

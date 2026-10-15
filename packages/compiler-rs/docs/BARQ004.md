@@ -1,51 +1,71 @@
-# BARQ004 — `For`'s `each` origin cannot be proved
+# BARQ004: `<For>` rows may show stale fields when `each` holds store objects
 
-**Level:** note · **Dev builds only** · [all codes](README.md)
+**Level:** note · [all codes](README.md)
 
-## What fires
+## Message
 
-A by-item `<For>` — `keyed` absent, or `keyed={true}` — whose `each` expression resolves to
-something the compiler could not prove is an array of values `mapArray` recreates.
+> `<For>` reads a row's fields once, when the row is created, and the compiler cannot
+> tell where the items in `each` come from. If they are store objects, changing a field
+> in place leaves the row showing the old value. Key the list and read the row by
+> calling it: `keyed={(row) => row.id}` with `row().name`.
 
-```jsx
-<For each={store.items}>{(item) => <li>{item.name}</li>}</For>   // BARQ004
+## Failing example
+
+```tsx
+import { For, createStore } from "@barqjs/core";
+
+const [state] = createStore({ rows: [{ id: 1, name: "salama" }] });
+
+export const List = () => (
+  <ul>
+    <For each={state.rows}>{(row) => <li>{row.name}</li>}</For>
+  </ul>
+);
 ```
 
-## What it means
+## Fixed example
 
-A member read on a **by-item** row is applied once, with no thunk and no effect (DESIGN
-§12 O3). That is exactly right when the rows really are values `mapArray` recreated: a new
-value means a new row, and the row is rebuilt. It is silently stale when the rows are store
-**proxies**, because mutating a proxy field leaves the array identity alone, no row is
-recreated, and the applied-once read never runs again.
+```tsx
+import { For, createStore } from "@barqjs/core";
 
-The note is a note and not a warning because the compiler cannot tell the two apart. It is
-gated on being able to *resolve* the origin, not on knowing nothing: `each={[…]}` built
-inline is silent, and `each={store.items}` — the demonstrable failure — is not.
+const [state] = createStore({ rows: [{ id: 1, name: "salama" }] });
 
-## The fix
-
-Read the row through an accessor:
-
-```jsx
-<For each={store.items} keyed={false}>{(item) => <li>{item().name}</li>}</For>
+export const List = () => (
+  <ul>
+    <For each={state.rows} keyed={(row) => row.id}>
+      {(row) => <li>{row().name}</li>}
+    </For>
+  </ul>
+);
 ```
 
-or key it, which boxes the row in a signal and makes both parameters accessors:
+## Why this rule exists
 
-```jsx
-<For each={store.items} keyed={(row) => row.id}>{(item) => <li>{item().name}</li>}</For>
+Without `keyed`, a row is identified by the item itself and receives it as a plain value,
+so `{row.name}` is written once. That is right when a change replaces the item with a new
+object, because a new item is a new row. A store changes fields in place: the item stays
+the same object, the row is kept, and the old text stays on the page.
+
+The compiler cannot tell which kind of list `each` holds, which is why this is a note and
+not a warning. With `keyed={(row) => row.id}` or `keyed={false}` the row receives an
+accessor, `row().name` is read again when the field changes, and nothing is reported.
+
+## Silencing one line
+
+```tsx
+import { For, createStore } from "@barqjs/core";
+
+const [state] = createStore({ rows: [{ id: 1, name: "salama" }] });
+
+export const List = () => (
+  <ul>
+    {/* barq-ignore-next-line BARQ004 (rows are replaced, never changed in place) */}
+    <For each={state.rows}>{(row) => <li>{row.name}</li>}</For>
+  </ul>
+);
 ```
 
-## What does not fire
-
-`keyed={false}` and `keyed={fn}` both hand the row through an accessor, so neither has the
-hazard at all. (Before the `keyed={fn}` classification fix this note fired on function-keyed
-`For`s, which was wrong twice over — see ERGONOMICS §4.3.)
-
-## Silencing it
-
-```jsx
-{/* barq-ignore-next-line BARQ004 (these rows are plain values from a fetch) */}
-<For each={rows}>{(row) => <li>{row.name}</li>}</For>
-```
+The reason in parentheses is required and has to be at least 10 characters. Between JSX
+children, write the comment as `{/* barq-ignore-next-line BARQ004 (reason) */}` on the line
+above: a `//` line there is text and would be rendered on the page. To change the level
+for the whole project, see [the index](README.md#changing-a-level-for-the-whole-project).
