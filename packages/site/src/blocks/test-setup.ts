@@ -82,10 +82,15 @@ export function barqPlugin(options: { ssr?: boolean; hydratable?: boolean; every
         });
         // The CSS a module produced has nowhere to go without a bundler, and
         // dropping it is how a suite ends up asserting on an empty stylesheet.
-        const contents =
+        const compiled =
           result.css === undefined || result.css === ""
             ? result.code
             : result.code + cssRegistration(args.path, result.css);
+        // The path goes into the module: bun's transpiler cache keys a plugin's
+        // output by its text, so two checkouts that compile a file to the same
+        // text shared one entry, and with it the `?raw` paths the other
+        // checkout resolved. A demo then showed the other checkout's code.
+        const contents = `${compiled}\n// ${args.path}\n`;
         return { contents, loader: args.path.endsWith(".tsx") ? "tsx" : "ts" };
       };
 
