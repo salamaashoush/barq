@@ -53,6 +53,11 @@ interface ErrorInfo extends PluginInfo {
   /** A redirect's target and status; empty for everything else. */
   to: never;
   status: never;
+  /**
+   * What the application said about where to go, or about what was missing:
+   * a redirect's navigation options, a not-found's `data` and `routeId`.
+   */
+  detail: never;
 }
 
 /**
@@ -98,7 +103,66 @@ function parseError(value: Error, ctx: { parse: (input: unknown) => unknown }): 
     // already the least secret thing about the request.
     to: ctx.parse(typeof redirect?.to === "string" ? redirect.to : ""),
     status: ctx.parse(typeof redirect?.status === "number" ? redirect.status : 0),
+    detail: ctx.parse(detailOf(kind, value)),
   } as unknown as ErrorInfo;
+}
+
+/** The navigation fields of a redirect that are data. `headers` belong to the response. */
+const NAVIGATION = ["to", "from", "params", "search", "hash", "replace", "reloadDocument", "href"];
+
+/**
+ * The part of a redirect or a not-found the application wrote for the client.
+ *
+ * It is what the browser is about to act on, so it is no more secret than the
+ * target is. Only DATA crosses: a function-valued `params` or `search` is an
+ * instruction to compute against the current location, which the far side does
+ * not have, and anything else that is not plain data is left behind rather than
+ * handed to the serialiser to refuse.
+ */
+function detailOf(kind: string, value: Error): Record<string, unknown> | null {
+  const held = value as unknown as Record<string, unknown>;
+  if (kind === "redirect") {
+    const options = held.options;
+    if (typeof options !== "object" || options === null) return null;
+    const out: Record<string, unknown> = {};
+    for (const key of NAVIGATION) {
+      const part = plain((options as Record<string, unknown>)[key]);
+      if (part !== undefined) out[key] = part;
+    }
+    return out;
+  }
+  if (kind === "not-found") {
+    const out: Record<string, unknown> = {};
+    const data = plain(held.data);
+    if (data !== undefined) out.data = data;
+    if (typeof held.routeId === "string") out.routeId = held.routeId;
+    return Object.keys(out).length === 0 ? null : out;
+  }
+  return null;
+}
+
+function plain(value: unknown, depth = 0): unknown {
+  if (value === null) return null;
+  switch (typeof value) {
+    case "string":
+    case "number":
+    case "boolean":
+      return value;
+    case "object":
+      break;
+    default:
+      return undefined;
+  }
+  if (depth > 8) return undefined;
+  if (Array.isArray(value)) return value.map((item) => plain(item, depth + 1) ?? null);
+  const proto = Object.getPrototypeOf(value) as unknown;
+  if (proto !== Object.prototype && proto !== null) return undefined;
+  const out: Record<string, unknown> = {};
+  for (const [key, item] of Object.entries(value)) {
+    const part = plain(item, depth + 1);
+    if (part !== undefined) out[key] = part;
+  }
+  return out;
 }
 
 function kindOf(value: Error): "redirect" | "not-found" | "" {
@@ -168,8 +232,10 @@ const redactError: Plugin<Error, ErrorInfo> = createPlugin<Error, ErrorInfo>({
     `(()=>{const e=Object.assign(new Error(${ctx.serialize(node.message)}),` +
     `{name:${ctx.serialize(node.name)}});const k=${ctx.serialize(node.kind)};` +
     `if(k==="redirect"){e[Symbol.for("barq.redirect")]=true;` +
-    `e.to=${ctx.serialize(node.to)};e.status=${ctx.serialize(node.status)};}` +
-    `else if(k==="not-found"){e[Symbol.for("barq.not-found")]=true;}return e;})()`,
+    `e.to=${ctx.serialize(node.to)};e.status=${ctx.serialize(node.status)};` +
+    `const d=${ctx.serialize(node.detail)};if(d)e.options=d;}` +
+    `else if(k==="not-found"){e[Symbol.for("barq.not-found")]=true;` +
+    `const d=${ctx.serialize(node.detail)};if(d)Object.assign(e,d);}return e;})()`,
   deserialize: (node, ctx) => {
     const error = Object.assign(new Error(ctx.deserialize<string>(node.message)), {
       name: ctx.deserialize<string>(node.name),
@@ -181,8 +247,12 @@ const redactError: Plugin<Error, ErrorInfo> = createPlugin<Error, ErrorInfo>({
         to: ctx.deserialize<string>(node.to),
         status: ctx.deserialize<number>(node.status),
       });
+      const detail = ctx.deserialize<Record<string, unknown> | null>(node.detail);
+      if (detail !== null) Object.assign(error as object, { options: detail });
     } else if (kind === "not-found") {
       Object.assign(error as object, { [NOT_FOUND]: true });
+      const detail = ctx.deserialize<Record<string, unknown> | null>(node.detail);
+      if (detail !== null) Object.assign(error as object, detail);
     }
     return error;
   },
@@ -257,21 +327,19 @@ export function createSerializationAdapter<In, Out>(
  * request state, so it does not have the concurrency problem an ambient request
  * would.
  */
-const ADAPTERS = new Map<string, SerializationAdapter<never, unknown>>();
+const ADAPTERS = new Map<string, SerializationAdapter>();
 
 /**
  * Install adapters for this process. Later calls REPLACE earlier ones for the
  * same key, which is what an edit looks like under HMR.
  */
-export function registerSerializationAdapters(
-  adapters: readonly SerializationAdapter<never, unknown>[],
-): void {
+export function registerSerializationAdapters(adapters: readonly SerializationAdapter[]): void {
   for (const adapter of adapters) ADAPTERS.set(adapter.key, adapter);
   plugins = null;
 }
 
 /** What is installed, for the client bootstrap and for tests. */
-export function serializationAdapters(): readonly SerializationAdapter<never, unknown>[] {
+export function serializationAdapters(): readonly SerializationAdapter[] {
   return [...ADAPTERS.values()];
 }
 
@@ -297,7 +365,7 @@ interface AdapterNode extends PluginInfo {
  * rebuild, because `fromSerializable` is a closure in the application's bundle
  * and there is no way to write one into a string.
  */
-function pluginFor(adapter: SerializationAdapter<never, unknown>): Plugin<unknown, AdapterNode> {
+function pluginFor(adapter: SerializationAdapter): Plugin<unknown, AdapterNode> {
   const reduce = (value: unknown, ctx: { parse: (value: unknown) => never }): AdapterNode => ({
     v: ctx.parse(adapter.toSerializable(value as never)),
   });
@@ -367,8 +435,9 @@ export function encodeSeed(data: Record<string, unknown>): string {
 function warnIfLarge(bytes: number): void {
   if (bytes <= SEED_WARN_BYTES) return;
   console.warn(
-    `[barq] hydration seed is ${bytes} bytes (over ${SEED_WARN_BYTES}). ` +
-      "It is inlined in every response and hydration blocks on parsing it.",
+    `[barq] This page's hydration data is ${bytes} bytes, over the ${SEED_WARN_BYTES}-byte warning threshold. ` +
+      "It is inlined in every response and the browser parses all of it before the page becomes interactive. " +
+      "Return only the fields the page renders from the async reads the server resolves.",
   );
 }
 

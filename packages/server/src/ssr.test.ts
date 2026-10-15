@@ -858,6 +858,8 @@ describe("a form action", () => {
     // POST is not decoration: the endpoint refuses GET, because a GET-invocable
     // mutation is a link that mutates.
     expect(formAttr(serverFn("todos/add"))).toBe(' action="/_barq/fn/todos%2Fadd" method="post"');
+    const moved = Object.assign(serverFn("todos/add") as object, { url: "/api/rpc/todos%2Fadd" });
+    expect(formAttr(moved)).toBe(' action="/api/rpc/todos%2Fadd" method="post"');
   });
 
   test("an id needing escaping is escaped once, as a URL and as an attribute", () => {

@@ -31,7 +31,7 @@ module imports from here and from nowhere else.
 import { renderToStream, renderToString, renderToStringAsync } from "@barqjs/server";
 
 const html = renderToString(() => App()); // synchronous
-const settled = await renderToStringAsync(() => App()); // waits for every resource
+const settled = await renderToStringAsync(() => App()); // waits for every async memo
 const stream = renderToStream(() => App()); // shell first, then patches
 ```
 

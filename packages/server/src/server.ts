@@ -14,7 +14,6 @@
  */
 
 import {
-  type Block,
   type JSXElement,
   HYDRATE,
   type Scope,
@@ -22,25 +21,21 @@ import {
   flush,
   isSsrHtml,
   render,
-  scope,
+  rootScope,
+  runWithOwner,
   settle,
 } from "@barqjs/core";
 import {
   abandonPendingSeeds,
   clearHydrationData,
+  disposeScope,
   getHydrationData,
   pendingSeedsOf,
   setAsyncSession,
   settleStep,
+  thrownBy,
 } from "@barqjs/core/internal";
-import {
-  type SsrHtml,
-  type StreamSink,
-  esc,
-  escapeAttribute,
-  resumeDeferred,
-  setStreamSink,
-} from "./ssr.ts";
+import { type SsrHtml, type StreamSink, esc, escapeAttribute, setStreamSink } from "./ssr.ts";
 import { createSeedEncoder, encodeSeed, serializationAdapters } from "./codec.ts";
 
 /**
@@ -71,34 +66,41 @@ export type RootRender = (scope?: Scope) => JSXElement | SsrHtml;
 export function renderToString(fn: RootRender): string {
   let container: HTMLElement | null = null;
   let markup: string | null = null;
-  let dispose!: () => void;
+  // A session of its own, for the one thing it says here: this is a server
+  // render, so the effects the tree declares do not run.
+  const session = Symbol("render");
+  const previous = setAsyncSession(session);
+  const owner = rootScope();
+  try {
+    runWithOwner(owner, () => {
+      const value = fn(owner);
+      // A module compiled by the SSR string backend already IS the markup, and
+      // renders with no DOM at all. Anything else — a hand-written `createElement`
+      // tree, a component from a module this compiler never saw — goes through the
+      // ambient DOM as before. Since M6 nothing the compiler emits takes that
+      // path: `uninlinable_flow` and the whole-module downgrade behind it are
+      // deleted, and every construct has a string lowering.
+      if (isSsrHtml(value)) {
+        markup = value.t;
+        return;
+      }
+      if (typeof document === "undefined") {
+        throw new Error(
+          "`renderToString` was given a view that was not compiled for the server, and there is no global `document` to build it with. " +
+            "Compile the module with the `@barqjs/compiler` Vite plugin in an SSR build, or register a DOM such as happy-dom's `GlobalRegistrator` before rendering.",
+        );
+      }
+      container = document.createElement("div");
+      render(value, container);
+    });
+    flush();
 
-  scope((d, owner) => {
-    dispose = d;
-    const value = fn(owner);
-    // A module compiled by the SSR string backend already IS the markup, and
-    // renders with no DOM at all. Anything else — a hand-written `createElement`
-    // tree, a component from a module this compiler never saw — goes through the
-    // ambient DOM as before. Since M6 nothing the compiler emits takes that
-    // path: `uninlinable_flow` and the whole-module downgrade behind it are
-    // deleted, and every construct has a string lowering.
-    if (isSsrHtml(value)) {
-      markup = value.t;
-      return;
-    }
-    if (typeof document === "undefined") {
-      throw new Error(
-        "renderToString needs a DOM implementation (e.g. happy-dom's GlobalRegistrator) registered before rendering.",
-      );
-    }
-    container = document.createElement("div");
-    render(value, container);
-  }, true);
-  flush();
-
-  const html = markup ?? (container as HTMLElement | null)?.innerHTML ?? "";
-  dispose();
-  return html;
+    return markup ?? (container as HTMLElement | null)?.innerHTML ?? "";
+  } finally {
+    disposeScope(owner);
+    setAsyncSession(previous);
+    clearHydrationData(session);
+  }
 }
 
 /**
@@ -137,14 +139,14 @@ export async function renderPage(
   },
 ): Promise<{ html: string; data: Record<string, unknown>; script: string }> {
   const session = options?.session ?? Symbol("render-session");
-  let dispose!: () => void;
+  let owner: Scope | null = null;
   let container: HTMLElement | null = null;
   let stringMode = false;
   let markup = "";
 
   // The SAME park-and-resume machinery the streamed arm uses. This is the whole
   // of the unification: a boundary that cannot settle inside the shell parks its
-  // content Block here exactly as it does for a stream, and the loop below
+  // content build here exactly as it does for a stream, and the loop below
   // resumes it and patches the settled markup into the bytes.
   //
   // What this REPLACED was a second full render of the page, which is a
@@ -154,56 +156,87 @@ export async function renderPage(
   // and crawlers and the prerenderer were served SKELETONS, and one extra pass
   // settles exactly one level of nesting, so a boundary inside a boundary
   // shipped a skeleton whatever happened.
-  const parked: Continuation[] = [];
+  const parked: Buffered[] = [];
   let nextId = 0;
+  let stamp: string | null = null;
   const sink: StreamSink = {
-    defer(body: Block<unknown>, scope: Scope | null, flags = 0): number {
+    defer(resume, fallback, flags, parkedOn): string {
       const id = nextId++;
-      parked.push({ id, body, scope, at: Date.now(), hydrate: (flags & HYDRATE) !== 0 });
-      return id;
+      stamp ??= crypto.randomUUID();
+      const open = `<!--[b:${id}:${stamp}-->`;
+      const close = `<!--]b:${id}:${stamp}-->`;
+      parked.push({
+        id,
+        resume,
+        at: Date.now(),
+        parkedOn,
+        hydrate: (flags & HYDRATE) !== 0,
+        open,
+        close,
+      });
+      return open + fallback + close;
     },
   };
 
-  const prev = setAsyncSession(session);
-  const prevSink = setStreamSink(sink);
+  let html: string;
+  let data: Record<string, unknown>;
   try {
-    scope((d, owner) => {
-      dispose = d;
-      const value = fn(owner);
-      if (isSsrHtml(value)) {
-        stringMode = true;
-        markup = value.t;
-        return;
+    const prevSink = setStreamSink(sink);
+    try {
+      const prev = setAsyncSession(session);
+      try {
+        const root = rootScope();
+        owner = root;
+        runWithOwner(root, () => {
+          const value = fn(root);
+          if (isSsrHtml(value)) {
+            stringMode = true;
+            markup = value.t;
+            return;
+          }
+          if (typeof document === "undefined") {
+            throw new Error(
+              "`renderToStringAsync` was given a view that was not compiled for the server, and there is no global `document` to build it with. " +
+                "Compile the module with the `@barqjs/compiler` Vite plugin in an SSR build, or register a DOM such as happy-dom's `GlobalRegistrator` before rendering.",
+            );
+          }
+          container = document.createElement("div");
+          render(value, container);
+        });
+      } finally {
+        setAsyncSession(prev);
       }
-      if (typeof document === "undefined") {
-        throw new Error(
-          "renderToStringAsync needs a DOM implementation (e.g. happy-dom's GlobalRegistrator) registered before rendering.",
-        );
-      }
-      container = document.createElement("div");
-      render(value, container);
-    }, true);
-    flush();
+      // The flush is the whole process's: it runs whatever any render has
+      // pending, so it is not made in this one's name.
+      flush();
+    } finally {
+      setStreamSink(prevSink);
+    }
+
+    // Session-scoped: concurrent renders don't wait on each other's fetches
+    await settle(session);
+
+    if (stringMode) markup = await drainParked(markup, parked, sink, session);
+
+    // What never settled reaches the page as the range a stream would have left
+    // behind, which the client reads as "build this one yourself". A tree built
+    // as DOM resumes nothing, so every boundary a string-compiled part of it
+    // parked is still here.
+    html = stringMode ? markup : ((container as HTMLElement | null)?.innerHTML ?? "");
+    for (const record of parked) {
+      html = replaceParked(html, record, (fallback) => deferredRange(record.id, fallback));
+    }
+    data = await settleNested(getHydrationData(session));
   } finally {
-    setStreamSink(prevSink);
-    setAsyncSession(prev);
+    // Whether the render finished or threw. Anything still in flight is given
+    // up on, exactly as the streamed arm does: a buffered page settles
+    // everything it can before this line, so on a render that finished this
+    // releases only what a boundary deadline abandoned.
+    abandonPendingSeeds(session);
+    clearHydrationData(session);
+    if (owner !== null) disposeScope(owner);
   }
-
-  // Session-scoped: concurrent renders don't wait on each other's fetches
-  await settle(session);
-
-  if (stringMode) markup = await drainParked(markup, parked, sink, session);
-
-  const html = stringMode ? markup : ((container as HTMLElement | null)?.innerHTML ?? "");
-  const data = await settleNested(getHydrationData(session));
-  // Anything still in flight is given up on, exactly as the streamed arm does.
-  // A buffered page settles everything it can before this line, so in practice
-  // this releases only what a boundary deadline abandoned — and it is what keeps
-  // the registry from outliving the render.
-  abandonPendingSeeds(session);
-  clearHydrationData(session);
   lastRenderData = data;
-  dispose();
 
   return { html, data, script: await seedScriptFor(data, options?.nonce) };
 }
@@ -216,25 +249,29 @@ export async function renderPage(
  * OWN — that is what nesting is — so the queue is drained rather than iterated
  * once, and the depth of nesting a page can resolve is not bounded by a pass
  * count. The two-pass render this replaced could resolve exactly one level.
+ *
+ * What it gives up on is left in `parked` for the caller.
  */
 async function drainParked(
   markup: string,
-  parked: Continuation[],
+  parked: Buffered[],
   sink: StreamSink,
   session: symbol,
 ): Promise<string> {
   let out = markup;
+  const unsettled: Buffered[] = [];
   while (parked.length > 0) {
     const round = parked.splice(0, parked.length);
-    const again: Continuation[] = [];
+    const again: Buffered[] = [];
     for (const record of round) {
       const restore = setAsyncSession(session);
       const outerSink = setStreamSink(sink);
       let settled: string | null;
       try {
-        settled = resumeDeferred(record.body, record.scope);
+        settled = record.resume();
       } catch (error) {
         if (!(error instanceof NotReadyError)) throw error;
+        record.parkedOn = error;
         settled = null;
       } finally {
         setStreamSink(outerSink);
@@ -244,15 +281,70 @@ async function drainParked(
         // Past its own deadline it is abandoned to the fallback the shell
         // already carries, which is the rule the streamed arm applies too.
         if (Date.now() - record.at < BOUNDARY_TIMEOUT) again.push(record);
+        else unsettled.push(record);
         continue;
       }
-      out = patchDeferredRange(out, record.id, settled, record.hydrate);
+      // A hydratable page keeps the range — the client claims it, and after
+      // this the boundary is indistinguishable from one that settled inside
+      // the shell. A page that does not hydrate keeps neither comment: the
+      // markers existed only so this patch could find the range.
+      const content = record.hydrate ? `<!--[-->${settled}<!--]-->` : settled;
+      out = replaceParked(out, record, () => content);
     }
     if (again.length > 0) parked.unshift(...again);
     if (parked.length === 0) break;
-    if (!(await settleStep(session))) break;
+    // A flight another render started is not this one's to wait out: `settle`
+    // bounds nothing, so the oldest boundary's deadline does, and the round
+    // after it abandons whatever is past its own.
+    const oldest = Math.min(...parked.map((record) => record.at));
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const expired = new Promise<"expired">((resolve) => {
+      timer = setTimeout(() => resolve("expired"), oldest + BOUNDARY_TIMEOUT - Date.now());
+    });
+    let stepped: boolean | "expired";
+    try {
+      stepped = await Promise.race([settleStep(session, flightsOf(parked)), expired]);
+    } finally {
+      clearTimeout(timer);
+    }
+    // Nothing this render is waiting on is still in the air: what is left
+    // keeps its fallback.
+    if (stepped === false) break;
   }
+  parked.unshift(...unsettled);
   return out;
+}
+
+/** What each parked boundary's last attempt threw, for `settleStep` to wait on. */
+function flightsOf(parked: readonly Continuation[]): NotReadyError[] {
+  return parked.map((record) => record.parkedOn);
+}
+
+/**
+ * Rewrite one parked range of a buffered page, found by the markers this
+ * render wrote around it.
+ *
+ * Found, and not parsed for. A page is full of bytes its author did not write —
+ * an attribute value is escaped for `&` and `"` and nothing else, so `<!--[`
+ * and `<!--]-->` pass through one untouched — and a scan that reads comment
+ * syntax out of the serialised page takes those for the renderer's own. The
+ * markers carry a value minted for this render, which nothing on the page can
+ * reproduce, and the close marker names its boundary, so no depth is counted
+ * and no other range's close can be taken for this one's.
+ */
+function replaceParked(
+  page: string,
+  record: Buffered,
+  write: (fallback: string) => string,
+): string {
+  const start = page.indexOf(record.open);
+  if (start === -1) return page;
+  const inner = start + record.open.length;
+  const end = page.indexOf(record.close, inner);
+  if (end === -1) return page;
+  return (
+    page.slice(0, start) + write(page.slice(inner, end)) + page.slice(end + record.close.length)
+  );
 }
 
 /**
@@ -374,8 +466,8 @@ function placed(error: unknown): unknown {
  * unhandled rejection for a value whose only consumer is the encoder, which
  * attaches its own handler a moment later.
  */
-function handledRejection(error: unknown): Promise<never> {
-  const rejected = Promise.reject(error);
+function handledRejection(reason: unknown): Promise<never> {
+  const rejected = Promise.reject(reason);
   rejected.catch(() => {});
   return rejected;
 }
@@ -388,18 +480,39 @@ function handledRejection(error: unknown): Promise<never> {
 // Block is re-invocable with its scope, so there is no second code path.
 //
 // That is the whole implementation. The shell is one ordinary string render
-// with a SINK installed; every unready `Loading` parks its content Block and
-// its scope instead of settling for the fallback, and the loop below resumes
-// them in the order they settle.
+// with a SINK installed; every unready `Loading` parks the build of its content
+// instead of settling for the fallback, and the loop below resumes them in the
+// order they settle.
 
 interface Continuation {
   id: number;
-  body: Block<unknown>;
-  scope: Scope | null;
+  /** The build the shell refused to wait for. Throws `NotReadyError` while it still cannot. */
+  resume: () => string;
   /** When it parked, so its own deadline is measured from there. */
   at: number;
+  /** What its last attempt threw: the value it is waiting for. */
+  parkedOn: NotReadyError;
+}
+
+/** A boundary parked by a buffered render, with the markers that find it again. */
+interface Buffered extends Continuation {
   /** Whether this boundary's page hydrates — see `StreamSink.defer`. */
   hydrate: boolean;
+  open: string;
+  close: string;
+}
+
+/** A boundary parked by a stream, with where on the page it stands. */
+interface Streamed extends Continuation {
+  namespace: Namespace;
+}
+
+/**
+ * The streaming range: a boundary whose content is still to come, addressed
+ * by the continuation the stream will resume.
+ */
+function deferredRange(id: number, inner: string): string {
+  return `<!--[b:${id}-->${inner}<!--]-->`;
 }
 
 export interface StreamOptions {
@@ -448,60 +561,6 @@ const BOUNDARY_TIMEOUT = 5_000;
 const STREAM_GRACE = 1_000;
 
 /**
- * The SERVER half of the same swap, on a string that has not been flushed yet.
- *
- * One renderer serves both arms, which is how Solid and TanStack do it: a
- * stream replaces a placeholder in place until the first bytes are gone, and
- * emits a `<template>` plus a swap after that. Awaiting the same stream is what
- * produces a whole document.
- *
- * barq used to answer the buffered case by RENDERING THE PAGE A SECOND TIME and
- * hoping every value was cached under the same key. It cost two real defects:
- * the second pass built under a fresh root so every auto-key missed and the page
- * shipped skeletons to crawlers and to the prerenderer, and one extra pass
- * settles exactly ONE level of nesting, so a boundary inside a boundary shipped a
- * skeleton no matter what.
- *
- * The scan is `swapDeferredRange`'s, on bytes instead of nodes: find this
- * boundary's open comment, count depth so a nested range's `<!--]-->` is not
- * mistaken for this one's, and leave a PLAIN `<!--[-->` behind so the result is
- * indistinguishable from a boundary that settled inside the shell.
- */
-export function patchDeferredRange(
-  html: string,
-  id: number,
-  markup: string,
-  hydrate = true,
-): string {
-  const open = `<!--[b:${id}-->`;
-  const start = html.indexOf(open);
-  if (start === -1) return html;
-  let depth = 0;
-  const comments = /<!--([\s\S]*?)-->/g;
-  comments.lastIndex = start + open.length;
-  for (let m = comments.exec(html); m !== null; m = comments.exec(html)) {
-    const data = m[1] ?? "";
-    if (data.charAt(0) === "[") {
-      depth++;
-      continue;
-    }
-    if (data !== "]") continue;
-    if (depth === 0) {
-      // A hydratable page keeps the range — the client claims it, and after this
-      // the boundary is indistinguishable from one that settled inside the
-      // shell. A page that does not hydrate keeps neither comment: the markers
-      // existed only so this patch could find the range.
-      const close = m.index + (m[0] ?? "").length;
-      return hydrate
-        ? html.slice(0, start) + "<!--[-->" + markup + html.slice(m.index)
-        : html.slice(0, start) + markup + html.slice(close);
-    }
-    depth--;
-  }
-  return html;
-}
-
-/**
  * The client half of a swap: replace the range between `<!--[b:n-->` and its
  * matching `<!--]-->` with the template that just arrived.
  *
@@ -523,7 +582,7 @@ export function patchDeferredRange(
  *   beside a test that paraphrases it is two implementations, and the one that
  *   ships is the one nothing runs.
  */
-export function swapDeferredRange(n: number): void {
+export function swapDeferredRange(n: number, wrapped?: boolean): void {
   const t = document.querySelector<HTMLTemplateElement>(`template[data-barq="${n}"]`);
   if (!t) return;
   const w = document.createTreeWalker(document.body, 128);
@@ -552,6 +611,14 @@ export function swapDeferredRange(n: number): void {
     node = node.nextSibling;
   }
   for (let i = dead.length; i--;) dead[i].parentNode?.removeChild(dead[i]);
+  // A payload for foreign content arrives inside one element of that
+  // namespace, which is what made the parser read it as such. The element is
+  // the stream's and not the page's, so only what it holds goes in.
+  const wrap = wrapped ? t.content.firstChild : null;
+  if (wrap) {
+    while (wrap.firstChild) t.content.insertBefore(wrap.firstChild, wrap);
+    t.content.removeChild(wrap);
+  }
   open.parentNode?.insertBefore(t.content, node);
   // Back to the PLAIN open comment, not `[0`. Once the content is in, this
   // range is indistinguishable from one the shell settled, and it has to read
@@ -567,6 +634,218 @@ export function swapDeferredRange(n: number): void {
 const SWAP_SNIPPET = `window.__BARQ_SWAP__=${swapDeferredRange.toString()};`;
 
 /**
+ * The namespace a deferred boundary stands in. A `<template>` is parsed as
+ * HTML whatever the boundary's position on the page was, so a payload bound
+ * for foreign content is shipped inside an element of that namespace and
+ * `swapDeferredRange` unwraps it.
+ */
+type Namespace = "html" | "svg" | "math";
+
+const FOREIGN_WRAP: Record<Namespace, readonly [open: string, close: string]> = {
+  html: ["", ""],
+  svg: ["<svg>", "</svg>"],
+  math: ["<math>", "</math>"],
+};
+
+/**
+ * Record where each boundary that `markup` parked stands.
+ *
+ * Nothing tells a boundary its namespace when it is called: the string backend
+ * builds children before their parent's bytes exist, and the compiler passes
+ * no hint. The markup the boundary landed in is the only place the answer is,
+ * and it is complete by the time anything is streamed, so this is asked once
+ * per piece of markup that parked something.
+ */
+function placeParked(markup: string, outer: Namespace, fresh: readonly Streamed[]): void {
+  if (fresh.length === 0) return;
+  const found = namespacesOf(markup, outer);
+  for (const record of fresh) record.namespace = found.get(record.id) ?? outer;
+}
+
+const FOREIGN_ROOT = /<(?:svg|math)[\s/>]/i;
+
+/** Elements whose content the HTML tokenizer hands over as text. */
+const TEXT_CONTENT = new Set([
+  "iframe",
+  "noembed",
+  "noframes",
+  "noscript",
+  "plaintext",
+  "script",
+  "style",
+  "textarea",
+  "title",
+  "xmp",
+]);
+
+/** MathML's text integration points: a start tag inside one is HTML. */
+const MATH_TEXT = new Set(["mi", "mn", "mo", "ms", "mtext"]);
+
+const TEXT_END = new Map<string, RegExp>();
+
+/** Where the text content of `name`, starting at `from`, ends. */
+function endOfText(markup: string, name: string, from: number): number {
+  if (name === "plaintext") return markup.length;
+  let pattern = TEXT_END.get(name);
+  if (pattern === undefined) {
+    pattern = new RegExp(`</${name}[\\s/>]`, "gi");
+    TEXT_END.set(name, pattern);
+  }
+  pattern.lastIndex = from;
+  const match = pattern.exec(markup);
+  return match === null ? markup.length : match.index;
+}
+
+function isSpace(code: number): boolean {
+  return code === 32 || code === 9 || code === 10 || code === 12 || code === 13;
+}
+
+/**
+ * The namespace at every `<!--[b:N-->` in `markup`, which starts in `outer`.
+ *
+ * A TOKENIZER, and it has to be one. An attribute value leaves `<` and `>`
+ * raw, so a search for `<svg` or for the comment itself would be answered by a
+ * value as readily as by an element: tags are found only where a tag can
+ * start, a value is skipped as a value, and text content is skipped as text.
+ *
+ * It is not a tree builder. The only elements it keeps are the ones a
+ * namespace turns on: the root of a foreign subtree, the points inside one
+ * where HTML resumes, and an element of the same name nested in either, so
+ * that its end tag is not taken for the outer one's.
+ */
+function namespacesOf(markup: string, outer: Namespace): Map<number, Namespace> {
+  const found = new Map<number, Namespace>();
+  if (outer === "html" && !FOREIGN_ROOT.test(markup)) return found;
+  const length = markup.length;
+  const entered: { name: string; back: Namespace }[] = [];
+  let ns = outer;
+  let at = 0;
+  for (;;) {
+    const lt = markup.indexOf("<", at);
+    if (lt === -1) break;
+    at = lt + 1;
+    let code = markup.charCodeAt(at);
+    if (code === 33) {
+      if (markup.startsWith("--", at + 1)) {
+        const end = markup.indexOf("-->", at + 3);
+        const stop = end === -1 ? length : end;
+        if (markup.startsWith("[b:", at + 3)) found.set(Number(markup.slice(at + 6, stop)), ns);
+        at = stop + 3;
+      } else if (ns !== "html" && markup.startsWith("[CDATA[", at + 1)) {
+        const end = markup.indexOf("]]>", at + 8);
+        at = end === -1 ? length : end + 3;
+      } else {
+        const end = markup.indexOf(">", at);
+        at = end === -1 ? length : end + 1;
+      }
+      continue;
+    }
+    const closing = code === 47;
+    if (closing) code = markup.charCodeAt(++at);
+    // `<` followed by anything but an ASCII letter is text.
+    if ((code | 32) < 97 || (code | 32) > 122) continue;
+    const nameAt = at;
+    for (; at < length; at++) {
+      code = markup.charCodeAt(at);
+      if (code === 62 || code === 47 || isSpace(code)) break;
+    }
+    const name = markup.slice(nameAt, at).toLowerCase();
+
+    let selfClosing = false;
+    let htmlEncoded = false;
+    while (at < length) {
+      code = markup.charCodeAt(at);
+      if (code === 62) break;
+      if (code === 47 || isSpace(code)) {
+        selfClosing = code === 47;
+        at++;
+        continue;
+      }
+      selfClosing = false;
+      const attributeAt = at++;
+      for (; at < length; at++) {
+        code = markup.charCodeAt(at);
+        if (code === 61 || code === 62 || code === 47 || isSpace(code)) break;
+      }
+      const attributeEnd = at;
+      while (at < length && isSpace(markup.charCodeAt(at))) at++;
+      if (markup.charCodeAt(at) !== 61) continue;
+      at++;
+      while (at < length && isSpace(markup.charCodeAt(at))) at++;
+      const quote = markup.charCodeAt(at);
+      let valueAt = at;
+      let valueEnd: number;
+      if (quote === 34 || quote === 39) {
+        valueAt = at + 1;
+        const end = markup.indexOf(quote === 34 ? '"' : "'", valueAt);
+        valueEnd = end === -1 ? length : end;
+        at = valueEnd + 1;
+      } else {
+        for (; at < length; at++) {
+          code = markup.charCodeAt(at);
+          if (code === 62 || isSpace(code)) break;
+        }
+        valueEnd = at;
+      }
+      if (
+        name === "annotation-xml" &&
+        markup.slice(attributeAt, attributeEnd).toLowerCase() === "encoding"
+      ) {
+        const encoding = markup.slice(valueAt, valueEnd).toLowerCase();
+        htmlEncoded = encoding === "text/html" || encoding === "application/xhtml+xml";
+      }
+    }
+    at++;
+
+    const top = entered[entered.length - 1];
+    if (closing) {
+      if (top !== undefined && top.name === name) {
+        entered.pop();
+        ns = top.back;
+      }
+      continue;
+    }
+    if (ns === "html") {
+      if (name === "svg" || name === "math") {
+        if (!selfClosing) {
+          entered.push({ name, back: ns });
+          ns = name;
+        }
+      } else if (TEXT_CONTENT.has(name)) {
+        at = endOfText(markup, name, at);
+      } else if (top !== undefined && top.name === name) {
+        entered.push({ name, back: ns });
+      }
+      continue;
+    }
+    if (selfClosing) continue;
+    if (ns === "svg") {
+      if (name === "foreignobject" || name === "desc" || name === "title") {
+        entered.push({ name, back: ns });
+        ns = "html";
+      } else if (name === "svg" || (top !== undefined && top.name === name)) {
+        entered.push({ name, back: ns });
+      }
+      continue;
+    }
+    if (MATH_TEXT.has(name) || (name === "annotation-xml" && htmlEncoded)) {
+      entered.push({ name, back: ns });
+      ns = "html";
+    } else if (name === "svg" && top !== undefined && top.name === "annotation-xml") {
+      entered.push({ name, back: ns });
+      ns = "svg";
+    } else if (
+      name === "math" ||
+      name === "annotation-xml" ||
+      (top !== undefined && top.name === name)
+    ) {
+      entered.push({ name, back: ns });
+    }
+  }
+  return found;
+}
+
+/**
  * Render to a stream: the shell first, then one `<template>` per boundary as
  * its promises settle.
  *
@@ -580,13 +859,13 @@ export function renderToStream(
 ): ReadableStream<Uint8Array> {
   const session = options?.session ?? Symbol("stream-session");
   const encoder = new TextEncoder();
-  const parked: Continuation[] = [];
+  const parked: Streamed[] = [];
   let next = 0;
   const sink: StreamSink = {
-    defer(body: Block<unknown>, scope: Scope | null, flags = 0): number {
+    defer(resume, fallback, _flags, parkedOn): string {
       const id = next++;
-      parked.push({ id, body, scope, at: Date.now(), hydrate: (flags & HYDRATE) !== 0 });
-      return id;
+      parked.push({ id, resume, at: Date.now(), parkedOn, namespace: "html" });
+      return deferredRange(id, fallback);
     },
   };
 
@@ -733,22 +1012,90 @@ export function renderToStream(
     signal?.removeEventListener("abort", end);
   };
 
-  let dispose!: () => void;
+  let owner: Scope | null = null;
+  // Everything this render holds, let go of on every way out of it: the shell
+  // throwing, the stream finishing, the consumer leaving.
+  const letGo = (): void => {
+    release();
+    abandonPendingSeeds(session);
+    clearHydrationData(session);
+    if (owner !== null) disposeScope(owner);
+  };
   let shell = "";
 
-  const previousSession = setAsyncSession(session);
   const previousSink = setStreamSink(sink);
   try {
-    scope((d, owner) => {
-      dispose = d;
-      const value = fn(owner);
-      shell = isSsrHtml(value) ? value.t : esc(value);
-    }, true);
+    const previousSession = setAsyncSession(session);
+    try {
+      const root = rootScope();
+      owner = root;
+      runWithOwner(root, () => {
+        const value = fn(root);
+        shell = isSsrHtml(value) ? value.t : esc(value);
+      });
+    } finally {
+      setAsyncSession(previousSession);
+    }
     flush();
+  } catch (error) {
+    letGo();
+    throw error;
   } finally {
     setStreamSink(previousSink);
-    setAsyncSession(previousSession);
   }
+  placeParked(shell, "html", parked);
+
+  const report = options?.onError ?? defaultStreamError;
+
+  const flushLater = (target: ReadableStreamDefaultController<Uint8Array>): void => {
+    if (later.length === 0 || consumerCancelled) return;
+    const statements = later.splice(0, later.length).join(";");
+    target.enqueue(
+      encoder.encode(
+        // The resolutions themselves. A statement here settles a promise the
+        // initial payload already put in `__BARQ_DATA__`, so the read that is
+        // awaiting it wakes with no channel in between.
+        //
+        // QUEUED WITH THE PAYLOAD when adapters deferred it. These reference
+        // `$R` slots the initial payload creates, so running them ahead of
+        // it reads an empty reference table — measured in Chrome as
+        // `Cannot read properties of undefined (reading 's')` on the first
+        // deferred value of an adapted page.
+        `<script${nonceAttr(options?.nonce)}>${adapted(statements)}</script>`,
+      ),
+    );
+  };
+
+  const serialized = async (): Promise<void> => {
+    if (outstanding === 0) return;
+    await Promise.race([
+      new Promise<void>((resolve) => {
+        drained = resolve;
+      }),
+      stopped,
+    ]);
+  };
+
+  const finish = async (target: ReadableStreamDefaultController<Uint8Array>): Promise<void> => {
+    // Deferred values, if any are still in flight. Closing on top of one
+    // drops it, and a client waiting on that key would wait for a value
+    // that never comes instead of fetching it — so the stream is held open,
+    // bounded by the same `stopped` promise everything else here is.
+    await serialized();
+    // Nothing more is coming. Every key still in flight is settled with a
+    // marker rather than left pending, so the client read waiting on it falls
+    // back to fetching instead of waiting for a value that will never arrive —
+    // per key rather than as one global flag, so only the reads whose keys were
+    // abandoned fall back.
+    abandonPendingSeeds(session);
+    await serialized();
+    flushLater(target);
+    if (!consumerCancelled) {
+      const settledOver = settleSeedScript();
+      if (settledOver !== "") target.enqueue(encoder.encode(settledOver));
+    }
+    options?.onAllReady?.();
+  };
 
   return new ReadableStream<Uint8Array>({
     // A consumer that goes away stops the work. Without this the render runs to
@@ -760,24 +1107,6 @@ export function renderToStream(
       end();
     },
     async start(controller): Promise<void> {
-      const flushLater = (target: ReadableStreamDefaultController<Uint8Array>): void => {
-        if (later.length === 0 || consumerCancelled) return;
-        const statements = later.splice(0, later.length).join(";");
-        target.enqueue(
-          encoder.encode(
-            // The resolutions themselves. A statement here settles a promise the
-            // initial payload already put in `__BARQ_DATA__`, so the read that is
-            // awaiting it wakes with no channel in between.
-            //
-            // QUEUED WITH THE PAYLOAD when adapters deferred it. These reference
-            // `$R` slots the initial payload creates, so running them ahead of
-            // it reads an empty reference table — measured in Chrome as
-            // `Cannot read properties of undefined (reading 's')` on the first
-            // deferred value of an adapted page.
-            `<script${nonceAttr(options?.nonce)}>${adapted(statements)}</script>`,
-          ),
-        );
-      };
       try {
         controller.enqueue(encoder.encode(shell));
         // The status is settled from here: these bytes are gone and nothing
@@ -821,37 +1150,48 @@ export function renderToStream(
         // oxlint-disable-next-line no-unmodified-loop-condition
         while (parked.length > 0 && !ended) {
           const round = parked.splice(0, parked.length);
-          const again: Continuation[] = [];
+          const again: Streamed[] = [];
           for (const record of round) {
             if (ended) {
               again.push(record);
               continue;
             }
+            const before = parked.length;
             const restore = setAsyncSession(session);
             const outerSink = setStreamSink(sink);
-            let markup: string | null;
+            let markup: string | null = null;
             try {
-              markup = resumeDeferred(record.body, record.scope);
+              markup = record.resume();
             } catch (error) {
-              if (!(error instanceof NotReadyError)) throw error;
-              // Still unready, so it goes back on the queue. Dropping it here
-              // is what left a boundary showing its fallback for good once the
-              // batch barrier stopped guaranteeing readiness.
-              markup = null;
+              if (error instanceof NotReadyError) {
+                // Still unready, so it goes back on the queue. Dropping it here
+                // is what left a boundary showing its fallback for good once the
+                // batch barrier stopped guaranteeing readiness.
+                record.parkedOn = error;
+                // Past its own deadline it is abandoned rather than requeued, and
+                // the fallback the shell already flushed stands.
+                if (Date.now() - record.at < deadline) again.push(record);
+              } else {
+                // ONE boundary failed, and that is all that failed. It keeps the
+                // fallback the shell flushed and the client re-runs it on
+                // hydration, where its own error boundary reports it; every
+                // other boundary on the page is still owed its content. React
+                // errors the boundary rather than the response for the same
+                // reason.
+                report(thrownBy(error));
+              }
             } finally {
               setStreamSink(outerSink);
               setAsyncSession(restore);
             }
-            if (markup === null) {
-              // Past its own deadline it is abandoned rather than requeued, and
-              // the fallback the shell already flushed stands.
-              if (Date.now() - record.at < deadline) again.push(record);
-              continue;
-            }
+            if (markup === null) continue;
+            placeParked(markup, record.namespace, parked.slice(before));
+            const [wrapOpen, wrapClose] = FOREIGN_WRAP[record.namespace];
+            const wrapped = record.namespace === "html" ? "" : ",true";
             controller.enqueue(
               encoder.encode(
-                `<template data-barq="${record.id}">${markup}</template>` +
-                  `<script${nonceAttr(options?.nonce)}>window.__BARQ_SWAP__(${record.id})</script>`,
+                `<template data-barq="${record.id}">${wrapOpen}${markup}${wrapClose}</template>` +
+                  `<script${nonceAttr(options?.nonce)}>window.__BARQ_SWAP__(${record.id}${wrapped})</script>`,
               ),
             );
           }
@@ -863,48 +1203,17 @@ export function renderToStream(
           // that merely stayed unready go in front of them.
           if (again.length > 0) parked.unshift(...again);
           if (parked.length === 0) break;
-          // Nothing left in flight and something still parked: those boundaries
+          // Nothing these boundaries are waiting on is still in the air: they
           // keep the fallback the shell flushed. Recovery is the point.
           //
           // The race is what bounds this loop. `settleStep` alone waits on a
           // promise that a caller is free never to settle, and a resumed
           // boundary may park boundaries of its own, so neither the queue nor
           // any single await is bounded without it.
-          if ((await Promise.race([settleStep(session), stopped])) !== true) break;
+          if ((await Promise.race([settleStep(session, flightsOf(parked)), stopped])) !== true) {
+            break;
+          }
         }
-        // Deferred values, if any are still in flight. Closing on top of one
-        // drops it, and a client waiting on that key would wait for a value
-        // that never comes instead of fetching it — so the stream is held open,
-        // bounded by the same `stopped` promise everything else here is.
-        if (outstanding > 0) {
-          await Promise.race([
-            new Promise<void>((resolve) => {
-              drained = resolve;
-            }),
-            stopped,
-          ]);
-        }
-        // Nothing more is coming. Every key still in flight is REJECTED rather
-        // than left pending, so the client read waiting on it falls back to
-        // fetching instead of waiting for a value that will never arrive — the
-        // job `__BARQ_SEED__.done()` used to do, per key rather than as one
-        // global flag, so only the reads whose keys were abandoned fall back.
-        abandonPendingSeeds(session);
-        if (outstanding > 0) {
-          await Promise.race([
-            new Promise<void>((resolve) => {
-              drained = resolve;
-            }),
-            stopped,
-          ]);
-        }
-        flushLater(controller);
-        if (!consumerCancelled) {
-          const settledOver = settleSeedScript();
-          if (settledOver !== "") controller.enqueue(encoder.encode(settledOver));
-        }
-        options?.onAllReady?.();
-        if (!consumerCancelled) controller.close();
       } catch (error) {
         // NEVER `controller.error` here, and that is the whole policy. Anything
         // thrown in this function is POST-SHELL by construction — the shell is
@@ -913,25 +1222,26 @@ export function renderToStream(
         //
         // Tearing the body now hands the client a truncated document with no
         // error UI and no way to recover, when the bytes it already has are a
-        // VALID page showing fallbacks. React errors the boundary rather than
-        // the response for exactly this reason. The boundary that failed keeps
-        // the fallback the shell flushed; the client re-runs it on hydration and
-        // its own error boundary reports it.
-        //
-        // Measured before this existed: a `computed` that rejected after the
-        // shell produced `STREAM REJECTED: Error: late boom` and no page at all.
-        (options?.onError ?? defaultStreamError)(error);
-        if (!consumerCancelled) {
-          try {
-            controller.close();
-          } catch {
-            // Already closed or errored by the consumer; nothing to answer to.
-          }
-        }
+        // VALID page showing fallbacks.
+        report(error);
       } finally {
-        release();
-        clearHydrationData(session);
-        dispose();
+        // The tail runs however the loop ended. What it owes does not depend on
+        // why: a client holding a promise for a key is waiting on this stream to
+        // settle it or to say it never will.
+        try {
+          await finish(controller);
+        } catch (error) {
+          report(error);
+        } finally {
+          if (!consumerCancelled) {
+            try {
+              controller.close();
+            } catch {
+              // Already closed, or errored by the consumer; nothing to answer to.
+            }
+          }
+          letGo();
+        }
       }
     },
   });
@@ -1048,7 +1358,7 @@ const ADAPTER_BOOTSTRAP =
   "window.__BARQ_SEED__=window.__BARQ_SEED__||{ready:false,q:[]," +
   "push:function(f){if(this.ready){f()}else{this.q.push(f)}}," +
   "drain:function(){this.ready=true;var q=this.q;this.q=[];" +
-  "for(var i=0;i<q.length;i++){q[i]()}}};" +
+  "q.forEach(function(f){f()})}};" +
   "window.__BARQ_ADAPTERS__=window.__BARQ_ADAPTERS__||new Map;" +
   "window.__BARQ_REVIVE__=window.__BARQ_REVIVE__||function(k,v){" +
   "var f=window.__BARQ_ADAPTERS__.get(k);return f?f(v):v};";
@@ -1058,7 +1368,7 @@ const SEED_SETTLE_GUARD =
   "if(!v||typeof v!=='object')return;" +
   "if(typeof v.then==='function'){v.then(null,function(){});return}" +
   "if(s.indexOf(v)!==-1)return;s.push(v);" +
-  "if(Array.isArray(v)){for(var i=0;i<v.length;i++)w(v[i]);return}" +
+  "if(Array.isArray(v)){v.forEach(w);return}" +
   "if(Object.getPrototypeOf(v)!==Object.prototype)return;" +
   "for(var k in v)w(v[k])};w(window.__BARQ_DATA__)})()";
 

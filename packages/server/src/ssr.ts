@@ -27,31 +27,26 @@ import {
   NotReadyError,
   Scope,
   ScopeMissingError,
+  childScope,
   classToString,
-  enter,
-  exit,
   getOwner,
   isArray,
   isBlock,
   isSsrHtml,
   omit,
+  runWithOwner,
   toString,
   untrack,
 } from "@barqjs/core";
 import {
   ERROR_BOUNDARY,
-  REVEAL_COORD,
   SSR_HTML_BRAND,
-  createErrorCollector,
-  createPendingCollector,
-  createRevealCoordinator,
   disposeScope,
   isObject,
   keyMode,
-  outerRevealHandle,
   provideOn,
   styleToString,
-  type RevealHandle,
+  thrownBy,
 } from "@barqjs/core/internal";
 
 /**
@@ -365,13 +360,17 @@ const VALID_NAMES_MAX = 1024;
 
 function checkName(name: string, kind = "attribute"): void {
   if (VALID_NAMES.has(name)) return;
-  if (!ATTRIBUTE_NAME.test(name)) {
-    throw new Error(
-      `"${name}" is not a valid ${kind} name. ` +
-        "Untrusted data cannot be written to markup as a name.",
-    );
-  }
+  if (!ATTRIBUTE_NAME.test(name)) refuseName(name, kind);
   if (VALID_NAMES.size < VALID_NAMES_MAX) VALID_NAMES.add(name);
+}
+
+function refuseName(name: string, kind: string): never {
+  throw new Error(
+    `${JSON.stringify(name)} is not a valid ${kind} name, so the server refused to write it into the markup. ` +
+      (kind === "tag"
+        ? '`<Dynamic component>` takes a tag name that starts with a letter, such as `"div"`, or a component: a tag built from user input can inject markup.'
+        : "Check the keys of the object spread onto this element (`{...props}`): a key built from user input can inject markup."),
+  );
 }
 
 /**
@@ -525,8 +524,16 @@ const RPC_PREFIX = "/_barq/fn/";
 
 export function formAttr(value: unknown): string {
   if (typeof value !== "function") return attr("action", value);
-  const fn = value as unknown as Record<symbol, unknown> & { meta?: { id?: unknown } };
+  const fn = value as unknown as Record<symbol, unknown> & {
+    meta?: { id?: unknown };
+    url?: unknown;
+  };
   if (fn[SERVER_FN_BRAND] !== true) return "";
+  // The function knows where it is mounted, which an application may have
+  // moved; the prefix is for one built before it carried its address.
+  if (typeof fn.url === "string" && fn.url !== "") {
+    return ` action="${escapeAttribute(fn.url)}" method="post"`;
+  }
   const id = fn.meta?.id;
   if (typeof id !== "string" || id === "") return "";
   return ` action="${escapeAttribute(RPC_PREFIX + encodeURIComponent(id))}" method="post"`;
@@ -695,11 +702,11 @@ const DETECT = 1 << 3;
 const WHOLE = 1 << 4;
 
 /** The key spellings that survive a comment. Anything else claims positionally. */
-// `:` is excluded because `deferredRange` reserves `b:<id>`: a DEV branch keyed
-// `"b:1"` would otherwise write the same open comment a parked boundary does,
-// and the client would read a settled range as one the stream still owes it. A
-// key with a colon degrades to the opaque `?`, which `reconcileKey` already
-// treats as "no key on the wire".
+// `:` is excluded because a deferred boundary's range is keyed `b:<id>`: a DEV
+// branch keyed `"b:1"` would otherwise write the same open comment a parked
+// boundary does, and the client would read a settled range as one the stream
+// still owes it. A key with a colon degrades to the opaque `?`, which
+// `reconcileKey` already treats as "no key on the wire".
 const SAFE_KEY = /^[\w.+-]{0,32}$/;
 
 /**
@@ -736,14 +743,6 @@ function range(inner: string, flags: number, key?: unknown): string {
 }
 
 /**
- * The streaming range: a boundary whose content is still to come, addressed
- * by the continuation the stream will resume.
- */
-function deferredRange(id: number, inner: string): string {
-  return `${OPEN}b:${id}-->${inner}${CLOSE}`;
-}
-
-/**
  * A boundary that showed its FALLBACK with no stream to finish it.
  *
  * `renderToString`/`renderToStringAsync` have no sink, so a body that never
@@ -761,25 +760,35 @@ function parkedRange(inner: string): string {
 }
 
 /**
- * Where an unready boundary parks itself. `null` is a non-streaming render, and
- * then a boundary shows its fallback and that is the whole answer — which is
- * what `renderPage`'s second render exists to repair.
+ * Where an unready boundary parks itself. `null` is a render with nothing to
+ * finish it, and then a boundary shows its fallback and that is the whole
+ * answer.
  *
- * The Block is re-invocable with its scope, so there is no second code path,
- * and the record is exactly that pair.
+ * What is parked is the build the shell already tried, so there is no second
+ * code path: resuming a boundary is calling the same function again.
  */
 export interface StreamSink {
   /**
+   * Park a boundary and answer with the range to write where it stands, around
+   * the fallback it is showing. The range is the sink's to spell because only
+   * the sink knows how it will find it again: a stream writes `<!--[b:N-->`,
+   * which the page's swap reads as a comment node, and a buffered render writes
+   * something no value on the page can reproduce.
+   *
+   * `resume` builds the content again and throws `NotReadyError` while it
+   * still cannot. `parkedOn` is the one the shell's build threw, which names
+   * what the boundary is waiting for.
+   *
    * `flags` carries the boundary's own `HYDRATE` bit, and the BUFFERED arm is
-   * what needs it. A parked boundary always writes a `<!--[b:N-->` range because
-   * the resume has to find what to replace — deliberately, whether or not the
-   * page hydrates. Once that range has been patched in place, a hydratable page
+   * what needs it. A parked boundary always writes a range because the resume
+   * has to find what to replace — deliberately, whether or not the page
+   * hydrates. Once that range has been patched in place, a hydratable page
    * keeps a plain `<!--[-->` range (the client claims it) and a non-hydratable
    * one must be left with the bare markup, exactly as a boundary that settled
    * inside the shell would have written. Without this the sink's mere presence
    * added comments to `renderToString` output.
    */
-  defer(body: Block<unknown>, scope: Scope | null, flags?: number): number;
+  defer(resume: () => string, fallback: string, flags: number, parkedOn: NotReadyError): string;
 }
 
 let SINK: StreamSink | null = null;
@@ -791,16 +800,6 @@ export function setStreamSink(sink: StreamSink | null): StreamSink | null {
   return previous;
 }
 
-/**
- * Re-invoke a parked continuation. It is the SAME call `boundary` made when it
- * built the shell — same Block, same scope, same activation — so there is no
- * second code path for a resumed boundary to diverge along, which is the whole
- * claim about streaming.
- */
-export function resumeDeferred(body: Block<unknown>, scope: Scope | null): string {
-  return activate(scope, body, NO_ARGS, 0, "branch");
-}
-
 const NO_ARGS: readonly unknown[] = [];
 
 /**
@@ -809,7 +808,15 @@ const NO_ARGS: readonly unknown[] = [];
  * must throw rather than be invoked with no scope and stringified.
  */
 function cellSlot(value: unknown, origin: string): void {
-  if (isBlock(value)) throw new ScopeMissingError(`${origin} (a Block reached a Cell slot)`);
+  if (!isBlock(value)) return;
+  const label = /^([A-Z]\w*)\.(\w+)$/.exec(origin);
+  const where = label === null ? origin : `The \`${label[2]}\` prop of \`<${label[1]}>\``;
+  throw new ScopeMissingError(
+    origin,
+    `${where} was given JSX where a value is expected. JSX passed as a prop or as children is ` +
+      "built only where it is rendered, so there is no value to read from it here. Render it as " +
+      "a child, `<span>{props.children}</span>`, or pass a string, a number or an accessor.",
+  );
 }
 
 /** A Cell ignores every argument, so one spelling serves both. */
@@ -821,9 +828,9 @@ function invokeBlock(body: unknown, args: readonly unknown[]): unknown {
 }
 
 /**
- * One activation's bytes. `enter(given)` and nothing else — O2/O3.7 hold on the
- * server for the same reason they hold on the client: an instance is a child of
- * the scope the construct was HANDED.
+ * One activation's bytes, built under a child of the scope the construct was
+ * HANDED — O2/O3.7 hold on the server for the same reason they hold on the
+ * client.
  *
  * The scope is not disposed on the way out. A server render disposes its root
  * once, and a range that has already been written to the wire has no later
@@ -838,14 +845,16 @@ function activate(
 ): string {
   if (body === null || body === undefined) return "";
   if ((flags & NO_SCOPE) !== 0) return esc(invokeBlock(body, args));
-  const scope = enter(given, kind);
+  return buildUnder(childScope(given, kind), body, args);
+}
+
+function buildUnder(scope: Scope, body: unknown, args: readonly unknown[]): string {
   let built = false;
   try {
-    const out = esc(invokeBlock(body, args));
+    const out = runWithOwner(scope, () => esc(invokeBlock(body, args)));
     built = true;
     return out;
   } finally {
-    exit(scope);
     if (!built) disposeScope(scope);
   }
 }
@@ -864,7 +873,7 @@ export function branch<K>(
 ): SsrHtml {
   const given = getOwner();
   refuseASite(parent, anchor, "branch");
-  cellSlot(key, "branch key");
+  cellSlot(key, "The condition of a `<Show>`, `<Match>` or `<Dynamic>`");
   const k = untrack(key);
   const body = typeof bodies === "function" ? bodies : bodies[k as unknown as number];
   const inner = activate(given, body, NO_ARGS, flags, "branch");
@@ -898,7 +907,7 @@ export function each<T>(
   const given = getOwner();
   const keyOf = keyMode<T>(carrier);
   refuseASite(parent, anchor, "each");
-  cellSlot(src, "each source");
+  cellSlot(src, "For.each");
   const value = untrack(src as Cell<unknown>);
   // The LIST gets a range; a ROW gets nothing. A row's extent is what its
   // build consumed, because the rows are produced in order and the client walks
@@ -958,23 +967,20 @@ export function boundary(
 ): SsrHtml {
   const given = getOwner();
   refuseASite(parent, anchor, "boundary");
-  if (on !== undefined) cellSlot(on, "boundary on");
-  const inner =
-    kind === "error"
-      ? errorBoundary(given, fallback, body, flags)
-      : loadingBoundary(given, fallback, body, flags);
+  if (on !== undefined) cellSlot(on, "Loading.on");
+  if (kind === "error") {
+    const inner = errorBoundary(given, fallback, body, flags);
+    return (flags & HYDRATE) === 0 ? inner : html(range(inner.t, flags));
+  }
+  const loaded = loadingBoundary(given, fallback, body, flags);
   // A boundary that did not settle has already written its own range —
   // `<!--[b:N-->` for one the stream will swap, `<!--[f:-->` for one nothing
   // will — so wrapping it again would nest a range the client would claim as
-  // this boundary's content.
-  if (
-    (flags & HYDRATE) === 0 ||
-    inner.t.startsWith(`${OPEN}b:`) ||
-    inner.t.startsWith(`${OPEN}f:`)
-  ) {
-    return inner;
-  }
-  return html(range(inner.t, flags));
+  // this boundary's content. It is the boundary that says so: its markup
+  // cannot, because content that settled may itself begin with a boundary
+  // that parked.
+  if ((flags & HYDRATE) === 0 || loaded.parked) return html(loaded.markup);
+  return html(range(loaded.markup, flags));
 }
 
 function errorBoundary(
@@ -983,32 +989,42 @@ function errorBoundary(
   body: Block<unknown>,
   flags: number,
 ): SsrHtml {
-  const collector = createErrorCollector();
-  const reset = (): void => collector.clear();
+  // One frame, so what a boundary holds is two plain variables rather than
+  // anything reactive: nothing can read the error before this function returns.
+  let failed = false;
+  let caught: unknown;
+  const reset = (): void => {
+    failed = false;
+    caught = undefined;
+  };
   const asError = (err: unknown): Error => (err instanceof Error ? err : new Error(String(err)));
 
   // E2.1: the catcher is on the INSTANCE scope and is installed before the
-  // body runs, so a throw routed to `s.catcher` from anywhere below reaches
-  // this collector rather than the scope above the boundary.
+  // body runs, so a throw routed to it from anywhere below reaches this
+  // boundary rather than the scope above it.
   const arm: Block<unknown> = (): unknown => {
     provideOn(getOwner() as Scope, ERROR_BOUNDARY, (err: unknown) => {
       if (err instanceof NotReadyError) throw err;
-      collector.capture(err);
+      failed = true;
+      caught = err;
     });
     return invokeBlock(body, NO_ARGS);
   };
 
   try {
     const inner = activate(given, arm, NO_ARGS, flags, "branch");
-    if (!collector.failed()) return html(inner);
+    if (!failed) return html(inner);
   } catch (error) {
     // E2.3: a `NotReadyError` belongs to the nearest loading boundary and is
     // never captured here.
     if (error instanceof NotReadyError) throw error;
-    collector.capture(error);
+    failed = true;
+    // A read of a failed memo throws the engine's wrapper around what the
+    // application threw, and the fallback is handed the application's.
+    caught = thrownBy(error);
   }
   if (fallback === null || fallback === undefined) return html("");
-  const error = (): Error => asError(collector.error());
+  const error = (): Error => asError(caught);
   return html(activate(given, fallback, [error, reset], flags, "branch"));
 }
 
@@ -1017,17 +1033,27 @@ function loadingBoundary(
   fallback: Block<unknown> | null | undefined,
   body: Block<unknown>,
   flags: number,
-): SsrHtml {
-  const pending = createPendingCollector();
-  const arm: Block<unknown> = (): unknown => {
-    pending.install(getOwner() as Scope);
-    return invokeBlock(body, NO_ARGS);
-  };
+): { markup: string; parked: boolean } {
+  // The boundary's own scope, with each arm an instance below it, which is the
+  // shape the DOM backend builds: an async value is keyed by where it stands
+  // among the scopes of its render, so the two have to open the same ones.
+  const own = childScope(given, "branch");
+  // A string render reads its holes inline, so content that is not ready
+  // unwinds the whole body and a resume builds it again from the top. What the
+  // body declares has to be the same declaration each time — an async memo's
+  // key is its position, and a build that stood somewhere else would find
+  // nothing recorded under it and fetch again, for ever. So the content keeps
+  // the position its first build took.
+  const numbering: { id: string | undefined } = { id: undefined };
+  const build = (): string => buildUnder(childScope(own, "branch", numbering), body, NO_ARGS);
+  // A read of a value that has not arrived throws, and a string render has no
+  // effect that could be pending without one: the throw is the whole signal.
+  let parkedOn: NotReadyError;
   try {
-    const inner = activate(given, arm, NO_ARGS, 0, "branch");
-    if (pending.count() === 0) return html(inner);
+    return { markup: build(), parked: false };
   } catch (error) {
     if (!(error instanceof NotReadyError)) throw error;
+    parkedOn = error;
   }
   // The FALLBACK can be async too, and until this was guarded it took the whole
   // page with it. `@barqjs/router`'s generated table emits
@@ -1043,24 +1069,27 @@ function loadingBoundary(
   // `NotReadyError` is the honest answer rather than a hidden failure.
   let shown: unknown;
   try {
-    shown = activate(given, fallback, NO_ARGS, 0, "branch");
+    shown = activate(own, fallback, NO_ARGS, 0, "branch");
   } catch (error) {
     if (!(error instanceof NotReadyError)) throw error;
     shown = "";
   }
-  // The streaming form: the fallback goes out now, and the pair
-  // `(arm Block, this scope)` goes to the sink so the same Block can be
-  // re-invoked when its promises settle. There is no second rendering path —
-  // the continuation IS the Block the shell already refused to wait for.
-  // GATED on the flag, like every other range this file writes. `b:` is not —
-  // the stream needs it to find what to swap whether or not the page hydrates —
-  // but `f:` says nothing to anyone except a claiming client, and emitting it
-  // unconditionally made the string backend's -O0 and -Ox output diverge, which
-  // `ssr.test.ts`'s byte-identical channel caught.
+  // The streaming form: the fallback goes out now, and the build goes to the
+  // sink so the same call can be made again when its promises settle. There is
+  // no second rendering path — the continuation IS the build the shell already
+  // refused to wait for.
+  // GATED on the flag, like every other range this file writes. The sink's
+  // range is not — the resume needs it to find what to swap whether or not the
+  // page hydrates — but `f:` says nothing to anyone except a claiming client,
+  // and emitting it unconditionally made the string backend's -O0 and -Ox
+  // output diverge, which `ssr.test.ts`'s byte-identical channel caught.
   if (SINK === null) {
-    return html((flags & HYDRATE) === 0 ? String(shown) : parkedRange(String(shown)));
+    return {
+      markup: (flags & HYDRATE) === 0 ? String(shown) : parkedRange(String(shown)),
+      parked: true,
+    };
   }
-  return html(deferredRange(SINK.defer(arm, given, flags), String(shown)));
+  return { markup: SINK.defer(build, String(shown), flags, parkedOn), parked: true };
 }
 
 /**
@@ -1077,7 +1106,7 @@ export function portal(
   _flags = 0,
 ): SsrHtml {
   getOwner();
-  cellSlot(target, "portal target");
+  cellSlot(target, "Portal.mount");
   // An empty range, and it earns its bytes. `portal` on the client returns a
   // marker at its LEXICAL position and builds elsewhere on a microtask, so the
   // wire has nothing for the client to claim — but the POSITION still has to be
@@ -1094,9 +1123,9 @@ export function portal(
 function refuseASite(parent: Node | null, anchor: Node | null, origin: string): void {
   if (parent === null && anchor === null) return;
   throw new Error(
-    `${origin} was given a DOM insertion point on the string backend. The server emits ` +
-      "`(null, null)`; a node here means a module compiled for the DOM is calling " +
-      "`@barqjs/server`.",
+    `\`${origin}\` was called on the server with a DOM node to insert at, which only a module compiled for the browser passes. ` +
+      "The server would leave this part of the page out of the markup. " +
+      "Compile the module for the server: the `@barqjs/compiler` Vite plugin does that in an SSR build.",
   );
 }
 
@@ -1224,8 +1253,20 @@ export function ssrMatch<T>(props: T): T {
 
 export function ssrSwitch(props: { fallback?: unknown; children?: unknown }): SsrHtml {
   const arms = (): { index: number; value: unknown; match: Record<string, unknown> } | null => {
-    const resolved = invokeBlock(props.children, NO_ARGS);
-    const children = isArray<unknown>(resolved) ? resolved : [resolved];
+    // Read as data, and an arm written after another arrives as a Block that
+    // yields its descriptor, one behind a condition as a Cell. A server render
+    // has one frame, so both are simply run.
+    const children: unknown[] = [];
+    const visit = (entry: unknown): void => {
+      if (isArray<unknown>(entry)) {
+        for (const item of entry) visit(item);
+      } else if (typeof entry === "function") {
+        visit((entry as () => unknown)());
+      } else {
+        children.push(entry);
+      }
+    };
+    visit(props.children);
     for (let i = 0; i < children.length; i++) {
       const child = children[i] as Record<string, unknown> | null;
       if (!child || typeof child !== "object" || !("when" in child)) continue;
@@ -1338,30 +1379,52 @@ export function ssrDynamic(props: { component?: unknown } & Record<string, unkno
     // C3/C5: `rest` is a VIEW of the same carriers, not a copy.
     const rest = omit(props, "component");
     if (typeof resolved !== "string") return invokeBlock(resolved, [rest]);
-    // The tag is RUNTIME DATA here, which makes it the same injection the
-    // attribute-name check exists for: `component={"div onload=alert(1)"}`
-    // writes two attributes into markup where `document.createElement` throws
-    // `InvalidCharacterError` and writes nothing. Refusing is what makes the two
-    // paths agree.
-    checkName(resolved, "tag");
-    // RAW TEXT is escaped by BREAKING the close tag, never by entities: `&amp;`
-    // inside a `<script>` is four characters of JavaScript, and the DOM path
-    // writes `textContent` and so escapes nothing at all. `esc` here made the
-    // two backends disagree on the same tree — measured as
-    // `<script>if (a &amp; b)</script>` from the server against
-    // `<script>if (a & b)</script>` from the DOM. The compiled path never hit
-    // it because the compiler knows the tag statically and emits `rawText`;
-    // only a tag resolved at RUN TIME reaches this line.
-    const inner =
-      rest.children === undefined
-        ? ""
-        : RAW_TEXT_TAGS.has(resolved)
-          ? rawText(rest.children, resolved)
-          : esc(rest.children);
-    const open = `<${resolved}${spreadAttrs(omit(rest, "children"), resolved)}`;
-    return raw(VOID_TAGS.has(resolved) ? `${open}>` : `${open}>${inner}</${resolved}>`);
+    return element(resolved, rest);
   };
   return branch(null, null, component, body);
+}
+
+/**
+ * An element whose tag is only known at RUN TIME, which is what both spellings
+ * of `Dynamic` come down to.
+ */
+function element(tag: string, props: Record<string, unknown>): SsrHtml {
+  // The tag is RUNTIME DATA here, which makes it the same injection the
+  // attribute-name check exists for: `component={"div onload=alert(1)"}`
+  // writes two attributes into markup where `document.createElement` throws
+  // `InvalidCharacterError` and writes nothing. Refusing is what makes the two
+  // paths agree.
+  checkTag(tag);
+  // RAW TEXT is escaped by BREAKING the close tag, never by entities: `&amp;`
+  // inside a `<script>` is four characters of JavaScript, and the DOM path
+  // writes `textContent` and so escapes nothing at all. `esc` here made the
+  // two backends disagree on the same tree — measured as
+  // `<script>if (a &amp; b)</script>` from the server against
+  // `<script>if (a & b)</script>` from the DOM. The compiled path never hit
+  // it because the compiler knows the tag statically and emits `rawText`;
+  // only a tag resolved at RUN TIME reaches this line.
+  const inner =
+    props.children === undefined
+      ? ""
+      : RAW_TEXT_TAGS.has(tag)
+        ? rawText(props.children, tag)
+        : esc(props.children);
+  const open = `<${tag}${spreadAttrs(omit(props, "children"), tag)}`;
+  return raw(VOID_TAGS.has(tag) ? `${open}>` : `${open}>${inner}</${tag}>`);
+}
+
+/**
+ * A tag name is held to more than an attribute name is. The XML `Name`
+ * production admits `_x` and `:x`, and so does `document.createElement`, but
+ * the HTML tokenizer opens a tag only for `<` followed by an ASCII letter:
+ * anything else is TEXT, the attributes written after it are text too, and an
+ * attribute value is not escaped for `<`. Markup cannot spell such an element,
+ * so it is refused rather than written as something else.
+ */
+function checkTag(tag: string): void {
+  const first = tag.charCodeAt(0) | 32;
+  if (first < 97 || first > 122) refuseName(tag, "tag");
+  checkName(tag, "tag");
 }
 
 /**
@@ -1403,29 +1466,19 @@ const VOID_TAGS = new Set([
 ]);
 
 /**
- * `Reveal` — a PROVIDE scope, not a range (O1 lists `provide` separately). It
- * publishes the coordinator descendant loading boundaries register with and
- * owns nothing else, which is exactly as true on the wire as it is in the DOM.
- */
-/**
  * `reveal` — the string half of the same name (`SHARED_ABI`). The compiler
  * emits one call with one argument order; which module it is imported from is
  * the TARGET's decision and nothing else differs.
+ *
+ * Ordering is a statement about WHEN boundaries swap their content in, and a
+ * string render has one frame: there is nothing to order, so the children are
+ * rendered under a scope of their own and the arguments are only read.
  */
 export function reveal(order: unknown, collapsed: unknown, block: unknown): SsrHtml {
-  const handle: RevealHandle = createRevealCoordinator(
-    () =>
-      (readValue(order, "reveal.order") as "sequential" | "together" | "natural") ?? "sequential",
-    () => readValue(collapsed, "reveal.collapsed") === true,
-    outerRevealHandle(getOwner()),
-  );
-  const scope = enter(getOwner(), "provide");
-  try {
-    provideOn(scope, REVEAL_COORD, handle);
-    return html(esc(invokeBlock(block, NO_ARGS)));
-  } finally {
-    exit(scope);
-  }
+  readValue(order, "Reveal.order");
+  readValue(collapsed, "Reveal.collapsed");
+  const scope = childScope(getOwner(), "provide");
+  return runWithOwner(scope, () => html(esc(invokeBlock(block, NO_ARGS))));
 }
 
 /**
@@ -1434,18 +1487,10 @@ export function reveal(order: unknown, collapsed: unknown, block: unknown): SsrH
  * name is serialised, anything else is invoked.
  */
 export function dynamic(component: unknown, props: Record<string, unknown>): unknown {
-  const resolved = untrack(() => readValue(component, "dynamic.component"));
+  const resolved = untrack(() => readValue(component, "Dynamic.component"));
   if (resolved === null || resolved === undefined || resolved === false) return null;
   if (typeof resolved !== "string") return invokeBlock(resolved, [props]);
-  // The tag is RUNTIME DATA here, which makes it the same injection the
-  // attribute-name check exists for: `component={"div onload=alert(1)"}` writes
-  // two attributes into markup where `document.createElement` throws
-  // `InvalidCharacterError` and writes nothing. Refusing is what makes the two
-  // paths agree.
-  checkName(resolved, "tag");
-  const inner = props.children === undefined ? "" : esc(props.children);
-  const open = `<${resolved}${spreadAttrs(omit(props, "children"), resolved)}`;
-  return raw(VOID_TAGS.has(resolved) ? `${open}>` : `${open}>${inner}</${resolved}>`);
+  return element(resolved, props);
 }
 
 export function ssrReveal(props: {
@@ -1453,19 +1498,5 @@ export function ssrReveal(props: {
   collapsed?: unknown;
   children: unknown;
 }): SsrHtml {
-  const handle: RevealHandle = createRevealCoordinator(
-    () =>
-      (readValue(props.order, "Reveal.order") as "sequential" | "together" | "natural") ??
-      "sequential",
-    () => readValue(props.collapsed, "Reveal.collapsed") === true,
-    outerRevealHandle(getOwner()),
-  );
-  // X1: enter, fork, write, invoke — in that order, and on a scope of its own.
-  const scope = enter(getOwner(), "provide");
-  try {
-    provideOn(scope, REVEAL_COORD, handle);
-    return html(esc(invokeBlock(props.children, NO_ARGS)));
-  } finally {
-    exit(scope);
-  }
+  return reveal(props.order, props.collapsed, props.children);
 }

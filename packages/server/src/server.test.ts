@@ -15,19 +15,19 @@ import {
   block,
   boundary,
   branch,
-  computed,
-  effect,
+  createMemo,
+  createRenderEffect,
   element,
   flush,
   hydrate,
   insert,
   runWithOwner,
   template,
-  scope,
+  createRoot,
   settle,
-  signal,
+  createSignal,
 } from "@barqjs/core";
-import { SEED_ABANDONED, getHydrationData, setAsyncSession } from "@barqjs/core/internal";
+import { SEED_ABANDONED, pendingSeedsOf, setAsyncSession } from "@barqjs/core/internal";
 import { afterEach, describe, expect, test } from "bun:test";
 
 import {
@@ -94,12 +94,12 @@ afterEach(() => {
 
 describe("renderToString", () => {
   test("renders components and reactive values synchronously", () => {
-    const count = signal(41);
-    const doubled = computed(() => count() + 1);
+    const [count] = createSignal(41);
 
-    const html = renderToString(() =>
-      element("div", { class: "app", children: ["Count: ", () => String(doubled())] }),
-    );
+    const html = renderToString(() => {
+      const doubled = createMemo(() => count() + 1);
+      return element("div", { class: "app", children: ["Count: ", () => String(doubled())] });
+    });
 
     expect(html).toContain('<div class="app">');
     expect(html).toContain("Count: ");
@@ -115,13 +115,12 @@ describe("renderToString", () => {
   });
 
   test("pending async renders the Loading fallback", () => {
-    const data = computed(async () => {
-      await tick();
-      return "late";
-    });
-
-    const html = renderToString(() =>
-      Loading({
+    const html = renderToString(() => {
+      const data = createMemo(async () => {
+        await tick();
+        return "late";
+      });
+      return Loading({
         fallback: document.createTextNode("loading..."),
         children: () => {
           try {
@@ -131,8 +130,8 @@ describe("renderToString", () => {
             throw err;
           }
         },
-      }),
-    );
+      });
+    });
 
     expect(html).toContain("loading...");
     expect(html).not.toContain("late");
@@ -141,36 +140,34 @@ describe("renderToString", () => {
 
 describe("renderToStringAsync", () => {
   test("waits for async values; Loading shows content", async () => {
-    const user = computed(
-      async () => {
-        await tick();
-        return { name: "Ada" };
-      },
-      { key: "user" },
-    );
-
-    const html = await renderToStringAsync(() =>
-      Loading({
+    const html = await renderToStringAsync(() => {
+      const user = createMemo(
+        async () => {
+          await tick();
+          return { name: "Ada" };
+        },
+        { key: "user" },
+      );
+      return Loading({
         fallback: document.createTextNode("loading..."),
         children: () => document.createTextNode(`Hello ${user().name}`),
-      }),
-    );
+      });
+    });
 
     expect(html).toContain("Hello Ada");
     expect(html).not.toContain("loading...");
   });
 
   test("records keyed async values for hydration", async () => {
-    const a = computed(async () => 1, { key: "a" });
-    const b = computed(
-      async () => {
-        // waterfall: depends on a
-        return a() + 1;
-      },
-      { key: "b" },
-    );
-
     await renderToStringAsync(() => {
+      const a = createMemo(async () => 1, { key: "a" });
+      const b = createMemo(
+        async () => {
+          // waterfall: depends on a
+          return a() + 1;
+        },
+        { key: "b" },
+      );
       return element("div", {
         children: () => {
           return String(b());
@@ -193,7 +190,7 @@ describe("renderToStringAsync", () => {
     // seed beside it.
     let calls = 0;
     const page = (): unknown => {
-      const user = computed(
+      const user = createMemo(
         async () => {
           calls++;
           await tick();
@@ -223,9 +220,10 @@ describe("renderToStringAsync", () => {
   });
 
   test("generateHydrationScript escapes script-breaking content", async () => {
-    const evil = computed(async () => "</script><script>alert(1)</script>", { key: "evil" });
-
-    await renderToStringAsync(() => element("div", { children: () => evil().length.toString() }));
+    await renderToStringAsync(() => {
+      const evil = createMemo(async () => "</script><script>alert(1)</script>", { key: "evil" });
+      return element("div", { children: () => evil().length.toString() });
+    });
 
     const script = generateHydrationScript();
     expect(script.startsWith("<script>window.__BARQ_DATA__=")).toBe(true);
@@ -242,11 +240,10 @@ describe("the seed encoder", () => {
   test("carries Date, Map, Set, BigInt and cycles", async () => {
     const cyclic: Record<string, unknown> = { when: new Date(0), tags: new Set(["a"]) };
     cyclic.self = cyclic;
-    const rich = computed(async () => cyclic, { key: "rich" });
-
-    await renderToStringAsync(() =>
-      element("div", { children: () => (rich() as { tags: Set<unknown> }).tags.size }),
-    );
+    await renderToStringAsync(() => {
+      const rich = createMemo(async () => cyclic, { key: "rich" });
+      return element("div", { children: () => (rich() as { tags: Set<unknown> }).tags.size });
+    });
 
     const back = (0, eval)(encodeSeed(getRenderData())) as Record<string, { self: unknown }>;
     const value = back.rich as unknown as typeof cyclic;
@@ -289,12 +286,12 @@ describe("the seed encoder", () => {
    * directive the nonce exists to avoid, so the assertion is over ALL of them.
    */
   test("every inline script a streamed render emits carries the nonce", async () => {
-    const late = computed(async () => {
-      await tick();
-      return "Ada";
-    });
-    const page = (): unknown =>
-      ssrHtml(
+    const page = (): unknown => {
+      const late = createMemo(async () => {
+        await tick();
+        return "Ada";
+      });
+      return ssrHtml(
         `<main>${esc(
           ssrLoading({
             fallback: () => ssrHtml("<i>loading</i>"),
@@ -302,6 +299,7 @@ describe("the seed encoder", () => {
           }),
         )}</main>`,
       );
+    };
 
     const html = (await collect(renderToStream(page as never, { nonce: "r4nd0m" }))).join("");
     const opens = html.match(/<script[^>]*>/g) ?? [];
@@ -316,15 +314,15 @@ describe("the seed encoder", () => {
    * has no equivalent here, because the shell is already on the wire.
    */
   test("a streamed page seeds the values it resolved, and seeds each one once", async () => {
-    const late = computed(
-      async () => {
-        await tick();
-        return "Ada";
-      },
-      { key: "streamed-user" },
-    );
-    const page = (): unknown =>
-      ssrHtml(
+    const page = (): unknown => {
+      const late = createMemo(
+        async () => {
+          await tick();
+          return "Ada";
+        },
+        { key: "streamed-user" },
+      );
+      return ssrHtml(
         `<main>${esc(
           ssrLoading({
             fallback: () => ssrHtml("<i>loading</i>"),
@@ -332,6 +330,7 @@ describe("the seed encoder", () => {
           }),
         )}</main>`,
       );
+    };
 
     const html = (await collect(renderToStream(page as never))).join("");
     expect(html).toContain("__BARQ_DATA__");
@@ -377,24 +376,10 @@ describe("the seed encoder", () => {
    */
   test("one object seeded across two rounds is one object on the client", async () => {
     const shared = { id: 7 };
-    const fast = computed(
-      async () => {
-        await tick();
-        return { via: "fast", shared };
-      },
-      { key: "k-fast" },
-    );
     let releaseSlow!: () => void;
     const gate = new Promise<void>((resolve) => {
       releaseSlow = resolve;
     });
-    const slow = computed(
-      async () => {
-        await gate;
-        return { via: "slow", shared };
-      },
-      { key: "k-slow" },
-    );
 
     const defer = (value: () => unknown): string =>
       esc(
@@ -403,7 +388,23 @@ describe("the seed encoder", () => {
           children: () => ssrHtml(`<b>${esc((value() as { via: string }).via)}</b>`),
         }),
       );
-    const page = (): unknown => ssrHtml(`<main>${defer(fast)}${defer(slow)}</main>`);
+    const page = (): unknown => {
+      const fast = createMemo(
+        async () => {
+          await tick();
+          return { via: "fast", shared };
+        },
+        { key: "k-fast" },
+      );
+      const slow = createMemo(
+        async () => {
+          await gate;
+          return { via: "slow", shared };
+        },
+        { key: "k-slow" },
+      );
+      return ssrHtml(`<main>${defer(fast)}${defer(slow)}</main>`);
+    };
 
     const reader = renderToStream(page as never).getReader();
     const decoder = new TextDecoder();
@@ -443,15 +444,15 @@ describe("the seed encoder", () => {
     const gate = new Promise<void>((resolve) => {
       releaseSlow = resolve;
     });
-    const slow = computed(
-      async () => {
-        await gate;
-        return "arrived";
-      },
-      { key: "late-key" },
-    );
-    const page = (): unknown =>
-      ssrHtml(
+    const page = (): unknown => {
+      const slow = createMemo(
+        async () => {
+          await gate;
+          return "arrived";
+        },
+        { key: "late-key" },
+      );
+      return ssrHtml(
         `<main>${esc(
           ssrLoading({
             fallback: () => ssrHtml("<i>…</i>"),
@@ -459,6 +460,7 @@ describe("the seed encoder", () => {
           }),
         )}</main>`,
       );
+    };
 
     const reader = renderToStream(page as never).getReader();
     const decoder = new TextDecoder();
@@ -500,19 +502,20 @@ describe("hydrate", () => {
     // --- server ---
     let fetches = 0;
     const makeApp = () => {
-      const user = computed(
-        async () => {
-          fetches++;
-          await tick();
-          return "Ada";
-        },
-        { key: "user" },
-      );
-      return () =>
-        Loading({
+      return () => {
+        const user = createMemo(
+          async () => {
+            fetches++;
+            await tick();
+            return "Ada";
+          },
+          { key: "user" },
+        );
+        return Loading({
           fallback: document.createTextNode("loading..."),
           children: () => document.createTextNode(`Hello ${user()}`),
         });
+      };
     };
 
     const serverHtml = await renderToStringAsync(makeApp());
@@ -553,20 +556,20 @@ describe("hydrate", () => {
   test("a settled Loading boundary is CLAIMED, not rebuilt", async () => {
     let fetches = 0;
     const makeApp = (ssr: boolean) => {
-      const user = computed(
-        async () => {
-          fetches++;
-          await tick();
-          return "Ada";
-        },
-        { key: "who" },
-      );
       // `template()` on the client, which is what the compiler emits and what
       // CLAIMS. `element()` builds a fresh node by construction, so a test
       // written with it can never observe hydration at all.
       const bold = template("<b>x</b>");
       const italic = template("<i>loading</i>");
       const content = () => {
+        const user = createMemo(
+          async () => {
+            fetches++;
+            await tick();
+            return "Ada";
+          },
+          { key: "who" },
+        );
         if (!ssr) {
           const node = bold() as HTMLElement;
           node.textContent = user();
@@ -607,10 +610,10 @@ describe("hydrate", () => {
 
   test("hydrated app is interactive (delegated events)", async () => {
     const makeApp = () => {
-      const count = signal(0);
+      const [count, setCount] = createSignal(0);
       return () =>
         element("button", {
-          onClick: () => count.update((n) => n + 1),
+          onClick: () => setCount((n) => n + 1),
           children: () => `clicks: ${count()}`,
         });
     };
@@ -635,18 +638,19 @@ describe("hydrate", () => {
 describe("concurrent server renders", () => {
   test("two renders in flight settle independently with their own data", async () => {
     const makeApp = (label: string, delay: number) => {
-      const data = computed(
-        async () => {
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          return label;
-        },
-        { key: `data-${label}` },
-      );
-      return () =>
-        Loading({
+      return () => {
+        const data = createMemo(
+          async () => {
+            await new Promise((resolve) => setTimeout(resolve, delay));
+            return label;
+          },
+          { key: `data-${label}` },
+        );
+        return Loading({
           fallback: document.createTextNode("..."),
           children: () => document.createTextNode(`got:${data()}`),
         });
+      };
     };
 
     const [fastHtml, slowHtml] = await Promise.all([
@@ -659,43 +663,37 @@ describe("concurrent server renders", () => {
   });
 
   test("a value resolved outside any render is not seeded into one", async () => {
-    // A promise is attributed at its first READ — `activeAsyncSession` at the
-    // moment it enters `inFlight` — so anything first read outside a render
-    // lands in the unattributed bucket. That bucket used to be merged into
-    // every session's data and was cleared by nothing, so one such value was
-    // served to every user for the life of the process. A prefetch that warms a
-    // loader before the render is exactly this shape.
-    const leaked = computed(async () => "RENDER-A-SECRET-user7", { key: "acct" });
-
-    // First read with no session: unattributed.
+    // A promise is attributed where its memo is computed — `activeAsyncSession`
+    // at the moment it enters `inFlight` — so anything computed outside a render
+    // belongs to no session. Such a value was once merged into every session's
+    // data and cleared by nothing, so it was served to every user for the life
+    // of the process. A prefetch that warms a loader before the render is
+    // exactly this shape.
     setAsyncSession(null);
-    try {
-      leaked();
-    } catch {
-      // NotReady on the first read is the point; the promise is now in flight.
-    }
+    const leaked = runWithOwner(null, () =>
+      createRoot(() => createMemo(async () => "RENDER-A-SECRET-user7", { key: "acct" })),
+    );
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    // Self-check before the assertion that matters: the value really was
-    // recorded, and unattributed. Without this the test would also pass if the
-    // fetcher had simply never run, which proves nothing.
-    expect(
-      getHydrationData().acct,
-      "the probe did not record anything, so it cannot show a leak",
-    ).toBe("RENDER-A-SECRET-user7");
+    // Self-check before the assertion that matters: the fetcher really ran, and
+    // settled, under no session. Without this the test would also pass if it had
+    // simply never run, which proves nothing.
+    expect(leaked(), "the probe resolved nothing, so it cannot show a leak").toBe(
+      "RENDER-A-SECRET-user7",
+    );
 
     // An unrelated later render, for a different user.
-    const mine = computed(async () => "B-own-user9", { key: "home" });
-    const out = await renderPage(() =>
-      ssrHtml(
+    const out = await renderPage(() => {
+      const mine = createMemo(async () => "B-own-user9", { key: "home" });
+      return ssrHtml(
         `<main>${esc(
           ssrLoading({
             fallback: () => ssrHtml("<i>...</i>"),
             children: () => ssrHtml(`<b>${esc(mine())}</b>`),
           }),
         )}</main>`,
-      ),
-    );
+      );
+    });
 
     expect(out.data.home).toBe("B-own-user9");
     expect(out.data.acct, "another render's value reached this seed").toBeUndefined();
@@ -709,25 +707,28 @@ describe("settle", () => {
 
     const prev = setAsyncSession(session);
     try {
-      scope(() => {
-        const first = computed(async () => {
-          await tick();
-          return 1;
-        });
-        const second = computed(async () => {
-          const base = first(); // throws NotReady until first resolves
-          await tick();
-          return base + 1;
-        });
+      runWithOwner(null, () =>
+        createRoot(() => {
+          const first = createMemo(async () => {
+            await tick();
+            return 1;
+          });
+          const second = createMemo(async () => {
+            const base = first(); // throws NotReady until first resolves
+            await tick();
+            return base + 1;
+          });
 
-        effect(() => {
-          try {
-            seen.push(second());
-          } catch (err) {
-            if (!(err instanceof NotReadyError)) throw err;
-          }
-        });
-      }, true);
+          // A render effect, which is what observes a value during a server
+          // render: `createEffect` and its kin do nothing there.
+          createRenderEffect(
+            () => second(),
+            (value) => {
+              seen.push(value);
+            },
+          );
+        }),
+      );
       flush();
     } finally {
       setAsyncSession(prev);
@@ -752,12 +753,12 @@ describe("settle", () => {
  */
 describe("renderToStream", () => {
   test("the shell is flushed before the boundary resolves, and the content follows", async () => {
-    const late = computed(async () => {
-      await tick();
-      return "Ada";
-    });
-    const page = (): unknown =>
-      ssrHtml(
+    const page = (): unknown => {
+      const late = createMemo(async () => {
+        await tick();
+        return "Ada";
+      });
+      return ssrHtml(
         `<main>${esc(
           ssrLoading({
             fallback: () => ssrHtml("<i>loading</i>"),
@@ -765,6 +766,7 @@ describe("renderToStream", () => {
           }),
         )}</main>`,
       );
+    };
 
     const parts = await collect(renderToStream(page as never));
 
@@ -796,12 +798,12 @@ describe("renderToStream", () => {
   });
 
   test("the swap replaces exactly the deferred range", async () => {
-    const late = computed(async () => {
-      await tick();
-      return "Ada";
-    });
-    const page = (): unknown =>
-      ssrHtml(
+    const page = (): unknown => {
+      const late = createMemo(async () => {
+        await tick();
+        return "Ada";
+      });
+      return ssrHtml(
         `<main><p>before</p>${esc(
           ssrLoading({
             fallback: () => ssrHtml("<i>loading</i>"),
@@ -809,6 +811,7 @@ describe("renderToStream", () => {
           }),
         )}<p>after</p></main>`,
       );
+    };
 
     const html = (await collect(renderToStream(page as never))).join("");
     const host = document.createElement("div");
@@ -849,15 +852,6 @@ describe("renderToStream", () => {
       releaseSlow = resolve;
     });
 
-    const fast = computed(async () => {
-      await tick();
-      return "fast";
-    });
-    const slow = computed(async () => {
-      await gate;
-      return "slow";
-    });
-
     const defer = (value: () => unknown): string =>
       esc(
         ssrLoading({
@@ -865,7 +859,17 @@ describe("renderToStream", () => {
           children: () => ssrHtml(`<b>${esc(value())}</b>`),
         }),
       );
-    const page = (): unknown => ssrHtml(`<main>${defer(fast)}${defer(slow)}</main>`);
+    const page = (): unknown => {
+      const fast = createMemo(async () => {
+        await tick();
+        return "fast";
+      });
+      const slow = createMemo(async () => {
+        await gate;
+        return "slow";
+      });
+      return ssrHtml(`<main>${defer(fast)}${defer(slow)}</main>`);
+    };
 
     const reader = renderToStream(page as never).getReader();
     const decoder = new TextDecoder();
@@ -895,13 +899,13 @@ describe("renderToStream", () => {
    */
   test("a boundary unready on its first resume attempt is retried, not dropped", async () => {
     let fetches = 0;
-    const late = computed(async () => {
-      fetches++;
-      await tick();
-      return "Ada";
-    });
-    const page = (): unknown =>
-      ssrHtml(
+    const page = (): unknown => {
+      const late = createMemo(async () => {
+        fetches++;
+        await tick();
+        return "Ada";
+      });
+      return ssrHtml(
         `<main>${esc(
           ssrLoading({
             fallback: () => ssrHtml("<i>loading</i>"),
@@ -909,6 +913,7 @@ describe("renderToStream", () => {
           }),
         )}</main>`,
       );
+    };
 
     const html = (await collect(renderToStream(page as never))).join("");
     expect(html).toContain("<b>Ada</b>");
@@ -929,7 +934,7 @@ describe("renderToStream", () => {
           ssrLoading({
             fallback: () => ssrHtml("<i>loading</i>"),
             children: () =>
-              ssrHtml(`<b>${esc(computed(() => new Promise<string>(() => {}))())}</b>`),
+              ssrHtml(`<b>${esc(createMemo(() => new Promise<string>(() => {}))())}</b>`),
           }),
         )}</main>`,
       );
@@ -990,35 +995,32 @@ describe("a Loading fallback that is itself not ready", () => {
    * `renderPage` and `renderToStream` alike and the request produced NOTHING —
    * measured, in both modes.
    *
-   * The cells are created with no owner, which is how the router creates loader
-   * cells and is not incidental: a cell created inside the boundary's content
-   * closure dies with that scope when the boundary parks on a string render.
+   * The cells are declared by the page, outside the boundary, and that is not
+   * incidental: a cell created inside the boundary's content closure dies with
+   * that scope when the boundary parks on a string render.
    */
   const build = (label: string): { page: () => unknown } => {
-    const data = runWithOwner(null, () =>
-      computed(
-        async () => {
-          await tick();
-          return "content";
-        },
-        { key: `${label}:content` },
-      ),
-    );
-    const skeleton = runWithOwner(null, () =>
-      computed(
-        async () => {
-          await tick();
-          return "skeleton";
-        },
-        { key: `${label}:fallback` },
-      ),
-    );
     return {
-      page: () =>
-        ssrLoading({
+      page: () => {
+        const data = createMemo(
+          async () => {
+            await tick();
+            return "content";
+          },
+          { key: `${label}:content` },
+        );
+        const skeleton = createMemo(
+          async () => {
+            await tick();
+            return "skeleton";
+          },
+          { key: `${label}:fallback` },
+        );
+        return ssrLoading({
           fallback: () => ssrHtml(`<i>${esc(skeleton())}</i>`),
           children: () => ssrHtml(`<b>${esc(data())}</b>`),
-        }),
+        });
+      },
     };
   };
 
@@ -1046,21 +1048,19 @@ describe("a pending promise inside a seeded value", () => {
     new Promise((resolve) => setTimeout(() => resolve(value), ms));
 
   test("renderPage AWAITS it, because it has no later chunk to put it in", async () => {
-    const cell = runWithOwner(null, () =>
-      computed(
+    const out = await renderPage(() => {
+      const cell = createMemo(
         async () => {
           await tick();
           return { now: "here", later: late("arrived") };
         },
         { key: "d:page" },
-      ),
-    );
-    const out = await renderPage(() =>
-      ssrLoading({
+      );
+      return ssrLoading({
         fallback: () => ssrHtml("<i>l</i>"),
         children: () => ssrHtml(`<b>${esc((cell() as { now: string }).now)}</b>`),
-      }),
-    );
+      });
+    });
     expect(out.html).toBe("<b>here</b>");
     // Resolved, not a promise: the seed carries the value.
     expect(out.script).toContain("arrived");
@@ -1071,21 +1071,19 @@ describe("a pending promise inside a seeded value", () => {
     // into an eight-deep tree.
     const cyclic: Record<string, unknown> = { name: "root" };
     cyclic.self = cyclic;
-    const cell = runWithOwner(null, () =>
-      computed(
+    const out = await renderPage(() => {
+      const cell = createMemo(
         async () => {
           await tick();
           return cyclic;
         },
         { key: "d:cycle" },
-      ),
-    );
-    const out = await renderPage(() =>
-      ssrLoading({
+      );
+      return ssrLoading({
         fallback: () => ssrHtml("<i>l</i>"),
         children: () => ssrHtml(`<b>${esc((cell() as { name: string }).name)}</b>`),
-      }),
-    );
+      });
+    });
     expect(out.data["d:cycle"]).toBe(cyclic);
     expect((out.data["d:cycle"] as { self: unknown }).self).toBe(cyclic);
   });
@@ -1100,8 +1098,8 @@ describe("a pending promise inside a seeded value", () => {
    * served the page and a crawler took the request down.
    */
   test("renderPage PLACES a rejection rather than dying on it", async () => {
-    const cell = runWithOwner(null, () =>
-      computed(
+    const out = await renderPage(() => {
+      const cell = createMemo(
         async () => {
           await tick();
           return {
@@ -1112,14 +1110,12 @@ describe("a pending promise inside a seeded value", () => {
           };
         },
         { key: "d:reject" },
-      ),
-    );
-    const out = await renderPage(() =>
-      ssrLoading({
+      );
+      return ssrLoading({
         fallback: () => ssrHtml("<i>l</i>"),
         children: () => ssrHtml(`<b>${esc((cell() as { now: string }).now)}</b>`),
-      }),
-    );
+      });
+    });
     expect(out.html).toBe("<b>here</b>");
     // A REJECTED PROMISE on the client, which is what the streamed arm sends —
     // the server's own boundary has already rendered the error, so a settled
@@ -1141,27 +1137,25 @@ describe("a pending promise inside a seeded value", () => {
    * a page whose error boundary had already rendered correctly.
    */
   test("a NESTED rejected promise is marked handled by the seed guard", async () => {
-    const cell = runWithOwner(null, () =>
-      computed(
-        async () => {
-          await tick();
-          return {
-            now: "here",
-            later: new Promise((_resolve, reject) =>
-              setTimeout(() => reject(new Error("nested failure")), 5),
-            ),
-          };
-        },
-        { key: "d:nested" },
-      ),
-    );
     const parts = await collect(
-      renderToStream(() =>
-        ssrLoading({
+      renderToStream(() => {
+        const cell = createMemo(
+          async () => {
+            await tick();
+            return {
+              now: "here",
+              later: new Promise((_resolve, reject) =>
+                setTimeout(() => reject(new Error("nested failure")), 5),
+              ),
+            };
+          },
+          { key: "d:nested" },
+        );
+        return ssrLoading({
           fallback: () => ssrHtml("<i>l</i>"),
           children: () => ssrHtml(`<b>${esc((cell() as { now: string }).now)}</b>`),
-        }),
-      ),
+        });
+      }),
     );
     const whole = parts.join("");
     // Run every seed script the way a browser does, then let the rejection land.
@@ -1179,22 +1173,20 @@ describe("a pending promise inside a seeded value", () => {
   });
 
   test("renderToStream DEFERS it and resolves it in a later chunk", async () => {
-    const cell = runWithOwner(null, () =>
-      computed(
-        async () => {
-          await tick();
-          return { now: "here", later: late("arrived", 15) };
-        },
-        { key: "d:stream" },
-      ),
-    );
     const parts = await collect(
-      renderToStream(() =>
-        ssrLoading({
+      renderToStream(() => {
+        const cell = createMemo(
+          async () => {
+            await tick();
+            return { now: "here", later: late("arrived", 15) };
+          },
+          { key: "d:stream" },
+        );
+        return ssrLoading({
           fallback: () => ssrHtml("<i>l</i>"),
           children: () => ssrHtml(`<b>${esc((cell() as { now: string }).now)}</b>`),
-        }),
-      ),
+        });
+      }),
     );
     const whole = parts.join("");
     expect(whole).toContain("<b>here</b>");
@@ -1215,12 +1207,12 @@ describe("a pending promise inside a seeded value", () => {
  */
 describe("a throw after the shell", () => {
   const pageThatThrowsLate = (): (() => SsrHtml) => {
-    const bad = computed(async () => {
-      await tick();
-      throw new Error("late boom");
-    });
-    return () =>
-      ssrHtml(
+    return () => {
+      const bad = createMemo(async () => {
+        await tick();
+        throw new Error("late boom");
+      });
+      return ssrHtml(
         `<main>${esc(
           ssrLoading({
             fallback: () => ssrHtml("<i>skel</i>"),
@@ -1228,6 +1220,7 @@ describe("a throw after the shell", () => {
           }),
         )}</main>`,
       );
+    };
   };
 
   test("does NOT tear the response: the stream completes and the fallback stands", async () => {
@@ -1258,17 +1251,86 @@ describe("a throw after the shell", () => {
     }
     expect(logged.map(String)).toEqual(["Error: late boom"]);
   });
+
+  // ONE boundary failing is one boundary failing. Its sibling is still owed its
+  // content, and a client holding a promise for a key is waiting on this
+  // stream, and on nothing else, to settle it or to say it never will.
+  const defer = (value: () => unknown): string =>
+    esc(
+      ssrLoading({
+        fallback: () => ssrHtml("<i>skel</i>"),
+        children: () => ssrHtml(`<b>${esc(value())}</b>`),
+      }),
+    );
+  const pageWithAFailureAndASibling = (): SsrHtml => {
+    const bad = createMemo(
+      async () => {
+        await tick();
+        throw new Error("late boom");
+      },
+      { key: "bad" },
+    );
+    const slow = createMemo(
+      async () => {
+        await new Promise<void>((resolve) => setTimeout(resolve, 30));
+        return "SLOW";
+      },
+      { key: "slow" },
+    );
+    return ssrHtml(`<main>${defer(bad)}${defer(slow)}</main>`);
+  };
+
+  test("a failed boundary does not cost its sibling the content", async () => {
+    const seen: unknown[] = [];
+
+    const html = (
+      await collect(
+        renderToStream(pageWithAFailureAndASibling, { onError: (error) => seen.push(error) }),
+      )
+    ).join("");
+
+    expect(seen.map(String)).toEqual(["Error: late boom"]);
+    expect(html).toContain("<b>SLOW</b>");
+    // The failed one keeps the fallback the shell flushed and is never swapped.
+    expect(html).toContain("<!--[b:0--><i>skel</i><!--]-->");
+    expect(html).not.toContain('<template data-barq="0">');
+    expect(html).toContain('<template data-barq="1">');
+  });
+
+  test("every promise the stream seeded is settled by the time it closes", async () => {
+    const session = Symbol("render");
+
+    const html = (
+      await collect(renderToStream(pageWithAFailureAndASibling, { session, onError: () => {} }))
+    ).join("");
+    const data = runSeedScripts(html);
+    const state = (value: unknown): Promise<string> =>
+      Promise.race([
+        Promise.resolve(value).then(
+          () => "settled",
+          () => "settled",
+        ),
+        new Promise<string>((resolve) => setTimeout(() => resolve("pending"), 100)),
+      ]);
+
+    expect(Object.keys(data).toSorted()).toEqual(["bad", "slow"]);
+    expect({ bad: await state(data.bad), slow: await state(data.slow) }).toEqual({
+      bad: "settled",
+      slow: "settled",
+    });
+    expect(Object.keys(pendingSeedsOf(session))).toEqual([]);
+  });
 });
 
 describe("the stream's lifecycle", () => {
   test("onShellReady fires before onAllReady, and both fire once", async () => {
     const order: string[] = [];
-    const late = computed(async () => {
-      await tick();
-      return "LATE";
-    });
-    const page = (): unknown =>
-      ssrHtml(
+    const page = (): unknown => {
+      const late = createMemo(async () => {
+        await tick();
+        return "LATE";
+      });
+      return ssrHtml(
         `<main>${esc(
           ssrLoading({
             fallback: () => ssrHtml("<i>skel</i>"),
@@ -1276,6 +1338,7 @@ describe("the stream's lifecycle", () => {
           }),
         )}</main>`,
       );
+    };
 
     const html = (
       await collect(
@@ -1314,20 +1377,18 @@ describe("a seeded key that is still in flight", () => {
     let deliver!: (value: string) => void;
     store({ "in-flight": new Promise<string>((resolve) => (deliver = resolve)) });
 
-    const value = computed(
-      async () => {
-        fetches++;
-        return "refetched";
-      },
-      { key: "in-flight" },
+    // Computed where it is declared, and pending on the SEED, not on a fetch.
+    const value = runWithOwner(null, () =>
+      createRoot(() =>
+        createMemo(
+          async () => {
+            fetches++;
+            return "refetched";
+          },
+          { key: "in-flight" },
+        ),
+      ),
     );
-
-    // Starts the node. It is pending on the SEED, not on a fetch.
-    try {
-      value();
-    } catch {
-      /* NotReadyError: the value has not arrived */
-    }
     deliver("from-the-server");
     await settle();
 
@@ -1345,19 +1406,17 @@ describe("a seeded key that is still in flight", () => {
     // kill on Node.
     store({ gone: Promise.resolve({ [SEED_ABANDONED]: 1 }) });
 
-    const value = computed(
-      async () => {
-        fetches++;
-        return "refetched";
-      },
-      { key: "gone" },
+    const value = runWithOwner(null, () =>
+      createRoot(() =>
+        createMemo(
+          async () => {
+            fetches++;
+            return "refetched";
+          },
+          { key: "gone" },
+        ),
+      ),
     );
-
-    try {
-      value();
-    } catch {
-      /* pending */
-    }
     await settle();
 
     expect(value()).toBe("refetched");
@@ -1399,19 +1458,16 @@ describe("a children array holding a claimed region", () => {
     const title = template(`<div id="title">Invoices</div>`);
     const mark = template(`<span id="mark">New</span>`);
 
-    hydrate(
-      (() => {
-        const host = outer() as HTMLElement;
-        insert(
-          host,
-          block(() => [title(), branch(null, null, () => 0, [block(() => mark())], 5)]),
-          null,
-          16,
-        );
-        return host;
-      }) as never,
-      container,
-    );
+    hydrate(() => {
+      const host = outer() as HTMLElement;
+      insert(
+        host,
+        block(() => [title(), branch(null, null, () => 0, [block(() => mark())], 5)]),
+        null,
+        16,
+      );
+      return host;
+    }, container);
     flush();
 
     expect(container.querySelector("#mark")).not.toBeNull();

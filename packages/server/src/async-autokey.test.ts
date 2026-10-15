@@ -8,18 +8,20 @@ import {
   DEV,
   NotReadyError,
   boundary,
-  computed,
+  createMemo,
   getOwner,
   hydrate,
-  isPending,
   latest,
   peekNextChildId,
   resetChildIds,
-  scope,
+  createRoot,
+  rootScope,
+  runWithOwner,
   settle,
 } from "@barqjs/core";
 import {
   clearHydrationData,
+  disposeScope,
   getHydrationData,
   setAsyncSession,
   unclaimedSeeds,
@@ -36,16 +38,20 @@ function seedStore(data: Payload | undefined): void {
   else target.__BARQ_DATA__ = { ...data };
 }
 
+/** A render's root: detached, and carrying the id every auto-key below it is formed from. */
+function underRoot(build: () => void): () => void {
+  const root = rootScope();
+  runWithOwner(root, build);
+  return () => disposeScope(root);
+}
+
 /** Run `build` under a fresh root inside its own async session, then serialize. */
 async function renderInSession(build: () => void): Promise<Payload> {
   const session = Symbol("epoch");
   const prev = setAsyncSession(session);
   let dispose!: () => void;
   try {
-    scope((d) => {
-      dispose = d;
-      build();
-    }, true);
+    dispose = underRoot(build);
   } finally {
     setAsyncSession(prev);
   }
@@ -54,11 +60,6 @@ async function renderInSession(build: () => void): Promise<Payload> {
   clearHydrationData(session);
   dispose();
   return data;
-}
-
-/** Force a lazy async computed to start, without asserting on the result. */
-function start(read: () => unknown): void {
-  isPending(read);
 }
 
 /**
@@ -90,8 +91,7 @@ describe("createAsync auto-keying", () => {
 
     const data = await renderInSession(() => {
       expected = peekNextChildId(getOwner()!);
-      const answer = computed(async () => 42);
-      start(answer);
+      createMemo(async () => 42);
     });
 
     expect(Object.keys(data)).toEqual([expected]);
@@ -100,39 +100,36 @@ describe("createAsync auto-keying", () => {
 
   test("an explicit key wins over the auto-key", async () => {
     const data = await renderInSession(() => {
-      const user = computed(async () => "Ada", { key: "user" });
-      start(user);
+      createMemo(async () => "Ada", { key: "user" });
     });
 
     expect(data).toEqual({ user: "Ada" });
   });
 
-  test("an explicit key does not consume a child id", async () => {
-    let afterExplicit!: string;
-    let expected!: string;
+  test("keying a read does not renumber the reads after it", async () => {
+    let second!: string;
 
     const data = await renderInSession(() => {
-      const owner = getOwner()!;
-      expected = peekNextChildId(owner);
-      const keyed = computed(async () => "Ada", { key: "user" });
-      afterExplicit = peekNextChildId(owner);
-      const auto = computed(async () => "Grace");
-      start(keyed);
-      start(auto);
+      createMemo(async () => "Ada", { key: "user" });
+      second = peekNextChildId(getOwner()!);
+      createMemo(async () => "Grace");
+    });
+    // A read is a node and a node holds a position, keyed or not, so the
+    // second read is addressed the same way whichever the first one is.
+    const unkeyed = await renderInSession(() => {
+      createMemo(async () => "Ada");
+      createMemo(async () => "Grace");
     });
 
-    expect(afterExplicit).toBe(expected);
-    expect(data).toEqual({ user: "Ada", [expected]: "Grace" });
+    expect(data).toEqual({ user: "Ada", [second]: "Grace" });
+    expect(Object.keys(unkeyed)[1]).toBe(second);
   });
 
   test("sibling createAsync calls under one owner do not collide", async () => {
     const data = await renderInSession(() => {
-      const first = computed(async () => "first");
-      const second = computed(async () => "second");
-      const third = computed(async () => "third");
-      start(first);
-      start(second);
-      start(third);
+      createMemo(async () => "first");
+      createMemo(async () => "second");
+      createMemo(async () => "third");
     });
 
     expect(Object.keys(data)).toHaveLength(3);
@@ -141,9 +138,8 @@ describe("createAsync auto-keying", () => {
 
   test("sibling owner scopes do not collide", async () => {
     const branch = (label: string) => {
-      scope(() => {
-        const value = computed(async () => label);
-        start(value);
+      createRoot(() => {
+        createMemo(async () => label);
       });
     };
 
@@ -157,47 +153,50 @@ describe("createAsync auto-keying", () => {
   });
 
   test("keys are stable across a server render and the matching client render", async () => {
-    const pending: Promise<unknown>[] = [];
+    // A client records nothing, so the key is observed by what it finds under
+    // it: seeded with the server's payload, each memo has to read its own
+    // label without its fetcher running.
+    let fetches = 0;
+    const reads: (() => unknown)[] = [];
+    const keyed = (label: string): void => {
+      reads.push(
+        createMemo(async () => {
+          fetches++;
+          return label;
+        }),
+      );
+    };
     const tree = () => {
-      const top = computed(tracked("top", pending));
-      start(top);
-      scope(() => {
-        const nested = computed(tracked("nested", pending));
-        start(nested);
-        scope(() => {
-          const deep = computed(tracked("deep", pending));
-          start(deep);
+      keyed("top");
+      createRoot(() => {
+        keyed("nested");
+        createRoot(() => {
+          keyed("deep");
         });
       });
     };
 
     // server: inside a render session, under renderPage's root scope
     const server = await renderInSession(tree);
+    expect(Object.keys(server)).toHaveLength(3);
+    const served = fetches;
 
     // client: a fresh page — no session, id epoch starts over
-    pending.length = 0;
+    reads.length = 0;
+    seedStore(server);
     resetChildIds();
-    let dispose!: () => void;
-    scope((d) => {
-      dispose = d;
-      tree();
-    }, true);
-    await Promise.allSettled(pending);
-    const client = getHydrationData();
-    dispose();
+    const dispose = underRoot(tree);
 
-    expect(Object.keys(server)).toHaveLength(3);
-    expect(new Set(Object.keys(client))).toEqual(new Set(Object.keys(server)));
-    expect(client).toEqual(server);
+    expect(reads.map((read) => read())).toEqual(["top", "nested", "deep"]);
+    expect(fetches).toBe(served);
+    dispose();
   });
 
   test("keys are stable across two server renders in different sessions", async () => {
     const tree = () => {
-      const a = computed(async () => "a");
-      start(a);
-      scope(() => {
-        const b = computed(async () => "b");
-        start(b);
+      createMemo(async () => "a");
+      createRoot(() => {
+        createMemo(async () => "b");
       });
     };
 
@@ -211,19 +210,17 @@ describe("createAsync auto-keying", () => {
   test("auto-keyed server data seeds the client synchronously, with no refetch", async () => {
     let fetches = 0;
     const tree = () => {
-      const user = computed(async () => {
+      const user = createMemo(async () => {
         fetches++;
         return "Ada";
       });
-      scope(() => {
-        const posts = computed(async () => {
+      createRoot(() => {
+        const posts = createMemo(async () => {
           fetches++;
           return ["hello"];
         });
-        start(posts);
         reads.push(posts);
       });
-      start(user);
       reads.push(user);
     };
     const reads: (() => unknown)[] = [];
@@ -234,11 +231,9 @@ describe("createAsync auto-keying", () => {
     reads.length = 0;
     seedStore(data);
     resetChildIds();
-    let dispose!: () => void;
-    scope((d) => {
-      dispose = d;
+    const dispose = underRoot(() => {
       tree();
-    }, true);
+    });
 
     expect(reads.map((read) => read())).toEqual([["hello"], "Ada"]);
     expect(fetches).toBe(2);
@@ -248,12 +243,12 @@ describe("createAsync auto-keying", () => {
   test("renderPage and hydrate agree on the auto-keys, with no refetch", async () => {
     let fetches = 0;
     const app = () => {
-      const user = computed(async () => {
+      const user = createMemo(async () => {
         fetches++;
         return "Ada";
       });
       // waterfall: the second fetch can only start once the first resolves
-      const greeting = computed(async () => {
+      const greeting = createMemo(async () => {
         fetches++;
         return `Hello ${user()}`;
       });
@@ -296,13 +291,12 @@ describe("createAsync auto-keying", () => {
    */
   test("a divergent client tree shifts the auto-keys, and the drift is reported", async () => {
     const a = () =>
-      scope(() => {
-        start(computed(async () => "A-VALUE"));
+      createRoot(() => {
+        createMemo(async () => "A-VALUE");
       });
     const b = () =>
-      scope(() => {
-        const value = computed(async () => "B-VALUE");
-        start(value);
+      createRoot(() => {
+        const value = createMemo(async () => "B-VALUE");
         return value;
       });
 
@@ -319,12 +313,10 @@ describe("createAsync auto-keying", () => {
     seedStore(both);
     resetChildIds();
     const capture = DEV.diagnostics.capture();
-    let dispose!: () => void;
     let read!: () => unknown;
-    scope((d) => {
-      dispose = d;
+    const dispose = underRoot(() => {
       read = b();
-    }, true);
+    });
     expect(read()).toBe("A-VALUE"); // the hazard, in one line
     // A's value was claimed by B, so B's is stranded — which is the evidence.
     // `hydrate` runs this once the first render has settled.
@@ -345,19 +337,18 @@ describe("createAsync auto-keying", () => {
   test("a named read refetches on a divergent tree instead of seeding wrong data", async () => {
     let fetches = 0;
     const a = () =>
-      scope(() => {
-        start(computed(async () => "A-VALUE", { name: "a" }));
+      createRoot(() => {
+        createMemo(async () => "A-VALUE", { name: "a" });
       });
     const b = () =>
-      scope(() => {
-        const value = computed(
+      createRoot(() => {
+        const value = createMemo(
           async () => {
             fetches++;
             return "B-VALUE";
           },
           { name: "b" },
         );
-        start(value);
         return value;
       });
 
@@ -370,17 +361,15 @@ describe("createAsync auto-keying", () => {
 
     seedStore(both);
     resetChildIds();
-    let dispose!: () => void;
     let read!: () => unknown;
-    scope((d) => {
-      dispose = d;
+    const dispose = underRoot(() => {
       read = b();
-    }, true);
+    });
     // A miss, not A's value. `isPending` reports STALENESS and this value has
     // never held one, so the honest probe is the read itself: it throws, which
     // is what a `Loading` boundary would catch, and a real fetch is running.
     expect(() => read()).toThrow(NotReadyError);
-    expect(latest(read)).toBeUndefined();
+    expect(() => latest(read)).toThrow(NotReadyError);
     expect(fetches).toBe(2);
     dispose();
   });
@@ -402,9 +391,9 @@ describe("createAsync auto-keying", () => {
 
   test("naming one read does not renumber its siblings", async () => {
     const data = await renderInSession(() => {
-      start(computed(async () => "first"));
-      start(computed(async () => "second", { name: "middle" }));
-      start(computed(async () => "third"));
+      createMemo(async () => "first");
+      createMemo(async () => "second", { name: "middle" });
+      createMemo(async () => "third");
     });
     const keys = Object.keys(data);
     expect(keys).toHaveLength(3);
@@ -414,8 +403,7 @@ describe("createAsync auto-keying", () => {
 
   test("with no owner there is no tree to key off, so nothing is serialized", async () => {
     const pending: Promise<unknown>[] = [];
-    const orphan = computed(tracked("orphan", pending));
-    start(orphan);
+    const orphan = createMemo(tracked("orphan", pending));
     await Promise.allSettled(pending);
 
     expect(getHydrationData()).toEqual({});

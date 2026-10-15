@@ -43,7 +43,7 @@
     "lint": "bunx @biomejs/biome check src",
     "lint:fix": "bunx @biomejs/biome check --write --unsafe src",
     "format": "bunx @biomejs/biome format --write src",
-    "test": "bun test",
+    "test": "bun test && bun test --conditions=development",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {

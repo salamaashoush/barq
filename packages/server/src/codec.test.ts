@@ -5,6 +5,8 @@
  * this file is about the one thing an Error has to KEEP.
  */
 
+import { runInThisContext } from "node:vm";
+
 import { afterEach, describe, expect, test } from "bun:test";
 
 import {
@@ -63,15 +65,61 @@ describe("a control-flow throwable survives the wire", () => {
     expect(back.status).toBe(302);
   });
 
+  test("a redirect's navigation crosses as data, and what is not data stays behind", () => {
+    const thrown = Object.assign(redirect(), {
+      options: {
+        to: "/orders/$id",
+        params: { id: "42" },
+        search: { tab: "items", page: 2 },
+        hash: "top",
+        replace: true,
+        headers: { "x-secret": "salama" },
+        mask: () => "/hidden",
+      },
+    });
+    const back = decodeWire<Error & { options?: Record<string, unknown> }>(encodeWire(thrown));
+    expect(back.options).toEqual({
+      to: "/orders/$id",
+      params: { id: "42" },
+      search: { tab: "items", page: 2 },
+      hash: "top",
+      replace: true,
+    });
+    expect(encodeSeed({ e: thrown })).toContain('"/orders/$id"');
+    expect(encodeSeed({ e: thrown })).not.toContain("x-secret");
+  });
+
+  test("a function-valued search is an instruction, so it does not cross", () => {
+    const thrown = Object.assign(redirect(), {
+      options: { to: "/orders", search: (previous: object) => previous },
+    });
+    const back = decodeWire<Error & { options?: Record<string, unknown> }>(encodeWire(thrown));
+    expect(back.options).toEqual({ to: "/orders" });
+  });
+
+  test("a notFound keeps the data and the route it names", () => {
+    const thrown = Object.assign(notFound(), {
+      data: { slug: "missing-post", tried: ["a", "b"] },
+      routeId: "/posts/$slug",
+    });
+    const back = decodeWire<Record<symbol, unknown> & Error & { data?: unknown; routeId?: string }>(
+      encodeWire(thrown),
+    );
+    expect(back[NOT_FOUND]).toBe(true);
+    expect(back.data).toEqual({ slug: "missing-post", tried: ["a", "b"] });
+    expect(back.routeId).toBe("/posts/$slug");
+    expect(decodeWire<Error & { data?: unknown }>(encodeWire(notFound())).data).toBeUndefined();
+  });
+
   /** The SEED channel is JS rather than JSON, and rebuilds by evaluation. */
   test("the seed channel rebuilds the brand too", () => {
-    const back = (0, eval)(encodeSeed({ e: notFound() })) as {
+    const back = runInThisContext(encodeSeed({ e: notFound() })) as {
       e: Record<symbol, unknown> & Error;
     };
     expect(back.e[NOT_FOUND]).toBe(true);
     expect(back.e.name).toBe("NotFound");
 
-    const moved = (0, eval)(encodeSeed({ e: redirect() })) as {
+    const moved = runInThisContext(encodeSeed({ e: redirect() })) as {
       e: Record<symbol, unknown> & Error & { to: string; status: number };
     };
     expect(moved.e[REDIRECT]).toBe(true);
