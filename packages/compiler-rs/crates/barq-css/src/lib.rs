@@ -26,8 +26,6 @@ mod text;
 /// compare source, which differs by whitespace the class name does not.
 pub use text::canonical;
 
-use std::borrow::Cow;
-
 use oxc_css_parser::ast::{Statement, Stylesheet};
 use oxc_css_parser::{Allocator, ParserBuilder, ParserOptions, Syntax, TemplatePlaceholder};
 
@@ -36,10 +34,9 @@ use oxc_css_parser::{Allocator, ParserBuilder, ParserOptions, Syntax, TemplatePl
 /// tokenize it atomically, and why it insists on SCSS to do so.
 pub(crate) const PLACEHOLDER_PREFIX: &str = "BARQ-";
 
-/// The wrapper each kind is parsed inside, so the parser is in the state the
-/// author's text expects: a `css` block is a declaration block, not a
-/// stylesheet, and a bare `color: red` is only a statement in the first.
-const SCOPED_WRAPPER: &str = "x{";
+/// A keyframe selector such as `50%` only parses inside `@keyframes`, so a
+/// `keyframes` block is parsed inside this wrapper and every span it yields is
+/// shifted back by its length.
 const KEYFRAMES_WRAPPER: &str = "@keyframes x{";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -89,81 +86,125 @@ pub struct Error {
 }
 
 pub fn compile(source: &str, kind: Kind, options: &Options<'_>) -> Result<Compiled, Error> {
-    let (wrapped, offset) = match kind {
-        Kind::Scoped => (Cow::Owned(format!("{SCOPED_WRAPPER}{source}}}")), SCOPED_WRAPPER.len()),
-        Kind::Keyframes => {
-            (Cow::Owned(format!("{KEYFRAMES_WRAPPER}{source}}}")), KEYFRAMES_WRAPPER.len())
-        }
-        Kind::Global => (Cow::Borrowed(source), 0),
-    };
+    if kind == Kind::Keyframes {
+        return keyframes(source, options);
+    }
 
     let allocator = Allocator::default();
-    let mut parser = ParserBuilder::new(&allocator, &wrapped)
+    // A `css` block is a declaration block's contents and is parsed as one, so
+    // a bare `color: red` is a statement and a `}` that closes nothing is an
+    // error.
+    let stylesheet = parse(&allocator, source, kind == Kind::Scoped, 0, source)?;
+    sheet::vet(source, &stylesheet.statements, 0, false)?;
+
+    let mut sheet = sheet::Sheet::new(source, options.holes, kind);
+    match kind {
+        Kind::Scoped => {
+            let name = hash::name(
+                options.prefix,
+                options.debug_name,
+                &text::canonical(source, options.holes),
+            );
+            sheet.statements(&stylesheet.statements, &[format!(".{name}")])?;
+            Ok(Compiled { name, css: sheet.finish() })
+        }
+        _ => {
+            sheet.statements(&stylesheet.statements, &[])?;
+            Ok(Compiled { name: String::new(), css: sheet.finish() })
+        }
+    }
+}
+
+fn keyframes(source: &str, options: &Options<'_>) -> Result<Compiled, Error> {
+    let wrapped = format!("{KEYFRAMES_WRAPPER}{source}}}");
+    let offset = KEYFRAMES_WRAPPER.len();
+    let allocator = Allocator::default();
+    let stylesheet = parse(&allocator, &wrapped, false, offset, source).map_err(|error| {
+        // A `}` that closes nothing closes the wrapper instead, and the parser
+        // only notices at the wrapper's own brace, past the end of `source`.
+        match unopened_brace(source) {
+            Some(at) if error.start == source.len() => Error {
+                message: "This `}` closes a block that was never opened.".to_string(),
+                start: at,
+                end: at + 1,
+            },
+            _ => error,
+        }
+    })?;
+    let block = match stylesheet.statements.first() {
+        Some(Statement::AtRule(at_rule)) => at_rule.block.as_ref(),
+        _ => None,
+    };
+    let Some(block) = block else {
+        return Err(Error {
+            message: "This `keyframes` block has no steps. Write them as \
+                      `from { opacity: 0 } to { opacity: 1 }`."
+                .to_string(),
+            start: 0,
+            end: source.len(),
+        });
+    };
+    sheet::vet(&wrapped, &block.statements, offset, true)?;
+    let name =
+        hash::name(options.prefix, options.debug_name, &text::canonical(source, options.holes));
+    // Emitted whole rather than walked: a keyframe selector is a percentage, not
+    // something a parent class may be crossed into.
+    let body = &wrapped[block.span.start..block.span.end];
+    Ok(Compiled { css: format!("@keyframes {name}{}", text::canonical(body, options.holes)), name })
+}
+
+/// `text` is what the parser reads, which is `source` itself or `source` inside
+/// a wrapper `offset` bytes long.
+fn parse<'a>(
+    allocator: &'a Allocator,
+    text: &'a str,
+    block_contents: bool,
+    offset: usize,
+    source: &str,
+) -> Result<Stylesheet<'a>, Error> {
+    let mut parser = ParserBuilder::new(allocator, text)
         .syntax(Syntax::Scss)
         .options(ParserOptions {
             template_placeholder: Some(TemplatePlaceholder { prefix: PLACEHOLDER_PREFIX }),
-            ..ParserOptions::default()
+            block_contents,
         })
         .build();
-
     let stylesheet =
         parser.parse::<Stylesheet>().map_err(|error| from_parser(&error, offset, source))?;
     if let Some(error) = parser.recoverable_errors().first() {
         return Err(from_parser(error, offset, source));
     }
+    Ok(stylesheet)
+}
 
-    let name = match kind {
-        Kind::Global => String::new(),
-        _ => {
-            hash::name(options.prefix, options.debug_name, &text::canonical(source, options.holes))
+/// The first `}` with no `{` before it to close, outside strings and comments.
+fn unopened_brace(source: &str) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let mut depth = 0usize;
+    let mut index = 0;
+    while index < bytes.len() {
+        match bytes[index] {
+            quote @ (b'"' | b'\'') => {
+                index += 1;
+                while index < bytes.len() && bytes[index] != quote {
+                    index += if bytes[index] == b'\\' { 2 } else { 1 };
+                }
+            }
+            b'/' if bytes.get(index + 1) == Some(&b'*') => {
+                index += 2;
+                while index < bytes.len() && !bytes[index..].starts_with(b"*/") {
+                    index += 1;
+                }
+                index += 1;
+            }
+            b'{' => depth += 1,
+            b'}' if depth == 0 => return Some(index),
+            b'}' => depth -= 1,
+            _ => {}
         }
-    };
-
-    let mut sheet = sheet::Sheet::new(&wrapped, options.holes, kind, offset);
-    match kind {
-        Kind::Global => sheet.statements(&stylesheet.statements, &[])?,
-        Kind::Scoped => {
-            let Some(Statement::QualifiedRule(rule)) = stylesheet.statements.first() else {
-                return Err(Error {
-                    message: "This block is not a list of declarations. Write declarations and \
-                              nested rules, such as `color: red; &:hover { color: blue }`."
-                        .to_string(),
-                    start: 0,
-                    end: source.len(),
-                });
-            };
-            sheet.statements(&rule.block.statements, &[format!(".{name}")])?;
-        }
-        Kind::Keyframes => {
-            let Some(Statement::AtRule(at_rule)) = stylesheet.statements.first() else {
-                return Err(Error {
-                    message: "This `keyframes` block has no steps. Write them as \
-                              `from { opacity: 0 } to { opacity: 1 }`."
-                        .to_string(),
-                    start: 0,
-                    end: source.len(),
-                });
-            };
-            let Some(block) = at_rule.block.as_ref() else {
-                return Err(Error {
-                    message: "This `keyframes` block has no steps. Write them as \
-                              `from { opacity: 0 } to { opacity: 1 }`."
-                        .to_string(),
-                    start: 0,
-                    end: source.len(),
-                });
-            };
-            // Emitted whole rather than walked: a keyframe selector is a
-            // percentage, not something a parent class may be crossed into.
-            let body = &wrapped[block.span.start..block.span.end];
-            return Ok(Compiled {
-                css: format!("@keyframes {name}{}", text::canonical(body, options.holes)),
-                name,
-            });
-        }
+        index += 1;
     }
-
-    Ok(Compiled { name, css: sheet.finish() })
+    None
 }
 
 fn from_parser(error: &oxc_css_parser::error::Error, offset: usize, source: &str) -> Error {

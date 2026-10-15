@@ -272,3 +272,97 @@ fn an_error_span_points_into_the_source_the_caller_passed() {
 fn an_unclosed_block_is_an_error_rather_than_a_guess() {
     assert!(compile("span { color: red", Kind::Scoped, &Options::default()).is_err());
 }
+
+fn refused(source: &str, kind: Kind) -> (String, String) {
+    let holes = ["var(--b0)", "var(--b1)"];
+    let error = compile(source, kind, &Options { holes: &holes, ..Options::default() })
+        .expect_err("refused");
+    (error.message, source[error.start..error.end].to_string())
+}
+
+/// A `css` block is parsed as a block's contents, so a `}` that closes nothing
+/// is the parser's error. Inside a wrapper it closed the wrapper, and the rule
+/// after it was parsed as a sibling and never emitted.
+#[test]
+fn a_brace_that_closes_nothing_is_an_error_rather_than_a_lost_rule() {
+    let (message, at) = refused("color: red } span { color: blue }", Kind::Scoped);
+    assert!(message.contains("The CSS parser reports"), "{message}");
+    assert_eq!(at, "}");
+}
+
+#[test]
+fn a_keyframes_block_takes_percentage_steps() {
+    let compiled =
+        compile("0% { opacity: 0 } 50% { opacity: 0.5 }", Kind::Keyframes, &Options::default())
+            .expect("compiles");
+    assert_eq!(
+        compiled.css,
+        format!("@keyframes {}{{0%{{opacity: 0}}50%{{opacity: 0.5}}}}", compiled.name)
+    );
+}
+
+#[test]
+fn an_error_offset_counts_bytes_past_a_multibyte_character() {
+    let source = "content: \"日本\"; } span { color: blue }";
+    let error = compile(source, Kind::Scoped, &Options::default()).unwrap_err();
+    assert_eq!(&source[error.start..error.end], "}");
+
+    let source = "from { content: \"é\" } } to { opacity: 1 }";
+    let error = compile(source, Kind::Keyframes, &Options::default()).unwrap_err();
+    assert_eq!(&source[..error.start], "from { content: \"é\" } ");
+    assert_eq!(&source[error.start..error.end], "}");
+
+    let (_, at) = refused("content: \"日本\"; .a-`BARQ-0` { color: red }", Kind::Scoped);
+    assert_eq!(at, "`BARQ-0`");
+}
+
+/// A placeholder becomes `var(--…)`, which CSS reads only in a value. Each of
+/// these used to compile to CSS the browser drops.
+#[test]
+fn a_placeholder_outside_a_value_is_refused_where_it_stands() {
+    for (source, kind, says) in [
+        ("margin-`BARQ-0`: 0", Kind::Scoped, "part of a property name"),
+        ("`BARQ-0`: red", Kind::Scoped, "part of a property name"),
+        ("color: red; .a-`BARQ-0` { color: blue }", Kind::Scoped, "part of a selector"),
+        ("&:hover `BARQ-0` { color: blue }", Kind::Scoped, "part of a selector"),
+        ("@media (min-width: `BARQ-0`) { color: red }", Kind::Scoped, "the `@media` prelude"),
+        ("@supports (display: `BARQ-0`) { color: red }", Kind::Scoped, "the `@supports` prelude"),
+        ("span { @media (width > `BARQ-0`) { color: red } }", Kind::Scoped, "`@media` prelude"),
+        ("font-family: brand-`BARQ-0`", Kind::Scoped, "joined to the text before it"),
+        ("body { margin-`BARQ-0`: 0 }", Kind::Global, "part of a property name"),
+        ("from { opacity: 0 } `BARQ-0` { opacity: 1 }", Kind::Keyframes, "keyframe selector"),
+        ("from { margin-`BARQ-0`: 0 }", Kind::Keyframes, "part of a property name"),
+        ("@keyframes spin { `BARQ-0` { opacity: 0 } }", Kind::Scoped, "keyframe selector"),
+    ] {
+        let (message, at) = refused(source, kind);
+        assert!(message.contains(says), "{source}: {message}");
+        assert_eq!(at, "`BARQ-0`", "{source}");
+    }
+}
+
+#[test]
+fn a_placeholder_in_a_value_still_compiles() {
+    let holes = ["var(--b0)", "var(--b1)", "var(--b2)"];
+    let options = Options { holes: &holes, ..Options::default() };
+    for (source, kind, emitted) in [
+        (
+            "width: calc(`BARQ-0` + 1px); color: `BARQ-1`",
+            Kind::Scoped,
+            "width: calc(var(--b0) + 1px);color: var(--b1)",
+        ),
+        (
+            "--gap: `BARQ-0`; margin: 0 `BARQ-1``BARQ-2`",
+            Kind::Scoped,
+            "--gap: var(--b0);margin: 0 var(--b1)var(--b2)",
+        ),
+        (
+            "a[title=\"`BARQ-0`\"] { color: `BARQ-0` }",
+            Kind::Scoped,
+            "[title=\"`BARQ-0`\"]{color: var(--b0)}",
+        ),
+        ("from { opacity: `BARQ-0` }", Kind::Keyframes, "{from{opacity: var(--b0)}}"),
+    ] {
+        let compiled = compile(source, kind, &options).expect(source);
+        assert!(compiled.css.contains(emitted), "{source}: {}", compiled.css);
+    }
+}

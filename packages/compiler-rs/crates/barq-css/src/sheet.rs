@@ -28,7 +28,6 @@ pub(crate) struct Sheet<'a> {
     source: &'a str,
     holes: &'a [&'a str],
     kind: Kind,
-    offset: usize,
     head: String,
     out: String,
     /// Open at-rule preludes, outermost first. A declaration reached through
@@ -42,12 +41,11 @@ pub(crate) struct Sheet<'a> {
 }
 
 impl<'a> Sheet<'a> {
-    pub(crate) fn new(source: &'a str, holes: &'a [&'a str], kind: Kind, offset: usize) -> Self {
+    pub(crate) fn new(source: &'a str, holes: &'a [&'a str], kind: Kind) -> Self {
         Sheet {
             source,
             holes,
             kind,
-            offset,
             head: String::new(),
             out: String::new(),
             conditions: Vec::new(),
@@ -61,11 +59,7 @@ impl<'a> Sheet<'a> {
     }
 
     fn error(&self, message: impl Into<String>, span: Span) -> Error {
-        Error {
-            message: message.into(),
-            start: span.start.saturating_sub(self.offset),
-            end: span.end.saturating_sub(self.offset),
-        }
+        Error { message: message.into(), start: span.start, end: span.end }
     }
 
     fn slice(&self, span: Span) -> &'a str {
@@ -286,6 +280,160 @@ fn collect_compound(compound: &CompoundSelector<'_>, out: &mut Vec<usize>) {
             _ => {}
         }
     }
+}
+
+/// Refuses a placeholder anywhere but a declaration's value.
+///
+/// A placeholder becomes `var(--…)`, and CSS reads `var()` in a value and
+/// nowhere else. The parser accepts one inside an identifier, a selector and an
+/// at-rule's prelude, the way Sass accepts `#{}`, so `margin-${side}: 0` would
+/// otherwise compile to `margin-var(--b0): 0`, which the browser drops without
+/// a word. `offset` is the length of the wrapper `source` was parsed inside, and
+/// `steps` says the statements are a `@keyframes` body, whose rule preludes are
+/// keyframe selectors.
+pub(crate) fn vet(
+    source: &str,
+    statements: &[Statement<'_>],
+    offset: usize,
+    steps: bool,
+) -> Result<(), Error> {
+    if !source.contains('`') {
+        return Ok(());
+    }
+    let refuse = |message: String, at: Span| Error {
+        message,
+        start: at.start.saturating_sub(offset),
+        end: at.end.saturating_sub(offset),
+    };
+    let step = "This interpolation is part of a keyframe selector. It becomes `var(--…)`, which \
+                CSS reads only in a value, so the step would be dropped. Write the step as a \
+                literal, such as `50% { opacity: 0.5 }`.";
+    for statement in statements {
+        match statement {
+            Statement::Declaration(declaration) => {
+                let name =
+                    Span { start: declaration.span.start, end: declaration.colon_span.start };
+                if let Some(at) = placeholders(source, name).next() {
+                    return Err(refuse(
+                        "This interpolation is part of a property name. It becomes `var(--…)`, \
+                         which CSS reads only in a value, so the browser would drop the \
+                         declaration. Write the property out in full and interpolate its value \
+                         instead, such as `margin-left: ${gap}`."
+                            .to_string(),
+                        at,
+                    ));
+                }
+                let value = Span { start: declaration.colon_span.end, end: declaration.span.end };
+                if let Some(at) = placeholders(source, value).find(|at| glued(source, at.start)) {
+                    return Err(refuse(
+                        "This interpolation is joined to the text before it, so it is part of \
+                         one identifier. It becomes `var(--…)`, which CSS does not read inside \
+                         an identifier, so the browser would drop the declaration. Interpolate \
+                         the whole value, such as `font-family: ${family}`, and build the name \
+                         in JavaScript."
+                            .to_string(),
+                        at,
+                    ));
+                }
+            }
+            Statement::QualifiedRule(rule) => {
+                let prelude = Span { start: rule.span.start, end: rule.block.span.start };
+                if let Some(at) = placeholders(source, prelude).next() {
+                    let message = if steps {
+                        step
+                    } else {
+                        "This interpolation is part of a selector. It becomes `var(--…)`, which \
+                         CSS reads only in a value, so the rule would never match. Write the \
+                         selector out in full, or select on an attribute the element carries, \
+                         such as `&[data-tone=\"warm\"]`."
+                    };
+                    return Err(refuse(message.to_string(), at));
+                }
+                vet(source, &rule.block.statements, offset, false)?;
+            }
+            Statement::KeyframeBlock(keyframe) => {
+                let prelude = Span { start: keyframe.span.start, end: keyframe.block.span.start };
+                if let Some(at) = placeholders(source, prelude).next() {
+                    return Err(refuse(step.to_string(), at));
+                }
+                vet(source, &keyframe.block.statements, offset, false)?;
+            }
+            Statement::AtRule(at_rule) => {
+                let name = at_rule.name.name;
+                let end = at_rule.block.as_ref().map_or(at_rule.span.end, |block| block.span.start);
+                let prelude = Span { start: at_rule.span.start, end };
+                if let Some(at) = placeholders(source, prelude).next() {
+                    return Err(refuse(
+                        format!(
+                            "This interpolation is part of the `@{name}` prelude. It becomes \
+                             `var(--…)`, which CSS reads only in a declaration's value, so the \
+                             rule would never apply. Write the prelude with literal values, \
+                             such as `@media (min-width: 600px)`."
+                        ),
+                        at,
+                    ));
+                }
+                if let Some(block) = &at_rule.block {
+                    let steps = name.to_ascii_lowercase().ends_with("keyframes");
+                    vet(source, &block.statements, offset, steps)?;
+                }
+            }
+            Statement::Placeholder(placeholder) => {
+                return Err(refuse(not_css(statement), placeholder.span));
+            }
+            _ => {}
+        }
+    }
+    Ok(())
+}
+
+/// The placeholder tokens inside `span`, skipping strings and comments, where a
+/// backtick is text and `canonical` copies it as written.
+fn placeholders(source: &str, span: Span) -> impl Iterator<Item = Span> + '_ {
+    let bytes = source.as_bytes();
+    let end = span.end.min(bytes.len());
+    let mut index = span.start.min(end);
+    std::iter::from_fn(move || {
+        while index < end {
+            match bytes[index] {
+                quote @ (b'"' | b'\'') => {
+                    index += 1;
+                    while index < end && bytes[index] != quote {
+                        index += if bytes[index] == b'\\' { 2 } else { 1 };
+                    }
+                    index += 1;
+                }
+                b'/' if bytes.get(index + 1) == Some(&b'*') => {
+                    index += 2;
+                    while index < end
+                        && !(bytes[index] == b'*' && bytes.get(index + 1) == Some(&b'/'))
+                    {
+                        index += 1;
+                    }
+                    index += 2;
+                }
+                b'`' => {
+                    let start = index;
+                    index += 1;
+                    while index < end && bytes[index] != b'`' {
+                        index += 1;
+                    }
+                    index += 1;
+                    return Some(Span { start, end: index.min(end) });
+                }
+                _ => index += 1,
+            }
+        }
+        None
+    })
+}
+
+/// Whether the character before a placeholder continues an identifier, so the
+/// two would be read as one token.
+fn glued(source: &str, at: usize) -> bool {
+    source[..at].chars().next_back().is_some_and(|before| {
+        before.is_ascii_alphanumeric() || matches!(before, '-' | '_' | '\\') || !before.is_ascii()
+    })
 }
 
 /// The parser runs in SCSS mode, because that is the only dialect its template

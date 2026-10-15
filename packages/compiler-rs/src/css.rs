@@ -2934,6 +2934,17 @@ mod tests {
         assert!(report.message.contains("Sass variable"), "{}", report.message);
     }
 
+    #[test]
+    fn a_brace_that_closes_nothing_is_reported_and_no_rule_is_lost() {
+        let output = run("export const card = css`color: red } span { color: blue }`;");
+        assert_eq!(output.css, None);
+        assert!(
+            output.warnings.iter().any(|warning| warning.code == Some(crate::diag::Code::Barq014)),
+            "{:?}",
+            output.warnings
+        );
+    }
+
     /// A stylesheet lives in a `.ts` module with no JSX in it, which is outside
     /// the gate every other analysis in this compiler runs behind.
     #[test]
