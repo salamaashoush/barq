@@ -12,6 +12,7 @@ import {
   isBlock,
   lookupContext,
   NotReadyError,
+  OBSERVE,
   onCleanup,
   getObserver,
   installClaimEffect,
@@ -3175,11 +3176,11 @@ function hydrateContainer(
       kind: "ssr",
       severity: "warn",
       message:
-        `${failure.message}${failure.template === undefined ? "" : ` The template being hydrated is at ${failure.template}.`} ` +
+        `${failure.message}${OBSERVE !== undefined && failure.template !== undefined ? ` The template being hydrated is at ${failure.template}.` : ""} ` +
         "The server's markup was discarded and the whole page was rendered again in the browser, " +
         "so it works but the server-rendered first paint was thrown away.",
-      data: { kind: failure.kind, template: failure.template },
-      ownerPath: failure.ownerPath,
+      data: OBSERVE === undefined ? undefined : { kind: failure.kind, template: failure.template },
+      ownerPath: OBSERVE === undefined ? undefined : failure.ownerPath,
     });
   } else {
     hydrate.report = { ...claimReport, recovered: false };
@@ -3303,8 +3304,7 @@ function mount(
 export function template(
   html: string,
   foreign: boolean | 2 = false,
-  detect = false,
-  at?: string,
+  detect: boolean | string = false,
 ): () => Node {
   let cached: Node | null = null;
 
@@ -3355,14 +3355,17 @@ export function template(
     if (hydrating()) {
       // `detect` is the detection axis, threaded from the compiler to the one
       // call that holds both trees at once. A production build passes nothing
-      // and the subtree comparison never runs.
-      if (at !== undefined) {
+      // and the subtree comparison never runs. A development compile passes
+      // the JSX's `file:line:column` in its place, for the report of a
+      // mismatch; only a development engine has `OBSERVE`, so a production
+      // bundle drops this arm whole.
+      if (OBSERVE !== undefined && typeof detect === "string") {
         try {
           const claimed = claimNode(cached, detect);
-          claimingTemplate(at);
+          claimingTemplate(detect);
           if (claimed !== null) return claimed;
         } catch (error) {
-          if (error instanceof HydrationMismatch) error.template = at;
+          if (error instanceof HydrationMismatch) error.template = detect;
           throw error;
         }
       } else {

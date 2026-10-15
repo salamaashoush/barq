@@ -77,15 +77,20 @@ export class HydrationMismatch extends Error {
    * `file:line:column` of the JSX whose template was being claimed, where a
    * development compile wrote it beside the template.
    */
-  template: string | undefined;
+  declare template: string | undefined;
   /** The component path the walk was in, where the engine keeps owner names. */
-  readonly ownerPath: string[] | undefined;
+  declare readonly ownerPath: string[] | undefined;
   constructor(kind: MismatchKind, detail: string) {
     super(`Hydration mismatch (${kind}): ${detail}. ${CAUSES[kind]}`);
     this.name = "HydrationMismatch";
     this.kind = kind;
-    this.template = SESSION?.template;
-    this.ownerPath = OBSERVE?.ownerPath(getOwner());
+    // The engine keeps a channel and owner names in its development and
+    // observe builds only; in production `OBSERVE` is a literal `undefined`,
+    // so the bundler drops both lines.
+    if (OBSERVE !== undefined) {
+      this.template = SESSION?.template;
+      (this as { ownerPath: string[] | undefined }).ownerPath = OBSERVE.ownerPath(getOwner());
+    }
   }
 }
 
@@ -238,7 +243,7 @@ export function hydrating(): boolean {
  */
 let walk: typeof WALK | null = null;
 
-export function claimNode(template: Node, detect?: boolean): Node | null {
+export function claimNode(template: Node, detect?: boolean | string): Node | null {
   return walk === null ? null : walk.claimNode(template, detect);
 }
 
@@ -595,7 +600,7 @@ export interface Taken {
  * documented consequence of NOT catching it is event handlers attached to the
  * wrong elements.
  */
-function claimNodeWalk(template: Node, detect?: boolean): Node | null {
+function claimNodeWalk(template: Node, detect?: boolean | string): Node | null {
   if (SESSION === null) return null;
   const cursor = SESSION.stack[SESSION.stack.length - 1];
   if (cursor === undefined) return null;
@@ -626,7 +631,8 @@ function claimNodeWalk(template: Node, detect?: boolean): Node | null {
       `the server sent ${describe(node)} where the browser builds ${describe(template)}`,
     );
   }
-  if (detect === true) verifySubtree(template, node, expect.toLowerCase());
+  // A development compile passes the template's source location as the flag.
+  if (detect) verifySubtree(template, node, expect.toLowerCase());
   cursor.next = node.nextSibling;
   SESSION.claimed++;
   return node;

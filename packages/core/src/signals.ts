@@ -40,6 +40,7 @@ import {
   type DiagnosticKind,
   type DiagnosticSeverity,
   type DiagnosticSubject,
+  type Observe,
 } from "@solidjs/signals";
 import { abandonClaim, hydrating, mismatchIn } from "./hydration.ts";
 import type { OwnershipSink, ScopeKind } from "./trace.ts";
@@ -338,11 +339,14 @@ const DIAGNOSTIC_DOCS =
   "https://github.com/salamaashoush/barq/blob/main/packages/core/docs/diagnostics";
 
 /**
- * Present in the engine's development and observe builds and absent from its
- * production build, which keeps no channel. barq's codes then reach barq's own
+ * The engine's channel exists in its development and observe builds. In its
+ * production build `OBSERVE` is a literal `undefined`, every branch that reads
+ * it is dropped from a production bundle, and barq's codes reach barq's own
  * listeners only, so a test or a production subscriber still hears them.
  */
-const ENGINE_CHANNEL: HostChannel | undefined = OBSERVE?.diagnostics;
+function engineChannel(observe: Observe): HostChannel {
+  return observe.diagnostics;
+}
 
 let diagnosticSequence = 0;
 const localListeners = new Set<DiagnosticListener>();
@@ -355,16 +359,12 @@ function refreshDiagnosticsOn(): void {
   diagnosticsOn = listening !== 0 || reporter !== null;
 }
 
-/** The page for a code: barq's for its own, the engine's repair guide for the engine's. */
-function docsFor(code: string, ours: boolean): string | undefined {
-  return ours ? `${DIAGNOSTIC_DOCS}/${code}.md` : ENGINE_DEV?.guideUrl(code as DiagnosticCode);
-}
-
 function addDiagnosticListener(listener: DiagnosticListener): () => void {
   let release: () => void;
-  if (ENGINE_CHANNEL !== undefined) {
-    release = ENGINE_CHANNEL.subscribe((event, subject) => {
-      event.docs ??= docsFor(event.code, false);
+  if (OBSERVE !== undefined) {
+    release = engineChannel(OBSERVE).subscribe((event, subject) => {
+      // The engine's own findings point at the engine's repair guide.
+      event.docs ??= ENGINE_DEV?.guideUrl(event.code as DiagnosticCode);
       listener(event, subject);
     });
   } else {
@@ -407,13 +407,17 @@ export function diagnosticsEnabled(): boolean {
  */
 export function emitDiagnostic(
   report: DiagnosticReport,
-  subject: DiagnosticSubject | null = getOwner(),
+  located?: DiagnosticSubject | null,
 ): DiagnosticEvent | undefined {
+  // Before anything else, and nothing in a default parameter: a production
+  // bundle in which nothing subscribes then sees an empty function and drops
+  // every call to it, message and all.
   if (!diagnosticsOn) return undefined;
-  const docs = docsFor(report.code, true);
+  const subject = located === undefined ? getOwner() : located;
+  const docs = `${DIAGNOSTIC_DOCS}/${report.code}.md`;
   let event: DiagnosticEvent;
-  if (ENGINE_CHANNEL !== undefined) {
-    event = ENGINE_CHANNEL.emit({ ...report, docs }, subject);
+  if (OBSERVE !== undefined) {
+    event = engineChannel(OBSERVE).emit({ ...report, docs }, subject);
   } else {
     event = { sequence: ++diagnosticSequence, ...report, docs };
     for (const listener of localListeners) listener(event, subject ?? undefined);

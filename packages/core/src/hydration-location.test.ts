@@ -3,8 +3,9 @@
  * being claimed, as `file:line:column`, and the component path the walk was in.
  *
  * Both come from a development compile, which writes the location beside each
- * template and names each component it calls. The component path also needs
- * the engine's development build, which keeps owner names, so each claim says
+ * template and names each component it calls, read by the engine's development
+ * build, which keeps owner names. The production engine reports neither, and a
+ * production bundle carries none of the code that would, so each claim says
  * what the production engine answers.
  */
 
@@ -71,10 +72,11 @@ describe("a hydration mismatch names the JSX and the component it happened in", 
     expect(core.hydrate.report.recovered).toBe(true);
     expect(events).toHaveLength(1);
     const [event] = events;
-    expect(event?.data?.template).toBe(`${FILE}:3:49`);
-    expect(event?.message).toContain(`The template being hydrated is at ${FILE}:3:49.`);
-    expect(event?.ownerPath).toEqual(
-      core.OBSERVE === undefined ? undefined : ["<Page>", "<Greeting>"],
+    const development = core.OBSERVE !== undefined;
+    expect(event?.data?.template).toBe(development ? `${FILE}:3:49` : undefined);
+    expect(event?.message.includes(`The template being hydrated is at ${FILE}:3:49.`)).toBe(
+      development,
     );
+    expect(event?.ownerPath).toEqual(development ? ["<Page>", "<Greeting>"] : undefined);
   });
 });

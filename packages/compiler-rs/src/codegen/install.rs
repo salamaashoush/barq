@@ -358,8 +358,8 @@ fn template_declaration<'a>(
         if !wrapped {
             arguments.push(Argument::from(Expression::new_boolean_literal(span, false, &emit.ast)));
         }
-        arguments.push(Argument::from(Expression::new_boolean_literal(span, true, &emit.ast)));
-        // Where the JSX is, for the report of a mismatch found in it.
+        // The flag is the JSX's location, which is truthy and names where a
+        // mismatch found in this template was written.
         let (line, column) = source_position(emit.source, span.start);
         let at = emit.allocator.alloc_str(&format!("{}:{line}:{column}", emit.filename));
         arguments.push(Argument::from(Expression::new_string_literal(span, at, None, &emit.ast)));
