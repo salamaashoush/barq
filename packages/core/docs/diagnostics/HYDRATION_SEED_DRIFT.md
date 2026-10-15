@@ -91,14 +91,18 @@ hydration has finished.
 
 ## Where it shows
 
+Each console entry is followed by the component it happened in, as
+`in <App> › <Row>` (from a development compile, which names the components it
+calls), and by the address of this page.
+
 A development build prints `[barq] HYDRATION_SEED_DRIFT: ...` to the console,
-and the dev overlay lists it. The event's `data` is the list of leftover keys:
+and the dev overlay lists it. The event's `data.keys` is the list of leftover keys:
 
 ```ts
 import { DEV } from "@barqjs/core";
 
 const stop = DEV.diagnostics.subscribe((event) => {
-  if (event.code === "HYDRATION_SEED_DRIFT") console.warn(event.message, event.data);
+  if (event.code === "HYDRATION_SEED_DRIFT") console.warn(event.message, event.data?.keys);
 });
 ```
 

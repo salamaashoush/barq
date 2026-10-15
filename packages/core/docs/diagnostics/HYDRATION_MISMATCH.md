@@ -88,8 +88,16 @@ does not have.
 
 ## Where it shows
 
+Each console entry is followed by the component it happened in, as
+`in <App> › <Row>` (from a development compile, which names the components it
+calls), and by the address of this page.
+
 A development build prints `[barq] HYDRATION_MISMATCH: ...` to the console, and
-the dev overlay lists it. `hydrate.report` holds the same information in every
+the dev overlay lists it. In a development compile the message also says where
+the template being hydrated was written (`The template being hydrated is at
+src/greeting.tsx:3:49.`), the event carries it as `event.data.template`, and the
+overlay links it to the editor. The component the walk was in follows as
+`in <Page> › <Greeting>`. `hydrate.report` holds the same information in every
 build:
 
 ```ts

@@ -59,6 +59,10 @@ and is not reported: only a function that comes out of an expression is.
 
 ## Where it shows
 
+Each console entry is followed by the component it happened in, as
+`in <App> › <Row>` (from a development compile, which names the components it
+calls), and by the address of this page.
+
 A development build prints `[barq] FUNCTION_AS_ATTRIBUTE: ...` to the console
 once per distinct message, and the dev overlay lists it. To collect it
 yourself, subscribe to the channel:

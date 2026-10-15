@@ -711,3 +711,20 @@ into a root first. No expectation about what a handler does changed.
   emission); `modes.test.ts.snap` digests of `corpus/dynamic`, `l4/c7-dynamic`,
   `semantics/sem-props-block-in-cell-slot` and `semantics/sem-err-handler-throw`, whose
   sources changed (the last only in a comment).
+
+## diagnostics: one channel, owner paths, server reports
+
+- `core/src/diagnostics.test.ts` "capture collects what was emitted": `severity` is `"warn"`,
+  not `"warning"`. barq's findings now travel on the engine's channel and take its event shape
+  (`severity: "info" | "warn" | "error"`, plus `kind`). The finding itself is unchanged.
+- `core/src/dev-console.test.ts` "an error goes to console.error": the console line now ends with
+  `\n  docs: <page>`. Every console finding names the page for its code; the message is unchanged.
+- `core/src/diagnostic-docs.test.ts` "the failing example raises it": the failing
+  `RENDER_SUBTREE_NOT_OWNED` example also raises the engine's `NO_OWNER_EFFECT` under the
+  development engine, because the engine's findings now share the stream. The assertion filters
+  the engine's codes and still requires barq's to be exactly `[code]`; the fixed example must
+  still raise nothing at all. `emittedCodes` reads the object form `emitDiagnostic({ code: "X" })`.
+- `compiler/src/overlay.test.ts`: runtime events are emitted with the channel's `"warn"`
+  severity. Inputs only; no expectation changed.
+- `compiler/src/vite.test.ts` "the panel is fed over a custom HMR event": the stub dev server
+  gained the `watcher` the plugin now listens on. No expectation changed.

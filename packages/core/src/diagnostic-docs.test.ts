@@ -20,13 +20,24 @@ import { template } from "./dom.ts";
 const SRC = import.meta.dir;
 const PAGES = join(SRC, "..", "docs", "diagnostics");
 const DOCS_BASE = "https://github.com/salamaashoush/barq/blob/main/packages/core/docs/diagnostics";
+/** The engine's codes a failing example may raise beside barq's own. */
+const ENGINE_CODES = /^NO_OWNER_EFFECT$/;
+
+/** The runtimes that report on the channel: the renderer, the server renderer, Start. */
+const EMITTERS = [
+  SRC,
+  join(SRC, "..", "..", "server", "src"),
+  join(SRC, "..", "..", "start", "src"),
+];
 
 function emittedCodes(): string[] {
   const codes = new Set<string>();
-  for (const file of readdirSync(SRC)) {
+  for (const file of EMITTERS.flatMap((dir) => readdirSync(dir).map((name) => join(dir, name)))) {
     if (!file.endsWith(".ts") || file.endsWith(".test.ts")) continue;
-    const source = readFileSync(join(SRC, file), "utf8");
-    for (const match of source.matchAll(/emitDiagnostic\(\s*"([A-Z_]+)"/g)) codes.add(match[1]);
+    const source = readFileSync(file, "utf8");
+    for (const match of source.matchAll(/emitDiagnostic\(\s*\{\s*code: "([A-Z_]+)"/g)) {
+      codes.add(match[1]);
+    }
   }
   return [...codes].toSorted();
 }
@@ -118,7 +129,10 @@ describe("every runtime diagnostic has a page", () => {
       "FUNCTION_AS_ATTRIBUTE",
       "HYDRATION_MISMATCH",
       "HYDRATION_SEED_DRIFT",
+      "LATE_HEADER_WRITE",
       "RENDER_SUBTREE_NOT_OWNED",
+      "SERVER_FUNCTION_FAILED",
+      "SSR_RENDER_ERROR_CONTAINED",
     ]);
     const pages = readdirSync(PAGES)
       .filter((file) => file.endsWith(".md"))
@@ -158,7 +172,10 @@ describe("the examples that need no server do what their page says", () => {
   ]) {
     test(`${code}: the failing example raises it and the fixed one raises nothing`, async () => {
       const [failing, fixed] = blocks(code, "tsx");
-      expect(await run(failing, `${code}-failing.tsx`)).toEqual([code]);
+      // The engine reports on the same channel, so the mistake can also raise
+      // the engine's own code for what it broke (an effect with no owner).
+      const raised = await run(failing, `${code}-failing.tsx`);
+      expect(raised.filter((raisedCode) => !ENGINE_CODES.test(raisedCode))).toEqual([code]);
       expect(await run(fixed, `${code}-fixed.tsx`)).toEqual([]);
     });
   }
