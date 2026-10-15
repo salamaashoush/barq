@@ -312,6 +312,87 @@ export interface BarqRouterOptions {
    * each module is itself requested, so a whole-graph walk there finds nothing.
    */
   readonly onReachability?: (reachability: Reachability) => void;
+  /**
+   * Swap an edited route component in place on the development server. On by
+   * default while serving.
+   */
+  readonly hmr?: boolean;
+}
+
+/**
+ * The environment a hook runs in, by consumer.
+ *
+ * By consumer rather than by name, so a second browser environment (a worker,
+ * a provider's client) is compiled as a browser one. The name is the fallback
+ * for a context that carries no config, which is how the tests drive a hook.
+ */
+function forClient(environment: { name?: string; config?: { consumer?: string } } | undefined) {
+  const consumer = environment?.config?.consumer;
+  if (consumer !== undefined) return consumer === "client";
+  return (environment?.name ?? "client") === "client";
+}
+
+/**
+ * A reference half with the blanked component regions taken out.
+ *
+ * The split keeps every position the source map knows about, so the code it
+ * moved out is replaced by whitespace of the same shape. An edit inside a
+ * component therefore changes the reference only in whitespace-only lines and
+ * in trailing whitespace, and comparing on this tells that edit apart from one
+ * to the options the reference holds.
+ */
+function referenceShape(code: string): string {
+  return code
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .filter((line) => line !== "")
+    .join("\n");
+}
+
+/**
+ * Hot replacement for the split half.
+ *
+ * Inserted between `$$barqOptions` and the `const` exports read off it, since
+ * those cannot be rebound afterwards. Each function option is handed out
+ * through `hot`, so it keeps its identity across evaluations and the router's
+ * `lazy` goes on calling the current implementation; one whose value did not
+ * change keeps its instances on screen. When an option is not the same object
+ * after an evaluation, the accept invalidates, and the update goes up to the
+ * importers and ends in a reload.
+ */
+const SPLIT_EXPORTS = /^export const \w+ = \$\$barqOptions\.\w+;$/m;
+
+function withSplitHot(code: string): string {
+  const at = code.search(SPLIT_EXPORTS);
+  if (at === -1) return code;
+  const hot = [
+    `if (import.meta.hot) {`,
+    `  const $$barqSeen = (import.meta.hot.data["barq:route-options"] ??= {});`,
+    `  for (const $$barqKey of Object.keys($$barqOptions)) {`,
+    `    const $$barqValue = $$barqOptions[$$barqKey];`,
+    `    if (typeof $$barqValue !== "function") continue;`,
+    `    const $$barqStable = !($$barqKey in $$barqSeen) || $$barqSeen[$$barqKey] === $$barqValue;`,
+    `    $$barqSeen[$$barqKey] = $$barqValue;`,
+    `    $$barqOptions[$$barqKey] = $$barqHot(import.meta.hot, "route:" + $$barqKey, $$barqValue, $$barqStable ? "stable" : null);`,
+    `  }`,
+    `}`,
+    ``,
+  ].join("\n");
+  const accept = [
+    ``,
+    `import { hot as $$barqHot } from "@barqjs/core/hot";`,
+    `if (import.meta.hot) {`,
+    `  import.meta.hot.accept((next) => {`,
+    `    const after = next?.$$barqOptions;`,
+    `    const keys = new Set([...Object.keys($$barqOptions), ...Object.keys(after ?? {})]);`,
+    `    if (after === undefined || [...keys].some((key) => after[key] !== $$barqOptions[key])) {`,
+    `      import.meta.hot.invalidate();`,
+    `    }`,
+    `  });`,
+    `}`,
+    ``,
+  ].join("\n");
+  return code.slice(0, at) + hot + code.slice(at) + accept;
 }
 
 export function barqRouter(options: BarqRouterOptions = {}): Plugin {
@@ -319,9 +400,12 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
   const codeSplitting = options.codeSplitting ?? true;
   let root = process.cwd();
   let base = "/";
+  let serving = false;
+  /** Each route file's reference half as the client last compiled it, by shape. */
+  const references = new Map<string, string>();
   let routeAssets: Record<string, string[]> = {};
   let routeCss: Record<string, string[]> = {};
-  let tree: RouteTree = {
+  const empty = (): RouteTree => ({
     source: "",
     files: [],
     patterns: [],
@@ -329,7 +413,8 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
     warnings: [],
     mismatches: [],
     rewritten: [],
-  };
+  });
+  let tree = empty();
 
   const treeFile = options.routeTree === false ? null : (options.routeTree ?? DEFAULT_ROUTE_TREE);
 
@@ -341,6 +426,15 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
    * the dev server once, or to correct the literal by hand.
    */
   let writeIds = false;
+
+  const split = (code: string, file: string, client: boolean): RouteSplit =>
+    native.routeSplit(
+      code,
+      relative(root, file).replaceAll("\\", "/"),
+      `${file}?${SPLIT_QUERY}`,
+      client,
+      codeSplitting,
+    );
 
   /** `<file>?barq-split` — the half the reference module `import()`s. */
   const isSplitId = (id: string): boolean => id.endsWith(`?${SPLIT_QUERY}`);
@@ -360,6 +454,12 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
   };
 
   const rescan = (warn?: (message: string) => void): void => {
+    // A project with no routes directory has no table, and writing an empty
+    // one would put a generated file in a project that does not route.
+    if (!existsSync(join(root, routesDir))) {
+      tree = empty();
+      return;
+    }
     tree = routeTree(root, routesDir, treeFile ?? DEFAULT_ROUTE_TREE, writeIds);
     for (const warning of tree.warnings ?? []) warn?.(`[barq-router] ${warning}`);
     for (const file of tree.rewritten ?? []) {
@@ -452,14 +552,14 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
           dynamicallyImportedIds?: readonly string[];
           code?: string | null;
         } | null;
-        environment?: { name?: string };
+        environment?: { name?: string; config?: { consumer?: string } };
         error: (message: string) => never;
         warn: (message: string) => void;
       };
       // The CLIENT graph only. The ssr environment holds the server halves,
       // where every function is present by construction and reachability means
       // nothing.
-      if ((context.environment?.name ?? "client") !== "client") return;
+      if (!forClient(context.environment)) return;
 
       // Route id -> the module id the bundler knows it by. `tree.entries` is the
       // compiler's map, and it is matched by SUFFIX because Rollup ids are
@@ -508,7 +608,8 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
     configResolved(config) {
       root = config.root;
       base = config.base ?? "/";
-      writeIds = config.command === "serve";
+      serving = config.command === "serve";
+      writeIds = serving;
       rescan((message) => config.logger.warn(message));
     },
 
@@ -521,7 +622,9 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
      * compiler's `src`, which is the whole reason that field exists.
      */
     generateBundle(_output, bundle) {
-      if ((this as { environment?: { name?: string } }).environment?.name === "ssr") return;
+      if (!forClient((this as { environment?: { config?: { consumer?: string } } }).environment)) {
+        return;
+      }
       // `viteMetadata.importedCss` is per CHUNK, so a route's stylesheets are
       // its own chunk's plus every chunk it statically imports — the same
       // closure the preloads use, read off the same `chunk.imports`.
@@ -600,7 +703,14 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
      * still works — both halves come back as the original source — so the build
      * carries on and the message names the one binding to move.
      */
-    transform(this: { warn(message: string): void; environment?: { name?: string } }, code, id) {
+    transform(
+      this: {
+        warn(message: string): void;
+        environment?: { name?: string; config?: { consumer?: string } };
+      },
+      code,
+      id,
+    ) {
       const wantsSplit = isSplitId(id);
       const file = wantsSplit ? fileOfSplitId(id) : (id.split("?", 1)[0] ?? id);
       if (!isRouteFile(file)) return null;
@@ -609,36 +719,68 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
       // handlers, and that happens whether or not code splitting is on: it is
       // not a size optimisation, it is what keeps a handler's body — and the
       // database import it needed — out of the browser bundle.
-      const forClient = (this.environment?.name ?? "client") === "client";
-      if (!codeSplitting && !forClient) return null;
+      const client = forClient(this.environment);
+      if (!codeSplitting && !client) return null;
 
-      const relativeFile = relative(root, file).replaceAll("\\", "/");
-      const answer = native.routeSplit(
-        code,
-        relativeFile,
-        `${file}?${SPLIT_QUERY}`,
-        forClient,
-        codeSplitting,
-      );
-      if (answer.refused !== undefined && answer.refused !== null && !wantsSplit) {
+      const answer = split(code, file, client);
+      const refused = answer.refused !== undefined && answer.refused !== null;
+      if (refused && !wantsSplit) {
         // Once, not twice: both halves ask the same question and would report
         // the same answer.
         this.warn(`[barq-router] ${answer.refused}`);
       }
-      const out = wantsSplit ? answer.split : answer.reference;
+      const hot = serving && client && codeSplitting && (options.hmr ?? true);
+      if (hot && !wantsSplit) references.set(file, referenceShape(answer.reference));
+      const out = wantsSplit
+        ? hot && !refused
+          ? withSplitHot(answer.split)
+          : answer.split
+        : answer.reference;
       return out === code ? null : { code: out, map: null };
     },
 
+    /**
+     * A route component edit updates the split half alone, and any other edit
+     * to a route file reloads the page.
+     *
+     * Both halves are modules of the one file, so Vite hands both over. When
+     * the edit left the reference half as it was, the reference is invalidated
+     * without being part of the update and the split half takes the update
+     * itself. When it did not, the edit is to the options the router read when
+     * it was created, and the split half accepting the update would leave the
+     * page running on the old ones. The split half imports `Route` from the
+     * reference, so left to Vite that is what happens.
+     */
+    async hotUpdate({ file, modules, read }) {
+      if (!forClient(this.environment) || !codeSplitting || !(options.hmr ?? true)) {
+        return undefined;
+      }
+      if (!isRouteFile(file)) return undefined;
+      const previous = references.get(file);
+      if (previous === undefined) return undefined;
+      const next = referenceShape(split(await read(), file, true).reference);
+      references.set(file, next);
+      const graph = this.environment.moduleGraph;
+      if (next !== previous) {
+        for (const module of modules) graph.invalidateModule(module);
+        this.environment.hot.send({ type: "full-reload" });
+        return [];
+      }
+      const kept = modules.filter((module) => module.id !== null && isSplitId(module.id));
+      for (const module of modules) {
+        if (!kept.includes(module)) graph.invalidateModule(module);
+      }
+      return kept;
+    },
+
     configureServer(server) {
+      // The table is a REAL FILE, so Vite's own watcher picks a rewrite up and
+      // takes it through HMR like any other module. `rescan` writes only on
+      // change, which is what keeps this from being a loop: the file this
+      // writes is inside the directory this watches.
       const changed = (path: string): void => {
         if (relative(join(root, routesDir), path).startsWith("..")) return;
         rescan((message) => server.config.logger.warn(message));
-        // The table is a REAL FILE now, so Vite's own watcher picks the rewrite
-        // up and invalidates every importer for us — there is no virtual module
-        // left to invalidate by hand. `rescan` writes only on change, which is
-        // what keeps this from being a loop: the file this writes is inside the
-        // directory this watches.
-        server.ws.send({ type: "full-reload" });
       };
       server.watcher.on("add", changed);
       server.watcher.on("unlink", changed);

@@ -247,6 +247,62 @@ describe("the plugin", () => {
   });
 });
 
+describe("a project without file routes", () => {
+  test("gets no table and reports no route set, so BARQ013 stays off", () => {
+    const root = project({ "src/main.tsx": "" });
+    let reported: readonly string[] | undefined;
+    const plugin = hooks(barqRouter({ onRoutes: (patterns) => (reported = patterns) }));
+    resolve(plugin, root);
+    expect(() => readFileSync(join(root, DEFAULT_ROUTE_TREE), "utf8")).toThrow();
+    expect(reported).toBeUndefined();
+  });
+});
+
+describe("a route edit while serving", () => {
+  const ROUTE = `import { createFileRoute } from "@barqjs/router";
+function Posts() { return "posts"; }
+export const Route = createFileRoute("/posts")({ loader: () => 1, component: Posts });
+`;
+  const transform = (plugin: ReturnType<typeof barqRouter>, file: string, consumer: string) =>
+    (
+      plugin as unknown as {
+        transform(this: unknown, code: string, id: string): { code: string } | null;
+      }
+    ).transform.call(
+      { environment: { config: { consumer } }, warn: () => undefined },
+      ROUTE,
+      `${file}?${SPLIT_QUERY}`,
+    );
+
+  /**
+   * The split half exports each option as a `const` read off `$$barqOptions`,
+   * and a `const` export cannot be rebound once it is read. So the proxies have
+   * to be in place BEFORE those lines, and this pins that the split still emits
+   * them in that shape.
+   */
+  test("the split half hands its options out through `hot` before it exports them", () => {
+    const root = project({ "src/routes/posts.tsx": ROUTE });
+    const plugin = barqRouter({});
+    resolve(hooks(plugin), root, "serve");
+    const code = transform(plugin, join(root, "src/routes/posts.tsx"), "client")?.code ?? "";
+    const wrapped = code.indexOf("$$barqHot(import.meta.hot");
+    expect(wrapped).toBeGreaterThan(-1);
+    expect(wrapped).toBeLessThan(code.indexOf("export const component = $$barqOptions.component;"));
+    expect(code).toContain("import.meta.hot.accept(");
+  });
+
+  test("not in a build, and not for the server", () => {
+    const root = project({ "src/routes/posts.tsx": ROUTE });
+    const file = join(root, "src/routes/posts.tsx");
+    const built = barqRouter({});
+    resolve(hooks(built), root, "build");
+    expect(transform(built, file, "client")?.code ?? "").not.toContain("import.meta.hot");
+    const served = barqRouter({});
+    resolve(hooks(served), root, "serve");
+    expect(transform(served, file, "server")?.code ?? "").not.toContain("import.meta.hot");
+  });
+});
+
 describe("the build-time route-action check", () => {
   test("a route's reachable server functions are found through the real module graph", async () => {
     const root = project({
