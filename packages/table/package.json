@@ -1,0 +1,74 @@
+{
+  "name": "@barqjs/table",
+  "version": "0.1.0",
+  "description": "TanStack Table for Barq: createTable and FlexRender over @tanstack/table-core",
+  "keywords": [
+    "barq",
+    "datagrid",
+    "headless",
+    "table",
+    "tanstack"
+  ],
+  "homepage": "https://github.com/salamaashoush/barq#readme",
+  "bugs": {
+    "url": "https://github.com/salamaashoush/barq/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/salamaashoush/barq.git",
+    "directory": "packages/table"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./experimental-worker-plugin": {
+      "types": "./dist/experimental-worker-plugin.d.ts",
+      "bun": "./src/experimental-worker-plugin.ts",
+      "import": "./dist/experimental-worker-plugin.js"
+    },
+    "./flex-render": {
+      "types": "./dist/flex-render.d.ts",
+      "bun": "./src/flex-render.ts",
+      "import": "./dist/flex-render.js"
+    },
+    "./static-functions": {
+      "types": "./dist/static-functions.d.ts",
+      "bun": "./src/static-functions.ts",
+      "import": "./dist/static-functions.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "test": "bun test && bun test --conditions=development",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {
+    "@tanstack/store": "^0.11.2",
+    "@tanstack/table-core": "^9.3.1"
+  },
+  "devDependencies": {
+    "@barqjs/compiler": "workspace:*",
+    "@barqjs/compiler-rs": "workspace:*",
+    "@barqjs/core": "workspace:*",
+    "@happy-dom/global-registrator": "^20.11.6",
+    "@types/bun": "^1.4.0",
+    "typescript": "^7.0.2"
+  },
+  "peerDependencies": {
+    "@barqjs/core": ">=0.1.0"
+  }
+}
