@@ -51,6 +51,13 @@ export interface Served {
 }
 
 /**
+ * `BENCH_PORT` pins the servers to a block of ten ports from that base, for a
+ * machine where ports are shared out; unset, the OS picks.
+ */
+const PORT_BASE = process.env.BENCH_PORT === undefined ? 0 : Number(process.env.BENCH_PORT)
+let served = 0
+
+/**
  * Serve an in-memory file set on a real origin.
  *
  * An origin because `about:blank` and `data:` URLs are opaque, module scripts
@@ -60,8 +67,9 @@ export interface Served {
  * be served to a run that believes it rebuilt.
  */
 export function serve(files: Map<string, string>): Served {
+  const port = PORT_BASE === 0 ? 0 : PORT_BASE + (served++ % 10)
   const server = Bun.serve({
-    port: 0,
+    port,
     fetch(request) {
       const path = new URL(request.url).pathname
       const body = files.get(path) ?? files.get(`${path}/index.html`)

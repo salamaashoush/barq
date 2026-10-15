@@ -40,8 +40,13 @@ function loadNative(): NativeCompiler {
 
 const native = loadNative();
 
-export function compileBarq(source: string, filename: string, ssr: boolean): string {
-  const result = native.transform(source, { filename, ssr });
+export function compileBarq(
+  source: string,
+  filename: string,
+  ssr: boolean,
+  hydratable = false,
+): string {
+  const result = native.transform(source, { filename, ssr, hydratable });
   if (result.warnings.length > 0) {
     throw new Error(`barq compiler warned on ${filename}: ${result.warnings.join("; ")}`);
   }
@@ -68,9 +73,10 @@ export async function compileSolid(
   source: string,
   filename: string,
   generate: "dom" | "ssr",
+  hydratable = false,
 ): Promise<string> {
   const out = await transformAsync(source, {
-    presets: [[solidPreset, { generate, hydratable: false }]],
+    presets: [[solidPreset, { generate, hydratable }]],
     filename,
     babelrc: false,
     configFile: false,

@@ -18,6 +18,8 @@
     "bench:tier2:shapes": "bun run src/tier2/run.ts shapes",
     "bench:tier2:jfb": "bun run src/tier2/run.ts jfb",
     "bench:tier2:jrb": "bun run src/tier2/run.ts jrb",
+    "bench:solid2": "bun run src/solid2/run.ts",
+    "bench:solid2:prepare": "bun run src/solid2/prepare.ts",
     "build": "bun build src/browser.ts --outdir dist --target browser --format esm"
   },
   "dependencies": {

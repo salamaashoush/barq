@@ -24,6 +24,7 @@
 import { spawn, type ChildProcess } from "node:child_process"
 import { existsSync, rmSync } from "node:fs"
 import { request } from "node:http"
+import { join } from "node:path"
 
 const CANDIDATES = [
   "/usr/bin/chromium",
@@ -187,15 +188,18 @@ async function connect(port: number): Promise<Connection> {
 
 export async function withBenchChrome<T>(body: (page: Page) => Promise<T>): Promise<T> {
   const binary = chromePath()
-  const base = `/tmp/barq-bench-chrome-${process.pid}-${Date.now()}`
+  const base = join(process.env.BENCH_TMP ?? "/tmp", `barq-bench-chrome-${process.pid}-${Date.now()}`)
   const firstPort = 9700 + (process.pid % 250)
+  // A fixed port when the caller owns one: a sweep could attach to a Chrome
+  // some other process left listening in the range.
+  const fixedPort = process.env.CDP_PORT === undefined ? undefined : Number(process.env.CDP_PORT)
   const profiles: string[] = []
   let chrome: ChildProcess | undefined
   let connection: Connection | undefined
 
   try {
     for (let offset = 0; connection === undefined; offset++) {
-      const port = 9700 + ((firstPort - 9700 + offset) % 250)
+      const port = fixedPort ?? 9700 + ((firstPort - 9700 + offset) % 250)
       const profile = offset === 0 ? base : `${base}-${offset}`
       profiles.push(profile)
       const candidate = spawn(
@@ -217,7 +221,7 @@ export async function withBenchChrome<T>(body: (page: Page) => Promise<T>): Prom
         chrome = candidate
       } catch (error) {
         candidate.kill()
-        if (offset === 4) throw error
+        if (offset === 4 || fixedPort !== undefined) throw error
       }
     }
 

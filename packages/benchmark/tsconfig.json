@@ -15,5 +15,5 @@
     "jsxImportSource": "solid-js"
   },
   "include": ["src/**/*"],
-  "exclude": ["node_modules", "src/.tmp"]
+  "exclude": ["node_modules", "src/.tmp", "src/solid2/apps"]
 }
