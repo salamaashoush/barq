@@ -56,7 +56,7 @@ impl Target {
     }
 }
 
-pub const HELPER_COUNT: usize = 58;
+pub const HELPER_COUNT: usize = 59;
 
 /// The first helper that lives in `<server_source>` rather than in the
 /// module source itself. The string backend calls into `ssr.ts`, which the DOM
@@ -281,6 +281,10 @@ pub enum Helper {
     /// `_$untrack(() => Comp(props))` — a component called where a compute may
     /// be running, so a signal its setup reads does not rebuild it.
     Untrack = 57,
+    /// `_$createComponent(Comp, props, "Comp")` — a development compile's
+    /// component call, run under an owner named for the tag so a finding, an
+    /// error or a hydration report inside it carries the component path.
+    CreateComponent = 58,
 }
 
 const IMPORTED: [&str; HELPER_COUNT] = [
@@ -342,6 +346,7 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "readKeys",
     "classToString",
     "untrack",
+    "createComponent",
 ];
 
 /// The name a helper is imported under, for a test that has to check the table
@@ -438,6 +443,9 @@ pub struct Emit<'a, 'm> {
     /// one it would have built. A production build emits neither and the whole
     /// check disappears from both halves.
     pub detect: bool,
+    /// The module's path, which a development build writes beside each
+    /// template so a hydration mismatch can name the JSX it came from.
+    pub filename: &'a str,
     pub used: [bool; HELPER_COUNT],
     pub local: [&'a str; HELPER_COUNT],
 }
@@ -468,6 +476,11 @@ impl<'a, 'm> Emit<'a, 'm> {
             opt: options.opt,
             hydratable: options.hydratable,
             detect: options.hydratable && options.dev,
+            filename: allocator.alloc_str(
+                options.filename.as_deref().map_or(crate::compile::DEFAULT_FILENAME, |name| {
+                    name.split_once('?').map_or(name, |(path, _)| path)
+                }),
+            ),
             used,
             local,
         }

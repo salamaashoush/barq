@@ -280,6 +280,10 @@ impl<'a> Shaper<'a, '_> {
     ) -> Expression<'a> {
         let JSXElement { span, opening_element, children, .. } = element.unbox();
         let opening = opening_element.unbox();
+        // A flow component is matched by its callee after this pass, so only a
+        // user component is named.
+        let label = (self.dev && flow.is_none())
+            .then(|| self.allocator.alloc_str(opening.name.span().source_text(self.source)));
 
         let mut sources: Vec<Source<'a>> = vec![Source::Record(Vec::new())];
         let mut keyed = Keyed::ByItem;
@@ -413,6 +417,25 @@ impl<'a> Shaper<'a, '_> {
         // lie about the emitted module.
 
         let props = self.source_list(sources, span);
+        if let Some(label) = label {
+            let name = Expression::new_string_literal(span, label, None, &self.ast);
+            let callee = match callee {
+                // `(0, ns.Comp)` exists to call without a receiver, and so does
+                // passing the function as an argument.
+                Expression::SequenceExpression(mut sequence) if sequence.expressions.len() == 2 => {
+                    sequence.expressions.pop().unwrap_or_else(|| unreachable!("two expressions"))
+                }
+                other => other,
+            };
+            let create = self.helper(Helper::CreateComponent, span);
+            let arguments = ArenaVec::from_iter_in(
+                [Argument::from(callee), Argument::from(props), Argument::from(name)],
+                &self.allocator,
+            );
+            return Expression::new_call_expression(
+                span, create, None, arguments, false, &self.ast,
+            );
+        }
         let arguments = ArenaVec::from_iter_in([Argument::from(props)], &self.allocator);
         Expression::new_call_expression(span, callee, None, arguments, false, &self.ast)
     }
@@ -1747,6 +1770,23 @@ mod tests {
         assert!(code.contains("function W(props)"), "{code}");
         assert!(code.contains("Card({ tone: props.tone })"), "{code}");
         assert!(!code.contains("_s$"), "{code}");
+    }
+
+    /// A development compile names each user component for the owner path a
+    /// finding prints, and leaves a flow component's call for the backends to
+    /// match.
+    #[test]
+    fn a_development_compile_names_the_component_it_calls() {
+        let source = "import { Show } from \"@barqjs/core\";\n\
+                      const Card = () => <b>x</b>;\n\
+                      const V = (props) => <div><Card tone=\"a\" /><ui.Badge /><Show when={props.on}><Card /></Show></div>;\n";
+        let code = dev(source).code;
+        assert!(code.contains("_$createComponent(Card, { tone: _k$"), "{code}");
+        assert!(code.contains("}, \"Card\")"), "{code}");
+        assert!(code.contains("_$createComponent(ui.Badge, {}, \"ui.Badge\")"), "{code}");
+        assert!(!code.contains("_$createComponent(Show"), "{code}");
+        let production = emit(source).code;
+        assert!(!production.contains("createComponent"), "{production}");
     }
 
     /// The reason the whole redesign exists: the child may not be an ARGUMENT,

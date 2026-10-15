@@ -302,6 +302,14 @@ fn hoisted_declaration<'a>(emit: &mut Emit<'a, '_>, index: usize) -> Statement<'
     )
 }
 
+/// 1-based line and column of `offset`, the column in UTF-16 units as an
+/// editor and a source map count it.
+fn source_position(source: &str, offset: u32) -> (usize, usize) {
+    let before = source.get(..offset as usize).unwrap_or(source);
+    let start = before.rfind('\n').map_or(0, |at| at + 1);
+    (before.matches('\n').count() + 1, before[start..].encode_utf16().count() + 1)
+}
+
 fn template_declaration<'a>(
     emit: &mut Emit<'a, '_>,
     id: TemplateId,
@@ -351,6 +359,10 @@ fn template_declaration<'a>(
             arguments.push(Argument::from(Expression::new_boolean_literal(span, false, &emit.ast)));
         }
         arguments.push(Argument::from(Expression::new_boolean_literal(span, true, &emit.ast)));
+        // Where the JSX is, for the report of a mismatch found in it.
+        let (line, column) = source_position(emit.source, span.start);
+        let at = emit.allocator.alloc_str(&format!("{}:{line}:{column}", emit.filename));
+        arguments.push(Argument::from(Expression::new_string_literal(span, at, None, &emit.ast)));
     }
     let arguments = ArenaVec::from_iter_in(arguments, &emit.allocator);
     let init = Expression::new_call_expression_with_pure(
