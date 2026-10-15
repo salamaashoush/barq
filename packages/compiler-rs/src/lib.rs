@@ -44,7 +44,8 @@ pub struct JsDiagnostic {
     pub column: u32,
     pub end_line: u32,
     pub end_column: u32,
-    /// byte offset into the ORIGINAL source
+    /// UTF-16 offset into the ORIGINAL source, which is the string index
+    /// Rollup's `position` takes
     pub pos: u32,
     pub end: u32,
     /// path of the docs page for this code, relative to the package root
@@ -126,7 +127,18 @@ fn css_export_rows(exports: Vec<(String, crate::css::Resolved)>) -> Vec<Vec<Stri
     out
 }
 
-fn js_diagnostic(diagnostic: &Diagnostic) -> JsDiagnostic {
+/// The compiler counts bytes and JavaScript counts UTF-16 code units, so an
+/// offset crossing to a JS caller is converted: a byte offset handed to
+/// `this.warn` put the code frame past the mistake by one column per extra byte
+/// of every non-ASCII character above it.
+fn js_diagnostic(diagnostic: &Diagnostic, source: &str, ascii: bool) -> JsDiagnostic {
+    let utf16 = |offset: u32| -> u32 {
+        if ascii {
+            return offset;
+        }
+        let offset = (offset as usize).min(source.len());
+        source.get(..offset).map_or(offset, |prefix| prefix.encode_utf16().count()) as u32
+    };
     JsDiagnostic {
         code: diagnostic.code.map(|code| code.as_str().to_string()),
         severity: diagnostic.severity.as_str().to_string(),
@@ -136,8 +148,8 @@ fn js_diagnostic(diagnostic: &Diagnostic) -> JsDiagnostic {
         column: diagnostic.column,
         end_line: diagnostic.end_line,
         end_column: diagnostic.end_column,
-        pos: diagnostic.pos,
-        end: diagnostic.end,
+        pos: utf16(diagnostic.pos),
+        end: utf16(diagnostic.end),
         docs: diagnostic.docs(),
     }
 }
@@ -188,7 +200,14 @@ pub fn transform(code: String, options: Option<Object>) -> napi::Result<Transfor
             code: output.code,
             map: output.map,
             warnings: output.warnings.iter().map(ToString::to_string).collect(),
-            diagnostics: output.warnings.iter().map(js_diagnostic).collect(),
+            diagnostics: {
+                let ascii = code.is_ascii();
+                output
+                    .warnings
+                    .iter()
+                    .map(|diagnostic| js_diagnostic(diagnostic, &code, ascii))
+                    .collect()
+            },
             labels: output
                 .labels
                 .iter()

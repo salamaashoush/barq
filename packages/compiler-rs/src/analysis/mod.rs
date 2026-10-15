@@ -1,5 +1,6 @@
 mod bind;
 pub mod link;
+mod render;
 pub mod server_fn;
 
 use oxc::allocator::Allocator;
@@ -67,6 +68,9 @@ pub fn bind<'a>(
     scope_ranges(&scoping, module);
     module.scoping = scoping;
     bind::classify(allocator, program, module, options);
+    if options.diagnostics {
+        render::check(allocator, program, &module.scoping, &mut module.env, &options.module_source);
+    }
 }
 
 /// `ReactiveEnv::nested` is two integer comparisons only because oxc creates

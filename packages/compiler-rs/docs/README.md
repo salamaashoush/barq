@@ -21,9 +21,13 @@ exists and how to silence it.
 | [BARQ015](BARQ015.md) | note | A `css` block interpolates a runtime value, so the browser builds it |
 | [BARQ016](BARQ016.md) | note | `atoms` has several conditional arguments, so the browser evaluates it |
 | [BARQ017](BARQ017.md) | note | A `@barqjs/css` call cannot be compiled, so the browser evaluates it |
+| [BARQ018](BARQ018.md) | warning | A component decides what to return from a reactive value it reads once |
+| [BARQ019](BARQ019.md) | warning | State is written while a component body or a computation runs |
+| [BARQ020](BARQ020.md) | warning | A store is destructured in a component body, so each name is a snapshot |
+| [BARQ021](BARQ021.md) | warning | An async computation reads a source after its first `await`, which is not tracked |
 
-BARQ001, BARQ002, BARQ003, BARQ005 and BARQ011 are reported when the `diagnostics` option
-is on, which it is in development builds. BARQ004 and BARQ010 are reported in development
+BARQ001, BARQ002, BARQ003, BARQ005, BARQ011 and BARQ018 to BARQ021 are reported when the
+`diagnostics` option is on, which it is in development builds. BARQ004 and BARQ010 are reported in development
 builds only.
 BARQ012 to BARQ017 are reported in every build, so they can fail CI. BARQ008 and BARQ009
 report on your own suppression comments.
@@ -98,6 +102,11 @@ The checks report only what they can prove from one file, so silence is not a gu
 - **A component only ever passed as a value.** BARQ005 needs to know that a function is
   a component, which it learns from a JSX tag, an export, or a route option such as
   `component`. A function that is only passed to another function is not reported.
+- **A prop's value.** Every prop is a function you call, whether or not the caller passes
+  anything that changes, so BARQ018 counts a prop only where the same file renders the
+  component with a value that changes.
+- **A helper function.** BARQ019 sees a write written in the component body or in the
+  computation itself, not one inside a function the body calls.
 - **A row whose `keyed` is not written out.** With `<For keyed={KEYED}>` or
   `<For {...options}>` the compiler does not know whether the row is an accessor, so
   BARQ001 to BARQ003 say nothing about that row.

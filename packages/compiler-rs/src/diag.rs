@@ -103,6 +103,10 @@ codes! {
     Barq015 = "BARQ015", Note, "A `css` block interpolates a runtime value, so the browser builds it";
     Barq016 = "BARQ016", Note, "`atoms` has several conditional arguments, so the browser evaluates it";
     Barq017 = "BARQ017", Note, "A `@barqjs/css` call cannot be compiled, so the browser evaluates it";
+    Barq018 = "BARQ018", Warning, "A component decides what to return from a reactive value it reads once";
+    Barq019 = "BARQ019", Warning, "State is written while a component body or a computation runs";
+    Barq020 = "BARQ020", Warning, "A store is destructured in a component body, so each name is a snapshot";
+    Barq021 = "BARQ021", Warning, "An async computation reads a source after its first `await`, which is not tracked";
 }
 
 /// Where the pages live. A consumer gets this string verbatim — the Vite panel

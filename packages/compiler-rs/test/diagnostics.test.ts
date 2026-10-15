@@ -64,6 +64,25 @@ describe("the diagnostic engine", () => {
     expect(raw.warnings[0]).toContain("BARQ001 warning:");
   });
 
+  /**
+   * The span crosses as an index into the JavaScript string. Above, every
+   * character is one byte and one UTF-16 unit, so a byte offset passes; here an
+   * accent, a dash and an emoji sit above the mistake, and a byte offset handed
+   * to `this.warn` frames the wrong text.
+   */
+  it("carries an offset a JavaScript string can be sliced with", () => {
+    const source = COERCED.replace(
+      "const [count]",
+      "// déjà vu — 😀 the frame must still land on the accessor\nconst [count]",
+    );
+    const [diagnostic] = diagnose(source).diagnostics;
+    expect(diagnostic.code).toBe("BARQ001");
+    expect(source.slice(diagnostic.pos, diagnostic.end)).toBe("count");
+    expect(source.split("\n")[diagnostic.line - 1].slice(diagnostic.column - 1)).toStartWith(
+      "count",
+    );
+  });
+
   it("is off by default and on in dev", () => {
     expect(compileSourceRaw(COERCED, "App.tsx").warnings).toEqual([]);
     expect(diagnose(COERCED, { dev: false, diagnostics: true }).diagnostics).toHaveLength(1);
@@ -261,6 +280,21 @@ describe("the diagnostic engine", () => {
       // runtime does the work instead — `css.rs`'s own `atoms(...rest)` case.
       BARQ017:
         `import { atoms } from "@barqjs/css";\n` + `export const cls = (rest) => atoms(...rest);\n`,
+      BARQ018:
+        `import { createSignal } from "@barqjs/core";\n` +
+        "const [on] = createSignal(false);\n" +
+        "export function V() {\n  if (on()) return <p>on</p>;\n  return <p>off</p>;\n}\n",
+      BARQ019:
+        `import { createSignal } from "@barqjs/core";\n` +
+        "export function V() {\n  const [n, setN] = createSignal(0);\n  setN(1);\n  return <p>{n()}</p>;\n}\n",
+      BARQ020:
+        `import { createStore } from "@barqjs/core";\n` +
+        "const [state] = createStore({ n: 0 });\n" +
+        "export function V() {\n  const { n } = state;\n  return <p>{n}</p>;\n}\n",
+      BARQ021:
+        `import { createMemo, createSignal } from "@barqjs/core";\n` +
+        'const [unit] = createSignal("kg");\n' +
+        "export const w = createMemo(async () => (await Promise.resolve(1)) + unit());\n",
     };
 
     const advertised = native

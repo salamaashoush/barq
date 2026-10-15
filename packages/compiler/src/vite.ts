@@ -22,8 +22,8 @@ const RESOLVED_CLIENT_ID = "\0virtual:barq-diagnostics";
 export type BarqDiagnosticLevel = "note" | "warning" | "error";
 
 /**
- * One diagnostic, structured. `pos` is the byte offset into the ORIGINAL module
- * source, and it is the only reason a code frame can exist: Rollup produces
+ * One diagnostic, structured. `pos` is the UTF-16 offset into the ORIGINAL
+ * module source, and it is the only reason a code frame can exist: Rollup produces
  * `pos`/`loc`/`frame` when — and only when — `this.warn` is given a position.
  */
 export interface BarqDiagnostic {
@@ -218,7 +218,8 @@ export interface BarqCompilerOptions {
   hmr?: boolean;
 
   /**
-   * Run the source-level rules (BARQ001-BARQ003, BARQ005). Defaults to `dev`.
+   * Run the source-level rules (BARQ001 to BARQ003, BARQ005, BARQ011, BARQ018 to
+   * BARQ021). Defaults to `dev`.
    * Set it true on a production build to run them in CI.
    */
   diagnostics?: boolean;
