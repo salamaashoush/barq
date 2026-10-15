@@ -1,19 +1,19 @@
 import {
   type Cell,
   type JSXElement,
-  type Scope,
   cell,
-  context,
-  getOwner,
+  createContext,
+  isServer,
+  onCleanup,
   provide,
   read,
   readSlot,
-  signal,
+  createSignal,
 } from "@barqjs/core";
 import type { QueryClient } from "@tanstack/query-core";
 
-const CLIENT = context<QueryClient>(undefined, "barq-query-client");
-const RESTORING = context<() => boolean>(undefined, "barq-query-restoring");
+const CLIENT = createContext<QueryClient>(undefined, "barq-query-client");
+const RESTORING = createContext<() => boolean>(undefined, "barq-query-restoring");
 
 export interface QueryClientProviderProps {
   client: QueryClient;
@@ -29,11 +29,36 @@ export const QueryClientProvider = ((props: {
   children?: unknown;
 }): unknown => {
   const client = readSlot(props.client, "QueryClientProvider.client") as QueryClient;
-  return provide(CLIENT, cell(client), () => {
-    const children = props.children;
-    return typeof children === "function" ? (children as () => unknown)() : children;
-  });
+  return provideClient(client, () => built(props.children));
 }) as unknown as (props: QueryClientProviderProps) => JSXElement;
+
+/** A children slot, built: the compiler hands one over as a thunk. */
+export function built(children: unknown): unknown {
+  return typeof children === "function" ? (children as () => unknown)() : children;
+}
+
+/** `QueryClientProvider` for a caller that already has the client and a builder in hand. */
+export function provideClient(client: QueryClient, build: () => unknown): unknown {
+  return provide(CLIENT, cell(client), () => {
+    // A client listens for the window's focus and the network's return only
+    // while something has mounted it, and counts its mounts, so two providers
+    // over one client are safe. A string render has neither to listen to.
+    if (!isServer) {
+      client.mount();
+      onCleanup(() => client.unmount());
+    }
+    return build();
+  });
+}
+
+/** `QueryClientProvider` and `IsRestoringProvider` in one scope, for a provider that is both. */
+export function provideRestoring(
+  client: QueryClient,
+  restoring: () => boolean,
+  children: unknown,
+): unknown {
+  return provideClient(client, () => provide(RESTORING, cell(restoring), () => built(children)));
+}
 
 /**
  * The client in scope, or the one you hand in.
@@ -48,8 +73,8 @@ export function useQueryClient(queryClient?: QueryClient): QueryClient {
     return read(CLIENT)();
   } catch (cause) {
     throw new Error(
-      "[barq] no QueryClient in scope. Wrap the tree in `<QueryClientProvider client={…}>`, " +
-        "or pass one to this hook.",
+      "[barq] A query hook was called with no `QueryClient` available, so there is no cache to run it against. " +
+        "Wrap the tree in `<QueryClientProvider client={queryClient}>`, or pass the client as the hook's last argument.",
       { cause },
     );
   }
@@ -73,13 +98,10 @@ export const IsRestoringProvider = ((props: {
   children?: unknown;
 }): unknown => {
   const value = readSlot(props.value, "IsRestoringProvider.value") as () => boolean;
-  return provide(RESTORING, cell(value), () => {
-    const children = props.children;
-    return typeof children === "function" ? (children as () => unknown)() : children;
-  });
+  return provide(RESTORING, cell(value), () => built(props.children));
 }) as unknown as (props: IsRestoringProviderProps) => JSXElement;
 
-const NOT_RESTORING = signal(false);
+const [NOT_RESTORING] = createSignal(false);
 
 export function useIsRestoring(): () => boolean {
   try {

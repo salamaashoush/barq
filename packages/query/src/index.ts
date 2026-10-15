@@ -12,7 +12,10 @@
  *
  * The surface matches the other framework adapters: queries, infinite queries,
  * mutations, `useQueries`, `useMutationState`, the counters, the typed option
- * helpers, and `useIsRestoring` for a persister.
+ * helpers, the hydration and error-reset boundaries, and `useIsRestoring` for a
+ * persister. The persister's provider, the devtools and the router integration
+ * are entries of their own (`/persist`, `/devtools`, `/router`), because each
+ * needs a package this one does not.
  */
 
 export {
@@ -25,42 +28,66 @@ export {
 } from "./client.ts";
 
 export {
+  type DefinedUseInfiniteQueryResult,
+  type DefinedUseQueryResult,
+  type MutationStateOptions,
   type UseInfiniteQueryOptions,
   type UseInfiniteQueryResult,
+  type UseMutateAsyncFunction,
+  type UseMutateFunction,
   type UseMutationOptions,
   type UseMutationResult,
   type UseQueryOptions,
   type UseQueryResult,
+  type UseSuspenseInfiniteQueryOptions,
+  type UseSuspenseInfiniteQueryResult,
+  type UseSuspenseQueryOptions,
+  type UseSuspenseQueryResult,
   useInfiniteQuery,
   useIsFetching,
   useIsMutating,
   useMutation,
   useMutationState,
+  usePrefetchInfiniteQuery,
   usePrefetchQuery,
-  useQueries,
   useQuery,
   useSuspenseInfiniteQuery,
   useSuspenseQuery,
 } from "./hooks.ts";
 
-export { infiniteQueryOptions, mutationOptions, queryOptions } from "./options.ts";
+export {
+  type QueriesOptions,
+  type QueriesResults,
+  type SuspenseQueriesOptions,
+  type SuspenseQueriesResults,
+  type UseQueryOptionsForUseQueries,
+  useQueries,
+  useSuspenseQueries,
+} from "./queries.ts";
+
+export {
+  type DefinedInitialDataInfiniteOptions,
+  type DefinedInitialDataOptions,
+  type UndefinedInitialDataInfiniteOptions,
+  type UndefinedInitialDataOptions,
+  type UnusedSkipTokenInfiniteOptions,
+  type UnusedSkipTokenOptions,
+  infiniteQueryOptions,
+  mutationOptions,
+  queryOptions,
+} from "./options.ts";
+
+export { type HydrationBoundaryProps, HydrationBoundary } from "./hydration.ts";
+
+export {
+  type QueryErrorResetBoundaryProps,
+  type QueryErrorResetBoundaryValue,
+  QueryErrorResetBoundary,
+  useQueryErrorResetBoundary,
+} from "./reset.ts";
 
 /**
- * Re-exported so an application needs one import for the common case, and so
- * the version of `query-core` the adapter was built against is the one it uses.
+ * Re-exported whole, so an application needs one import, and so the version of
+ * `query-core` the adapter was built against is the one it uses.
  */
-export {
-  type DefaultError,
-  type InfiniteData,
-  type QueryClientConfig,
-  type QueryFilters,
-  type QueryKey,
-  type MutationFilters,
-  MutationCache,
-  QueryCache,
-  QueryClient,
-  dehydrate,
-  hydrate,
-  keepPreviousData,
-  skipToken,
-} from "@tanstack/query-core";
+export * from "@tanstack/query-core";

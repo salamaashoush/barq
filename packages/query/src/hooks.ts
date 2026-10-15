@@ -1,28 +1,38 @@
-import { renderEffect, store, untrack } from "@barqjs/core";
+import { createRenderEffect, createStore, untrack } from "@barqjs/core";
 import {
   type DefaultError,
+  type DefinedInfiniteQueryObserverResult,
+  type DefinedQueryObserverResult,
+  type DistributiveOmit,
+  type FetchInfiniteQueryOptions,
   type InfiniteData,
   InfiniteQueryObserver,
   type InfiniteQueryObserverOptions,
   type InfiniteQueryObserverResult,
+  type MutateFunction,
   type Mutation,
   type MutationFilters,
   MutationObserver,
   type MutationObserverOptions,
   type MutationObserverResult,
   type MutationState,
-  QueriesObserver,
+  type OmitKeyof,
+  type Override,
   type QueryClient,
   type QueryFilters,
   type QueryKey,
   QueryObserver,
   type QueryObserverOptions,
   type QueryObserverResult,
+  type SkipToken,
   notifyManager,
+  replaceEqualDeep,
+  shouldThrowError,
 } from "@tanstack/query-core";
 
 import { baseQuery, observed, suspending, withHandles } from "./base.ts";
 import { useQueryClient } from "./client.ts";
+import type { DefinedInitialDataInfiniteOptions, DefinedInitialDataOptions } from "./options.ts";
 
 export type UseQueryOptions<
   TQueryFnData = unknown,
@@ -56,20 +66,84 @@ export type UseMutationOptions<
   TContext = unknown,
 > = MutationObserverOptions<TData, TError, TVariables, TContext>;
 
+export type DefinedUseQueryResult<
+  TData = unknown,
+  TError = DefaultError,
+> = DefinedQueryObserverResult<TData, TError>;
+
+export type DefinedUseInfiniteQueryResult<
+  TData = unknown,
+  TError = DefaultError,
+> = DefinedInfiniteQueryObserverResult<TData, TError>;
+
+/** A parking query is never disabled and never shows a placeholder: it waits. */
+export type UseSuspenseQueryOptions<
+  TQueryFnData = unknown,
+  TError = DefaultError,
+  TData = TQueryFnData,
+  TQueryKey extends QueryKey = QueryKey,
+> = OmitKeyof<
+  UseQueryOptions<TQueryFnData, TError, TData, TQueryKey>,
+  "queryFn" | "enabled" | "throwOnError" | "placeholderData"
+> & {
+  queryFn?: Exclude<UseQueryOptions<TQueryFnData, TError, TData, TQueryKey>["queryFn"], SkipToken>;
+};
+
+export type UseSuspenseQueryResult<TData = unknown, TError = DefaultError> = DistributiveOmit<
+  DefinedQueryObserverResult<TData, TError>,
+  "isPlaceholderData"
+>;
+
+export type UseSuspenseInfiniteQueryOptions<
+  TQueryFnData = unknown,
+  TError = DefaultError,
+  TData = InfiniteData<TQueryFnData>,
+  TQueryKey extends QueryKey = QueryKey,
+  TPageParam = unknown,
+> = OmitKeyof<
+  UseInfiniteQueryOptions<TQueryFnData, TError, TData, TQueryKey, TPageParam>,
+  "queryFn" | "enabled" | "throwOnError" | "placeholderData"
+> & {
+  queryFn?: Exclude<
+    UseInfiniteQueryOptions<TQueryFnData, TError, TData, TQueryKey, TPageParam>["queryFn"],
+    SkipToken
+  >;
+};
+
+export type UseSuspenseInfiniteQueryResult<TData = unknown, TError = DefaultError> = OmitKeyof<
+  DefinedInfiniteQueryObserverResult<TData, TError>,
+  "isPlaceholderData"
+>;
+
+export type UseMutateFunction<
+  TData = unknown,
+  TError = DefaultError,
+  TVariables = void,
+  TContext = unknown,
+> = (...args: Parameters<MutateFunction<TData, TError, TVariables, TContext>>) => void;
+
+export type UseMutateAsyncFunction<
+  TData = unknown,
+  TError = DefaultError,
+  TVariables = void,
+  TContext = unknown,
+> = MutateFunction<TData, TError, TVariables, TContext>;
+
 /**
- * An intersection rather than an `extends`: `MutationObserverResult` is a
- * discriminated union over `status`, and an interface that extended it would
- * flatten the union and lose the narrowing `isSuccess` gives.
+ * `Override` is distributive: `MutationObserverResult` is a discriminated union
+ * over `status`, and an interface that extended it would flatten the union and
+ * lose the narrowing `isSuccess` gives.
  */
 export type UseMutationResult<
   TData = unknown,
   TError = DefaultError,
   TVariables = void,
   TContext = unknown,
-> = MutationObserverResult<TData, TError, TVariables, TContext> & {
-  mutate: (variables: TVariables) => void;
-  mutateAsync: (variables: TVariables) => Promise<TData>;
-  reset: () => void;
+> = Override<
+  MutationObserverResult<TData, TError, TVariables, TContext>,
+  { mutate: UseMutateFunction<TData, TError, TVariables, TContext> }
+> & {
+  mutateAsync: UseMutateAsyncFunction<TData, TError, TVariables, TContext>;
 };
 
 /**
@@ -83,6 +157,38 @@ export type UseMutationResult<
  * dependencies — so a component rendering the data is not re-run twice by every
  * background refetch.
  */
+export function useQuery<
+  TQueryFnData = unknown,
+  TError = DefaultError,
+  TData = TQueryFnData,
+  TQueryKey extends QueryKey = QueryKey,
+>(
+  // First, and with `initialData` absent rather than optional: an accessor's
+  // return type is settled against the first overload tried, and this is the
+  // one whose `queryFn` admits `skipToken` as itself instead of as `symbol`.
+  options: () => UseQueryOptions<TQueryFnData, TError, TData, TQueryKey> & {
+    initialData?: undefined;
+  },
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError>;
+export function useQuery<
+  TQueryFnData = unknown,
+  TError = DefaultError,
+  TData = TQueryFnData,
+  TQueryKey extends QueryKey = QueryKey,
+>(
+  options: () => DefinedInitialDataOptions<TQueryFnData, TError, TData, TQueryKey>,
+  queryClient?: QueryClient,
+): DefinedUseQueryResult<TData, TError>;
+export function useQuery<
+  TQueryFnData = unknown,
+  TError = DefaultError,
+  TData = TQueryFnData,
+  TQueryKey extends QueryKey = QueryKey,
+>(
+  options: () => UseQueryOptions<TQueryFnData, TError, TData, TQueryKey>,
+  queryClient?: QueryClient,
+): UseQueryResult<TData, TError>;
 export function useQuery<
   TQueryFnData = unknown,
   TError = DefaultError,
@@ -114,17 +220,55 @@ export function useSuspenseQuery<
   TData = TQueryFnData,
   TQueryKey extends QueryKey = QueryKey,
 >(
-  options: () => UseQueryOptions<TQueryFnData, TError, TData, TQueryKey>,
+  options: () => UseSuspenseQueryOptions<TQueryFnData, TError, TData, TQueryKey>,
   queryClient?: QueryClient,
-): UseQueryResult<TData, TError> {
+): UseSuspenseQueryResult<TData, TError> {
   return baseQuery<TQueryFnData, TError, TData, TQueryFnData, TQueryKey>(
     QueryObserver,
     options,
     queryClient,
     { suspense: true },
-  );
+  ) as UseSuspenseQueryResult<TData, TError>;
 }
 
+export function useInfiniteQuery<
+  TQueryFnData,
+  TError = DefaultError,
+  TData = InfiniteData<TQueryFnData>,
+  TQueryKey extends QueryKey = QueryKey,
+  TPageParam = unknown,
+>(
+  options: () => UseInfiniteQueryOptions<TQueryFnData, TError, TData, TQueryKey, TPageParam> & {
+    initialData?: undefined;
+  },
+  queryClient?: QueryClient,
+): UseInfiniteQueryResult<TData, TError>;
+export function useInfiniteQuery<
+  TQueryFnData,
+  TError = DefaultError,
+  TData = InfiniteData<TQueryFnData>,
+  TQueryKey extends QueryKey = QueryKey,
+  TPageParam = unknown,
+>(
+  options: () => DefinedInitialDataInfiniteOptions<
+    TQueryFnData,
+    TError,
+    TData,
+    TQueryKey,
+    TPageParam
+  >,
+  queryClient?: QueryClient,
+): DefinedUseInfiniteQueryResult<TData, TError>;
+export function useInfiniteQuery<
+  TQueryFnData = unknown,
+  TError = DefaultError,
+  TData = InfiniteData<TQueryFnData>,
+  TQueryKey extends QueryKey = QueryKey,
+  TPageParam = unknown,
+>(
+  options: () => UseInfiniteQueryOptions<TQueryFnData, TError, TData, TQueryKey, TPageParam>,
+  queryClient?: QueryClient,
+): UseInfiniteQueryResult<TData, TError>;
 export function useInfiniteQuery<
   TQueryFnData = unknown,
   TError = DefaultError,
@@ -151,15 +295,21 @@ export function useSuspenseInfiniteQuery<
   TQueryKey extends QueryKey = QueryKey,
   TPageParam = unknown,
 >(
-  options: () => UseInfiniteQueryOptions<TQueryFnData, TError, TData, TQueryKey, TPageParam>,
+  options: () => UseSuspenseInfiniteQueryOptions<
+    TQueryFnData,
+    TError,
+    TData,
+    TQueryKey,
+    TPageParam
+  >,
   queryClient?: QueryClient,
-): UseInfiniteQueryResult<TData, TError> {
+): UseSuspenseInfiniteQueryResult<TData, TError> {
   return baseQuery<TQueryFnData, TError, TData, TQueryFnData, TQueryKey>(
     InfiniteQueryObserver as never,
     options as never,
     queryClient,
     { suspense: true },
-  ) as UseInfiniteQueryResult<TData, TError>;
+  ) as unknown as UseSuspenseInfiniteQueryResult<TData, TError>;
 }
 
 /**
@@ -189,126 +339,96 @@ export function useMutation<
     observer.getCurrentResult(),
   );
 
-  renderEffect(() => {
-    observer.setOptions(options());
+  createRenderEffect(options, (resolved) => {
+    observer.setOptions(resolved);
   });
 
-  const mutateAsync = (variables: TVariables): Promise<TData> => observer.mutate(variables);
+  createRenderEffect(
+    () => {
+      if (state.isError && shouldThrowError(observer.options.throwOnError, [state.error])) {
+        throw state.error;
+      }
+    },
+    () => {},
+  );
+
+  const mutateAsync: UseMutateAsyncFunction<TData, TError, TVariables, TContext> = (...args) =>
+    observer.mutate(args[0] as TVariables, args[1]);
+
+  const mutate: UseMutateFunction<TData, TError, TVariables, TContext> = (...args) => {
+    // The rejection is the caller's to read off `error`; leaving it unhandled
+    // here would surface as an unhandled rejection for a state the result
+    // already reports.
+    mutateAsync(...args).catch(() => {});
+  };
 
   return withHandles(state, {
-    mutate: (variables: TVariables) => {
-      // The rejection is the caller's to read off `error`; leaving it unhandled
-      // here would surface as an unhandled rejection for a state the result
-      // already reports.
-      mutateAsync(variables).catch(() => {});
-    },
+    mutate,
     mutateAsync,
     reset: () => observer.reset(),
   });
 }
 
+type MaybeAccessor<T> = T | (() => T);
+
+function given<T extends object>(value: MaybeAccessor<T> | undefined): T | undefined {
+  return typeof value === "function" ? value() : value;
+}
+
 /**
- * Several queries at once, through ONE observer.
+ * A count over one of the client's caches, recounted on every cache event.
  *
- * Not a loop over `useQuery`: `QueriesObserver` batches the whole set into a
- * single notification, so a page fetching twelve resources re-renders once
- * rather than twelve times.
+ * `count` is tracked, so filters handed in as a function recount when what
+ * they read changes, without waiting for the cache to move.
  */
-export function useQueries<TQueryFnData = unknown, TError = DefaultError, TData = TQueryFnData>(
-  options: () => {
-    queries: readonly UseQueryOptions<TQueryFnData, TError, TData>[];
-  },
-  queryClient?: QueryClient,
-): readonly UseQueryResult<TData, TError>[] {
-  const client = useQueryClient(queryClient);
-  const defaulted = (
-    source: () => { queries: readonly UseQueryOptions<TQueryFnData, TError, TData>[] },
-  ) => source().queries.map((each) => client.defaultQueryOptions(each as never));
+function counted(
+  count: () => number,
+  subscribe: (listener: () => void) => () => void,
+): () => number {
+  const [state, setState] = createStore({ count: untrack(count) });
 
-  const observer = new QueriesObserver<UseQueryResult<TData, TError>[]>(
-    client,
-    untrack(() => defaulted(options)) as never,
-  );
-
-  const [first] = observer.getOptimisticResult(
-    untrack(() => defaulted(options)),
-    undefined,
-  );
-  const [state, setState] = store<{ results: QueryObserverResult[] }>({ results: [...first] });
-
-  renderEffect(() => {
-    observer.setQueries(defaulted(options));
-  });
-
-  renderEffect(() => {
-    const unsubscribe = observer.subscribe(
-      notifyManager.batchCalls((results: readonly QueryObserverResult[]) => {
-        write(results);
-      }),
-    );
+  const publish = (next: number): void => {
+    setState((draft) => {
+      draft.count = next;
+    });
+  };
+  createRenderEffect(count, (current) => {
+    const deliver = notifyManager.batchCalls(publish);
+    const unsubscribe = subscribe(() => deliver(untrack(count)));
+    deliver(current);
     return unsubscribe;
   });
 
-  /**
-   * Written INDEX BY INDEX, never replaced.
-   *
-   * The array a caller holds is read once, when the component body runs, so
-   * swapping it for a new one leaves them holding the first. Writing through
-   * the store keeps one array and makes `results[1].data` a dependency of its
-   * own — which is the whole reason to run a set through one observer rather
-   * than a loop of `useQuery`.
-   */
-  function write(results: readonly QueryObserverResult[]): void {
-    for (const [index, result] of results.entries()) {
-      const current = state.results[index] as QueryObserverResult | undefined;
-      if (current === undefined) {
-        setState("results", index, result as never);
-        continue;
-      }
-      for (const key of Object.keys(result) as (keyof QueryObserverResult)[]) {
-        setState("results", index, key, result[key] as never);
-      }
-    }
-    if (results.length < state.results.length) {
-      setState("results", (previous: QueryObserverResult[]) => previous.slice(0, results.length));
-    }
-  }
-
-  return state.results as readonly UseQueryResult<TData, TError>[];
+  return () => state.count;
 }
 
 /** How many queries are fetching right now. */
-export function useIsFetching(filters?: QueryFilters, queryClient?: QueryClient): () => number {
+export function useIsFetching(
+  filters?: MaybeAccessor<QueryFilters>,
+  queryClient?: QueryClient,
+): () => number {
   const client = useQueryClient(queryClient);
-  const [state, setState] = store({ count: client.isFetching(filters) });
-
-  renderEffect(() => {
-    const cache = client.getQueryCache();
-    const unsubscribe = cache.subscribe(
-      notifyManager.batchCalls(() => setState("count", client.isFetching(filters))),
-    );
-    setState("count", client.isFetching(filters));
-    return unsubscribe;
-  });
-
-  return () => state.count;
+  return counted(
+    () => client.isFetching(given(filters)),
+    (listener) => client.getQueryCache().subscribe(listener),
+  );
 }
 
 /** How many mutations are running right now. */
-export function useIsMutating(filters?: MutationFilters, queryClient?: QueryClient): () => number {
+export function useIsMutating(
+  filters?: MaybeAccessor<MutationFilters>,
+  queryClient?: QueryClient,
+): () => number {
   const client = useQueryClient(queryClient);
-  const [state, setState] = store({ count: client.isMutating(filters) });
+  return counted(
+    () => client.isMutating(given(filters)),
+    (listener) => client.getMutationCache().subscribe(listener),
+  );
+}
 
-  renderEffect(() => {
-    const cache = client.getMutationCache();
-    const unsubscribe = cache.subscribe(
-      notifyManager.batchCalls(() => setState("count", client.isMutating(filters))),
-    );
-    setState("count", client.isMutating(filters));
-    return unsubscribe;
-  });
-
-  return () => state.count;
+export interface MutationStateOptions<TResult = MutationState> {
+  filters?: MutationFilters;
+  select?: (mutation: Mutation) => TResult;
 }
 
 /**
@@ -318,34 +438,43 @@ export function useIsMutating(filters?: MutationFilters, queryClient?: QueryClie
  * a different component owns.
  */
 export function useMutationState<TResult = MutationState>(
-  options?: () => {
-    filters?: MutationFilters;
-    select?: (mutation: Mutation) => TResult;
-  },
+  options?: MaybeAccessor<MutationStateOptions<TResult>>,
   queryClient?: QueryClient,
 ): () => TResult[] {
   const client = useQueryClient(queryClient);
   const cache = client.getMutationCache();
 
   const read = (): TResult[] => {
-    const { filters, select } = options?.() ?? {};
+    const { filters, select } = given(options) ?? {};
     return cache
       .findAll(filters)
       .map((mutation) => (select ? select(mutation) : (mutation.state as TResult)));
   };
 
-  const [state, setState] = store<{ results: TResult[] }>({ results: untrack(read) });
+  const [state, setState] = createStore<{ results: TResult[] }>({ results: untrack(read) });
 
-  renderEffect(() => {
-    const current = read();
-    const unsubscribe = cache.subscribe(
-      notifyManager.batchCalls(() => setState("results", read() as never)),
-    );
-    setState("results", current as never);
+  // Structurally shared against what is already published: every cache event
+  // rebuilds the array, and a reader should hear only about the ones that
+  // changed what it holds.
+  let published = state.results;
+  const publish = (results: TResult[]): void => {
+    const next = replaceEqualDeep(published, results);
+    if (next === published) return;
+    published = next;
+    setState((draft) => {
+      draft.results = next;
+    });
+  };
+  // `read` is tracked, so a change of filters delivers its own result and
+  // subscribes again.
+  createRenderEffect(read, (current) => {
+    const deliver = notifyManager.batchCalls(publish);
+    const unsubscribe = cache.subscribe(() => deliver(untrack(read)));
+    deliver(current);
     return unsubscribe;
   });
 
-  return () => state.results as TResult[];
+  return () => state.results;
 }
 
 /**
@@ -367,6 +496,24 @@ export function usePrefetchQuery<
   const resolved = untrack(options);
   if (client.getQueryState(resolved.queryKey) === undefined) {
     void client.prefetchQuery(resolved as never);
+  }
+}
+
+/** `usePrefetchQuery` for a paged query: the first page is in flight before its reader is built. */
+export function usePrefetchInfiniteQuery<
+  TQueryFnData = unknown,
+  TError = DefaultError,
+  TData = TQueryFnData,
+  TQueryKey extends QueryKey = QueryKey,
+  TPageParam = unknown,
+>(
+  options: () => FetchInfiniteQueryOptions<TQueryFnData, TError, TData, TQueryKey, TPageParam>,
+  queryClient?: QueryClient,
+): void {
+  const client = useQueryClient(queryClient);
+  const resolved = untrack(options);
+  if (client.getQueryState(resolved.queryKey) === undefined) {
+    void client.prefetchInfiniteQuery(resolved);
   }
 }
 

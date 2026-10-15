@@ -5,7 +5,14 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { Loading, effect, flush, render, scope } from "@barqjs/core";
+import {
+  Loading,
+  createTrackedEffect,
+  flush,
+  render,
+  createRoot,
+  runWithOwner,
+} from "@barqjs/core";
 import { QueryClient } from "@tanstack/query-core";
 import {
   QueryClientProvider,
@@ -245,11 +252,11 @@ describe("results are fine-grained", () => {
           return "same";
         },
       }));
-      effect(() => {
+      createTrackedEffect(() => {
         expect(query.data === undefined || typeof query.data === "string").toBe(true);
         dataRuns++;
       });
-      effect(() => {
+      createTrackedEffect(() => {
         expect(typeof query.isFetching).toBe("boolean");
         fetchingRuns++;
       });
@@ -301,7 +308,7 @@ describe("results are fine-grained", () => {
         queryKey: ["moving"],
         queryFn: async () => value,
       }));
-      effect(() => {
+      createTrackedEffect(() => {
         expect(query.data === undefined || typeof query.data === "string").toBe(true);
         dataRuns++;
       });
@@ -340,14 +347,14 @@ describe("useQueries", () => {
     const values: string[] = [];
 
     function Many() {
-      const set = useQueries<string>(() => ({
+      const set = useQueries(() => ({
         queries: [
           { queryKey: ["a"], queryFn: async () => "A" },
           { queryKey: ["b"], queryFn: async () => "B" },
           { queryKey: ["c"], queryFn: async () => "C" },
         ],
       }));
-      effect(() => {
+      createTrackedEffect(() => {
         seenLength = set.length;
         values.length = 0;
         for (const each of set) if (each.data !== undefined) values.push(each.data);
@@ -387,18 +394,22 @@ describe("options helpers", () => {
 describe("useQueryClient", () => {
   test("takes an explicit client, so a hook works outside a provider", () => {
     const queryClient = client();
-    const dispose = scope((release) => {
-      expect(useQueryClient(queryClient)).toBe(queryClient);
-      return release;
-    }, true);
+    const dispose = runWithOwner(null, () =>
+      createRoot((release) => {
+        expect(useQueryClient(queryClient)).toBe(queryClient);
+        return release;
+      }),
+    );
     dispose();
   });
 
   test("says what to do when there is none", () => {
-    const dispose = scope((release) => {
-      expect(() => useQueryClient()).toThrow("QueryClientProvider");
-      return release;
-    }, true);
+    const dispose = runWithOwner(null, () =>
+      createRoot((release) => {
+        expect(() => useQueryClient()).toThrow("QueryClientProvider");
+        return release;
+      }),
+    );
     dispose();
   });
 });

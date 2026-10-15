@@ -32,12 +32,27 @@
       "types": "./dist/index.d.ts",
       "bun": "./src/index.ts",
       "import": "./dist/index.js"
+    },
+    "./devtools": {
+      "types": "./dist/devtools.d.ts",
+      "bun": "./src/devtools.ts",
+      "import": "./dist/devtools.js"
+    },
+    "./persist": {
+      "types": "./dist/persist.d.ts",
+      "bun": "./src/persist.ts",
+      "import": "./dist/persist.js"
+    },
+    "./router": {
+      "types": "./dist/router.d.ts",
+      "bun": "./src/router.ts",
+      "import": "./dist/router.js"
     }
   },
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
-    "test": "bun test",
+    "test": "bun test && bun test --conditions=development",
     "typecheck": "tsc --noEmit",
     "prepublishOnly": "bun run build"
   },
@@ -48,12 +63,30 @@
     "@barqjs/compiler": "workspace:*",
     "@barqjs/compiler-rs": "workspace:*",
     "@barqjs/core": "workspace:*",
+    "@barqjs/router": "workspace:*",
+    "@barqjs/server": "workspace:*",
     "@happy-dom/global-registrator": "^20.11.6",
+    "@tanstack/query-devtools": "5.102.8",
+    "@tanstack/query-persist-client-core": "5.102.8",
     "@types/bun": "^1.4.0",
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
     "@barqjs/core": ">=0.1.0",
-    "@tanstack/query-core": "^5.102.8"
+    "@barqjs/router": ">=0.1.0",
+    "@tanstack/query-core": "^5.102.8",
+    "@tanstack/query-devtools": "^5.102.8",
+    "@tanstack/query-persist-client-core": "^5.102.8"
+  },
+  "peerDependenciesMeta": {
+    "@barqjs/router": {
+      "optional": true
+    },
+    "@tanstack/query-devtools": {
+      "optional": true
+    },
+    "@tanstack/query-persist-client-core": {
+      "optional": true
+    }
   }
 }
