@@ -72,15 +72,17 @@ schedule lets it through, so a computation can rate-limit itself while still
 depending on everything it reads.
 
 ```ts
-import { effect } from "@barqjs/core";
+import { createEffect } from "@barqjs/core";
 import { debounce, scheduled } from "@barqjs/primitives";
 
 const settled = scheduled((fire) => debounce(fire, 250));
 
-effect(() => {
-  const q = query();
-  if (settled()) search(q);
-});
+createEffect(
+  () => [query(), settled()] as const,
+  ([q, ready]) => {
+    if (ready) search(q);
+  },
+);
 ```
 
 ## Derived values
@@ -98,18 +100,18 @@ subscribing each row to its own key wakes the row that lost the selection and
 the row that gained it, and nothing else:
 
 ```tsx
-import { For, signal } from "@barqjs/core";
+import { For, createSignal } from "@barqjs/core";
 import { selector } from "@barqjs/primitives";
 
-const selected = signal(1);
+const [selected, setSelected] = createSignal(1);
 const isSelected = selector(selected);
 
 <For each={rows}>{(row) => <li classList={{ on: isSelected(row.id) }}>{row.name}</li>}</For>;
 ```
 
 `whenever(condition, fn)` runs `fn` only while the condition is truthy and
-cleans up on the way out, which is the shape most `effect` bodies with an early
-return are trying to be.
+cleans up on the way out, which is the shape most effects with an early return
+are trying to be.
 
 ## Events
 
@@ -157,7 +159,7 @@ import {
   userIdle,
 } from "@barqjs/primitives";
 
-const theme = persisted("theme", "system"); // and it follows other tabs
+const [theme, setTheme] = persisted("theme", "system"); // and it follows other tabs
 const dark = prefersDark();
 const wide = mediaQuery("(min-width: 768px)");
 ```
@@ -198,8 +200,8 @@ A key gets a dependency only when something reads it inside a tracked scope,
 and the dependency is dropped again when its last reader goes away, so a
 virtual list scrolling through a million ids does not grow a million entries.
 
-For nested object state use `store` from `@barqjs/core`, which is the same idea
-applied to property paths.
+For nested object state use `createStore` from `@barqjs/core`, which is the same
+idea applied to property paths.
 
 ## Motion
 

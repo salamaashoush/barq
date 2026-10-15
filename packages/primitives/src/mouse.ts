@@ -1,4 +1,4 @@
-import { type Accessor, isServer, signal } from "@barqjs/core";
+import { type Accessor, isServer, createSignal } from "@barqjs/core";
 import { on } from "./event.ts";
 import { type MaybeAccessor, access, shared } from "./utils.ts";
 
@@ -22,11 +22,11 @@ export interface MousePosition {
  * movement.
  */
 export const mousePosition: () => MousePosition = shared(() => {
-  const x = signal(0);
-  const y = signal(0);
-  const clientX = signal(0);
-  const clientY = signal(0);
-  const isInside = signal(false);
+  const [x, setX] = createSignal(0);
+  const [y, setY] = createSignal(0);
+  const [clientX, setClientX] = createSignal(0);
+  const [clientY, setClientY] = createSignal(0);
+  const [isInside, setIsInside] = createSignal(false);
   const position = { x, y, clientX, clientY, isInside };
   if (isServer) return position;
 
@@ -34,16 +34,16 @@ export const mousePosition: () => MousePosition = shared(() => {
     window,
     "pointermove",
     (event) => {
-      x.set(event.pageX);
-      y.set(event.pageY);
-      clientX.set(event.clientX);
-      clientY.set(event.clientY);
-      isInside.set(true);
+      setX(event.pageX);
+      setY(event.pageY);
+      setClientX(event.clientX);
+      setClientY(event.clientY);
+      setIsInside(true);
     },
     { passive: true },
   );
-  on(document, "pointerleave", () => isInside.set(false), { passive: true });
-  on(document, "pointerenter", () => isInside.set(true), { passive: true });
+  on(document, "pointerleave", () => setIsInside(false), { passive: true });
+  on(document, "pointerenter", () => setIsInside(true), { passive: true });
 
   return position;
 });
@@ -66,9 +66,9 @@ export interface ElementMousePosition {
 export function mouseInElement(
   target: MaybeAccessor<Element | null | undefined>,
 ): ElementMousePosition {
-  const x = signal(0);
-  const y = signal(0);
-  const isInside = signal(false);
+  const [x, setX] = createSignal(0);
+  const [y, setY] = createSignal(0);
+  const [isInside, setIsInside] = createSignal(false);
   if (isServer) return { x, y, isInside };
 
   on(
@@ -78,13 +78,13 @@ export function mouseInElement(
       const element = access(target);
       if (element === null || element === undefined) return;
       const rect = element.getBoundingClientRect();
-      x.set(event.clientX - rect.left);
-      y.set(event.clientY - rect.top);
+      setX(event.clientX - rect.left);
+      setY(event.clientY - rect.top);
     },
     { passive: true },
   );
-  on(target, "pointerenter", () => isInside.set(true), { passive: true });
-  on(target, "pointerleave", () => isInside.set(false), { passive: true });
+  on(target, "pointerenter", () => setIsInside(true), { passive: true });
+  on(target, "pointerleave", () => setIsInside(false), { passive: true });
 
   return { x, y, isInside };
 }

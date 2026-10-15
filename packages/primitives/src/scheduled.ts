@@ -1,4 +1,4 @@
-import { type Accessor, isServer, isTracking, signal } from "@barqjs/core";
+import { type Accessor, isServer, getObserver, createSignal } from "@barqjs/core";
 import { type Clear, noop, tryCleanup } from "./utils.ts";
 
 /** A callback whose invocation is deferred, with the deferral under your control. */
@@ -272,40 +272,41 @@ export function leadingAndTrailing<Args extends unknown[]>(
  *
  * ```ts
  * const settled = scheduled((fire) => debounce(fire, 250));
- * effect(() => {
- *   const q = query();
- *   if (settled()) search(q);
- * });
+ * createEffect(
+ *   () => [query(), settled()] as const,
+ *   ([q, ready]) => {
+ *     if (ready) search(q);
+ *   },
+ * );
  * ```
  *
- * The subscriber count is what keeps two readers in one flush agreeing: the
- * flag stays raised while anyone is still tracking it and falls on the run that
- * re-arms it.
+ * Each reader is answered on its own account: one that armed the schedule
+ * reads `true` once after it fires and arms it again on its next run. That is
+ * what keeps two readers in one flush agreeing, whichever of them runs first.
  */
 export function scheduled(schedule: (fire: Clear) => Clear): Accessor<boolean> {
-  let listeners = 0;
-  let dirty = false;
-  const version = signal(0, { equals: false });
+  let fired = 0;
+  // Keyed by the reading computation rather than counted through its cleanup:
+  // a computation's cleanups run after its next run, which is too late to tell
+  // that run it has been let through.
+  const armed = new WeakMap<object, number>();
+  const untracked = {};
+  const [version, setVersion] = createSignal(0, { equals: false });
   const fire = schedule(() => {
-    dirty = true;
-    version.set(0);
+    fired++;
+    setVersion(0);
   });
 
   return () => {
-    if (!dirty) {
-      fire();
-      version();
-    }
-
-    if (dirty) {
-      dirty = listeners > 0;
+    const reader = getObserver() ?? untracked;
+    const at = armed.get(reader);
+    if (at !== undefined && at < fired) {
+      armed.delete(reader);
       return true;
     }
-
-    if (isTracking()) {
-      listeners++;
-      tryCleanup(() => listeners--);
-    }
+    armed.set(reader, fired);
+    fire();
+    version();
     return false;
   };
 }

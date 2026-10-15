@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { effect, flush, root, signal } from "@barqjs/core";
+import { createEffect, createTrackedEffect, flush, createRoot, createSignal } from "@barqjs/core";
 import { debounce, leading, leadingAndTrailing, scheduled, throttle } from "./scheduled.ts";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -64,7 +64,7 @@ describe("debounce", () => {
 
   test("is cleared when its owner disposes", async () => {
     const seen: number[] = [];
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const fn = debounce((n: number) => seen.push(n), 10);
       fn(1);
       return d;
@@ -188,11 +188,11 @@ describe("leadingAndTrailing", () => {
 
 describe("scheduled", () => {
   test("gates a computation until the schedule lets it through", async () => {
-    const query = signal("a");
+    const [query, setQuery] = createSignal("a");
     const runs: string[] = [];
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const settled = scheduled((fire) => debounce(fire, 20));
-      effect(() => {
+      createTrackedEffect(() => {
         const q = query();
         if (settled()) runs.push(q);
       });
@@ -200,9 +200,9 @@ describe("scheduled", () => {
     });
 
     expect(runs).toEqual([]);
-    query.set("b");
+    setQuery("b");
     flush();
-    query.set("c");
+    setQuery("c");
     flush();
     expect(runs).toEqual([]);
     await eventually(() => {
@@ -213,17 +213,51 @@ describe("scheduled", () => {
     dispose();
   });
 
+  test("a computation it let through waits for the schedule again", () => {
+    const [query, setQuery] = createSignal("a");
+    const runs: string[] = [];
+    let release: () => void = () => {};
+    const dispose = createRoot((d) => {
+      const settled = scheduled((fire) => {
+        release = fire;
+        return () => {};
+      });
+      createEffect(
+        () => [query(), settled()] as const,
+        ([q, ready]) => {
+          if (ready) runs.push(q);
+        },
+      );
+      return d;
+    });
+    flush();
+    expect(runs).toEqual([]);
+
+    release();
+    flush();
+    expect(runs).toEqual(["a"]);
+
+    setQuery("b");
+    flush();
+    expect(runs, "ran without waiting for the schedule").toEqual(["a"]);
+
+    release();
+    flush();
+    expect(runs).toEqual(["a", "b"]);
+    dispose();
+  });
+
   test("two readers in one flush both see the flag raised", async () => {
-    const source = signal(0);
+    const [source] = createSignal(0);
     let a = 0;
     let b = 0;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const settled = scheduled((fire) => debounce(fire, 10));
-      effect(() => {
+      createTrackedEffect(() => {
         source();
         if (settled()) a++;
       });
-      effect(() => {
+      createTrackedEffect(() => {
         source();
         if (settled()) b++;
       });

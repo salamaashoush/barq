@@ -1,5 +1,13 @@
-import { type Accessor, computed, renderEffect, signal, untrack } from "@barqjs/core";
-import { type MaybeAccessor, access, tryCleanup } from "./utils.ts";
+import {
+  type Accessor,
+  type Signal,
+  createMemo,
+  createRenderEffect,
+  createSignal,
+  getObserver,
+  untrack,
+} from "@barqjs/core";
+import { type MaybeAccessor, access } from "./utils.ts";
 import { type Schedule, debounce, scheduleIdle, throttle } from "./scheduled.ts";
 
 /**
@@ -24,19 +32,30 @@ export function deferred<T>(source: Accessor<T>, timeout?: number): Accessor<T> 
   return rateLimited(source, scheduleIdle, timeout);
 }
 
-function rateLimited<T>(source: Accessor<T>, schedule: Schedule, wait?: number): Accessor<T> {
-  const published = signal(untrack(source));
-  const publish = schedule((value: T) => published.set(value), wait);
-  let first = true;
+/**
+ * A signal over a value of any type.
+ *
+ * `createSignal` takes a function argument as a derivation and a setter takes
+ * one as an updater, so a source whose value is itself a function has to be
+ * wrapped on the way in or it is called instead of held.
+ */
+function holding<T>(initial: T): Signal<T> {
+  return typeof initial === "function"
+    ? createSignal<T>(() => initial)
+    : createSignal<T>(initial as Exclude<T, Function>);
+}
 
-  renderEffect(() => {
-    const value = source();
-    if (first) {
-      first = false;
-      return;
-    }
-    publish(value);
-  });
+function rateLimited<T>(source: Accessor<T>, schedule: Schedule, wait?: number): Accessor<T> {
+  const [published, setPublished] = holding(untrack(source));
+  const publish = schedule((value: T) => {
+    setPublished(() => value);
+  }, wait);
+
+  createRenderEffect(
+    () => source(),
+    (value) => publish(value),
+    { defer: true },
+  );
 
   return published;
 }
@@ -44,20 +63,24 @@ function rateLimited<T>(source: Accessor<T>, schedule: Schedule, wait?: number):
 /**
  * The value `source` held before its current one.
  *
- * Driven by a render-phase effect rather than a memo: a lazy derivation only
- * advances when someone reads it, so a `previous` nobody read for three changes
- * would hand back the value from three changes ago.
+ * Driven by a render-phase effect rather than a memo: a memo with no owner
+ * only advances when someone reads it, so a `previous` nobody read for three
+ * changes would hand back the value from three changes ago.
  */
 export function previous<T>(source: Accessor<T>, initial?: T): Accessor<T | undefined> {
-  const held = signal<T | undefined>(initial);
+  const [held, setHeld] = holding<T | undefined>(initial);
   let current = untrack(source);
 
-  renderEffect(() => {
-    const next = source();
-    if (Object.is(next, current)) return;
-    held.set(current);
-    current = next;
-  });
+  createRenderEffect(
+    () => source(),
+    (next) => {
+      if (Object.is(next, current)) return;
+      const before = current;
+      current = next;
+      setHeld(() => before);
+    },
+    { defer: true },
+  );
 
   return held;
 }
@@ -73,12 +96,12 @@ export function whenever<T>(
   condition: Accessor<T>,
   fn: (value: NonNullable<T>) => void | (() => void),
 ): void {
-  renderEffect(condition, (value) => (value ? fn(value) : undefined));
+  createRenderEffect(condition, (value) => (value ? fn(value) : undefined));
 }
 
 /** True when every source is truthy. Short-circuits, so later sources are not tracked. */
 export function every(...sources: MaybeAccessor<unknown>[]): Accessor<boolean> {
-  return computed(() => {
+  return createMemo(() => {
     for (const source of sources) {
       if (!access(source)) return false;
     }
@@ -88,7 +111,7 @@ export function every(...sources: MaybeAccessor<unknown>[]): Accessor<boolean> {
 
 /** True when any source is truthy. Short-circuits, so later sources are not tracked. */
 export function some(...sources: MaybeAccessor<unknown>[]): Accessor<boolean> {
-  return computed(() => {
+  return createMemo(() => {
     for (const source of sources) {
       if (access(source)) return true;
     }
@@ -99,11 +122,6 @@ export function some(...sources: MaybeAccessor<unknown>[]): Accessor<boolean> {
 /** The negation of a source, as an accessor. */
 export function not(source: MaybeAccessor<unknown>): Accessor<boolean> {
   return () => !access(source);
-}
-
-interface SelectorEntry {
-  count: number;
-  readonly selected: ReturnType<typeof signal<boolean>>;
 }
 
 /**
@@ -128,42 +146,44 @@ export function selector<T, K = T>(
   source: Accessor<T>,
   equals?: (key: K, value: T) => boolean,
 ): (key: K) => boolean {
-  const subs = new Map<K, SelectorEntry>();
+  const subs = new Map<K, Signal<boolean>>();
   let value = untrack(source);
 
   const matches = (key: K, against: T): boolean =>
     equals === undefined ? (key as unknown as T) === against : equals(key, against);
 
-  renderEffect(() => {
-    const next = source();
-    const prev = value;
-    if (Object.is(next, prev)) return;
-    value = next;
+  createRenderEffect(
+    () => source(),
+    (next) => {
+      const prev = value;
+      if (Object.is(next, prev)) return;
+      value = next;
 
-    if (equals === undefined) {
-      subs.get(prev as unknown as K)?.selected.set(false);
-      subs.get(next as unknown as K)?.selected.set(true);
-      return;
-    }
-    for (const [key, entry] of subs) {
-      const now = equals(key, next);
-      if (entry.selected.peek() !== now) entry.selected.set(now);
-    }
-  });
+      if (equals === undefined) {
+        subs.get(prev as unknown as K)?.[1](false);
+        subs.get(next as unknown as K)?.[1](true);
+        return;
+      }
+      for (const [key, entry] of subs) entry[1](equals(key, next));
+    },
+    { defer: true },
+  );
 
   return (key: K): boolean => {
+    if (getObserver() === null) return matches(key, untrack(source));
     let entry = subs.get(key);
     if (entry === undefined) {
-      entry = { count: 0, selected: signal(matches(key, value)) };
-      subs.set(key, entry);
+      const created: Signal<boolean> = createSignal(matches(key, untrack(source)), {
+        // Dropped with its last reader rather than left in place: a virtual
+        // list scrolling through a million ids would otherwise grow this map
+        // by one entry per id seen.
+        unobserved: () => {
+          if (subs.get(key) === created) subs.delete(key);
+        },
+      });
+      subs.set(key, created);
+      entry = created;
     }
-    const held = entry;
-    held.count++;
-    // Ref-counted rather than left in place: a virtual list scrolling through
-    // a million ids would otherwise grow this map by one entry per id seen.
-    tryCleanup(() => {
-      if (--held.count === 0 && subs.get(key) === held) subs.delete(key);
-    });
-    return held.selected();
+    return entry[0]();
   };
 }

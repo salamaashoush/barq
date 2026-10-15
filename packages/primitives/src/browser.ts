@@ -1,4 +1,11 @@
-import { type Accessor, isServer, renderEffect, signal } from "@barqjs/core";
+import {
+  type Accessor,
+  createRenderEffect,
+  createSignal,
+  getOwner,
+  isServer,
+  runWithOwner,
+} from "@barqjs/core";
 import { on } from "./event.ts";
 import {
   type Clear,
@@ -18,17 +25,17 @@ import {
  */
 export const online: () => Accessor<boolean> = shared(() => {
   if (isServer) return () => true;
-  const connected = signal(navigator.onLine);
-  on(window, "online", () => connected.set(true));
-  on(window, "offline", () => connected.set(false));
+  const [connected, setConnected] = createSignal(navigator.onLine);
+  on(window, "online", () => setConnected(true));
+  on(window, "offline", () => setConnected(false));
   return connected;
 });
 
 /** Whether the page is the foreground tab. */
 export const pageVisible: () => Accessor<boolean> = shared(() => {
   if (isServer) return () => true;
-  const visible = signal(document.visibilityState === "visible");
-  on(document, "visibilitychange", () => visible.set(document.visibilityState === "visible"));
+  const [visible, setVisible] = createSignal(document.visibilityState === "visible");
+  on(document, "visibilitychange", () => setVisible(document.visibilityState === "visible"));
   return visible;
 });
 
@@ -56,16 +63,19 @@ const ACTIVITY = [
  * alive, and `mousemove` never fires while it is hidden.
  */
 export function userIdle(options?: IdleOptions): Accessor<boolean> {
-  const idle = signal(false);
+  const [idle, setIdle] = createSignal(false);
   if (isServer) return idle;
 
   const after = options?.after ?? 60_000;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
-  const wake = (): void => {
-    idle.set(false);
+  const arm = (): void => {
     if (timer !== undefined) clearTimeout(timer);
-    timer = setTimeout(() => idle.set(true), after);
+    timer = setTimeout(() => setIdle(true), after);
+  };
+  const wake = (): void => {
+    setIdle(false);
+    arm();
   };
 
   on(document, options?.events ?? ACTIVITY, wake, { passive: true });
@@ -73,11 +83,11 @@ export function userIdle(options?: IdleOptions): Accessor<boolean> {
     if (document.visibilityState === "visible") wake();
     else {
       if (timer !== undefined) clearTimeout(timer);
-      idle.set(true);
+      setIdle(true);
     }
   });
 
-  wake();
+  arm();
   tryCleanup(() => {
     if (timer !== undefined) clearTimeout(timer);
   });
@@ -87,7 +97,7 @@ export function userIdle(options?: IdleOptions): Accessor<boolean> {
 export type PermissionStatus = PermissionState | "unknown";
 
 const permissionSource = sharedKeyed((name: string): Accessor<PermissionStatus> => {
-  const state = signal<PermissionStatus>("unknown");
+  const [state, setState] = createSignal<PermissionStatus>("unknown");
   if (isServer || typeof navigator === "undefined" || navigator.permissions === undefined) {
     return state;
   }
@@ -98,8 +108,8 @@ const permissionSource = sharedKeyed((name: string): Accessor<PermissionStatus> 
     .query({ name: name as PermissionName })
     .then((status) => {
       if (dropped) return;
-      state.set(status.state);
-      clear = on(status, "change", () => state.set(status.state));
+      setState(status.state);
+      clear = on(status, "change", () => setState(status.state));
     })
     .catch(() => {
       // An unsupported name rejects rather than resolving to "denied". Staying
@@ -133,16 +143,22 @@ export function permission(name: MaybeAccessor<string>): Accessor<PermissionStat
  * to hear about a window moving between two displays of different densities.
  */
 export const devicePixelRatio: () => Accessor<number> = shared(() => {
-  const ratio = signal(isServer ? 1 : window.devicePixelRatio);
+  const [ratio, setRatio] = createSignal(isServer ? 1 : window.devicePixelRatio);
   if (isServer) return ratio;
 
+  // Each query is bound from this scope rather than from the handler of the
+  // one it replaces, whose own scope is the thing being cleared.
+  const owner = getOwner();
   let clear: Clear | undefined;
   const watch = (): void => {
     clear?.();
-    const current = window.devicePixelRatio;
-    ratio.set(current);
-    const list = window.matchMedia(`(resolution: ${current}dppx)`);
-    clear = on(list, "change", watch);
+    const list = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+    clear = runWithOwner(owner, () =>
+      on(list, "change", () => {
+        setRatio(window.devicePixelRatio);
+        watch();
+      }),
+    );
   };
   watch();
   tryCleanup(() => clear?.());
@@ -161,15 +177,18 @@ export function documentTitle(value: MaybeAccessor<string>): void {
   tryCleanup(() => {
     document.title = previous;
   });
-  renderEffect(() => {
-    document.title = access(value);
-  });
+  createRenderEffect(
+    () => access(value),
+    (title) => {
+      document.title = title;
+    },
+  );
 }
 
 /** The languages the user prefers, most preferred first. */
 export const languages: () => Accessor<readonly string[]> = shared(() => {
   if (isServer) return () => [];
-  const preferred = signal<readonly string[]>(navigator.languages);
-  on(window, "languagechange", () => preferred.set(navigator.languages));
+  const [preferred, setPreferred] = createSignal<readonly string[]>(navigator.languages);
+  on(window, "languagechange", () => setPreferred(navigator.languages));
   return preferred;
 });

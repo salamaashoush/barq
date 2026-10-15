@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { effect, flush, root } from "@barqjs/core";
+import { createTrackedEffect, flush, createRoot } from "@barqjs/core";
 import { bus, emitter, trigger } from "./bus.ts";
 
 describe("emitter", () => {
@@ -22,7 +22,7 @@ describe("emitter", () => {
   test("unsubscribes with the owner", () => {
     const events = emitter();
     let calls = 0;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       events.listen(() => calls++);
       return d;
     });
@@ -61,14 +61,17 @@ describe("bus", () => {
   test("remembers the last payload as a signal", () => {
     const channel = bus<number>();
     const seen: (number | undefined)[] = [];
-    const dispose = root((d) => {
-      effect(() => seen.push(channel.last()));
-      channel.emit(1);
-      flush();
-      channel.emit(1);
-      flush();
+    const dispose = createRoot((d) => {
+      createTrackedEffect(() => {
+        seen.push(channel.last());
+      });
       return d;
     });
+    flush();
+    channel.emit(1);
+    flush();
+    channel.emit(1);
+    flush();
     expect(seen).toEqual([undefined, 1, 1]);
     dispose();
   });
@@ -78,11 +81,12 @@ describe("trigger", () => {
   test("invalidates its readers with no value of its own", () => {
     const [track, dirty] = trigger();
     let runs = 0;
-    const dispose = root((d) => {
-      effect(() => {
+    const dispose = createRoot((d) => {
+      createTrackedEffect(() => {
         track();
         runs++;
       });
+      flush();
       return d;
     });
     expect(runs).toBe(1);

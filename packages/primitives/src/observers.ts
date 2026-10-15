@@ -1,4 +1,4 @@
-import { isServer, onCleanup, renderEffect, scope } from "@barqjs/core";
+import { isServer, onCleanup, createRenderEffect, createRoot } from "@barqjs/core";
 import { type Clear, type MaybeAccessor, access } from "./utils.ts";
 
 /**
@@ -83,13 +83,12 @@ function observed<T extends Element>(
   bind: (element: T) => Clear,
 ): Clear {
   if (isServer) return () => {};
-  return scope((dispose) => {
+  return createRoot((dispose) => {
     if (typeof target === "function") {
-      renderEffect(() => {
-        const element = access(target);
-        if (element === null || element === undefined) return undefined;
-        return bind(element);
-      });
+      createRenderEffect(
+        () => access(target),
+        (element) => (element === null || element === undefined ? undefined : bind(element)),
+      );
     } else if (target !== null && target !== undefined) {
       onCleanup(bind(target));
     }
@@ -194,18 +193,17 @@ export function mutationObserver(
   options: MutationObserverInit = { childList: true, subtree: true },
 ): Clear {
   if (isServer) return () => {};
-  return scope((dispose) => {
+  return createRoot((dispose) => {
     const bind = (node: Node): Clear => {
       const observer = new MutationObserver(handler);
       observer.observe(node, options);
       return () => observer.disconnect();
     };
     if (typeof target === "function") {
-      renderEffect(() => {
-        const node = access(target);
-        if (node === null || node === undefined) return undefined;
-        return bind(node);
-      });
+      createRenderEffect(
+        () => access(target),
+        (node) => (node === null || node === undefined ? undefined : bind(node)),
+      );
     } else if (target !== null && target !== undefined) {
       onCleanup(bind(target));
     }

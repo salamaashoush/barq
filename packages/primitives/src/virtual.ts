@@ -1,4 +1,4 @@
-import { type Accessor, computed, untrack } from "@barqjs/core";
+import { type Accessor, createMemo, untrack } from "@barqjs/core";
 import { elementSize } from "./element.ts";
 import { scrollPosition } from "./scroll.ts";
 import { type MaybeAccessor, access, clamp } from "./utils.ts";
@@ -80,7 +80,7 @@ export function virtual(
   const uniform = typeof options.size !== "function";
 
   /** Cumulative offsets, one longer than the list: `offsets[i]` starts item `i`. */
-  const offsets = computed<readonly number[] | null>(() => {
+  const offsets = createMemo<readonly number[] | null>(() => {
     if (uniform) return null;
     const count = access(options.count);
     const sizeOf = options.size as (index: number) => number;
@@ -90,7 +90,7 @@ export function virtual(
     return sums;
   });
 
-  const total = computed(() => {
+  const total = createMemo(() => {
     const sums = offsets();
     if (sums !== null) return sums[sums.length - 1] ?? 0;
     return access(options.count) * access(options.size as MaybeAccessor<number>);
@@ -113,7 +113,7 @@ export function virtual(
     return low;
   };
 
-  const range = computed(() => {
+  const range = createMemo(() => {
     const count = access(options.count);
     if (count === 0) return { start: 0, end: 0 };
     const pad = access(options.overscan ?? 3);
@@ -123,7 +123,7 @@ export function virtual(
     return { start: first, end: last + 1 };
   });
 
-  const items = computed<readonly VirtualItem[]>(() => {
+  const items = createMemo<readonly VirtualItem[]>(() => {
     const { start, end } = range();
     const sums = offsets();
     const each = uniform ? access(options.size as MaybeAccessor<number>) : 0;

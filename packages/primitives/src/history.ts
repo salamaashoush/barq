@@ -1,4 +1,11 @@
-import { type Accessor, type Signal, flush, renderEffect, signal, untrack } from "@barqjs/core";
+import {
+  type Accessor,
+  type Signal,
+  flush,
+  createRenderEffect,
+  createSignal,
+  untrack,
+} from "@barqjs/core";
 import type { Clear } from "./utils.ts";
 
 export interface HistoryHandle<T> {
@@ -36,17 +43,18 @@ export interface HistoryOptions {
  * what every editor does and what users expect.
  *
  * ```ts
- * const text = signal("");
+ * const text = createSignal("");
  * const edits = history(text, { limit: 50 });
  * edits.undo();
  * ```
  */
 export function history<T>(source: Signal<T>, options?: HistoryOptions): HistoryHandle<T> {
+  const [read, write] = source;
   const limit = options?.limit ?? 100;
-  const past = signal<readonly T[]>([]);
-  const future = signal<readonly T[]>([]);
+  const [past, setPast] = createSignal<readonly T[]>([]);
+  const [future, setFuture] = createSignal<readonly T[]>([]);
 
-  let current = untrack(source);
+  let current = untrack(read);
   /**
    * Two guards, because they cover different moments.
    *
@@ -58,23 +66,28 @@ export function history<T>(source: Signal<T>, options?: HistoryOptions): History
    */
   let replaying = false;
 
-  renderEffect(() => {
-    const next = source();
-    if (Object.is(next, current)) return;
-    const previous = current;
-    current = next;
-    if (replaying) return;
+  createRenderEffect(
+    () => read(),
+    (next) => {
+      if (Object.is(next, current)) return;
+      const previous = current;
+      current = next;
+      if (replaying) return;
 
-    const recorded = [...past.peek(), previous];
-    past.set(limit > 0 && recorded.length > limit ? recorded.slice(-limit) : recorded);
-    if (future.peek().length > 0) future.set([]);
-  });
+      setPast((stack) => {
+        const recorded = [...stack, previous];
+        return limit > 0 && recorded.length > limit ? recorded.slice(-limit) : recorded;
+      });
+      setFuture((stack) => (stack.length > 0 ? [] : stack));
+    },
+    { defer: true },
+  );
 
   const replay = (value: T): void => {
     replaying = true;
     try {
       current = value;
-      source.set(value);
+      write(() => value);
     } finally {
       replaying = false;
     }
@@ -85,20 +98,20 @@ export function history<T>(source: Signal<T>, options?: HistoryOptions): History
       // A write made this tick has not reached the recording effect yet, and
       // undoing past it would skip a step.
       flush();
-      const stack = past.peek();
+      const stack = untrack(past);
       if (stack.length === 0) return;
       const value = stack[stack.length - 1] as T;
-      past.set(stack.slice(0, -1));
-      future.update((prev) => [...prev, current]);
+      setPast(stack.slice(0, -1));
+      setFuture((prev) => [...prev, current]);
       replay(value);
     },
     redo() {
       flush();
-      const stack = future.peek();
+      const stack = untrack(future);
       if (stack.length === 0) return;
       const value = stack[stack.length - 1] as T;
-      future.set(stack.slice(0, -1));
-      past.update((prev) => [...prev, current]);
+      setFuture(stack.slice(0, -1));
+      setPast((prev) => [...prev, current]);
       replay(value);
     },
     canUndo: () => past().length > 0,
@@ -106,8 +119,8 @@ export function history<T>(source: Signal<T>, options?: HistoryOptions): History
     past,
     future,
     clear() {
-      past.set([]);
-      future.set([]);
+      setPast([]);
+      setFuture([]);
     },
     silently(fn) {
       replaying = true;
@@ -118,7 +131,7 @@ export function history<T>(source: Signal<T>, options?: HistoryOptions): History
         // stay behind and the recording effect would then record the change
         // the caller asked it not to see.
         flush();
-        current = untrack(source);
+        current = untrack(read);
         return out;
       } finally {
         replaying = false;

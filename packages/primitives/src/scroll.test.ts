@@ -1,10 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { flush, root, signal } from "@barqjs/core";
+import { flush, createRoot, createSignal } from "@barqjs/core";
 import { scrollPosition, windowScroll } from "./scroll.ts";
 
 describe("windowScroll", () => {
   test("shares one source and follows the scroll event", () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const a = windowScroll();
       expect(a).toBe(windowScroll());
 
@@ -27,7 +27,7 @@ describe("scrollPosition", () => {
     Object.defineProperty(box, "scrollLeft", { value: 5, writable: true });
     Object.defineProperty(box, "scrollTop", { value: 7, writable: true });
 
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const position = scrollPosition(box);
       flush();
       expect(position.x()).toBe(5);
@@ -46,14 +46,14 @@ describe("scrollPosition", () => {
     const box = document.createElement("div");
     Object.defineProperty(box, "scrollLeft", { value: 0, writable: true });
     Object.defineProperty(box, "scrollTop", { value: 3, writable: true });
-    const target = signal<HTMLDivElement | null>(null);
+    const [target, setTarget] = createSignal<HTMLDivElement | null>(null);
 
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const position = scrollPosition(target);
       expect(position.y()).toBe(0);
-      target.set(box);
       return [d, position] as const;
     });
+    setTarget(box);
     dispose[0]();
   });
 });

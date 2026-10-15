@@ -1,15 +1,15 @@
-import { type Accessor, computed, isServer, signal } from "@barqjs/core";
+import { type Accessor, createMemo, isServer, createSignal } from "@barqjs/core";
 import { on } from "./event.ts";
 import { type MaybeAccessor, access, sharedKeyed } from "./utils.ts";
 
 const source = sharedKeyed((query: string): Accessor<boolean> => {
   if (isServer) return () => false;
   const list = window.matchMedia(query);
-  const matches = signal(list.matches);
+  const [matches, setMatches] = createSignal(list.matches);
   // `change` on the list itself, not a resize listener: the browser already
   // knows when the answer changed, and a resize handler that re-evaluates
   // every query on the page is the usual way this gets expensive.
-  on(list, "change", (event) => matches.set(event.matches));
+  on(list, "change", (event) => setMatches(event.matches));
   return matches;
 });
 
@@ -25,7 +25,7 @@ const source = sharedKeyed((query: string): Accessor<boolean> => {
  */
 export function mediaQuery(query: MaybeAccessor<string>): Accessor<boolean> {
   if (typeof query === "string") return source(query);
-  return computed(() => source(access(query))());
+  return createMemo(() => source(access(query))());
 }
 
 /** Whether the user asked for a dark colour scheme. */
@@ -77,7 +77,7 @@ export function breakpoints<K extends string>(
     matches[name] = source(`(${bound}: ${definitions[name]})`);
   }
 
-  const current = computed(() => {
+  const current = createMemo(() => {
     let found: K | undefined;
     for (const name of names) {
       if (matches[name]()) found = name;

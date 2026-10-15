@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { flush, root, signal } from "@barqjs/core";
+import { flush, createRoot, createSignal } from "@barqjs/core";
 import { breakpoints, mediaQuery } from "./media.ts";
 
 interface FakeList {
@@ -49,7 +49,7 @@ const query = () => `(min-width: ${1000 + unique++}px)`;
 describe("mediaQuery", () => {
   test("follows the list and shares one list per query", async () => {
     const q = query();
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const a = mediaQuery(q);
       const b = mediaQuery(q);
       expect(a).toBe(b);
@@ -68,21 +68,21 @@ describe("mediaQuery", () => {
   test("a reactive query switches sources", () => {
     const first = query();
     const second = query();
-    const which = signal(first);
-    const dispose = root((d) => {
-      const matches = mediaQuery(which);
-      expect(matches()).toBe(false);
-
-      window.matchMedia(second);
-      setMatches(second, true);
-      flush();
-      expect(matches()).toBe(false);
-
-      which.set(second);
-      flush();
-      expect(matches()).toBe(true);
-      return d;
+    const [which, setWhich] = createSignal(first);
+    const [dispose, matches] = createRoot((d) => {
+      const isMatching = mediaQuery(which);
+      expect(isMatching()).toBe(false);
+      return [d, isMatching] as const;
     });
+
+    window.matchMedia(second);
+    setMatches(second, true);
+    flush();
+    expect(matches()).toBe(false);
+
+    setWhich(second);
+    flush();
+    expect(matches()).toBe(true);
     dispose();
   });
 });
@@ -90,7 +90,7 @@ describe("mediaQuery", () => {
 describe("breakpoints", () => {
   test("reports each bound and the largest match", () => {
     const suffix = unique++;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const bp = breakpoints({
         sm: `${suffix}40px`,
         md: `${suffix}68px`,
@@ -119,7 +119,7 @@ describe("breakpoints", () => {
 
   test("max-width bounds", () => {
     const suffix = unique++;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const bp = breakpoints({ small: `${suffix}00px` }, { watch: "max" });
       setMatches(`(max-width: ${suffix}00px)`, true);
       flush();

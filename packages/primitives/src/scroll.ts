@@ -1,4 +1,4 @@
-import { type Accessor, isServer, renderEffect, signal } from "@barqjs/core";
+import { type Accessor, isServer, createRenderEffect, createSignal, untrack } from "@barqjs/core";
 import { on } from "./event.ts";
 import { type MaybeAccessor, access, shared } from "./utils.ts";
 
@@ -22,15 +22,15 @@ export const windowScroll: () => ScrollPosition = shared(() => {
   if (isServer) return { x: () => 0, y: () => 0 };
 
   const [initialX, initialY] = readWindow();
-  const x = signal(initialX);
-  const y = signal(initialY);
+  const [x, setX] = createSignal(initialX);
+  const [y, setY] = createSignal(initialY);
   on(
     window,
     "scroll",
     () => {
       const [nextX, nextY] = readWindow();
-      x.set(nextX);
-      y.set(nextY);
+      setX(nextX);
+      setY(nextY);
     },
     { passive: true },
   );
@@ -44,21 +44,25 @@ export const windowScroll: () => ScrollPosition = shared(() => {
  * per call, because an element's listener cannot be.
  */
 export function scrollPosition(target: MaybeAccessor<Element | null | undefined>): ScrollPosition {
-  const x = signal(0);
-  const y = signal(0);
+  const present = isServer ? undefined : untrack(() => access(target));
+  const [x, setX] = createSignal(present?.scrollLeft ?? 0);
+  const [y, setY] = createSignal(present?.scrollTop ?? 0);
   if (isServer) return { x, y };
 
   const read = (element: Element): void => {
-    x.set(element.scrollLeft);
-    y.set(element.scrollTop);
+    setX(element.scrollLeft);
+    setY(element.scrollTop);
   };
 
   on(target, "scroll", (event) => read(event.currentTarget), { passive: true });
-  renderEffect(() => {
-    const element = access(target);
-    if (element === null || element === undefined) return;
-    read(element);
-  });
+  createRenderEffect(
+    () => access(target),
+    (element) => {
+      if (element === null || element === undefined) return;
+      read(element);
+    },
+    { defer: true },
+  );
 
   return { x, y };
 }

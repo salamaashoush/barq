@@ -1,4 +1,4 @@
-import { type Signal, isServer, renderEffect, signal } from "@barqjs/core";
+import { type Signal, isServer, createRenderEffect, createSignal } from "@barqjs/core";
 import { on } from "./event.ts";
 
 export interface PersistOptions<T> {
@@ -29,8 +29,8 @@ export interface PersistOptions<T> {
  * meaningful.
  *
  * ```ts
- * const theme = persisted("theme", "system");
- * theme.set("dark"); // and it is still dark on the next load
+ * const [theme, setTheme] = persisted("theme", "system");
+ * setTheme("dark"); // and it is still dark on the next load
  * ```
  */
 export function persisted<T>(key: string, initial: T, options?: PersistOptions<T>): Signal<T> {
@@ -49,8 +49,9 @@ export function persisted<T>(key: string, initial: T, options?: PersistOptions<T
     }
   }
 
-  const value = signal(start);
-  if (store === undefined) return value;
+  const signal = createSignal<T>(start as Exclude<T, Function>);
+  if (store === undefined) return signal;
+  const [value, setValue] = signal;
 
   /**
    * What storage is known to hold.
@@ -69,19 +70,21 @@ export function persisted<T>(key: string, initial: T, options?: PersistOptions<T
     fail?.(error, "write");
   }
 
-  renderEffect(() => {
-    const next = value();
-    try {
-      const raw = serialize(next);
-      if (raw === mirrored) return;
-      // After the write, not before: a full quota throws, and storage does not
-      // hold what the throw prevented it from holding.
-      store.setItem(key, raw);
-      mirrored = raw;
-    } catch (error) {
-      fail?.(error, "write");
-    }
-  });
+  createRenderEffect(
+    () => value(),
+    (next) => {
+      try {
+        const raw = serialize(next);
+        if (raw === mirrored) return;
+        // After the write, not before: a full quota throws, and storage does not
+        // hold what the throw prevented it from holding.
+        store.setItem(key, raw);
+        mirrored = raw;
+      } catch (error) {
+        fail?.(error, "write");
+      }
+    },
+  );
 
   if (options?.sync !== false && !isServer) {
     on(window, "storage", (event) => {
@@ -89,10 +92,11 @@ export function persisted<T>(key: string, initial: T, options?: PersistOptions<T
       try {
         if (event.newValue === null) {
           mirrored = serialize(initial);
-          value.set(initial);
+          setValue(() => initial);
         } else {
           mirrored = event.newValue;
-          value.set(deserialize(event.newValue));
+          const next = deserialize(event.newValue);
+          setValue(() => next);
         }
       } catch (error) {
         fail?.(error, "read");
@@ -100,7 +104,7 @@ export function persisted<T>(key: string, initial: T, options?: PersistOptions<T
     });
   }
 
-  return value;
+  return signal;
 }
 
 /** {@link persisted} against `sessionStorage`. */

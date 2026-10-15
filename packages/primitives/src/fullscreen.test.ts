@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { flush, root } from "@barqjs/core";
+import { flush, createRoot } from "@barqjs/core";
 import { fullscreen, fullscreenElement } from "./fullscreen.ts";
 
 let current: Element | null = null;
@@ -50,7 +50,7 @@ document.documentElement.requestFullscreen = async () => {
 describe("fullscreen", () => {
   test("enter and exit move the state", async () => {
     const target = el();
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const fs = fullscreen(target);
       expect(fs.active()).toBe(false);
       return [d, fs] as const;
@@ -69,7 +69,7 @@ describe("fullscreen", () => {
 
   test("active follows the document, so Escape is seen", async () => {
     const target = el();
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const fs = fullscreen(target);
       return [d, fs] as const;
     });
@@ -91,7 +91,7 @@ describe("fullscreen", () => {
   test("another element being fullscreen is not this one being fullscreen", async () => {
     const mine = el();
     const other = el();
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const fs = fullscreen(mine);
       return [d, fs] as const;
     });
@@ -106,7 +106,7 @@ describe("fullscreen", () => {
 
   test("toggle goes both ways", async () => {
     const target = el();
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const fs = fullscreen(target);
       return [d, fs] as const;
     });
@@ -120,7 +120,7 @@ describe("fullscreen", () => {
   });
 
   test("with no target it means the document", async () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const fs = fullscreen();
       return [d, fs] as const;
     });

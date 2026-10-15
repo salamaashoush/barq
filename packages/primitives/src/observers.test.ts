@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { flush, root, signal } from "@barqjs/core";
+import { flush, createRoot, createSignal } from "@barqjs/core";
 import { intersectionObserver, mutationObserver, resizeObserver } from "./observers.ts";
 
 interface FakeObserver {
@@ -127,20 +127,20 @@ describe("resizeObserver", () => {
   test("follows a reactive target", () => {
     const a = el();
     const b = el();
-    const target = signal<HTMLDivElement | null>(null);
+    const [target, setTarget] = createSignal<HTMLDivElement | null>(null);
     const seen: Element[] = [];
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       resizeObserver(target, (entry) => seen.push(entry.target));
       return d;
     });
     expect(instances).toHaveLength(0);
 
-    target.set(a);
+    setTarget(a);
     flush();
     emitResize([{ target: a }]);
     expect(seen).toEqual([a]);
 
-    target.set(b);
+    setTarget(b);
     flush();
     emitResize([{ target: a }, { target: b }]);
     expect(seen).toEqual([a, b]);
@@ -206,7 +206,7 @@ describe("mutationObserver", () => {
     const parent = el();
     document.body.append(parent);
     let batches = 0;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       mutationObserver(parent, () => batches++);
       return d;
     });

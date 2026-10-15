@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { flush, root } from "@barqjs/core";
+import { flush, createRoot } from "@barqjs/core";
 import { clearPersisted, peekPersisted, persisted } from "./storage.ts";
 
 beforeEach(() => localStorage.clear());
@@ -8,15 +8,15 @@ afterEach(() => localStorage.clear());
 describe("persisted", () => {
   test("starts from storage when the key is set", () => {
     localStorage.setItem("count", "7");
-    const dispose = root((d) => {
-      expect(persisted("count", 0)()).toBe(7);
+    const dispose = createRoot((d) => {
+      expect(persisted("count", 0)[0]()).toBe(7);
       return d;
     });
     dispose();
   });
 
   test("does not write the initial value back", () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       persisted("untouched", "a");
       return d;
     });
@@ -25,19 +25,16 @@ describe("persisted", () => {
   });
 
   test("writes on change", () => {
-    const dispose = root((d) => {
-      const value = persisted("theme", "system");
-      value.set("dark");
-      flush();
-      expect(localStorage.getItem("theme")).toBe('"dark"');
-      return d;
-    });
+    const [dispose, setValue] = createRoot((d) => [d, persisted("theme", "system")[1]] as const);
+    setValue("dark");
+    flush();
+    expect(localStorage.getItem("theme")).toBe('"dark"');
     dispose();
   });
 
   test("survives a value another tab wrote", () => {
-    const dispose = root((d) => {
-      const value = persisted("shared", 1);
+    const dispose = createRoot((d) => {
+      const [value] = persisted("shared", 1);
       window.dispatchEvent(
         new StorageEvent("storage", {
           key: "shared",
@@ -60,8 +57,8 @@ describe("persisted", () => {
       real.call(this, k, v);
     };
     try {
-      const dispose = root((d) => {
-        const value = persisted("echo", 1);
+      const dispose = createRoot((d) => {
+        const [value] = persisted("echo", 1);
         window.dispatchEvent(
           new StorageEvent("storage", {
             key: "echo",
@@ -82,8 +79,8 @@ describe("persisted", () => {
   });
 
   test("ignores a storage event for another key or another area", () => {
-    const dispose = root((d) => {
-      const value = persisted("mine", 1);
+    const dispose = createRoot((d) => {
+      const [value] = persisted("mine", 1);
       window.dispatchEvent(
         new StorageEvent("storage", { key: "other", newValue: "9", storageArea: localStorage }),
       );
@@ -100,8 +97,8 @@ describe("persisted", () => {
 
   test("a removal elsewhere restores the initial value", () => {
     localStorage.setItem("gone", '"x"');
-    const dispose = root((d) => {
-      const value = persisted("gone", "fallback");
+    const dispose = createRoot((d) => {
+      const [value] = persisted("gone", "fallback");
       expect(value()).toBe("x");
       clearPersisted("gone");
       flush();
@@ -114,8 +111,8 @@ describe("persisted", () => {
   test("reports a corrupt value instead of throwing", () => {
     localStorage.setItem("broken", "{not json");
     const errors: string[] = [];
-    const dispose = root((d) => {
-      const value = persisted("broken", "safe", {
+    const dispose = createRoot((d) => {
+      const [value] = persisted("broken", "safe", {
         onError: (_error, phase) => errors.push(phase),
       });
       expect(value()).toBe("safe");
@@ -135,15 +132,15 @@ describe("persisted", () => {
       removeItem: () => {},
     } as unknown as Storage;
 
-    const dispose = root((d) => {
-      const value = persisted("quota", 0, {
+    const [dispose, setValue] = createRoot((d) => {
+      const [, write] = persisted("quota", 0, {
         storage: store,
         onError: (_e, phase) => errors.push(phase),
       });
-      value.set(1);
-      flush();
-      return d;
+      return [d, write] as const;
     });
+    setValue(1);
+    flush();
     expect(errors).toEqual(["write"]);
     dispose();
   });
@@ -163,36 +160,36 @@ describe("persisted", () => {
       },
     } as unknown as Storage;
 
-    const dispose = root((d) => {
-      const value = persisted("quota-retry", 0, {
+    const [dispose, setValue] = createRoot((d) => {
+      const [, write] = persisted("quota-retry", 0, {
         storage: store,
         onError: (_error, phase) => errors.push(phase),
       });
-      value.set(1);
-      flush();
-      expect(errors).toEqual(["write"]);
-      expect(held["quota-retry"]).toBeUndefined();
-
-      refuse = false;
-      value.set(2);
-      flush();
-      expect(held["quota-retry"]).toBe("2");
-      return d;
+      return [d, write] as const;
     });
+    setValue(1);
+    flush();
+    expect(errors).toEqual(["write"]);
+    expect(held["quota-retry"]).toBeUndefined();
+
+    refuse = false;
+    setValue(2);
+    flush();
+    expect(held["quota-retry"]).toBe("2");
     dispose();
   });
 
   test("a custom codec round-trips", () => {
-    const dispose = root((d) => {
-      const value = persisted("raw", "a", {
+    const [dispose, setValue] = createRoot((d) => {
+      const [, write] = persisted("raw", "a", {
         serialize: (v) => v,
         deserialize: (v) => v,
       });
-      value.set("b");
-      flush();
-      expect(localStorage.getItem("raw")).toBe("b");
-      return d;
+      return [d, write] as const;
     });
+    setValue("b");
+    flush();
+    expect(localStorage.getItem("raw")).toBe("b");
     dispose();
   });
 });

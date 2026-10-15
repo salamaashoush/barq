@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, root } from "@barqjs/core";
+import { flush, createRoot } from "@barqjs/core";
 import { raf } from "./raf.ts";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -37,7 +37,7 @@ describe("raf", () => {
 
   test("stops when its owner disposes", async () => {
     let frames = 0;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       raf(() => frames++).start();
       return d;
     });

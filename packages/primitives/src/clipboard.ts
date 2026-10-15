@@ -1,4 +1,4 @@
-import { type Accessor, isServer, signal } from "@barqjs/core";
+import { type Accessor, isServer, createSignal } from "@barqjs/core";
 import { tryCleanup } from "./utils.ts";
 
 export interface ClipboardHandle {
@@ -24,8 +24,8 @@ export interface ClipboardOptions {
  * button bound to it does not lie.
  */
 export function clipboard(options?: ClipboardOptions): ClipboardHandle {
-  const copied = signal(false);
-  const error = signal<unknown>(undefined);
+  const [copied, setCopied] = createSignal(false);
+  const [error, setError] = createSignal<unknown>(undefined);
   const resetAfter = options?.resetAfter ?? 2000;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
@@ -36,15 +36,15 @@ export function clipboard(options?: ClipboardOptions): ClipboardHandle {
   const copy = async (text: string): Promise<void> => {
     try {
       await writeClipboard(text);
-      error.set(undefined);
-      copied.set(true);
+      setError(undefined);
+      setCopied(true);
       if (resetAfter > 0) {
         if (timer !== undefined) clearTimeout(timer);
-        timer = setTimeout(() => copied.set(false), resetAfter);
+        timer = setTimeout(() => setCopied(false), resetAfter);
       }
     } catch (failure) {
-      error.set(failure);
-      copied.set(false);
+      setError(failure);
+      setCopied(false);
       throw failure;
     }
   };

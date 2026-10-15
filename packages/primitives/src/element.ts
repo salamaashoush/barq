@@ -1,4 +1,4 @@
-import { type Accessor, isServer, renderEffect, signal } from "@barqjs/core";
+import { type Accessor, isServer, createRenderEffect, createSignal, untrack } from "@barqjs/core";
 import { on } from "./event.ts";
 import { intersectionObserver, resizeObserver } from "./observers.ts";
 import { type Clear, type MaybeAccessor, access, shared } from "./utils.ts";
@@ -18,15 +18,15 @@ export function elementSize<T extends Element>(
   target: MaybeAccessor<T | null | undefined>,
   options?: ResizeObserverOptions,
 ): Size {
-  const width = signal(0);
-  const height = signal(0);
+  const [width, setWidth] = createSignal(0);
+  const [height, setHeight] = createSignal(0);
 
   resizeObserver(
     target,
     (entry) => {
       const box = boxOf(entry, options?.box);
-      width.set(box.width);
-      height.set(box.height);
+      setWidth(box.width);
+      setHeight(box.height);
     },
     options,
   );
@@ -85,30 +85,30 @@ export function bounds<T extends Element>(
   target: MaybeAccessor<T | null | undefined>,
   options?: BoundsOptions,
 ): Bounds & { measure: () => void } {
-  const fields = {
-    x: signal(0),
-    y: signal(0),
-    width: signal(0),
-    height: signal(0),
-    top: signal(0),
-    right: signal(0),
-    bottom: signal(0),
-    left: signal(0),
-  };
+  // `measure` is the caller's to call, a component body included.
+  const field = { ownedWrite: true };
+  const [x, setX] = createSignal(0, field);
+  const [y, setY] = createSignal(0, field);
+  const [width, setWidth] = createSignal(0, field);
+  const [height, setHeight] = createSignal(0, field);
+  const [top, setTop] = createSignal(0, field);
+  const [right, setRight] = createSignal(0, field);
+  const [bottom, setBottom] = createSignal(0, field);
+  const [left, setLeft] = createSignal(0, field);
 
-  const measure = (): void => {
-    const element = access(target);
+  const read = (element: Element | null | undefined): void => {
     if (element === null || element === undefined) return;
     const rect = element.getBoundingClientRect();
-    fields.x.set(rect.x);
-    fields.y.set(rect.y);
-    fields.width.set(rect.width);
-    fields.height.set(rect.height);
-    fields.top.set(rect.top);
-    fields.right.set(rect.right);
-    fields.bottom.set(rect.bottom);
-    fields.left.set(rect.left);
+    setX(rect.x);
+    setY(rect.y);
+    setWidth(rect.width);
+    setHeight(rect.height);
+    setTop(rect.top);
+    setRight(rect.right);
+    setBottom(rect.bottom);
+    setLeft(rect.left);
   };
+  const measure = (): void => read(untrack(() => access(target)));
 
   if (!isServer) {
     resizeObserver(target, measure);
@@ -119,13 +119,10 @@ export function bounds<T extends Element>(
       on(window, "resize", measure, { passive: true });
     }
     // The target may be a ref that is still empty; measure again when it lands.
-    renderEffect(() => {
-      access(target);
-      measure();
-    });
+    createRenderEffect(() => access(target), read);
   }
 
-  return { ...fields, measure };
+  return { x, y, width, height, top, right, bottom, left, measure };
 }
 
 export interface VisibleOptions extends IntersectionObserverInit {
@@ -144,7 +141,7 @@ export function visible<T extends Element>(
   target: MaybeAccessor<T | null | undefined>,
   options?: VisibleOptions,
 ): Accessor<boolean> {
-  const showing = signal(false);
+  const [showing, setShowing] = createSignal(false);
   if (isServer) return showing;
 
   // A holder rather than the binding itself: an observer that reported
@@ -153,7 +150,7 @@ export function visible<T extends Element>(
   subscription.clear = intersectionObserver(
     target,
     (entry) => {
-      showing.set(entry.isIntersecting);
+      setShowing(entry.isIntersecting);
       if (entry.isIntersecting && options?.once) subscription.clear?.();
     },
     options,
@@ -171,11 +168,11 @@ export function visible<T extends Element>(
 export const windowSize: () => Size = shared(() => {
   if (isServer) return { width: () => 0, height: () => 0 };
 
-  const width = signal(window.innerWidth);
-  const height = signal(window.innerHeight);
+  const [width, setWidth] = createSignal(window.innerWidth);
+  const [height, setHeight] = createSignal(window.innerHeight);
   on(window, "resize", () => {
-    width.set(window.innerWidth);
-    height.set(window.innerHeight);
+    setWidth(window.innerWidth);
+    setHeight(window.innerHeight);
   });
   return { width, height };
 });

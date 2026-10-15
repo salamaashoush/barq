@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, root, signal } from "@barqjs/core";
+import { flush, createRoot, createSignal } from "@barqjs/core";
 import { virtual } from "./virtual.ts";
 
 /** A container whose scroll offset and measured size are ours to drive. */
@@ -20,7 +20,7 @@ const scrollTo = (el: HTMLElement, top: number) => {
 describe("virtual, uniform rows", () => {
   test("renders a window with overscan and the full extent", () => {
     const el = container();
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const list = virtual(el, { count: 1000, size: 20, overscan: 2 });
       // The viewport falls back to 600 until a ResizeObserver reports.
       expect(list.total()).toBe(20_000);
@@ -40,7 +40,7 @@ describe("virtual, uniform rows", () => {
 
   test("the window follows the scroll", () => {
     const el = container();
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const list = virtual(el, { count: 1000, size: 20, overscan: 0 });
       expect(list.range().start).toBe(0);
 
@@ -55,7 +55,7 @@ describe("virtual, uniform rows", () => {
 
   test("an empty list renders nothing", () => {
     const el = container();
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const list = virtual(el, { count: 0, size: 20 });
       expect(list.items()).toEqual([]);
       expect(list.range()).toEqual({ start: 0, end: 0 });
@@ -67,15 +67,15 @@ describe("virtual, uniform rows", () => {
 
   test("a reactive count re-windows", () => {
     const el = container();
-    const count = signal(10);
-    const dispose = root((d) => {
-      const list = virtual(el, { count, size: 20, overscan: 0 });
-      expect(list.total()).toBe(200);
-      count.set(50);
-      flush();
-      expect(list.total()).toBe(1000);
-      return d;
+    const [count, setCount] = createSignal(10);
+    const [dispose, list] = createRoot((d) => {
+      const windowed = virtual(el, { count, size: 20, overscan: 0 });
+      expect(windowed.total()).toBe(200);
+      return [d, windowed] as const;
     });
+    setCount(50);
+    flush();
+    expect(list.total()).toBe(1000);
     dispose();
   });
 });
@@ -85,7 +85,7 @@ describe("virtual, ragged rows", () => {
 
   test("offsets come from the prefix sum", () => {
     const el = container();
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const list = virtual(el, { count: 100, size: sizes, overscan: 0 });
       // 50 rows of 10 and 50 of 30.
       expect(list.total()).toBe(50 * 10 + 50 * 30);
@@ -100,7 +100,7 @@ describe("virtual, ragged rows", () => {
 
   test("a scroll lands on the row whose extent covers the offset", () => {
     const el = container();
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const list = virtual(el, { count: 100, size: sizes, overscan: 0 });
       // Each pair costs 40px, so 400px is exactly row 20.
       scrollTo(el, 400);
@@ -126,7 +126,7 @@ describe("virtual, ragged rows", () => {
     const asked: unknown[] = [];
     el.scrollTo = (options?: ScrollToOptions | number) => asked.push(options);
 
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const list = virtual(el, { count: 100, size: sizes });
       list.scrollTo(4, "smooth");
       return d;

@@ -1,4 +1,4 @@
-import { type Accessor, isServer, signal } from "@barqjs/core";
+import { type Accessor, isServer, createSignal } from "@barqjs/core";
 import { type Clear, type MaybeAccessor, access, tryCleanup } from "./utils.ts";
 
 export type SocketState = "closed" | "connecting" | "open" | "closing";
@@ -65,10 +65,12 @@ export function websocket<T = string>(
   url: MaybeAccessor<string>,
   options?: SocketOptions,
 ): Socket<T> {
-  const state = signal<SocketState>("closed");
-  const message = signal<T | undefined>(undefined, { equals: false });
-  const attempts = signal(0);
-  const raw = signal<WebSocket | null>(null);
+  // `open` and `close` are the caller's to call, a component body included,
+  // and the socket is opened from one unless `immediate` is off.
+  const [state, setState] = createSignal<SocketState>("closed", { ownedWrite: true });
+  const [message, setMessage] = createSignal<T | undefined>(undefined, { equals: false });
+  const [attempts, setAttempts] = createSignal(0);
+  const [raw, setRaw] = createSignal<WebSocket | null>(null, { ownedWrite: true });
 
   const retries = options?.reconnect ?? true;
   const step = options?.backoff ?? 500;
@@ -79,6 +81,9 @@ export function websocket<T = string>(
   let beat: ReturnType<typeof setInterval> | undefined;
   let closedByUs = false;
   let disposed = false;
+  // The count the retry policy decides on. `attempts` publishes it, and a
+  // write is not readable back until the next flush.
+  let tries = 0;
 
   const stopBeat = (): void => {
     if (beat === undefined) return;
@@ -89,21 +94,22 @@ export function websocket<T = string>(
   const allowed = (): boolean => {
     if (retries === false || closedByUs || disposed) return false;
     if (retries === true) return true;
-    return attempts() < retries;
+    return tries < retries;
   };
 
   const connect = (): void => {
     if (isServer || disposed || socket !== null) return;
     closedByUs = false;
-    state.set("connecting");
+    setState("connecting");
 
     const next = new WebSocket(access(url), options?.protocols as string[] | undefined);
     socket = next;
-    raw.set(next);
+    setRaw(next);
 
     next.addEventListener("open", () => {
-      state.set("open");
-      attempts.set(0);
+      setState("open");
+      tries = 0;
+      setAttempts(0);
       // Everything written while it was down, in the order it was written.
       while (queue.length > 0) next.send(queue.shift() as Sendable);
       if (options?.heartbeat !== undefined) {
@@ -114,16 +120,17 @@ export function websocket<T = string>(
       }
     });
 
-    next.addEventListener("message", (event: MessageEvent) => message.set(event.data as T));
+    next.addEventListener("message", (event: MessageEvent) => setMessage(() => event.data as T));
 
     next.addEventListener("close", (event: CloseEvent) => {
       stopBeat();
       socket = null;
-      raw.set(null);
-      state.set("closed");
+      setRaw(null);
+      setState("closed");
       if (event.code === CLEAN || !allowed()) return;
-      const wait = Math.min(MAX_BACKOFF, step * 2 ** attempts());
-      attempts.update((n) => n + 1);
+      const wait = Math.min(MAX_BACKOFF, step * 2 ** tries);
+      tries++;
+      setAttempts(tries);
       retryTimer = setTimeout(connect, wait);
     });
   };
@@ -136,10 +143,10 @@ export function websocket<T = string>(
     const open = socket;
     socket = null;
     if (open === null) {
-      state.set("closed");
+      setState("closed");
       return;
     }
-    state.set("closing");
+    setState("closing");
     open.close(code, reason);
   };
 

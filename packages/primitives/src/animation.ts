@@ -1,4 +1,4 @@
-import { type Accessor, isServer, renderEffect, signal, untrack } from "@barqjs/core";
+import { type Accessor, isServer, createRenderEffect, createSignal, untrack } from "@barqjs/core";
 import { prefersReducedMotion } from "./media.ts";
 import { raf } from "./raf.ts";
 import { type MaybeAccessor, access } from "./utils.ts";
@@ -78,7 +78,7 @@ export function tween<T extends Animatable>(
   options?: TweenOptions,
 ): Accessor<T> {
   const start = untrack(source);
-  const value = signal<T>(start);
+  const [value, setValue] = createSignal<T>(start as Exclude<T, Function>);
   if (isServer) return value;
 
   const ease = options?.easing ?? easing.cubicOut;
@@ -86,34 +86,37 @@ export function tween<T extends Animatable>(
 
   let from: Animatable = start;
   let to: Animatable = start;
+  // Where the tween is, kept beside the signal: a frame's write is not
+  // readable back until the next flush, and a retarget may land before it.
+  let current: Animatable = start;
   let began = 0;
   let span = 0;
 
   const loop = raf((timestamp) => {
     const progress = span <= 0 ? 1 : Math.min(1, (timestamp - began) / span);
-    value.set(mix(from, to, ease(progress)) as T);
+    const next = mix(from, to, ease(progress));
+    current = next;
+    setValue(() => next as T);
     if (progress >= 1) loop.stop();
   });
 
-  let first = true;
-  renderEffect(() => {
-    const target = source();
-    if (first) {
-      first = false;
-      return;
-    }
-    if (reduced?.()) {
-      loop.stop();
-      from = to = target;
-      value.set(target);
-      return;
-    }
-    from = untrack(value);
-    to = target;
-    span = access(options?.duration ?? 200);
-    began = performance.now();
-    loop.start();
-  });
+  createRenderEffect(
+    () => [source(), reduced?.() === true, access(options?.duration ?? 200)] as const,
+    ([target, still, duration]) => {
+      if (still) {
+        loop.stop();
+        from = to = current = target;
+        setValue(() => target);
+        return;
+      }
+      from = current;
+      to = target;
+      span = duration;
+      began = performance.now();
+      loop.start();
+    },
+    { defer: true },
+  );
 
   return value;
 }
@@ -140,7 +143,7 @@ export function spring<T extends Animatable>(
   options?: SpringOptions,
 ): Accessor<T> {
   const start = untrack(source);
-  const value = signal<T>(start);
+  const [value, setValue] = createSignal<T>(start as Exclude<T, Function>);
   if (isServer) return value;
 
   const stiffness = options?.stiffness ?? 0.15;
@@ -151,6 +154,9 @@ export function spring<T extends Animatable>(
   const width = typeof start === "number" ? 1 : start.length;
   const velocity = new Array<number>(width).fill(0);
   let target: Animatable = start;
+  // Where the spring is, kept beside the signal: a frame's write is not
+  // readable back until the next flush, and the next frame may come first.
+  let position: Animatable = start;
   let last = 0;
 
   const step = (current: number, goal: number, index: number): number => {
@@ -167,7 +173,7 @@ export function spring<T extends Animatable>(
     const steps = Math.min(4, Math.max(1, Math.round((timestamp - last) / 16.667)));
     last = timestamp;
 
-    let current: Animatable = untrack(value);
+    let current = position;
 
     for (let i = 0; i < steps; i++) {
       if (typeof current === "number") {
@@ -183,30 +189,31 @@ export function spring<T extends Animatable>(
     }
 
     const settled = rested(current, target, velocity, precision);
-    value.set((settled ? target : current) as T);
+    const next = settled ? target : current;
+    position = next;
+    setValue(() => next as T);
     if (settled) {
       velocity.fill(0);
       loop.stop();
     }
   });
 
-  let first = true;
-  renderEffect(() => {
-    const next = source();
-    if (first) {
-      first = false;
-      return;
-    }
-    target = next;
-    if (reduced?.()) {
-      loop.stop();
-      velocity.fill(0);
-      value.set(next);
-      return;
-    }
-    last = performance.now();
-    loop.start();
-  });
+  createRenderEffect(
+    () => [source(), reduced?.() === true] as const,
+    ([next, still]) => {
+      target = next;
+      if (still) {
+        loop.stop();
+        velocity.fill(0);
+        position = next;
+        setValue(() => next);
+        return;
+      }
+      last = performance.now();
+      loop.start();
+    },
+    { defer: true },
+  );
 
   return value;
 }

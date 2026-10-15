@@ -1,54 +1,54 @@
 import { describe, expect, test } from "bun:test";
-import { flush, root, signal } from "@barqjs/core";
+import { flush, createRoot, createSignal } from "@barqjs/core";
 import { TimeoutError, abortOnCleanup, raceTimeout, sleep, until } from "./promise.ts";
 
 describe("until", () => {
   test("resolves at once when the condition is already true", async () => {
-    const ready = signal("value");
+    const [ready] = createSignal("value");
     await expect(until(ready)).resolves.toBe("value");
   });
 
   test("waits for the condition", async () => {
-    const ready = signal<string | null>(null);
-    const dispose = root((d) => {
+    const [ready, setReady] = createSignal<string | null>(null);
+    const dispose = createRoot((d) => {
       const promise = until(ready);
       return [d, promise] as const;
     });
-    ready.set("here");
+    setReady("here");
     flush();
     await expect(dispose[1]).resolves.toBe("here");
     dispose[0]();
   });
 
   test("skips a falsy value on the way", async () => {
-    const ready = signal<number>(0);
-    const promise = root(() => until(ready));
-    ready.set(0);
+    const [ready, setReady] = createSignal<number>(0);
+    const promise = createRoot(() => until(ready));
+    setReady(0);
     flush();
-    ready.set(5);
+    setReady(5);
     flush();
     await expect(promise).resolves.toBe(5);
   });
 
   test("cancel rejects", async () => {
-    const ready = signal(false);
+    const [ready] = createSignal(false);
     const promise = until(ready);
     promise.cancel();
     await expect(promise).rejects.toThrow("cancelled");
   });
 
   test("stops watching once resolved", async () => {
-    const ready = signal(0);
+    const [ready, setReady] = createSignal(0);
     let reads = 0;
     const promise = until(() => {
       reads++;
       return ready();
     });
-    ready.set(1);
+    setReady(1);
     flush();
     await promise;
     const seen = reads;
-    ready.set(2);
+    setReady(2);
     flush();
     await Promise.resolve();
     expect(reads).toBe(seen);
@@ -79,7 +79,7 @@ describe("sleep", () => {
 
   test("is cancelled with its owner, and never resolves after that", async () => {
     let resolved = false;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       void sleep(20).then(() => (resolved = true));
       return d;
     });
@@ -91,7 +91,7 @@ describe("sleep", () => {
 
 describe("abortOnCleanup", () => {
   test("aborts when the scope disposes", () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const abort = abortOnCleanup();
       expect(abort.aborted).toBe(false);
       return [d, abort] as const;

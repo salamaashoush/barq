@@ -1,4 +1,4 @@
-import { type Accessor, batch, onCleanup, signal, untrack } from "@barqjs/core";
+import { type Accessor, onCleanup, createSignal } from "@barqjs/core";
 import type { Clear } from "./utils.ts";
 
 /** What a transition may do besides changing state. */
@@ -68,25 +68,31 @@ export interface Machine<S extends string, E extends string, C> {
 export function machine<S extends string, E extends string, C = undefined>(
   config: MachineConfig<S, E, C>,
 ): Machine<S, E, C> {
-  const state = signal<S>(config.initial);
-  const context = signal<C>(config.context as C);
+  // Where the machine is, kept beside the signals: a `send` stages its writes
+  // like any setter, and the next `send` must not decide on the state before
+  // them. Publishing them here with `flush` is not an option, since a `send`
+  // from `onSettled`, an effect or an `action` runs where a flush is refused.
+  let current = config.initial;
+  let held = config.context as C;
+  const [state, setState] = createSignal<S>(current as Exclude<S, Function>);
+  const [context, setContext] = createSignal<C>(held as Exclude<C, Function>);
   let exit: Clear | undefined;
 
   const resolve = (event: E, payload: unknown): Transition<S, C> | null => {
-    const node = config.states[untrack(state)];
+    const node = config.states[current];
     const target = node.on?.[event];
     if (target === undefined) return null;
     // `Partial<Record<E, …>>` indexes to a union TypeScript will not narrow back
     // to `S` on its own, so the string arm is named rather than inferred.
     const transition: Transition<S, C> = typeof target === "string" ? { to: target as S } : target;
-    if (transition.guard !== undefined && !transition.guard(untrack(context), payload)) return null;
+    if (transition.guard !== undefined && !transition.guard(held, payload)) return null;
     return transition;
   };
 
   const enter = (next: S): void => {
     exit?.();
     exit = undefined;
-    const cleanup = config.states[next].enter?.(untrack(context));
+    const cleanup = config.states[next].enter?.(held);
     if (typeof cleanup === "function") exit = cleanup;
   };
 
@@ -100,14 +106,15 @@ export function machine<S extends string, E extends string, C = undefined>(
     send(event, payload) {
       const transition = resolve(event, payload);
       if (transition === null) return false;
-      batch(() => {
-        if (transition.action !== undefined) {
-          context.set(transition.action(untrack(context), payload));
-        }
-        state.set(transition.to);
-      });
-      // Outside the batch: an `enter` that sends another event must see the
-      // state it was entered for, not the one the batch is still holding.
+      if (transition.action !== undefined) {
+        const next = transition.action(held, payload);
+        held = next;
+        setContext(() => next);
+      }
+      current = transition.to;
+      setState(() => transition.to);
+      // After `current` moves: an `enter` that sends another event is decided
+      // on the state it was entered for, not the one still published.
       enter(transition.to);
       return true;
     },

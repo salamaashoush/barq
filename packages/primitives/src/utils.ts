@@ -1,4 +1,4 @@
-import { type Accessor, getOwner, onCleanup, root, runWithOwner } from "@barqjs/core";
+import { type Accessor, getOwner, onCleanup, createRoot, runWithOwner } from "@barqjs/core";
 
 /** A value, or a zero-argument function producing one. */
 export type MaybeAccessor<T> = T | Accessor<T>;
@@ -142,10 +142,12 @@ export function sharedKeyed<K, T>(factory: (key: K) => T): (key: K) => T {
     if (entry === undefined) {
       const created = { count: 0, pinned: false, value: undefined as T, dispose: noop };
       entries.set(key, created);
-      created.value = root((dispose) => {
-        created.dispose = dispose;
-        return factory(key);
-      });
+      created.value = runWithOwner(null, () =>
+        createRoot((dispose) => {
+          created.dispose = dispose;
+          return factory(key);
+        }),
+      );
       entry = created;
     }
     const held = entry;

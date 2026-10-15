@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { effect, flush, root, signal } from "@barqjs/core";
+import { createTrackedEffect, flush, createRoot, createSignal } from "@barqjs/core";
 import { debounced, every, not, previous, selector, some, throttled, whenever } from "./derived.ts";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -16,17 +16,17 @@ async function eventually(predicate: () => boolean, what: string, deadline = 200
 
 describe("debounced", () => {
   test("starts at the source value and settles on the last one", async () => {
-    const source = signal("a");
-    const dispose = root((d) => {
+    const [source, setSource] = createSignal("a");
+    const dispose = createRoot((d) => {
       const out = debounced(source, 20);
-      expect(out()).toBe("a");
-      source.set("b");
-      flush();
-      source.set("c");
-      flush();
       expect(out()).toBe("a");
       return [d, out] as const;
     });
+    setSource("b");
+    flush();
+    setSource("c");
+    flush();
+    expect(dispose[1]()).toBe("a");
     await eventually(() => {
       flush();
       return dispose[1]() === "c";
@@ -35,13 +35,13 @@ describe("debounced", () => {
   });
 
   test("stops publishing after its owner disposes", async () => {
-    const source = signal(0);
+    const [source, setSource] = createSignal(0);
     let out!: () => number;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       out = debounced(source, 20);
       return d;
     });
-    source.set(1);
+    setSource(1);
     flush();
     dispose();
     await sleep(60);
@@ -51,17 +51,20 @@ describe("debounced", () => {
 
 describe("throttled", () => {
   test("publishes at most once per window", async () => {
-    const source = signal(0);
+    const [source, setSource] = createSignal(0);
     const seen: number[] = [];
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const out = throttled(source, 30);
-      effect(() => seen.push(out()));
+      createTrackedEffect(() => {
+        seen.push(out());
+      });
+      flush();
       return d;
     });
     expect(seen).toEqual([0]);
-    source.set(1);
+    setSource(1);
     flush();
-    source.set(2);
+    setSource(2);
     flush();
     expect(seen).toEqual([0]);
     await eventually(() => {
@@ -75,38 +78,35 @@ describe("throttled", () => {
 
 describe("previous", () => {
   test("holds the value from before the current one", () => {
-    const source = signal(1);
-    const dispose = root((d) => {
-      const prev = previous(source);
-      expect(prev()).toBeUndefined();
-      source.set(2);
-      flush();
-      expect(prev()).toBe(1);
-      source.set(3);
-      flush();
-      expect(prev()).toBe(2);
-      return d;
+    const [source, setSource] = createSignal(1);
+    const [dispose, prev] = createRoot((d) => {
+      const earlier = previous(source);
+      expect(earlier()).toBeUndefined();
+      return [d, earlier] as const;
     });
+    setSource(2);
+    flush();
+    expect(prev()).toBe(1);
+    setSource(3);
+    flush();
+    expect(prev()).toBe(2);
     dispose();
   });
 
   test("advances even when nobody reads it", () => {
-    const source = signal(1);
-    const dispose = root((d) => {
-      const prev = previous(source);
-      source.set(2);
-      flush();
-      source.set(3);
-      flush();
-      expect(prev()).toBe(2);
-      return d;
-    });
+    const [source, setSource] = createSignal(1);
+    const [dispose, prev] = createRoot((d) => [d, previous(source)] as const);
+    setSource(2);
+    flush();
+    setSource(3);
+    flush();
+    expect(prev()).toBe(2);
     dispose();
   });
 
   test("takes an initial value", () => {
-    const source = signal(1);
-    root((d) => {
+    const [source] = createSignal(1);
+    createRoot((d) => {
       expect(previous(source, 0)()).toBe(0);
       d();
     });
@@ -115,9 +115,9 @@ describe("previous", () => {
 
 describe("whenever", () => {
   test("runs only while the condition is truthy, and cleans up on the way out", () => {
-    const value = signal<string | null>(null);
+    const [value, setValue] = createSignal<string | null>(null);
     const log: string[] = [];
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       whenever(value, (v) => {
         log.push(`in:${v}`);
         return () => log.push(`out:${v}`);
@@ -126,13 +126,13 @@ describe("whenever", () => {
     });
 
     expect(log).toEqual([]);
-    value.set("a");
+    setValue("a");
     flush();
     expect(log).toEqual(["in:a"]);
-    value.set("b");
+    setValue("b");
     flush();
     expect(log).toEqual(["in:a", "out:a", "in:b"]);
-    value.set(null);
+    setValue(null);
     flush();
     expect(log).toEqual(["in:a", "out:a", "in:b", "out:b"]);
     dispose();
@@ -140,9 +140,9 @@ describe("whenever", () => {
   });
 
   test("cleans up when its owner disposes", () => {
-    const value = signal(1);
+    const [value] = createSignal(1);
     const log: string[] = [];
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       whenever(value, () => () => log.push("out"));
       return d;
     });
@@ -153,99 +153,102 @@ describe("whenever", () => {
 
 describe("every / some / not", () => {
   test("combine sources and values", () => {
-    const a = signal(true);
-    const b = signal(false);
-    const dispose = root((d) => {
-      const all = every(a, b, true);
-      const any = some(a, b);
-      expect(all()).toBe(false);
-      expect(any()).toBe(true);
-      b.set(true);
-      flush();
-      expect(all()).toBe(true);
-      a.set(false);
-      flush();
-      expect(all()).toBe(false);
-      expect(any()).toBe(true);
-      expect(not(a)()).toBe(true);
-      return d;
+    const [a, setA] = createSignal(true);
+    const [b, setB] = createSignal(false);
+    const [dispose, all, any] = createRoot((d) => {
+      const both = every(a, b, true);
+      const either = some(a, b);
+      expect(both()).toBe(false);
+      expect(either()).toBe(true);
+      return [d, both, either] as const;
     });
+    setB(true);
+    flush();
+    expect(all()).toBe(true);
+    setA(false);
+    flush();
+    expect(all()).toBe(false);
+    expect(any()).toBe(true);
+    expect(not(a)()).toBe(true);
     dispose();
   });
 });
 
 describe("selector", () => {
   test("wakes only the rows that changed", () => {
-    const selected = signal(1);
+    const [selected, setSelected] = createSignal(1);
     const runs: Record<number, number> = { 1: 0, 2: 0, 3: 0 };
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const isSelected = selector(selected);
       for (const id of [1, 2, 3]) {
-        effect(() => {
+        createTrackedEffect(() => {
           isSelected(id);
           runs[id]!++;
         });
+        flush();
       }
       return d;
     });
 
     expect(runs).toEqual({ 1: 1, 2: 1, 3: 1 });
-    selected.set(2);
+    setSelected(2);
     flush();
     expect(runs).toEqual({ 1: 2, 2: 2, 3: 1 });
-    selected.set(3);
+    setSelected(3);
     flush();
     expect(runs).toEqual({ 1: 2, 2: 3, 3: 2 });
     dispose();
   });
 
   test("reports the right answer for a key subscribed after the fact", () => {
-    const selected = signal(2);
-    const dispose = root((d) => {
-      const isSelected = selector(selected);
-      expect(isSelected(1)).toBe(false);
-      expect(isSelected(2)).toBe(true);
-      selected.set(1);
-      flush();
-      expect(isSelected(1)).toBe(true);
-      expect(isSelected(2)).toBe(false);
-      expect(isSelected(3)).toBe(false);
-      return d;
+    const [selected, setSelected] = createSignal(2);
+    const [dispose, isSelected] = createRoot((d) => {
+      const isCurrent = selector(selected);
+      expect(isCurrent(1)).toBe(false);
+      expect(isCurrent(2)).toBe(true);
+      return [d, isCurrent] as const;
     });
+    setSelected(1);
+    flush();
+    expect(isSelected(1)).toBe(true);
+    expect(isSelected(2)).toBe(false);
+    expect(isSelected(3)).toBe(false);
     dispose();
   });
 
   test("supports a custom comparison", () => {
-    const range = signal(5);
-    const dispose = root((d) => {
-      const below = selector<number, number>(range, (key, value) => key < value);
-      expect(below(1)).toBe(true);
-      expect(below(9)).toBe(false);
-      range.set(0);
-      flush();
-      expect(below(1)).toBe(false);
-      return d;
+    const [range, setRange] = createSignal(5);
+    const [dispose, below] = createRoot((d) => {
+      const isBelow = selector<number, number>(range, (key, value) => key < value);
+      expect(isBelow(1)).toBe(true);
+      expect(isBelow(9)).toBe(false);
+      return [d, isBelow] as const;
     });
+    setRange(0);
+    flush();
+    expect(below(1)).toBe(false);
     dispose();
   });
 
   test("drops a key once nothing observes it", () => {
-    const selected = signal(1);
-    const dispose = root((d) => {
-      const isSelected = selector(selected);
-      const inner = root((innerDispose) => {
-        effect(() => isSelected(42));
+    const [selected, setSelected] = createSignal(1);
+    const [dispose, isSelected, inner] = createRoot((d) => {
+      const isCurrent = selector(selected);
+      const stopObserving = createRoot((innerDispose) => {
+        createTrackedEffect(() => {
+          isCurrent(42);
+        });
         return innerDispose;
       });
-      selected.set(42);
-      flush();
-      inner();
-      selected.set(1);
-      flush();
-      // Nothing observes 42 any more; asking again must still be correct.
-      expect(isSelected(42)).toBe(false);
-      return d;
+      return [d, isCurrent, stopObserving] as const;
     });
+    setSelected(42);
+    flush();
+    inner();
+    setSelected(1);
+    flush();
+    // Nothing observes 42 any more; asking again must still be correct.
+    expect(isSelected(42)).toBe(false);
     dispose();
   });
 });

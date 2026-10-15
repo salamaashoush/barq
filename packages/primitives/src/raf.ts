@@ -1,4 +1,4 @@
-import { type Accessor, isServer, signal, untrack } from "@barqjs/core";
+import { type Accessor, isServer, createSignal } from "@barqjs/core";
 import { type Clear, type MaybeAccessor, access, tryCleanup } from "./utils.ts";
 
 export interface Loop {
@@ -25,7 +25,10 @@ export function raf(callback: (timestamp: number) => void, rate?: MaybeAccessor<
     return { start: () => {}, stop: () => {}, running: () => false };
   }
 
-  const running = signal(false);
+  const [running, setRunning] = createSignal(false, { ownedWrite: true });
+  // `start` and `stop` decide on this, not on the signal: a write is not
+  // readable back until the next flush, and the two are called back to back.
+  let active = false;
   let id = 0;
   let previous = 0;
 
@@ -44,15 +47,17 @@ export function raf(callback: (timestamp: number) => void, rate?: MaybeAccessor<
   };
 
   const start = (): void => {
-    if (untrack(running)) return;
-    running.set(true);
+    if (active) return;
+    active = true;
+    setRunning(true);
     previous = performance.now();
     id = requestAnimationFrame(frame);
   };
 
   const stop = (): void => {
-    if (!untrack(running)) return;
-    running.set(false);
+    if (!active) return;
+    active = false;
+    setRunning(false);
     cancelAnimationFrame(id);
     id = 0;
   };
@@ -68,7 +73,7 @@ export function raf(callback: (timestamp: number) => void, rate?: MaybeAccessor<
  * for a stalled display.
  */
 export function fps(sample = 10): Accessor<number> {
-  const rate = signal(0);
+  const [rate, setRate] = createSignal(0);
   let frames = 0;
   let since = 0;
 
@@ -80,7 +85,7 @@ export function fps(sample = 10): Accessor<number> {
     }
     if (++frames <= sample) return;
     const seconds = (timestamp - since) / 1000;
-    if (seconds > 0) rate.set((frames - 1) / seconds);
+    if (seconds > 0) setRate((frames - 1) / seconds);
     frames = 0;
   });
   loop.start();

@@ -1,6 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { effect, errorBoundary, flush, getOwner, root, signal } from "@barqjs/core";
+import {
+  boundary,
+  createRoot,
+  createSignal,
+  createTrackedEffect,
+  flush,
+  getOwner,
+  render,
+} from "@barqjs/core";
 import { eventSignal, on, onMap, once } from "./event.ts";
+import { owned } from "./utils.ts";
 
 const el = (): HTMLDivElement => document.createElement("div");
 
@@ -19,7 +28,7 @@ describe("on", () => {
   test("unbinds when the owner disposes", () => {
     const target = el();
     let calls = 0;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       on(target, "click", () => calls++);
       return d;
     });
@@ -45,9 +54,9 @@ describe("on", () => {
   test("rebinds when a reactive target changes", () => {
     const a = el();
     const b = el();
-    const target = signal<HTMLDivElement | null>(null);
+    const [target, setTarget] = createSignal<HTMLDivElement | null>(null);
     let calls = 0;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       on(target, "click", () => calls++);
       return d;
     });
@@ -55,12 +64,12 @@ describe("on", () => {
     a.dispatchEvent(new Event("click"));
     expect(calls).toBe(0);
 
-    target.set(a);
+    setTarget(a);
     flush();
     a.dispatchEvent(new Event("click"));
     expect(calls).toBe(1);
 
-    target.set(b);
+    setTarget(b);
     flush();
     a.dispatchEvent(new Event("click"));
     expect(calls).toBe(1);
@@ -74,14 +83,14 @@ describe("on", () => {
 
   test("rebinds when a reactive type changes", () => {
     const target = el();
-    const type = signal<"click" | "focus">("click");
+    const [type, setType] = createSignal<"click" | "focus">("click");
     const seen: string[] = [];
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       on(target, type, (e) => seen.push(e.type));
       return d;
     });
     target.dispatchEvent(new Event("click"));
-    type.set("focus");
+    setType("focus");
     flush();
     target.dispatchEvent(new Event("click"));
     target.dispatchEvent(new Event("focus"));
@@ -89,18 +98,27 @@ describe("on", () => {
     dispose();
   });
 
-  test("runs the handler under the owner that bound it", () => {
+  test("runs the handler with no ambient owner, and under the binding one through owned", () => {
     const target = el();
-    let inside: unknown = "unset";
-    const dispose = root((d) => {
+    let bare: unknown = "unset";
+    let bound: unknown = "unset";
+    const [dispose, owner] = createRoot((d) => {
       on(target, "click", () => {
-        inside = getOwner();
+        bare = getOwner();
       });
-      return d;
+      on(
+        target,
+        "click",
+        owned(() => {
+          bound = getOwner();
+        }),
+      );
+      return [d, getOwner()] as const;
     });
     target.dispatchEvent(new Event("click"));
-    expect(inside).not.toBe(null);
-    expect(inside).not.toBe("unset");
+    expect(bare).toBe(null);
+    expect(owner).not.toBe(null);
+    expect(bound).toBe(owner);
     dispose();
   });
 });
@@ -108,29 +126,34 @@ describe("on", () => {
 describe("error routing", () => {
   test("a throw from a handler reaches the enclosing boundary", () => {
     const target = el();
+    const host = el();
     const seen: unknown[] = [];
 
-    const [dispose, boundary] = root((d) => {
-      const guarded = errorBoundary(
-        () => {
-          on(target, "click", () => {
-            throw new Error("from the handler");
-          });
-          return "content";
-        },
-        (error) => {
-          seen.push(error());
-          return "fallback";
-        },
-      );
-      return [d, guarded] as const;
-    });
+    const dispose = render(
+      () =>
+        boundary(
+          host,
+          null,
+          "error",
+          (error: () => unknown) => {
+            seen.push(error());
+            return document.createTextNode("fallback");
+          },
+          () => {
+            on(target, "click", () => {
+              throw new Error("from the handler");
+            });
+            return document.createTextNode("content");
+          },
+        ),
+      host,
+    );
 
-    expect(boundary()).toBe("content");
+    expect(host.textContent).toBe("content");
     target.dispatchEvent(new Event("click"));
     flush();
 
-    expect(boundary()).toBe("fallback");
+    expect(host.textContent).toBe("fallback");
     expect(seen).toHaveLength(1);
     expect((seen[0] as Error).message).toBe("from the handler");
     dispose();
@@ -141,10 +164,13 @@ describe("eventSignal", () => {
   test("publishes the latest event, and a repeat of the same one is a new update", () => {
     const target = el();
     const seen: (string | undefined)[] = [];
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const last = eventSignal(target, "click");
       expect(last()).toBeUndefined();
-      effect(() => seen.push(last()?.type));
+      createTrackedEffect(() => {
+        seen.push(last()?.type);
+      });
+      flush();
 
       target.dispatchEvent(new Event("click"));
       flush();
@@ -190,15 +216,15 @@ describe("once", () => {
   test("survives a rebind without rearming", () => {
     const a = el();
     const b = el();
-    const target = signal<HTMLDivElement>(a);
+    const [target, setTarget] = createSignal<HTMLDivElement>(a);
     let calls = 0;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       once(target, "click", () => calls++);
       return d;
     });
     a.dispatchEvent(new Event("click"));
     expect(calls).toBe(1);
-    target.set(b);
+    setTarget(b);
     flush();
     b.dispatchEvent(new Event("click"));
     expect(calls).toBe(1);

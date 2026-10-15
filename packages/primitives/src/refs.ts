@@ -1,4 +1,4 @@
-import { type Accessor, onCleanup, renderEffect, signal } from "@barqjs/core";
+import { type Accessor, createRenderEffect, createSignal } from "@barqjs/core";
 import { type Clear, tryCleanup } from "./utils.ts";
 
 /** Every shape a `ref` prop accepts: a callback, a `{ current }` box, or nothing. */
@@ -80,10 +80,22 @@ export interface Ref<T> {
  * ```
  */
 export function ref<T>(initial: T | null = null): Ref<T> {
-  const element = signal<T | null>(initial);
-  const accessor = (() => element()) as Ref<T>;
-  accessor.set = (next: T | null) => element.set(next);
-  Object.defineProperty(accessor, "current", { get: () => element() });
+  // The element is kept beside the signal, which only carries the dependency:
+  // a `ref` prop is called while its component is still being built, and the
+  // code after the JSX reads the element before any flush has published it.
+  let held = initial;
+  const [version, setVersion] = createSignal(0, { equals: false, ownedWrite: true });
+  const read = (): T | null => {
+    version();
+    return held;
+  };
+  const accessor = read as Ref<T>;
+  accessor.set = (next: T | null) => {
+    if (Object.is(next, held)) return;
+    held = next;
+    setVersion(0);
+  };
+  Object.defineProperty(accessor, "current", { get: read });
   return accessor;
 }
 
@@ -97,15 +109,13 @@ export function onElement<T>(
   target: Accessor<T | null | undefined>,
   fn: (element: T) => void | Clear,
 ): void {
-  let undo: Clear | undefined;
-  onCleanup(() => undo?.());
   // A render effect, so the element is bound before user effects observe it.
-  renderEffect(() => {
-    undo?.();
-    undo = undefined;
-    const element = target();
-    if (element === null || element === undefined) return;
-    const cleanup = fn(element);
-    if (typeof cleanup === "function") undo = cleanup;
-  });
+  createRenderEffect(
+    () => target(),
+    (element) => {
+      if (element === null || element === undefined) return undefined;
+      const cleanup = fn(element);
+      return typeof cleanup === "function" ? cleanup : undefined;
+    },
+  );
 }

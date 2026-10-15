@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { effect, flush, root } from "@barqjs/core";
+import { createTrackedEffect, flush, createRoot } from "@barqjs/core";
 import { ReactiveMap, ReactiveSet } from "./collections.ts";
 
 describe("ReactiveMap", () => {
@@ -24,19 +24,20 @@ describe("ReactiveMap", () => {
   test("wakes only the readers of the key that changed", () => {
     const map = new ReactiveMap<string, number>();
     const runs = { a: 0, b: 0, size: 0 };
-    const dispose = root((d) => {
-      effect(() => {
+    const dispose = createRoot((d) => {
+      createTrackedEffect(() => {
         map.get("a");
         runs.a++;
       });
-      effect(() => {
+      createTrackedEffect(() => {
         map.get("b");
         runs.b++;
       });
-      effect(() => {
+      createTrackedEffect(() => {
         expect(map.size).toBeGreaterThanOrEqual(0);
         runs.size++;
       });
+      flush();
       return d;
     });
 
@@ -65,15 +66,16 @@ describe("ReactiveMap", () => {
     const map = new ReactiveMap<string, number>([["a", 1]]);
     let values = 0;
     let keys = 0;
-    const dispose = root((d) => {
-      effect(() => {
+    const dispose = createRoot((d) => {
+      createTrackedEffect(() => {
         expect([...map.values()].length).toBeGreaterThanOrEqual(0);
         values++;
       });
-      effect(() => {
+      createTrackedEffect(() => {
         expect([...map.keys()].length).toBeGreaterThanOrEqual(0);
         keys++;
       });
+      flush();
       return d;
     });
 
@@ -95,13 +97,14 @@ describe("ReactiveMap", () => {
       ["b", 2],
     ]);
     const runs = { a: 0, b: 0, c: 0 };
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       for (const key of ["a", "b", "c"] as const) {
-        effect(() => {
+        createTrackedEffect(() => {
           map.get(key);
           runs[key]++;
         });
       }
+      flush();
       return d;
     });
     map.clear();
@@ -118,18 +121,19 @@ describe("ReactiveMap", () => {
     for (let i = 0; i < 1000; i++) map.get(`key${i}`);
     // Nothing observable to assert on but the absence of growth; the
     // dependency map is private, so this stands as a regression guard on the
-    // isTracking() gate not being removed.
+    // getObserver() gate not being removed.
     expect(map.size).toBe(0);
   });
 
   test("a key's dependency is dropped when its last reader goes", () => {
     const map = new ReactiveMap<string, number>();
     let runs = 0;
-    const inner = root((d) => {
-      effect(() => {
+    const inner = createRoot((d) => {
+      createTrackedEffect(() => {
         map.get("a");
         runs++;
       });
+      flush();
       return d;
     });
     map.set("a", 1);
@@ -160,15 +164,16 @@ describe("ReactiveSet", () => {
   test("membership is per value", () => {
     const set = new ReactiveSet<string>();
     const runs = { a: 0, b: 0 };
-    const dispose = root((d) => {
-      effect(() => {
+    const dispose = createRoot((d) => {
+      createTrackedEffect(() => {
         set.has("a");
         runs.a++;
       });
-      effect(() => {
+      createTrackedEffect(() => {
         set.has("b");
         runs.b++;
       });
+      flush();
       return d;
     });
 
@@ -189,11 +194,12 @@ describe("ReactiveSet", () => {
   test("iteration follows structure", () => {
     const set = new ReactiveSet<number>();
     let runs = 0;
-    const dispose = root((d) => {
-      effect(() => {
+    const dispose = createRoot((d) => {
+      createTrackedEffect(() => {
         expect([...set].length).toBeGreaterThanOrEqual(0);
         runs++;
       });
+      flush();
       return d;
     });
     set.add(1);

@@ -1,12 +1,14 @@
-import { type Accessor, isServer, signal } from "@barqjs/core";
+import { type Accessor, isServer, createSignal } from "@barqjs/core";
 import { on } from "./event.ts";
 import { type MaybeAccessor, access, shared } from "./utils.ts";
 
 /** Whatever element is currently fullscreen, or `null`. */
 export const fullscreenElement: () => Accessor<Element | null> = shared(() => {
-  const current = signal<Element | null>(isServer ? null : (document.fullscreenElement ?? null));
+  const [current, setCurrent] = createSignal<Element | null>(
+    isServer ? null : (document.fullscreenElement ?? null),
+  );
   if (isServer) return current;
-  const read = () => current.set(document.fullscreenElement ?? null);
+  const read = () => setCurrent(document.fullscreenElement ?? null);
   on(document, "fullscreenchange", read);
   // Firefox and Safari still fire only their prefixed events on older builds,
   // and a missing listener is invisible: the state simply never updates.

@@ -1,4 +1,4 @@
-import { type Accessor, computed, isServer, signal } from "@barqjs/core";
+import { type Accessor, createMemo, isServer, createSignal } from "@barqjs/core";
 import { on } from "./event.ts";
 import { type Clear, type MaybeAccessor, access, shared } from "./utils.ts";
 
@@ -10,21 +10,19 @@ import { type Clear, type MaybeAccessor, access, shared } from "./utils.ts";
  * stays stuck down forever.
  */
 export const keysDown: () => Accessor<readonly string[]> = shared(() => {
-  const held = signal<readonly string[]>([]);
+  const [held, setHeld] = createSignal<readonly string[]>([]);
   if (isServer) return held;
 
   on(window, "keydown", (event) => {
     if (event.repeat) return;
     const key = event.key.toLowerCase();
-    const current = held.peek();
-    if (current.includes(key)) return;
-    held.set([...current, key]);
+    setHeld((prev) => (prev.includes(key) ? prev : [...prev, key]));
   });
   on(window, "keyup", (event) => {
     const key = event.key.toLowerCase();
-    held.update((prev) => prev.filter((k) => k !== key));
+    setHeld((prev) => prev.filter((k) => k !== key));
   });
-  on(window, "blur", () => held.set([]));
+  on(window, "blur", () => setHeld([]));
 
   return held;
 });
@@ -32,7 +30,7 @@ export const keysDown: () => Accessor<readonly string[]> = shared(() => {
 /** Whether a key is currently held. The name is matched against `event.key`, case-insensitively. */
 export function isKeyDown(key: MaybeAccessor<string>): Accessor<boolean> {
   const held = keysDown();
-  return computed(() => held().includes(access(key).toLowerCase()));
+  return createMemo(() => held().includes(access(key).toLowerCase()));
 }
 
 const APPLE =

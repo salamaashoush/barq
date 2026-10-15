@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { root } from "@barqjs/core";
+import { createRoot } from "@barqjs/core";
 import { clipboard, readClipboard, writeClipboard } from "./clipboard.ts";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -37,7 +37,7 @@ describe("writeClipboard / readClipboard", () => {
 describe("clipboard", () => {
   test("raises copied and lowers it again", async () => {
     stub({ writeText: async () => {} });
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const board = clipboard({ resetAfter: 20 });
       return [d, board] as const;
     });
@@ -59,7 +59,7 @@ describe("clipboard", () => {
         throw new Error("NotAllowedError");
       },
     });
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const board = clipboard();
       return [d, board] as const;
     });
@@ -73,7 +73,7 @@ describe("clipboard", () => {
 
   test("resetAfter 0 keeps the flag raised", async () => {
     stub({ writeText: async () => {} });
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const board = clipboard({ resetAfter: 0 });
       return [d, board] as const;
     });

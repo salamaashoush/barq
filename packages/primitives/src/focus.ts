@@ -1,4 +1,4 @@
-import { type Accessor, isServer, scope, signal } from "@barqjs/core";
+import { type Accessor, isServer, createRoot, createSignal } from "@barqjs/core";
 import { on } from "./event.ts";
 import { type Clear, type MaybeAccessor, access, shared } from "./utils.ts";
 
@@ -11,39 +11,41 @@ import { type Clear, type MaybeAccessor, access, shared } from "./utils.ts";
  * correct, and is why a menu closing on blur has to check where focus went.
  */
 export const activeElement: () => Accessor<Element | null> = shared(() => {
-  const active = signal<Element | null>(isServer ? null : document.activeElement);
+  const [active, setActive] = createSignal<Element | null>(
+    isServer ? null : document.activeElement,
+  );
   if (isServer) return active;
 
-  on(document, "focusin", () => active.set(document.activeElement));
-  on(document, "focusout", () => active.set(document.activeElement));
+  on(document, "focusin", () => setActive(document.activeElement));
+  on(document, "focusout", () => setActive(document.activeElement));
   // The document loses focus to the browser chrome or another window without
   // either event firing.
-  on(window, "blur", () => active.set(null));
-  on(window, "focus", () => active.set(document.activeElement));
+  on(window, "blur", () => setActive(null));
+  on(window, "focus", () => setActive(document.activeElement));
 
   return active;
 });
 
 /** Whether an element has focus. */
 export function focused(target: MaybeAccessor<Element | null | undefined>): Accessor<boolean> {
-  const has = signal(false);
+  const [has, setHas] = createSignal(false);
   if (isServer) return has;
-  on(target, "focus", () => has.set(true));
-  on(target, "blur", () => has.set(false));
+  on(target, "focus", () => setHas(true));
+  on(target, "blur", () => setHas(false));
   return has;
 }
 
 /** Whether an element, or anything inside it, has focus. */
 export function focusWithin(target: MaybeAccessor<Element | null | undefined>): Accessor<boolean> {
-  const has = signal(false);
+  const [has, setHas] = createSignal(false);
   if (isServer) return has;
-  on(target, "focusin", () => has.set(true));
+  on(target, "focusin", () => setHas(true));
   on(target, "focusout", (event) => {
     const element = access(target);
     const next = event.relatedTarget;
     // `relatedTarget` is where focus is going. Without this check a click on
     // one child from another closes the popover the click was inside.
-    has.set(
+    setHas(
       element !== null && element !== undefined && next instanceof Node
         ? element.contains(next)
         : false,
@@ -91,7 +93,7 @@ export function clickOutside(
     handler(event);
   };
 
-  return scope((dispose) => {
+  return createRoot((dispose) => {
     on(document, options?.events ?? ["pointerdown"], outside, { capture: true });
     if (options?.escape !== false) {
       on(document, "keydown", (event) => {

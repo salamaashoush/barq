@@ -1,4 +1,4 @@
-import { type Accessor, signal } from "@barqjs/core";
+import { type Accessor, createSignal } from "@barqjs/core";
 import { type Clear, tryCleanup } from "./utils.ts";
 
 export interface Emitter<T> {
@@ -60,12 +60,12 @@ export interface Bus<T> extends Emitter<T> {
  */
 export function bus<T>(): Bus<T> {
   const base = emitter<T>();
-  const last = signal<T | undefined>(undefined, { equals: false });
+  const [last, setLast] = createSignal<T | undefined>(undefined, { equals: false });
 
   return {
     ...base,
     emit(payload) {
-      last.set(payload);
+      setLast(() => payload);
       base.emit(payload);
     },
     last,
@@ -77,14 +77,14 @@ export function bus<T>(): Bus<T> {
  * invalidate every reader.
  *
  * What a cache invalidation or a manual refetch wants, and what a
- * `signal(0, { equals: false })` written by hand is trying to be.
+ * `createSignal(0, { equals: false })` written by hand is trying to be.
  */
 export function trigger(): [track: () => void, dirty: Clear] {
-  const version = signal(0, { equals: false });
+  const [version, setVersion] = createSignal(0, { equals: false });
   return [
     () => {
       version();
     },
-    () => version.set(0),
+    () => setVersion(0),
   ];
 }

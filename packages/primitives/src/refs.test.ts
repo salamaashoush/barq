@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, root, signal } from "@barqjs/core";
+import { flush, createRoot, createSignal } from "@barqjs/core";
 import { mergeRefs, onElement, ref } from "./refs.ts";
 
 const el = () => document.createElement("div");
@@ -10,7 +10,7 @@ describe("mergeRefs", () => {
     const seen: HTMLDivElement[] = [];
     const target = el();
 
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       mergeRefs<HTMLDivElement>((e) => {
         seen.push(e);
       }, box)(target);
@@ -52,7 +52,7 @@ describe("mergeRefs", () => {
     const target = el();
     let released = false;
 
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       mergeRefs<HTMLDivElement>(box, () => () => {
         released = true;
       })(target);
@@ -70,7 +70,7 @@ describe("ref", () => {
   test("is a signal, so an effect sees the element when it lands", () => {
     const target = el();
     const seen: (Element | null)[] = [];
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const box = ref<HTMLDivElement>();
       expect(box()).toBe(null);
       expect(box.current).toBe(null);
@@ -91,10 +91,10 @@ describe("ref", () => {
 describe("onElement", () => {
   test("runs when the element arrives and cleans up when it goes", () => {
     const target = el();
-    const source = signal<HTMLDivElement | null>(null);
+    const [source, setSource] = createSignal<HTMLDivElement | null>(null);
     const log: string[] = [];
 
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       onElement(source, (e) => {
         log.push(e === target ? "in" : "in:other");
         return () => log.push("out");
@@ -103,15 +103,15 @@ describe("onElement", () => {
     });
 
     expect(log).toEqual([]);
-    source.set(target);
+    setSource(target);
     flush();
     expect(log).toEqual(["in"]);
 
-    source.set(null);
+    setSource(null);
     flush();
     expect(log).toEqual(["in", "out"]);
 
-    source.set(target);
+    setSource(target);
     flush();
     dispose();
     expect(log).toEqual(["in", "out", "in", "out"]);

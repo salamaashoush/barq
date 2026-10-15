@@ -1,4 +1,4 @@
-import { type Accessor, isServer, signal } from "@barqjs/core";
+import { type Accessor, isServer, createSignal } from "@barqjs/core";
 import { type Clear, tryCleanup } from "./utils.ts";
 
 export interface Position {
@@ -47,9 +47,10 @@ function toPosition(reading: GeolocationPosition): Position {
  * remembered by the browser long after the page is closed.
  */
 export function geolocation(options?: PositionOptions): Geolocation {
-  const position = signal<Position | undefined>(undefined);
-  const error = signal<GeolocationPositionError | undefined>(undefined);
-  const watching = signal(false);
+  const [position, setPosition] = createSignal<Position | undefined>(undefined);
+  const [error, setError] = createSignal<GeolocationPositionError | undefined>(undefined);
+  // `start` and `stop` are the caller's to call, a component body included.
+  const [watching, setWatching] = createSignal(false, { ownedWrite: true });
   let id: number | undefined;
 
   const available = (): boolean =>
@@ -59,7 +60,7 @@ export function geolocation(options?: PositionOptions): Geolocation {
     if (id === undefined) return;
     navigator.geolocation.clearWatch(id);
     id = undefined;
-    watching.set(false);
+    setWatching(false);
   };
 
   tryCleanup(stop);
@@ -78,12 +79,12 @@ export function geolocation(options?: PositionOptions): Geolocation {
         navigator.geolocation.getCurrentPosition(
           (reading) => {
             const found = toPosition(reading);
-            error.set(undefined);
-            position.set(found);
+            setError(undefined);
+            setPosition(found);
             resolve(found);
           },
           (failure) => {
-            error.set(failure);
+            setError(failure);
             reject(failure);
           },
           options,
@@ -92,13 +93,13 @@ export function geolocation(options?: PositionOptions): Geolocation {
 
     start() {
       if (id !== undefined || !available()) return;
-      watching.set(true);
+      setWatching(true);
       id = navigator.geolocation.watchPosition(
         (reading) => {
-          error.set(undefined);
-          position.set(toPosition(reading));
+          setError(undefined);
+          setPosition(toPosition(reading));
         },
-        (failure) => error.set(failure),
+        (failure) => setError(failure),
         options,
       );
     },

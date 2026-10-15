@@ -1,4 +1,10 @@
-import { type Accessor, isServer, renderEffect, scope, signal } from "@barqjs/core";
+import {
+  type Accessor,
+  isServer,
+  createRenderEffect,
+  createRoot,
+  createSignal,
+} from "@barqjs/core";
 import { type Clear, type MaybeAccessor, access, noop } from "./utils.ts";
 
 /** A delay of `null` or `false` means "not running". */
@@ -17,13 +23,15 @@ export type Delay = MaybeAccessor<number | null | false>;
  */
 export function timeout(fn: () => void, delay: Delay = 0): Clear {
   if (isServer) return noop;
-  return scope((dispose) => {
-    renderEffect(() => {
-      const ms = access(delay);
-      if (ms === null || ms === false) return undefined;
-      const id = setTimeout(fn, ms);
-      return () => clearTimeout(id);
-    });
+  return createRoot((dispose) => {
+    createRenderEffect(
+      () => access(delay),
+      (ms) => {
+        if (ms === null || ms === false) return undefined;
+        const id = setTimeout(fn, ms);
+        return () => clearTimeout(id);
+      },
+    );
     return dispose;
   });
 }
@@ -38,13 +46,15 @@ export function timeout(fn: () => void, delay: Delay = 0): Clear {
  */
 export function interval(fn: () => void, delay: Delay): Clear {
   if (isServer) return noop;
-  return scope((dispose) => {
-    renderEffect(() => {
-      const ms = access(delay);
-      if (ms === null || ms === false) return undefined;
-      const id = setInterval(fn, ms);
-      return () => clearInterval(id);
-    });
+  return createRoot((dispose) => {
+    createRenderEffect(
+      () => access(delay),
+      (ms) => {
+        if (ms === null || ms === false) return undefined;
+        const id = setInterval(fn, ms);
+        return () => clearInterval(id);
+      },
+    );
     return dispose;
   });
 }
@@ -58,8 +68,8 @@ export function interval(fn: () => void, delay: Delay): Clear {
  * gets older. On the server it reads the render's own clock and never moves.
  */
 export function now(period: Delay = 1000): Accessor<number> {
-  const time = signal(Date.now());
-  interval(() => time.set(Date.now()), period);
+  const [time, setTime] = createSignal(Date.now());
+  interval(() => setTime(Date.now()), period);
   return time;
 }
 

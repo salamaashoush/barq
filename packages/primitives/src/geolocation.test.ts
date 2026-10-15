@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { flush, root } from "@barqjs/core";
+import { flush, createRoot } from "@barqjs/core";
 import { geolocation } from "./geolocation.ts";
 
 type Success = (reading: unknown) => void;
@@ -50,7 +50,7 @@ afterEach(() => {
 
 describe("geolocation", () => {
   test("asks for nothing until told to", () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const where = geolocation();
       expect(where.position()).toBeUndefined();
       expect(where.watching()).toBe(false);
@@ -62,7 +62,7 @@ describe("geolocation", () => {
   });
 
   test("locate resolves with a flattened fix", async () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const where = geolocation();
       return [d, where] as const;
     });
@@ -80,7 +80,7 @@ describe("geolocation", () => {
   });
 
   test("a denial is reported, not swallowed", async () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const where = geolocation();
       return [d, where] as const;
     });
@@ -97,26 +97,26 @@ describe("geolocation", () => {
   });
 
   test("a watch publishes each fix and clears with its owner", () => {
-    const dispose = root((d) => {
-      const where = geolocation();
-      where.start();
+    const [dispose, where] = createRoot((d) => {
+      const geo = geolocation();
+      geo.start();
       flush();
-      expect(where.watching()).toBe(true);
-      calls[0]!.success(reading(1));
-      flush();
-      expect(where.position()?.latitude).toBe(1);
-      calls[0]!.success(reading(2));
-      flush();
-      expect(where.position()?.latitude).toBe(2);
-      return d;
+      expect(geo.watching()).toBe(true);
+      return [d, geo] as const;
     });
+    calls[0]!.success(reading(1));
+    flush();
+    expect(where.position()?.latitude).toBe(1);
+    calls[0]!.success(reading(2));
+    flush();
+    expect(where.position()?.latitude).toBe(2);
 
     dispose();
     expect(cleared, "the watch outlived its owner").toEqual([1]);
   });
 
   test("start twice does not open a second watch", () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const where = geolocation();
       where.start();
       flush();
@@ -131,7 +131,7 @@ describe("geolocation", () => {
   });
 
   test("stop ends the watch and can be repeated", () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const where = geolocation();
       where.start();
       flush();
@@ -147,19 +147,19 @@ describe("geolocation", () => {
   });
 
   test("a later fix clears an earlier error", () => {
-    const dispose = root((d) => {
-      const where = geolocation();
-      where.start();
+    const [dispose, where] = createRoot((d) => {
+      const geo = geolocation();
+      geo.start();
       flush();
-      calls[0]!.failure(denied(2, "position unavailable"));
-      flush();
-      expect(where.error()).toBeDefined();
-      calls[0]!.success(reading(9));
-      flush();
-      expect(where.error()).toBeUndefined();
-      expect(where.position()?.latitude).toBe(9);
-      return d;
+      return [d, geo] as const;
     });
+    calls[0]!.failure(denied(2, "position unavailable"));
+    flush();
+    expect(where.error()).toBeDefined();
+    calls[0]!.success(reading(9));
+    flush();
+    expect(where.error()).toBeUndefined();
+    expect(where.position()?.latitude).toBe(9);
     dispose();
   });
 });

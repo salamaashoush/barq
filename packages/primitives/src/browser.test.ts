@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, root, signal } from "@barqjs/core";
+import { flush, createRoot, createSignal } from "@barqjs/core";
 import { documentTitle, languages, online, pageVisible, userIdle } from "./browser.ts";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -16,7 +16,7 @@ async function eventually(predicate: () => boolean, what: string, deadline = 200
 
 describe("online", () => {
   test("follows the online and offline events, from one shared source", () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const connected = online();
       expect(connected).toBe(online());
       window.dispatchEvent(new Event("offline"));
@@ -33,7 +33,7 @@ describe("online", () => {
 
 describe("pageVisible", () => {
   test("reads the visibility state on change", () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const visible = pageVisible();
       expect(visible()).toBe(true);
       Object.defineProperty(document, "visibilityState", {
@@ -58,7 +58,7 @@ describe("pageVisible", () => {
 
 describe("userIdle", () => {
   test("goes idle after the timeout and wakes on input", async () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const idle = userIdle({ after: 20 });
       return [d, idle] as const;
     });
@@ -72,7 +72,7 @@ describe("userIdle", () => {
   });
 
   test("a hidden tab is idle at once", () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const idle = userIdle({ after: 10_000 });
       expect(idle()).toBe(false);
       Object.defineProperty(document, "visibilityState", {
@@ -97,7 +97,7 @@ describe("userIdle", () => {
 
   test("stops its timer with the owner", async () => {
     let idle!: () => boolean;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       idle = userIdle({ after: 20 });
       return d;
     });
@@ -110,15 +110,15 @@ describe("userIdle", () => {
 describe("documentTitle", () => {
   test("sets the title and puts the old one back", () => {
     document.title = "before";
-    const heading = signal("first");
-    const dispose = root((d) => {
+    const [heading, setHeading] = createSignal("first");
+    const dispose = createRoot((d) => {
       documentTitle(heading);
       expect(document.title).toBe("first");
-      heading.set("second");
-      flush();
-      expect(document.title).toBe("second");
       return d;
     });
+    setHeading("second");
+    flush();
+    expect(document.title).toBe("second");
     dispose();
     expect(document.title).toBe("before");
   });
@@ -126,7 +126,7 @@ describe("documentTitle", () => {
 
 describe("languages", () => {
   test("reads navigator.languages and follows languagechange", () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const preferred = languages();
       expect(preferred().length).toBeGreaterThan(0);
       window.dispatchEvent(new Event("languagechange"));

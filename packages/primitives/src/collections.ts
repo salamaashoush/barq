@@ -1,4 +1,4 @@
-import { type Signal, isTracking, signal } from "@barqjs/core";
+import { type Signal, getObserver, createSignal } from "@barqjs/core";
 
 /**
  * A `Map` whose reads are reactive, one key at a time.
@@ -14,8 +14,8 @@ import { type Signal, isTracking, signal } from "@barqjs/core";
  */
 export class ReactiveMap<K, V> extends Map<K, V> {
   #keys = new Map<K, Signal<number>>();
-  #structure = signal(0, { equals: false });
-  #contents = signal(0, { equals: false });
+  #structure = createSignal(0, { equals: false });
+  #contents = createSignal(0, { equals: false });
 
   /**
    * Entries are filled in here rather than handed to `super`.
@@ -32,10 +32,10 @@ export class ReactiveMap<K, V> extends Map<K, V> {
   }
 
   #track(key: K): void {
-    if (!isTracking()) return;
+    if (getObserver() === null) return;
     let cell = this.#keys.get(key);
     if (cell === undefined) {
-      const created: Signal<number> = signal(0, {
+      const created: Signal<number> = createSignal(0, {
         equals: false,
         unobserved: () => {
           if (this.#keys.get(key) === created) this.#keys.delete(key);
@@ -44,15 +44,15 @@ export class ReactiveMap<K, V> extends Map<K, V> {
       this.#keys.set(key, created);
       cell = created;
     }
-    cell();
+    cell[0]();
   }
 
   #dirty(key: K): void {
-    this.#keys.get(key)?.set(0);
+    this.#keys.get(key)?.[1](0);
   }
 
   override get size(): number {
-    this.#structure();
+    this.#structure[0]();
     return super.size;
   }
 
@@ -72,11 +72,11 @@ export class ReactiveMap<K, V> extends Map<K, V> {
     super.set(key, value);
     if (!had) {
       this.#dirty(key);
-      this.#structure.set(0);
-      this.#contents.set(0);
+      this.#structure[1](0);
+      this.#contents[1](0);
     } else if (!Object.is(previous, value)) {
       this.#dirty(key);
-      this.#contents.set(0);
+      this.#contents[1](0);
     }
     return this;
   }
@@ -84,8 +84,8 @@ export class ReactiveMap<K, V> extends Map<K, V> {
   override delete(key: K): boolean {
     if (!super.delete(key)) return false;
     this.#dirty(key);
-    this.#structure.set(0);
-    this.#contents.set(0);
+    this.#structure[1](0);
+    this.#contents[1](0);
     return true;
   }
 
@@ -93,22 +93,22 @@ export class ReactiveMap<K, V> extends Map<K, V> {
     if (super.size === 0) return;
     for (const key of super.keys()) this.#dirty(key);
     super.clear();
-    this.#structure.set(0);
-    this.#contents.set(0);
+    this.#structure[1](0);
+    this.#contents[1](0);
   }
 
   override keys(): MapIterator<K> {
-    this.#structure();
+    this.#structure[0]();
     return super.keys();
   }
 
   override values(): MapIterator<V> {
-    this.#contents();
+    this.#contents[0]();
     return super.values();
   }
 
   override entries(): MapIterator<[K, V]> {
-    this.#contents();
+    this.#contents[0]();
     return super.entries();
   }
 
@@ -117,7 +117,7 @@ export class ReactiveMap<K, V> extends Map<K, V> {
   }
 
   override forEach(fn: (value: V, key: K, map: Map<K, V>) => void, thisArg?: unknown): void {
-    this.#contents();
+    this.#contents[0]();
     super.forEach(fn, thisArg);
   }
 }
@@ -131,7 +131,7 @@ export class ReactiveMap<K, V> extends Map<K, V> {
  */
 export class ReactiveSet<T> extends Set<T> {
   #members = new Map<T, Signal<number>>();
-  #structure = signal(0, { equals: false });
+  #structure = createSignal(0, { equals: false });
 
   /** See {@link ReactiveMap}'s constructor: `super(values)` would call the override. */
   constructor(values?: Iterable<T> | null) {
@@ -141,10 +141,10 @@ export class ReactiveSet<T> extends Set<T> {
   }
 
   #track(value: T): void {
-    if (!isTracking()) return;
+    if (getObserver() === null) return;
     let cell = this.#members.get(value);
     if (cell === undefined) {
-      const created: Signal<number> = signal(0, {
+      const created: Signal<number> = createSignal(0, {
         equals: false,
         unobserved: () => {
           if (this.#members.get(value) === created) this.#members.delete(value);
@@ -153,15 +153,15 @@ export class ReactiveSet<T> extends Set<T> {
       this.#members.set(value, created);
       cell = created;
     }
-    cell();
+    cell[0]();
   }
 
   #dirty(value: T): void {
-    this.#members.get(value)?.set(0);
+    this.#members.get(value)?.[1](0);
   }
 
   override get size(): number {
-    this.#structure();
+    this.#structure[0]();
     return super.size;
   }
 
@@ -174,14 +174,14 @@ export class ReactiveSet<T> extends Set<T> {
     if (super.has(value)) return this;
     super.add(value);
     this.#dirty(value);
-    this.#structure.set(0);
+    this.#structure[1](0);
     return this;
   }
 
   override delete(value: T): boolean {
     if (!super.delete(value)) return false;
     this.#dirty(value);
-    this.#structure.set(0);
+    this.#structure[1](0);
     return true;
   }
 
@@ -189,11 +189,11 @@ export class ReactiveSet<T> extends Set<T> {
     if (super.size === 0) return;
     for (const value of super.values()) this.#dirty(value);
     super.clear();
-    this.#structure.set(0);
+    this.#structure[1](0);
   }
 
   override values(): SetIterator<T> {
-    this.#structure();
+    this.#structure[0]();
     return super.values();
   }
 
@@ -202,7 +202,7 @@ export class ReactiveSet<T> extends Set<T> {
   }
 
   override entries(): SetIterator<[T, T]> {
-    this.#structure();
+    this.#structure[0]();
     return super.entries();
   }
 
@@ -211,7 +211,7 @@ export class ReactiveSet<T> extends Set<T> {
   }
 
   override forEach(fn: (value: T, key: T, set: Set<T>) => void, thisArg?: unknown): void {
-    this.#structure();
+    this.#structure[0]();
     super.forEach(fn, thisArg);
   }
 }

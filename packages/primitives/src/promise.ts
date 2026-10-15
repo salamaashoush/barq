@@ -1,4 +1,4 @@
-import { type Accessor, renderEffect, scope, untrack } from "@barqjs/core";
+import { type Accessor, createRenderEffect, createRoot, untrack } from "@barqjs/core";
 import { type Clear, tryCleanup } from "./utils.ts";
 
 export class TimeoutError extends Error {
@@ -30,17 +30,19 @@ export function until<T>(condition: Accessor<T>): Promise<NonNullable<T>> & { ca
       return;
     }
 
-    const dispose = scope((disposeScope) => {
+    const dispose = createRoot((disposeScope) => {
       let settled = false;
-      renderEffect(() => {
-        const value = condition();
-        if (settled || !value) return;
-        settled = true;
-        resolve(value);
-        // Deferred: the effect is mid-run, so tearing its own scope down here
-        // would unlink the node the runtime is still holding.
-        queueMicrotask(disposeScope);
-      });
+      createRenderEffect(
+        () => condition(),
+        (value) => {
+          if (settled || !value) return;
+          settled = true;
+          resolve(value);
+          // Deferred: the effect is mid-run, so tearing its own scope down here
+          // would unlink the node the runtime is still holding.
+          queueMicrotask(disposeScope);
+        },
+      );
       return disposeScope;
     });
 

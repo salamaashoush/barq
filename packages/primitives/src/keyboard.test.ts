@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, root } from "@barqjs/core";
+import { flush, createRoot } from "@barqjs/core";
 import { isKeyDown, keysDown, parseCombo, shortcut } from "./keyboard.ts";
 
 const key = (init: KeyboardEventInit & { key: string }, type = "keydown") =>
@@ -8,7 +8,7 @@ flush();
 
 describe("keysDown", () => {
   test("tracks presses and releases, and clears on blur", () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const held = keysDown();
       expect(held()).toEqual([]);
 
@@ -35,7 +35,7 @@ describe("keysDown", () => {
   });
 
   test("ignores auto-repeat", () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const held = keysDown();
       key({ key: "b" });
       flush();
@@ -52,7 +52,7 @@ describe("keysDown", () => {
 
 describe("isKeyDown", () => {
   test("reports one key", () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const down = isKeyDown("Escape");
       expect(down()).toBe(false);
       key({ key: "Escape" });
@@ -94,7 +94,7 @@ describe("parseCombo", () => {
 describe("shortcut", () => {
   test("fires on an exact modifier match", () => {
     let calls = 0;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       shortcut("ctrl+k", () => calls++);
       return d;
     });
@@ -112,7 +112,7 @@ describe("shortcut", () => {
   });
 
   test("prevents the default unless told not to", () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       shortcut("ctrl+p", () => {});
       shortcut("ctrl+q", () => {}, { preventDefault: false });
       return d;
@@ -135,7 +135,7 @@ describe("shortcut", () => {
     document.body.append(input);
     let bare = 0;
     let modified = 0;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       shortcut("j", () => bare++);
       shortcut("ctrl+j", () => modified++);
       return d;
@@ -158,7 +158,7 @@ describe("shortcut", () => {
   test("auto-repeat is ignored unless asked for", () => {
     let held = 0;
     let repeated = 0;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       shortcut("ctrl+u", () => held++);
       shortcut("ctrl+i", () => repeated++, { repeat: true });
       return d;
@@ -174,7 +174,7 @@ describe("shortcut", () => {
 
   test("unbinds with its owner", () => {
     let calls = 0;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       shortcut("ctrl+z", () => calls++);
       return d;
     });

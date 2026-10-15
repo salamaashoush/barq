@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, root, signal } from "@barqjs/core";
+import { flush, createRoot, createSignal } from "@barqjs/core";
 import { elapsed, interval, now, timeout } from "./timer.ts";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -17,7 +17,7 @@ async function eventually(predicate: () => boolean, what: string, deadline = 200
 describe("timeout", () => {
   test("runs once and stops with its owner", async () => {
     let calls = 0;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       timeout(() => calls++, 10);
       return d;
     });
@@ -28,15 +28,15 @@ describe("timeout", () => {
   });
 
   test("a null delay holds it, and a number releases it", async () => {
-    const delay = signal<number | null>(null);
+    const [delay, setDelay] = createSignal<number | null>(null);
     let calls = 0;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       timeout(() => calls++, delay);
       return d;
     });
     await sleep(20);
     expect(calls).toBe(0);
-    delay.set(10);
+    setDelay(10);
     flush();
     await eventually(() => calls === 1, "the released timeout to fire");
     dispose();
@@ -44,7 +44,7 @@ describe("timeout", () => {
 
   test("disposing before the deadline cancels it", async () => {
     let calls = 0;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       timeout(() => calls++, 20);
       return d;
     });
@@ -65,7 +65,7 @@ describe("timeout", () => {
 describe("interval", () => {
   test("ticks repeatedly and stops with its owner", async () => {
     let calls = 0;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       interval(() => calls++, 10);
       return d;
     });
@@ -77,15 +77,15 @@ describe("interval", () => {
   });
 
   test("changing the period restarts the cycle", async () => {
-    const period = signal(1000);
+    const [period, setPeriod] = createSignal(1000);
     let calls = 0;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       interval(() => calls++, period);
       return d;
     });
     await sleep(20);
     expect(calls).toBe(0);
-    period.set(10);
+    setPeriod(10);
     flush();
     await eventually(() => calls >= 2, "two ticks at the shortened period");
     dispose();
@@ -94,7 +94,7 @@ describe("interval", () => {
 
 describe("now / elapsed", () => {
   test("now advances on its own period", async () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const time = now(10);
       const first = time();
       return [d, time, first] as const;
@@ -107,7 +107,7 @@ describe("now / elapsed", () => {
   });
 
   test("elapsed counts from the call", async () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const since = elapsed(10);
       expect(since()).toBeLessThan(5);
       return [d, since] as const;

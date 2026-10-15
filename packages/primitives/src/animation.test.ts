@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, root, signal } from "@barqjs/core";
+import { flush, createRoot, createSignal } from "@barqjs/core";
 import { cubicBezier, easing, spring, tween } from "./animation.ts";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -46,14 +46,14 @@ describe("easing", () => {
 
 describe("tween", () => {
   test("starts at the source value and arrives at the target", async () => {
-    const target = signal(0);
-    const dispose = root((d) => {
+    const [target, setTarget] = createSignal(0);
+    const dispose = createRoot((d) => {
       const value = tween(target, { duration: 60, easing: easing.linear });
       expect(value()).toBe(0);
-      target.set(100);
-      flush();
       return [d, value] as const;
     });
+    setTarget(100);
+    flush();
 
     // It moves off the start before it reaches the target, which is the whole
     // claim; how far it has moved at any wall-clock moment is not.
@@ -65,29 +65,29 @@ describe("tween", () => {
   });
 
   test("retargets from where it is", async () => {
-    const target = signal(0);
-    const dispose = root((d) => {
+    const [target, setTarget] = createSignal(0);
+    const dispose = createRoot((d) => {
       const value = tween(target, { duration: 60, easing: easing.linear });
-      target.set(100);
-      flush();
       return [d, value] as const;
     });
+    setTarget(100);
+    flush();
 
     await eventually(() => dispose[1]() > 0, "the tween to leave its start");
-    target.set(0);
+    setTarget(0);
     flush();
     await eventually(() => dispose[1]() === 0, "the retargeted tween to arrive");
     dispose[0]();
   });
 
   test("animates a list of numbers together", async () => {
-    const target = signal<readonly number[]>([0, 10]);
-    const dispose = root((d) => {
+    const [target, setTarget] = createSignal<readonly number[]>([0, 10]);
+    const dispose = createRoot((d) => {
       const value = tween(target, { duration: 40, easing: easing.linear });
-      target.set([100, 110]);
-      flush();
       return [d, value] as const;
     });
+    setTarget([100, 110]);
+    flush();
     await eventually(
       () => JSON.stringify(dispose[1]()) === "[100,110]",
       "the list tween to arrive",
@@ -96,14 +96,14 @@ describe("tween", () => {
   });
 
   test("stops with its owner", async () => {
-    const target = signal(0);
+    const [target, setTarget] = createSignal(0);
     let value!: () => number;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       value = tween(target, { duration: 60, easing: easing.linear });
-      target.set(100);
-      flush();
       return d;
     });
+    setTarget(100);
+    flush();
     dispose();
     const frozen = value();
     await sleep(120);
@@ -113,27 +113,27 @@ describe("tween", () => {
 
 describe("spring", () => {
   test("settles on the target", async () => {
-    const target = signal(0);
-    const dispose = root((d) => {
+    const [target, setTarget] = createSignal(0);
+    const dispose = createRoot((d) => {
       const value = spring(target, { stiffness: 0.3, damping: 0.6 });
       expect(value()).toBe(0);
-      target.set(50);
-      flush();
       return [d, value] as const;
     });
+    setTarget(50);
+    flush();
 
     await eventually(() => dispose[1]() === 50, "the spring to settle", 3000);
     dispose[0]();
   });
 
   test("settles on a list target", async () => {
-    const target = signal<readonly number[]>([0, 0]);
-    const dispose = root((d) => {
+    const [target, setTarget] = createSignal<readonly number[]>([0, 0]);
+    const dispose = createRoot((d) => {
       const value = spring(target, { stiffness: 0.3, damping: 0.6 });
-      target.set([10, 20]);
-      flush();
       return [d, value] as const;
     });
+    setTarget([10, 20]);
+    flush();
     await eventually(
       () => JSON.stringify(dispose[1]()) === "[10,20]",
       "the list spring to settle",
@@ -143,13 +143,13 @@ describe("spring", () => {
   });
 
   test("stops its loop once settled", async () => {
-    const target = signal(0);
-    const dispose = root((d) => {
+    const [target, setTarget] = createSignal(0);
+    const dispose = createRoot((d) => {
       const value = spring(target, { stiffness: 0.4, damping: 0.5 });
-      target.set(1);
-      flush();
       return [d, value] as const;
     });
+    setTarget(1);
+    flush();
     await eventually(() => dispose[1]() === 1, "the spring to settle", 3000);
     const settled = dispose[1]();
     await sleep(120);

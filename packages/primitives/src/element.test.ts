@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { flush, root } from "@barqjs/core";
+import { flush, createRoot } from "@barqjs/core";
 import { bounds, elementSize, visible, windowSize } from "./element.ts";
 
 let emitResize: (entries: unknown[]) => void = () => {};
@@ -57,35 +57,32 @@ const el = () => document.createElement("div");
 describe("elementSize", () => {
   test("reads the content box and keeps the two axes independent", () => {
     const target = el();
-    const dispose = root((d) => {
-      const size = elementSize(target);
-      expect(size.width()).toBe(0);
-
-      emitResize([
-        {
-          target,
-          contentRect: { width: 100, height: 50 },
-          contentBoxSize: [{ inlineSize: 100, blockSize: 50 }],
-        },
-      ]);
-      flush();
-      expect(size.width()).toBe(100);
-      expect(size.height()).toBe(50);
-      return d;
+    const [dispose, size] = createRoot((d) => {
+      const measured = elementSize(target);
+      expect(measured.width()).toBe(0);
+      return [d, measured] as const;
     });
+
+    emitResize([
+      {
+        target,
+        contentRect: { width: 100, height: 50 },
+        contentBoxSize: [{ inlineSize: 100, blockSize: 50 }],
+      },
+    ]);
+    flush();
+    expect(size.width()).toBe(100);
+    expect(size.height()).toBe(50);
     dispose();
   });
 
   test("falls back to contentRect when the box arrays are missing", () => {
     const target = el();
-    const dispose = root((d) => {
-      const size = elementSize(target);
-      emitResize([{ target, contentRect: { width: 7, height: 9 } }]);
-      flush();
-      expect(size.width()).toBe(7);
-      expect(size.height()).toBe(9);
-      return d;
-    });
+    const [dispose, size] = createRoot((d) => [d, elementSize(target)] as const);
+    emitResize([{ target, contentRect: { width: 7, height: 9 } }]);
+    flush();
+    expect(size.width()).toBe(7);
+    expect(size.height()).toBe(9);
     dispose();
   });
 });
@@ -96,7 +93,7 @@ describe("bounds", () => {
     target.getBoundingClientRect = () =>
       ({ x: 1, y: 2, width: 3, height: 4, top: 2, right: 4, bottom: 6, left: 1 }) as DOMRect;
 
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const rect = bounds(target);
       flush();
       expect(rect.x()).toBe(1);
@@ -119,7 +116,7 @@ describe("bounds", () => {
     target.getBoundingClientRect = () =>
       ({ x, y: 0, width: 0, height: 0, top: 0, right: 0, bottom: 0, left: 0 }) as DOMRect;
 
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const rect = bounds(target);
       x = 42;
       window.dispatchEvent(new Event("scroll"));
@@ -134,39 +131,36 @@ describe("bounds", () => {
 describe("visible", () => {
   test("tracks intersection", () => {
     const target = el();
-    const dispose = root((d) => {
-      const showing = visible(target);
-      expect(showing()).toBe(false);
-      emitIntersection([{ target, isIntersecting: true }]);
-      flush();
-      expect(showing()).toBe(true);
-      emitIntersection([{ target, isIntersecting: false }]);
-      flush();
-      expect(showing()).toBe(false);
-      return d;
+    const [dispose, showing] = createRoot((d) => {
+      const inView = visible(target);
+      expect(inView()).toBe(false);
+      return [d, inView] as const;
     });
+    emitIntersection([{ target, isIntersecting: true }]);
+    flush();
+    expect(showing()).toBe(true);
+    emitIntersection([{ target, isIntersecting: false }]);
+    flush();
+    expect(showing()).toBe(false);
     dispose();
   });
 
   test("once stops observing after the first sighting", () => {
     const target = el();
-    const dispose = root((d) => {
-      const showing = visible(target, { once: true });
-      emitIntersection([{ target, isIntersecting: true }]);
-      flush();
-      expect(showing()).toBe(true);
-      emitIntersection([{ target, isIntersecting: false }]);
-      flush();
-      expect(showing()).toBe(true);
-      return d;
-    });
+    const [dispose, showing] = createRoot((d) => [d, visible(target, { once: true })] as const);
+    emitIntersection([{ target, isIntersecting: true }]);
+    flush();
+    expect(showing()).toBe(true);
+    emitIntersection([{ target, isIntersecting: false }]);
+    flush();
+    expect(showing()).toBe(true);
     dispose();
   });
 });
 
 describe("windowSize", () => {
   test("shares one listener and updates on resize", async () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const a = windowSize();
       const b = windowSize();
       expect(a).toBe(b);

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, root } from "@barqjs/core";
+import { flush, createRoot } from "@barqjs/core";
 import { activeElement, clickOutside, focusWithin, focused } from "./focus.ts";
 
 const mount = <T extends HTMLElement>(el: T): T => {
@@ -10,7 +10,7 @@ const mount = <T extends HTMLElement>(el: T): T => {
 describe("activeElement", () => {
   test("follows focus", () => {
     const input = mount(document.createElement("input"));
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const active = activeElement();
       input.focus();
       input.dispatchEvent(new Event("focusin", { bubbles: true }));
@@ -26,7 +26,7 @@ describe("activeElement", () => {
 describe("focused", () => {
   test("reports the element's own focus", () => {
     const input = mount(document.createElement("input"));
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const has = focused(input);
       expect(has()).toBe(false);
       input.dispatchEvent(new Event("focus"));
@@ -49,7 +49,7 @@ describe("focusWithin", () => {
     const second = document.createElement("input");
     box.append(first, second);
 
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const inside = focusWithin(box);
       expect(inside()).toBe(false);
 
@@ -79,7 +79,7 @@ describe("clickOutside", () => {
     const outside = mount(document.createElement("div"));
 
     let calls = 0;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       clickOutside(box, () => calls++, { escape: false });
       return d;
     });
@@ -104,7 +104,7 @@ describe("clickOutside", () => {
     const box = mount(document.createElement("div"));
     const trigger = mount(document.createElement("button"));
     let calls = 0;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       clickOutside(box, () => calls++, { ignore: [trigger], escape: false });
       return d;
     });
@@ -120,7 +120,7 @@ describe("clickOutside", () => {
     const box = mount(document.createElement("div"));
     let withEscape = 0;
     let without = 0;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       clickOutside(box, () => withEscape++);
       clickOutside(box, () => without++, { escape: false });
       return d;

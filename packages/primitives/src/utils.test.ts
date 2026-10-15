@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { effect, flush, getOwner, root, signal } from "@barqjs/core";
+import { createTrackedEffect, flush, getOwner, createRoot, createSignal } from "@barqjs/core";
 import {
   access,
   arrayEquals,
@@ -26,13 +26,16 @@ describe("access", () => {
   });
 
   test("reads a signal reactively", () => {
-    const count = signal(0);
+    const [count, setCount] = createSignal(0);
     const seen: number[] = [];
-    root(() => {
-      effect(() => seen.push(access(count)));
-      count.set(1);
-      flush();
+    createRoot(() => {
+      createTrackedEffect(() => {
+        seen.push(access(count));
+      });
     });
+    flush();
+    setCount(1);
+    flush();
     expect(seen).toEqual([0, 1]);
   });
 });
@@ -90,7 +93,7 @@ describe("chain", () => {
 describe("tryCleanup", () => {
   test("registers with an owner", () => {
     let cleaned = false;
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       expect(tryCleanup(() => (cleaned = true))).toBe(true);
       return d;
     });
@@ -108,7 +111,7 @@ describe("owned", () => {
   test("runs the callback under the owner that created it", () => {
     let inner: unknown;
     let cleaned = false;
-    const [dispose, call] = root((d) => {
+    const [dispose, call] = createRoot((d) => {
       const cb = owned(() => {
         inner = getOwner();
         tryCleanup(() => (cleaned = true));
@@ -137,7 +140,7 @@ describe("microtask", () => {
 
   test("does not fire after its owner disposes", async () => {
     const seen: number[] = [];
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const fn = microtask((n: number) => seen.push(n));
       fn(1);
       return d;
@@ -155,11 +158,11 @@ describe("shared", () => {
     const use = shared(() => {
       built++;
       tryCleanup(() => disposed++);
-      return signal(1);
+      return createSignal(1);
     });
 
-    const a = root((d) => [use(), d] as const);
-    const b = root((d) => [use(), d] as const);
+    const a = createRoot((d) => [use(), d] as const);
+    const b = createRoot((d) => [use(), d] as const);
     expect(built).toBe(1);
     expect(a[0]).toBe(b[0]);
 
@@ -178,13 +181,13 @@ describe("shared", () => {
       built++;
       return built;
     });
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       use();
       return d;
     });
     dispose();
     await Promise.resolve();
-    root((d) => {
+    createRoot((d) => {
       expect(use()).toBe(2);
       d();
     });
@@ -198,7 +201,7 @@ describe("shared", () => {
       return 1;
     });
     use();
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       use();
       return d;
     });

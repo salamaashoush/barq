@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, root } from "@barqjs/core";
+import { flush, createRoot } from "@barqjs/core";
 import { mouseInElement, mousePosition } from "./mouse.ts";
 
 const pointer = (type: string, init: Record<string, number>) =>
@@ -7,7 +7,7 @@ const pointer = (type: string, init: Record<string, number>) =>
 
 describe("mousePosition", () => {
   test("follows pointer movement and shares one source", () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const a = mousePosition();
       const b = mousePosition();
       expect(a).toBe(b);
@@ -37,7 +37,7 @@ describe("mouseInElement", () => {
     document.body.append(box);
     box.getBoundingClientRect = () => ({ left: 100, top: 50 }) as DOMRect;
 
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const position = mouseInElement(box);
       box.dispatchEvent(pointer("pointerenter", {}));
       flush();

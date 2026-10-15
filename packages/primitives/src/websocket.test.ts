@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { flush, root, signal } from "@barqjs/core";
+import { flush, createRoot, createSignal } from "@barqjs/core";
 import { websocket } from "./websocket.ts";
 
 /** Every socket the code under test opened, drivable from the outside. */
@@ -72,83 +72,81 @@ const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 describe("websocket", () => {
   test("connects, reports state and publishes messages", () => {
-    const dispose = root((d) => {
-      const socket = websocket("wss://example.test/feed");
+    const [dispose, socket] = createRoot((d) => {
+      const connection = websocket("wss://example.test/feed");
       flush();
-      expect(socket.state()).toBe("connecting");
+      expect(connection.state()).toBe("connecting");
       expect(sockets).toHaveLength(1);
-
-      sockets[0]!.open();
-      flush();
-      expect(socket.state()).toBe("open");
-
-      sockets[0]!.deliver("hello");
-      flush();
-      expect(socket.message()).toBe("hello");
-      return d;
+      return [d, connection] as const;
     });
+
+    sockets[0]!.open();
+    flush();
+    expect(socket.state()).toBe("open");
+
+    sockets[0]!.deliver("hello");
+    flush();
+    expect(socket.message()).toBe("hello");
     dispose();
   });
 
   test("buffers what is sent before the socket opens, in order", () => {
-    const dispose = root((d) => {
-      const socket = websocket("wss://example.test/feed");
-      socket.send("first");
-      socket.send("second");
+    const [dispose, socket] = createRoot((d) => {
+      const connection = websocket("wss://example.test/feed");
+      connection.send("first");
+      connection.send("second");
       expect(sockets[0]!.sent).toEqual([]);
-
-      sockets[0]!.open();
-      expect(sockets[0]!.sent).toEqual(["first", "second"]);
-
-      socket.send("third");
-      expect(sockets[0]!.sent).toEqual(["first", "second", "third"]);
-      return d;
+      return [d, connection] as const;
     });
+
+    sockets[0]!.open();
+    expect(sockets[0]!.sent).toEqual(["first", "second"]);
+
+    socket.send("third");
+    expect(sockets[0]!.sent).toEqual(["first", "second", "third"]);
     dispose();
   });
 
   test("reconnects after an unclean close, with backoff", async () => {
-    const dispose = root((d) => {
-      const socket = websocket("wss://example.test/feed", { backoff: 10 });
-      sockets[0]!.open();
-      sockets[0]!.drop(1006);
-      expect(socket.state()).toBe("closed");
-      expect(socket.attempts()).toBe(1);
-      return [d, socket] as const;
-    });
+    const [dispose, socket] = createRoot(
+      (d) => [d, websocket("wss://example.test/feed", { backoff: 10 })] as const,
+    );
+    sockets[0]!.open();
+    sockets[0]!.drop(1006);
+    expect(socket.state()).toBe("closed");
+    expect(socket.attempts()).toBe(1);
 
     await sleep(40);
     expect(sockets.length, "no second socket was opened").toBeGreaterThan(1);
-    dispose[0]();
+    dispose();
   });
 
   test("a clean close is final", async () => {
-    const dispose = root((d) => {
-      const socket = websocket("wss://example.test/feed", { backoff: 10 });
-      sockets[0]!.open();
-      sockets[0]!.drop(1000);
-      return [d, socket] as const;
+    const dispose = createRoot((d) => {
+      websocket("wss://example.test/feed", { backoff: 10 });
+      return d;
     });
+    sockets[0]!.open();
+    sockets[0]!.drop(1000);
     await sleep(40);
     expect(sockets, "a clean close was retried").toHaveLength(1);
-    dispose[0]();
+    dispose();
   });
 
   test("close() stops the socket and never reconnects", async () => {
-    const dispose = root((d) => {
-      const socket = websocket("wss://example.test/feed", { backoff: 10 });
-      sockets[0]!.open();
-      socket.close();
-      expect(sockets[0]!.closedWith).toBe(1000);
-      return d;
-    });
+    const [dispose, socket] = createRoot(
+      (d) => [d, websocket("wss://example.test/feed", { backoff: 10 })] as const,
+    );
+    sockets[0]!.open();
+    socket.close();
+    expect(sockets[0]!.closedWith).toBe(1000);
     await sleep(40);
     expect(sockets).toHaveLength(1);
     dispose();
   });
 
   test("honours a reconnect limit across CONSECUTIVE failures", async () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       websocket("wss://example.test/feed", { backoff: 5, reconnect: 2 });
       flush();
       return d;
@@ -165,7 +163,7 @@ describe("websocket", () => {
   });
 
   test("a successful connection restores the retry budget", async () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       websocket("wss://example.test/feed", { backoff: 5, reconnect: 1 });
       flush();
       return d;
@@ -184,7 +182,7 @@ describe("websocket", () => {
   });
 
   test("immediate false waits for open()", () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       const socket = websocket("wss://example.test/feed", { immediate: false });
       expect(sockets).toHaveLength(0);
       expect(socket.state()).toBe("closed");
@@ -196,36 +194,35 @@ describe("websocket", () => {
   });
 
   test("a reactive url is read when connecting", () => {
-    const room = signal("alpha");
-    const dispose = root((d) => {
-      const socket = websocket(() => `wss://example.test/${room()}`, { immediate: false });
-      room.set("beta");
-      flush();
-      socket.open();
-      expect(sockets[0]!.url).toBe("wss://example.test/beta");
-      return d;
-    });
+    const [room, setRoom] = createSignal("alpha");
+    const [dispose, socket] = createRoot(
+      (d) => [d, websocket(() => `wss://example.test/${room()}`, { immediate: false })] as const,
+    );
+    setRoom("beta");
+    flush();
+    socket.open();
+    expect(sockets[0]!.url).toBe("wss://example.test/beta");
     dispose();
   });
 
   test("closes with its owner", () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       websocket("wss://example.test/feed");
       flush();
-      sockets[0]!.open();
       return d;
     });
+    sockets[0]!.open();
     dispose();
     expect(sockets[0]!.closedWith).toBe(1000);
   });
 
   test("sends a heartbeat while open", async () => {
-    const dispose = root((d) => {
+    const dispose = createRoot((d) => {
       websocket("wss://example.test/feed", { heartbeat: { every: 10, message: "ping" } });
       flush();
-      sockets[0]!.open();
       return d;
     });
+    sockets[0]!.open();
     await sleep(35);
     expect(sockets[0]!.sent.filter((m) => m === "ping").length).toBeGreaterThan(0);
     dispose();

@@ -1,4 +1,12 @@
-import { type Accessor, getOwner, listen, renderEffect, scope, signal } from "@barqjs/core";
+import {
+  type Accessor,
+  createRenderEffect,
+  createRoot,
+  createSignal,
+  getOwner,
+  listen,
+  runWithOwner,
+} from "@barqjs/core";
 import { type Clear, type MaybeAccessor, access } from "./utils.ts";
 
 /**
@@ -49,8 +57,8 @@ function bindOne(
 ): void {
   // Through the core's `listen`, not `addEventListener` directly: a throw out
   // of a handler has to reach the enclosing `Errored` boundary the same way a
-  // compiled `onClick` does, and the handler has to run under this owner so
-  // primitives it creates are disposed with it.
+  // compiled `onClick` does, and the listener has to be removed with this
+  // owner. The handler itself runs with no owner, so it may write signals.
   listen(target, type, handler, options);
 }
 
@@ -89,13 +97,24 @@ export function on<T extends EventTarget, K extends EventTypeOf<T>>(
   handler: EventHandler<T, K>,
   options?: MaybeAccessor<Options>,
 ): Clear {
-  return scope((dispose) => {
+  return createRoot((dispose) => {
     if (isAccessor(target) || isAccessor(type) || isAccessor(options)) {
-      renderEffect(() => {
-        const element = access(target);
-        if (element === null || element === undefined) return;
-        bindAll(element, access(type), handler as EventListener, access(options));
-      });
+      // `listen` removes its listener with the owner in scope, and an effect's
+      // apply has none: each binding gets a scope of its own under this one,
+      // released when the binding is replaced.
+      const owner = getOwner();
+      createRenderEffect(
+        () => [access(target), access(type), access(options)] as const,
+        ([element, types, bound]) => {
+          if (element === null || element === undefined) return undefined;
+          return runWithOwner(owner, () =>
+            createRoot((release) => {
+              bindAll(element, types, handler as EventListener, bound);
+              return release;
+            }),
+          );
+        },
+      );
     } else if (target !== null && target !== undefined) {
       bindAll(
         target as T,
@@ -113,7 +132,7 @@ export function on<T extends EventTarget, K extends EventTypeOf<T>>(
  *
  * ```ts
  * const click = eventSignal(window, "click");
- * effect(() => console.log(click()?.clientX));
+ * createEffect(click, (event) => console.log(event?.clientX));
  * ```
  */
 export function eventSignal<T extends EventTarget, K extends EventTypeOf<T>>(
@@ -121,8 +140,8 @@ export function eventSignal<T extends EventTarget, K extends EventTypeOf<T>>(
   type: MaybeAccessor<K>,
   options?: MaybeAccessor<Options>,
 ): Accessor<EventOf<T, K> | undefined> {
-  const last = signal<EventOf<T, K> | undefined>(undefined, { equals: false });
-  on<T, K>(target, type, (event) => last.set(event), options);
+  const [last, setLast] = createSignal<EventOf<T, K> | undefined>(undefined, { equals: false });
+  on<T, K>(target, type, (event) => setLast(() => event), options);
   return last;
 }
 
@@ -132,7 +151,7 @@ export function onMap<T extends EventTarget>(
   handlers: { [K in EventTypeOf<T>]?: EventHandler<T, K> },
   options?: MaybeAccessor<Options>,
 ): Clear {
-  return scope((dispose) => {
+  return createRoot((dispose) => {
     for (const type of Object.keys(handlers) as EventTypeOf<T>[]) {
       const handler = handlers[type];
       if (handler !== undefined) on<T, EventTypeOf<T>>(target, type, handler, options);
