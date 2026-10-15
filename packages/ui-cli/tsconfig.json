@@ -8,6 +8,8 @@
     "skipLibCheck": true,
     "noEmit": true,
     "noEmitOnError": true,
+    "declaration": true,
+    "isolatedDeclarations": true,
     "lib": [
       "ESNext"
     ],

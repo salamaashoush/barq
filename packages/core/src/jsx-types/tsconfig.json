@@ -3,7 +3,10 @@
   "compilerOptions": {
     "jsxImportSource": "..",
     "noUnusedLocals": false,
-    "noUnusedParameters": false
+    "noUnusedParameters": false,
+    // Assertions that are never emitted: each export only keeps a value in
+    // scope, so there is no declaration for an annotation to describe.
+    "isolatedDeclarations": false
   },
   "include": ["*.tsx"],
   // The root project excludes this directory; inheriting that would exclude us

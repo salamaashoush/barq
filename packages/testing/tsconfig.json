@@ -7,6 +7,7 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "declaration": true,
+    "isolatedDeclarations": true,
     "allowImportingTsExtensions": true,
     "noEmit": true,
     // The declaration build runs the compiler with `rootDir` set to this

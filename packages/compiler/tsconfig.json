@@ -20,6 +20,7 @@
     "esModuleInterop": true,
     "declaration": true,
     "declarationMap": true,
+    "isolatedDeclarations": true,
     "types": [
       "@types/bun"
     ]

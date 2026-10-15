@@ -8,6 +8,8 @@
     "skipLibCheck": true,
     "noEmit": true,
     "noEmitOnError": true,
+    "declaration": true,
+    "isolatedDeclarations": true,
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "types": ["@types/bun"],
     "allowImportingTsExtensions": true,
