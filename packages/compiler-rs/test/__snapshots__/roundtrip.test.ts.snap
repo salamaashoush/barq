@@ -388,7 +388,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots class-empty-string 1`] = `
-"import { createSignal, template as _$template, bindEffect as _$bindEffect, setClass as _$setClass, setClassList as _$setClassList } from "@barqjs/core";
+"import { createSignal, template as _$template, bindEffect as _$bindEffect, setClass as _$setClass, setClassList as _$setClassList, classToString as _$classToString } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="host"><span data-p="static" class=""></span><span data-p="dynamic"></span><span data-p="merged"></span><span data-p="not-an-object"></span></div>\`);
 export const [label, setLabel] = createSignal("");
 export const [extra, setExtra] = createSignal(false);
@@ -416,11 +416,11 @@ export default function ClassEmptyString() {
   const _el$2 = _el$1.lastChild;
   const _el$3 = _el$2.previousSibling;
   const _el$4 = _el$3.previousSibling;
-  _$bindEffect(() => ({ a: label() }), (_v$, _p$ = {}) => {
-    _v$.a = _$setClass(_el$4, "class", _v$.a, _p$.a);
+  _$bindEffect(() => _$classToString(label()), (_v$, _p$) => {
+    _$setClass(_el$4, "class", _v$, _p$);
   });
-  _$bindEffect(() => ({ a: extra() ? "on" : "" }), (_v$, _p$ = {}) => {
-    _v$.a = _$setClass(_el$3, "class", _v$.a, _p$.a);
+  _$bindEffect(() => extra() ? "on" : "", (_v$, _p$) => {
+    _$setClass(_el$3, "class", _v$, _p$);
   });
   _$setClassList(_el$3, "classList", { hit: () => extra() });
   _$setClassList(_el$2, "classList", ("a b" as unknown) as Record<string, boolean>);
@@ -440,7 +440,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots class-list-array-object 1`] = `
-"import { createSignal, template as _$template, bindEffect as _$bindEffect, setClass as _$setClass } from "@barqjs/core";
+"import { createSignal, template as _$template, bindEffect as _$bindEffect, setClass as _$setClass, classToString as _$classToString } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><span>array</span><span>object</span></div>\`);
 export const [on, setOn] = createSignal(false);
 export default function ClassListArrayObject() {
@@ -448,11 +448,11 @@ export default function ClassListArrayObject() {
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$1.lastChild;
   _$setClass(_el$2, "class", ["a", "b"]);
-  _$bindEffect(() => ({ a: {
+  _$bindEffect(() => _$classToString({
     base: true,
     active: on()
-  } }), (_v$, _p$ = {}) => {
-    _v$.a = _$setClass(_el$3, "class", _v$.a, _p$.a);
+  }), (_v$, _p$) => {
+    _$setClass(_el$3, "class", _v$, _p$);
   });
   return _el$1;
 }
@@ -2845,8 +2845,8 @@ export default function DashboardComposite() {
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$2.nextSibling;
   const _el$4 = _el$1.lastChild;
-  _$bindEffect(() => ({ a: tab() === "posts" ? "posts" : "other" }), (_v$, _p$ = {}) => {
-    _v$.a = _$setClass(_el$1, "class", _v$.a, _p$.a);
+  _$bindEffect(() => tab() === "posts" ? "posts" : "other", (_v$, _p$) => {
+    _$setClass(_el$1, "class", _v$, _p$);
   });
   _$bindEffect(() => state.filters.search, (_v$) => {
     _$setLive(_el$2, "value", _v$);
@@ -3202,14 +3202,14 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots dynamic 1`] = `
-"import { createSignal, template as _$template, block as _$block, branch as _$branch, dynamic as _$dynamic } from "@barqjs/core";
+"import { createSignal, template as _$template, block as _$block, branch as _$branch, resolveDynamic as _$resolveDynamic } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div></div>\`);
 const _k$1 = () => "dyn";
 const _k$2 = () => "inner";
 export const [tag, setTag] = createSignal<"span" | "b">("span");
 export default function DynamicFixture() {
   const _el$1 = _tmpl$1();
-  _$branch(_el$1, null, tag, _$block(() => _$dynamic(tag, {
+  _$branch(_el$1, null, tag, _$block(() => _$resolveDynamic(tag, {
     class: _k$1,
     children: _k$2
   })));
@@ -5010,7 +5010,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots read-mode-binding 1`] = `
-"import { action, createOptimistic, isPending, latest, template as _$template, insert as _$insert, bindEffect as _$bindEffect, setClass as _$setClass } from "@barqjs/core";
+"import { action, createOptimistic, isPending, latest, template as _$template, insert as _$insert, bindEffect as _$bindEffect, setClass as _$setClass, classToString as _$classToString } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="read-mode"><h1>by reference</h1><h2>through a thunk</h2><p class="settled"></p><span>control</span></div>\`);
 export const [guess, setGuess] = createOptimistic("a");
 /** A module constant, so the control below is provably static. */
@@ -5045,11 +5045,11 @@ export default function ReadModeBinding() {
   const _el$3 = _el$2.nextSibling;
   const _el$4 = _el$3.nextSibling;
   const _el$5 = _el$1.lastChild;
-  _$bindEffect(() => ({ a: { stale: isPending(guess) } }), (_v$, _p$ = {}) => {
-    _v$.a = _$setClass(_el$2, "class", _v$.a, _p$.a);
+  _$bindEffect(() => _$classToString({ stale: isPending(guess) }), (_v$, _p$) => {
+    _$setClass(_el$2, "class", _v$, _p$);
   });
-  _$bindEffect(() => ({ a: { stale: isPending(() => guess()) } }), (_v$, _p$ = {}) => {
-    _v$.a = _$setClass(_el$3, "class", _v$.a, _p$.a);
+  _$bindEffect(() => _$classToString({ stale: isPending(() => guess()) }), (_v$, _p$) => {
+    _$setClass(_el$3, "class", _v$, _p$);
   });
   _$setClass(_el$5, "class", { plain: flagIsSet });
   _$insert(_el$4, () => latest(() => guess()));
@@ -6001,8 +6001,8 @@ export default function TableRows() {
     const _el$4 = _el$3.firstChild;
     const _el$5 = _el$4.nextSibling;
     const _el$6 = _el$5.firstChild;
-    _$bindEffect(() => ({ a: selected() === row.id ? "row danger" : "row" }), (_v$, _p$ = {}) => {
-      _v$.a = _$setClass(_el$3, "class", _v$.a, _p$.a);
+    _$bindEffect(() => selected() === row.id ? "row danger" : "row", (_v$, _p$) => {
+      _$setClass(_el$3, "class", _v$, _p$);
     });
     _$bindProp(_el$3, _$setAttr, "data-id", () => String(row.id));
     _$insert(_el$4, () => row.id);

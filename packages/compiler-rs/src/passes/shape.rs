@@ -12,7 +12,7 @@ use oxc::ast_visit::walk_mut::{walk_expression, walk_jsx_attribute_value, walk_j
 use oxc::semantic::SymbolId;
 use oxc::span::{GetSpan, Span};
 
-use rustc_hash::FxHashMap;
+use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::analysis::symbol_of;
 use crate::codegen::{HELPER_COUNT, Helper};
@@ -90,6 +90,9 @@ pub fn run<'a>(
             inert_roots,
             helpers,
             used: [false; HELPER_COUNT],
+            untracks: !options.ssr,
+            depth: 0,
+            built_once: FxHashSet::default(),
         };
         for root in roots.iter_mut() {
             if let Root::Verbatim(expression) = root {
@@ -157,6 +160,15 @@ pub(super) struct Shaper<'a, 'm> {
     inert_roots: Vec<bool>,
     helpers: [&'a str; HELPER_COUNT],
     used: [bool; HELPER_COUNT],
+    /// Whether a component call that may run inside a compute is wrapped in
+    /// `untrack`. The string backend runs no computes around a call.
+    untracks: bool,
+    /// How many `visit_expression` frames are open. Zero is a root: a hole's
+    /// value or a JSX expression in plain code, built where it stands.
+    depth: u32,
+    /// Span starts of component elements written as another component's
+    /// children. Those become a Block, which its consumer builds untracked.
+    built_once: FxHashSet<u32>,
 }
 
 /// What a tag resolves to. `Intrinsic` keeps its JSX and goes down the
@@ -321,6 +333,9 @@ impl<'a> Shaper<'a, '_> {
         }
 
         let kids = self.children(children);
+        for kid in &kids {
+            self.mark_built_once(kid);
+        }
 
         // A `children=` attribute is OVERWRITTEN by JSX children. Emitting both
         // spells that as a duplicate key: right by evaluation order, and
@@ -1039,6 +1054,132 @@ impl<'a> Shaper<'a, '_> {
         Expression::new_arrow_function_expression(span, false, None, params, None, body, &self.ast)
     }
 
+    /// The component a construction slot builds: the element itself, or the
+    /// element a plain thunk there returns, which becomes a Block and is built
+    /// untracked by whoever places it.
+    fn mark_built_once(&mut self, value: &Expression<'a>) {
+        match value {
+            Expression::JSXElement(element) => {
+                self.built_once.insert(element.span.start);
+            }
+            Expression::JSXFragment(fragment) => self.mark_fragment_built_once(fragment),
+            Expression::ParenthesizedExpression(inner) => self.mark_built_once(&inner.expression),
+            // A Block this pass already made: `_$block(() => <C />)`.
+            Expression::CallExpression(call)
+                if call.arguments.len() == 1
+                    && matches!(&call.callee, Expression::Identifier(callee)
+                        if callee.name == self.helpers[Helper::Block as usize]) =>
+            {
+                if let Some(arrow) = call.arguments[0].as_expression() {
+                    self.mark_built_once(arrow);
+                }
+            }
+            Expression::ArrowFunctionExpression(arrow)
+                if arrow.params.items.is_empty() && arrow.params.rest.is_none() =>
+            {
+                // A thunk that CHOOSES is a live hole, run under a compute.
+                if self.thunk_chooses_dom(value) {
+                    return;
+                }
+                match &arrow.body {
+                    ArrowFunctionBody::FunctionBody(body) => {
+                        for statement in &body.statements {
+                            if let Statement::ReturnStatement(ret) = statement
+                                && let Some(argument) = &ret.argument
+                            {
+                                self.mark_built_once(argument);
+                            }
+                        }
+                    }
+                    body => {
+                        if let Some(body) = body.as_expression() {
+                            self.mark_built_once(body);
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// A flow construct's body and its fallbacks are Blocks the construct
+    /// invokes under `untrack`, whether or not the construct is lowered.
+    fn mark_bodies_built_once(&mut self, element: &JSXElement<'a>) {
+        for child in &element.children {
+            match child {
+                JSXChild::Element(inner) => {
+                    self.built_once.insert(inner.span.start);
+                    // `<Match>` inside `<Switch>`: the arms are lowered with
+                    // the switch and never visited as calls of their own.
+                    if self.is_component(inner)
+                        && let Callee::Component(_, symbol) =
+                            self.callee(&inner.opening_element.name)
+                        && self.flow_of(symbol).is_some()
+                    {
+                        self.mark_bodies_built_once(inner);
+                    }
+                }
+                JSXChild::Fragment(inner) => self.mark_fragment_built_once(inner),
+                JSXChild::ExpressionContainer(container) => {
+                    if let Some(value) = container.expression.as_expression() {
+                        self.mark_built_once(value);
+                    }
+                }
+                _ => {}
+            }
+        }
+        for item in &element.opening_element.attributes {
+            let JSXAttributeItem::Attribute(attribute) = item else { continue };
+            match &attribute.value {
+                Some(JSXAttributeValue::Element(inner)) => {
+                    self.built_once.insert(inner.span.start);
+                }
+                Some(JSXAttributeValue::Fragment(inner)) => self.mark_fragment_built_once(inner),
+                Some(JSXAttributeValue::ExpressionContainer(container)) => {
+                    if let Some(value) = container.expression.as_expression() {
+                        self.mark_built_once(value);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn mark_fragment_built_once(&mut self, fragment: &JSXFragment<'a>) {
+        for child in &fragment.children {
+            match child {
+                JSXChild::Element(element) => {
+                    self.built_once.insert(element.span.start);
+                }
+                JSXChild::Fragment(inner) => self.mark_fragment_built_once(inner),
+                JSXChild::ExpressionContainer(container) => {
+                    if let Some(value) = container.expression.as_expression() {
+                        self.mark_built_once(value);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    fn untracked(&mut self, call: Expression<'a>) -> Expression<'a> {
+        let span = call.span();
+        let params = FormalParameters::boxed(
+            span,
+            FormalParameterKind::ArrowFormalParameters,
+            ArenaVec::new_in(&self.allocator),
+            None,
+            &self.ast,
+        );
+        let body = ArrowFunctionBody::from(call);
+        let thunk = Expression::new_arrow_function_expression(
+            span, false, None, params, None, body, &self.ast,
+        );
+        let callee = self.helper(Helper::Untrack, span);
+        let arguments = ArenaVec::from_iter_in([Argument::from(thunk)], &self.allocator);
+        Expression::new_call_expression(span, callee, None, arguments, false, &self.ast)
+    }
+
     pub(super) fn helper(&mut self, helper: Helper, span: Span) -> Expression<'a> {
         self.used[helper as usize] = true;
         self.ident(self.helpers[helper as usize], span)
@@ -1064,6 +1205,12 @@ impl<'a> Shaper<'a, '_> {
                 // A global the module never bound is as unresolvable as an
                 // import the analysis could not follow.
                 None => true,
+                Some(symbol)
+                    if self.lift.env().plain_rows.contains(&symbol)
+                        && !self.lift.scoping().symbol_is_mutated(symbol) =>
+                {
+                    false
+                }
                 Some(symbol) => matches!(
                     self.lift.env().kind_of(symbol),
                     SourceKind::ReactiveObject | SourceKind::PropsParam | SourceKind::Opaque
@@ -1482,6 +1629,11 @@ impl<'a> VisitMut<'a> for Shaper<'a, '_> {
             self.live_fragment(fragment);
         }
 
+        let root = self.depth == 0;
+        if root {
+            self.mark_built_once(it);
+        }
+        self.depth += 1;
         if let Expression::JSXElement(element) = it
             && self.is_component(element)
         {
@@ -1490,6 +1642,10 @@ impl<'a> VisitMut<'a> for Shaper<'a, '_> {
                 unreachable!("checked by is_component")
             };
             let flow = self.flow_of(symbol);
+            let built_once = root || self.built_once.remove(&element.span.start);
+            if flow.is_some() {
+                self.mark_bodies_built_once(element);
+            }
             let Expression::JSXElement(element) = it.take_in(&self.allocator) else {
                 unreachable!("matched above")
             };
@@ -1500,8 +1656,16 @@ impl<'a> VisitMut<'a> for Shaper<'a, '_> {
                 },
                 None => self.component_call(callee, symbol, flow, element),
             };
+            // R1. Anywhere else the call may run inside a compute — a hole's
+            // condition, a prop read later, a `map` — and its setup's reads
+            // would become the compute's, rebuilding the component on each.
+            if !built_once && self.untracks && matches!(it, Expression::CallExpression(_)) {
+                let call = it.take_in(&self.allocator);
+                *it = self.untracked(call);
+            }
         }
         walk_expression(self, it);
+        self.depth -= 1;
         if let Some(span) = mount {
             let built = it.take_in(&self.allocator);
             *it = self.block(built, span);
@@ -1782,7 +1946,7 @@ mod tests {
         )
         .code;
         assert!(
-            code.contains("_$bindEffect(() => ({ a: on() ? styles.on : styles.off })"),
+            code.contains("_$bindEffect(() => _$classToString(on() ? styles.on : styles.off)"),
             "{code}"
         );
         assert!(code.contains("_$insert(_el$1, () => on() ? styles.on : styles.off)"), "{code}");
@@ -1920,7 +2084,10 @@ mod tests {
         // before it is untouched.
         assert!(code.contains("[Icon({}), () => on() ? \"a\" : \"b\"]"), "{code}");
         // A lone CHOICE becomes an array of one, so `insert` sees a live hole.
-        assert!(code.contains("[() => on() ? A({}) : B({})]"), "{code}");
+        assert!(
+            code.contains("[() => on() ? _$untrack(() => A({})) : _$untrack(() => B({}))]"),
+            "{code}"
+        );
         // Nothing moves here, and the first is built where it is written. The
         // second waits for it: what a component hands back may build only when
         // it is placed, and the one after it must not get there first.
@@ -1953,10 +2120,13 @@ mod tests {
              );\n",
         )
         .code;
-        assert!(code.contains("() => on() ? A({}) : B({})"), "{code}");
-        assert!(code.contains("() => on() ? A({}) : null"), "{code}");
+        assert!(
+            code.contains("() => on() ? _$untrack(() => A({})) : _$untrack(() => B({}))"),
+            "{code}"
+        );
+        assert!(code.contains("() => on() ? _$untrack(() => A({})) : null"), "{code}");
         // A child written directly is still placed once, with no closure.
-        assert!(!code.contains("() => A({}))"), "{code}");
+        assert!(code.contains("_$insert(_el$3, A({}))"), "{code}");
     }
 
     /// C3.2. An opaque expression still crosses as a Cell: the ABI is TOTAL, so
@@ -2338,6 +2508,41 @@ mod tests {
         // construct's call hands back the function and the item never arrives.
         assert!(code.contains("_$each(null, null, rows, null, _$block(row))"), "{code}");
         assert!(!code.contains("() => row"), "{code}");
+    }
+
+    /// Rows an array literal or an index-mapping `Array.from` created are plain
+    /// values, so a `<For>` over them has nothing for O3 to warn about. A row
+    /// the literal did not create, a mapper that may hand back its source's
+    /// items, and a binding written again all keep the note.
+    #[test]
+    fn rows_a_literal_created_are_not_reported() {
+        let note = |declaration: &str, each: &str| {
+            dev(&format!(
+                "import {{ For }} from \"@barqjs/core\";\n\
+                 {declaration}\n\
+                 export const V = () => <For each={{{each}}}>{{(item) => <li>{{item}}</li>}}</For>;\n"
+            ))
+            .warnings
+            .len()
+        };
+        let teams = "const TEAMS = [{ name: \"salama\", icon: Icon }, [1], \"a\", 2];";
+        assert_eq!(note(teams, "() => TEAMS"), 0);
+        assert_eq!(note(teams, "TEAMS"), 0);
+        let months = "const MONTHS = Array.from({ length: 12 }, (_, at) => at + 1);";
+        assert_eq!(note(months, "() => MONTHS"), 0);
+        let indices = "const ROWS = Array.from({ length: 4 }, (_, index) => index);";
+        assert_eq!(note(indices, "ROWS"), 0);
+
+        assert_eq!(note("const ROWS = [source[0]];", "ROWS"), 1);
+        assert_eq!(note("const ROWS = Array.from(source, (row) => row);", "ROWS"), 1);
+        assert_eq!(note("let ROWS = [{ n: 1 }]; ROWS = source;", "ROWS"), 1);
+        assert_eq!(
+            note(
+                "const Array = { from: () => source };\nconst ROWS = Array.from(source, (_, i) => i);",
+                "ROWS"
+            ),
+            1
+        );
     }
 
     /// O3 is the one documented divergence M3 leaves standing, so it is not

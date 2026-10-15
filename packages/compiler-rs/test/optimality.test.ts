@@ -1054,7 +1054,7 @@ describe("K5 — the thirteen constructs, and the four they lower onto", () => {
     }
     // And the primitives they reach instead really are emitted.
     const all = bodies.map(([, code]) => code).join("\n");
-    for (const primitive of ["_$reveal(", "_$dynamic(", "_$boundary("]) {
+    for (const primitive of ["_$reveal(", "_$resolveDynamic(", "_$boundary("]) {
       expect(all, `${primitive} is emitted by no fixture`).toContain(primitive);
     }
   });

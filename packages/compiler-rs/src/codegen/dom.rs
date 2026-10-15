@@ -797,6 +797,28 @@ fn fused_effect<'a>(
         })
         .collect();
 
+    // `class` alone needs no record either. The compute hands back the string
+    // the channel applies, so an unchanged class stops at the effect's own
+    // equality check and the write half never runs. The css and classList maps
+    // have no such form: their identity says nothing about their content.
+    if let [(patch, name, one, Chan::Class, Diff::Thread)] = rows[..] {
+        let read = keyed_read(ctx, unit, one, Chan::Class, patch.span);
+        let read = if is_string_valued(&read) {
+            read
+        } else {
+            let callee = ctx.helper(Helper::ClassToString, patch.span);
+            ctx.call(callee, vec![Argument::from(read)], patch.span)
+        };
+        let compute = arrow(ctx, no_params(ctx, span), ArrowFunctionBody::from(read), span);
+        let mine = ctx.ident(value, patch.span);
+        let theirs = ctx.ident(prev, patch.span);
+        let write =
+            channel_write(ctx, unit, patch, name, Chan::Class, vec![mine, theirs], patch.span);
+        let params = apply_params(ctx, value, Some((prev, false)), span);
+        let apply = arrow(ctx, params, block(ctx, vec![write], span), span);
+        return effect_call(ctx, compute, apply, span);
+    }
+
     // One prop whose applied form IS its value needs no record: the previous
     // value is a scalar and the compute returns it directly.
     if let [(patch, name, one, chan, diff)] = rows[..]
@@ -889,6 +911,19 @@ fn fused_effect<'a>(
     let params = apply_params(ctx, value, reads_prev.then_some((prev, true)), span);
     let apply = arrow(ctx, params, block(ctx, body, span), span);
     effect_call(ctx, compute, apply, span)
+}
+
+/// An expression that can only evaluate to a string, which `classToString`
+/// would hand back unchanged.
+fn is_string_valued(expression: &Expression<'_>) -> bool {
+    match expression {
+        Expression::StringLiteral(_) | Expression::TemplateLiteral(_) => true,
+        Expression::ParenthesizedExpression(inner) => is_string_valued(&inner.expression),
+        Expression::ConditionalExpression(conditional) => {
+            is_string_valued(&conditional.consequent) && is_string_valued(&conditional.alternate)
+        }
+        _ => false,
+    }
 }
 
 /// The record's field names are POSITIONAL, not the attribute names. Two props

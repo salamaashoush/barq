@@ -56,7 +56,7 @@ impl Target {
     }
 }
 
-pub const HELPER_COUNT: usize = 62;
+pub const HELPER_COUNT: usize = 64;
 
 /// The first helper that lives in `<server_source>` rather than in the
 /// module source itself. The string backend calls into `ssr.ts`, which the DOM
@@ -159,7 +159,7 @@ pub enum Helper {
     /// one of the four primitives and never was; what M9 removed is the
     /// component around it.
     Reveal = 16,
-    /// `_$dynamic($s, component, props)`. The branch that swaps it is
+    /// `_$resolveDynamic(component, props)`. The branch that swaps it is
     /// the compiler's; the one question left is whether the resolved value is a
     /// tag or a component, and only the value can answer that.
     Dynamic = 17,
@@ -280,6 +280,13 @@ pub enum Helper {
     /// may be live on its own, and the read is where that becomes a
     /// dependency; the write half is handed values only.
     ReadKeys = 61,
+    /// `_$classToString(value)` — a lone `class` binding's value in its applied
+    /// form, computed in the READ half so the effect's own equality decides
+    /// whether the write half runs at all.
+    ClassToString = 62,
+    /// `_$untrack(() => Comp(props))` — a component called where a compute may
+    /// be running, so a signal its setup reads does not rebuild it.
+    Untrack = 63,
 }
 
 const IMPORTED: [&str; HELPER_COUNT] = [
@@ -300,7 +307,7 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "island",
     "COUNT",
     "reveal",
-    "dynamic",
+    "resolveDynamic",
     "readSlot",
     "setAttr",
     "setDomProp",
@@ -345,6 +352,8 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "interp",
     "getOwner",
     "readKeys",
+    "classToString",
+    "untrack",
 ];
 
 /// The name a helper is imported under, for a test that has to check the table

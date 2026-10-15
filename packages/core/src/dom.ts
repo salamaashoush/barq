@@ -555,7 +555,7 @@ export type { JSXElement as Element };
  * the same two entry points every other element goes through, rather than the
  * fifth element-creation path `createDynamicElement` used to be.
  */
-export function dynamic(
+export function resolveDynamic(
   component: Cell<string | ((props: Record<string, unknown>) => unknown)>,
   props: Record<string, unknown>,
 ): unknown {
@@ -573,7 +573,7 @@ export function dynamic(
  * One element, by tag NAME, with a props source list — the shape a template
  * cannot express and the only element-creation path beside `template()`.
  *
- * Two callers, both of them the compiler's: `dynamic`'s string arm, and the
+ * Two callers, both of them the compiler's: `resolveDynamic`'s string arm, and the
  * intrinsic P1 refuses because the tree builder would not produce it as written
  * (`<td>` outside a row, `<body>`). Everything it does goes through the same
  * two entry points a compiled element goes through — `spread` for the props,
@@ -810,11 +810,10 @@ export function setClass(element: Element, _name: string, value: unknown, prev?:
   if (current === owned) {
     if (className === null) {
       element.removeAttribute("class");
-    } else if (element.namespaceURI === SVG_NS) {
-      // SVGElement.className is a read-only SVGAnimatedString
-      element.setAttribute("class", className);
     } else {
-      (element as Element & { className: string }).className = className;
+      // The attribute rather than `className`, which is a read-only
+      // SVGAnimatedString on an SVG element and so needed a namespace read first.
+      element.setAttribute("class", className);
     }
     return className;
   }
@@ -1835,16 +1834,16 @@ function placeInsert(parent: Node, value: Resolved, current: Node[], marker: Nod
   if (typeof value === "string" || typeof value === "number") {
     // Same text node as last time: write through it
     if (current.length === 1 && current[0].nodeType === 3) {
-      (current[0] as Text).data = String(value);
+      writeText(current[0] as Text, value);
       return current;
     }
     // Sole occupant of its parent: the element is the range, so no bookkeeping
     if (marker === null && current.length === 0 && parent.firstChild === null) {
-      parent.textContent = String(value);
+      fillText(parent, value);
       const node = parent.firstChild;
       return node === null ? EMPTY_NODES : [node];
     }
-    next = [document.createTextNode(String(value))];
+    next = [textNode(value)];
   } else {
     next = value;
   }
@@ -1862,6 +1861,99 @@ function placeInsert(parent: Node, value: Resolved, current: Node[], marker: Nod
   const liveParent = current[0].parentNode ?? parent;
   reconcileNodeArrays(liveParent, current, next, marker);
   return next;
+}
+
+/**
+ * Text is handed to the DOM as it arrived. The DOM converts a number itself,
+ * where `String()` adds an entry to V8's number-to-string cache for every
+ * distinct number, and a table of row ids is a thousand of them.
+ */
+type TextValue = string | number;
+
+interface NumericText {
+  createTextNode(data: TextValue): Text;
+}
+
+function textNode(value: TextValue): Text {
+  return (document as NumericText).createTextNode(value);
+}
+
+function writeText(node: Text, value: TextValue): void {
+  (node as { data: TextValue }).data = value;
+}
+
+/**
+ * Fill an empty element with text. A string goes through `textContent`, which
+ * creates no node for `""`; a number is appended as a node, because a DOM that
+ * tests the value's truthiness before converting it renders `0` as nothing.
+ */
+function fillText(parent: Node, value: TextValue): void {
+  if (typeof value === "number") {
+    parent.appendChild(textNode(value));
+  } else {
+    parent.textContent = value;
+  }
+}
+
+/**
+ * What a live hole holds between runs: its nodes, or `SOLE_TEXT` while it is
+ * its parent's only content and that content is text. The text node is then
+ * the parent's first child and is not kept: holding it would give every text
+ * hole a JS wrapper for its node, and an array around it besides.
+ */
+const SOLE_TEXT: unique symbol = Symbol("barq-sole-text");
+
+type Held = Node[] | typeof SOLE_TEXT;
+
+function heldNodes(parent: Node, held: Held): Node[] {
+  if (held !== SOLE_TEXT) return held;
+  const text = parent.firstChild;
+  return text !== null && text.nodeType === 3 ? [text] : EMPTY_NODES;
+}
+
+/**
+ * A live hole with nothing to claim. Its own function so the effect's two
+ * closures share one context that holds only what an update needs.
+ */
+function insertLive(
+  parent: Node,
+  value: (s: unknown) => Child,
+  anchor: Node | null,
+  given: Scope | null,
+): void {
+  let held: Held = EMPTY_NODES;
+  effectUnder<Resolved>(
+    given,
+    "insert",
+    () => {
+      const owner = getOwner();
+      if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockEnter("insert", given);
+      const produced = yielded(buildChild(value, owner), owner);
+      if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockExit("insert");
+      if (typeof produced === "string" || typeof produced === "number") return produced;
+      return normalizeChildToNodes(produced, heldNodes(parent, held), given);
+    },
+    (resolved) => {
+      held = placeHeld(parent, resolved, held, anchor);
+    },
+  );
+}
+
+function placeHeld(parent: Node, value: Resolved, held: Held, marker: Node | null): Held {
+  const text = typeof value === "string" || typeof value === "number";
+  if (held === SOLE_TEXT) {
+    const node = parent.firstChild;
+    if (text && node !== null && node.nodeType === 3) {
+      writeText(node as Text, value);
+      return held;
+    }
+    held = heldNodes(parent, held);
+  }
+  if (text && marker === null && held.length === 0 && parent.firstChild === null) {
+    fillText(parent, value);
+    return parent.firstChild === null ? EMPTY_NODES : SOLE_TEXT;
+  }
+  return placeInsert(parent, value, held, marker);
 }
 
 function applyInsert(
@@ -2022,6 +2114,11 @@ export function insert(
     }
   }
 
+  if (typeof value === "function" && claim === null) {
+    insertLive(parent, value as (s: unknown) => Child, anchor, given);
+    return;
+  }
+
   if (typeof value === "function") {
     let current: Node[] = claim === null ? EMPTY_NODES : claim.nodes;
     let first = claim;
@@ -2138,16 +2235,15 @@ export function insert(
     const nodes = childToNodes(value, given);
     for (let i = 0; i < nodes.length; i++) parent.insertBefore(nodes[i], anchor);
   } else {
-    const text = String(value);
     // `applyInsert`'s sole-occupant fast path, which the static branch never
     // had: the element IS the range, so the text needs no node of its own to
     // track. `textContent = ""` creates NO text node where `appendChild`
     // creates an empty one, so the empty string keeps the old path.
-    if (anchor === null && text !== "" && parent.firstChild === null) {
-      parent.textContent = text;
+    if (anchor === null && value !== "" && parent.firstChild === null) {
+      fillText(parent, value);
       return;
     }
-    parent.insertBefore(document.createTextNode(text), anchor);
+    parent.insertBefore(textNode(value), anchor);
   }
 }
 

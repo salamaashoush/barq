@@ -348,6 +348,11 @@ pub struct ReactiveEnv<'a> {
     /// read, and knowing that is the difference between one effect per
     /// attribute that calls it and one effect for all of them.
     pub derived: Vec<SymbolId>,
+    /// Bindings initialised with an array literal whose every element is an
+    /// object, array or primitive literal. Its rows are values the literal
+    /// created, never store proxies, so a `<For>` over them reads nothing a
+    /// field write could leave stale.
+    pub plain_rows: Vec<SymbolId>,
 }
 
 /// One proven Cell slot. `read` is where the callee consumes it, so the
@@ -381,6 +386,7 @@ impl<'a> ReactiveEnv<'a> {
             root_blocks: Vec::new(),
             root_jsx_args: Vec::new(),
             derived: Vec::new(),
+            plain_rows: Vec::new(),
         }
     }
 

@@ -927,44 +927,50 @@ export function each<T>(
 
     // A row IS the scope the engine opens for it, so the body is built under
     // whatever is current when the mapper runs.
-    let rows: () => Node[][];
+    let rows: () => Row[];
     if (keyOf === COUNT) {
       rows = repeat(
         source as Cell<number>,
-        (index: number): Node[] => {
+        (index: number): Row => {
           activation++;
           if (OWNERSHIP.sink !== null) traceRow(given);
           // The closure exists only for the hydrating cursor to wrap, and it is
           // one allocation PER ROW. Nothing is hydrating in the ordinary case.
           if (rowCursor === null) {
-            return cold
-              ? withoutClaim(() => asRow(build(getOwner(), body, [index])))
-              : asRow(build(getOwner(), body, [index]));
+            return listRow(
+              cold
+                ? withoutClaim(() => asRow(build(getOwner(), body, [index])))
+                : asRow(build(getOwner(), body, [index])),
+            );
           }
-          return inRow(rowCursor, () => asRow(build(getOwner(), body, [index])));
+          return listRow(inRow(rowCursor, () => asRow(build(getOwner(), body, [index]))));
         },
         { fallback: fallbackRows },
       );
     } else {
-      const one = (item: unknown): Node[] => {
+      const one = (item: unknown): Row => {
         activation++;
         if (OWNERSHIP.sink !== null) traceRow(given);
         if (rowCursor === null) {
-          return cold
-            ? withoutClaim(() => asRow(build(getOwner(), body, [item])))
-            : asRow(build(getOwner(), body, [item]));
+          return listRow(
+            cold
+              ? withoutClaim(() => asRow(build(getOwner(), body, [item])))
+              : asRow(build(getOwner(), body, [item])),
+          );
         }
-        return inRow(rowCursor, () => asRow(build(getOwner(), body, [item])));
+        return listRow(inRow(rowCursor, () => asRow(build(getOwner(), body, [item]))));
       };
-      const two = (item: unknown, index: unknown): Node[] => {
+      const two = (item: unknown, index: unknown): Row => {
         activation++;
         if (OWNERSHIP.sink !== null) traceRow(given);
         if (rowCursor === null) {
-          return cold
-            ? withoutClaim(() => asRow(build(getOwner(), body, [item, index])))
-            : asRow(build(getOwner(), body, [item, index]));
+          return listRow(
+            cold
+              ? withoutClaim(() => asRow(build(getOwner(), body, [item, index])))
+              : asRow(build(getOwner(), body, [item, index])),
+          );
         }
-        return inRow(rowCursor, () => asRow(build(getOwner(), body, [item, index])));
+        return listRow(inRow(rowCursor, () => asRow(build(getOwner(), body, [item, index]))));
       };
       // The engine reads the mapper's arity to decide whether a row needs an
       // index at all, and an index is a whole signal per row. The row Block's
@@ -975,7 +981,7 @@ export function each<T>(
         source as Cell<Maybe<readonly T[]>>,
         ((row as { length: number }).length === 1 ? one : two) as never,
         { keyed: (keyOf ?? true) as never, fallback: fallbackRows },
-      ) as () => Node[][];
+      ) as () => Row[];
     }
 
     // Nodes the server wrote that no row adopted. They are in the document and
@@ -1107,6 +1113,40 @@ function asRow(nodes: Node[]): Node[] {
   return nodes;
 }
 
+/**
+ * A list row: its one node, or its nodes. A row of one node is the common
+ * case, and holding the node itself instead of an array around it is one
+ * array fewer kept alive per row. The row's identity is the node then, which
+ * is as stable as the array was.
+ */
+type Row = Node | readonly Node[];
+
+function listRow(nodes: readonly Node[]): Row {
+  return nodes.length === 1 && !LIVE_ROWS.has(nodes) ? nodes[0] : nodes;
+}
+
+function isNodes(row: Row): row is readonly Node[] {
+  return Array.isArray(row);
+}
+
+function rowFirst(row: Row): Node | undefined {
+  return isNodes(row) ? row[0] : row;
+}
+
+function detach(node: Node): void {
+  node.parentNode?.removeChild(node);
+}
+
+/** A row's nodes as they stand, one node handed to `visit`. */
+function eachStanding(row: Row, visit: (node: Node) => void): void {
+  if (!isNodes(row)) {
+    visit(row);
+    return;
+  }
+  const standing = standingRow(row);
+  for (let i = 0; i < standing.length; i++) visit(standing[i]);
+}
+
 /** A row as it stands. */
 function standingRow(row: readonly Node[]): readonly Node[] {
   if (!LIVE_ROWS.has(row)) return row;
@@ -1121,14 +1161,17 @@ function standingRow(row: readonly Node[]): readonly Node[] {
   return nodes;
 }
 
-function standingRows(rows: readonly Node[][]): Node[] {
+function standingRows(rows: readonly Row[]): Node[] {
   const out: Node[] = [];
-  for (const row of rows) for (const node of standingRow(row)) out.push(node);
+  const push = (node: Node): void => {
+    out.push(node);
+  };
+  for (const row of rows) eachStanding(row, push);
   return out;
 }
 
-function syncRows(site: Site, rows: () => Node[][], beforeFirst: () => void): void {
-  let current: Node[][] = [];
+function syncRows(site: Site, rows: () => Row[], beforeFirst: () => void): void {
+  let current: Row[] = [];
   let first = true;
 
   renderEffect(rows, (next) => {
@@ -1164,7 +1207,7 @@ function syncRows(site: Site, rows: () => Node[][], beforeFirst: () => void): vo
         const kept = new Set(arriving);
         for (const group of leaving) {
           if (kept.has(group)) continue;
-          for (const node of standingRow(group)) node.parentNode?.removeChild(node);
+          eachStanding(group, detach);
         }
       }
     }
@@ -1172,8 +1215,9 @@ function syncRows(site: Site, rows: () => Node[][], beforeFirst: () => void): vo
     if (arriving.length > 0) {
       let after = site.anchor;
       for (let i = now; i < next.length; i++) {
-        if (next[i].length === 0) continue;
-        after = next[i][0];
+        const lead = rowFirst(next[i]);
+        if (lead === undefined) continue;
+        after = lead;
         break;
       }
       syncNodeOrder(host, after, leaving, arriving);
@@ -1187,12 +1231,7 @@ function syncRows(site: Site, rows: () => Node[][], beforeFirst: () => void): vo
   });
 }
 
-function syncNodeOrder(
-  parent: Node,
-  anchor: Node | null,
-  previous: Node[][],
-  next: Node[][],
-): void {
+function syncNodeOrder(parent: Node, anchor: Node | null, previous: Row[], next: Row[]): void {
   const newLen = next.length;
 
   if (previous.length === 0) {
@@ -1200,7 +1239,13 @@ function syncNodeOrder(
     // position is not taken out and put back.
     let before = anchor;
     for (let i = newLen - 1; i >= 0; i--) {
-      const row = standingRow(next[i]);
+      const group = next[i];
+      if (!isNodes(group)) {
+        place(parent, group, before);
+        before = group;
+        continue;
+      }
+      const row = standingRow(group);
       for (let j = row.length - 1; j >= 0; j--) {
         place(parent, row[j], before);
         before = row[j];
@@ -1209,7 +1254,7 @@ function syncNodeOrder(
     return;
   }
 
-  const previousIndex = new Map<Node[], number>();
+  const previousIndex = new Map<Row, number>();
   for (let i = 0; i < previous.length; i++) previousIndex.set(previous[i], i);
 
   const sources: number[] = new Array(newLen);
@@ -1222,7 +1267,8 @@ function syncNodeOrder(
 
   for (let i = newLen - 1; i >= 0; i--) {
     const group = next[i];
-    if (group.length === 0) continue;
+    const first = rowFirst(group);
+    if (first === undefined) continue;
 
     if (sources[i] !== -1 && lisIndex >= 0 && lis[lisIndex] === sources[i]) {
       lisIndex--; // already in the right place
@@ -1230,13 +1276,17 @@ function syncNodeOrder(
       // First to last, each before the same node, which is what keeps a row
       // of several nodes in its own order: last to first put them down
       // reversed.
-      const standing = standingRow(group);
-      for (let j = 0; j < standing.length; j++) {
-        parent.insertBefore(standing[j], nextNode);
+      if (!isNodes(group)) {
+        parent.insertBefore(group, nextNode);
+      } else {
+        const standing = standingRow(group);
+        for (let j = 0; j < standing.length; j++) {
+          parent.insertBefore(standing[j], nextNode);
+        }
       }
     }
 
-    nextNode = group[0];
+    nextNode = first;
   }
 }
 

@@ -1,12 +1,12 @@
 use oxc::allocator::Allocator;
 use oxc::ast::ast::{
-    ArrowFunctionExpression, BinaryExpression, BindingPattern, ConditionalExpression, Declaration,
-    DoWhileStatement, ExportDefaultDeclarationKind, Expression, ForStatement, FormalParameters,
-    Function, IfStatement, ImportDeclarationSpecifier, JSXAttributeItem, JSXAttributeName,
-    JSXAttributeValue, JSXChild, JSXElement, JSXElementName, JSXExpression, LogicalExpression,
-    ModuleExportName, ObjectExpression, ObjectPropertyKind, Program, PropertyKey, Statement,
-    StaticMemberExpression, SwitchStatement, TaggedTemplateExpression, TemplateLiteral,
-    UnaryExpression, UnaryOperator, VariableDeclarator, WhileStatement,
+    Argument, ArrowFunctionExpression, BinaryExpression, BindingPattern, ConditionalExpression,
+    Declaration, DoWhileStatement, ExportDefaultDeclarationKind, Expression, ForStatement,
+    FormalParameters, Function, IfStatement, ImportDeclarationSpecifier, JSXAttributeItem,
+    JSXAttributeName, JSXAttributeValue, JSXChild, JSXElement, JSXElementName, JSXExpression,
+    LogicalExpression, ModuleExportName, ObjectExpression, ObjectPropertyKind, Program,
+    PropertyKey, Statement, StaticMemberExpression, SwitchStatement, TaggedTemplateExpression,
+    TemplateLiteral, UnaryExpression, UnaryOperator, VariableDeclarator, WhileStatement,
 };
 use oxc::ast_visit::Visit;
 use oxc::ast_visit::walk;
@@ -965,6 +965,12 @@ impl<'a> Binder<'_, 'a> {
                 self.components.push((Some(owner), span, identifier.name.as_str()));
             }
         }
+        if let BindingPattern::BindingIdentifier(identifier) = &declarator.id
+            && let Some(symbol) = identifier.symbol_id.get()
+            && literal_rows(self.scoping, init)
+        {
+            self.env.plain_rows.push(symbol);
+        }
         let init = self.init_of(init);
         match &declarator.id {
             BindingPattern::BindingIdentifier(identifier) => {
@@ -1672,6 +1678,65 @@ fn stateful_tag(tag: &str) -> bool {
 /// Whether an initialiser is data all the way down: literals, functions, and
 /// object or array literals of the same. A getter, a spread, a call or a name
 /// could each put something reactive inside, so any of them makes it unknown.
+/// An array literal of rows the literal itself creates: object, array and
+/// primitive literals, whatever the values inside them are.
+fn literal_rows(scoping: &Scoping, expression: &Expression<'_>) -> bool {
+    match expression {
+        Expression::ParenthesizedExpression(inner) => literal_rows(scoping, &inner.expression),
+        Expression::TSAsExpression(cast) => literal_rows(scoping, &cast.expression),
+        Expression::TSSatisfiesExpression(cast) => literal_rows(scoping, &cast.expression),
+        Expression::ArrayExpression(array) => array.elements.iter().all(|element| {
+            element.as_expression().is_some_and(|row| {
+                matches!(
+                    row,
+                    Expression::ObjectExpression(_)
+                        | Expression::ArrayExpression(_)
+                        | Expression::StringLiteral(_)
+                        | Expression::NumericLiteral(_)
+                        | Expression::BooleanLiteral(_)
+                        | Expression::NullLiteral(_)
+                ) || matches!(row, Expression::TemplateLiteral(literal) if literal.expressions.is_empty())
+            })
+        }),
+        // `Array.from(source, (_, index) => …)` whose mapper can only hand back
+        // a primitive: the rows are what the mapper made, whatever the source.
+        Expression::CallExpression(call) => {
+            let Expression::StaticMemberExpression(member) = &call.callee else { return false };
+            let Expression::Identifier(array) = &member.object else { return false };
+            if symbol_of(scoping, &member.object).is_some() {
+                return false;
+            }
+            let [_, Argument::ArrowFunctionExpression(mapper)] = call.arguments.as_slice() else {
+                return false;
+            };
+            array.name == "Array"
+                && member.property.name == "from"
+                && mapper.body.as_expression().is_some_and(|body| primitive_row(body, mapper))
+        }
+        _ => false,
+    }
+}
+
+/// A mapper body that evaluates to a primitive: an operator, a literal, or the
+/// index `Array.from` passes as the second argument.
+fn primitive_row(body: &Expression<'_>, mapper: &ArrowFunctionExpression<'_>) -> bool {
+    match body {
+        Expression::ParenthesizedExpression(inner) => primitive_row(&inner.expression, mapper),
+        Expression::BinaryExpression(_)
+        | Expression::UnaryExpression(_)
+        | Expression::StringLiteral(_)
+        | Expression::NumericLiteral(_)
+        | Expression::BooleanLiteral(_)
+        | Expression::NullLiteral(_)
+        | Expression::TemplateLiteral(_) => true,
+        Expression::Identifier(identifier) => mapper.params.items.get(1).is_some_and(|index| {
+            matches!(&index.pattern, BindingPattern::BindingIdentifier(name)
+                if name.name == identifier.name)
+        }),
+        _ => false,
+    }
+}
+
 fn plain_data(expression: &Expression<'_>) -> bool {
     match expression {
         Expression::StringLiteral(_)
