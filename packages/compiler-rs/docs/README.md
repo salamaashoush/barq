@@ -29,11 +29,12 @@ exists and how to silence it.
 | [BARQ023](BARQ023.md) | error | `classList` is written on an element, where it is an ordinary attribute |
 | [BARQ024](BARQ024.md) | error | An attribute uses a Solid 1.x namespace such as `on:` or `attr:` |
 | [BARQ025](BARQ025.md) | error | `<Dynamic>` is rendered, where Solid 2.0 uses the `dynamic` factory |
+| [BARQ026](BARQ026.md) | error | Markup the browser's HTML parser builds differently from the JSX |
 
 BARQ001, BARQ002, BARQ003, BARQ005, BARQ011 and BARQ018 to BARQ021 are reported when the
 `diagnostics` option is on, which it is in development builds. BARQ004 and BARQ010 are reported in development
 builds only.
-BARQ012 to BARQ017 and BARQ022 to BARQ025 are reported in every build, so they can fail CI. BARQ008 and BARQ009
+BARQ012 to BARQ017 and BARQ022 to BARQ026 are reported in every build, so they can fail CI. BARQ008 and BARQ009
 report on your own suppression comments.
 
 [BARQ006](BARQ006.md) was removed and is not reported.

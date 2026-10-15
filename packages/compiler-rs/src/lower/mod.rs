@@ -1,7 +1,7 @@
 pub(crate) mod entity;
 pub(crate) mod jsx;
 pub(crate) mod names;
-mod parse;
+pub(crate) mod parse;
 pub(crate) mod text;
 
 use std::borrow::Cow;

@@ -35,9 +35,10 @@ accessor has no `.value`, `.set` or `.peek`, and writing goes through the setter
 `createSignal` returns beside it. A prop works the same way: `props.user.email` has to be
 `props.user().email`.
 
-Two reads on an accessor are not reported, because every function has them: `items.length`
-and `user.name` give the function's own length and name. Write `items().length` and
-`user().name`.
+`items.length` and `user.name` are reported too, with their own message. Every function
+has them, so they never come back `undefined`: `items.length` is the accessor's parameter
+count, `0`, and a list that shows `0` items has nothing else wrong with it. Write
+`items().length` and `user().name`.
 
 ## Silencing one line
 

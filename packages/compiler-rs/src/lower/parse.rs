@@ -179,16 +179,37 @@ const CLOSES_P: [&str; 40] = [
 /// `createElement` could reproduce neither, and that reference is gone.
 const NEVER: [&str; 7] = ["body", "frame", "frameset", "head", "html", "isindex", "plaintext"];
 
+/// How the browser's tree builder departs from the JSX at one element.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Reshape {
+    /// A document-structure or obsolete tag that is never an element of its own.
+    Never,
+    /// A table or select part where the parser does not take it as written: it
+    /// moves it out, wraps it in an implied element, or drops its tag.
+    Misplaced,
+    /// A start tag that closes an open `<p>`, so it lands after the paragraph.
+    ClosesP,
+    /// A second `<a>`, `<button>`, `<form>`, `<li>`, `<nobr>`, `<dd>`/`<dt>` or
+    /// `<rt>`/`<rp>` inside an open one, which closes the outer one first.
+    ClosesOuter,
+}
+
 /// True when the browser's tree builder produces something other than the
 /// element the JSX names, at this position.
 pub fn reshapes(tag: &str, at: Context<'_>) -> bool {
+    reshape(tag, at).is_some()
+}
+
+/// What the browser's tree builder does instead of the element the JSX names,
+/// at this position, or `None` when it builds it as written.
+pub fn reshape(tag: &str, at: Context<'_>) -> Option<Reshape> {
     if at.in_svg || at.in_math {
         // Foreign content inserts elements verbatim: no implied end tags, no
         // foster parenting, no active formatting elements.
-        return false;
+        return None;
     }
     if NEVER.binary_search(&tag).is_ok() {
-        return true;
+        return Some(Reshape::Never);
     }
     // A template ROOT is not parsed in "in body". `template()` assigns
     // `innerHTML` on a `<template>`, which parses in "in template" insertion
@@ -205,7 +226,7 @@ pub fn reshapes(tag: &str, at: Context<'_>) -> bool {
         _ => true,
     };
     if !legal_parent {
-        return true;
+        return Some(Reshape::Misplaced);
     }
     let legal_child = match at.parent {
         Some("table") => matches!(tag, "caption" | "colgroup" | "tbody" | "tfoot" | "thead"),
@@ -218,10 +239,10 @@ pub fn reshapes(tag: &str, at: Context<'_>) -> bool {
         _ => true,
     };
     if !legal_child {
-        return true;
+        return Some(Reshape::Misplaced);
     }
     if at.open.p && CLOSES_P.binary_search(&tag).is_ok() {
-        return true;
+        return Some(Reshape::ClosesP);
     }
     matches!(
         (tag, at.open),
@@ -233,6 +254,7 @@ pub fn reshapes(tag: &str, at: Context<'_>) -> bool {
             | ("dd" | "dt", Open { dl_item: true, .. })
             | ("rt" | "rp", Open { ruby_item: true, .. })
     )
+    .then_some(Reshape::ClosesOuter)
 }
 
 /// Inside these, a character token that is not whitespace is foster-parented

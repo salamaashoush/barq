@@ -111,6 +111,7 @@ codes! {
     Barq023 = "BARQ023", Error, "`classList` is written on an element, where it is an ordinary attribute";
     Barq024 = "BARQ024", Error, "An attribute uses a Solid 1.x namespace such as `on:` or `attr:`";
     Barq025 = "BARQ025", Error, "`<Dynamic>` is rendered, where Solid 2.0 uses the `dynamic` factory";
+    Barq026 = "BARQ026", Error, "Markup the browser's HTML parser builds differently from the JSX";
 }
 
 /// Where the pages live. A consumer gets this string verbatim — the Vite panel

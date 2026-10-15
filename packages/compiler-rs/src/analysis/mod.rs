@@ -1,6 +1,7 @@
 mod bind;
 pub mod link;
 pub mod migration;
+mod nesting;
 mod render;
 pub mod server_fn;
 
@@ -69,6 +70,11 @@ pub fn bind<'a>(
     scope_ranges(&scoping, module);
     module.scoping = scoping;
     bind::classify(allocator, program, module, options);
+    // Not gated on `diagnostics`: markup the parser reshapes breaks every
+    // server-rendered page that holds it, so a production build is where it
+    // has to fail.
+    let reshaped = nesting::check(allocator, program);
+    module.env.diagnostics.extend(reshaped);
     if options.diagnostics {
         render::check(allocator, program, &module.scoping, &mut module.env, &options.module_source);
     }

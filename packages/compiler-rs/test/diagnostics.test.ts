@@ -109,6 +109,28 @@ describe("the diagnostic engine", () => {
     }
   });
 
+  /**
+   * A function's own `length` and `name` are the two members an accessor HAS,
+   * and the two a list reads by mistake: `items.length` renders `0`.
+   */
+  it("reports `.length` and `.name` read off an accessor, with what they really are", () => {
+    const raw = diagnose(
+      `import { createMemo, createSignal } from "@barqjs/core";\n` +
+        `const [items] = createSignal(["salama"]);\n` +
+        `const user = createMemo(() => ({ name: "salama" }));\n` +
+        "export const V = () => <p>{items.length} {user.name} {items().length}</p>;\n",
+    );
+    expect(codes(raw)).toEqual(["BARQ003", "BARQ003"]);
+    expect(raw.diagnostics[0].message).toBe(
+      "`items` is an accessor, so `.length` is the function's own parameter count, `0`, and not " +
+        "the length of the value it returns. Call it first: `items().length`.",
+    );
+    expect(raw.diagnostics[1].message).toBe(
+      "`user` is an accessor, so `.name` is the function's own name and not the name of the " +
+        "value it returns. Call it first: `user().name`.",
+    );
+  });
+
   /** The framework's own idiom. A JSX arm here would fire on correct code. */
   it("says nothing about a bare accessor in a JSX hole or attribute", () => {
     const raw = diagnose(
@@ -307,6 +329,7 @@ describe("the diagnostic engine", () => {
       BARQ025:
         `import { Dynamic } from "@barqjs/core";\n` +
         'export const V = () => <Dynamic component="p">salama</Dynamic>;\n',
+      BARQ026: "export const V = () => <p>Hello <div>salama</div></p>;\n",
     };
 
     const advertised = native
