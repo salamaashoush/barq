@@ -8,7 +8,7 @@
 
 import { describe, expect, test } from "bun:test";
 
-import { render } from "./index.ts";
+import { cleanup, render } from "./index.ts";
 
 describe("importing `@barqjs/testing` registers the cleanup hook", () => {
   test("this test leaves a container behind on purpose", () => {
@@ -23,6 +23,48 @@ describe("importing `@barqjs/testing` registers the cleanup hook", () => {
    */
   test("and the next test does not see it", () => {
     expect(document.querySelectorAll("[data-testid=leaked]").length).toBe(0);
+  });
+});
+
+/**
+ * A browser moves focus to the body when the focused element leaves the
+ * document. A headless DOM may leave `document.activeElement` on the removed
+ * node, and the next test's first focus event then names it as where focus
+ * came from: a node with no position, compared against ones that have one.
+ */
+describe("cleanup leaves focus where a browser would", () => {
+  test("focus inside a render does not outlive it", () => {
+    const { getByRole } = render(() => <button type="button">Save</button>);
+    getByRole("button").focus();
+    expect(document.activeElement).toBe(getByRole("button"));
+
+    cleanup();
+
+    expect(document.activeElement).toBe(document.body);
+  });
+
+  test("the next focus event has nowhere it came from", () => {
+    const first = render(() => <input aria-label="Name" />);
+    first.getByRole("textbox").focus();
+    cleanup();
+
+    const from: (EventTarget | null)[] = [];
+    const second = render(() => (
+      <input aria-label="Email" onFocus={(event: FocusEvent) => from.push(event.relatedTarget)} />
+    ));
+    second.getByRole("textbox").focus();
+    expect(from).toEqual([null]);
+  });
+
+  test("focus on something a render did not own is left alone", () => {
+    const outside = document.body.appendChild(document.createElement("button"));
+    outside.focus();
+    render(() => <p>Body</p>);
+
+    cleanup();
+
+    expect(document.activeElement).toBe(outside);
+    outside.remove();
   });
 });
 

@@ -1,4 +1,4 @@
-import type { Block, JSXElement, Scope } from "@barqjs/core";
+import type { Block, JSXElement } from "@barqjs/core";
 import type { BoundFunctions, prettyFormat, queries } from "@testing-library/dom";
 
 /**

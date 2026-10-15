@@ -23,7 +23,6 @@
  */
 
 import { flush } from "@barqjs/core";
-import type { Scope } from "@barqjs/core";
 import {
   type AnyRouteDefinition,
   type NavigateOptions,

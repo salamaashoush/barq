@@ -26,11 +26,10 @@ const FOCUSABLE =
   'video[controls],[contenteditable]:not([contenteditable^="false"]),' +
   "[tabindex]:not([disabled])";
 
-const TABBABLE =
-  "input:not([disabled]):not([type=hidden]),select:not([disabled]),textarea:not([disabled])," +
-  "button:not([disabled]),a[href],area[href],summary,iframe,object,embed,audio[controls]," +
-  'video[controls],[contenteditable]:not([contenteditable^="false"]),' +
-  '[tabindex]:not([tabindex="-1"]):not([disabled])';
+/** Everything that could be a Tab stop, before any of the reasons it is not. */
+const TAB_CANDIDATES =
+  "input,select,textarea,button,a[href],area[href],summary,iframe,object,embed,audio[controls]," +
+  "video[controls],[contenteditable],[tabindex]";
 
 export interface PointerOptions {
   pointerType?: "mouse" | "pen" | "touch";
@@ -130,7 +129,138 @@ function focusableAncestor(element: Element): HTMLElement | null {
 }
 
 /**
- * Everything in the document the browser would stop at when tabbing.
+ * `tabindex` as HTML parses it: an integer, or nothing when it is not one.
+ *
+ * An attribute that does not parse is as good as absent, so
+ * `<button tabindex="soon">` is still a button and `<div tabindex="soon">` is
+ * still not a stop.
+ */
+function declaredTabIndex(element: Element): number | null {
+  const raw = element.getAttribute("tabindex");
+  if (raw === null) return null;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isNaN(parsed) ? null : parsed;
+}
+
+function isFirstSummary(element: Element): boolean {
+  const parent = element.parentElement;
+  return (
+    parent !== null &&
+    parent.tagName === "DETAILS" &&
+    parent.querySelector(":scope > summary") === element
+  );
+}
+
+/** Whether the element is a Tab stop with no `tabindex` written on it. */
+function isNativelyTabbable(element: Element): boolean {
+  switch (element.tagName) {
+    case "INPUT":
+      return (element as HTMLInputElement).type !== "hidden";
+    case "SELECT":
+    case "TEXTAREA":
+    case "BUTTON":
+    case "IFRAME":
+    case "OBJECT":
+    case "EMBED":
+      return true;
+    case "A":
+    case "AREA":
+      return element.hasAttribute("href");
+    case "SUMMARY":
+      return isFirstSummary(element);
+    case "AUDIO":
+    case "VIDEO":
+      return element.hasAttribute("controls");
+    default: {
+      const editable = element.getAttribute("contenteditable");
+      return editable !== null && editable.toLowerCase() !== "false";
+    }
+  }
+}
+
+/**
+ * `disabled` as the platform reads it.
+ *
+ * Only a form control can be disabled, by its own attribute or by a
+ * `<fieldset disabled>` around it, and a fieldset does not disable what sits
+ * in its own first `<legend>`. On anything else the attribute is a string the
+ * browser ignores, and Tab still stops there.
+ */
+function isDisabled(element: Element): boolean {
+  const tag = element.tagName;
+  if (tag !== "BUTTON" && tag !== "INPUT" && tag !== "SELECT" && tag !== "TEXTAREA") return false;
+  if (element.hasAttribute("disabled")) return true;
+
+  let fieldset = element.parentElement?.closest("fieldset[disabled]") ?? null;
+  while (fieldset !== null) {
+    const legend = fieldset.querySelector(":scope > legend");
+    if (legend === null || !legend.contains(element)) return true;
+    fieldset = fieldset.parentElement?.closest("fieldset[disabled]") ?? null;
+  }
+  return false;
+}
+
+/**
+ * Whether the element's box exists, asked of every ancestor once.
+ *
+ * `display: none`, `hidden`, `inert` and a closed `<details>` each take the
+ * whole subtree with them, so the answer for an element is its parent's answer
+ * and its own, and the parent's is remembered for its other children.
+ */
+function isInRenderedTree(element: Element, known: Map<Element, boolean>): boolean {
+  const cached = known.get(element);
+  if (cached !== undefined) return cached;
+
+  const parent = element.parentElement;
+  let rendered = parent === null || isInRenderedTree(parent, known);
+  if (rendered) {
+    const inClosedDetails =
+      parent !== null &&
+      parent.tagName === "DETAILS" &&
+      !parent.hasAttribute("open") &&
+      !isFirstSummary(element);
+    rendered =
+      !inClosedDetails &&
+      !element.hasAttribute("hidden") &&
+      !element.hasAttribute("inert") &&
+      getComputedStyle(element).display !== "none";
+  }
+  known.set(element, rendered);
+  return rendered;
+}
+
+/** `visibility` inherits and a descendant may turn it back on, so it is asked last. */
+function isVisible(element: Element): boolean {
+  const visibility = getComputedStyle(element).visibility;
+  return visibility !== "hidden" && visibility !== "collapse";
+}
+
+/**
+ * Where the element sits in the Tab sequence: its positive `tabindex`, `0` for
+ * document order, or `null` when Tab does not stop at it.
+ */
+function tabOrderIndex(element: Element, known: Map<Element, boolean>): number | null {
+  const declared = declaredTabIndex(element);
+  if (declared !== null && declared < 0) return null;
+  if (declared === null && !isNativelyTabbable(element)) return null;
+  if (isDisabled(element)) return null;
+  if (!isInRenderedTree(element, known) || !isVisible(element)) return null;
+  return declared ?? 0;
+}
+
+function isRadio(element: Element): element is HTMLInputElement {
+  return element instanceof HTMLInputElement && element.type === "radio";
+}
+
+/**
+ * Everything the browser would stop at when tabbing, in the order it would.
+ *
+ * HTML's sequential focus navigation order: elements with a positive
+ * `tabindex` first, lowest first and in document order within a value, then
+ * everything at `0` in document order. `tabindex="-1"` takes an element out
+ * whatever it is, as do `disabled`, `inert` and not being rendered.
+ * `aria-hidden` does not: it hides from assistive technology and Tab still
+ * stops there, which is the mistake `ariaViolations` reports.
  *
  * A group of radios sharing a `name` is ONE stop, not one per radio: the
  * browser stops at the checked one, or at the first when none is checked, and
@@ -138,34 +268,27 @@ function focusableAncestor(element: Element): HTMLElement | null {
  * on every radio is testing something no browser does.
  */
 export function tabbableElements(root: ParentNode = document): HTMLElement[] {
-  const candidates = [...root.querySelectorAll<HTMLElement>(TABBABLE)].filter(
-    (element) =>
-      !element.hasAttribute("hidden") &&
-      element.getAttribute("aria-hidden") !== "true" &&
-      element.closest("[inert]") === null,
-  );
+  const known = new Map<Element, boolean>();
+  const stops: { element: HTMLElement; index: number }[] = [];
+  for (const element of root.querySelectorAll<HTMLElement>(TAB_CANDIDATES)) {
+    const index = tabOrderIndex(element, known);
+    if (index !== null) stops.push({ element, index });
+  }
 
-  const seenRadioGroups = new Set<string>();
-  return candidates.filter((element) => {
-    if (!(element instanceof HTMLInputElement) || element.type !== "radio") return true;
-
-    const group = candidates.filter(
-      (other): other is HTMLInputElement =>
-        other instanceof HTMLInputElement &&
-        other.type === "radio" &&
-        other.name === element.name &&
-        other.form === element.form,
+  const radios = stops.map((stop) => stop.element).filter(isRadio);
+  const reachable = stops.filter(({ element }) => {
+    // Radios without a name are in no group, so each is its own stop.
+    if (!isRadio(element) || element.name === "") return true;
+    const group = radios.filter(
+      (other) => other.name === element.name && other.form === element.form,
     );
-    if (group.length === 0) return true;
-
-    const groupKey = `${element.name}\u0000${group[0]?.id ?? ""}`;
-    const checked = group.find((radio) => radio.checked);
-    const stop = checked ?? group[0];
-    if (element !== stop) return false;
-    if (seenRadioGroups.has(groupKey)) return false;
-    seenRadioGroups.add(groupKey);
-    return true;
+    return element === (group.find((radio) => radio.checked) ?? group[0]);
   });
+
+  // `toSorted` is stable, so document order survives within one `tabindex`.
+  const positive = reachable.filter((stop) => stop.index > 0).toSorted((a, b) => a.index - b.index);
+  const inDocumentOrder = reachable.filter((stop) => stop.index === 0);
+  return [...positive, ...inDocumentOrder].map((stop) => stop.element);
 }
 
 // ---------------------------------------------------------------------------
@@ -204,7 +327,10 @@ export function hover(element: Element, options: PointerOptions = {}): void {
   dispatch(element, new PointerEvent("pointerover", pointerInit(element, options, {})));
   // Root-first, as the browser fires them.
   for (const at of enterChain(element).toReversed()) {
-    dispatch(at, new PointerEvent("pointerenter", pointerInit(element, options, { bubbles: false })));
+    dispatch(
+      at,
+      new PointerEvent("pointerenter", pointerInit(element, options, { bubbles: false })),
+    );
   }
   dispatch(element, new MouseEvent("mouseover", mouseInit(element, options, {})));
   for (const at of enterChain(element).toReversed()) {
@@ -219,7 +345,10 @@ export function unhover(element: Element, options: PointerOptions = {}): void {
   dispatch(element, new PointerEvent("pointerout", pointerInit(element, options, {})));
   // Target-first on the way out, as the browser fires them.
   for (const at of enterChain(element)) {
-    dispatch(at, new PointerEvent("pointerleave", pointerInit(element, options, { bubbles: false })));
+    dispatch(
+      at,
+      new PointerEvent("pointerleave", pointerInit(element, options, { bubbles: false })),
+    );
   }
   dispatch(element, new MouseEvent("mouseout", mouseInit(element, options, {})));
   for (const at of enterChain(element)) {
@@ -406,7 +535,7 @@ function keyInit(name: string, options: KeyOptions): KeyboardEventInit {
 }
 
 function keyTarget(options: KeyOptions): Element {
-  return options.target ?? (document.activeElement) ?? document.body;
+  return options.target ?? document.activeElement ?? document.body;
 }
 
 export function keyDown(name: string, options: KeyOptions = {}): boolean {
@@ -430,8 +559,36 @@ export function key(name: string, options: KeyOptions = {}): void {
 
   if (proceed && name.length === 1) insertText(target, name);
   else if (proceed && name === "Backspace") deleteBackward(target);
+  if (proceed && name === "Enter" && activatesOnEnter(target)) activate(target);
 
-  keyUp(name, options);
+  const released = keyUp(name, options);
+  if (proceed && released && name === " " && activatesOnSpace(target)) activate(target);
+}
+
+const BUTTON_INPUTS = new Set(["button", "submit", "reset", "image"]);
+
+/** What the browser clicks for Enter: a button, a link, a button-like input. */
+function activatesOnEnter(element: Element): boolean {
+  if (element instanceof HTMLButtonElement) return !element.disabled;
+  if (element instanceof HTMLAnchorElement) return element.hasAttribute("href");
+  return (
+    element instanceof HTMLInputElement && !element.disabled && BUTTON_INPUTS.has(element.type)
+  );
+}
+
+/** What the browser clicks when Space is released: a button, a checkbox, a radio. */
+function activatesOnSpace(element: Element): boolean {
+  if (element instanceof HTMLButtonElement) return !element.disabled;
+  return (
+    element instanceof HTMLInputElement &&
+    !element.disabled &&
+    (BUTTON_INPUTS.has(element.type) || element.type === "checkbox" || element.type === "radio")
+  );
+}
+
+/** A keyboard click: no pointer, `detail` 0. */
+function activate(element: Element): void {
+  (element as HTMLElement).click();
 }
 
 function editableValue(element: Element): { get(): string; set(value: string): void } | null {
@@ -480,10 +637,7 @@ function deleteBackward(element: Element): void {
   const current = value.get();
   if (current === "") return;
   value.set(current.slice(0, -1));
-  dispatch(
-    element,
-    new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }),
-  );
+  dispatch(element, new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
 }
 
 const KEY_TOKEN = /\{([^}]+)\}|(.)/gs;
@@ -500,7 +654,7 @@ export function keyboard(sequence: string, options: KeyOptions = {}): void {
   for (const match of sequence.matchAll(KEY_TOKEN)) {
     const named = match[1];
     const character = match[2];
-    key(named ?? (character), options);
+    key(named ?? character, options);
   }
 }
 
@@ -517,10 +671,7 @@ export function clear(element: Element): void {
   const value = editableValue(element);
   if (value === null) return;
   value.set("");
-  dispatch(
-    element,
-    new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }),
-  );
+  dispatch(element, new InputEvent("input", { bubbles: true, inputType: "deleteContentBackward" }));
 }
 
 /**
@@ -540,12 +691,36 @@ export function tab(options: { shift?: boolean } = {}): void {
   const order = tabbableElements();
   const active = document.activeElement as HTMLElement | null;
   const index = active === null ? -1 : order.indexOf(active);
+  const backwards = options.shift === true;
 
   let next: HTMLElement | undefined;
-  if (options.shift === true) {
-    next = index <= 0 ? order[order.length - 1] : order[index - 1];
+  if (index !== -1) {
+    next = backwards
+      ? order[(index - 1 + order.length) % order.length]
+      : order[(index + 1) % order.length];
+  } else if (active === null || active === document.body || !active.isConnected) {
+    next = backwards ? order[order.length - 1] : order[0];
   } else {
-    next = index === -1 || index === order.length - 1 ? order[0] : order[index + 1];
+    // Focus is on something Tab cannot reach: a dialog focused by script, a
+    // roving item at `tabindex="-1"`. The browser continues from where that
+    // element IS, as if it were in the document-order part of the sequence.
+    const positive = order.filter((element) => element.tabIndex > 0);
+    const inDocumentOrder = order.filter((element) => element.tabIndex <= 0);
+    if (backwards) {
+      next =
+        inDocumentOrder.findLast(
+          (element) =>
+            (active.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_PRECEDING) !== 0,
+        ) ??
+        positive[positive.length - 1] ??
+        order[order.length - 1];
+    } else {
+      next =
+        inDocumentOrder.find(
+          (element) =>
+            (active.compareDocumentPosition(element) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+        ) ?? order[0];
+    }
   }
 
   if (next !== undefined) {

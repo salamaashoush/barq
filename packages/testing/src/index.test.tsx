@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { type Scope, flush, signal } from "@barqjs/core";
+import { flush, createSignal } from "@barqjs/core";
 import type { Ui } from "./types.ts";
 import { cleanup, fireEvent, render, renderHook, screen, waitFor } from "./index.ts";
 
@@ -8,14 +8,14 @@ import { cleanup, fireEvent, render, renderHook, screen, waitFor } from "./index
 // Cell and a child really is a Block. Run on bun's own JSX transform this file
 // gets plain values instead, and measures a path no consumer takes.
 function Counter(props: { initial?: number }) {
-  const count = signal(props.initial ?? 0);
+  const [count, setCount] = createSignal(props.initial ?? 0);
   return (
     <div>
       <span data-testid="count">Count: {count}</span>
-      <button type="button" onClick={() => count.update((c) => c + 1)}>
+      <button type="button" onClick={() => setCount((c) => c + 1)}>
         Increment
       </button>
-      <button type="button" onClick={() => count.update((c) => c - 1)}>
+      <button type="button" onClick={() => setCount((c) => c - 1)}>
         Decrement
       </button>
     </div>
@@ -29,10 +29,10 @@ function ThemeWrapper(props: { children: Ui }) {
 
 // Component with async behavior
 function AsyncComponent() {
-  const data = signal<string | null>(null);
+  const [data, setData] = createSignal<string | null>(null);
 
   const loadData = () => {
-    setTimeout(() => data.set("loaded"), 50);
+    setTimeout(() => setData("loaded"), 50);
   };
 
   return (
@@ -123,8 +123,8 @@ describe("reactive updates", () => {
 describe("renderHook", () => {
   test("renders a hook", () => {
     const { result } = renderHook(() => {
-      const count = signal(0);
-      return { count, set: (next: number) => count.set(next) };
+      const [count, setCount] = createSignal(0);
+      return { count, set: (next: number) => setCount(next) };
     });
 
     expect(result.current.count()).toBe(0);
@@ -132,10 +132,10 @@ describe("renderHook", () => {
 
   test("hook updates work", () => {
     const { result } = renderHook(() => {
-      const count = signal(0);
+      const [count, setCount] = createSignal(0);
       return {
         count,
-        increment: () => count.update((c) => c + 1),
+        increment: () => setCount((c) => c + 1),
       };
     });
 
@@ -148,7 +148,7 @@ describe("renderHook", () => {
   test("renderHook with initial props", () => {
     const { result } = renderHook(
       (props: { initial: number }) => {
-        const count = signal(props.initial);
+        const [count] = createSignal(props.initial);
         return count;
       },
       { initialProps: { initial: 5 } },

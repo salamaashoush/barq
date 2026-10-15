@@ -51,7 +51,7 @@ const tree = (log?: string[]): AnyRouteDefinition[] =>
   [
     {
       path: "/",
-      component: Outlet as never,
+      component: Outlet,
       children: [
         { path: "", component: Home as never },
         { path: "about", component: About as never },

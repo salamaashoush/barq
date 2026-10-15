@@ -7,9 +7,10 @@
 import { describe, expect, test } from "bun:test";
 
 import { html as ssrHtml } from "@barqjs/server";
-import { For, flush, signal, template } from "@barqjs/core";
+import { For, flush, createSignal, onCleanup, template } from "@barqjs/core";
 
 import { renderAndHydrate } from "./hydrate.ts";
+import { cleanup } from "./pure.ts";
 
 describe("renderAndHydrate", () => {
   test("a page the server wrote is CLAIMED, and its nodes are the same objects", () => {
@@ -108,7 +109,7 @@ describe("a keyed list that the server wrote", () => {
   const rows = (...ids: string[]): Row[] => ids.map((id) => ({ id }));
 
   test("takes a new row where the array puts it, not at the end", () => {
-    const list = signal<Row[]>(rows("a", "b", "c"));
+    const [list, setList] = createSignal<Row[]>(rows("a", "b", "c"));
     const result = renderAndHydrate({
       server: () =>
         ssrHtml(
@@ -126,7 +127,7 @@ describe("a keyed list that the server wrote", () => {
     expect(result.recovered).toBe(false);
     expect(order(result.container)).toBe("a,b,c");
 
-    list.set(rows("a", "g", "b", "c"));
+    setList(rows("a", "g", "b", "c"));
     flush();
     expect(order(result.container)).toBe("a,g,b,c");
 
@@ -134,7 +135,7 @@ describe("a keyed list that the server wrote", () => {
   });
 
   test("reorders rows it adopted, which needs their extent as much", () => {
-    const list = signal<Row[]>(rows("a", "b", "c"));
+    const [list, setList] = createSignal<Row[]>(rows("a", "b", "c"));
     const result = renderAndHydrate({
       server: () =>
         ssrHtml(
@@ -149,10 +150,77 @@ describe("a keyed list that the server wrote", () => {
       ),
     });
 
-    list.set(rows("c", "a", "b"));
+    setList(rows("c", "a", "b"));
     flush();
     expect(order(result.container)).toBe("c,a,b");
 
     result.unmount();
+  });
+});
+
+/**
+ * A hydrated tree owns what a rendered one owns: document listeners, portalled
+ * nodes, an overlay's place on the stack. Removing the container alone leaves
+ * all of it behind for whatever test runs next.
+ */
+describe("unmounting a hydrated tree", () => {
+  const boldTemplate = template("<b>hi</b>");
+
+  function hydrateWithSideEffects(log: string[]): ReturnType<typeof renderAndHydrate> {
+    return renderAndHydrate({
+      server: () => ssrHtml("<b>hi</b>"),
+      client: () => {
+        const portalled = document.body.appendChild(document.createElement("aside"));
+        portalled.setAttribute("data-portalled", "");
+        const onPress = (): void => {
+          log.push("press");
+        };
+        document.addEventListener("pointerdown", onPress, true);
+        onCleanup(() => {
+          log.push("cleanup");
+          portalled.remove();
+          document.removeEventListener("pointerdown", onPress, true);
+        });
+        return boldTemplate();
+      },
+    });
+  }
+
+  test("`unmount` disposes the root: cleanups run and what they own goes", () => {
+    const log: string[] = [];
+    const result = hydrateWithSideEffects(log);
+    expect(result.recovered).toBe(false);
+    expect(document.querySelectorAll("[data-portalled]").length).toBe(1);
+
+    result.unmount();
+
+    expect(log).toEqual(["cleanup"]);
+    expect(document.querySelectorAll("[data-portalled]").length).toBe(0);
+    expect(result.container.isConnected).toBe(false);
+
+    document.body.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    expect(log).toEqual(["cleanup"]);
+  });
+
+  test("`unmount` twice disposes once", () => {
+    const log: string[] = [];
+    const result = hydrateWithSideEffects(log);
+    result.unmount();
+    result.unmount();
+    expect(log).toEqual(["cleanup"]);
+  });
+
+  test("`cleanup` disposes a hydrated tree a test left mounted", () => {
+    const log: string[] = [];
+    const result = hydrateWithSideEffects(log);
+
+    cleanup();
+
+    expect(log).toEqual(["cleanup"]);
+    expect(document.querySelectorAll("[data-portalled]").length).toBe(0);
+    expect(result.container.isConnected).toBe(false);
+
+    result.unmount();
+    expect(log).toEqual(["cleanup"]);
   });
 });

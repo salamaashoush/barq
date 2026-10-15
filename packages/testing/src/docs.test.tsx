@@ -3,8 +3,8 @@
  *
  * A README that names an export which no longer exists is worse than no README:
  * the root one advertised `useState`, `useEffect`, `useMemo`, `useStore`,
- * `useResource`, `useRef`, `Await`, `Suspense` and `createSignal` long after all
- * nine were deleted. Nothing could see it, because prose is not executed.
+ * `useResource`, `useRef`, `Await` and `Suspense` long after all eight were
+ * deleted. Nothing could see it, because prose is not executed.
  *
  * This file is the executable half. It lives here rather than in `packages/core`
  * for a mechanical reason: this package's preload wires the barq compiler into
@@ -25,21 +25,19 @@ import {
   Show,
   Switch,
   Portal,
-  batch,
-  computed,
-  context,
-  effect,
+  createContext,
+  createEffect,
+  createMemo,
+  createRoot,
+  createSignal,
+  createStore,
+  createTrackedEffect,
   flush,
   isPending,
-  linked,
   onCleanup,
-  onMount,
-  produce,
+  onSettled,
+  refresh,
   render,
-  resource,
-  scope,
-  signal,
-  store,
   untrack,
   useContext,
 } from "@barqjs/core";
@@ -72,30 +70,41 @@ afterEach(() => {
 });
 
 describe("packages/core/README.md", () => {
-  test("signal, computed and effect", () => {
-    const count = signal(0);
-    const doubled = computed(() => count() * 2);
+  test("signal, memo and effect", () => {
+    const [count, setCount] = createSignal(0);
     const seen: number[] = [];
-    const dispose = scope(() => {
-      effect(() => seen.push(doubled()));
-    }, true) as unknown as () => void;
-    flush();
-    count.set(1);
-    flush();
-    count.update((n) => n + 1);
+    const dispose = createRoot((release) => {
+      const doubled = createMemo(() => count() * 2);
+      createEffect(
+        () => doubled(),
+        (value) => {
+          seen.push(value);
+        },
+      );
+      return release;
+    });
     flush();
 
-    expect(count.peek()).toBe(2);
+    setCount(1);
+    // Applied at the next flush, so the line after a write reads the old value.
+    expect(count()).toBe(0);
+    flush();
+    expect(count()).toBe(1);
+
+    setCount((n) => n + 1);
+    flush();
+
+    expect(untrack(count)).toBe(2);
     expect(seen).toEqual([0, 2, 4]);
-    if (typeof dispose === "function") dispose();
+    dispose();
   });
 
   test("render, and `{count}` as a tracked read", () => {
     const host = mount();
     function Counter() {
-      const count = signal(0);
+      const [count, setCount] = createSignal(0);
       return (
-        <button type="button" onClick={() => count.update((n) => n + 1)}>
+        <button type="button" onClick={() => setCount((n) => n + 1)}>
           clicked {count} times
         </button>
       );
@@ -113,9 +122,9 @@ describe("packages/core/README.md", () => {
 
   test("Show, For and Switch/Match", () => {
     const host = mount();
-    const isOpen = signal(true);
-    const which = signal("a");
-    const rows = signal([
+    const [isOpen, setIsOpen] = createSignal(true);
+    const [which, setWhich] = createSignal("a");
+    const [rows] = createSignal([
       { id: 1, name: "Ada" },
       { id: 2, name: "Grace" },
     ]);
@@ -146,8 +155,8 @@ describe("packages/core/README.md", () => {
     expect(host.querySelectorAll("li")).toHaveLength(2);
     expect(host.querySelector("i")?.textContent).toBe("A");
 
-    isOpen.set(false);
-    which.set("b");
+    setIsOpen(false);
+    setWhich("b");
     flush();
 
     expect(host.textContent).toContain("closed");
@@ -156,7 +165,7 @@ describe("packages/core/README.md", () => {
   });
 
   test("context, read through a Provider", () => {
-    const Theme = context<"light" | "dark">("light");
+    const Theme = createContext<"light" | "dark">("light");
     const host = mount();
 
     function Page() {
@@ -177,52 +186,72 @@ describe("packages/core/README.md", () => {
     dispose();
   });
 
-  test("a store, mutated directly and through `produce`", () => {
-    const [state, setState] = store({
+  test("a store, written through the draft its setter hands over", () => {
+    const [state, setState] = createStore({
       user: { name: "Ada" },
       todos: [] as { id: number; done: boolean }[],
     });
 
-    setState("user", "name", "Grace");
-    setState("todos", (todos) => [...todos, { id: 1, done: false }]);
-    setState(
-      "todos",
-      produce((todos: { id: number; done: boolean }[]) => {
-        todos[0].done = true;
-      }),
-    );
+    setState((draft) => {
+      draft.user.name = "Grace";
+      draft.todos.push({ id: 1, done: false });
+    });
+    setState((draft) => {
+      draft.todos[0].done = true;
+    });
     flush();
 
     expect(state.user.name).toBe("Grace");
     expect(state.todos[0]).toEqual({ id: 1, done: true });
   });
 
-  test("a resource, its Loading boundary, and isPending", async () => {
+  test("an async memo, its Loading boundary, isPending and refresh", async () => {
     const host = mount();
-    const userId = signal(1);
-    const user = resource(
-      () => userId(),
-      async (id: number) => {
+    const [userId, setUserId] = createSignal(1);
+    let fetches = 0;
+
+    function Profile() {
+      const user = createMemo(async () => {
+        const id = userId();
+        fetches += 1;
         await Promise.resolve();
         return { name: `user ${id}` };
-      },
-    );
-
-    const dispose = render(
-      () => (
+      });
+      return (
         <Loading fallback={<p>loading…</p>}>
           <h1 class={{ stale: isPending(user) }}>{() => user().name}</h1>
+          <button type="button" onClick={() => void refresh(user)}>
+            reload
+          </button>
         </Loading>
-      ),
-      host,
-    );
+      );
+    }
 
-    // The read throws `NotReadyError` until the fetcher settles, which is what
+    const dispose = render(() => <Profile />, host);
+
+    // The read throws `NotReadyError` until the promise settles, which is what
     // parks the boundary on its fallback.
     expect(host.textContent).toContain("loading…");
     await new Promise((r) => setTimeout(r, 0));
     flush();
     expect(host.textContent).toContain("user 1");
+    expect(host.querySelector("h1")?.classList.contains("stale")).toBe(false);
+
+    // A changed dependency runs the memo again. What is on screen stays there,
+    // marked pending, until the new answer arrives.
+    setUserId(2);
+    flush();
+    expect(host.textContent).toContain("user 1");
+    expect(host.querySelector("h1")?.classList.contains("stale")).toBe(true);
+    await new Promise((r) => setTimeout(r, 0));
+    flush();
+    expect(host.textContent).toContain("user 2");
+    expect(host.querySelector("h1")?.classList.contains("stale")).toBe(false);
+
+    expect(fetches).toBe(2);
+    host.querySelector("button")!.click();
+    flush();
+    expect(fetches).toBe(3);
     dispose();
   });
 
@@ -247,7 +276,7 @@ describe("packages/core/README.md", () => {
 
   test("a keyed row survives an edit to its item", () => {
     const host = mount();
-    const rows = signal([
+    const [rows, setRows] = createSignal([
       { id: 1, text: "a" },
       { id: 2, text: "b" },
     ]);
@@ -266,7 +295,7 @@ describe("packages/core/README.md", () => {
     const first = host.querySelector("li")!;
     expect(first.textContent).toBe("a");
     // Same id, new object: the row is the SAME row, so the node survives.
-    rows.set([
+    setRows([
       { id: 1, text: "edited" },
       { id: 2, text: "b" },
     ]);
@@ -278,8 +307,8 @@ describe("packages/core/README.md", () => {
 
   test("bind:value writes the property and reports the edit", () => {
     const host = mount();
-    const name = signal("Ada");
-    const dispose = render(() => <input type="text" bind:value={name} />, host);
+    const [name, setName] = createSignal("Ada");
+    const dispose = render(() => <input type="text" bind:value={[name, setName]} />, host);
 
     const input = host.querySelector("input")!;
     expect(input.value).toBe("Ada");
@@ -291,58 +320,85 @@ describe("packages/core/README.md", () => {
     dispose();
   });
 
-  test("linked holds a write until its source changes", () => {
-    const source = signal("Ada");
-    const dispose = scope(() => {
-      const draft = linked(
-        () => source(),
-        (name: string) => name,
-      );
-      expect(draft()).toBe("Ada");
-      draft.set("edited");
-      expect(draft()).toBe("edited");
-      // The next change of `source` recomputes over the write.
-      source.set("Grace");
-      flush();
-      expect(draft()).toBe("Grace");
-    }, true) as unknown as () => void;
-    if (typeof dispose === "function") dispose();
+  test("createSignal(fn) holds a write until its source changes", () => {
+    const [saved, setSaved] = createSignal("Ada");
+    const [draft, setDraft, dispose] = createRoot((release) => {
+      const [read, write] = createSignal(() => saved());
+      return [read, write, release] as const;
+    });
+    expect(draft()).toBe("Ada");
+
+    setDraft("edited");
+    flush();
+    expect(draft()).toBe("edited");
+
+    // The next change of `saved` recomputes over the write.
+    setSaved("Grace");
+    flush();
+    expect(draft()).toBe("Grace");
+    dispose();
   });
 
-  test("batch flushes once, and untrack reads without subscribing", () => {
-    const first = signal("Ada");
-    const last = signal("L");
-    let runs = 0;
-    const dispose = scope(() => {
-      effect(() => {
-        first();
-        last();
-        runs += 1;
+  test("createSignal(fn) hands its compute the value it held", () => {
+    const [options, setOptions] = createSignal(["s", "m", "l"]);
+    const [chosen, setChosen, dispose] = createRoot((release) => {
+      const [read, write] = createSignal<string>((held) => {
+        const list = options();
+        return held !== undefined && list.includes(held) ? held : list[0];
       });
-    }, true) as unknown as () => void;
+      return [read, write, release] as const;
+    });
+    expect(chosen()).toBe("s");
+
+    setChosen("m");
+    flush();
+    setOptions(["m", "l", "xl"]);
+    flush();
+    expect(chosen()).toBe("m");
+
+    setOptions(["l", "xl"]);
+    flush();
+    expect(chosen()).toBe("l");
+    dispose();
+  });
+
+  test("two writes land in one flush, and untrack reads without subscribing", () => {
+    const [first, setFirst] = createSignal("Ada");
+    const [last, setLast] = createSignal("L");
+    let runs = 0;
+    const dispose = createRoot((release) => {
+      createEffect(
+        () => `${first()} ${last()}`,
+        () => {
+          runs += 1;
+        },
+      );
+      return release;
+    });
     flush();
     expect(runs).toBe(1);
 
-    batch(() => {
-      first.set("Grace");
-      last.set("Hopper");
-    });
+    setFirst("Grace");
+    setLast("Hopper");
     flush();
     expect(runs).toBe(2);
 
     const seen: number[] = [];
-    const count = signal(0);
-    const second = scope(() => {
-      effect(() => seen.push(untrack(() => count())));
-    }, true) as unknown as () => void;
+    const [count, setCount] = createSignal(0);
+    const second = createRoot((release) => {
+      createTrackedEffect(() => {
+        seen.push(untrack(count));
+      });
+      return release;
+    });
     flush();
-    count.set(1);
+    setCount(1);
     flush();
     // The untracked read established no dependency, so the effect never re-ran.
     expect(seen).toEqual([0]);
 
-    if (typeof dispose === "function") dispose();
-    if (typeof second === "function") second();
+    dispose();
+    second();
   });
 
   test("Portal places children elsewhere in the document", async () => {
@@ -369,34 +425,34 @@ describe("packages/core/README.md", () => {
     dispose();
   });
 
-  test("onMount and onCleanup run under the render's scope", async () => {
+  test("onSettled and onCleanup run under the render's scope", async () => {
     const host = mount();
     const order: string[] = [];
 
     function Widget() {
-      onMount(() => {
-        order.push("mount");
-        onCleanup(() => order.push("cleanup"));
+      onSettled(() => {
+        order.push("settled");
+        return () => order.push("settled cleanup");
       });
+      onCleanup(() => order.push("cleanup"));
       return <span>w</span>;
     }
 
     const dispose = render(() => <Widget />, host);
-    // `onMount` is queued as a microtask, so a synchronous flush is not enough.
     await Promise.resolve();
     flush();
-    expect(order).toEqual(["mount"]);
+    expect(order).toEqual(["settled"]);
     dispose();
-    expect(order).toEqual(["mount", "cleanup"]);
+    expect(order).toEqual(["settled", "settled cleanup", "cleanup"]);
   });
 });
 
 describe("packages/testing/README.md", () => {
   test("render mounts into the document and fireEvent flushes", () => {
     function Counter() {
-      const count = signal(0);
+      const [count, setCount] = createSignal(0);
       return (
-        <button type="button" onClick={() => count.update((n) => n + 1)}>
+        <button type="button" onClick={() => setCount((n) => n + 1)}>
           clicked {count} times
         </button>
       );
@@ -405,8 +461,8 @@ describe("packages/testing/README.md", () => {
     renderForTest(() => <Counter />);
     fireEvent.click(screen.getByRole("button"));
 
-    // `fireEvent` flushes: barq batches on the microtask queue, so an assertion
-    // straight after a `set()` would otherwise read the DOM as it was before.
+    // `fireEvent` flushes: a write is applied at the next flush, so an assertion
+    // straight after the click would otherwise read the DOM as it was before.
     expect(screen.getByRole("button").textContent).toContain("clicked 1 times");
   });
 });
@@ -427,10 +483,10 @@ describe("packages/primitives/README.md", () => {
   });
 
   test("a global source is one source for every caller", () => {
-    const dispose = scope((release) => {
+    const dispose = createRoot((release) => {
       expect(windowSize()).toBe(windowSize());
       return release;
-    }, true);
+    });
     dispose();
   });
 
@@ -445,18 +501,20 @@ describe("packages/primitives/README.md", () => {
   });
 
   test("scheduled gates a computation without narrowing what it depends on", async () => {
-    const query = signal("a");
+    const [query, setQuery] = createSignal("a");
     const runs: string[] = [];
-    const dispose = scope((release) => {
+    const dispose = createRoot((release) => {
       const settled = scheduled((fire) => debounce(fire, 10));
-      effect(() => {
-        const q = query();
-        if (settled()) runs.push(q);
-      });
+      createEffect(
+        () => [query(), settled()] as const,
+        ([q, ready]) => {
+          if (ready) runs.push(q);
+        },
+      );
       return release;
-    }, true);
+    });
 
-    query.set("b");
+    setQuery("b");
     flush();
     expect(runs).toEqual([]);
     await new Promise((resolve) => setTimeout(resolve, 40));
@@ -466,59 +524,57 @@ describe("packages/primitives/README.md", () => {
   });
 
   test("selector wakes the row that lost the selection and the one that gained it", () => {
-    const selected = signal(1);
+    const [selected, setSelected] = createSignal(1);
     const runs: Record<number, number> = { 1: 0, 2: 0, 3: 0 };
-    const dispose = scope((release) => {
+    const dispose = createRoot((release) => {
       const isSelected = selector(selected);
       for (const id of [1, 2, 3]) {
-        effect(() => {
+        createTrackedEffect(() => {
           isSelected(id);
           runs[id] = (runs[id] ?? 0) + 1;
         });
       }
       return release;
-    }, true);
+    });
+    flush();
 
-    selected.set(2);
+    setSelected(2);
     flush();
     expect(runs).toEqual({ 1: 2, 2: 2, 3: 1 });
     dispose();
   });
 
   test("previous advances even when nothing reads it", () => {
-    const count = signal(1);
-    const dispose = scope((release) => {
-      const before = previous(count);
-      count.set(2);
-      flush();
-      count.set(3);
-      flush();
-      expect(before()).toBe(2);
-      return release;
-    }, true);
+    const [count, setCount] = createSignal(1);
+    const [before, dispose] = createRoot((release) => [previous(count), release] as const);
+    setCount(2);
+    flush();
+    setCount(3);
+    flush();
+    expect(before()).toBe(2);
     dispose();
   });
 
   test("persisted follows another tab and does not write its initial value", () => {
     localStorage.clear();
-    const dispose = scope((release) => {
-      const theme = persisted("theme", "system");
-      expect(localStorage.getItem("theme")).toBe(null);
-      theme.set("dark");
-      flush();
-      expect(localStorage.getItem("theme")).toBe('"dark"');
+    const [theme, setTheme, dispose] = createRoot((release) => {
+      const [read, write] = persisted("theme", "system");
+      return [read, write, release] as const;
+    });
+    expect(localStorage.getItem("theme")).toBe(null);
+    setTheme("dark");
+    flush();
+    expect(localStorage.getItem("theme")).toBe('"dark"');
 
-      window.dispatchEvent(
-        new StorageEvent("storage", {
-          key: "theme",
-          newValue: '"light"',
-          storageArea: localStorage,
-        }),
-      );
-      flush();
-      expect(theme()).toBe("light");
-      return release;
-    }, true);
+    window.dispatchEvent(
+      new StorageEvent("storage", {
+        key: "theme",
+        newValue: '"light"',
+        storageArea: localStorage,
+      }),
+    );
+    flush();
+    expect(theme()).toBe("light");
     dispose();
     localStorage.clear();
   });
@@ -526,17 +582,18 @@ describe("packages/primitives/README.md", () => {
   test("a ReactiveMap key is a dependency of its own", () => {
     const users = new ReactiveMap<string, string>();
     const runs = { ada: 0, size: 0 };
-    const dispose = scope((release) => {
-      effect(() => {
+    const dispose = createRoot((release) => {
+      createTrackedEffect(() => {
         users.get("ada");
         runs.ada++;
       });
-      effect(() => {
+      createTrackedEffect(() => {
         expect(users.size).toBeGreaterThanOrEqual(0);
         runs.size++;
       });
       return release;
-    }, true);
+    });
+    flush();
 
     users.set("grace", "Hopper");
     flush();
@@ -546,10 +603,10 @@ describe("packages/primitives/README.md", () => {
 
   test("shortcut matches its modifiers exactly", () => {
     let opened = 0;
-    const dispose = scope((release) => {
+    const dispose = createRoot((release) => {
       shortcut("ctrl+k", () => opened++);
       return release;
-    }, true);
+    });
 
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "k" }));
     expect(opened).toBe(0);
@@ -559,13 +616,10 @@ describe("packages/primitives/README.md", () => {
   });
 
   test("until resolves at once when the condition already holds", async () => {
-    const currentUser = signal<string | null>(null);
-    const [dispose, waiting] = scope((release) => {
-      const promise = until(currentUser);
-      currentUser.set("Ada");
-      flush();
-      return [release, promise] as const;
-    }, true);
+    const [currentUser, setCurrentUser] = createSignal<string | null>(null);
+    const [dispose, waiting] = createRoot((release) => [release, until(currentUser)] as const);
+    setCurrentUser("Ada");
+    flush();
 
     expect(await waiting).toBe("Ada");
     dispose();
@@ -575,8 +629,8 @@ describe("packages/primitives/README.md", () => {
 /**
  * Every name a README imports must still be exported.
  *
- * This is the half that caught the root README: it advertised nine exports that
- * had been deleted, and had done for as long as anyone could remember, because
+ * This is the half that caught the root README: it advertised exports that had
+ * been deleted, and had done for as long as anyone could remember, because
  * nothing reads prose. A rename now fails here instead.
  */
 describe("every documented import resolves", () => {

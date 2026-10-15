@@ -26,7 +26,8 @@ import { flush, hydrate } from "@barqjs/core";
 import type { JSXElement } from "@barqjs/core";
 import { type SsrHtml, renderToString } from "@barqjs/server";
 
-import type { Ui } from "./types.ts";
+import { mountedContainers } from "./mounted.ts";
+import type { MountedRef, Ui } from "./types.ts";
 
 /** What `hydrate` recorded, plus what survived it. */
 export interface HydrationResult {
@@ -90,8 +91,23 @@ export function renderAndHydrate(options: HydrateOptions): HydrationResult {
   // baseline.
   const written = [...container.querySelectorAll("*")];
 
-  hydrate(options.client as never, container);
+  const dispose = hydrate(options.client, container);
   flush();
+
+  // Tracked beside every `render`, so `cleanup()` disposes a hydrated root a
+  // test left mounted. Disposal is what closes an open overlay, removes what
+  // it portalled and drops its document listeners; removing the container
+  // does none of that.
+  let disposed = false;
+  const tracked: MountedRef = {
+    container,
+    dispose: () => {
+      if (disposed) return;
+      disposed = true;
+      dispose();
+    },
+  };
+  mountedContainers.add(tracked);
 
   const kept = written.filter((node) => container.contains(node)).length;
   const report = hydrate.report;
@@ -106,6 +122,8 @@ export function renderAndHydrate(options: HydrateOptions): HydrationResult {
     total: written.length,
     reuse: written.length === 0 ? 1 : kept / written.length,
     unmount: () => {
+      tracked.dispose();
+      mountedContainers.delete(tracked);
       container.remove();
     },
   };

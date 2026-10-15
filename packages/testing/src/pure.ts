@@ -19,7 +19,7 @@
  */
 
 import { flush, render as barqRender } from "@barqjs/core";
-import type { JSXElement, Scope } from "@barqjs/core";
+import type { JSXElement } from "@barqjs/core";
 import {
   configure as configureDTL,
   fireEvent as dtlFireEvent,
@@ -28,6 +28,7 @@ import {
 } from "@testing-library/dom";
 import type { BoundFunctions, queries as dtlQueries } from "@testing-library/dom";
 
+import { mountedContainers } from "./mounted.ts";
 import type {
   MountedRef,
   RenderHookOptions,
@@ -36,9 +37,6 @@ import type {
   RenderResult,
   Ui,
 } from "./types.ts";
-
-// Track mounted containers for cleanup
-const mountedContainers = new Set<MountedRef>();
 
 /**
  * Render a Barq component for testing

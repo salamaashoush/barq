@@ -59,9 +59,9 @@ const INPUT_TYPE_ROLES: Record<string, string> = {
  * The role an element has without one being written.
  *
  * Only the mappings a component library depends on. An element whose implicit
- * role depends on context the DOM cannot cheaply answer — `<section>` needing
- * an accessible name to be a `region`, `<td>` depending on its table's role —
- * is answered here the common way and noted where it is approximate.
+ * role depends on context the DOM cannot cheaply answer — `<td>` depending on
+ * its table's role — is answered here the common way and noted where it is
+ * approximate.
  */
 export function role(element: Element): string | null {
   const explicit = element.getAttribute("role");
@@ -144,8 +144,7 @@ export function role(element: Element): string | null {
     case "search":
       return "search";
     case "section":
-      // A `region` only when it has an accessible name; otherwise generic.
-      return accessibleName(element) === "" ? "generic" : "region";
+      return sectionRole(element);
     case "select":
       return (element as HTMLSelectElement).multiple || (element as HTMLSelectElement).size > 1
         ? "listbox"
@@ -168,6 +167,27 @@ export function role(element: Element): string | null {
       return "row";
     default:
       return null;
+  }
+}
+
+const sectionsBeingNamed = new Set<Element>();
+
+/**
+ * A `<section>` is a `region` only when it has an accessible name.
+ *
+ * The name computation starts by asking for the role, so the two need each
+ * other. A section whose name is being computed answers `generic` to that
+ * inner question, which is the role that takes no name from its content: what
+ * is left to name it is `aria-labelledby`, `aria-label` and `title`, the three
+ * sources HTML-AAM counts.
+ */
+function sectionRole(element: Element): string {
+  if (sectionsBeingNamed.has(element)) return "generic";
+  sectionsBeingNamed.add(element);
+  try {
+    return nameOf(element, new Set(), false) === "" ? "generic" : "region";
+  } finally {
+    sectionsBeingNamed.delete(element);
   }
 }
 

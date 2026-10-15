@@ -25,9 +25,10 @@ test("the counter counts", () => {
 ```
 
 `render` mounts into the document and registers the tree for cleanup.
-`fireEvent` and `act` FLUSH: barq batches on the microtask queue, so an
-assertion made straight after a `set()` would otherwise read the DOM as it was
-before.
+`fireEvent` and `act` FLUSH: a signal write is applied at the next flush, a
+microtask later, so an assertion made straight after one would otherwise read
+the DOM as it was before. A test that writes a signal itself calls `flush()`
+from `@barqjs/core` before it asserts.
 
 Importing `@barqjs/testing` registers `afterEach(cleanup)`. Two escape hatches,
 both React Testing Library's: import `@barqjs/testing/pure`, or set
