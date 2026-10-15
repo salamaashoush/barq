@@ -35,7 +35,7 @@ const positive = (input: unknown): number => {
 };
 
 test("a function validator's return is the handler's data, and its throw is a 400", async () => {
-  const double = createServerFn()
+  const double = createServerFn({ method: "POST" })
     .inputValidator(positive)
     .handler(({ data }) => {
       const typed: number = data;
@@ -58,7 +58,7 @@ test("an object with parse is accepted, synchronous or not", async () => {
       return { name: name.trim() };
     },
   };
-  const greet = createServerFn()
+  const greet = createServerFn({ method: "POST" })
     .validator(schema)
     .handler(({ data }) => `hello ${data.name}`);
   mounted("greet", greet);
@@ -76,7 +76,7 @@ test("a Standard Schema is used as it stands", async () => {
         typeof value === "string" ? { value: value.length } : { issues: [{ message: "no" }] },
     },
   };
-  const measure = createServerFn()
+  const measure = createServerFn({ method: "POST" })
     .inputValidator(schema)
     .handler(({ data }) => data + 1);
   mounted("measure", measure);
@@ -86,7 +86,7 @@ test("a Standard Schema is used as it stands", async () => {
 });
 
 test("a validator that throws a Response refuses with that response", async () => {
-  const gate = createServerFn()
+  const gate = createServerFn({ method: "POST" })
     .inputValidator((): never => {
       throw new Response("locked", { status: 423 });
     })
@@ -99,7 +99,7 @@ test("a middleware's inputValidator takes the same three forms", async () => {
   const normalise = createMiddleware({ type: "function" })
     .inputValidator((input: unknown) => String(input).toUpperCase())
     .server(({ next }) => next());
-  const shout = createServerFn()
+  const shout = createServerFn({ method: "POST" })
     .middleware([normalise])
     .handler(({ data }) => data);
   mounted("shout", shout);
@@ -111,7 +111,7 @@ test("FormData reaches a validated function as FormData", async () => {
     if (!(input instanceof FormData)) throw new TypeError("a form is required");
     return { title: String(input.get("title")) };
   };
-  const save = createServerFn()
+  const save = createServerFn({ method: "POST" })
     .inputValidator(fromForm)
     .handler(({ data }) => data.title);
   mounted("save", save);
@@ -130,7 +130,7 @@ test("FormData reaches a validated function as FormData", async () => {
 });
 
 test("a function's url is where a form posts to reach it, once it is mounted", () => {
-  const save = createServerFn().handler(() => null);
+  const save = createServerFn({ method: "POST" }).handler(() => null);
   expect(save.url).toBe("");
   mounted("src/posts.ts#save", save);
   expect(save.url).toBe(`${RPC_PREFIX}src%2Fposts.ts%23save`);
@@ -150,7 +150,7 @@ test("a schema that is also callable is read as a schema", async () => {
     },
   });
   let handled: unknown = "never ran";
-  const square = createServerFn()
+  const square = createServerFn({ method: "POST" })
     .validator(schema)
     .handler(({ data }) => {
       handled = data;

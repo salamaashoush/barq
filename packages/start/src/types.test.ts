@@ -88,7 +88,7 @@ test("a schema's input is what the caller passes, and its output what the handle
       holds<Equal<typeof data, Date>>();
       return data.getUTCFullYear();
     });
-  holds<Equal<Parameters<typeof year>[0], ({ readonly data: string } & ServerFnCall) | FormData>>();
+  holds<Equal<Parameters<typeof year>[0], { readonly data: string } & ServerFnCall>>();
   // The caller passes the schema's input, not its output.
   holds<Uncallable<typeof year, [{ data: Date }]>>();
 
@@ -261,7 +261,7 @@ describe("what crosses the wire", () => {
     // A caller cannot send a function.
     holds<Refused<typeof callback, Accepted<"POST", Parameters<typeof callback>[0]>>>();
     // A form is a body, so a POST takes one and a GET does not.
-    createServerFn().validator(form);
+    createServerFn({ method: "POST" }).validator(form);
     holds<Refused<typeof form, Accepted<"GET", FormData>>>();
   });
 

@@ -47,12 +47,14 @@ interface Tick {
 }
 
 test("an async generator's values arrive one by one, typed, as they are yielded", async () => {
-  const ticks = createServerFn().handler(async function* (): AsyncGenerator<Tick> {
-    for (let n = 1; n <= 3; n++) {
-      await tick(2);
-      yield { n, at: new Date(n * 1000) };
-    }
-  });
+  const ticks = createServerFn({ method: "POST" }).handler(
+    async function* (): AsyncGenerator<Tick> {
+      for (let n = 1; n <= 3; n++) {
+        await tick(2);
+        yield { n, at: new Date(n * 1000) };
+      }
+    },
+  );
   mounted("ticks", ticks);
   const seen: Response[] = [];
   throughHandler(seen);
@@ -67,7 +69,7 @@ test("an async generator's values arrive one by one, typed, as they are yielded"
 });
 
 test("a ReadableStream of values is read the same way", async () => {
-  const words = createServerFn().handler(
+  const words = createServerFn({ method: "POST" }).handler(
     () =>
       new ReadableStream<string>({
         start(controller) {
@@ -87,7 +89,7 @@ test("a ReadableStream of values is read the same way", async () => {
 });
 
 test("called in process, the same function hands back an async iterable too", async () => {
-  const words = createServerFn().handler(
+  const words = createServerFn({ method: "POST" }).handler(
     () =>
       new ReadableStream<string>({
         start(controller) {
@@ -102,11 +104,13 @@ test("called in process, the same function hands back an async iterable too", as
 });
 
 test("the generator still runs inside its request after the first value has gone", async () => {
-  const who = createServerFn().handler(async function* (): AsyncGenerator<string> {
-    yield "first";
-    await tick(2);
-    yield getRequest().headers.get("x-visitor") ?? "nobody";
-  });
+  const who = createServerFn({ method: "POST" }).handler(
+    async function* (): AsyncGenerator<string> {
+      yield "first";
+      await tick(2);
+      yield getRequest().headers.get("x-visitor") ?? "nobody";
+    },
+  );
   mounted("who", who);
   throughHandler();
 
@@ -121,16 +125,18 @@ test("the generator still runs inside its request after the first value has gone
 test("a reader that stops early stops the generator", async () => {
   let cleaned = false;
   let produced = 0;
-  const endless = createServerFn().handler(async function* (): AsyncGenerator<number> {
-    try {
-      for (;;) {
-        await tick(1);
-        yield ++produced;
+  const endless = createServerFn({ method: "POST" }).handler(
+    async function* (): AsyncGenerator<number> {
+      try {
+        for (;;) {
+          await tick(1);
+          yield ++produced;
+        }
+      } finally {
+        cleaned = true;
       }
-    } finally {
-      cleaned = true;
-    }
-  });
+    },
+  );
   mounted("endless", endless);
   throughHandler();
 
@@ -143,10 +149,12 @@ test("a reader that stops early stops the generator", async () => {
 });
 
 test("a failure part way through reaches the reader as a failure, without the handler's message", async () => {
-  const flaky = createServerFn().handler(async function* (): AsyncGenerator<number> {
-    yield 1;
-    throw new Error("column users.secret does not exist");
-  });
+  const flaky = createServerFn({ method: "POST" }).handler(
+    async function* (): AsyncGenerator<number> {
+      yield 1;
+      throw new Error("column users.secret does not exist");
+    },
+  );
   mounted("flaky", flaky);
   throughHandler();
 
@@ -169,7 +177,7 @@ test("a middleware refuses a streaming function before anything is sent", async 
   const guard = createMiddleware({ type: "function" }).server(() => {
     throw new Response("sign in first", { status: 401 });
   });
-  const guarded = createServerFn()
+  const guarded = createServerFn({ method: "POST" })
     .middleware([guard])
     .handler(async function* (): AsyncGenerator<number> {
       started = true;

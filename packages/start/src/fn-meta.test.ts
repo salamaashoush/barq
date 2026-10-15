@@ -34,7 +34,8 @@ test("a handler is handed its method and the id it is mounted at", async () => {
 });
 
 test("a function says its method and its id under TanStack's names", () => {
-  const save = createServerFn().handler(() => null);
+  expect(createServerFn().handler(() => null).method).toBe("GET");
+  const save = createServerFn({ method: "POST" }).handler(() => null);
   mount("notes.ts#save", save);
   expect(save.method).toBe("POST");
   expect(save.serverFnMeta.id).toBe("notes.ts#save");

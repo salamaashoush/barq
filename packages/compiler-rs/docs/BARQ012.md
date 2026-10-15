@@ -14,7 +14,7 @@
 ```tsx
 import { createServerFn } from "@barqjs/start";
 
-export const saveTodo = createServerFn().handler(async () => {
+export const saveTodo = createServerFn({ method: "POST" }).handler(async () => {
   return { saved: true };
 });
 
@@ -30,7 +30,7 @@ export function TodoList() {
 ```tsx
 import { createServerFn } from "@barqjs/start";
 
-export const saveTodo = createServerFn().handler(async () => {
+export const saveTodo = createServerFn({ method: "POST" }).handler(async () => {
   return { saved: true };
 });
 ```
@@ -61,7 +61,7 @@ a server function that is not exported.
 ```tsx
 import { createServerFn } from "@barqjs/start";
 
-export const saveTodo = createServerFn().handler(async () => {
+export const saveTodo = createServerFn({ method: "POST" }).handler(async () => {
   return { saved: true };
 });
 

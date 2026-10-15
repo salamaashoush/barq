@@ -602,7 +602,7 @@ describe("the call convention", () => {
   test("a function with no validator is called with NO argument", async () => {
     // The uncompiled builder has no id of its own — the compiler assigns one —
     // so mounting is where the two meet, exactly as `mount` documents.
-    const fn = createServerFn().handler(() => "ran");
+    const fn = createServerFn({ method: "POST" }).handler(() => "ran");
     mount("nullary", fn);
     const response = await handleServerFn(post("nullary", undefined));
     expect(decodeWire<string>(await response?.json())).toBe("ran");
@@ -613,7 +613,7 @@ describe("the call convention", () => {
 
   test("a function with a typed input mounts as it is, and so does its chain", async () => {
     const audit: Middleware = async (next) => next();
-    const greet = createServerFn()
+    const greet = createServerFn({ method: "POST" })
       .middleware([audit])
       .validator((input: unknown) => String(input))
       .handler(({ data }) => `hello ${data}`);
@@ -1368,7 +1368,7 @@ describe("env-only functions, uncompiled", () => {
  */
 describe("the registry a call is answered from", () => {
   test("a second copy of the module answers for what the first one mounted", async () => {
-    const fn = createServerFn().handler(async () => "from the bundle");
+    const fn = createServerFn({ method: "POST" }).handler(async () => "from the bundle");
     fn.meta.id = "src/data/report.ts#load";
     mountOf(fn);
 
@@ -1382,7 +1382,7 @@ describe("the registry a call is answered from", () => {
   });
 
   test("a call that arrives before any page mounts the manifest and is answered", async () => {
-    const fn = createServerFn().handler(async () => "after a cold start");
+    const fn = createServerFn({ method: "POST" }).handler(async () => "after a cold start");
     fn.meta.id = "src/data/report.ts#cold";
     let mounts = 0;
     mountOnDemand(async () => {

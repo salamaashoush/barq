@@ -15,14 +15,15 @@ for what that project uses.
 ```ts
 import { createServerFn } from "@barqjs/start";
 
-export const createPost = createServerFn()
+export const createPost = createServerFn({ method: "POST" })
   .validator(PostSchema) // any Standard Schema: zod, valibot, arktype
   .handler(async ({ data, context, signal }) => db.posts.insert(data));
 ```
 
-`.validator` is TanStack's name for it, and `.inputValidator`, the name their
-release candidates used, is the same method. Both take a Standard Schema, a function that returns the validated value or throws, or an object with
-a `parse`. The caller passes the schema's INPUT and the handler is handed its
+`.validator` is TanStack's name for it. `.inputValidator`, the name their
+release candidates used, is the same method and is accepted so code written
+against them keeps working. It takes a Standard Schema, a function that returns
+the validated value or throws, or an object with a `parse`. The caller passes the schema's INPUT and the handler is handed its
 OUTPUT, so a schema that turns an ISO string into a `Date` is called with a
 string. A function validator's parameter type is what the caller passes:
 
@@ -42,7 +43,7 @@ Call it like a function. It is an HTTP endpoint:
 const post = await createPost({ data: { title: "Hello" } });
 ```
 
-The compiler replaces this module's exports with client stubs that POST to
+The compiler replaces this module's exports with client stubs that call
 `/_barq/fn/<id>`, so the handler's body — and the database driver it imports —
 is in no client chunk. The id is `<project-relative module>#<export>`, derived
 once and used by both halves, because deriving it twice is how the two drift
@@ -52,12 +53,13 @@ into a call that reaches nothing.
 opening the input is a decision you make per function. `.validator("unchecked")`
 takes anything.
 
-### GET
+### GET and POST
 
-`POST` is the default. A read the browser or a CDN may cache can ask for `GET`:
+`GET` is the default, as it is TanStack's. A function that writes declares
+`POST`, which is also the only method a form can reach:
 
 ```ts
-export const listNotes = createServerFn({ method: "GET" })
+export const listNotes = createServerFn() // GET
   .middleware([requireSession])
   .handler(({ context }) => {
     setResponseHeader("cache-control", "private, max-age=60");
@@ -65,17 +67,19 @@ export const listNotes = createServerFn({ method: "GET" })
   });
 ```
 
-The call is the same; the stub sends a `GET` with the payload in `?payload=`,
-so one input is one URL. `method` must be the literal `"GET"`, since the
-compiler reads it to write the stub. Nothing is cached unless the handler says
+The call is the same either way. A `GET` call carries its payload in
+`?payload=`, so one input is one URL, and a long input belongs in a `POST`.
+`method` must be a literal, since the compiler reads it to write the stub; a
+value it cannot read is taken as the default. Nothing is cached unless the handler says
 so: an answer carries no `cache-control` and no `Vary` of its own, which is
 TanStack's behaviour too.
 
-A link still cannot reach one. A mutation reachable by navigation is a one-click
-CSRF carrying `SameSite=Lax` cookies, and it has shipped that way elsewhere. So
-every `GET` call carries an `x-barq-fn` header, which a link, an `<img>`, a
-prefetch or a navigation cannot set, and the server answers a `GET` without it
-with a 403. A function answers its own method only (a `POST` to a `GET`
+A link still cannot reach a `GET` function, so one that writes and forgot to
+say `POST` is not a one-click CSRF carrying `SameSite=Lax` cookies. Every `GET`
+call carries an `x-barq-fn` header, which a link, an `<img>`, a prefetch or a
+navigation cannot set, and the server answers a `GET` without it with a 403. A
+script on another site that sets it is preflighted, and the origin check
+refuses it either way. A function answers its own method only (a `POST` to a `GET`
 function is a 405, and the reverse), a `GET` function has no form channel, and a
 payload longer than `maxBodySize` is a 413. Keep `public` out of `cache-control`
 for anything that reads a session: a shared cache would hand one user's answer to
@@ -93,10 +97,13 @@ await createPost({
 });
 ```
 
-A failed call rejects with `ServerFnError`. It carries the `status`, and the
-`response` itself, so a refusal a middleware wrote
-(`throw new Response("sign in first", { status: 401 })`) can be read by the
-caller. A handler's own error is answered with one fixed line and nothing else.
+A `Response` a middleware, a validator or the handler throws
+(`throw new Response("sign in first", { status: 401 })`) is what the call
+rejects with, as in TanStack: its status, headers and body are the author's
+words to the caller. Any other failure rejects with `ServerFnError`, carrying
+the `status` and the server's `response`. A handler's own error is answered
+with one fixed line and nothing else, so a thrown `Error`'s message never
+leaves the server.
 
 `throw redirect({ to, params, search, hash, replace, reloadDocument, href })`
 and `throw notFound({ data, routeId })` from a handler reach the caller with
@@ -228,6 +235,10 @@ function's name when it has one), its place in the chain and the server
 function, as TanStack's does. A returned `redirect()` or `notFound()` is thrown
 as the answer it describes. A middleware's halves are also handed `method` and
 `serverFnMeta`.
+
+A server function in the list stands for the middleware it declared, as in
+TanStack: `.middleware([whoami])` runs `whoami`'s guards, typed, and never its
+handler. A second `.middleware([...])` call adds to the chain.
 
 Middleware runs BEFORE validation, deliberately: an unauthenticated caller
 should be refused without the server parsing its payload, and a rejection that
@@ -372,13 +383,15 @@ export const startInstance = createStart(() => ({
   functionMiddleware: [requireSession], // every server function, ahead of its own chain
   serializationAdapters: [money], // a type only the application knows, both ways
   serverFns: { fetch: tracedFetch }, // every call, unless a middleware or the call names one
+  defaultSsr: "data-only", // every route that says nothing about `ssr`
 }));
 ```
 
 `createSerializationAdapter({ key, test, toSerializable, fromSerializable })`
 makes an adapter. The ones named here are installed the first time the options
 are read, which the server does before it answers anything and the browser
-before it reads the page's seed.
+before it reads the page's seed. `defaultSsr` wins over the router's own, on
+both sides.
 
 The order is global request, global function, then the function's own. What a
 request middleware passes to `next({ context })` starts every server function's

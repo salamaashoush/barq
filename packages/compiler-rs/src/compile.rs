@@ -631,10 +631,16 @@ fn client_stubs(
     let mut needed: Vec<&analysis::server_fn::ImportLine> = Vec::new();
     let bound =
         |name: &str| scan.imports.iter().find(|line| line.names.iter().any(|bound| bound == name));
+    // A server function in a chain stands for its own middleware, and a sibling
+    // stubbed above this one is a binding the stub already has.
+    let stubbed: Vec<&str> = scan.server_fns().map(|export| export.name.as_str()).collect();
     let chains: Vec<Option<&Vec<String>>> = scan
         .server_fns()
-        .map(|export| {
-            if export.middleware.is_empty() || !export.middleware.iter().all(|n| bound(n).is_some())
+        .enumerate()
+        .map(|(position, export)| {
+            let sibling = |name: &str| stubbed[..position].contains(&name) && name != "default";
+            if export.middleware.is_empty()
+                || !export.middleware.iter().all(|n| bound(n).is_some() || sibling(n))
             {
                 return None;
             }
@@ -1171,7 +1177,7 @@ mod tests {
         let code = client_of(
             "import { createServerFn } from \"@barqjs/start\";\n\
              import { requireSession } from \"../auth\";\n\
-             export const save = createServerFn()\n\
+             export const save = createServerFn({ method: \"POST\" })\n\
                .middleware([requireSession])\n\
                .handler(async () => 1);",
         );
@@ -1204,7 +1210,8 @@ mod tests {
     }
 
     /// A GET function's stub sends a GET, since the server answers a function
-    /// on its own method alone; a POST one's stub is what it always was.
+    /// on its own method alone, and GET is what a function that names no
+    /// method answers; a POST one's stub sends the stub's own default.
     #[test]
     fn the_stub_names_the_method_of_a_get_function() {
         let code = client_of(
@@ -1227,6 +1234,45 @@ mod tests {
             "{code}"
         );
         assert!(code.contains("clientRpc(\"server/users.ts#save\");"), "{code}");
+    }
+
+    /// A server function in a chain stands for its own middleware, so the stub
+    /// names it: an imported one through its import, a sibling stubbed above
+    /// by the binding the stub already declared.
+    #[test]
+    fn a_chain_may_name_a_server_function() {
+        let code = client_of(
+            "import { createServerFn } from \"@barqjs/start\";\n\
+             import { whoami } from \"./session\";\n\
+             export const base = createServerFn().middleware([whoami]).handler(async () => 1);\n\
+             export const greet = createServerFn().middleware([base]).handler(async () => 2);",
+        );
+        assert!(code.contains("import { whoami } from \"./session\";"), "{code}");
+        assert!(
+            code.contains("clientRpc(\"server/users.ts#base\", [whoami], { method: \"GET\" })"),
+            "{code}"
+        );
+        assert!(
+            code.contains("clientRpc(\"server/users.ts#greet\", [base], { method: \"GET\" })"),
+            "{code}"
+        );
+    }
+
+    #[test]
+    fn a_function_that_names_no_method_is_get() {
+        let code = client_of(
+            "import { createServerFn } from \"@barqjs/start\";\n\
+             export const read = createServerFn().handler(async () => 1);\n\
+             export const listed = createServerFn({ strict: false }).handler(async () => 2);",
+        );
+        assert!(
+            code.contains("clientRpc(\"server/users.ts#read\", [], { method: \"GET\" })"),
+            "{code}"
+        );
+        assert!(
+            code.contains("clientRpc(\"server/users.ts#listed\", [], { method: \"GET\" })"),
+            "{code}"
+        );
     }
 
     /// The strip runs on ANY client module, not just one holding server
@@ -1274,7 +1320,7 @@ mod tests {
     fn a_chain_from_a_package_is_not_carried() {
         let code = client_of(
             "import { createServerFn, someGuard } from \"@barqjs/start\";\n\
-             export const save = createServerFn()\n\
+             export const save = createServerFn({ method: \"POST\" })\n\
                .middleware([someGuard])\n\
                .handler(async () => 1);",
         );
@@ -1291,10 +1337,10 @@ mod tests {
         for source in [
             "import { createServerFn } from \"@barqjs/start\";\n\
              import { chain } from \"../auth\";\n\
-             export const save = createServerFn().middleware(chain).handler(async () => 1);",
+             export const save = createServerFn({ method: \"POST\" }).middleware(chain).handler(async () => 1);",
             "import { createServerFn } from \"@barqjs/start\";\n\
              import { rest } from \"../auth\";\n\
-             export const save = createServerFn().middleware([...rest]).handler(async () => 1);",
+             export const save = createServerFn({ method: \"POST\" }).middleware([...rest]).handler(async () => 1);",
         ] {
             let code = client_of(source);
             assert!(code.contains("clientRpc(\"server/users.ts#save\");"), "{code}");

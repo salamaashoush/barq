@@ -38,13 +38,13 @@ pub struct Export {
     /// binding that is not there — and it is the same line the route-action
     /// verifier draws for the same reason.
     pub middleware: Vec<String>,
-    /// `"GET"` when the factory was called `createServerFn({ method: "GET" })`.
+    /// `"GET"` unless the factory was called `createServerFn({ method: "POST" })`.
     ///
     /// The client stub has to send the method the server answers, and it is
-    /// synthesized from nothing, so the method is read here. Only a string
-    /// literal is read; anything else is a runtime value this cannot see, and
-    /// the stub POSTs, which the server answers with a 405 naming the method
-    /// it wants.
+    /// synthesized from nothing, so the method is read here. `GET` is the
+    /// default, as it is TanStack's. Only a string literal is read; anything
+    /// else is a runtime value this cannot see, and the stub sends the default,
+    /// which the server answers with a 405 naming the method it wants.
     pub method: Option<String>,
 }
 
@@ -433,10 +433,10 @@ fn declared_middleware(
     }
 }
 
-/// The `method` the factory call names, when it names `"GET"` as a literal.
+/// `"GET"` unless the factory call names `"POST"` as a literal.
 ///
 /// Walks the spine `rooted_at` walks, to the call whose callee IS the factory,
-/// and reads `{ method: "GET" }` off its first argument.
+/// and reads `{ method: "POST" }` off its first argument.
 fn declared_method(
     expression: &Expression<'_>,
     factory: Factory,
@@ -451,25 +451,22 @@ fn declared_method(
         match unwrapped(current) {
             Expression::CallExpression(call) => {
                 if is_factory(&call.callee, factory, scoping) {
-                    let Some(Argument::ObjectExpression(options)) = call.arguments.first() else {
-                        return None;
-                    };
-                    return options.properties.iter().find_map(|property| {
-                        let ObjectPropertyKind::ObjectProperty(property) = property else {
-                            return None;
-                        };
-                        if property.computed
-                            || property.key.static_name().as_deref() != Some("method")
-                        {
-                            return None;
-                        }
-                        match unwrapped(&property.value) {
-                            Expression::StringLiteral(value) if value.value == "GET" => {
-                                Some("GET".to_string())
-                            }
-                            _ => None,
-                        }
-                    });
+                    let posts = matches!(
+                        call.arguments.first(),
+                        Some(Argument::ObjectExpression(options))
+                            if options.properties.iter().any(|property| {
+                                let ObjectPropertyKind::ObjectProperty(property) = property else {
+                                    return false;
+                                };
+                                !property.computed
+                                    && property.key.static_name().as_deref() == Some("method")
+                                    && matches!(
+                                        unwrapped(&property.value),
+                                        Expression::StringLiteral(value) if value.value == "POST"
+                                    )
+                            })
+                    );
+                    return if posts { None } else { Some("GET".to_string()) };
                 }
                 current = &call.callee;
             }
@@ -716,7 +713,7 @@ mod tests {
     /// The stub has to send the method the server answers, and the literal on
     /// the factory call is the only place it is written.
     #[test]
-    fn a_get_function_says_so_and_a_post_one_does_not() {
+    fn a_function_is_get_unless_it_says_post() {
         let scan = scan_of(&format!(
             "{IMPORT}export const read = createServerFn({{ method: 'GET' }}).handler(async () => 1);\n\
              const base = createServerFn({{ method: \"GET\" }}).middleware([audit]);\n\
@@ -734,8 +731,8 @@ mod tests {
                 ("read", Some("GET")),
                 ("held", Some("GET")),
                 ("write", None),
-                ("plain", None),
-                ("dynamic", None),
+                ("plain", Some("GET")),
+                ("dynamic", Some("GET")),
             ]
         );
     }

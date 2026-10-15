@@ -81,7 +81,7 @@ describe("the manifest", () => {
   test("mounts exactly the ids the client stubs call", async () => {
     const { manifest, stubs } = await drive();
 
-    const called = [...stubs.matchAll(/clientRpc\("([^"]+)"\)/g)].map((m) => m[1]);
+    const called = [...stubs.matchAll(/clientRpc\("([^"]+)"[,)]/g)].map((m) => m[1]);
     const mounted = [...manifest.matchAll(/mount\("([^"]+)"/g)].map((m) => m[1]);
 
     expect(called).toEqual(["server/users.ts#getUser", "server/users.ts#listUsers"]);
@@ -166,7 +166,7 @@ describe("the artifact the manifest is built from", () => {
    */
   test("the compiler spells an id the same way the plugin does", async () => {
     const out = transform(SOURCE, { filename: FILE, root: ROOT, env: "client", serverFns: true });
-    expect(out.code).toContain('clientRpc("server/users.ts#getUser")');
+    expect(out.code).toContain('clientRpc("server/users.ts#getUser", [], { method: "GET" })');
 
     const artifact = JSON.parse(out.serverFns as string) as {
       exports: Array<{ name: string; serverFn: boolean }>;

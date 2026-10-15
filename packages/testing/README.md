@@ -114,8 +114,10 @@ test("greets", async () => {
 });
 ```
 
-POSTs to `/_barq/fn/<id>` and decodes through the client's own codec, so a
-`Date` comes back a `Date`.
+Calls `/_barq/fn/<id>` with the method the mounted function answers (a `GET`
+with its input in the query and the caller header, as the stub sends it, or a
+`POST`) and decodes through the client's own codec, so a `Date` comes back a
+`Date`.
 
 Calling the handler directly skips the method gate, the origin check,
 `reachable`, and the split between the JSON channel and the FormData one — which

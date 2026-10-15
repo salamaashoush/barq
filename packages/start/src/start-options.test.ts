@@ -48,7 +48,9 @@ const money = createSerializationAdapter<Money, number>({
 
 test("the adapters it names carry a server function's result across the wire", async () => {
   createStart(() => ({ serializationAdapters: [money] }));
-  const total = createServerFn({ strict: { output: false } }).handler(() => new Money(1250));
+  const total = createServerFn({ method: "POST", strict: { output: false } }).handler(
+    () => new Money(1250),
+  );
   mount("cart.ts#total", total);
 
   const response = await handleServerFn(

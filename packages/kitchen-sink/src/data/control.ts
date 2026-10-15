@@ -45,7 +45,7 @@ export const loadRow = createServerFn()
  * and describes the redirect, and the client re-throws it for the router, which
  * makes it a soft navigation rather than a document load.
  */
-export const gatedAction = createServerFn()
+export const gatedAction = createServerFn({ method: "POST" })
   .validator("unchecked")
   .handler(({ data }): never => {
     redirect(`/about?from=${encodeURIComponent(String(data))}`);

@@ -35,7 +35,7 @@ const greet = createServerFn({ method: "GET" })
     return { greeting: `hello ${data.name}`, at: new Date(0) };
   });
 
-const save = createServerFn().handler(() => "saved");
+const save = createServerFn({ method: "POST" }).handler(() => "saved");
 
 /** A GET the way the stub sends it, with whatever headers the test adds. */
 const get = (id: string, input: unknown, headers: Record<string, string> = {}): Request =>
@@ -177,6 +177,27 @@ describe("what a link cannot reach", () => {
       headers: { "sec-fetch-site": "same-origin" },
     });
     const statuses = [(await handleServerFn(linked))?.status, (await handleServerFn(bare))?.status];
+    expect(statuses).toEqual([403, 403]);
+    expect(ran).toBe(false);
+  });
+
+  test("a function that names no method is a GET, and no other site reaches it without the header", async () => {
+    let ran = false;
+    const touch = createServerFn().handler(() => {
+      ran = true;
+      return null;
+    });
+    expect(touch.method).toBe("GET");
+    mount("touch", touch);
+    const url = `${ORIGIN}${RPC_PREFIX}touch${DATA_SUFFIX}`;
+    // What an `<img>`, a link or a prefetch on another site sends: no header, and
+    // the browser's own word for where it came from.
+    const image = new Request(url, { headers: { "sec-fetch-site": "cross-site" } });
+    const scripted = new Request(url, { headers: { origin: "https://evil.example.com" } });
+    const statuses = [
+      (await handleServerFn(image))?.status,
+      (await handleServerFn(scripted))?.status,
+    ];
     expect(statuses).toEqual([403, 403]);
     expect(ran).toBe(false);
   });

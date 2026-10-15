@@ -38,6 +38,6 @@ export const adminStats = createServerFn()
  * even for a page that only ever calls `adminStats`. The consequence is
  * over-restriction, which fails safe.
  */
-export const rotateKeys = createServerFn()
+export const rotateKeys = createServerFn({ method: "POST" })
   .middleware([requireSession])
   .handler(() => ({ rotated: true }));

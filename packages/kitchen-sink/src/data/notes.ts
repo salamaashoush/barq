@@ -42,7 +42,7 @@ export const listNotes = createServerFn({ method: "GET" })
     return notesOf(context.session.user);
   });
 
-export const addNote = createServerFn()
+export const addNote = createServerFn({ method: "POST" })
   .middleware([requireSession])
   .validator((input: { readonly text: string }) => {
     const text = input.text.trim();
@@ -58,7 +58,7 @@ export const addNote = createServerFn()
   });
 
 /** A form, file and all: the handler is handed the `FormData` itself. */
-export const attach = createServerFn()
+export const attach = createServerFn({ method: "POST" })
   .middleware([requireSession])
   .validator((input: unknown) => {
     if (!(input instanceof FormData)) throw new Error("expected a form");

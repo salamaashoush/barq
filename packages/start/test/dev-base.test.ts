@@ -4,7 +4,7 @@ import { type ViteDevServer, createServer } from "vite";
 
 import { encodeWire } from "@barqjs/server/codec";
 
-import { DATA_SUFFIX, RPC_PREFIX } from "../src/index.ts";
+import { DATA_SUFFIX, PAYLOAD_PARAM, RPC_CALLER, RPC_PREFIX } from "../src/index.ts";
 import { barqStart } from "../src/vite.ts";
 
 const ROOT = fileURLToPath(new URL("./fixture", import.meta.url));
@@ -57,11 +57,11 @@ describe("`vite dev` under a base other than /", () => {
 
   test("a server function inside the base reaches its handler", async () => {
     const id = encodeURIComponent("todos.ts#listTodos");
-    const response = await fetch(`${origin}/app${RPC_PREFIX}${id}${DATA_SUFFIX}`, {
-      method: "POST",
-      headers: { "content-type": "application/json", origin },
-      body: JSON.stringify({ input: encodeWire(undefined) }),
-    });
+    const payload = encodeURIComponent(JSON.stringify({ input: encodeWire(undefined) }));
+    const response = await fetch(
+      `${origin}/app${RPC_PREFIX}${id}${DATA_SUFFIX}?${PAYLOAD_PARAM}=${payload}`,
+      { headers: { origin, [RPC_CALLER]: "1" } },
+    );
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("json");
   });

@@ -21,6 +21,8 @@
 
 import {
   DATA_SUFFIX,
+  PAYLOAD_PARAM,
+  RPC_CALLER,
   RPC_PREFIX,
   type ResponseDraft,
   applyResponseDraft,
@@ -28,7 +30,7 @@ import {
   draftedStatus,
   withRequest,
 } from "@barqjs/start";
-import { type HandlerOptions, handleServerFn } from "@barqjs/start/server";
+import { type HandlerOptions, handleServerFn, mountedFn } from "@barqjs/start/server";
 import { decodeWire, encodeWire } from "@barqjs/server/codec";
 import type { AnyRouteDefinition } from "@barqjs/router";
 import { type PageHandlerOptions, createPageHandler, renderRoutes } from "@barqjs/router/server";
@@ -224,7 +226,10 @@ export interface CallServerFnOptions extends HandlerOptions {
    * precedence over `input`.
    */
   readonly form?: FormData;
-  /** Default `POST`. Anything else proves the method gate rather than calling. */
+  /**
+   * The method the mounted function answers by default, and `POST` for a form.
+   * Anything else proves the method gate rather than calling.
+   */
   readonly method?: string;
   /**
    * The `Origin` header. Defaults to the request's own, which is allowed.
@@ -266,22 +271,27 @@ export async function callServerFn<T = unknown>(
 ): Promise<ServerFnCall<T>> {
   const { id, input, form, method, origin, headers, cookies, ...handler } = options;
 
-  const url = `http://localhost${RPC_PREFIX}${encodeURIComponent(id)}${form === undefined ? DATA_SUFFIX : ""}`;
+  const sent = method ?? (form === undefined ? mountedFn(id)?.meta.method : undefined) ?? "POST";
+  const payload = JSON.stringify({ input: encodeWire(input) });
+  // A GET carries its payload in the query and the header only script can
+  // set, as the stub sends it; a GET asked for over a function that answers
+  // POST goes bare, since it is there to prove the gate.
+  const asGet = sent === "GET" && method === undefined;
+  const url =
+    `http://localhost${RPC_PREFIX}${encodeURIComponent(id)}${form === undefined ? DATA_SUFFIX : ""}` +
+    (asGet ? `?${PAYLOAD_PARAM}=${encodeURIComponent(payload)}` : "");
   const request = testRequest(url, {
-    method: method ?? "POST",
+    method: sent,
     // Same-origin unless a test says otherwise, because that is the case a
     // legitimate caller is in and the one every other assertion depends on.
     headers: {
-      ...(form === undefined ? { "content-type": "application/json" } : {}),
+      ...(form === undefined && sent === "POST" ? { "content-type": "application/json" } : {}),
+      ...(asGet ? { [RPC_CALLER]: "1" } : {}),
       ...headers,
       origin: origin ?? "http://localhost",
     },
     cookies,
-    body:
-      form ??
-      (method === undefined || method === "POST"
-        ? JSON.stringify({ input: encodeWire(input) })
-        : undefined),
+    body: form ?? (sent === "POST" ? payload : undefined),
   });
 
   const response = await handleServerFn(request, handler);

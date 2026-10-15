@@ -543,3 +543,28 @@ value, and a pattern nested under a prop's key.
   `Outlet({ id })` was a function. It now asserts `Parameters<typeof Outlet>` is empty.
 - `start/src/server.test.ts` "a middleware that rotates a cookie and THEN refuses": the
   unreachable `return next()` after the `throw` is gone. The test asserts what it did.
+
+## Server functions default to GET, and a thrown Response is rethrown
+
+- `compiler-rs/src/analysis/server_fn.rs` "a function is GET unless it says POST" (was "a GET
+  function says so and a POST one does not"): `plain` (no options) and `dynamic` (a method the
+  scan cannot read) now expect `Some("GET")`, the default, where they expected `None`.
+- `compiler-rs/src/compile.rs`: four fixtures named `save` declare `{ method: "POST" }`, so
+  their stubs are the POST stubs the assertions already named. Nothing they assert changed.
+- `start/src/{streaming,validators,global-middleware,get,server,start-options,fn-meta}.test.ts`:
+  fixtures a test calls over POST declare `{ method: "POST" }`. The assertions are unchanged.
+- `start/src/types.test.ts` "a schema's input is what the caller passes": the parameter of a
+  function that names no method is `{ data } & ServerFnCallOptions` with no `| FormData`, since
+  a GET has no body to carry a form.
+- `start/test/dev-server.test.ts` and `start/test/dev-base.test.ts`: `listTodos` is a read and
+  now a GET, so they call it with the payload in the query and the caller header.
+- `start/src/call-options.test.ts` "a refusal the server wrote": the call rejects with the
+  thrown `Response` itself, as TanStack's does, where it rejected with a `ServerFnError`
+  holding it. Status, header and body are asserted as before.
+- `testing/src/server.test.ts`: three fixtures declare `POST` (the test that POSTs, the one
+  that proves the POST gate, and the form one). `callServerFn` sends the method the mounted
+  function answers.
+- `start/src/vite.test.ts` "mounts exactly the ids the client stubs call" and "the compiler
+  spells an id the same way the plugin does": a stub for a function that names no method is
+  `clientRpc(id, [], { method: "GET" })`, so the id is read up to the first `,` or `)` and the
+  expected stub text carries the method. The ids compared are unchanged.

@@ -249,7 +249,7 @@ describe("callServerFn goes over the wire", () => {
   test("POSTs the input and decodes the answer", async () => {
     mount(
       id,
-      createServerFn()
+      createServerFn({ method: "POST" })
         .validator("unchecked")
         .handler(({ data }: { data: unknown }) => ({ hello: data, at: new Date(0) })),
     );
@@ -265,7 +265,7 @@ describe("callServerFn goes over the wire", () => {
   test("refuses anything but POST", async () => {
     mount(
       id,
-      createServerFn()
+      createServerFn({ method: "POST" })
         .validator("unchecked")
         .handler(() => "ok"),
     );
@@ -320,7 +320,7 @@ describe("callServerFn goes over the wire", () => {
     let seen: unknown;
     mount(
       id,
-      createServerFn()
+      createServerFn({ method: "POST" })
         .validator("unchecked")
         .handler(({ data }: { data: unknown }) => {
           seen = data;
@@ -340,6 +340,18 @@ describe("callServerFn goes over the wire", () => {
     // the divergence progressive enhancement exists to prevent.
     expect(seen).toBeInstanceOf(FormData);
     expect((seen as FormData).get("name")).toBe("Ada");
+  });
+
+  test("a function that names no method is called with a GET, its input in the query", async () => {
+    mount(
+      id,
+      createServerFn()
+        .validator("unchecked")
+        .handler(({ data }: { data: unknown }) => `hello ${String(data)}`),
+    );
+    const call = await callServerFn<string>({ id, input: "salama" });
+    expect(call.status).toBe(200);
+    expect(call.value).toBe("hello salama");
   });
 
   test("a set-cookie written by the handler survives to the response", async () => {

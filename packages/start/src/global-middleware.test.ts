@@ -66,7 +66,7 @@ test("global request, then global function, then the function's own", async () =
   }));
   mounted(
     "ordered",
-    createServerFn()
+    createServerFn({ method: "POST" })
       .middleware([own])
       .handler(() => {
         order.push("handler");
@@ -93,7 +93,7 @@ test("a request middleware is handed the request, and what it contributes reache
   }));
   mounted(
     "who",
-    createServerFn().handler(({ context }) => {
+    createServerFn({ method: "POST" }).handler(({ context }) => {
       handled = context;
       ambient = getGlobalStartContext();
       return null;
@@ -120,7 +120,7 @@ test("a request middleware does not run for a call that is refused before it", a
   }));
   mounted(
     "guarded",
-    createServerFn().handler(() => null),
+    createServerFn({ method: "POST" }).handler(() => null),
   );
 
   const forged = await call("guarded", {
@@ -152,7 +152,7 @@ test("a request middleware can refuse, replace the answer, and write to it after
   }));
   mounted(
     "answer",
-    createServerFn().handler(() => {
+    createServerFn({ method: "POST" }).handler(() => {
       handlerRan = true;
       setCookie("from-handler", "1");
       return "value";
@@ -185,7 +185,7 @@ test("a middleware the function lists as well as the application runs once", asy
   createStart(() => ({ functionMiddleware: [shared] }));
   mounted(
     "once",
-    createServerFn()
+    createServerFn({ method: "POST" })
       .middleware([shared])
       .handler(() => null),
   );
@@ -205,7 +205,7 @@ test("a global function middleware's client half runs around every call", async 
   }));
   mounted(
     "traced",
-    createServerFn().handler(() => "ok"),
+    createServerFn({ method: "POST" }).handler(() => "ok"),
   );
   let trace: string | null = null;
   globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -226,7 +226,7 @@ test("a global function middleware's client half runs around every call", async 
 test("with no createStart nothing is added to a call", async () => {
   mounted(
     "plain",
-    createServerFn().handler(({ context }) => Object.keys(context).length),
+    createServerFn({ method: "POST" }).handler(({ context }) => Object.keys(context).length),
   );
   const response = await call("plain");
   expect(await answerOf(response)).toBe(0);

@@ -16,7 +16,7 @@ import { type ViteDevServer, createServer } from "vite";
 import { barqStart } from "../src/vite.ts";
 import { encodeWire } from "@barqjs/server/codec";
 
-import { DATA_SUFFIX, RPC_PREFIX } from "../src/index.ts";
+import { DATA_SUFFIX, PAYLOAD_PARAM, RPC_CALLER, RPC_PREFIX } from "../src/index.ts";
 
 const ROOT = fileURLToPath(new URL("./fixture", import.meta.url));
 
@@ -77,6 +77,15 @@ const call = (id: string, input: unknown, headers: Record<string, string> = {}) 
     body: JSON.stringify({ input: encodeWire(input) }),
   });
 
+/** A GET call, the way the stub sends one: the payload in the query, and the caller header. */
+const read = (id: string, input: unknown) =>
+  fetch(
+    `${origin}${RPC_PREFIX}${encodeURIComponent(id)}${DATA_SUFFIX}?${PAYLOAD_PARAM}=${encodeURIComponent(
+      JSON.stringify({ input: encodeWire(input) }),
+    )}`,
+    { headers: { origin, [RPC_CALLER]: "1" } },
+  );
+
 describe("a server function, end to end through Vite", () => {
   test("the client transform synthesizes stubs and drops the server module", async () => {
     const result = await server.environments.client.transformRequest("/todos.ts");
@@ -114,7 +123,7 @@ describe("a server function, end to end through Vite", () => {
     const added = await call("todos.ts#addTodo", "milk");
     expect(added.status).toBe(200);
 
-    const listed = await call("todos.ts#listTodos", undefined);
+    const listed = await read("todos.ts#listTodos", undefined);
     expect(listed.status).toBe(200);
     const body = (await listed.json()) as unknown;
     expect(JSON.stringify(body)).toContain("milk");

@@ -2,7 +2,7 @@ import { createServerFn } from "@barqjs/start";
 
 import { SECRET, store } from "./db.ts";
 
-export const addTodo = createServerFn()
+export const addTodo = createServerFn({ method: "POST" })
   .validator("unchecked")
   .handler(async ({ data: title }: { data: string }) => {
     store.push(`${title}:${SECRET}`);
