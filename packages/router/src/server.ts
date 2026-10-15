@@ -32,7 +32,7 @@ import {
   ssrErrored,
   ssrLoading,
 } from "@barqjs/server";
-import { HYDRATE, type Block, cell, provide, untrack } from "@barqjs/core";
+import { HYDRATE, type Block, cell, isDev, provide, untrack } from "@barqjs/core";
 import {
   type AnySerializationAdapter,
   encodeSeed,
@@ -48,6 +48,7 @@ import {
   markResponseSent,
   peekResponseDraft,
   runRequestMiddleware,
+  serverTiming,
   setRequestMiddlewareContext,
   startOptions,
   withRequest,
@@ -1042,6 +1043,7 @@ export function createPageHandler(
         // separate phase from the loader: here the status is still open, so a
         // `throw redirect(...)` becomes a real 302 and a `throw notFound()` a
         // real 404. The same throw from a LOADER cannot — see `redirectScript`.
+        const timing = isDev ? serverTiming() : undefined;
         let before: BeforeLoadResult;
         try {
           before = await state.runBeforeLoad(
@@ -1069,6 +1071,7 @@ export function createPageHandler(
           if (early !== null) return applyResponseDraft(early, draft);
           throw error;
         }
+        timing?.phase("barq-before-load", "beforeLoad");
         // THE GUARD STARTS HERE, not at the render. Everything from this
         // point to the handover — the chunk imports, the head projection, the
         // asset tags — can throw, and a throw that skips `dispose` leaks the
@@ -1173,6 +1176,7 @@ export function createPageHandler(
             // tags, never the document.
             { nonce: options.nonce, onError: (error) => console.error(error) },
           );
+          timing?.phase("barq-head", "head and the loaders it waits for");
           const context = contextScript(url, before.produced, options.nonce);
           const preloads = chainFiles(rendered, options.routeAssets);
           const preload = preloadTags(rendered, options.routeAssets);
@@ -1249,6 +1253,10 @@ export function createPageHandler(
             const carried = channel.drain();
             dispose();
             if (answer !== null) return answer;
+            if (timing !== undefined) {
+              timing.phase("barq-render", "render (buffered)");
+              draft.headers.append("server-timing", timing.header());
+            }
             return html(
               await shellOf(
                 options,
@@ -1282,6 +1290,10 @@ export function createPageHandler(
           });
           // The shell has gone and the loaders it started have not settled.
           channel.dehydrate(state, state.settled());
+          if (timing !== undefined) {
+            timing.phase("barq-render", "shell (the rest streams after it)");
+            draft.headers.append("server-timing", timing.header());
+          }
           return new Response(
             shell === undefined
               ? wrapStream(

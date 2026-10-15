@@ -9,7 +9,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { DEV } from "@barqjs/core";
+import { DEV, isDev } from "@barqjs/core";
 
 import { DATA_SUFFIX, RPC_PREFIX, ServerFnError, clientRpc, serverRpc } from "./index.ts";
 import { type HandlerOptions, handleServerFn, mount, unmountAll } from "./server.ts";
@@ -190,5 +190,26 @@ describe("a handler that throws", () => {
     });
     expect(values).toEqual([1]);
     expect(error.thrown).toEqual({ name: "RangeError", message: "salama's feed ran dry" });
+  });
+});
+
+describe("a call's Server-Timing", () => {
+  test("says how long the function ran, in development only", async () => {
+    mount(
+      "quick",
+      serverRpc<undefined, string>(
+        { id: "quick" },
+        { validator: null, middleware: [], handler: () => "salama" },
+      ),
+    );
+    const response = await through()(`${RPC_PREFIX}quick${DATA_SUFFIX}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    });
+    expect(response.status).toBe(200);
+    const header = response.headers.get("server-timing");
+    if (isDev) expect(header).toMatch(/^barq-fn;dur=\d+\.\d;desc="quick"$/);
+    else expect(header).toBeNull();
   });
 });

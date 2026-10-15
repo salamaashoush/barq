@@ -8,6 +8,7 @@
  * Each is cheap to close and expensive to retrofit.
  */
 
+import { isDev } from "@barqjs/core";
 import { diagnosticsEnabled, emitDiagnostic } from "@barqjs/core/internal";
 import { decodeWire, encodeWire } from "@barqjs/server/codec";
 import { createBodyTooLargeError, limitBodyStream } from "srvx/body-limit";
@@ -49,6 +50,7 @@ import {
   startOptions,
   takeSendContext,
 } from "./index.ts";
+import { serverTiming } from "./timing.ts";
 
 /**
  * id → function, and the ONLY way an id becomes callable.
@@ -480,6 +482,7 @@ export async function handleServerFn(
   // forged or mistyped call is refused above without a middleware having run
   // for it, so it costs nothing and reaches nothing.
   const context: Record<string, unknown> = {};
+  const timing = isDev ? serverTiming() : undefined;
   try {
     const response = await withRequest(
       request,
@@ -493,6 +496,10 @@ export async function handleServerFn(
       },
       { response: draft },
     );
+    if (timing !== undefined) {
+      timing.phase("barq-fn", id);
+      draft.headers.append("server-timing", timing.header());
+    }
     return applyResponseDraft(response, draft);
   } catch (error) {
     // A request middleware refuses the way a function's own does.
