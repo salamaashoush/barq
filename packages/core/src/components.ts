@@ -24,11 +24,10 @@
  * `-O0` emission is the flow pass's own reference. Deleting these would delete
  * what the pass is graded against.
  *
- * Three constructs also still refuse at `-Ox`, each for a stated reason in
+ * Two constructs also still refuse at `-Ox`, for a stated reason in
  * `passes::flow::admits_spread`, so their adapters are reachable from an
  * optimised build as well: `Switch` needs literal `<Match>` arms it can read
- * (`admits_arms`), `Match` goes with it, and `Dynamic`'s unrecognised props are
- * the RESOLVED component's rather than the construct's.
+ * (`admits_arms`), and `Match` goes with it.
  *
  * ## What M10 did buy, measured
  *
@@ -58,7 +57,7 @@
  * element-creation path, `ErrorBoundary`'s build-then-install ordering, and
  * `Suspense`'s two `queueMicrotask`s that subscribed to nothing. `markers.ts`
  * went at M9 — these re-exported it and never called it — and so did
- * `dynamic()` and the `DocumentFragment` `Fragment` built, which C8 replaced
+ * the `DocumentFragment` `Fragment` built, which C8 replaced
  * with an array.
  *
  * `For`'s own copy of the arity rule is gone: `each`'s `keyMode` resolves the
@@ -69,10 +68,9 @@
 import type { Accessor, AsDeclared, CallSite, StrictAccessor, StrictChild } from "./config.ts";
 import type { ArrayElement, Child, JSXElement } from "./dom.ts";
 import { resolveDynamic } from "./dom.ts";
-import { COUNT, boundary, branch, each, island, portal, reveal } from "./flow.ts";
+import { COUNT, HYDRATE, boundary, branch, each, island, portal, reveal } from "./flow.ts";
 import type { ComponentProps, JSX } from "./jsx-runtime.ts";
 import type { Block, Cell } from "./scope.ts";
-import { omit } from "./props.ts";
 import {
   NotReadyError,
   createMemo,
@@ -90,8 +88,9 @@ import {
  * The flow components' props take a value or an accessor in every reactive
  * slot. A JSX call site writes the value and the compiler wraps it; compiled
  * code hands over the Cell or the Block. They are `CallSite<AsDeclared>`, so
- * attributes are checked against them as written. `For` and `Dynamic` declare
- * a call-site type of their own beside what the adapter is handed.
+ * attributes are checked against them as written. `For` declares a call-site
+ * type of its own beside what the adapter is handed, and so does the component
+ * `dynamic` returns.
  */
 
 /**
@@ -214,42 +213,28 @@ export interface PortalProps extends CallSite<AsDeclared> {
   children: StrictChild;
 }
 
-export type DynamicComponent =
-  | keyof HTMLElementTagNameMap
-  | ((props: Record<string, unknown>) => JSXElement);
-
-/** What `component` may hold: a tag name or a function of one props object. */
+/** What a `dynamic` source may answer with: a tag name or a function of one props object. */
 export type DynamicTag = string | ((props: never) => unknown);
 
 /**
- * What `component` resolves to. An accessor that yields a tag or a component
- * is read for it, which is how a call site passes a choice that moves:
- * `component={() => tag()}`. A function that yields anything else is the
- * component itself.
+ * What a call site of a `dynamic` component writes: the attributes of the tag
+ * or the props of the component its source answers with. A tag this file does
+ * not know, or one that is only known to be a string, takes any attribute.
  */
-export type DynamicTarget<T> = T extends string
-  ? T
-  : T extends () => infer R
-    ? [R] extends [DynamicTag | null | undefined | false]
-      ? Exclude<R, null | undefined | false>
-      : T
-    : T;
+export type DynamicProps<T extends DynamicTag> = DynamicAttributes<T>;
 
-/**
- * `<Dynamic>` as a JSX call site writes it: `component`, and beside it whatever
- * a call site of that component or tag may write. A tag this file does not
- * know, or one that is only known to be a string, takes any attribute.
- */
-export type DynamicProps<T extends DynamicTag> = DynamicAttributes<DynamicTarget<T>> & {
-  component: T | null | undefined | false;
-};
+/** The component `dynamic` returns. */
+export type DynamicComponent<T extends DynamicTag> = (
+  props: Record<string, unknown> & CallSite<DynamicProps<T>>,
+) => JSXElement;
 
 /**
  * The tags' attributes behind a string index, so that looking one up by a tag
  * not yet inferred answers with one loose record instead of a union of every
  * element's attributes. TypeScript resolves a type parameter against its
  * constraint before it infers it, and with that union as the contextual type
- * a single `<Dynamic>` costs more to check than a 200-file package beside it.
+ * a single `dynamic` component costs more to check than a 200-file package
+ * beside it.
  */
 type TagAttributes = JSX.IntrinsicElements & { [tag: string]: Record<string, unknown> };
 
@@ -536,28 +521,32 @@ export function Portal(props: PortalProps): JSXElement {
 }
 
 /**
- * `<Dynamic component={c}>` — a `branch` keyed on the component VALUE with one
- * body for every key, and `dynamic` inside it. The tag or component cannot be
- * resolved at compile time, so the choice is made at run time and nowhere else.
- * The swap and the teardown are the branch's.
+ * Solid 2.0's `dynamic(source)`: a component whose tag or component is whatever
+ * `source` answers, and moves when it does. Hoist it, to the module for a
+ * source that reads module state or to the component body otherwise, and use
+ * the result like any component: `const Field = dynamic(() => (rich() ? Editor
+ * : "input"))`, then `<Field value={value()} />`.
+ *
+ * Each instance is a `branch` keyed on a memo of the source, so the swap and
+ * the teardown are the branch's, and `resolveDynamic` decides whether the
+ * value is a tag or a component. `@barqjs/server` has the string half under the
+ * same name, which the compiler's server backend calls instead; both build the
+ * memo and the range in the same order, so the owner ids and the range the
+ * server writes are the ones the client claims.
  */
-export function Dynamic<T extends DynamicTag>(
-  props: { component: unknown } & Record<string, unknown> & CallSite<DynamicProps<T>>,
-): JSXElement {
-  // Read WITHOUT the Cell-slot Block guard, the way `dom.ts`'s `dynamic` reads
-  // it. A compiled component is a Block, and one arriving here is the whole
-  // point rather than a mistake: the value is invoked as a component with its
-  // scope, never stringified into an attribute, so there is nothing for C3.8 to
-  // protect. Guarding it made `Dynamic` reject every component the compiler
-  // emits, which is every component in an application.
-  const component = internalMemo(() => {
-    const slot = props.component;
-    return typeof slot === "function" ? (slot as () => unknown)() : slot;
-  });
-  const rest = omit(props, "component");
-  return branch(null, null, component, () =>
-    resolveDynamic(component as unknown as Cell<never>, rest),
-  );
+export function dynamic<T extends DynamicTag>(
+  source: () => T | null | undefined | false,
+): DynamicComponent<T> {
+  return (props) => {
+    const component = internalMemo(source);
+    return branch(
+      null,
+      null,
+      component,
+      () => resolveDynamic(component as unknown as Cell<never>, props),
+      HYDRATE,
+    );
+  };
 }
 
 /**

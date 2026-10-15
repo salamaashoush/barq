@@ -5,18 +5,18 @@
 ## Message
 
 ```text
-`delegateEvents(["focus"])` asks for one shared listener on the document, but the `focus`
-event does not bubble, so a handler registered this way never runs. Attach it to the element
-itself: `listen(element, "focus", handler)`.
+`delegateEvents(["focus"])` asks for a listener on each render root, but the `focus` event
+does not bubble, so a handler registered this way never runs. Attach it to the element itself:
+`listen(element, "focus", handler)`.
 ```
 
 ## What raises it
 
 A call to `delegateEvents` naming an event that does not bubble: `focus`,
 `blur`, `mouseenter`, `mouseleave`, `load`, `scroll` and the rest of that
-family. Delegation installs one listener on the document and finds the handler
-by walking up from the target, so an event that never reaches the document never
-finds it:
+family. Delegation installs one listener on the container each `render` or
+`hydrate` mounts into and finds the handler by walking up from the target, so an
+event that never reaches that container never finds it:
 
 ```tsx
 import { delegateEvents } from "@barqjs/core";

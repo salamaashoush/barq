@@ -28,7 +28,7 @@ import {
   renderPage,
   renderToStream,
   each as ssrEach,
-  ssrDynamic,
+  resolveDynamic,
   ssrErrored,
   ssrLoading,
 } from "@barqjs/server";
@@ -1216,10 +1216,7 @@ export function createPageHandler(
                 list as never,
                 (tag: ManagedTag, index: number) => tagKey(tag, index),
                 (tag: () => ManagedTag, index: () => number) =>
-                  ssrDynamic({
-                    component: tag().tag,
-                    ...tagProps(tag(), index()),
-                  }),
+                  resolveDynamic(tag().tag, tagProps(tag(), index())),
               ),
           };
           // The whole document when a shell is declared, the app's markup when

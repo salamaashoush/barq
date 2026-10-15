@@ -229,8 +229,8 @@ export interface HeadAssets {
    * It arrives through the CONTEXT for the reason `LinkBackend` does: this
    * module is the ISOMORPHIC entry and is hand-written rather than compiled, so
    * its own `each` would be the DOM one on both sides. The string backend has
-   * `ssrFor`/`ssrDynamic` of its own, and each backend hands over the one that
-   * is its.
+   * `each` and `resolveDynamic` of its own, and each backend hands over the one
+   * that is its.
    */
   readonly tagTree?: (list: () => readonly ManagedTag[]) => unknown;
 }

@@ -13,7 +13,9 @@
  * them under, with the same argument order: one ABI, two implementations. The
  * compiler emits the same call for both backends and
  * chooses between them by choosing this source, which is why a string-compiled
- * module imports from here and from nowhere else.
+ * module imports from here and from nowhere else. `dynamic` is the same
+ * arrangement for an import the author writes: the server backend calls this
+ * one where the source calls `@barqjs/core`'s.
  */
 
 export {
@@ -25,6 +27,7 @@ export {
   branch,
   cls,
   content,
+  dynamic,
   resolveDynamic,
   each,
   esc,
@@ -40,7 +43,6 @@ export {
   reveal,
   rawText,
   spreadAttrs,
-  ssrDynamic,
   ssrErrored,
   ssrFor,
   ssrLoading,

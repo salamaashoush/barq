@@ -254,11 +254,11 @@ const DOM_PROPS: Record<string, 1> = {
   textContent: 1,
 };
 
-// Events delegated to a single document-level listener (Solid's list).
-// Handlers are stored on the element as `__bq_<type>`, and not under Solid's
-// `$$<type>`: a Solid 1 document listener calls what it finds there, so one
-// such widget on the page ran every handler here twice. The document listener
-// walks up from the event target calling them, respecting stopPropagation.
+// Events delegated to one listener per render root (Solid's list). Handlers are
+// stored on the element as `__bq_<type>`, and not under Solid's `$$<type>`: a
+// Solid 1 document listener calls what it finds there, so one such widget on
+// the page ran every handler here twice. A root's listener walks up from the
+// event target calling them, respecting stopPropagation.
 const DELEGATED_EVENTS = new Set([
   "beforeinput",
   "click",
@@ -284,9 +284,7 @@ const DELEGATED_EVENTS = new Set([
   "touchstart",
 ]);
 
-const installedDelegatedEvents = new Set<string>();
-
-// A document listener for one of these can never fire from a descendant, so a
+// A root's listener for one of these can never fire from a descendant, so a
 // compiler that emits delegateEvents([...]) for one has produced a dead handler.
 const NON_BUBBLING_EVENTS = new Set([
   "abort",
@@ -342,20 +340,79 @@ function scopeOf(node: Node): Scope | null {
   return ((node as Node & Record<string, unknown>)[SCOPE_KEY] as Scope | undefined) ?? null;
 }
 
-function delegatedEventHandler(e: Event): void {
+/**
+ * One container a delegated listener sits on, and the roots it delivers for.
+ *
+ * A container is either a render root, which delivers for itself, or the box a
+ * portal mounted outside its root, which delivers for that root. `owners`
+ * counts registrations per root because a root can be rendered into the same
+ * container more than once and only the last disposal may take the listeners.
+ */
+interface DelegatedContainer {
+  owners: Map<Node, number>;
+  listeners: Map<string, EventListener>;
+  roots: number;
+}
+
+/** Every type a compiled module or a runtime binding has asked to delegate. */
+const delegatedEvents = new Set<string>();
+const delegatedContainers = new Map<Node, DelegatedContainer>();
+
+/**
+ * Written on an event by the first root that walks it: the root, so a root
+ * further out resumes from that root's container instead of walking the inner
+ * tree a second time, and an unrelated root does not walk it at all.
+ */
+const EVENT_OWNER = "__bqo";
+
+/**
+ * On a portal's box: the marker standing at the portal's place in the tree.
+ * The walk climbs from the box to the marker's parent, so an event inside a
+ * portal reaches the handlers around the portal, as it does in Solid.
+ */
+const PORTAL_HOST = "__bqh";
+
+function above(node: Node): Node | null {
+  const marker = (node as Node & Record<string, unknown>)[PORTAL_HOST] as Node | undefined;
+  if (marker !== undefined) return marker.parentNode;
+  return node.parentNode ?? ((node as Partial<ShadowRoot>).host as Node | undefined) ?? null;
+}
+
+function ownerIn(state: DelegatedContainer, from: Node | null): Node | null {
+  for (let node = from; node !== null; node = above(node)) {
+    if (state.owners.has(node)) return node;
+  }
+  return null;
+}
+
+function dispatchDelegated(e: Event, container: Node, state: DelegatedContainer): void {
+  const marked = (e as Event & Record<string, unknown>)[EVENT_OWNER] as Node | undefined;
+  const target = ((e.composedPath?.()[0] as Node | undefined) ?? e.target) as Node | null;
+  let resume: Node | null = null;
+  if (marked !== undefined) {
+    if (marked === container || !container.contains(marked)) return;
+    resume = marked;
+  }
+  const root =
+    state.owners.size === 1 && state.owners.has(container) ? container : ownerIn(state, target);
+  if (root === null || root === resume) return;
+  (e as Event & Record<string, unknown>)[EVENT_OWNER] = root;
+
   const key = `__bq_${e.type}`;
-  let node: Node | null = ((e.composedPath?.()[0] as Node | undefined) ?? e.target) as Node | null;
+  // The inner root already ran the target's handler when the target is the
+  // inner root's own container.
+  let node: Node | null = resume === null ? target : resume === target ? above(resume) : resume;
 
   // Reflect the element whose handler is running, like native bubbling
   Object.defineProperty(e, "currentTarget", {
     configurable: true,
     get() {
-      return node ?? document;
+      return node ?? container;
     },
   });
 
   try {
-    while (node) {
+    while (node !== null) {
       const handler = (node as Node & Record<string, unknown>)[key] as DelegatedHandler | undefined;
       if (handler && !(node as Partial<HTMLButtonElement>).disabled) {
         const owner = scopeOf(node);
@@ -395,11 +452,14 @@ function delegatedEventHandler(e: Event): void {
         }
         if (e.cancelBubble) return;
       }
-      node = node.parentNode ?? ((node as Partial<ShadowRoot>).host as Node | undefined) ?? null;
+      if (node === root) return;
+      const next = above(node);
+      if (next === root) return;
+      node = next;
     }
   } finally {
     // The override outlives the walk otherwise, so anything reading
-    // currentTarget after dispatch would see `document` forever.
+    // currentTarget after dispatch would see the container forever.
     delete (e as Partial<Record<"currentTarget", unknown>>).currentTarget;
   }
 }
@@ -416,7 +476,7 @@ function isEventHandlerValue(value: unknown): boolean {
  * meaning of a key depends on state a child does not have: a listbox's
  * typeahead has to claim a Space as a search character before the option below
  * it reads the same key as "select me". Delegation cannot express it — the
- * document listener runs after the whole bubble path — so a capture prop is
+ * root's listener runs after the whole bubble path — so a capture prop is
  * always a direct listener.
  */
 const CAPTURE_SUFFIX = "Capture";
@@ -439,14 +499,75 @@ function toListener(value: DelegatedHandler): EventListener {
   return (e: Event) => value[0](value[1], e);
 }
 
-function ensureDelegatedListener(type: string): void {
-  if (installedDelegatedEvents.has(type)) return;
-  installedDelegatedEvents.add(type);
-  document.addEventListener(type, delegatedEventHandler);
+function listenOn(container: Node, state: DelegatedContainer, type: string): void {
+  if (state.listeners.has(type)) return;
+  const listener = (e: Event): void => dispatchDelegated(e, container, state);
+  state.listeners.set(type, listener);
+  container.addEventListener(type, listener);
+}
+
+function declareDelegated(type: string): void {
+  if (delegatedEvents.has(type)) return;
+  delegatedEvents.add(type);
+  for (const [container, state] of delegatedContainers) listenOn(container, state, type);
 }
 
 /**
- * Install the document-level listener for each event type, idempotently.
+ * Listen for every delegated type on `container`, on behalf of the root
+ * `owner`. A root registers its own container; a portal mounted outside its
+ * root registers the box it mounted, on behalf of that root.
+ */
+export function registerDelegatedContainer(container: Node, owner: Node = container): void {
+  let state = delegatedContainers.get(container);
+  if (state === undefined) {
+    state = { owners: new Map(), listeners: new Map(), roots: 0 };
+    delegatedContainers.set(container, state);
+  }
+  state.owners.set(owner, (state.owners.get(owner) ?? 0) + 1);
+  for (const type of delegatedEvents) listenOn(container, state, type);
+}
+
+export function unregisterDelegatedContainer(container: Node, owner: Node = container): void {
+  const state = delegatedContainers.get(container);
+  if (state === undefined) return;
+  const count = state.owners.get(owner) ?? 0;
+  if (count > 1) state.owners.set(owner, count - 1);
+  else state.owners.delete(owner);
+  if (state.owners.size > 0) return;
+  for (const [type, listener] of state.listeners) container.removeEventListener(type, listener);
+  delegatedContainers.delete(container);
+}
+
+function registerDelegatedRoot(container: Node): void {
+  registerDelegatedContainer(container);
+  delegatedContainers.get(container)!.roots++;
+}
+
+function unregisterDelegatedRoot(container: Node): void {
+  const state = delegatedContainers.get(container);
+  if (state !== undefined) state.roots--;
+  unregisterDelegatedContainer(container);
+}
+
+/** The container of the render root `node` was rendered under, if it was. */
+export function delegatedRootOf(node: Node | null): Node | null {
+  for (let at = node; at !== null; at = above(at)) {
+    if ((delegatedContainers.get(at)?.roots ?? 0) > 0) return at;
+  }
+  return null;
+}
+
+/**
+ * Mark a portal's box as standing where `marker` stands, for the walk.
+ */
+export function hostPortal(box: Node, marker: Node): void {
+  (box as Node & Record<string, unknown>)[PORTAL_HOST] = marker;
+}
+
+/**
+ * Declare event types as delegated, idempotently. Every render root listens
+ * for each declared type on its own container, from now on and for the roots
+ * mounted later.
  *
  * Compiled output writes handlers straight to the element as `__bq_<type>`
  * (a function, or a `[fn, data]` tuple) and calls this once per module for
@@ -461,33 +582,12 @@ export function delegateEvents(types: string[]): void {
       emitDiagnostic(
         "DELEGATED_EVENT_DOES_NOT_BUBBLE",
         "warning",
-        `\`delegateEvents(["${type}"])\` asks for one shared listener on the document, but ` +
+        `\`delegateEvents(["${type}"])\` asks for a listener on each render root, but ` +
           `the \`${type}\` event does not bubble, so a handler registered this way never runs. ` +
           `Attach it to the element itself: \`listen(element, "${type}", handler)\`.`,
       );
     }
-    ensureDelegatedListener(type);
-  }
-}
-
-/**
- * Remove the document-level listeners `delegateEvents` installed, so the next
- * render starts from nothing.
- *
- * `installedDelegatedEvents` is module state that outlives any scope, so two
- * renders in one process share it: the second inherits the first's listeners
- * and its `__bq_<type>` expandos work whether or not it called `delegateEvents`
- * itself. That makes the call unfalsifiable by any test that renders twice —
- * a compiler that dropped it would still look green. Tear the state down
- * between renders and the assertion has teeth again.
- */
-export function clearDelegatedEvents(types?: string[]): void {
-  const removing = types ?? [...installedDelegatedEvents];
-  for (let i = 0; i < removing.length; i++) {
-    const type = removing[i];
-    warnedNonBubbling.delete(type);
-    if (!installedDelegatedEvents.delete(type)) continue;
-    document.removeEventListener(type, delegatedEventHandler);
+    declareDelegated(type);
   }
 }
 
@@ -545,16 +645,16 @@ export type JSXElement = Node | ArrayElement | (string & {}) | number | boolean 
 export type { JSXElement as Element };
 
 /**
- * `<Dynamic component={c}>`, and the whole reason it exists: a component or a
- * tag whose value is not a module-local `const` cannot be resolved at compile
- * time, so the choice is made here and nowhere else.
+ * The body of every `dynamic` instance: a component or a tag whose value is not
+ * a module-local `const` cannot be resolved at compile time, so the choice is
+ * made here and nowhere else.
  *
- * The compiler has already done everything else. The key is a `branch`'s, so
- * the swap and the teardown are the primitive's; the props are a SOURCE LIST
- * (C9), not a copied object; the children are a Block inside it. What is left
- * is one `typeof` — and the string arm builds through `spread` and `insert`,
- * the same two entry points every other element goes through, rather than the
- * fifth element-creation path `createDynamicElement` used to be.
+ * The key is a `branch`'s, so the swap and the teardown are the primitive's;
+ * the props are the call site's SOURCE LIST (C9), not a copied object; the
+ * children are a Block inside it. What is left is one `typeof` — and the string
+ * arm builds through `spread` and `insert`, the same two entry points every
+ * other element goes through, rather than the fifth element-creation path
+ * `createDynamicElement` used to be.
  */
 export function resolveDynamic(
   component: Cell<string | ((props: Record<string, unknown>) => unknown)>,
@@ -1075,7 +1175,7 @@ export function delegate(
   if (Array.isArray(handler)) refuseBlock(handler[0], `The \`on${type}\` handler`);
   (element as Element & Record<string, unknown>)[`__bq_${type}`] = handler;
   (element as Element & Record<string, unknown>)[SCOPE_KEY] = owner;
-  if (handler !== undefined) ensureDelegatedListener(type);
+  if (handler !== undefined) declareDelegated(type);
 }
 
 /**
@@ -2300,7 +2400,7 @@ export function bindChannelOf(element: Element, name: string): [string, string] 
  */
 export function bindEvent(element: Element, type: string, value: unknown, capture = false): void {
   if (!isEventHandlerValue(value)) return;
-  // Delegation is one document-level listener in the BUBBLE phase, so it
+  // Delegation is one listener per render root in the BUBBLE phase, so it
   // cannot serve a capture binding at all.
   if (!capture && DELEGATED_EVENTS.has(type)) {
     delegate(element, type, value as DelegatedHandler);
@@ -2648,13 +2748,23 @@ export function render(block: JSXElement | (() => JSXElement), container: HTMLEl
   ownRange(root, () => {
     container.textContent = "";
   });
-  runWithOwner(root, () => {
-    insertRendered(root, typeof block === "function" ? block() : block, container);
-  });
-  flush();
+  registerDelegatedRoot(container);
+  try {
+    runWithOwner(root, () => {
+      insertRendered(root, typeof block === "function" ? block() : block, container);
+    });
+    flush();
+  } catch (error) {
+    unregisterDelegatedRoot(container);
+    throw error;
+  }
 
+  let disposed = false;
   return () => {
     disposeScope(root);
+    if (disposed) return;
+    disposed = true;
+    unregisterDelegatedRoot(container);
   };
 }
 
@@ -2741,8 +2851,8 @@ function insertRendered(
  * generateHydrationScript, then renders the app over the server markup in
  * one synchronous pass: seeded async values resolve synchronously, so the
  * client produces identical markup immediately (no fallback flash, no
- * refetch). Delegated event listeners are document-level and active from
- * this point on.
+ * refetch). Delegated event listeners are on `container` and active from
+ * this point on, until the returned function disposes the root.
  *
  * Node-reuse (claim-based) hydration requires compiler-emitted hydration
  * keys; this replace-based pass is the runtime-only strategy.
@@ -2957,6 +3067,7 @@ export function hydrate(
   // mismatch that caused it. Recovery means "as if nothing happened", and the
   // id epoch is the other half of that.
   const seeds = { ...(globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__ };
+  registerDelegatedRoot(container);
   beginHydration(container);
   const marked = wireIsMarked();
   // The server numbered every scope it opened, whether or not a value was
@@ -2969,6 +3080,7 @@ export function hydrate(
     failure = mismatchIn(error);
     if (failure === null) {
       endHydration();
+      unregisterDelegatedRoot(container);
       throw error;
     }
     // Wrapped means it left a computation with nothing to catch it, and the
@@ -3006,7 +3118,12 @@ export function hydrate(
     clear?.();
     (globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__ = seeds;
     resetChildIds();
-    clear = mount(fn, container, false);
+    try {
+      clear = mount(fn, container, false);
+    } catch (error) {
+      unregisterDelegatedRoot(container);
+      throw error;
+    }
     hydrate.report = {
       mismatches: [...claimReport.mismatches, { kind: failure.kind, detail: failure.message }],
       claimed: claimReport.claimed,
@@ -3030,7 +3147,13 @@ export function hydrate(
   // already resolved by now.
   unclaimedSeeds();
   replayCapturedEvents(hydrate.report.recovered);
-  return clear ?? ((): void => {});
+  let disposed = false;
+  return (): void => {
+    clear?.();
+    if (disposed) return;
+    disposed = true;
+    unregisterDelegatedRoot(container);
+  };
 }
 
 /**

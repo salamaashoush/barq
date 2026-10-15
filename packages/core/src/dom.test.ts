@@ -17,15 +17,19 @@ import {
   createSignal,
 } from "./signals.ts";
 
-// Simple DOM setup for testing
+// The container is a render root, as every element an application shows is
+// under one: a delegated handler outside a root has nothing listening for it.
 let container: HTMLDivElement;
+let unmount: () => void;
 
 beforeEach(() => {
   container = document.createElement("div");
   document.body.appendChild(container);
+  unmount = render(() => null, container);
 });
 
 afterEach(() => {
+  unmount();
   container.remove();
 });
 
@@ -101,8 +105,8 @@ describe("element — one element by tag NAME (§3.13 items 1 and 4)", () => {
 });
 
 describe("Event handling", () => {
-  // Common events are delegated to a document-level listener (like Solid),
-  // so elements must be connected and events must bubble.
+  // Common events are delegated to the render root's listener (like Solid),
+  // so elements must be inside a root and events must bubble.
   test("attaches onClick handler (delegated)", () => {
     let clicked = false;
     const el = element("button", {

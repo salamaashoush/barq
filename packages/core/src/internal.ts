@@ -20,6 +20,7 @@ export {
   clearHydrationData,
   disposeScope,
   getHydrationData,
+  internalMemo,
   provideOn,
   SEED_ABANDONED,
   abandonPendingSeeds,

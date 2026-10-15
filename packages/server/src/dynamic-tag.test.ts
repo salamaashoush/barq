@@ -1,9 +1,9 @@
 /**
- * `dynamic`, the string half of `<Dynamic>` at `-Ox`, for a tag that is only
- * known at run time.
+ * `dynamic`, the string half of Solid 2.0's factory, for a tag or a component
+ * that is only known at run time.
  *
- * RAW TEXT. A `<style>` or `<script>` body is written as it stands, the way
- * `ssrDynamic` writes it: the tokenizer decodes no entity inside one.
+ * RAW TEXT. A `<style>` or `<script>` body is written as it stands: the
+ * tokenizer decodes no entity inside one.
  *
  * THE NAME. The XML `Name` production admits names the HTML tokenizer does not
  * open a tag for: a `<` followed by anything but an ASCII letter is TEXT. The
@@ -13,7 +13,7 @@
 
 import { expect, test } from "bun:test";
 
-import { resolveDynamic, ssrDynamic } from "./ssr.ts";
+import { dynamic, html, resolveDynamic } from "./ssr.ts";
 
 const markupOf = (value: unknown): string => String(value);
 
@@ -49,9 +49,7 @@ test("a stylesheet reaches a dynamic <style> undecorated", () => {
   const css = "ul > li { color: red }";
 
   expect(markupOf(resolveDynamic("style", { children: css }))).toBe(`<style>${css}</style>`);
-  expect(markupOf(resolveDynamic("style", { children: css }))).toBe(
-    ssrDynamic({ component: "style", children: css }).t,
-  );
+  expect(dynamic(() => "style")({ children: css }).t).toBe(`<!--[--><style>${css}</style><!--]-->`);
 });
 
 test("a script reaches a dynamic <script> undecorated", () => {
@@ -82,10 +80,24 @@ test("a tag name the tokenizer reads as text does not turn an attribute into mar
   expect(await elementsIn(markup)).not.toContain("img");
 });
 
-test("both spellings refuse a tag name that does not begin with an ASCII letter", () => {
+test("both entry points refuse a tag name that does not begin with an ASCII letter", () => {
   for (const name of ["_x", ":x", "1x", "\u00e9x"]) {
     expect(() => resolveDynamic(name, {}), name).toThrow("is not a valid tag name");
-    expect(() => ssrDynamic({ component: name }), name).toThrow("is not a valid tag name");
+    expect(() => dynamic(() => name)({}), name).toThrow("is not a valid tag name");
   }
   expect(markupOf(resolveDynamic("x-card", { title: "ok" }))).toBe('<x-card title="ok"></x-card>');
+});
+
+test("dynamic writes one range around whatever its source answers", () => {
+  const Badge = (props: Record<string, unknown>) =>
+    html(`<b>${(props.label as () => string)()}</b>`);
+  let which: "badge" | "tag" | "none" = "badge";
+  const Chosen = dynamic(() => (which === "badge" ? Badge : which === "tag" ? "i" : null));
+  const props = { label: () => "salama", children: "text" };
+
+  expect(Chosen(props).t).toBe("<!--[--><b>salama</b><!--]-->");
+  which = "tag";
+  expect(Chosen(props).t).toBe('<!--[--><i label="salama">text</i><!--]-->');
+  which = "none";
+  expect(Chosen(props).t).toBe("<!--[--><!--]-->");
 });

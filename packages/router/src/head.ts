@@ -467,8 +467,8 @@ export function renderTag(tag: ManagedTag): string {
 }
 
 /**
- * A managed tag as the props a `<Dynamic>` takes, so the two backends build one
- * shape and only the primitive differs.
+ * A managed tag as the props an element built by tag name takes, so the two
+ * backends build one shape and only the primitive differs.
  */
 export function tagProps(tag: ManagedTag, index: number): Record<string, unknown> {
   void index;

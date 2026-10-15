@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { bindEffect, setAttr, setClass, spread } from "./dom.ts";
+import { bindEffect, render, setAttr, setClass, spread } from "./dom.ts";
 import { boundary } from "./flow.ts";
 import type { Block } from "./scope.ts";
 import {
@@ -12,14 +12,19 @@ import {
   type Scope,
 } from "./signals.ts";
 
+// The container is a render root, as every element an application shows is
+// under one: a delegated handler outside a root has nothing listening for it.
 let host: HTMLDivElement;
+let unmount: () => void;
 
 beforeEach(() => {
   host = document.createElement("div");
   document.body.appendChild(host);
+  unmount = render(() => null, host);
 });
 
 afterEach(() => {
+  unmount();
   host.remove();
 });
 

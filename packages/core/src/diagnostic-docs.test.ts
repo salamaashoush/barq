@@ -46,22 +46,45 @@ function compile(source: string, filename: string): string {
   return out.code;
 }
 
+/**
+ * The runtime an example imports: this checkout's, with `render` recording the
+ * roots the example mounts itself, so the runner can dispose them as it does
+ * the ones it mounts. A root left mounted keeps listening on its container.
+ */
+function runtimeFor(directory: string): string {
+  const index = JSON.stringify(join(SRC, "index.ts"));
+  const file = join(directory, "core.js");
+  writeFileSync(
+    file,
+    `export * from ${index};\n` +
+      `import { render as mount } from ${index};\n` +
+      `export const roots = [];\n` +
+      `export function render(...args) { const dispose = mount(...args); roots.push(dispose); return dispose; }\n`,
+  );
+  return file;
+}
+
 /** Load a compiled example against this checkout's runtime and mount what it exports. */
 async function run(source: string, name: string): Promise<string[]> {
+  const directory = mkdtempSync(join(tmpdir(), "barq-diagnostic-docs-"));
+  const runtime = runtimeFor(directory);
   const body = compile(source, name).replaceAll(
     'from "@barqjs/core"',
-    `from ${JSON.stringify(join(SRC, "index.ts"))}`,
+    `from ${JSON.stringify(runtime)}`,
   );
   expect(body, `${name} imports something this loader does not provide`).not.toMatch(
     /^import .* from "[^/]/m,
   );
 
-  const directory = mkdtempSync(join(tmpdir(), "barq-diagnostic-docs-"));
   const file = join(directory, `${name}.js`);
   writeFileSync(file, body);
   const capture = core.DEV.diagnostics.capture();
   const disposers: (() => void)[] = [];
   try {
+    const { roots } = (await import(runtime)) as { roots: (() => void)[] };
+    disposers.push(() => {
+      for (const dispose of roots) dispose();
+    });
     const components = (await import(file)) as Record<string, unknown>;
     for (const component of Object.values(components)) {
       if (typeof component !== "function") continue;

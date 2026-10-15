@@ -1,14 +1,14 @@
 /**
  * Solid 2.0 control-flow parity: For keyed unification, Repeat,
- * Show non-keyed accessor children, dynamic() factory, ref arrays.
+ * Show non-keyed accessor children, the dynamic() factory, ref arrays.
  */
 
 import { beforeEach, describe, expect, test } from "bun:test";
 import { For, Repeat, Show } from "./components.ts";
 import { cell } from "./props.ts";
-import { element, render, resolveDynamic } from "./dom.ts";
-import { branch } from "./flow.ts";
-import { createRoot, flush, createSignal } from "./signals.ts";
+import { dynamic } from "./components.ts";
+import { element, render } from "./dom.ts";
+import { createRoot, flush, createSignal, onCleanup } from "./signals.ts";
 
 let container: HTMLDivElement;
 beforeEach(() => {
@@ -180,27 +180,42 @@ describe("Show keyed semantics", () => {
   });
 });
 
-describe("dynamic — a tag chosen at run time (§3.13 item 4)", () => {
+describe("dynamic — a component chosen at run time", () => {
   test("swaps the element when the source moves, keeping the props", () => {
-    // M9 deleted the `dynamic(source)` FACTORY along with `<Dynamic>`. What it
-    // did — return a component whose tag a signal drives — is what the compiler
-    // emits directly: a `branch` keyed on the component value, whose body is
-    // `dynamic`. The branch is the compiler's; `dynamic`'s only question is whether the
-    // resolved value is a tag or a component, and only the value can answer it.
     const [which, setWhich] = createSignal<"div" | "span">("div");
-    const props = { class: "x", children: "hi" };
+    const Tagged = dynamic(() => which());
 
-    createRoot((_dispose) => {
-      const el = branch(null, null, which, () => resolveDynamic(which, props));
-      render(el, container);
-    });
-    flush();
+    const dispose = render(() => Tagged({ class: "x", children: "hi" }), container);
     expect(container.querySelector("div.x")?.textContent).toBe("hi");
 
     setWhich("span");
     flush();
     expect(container.querySelector("div.x")).toBeNull();
     expect(container.querySelector("span.x")?.textContent).toBe("hi");
+    dispose();
+  });
+
+  test("answers with a component, then nothing, and tears down what it built", () => {
+    const cleanups: string[] = [];
+    const Badge = (props: Record<string, unknown>): Node => {
+      onCleanup(() => cleanups.push("badge"));
+      return element("b", { children: props.label });
+    };
+    const [which, setWhich] = createSignal<"badge" | "i" | "none">("badge");
+    const Chosen = dynamic(() => (which() === "badge" ? Badge : which() === "i" ? "i" : null));
+
+    const dispose = render(() => Chosen({ label: "salama" }), container);
+    expect(container.innerHTML).toContain("<b>salama</b>");
+
+    setWhich("none");
+    flush();
+    expect(container.querySelector("b")).toBeNull();
+    expect(cleanups).toEqual(["badge"]);
+
+    setWhich("i");
+    flush();
+    expect(container.querySelector("i")).not.toBeNull();
+    dispose();
   });
 });
 

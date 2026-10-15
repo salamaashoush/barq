@@ -42,6 +42,7 @@ import {
   ERROR_BOUNDARY,
   SSR_HTML_BRAND,
   disposeScope,
+  internalMemo,
   isObject,
   keyMode,
   provideOn,
@@ -368,7 +369,7 @@ function refuseName(name: string, kind: string): never {
   throw new Error(
     `${JSON.stringify(name)} is not a valid ${kind} name, so the server refused to write it into the markup. ` +
       (kind === "tag"
-        ? '`<Dynamic component>` takes a tag name that starts with a letter, such as `"div"`, or a component: a tag built from user input can inject markup.'
+        ? 'A `dynamic` source answers with a tag name that starts with a letter, such as `"div"`, or a component: a tag built from user input can inject markup.'
         : "Check the keys of the object spread onto this element (`{...props}`): a key built from user input can inject markup."),
   );
 }
@@ -895,7 +896,7 @@ export function branch<K>(
 ): SsrHtml {
   const given = getOwner();
   refuseASite(parent, anchor, "branch");
-  cellSlot(key, "The condition of a `<Show>`, `<Match>` or `<Dynamic>`");
+  cellSlot(key, "The condition of a `<Show>`, `<Match>` or `dynamic`");
   const k = untrack(key);
   const body = typeof bodies === "function" ? bodies : bodies[k as unknown as number];
   const inner = activate(given, body, NO_ARGS, flags, "branch");
@@ -1217,11 +1218,10 @@ function refuseASite(parent: Node | null, anchor: Node | null, origin: string): 
 // pass is graded by rendering the corpus at both levels and requiring the frames
 // to agree, so this file IS the reference. Deleting it would delete the oracle.
 //
-// Three constructs also still refuse at `-Ox`, so `ssrSwitch`, `ssrMatch` and
-// `ssrDynamic` are reachable from an optimised build too: `Switch` needs
-// literal `<Match>` arms it can read, `Match` goes with it, and `Dynamic`'s
-// unrecognised props are the resolved component's rather than the construct's.
-// `passes::flow::admits_spread` states each one where it is enforced.
+// Two constructs also still refuse at `-Ox`, so `ssrSwitch` and `ssrMatch` are
+// reachable from an optimised build too: `Switch` needs literal `<Match>` arms
+// it can read, and `Match` goes with it. `passes::flow::admits_spread` states
+// it where it is enforced.
 
 /** A CELL-slot read: called with no scope, never with one. */
 function readValue(slot: unknown, origin: string): unknown {
@@ -1431,26 +1431,22 @@ export function ssrPortal(props: { mount?: unknown; children: unknown }): SsrHtm
 }
 
 /**
- * `Await` — four states, three bodies, one `branch` keyed on the state. The
- * same shape `components.ts` builds, with the error arm's bare-message case
- * emitting text instead of a text NODE.
+ * `dynamic` — the string half of `@barqjs/core`'s factory, under the same name,
+ * which the compiler's server backend calls in its place. Each instance builds
+ * what the client's builds, in the same order: a memo of the source, then a
+ * `branch` keyed on it with a range around it, so the owner ids line up and the
+ * client claims the range this writes.
  */
-export function ssrDynamic(props: { component?: unknown } & Record<string, unknown>): SsrHtml {
-  const component = (): unknown => readValue(props.component, "Dynamic.component");
-  const body: Block<unknown> = (): unknown => {
-    const resolved = untrack(component);
-    if (!resolved) return null;
-    // C3/C5: `rest` is a VIEW of the same carriers, not a copy.
-    const rest = omit(props, "component");
-    if (typeof resolved !== "string") return invokeBlock(resolved, [rest]);
-    return element(resolved, rest);
+export function dynamic(source: () => unknown): (props: Record<string, unknown>) => SsrHtml {
+  return (props) => {
+    const component = internalMemo(source);
+    return branch(null, null, component, () => resolveDynamic(component, props), HYDRATE);
   };
-  return branch(null, null, component, body);
 }
 
 /**
- * An element whose tag is only known at RUN TIME, which is what both spellings
- * of `Dynamic` come down to.
+ * An element whose tag is only known at RUN TIME, which is what a `dynamic`
+ * source answering with a tag comes down to.
  */
 function element(tag: string, props: Record<string, unknown>): SsrHtml {
   // The tag is RUNTIME DATA here, which makes it the same injection the
@@ -1496,7 +1492,8 @@ function checkTag(tag: string): void {
  *
  * `ir/intern.rs`'s `RAW_TEXT_TAGS` is the same list and is the authority — the
  * compiler reads it to emit `rawText` for a tag it knows statically, and this
- * is the runtime half for a tag that is only known when `<Dynamic>` resolves.
+ * is the runtime half for a tag that is only known when a `dynamic` source
+ * answers.
  * `textarea` and `title` are ESCAPABLE raw text: entities ARE decoded there, so
  * they take the ordinary text escaper and are deliberately absent.
  */
@@ -1546,12 +1543,12 @@ export function reveal(order: unknown, collapsed: unknown, block: unknown): SsrH
 }
 
 /**
- * `resolveDynamic` — the string half. The branch that swaps the component is the
- * compiler's, so what is left here is the one question the value answers: a tag
- * name is serialised, anything else is invoked.
+ * `resolveDynamic` — the string half. The branch that swaps the component is
+ * `dynamic`'s, so what is left here is the one question the value answers: a
+ * tag name is serialised, anything else is invoked.
  */
 export function resolveDynamic(component: unknown, props: Record<string, unknown>): unknown {
-  const resolved = untrack(() => readValue(component, "Dynamic.component"));
+  const resolved = untrack(() => readValue(component, "dynamic"));
   if (resolved === null || resolved === undefined || resolved === false) return null;
   if (typeof resolved !== "string") return invokeBlock(resolved, [props]);
   return element(resolved, props);

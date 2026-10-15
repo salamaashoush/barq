@@ -28,7 +28,7 @@ import {
   raw,
   rawText,
   spreadAttrs,
-  ssrDynamic,
+  resolveDynamic,
   ssrFor,
   ssrMatch,
   ssrRepeat,
@@ -712,17 +712,18 @@ describe("an attribute NAME is data only in a spread, and is refused there", () 
   });
 
   /**
-   * M6 gave `Dynamic` a string implementation, and with it the SECOND position
-   * where a name is runtime data: the TAG. `component={"div onload=alert(1)"}`
-   * writes two attributes into markup where `document.createElement` throws
+   * M6 gave a tag chosen at run time a string implementation, and with it the
+   * SECOND position where a name is runtime data: the TAG. A `dynamic` source
+   * answering `"div onload=alert(1)"` writes two attributes into markup where
+   * `document.createElement` throws
    * `InvalidCharacterError` and writes nothing, so the string path refuses it
    * for exactly the reason `spreadAttrs` refuses a key.
    */
   test("a dynamic TAG is a name too, and is refused on the same production", () => {
-    expect(() => ssrDynamic({ component: "div onload=alert(1)", children: "x" })).toThrow(
+    expect(() => resolveDynamic("div onload=alert(1)", { children: "x" })).toThrow(
       /not a valid tag name/,
     );
-    expect(() => ssrDynamic({ component: "a><img src=x>", children: "x" })).toThrow();
+    expect(() => resolveDynamic("a><img src=x>", { children: "x" })).toThrow();
     // The DOM half of this parity is NOT asserted here, and that is deliberate:
     // `document.createElement` throws `InvalidCharacterError` on a name outside
     // the `Name` production in every real engine, and happy-dom implements no
@@ -733,10 +734,10 @@ describe("an attribute NAME is data only in a spread, and is refused there", () 
 
     // And a legitimate one still writes, through the same attribute policy every
     // other hole on this backend goes through.
-    expect(ssrDynamic({ component: "section", class: "c", children: "<b>" }).toString()).toBe(
+    expect(String(resolveDynamic("section", { class: "c", children: "<b>" }))).toBe(
       '<section class="c">&lt;b&gt;</section>',
     );
-    expect(ssrDynamic({ component: "br" }).toString()).toBe("<br>");
+    expect(String(resolveDynamic("br", {}))).toBe("<br>");
   });
 
   /**
@@ -744,34 +745,33 @@ describe("an attribute NAME is data only in a spread, and is refused there", () 
    *
    * The compiled path never reaches this: the compiler knows the tag statically
    * and emits `rawText` for anything in `ir/intern.rs`'s `RAW_TEXT_TAGS`. Only
-   * `<Dynamic component={t}>` resolves a tag late, and it escaped with `esc` —
+   * a `dynamic` source resolves a tag late, and it escaped with `esc` —
    * so the same tree gave `<script>if (a &amp; b)</script>` from this backend
    * and `<script>if (a & b)</script>` from the DOM, which writes `textContent`
    * and escapes nothing. An entity inside a `<script>` is four characters of
    * JavaScript, so that is corruption rather than a formatting difference.
    */
   test("a dynamic script is raw text, and agrees with the DOM backend", () => {
-    expect(
-      ssrDynamic({ component: "script", children: 'if (a & b) { x = "<y>"; }' }).toString(),
-    ).toBe('<script>if (a & b) { x = "<y>"; }</script>');
-    expect(
-      ssrDynamic({ component: "style", children: "a::after { content: '<' }" }).toString(),
-    ).toBe("<style>a::after { content: '<' }</style>");
+    expect(String(resolveDynamic("script", { children: 'if (a & b) { x = "<y>"; }' }))).toBe(
+      '<script>if (a & b) { x = "<y>"; }</script>',
+    );
+    expect(String(resolveDynamic("style", { children: "a::after { content: '<' }" }))).toBe(
+      "<style>a::after { content: '<' }</style>",
+    );
 
     // The escape that DOES apply is the breakout, and it survives: `</script>`
     // has no entity form, so the close tag is broken instead.
     expect(
-      ssrDynamic({
-        component: "script",
-        children: "x; </script><img src=x onerror=alert(1)>",
-      }).toString(),
+      String(
+        resolveDynamic("script", {
+          children: "x; </script><img src=x onerror=alert(1)>",
+        }),
+      ),
     ).toBe("<script>x; <\\/script><img src=x onerror=alert(1)></script>");
 
     // `textarea` and `title` are ESCAPABLE raw text — entities are decoded
     // there, so they keep the ordinary text escaper.
-    expect(ssrDynamic({ component: "title", children: "a & b" }).toString()).toBe(
-      "<title>a &amp; b</title>",
-    );
+    expect(String(resolveDynamic("title", { children: "a & b" }))).toBe("<title>a &amp; b</title>");
   });
 
   test("the accept cache cannot launder a name, and is bounded", () => {

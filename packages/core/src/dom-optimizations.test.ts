@@ -4,14 +4,23 @@
  * reactive spread, [handler, data] delegation tuples, event replay.
  */
 
-import { beforeEach, describe, expect, test } from "bun:test";
-import { element, hydrate, insert, setProp, spread } from "./dom.ts";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { element, hydrate, insert, render, setProp, spread } from "./dom.ts";
 import { flush, createSignal } from "./signals.ts";
 
+// The container is a render root, as every element an application shows is
+// under one: a delegated handler outside a root has nothing listening for it.
 let container: HTMLDivElement;
+let unmount: () => void;
 beforeEach(() => {
   container = document.createElement("div");
   document.body.appendChild(container);
+  unmount = render(() => null, container);
+});
+
+afterEach(() => {
+  unmount();
+  container.remove();
 });
 
 describe("insert: array reconciliation", () => {
@@ -158,7 +167,7 @@ describe("spread", () => {
 
   test("event handlers swap; old handler no longer fires", () => {
     const el = document.createElement("button");
-    document.body.appendChild(el);
+    container.appendChild(el);
     const log: string[] = [];
     const [props, setProps] = createSignal<Record<string, unknown>>({
       onClick: () => log.push("first"),

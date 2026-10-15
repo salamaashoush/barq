@@ -12,7 +12,6 @@
  */
 
 import {
-  Dynamic,
   Errored,
   For,
   Loading,
@@ -22,6 +21,7 @@ import {
   Show,
   Switch,
   createSignal,
+  dynamic,
   lazy,
 } from "../index.ts";
 import type { Accessor, Child, Incoming } from "../index.ts";
@@ -222,29 +222,28 @@ function Badge(props: Incoming<{ label: string; tone?: "info" | "warn" }>) {
 
 declare const tag: "a" | "button";
 
-export const dynamic = (
+const ChosenBadge = dynamic(() => Badge);
+const ChosenLink = dynamic(() => "a");
+const MaybeBadge = dynamic(() => (flag() ? Badge : undefined));
+const EitherTag = dynamic(() => tag);
+
+export const dynamicComponents = (
   <div>
-    <Dynamic component={Badge} label="new" tone="warn" />
-    <Dynamic component="a" href="https://example.com">
-      a link
-    </Dynamic>
-    <Dynamic component={flag() ? Badge : undefined} label="maybe" />
-    <Dynamic component={tag} class="either" />
-    <Dynamic component={() => tag} class="an accessor of a tag" />
-    <Dynamic component={() => Badge} label="an accessor of a component" />
+    <ChosenBadge label="new" tone="warn" />
+    <ChosenLink href="https://example.com">a link</ChosenLink>
+    <MaybeBadge label="maybe" />
+    <EitherTag class="either" />
   </div>
 );
 
 export const dynamicRefusals = (
   <div>
     {/* @ts-expect-error `label` is required by the component */}
-    <Dynamic component={Badge} tone="info" />
+    <ChosenBadge tone="info" />
     {/* @ts-expect-error `tone` is one of two words */}
-    <Dynamic component={Badge} label="new" tone="loud" />
-    {/* @ts-expect-error a `<div>` has no `href` */}
-    <Dynamic component="div" href="https://example.com" />
-    {/* @ts-expect-error the component an accessor yields still requires `label` */}
-    <Dynamic component={() => Badge} />
+    <ChosenBadge label="new" tone="loud" />
+    {/* @ts-expect-error an `<a>` has no `colspan` */}
+    <ChosenLink colspan={2} />
   </div>
 );
 

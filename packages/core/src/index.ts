@@ -183,7 +183,6 @@ export {
 
 // DOM
 export {
-  resolveDynamic,
   element,
   render,
   hydrate,
@@ -211,7 +210,6 @@ export {
   delegate,
   spread,
   delegateEvents,
-  clearDelegatedEvents,
   classToString,
   type Channel,
   // The SSR string backend's brand. It is read on the CLIENT too: a module that
@@ -273,7 +271,6 @@ export {
   Errored,
   NoHydration,
   Portal,
-  Dynamic,
 } from "./components.ts";
 export { children } from "./components.ts";
 // Not one of the ten. `lazy` is a `computed` over an import — a reactivity
@@ -281,6 +278,8 @@ export { children } from "./components.ts";
 // a router because every mechanism it rides is private to `signals.ts` and
 // `flow.ts`.
 export { lazy, lazyModule } from "./components.ts";
+// Solid 2.0's factory for a component chosen at run time, from `@solidjs/web`.
+export { dynamic } from "./components.ts";
 export type {
   ChildrenReturn,
   ResolvedChildren,
@@ -302,7 +301,6 @@ export type {
   DynamicComponent,
   DynamicProps,
   DynamicTag,
-  DynamicTarget,
   LazyComponent,
   LazyModule,
 } from "./components.ts";

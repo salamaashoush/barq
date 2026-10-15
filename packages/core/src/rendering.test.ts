@@ -4,7 +4,7 @@
  */
 
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
-import { element } from "./dom.ts";
+import { element, render } from "./dom.ts";
 import {
   block,
   createMemo,
@@ -16,17 +16,22 @@ import {
   onCleanup,
   runWithOwner,
 } from "./signals.ts";
-import { Dynamic, Errored, For, Loading, Match, Portal, Show, Switch } from "./components.ts";
+import { Errored, For, Loading, Match, Portal, Show, Switch, dynamic } from "./components.ts";
 import { merge, omit } from "./props.ts";
 
+// The container is a render root, as every element an application shows is
+// under one: a delegated handler outside a root has nothing listening for it.
 let container: HTMLDivElement;
+let unmount: () => void;
 
 beforeEach(() => {
   container = document.createElement("div");
   document.body.appendChild(container);
+  unmount = render(() => null, container);
 });
 
 afterEach(() => {
+  unmount();
   container.remove();
 });
 
@@ -884,17 +889,14 @@ describe("scope disposal", () => {
 });
 
 // ============================================================================
-// New Utilities: Dynamic, omit, merge, children
+// New Utilities: dynamic, omit, merge, children
 // ============================================================================
-describe("Dynamic component", () => {
+describe("dynamic component", () => {
   test("renders intrinsic elements dynamically", () => {
     const [tag, setTag] = createSignal<"div" | "span">("div");
 
-    const node = Dynamic({
-      component: () => tag(),
-      class: "test",
-      children: "Hello",
-    });
+    const Tagged = dynamic(() => tag());
+    const node = Tagged({ class: "test", children: "Hello" });
 
     container.appendChild(node as Node);
 
@@ -918,10 +920,8 @@ describe("Dynamic component", () => {
     // signal(fn) creates a writable derived signal; wrap to store a function value
     const [current, setCurrent] = createSignal<typeof ComponentA>(() => ComponentA);
 
-    const node = Dynamic({
-      component: () => current(),
-      text: "Hello",
-    });
+    const Current = dynamic(() => current());
+    const node = Current({ text: "Hello" });
 
     container.appendChild(node as Node);
 
@@ -936,14 +936,14 @@ describe("Dynamic component", () => {
   });
 
   /**
-   * A compiled component IS a Block, and `Dynamic` exists to render one held
+   * A compiled component IS a Block, and `dynamic` exists to render one held
    * in data.
    *
-   * The compiler lowers `<Dynamic component={C} />` to a branch keyed on the
-   * component, and the key's VALUE was guarded against Blocks the way a Cell
-   * slot is. A key is only compared with `===` — never invoked, never
-   * stringified — so the guard protected nothing and made a registry of
-   * components, which is the whole use, throw from inside `Dynamic` itself.
+   * Each `dynamic` instance is a branch keyed on the component, and the key's
+   * VALUE was guarded against Blocks the way a Cell slot is. A key is only
+   * compared with `===` — never invoked, never stringified — so the guard
+   * protected nothing and made a registry of components, which is the whole
+   * use, throw from inside the construct itself.
    */
   test("renders a branded Block component, which is what the compiler emits", () => {
     const Compiled = block((props: { text: string }) =>
@@ -951,10 +951,8 @@ describe("Dynamic component", () => {
     );
     const [current] = createSignal<typeof Compiled>(() => Compiled);
 
-    const node = Dynamic({
-      component: () => current(),
-      text: "Hello",
-    });
+    const Current = dynamic(() => current());
+    const node = Current({ text: "Hello" });
 
     container.appendChild(node as Node);
     expect(container.querySelector(".compiled")?.textContent).toBe("Hello");
@@ -963,10 +961,8 @@ describe("Dynamic component", () => {
   test("handles null component gracefully", () => {
     const [comp, setComp] = createSignal<"div" | null>("div");
 
-    const node = Dynamic({
-      component: () => comp() as "div",
-      children: "Content",
-    });
+    const Chosen = dynamic(() => comp());
+    const node = Chosen({ children: "Content" });
 
     container.appendChild(node as Node);
     expect(container.textContent).toContain("Content");

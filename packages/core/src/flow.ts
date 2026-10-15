@@ -11,7 +11,14 @@
  */
 
 import type { Child } from "./dom.ts";
-import { LIVE_EDGES, childToNodes } from "./dom.ts";
+import {
+  LIVE_EDGES,
+  childToNodes,
+  delegatedRootOf,
+  hostPortal,
+  registerDelegatedContainer,
+  unregisterDelegatedContainer,
+} from "./dom.ts";
 import {
   HydrationMismatch,
   abandonClaim,
@@ -747,7 +754,7 @@ function region<K>(
 }
 
 // ============================================================================
-// branch — Show, Switch/Match, ternaries, `&&`, Dynamic, a router Outlet
+// branch — Show, Switch/Match, ternaries, `&&`, `dynamic`, a router Outlet
 // ============================================================================
 
 /**
@@ -774,7 +781,7 @@ function cellSlot(value: unknown, origin: string, returned = false): void {
  * K2/K5/K6. `key` is plain emitted JavaScript, usually an integer index into
  * `bodies`; an unchanged key is a no-op and a changed one disposes and rebuilds.
  *
- * `bodies` may be a single Block used for every key, which is how `Dynamic` keys
+ * `bodies` may be a single Block used for every key, which is how `dynamic` keys
  * on a component VALUE rather than on an index.
  *
  * There is deliberately NO slot-argument parameter: a body wanting the branch's
@@ -797,11 +804,11 @@ export function branch<K>(
   // A Block here is a mistimed construction and the guard is right. The VALUE
   // it yields is only ever compared with `===`: it is never invoked, never
   // stringified and never inserted, so C3.8 has nothing to protect. Guarding it
-  // too made `<Dynamic component={C} />` impossible — the compiler lowers it to
-  // a branch keyed on the component, and a compiled component IS a Block — so
-  // rendering a component held in data threw from inside the construct that
-  // exists to do exactly that.
-  cellSlot(key, "The condition of a `<Show>`, `<Match>` or `<Dynamic>`");
+  // too made `dynamic(() => C)` impossible — each instance is a branch keyed on
+  // the component, and a compiled component IS a Block — so rendering a
+  // component held in data threw from inside the construct that exists to do
+  // exactly that.
+  cellSlot(key, "The condition of a `<Show>`, `<Match>` or `dynamic`");
   const { site, out } = siteFor(parent, anchor);
   claimSite(site, parent, anchor, flags, "branch");
   const claimed = site.claim ?? null;
@@ -1694,6 +1701,7 @@ export function portal(
   underScope(given, "portal", () => {
     let instance = NOTHING;
     let container: HTMLElement | null = null;
+    let delegatingFor: Node | null = null;
     let request = 0;
     const site: Site = { parent: null, anchor: null };
 
@@ -1702,6 +1710,10 @@ export function portal(
         teardown(instance);
         instance = NOTHING;
       }
+      if (container !== null && delegatingFor !== null) {
+        unregisterDelegatedContainer(container, delegatingFor);
+      }
+      delegatingFor = null;
       container?.parentNode?.removeChild(container);
       container = null;
       site.parent = null;
@@ -1732,10 +1744,17 @@ export function portal(
           if (host === null) return;
           container = document.createElement("div");
           container.style.display = "contents";
+          hostPortal(container, marker);
           site.parent = container;
           activation++;
           instance = activate(given, site, block, EMPTY_ARGS, flags, "portal");
           host.appendChild(container);
+          // A root's own listener already hears a portal mounted inside it.
+          const root = delegatedRootOf(marker);
+          if (root !== null && !root.contains(container)) {
+            registerDelegatedContainer(container, root);
+            delegatingFor = root;
+          }
         };
         // A portal nothing owns has no scope to build under, and the engine
         // refuses one made from inside an effect's write. It mounts a turn

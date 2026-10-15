@@ -1,35 +1,39 @@
 /**
- * delegateEvents - the document-level listener install that makes
- * compiler-emitted `__bq_<type>` expandos live.
+ * delegateEvents - the per-root listener install that makes compiler-emitted
+ * `__bq_<type>` expandos live. Every test runs inside a render root, because a
+ * delegated handler outside one has nothing listening for it.
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { clearDelegatedEvents, delegateEvents, setProp } from "./dom.ts";
+import { delegateEvents, render, setProp } from "./dom.ts";
 import { DEV } from "./signals.ts";
 
 let container: HTMLDivElement;
+let unmount: () => void;
 
 beforeEach(() => {
   container = document.createElement("div");
   document.body.appendChild(container);
+  unmount = render(() => null, container);
 });
 
 afterEach(() => {
+  unmount();
   container.remove();
 });
 
-/** Count document-level registrations for one event type */
+/** Count the root container's registrations for one event type */
 function countInstalls<T>(type: string, fn: () => T): { result: T; installs: number } {
-  const original = document.addEventListener.bind(document);
+  const original = container.addEventListener.bind(container);
   let installs = 0;
-  document.addEventListener = ((t: string, ...rest: unknown[]) => {
+  container.addEventListener = ((t: string, ...rest: unknown[]) => {
     if (t === type) installs++;
     return (original as (t: string, ...r: unknown[]) => void)(t, ...rest);
-  }) as typeof document.addEventListener;
+  }) as typeof container.addEventListener;
   try {
     return { result: fn(), installs };
   } finally {
-    document.addEventListener = original;
+    container.addEventListener = original;
   }
 }
 
@@ -45,7 +49,7 @@ function fire(el: Element, type: string): Event {
 }
 
 describe("delegateEvents", () => {
-  test("installs a document listener for a type nobody has bound yet", () => {
+  test("installs a root listener for a type nobody has bound yet", () => {
     const { installs } = countInstalls("barqping1", () => {
       delegateEvents(["barqping1"]);
     });
@@ -144,15 +148,14 @@ describe("delegateEvents", () => {
   });
 
   test("a non-bubbling type is reported instead of silently installing a dead handler", () => {
-    clearDelegatedEvents(["focus", "click"]);
     const capture = DEV.diagnostics.capture();
-    delegateEvents(["focus"]);
-    delegateEvents(["focus"]);
+    delegateEvents(["blur"]);
+    delegateEvents(["blur"]);
     delegateEvents(["click"]);
     const events = capture.stop();
     expect(events.map((event) => event.code)).toEqual(["DELEGATED_EVENT_DOES_NOT_BUBBLE"]);
-    expect(events[0]?.message).toContain("the `focus` event does not bubble");
-    expect(events[0]?.message).toContain('`listen(element, "focus", handler)`');
+    expect(events[0]?.message).toContain("the `blur` event does not bubble");
+    expect(events[0]?.message).toContain('`listen(element, "blur", handler)`');
   });
 
   test("walks ancestors from the target upward", () => {
@@ -236,35 +239,37 @@ describe("delegateEvents", () => {
   });
 });
 
-describe("clearDelegatedEvents", () => {
-  test("a handler is dead once its document listener is removed, and lives again after a re-install", () => {
+describe("a root's listeners", () => {
+  test("a handler is dead once its root is disposed, and lives again under a new root", () => {
     delegateEvents(["barqping10"]);
     const el = document.createElement("div");
-    container.appendChild(el);
 
     let calls = 0;
     expando(el).__bq_barqping10 = () => {
       calls++;
     };
+    container.appendChild(el);
     fire(el, "barqping10");
     expect(calls).toBe(1);
 
-    clearDelegatedEvents(["barqping10"]);
+    unmount();
+    container.appendChild(el);
     fire(el, "barqping10");
     expect(calls, "the expando survives but nothing is listening").toBe(1);
 
-    delegateEvents(["barqping10"]);
+    unmount = render(() => el, container);
     fire(el, "barqping10");
     expect(calls).toBe(2);
   });
 
-  test("clearing everything re-arms the install, so a second delegateEvents really re-registers", () => {
+  test("a disposed root's container is listened to again by the next root", () => {
     delegateEvents(["barqping11"]);
-    clearDelegatedEvents();
+    unmount();
 
-    const { installs } = countInstalls("barqping11", () => delegateEvents(["barqping11"]));
-    expect(installs, "a cleared type is not remembered as installed").toBe(1);
-    clearDelegatedEvents(["barqping11"]);
+    const { installs } = countInstalls("barqping11", () => {
+      unmount = render(() => null, container);
+    });
+    expect(installs, "a disposed container is not remembered as listened to").toBe(1);
   });
 });
 
@@ -313,7 +318,6 @@ describe("a delegated handler runs under no owner", () => {
     expect(cleanups.length, "the cleanup ran before anything was disposed").toBe(0);
     disposeRoot();
     expect(cleanups.length, "the cleanup the handler filed under the scope was not run").toBe(1);
-    clearDelegatedEvents(["click"]);
   });
 
   test("a Block forwarded into a handler slot is refused rather than invoked with the Event", async () => {
@@ -359,7 +363,6 @@ describe("a delegated handler runs under no owner", () => {
       thrown !== null || errors.length > 0,
       "a Block at a handler slot was neither invoked nor reported",
     ).toBe(true);
-    clearDelegatedEvents(["click"]);
   });
 });
 
