@@ -45,7 +45,7 @@
         "@barqjs/core": "workspace:*",
         "@barqjs/server": "workspace:*",
         "@happy-dom/global-registrator": "^20.11.6",
-        "@solidjs/signals": "^2.0.0-rc.0",
+        "@solidjs/signals": "2.0.0-rc.14",
         "@types/babel__core": "^7.20.5",
         "@types/bun": "^1.4.0",
         "babel-preset-solid": "^1.9.15",
@@ -60,6 +60,7 @@
       },
       "devDependencies": {
         "@barqjs/core": "workspace:*",
+        "@happy-dom/global-registrator": "^20.11.6",
         "@types/bun": "^1.4.0",
         "typescript": "^7.0.2",
       },
@@ -82,6 +83,7 @@
       "name": "@barqjs/core",
       "version": "0.1.0",
       "dependencies": {
+        "@solidjs/signals": "2.0.0-rc.14",
         "csstype": "^3.2.3",
       },
       "devDependencies": {
@@ -118,6 +120,25 @@
         "@happy-dom/global-registrator": "^20.11.6",
         "@types/bun": "^1.4.0",
         "typescript": "^7.0.2",
+      },
+    },
+    "packages/form": {
+      "name": "@barqjs/form",
+      "version": "0.1.0",
+      "dependencies": {
+        "@tanstack/form-core": "^1.33.5",
+        "@tanstack/store": "^0.11.2",
+      },
+      "devDependencies": {
+        "@barqjs/compiler": "workspace:*",
+        "@barqjs/compiler-rs": "workspace:*",
+        "@barqjs/core": "workspace:*",
+        "@happy-dom/global-registrator": "^20.11.6",
+        "@types/bun": "^1.4.0",
+        "typescript": "^7.0.2",
+      },
+      "peerDependencies": {
+        "@barqjs/core": ">=0.1.0",
       },
     },
     "packages/kitchen-sink": {
@@ -180,14 +201,26 @@
         "@barqjs/compiler": "workspace:*",
         "@barqjs/compiler-rs": "workspace:*",
         "@barqjs/core": "workspace:*",
+        "@barqjs/router": "workspace:*",
+        "@barqjs/server": "workspace:*",
         "@happy-dom/global-registrator": "^20.11.6",
+        "@tanstack/query-devtools": "5.102.8",
+        "@tanstack/query-persist-client-core": "5.102.8",
         "@types/bun": "^1.4.0",
         "typescript": "^7.0.2",
       },
       "peerDependencies": {
         "@barqjs/core": ">=0.1.0",
+        "@barqjs/router": ">=0.1.0",
         "@tanstack/query-core": "^5.102.8",
+        "@tanstack/query-devtools": "^5.102.8",
+        "@tanstack/query-persist-client-core": "^5.102.8",
       },
+      "optionalPeers": [
+        "@barqjs/router",
+        "@tanstack/query-devtools",
+        "@tanstack/query-persist-client-core",
+      ],
     },
     "packages/router": {
       "name": "@barqjs/router",
@@ -242,11 +275,13 @@
         "@barqjs/aria": "workspace:*",
         "@barqjs/core": "workspace:*",
         "@barqjs/css": "workspace:*",
+        "@barqjs/form": "workspace:*",
         "@barqjs/lucide": "workspace:*",
         "@barqjs/primitives": "workspace:*",
         "@barqjs/router": "workspace:*",
         "@barqjs/server": "workspace:*",
         "@barqjs/start": "workspace:*",
+        "@barqjs/table": "workspace:*",
         "@barqjs/ui": "workspace:*",
         "@fontsource-variable/geist": "^5.3.0",
         "@fontsource-variable/geist-mono": "^5.3.0",
@@ -255,6 +290,10 @@
       },
       "devDependencies": {
         "@barqjs/compiler": "workspace:*",
+        "@barqjs/compiler-rs": "workspace:*",
+        "@barqjs/testing": "workspace:*",
+        "@happy-dom/global-registrator": "^20.11.6",
+        "@types/bun": "^1.4.0",
         "@types/d3-shape": "^3.2.0",
         "vite": "^8.2.2",
       },
@@ -280,6 +319,25 @@
         "@barqjs/core": ">=0.1.0",
         "@barqjs/server": ">=0.1.0",
         "vite": ">=8.0.0",
+      },
+    },
+    "packages/table": {
+      "name": "@barqjs/table",
+      "version": "0.1.0",
+      "dependencies": {
+        "@tanstack/store": "^0.11.2",
+        "@tanstack/table-core": "^9.3.1",
+      },
+      "devDependencies": {
+        "@barqjs/compiler": "workspace:*",
+        "@barqjs/compiler-rs": "workspace:*",
+        "@barqjs/core": "workspace:*",
+        "@happy-dom/global-registrator": "^20.11.6",
+        "@types/bun": "^1.4.0",
+        "typescript": "^7.0.2",
+      },
+      "peerDependencies": {
+        "@barqjs/core": ">=0.1.0",
       },
     },
     "packages/testing": {
@@ -361,6 +419,25 @@
         "typescript": "^7.0.2",
       },
     },
+    "packages/virtual": {
+      "name": "@barqjs/virtual",
+      "version": "0.1.0",
+      "dependencies": {
+        "@tanstack/virtual-core": "^3.19.4",
+      },
+      "devDependencies": {
+        "@barqjs/compiler": "workspace:*",
+        "@barqjs/compiler-rs": "workspace:*",
+        "@barqjs/core": "workspace:*",
+        "@barqjs/server": "workspace:*",
+        "@happy-dom/global-registrator": "^20.11.6",
+        "@types/bun": "^1.4.0",
+        "typescript": "^7.0.2",
+      },
+      "peerDependencies": {
+        "@barqjs/core": ">=0.1.0",
+      },
+    },
   },
   "packages": {
     "@anthropic-ai/tokenizer": ["@anthropic-ai/tokenizer@0.0.4", "", { "dependencies": { "@types/node": "^18.11.18", "tiktoken": "^1.0.10" } }, "sha512-EHRKbxlxlc8W4KCBEseByJ7YwyYCmgu9OyN59H9+IYIGPoKv8tXyQXinkeGDI+cI8Tiuz9wk2jZb/kK7AyvL7g=="],
@@ -415,6 +492,8 @@
 
     "@barqjs/css": ["@barqjs/css@workspace:packages/css"],
 
+    "@barqjs/form": ["@barqjs/form@workspace:packages/form"],
+
     "@barqjs/kitchen-sink": ["@barqjs/kitchen-sink@workspace:packages/kitchen-sink"],
 
     "@barqjs/lucide": ["@barqjs/lucide@workspace:packages/lucide"],
@@ -431,11 +510,15 @@
 
     "@barqjs/start": ["@barqjs/start@workspace:packages/start"],
 
+    "@barqjs/table": ["@barqjs/table@workspace:packages/table"],
+
     "@barqjs/testing": ["@barqjs/testing@workspace:packages/testing"],
 
     "@barqjs/ui": ["@barqjs/ui@workspace:packages/ui"],
 
     "@barqjs/ui-cli": ["@barqjs/ui-cli@workspace:packages/ui-cli"],
+
+    "@barqjs/virtual": ["@barqjs/virtual@workspace:packages/virtual"],
 
     "@biomejs/biome": ["@biomejs/biome@2.5.9", "", { "optionalDependencies": { "@biomejs/cli-darwin-arm64": "2.5.9", "@biomejs/cli-darwin-x64": "2.5.9", "@biomejs/cli-linux-arm64": "2.5.9", "@biomejs/cli-linux-arm64-musl": "2.5.9", "@biomejs/cli-linux-x64": "2.5.9", "@biomejs/cli-linux-x64-musl": "2.5.9", "@biomejs/cli-win32-arm64": "2.5.9", "@biomejs/cli-win32-x64": "2.5.9" }, "bin": { "biome": "bin/biome" } }, "sha512-KkgCvdHB4IhtpHpF564plA9jo6fDOwWGQ/3jvreLzgOtRLEDoPqr7QO9qejNA8jKwDsSkAKr77hqBHnyUbIw4g=="],
 
@@ -761,11 +844,27 @@
 
     "@rolldown/pluginutils": ["@rolldown/pluginutils@1.0.1", "", {}, "sha512-2j9bGt5Jh8hj+vPtgzPtl72j0yRxHAyumoo6TNfAjsLB04UtpSvPbPcDcBMxz7n+9CYB0c1GxQFxYRg2jimqGw=="],
 
-    "@solidjs/signals": ["@solidjs/signals@2.0.0-rc.0", "", {}, "sha512-oKZSfvsCcKw1uJjOGbUkJ+OqlhXLHtZ+rShSyu9KH0lUH7UUwfMfsKeh81JPiQxDDg4YLhEwI38hg0JkwzTdvA=="],
+    "@solidjs/signals": ["@solidjs/signals@2.0.0-rc.14", "", {}, "sha512-s3v1wpPcX3wfNO0WUERrPrXS+qqJ4ylzH9QTIRKqrgcMVeLEOXgFa3hZrhEoVTp+lVAgido2NH6GCI79twe2fg=="],
 
     "@tanstack/charts": ["@tanstack/charts@0.16.0", "", { "dependencies": { "@types/d3-force": "^3.0.10", "@types/d3-geo": "^3.1.0", "@types/d3-hierarchy": "^3.1.7", "@types/d3-sankey": "^0.12.5", "@types/d3-shape": "^3.1.8", "d3-array": "3.2.4", "d3-brush": "3.0.0", "d3-contour": "4.0.2", "d3-delaunay": "6.0.4", "d3-force": "3.0.0", "d3-geo": "3.1.1", "d3-hexbin": "0.2.2", "d3-hierarchy": "3.1.2", "d3-sankey": "0.12.3", "d3-scale": "4.0.2", "d3-selection": "3.0.0", "d3-shape": "3.2.0", "d3-zoom": "3.0.0", "tslib": "^2.8.1" }, "peerDependencies": { "@angular/core": ">=19", "@angular/platform-browser": ">=19", "alpinejs": ">=3.15", "lit": ">=3.1.3", "octane": "^0.1.13", "preact": ">=10", "react": "^19.0.0", "react-dom": "^19.0.0", "react-native": "^0.86.0", "react-native-svg": ">=15.15.4 <16", "solid-js": ">=1.8", "svelte": "^5.20.0", "vue": ">=3.5" }, "optionalPeers": ["@angular/core", "@angular/platform-browser", "alpinejs", "lit", "octane", "preact", "react", "react-dom", "react-native", "react-native-svg", "solid-js", "svelte", "vue"] }, "sha512-adG4sVaWjSqGsp/8YU5q7AjoYoPaivVseDjWWcV4osKemfTHnGFlPqlymxbhWxk1BF3p5Rewgqs4BlgZAXve8g=="],
 
+    "@tanstack/devtools-event-client": ["@tanstack/devtools-event-client@0.4.4", "", { "bin": { "intent": "./bin/intent.js" } }, "sha512-6T5Yop/793YI+H+5J8Hsyj4kCih9sl4t3ElLgKioW5hk3ocn+ZdSJ94tT7vL7uabxSugWYBZlOTMPzEw2puvQw=="],
+
+    "@tanstack/form-core": ["@tanstack/form-core@1.33.5", "", { "dependencies": { "@tanstack/devtools-event-client": "^0.4.1", "@tanstack/pacer-lite": "^0.1.1", "@tanstack/store": "^0.11.0" } }, "sha512-3dfx9MBP0aq5sXKteikG629X9oviptrQj0IFRk9YGcb+lB7Kv5x8S17oOSk1wUWgjQZ4xVJEMbKwOAODymocgA=="],
+
+    "@tanstack/pacer-lite": ["@tanstack/pacer-lite@0.1.1", "", {}, "sha512-y/xtNPNt/YeyoVxE/JCx+T7yjEzpezmbb+toK8DDD1P4m7Kzs5YR956+7OKexG3f8aXgC3rLZl7b1V+yNUSy5w=="],
+
     "@tanstack/query-core": ["@tanstack/query-core@5.102.8", "", {}, "sha512-ZNjkJ33CqvPNec/6lZBnHqLc3EVGPZ9ySLhYahU9TcuRFdmwXewuj0c4hwSWcGHqEUwcSrKeZ+oGcvPBqXcQcg=="],
+
+    "@tanstack/query-devtools": ["@tanstack/query-devtools@5.102.8", "", {}, "sha512-ZgeMKuF5d/zOE+tgWm3cSbD6Zcbr6IugVsnbHzUcSismqLZDSUPBKM6ILUxExgwe6rPAOox2x5bA5T+PSOQG0Q=="],
+
+    "@tanstack/query-persist-client-core": ["@tanstack/query-persist-client-core@5.102.8", "", { "dependencies": { "@tanstack/query-core": "5.102.8" } }, "sha512-t3v4/D6ejo/BrPzM5gm/AT3c4CWPCxFa+0cIjAeHAeanGPG6rCjFS1hZnPZH/rf55qe3qYYgx5U6iBZMY1PQjA=="],
+
+    "@tanstack/store": ["@tanstack/store@0.11.2", "", {}, "sha512-sJ4mjol8uQsHV0gOJzzjwXfh2Fwm+Sz0+8deqiTm4jGbMdjzNSW+xZCFm0kUa870uhd8yi+DpKnZb5Kc4apa0Q=="],
+
+    "@tanstack/table-core": ["@tanstack/table-core@9.3.1", "", { "dependencies": { "@tanstack/store": "^0.11.2" } }, "sha512-zQvlxSNi2qGM3L4jh85Z6hqMfdIR5qOfD9KHOU32nuKFJGN0RlJ7UvV1lsPb1fPVhpFYI0VP3jJGxLdLDpTKjQ=="],
+
+    "@tanstack/virtual-core": ["@tanstack/virtual-core@3.19.4", "", {}, "sha512-ygZ3O99Il18dl0gG0q7sH78iSkb96F07G+xK9V83eCgV8NQbcNd7R+cgcJJMFO7llBoebd0A82sCCstQq2Vp6Q=="],
 
     "@testing-library/dom": ["@testing-library/dom@10.4.1", "", { "dependencies": { "@babel/code-frame": "^7.10.4", "@babel/runtime": "^7.12.5", "@types/aria-query": "^5.0.1", "aria-query": "5.3.0", "dom-accessibility-api": "^0.5.9", "lz-string": "^1.5.0", "picocolors": "1.1.1", "pretty-format": "^27.0.2" } }, "sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg=="],
 

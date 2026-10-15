@@ -43,14 +43,14 @@ typechecks and runs before it is published.
 ## A component
 
 ```tsx
-import { render, signal } from "@barqjs/core";
+import { createSignal, render } from "@barqjs/core";
 
 function Counter() {
   // This runs ONCE. Nothing below re-runs it.
-  const count = signal(0);
+  const [count, setCount] = createSignal(0);
 
   return (
-    <button type="button" onClick={() => count.update((n) => n + 1)}>
+    <button type="button" onClick={() => setCount((n) => n + 1)}>
       clicked {count} times
     </button>
   );

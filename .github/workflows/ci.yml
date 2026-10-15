@@ -167,7 +167,7 @@ jobs:
 
       - name: Verify package contents
         run: |
-          for pkg in core extra testing; do
+          for pkg in core query testing; do
             echo "Checking packages/$pkg/dist..."
             ls -la packages/$pkg/dist/
             if [ ! -f "packages/$pkg/dist/index.js" ]; then
