@@ -124,6 +124,24 @@ atoms({ position: firstThatWorks("sticky", "-webkit-sticky", "fixed") });
 // .a-position_x{position:fixed;position:-webkit-sticky;position:sticky}
 ```
 
+A `var()` in a box shorthand counts as one value, so `padding: "var(--space)"`
+gives every side `var(--space)`. A token holding `4px 8px` therefore reaches each
+side whole, which no browser keeps; write such a token per axis, or pass the
+value through `dynamic`, which splits it when it arrives.
+
+### Typed values
+
+A property takes its own keywords as `csstype` spells them, a bare number where
+it has lengths, and a `var()` reference anywhere. A condition key under a
+property has to be `default` or a condition:
+
+```ts
+atoms({ display: 1 }); // error: `display` has no number
+atoms({ position: "middle" }); // error
+atoms({ color: { defualt: "red" } }); // error: as a selector it would style `.x defualt`
+atoms({ position: tokens.place, width: 8 }); // fine
+```
+
 ### Shorthands that cannot merge
 
 A shorthand whose values go to sub-properties **by type** rather than by
@@ -263,6 +281,11 @@ export const scale = globalVars({ space: { sm: "4px", lg: "16px" } });
 // { space: { sm: "var(--space-sm)", lg: "var(--space-lg)" } }
 ```
 
+A token reads as `` `var(--${string})` `` to the type checker, which every
+property accepts, and a numbered key such as a palette's `{ 50: …, 900: … }`
+reads as `scale[900]`. Both nesting and numbered keys compile, here and in a
+module that imports the token set.
+
 **Reach for `globalVars` when the names are published and `defineVars` when they
 are private.** A design system wants the first: hashing makes the token set a
 closed system, so nothing outside it can write `--primary` and be heard, and
@@ -306,8 +329,41 @@ Measured in a browser: the sheet held 105 rules before and after three different
 values. barq's spread is reactive, so that one write is the only thing that
 happens.
 
+Each variable is registered as `@property --… { syntax: "*"; inherits: false }`,
+because only the element that sets it reads it, and an inherited custom property
+changed on an element restyles everything under it. Measured in Chrome over
+6,300 descendants: 1.26 ms a change unregistered, 0.002 ms registered. A value
+under a descendant or a pseudo-element condition is read by inheritance and is
+left unregistered.
+
+A value can sit under any condition, as in `atoms`:
+
+```ts
+const tint = dynamic((colour: string, hover: string) => ({
+  color: { default: colour, ":hover": hover },
+  "@media (min-width: 600px)": { outlineColor: colour },
+}));
+```
+
+`undefined`, `null` and `false` decline to add, so `props(base, tint(maybe))`
+keeps whatever `base` set for that property when `maybe` is absent, and a
+shorthand is split across its longhands when the value arrives:
+`dynamic((m) => ({ margin: m }))` called with `"4px 8px"` sets four variables,
+one per side.
+
+A `props` call whose arguments the compiler has all read (style objects, groups,
+and calls to a `dynamic` group declared as a `const` in the same module) is
+compiled to `mergeStyles`, which merges class strings and writes variables and
+nothing else. The object walk and the registry behind `props` are then not in
+the bundle: measured on a one-component Vite app using `create`, `dynamic` and
+`props`, 26.47 KB of JS gzipped became 22.79 KB, with the same classes and
+styles on the page. A `layer` binding is marked pure for the same reason, so it
+goes once every call through it has folded.
+
 The function body must be an object literal, which is the same rule StyleX
 states, and for the same reason: a body that computes cannot be read statically.
+A `firstThatWorks` list is several declarations and cannot be one variable, so a
+group holding one stays on the runtime (`BARQ017`).
 
 ## Variants
 
@@ -362,6 +418,9 @@ one property both apply and the stylesheet's order decides, so a `size` that
 sets `width` over a `base` that sets `width` lost to its own base. Merging costs
 a whole-block arm nothing — a `css` block's class carries no property, so it
 merges against itself and survives whatever follows it.
+
+An axis spelled `{ true: …, false: … }` is selected with a boolean, and its
+default is written the same way: `defaults: { loud: true }`.
 
 A compound arm may list several arms of an axis, and matches any of them:
 `when: { size: ["sm", "md"] }`. `VariantProps<typeof button>` is the selection
@@ -463,6 +522,11 @@ The package is `sideEffects: false`. An application that never writes an
 uncompiled block pays 76 bytes for the registry the server entry imports, and
 nothing on the client.
 
+In a browser the registry writes one `<style>`, rewritten whole so it stays
+readable in devtools. A call registers all of its rules before the one rewrite:
+a cold `atoms` call of four declarations measured 3.49 ms over a 2,000-rule sheet
+painting after each rule, and 0.72 ms painting once.
+
 ### Server rendering
 
 ```ts
@@ -500,6 +564,7 @@ other, and none of them is stable.
 | `atoms`, `atomsIn`                        | declarations as classes, merged              |
 | `create`, `createIn`                      | a named set of those                         |
 | `props`, `propsIn`                        | the `class` and `style` an element takes     |
+| `mergeStyles`                             | what a compiled `props` call becomes         |
 | `dynamic`, `dynamicIn`                    | a group whose values arrive at run time      |
 | `layer`                                   | all five above, with one layer bound         |
 | `variants`                                | a class per combination, merged and memoised |
@@ -541,9 +606,10 @@ what that is worth.
 ## What is compiled, and what is not
 
 Compiled away: `css`, `keyframes`, `globalCss`, `atoms`, `atomsIn`, `create`,
-`createIn`, `props`, `propsIn`, `dynamic` (its class half), `dynamicIn`, every
-call through a `layer` binding, `firstThatWorks`, `defineVars`, `globalVars`,
-and `createTheme` over a token set the same module declares.
+`createIn`, `props`, `propsIn`, `dynamic` (its class half, conditions included),
+`dynamicIn`, every call through a `layer` binding, `firstThatWorks`,
+`defineVars`, `globalVars` (nested to any depth, numbered keys included), and
+`createTheme` over a token set the same module declares.
 
 A module-level `const` is a fact about the module rather than about the line it
 is on, so all of these fold wherever in the file the binding is written: a string,

@@ -26,32 +26,22 @@ describe("css", () => {
   });
 
   test("the class is stable for the same text and different for different text", () => {
-    expect(
-      css`
-        color: red;
-      `,
-    ).toBe(
-      css`
-        color: red;
-      `,
-    );
-    expect(
-      css`
-        color: red;
-      `,
-    ).not.toBe(
-      css`
-        color: blue;
-      `,
-    );
+    expect(css`
+      color: red;
+    `).toBe(css`
+      color: red;
+    `);
+    expect(css`
+      color: red;
+    `).not.toBe(css`
+      color: blue;
+    `);
   });
 
   test("a runtime class is marked as one", () => {
-    expect(
-      css`
-        color: tomato;
-      `,
-    ).toStartWith("r");
+    expect(css`
+      color: tomato;
+    `).toStartWith("r");
   });
 
   test("`&` takes the parent and a bare selector is a descendant", () => {

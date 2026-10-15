@@ -38,6 +38,7 @@ export {
   dynamicIn,
   firstThatWorks,
   layer,
+  mergeStyles,
   props,
   propsIn,
 } from "./atoms.ts";
@@ -53,6 +54,8 @@ export type {
   Layer,
   PropInput,
   Props,
+  PropertyValue,
+  VarReference,
 } from "./atoms.ts";
 
 // Tokens as custom properties.

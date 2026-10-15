@@ -49,14 +49,19 @@ const NAMES = [
 
 const IMPORT = `import { ${NAMES.join(", ")} } from "@barqjs/css";\n`;
 
+/** What the compiler imports `mergeStyles` as, beside the names the module wrote. */
+const MERGE = "_$mergeStyles";
+
 function evaluate(body: string, scope: Record<string, unknown>): unknown {
-  const run = new Function(...NAMES, `${body}\nreturn out;`) as (...values: unknown[]) => unknown;
-  return run(...NAMES.map((name) => scope[name]));
+  const run = new Function(...NAMES, MERGE, `${body}\nreturn out;`) as (
+    ...values: unknown[]
+  ) => unknown;
+  return run(...NAMES.map((name) => scope[name]), scope[MERGE]);
 }
 
 /** Every helper as a call that fails, naming itself. */
 function absent(allowed: readonly string[]): Record<string, unknown> {
-  const scope: Record<string, unknown> = {};
+  const scope: Record<string, unknown> = { [MERGE]: runtime.mergeStyles };
   for (const name of NAMES) {
     scope[name] = allowed.includes(name)
       ? (runtime as Record<string, unknown>)[name]
@@ -130,8 +135,8 @@ function statements(sheet: string): string[] {
  * argument replaced is still in its sheet; the compiler emits only what
  * survived the merge.
  */
-function agreeOnWhatSurvives(body: string): Sides {
-  const sides = both(body);
+function agreeOnWhatSurvives(body: string, keeps: readonly string[] = []): Sides {
+  const sides = both(body, keeps);
   expect(sides.compiled.value).toEqual(sides.runtime.value);
   const held = new Set(statements(sides.runtime.sheet));
   expect(statements(sides.compiled.sheet).filter((rule) => !held.has(rule))).toEqual([]);
@@ -161,6 +166,19 @@ describe("css parity > the shapes both already read", () => {
     agree(
       `const vars = defineVars({ brand: "#3b82f6" });\nconst out = createTheme(vars, { brand: "#60a5fa" });`,
     );
+  });
+
+  /** A palette nests and numbers its tokens, and both were left to the runtime. */
+  test("grouped to any depth, a numbered key among them, and a theme over them", () => {
+    const { compiled } = agree(
+      `const vars = defineVars({ color: { brand: "red", gray: { 900: "#111", sm: "x", 50: "#fafafa" } }, 2: 8, gap: 4 });
+       const out = [vars, createTheme(vars, { color: { gray: { 50: "#000" }, brand: "blue" }, gap: 1, 2: 3 }), atoms({ color: vars.color.gray[900], padding: vars["2"] })];`,
+    );
+    expect(compiled.code).not.toMatch(/defineVars\(|createTheme\(|atoms\(/);
+    agree(
+      `const vars = globalVars({ space: { 1: "4px", sm: "2px" }, radius: "8px" });\nconst out = [vars, atoms({ gap: vars.space[1] })];`,
+    );
+    agree(`const out = create({ b: { color: "red" }, 1: { color: "blue" } });`);
   });
 });
 
@@ -408,6 +426,83 @@ describe("css parity > a dynamic group", () => {
     expect(Object.values(style)).toEqual(["8px", 0.5, 4, 0].map(String));
     expect(compiled.code).not.toContain("dynamic(");
   });
+
+  /**
+   * The compiled group put its class in whatever the value was, so a missing
+   * one replaced the earlier `color: red` with a class reading a variable
+   * nothing set, where the runtime left red standing.
+   */
+  test("declares nothing for a value that is not there", () => {
+    const { compiled } = agreeOnWhatSurvives(
+      `const tint = dynamic((c) => ({ color: c }));\nconst base = atoms({ color: "red" });\nconst out = [undefined, null, false, NaN, "blue"].map((c) => props(base, tint(c)));`,
+      ["props"],
+    );
+    expect(compiled.code).not.toContain("dynamic(");
+    const applied = compiled.value as { class: string; style: object }[];
+    const present = applied.pop();
+    for (const absent of applied) expect(absent).toEqual({ class: "a-color_i0tgik", style: {} });
+    expect(present?.class).not.toBe("a-color_i0tgik");
+  });
+
+  /**
+   * A value under a pseudo-class, a media query, a descendant or a
+   * pseudo-element. The runtime dropped each without a word and the compiler
+   * declined the whole group.
+   */
+  test("takes a value under any condition", () => {
+    const { compiled } = agree(
+      `const t = dynamic((c, h) => ({ color: { default: c, ":hover": h, "@media (min-width: 9px)": { default: h, ":focus": c } }, ":hover": { margin: h }, "& > span": { color: c }, "::before": { content: c } }));
+       const out = [props(t("red", "1px 2px")), props(atoms({ color: "black" }), t(undefined, "blue"))];`,
+      ["props"],
+    );
+    expect(compiled.code).not.toContain("dynamic(");
+    const sheet = compiled.sheet;
+    expect(sheet).toContain(":hover{margin-top:var(--margin-top-");
+    // Read by inheritance, so neither is registered as not inherited.
+    const [first] = compiled.value as { style: Record<string, string> }[];
+    for (const name of Object.keys(first.style)) {
+      const registered = sheet.includes(`@property ${name}{`);
+      const inherited = /^--(color-1hzrvtl|content-)/.test(name);
+      expect(registered).toBe(!inherited);
+    }
+  });
+
+  test("writes a shorthand to one variable per longhand", () => {
+    const { compiled } = agree(
+      `const box = dynamic((m, r) => ({ margin: m, borderRadius: r }));\nconst out = [props(box("1px 2px", "1px / 2px")), props(box(4, undefined))];`,
+      ["props"],
+    );
+    const [first] = compiled.value as { style: Record<string, string> }[];
+    expect(Object.values(first.style)).toEqual([
+      ...["1px", "2px", "1px", "2px"],
+      ...["1px 2px", "1px 2px", "1px 2px", "1px 2px"],
+    ]);
+  });
+});
+
+describe("css parity > an object as JavaScript reads it", () => {
+  /**
+   * Two spellings of one key are one property to JavaScript, holding the last
+   * value at the first one's place. The compiler read both.
+   */
+  test("a key written twice is its last value", () => {
+    const { compiled } = agree(
+      `const when = defineConditions({ md: "@media (min-width: 768px)" });
+       const out = [atoms({ [when.md]: { color: "red" }, "@media (min-width: 768px)": { padding: 4 } }), create({ a: { ["color"]: "red", color: "blue" } })];`,
+    );
+    expect(compiled.sheet).not.toContain("color:red");
+    agree(
+      `const t = dynamic((c) => ({ ["color"]: c, color: c, width: { default: c, ["default"]: c } }));
+const out = props(t("red"));`,
+      ["props", "dynamic"],
+    );
+  });
+
+  test("a null under a condition inside a condition removes nothing", () => {
+    agreeOnWhatSurvives(
+      `const out = atoms({ color: { "@media print": { ":hover": "red" } } }, { color: { "@media print": { ":hover": null, default: "blue" } } });`,
+    );
+  });
 });
 
 describe("css parity > a named condition", () => {
@@ -430,5 +525,116 @@ describe("css parity > a named condition", () => {
       `${define}const button = variants({ base: atoms({ padding: 4, [when.md]: { padding: 8 } }), variants: { tone: { loud: atoms({ color: { default: "red", [when.dark]: "pink" } }) } } });\nconst out = [button(), button({ tone: "loud" })];`,
       ["variants", "atoms"],
     );
+  });
+});
+
+/**
+ * A `props` call left merging only class strings and compiled dynamic groups
+ * calls `mergeStyles`, which ships without the object walk and the registry.
+ * Every case here takes that path and still lands on what the runtime's
+ * `props` produces for the same source.
+ */
+/** A sheet's rules one by one, each layered rule with its layer written around it. */
+function rulesOf(sheet: string): string[] {
+  return statements(sheet).flatMap((statement) => {
+    const layer = /^@layer [\w.-]+\{/.exec(statement);
+    if (layer === null) return [statement];
+    return rulesOf(statement.slice(layer[0].length, -1)).map((rule) => `${layer[0]}${rule}}`);
+  });
+}
+
+/**
+ * The values agree, and every class they name is styled by the same rules on
+ * both sides. A compiled call emits the rules of both outcomes of a condition
+ * where the runtime registers the one it took, so the sheets are compared only
+ * through what the values reach.
+ */
+function agreeOnTheClassesUsed(body: string, keeps: readonly string[]): Sides {
+  const sides = both(body, keeps);
+  expect(sides.compiled.value).toEqual(sides.runtime.value);
+  const names = new Set(JSON.stringify(sides.runtime.value).match(/\ba-[\w-]+_\w+/g) ?? []);
+  const reaching = (sheet: string, name: string): string[] =>
+    rulesOf(sheet)
+      .filter((rule) => new RegExp(`\\.${name}(?![\\w-])`).test(rule))
+      .toSorted();
+  expect(names.size).toBeGreaterThan(0);
+  for (const name of names) {
+    const compiled = reaching(sides.compiled.sheet, name);
+    expect(compiled.length).toBeGreaterThan(0);
+    expect(compiled).toEqual(reaching(sides.runtime.sheet, name));
+  }
+  return sides;
+}
+
+describe("css parity > the merge a compiled props call becomes", () => {
+  test("is taken when every argument is known, and gives what props gives", () => {
+    const { compiled } = agreeOnTheClassesUsed(
+      `const styles = create({ root: { padding: 8, color: "red" }, loud: { fontWeight: 700 } });
+       const tint = dynamic((c, m) => ({ backgroundColor: { default: c, ":hover": "black" }, margin: m }));
+       const ui = layer("barq.parity");
+       const wide = ui.dynamic((w) => ({ width: w }));
+       const out = [true, false].flatMap((on) => [
+         props(styles.root, on && styles.loud, tint("red", on ? "1px 2px" : undefined)),
+         props({ margin: 1 }, on && { color: "blue" }, tint(undefined, null)),
+         ui.props({ gap: 2 }, wide(on ? 3 : undefined), on && tint("x")),
+         propsIn("barq.parity", { gap: 2 }, wide("50%")),
+       ]);`,
+      ["layer"],
+    );
+    expect(compiled.code).toContain("_$mergeStyles(");
+    expect(compiled.code).not.toMatch(/\bprops(In)?\(|ui\.props\(/);
+  });
+
+  test("is not taken for an argument it cannot vouch for", () => {
+    const { compiled } = agreeOnTheClassesUsed(
+      `const tint = dynamic((c) => ({ color: c }));
+       let later = dynamic((c) => ({ width: c }));
+       const extra = ["a", "b"].join(" ");
+       const out = [props({ padding: 1 }, extra, tint("red")), props(later("1px"))];`,
+      ["props"],
+    );
+    expect(compiled.code).not.toContain("_$mergeStyles(");
+  });
+
+  test("agrees with the runtime over generated groups and calls", () => {
+    let seed = 7;
+    const next = (): number => (seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff;
+    const pick = <T>(items: readonly T[]): T => items[Math.floor(next() * items.length)] as T;
+    const properties = [
+      "color",
+      "margin",
+      "paddingInline",
+      "borderRadius",
+      "width",
+      "zIndex",
+      "gap",
+    ];
+    const conditions = [`":hover"`, `"@media (min-width: 640px)"`, `"& > span"`, `"::before"`];
+    const values = [`"1px 2px"`, `4`, `undefined`, `null`, `"red"`, `0`, `"var(--z)"`, `false`];
+    const statics = [
+      `{ color: "black" }`,
+      `{ margin: 1 }`,
+      `{ paddingLeft: 3, ":hover": { gap: 1 } }`,
+    ];
+    for (let index = 0; index < 60; index++) {
+      const keys = [
+        ...new Set(Array.from({ length: 1 + Math.floor(next() * 3) }, () => pick(properties))),
+      ];
+      const declared = keys
+        .map((key, at) =>
+          next() < 0.3
+            ? `${key}: { default: v${at}, ${pick(conditions)}: v${(at + 1) % 3} }`
+            : `${key}: v${at}`,
+        )
+        .join(", ");
+      const call = () => `group(${Array.from({ length: 3 }, () => pick(values)).join(", ")})`;
+      const body = `const group = dynamic((v0, v1, v2) => ({ ${declared} }));
+        const out = [props(${call()}), props(${pick(statics)}, ${call()}), props(${pick(statics)}, flag && ${pick(statics)}, ${call()})];`;
+      for (const flag of [true, false]) {
+        const { compiled } = agreeOnTheClassesUsed(`const flag = ${flag};\n${body}`, ["props"]);
+        expect(compiled.code).toContain("_$mergeStyles(");
+        expect(compiled.code).not.toMatch(/\bprops\(/);
+      }
+    }
   });
 });

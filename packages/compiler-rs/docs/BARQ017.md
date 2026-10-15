@@ -35,7 +35,9 @@ export const card = atoms({ color: BRAND });
 compiled when every value in the call can be read from the file being compiled: literals,
 and `const`s declared in the same module. A value imported from another module, the result
 of a function call, or a spread of arguments cannot be read that way, so the call stays
-and runs in the browser.
+and runs in the browser. A `dynamic` group turns each value into one custom property, so a
+`firstThatWorks` list inside one cannot be compiled either: keep the fallback in a `create`
+group passed to `props` beside it.
 
 Nothing is broken, and the classes are the same. The note marks a call that could be
 compiled; the message says which part stopped it. To make every CSS note an error, so a

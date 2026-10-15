@@ -5,8 +5,10 @@ import {
   collectCss,
   create,
   defineConditions,
+  defineVars,
   dynamic,
   dynamicIn,
+  mergeStyles,
   props,
   variants,
 } from "./index.ts";
@@ -124,6 +126,95 @@ describe("dynamic > a number", () => {
   });
 });
 
+describe("dynamic > a value that is not there", () => {
+  const tint = dynamic((colour?: string | null | false) => ({ color: colour }));
+  const base = atoms({ color: "red" });
+
+  test("declines to add, so an earlier value for the property stands", () => {
+    for (const absent of [undefined, null, false] as const) {
+      const applied = props(base, tint(absent));
+      expect(applied.class).toBe(base);
+      expect(applied.style).toEqual({});
+    }
+    const wide = atoms({ width: 4 });
+    const sized = dynamic((width: number) => ({ width }));
+    expect(props(wide, sized(Number.NaN))).toEqual({ class: wide, style: {} });
+  });
+
+  test("and the same group with a value still replaces it", () => {
+    const applied = props(base, tint("blue"));
+    expect(applied.class).toBe(tint("blue").$class);
+    expect(Object.values(applied.style ?? {})).toEqual(["blue"]);
+  });
+});
+
+describe("dynamic > its variables", () => {
+  test("are registered as not inherited, once each", () => {
+    const tint = dynamic((colour: string, gap: string) => ({ color: colour, gap }));
+    props(tint("red", "1px"));
+    props(tint("blue", "2px 3px"));
+    const style = Object.keys(props(tint("red", "1px")).style ?? {});
+    expect(style).toHaveLength(3);
+    for (const name of style) {
+      const rule = `@property ${name}{syntax:"*";inherits:false}`;
+      expect(collectCss().split(rule)).toHaveLength(2);
+    }
+  });
+});
+
+describe("dynamic > a value under a condition", () => {
+  const hover = dynamic((colour?: string, accent?: string) => ({
+    color: { default: colour, ":hover": accent },
+    "@media (min-width: 600px)": { backgroundColor: accent },
+  }));
+
+  test("is its own variable, read by an atom under that condition", () => {
+    const applied = props(hover("red", "blue"));
+    expect(Object.values(applied.style ?? {})).toEqual(["red", "blue", "blue"]);
+    const sheet = collectCss();
+    for (const [index, name] of applied.class.split(" ").entries()) {
+      const variable = Object.keys(applied.style ?? {})[index];
+      expect(sheet).toMatch(new RegExp(`\\.${name}(:hover)?\\{[a-z-]+:var\\(${variable}\\)\\}`));
+    }
+    expect(sheet).toContain(":hover{color:var(");
+    expect(sheet).toContain("@media (min-width: 600px){.a-background-color-");
+  });
+
+  test("and declines to add on its own, leaving the rest", () => {
+    const base = atoms({ color: { default: "black", ":hover": "gray" } });
+    const applied = props(base, hover("red", undefined));
+    const own = applied.class.split(" ").filter((name) => !base.includes(name));
+    expect(own).toHaveLength(1);
+    expect(applied.class).toContain(base.split(" ")[1]);
+    expect(Object.values(applied.style ?? {})).toEqual(["red"]);
+  });
+});
+
+describe("dynamic > a shorthand", () => {
+  const spaced = dynamic((margin: string | number) => ({ margin }));
+
+  test("writes each longhand its own side of the value", () => {
+    const applied = props(spaced("1px 2px"));
+    expect(properties(applied.class)).toEqual([
+      "margin-top",
+      "margin-right",
+      "margin-bottom",
+      "margin-left",
+    ]);
+    expect(Object.values(applied.style ?? {})).toEqual(["1px", "2px", "1px", "2px"]);
+    for (const [index, name] of applied.class.split(" ").entries()) {
+      const variable = Object.keys(applied.style ?? {})[index];
+      expect(collectCss()).toContain(`.${name}{${properties(name)[0]}:var(${variable})}`);
+    }
+  });
+
+  test("takes a unit on a number, and declares nothing for a value with too many sides", () => {
+    expect(Object.values(props(spaced(4)).style ?? {})).toEqual(["4px", "4px", "4px", "4px"]);
+    const margin = atoms({ margin: 1 });
+    expect(props(margin, spaced("1px 2px 3px 4px 5px"))).toEqual({ class: margin, style: {} });
+  });
+});
+
 describe("defineConditions", () => {
   const when = defineConditions({
     md: "@media (min-width: 768px)",
@@ -158,5 +249,61 @@ describe("defineConditions", () => {
   test("refuses a value that is not a condition", () => {
     const spelled: string = "min-width: 768px";
     expect(() => defineConditions({ md: spelled as Condition })).toThrow(/`md` is not a condition/);
+  });
+});
+
+/**
+ * What the types refuse. `tsc` checks this file, so each directive is a test:
+ * one that stops erroring fails the typecheck as unused.
+ */
+describe("atoms > types", () => {
+  test("a condition key that is not one is an error rather than a selector", () => {
+    // @ts-expect-error -- `defualt` would be read as a descendant selector
+    atoms({ color: { defualt: "red" } });
+    atoms({ color: { default: "red", ":hover": "blue", "@media print": { default: "black" } } });
+  });
+
+  test("a property takes its own keywords, lengths as numbers and a var() anywhere", () => {
+    // @ts-expect-error -- `display` has no number
+    atoms({ display: 1 });
+    // @ts-expect-error -- `position` has no `middle`
+    atoms({ position: "middle" });
+    atoms({ position: "var(--position)", display: "grid", width: 8, zIndex: 2, opacity: 0.5 });
+    const vars = defineVars({ place: "sticky" });
+    atoms({ position: vars.place });
+    expect(vars.place.startsWith("var(--")).toBe(true);
+  });
+});
+
+describe("variants > a boolean axis", () => {
+  test("takes its default as a boolean, as a selection does", () => {
+    const on = atoms({ fontWeight: 700 });
+    const off = atoms({ fontWeight: 400 });
+    const loud = variants({
+      variants: { loud: { true: on, false: off } },
+      defaults: { loud: true },
+    });
+    expect(loud()).toBe(on);
+    expect(loud({ loud: false })).toBe(off);
+    const axes = { loud: { true: on, false: off } };
+    // @ts-expect-error -- the axis has no `maybe` arm
+    variants({ variants: axes, defaults: { loud: "maybe" } });
+  });
+});
+
+describe("mergeStyles", () => {
+  test("is props over class strings and dynamic groups, and registers nothing", () => {
+    const base = atoms({ color: "red", margin: 1 });
+    const tint = dynamic((colour?: string, space?: string) => ({ color: colour, margin: space }));
+    const groups = [tint("blue", "1px 2px"), tint(undefined, "3px"), tint("teal")];
+    const sheet = collectCss();
+    for (const group of groups) {
+      expect(mergeStyles(base, false, [group, null])).toEqual(props(base, false, [group, null]));
+    }
+    expect(collectCss()).toBe(sheet);
+  });
+
+  test("leaves a style object alone, which the compiler never hands it", () => {
+    expect(mergeStyles("x", { color: "red" })).toEqual({ class: "x" });
   });
 });

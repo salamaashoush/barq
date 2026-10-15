@@ -297,3 +297,58 @@ describe("the sheet > two declarations under one class", () => {
     );
   });
 });
+
+describe("the sheet > a call that registers several rules", () => {
+  /** Every write to the `<style>`, counted by the text it was set to. */
+  function writes(run: () => void): string[] {
+    atoms({ order: 1 });
+    const element = document.getElementById("barq-css") as HTMLStyleElement;
+    const seen: string[] = [];
+    let owner: object | null = Object.getPrototypeOf(element) as object;
+    while (owner !== null && !Object.hasOwn(owner, "textContent")) {
+      owner = Object.getPrototypeOf(owner) as object | null;
+    }
+    const descriptor =
+      owner === null ? undefined : Object.getOwnPropertyDescriptor(owner, "textContent");
+    Object.defineProperty(element, "textContent", {
+      configurable: true,
+      get: () => descriptor?.get?.call(element) as string,
+      set: (text: string) => {
+        seen.push(text);
+        descriptor?.set?.call(element, text);
+      },
+    });
+    try {
+      run();
+    } finally {
+      delete (element as { textContent?: unknown }).textContent;
+    }
+    return seen;
+  }
+
+  test("rewrites the element once, and holds every rule when it returns", () => {
+    let classes = "";
+    const seen = writes(() => {
+      classes = atoms({ color: "salmon", margin: "1px 2px", display: "grid" });
+    });
+    expect(seen).toHaveLength(1);
+    for (const name of classes.split(" ")) expect(seen[0]).toContain(`.${name}{`);
+    expect(document.getElementById("barq-css")?.textContent).toBe(collectCss());
+  });
+
+  test("and still paints after a call that threw", () => {
+    expect(() =>
+      atoms(
+        { color: "teal" },
+        {
+          get width(): string {
+            throw new Error("salama");
+          },
+        },
+      ),
+    ).toThrow("salama");
+    const seen = writes(() => atoms({ color: "plum" }));
+    expect(seen).toHaveLength(1);
+    expect(seen[0]).toContain("color:plum");
+  });
+});

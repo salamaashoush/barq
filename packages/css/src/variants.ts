@@ -55,7 +55,7 @@ export interface VariantSpec<G extends VariantGroups> {
   /** Always applied, first, so a variant can override it. */
   readonly base?: string;
   readonly variants: G;
-  readonly defaults?: { readonly [K in keyof G]?: keyof G[K] };
+  readonly defaults?: { readonly [K in keyof G]?: Arm<G[K]> };
   /**
    * A class applied only when every named variant matches — the combination a
    * design system needs once the axes stop being independent.
@@ -81,7 +81,7 @@ export interface SlotSpec<S extends string, G extends SlotGroups<S>> {
   /** Every part, and the class it always carries. */
   readonly slots: { readonly [K in S]: string };
   readonly variants?: G;
-  readonly defaults?: { readonly [K in keyof G]?: keyof G[K] };
+  readonly defaults?: { readonly [K in keyof G]?: Arm<G[K]> };
   readonly compound?: readonly {
     readonly when: VariantMatch<G>;
     readonly use: SlotClasses<S>;

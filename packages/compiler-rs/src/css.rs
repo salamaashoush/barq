@@ -172,10 +172,15 @@ pub fn run<'a>(
         site: Span::default(),
         reports: Vec::new(),
         name: None,
+        dynamics: FxHashSet::default(),
+        merges: false,
     };
     pass.seed_module_constants(program);
     if rewrite {
         pass.visit_program(program);
+        if pass.merges {
+            import_merge_styles(allocator, program, &options.css_source);
+        }
     }
     let exports = pass.resolved_exports();
     Extracted {
@@ -240,6 +245,12 @@ struct Css<'a, 'b> {
     reports: Vec<Report>,
     /// The binding the template is being assigned to, for a readable dev class.
     name: Option<String>,
+    /// `const`s holding a `dynamic` group this pass compiled, whose calls are
+    /// known to return a class string and its variables.
+    dynamics: FxHashSet<SymbolId>,
+    /// Whether a `props` call was pointed at `mergeStyles`, which the module
+    /// then has to import.
+    merges: bool,
 }
 
 impl<'a> VisitMut<'a> for Css<'a, '_> {
@@ -280,8 +291,20 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
                 .map(|id| id.name.to_string())
                 .unwrap_or_default(),
         );
+        let dynamic = matches!(declarator.init.as_ref().map(without_type_wrappers),
+                Some(Expression::CallExpression(call)) if self.is_dynamic_callee(&call.callee));
         walk_variable_declarator(self, declarator);
         self.name = outer;
+        // Compiled, the call is the arrow it was handed; declined, it is still
+        // a call, and what that returns is the runtime's business.
+        if dynamic
+            && matches!(declarator.init, Some(Expression::ArrowFunctionExpression(_)))
+            && let Some(symbol) =
+                declarator.id.get_binding_identifier().and_then(|id| id.symbol_id.get())
+            && self.scoping.symbol_flags(symbol).is_const_variable()
+        {
+            self.dynamics.insert(symbol);
+        }
 
         // Recorded after the walk, so what lands in the table is the class the
         // rewrite produced rather than the call that produced it.
@@ -351,6 +374,13 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
                     {
                         *expression = argument.into_expression();
                     }
+                    return;
+                }
+                // Left standing for any call through it this pass declines, and
+                // marked pure so that a bundler drops it, and the runtime behind
+                // it, once every such call has folded.
+                Some(Tag::Layer) => {
+                    call.pure = true;
                     return;
                 }
                 Some(Tag::Atoms) => {
@@ -423,9 +453,17 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
                             .map(|classes| self.object(span, vec![("class", classes)])),
                         _ => self.compile_dynamic(call, span, &layer),
                     };
+                    // The layer is only ever a style object's, and every object
+                    // is folded by the time the call is a merge.
+                    if folded.is_none() && tag == Tag::PropsIn && self.merge_styles(call, span) {
+                        return;
+                    }
                     match folded {
                         Some(replacement) => *expression = replacement,
                         None => {
+                            if tag == Tag::DynamicIn {
+                                self.decline(span, DYNAMIC_UNREADABLE);
+                            }
                             let text = self.allocator.alloc_str(&layer);
                             let literal =
                                 Expression::new_string_literal(span, text, None, &self.ast);
@@ -449,11 +487,13 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
                     return;
                 }
                 Some(Tag::Props) => {
-                    if let Some(classes) = self.compile_atoms(call, span, "") {
+                    match self.compile_atoms(call, span, "") {
                         // `{ class: … }`. The `style` half only exists when a
-                        // dynamic group is in the call, and a dynamic group is
-                        // not something this arm can see yet.
-                        *expression = self.object(span, vec![("class", classes)]);
+                        // dynamic group is in the call.
+                        Some(classes) => *expression = self.object(span, vec![("class", classes)]),
+                        None => {
+                            self.merge_styles(call, span);
+                        }
                     }
                     return;
                 }
@@ -489,15 +529,7 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
                 Some(Tag::Dynamic) => {
                     match self.compile_dynamic(call, span, "") {
                         Some(replacement) => *expression = replacement,
-                        None => self.decline(
-                            span,
-                            (
-                                "The function passed to `dynamic` does not return an object \
-                                 literal directly.",
-                                "Write it as `(color) => ({ backgroundColor: color })`, with no \
-                                 conditions or computed parts.",
-                            ),
-                        ),
+                        None => self.decline(span, DYNAMIC_UNREADABLE),
                     }
                     return;
                 }
@@ -521,10 +553,22 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
             if let Some((layer, member)) = self.bound_layer(&call.callee) {
                 let folded = match member.as_str() {
                     "create" => self.compile_create(call, span, &layer),
-                    "props" => self
-                        .compile_atoms(call, span, &layer)
-                        .map(|classes| self.object(span, vec![("class", classes)])),
-                    "dynamic" => self.compile_dynamic(call, span, &layer),
+                    "props" => {
+                        let folded = self
+                            .compile_atoms(call, span, &layer)
+                            .map(|classes| self.object(span, vec![("class", classes)]));
+                        if folded.is_none() {
+                            self.merge_styles(call, span);
+                        }
+                        folded
+                    }
+                    "dynamic" => {
+                        let folded = self.compile_dynamic(call, span, &layer);
+                        if folded.is_none() {
+                            self.decline(span, DYNAMIC_UNREADABLE);
+                        }
+                        folded
+                    }
                     _ => None,
                 };
                 if let Some(replacement) = folded {
@@ -557,6 +601,15 @@ impl<'a> VisitMut<'a> for Css<'a, '_> {
         *expression = Expression::new_string_literal(span, name, None, &self.ast);
     }
 }
+
+/// What a dynamic group says when its body will not read.
+const DYNAMIC_UNREADABLE: (&str, &str) = (
+    "The function passed to `dynamic` does not return an object literal with one value per \
+     property. A value per condition, a `firstThatWorks` list, a condition key, a spread or a \
+     computed key cannot be one custom property.",
+    "Write it as `(color) => ({ backgroundColor: color })`, and put conditions and fallbacks \
+     in a `create` group passed beside it.",
+);
 
 /// What a group says when one of its style objects will not read.
 const GROUP_UNREADABLE: (&str, &str) = (
@@ -725,10 +778,12 @@ impl<'a> Css<'a, '_> {
                         self.groups.insert(symbol, groups.into_iter().collect());
                     }
                 }
-                Some(Tag::DefineVars) => {
+                Some(tag @ (Tag::DefineVars | Tag::GlobalVars)) => {
                     let Some(tokens) = self.token_values(call) else { continue };
-                    let (entries, ..) = Self::token_entries(&tokens, false);
-                    self.groups.insert(symbol, entries.into_iter().collect());
+                    let (entries, ..) = Self::token_entries(&tokens, tag == Tag::GlobalVars);
+                    let mut members = FxHashMap::default();
+                    flatten_tokens(entries, "", &mut members);
+                    self.groups.insert(symbol, members);
                 }
                 Some(Tag::DefineConditions) => {
                     if let Some(conditions) = self.conditions_of(call) {
@@ -1403,22 +1458,29 @@ impl<'a> Css<'a, '_> {
         }
         let Expression::ObjectExpression(object) = body else { return None };
 
+        // Every value is found before any is moved: a call this declines is
+        // left for the runtime, which has to find the body it was written with
+        // rather than one whose earlier values are now `null`.
+        let mut leaves: Vec<(String, String)> = Vec::new();
+        self.dynamic_leaves(object, "default", &mut leaves)?;
+        let mut values: Vec<Expression<'a>> = Vec::with_capacity(leaves.len());
+        take_leaves(&self.ast, object, &mut values);
+
         let mut classes: Vec<barq_css::atoms::Atom> = Vec::new();
         let mut vars: Vec<(&'a str, Expression<'a>)> = Vec::new();
-        for property in object.properties.iter_mut() {
-            let ObjectPropertyKind::ObjectProperty(property) = property else { return None };
-            let name = self.key_text(property)?;
-            if is_condition(&name) {
-                return None;
+        let mut read: Vec<String> = Vec::new();
+        for ((property, condition), value) in leaves.into_iter().zip(values) {
+            for atom in barq_css::atoms::dynamic_atoms(layer, &property, &condition) {
+                barq_css::atoms::apply(&mut classes, atom);
             }
-            let property_name = barq_css::atoms::kebab(&name);
-            let variable = barq_css::atoms::dynamic_var(&property_name);
-            for atom in expand_atoms(layer, &property_name, "default", &format!("var({variable})"))
-            {
-                classes.push(atom);
+            if barq_css::atoms::own_variable(&condition) {
+                read.extend(
+                    barq_css::atoms::dynamic_longhands(&property)
+                        .into_iter()
+                        .map(|longhand| barq_css::atoms::dynamic_var_in(longhand, &condition)),
+                );
             }
-            let placeholder = Expression::new_null_literal(property.value.span(), &self.ast);
-            let value = std::mem::replace(&mut property.value, placeholder);
+            let variable = barq_css::atoms::dynamic_var_in(&property, &condition);
             vars.push((self.allocator.alloc_str(&variable), value));
         }
         if classes.is_empty() {
@@ -1426,6 +1488,11 @@ impl<'a> Css<'a, '_> {
         }
 
         let class = self.emit_atoms(&classes);
+        for variable in read {
+            if self.emitted.insert(format!("@property {variable}")) {
+                self.css.push_str(&barq_css::atoms::dynamic_registration(&variable));
+            }
+        }
         let class =
             Expression::new_string_literal(span, self.allocator.alloc_str(&class), None, &self.ast);
         let vars = self.object(span, vars);
@@ -1453,21 +1520,26 @@ impl<'a> Css<'a, '_> {
             self.css.push_str(&format!(":root{{{declarations}}}"));
         }
 
+        Some(self.token_object(span, entries))
+    }
+
+    fn token_object(&self, span: Span, entries: Vec<(String, TokenEntry)>) -> Expression<'a> {
         let built: Vec<(&'a str, Expression<'a>)> = entries
             .into_iter()
-            .map(|(token, reference)| {
-                (
-                    self.allocator.alloc_str(&token),
-                    Expression::new_string_literal(
+            .map(|(token, entry)| {
+                let value = match entry {
+                    TokenEntry::Reference(reference) => Expression::new_string_literal(
                         span,
                         self.allocator.alloc_str(&reference),
                         None,
                         &self.ast,
                     ),
-                )
+                    TokenEntry::Group(inner) => self.token_object(span, inner),
+                };
+                (self.allocator.alloc_str(&token), value)
             })
             .collect();
-        Some(self.object(span, built))
+        self.object(span, built)
     }
 
     /// `defineVars`' argument as `(token, value)`, with each value's KIND kept.
@@ -1485,11 +1557,20 @@ impl<'a> Css<'a, '_> {
         else {
             return None;
         };
+        self.token_group(object)
+    }
+
+    /// One level of a token set, in the order `JSON.stringify` writes it.
+    fn token_group(
+        &self,
+        object: &oxc::ast::ast::ObjectExpression<'_>,
+    ) -> Option<Vec<(String, barq_css::atoms::TokenValue)>> {
         let mut tokens = Vec::new();
-        for property in &object.properties {
-            let ObjectPropertyKind::ObjectProperty(property) = property else { return None };
-            let name = self.key_text(property)?;
-            let value = match crate::analysis::without_type_wrappers(&property.value) {
+        for (name, value) in self.ordered_properties(object)? {
+            let value = match value {
+                Expression::ObjectExpression(inner) => {
+                    barq_css::atoms::TokenValue::Group(self.token_group(inner)?)
+                }
                 other if number_of(other).is_some() => {
                     barq_css::atoms::TokenValue::Number(number_of(other)?)
                 }
@@ -1503,44 +1584,42 @@ impl<'a> Css<'a, '_> {
         Some(tokens)
     }
 
-    /// A token set as `(token, reference)`, its group name and its `:root`
-    /// declarations. Naming only, so a token set can be known before the walk
-    /// reaches it and emitted where the walk reaches it.
+    /// An object literal's properties in the order JavaScript enumerates them,
+    /// or `None` when one of them is a spread or a key this cannot read.
+    fn ordered_properties<'e>(
+        &self,
+        object: &'e oxc::ast::ast::ObjectExpression<'_>,
+    ) -> Option<Vec<(String, &'e Expression<'e>)>> {
+        let mut entries = Vec::with_capacity(object.properties.len());
+        for property in &object.properties {
+            let ObjectPropertyKind::ObjectProperty(property) = property else { return None };
+            let value: &'e Expression<'e> = without_type_wrappers(&property.value);
+            entries.push((self.key_text(property)?, value));
+        }
+        Some(barq_css::atoms::in_property_order(entries))
+    }
+
+    /// A token set as the `var()` references it hands back, in the shape it
+    /// was given, its group name and its `:root` declarations. Naming only, so
+    /// a token set can be known before the walk reaches it and emitted where
+    /// the walk reaches it.
     fn token_entries(
         tokens: &[(String, barq_css::atoms::TokenValue)],
         global: bool,
-    ) -> (Vec<(String, String)>, String, String) {
+    ) -> (Vec<(String, TokenEntry)>, String, String) {
         // `globalVars` names the property what the author called it, so a
         // theme an application already has can be heard. `defineVars` suffixes
         // it with a hash of the whole object, so two files declaring different
         // tokens cannot collide.
         let group = if global {
-            barq_css::atoms::hash32(
-                &tokens.iter().map(|(name, _)| name.as_str()).collect::<Vec<_>>().join(","),
-            )
+            let mut paths = Vec::new();
+            token_paths(tokens, "", &mut paths);
+            barq_css::atoms::hash32(&paths.join(","))
         } else {
             barq_css::atoms::hash32(&barq_css::atoms::json_object(tokens))
         };
         let mut declarations = String::new();
-        let mut entries: Vec<(String, String)> = Vec::new();
-        for (token, value) in tokens {
-            let property = if global {
-                barq_css::atoms::global_property(token)
-            } else {
-                barq_css::atoms::token_property(&group, token)
-            };
-            if !declarations.is_empty() {
-                declarations.push(';');
-            }
-            let text = match value {
-                barq_css::atoms::TokenValue::Text(text) => text.clone(),
-                barq_css::atoms::TokenValue::Number(number) => {
-                    barq_css::atoms::number_text(*number)
-                }
-            };
-            declarations.push_str(&format!("{property}:{text}"));
-            entries.push((token.clone(), format!("var({property})")));
-        }
+        let entries = declare_tokens(tokens, "", &group, global, &mut declarations);
         (entries, group, declarations)
     }
 
@@ -1570,12 +1649,34 @@ impl<'a> Css<'a, '_> {
         else {
             return None;
         };
-
         let mut declarations = String::new();
-        for property in &object.properties {
-            let ObjectPropertyKind::ObjectProperty(property) = property else { return None };
-            let token = self.key_text(property)?;
-            let value = match crate::analysis::without_type_wrappers(&property.value) {
+        self.redeclare(&tokens, object, "", &mut declarations)?;
+
+        let name = format!("r{}", barq_css::atoms::hash32(&declarations));
+        if self.emitted.insert(name.clone()) {
+            self.css.push_str(&format!(".{name}{{{declarations}}}"));
+        }
+        Some(Expression::new_string_literal(span, self.allocator.alloc_str(&name), None, &self.ast))
+    }
+
+    /// A theme's values as declarations, in the order the runtime walks them.
+    ///
+    /// A group of values redeclares the tokens of the group under that name,
+    /// and a token the set does not carry has no property to redeclare.
+    fn redeclare(
+        &self,
+        tokens: &FxHashMap<String, String>,
+        object: &oxc::ast::ast::ObjectExpression<'_>,
+        prefix: &str,
+        declarations: &mut String,
+    ) -> Option<()> {
+        for (token, value) in self.ordered_properties(object)? {
+            let path = member_join(prefix, &token);
+            let value = match value {
+                Expression::ObjectExpression(inner) => {
+                    self.redeclare(tokens, inner, &path, declarations)?;
+                    continue;
+                }
                 // What an absent optional produces, and the runtime skips it.
                 Expression::Identifier(identifier) if identifier.name == "undefined" => continue,
                 // `String(8.0)` is `8`, whatever the source wrote, and the two
@@ -1583,10 +1684,8 @@ impl<'a> Css<'a, '_> {
                 // that way.
                 other => self.text_of(other)?,
             };
-            // A token the set does not carry has no property to redeclare, and
-            // the runtime's regex simply fails to match it.
             let Some(property_name) = tokens
-                .get(&token)
+                .get(&path)
                 .and_then(|reference| reference.strip_prefix("var("))
                 .and_then(|inside| inside.split([',', ')']).next())
                 .filter(|name| name.starts_with("--"))
@@ -1598,12 +1697,7 @@ impl<'a> Css<'a, '_> {
             }
             declarations.push_str(&format!("{property_name}:{value}"));
         }
-
-        let name = format!("r{}", barq_css::atoms::hash32(&declarations));
-        if self.emitted.insert(name.clone()) {
-            self.css.push_str(&format!(".{name}{{{declarations}}}"));
-        }
-        Some(Expression::new_string_literal(span, self.allocator.alloc_str(&name), None, &self.ast))
+        Some(())
     }
 
     /// `create({ root: { … }, child: { … } })` as an object of class strings.
@@ -1666,14 +1760,10 @@ impl<'a> Css<'a, '_> {
         emit: bool,
     ) -> Option<Vec<(String, String)>> {
         let mut groups: Vec<(String, String)> = Vec::new();
-        for property in &object.properties {
-            let ObjectPropertyKind::ObjectProperty(property) = property else { return None };
-            let name = match &property.key {
-                PropertyKey::StaticIdentifier(identifier) => identifier.name.to_string(),
-                PropertyKey::StringLiteral(literal) => literal.value.to_string(),
-                _ => return None,
-            };
-            let declarations = self.declarations(&property.value)?;
+        // In the order the runtime walks the object, which is the order its
+        // rules reach the sheet in.
+        for (name, value) in self.ordered_properties(object)? {
+            let declarations = self.declarations(value)?;
             let merged = Self::merge(
                 &[Argument { at: 0, conditional: false, declarations, atoms: Vec::new() }],
                 true,
@@ -1818,11 +1908,10 @@ impl<'a> Css<'a, '_> {
         condition: &str,
         out: &mut Vec<Declaration>,
     ) -> Option<()> {
-        for property in &object.properties {
-            let ObjectPropertyKind::ObjectProperty(property) = property else { return None };
-            let name = self.key_text(property)?;
-            let value = crate::analysis::without_type_wrappers(&property.value);
-
+        // In the order JavaScript enumerates the object, which is the order the
+        // runtime merges in, and a key written twice is the one value the
+        // runtime ever sees.
+        for (name, value) in self.ordered_properties(object)? {
             // A top-level condition key holds a whole style object.
             if is_condition(&name) {
                 let Expression::ObjectExpression(nested) = value else { return None };
@@ -1835,15 +1924,12 @@ impl<'a> Css<'a, '_> {
                 out.extend(self.declaration(&property_name, condition, value)?);
                 continue;
             };
-            for entry in &conditions.properties {
-                let ObjectPropertyKind::ObjectProperty(entry) = entry else { return None };
-                let inner = self.key_text(entry)?;
+            for (inner, value) in self.ordered_properties(conditions)? {
                 let where_ = if inner == "default" {
                     condition.to_string()
                 } else {
                     join(condition, &inner)
                 };
-                let value = crate::analysis::without_type_wrappers(&entry.value);
                 if let Expression::ObjectExpression(deeper) = value {
                     // A condition inside a condition, which is the shape a media
                     // query with a pseudo-class inside it takes.
@@ -1871,16 +1957,15 @@ impl<'a> Css<'a, '_> {
         condition: &str,
         out: &mut Vec<Declaration>,
     ) -> Option<()> {
-        for entry in &object.properties {
-            let ObjectPropertyKind::ObjectProperty(entry) = entry else { return None };
-            let inner = self.key_text(entry)?;
+        for (inner, value) in self.ordered_properties(object)? {
             let where_ =
                 if inner == "default" { condition.to_string() } else { join(condition, &inner) };
-            let value = crate::analysis::without_type_wrappers(&entry.value);
             match value {
                 Expression::ObjectExpression(deeper) => {
                     self.conditions(deeper, property, &where_, out)?;
                 }
+                // As one level up: `null` removes only under `default`.
+                Expression::NullLiteral(_) if inner != "default" => {}
                 _ => out.extend(self.declaration(property, &where_, value)?),
             }
         }
@@ -2074,6 +2159,133 @@ impl<'a> Css<'a, '_> {
         key_name(&property.key)
     }
 
+    /// A dynamic group's values as `(property, condition)`, in the order the
+    /// runtime walks them: a condition key holds a style, and a property holds
+    /// a value or a value per condition. `None` when one will not read.
+    fn dynamic_leaves(
+        &self,
+        object: &oxc::ast::ast::ObjectExpression<'_>,
+        condition: &str,
+        out: &mut Vec<(String, String)>,
+    ) -> Option<()> {
+        let mut seen = FxHashSet::default();
+        for property in &object.properties {
+            let ObjectPropertyKind::ObjectProperty(property) = property else { return None };
+            let name = self.key_text(property)?;
+            // A key written twice is one value to the runtime and two here, and
+            // the values are moved out by position.
+            if !seen.insert(name.clone()) {
+                return None;
+            }
+            if is_condition(&name) {
+                let Expression::ObjectExpression(inner) = &property.value else { return None };
+                self.dynamic_leaves(inner, &join(condition, &name), out)?;
+                continue;
+            }
+            self.dynamic_values(&barq_css::atoms::kebab(&name), &property.value, condition, out)?;
+        }
+        Some(())
+    }
+
+    fn dynamic_values(
+        &self,
+        property: &str,
+        value: &Expression<'_>,
+        condition: &str,
+        out: &mut Vec<(String, String)>,
+    ) -> Option<()> {
+        if let Expression::ObjectExpression(conditions) = value {
+            let mut seen = FxHashSet::default();
+            for inner in &conditions.properties {
+                let ObjectPropertyKind::ObjectProperty(inner) = inner else { return None };
+                let key = self.key_text(inner)?;
+                if !seen.insert(key.clone()) {
+                    return None;
+                }
+                let at =
+                    if key == "default" { condition.to_string() } else { join(condition, &key) };
+                self.dynamic_values(property, &inner.value, &at, out)?;
+            }
+            return Some(());
+        }
+        if !self.holds_one_value(value) {
+            return None;
+        }
+        out.push((property.to_string(), condition.to_string()));
+        Some(())
+    }
+
+    /// A `props` call that is left only merging class strings and compiled
+    /// dynamic groups, pointed at `mergeStyles`.
+    ///
+    /// `props` takes style objects too, so calling it ships the walk that turns
+    /// one into atoms and the registry it writes to, about 6 KB gzipped. Every
+    /// object here is already folded, and an argument this pass cannot vouch
+    /// for keeps `props`.
+    fn merge_styles(&mut self, call: &mut oxc::ast::ast::CallExpression<'a>, span: Span) -> bool {
+        let ready = call.arguments.iter().all(|argument| {
+            argument.as_expression().is_some_and(|expression| self.merges_as_is(expression))
+        });
+        if ready {
+            call.callee = Expression::new_identifier(span, MERGE_STYLES, &self.ast);
+            self.merges = true;
+        }
+        ready
+    }
+
+    /// A class string, nothing, or a call to a dynamic group this pass compiled.
+    fn merges_as_is(&self, expression: &Expression<'_>) -> bool {
+        match without_type_wrappers(expression) {
+            Expression::StringLiteral(_) | Expression::NullLiteral(_) => true,
+            Expression::BooleanLiteral(literal) => !literal.value,
+            Expression::Identifier(identifier) => identifier.name == "undefined",
+            Expression::ConditionalExpression(choice) => {
+                self.merges_as_is(&choice.consequent) && self.merges_as_is(&choice.alternate)
+            }
+            Expression::LogicalExpression(logical) if logical.operator == LogicalOperator::And => {
+                self.merges_as_is(&logical.right)
+            }
+            Expression::CallExpression(call) => {
+                let Expression::Identifier(identifier) = without_type_wrappers(&call.callee) else {
+                    return false;
+                };
+                identifier
+                    .reference_id
+                    .get()
+                    .and_then(|reference| self.scoping.get_reference(reference).symbol_id())
+                    .is_some_and(|symbol| self.dynamics.contains(&symbol))
+            }
+            _ => false,
+        }
+    }
+
+    /// `dynamic`, `dynamicIn`, or `dynamic` through a binding `layer` made.
+    fn is_dynamic_callee(&self, callee: &Expression<'_>) -> bool {
+        if matches!(self.tag_of(callee), Some(Tag::Dynamic | Tag::DynamicIn)) {
+            return true;
+        }
+        let Expression::StaticMemberExpression(member) = without_type_wrappers(callee) else {
+            return false;
+        };
+        member.property.name == "dynamic"
+            && crate::analysis::symbol_of(self.scoping, &member.object)
+                .is_some_and(|symbol| self.layers.contains_key(&symbol))
+    }
+
+    /// Whether a dynamic declaration's value can be one custom property.
+    ///
+    /// A value per condition and a `firstThatWorks` list are several
+    /// declarations, which one variable cannot carry.
+    fn holds_one_value(&self, value: &Expression<'_>) -> bool {
+        match without_type_wrappers(value) {
+            Expression::ObjectExpression(_) | Expression::ArrayExpression(_) => false,
+            Expression::CallExpression(call) => {
+                self.tag_of(&call.callee) != Some(Tag::FirstThatWorks)
+            }
+            _ => true,
+        }
+    }
+
     /// Whether a foldable expression's value is a NUMBER rather than its text.
     fn is_numeric(&self, expression: &Expression<'_>) -> bool {
         crate::analysis::symbol_of(self.scoping, expression)
@@ -2128,22 +2340,88 @@ impl<'a> Css<'a, '_> {
             // `when["2xl"]`: a member whose name is not an identifier, which
             // is what a breakpoint is usually called.
             Expression::ComputedMemberExpression(member) => {
-                let Expression::StringLiteral(name) = without_type_wrappers(&member.expression)
-                else {
-                    return None;
-                };
-                self.member_text(&member.object, name.value.as_str())
+                self.member_text(&member.object, &member_name(&member.expression)?)
             }
             _ => None,
         }
     }
 
     fn member_text(&self, object: &Expression<'_>, name: &str) -> Option<String> {
-        let symbol = crate::analysis::symbol_of(self.scoping, object)?;
+        let (symbol, prefix) = self.member_path(object)?;
         match self.groups.get(&symbol) {
-            Some(group) => group.get(name).cloned(),
+            Some(group) => group.get(&member_join(&prefix, name)).cloned(),
             None => self.miss(symbol),
         }
+    }
+
+    /// The binding a member chain starts from, and the path down it:
+    /// `theme.color` is `theme` and `color`, so `theme.color.brand` reads the
+    /// token a nested group declared.
+    fn member_path(&self, expression: &Expression<'_>) -> Option<(SymbolId, String)> {
+        match without_type_wrappers(expression) {
+            Expression::StaticMemberExpression(member) => {
+                let (symbol, prefix) = self.member_path(&member.object)?;
+                Some((symbol, member_join(&prefix, member.property.name.as_str())))
+            }
+            Expression::ComputedMemberExpression(member) => {
+                let name = member_name(&member.expression)?;
+                let (symbol, prefix) = self.member_path(&member.object)?;
+                Some((symbol, member_join(&prefix, &name)))
+            }
+            other => Some((crate::analysis::symbol_of(self.scoping, other)?, String::new())),
+        }
+    }
+}
+
+/// The local name a module imports `mergeStyles` under.
+const MERGE_STYLES: &str = "_$mergeStyles";
+
+/// `mergeStyles` beside the names the module already imports from the package.
+fn import_merge_styles<'a>(allocator: &'a Allocator, program: &mut Program<'a>, css_source: &str) {
+    let ast = AstBuilder::new(allocator);
+    for statement in program.body.iter_mut() {
+        let Statement::ImportDeclaration(declaration) = statement else { continue };
+        if declaration.source.value.as_str() != css_source
+            || declaration.import_kind != oxc::ast::ast::ImportOrExportKind::Value
+        {
+            continue;
+        }
+        let Some(specifiers) = declaration.specifiers.as_mut() else { continue };
+        if specifiers.iter().any(|specifier| {
+            matches!(specifier, ImportDeclarationSpecifier::ImportNamespaceSpecifier(_))
+        }) {
+            continue;
+        }
+        specifiers.push(ImportDeclarationSpecifier::new_import_specifier(
+            Span::default(),
+            ModuleExportName::IdentifierName(oxc::ast::ast::IdentifierName::new(
+                Span::default(),
+                "mergeStyles",
+                &ast,
+            )),
+            oxc::ast::ast::BindingIdentifier::new(Span::default(), MERGE_STYLES, &ast),
+            oxc::ast::ast::ImportOrExportKind::Value,
+            &ast,
+        ));
+        return;
+    }
+}
+
+/// A dynamic group's values, moved out in the order [`Css::dynamic_leaves`]
+/// found them, each leaving `null` where it stood.
+fn take_leaves<'a>(
+    ast: &AstBuilder<'a>,
+    object: &mut oxc::ast::ast::ObjectExpression<'a>,
+    out: &mut Vec<Expression<'a>>,
+) {
+    for property in object.properties.iter_mut() {
+        let ObjectPropertyKind::ObjectProperty(property) = property else { continue };
+        if let Expression::ObjectExpression(inner) = &mut property.value {
+            take_leaves(ast, inner, out);
+            continue;
+        }
+        let placeholder = Expression::new_null_literal(property.value.span(), ast);
+        out.push(std::mem::replace(&mut property.value, placeholder));
     }
 }
 
@@ -2242,7 +2520,99 @@ fn key_name(key: &PropertyKey<'_>) -> Option<String> {
     match key {
         PropertyKey::StaticIdentifier(identifier) => Some(identifier.name.to_string()),
         PropertyKey::StringLiteral(literal) => Some(literal.value.to_string()),
+        // `{ 50: "#f8fafc" }`, which is how a colour scale is written. The key
+        // is the number's text, as `String(50)` is.
+        PropertyKey::NumericLiteral(literal) => Some(barq_css::atoms::number_text(literal.value)),
         _ => None,
+    }
+}
+
+/// The name a computed member reads: `scale["2xl"]` or `scale[50]`.
+fn member_name(expression: &Expression<'_>) -> Option<String> {
+    match without_type_wrappers(expression) {
+        Expression::StringLiteral(name) => Some(name.value.to_string()),
+        Expression::NumericLiteral(number) => Some(barq_css::atoms::number_text(number.value)),
+        _ => None,
+    }
+}
+
+/// Where a group member sits under a nested group. Not a character a token
+/// name is written with, so `theme["a.b"]` and `theme.a.b` stay apart.
+const MEMBER_PATH: char = '\u{0}';
+
+fn member_join(prefix: &str, name: &str) -> String {
+    if prefix.is_empty() { name.to_string() } else { format!("{prefix}{MEMBER_PATH}{name}") }
+}
+
+enum TokenEntry {
+    Reference(String),
+    Group(Vec<(String, TokenEntry)>),
+}
+
+/// Every token as its declaration and its reference. A group's tokens are
+/// named by their path, so `{ color: { brand } }` is `--color-brand`.
+fn declare_tokens(
+    tokens: &[(String, barq_css::atoms::TokenValue)],
+    prefix: &str,
+    group: &str,
+    global: bool,
+    declarations: &mut String,
+) -> Vec<(String, TokenEntry)> {
+    let mut entries = Vec::with_capacity(tokens.len());
+    for (token, value) in tokens {
+        let path = if prefix.is_empty() { token.clone() } else { format!("{prefix}-{token}") };
+        let text = match value {
+            barq_css::atoms::TokenValue::Group(inner) => {
+                let inner = declare_tokens(inner, &path, group, global, declarations);
+                entries.push((token.clone(), TokenEntry::Group(inner)));
+                continue;
+            }
+            barq_css::atoms::TokenValue::Text(text) => text.clone(),
+            barq_css::atoms::TokenValue::Number(number) => barq_css::atoms::number_text(*number),
+        };
+        let property = if global {
+            barq_css::atoms::global_property(&path)
+        } else {
+            barq_css::atoms::token_property(group, &path)
+        };
+        if !declarations.is_empty() {
+            declarations.push(';');
+        }
+        declarations.push_str(&format!("{property}:{text}"));
+        entries.push((token.clone(), TokenEntry::Reference(format!("var({property})"))));
+    }
+    entries
+}
+
+/// The path of every token, which is what `globalVars` keys its rule on.
+fn token_paths(
+    tokens: &[(String, barq_css::atoms::TokenValue)],
+    prefix: &str,
+    out: &mut Vec<String>,
+) {
+    for (token, value) in tokens {
+        let path = if prefix.is_empty() { token.clone() } else { format!("{prefix}-{token}") };
+        match value {
+            barq_css::atoms::TokenValue::Group(inner) => token_paths(inner, &path, out),
+            _ => out.push(path),
+        }
+    }
+}
+
+/// A token set's references by member path, which is how a group is read.
+fn flatten_tokens(
+    entries: Vec<(String, TokenEntry)>,
+    prefix: &str,
+    out: &mut FxHashMap<String, String>,
+) {
+    for (token, entry) in entries {
+        let path = member_join(prefix, &token);
+        match entry {
+            TokenEntry::Reference(reference) => {
+                out.insert(path, reference);
+            }
+            TokenEntry::Group(inner) => flatten_tokens(inner, &path, out),
+        }
     }
 }
 
@@ -2944,11 +3314,64 @@ mod decline_tests {
     use crate::options::{ResolvedOptions, TransformOptions};
 
     const IMPORT: &str = "import { atoms, atomsIn, create, createIn, createTheme, defineVars, \
-                          dynamic, globalCss, layer, props } from \"@barqjs/css\";\n";
+                          dynamic, dynamicIn, firstThatWorks, globalCss, layer, props } from \
+                          \"@barqjs/css\";\n";
 
     fn run(body: &str) -> CompileOutput {
         compile(&format!("{IMPORT}{body}"), &ResolvedOptions::with_filename("s.tsx"))
             .expect("compiles")
+    }
+
+    /// A `props` call left merging only what this pass folded calls
+    /// `mergeStyles`, so the module does not reach `props`' object walk.
+    #[test]
+    fn a_props_call_left_merging_imports_merge_styles() {
+        let out = run("const t = dynamic((c) => ({ color: c }));\n\
+             export const a = (c, on) => props({ padding: 1 }, on && { margin: 2 }, t(c));");
+        assert!(out.code.contains("_$mergeStyles(on ? \"a-padding"), "{}", out.code);
+        assert!(
+            out.code.contains("mergeStyles as _$mergeStyles } from \"@barqjs/css\""),
+            "{}",
+            out.code
+        );
+        for body in [
+            "const t = dynamic((c) => ({ color: c }));\nexport const a = (c, x) => props(x, t(c));",
+            "let t = dynamic((c) => ({ color: c }));\nexport const a = (c) => props(t(c));",
+            "const t = dynamic((c) => ({ color: c, ...c }));\nexport const a = (c) => props(t(c));",
+        ] {
+            let kept = run(body);
+            assert!(!kept.code.contains("mergeStyles"), "{}", kept.code);
+        }
+    }
+
+    /// The binding is left standing for a call through it this pass declines,
+    /// and a bundler can drop it, and the runtime behind it, once none is left.
+    #[test]
+    fn a_layer_binding_is_pure() {
+        let out = run("const ui = layer(\"ui\");\nexport const a = ui({ color: \"red\" });");
+        assert!(out.code.contains("/* @__PURE__ */ layer("), "{}", out.code);
+    }
+
+    /// A body this declines is the runtime's to evaluate, so it has to reach
+    /// the runtime as it was written. Its values used to be moved out one
+    /// property at a time, so a condition key after a plain one left
+    /// `color: null` behind and the runtime styled nothing.
+    #[test]
+    fn a_dynamic_body_it_declines_reaches_the_runtime_as_written() {
+        for body in [
+            "export const a = dynamic((c, h) => ({ color: c, \":hover\": h }));",
+            "export const a = dynamic((c) => ({ color: c, ...rest }));",
+            "export const a = dynamic((c) => ({ color: c, backgroundColor: { default: c, \":hover\": [c] } }));",
+            "export const a = dynamic((c) => ({ color: c, width: firstThatWorks(c, \"1px\") }));",
+            "export const a = dynamicIn(\"ui\", (c, h) => ({ color: c, [h]: c }));",
+            "const ui = layer(\"ui\");\nexport const a = ui.dynamic((c) => ({ color: c, \":hover\": { ...c } }));",
+        ] {
+            let out = run(body);
+            assert!(codes(&out).contains(&"BARQ017"), "{body}\n{}", out.code);
+            assert!(out.code.contains("color: c,"), "{}", out.code);
+            assert!(!out.code.contains("null"), "{}", out.code);
+            assert_eq!(out.css, None, "{body}");
+        }
     }
 
     /// The rules a module emitted, as a set: two orderings of the same source
@@ -3401,6 +3824,36 @@ mod cross_file_tests {
         assert!(css.contains("padding-top:8px"), "{css}");
         assert!(css.contains("flex-grow:8"), "{css}");
         assert!(!css.contains("flex-grow:8px"), "{css}");
+    }
+
+    /// A token set grouped by name, which is how a palette is written, crosses
+    /// the boundary by member path. It was declined outright, so the tokens
+    /// and every call reading one went to the runtime.
+    #[test]
+    fn a_nested_token_set_folds_in_the_module_that_imports_it() {
+        let declared = run(
+            "import { defineVars } from \"@barqjs/css\";\n\
+             export const theme = defineVars({ color: { brand: \"red\", gray: { 900: \"#111\", 50: \"#fafafa\" } } });",
+            Vec::new(),
+            true,
+        );
+        assert!(declared.warnings.is_empty(), "{:?}", declared.warnings);
+        let css = declared.css.as_deref().unwrap_or_default();
+        let at = |needle: &str| css.find(needle).unwrap_or_else(|| panic!("{needle} in {css}"));
+        assert!(at("--color-gray-50-") < at("--color-gray-900-"), "{css}");
+        assert!(declared.code.contains("gray: {"), "{}", declared.code);
+
+        let out = run(
+            "import { atoms } from \"@barqjs/css\";\n\
+             import { theme } from \"./theme.ts\";\n\
+             export const a = atoms({ color: theme.color.gray[900], borderColor: theme.color.brand });",
+            rows(&declared, "./theme.ts"),
+            false,
+        );
+        assert!(!out.code.contains("atoms("), "{}", out.code);
+        let css = out.css.as_deref().unwrap_or_default();
+        assert!(css.contains("{color:var(--color-gray-900-"), "{css}");
+        assert!(css.contains("{border-top-color:var(--color-brand-"), "{css}");
     }
 
     /// A token set, a plain constant, a group and a layer binding: the four

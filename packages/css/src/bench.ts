@@ -103,13 +103,12 @@ time("variants, a compound arm", 200_000, () => badge({ size: "lg", loud: true }
 time(
   "css, a block already compiled",
   200_000,
-  () =>
-    css`
-      color: red;
-      &:hover {
-        color: blue;
-      }
-    `,
+  () => css`
+    color: red;
+    &:hover {
+      color: blue;
+    }
+  `,
 );
 
 // Last, because every call leaves a rule behind.
@@ -119,11 +118,10 @@ time("atoms, 4 declarations, cold", 2_000, (index) =>
 time(
   "css, a block never seen",
   2_000,
-  (index) =>
-    css`
-      color: red;
-      &:hover {
-        order: ${index};
-      }
-    `,
+  (index) => css`
+    color: red;
+    &:hover {
+      order: ${index};
+    }
+  `,
 );

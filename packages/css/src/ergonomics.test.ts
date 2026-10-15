@@ -802,11 +802,15 @@ describe("atoms > values", () => {
 });
 
 describe("dynamic > what cannot be one custom property", () => {
-  test("a condition is skipped rather than named as if it were a property", () => {
+  test("a condition is its own variable rather than named as if it were a property", () => {
     const hover = dynamic((colour: string) => ({ ":hover": { color: colour }, color: colour }));
     const applied = hover("red");
-    expect(applied.$vars).toEqual({ [dynamicVar("color")]: "red" });
-    expect(applied.$class.split(" ")).toHaveLength(1);
+    expect(applied.$vars).toEqual({
+      [dynamicVar("color", ":hover")]: "red",
+      [dynamicVar("color")]: "red",
+    });
+    expect(Object.keys(applied.$vars).some((name) => name.includes(":"))).toBe(false);
+    expect(applied.$class.split(" ")).toHaveLength(2);
   });
 
   test("a longhand after its shorthand replaces that side, as it does in `atoms`", () => {

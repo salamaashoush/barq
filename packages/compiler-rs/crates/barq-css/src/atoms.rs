@@ -86,28 +86,70 @@ fn base36(mut value: u32) -> String {
     String::from_utf8(digits).expect("base36 alphabet is ASCII")
 }
 
-/// `JSON.stringify` over a flat object of strings and numbers.
+/// `JSON.stringify` over an object of strings, numbers and such objects.
 ///
 /// Spelled out because the token group's name is a hash of it and
 /// `@barqjs/css` computes that hash from `JSON.stringify(tokens)`. Anything
 /// that formatted one byte differently would name the same tokens two things.
+/// The entries are taken in the order given, which is [`in_property_order`]'s.
 pub fn json_object(entries: &[(String, TokenValue)]) -> String {
-    let mut out = String::from("{");
+    let mut out = String::new();
+    json_into(entries, &mut out);
+    out
+}
+
+fn json_into(entries: &[(String, TokenValue)], out: &mut String) {
+    out.push('{');
     for (index, (key, value)) in entries.iter().enumerate() {
         if index > 0 {
             out.push(',');
         }
-        json_string(key, &mut out);
+        json_string(key, out);
         out.push(':');
         match value {
-            TokenValue::Text(text) => json_string(text, &mut out),
+            TokenValue::Text(text) => json_string(text, out),
             // `JSON.stringify` has no spelling for a number that is not finite.
             TokenValue::Number(number) if !number.is_finite() => out.push_str("null"),
             TokenValue::Number(number) => out.push_str(&number_text(*number)),
+            TokenValue::Group(inner) => json_into(inner, out),
         }
     }
     out.push('}');
-    out
+}
+
+/// An object literal's entries in the order JavaScript enumerates them.
+///
+/// A key that is an array index comes first, in numeric order, and every other
+/// key keeps the place it was first written in; a key written twice holds its
+/// first place and its last value. `{ sm: "4px", 2: "8px" }` is `2` then `sm`
+/// to `Object.entries` and to `JSON.stringify`, so a token set read in source
+/// order hashed to another group than the runtime's and declared its
+/// properties in another order.
+pub fn in_property_order<T>(entries: Vec<(String, T)>) -> Vec<(String, T)> {
+    let mut unique: Vec<(String, T)> = Vec::with_capacity(entries.len());
+    for (key, value) in entries {
+        match unique.iter_mut().find(|(held, _)| *held == key) {
+            Some(slot) => slot.1 = value,
+            None => unique.push((key, value)),
+        }
+    }
+    let (mut indices, others): (Vec<_>, Vec<_>) =
+        unique.into_iter().partition(|(key, _)| array_index(key).is_some());
+    indices.sort_by_key(|(key, _)| array_index(key));
+    indices.extend(others);
+    indices
+}
+
+/// The number a key names when it is an array index: canonical digits below
+/// `2^32 - 1`.
+fn array_index(key: &str) -> Option<u32> {
+    if key.is_empty() || (key.len() > 1 && key.starts_with('0')) {
+        return None;
+    }
+    if !key.bytes().all(|byte| byte.is_ascii_digit()) {
+        return None;
+    }
+    key.parse::<u32>().ok().filter(|index| *index < u32::MAX)
 }
 
 /// What `String(value)` prints for a number: ECMAScript's `Number::toString`.
@@ -152,6 +194,8 @@ pub fn number_text(value: f64) -> String {
 pub enum TokenValue {
     Text(String),
     Number(f64),
+    /// Tokens grouped under a name, which prefixes each of theirs.
+    Group(Vec<(String, TokenValue)>),
 }
 
 fn json_string(text: &str, out: &mut String) {
@@ -205,6 +249,54 @@ pub fn global_property(token: &str) -> String {
 /// class name carries its own merge key.
 pub fn dynamic_var(property: &str) -> String {
     format!("--{property}-{}", hash32(property))
+}
+
+/// The custom property a dynamic declaration under a condition reads.
+///
+/// The condition's hash is the one its atoms' keys carry, so a variable names
+/// the atoms that read it, and the last hash is how `@barqjs/css`'s `props`
+/// tells this shape from [`dynamic_var`]'s.
+pub fn dynamic_var_in(property: &str, condition: &str) -> String {
+    if condition == "default" {
+        return dynamic_var(property);
+    }
+    let condition_hash = hash32(condition);
+    let check = hash32(&format!("{property}{NEST}{condition_hash}"));
+    format!("--{property}-{condition_hash}-{check}")
+}
+
+/// The atoms a dynamic declaration is: one per longhand, each reading its own
+/// variable, because a longhand reading the whole of `1px 2px` is a declaration
+/// no browser keeps. `@barqjs/css`'s `props` splits the value across them.
+pub fn dynamic_atoms(layer: &str, property: &str, condition: &str) -> Vec<Atom> {
+    dynamic_longhands(property)
+        .into_iter()
+        .map(|longhand| {
+            let value = format!("var({})", dynamic_var_in(longhand, condition));
+            atom_in(layer, longhand, condition, &value)
+        })
+        .collect()
+}
+
+/// Whether only the element that sets a dynamic variable reads it, which is
+/// when it can be registered as not inherited. A rule about a descendant, and
+/// one about a pseudo-element, reads it by inheritance.
+pub fn own_variable(condition: &str) -> bool {
+    tier_of(condition) != Tier::Descendant && !condition.contains("::")
+}
+
+pub fn dynamic_longhands(property: &str) -> Vec<&str> {
+    SHORTHANDS
+        .iter()
+        .find(|(name, _)| *name == property)
+        .map_or_else(|| vec![property], |(_, list)| list.to_vec())
+}
+
+/// A dynamic variable, registered as not inherited: only the element that
+/// sets it reads it, and an inherited custom property changed on an element
+/// restyles every element under it.
+pub fn dynamic_registration(variable: &str) -> String {
+    format!("@property {variable}{{syntax:\"*\";inherits:false}}")
 }
 
 /// A fallback list as the same declaration repeated, best LAST.
@@ -970,6 +1062,38 @@ mod tests {
         let message = collision.to_string();
         assert!(message.contains("width:40189px") && message.contains("width:797186px"));
         assert!(message.contains(&first.class), "{message}");
+    }
+
+    /// `JSON.stringify` and `Object.entries` put an array index first, so a
+    /// token set read in the order it was written hashed to another group.
+    #[test]
+    fn entries_are_in_the_order_javascript_enumerates_them() {
+        let keys = |entries: Vec<(String, u8)>| {
+            in_property_order(entries).into_iter().map(|(key, _)| key).collect::<Vec<_>>()
+        };
+        let written = ["sm", "10", "2", "01", "4294967295", "4294967294", "-1", "1.5", "0"];
+        assert_eq!(
+            keys(written.iter().map(|key| ((*key).to_string(), 0)).collect()),
+            ["0", "2", "10", "4294967294", "sm", "01", "4294967295", "-1", "1.5"]
+        );
+        let twice = in_property_order(vec![
+            ("a".to_string(), 1),
+            ("b".to_string(), 2),
+            ("a".to_string(), 3),
+        ]);
+        assert_eq!(twice, [("a".to_string(), 3), ("b".to_string(), 2)]);
+    }
+
+    #[test]
+    fn a_group_of_tokens_is_an_object_to_json() {
+        let entries = vec![
+            (
+                "color".to_string(),
+                TokenValue::Group(vec![("brand".to_string(), TokenValue::Text("red".to_string()))]),
+            ),
+            ("gap".to_string(), TokenValue::Number(8.0)),
+        ];
+        assert_eq!(json_object(&entries), r#"{"color":{"brand":"red"},"gap":8}"#);
     }
 
     #[test]

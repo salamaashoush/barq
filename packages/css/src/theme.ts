@@ -13,6 +13,7 @@
  * this project already rejected on its own measurement.
  */
 
+import type { VarReference } from "./atoms.ts";
 import { hash, register } from "./sheet.ts";
 
 export type TokenValue = string | number;
@@ -22,7 +23,7 @@ export type Tokens = { readonly [name: string]: TokenValue | Tokens };
 
 /** The `var()` reference for each token, in the shape the tokens were given. */
 export type Vars<T> = {
-  readonly [K in keyof T]: T[K] extends TokenValue ? string : Vars<T[K]>;
+  readonly [K in keyof T]: T[K] extends TokenValue ? VarReference : Vars<T[K]>;
 };
 
 /** Some of a token set's values, in the shape {@link Vars} has. */
