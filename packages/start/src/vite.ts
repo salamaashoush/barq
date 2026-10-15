@@ -18,13 +18,13 @@
  */
 
 import { existsSync } from "node:fs";
-import { readdir, writeFile } from "node:fs/promises";
+import { readFile, readdir, writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { type BarqCompilerOptions, barqVitePlugin } from "@barqjs/compiler/vite";
+import { type BarqCompilerOptions, barqVitePlugin, optimizable } from "@barqjs/compiler/vite";
 import { NodeRequest, sendNodeResponse } from "srvx/node";
-import { type Plugin, type ViteDevServer, isRunnableDevEnvironment } from "vite";
+import type { Plugin, RunnableDevEnvironment, ViteBuilder, ViteDevServer } from "vite";
 
 import { RPC_PREFIX } from "./index.ts";
 import {
@@ -67,9 +67,16 @@ export const CLIENT_ENTRY_ID = "virtual:barq-entry-client";
 export const SERVER_ENTRY_ID = "virtual:barq-entry-server";
 /** The runnable half. Always generated; there is nothing in it to override. */
 export const SERVE_ENTRY_ID = "virtual:barq-entry-serve";
+/**
+ * Server functions and pages behind one `fetch`, for a host that runs the
+ * server environment itself. Built under the `index` input, the name provider
+ * plugins look for on the `ssr` environment.
+ */
+export const SERVICE_ENTRY_ID = "virtual:barq-entry-service";
 const RESOLVED_CLIENT_ENTRY_ID = `\0${CLIENT_ENTRY_ID}`;
 const RESOLVED_SERVER_ENTRY_ID = `\0${SERVER_ENTRY_ID}`;
 const RESOLVED_SERVE_ENTRY_ID = `\0${SERVE_ENTRY_ID}`;
+const RESOLVED_SERVICE_ENTRY_ID = `\0${SERVICE_ENTRY_ID}`;
 
 /** Tried in order, against `<root>/<srcDir>/entry-{client,server}`. */
 const ENTRY_EXTENSIONS = [".tsx", ".ts", ".jsx", ".js"];
@@ -424,6 +431,56 @@ function defaultServeEntry(server: BarqServerOptions | undefined, spa: string | 
     `serveBarq({ ${options.join(", ")} });`,
     ``,
   ].join("\n");
+}
+
+/**
+ * The module a host imports when it owns the server environment.
+ *
+ * It has no static files and opens no socket, because a host that runs its own
+ * server environment serves the client output and listens itself. Server
+ * functions are matched first, as `createFetchHandler` does.
+ */
+function defaultServiceEntry(server: BarqServerOptions | undefined): string {
+  const options: string[] = [];
+  if (server?.allowedOrigins !== undefined) {
+    options.push(`allowedOrigins: ${JSON.stringify(server.allowedOrigins)}`);
+  }
+  if (server?.maxBodySize !== undefined) options.push(`maxBodySize: ${server.maxBodySize}`);
+  if (server?.maxFormSize !== undefined) options.push(`maxFormSize: ${server.maxFormSize}`);
+  return [
+    `import { handleServerFn } from "@barqjs/start/server";`,
+    ``,
+    `import handler from "${SERVER_ENTRY_ID}";`,
+    ``,
+    `const options = { ${options.join(", ")} };`,
+    ``,
+    `export default {`,
+    `  async fetch(request) {`,
+    `    return (await handleServerFn(request, options)) ?? handler.fetch(request);`,
+    `  },`,
+    `};`,
+    ``,
+  ].join("\n");
+}
+
+/**
+ * Whether a dev environment can import modules in this process.
+ *
+ * By its `runner` rather than `isRunnableDevEnvironment`, which is an
+ * `instanceof` against the caller's own copy of Vite and answers false for
+ * every environment when the plugin and the dev server load two copies.
+ */
+function isRunnable(environment: unknown): environment is RunnableDevEnvironment {
+  return typeof environment === "object" && environment !== null && "runner" in environment;
+}
+
+/**
+ * Whether another plugin owns the server environment: a host that runs it
+ * remotely (Cloudflare's workerd) has no runner here, and one that dispatches
+ * requests itself (Nitro's dev worker) answers `dispatchFetch`.
+ */
+export function isProviderOwned(environment: unknown): boolean {
+  return !isRunnable(environment) || "dispatchFetch" in (environment as object);
 }
 
 /**
@@ -986,6 +1043,7 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       // resolves — so the framework imports one stable specifier and the choice
       // costs nothing anywhere else.
       if (id === SERVE_ENTRY_ID) return RESOLVED_SERVE_ENTRY_ID;
+      if (id === SERVICE_ENTRY_ID) return RESOLVED_SERVICE_ENTRY_ID;
       if (id === ROUTER_ENTRY_ID) {
         return findRouterEntry(root, srcDirectory) ?? RESOLVED_ROUTER_ENTRY_ID;
       }
@@ -1010,6 +1068,7 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
         const document = spaMode ? shellFile : !serving && hasIndexHtml(root) ? "index.html" : null;
         return defaultServeEntry(options.server, document);
       }
+      if (id === RESOLVED_SERVICE_ENTRY_ID) return defaultServiceEntry(options.server);
       if (id === RESOLVED_ROUTER_ENTRY_ID) return defaultRouterEntry(treeImport);
       if (id === RESOLVED_START_ENTRY_ID) return "export const startInstance = undefined;\n";
       if (id !== RESOLVED_CLIENT_ASSETS_ID) return null;
@@ -1115,6 +1174,157 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
     },
   };
 
+  /**
+   * The server half, and what is done with it once it exists.
+   *
+   * Post order, so it runs after any host that orchestrates the build itself.
+   * Building anything from a hook turns off Vite's own build of every
+   * environment, so when nothing else claims the build this builds the rest,
+   * in definition order, which is what Vite would have done.
+   */
+  const finish: Plugin = {
+    name: "barq-start:finish",
+    sharedDuringBuild: true,
+    buildApp: {
+      order: "post",
+      async handler(builder) {
+        const ssr = builder.environments[ENVIRONMENTS.server];
+        if (!orchestrated(builder)) {
+          for (const environment of Object.values(builder.environments)) {
+            if (!environment.isBuilt) await builder.build(environment);
+          }
+        }
+        if (ssr === undefined || !ssr.isBuilt || !existsSync(join(outDirOf(ssr), serverFile))) {
+          if (options.prerender !== undefined || options.verify !== undefined || spaMode) {
+            builder.config.logger.warn(
+              `[barq-start] Another plugin builds the \`${ENVIRONMENTS.server}\` environment, so barq has no \`${serverFile}\` of its own to import, ` +
+                "and `prerender`, `verify` and `spa` did not run. They need the server bundle barq builds.",
+            );
+          }
+          const client = builder.environments[ENVIRONMENTS.client];
+          const clientOut = client === undefined ? null : outDirOf(client);
+          if (clientOut !== null && existsSync(clientOut))
+            await writeAssetManifest(clientOut, [], base, hashedAssets);
+          return;
+        }
+        await afterServer(builder, ssr);
+      },
+    },
+  };
+
+  /**
+   * Whether another plugin builds the server environments itself.
+   *
+   * A non-`pre` `buildApp` hook is a claim even before it has run, since a
+   * `post` one may sort after this; a `pre` one prepares rather than builds. A
+   * server environment that is already built was built by a config-level
+   * orchestrator, which Vite runs before the first `post` hook.
+   */
+  const orchestrated = (builder: ViteBuilder): boolean =>
+    builder.config.plugins.some((plugin) => {
+      if (plugin.buildApp === undefined || plugin.name.startsWith("barq-start:")) return false;
+      return typeof plugin.buildApp !== "object" || plugin.buildApp.order !== "pre";
+    }) ||
+    Object.values(builder.environments).some(
+      (environment) => environment.isBuilt && environment.name !== ENVIRONMENTS.client,
+    );
+
+  type Built = { config: { root: string; build: { outDir: string } } };
+
+  // RESOLVED against the root: `build.outDir` may be relative, and joining a
+  // relative one lands next to the process's cwd rather than the project's.
+  const outDirOf = (environment: Built): string =>
+    resolve(environment.config.root, environment.config.build.outDir);
+
+  const afterServer = async (builder: ViteBuilder, ssr: Built): Promise<void> => {
+    const client = builder.environments[ENVIRONMENTS.client] as Built;
+    const wanted = options.prerender;
+    const verify = options.verify;
+    const clientOut = outDirOf(client);
+    let pages: readonly PrerenderedPage[] = [];
+
+    // The entry is imported only for something to ask it. A build with
+    // neither option has nothing to ask, and still has a directory to index.
+    if (wanted !== undefined || verify !== undefined || spaMode) {
+      /**
+       * IN-PROCESS, against the bundle that was just written.
+       *
+       * TanStack spawns `vite.preview()` and fetches over a socket, which costs
+       * them a config re-resolved from disk that loses how the parent was
+       * launched, and a server filename reconstructed from the input. What it
+       * does NOT cost them, and what this inherits exactly, is that a
+       * platform-targeted bundle cannot be imported into Node at all. That is a
+       * limit of importing a server build, not of the
+       * transport, and it is stated rather than papered over: a project
+       * targeting a non-Node runtime prerenders on that runtime or not at all.
+       */
+      const file = join(outDirOf(ssr), serverFile);
+      const entry = (await import(pathToFileURL(file).href)) as ServerEntryModule;
+
+      // The chain check, BEFORE anything is written. A build that is going to
+      // fail should not leave half a site on disk first.
+      if (verify !== undefined) {
+        const check = entry.default?.verifyChains;
+        const reachability = verify.reachability();
+        if (typeof check !== "function") {
+          throw new TypeError(
+            "[barq-start] The `verify` option is set, but the server entry's default export has no `verifyChains`, so the middleware check cannot run. " +
+              "Use `export default createStartHandler()` from `@barqjs/router/server` in the server entry.",
+          );
+        }
+        if (reachability === undefined) {
+          throw new TypeError(
+            "[barq-start] `verify.reachability()` answered nothing, so the build cannot tell which server functions each route reaches and the check would pass without checking anything. " +
+              "The client build found no route module to walk from. With `barqRouter` composed by hand, return what its `onReachability` reports from `verify.reachability`.",
+          );
+        }
+        const report = await check(reachability);
+        if (report !== "") {
+          if ((verify.onViolation ?? "error") === "warn") {
+            builder.config.logger.warn(`[barq-start] ${report}`);
+          } else {
+            throw new Error(`[barq-start] ${report}`);
+          }
+        }
+      }
+
+      if (wanted !== undefined) {
+        const result = await prerender({
+          entry,
+          outDir: clientOut,
+          routes: wanted.routes ?? [],
+          crawl: wanted.crawl ?? true,
+          concurrency: wanted.concurrency ?? 4,
+          filter: wanted.filter,
+          subfolderIndex: wanted.subfolderIndex ?? true,
+          retryCount: wanted.retryCount,
+          retryDelay: wanted.retryDelay,
+          sitemap: wanted.sitemap,
+          base,
+          log: (message) => builder.config.logger.info(`[barq] prerender ${message}`),
+        });
+        pages = result.pages;
+        wanted.onPages?.(pages);
+      }
+
+      if (spaMode) {
+        const shell = await prerenderShell({
+          entry,
+          outDir: clientOut,
+          maskPath: options.spa?.maskPath,
+          outputPath: shellFile,
+        });
+        builder.config.logger.info(`[barq] spa shell -> ${shell}`);
+      }
+    }
+
+    // LAST, and unconditionally: the manifest indexes what is on disk, so it
+    // is written after the prerenderer has finished putting things there, and
+    // a project with no prerender still has chunks and `public/` files to
+    // serve. Skipped only when there is no client output at all.
+    if (existsSync(clientOut)) await writeAssetManifest(clientOut, pages, base, hashedAssets);
+  };
+
   const dev: Plugin = {
     name: "barq-start:dev",
     sharedDuringBuild: true,
@@ -1125,7 +1335,8 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
     config(user) {
       // `configResolved` is too late — the environments have to exist by the
       // end of this hook — so the root is resolved the way Vite resolves it.
-      const ownsEntry = hasIndexHtml(resolve(user.root ?? process.cwd()));
+      const projectRoot = resolve(user.root ?? process.cwd());
+      const ownsEntry = hasIndexHtml(projectRoot);
       const inputs = {
         // NAMED, both of them. The client name is what `generateBundle` above
         // identifies its own entry chunk by, and the ssr name is the emitted
@@ -1142,11 +1353,18 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
         // different questions and `packages/start`'s own build fixture answers
         // them differently: it turns pages off and still wants this entry.
         client: ownsEntry ? undefined : { index: CLIENT_ENTRY_ID },
-        // TWO ssr inputs: `server.js` is what the build imports to prerender and
-        // what a platform imports for its `fetch`, and `serve.js` is what a
-        // person runs. `defaultServeEntry` says why they cannot be one file.
-        server: { server: SERVER_ENTRY_ID, serve: SERVE_ENTRY_ID },
+        // `server.js` is what the build imports to prerender, `serve.js` is
+        // what a person runs, and `index.js` is what a host that owns this
+        // environment imports. `defaultServeEntry` says why the first two
+        // cannot be one file.
+        server: { server: SERVER_ENTRY_ID, serve: SERVE_ENTRY_ID, index: SERVICE_ENTRY_ID },
       };
+      // Imported by modules the dependency scanner never reads: the generated
+      // client entry, and the client stub of every server function. Found
+      // late, each re-optimizes and reloads the page.
+      const lateImports = ["@barqjs/router/client", "@barqjs/start/client"].filter((name) =>
+        optimizable(projectRoot, name.split("/").slice(0, 2).join("/")),
+      );
       return {
         // `?? "custom"`, never a bare assignment: `mergeConfig` lets a plugin's
         // scalar win, so returning it unconditionally would silently delete a
@@ -1159,6 +1377,7 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
         // `--app` is not needed. With none declared, `buildApp` still fires but
         // `builder.environments.ssr` is undefined and the build dies.
         builder: {},
+        ...(lateImports.length > 0 ? { optimizeDeps: { include: lateImports } } : {}),
         environments: {
           [ENVIRONMENTS.client]: {
             consumer: "client" as const,
@@ -1189,116 +1408,24 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
     },
 
     /**
-     * Client first, then ssr, and the order is not cosmetic: the server half
-     * places the client's hashed chunk in its `<head>`, and that name only
-     * exists once the client build has emitted it.
+     * Client first, and the order is not cosmetic: the server half places the
+     * client's hashed chunk in its `<head>`, and that name only exists once the
+     * client build has emitted it.
      *
-     * Building them here rather than leaving it to Vite's fallback also pins the
-     * order — the fallback iterates `Object.keys(config.environments)`, which is
-     * config-merge order rather than anything declared.
+     * Normal order, never `pre`: a host's `pre` hook is where it empties the
+     * output directory, and a client built before that is deleted. A host's
+     * own orchestration runs after this, and builds the server environments in
+     * whatever order it needs.
      */
     async buildApp(builder) {
       const client = builder.environments[ENVIRONMENTS.client];
-      const ssr = builder.environments[ENVIRONMENTS.server];
-      if (client === undefined || ssr === undefined) {
+      if (client === undefined) {
         throw new Error(
-          `[barq-start] The Vite config has no \`${ENVIRONMENTS.client}\` or no \`${ENVIRONMENTS.server}\` environment, so there is nothing to build. ` +
-            "`barqStart()` declares both: check that another plugin or `environments` in the config does not remove one.",
+          `[barq-start] The Vite config has no \`${ENVIRONMENTS.client}\` environment, so there is nothing to build. ` +
+            "`barqStart()` declares it: check that another plugin or `environments` in the config does not remove it.",
         );
       }
       if (!client.isBuilt) await builder.build(client);
-      if (!ssr.isBuilt) await builder.build(ssr);
-
-      const wanted = options.prerender;
-      const verify = options.verify;
-
-      // RESOLVED against the root: `build.outDir` may be relative, and joining a
-      // relative one lands next to the process's cwd rather than the project's.
-      const outDirOf = (environment: { config: { root: string; build: { outDir: string } } }) =>
-        resolve(environment.config.root, environment.config.build.outDir);
-      const clientOut = outDirOf(client);
-      let pages: readonly PrerenderedPage[] = [];
-
-      // The entry is imported only for something to ask it. A build with
-      // neither option has nothing to ask, and still has a directory to index.
-      if (wanted !== undefined || verify !== undefined || spaMode) {
-        /**
-         * IN-PROCESS, against the bundle that was just written.
-         *
-         * TanStack spawns `vite.preview()` and fetches over a socket, which costs
-         * them a config re-resolved from disk that loses how the parent was
-         * launched, and a server filename reconstructed from the input. What it
-         * does NOT cost them, and what this inherits exactly, is that a
-         * platform-targeted bundle cannot be imported into Node at all. That is a
-         * limit of importing a server build, not of the
-         * transport, and it is stated rather than papered over: a project
-         * targeting a non-Node runtime prerenders on that runtime or not at all.
-         */
-        const file = join(outDirOf(ssr), serverFile);
-        const entry = (await import(pathToFileURL(file).href)) as ServerEntryModule;
-
-        // The chain check, BEFORE anything is written. A build that is going to
-        // fail should not leave half a site on disk first.
-        if (verify !== undefined) {
-          const check = entry.default?.verifyChains;
-          const reachability = verify.reachability();
-          if (typeof check !== "function") {
-            throw new TypeError(
-              "[barq-start] The `verify` option is set, but the server entry's default export has no `verifyChains`, so the middleware check cannot run. " +
-                "Use `export default createStartHandler()` from `@barqjs/router/server` in the server entry.",
-            );
-          }
-          if (reachability === undefined) {
-            throw new TypeError(
-              "[barq-start] `verify.reachability()` answered nothing, so the build cannot tell which server functions each route reaches and the check would pass without checking anything. " +
-                "Store what `barqRouter({ onReachability })` reports in a variable and return that variable from `verify.reachability`.",
-            );
-          }
-          const report = await check(reachability);
-          if (report !== "") {
-            if ((verify.onViolation ?? "error") === "warn") {
-              builder.config.logger.warn(`[barq-start] ${report}`);
-            } else {
-              throw new Error(`[barq-start] ${report}`);
-            }
-          }
-        }
-
-        if (wanted !== undefined) {
-          const result = await prerender({
-            entry,
-            outDir: clientOut,
-            routes: wanted.routes ?? [],
-            crawl: wanted.crawl ?? true,
-            concurrency: wanted.concurrency ?? 4,
-            filter: wanted.filter,
-            subfolderIndex: wanted.subfolderIndex ?? true,
-            retryCount: wanted.retryCount,
-            retryDelay: wanted.retryDelay,
-            sitemap: wanted.sitemap,
-            base,
-            log: (message) => builder.config.logger.info(`[barq] prerender ${message}`),
-          });
-          pages = result.pages;
-          wanted.onPages?.(pages);
-        }
-
-        if (spaMode) {
-          const shell = await prerenderShell({
-            entry,
-            outDir: clientOut,
-            maskPath: options.spa?.maskPath,
-            outputPath: shellFile,
-          });
-          builder.config.logger.info(`[barq] spa shell -> ${shell}`);
-        }
-      }
-
-      // LAST, and unconditionally: the manifest indexes what is on disk, so it
-      // is written after the prerenderer has finished putting things there, and
-      // a project with no prerender still has chunks and `public/` files to
-      // serve. Skipped only when there is no client output at all.
-      if (existsSync(clientOut)) await writeAssetManifest(clientOut, pages, base, hashedAssets);
     },
 
     configResolved(config) {
@@ -1306,14 +1433,99 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       base = config.base ?? "/";
     },
 
+    /**
+     * A file only the server imports has no update path to the browser, so
+     * the page would go on showing what the server rendered before the edit.
+     */
+    hotUpdate({ file, modules, server: devServer }) {
+      if (this.environment.name !== ENVIRONMENTS.server || !isRunnable(this.environment)) return;
+      if (modules.length === 0) return;
+      const client = devServer.environments[ENVIRONMENTS.client];
+      if (client !== undefined && (client.moduleGraph.getModulesByFile(file)?.size ?? 0) === 0) {
+        client.hot.send({ type: "full-reload" });
+      }
+    },
+
+    /**
+     * `vite preview` runs the built server: Vite serves the client output, and
+     * whatever no file answers goes through `index.js`, as a deployment's
+     * runtime would send it.
+     */
+    configurePreviewServer(preview) {
+      const config = preview.config;
+      const serverBuild = config.environments[ENVIRONMENTS.server]?.build;
+      const clientBuild = config.environments[ENVIRONMENTS.client]?.build;
+      if (serverBuild === undefined || clientBuild === undefined) return undefined;
+      const output = serverBuild.rollupOptions.output;
+      const names = Array.isArray(output) ? output[0]?.entryFileNames : output?.entryFileNames;
+      const entryFile = join(
+        resolve(config.root, serverBuild.outDir),
+        typeof names === "string" ? names.replace("[name]", "index") : "index.js",
+      );
+      if (!existsSync(entryFile)) return undefined;
+      const shell = spaMode ? join(resolve(config.root, clientBuild.outDir), shellFile) : null;
+      const prefix = (config.base ?? "/").replace(/\/$/, "");
+      return () => {
+        let service: Promise<{ default: { fetch(request: Request): Promise<Response> } }> | null =
+          null;
+        preview.middlewares.use((req, res, next) => {
+          void (async () => {
+            try {
+              service ??= import(pathToFileURL(entryFile).href);
+              // The URL as it arrived: preview's base middleware took the base
+              // off and its HTML fallback may have rewritten it to
+              // `/index.html`, and the deployed handler sees neither.
+              const seen = req.url;
+              req.url = req.originalUrl ?? `${prefix}${req.url ?? "/"}`;
+              let response = await (await service).default.fetch(new NodeRequest({ req, res }));
+              const navigation =
+                (req.method === "GET" || req.method === "HEAD") &&
+                (req.headers.accept ?? "").includes("text/html");
+              if (response.status === 404 && navigation) {
+                // With no pages here, the document is the project's own
+                // `index.html`, which Vite's fallback after this one serves.
+                if (!serving) {
+                  req.url = seen;
+                  next();
+                  return;
+                }
+                if (shell !== null && existsSync(shell)) {
+                  response = new Response(await readFile(shell, "utf8"), {
+                    headers: { "content-type": "text/html; charset=utf-8" },
+                  });
+                }
+              }
+              const type = response.headers.get("content-type") ?? "";
+              // Preview compresses, and its compressor holds small writes until
+              // its buffer fills, so a streamed page or event stream arrives in
+              // bursts. `identity` is its own pass-through signal.
+              if (type.includes("text/html") || type.includes("text/event-stream")) {
+                res.setHeader("content-encoding", "identity");
+              }
+              // Written here, before srvx writes the body: the compressor wraps
+              // `writeHead` and drops the header list srvx hands it.
+              res.setHeaders(response.headers);
+              res.writeHead(response.status, response.statusText);
+              await sendNodeResponse(res, response);
+            } catch (error) {
+              next(error);
+            }
+          })();
+        });
+      };
+    },
+
     configureServer(viteServer) {
       server = viteServer;
       const environment = viteServer.environments[ENVIRONMENTS.server];
-      if (!isRunnableDevEnvironment(environment)) {
-        throw new Error(
-          `[barq-start] The \`${ENVIRONMENTS.server}\` environment cannot run modules in this dev server, so pages cannot be rendered and server functions cannot be answered. ` +
-            "Leave that environment's `dev.createEnvironment` at Vite's default, which is runnable.",
+      // A host that owns the server environment answers requests through its
+      // own runtime, which imports `index` the way a deployment does. Answering
+      // here as well would run the app in a second runtime it was not built for.
+      if (!isRunnable(environment) || isProviderOwned(environment)) {
+        viteServer.config.logger.info(
+          `[barq-start] Another plugin runs the \`${ENVIRONMENTS.server}\` environment, so it answers pages and server functions through \`${SERVICE_ENTRY_ID}\`.`,
         );
+        return undefined;
       }
 
       const report = (error: unknown): void => {
@@ -1489,6 +1701,7 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
     entries,
     manifest,
     dev,
+    finish,
     ...((options.importProtection ?? true)
       ? [
           importProtection(
