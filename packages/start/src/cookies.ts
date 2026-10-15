@@ -46,29 +46,35 @@ export interface CookieOptions {
   readonly encode?: (value: string) => string;
 }
 
+/** A control character, or DEL. The RFC defines every set below by code point. */
+const isControl = (code: number): boolean => code <= 0x1f || code === 0x7f;
+
+/** Whether any character of `text` is one `refused` names. */
+function holdsAny(text: string, refused: (code: number) => boolean): boolean {
+  for (let index = 0; index < text.length; index++) {
+    if (refused(text.charCodeAt(index))) return true;
+  }
+  return false;
+}
+
+const codes = (characters: string): ReadonlySet<number> =>
+  new Set(Array.from(characters, (character) => character.charCodeAt(0)));
+
+const NAME_SEPARATORS = codes(' ()<>@,;:\\"/[]?={}');
+const VALUE_SEPARATORS = codes(' ",;\\');
+const SEMICOLON = 0x3b;
+
 /**
  * A separator or a control character, neither of which a cookie NAME may hold
  * (RFC 6265 §4.1.1: a name is a `token`).
- *
- * The control range is the POINT of these three, so the rule is silenced rather
- * than worked around — they are already written as escapes, which is what it
- * asks for.
  */
-// oxlint-disable-next-line no-control-regex -- the RFC defines the set by code point
-const ILLEGAL_NAME = /[\u0000-\u0020()<>@,;:\\"/[\]?={}\u007f]/;
+const illegalInName = (code: number): boolean => isControl(code) || NAME_SEPARATORS.has(code);
 
 /** What a cookie VALUE may not hold (RFC 6265 §4.1.1: `cookie-octet`). */
-// oxlint-disable-next-line no-control-regex -- as above
-const ILLEGAL_VALUE = /[\u0000-\u0020",;\\\u007f]/;
+const illegalInValue = (code: number): boolean => isControl(code) || VALUE_SEPARATORS.has(code);
 
-/**
- * What an attribute value may not hold, since `;` ends it.
- *
- * The control-character range is the POINT of these three, so the rule is
- * silenced rather than worked around — they are already written as escapes.
- */
-// oxlint-disable-next-line no-control-regex -- the RFC defines the set by code point
-const ILLEGAL_ATTRIBUTE = /[\u0000-\u001f;\u007f]/;
+/** What an attribute value may not hold, since `;` ends it. */
+const illegalInAttribute = (code: number): boolean => isControl(code) || code === SEMICOLON;
 
 /**
  * Every cookie on a request, by name.
@@ -115,7 +121,7 @@ function decode(value: string): string {
  * for which, and why a throw is the kinder answer.
  */
 export function serializeCookie(name: string, value: string, options: CookieOptions = {}): string {
-  if (name === "" || ILLEGAL_NAME.test(name)) {
+  if (name === "" || holdsAny(name, illegalInName)) {
     throw new TypeError(
       `[barq] ${JSON.stringify(name)} is not a valid cookie name, and a browser would drop the cookie. A name made of letters, digits, \`-\` and \`_\`, such as \`"session_id"\`, is always valid.`,
     );
@@ -151,7 +157,7 @@ export function serializeCookie(name: string, value: string, options: CookieOpti
   }
 
   const encoded = (options.encode ?? encodeURIComponent)(value);
-  if (ILLEGAL_VALUE.test(encoded)) {
+  if (holdsAny(encoded, illegalInValue)) {
     throw new TypeError(
       `[barq] The value of the cookie "${name}" holds a character a cookie cannot carry after the custom \`encode\` ran, such as \`;\`, a space or a control character. ` +
         "A browser would cut the value short. Leave `encode` at its default, which percent-encodes it.",
@@ -197,7 +203,7 @@ export function serializeCookie(name: string, value: string, options: CookieOpti
 }
 
 function assertAttribute(cookie: string, attribute: string, value: string): void {
-  if (ILLEGAL_ATTRIBUTE.test(value)) {
+  if (holdsAny(value, illegalInAttribute)) {
     throw new TypeError(
       `[barq] The cookie "${cookie}" has a \`${attribute}\` holding a character such as \`;\` that would terminate the attribute and let the rest be read as further cookie attributes. ` +
         `Pass a plain ${attribute}, and never build it from user input without validating it.`,

@@ -130,8 +130,7 @@ export function memoryHistory(options: MemoryHistoryOptions = {}): History {
     const location = stack[index];
     // A snapshot, not the live Set: a listener that subscribes another during
     // an emit must not have it called in the same emit.
-    // oxlint-disable-next-line unicorn/no-useless-spread
-    for (const listener of [...listeners]) listener(location, action);
+    for (const listener of Array.from(listeners)) listener(location, action);
   };
 
   return {
@@ -199,8 +198,7 @@ export function browserHistory(options: BrowserHistoryOptions = {}): History {
     current = location;
     // A snapshot, not the live Set: a listener that subscribes another during
     // an emit must not have it called in the same emit.
-    // oxlint-disable-next-line unicorn/no-useless-spread
-    for (const listener of [...listeners]) listener(location, action);
+    for (const listener of Array.from(listeners)) listener(location, action);
   };
 
   window.addEventListener(
@@ -275,8 +273,7 @@ export function hashHistory(options: HashHistoryOptions = {}): History {
 
   const emit = (location: Location, action: NavigationAction): void => {
     current = location;
-    // oxlint-disable-next-line unicorn/no-useless-spread
-    for (const listener of [...listeners]) listener(location, action);
+    for (const listener of Array.from(listeners)) listener(location, action);
   };
 
   // `hashchange` and not `popstate`: a hash edit in the address bar fires only

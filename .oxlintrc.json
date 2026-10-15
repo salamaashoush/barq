@@ -103,6 +103,17 @@
         "@typescript-eslint/no-base-to-string": "off",
         "@typescript-eslint/restrict-template-expressions": "off"
       }
+    },
+    {
+      // `AnyRouteDefinition` is an existential: a table holds routes whose
+      // `Data` is read by the loader and handed to the component, so the
+      // parameter is invariant and no type but `any` admits every route.
+      // TypeScript has no other spelling for it, and the alias is the only
+      // `any` in the file.
+      "files": ["packages/router/src/route.ts"],
+      "rules": {
+        "@typescript-eslint/no-explicit-any": "off"
+      }
     }
   ],
   "ignorePatterns": [

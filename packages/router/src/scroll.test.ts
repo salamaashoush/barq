@@ -146,8 +146,7 @@ describe("scrollRestoration", () => {
     // The old router touched `window` unguarded and its default was ON, so a
     // server render threw.
     const realDocument = globalThis.document;
-    // @ts-expect-error removing a global for the duration of one assertion
-    delete globalThis.document;
+    Reflect.deleteProperty(globalThis, "document");
     try {
       const restoration = scrollRestoration();
       expect(() => {
@@ -222,8 +221,7 @@ describe("withViewTransition", () => {
       if (realVisibility !== undefined) {
         Object.defineProperty(Document.prototype, "visibilityState", realVisibility);
       }
-      // @ts-expect-error restoring the instance property the test defined
-      delete document.visibilityState;
+      Reflect.deleteProperty(document, "visibilityState");
       delete (document as unknown as { startViewTransition?: unknown }).startViewTransition;
     }
   });

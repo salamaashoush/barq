@@ -445,8 +445,7 @@ describe("what a route component is handed, as types", () => {
   test("`Outlet` is a route component as it stands, and takes no props", () => {
     const table: AnyRouteDefinition[] = [{ path: "/layout", component: Outlet }];
     expect(table[0]?.component).toBe(Outlet);
-    // @ts-expect-error an outlet renders the matched child and is given nothing
-    const misuse = () => Outlet({ id: "x" });
-    expect(misuse).toBeInstanceOf(Function);
+    const takesNothing: Parameters<typeof Outlet> extends [] ? true : false = true;
+    expect(takesNothing).toBe(true);
   });
 });

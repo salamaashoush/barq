@@ -522,3 +522,24 @@ value, and a pattern nested under a prop's key.
   hydrates" rows (and the one-template-one-swap row) instead of being skipped by them, and
   the case is restated as "a failure after the shell streams the error fallback, and the
   client claims and resets it".
+
+## Negative type assertions without directives
+
+- `router/src/register.test.ts`: each row that wrote a call under a directive expecting a type
+  error is restated as a `Refused<Value, Type>` predicate the type checker must prove `true`.
+  The navigate, redirect and linkOptions rows assert against the options type each one takes
+  (`NavigateOptionsFor`, and the instantiated parameter of `redirect` and `linkOptions`) rather
+  than against a call. What each row refuses is unchanged.
+- `start/src/types.test.ts`: the same, through `Refused` and `Uncallable` (a call's arguments
+  against `Parameters` of the function). The handler and validator rows assert against
+  `ResultCheck` and `InputCheck`, the intersection `.handler` and `.validator` hold their
+  argument to. Each carries a positive control that the predicate is `false` for a value the
+  builder accepts.
+- `start/src/server.test.ts` and `start/src/get.test.ts`: the runtime refusal of a plain
+  function by `mount`, of `PUT` by `createServerFn`, and of a form by a GET stub is reached
+  through `Reflect.apply`, which is what an untyped caller is; the type refusal is asserted
+  beside it as a predicate.
+- `router/src/matcher.test.ts` "`Outlet` ... takes no props": asserted that a closure calling
+  `Outlet({ id })` was a function. It now asserts `Parameters<typeof Outlet>` is empty.
+- `start/src/server.test.ts` "a middleware that rotates a cookie and THEN refuses": the
+  unreachable `return next()` after the `throw` is gone. The test asserts what it did.

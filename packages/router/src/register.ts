@@ -21,8 +21,16 @@
 
 import type { NavigateOptions, ToOptions, Updater } from "./router.ts";
 
-// oxlint-disable-next-line typescript/no-empty-object-type -- the augmentation target
-export interface Register {}
+declare const UNREGISTERED: unique symbol;
+
+/**
+ * The member exists so the interface is not the empty object type before an
+ * application's `routeTree.gen.ts` augments it. A unique symbol, optional and
+ * `never`, so no augmentation can collide with it and nothing can set it.
+ */
+export interface Register {
+  readonly [UNREGISTERED]?: never;
+}
 
 /**
  * What a `routeTree.gen.ts` puts in `Register`.
@@ -111,8 +119,8 @@ export type FileRoutesById = RoutesOf<RegisteredRouteTree>;
  * A `to` that AUTOCOMPLETES without refusing anything.
  *
  * `RoutePath | RouteId` alone would be strict, which is theirs — their own
- * example needs a `@ts-expect-error` to write a link to a route that does not
- * exist. barq stops one step short of
+ * example has to suppress a type error to write a link to a route that does
+ * not exist. barq stops one step short of
  * that ON PURPOSE, and the reason is that barq has a second checker theirs does
  * not: `BARQ013` compares every `<Link to>` against the route set the SAME scan
  * produced, and it can be told about tables the types cannot see — a second

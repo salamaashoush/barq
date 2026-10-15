@@ -19,6 +19,7 @@ import {
 import { mount, unmountAll } from "@barqjs/start/server";
 import { createMemo, flush, hole, hydrate, insert, template } from "@barqjs/core";
 import { describe, expect, test } from "bun:test";
+import { runInThisContext } from "node:vm";
 
 import {
   Await,
@@ -1071,8 +1072,7 @@ describe("the context handoff, server to client", () => {
     const holder = globalThis as Record<string, unknown>;
     const source = script.replace(/^<script[^>]*>/, "").replace(/<\/script>$/, "");
     try {
-      // oxlint-disable-next-line no-eval
-      (0, eval)(source.replace(/^window\./, "globalThis."));
+      runInThisContext(source.replace(/^window\./, "globalThis."));
       expect(holder.__BARQ_ROUTE_CONTEXT__).toBeDefined();
 
       const state = createRouter({
@@ -1193,8 +1193,7 @@ describe("hydration", () => {
 
     // What a browser does with the seed script the handler emitted.
     const payload = seed.replace(/^<script[^>]*>/, "").replace(/<\/script>$/, "");
-    // oxlint-disable-next-line no-eval
-    (0, eval)(payload.replaceAll("window.", "globalThis."));
+    runInThisContext(payload.replaceAll("window.", "globalThis."));
 
     const container = globalThis.document.createElement("div");
     globalThis.document.body.appendChild(container);

@@ -38,6 +38,15 @@ import type {
 /** Compile-time only: the value is never read, the ASSIGNMENT is the assertion. */
 const assertType = <T>(value: T): T => value;
 
+/** `true` when `Value` is not a `Type`: what a call that should not compile is handed. */
+type Refused<Value, Type> = [Value] extends [Type] ? false : true;
+
+/** The options `redirect` takes for a destination, read off its signature. */
+type RedirectOptionsFor<To extends string> = Parameters<typeof redirect<To, string>>[0];
+
+/** The options `linkOptions` takes for a destination, read off its signature. */
+type LinkOptionsFor<To extends string> = Parameters<typeof linkOptions<To, string>>[0];
+
 interface Tree {
   id: "__root__" | "/" | "/posts" | "/posts/$postId";
   fullPaths: "/" | "/posts/$postId";
@@ -50,8 +59,7 @@ describe("a registered route tree narrows", () => {
     assertType<IdsOf<Tree>>("/posts/$postId");
     assertType<PathsOf<Tree>>("/");
     // `fullPaths` is the ADDRESSABLE set, so a layout is not in it.
-    // @ts-expect-error -- "/posts" is a layout: reachable, not addressable
-    assertType<PathsOf<Tree>>("/posts");
+    assertType<Refused<"/posts", PathsOf<Tree>>>(true);
     // …but it IS an id, which is what `<Link to>` also accepts.
     assertType<IdsOf<Tree>>("/posts");
     expect(true).toBe(true);
@@ -169,13 +177,12 @@ describe("`to` types the rest of a navigation", () => {
       to: "/posts/$postId",
       params: (current) => ({ postId: String(current.postId) }),
     });
-    // @ts-expect-error -- the pattern has a parameter and nothing fills it
-    assertType<Options<"/posts/$postId">>({ to: "/posts/$postId" });
-    assertType<Options<"/posts/$postId">>({
-      to: "/posts/$postId",
-      // @ts-expect-error -- `id` is not what the pattern calls it
-      params: { id: "7" },
-    });
+    // The pattern has a parameter and nothing fills it.
+    assertType<Refused<{ to: "/posts/$postId" }, Options<"/posts/$postId">>>(true);
+    // `id` is not what the pattern calls it.
+    assertType<
+      Refused<{ to: "/posts/$postId"; params: { id: string } }, Options<"/posts/$postId">>
+    >(true);
     // No parameter, so nothing to give.
     assertType<Options<"/">>({ to: "/" });
     assertType<Options<"/">>({ to: "/", replace: true, hash: "top", resetScroll: false });
@@ -188,8 +195,8 @@ describe("`to` types the rest of a navigation", () => {
       to: "./$postId",
       params: { postId: "7" },
     });
-    // @ts-expect-error -- `/posts` + `./$postId` needs `postId`
-    assertType<Options<"./$postId", "/posts">>({ from: "/posts", to: "./$postId" });
+    // `/posts` + `./$postId` needs `postId`.
+    assertType<Refused<{ from: "/posts"; to: "./$postId" }, Options<"./$postId", "/posts">>>(true);
     assertType<Options<"..", "/posts/$postId">>({ from: "/posts/$postId", to: ".." });
     expect(true).toBe(true);
   });
@@ -206,12 +213,13 @@ describe("`to` types the rest of a navigation", () => {
       // Every key optional: the validator's defaults fill what is left out.
       search: { page: 2 },
     });
-    assertType<Options<"/posts/$postId">>({
-      to: "/posts/$postId",
-      params: { postId: "7" },
-      // @ts-expect-error -- `page` is a number in this route's search
-      search: { page: "2" },
-    });
+    // `page` is a number in this route's search.
+    assertType<
+      Refused<
+        { to: "/posts/$postId"; params: { postId: string }; search: { page: string } },
+        Options<"/posts/$postId">
+      >
+    >(true);
     assertType<Options<"/posts/$postId", "/posts/$postId">>({
       from: "/posts/$postId",
       to: "/posts/$postId",
@@ -239,24 +247,24 @@ describe("`to` types the rest of a navigation", () => {
     const navigate = (async () => {}) as NavigateFn;
     const typed = (): unknown[] => [
       navigate({ to: "/posts/$postId", params: { postId: "7" }, search: { tab: "a" } }),
-      // @ts-expect-error -- the pattern has a parameter and nothing fills it
-      navigate({ to: "/posts/$postId" }),
       navigate({ to: "/about", search: (current) => ({ ...current, page: 2 }) }),
       navigate("/posts/7", { replace: true }),
       navigate({ to: "..", from: "/posts/$postId" }),
     ];
+    // The pattern has a parameter and nothing fills it.
+    assertType<Refused<{ to: "/posts/$postId" }, NavigateOptionsFor<"/posts/$postId">>>(true);
     expect(typeof typed).toBe("function");
   });
 
   test("redirect and linkOptions check the same way", () => {
     const typed = (): unknown[] => [
       redirect({ to: "/posts/$postId", params: { postId: "7" }, statusCode: 301 }),
-      // @ts-expect-error -- the pattern has a parameter and nothing fills it
-      redirect({ to: "/posts/$postId" }),
       linkOptions({ to: "/posts/$postId", params: { postId: "7" } }),
-      // @ts-expect-error -- the pattern has a parameter and nothing fills it
-      linkOptions({ to: "/posts/$postId" }),
     ];
+    // Both take the navigation's own options, so a pattern with a parameter
+    // and nothing filling it is refused by each.
+    assertType<Refused<{ to: "/posts/$postId" }, RedirectOptionsFor<"/posts/$postId">>>(true);
+    assertType<Refused<{ to: "/posts/$postId" }, LinkOptionsFor<"/posts/$postId">>>(true);
     expect(typeof typed).toBe("function");
   });
 
@@ -281,8 +289,9 @@ describe("`to` types the rest of a navigation", () => {
       const page: number = api.useSearch()().page;
       const tab: string = api.useSearch({ select: (search) => search.tab })();
       const id: "/posts/$postId" = api.id;
-      // @ts-expect-error -- this route's search has no `missing`
-      void api.useSearch()().missing;
+      const search = api.useSearch()();
+      // This route's search has no `missing`.
+      assertType<Refused<"missing", keyof typeof search>>(true);
       // A route nothing registered still has an api; it is just not a typed one.
       const data: unknown = loose.useLoaderData()();
       void [page, tab, id, data];
@@ -294,8 +303,8 @@ describe("`to` types the rest of a navigation", () => {
     const Root = createRootRouteWithContext<{ user: string }>()({
       beforeLoad: ({ context }) => {
         const user: string = context.user;
-        // @ts-expect-error -- the router's context has no `tenant`
-        void context.tenant;
+        // The router's context has no `tenant`.
+        assertType<Refused<"tenant", keyof typeof context>>(true);
         return { greeting: `hello ${user}` };
       },
     });

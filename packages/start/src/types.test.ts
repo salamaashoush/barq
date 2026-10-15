@@ -7,8 +7,12 @@
 import { describe, expect, test } from "bun:test";
 
 import {
+  type FreshServerFn,
+  type InputCheck,
   type Middleware,
+  type MiddlewareNext,
   type RequestContextOf,
+  type ResultCheck,
   type ResultProblem,
   type FunctionContextOf,
   type StandardSchema,
@@ -22,6 +26,15 @@ import {
 type Equal<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
 
 const holds = <Check extends true>(proof?: Check): Check | undefined => proof;
+
+/** `true` when `Value` is not a `Type`: what a line that should not compile would be handed. */
+type Refused<Value, Type> = [Value] extends [Type] ? false : true;
+
+/** `true` when a call with these arguments would not compile. */
+type Uncallable<Fn extends (...args: never[]) => unknown, Args extends unknown[]> = Refused<
+  Args,
+  Parameters<Fn>
+>;
 
 const auth = createMiddleware().server(({ next }) =>
   next({ context: { user: { id: "salama", admin: true } } }),
@@ -52,8 +65,10 @@ test("a server function's context is what its chain passed to `next`", async () 
 });
 
 test("a bare closure is held to the context it declares", () => {
-  // @ts-expect-error it promises a tenant and passes none
-  const broken: Middleware<{ tenant: string }> = async (next) => next();
+  const broken = async (next: MiddlewareNext) => next();
+  // It promises a tenant and passes none.
+  holds<Refused<typeof broken, Middleware<{ tenant: string }>>>();
+  holds<Equal<Refused<typeof tenant, Middleware<{ tenant: string }>>, false>>();
   expect(typeof broken).toBe("function");
 });
 
@@ -74,8 +89,8 @@ test("a schema's input is what the caller passes, and its output what the handle
       return data.getUTCFullYear();
     });
   holds<Equal<Parameters<typeof year>[0], ({ readonly data: string } & ServerFnCall) | FormData>>();
-  // @ts-expect-error the caller passes the schema's input, not its output
-  void (() => year({ data: new Date() }));
+  // The caller passes the schema's input, not its output.
+  holds<Uncallable<typeof year, [{ data: Date }]>>();
 
   expect(await year({ data: "2026-10-15T00:00:00Z" })).toBe(2026);
 });
@@ -89,16 +104,16 @@ test("a function validator's parameter is the caller's input", async () => {
       holds<Equal<typeof data, { id: number }>>();
       return data.id + 1;
     });
-  // @ts-expect-error `id` is a string on the way in
-  void (() => byId({ data: { id: 1 } }));
+  // `id` is a string on the way in.
+  holds<Uncallable<typeof byId, [{ data: { id: number } }]>>();
 
   expect(await byId({ data: { id: "41" } })).toBe(42);
 });
 
 test("a function with no validator takes no data", async () => {
   const ping = createServerFn().handler(() => "pong");
-  // @ts-expect-error no validator, so no input
-  void (() => ping({ data: 1 }));
+  // No validator, so no input.
+  holds<Uncallable<typeof ping, [{ data: number }]>>();
   expect(await ping()).toBe("pong");
 });
 
@@ -115,8 +130,8 @@ test("a middleware's validator types its own data and the handler's", async () =
       holds<Equal<typeof data, { readonly workspace: string }>>();
       return `${data.workspace}:${context.slug}`;
     });
-  // @ts-expect-error the chain validates, so the caller owes it its input
-  void (() => open());
+  // The chain validates, so the caller owes it its input.
+  holds<Uncallable<typeof open, []>>();
 
   expect(await open({ data: { workspace: "Acme" } })).toBe("Acme:acme");
 });
@@ -128,8 +143,8 @@ test("a GET function takes no form, and streams what its handler yields", () => 
   type Yielded<Answer> = Answer extends AsyncIterable<infer Value> ? Value : never;
   holds<Equal<Yielded<Awaited<ReturnType<typeof ticks>>>, number>>();
   const stub = clientRpc<undefined, number, "GET">("ticks", [], { method: "GET" });
-  // @ts-expect-error a GET has no body to carry a form
-  void (() => stub(new FormData()));
+  // A GET has no body to carry a form.
+  holds<Uncallable<typeof stub, [FormData]>>();
   expect(ticks.meta.method).toBe("GET");
 });
 
@@ -206,20 +221,27 @@ describe("what crosses the wire", () => {
   });
 
   test("a result it cannot carry is a type error where the handler is written", () => {
-    // @ts-expect-error a function cannot cross
-    createServerFn().handler(() => ({ format: () => "1.00" }));
-    // @ts-expect-error nor a symbol
-    createServerFn().handler(() => ({ key: Symbol("salama") }));
-    // @ts-expect-error nor an instance of a class with methods
-    createServerFn().handler(async () => ({ total: new Money(100) }));
-    // @ts-expect-error nor a URL, which the codec refuses
-    createServerFn().handler(() => [new URL("https://example.com")]);
-    // @ts-expect-error nor a RegExp, which barq's codec refuses
-    createServerFn().handler(() => new Map([["pattern", /salama/]]));
-    // @ts-expect-error nor a function among the values a stream yields
-    createServerFn().handler(async function* () {
+    // What `.handler(fn)` holds `fn` to, beside its parameter type.
+    type Accepted<Result> = ResultCheck<FreshServerFn<"POST">, Result>;
+    const formats = () => ({ format: () => "1.00" });
+    const keyed = () => ({ key: Symbol("salama") });
+    const priced = async () => ({ total: new Money(100) });
+    const linked = () => [new URL("https://example.com")];
+    const patterned = () => new Map([["pattern", /salama/]]);
+    async function* yieldsFunctions() {
       yield () => 1;
-    });
+    }
+    // A function cannot cross, nor a symbol, nor an instance of a class with
+    // methods, nor a URL or a RegExp (which barq's codec refuses), nor a
+    // function among the values a stream yields.
+    holds<Refused<typeof formats, Accepted<ReturnType<typeof formats>>>>();
+    holds<Refused<typeof keyed, Accepted<ReturnType<typeof keyed>>>>();
+    holds<Refused<typeof priced, Accepted<Awaited<ReturnType<typeof priced>>>>>();
+    holds<Refused<typeof linked, Accepted<ReturnType<typeof linked>>>>();
+    holds<Refused<typeof patterned, Accepted<ReturnType<typeof patterned>>>>();
+    holds<Refused<typeof yieldsFunctions, Accepted<ReturnType<typeof yieldsFunctions>>>>();
+    const fine = () => ({ at: new Date(0) });
+    holds<Equal<Refused<typeof fine, Accepted<ReturnType<typeof fine>>>, false>>();
   });
 
   test("the error says where the value is", () => {
@@ -232,14 +254,15 @@ describe("what crosses the wire", () => {
   });
 
   test("an input the codec cannot carry is a type error at the validator", () => {
-    createServerFn()
-      // @ts-expect-error a caller cannot send a function
-      .validator((input: { readonly onDone: () => void }) => input);
+    // What `.validator(fn)` holds `fn` to, beside its parameter type.
+    type Accepted<Method extends "GET" | "POST", In> = InputCheck<FreshServerFn<Method>, In>;
+    const callback = (input: { readonly onDone: () => void }) => input;
+    const form = (input: FormData) => input;
+    // A caller cannot send a function.
+    holds<Refused<typeof callback, Accepted<"POST", Parameters<typeof callback>[0]>>>();
     // A form is a body, so a POST takes one and a GET does not.
-    createServerFn().validator((input: FormData) => input);
-    createServerFn({ method: "GET" })
-      // @ts-expect-error a GET has no body to carry a form
-      .validator((input: FormData) => input);
+    createServerFn().validator(form);
+    holds<Refused<typeof form, Accepted<"GET", FormData>>>();
   });
 
   test("`strict` turns the check off, for both sides or one", () => {
@@ -247,12 +270,23 @@ describe("what crosses the wire", () => {
       .validator((input: { readonly onDone: () => void }) => input)
       .handler(() => ({ format: () => "1.00" }));
     createServerFn({ strict: { output: false } }).handler(() => new Money(100));
-    createServerFn({ strict: { output: false } })
-      // @ts-expect-error the input side is still checked
-      .validator((input: { readonly onDone: () => void }) => input);
-    createServerFn({ strict: { input: false } })
-      .validator((input: { readonly onDone: () => void }) => input)
-      // @ts-expect-error the output side is still checked
-      .handler(() => ({ format: () => "1.00" }));
+    const callback = (input: { readonly onDone: () => void }) => input;
+    const formats = () => ({ format: () => "1.00" });
+    // The input side is still checked when only the output is off.
+    holds<
+      Refused<
+        typeof callback,
+        InputCheck<FreshServerFn<"POST", { output: false }>, Parameters<typeof callback>[0]>
+      >
+    >();
+    // And the output side when only the input is off.
+    holds<
+      Refused<
+        typeof formats,
+        ResultCheck<FreshServerFn<"POST", { input: false }>, ReturnType<typeof formats>>
+      >
+    >();
+    createServerFn({ strict: { input: false } }).validator(callback);
+    createServerFn({ strict: { output: false } }).handler(formats);
   });
 });

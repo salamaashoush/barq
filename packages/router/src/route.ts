@@ -686,7 +686,6 @@ export interface RouteServer<
  * `.d.ts` types each route id individually, which is what `<Link to>` and
  * `loaderData` read.
  */
-// oxlint-disable-next-line typescript/no-explicit-any
 export type AnyRouteDefinition = RouteDefinition<any, any, any, any, any>;
 
 /** A route after flattening: its own definition plus everything the matcher needs. */

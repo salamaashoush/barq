@@ -1,7 +1,9 @@
 import { afterEach, describe, expect, test } from "bun:test";
 
 import {
+  type AnyServerFn,
   type Middleware,
+  type ServerFnMethod,
   DATA_SUFFIX,
   createClientOnlyFn,
   createIsomorphicFn,
@@ -621,10 +623,12 @@ describe("the call convention", () => {
     expect(decodeWire<string>(await response?.json())).toBe("hello salama");
 
     const plain = async (): Promise<string> => "not a server function";
-    // @ts-expect-error a plain function has no endpoint to mount
-    expect(() => mount("plain", plain)).toThrow(TypeError);
-    // @ts-expect-error nor a chain to read
-    expect(middlewareOf(plain)).toEqual([]);
+    // Neither has an endpoint to mount nor a chain to read, so the types refuse
+    // it; JavaScript can still pass one.
+    const refused: [typeof plain] extends [AnyServerFn] ? false : true = true;
+    expect(refused).toBe(true);
+    expect(() => Reflect.apply(mount, undefined, ["plain", plain])).toThrow(TypeError);
+    expect(Reflect.apply(middlewareOf, undefined, [plain])).toEqual([]);
   });
 
   test("`data` is what the handler is handed, and `context` is what the chain built", async () => {
@@ -673,8 +677,12 @@ describe("the call convention", () => {
    * link can send; `get.test.ts` holds it to that.
    */
   test("a method other than GET or POST is refused, and says why", () => {
-    // @ts-expect-error a method the type does not admit, which JavaScript can still pass
-    expect(() => createServerFn({ method: "PUT" })).toThrow(/GET or POST/);
+    // A method the type does not admit, which JavaScript can still pass.
+    const refused: "PUT" extends ServerFnMethod ? false : true = true;
+    expect(refused).toBe(true);
+    expect(() => Reflect.apply(createServerFn, undefined, [{ method: "PUT" }])).toThrow(
+      /GET or POST/,
+    );
     expect(() => createServerFn({ method: "POST" })).not.toThrow();
     expect(() => createServerFn({ method: "GET" })).not.toThrow();
   });
@@ -788,11 +796,9 @@ describe("the ambient response", () => {
 
   test("a middleware that rotates a cookie and THEN refuses keeps the rotation", async () => {
     // Otherwise the browser keeps replaying a token the server has retired.
-    const rotate: Middleware = async (next) => {
+    const rotate: Middleware = async () => {
       setCookie("sid", "rotated");
       throw new Response("nope", { status: 401 });
-      // oxlint-disable-next-line no-unreachable -- the shape is the point
-      return next();
     };
     mountOf(
       serverRpc<undefined, unknown>(

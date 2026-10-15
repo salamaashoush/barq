@@ -90,6 +90,31 @@ describe("a GET server function", () => {
     expect(decodeWire<{ greeting: string }>(await response?.json()).greeting).toBe("hello salama");
   });
 
+  test("is cached only when the handler says so, as TanStack's are", async () => {
+    mount(
+      "plain",
+      createServerFn({ method: "GET" }).handler(() => "salama"),
+    );
+    const response = await handleServerFn(get("plain", undefined));
+    expect(response?.status).toBe(200);
+    expect(response?.headers.get("cache-control")).toBeNull();
+    expect(response?.headers.get("vary")).toBeNull();
+  });
+
+  test("sends one URL for one input, so a cache has a stable key", async () => {
+    mount("greet", greet);
+    const wire = throughHandler();
+    globalThis.fetch = wire.fetch;
+    const call = clientRpc<{ readonly name: string }, unknown, "GET">("greet", [], {
+      method: "GET",
+    });
+    await call({ data: { name: "salama" } });
+    await call({ data: { name: "salama" } });
+    const [first, second] = wire.sent;
+    expect(first?.url).toBe(second?.url ?? "");
+    expect(first?.cache).toBe("default");
+  });
+
   test("validates what the query carried, as a body would be", async () => {
     const strict = createServerFn({ method: "GET" })
       .validator((input: unknown) => {
@@ -204,8 +229,9 @@ describe("what a link cannot reach", () => {
       return new Response(null);
     }) as unknown as typeof fetch;
     const call = clientRpc<undefined, null, "GET">("greet", [], { method: "GET" });
-    // @ts-expect-error a GET function takes no form
-    await expect(call(new FormData())).rejects.toThrow(/answers GET/);
+    const refused: [FormData] extends Parameters<typeof call> ? false : true = true;
+    expect(refused).toBe(true);
+    await expect(Reflect.apply(call, undefined, [new FormData()])).rejects.toThrow(/answers GET/);
     expect(fetched).toBe(false);
   });
 });

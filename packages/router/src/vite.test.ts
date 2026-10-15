@@ -224,9 +224,7 @@ describe("the plugin", () => {
 
   test("the import specifiers follow where it is written", () => {
     // A root-absolute specifier is the FILESYSTEM root to TypeScript, so it
-    // resolved to `any` and every generated type became permissive — caught
-    // because the `@ts-expect-error` directives in the check file went UNUSED
-    // rather than because anything failed.
+    // resolved to `any` and every generated type became permissive.
     const root = project({
       "src/routes/index.tsx":
         'export const Route = createFileRoute("/")({ component: () => null });',
