@@ -1180,7 +1180,8 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
         // the message alone — `result.warnings[i]` carries its own
         // `file:line:col:` prefix, and Rollup prints the location it was given,
         // so passing that form printed one identifier at two columns.
-        const text = `${diagnostic.code} ${diagnostic.severity}: ${diagnostic.message}`;
+        const docs = diagnostic.docs === undefined ? "" : `\n  docs: ${diagnostic.docs}`;
+        const text = `${diagnostic.code} ${diagnostic.severity}: ${diagnostic.message}${docs}`;
         if (diagnostic.severity === "error") {
           this.error(text, diagnostic.pos);
         } else {

@@ -303,6 +303,9 @@ describe("barqVitePlugin", () => {
       // identifier (Rollup's is 0-based, ours is 1-based).
       expect(warnings[0]).not.toContain("/a/app.tsx");
       expect(warnings[0]).toMatch(/^BARQ001 warning: /);
+      expect(warnings[0]).toEndWith(
+        "\n  docs: https://github.com/salamaashoush/barq/blob/main/packages/compiler-rs/docs/BARQ001.md",
+      );
     });
 
     test("a suppression comment silences it and the codes are per-rule", async () => {
