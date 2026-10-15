@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { readFile, stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, join, resolve } from "node:path";
@@ -593,6 +593,32 @@ function barqPackages(root: string): string[] {
 }
 
 /**
+ * Whether Vite's dependency optimizer will pre-bundle a package the project
+ * imports.
+ *
+ * It pre-bundles a bare import that resolves into `node_modules` and leaves a
+ * linked one alone, so naming a linked package in `optimizeDeps.include` would
+ * pre-bundle it for no reason and give the app a second copy beside the one
+ * every source import resolves to.
+ */
+export function optimizable(root: string, name: string): boolean {
+  let at = root;
+  for (;;) {
+    const candidate = join(at, "node_modules", name);
+    if (existsSync(candidate)) {
+      try {
+        return realpathSync(candidate).split(/[\\/]/).includes("node_modules");
+      } catch {
+        return false;
+      }
+    }
+    const up = dirname(at);
+    if (up === at) return false;
+    at = up;
+  }
+}
+
+/**
  * The nearest `package.json` above a file, and whether it is a barq package.
  *
  * Cached by directory: a build asks this once per module and the answer is a
@@ -692,7 +718,18 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
     name: "barq-compiler",
     enforce: "pre",
 
-    config(config: { root?: string; resolve?: { noExternal?: unknown } }, env) {
+    config(
+      config: {
+        root?: string;
+        resolve?: { noExternal?: unknown };
+        optimizeDeps?: {
+          include?: string[];
+          exclude?: string[];
+          rolldownOptions?: { transform?: { jsx?: unknown } };
+        };
+      },
+      env,
+    ) {
       if (dev === undefined) dev = env.command === "serve" || env.mode !== "production";
       serving = env.command === "serve";
       root = resolve(config.root ?? process.cwd());
@@ -712,6 +749,29 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
           ];
         }
       }
+
+      const optimizeDeps = (config.optimizeDeps ??= {});
+      // Pre-bundling one would compile its JSX with the bundler's own runtime
+      // instead of this compiler.
+      if (bundled.length > 0) optimizeDeps.exclude = [...(optimizeDeps.exclude ?? []), ...bundled];
+      // The scanner reads raw TSX, and with the automatic runtime it reports a
+      // `jsx-dev-runtime` import that no compiled module makes.
+      optimizeDeps.rolldownOptions ??= {};
+      optimizeDeps.rolldownOptions.transform ??= {};
+      optimizeDeps.rolldownOptions.transform.jsx ??= { runtime: "classic" };
+      // Every component module this plugin wraps imports it, and the scanner
+      // never sees that import because it reads the source before the wrap.
+      // Found later, it re-optimizes and reloads the page on the first edit.
+      if (
+        serving &&
+        (compilerOptions.hmr ?? true) &&
+        optimizable(root, compilerOptions.moduleSource ?? "@barqjs/core")
+      ) {
+        optimizeDeps.include = [
+          ...(optimizeDeps.include ?? []),
+          `${compilerOptions.moduleSource ?? "@barqjs/core"}/hot`,
+        ];
+      }
     },
 
     /**
@@ -729,8 +789,20 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
      */
     configEnvironment(
       name: string,
-      config: { consumer?: "client" | "server"; resolve?: { conditions?: string[] } },
+      config: {
+        consumer?: "client" | "server";
+        resolve?: { conditions?: string[] };
+        optimizeDeps?: { rolldownOptions?: { transform?: { jsx?: unknown } } };
+      },
     ) {
+      // Vite seeds only the client environment's optimizer from the top level,
+      // and a server environment that turns discovery on scans TSX too.
+      if (name !== "client") {
+        config.optimizeDeps ??= {};
+        config.optimizeDeps.rolldownOptions ??= {};
+        config.optimizeDeps.rolldownOptions.transform ??= {};
+        config.optimizeDeps.rolldownOptions.transform.jsx ??= { runtime: "classic" };
+      }
       if (!compilePackages) return;
       config.resolve ??= {};
       const consumer = config.consumer ?? (name === "client" ? "client" : "server");
@@ -846,7 +918,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
     // second opinion when both are present.
     async transform(
       this: {
-        environment?: { name?: string };
+        environment?: { name?: string; config?: { consumer?: string } };
         error(message: string, position?: number): never;
         warn(message: string, position?: number): void;
         resolve?(
@@ -861,15 +933,19 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       transformOptions?: { ssr?: boolean },
     ): Promise<TransformResult | null> {
       const environment = this?.environment;
-      // `client` is Vite's name for the browser environment and `ssr` for the
-      // server one; anything else a user configures is a server environment
-      // unless it says otherwise, which is the safe direction — a module
-      // wrongly treated as client-side loses its handler bodies and fails
-      // loudly, where the reverse ships them.
+      // The environment's consumer says which half a module is compiled for,
+      // so a second browser environment is compiled as one. Without a config
+      // the name decides: `client` is Vite's browser environment, and anything
+      // else is a server one, which is the safe direction — a module wrongly
+      // treated as client-side loses its handler bodies and fails loudly, where
+      // the reverse ships them.
+      const consumer = environment?.config?.consumer;
       const forClient =
-        environment?.name !== undefined
-          ? environment.name === "client"
-          : (transformOptions?.ssr ?? false) === false;
+        consumer !== undefined
+          ? consumer === "client"
+          : environment?.name !== undefined
+            ? environment.name === "client"
+            : (transformOptions?.ssr ?? false) === false;
       // The QUERY comes off first. A module id can carry one — `barqRouter`
       // serves a route's split half at `<file>?barq-split` — and matching the
       // extension against the raw id skipped exactly those, so the split half
@@ -1092,7 +1168,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       }
 
       // Only the client pass, or a file compiled twice reports twice.
-      if (!transformOptions?.ssr) {
+      if (forClient) {
         if (diagnostics.length > 0) {
           byModule.set(
             id,

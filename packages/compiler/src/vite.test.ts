@@ -5,7 +5,7 @@
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TransformResult } from "vite";
@@ -124,6 +124,67 @@ describe("barqVitePlugin", () => {
     const own = { resolve: { conditions: ["custom"] } };
     hook.call(plugin, "client", own);
     expect(own.resolve.conditions).toEqual(["barq", "custom"]);
+  });
+
+  describe("the dependency optimizer", () => {
+    const made: string[] = [];
+    afterAll(() => {
+      for (const dir of made) rmSync(dir, { recursive: true, force: true });
+    });
+
+    /** A project whose `@barqjs/core` is installed, or linked from elsewhere. */
+    function projectWith(core: "installed" | "linked"): string {
+      const root = join(tmpdir(), `barq-optimize-${core}-${process.pid}`);
+      made.push(root);
+      rmSync(root, { recursive: true, force: true });
+      mkdirSync(join(root, "node_modules", "@barqjs"), { recursive: true });
+      writeFileSync(join(root, "package.json"), JSON.stringify({ name: "salama-app" }));
+      const target = join(root, "node_modules", "@barqjs", "core");
+      if (core === "installed") {
+        mkdirSync(target);
+        writeFileSync(join(target, "package.json"), JSON.stringify({ name: "@barqjs/core" }));
+      } else {
+        const elsewhere = join(root, "packages", "core");
+        mkdirSync(elsewhere, { recursive: true });
+        writeFileSync(join(elsewhere, "package.json"), JSON.stringify({ name: "@barqjs/core" }));
+        symlinkSync(elsewhere, target);
+      }
+      return root;
+    }
+
+    const optimizeDeps = (root: string, command: "serve" | "build") => {
+      const plugin = barqVitePlugin();
+      const config: { root: string; optimizeDeps?: Record<string, unknown> } = { root };
+      const hook = plugin.config as unknown as (config: unknown, env: ConfigEnv) => void;
+      hook.call(plugin, config, { command, mode: "development" });
+      return config.optimizeDeps as {
+        include?: string[];
+        rolldownOptions?: { transform?: { jsx?: unknown } };
+      };
+    };
+
+    /**
+     * Every component module the plugin wraps imports `@barqjs/core/hot`, after
+     * the scanner has read it. Found late, it re-optimizes and reloads the page.
+     */
+    test("pre-bundles the hot runtime up front when the runtime is an installed package", () => {
+      expect(optimizeDeps(projectWith("installed"), "serve").include).toContain("@barqjs/core/hot");
+    });
+
+    test("leaves a linked runtime alone, since Vite would not pre-bundle it either", () => {
+      expect(optimizeDeps(projectWith("linked"), "serve").include ?? []).not.toContain(
+        "@barqjs/core/hot",
+      );
+      expect(optimizeDeps(projectWith("installed"), "build").include ?? []).not.toContain(
+        "@barqjs/core/hot",
+      );
+    });
+
+    test("scans TSX with the classic runtime, so no `jsx-dev-runtime` import is invented", () => {
+      expect(optimizeDeps(projectWith("linked"), "serve").rolldownOptions?.transform?.jsx).toEqual({
+        runtime: "classic",
+      });
+    });
   });
 
   test("only transforms the configured extensions", async () => {
