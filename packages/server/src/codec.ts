@@ -308,6 +308,21 @@ export interface SerializationAdapter<In = never, Out = unknown> {
   readonly fromSerializable: (value: Out) => In;
 }
 
+/**
+ * Any adapter, whatever it carries: what a list of them holds.
+ *
+ * Not `SerializationAdapter` with its defaults. `test` is a type predicate, and
+ * a predicate on `Money` is assignable to no predicate but one on a supertype
+ * of `Money`, so a list typed by any one instantiation refuses every adapter
+ * the application actually wrote.
+ */
+export interface AnySerializationAdapter {
+  readonly key: string;
+  readonly test: (value: unknown) => boolean;
+  readonly toSerializable: (value: never) => unknown;
+  readonly fromSerializable: (value: never) => unknown;
+}
+
 /** Identity, plus the place the types are pinned. */
 export function createSerializationAdapter<In, Out>(
   adapter: SerializationAdapter<In, Out>,
@@ -327,19 +342,19 @@ export function createSerializationAdapter<In, Out>(
  * request state, so it does not have the concurrency problem an ambient request
  * would.
  */
-const ADAPTERS = new Map<string, SerializationAdapter>();
+const ADAPTERS = new Map<string, AnySerializationAdapter>();
 
 /**
  * Install adapters for this process. Later calls REPLACE earlier ones for the
  * same key, which is what an edit looks like under HMR.
  */
-export function registerSerializationAdapters(adapters: readonly SerializationAdapter[]): void {
+export function registerSerializationAdapters(adapters: readonly AnySerializationAdapter[]): void {
   for (const adapter of adapters) ADAPTERS.set(adapter.key, adapter);
   plugins = null;
 }
 
 /** What is installed, for the client bootstrap and for tests. */
-export function serializationAdapters(): readonly SerializationAdapter[] {
+export function serializationAdapters(): readonly AnySerializationAdapter[] {
   return [...ADAPTERS.values()];
 }
 
@@ -365,7 +380,7 @@ interface AdapterNode extends PluginInfo {
  * rebuild, because `fromSerializable` is a closure in the application's bundle
  * and there is no way to write one into a string.
  */
-function pluginFor(adapter: SerializationAdapter): Plugin<unknown, AdapterNode> {
+function pluginFor(adapter: AnySerializationAdapter): Plugin<unknown, AdapterNode> {
   const reduce = (value: unknown, ctx: { parse: (value: unknown) => never }): AdapterNode => ({
     v: ctx.parse(adapter.toSerializable(value as never)),
   });

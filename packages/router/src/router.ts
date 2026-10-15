@@ -28,7 +28,7 @@ import {
   untrack,
 } from "@barqjs/core";
 
-import type { SerializationAdapter } from "@barqjs/server/codec";
+import type { AnySerializationAdapter } from "@barqjs/server/codec";
 import { PathParamError, abortedByUnload, isNotFound, isRedirect } from "./errors.ts";
 import {
   type History,
@@ -852,7 +852,7 @@ export interface RouterConfig {
    * The SAME LIST has to reach the server, where `createPageHandler` registers
    * it: a payload names an adapter by key and both ends look it up.
    */
-  readonly serializationAdapters?: readonly SerializationAdapter[];
+  readonly serializationAdapters?: readonly AnySerializationAdapter[];
   /**
    * Whether a mask survives a page load. Default `false`.
    *
@@ -2858,8 +2858,7 @@ export function createRouter(provided: RouterConfig): RouterState {
     // A snapshot, not the live Set — the same reason `block` takes one: a
     // listener that unsubscribes another while being called must not break the
     // iteration.
-    // oxlint-disable-next-line unicorn/no-useless-spread
-    for (const listener of [...set]) {
+    for (const listener of Array.from(set)) {
       try {
         listener(event);
       } catch (error) {

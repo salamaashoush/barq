@@ -254,14 +254,14 @@ describe("serialization adapters", () => {
   });
 
   test("with one, the value round-trips as itself", () => {
-    registerSerializationAdapters([money as never]);
+    registerSerializationAdapters([money]);
     const back = decodeWire<Money>(encodeWire(new Money(1250, "GBP")));
     expect(back).toBeInstanceOf(Money);
     expect(back.format()).toBe("12.50 GBP");
   });
 
   test("it reaches a value NESTED in an ordinary structure", () => {
-    registerSerializationAdapters([money as never]);
+    registerSerializationAdapters([money]);
     const back = decodeWire<{ rows: Money[]; when: Date }>(
       encodeWire({ rows: [new Money(1, "GBP")], when: new Date(0) }),
     );
@@ -276,7 +276,7 @@ describe("serialization adapters", () => {
    * call into the client registry instead.
    */
   test("the seed emits a call into the client registry", () => {
-    registerSerializationAdapters([money as never]);
+    registerSerializationAdapters([money]);
     const payload = encodeSeed({ price: new Money(1250, "GBP") });
     expect(payload).toContain("__BARQ_REVIVE__");
     expect(payload).toContain('"money"');
@@ -285,7 +285,7 @@ describe("serialization adapters", () => {
   });
 
   test("the streaming encoder carries one too", async () => {
-    registerSerializationAdapters([money as never]);
+    registerSerializationAdapters([money]);
     const seeds = createSeedEncoder();
     const later: string[] = [];
     let done!: () => void;
@@ -318,7 +318,7 @@ describe("serialization adapters", () => {
         test: (value): value is Refusal => value instanceof Refusal,
         toSerializable: (value) => value.code,
         fromSerializable: (code) => new Refusal(code),
-      }) as never,
+      }),
     ]);
     const back = decodeWire<Refusal>(encodeWire(new Refusal("E_NOPE")));
     expect(back).toBeInstanceOf(Refusal);
@@ -328,14 +328,14 @@ describe("serialization adapters", () => {
   });
 
   test("registering the same key twice replaces it, which is what an edit is", () => {
-    registerSerializationAdapters([money as never]);
+    registerSerializationAdapters([money]);
     registerSerializationAdapters([
       createSerializationAdapter<Money, { c: number; u: string }>({
         key: "money",
         test: (value): value is Money => value instanceof Money,
         toSerializable: (value) => ({ c: value.cents, u: "USD" }),
         fromSerializable: (value) => new Money(value.c, value.u),
-      }) as never,
+      }),
     ]);
     expect(serializationAdapters()).toHaveLength(1);
     expect(decodeWire<Money>(encodeWire(new Money(5, "GBP"))).currency).toBe("USD");

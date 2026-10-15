@@ -34,7 +34,7 @@ import {
 } from "@barqjs/server";
 import { HYDRATE, type Block, cell, provide, untrack } from "@barqjs/core";
 import {
-  type SerializationAdapter,
+  type AnySerializationAdapter,
   encodeSeed,
   registerSerializationAdapters,
 } from "@barqjs/server/codec";
@@ -536,7 +536,7 @@ export interface PageHandlerOptions extends SharedRouterOptions {
    * The client half registers the same list, which is what makes the two ends
    * agree on a key.
    */
-  readonly serializationAdapters?: readonly SerializationAdapter[];
+  readonly serializationAdapters?: readonly AnySerializationAdapter[];
   /**
    * How a built path ends, matching `RouterConfig`'s.
    *
