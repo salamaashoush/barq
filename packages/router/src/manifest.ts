@@ -260,7 +260,8 @@ export function reachabilityFrom(
  */
 export function idsInStub(code: string): string[] {
   const out: string[] = [];
-  for (const match of code.matchAll(/clientRpc\(\s*"((?:[^"\\]|\\.)*)"\s*\)/g)) {
+  // The id is the FIRST argument, and the chain and the method may follow it.
+  for (const match of code.matchAll(/clientRpc\(\s*"((?:[^"\\]|\\.)*)"\s*[,)]/g)) {
     const id = match[1];
     if (id !== undefined && id !== "") out.push(id.replaceAll('\\"', '"'));
   }

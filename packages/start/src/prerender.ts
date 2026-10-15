@@ -25,6 +25,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 
 import { PRERENDER_HEADER, type ServerEntryModule } from "./protocol.ts";
+import { STATIC_PREFIX, installStaticWriter } from "./static-fn.ts";
 
 export type { ServerEntryModule };
 
@@ -74,6 +75,8 @@ export interface PrerenderResult {
    * `pages`: it is a second name for a page that is listed there.
    */
   readonly notFoundFile?: string;
+  /** The files `staticFunctionMiddleware` answers were written to. */
+  readonly staticAnswers: readonly string[];
 }
 
 /** One prerendered page, as the build records it. */
@@ -355,6 +358,32 @@ export async function prerender(run: PrerenderRun): Promise<PrerenderResult> {
   const slots = Math.max(1, run.concurrency);
   let next = 0;
   let active = 0;
+  // A static server function's answer is written beside the pages that asked
+  // for it, under the name its client half will look for. One name holding two
+  // different calls would hand the second caller the first one's answer, so
+  // that stops the build rather than being written.
+  const answered = new Map<string, string>();
+  const staticAnswers: string[] = [];
+  installStaticWriter(async (key, identity, answer) => {
+    const before = answered.get(key);
+    if (before !== undefined && before !== identity) {
+      throw new Error(
+        `[barq-start] Two static server function calls share the cache name ${key}, so one would be answered with the other's result. ` +
+          "Pass a different input to one of them, or drop `staticFunctionMiddleware` from it.",
+      );
+    }
+    const file = contained(
+      "a static server function's answer",
+      join(run.outDir, STATIC_PREFIX.slice(1), `${key}.json`),
+      run.outDir,
+    );
+    if (before === undefined) {
+      answered.set(key, identity);
+      staticAnswers.push(file);
+    }
+    await mkdir(dirname(file), { recursive: true });
+    await writeFile(file, answer, "utf8");
+  });
   await new Promise<void>((drained) => {
     const fill = (): void => {
       while (active < slots) {
@@ -375,7 +404,7 @@ export async function prerender(run: PrerenderRun): Promise<PrerenderResult> {
       if (active === 0) drained();
     };
     fill();
-  });
+  }).finally(() => installStaticWriter(null));
 
   if (failures.length > 0) {
     throw new Error(
@@ -384,7 +413,7 @@ export async function prerender(run: PrerenderRun): Promise<PrerenderResult> {
     );
   }
 
-  if (sitemap === undefined || listed.length === 0) return { pages, notFoundFile };
+  if (sitemap === undefined || listed.length === 0) return { pages, notFoundFile, staticAnswers };
   const base = run.base.replace(/\/+$/, "");
   await mkdir(dirname(sitemap.file), { recursive: true });
   await writeFile(
@@ -392,7 +421,7 @@ export async function prerender(run: PrerenderRun): Promise<PrerenderResult> {
     sitemapXml(listed.toSorted().map((path) => `${sitemap.host}${base}${path}`)),
     "utf8",
   );
-  return { pages, sitemap: sitemap.file, notFoundFile };
+  return { pages, sitemap: sitemap.file, notFoundFile, staticAnswers };
 }
 
 /** What {@link prerenderShell} is asked for. */

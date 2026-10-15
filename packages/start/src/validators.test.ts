@@ -135,3 +135,31 @@ test("a function's url is where a form posts to reach it, once it is mounted", (
   mounted("src/posts.ts#save", save);
   expect(save.url).toBe(`${RPC_PREFIX}src%2Fposts.ts%23save`);
 });
+
+test("a schema that is also callable is read as a schema", async () => {
+  // arktype's shape: the type is a function that RETURNS its errors rather than
+  // throwing them, and a Standard Schema besides. Called as a function, a
+  // failure would reach the handler as data.
+  const errors = { summary: "must be a number" };
+  const schema = Object.assign((input: unknown) => (typeof input === "number" ? input : errors), {
+    "~standard": {
+      version: 1 as const,
+      vendor: "callable",
+      validate: (value: unknown): { value: number } | { issues: readonly unknown[] } =>
+        typeof value === "number" ? { value } : { issues: [{ message: "not a number" }] },
+    },
+  });
+  let handled: unknown = "never ran";
+  const square = createServerFn()
+    .validator(schema)
+    .handler(({ data }) => {
+      handled = data;
+      const typed: number = data;
+      return typed * typed;
+    });
+  mounted("square", square);
+
+  expect(await answerOf(await send("square", 3))).toBe(9);
+  expect((await send("square", "three"))?.status).toBe(400);
+  expect(handled).toBe(3);
+});

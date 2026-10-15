@@ -97,6 +97,7 @@ export const sections = [
   { id: "routing", label: "Routing" },
   { id: "jsx-types", label: "JSX Types" },
   { id: "control", label: "Control Flow" },
+  { id: "start", label: "Server Functions" },
 ] as const;
 
 globalCss`

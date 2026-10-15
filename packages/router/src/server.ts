@@ -797,7 +797,8 @@ async function runRouteHandlers(
   // The handler's own comes last, nearest to it.
   const chain: Middleware[] = [];
   for (const each of match.route.chain) {
-    for (const one of each.definition.server?.middleware ?? []) chain.push(one);
+    const server: RouteServer | undefined = each.definition.server;
+    for (const one of server?.middleware ?? []) chain.push(one);
   }
   for (const one of route.middleware) chain.push(one);
 

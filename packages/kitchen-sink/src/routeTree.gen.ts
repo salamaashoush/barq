@@ -29,6 +29,7 @@ import { Route as RoutingRoute } from "./routes/routing";
 import { Route as ShopRoute } from "./routes/shop";
 import { Route as ShopIndexRoute } from "./routes/shop.index";
 import { Route as SignalsRoute } from "./routes/signals";
+import { Route as StartRoute } from "./routes/start";
 import { Route as StoreRoute } from "./routes/store";
 import { Route as ApiHealthRoute } from "./routes/api/health";
 import { Route as ReportChar123nameChar125DotcsvRoute } from "./routes/report.{$name}[.]csv";
@@ -116,6 +117,7 @@ export const routeTree: AnyRouteDefinition[] = [
         ],
       },
       { ...SignalsRoute.options, id: "/signals", path: "signals", src: "/src/routes/signals.tsx" },
+      { ...StartRoute.options, id: "/start", path: "start", src: "/src/routes/start.tsx" },
       { ...StoreRoute.options, id: "/store", path: "store", src: "/src/routes/store.tsx" },
       {
         ...ApiHealthRoute.options,
@@ -160,6 +162,7 @@ export interface FileRoutesById {
   "/shop": typeof ShopRoute;
   "/shop/": typeof ShopIndexRoute;
   "/signals": typeof SignalsRoute;
+  "/start": typeof StartRoute;
   "/store": typeof StoreRoute;
   "/api/health": typeof ApiHealthRoute;
   "/report/{$name}.csv": typeof ReportChar123nameChar125DotcsvRoute;
@@ -186,6 +189,7 @@ export interface FileRouteTypes {
     | "/shop"
     | "/shop/"
     | "/signals"
+    | "/start"
     | "/store"
     | "/api/health"
     | "/report/{$name}.csv"
@@ -207,6 +211,7 @@ export interface FileRouteTypes {
     | "/routing"
     | "/shop"
     | "/signals"
+    | "/start"
     | "/store"
     | "/api/health"
     | "/report/{$name}.csv"

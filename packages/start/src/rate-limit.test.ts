@@ -10,6 +10,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 
 import { type RateLimitStore, byIP, memoryStore, rateLimit } from "./rate-limit.ts";
 import { withRequest } from "./context.ts";
+import { runMiddleware } from "./middleware.ts";
 
 /** Run a middleware the way `serverRpc` does, reporting what the handler saw. */
 async function run(
@@ -19,9 +20,14 @@ async function run(
   let ran = false;
   try {
     await withRequest(request, async () =>
-      middleware(async () => {
-        ran = true;
-        return undefined;
+      runMiddleware([middleware], "server", {
+        data: undefined,
+        signal: request.signal,
+        context: {},
+        sendContext: {},
+        run: async () => {
+          ran = true;
+        },
       }),
     );
     return { ran, refused: null };

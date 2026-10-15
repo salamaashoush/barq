@@ -142,7 +142,7 @@ type SegmentParams<Segment extends string> = Segment extends "$"
         ? { [K in Name]: string | number }
         : Segment extends `$${infer Name}`
           ? { [K in Name]: string | number }
-          : Record<never, never>;
+          : object;
 
 type PathParams<Path extends string> = Path extends `${infer Head}/${infer Tail}`
   ? SegmentParams<Head> & PathParams<Tail>
@@ -203,7 +203,7 @@ export type SearchOfRoute<Tree, Id> = Id extends keyof RoutesOf<Tree>
 
 type ParamsOption<Path extends string> = string extends Path
   ? { readonly params?: ToOptions["params"] }
-  : Record<never, never> extends PathParams<Path>
+  : object extends PathParams<Path>
     ? {
         readonly params?:
           | true

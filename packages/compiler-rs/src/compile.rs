@@ -17,9 +17,10 @@ pub const DEFAULT_FILENAME: &str = "input.tsx";
 pub use crate::diag::Level as Severity;
 
 /// A diagnostic on its way out of the compiler. Everything a code frame needs
-/// travels as STRUCTURED DATA: `pos` is the byte offset Rollup's `position`
-/// argument wants, and without it `this.warn` produces no `pos`, no `loc` and no
-/// frame in any mode.
+/// travels as STRUCTURED DATA: `pos` is what Rollup's `position` argument is
+/// built from, and without it `this.warn` produces no `pos`, no `loc` and no
+/// frame in any mode. It is a byte offset here, like every span, and becomes a
+/// UTF-16 offset at the napi boundary.
 #[derive(Debug, Clone)]
 pub struct Diagnostic {
     pub severity: Severity,
@@ -330,7 +331,7 @@ fn compile_on_this_stack(
     };
 
     let allocator = Allocator::new();
-    let ParserReturn { mut program, diagnostics, panicked, .. } =
+    let ParserReturn { mut program, diagnostics, fatal_error, .. } =
         Parser::new(&allocator, source, source_type)
             // Kept so an expression printed back as a source slice keeps the
             // author's grouping. Classification must see through the node:
@@ -339,7 +340,7 @@ fn compile_on_this_stack(
             .parse();
 
     let (errors, warnings) = split_diagnostics(&diagnostics, source, filename);
-    if panicked || !errors.is_empty() {
+    if fatal_error || !errors.is_empty() {
         return Err(if errors.is_empty() {
             internal(
                 filename,
@@ -388,7 +389,7 @@ fn compile_on_this_stack(
     };
 
     let server_fns = (options.server_fns || analysis::server_fn::mentions(source_text))
-        .then(|| analysis::server_fn::scan(&program, &options.start_source))
+        .then(|| analysis::server_fn::scan(&program, &options.start_source, &options.client_source))
         .filter(|scan| !scan.exports.is_empty());
 
     // The client half of a server-function module is SYNTHESIZED, not pruned.
@@ -541,6 +542,7 @@ fn compile_on_this_stack(
         .with_options(CodegenOptions {
             single_quote: false,
             minify: false,
+            ascii_only: false,
             comments: CommentOptions::default(),
             source_map_path: options.sourcemap.then(|| PathBuf::from(filename)),
             indent_char: IndentChar::Space,
@@ -673,6 +675,13 @@ fn client_stubs(
             out.push_str(", [");
             out.push_str(&names.join(", "));
             out.push(']');
+        } else if export.method.is_some() {
+            out.push_str(", []");
+        }
+        if let Some(method) = &export.method {
+            out.push_str(", { method: ");
+            push_json_string(&mut out, method);
+            out.push_str(" }");
         }
         out.push_str(");\n");
     }
@@ -1168,6 +1177,56 @@ mod tests {
         );
         assert!(code.contains("clientRpc(\"server/users.ts#save\", [requireSession])"), "{code}");
         assert!(code.contains("from \"../auth\""), "{code}");
+    }
+
+    /// A middleware the package ships for the client half is imported from the
+    /// client subpath, which the stub already imports from, so the chain that
+    /// names it is carried rather than dropped.
+    #[test]
+    fn the_stub_carries_a_middleware_from_the_client_subpath() {
+        let code = client_of(
+            "import { createServerFn } from \"@barqjs/start\";\n\
+             import { staticFunctionMiddleware } from \"@barqjs/start/client\";\n\
+             export const read = createServerFn({ method: \"GET\" })\n\
+               .middleware([staticFunctionMiddleware])\n\
+               .handler(async () => 1);",
+        );
+        assert!(
+            code.contains(
+                "clientRpc(\"server/users.ts#read\", [staticFunctionMiddleware], { method: \"GET\" })"
+            ),
+            "{code}"
+        );
+        assert!(
+            code.contains("import { staticFunctionMiddleware } from \"@barqjs/start/client\";"),
+            "{code}"
+        );
+    }
+
+    /// A GET function's stub sends a GET, since the server answers a function
+    /// on its own method alone; a POST one's stub is what it always was.
+    #[test]
+    fn the_stub_names_the_method_of_a_get_function() {
+        let code = client_of(
+            "import { createServerFn } from \"@barqjs/start\";\n\
+             import { requireSession } from \"../auth\";\n\
+             export const read = createServerFn({ method: \"GET\" }).handler(async () => 1);\n\
+             export const guarded = createServerFn({ method: \"GET\" })\n\
+               .middleware([requireSession])\n\
+               .handler(async () => 2);\n\
+             export const save = createServerFn({ method: \"POST\" }).handler(async () => 3);",
+        );
+        assert!(
+            code.contains("clientRpc(\"server/users.ts#read\", [], { method: \"GET\" })"),
+            "{code}"
+        );
+        assert!(
+            code.contains(
+                "clientRpc(\"server/users.ts#guarded\", [requireSession], { method: \"GET\" })"
+            ),
+            "{code}"
+        );
+        assert!(code.contains("clientRpc(\"server/users.ts#save\");"), "{code}");
     }
 
     /// The strip runs on ANY client module, not just one holding server
@@ -3259,7 +3318,7 @@ export const Route = createFileRoute("/x")({ component: Page });
                     let Ok(output) = compile(&source, &at(opt, ssr)) else { continue };
                     let allocator = Allocator::new();
                     let parsed = Parser::new(&allocator, &output.code, SourceType::tsx()).parse();
-                    assert!(!parsed.panicked, "{name}: emitted module does not parse");
+                    assert!(!parsed.fatal_error, "{name}: emitted module does not parse");
                     let mut audit = Audit::default();
                     audit.visit_program(&parsed.program);
                     assert_eq!(
@@ -3307,7 +3366,7 @@ export const Route = createFileRoute("/x")({ component: Page });
         for (what, source) in cases {
             let allocator = Allocator::new();
             let parsed = Parser::new(&allocator, source, SourceType::tsx()).parse();
-            assert!(!parsed.panicked, "{what}: {source} does not parse");
+            assert!(!parsed.fatal_error, "{what}: {source} does not parse");
             let Some(oxc::ast::ast::Statement::ExpressionStatement(statement)) =
                 parsed.program.body.first()
             else {

@@ -15,6 +15,7 @@ import {
 } from "@barqjs/start";
 import { afterEach, expect, test } from "bun:test";
 
+import { createFileRoute } from "./file-route.ts";
 import type { RouteDefinition } from "./route.ts";
 import { createPageHandler, renderRoutes } from "./server.ts";
 
@@ -187,4 +188,29 @@ test("a request middleware that throws a Response answers for the page", async (
   ]);
   expect((await handler(request("/admin"))).status).toBe(401);
   expect((await handler(request("/"))).status).toBe(200);
+});
+
+test("a route's handlers are handed what its own middleware passed, typed as it passed it", async () => {
+  const signedIn = createMiddleware({ type: "request" }).server(({ next }) =>
+    next({ context: { user: { name: "salama", admin: false } } }),
+  );
+  const me = createFileRoute("/me")({
+    server: {
+      middleware: [signedIn],
+      handlers: {
+        // `context.user` is read with no annotation and no narrowing: the
+        // route's chain is what typed it.
+        GET: ({ context }) => Response.json({ name: context.user.name, admin: context.user.admin }),
+      },
+    },
+  });
+  const handler = createPageHandler({
+    routeTree: [{ ...me.options, path: "/me" }],
+    stream: false,
+    app: renderRoutes,
+    document,
+  });
+
+  const got = await handler(request("/me"));
+  expect(await got.json()).toEqual({ name: "salama", admin: false });
 });

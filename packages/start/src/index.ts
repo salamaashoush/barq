@@ -102,10 +102,13 @@ export {
   type ServerFnArgs,
   type ServerFnCallOptions,
   type ServerFnMeta,
+  type ServerFnMethod,
   type Streamed,
   DATA_SUFFIX,
   NOT_FOUND,
+  PAYLOAD_PARAM,
   REDIRECT,
+  RPC_CALLER,
   RPC_CONTEXT,
   RPC_CONTROL,
   RPC_PREFIX,
@@ -113,9 +116,12 @@ export {
   RpcNotFound,
   RpcRedirect,
   SERVER_FN,
+  STATIC_PREFIX,
   ServerFnError,
   clientRpc,
   isServerFn,
+  staticFunctionMiddleware,
+  staticUrl,
 } from "./client.ts";
 
 import {
@@ -123,6 +129,7 @@ import {
   SERVER_FN,
   type ServerFn,
   type ServerFnMeta,
+  type ServerFnMethod,
   type Streamed,
   callOptionsOf,
   dataOf,
@@ -130,19 +137,42 @@ import {
 } from "./client.ts";
 import { getGlobalStartContext, offerSendContext, peekRequest } from "./context.ts";
 import {
+  type ChainContribution,
+  type Contribution,
+  type Empty,
   type Middleware,
+  type NoContribution,
+  type OpenContext,
+  type StandardInput,
+  type StandardOutput,
+  type StandardSchemaLike,
   type Validator,
   type ValidatorInput,
   UncheckedInputError,
-  ValidationError,
+  applyValidator,
   flattenMiddleware,
   isBuiltMiddleware,
   runMiddleware,
   toValidator,
 } from "./middleware.ts";
-import { startOptions } from "./start-instance.ts";
+import { type GlobalFunctionContext, startOptions } from "./start-instance.ts";
+import type { Crossable, InputProblem, ResultProblem, StrictOn, Strictness } from "./wire-types.ts";
+
+export type {
+  Crossable,
+  InputProblem,
+  ResultProblem,
+  StrictOn,
+  Strictness,
+  WireProblem,
+} from "./wire-types.ts";
 
 export {
+  type FunctionContextOf,
+  type GlobalFunctionContext,
+  type GlobalRequestContext,
+  type Register,
+  type RequestContextOf,
   type StartInstance,
   type StartOptions,
   clearStart,
@@ -164,16 +194,44 @@ export {
 
 export {
   type BuiltMiddleware,
+  type Carries,
+  type ChainContribution,
+  type ClientReplaced,
+  type DataAt,
+  type FreshMiddleware,
+  type FromNext,
+  type OwnReplaced,
+  type Plain,
+  type ValidatorReplaced,
+  type WithChain,
+  type WithClient,
+  type WithServer,
+  type WithValidator,
+  type ClientMiddlewareContext,
+  type ContributedBy,
+  type Contribution,
+  type ContributionOf,
+  type Empty,
+  type Merged,
   type Middleware,
   type MiddlewareContext,
   type MiddlewareFn,
   type MiddlewareNext,
   type MiddlewareOptions,
+  type MiddlewareState,
+  type NextOptions,
+  type NextResult,
+  type NoContribution,
+  type OpenContext,
   type RequestMiddleware,
   type RequestMiddlewareContext,
   type RequestMiddlewareFn,
+  type RequestMiddlewareNext,
   type RequestMiddlewareStart,
+  type StandardInput,
+  type StandardOutput,
   type StandardSchema,
+  type StandardSchemaLike,
   type Validator,
   type ValidatorInput,
   InputError,
@@ -181,6 +239,7 @@ export {
   ValidationError,
   applyValidator,
   createMiddleware,
+  isInputError,
   flattenMiddleware,
   isBuiltMiddleware,
   runMiddleware,
@@ -188,8 +247,8 @@ export {
   toValidator,
 } from "./middleware.ts";
 
-export async function checkInput<In>(
-  built: Built<In, unknown>,
+export async function checkInput(
+  built: { readonly validator: Validator<unknown> | null },
   raw: unknown,
   /**
    * Whether a MIDDLEWARE in the chain declared a validator.
@@ -202,75 +261,198 @@ export async function checkInput<In>(
    * putting one there.
    */
   chainValidates = false,
-): Promise<In> {
+): Promise<unknown> {
   if (built.validator === null) {
     // `undefined` is what a no-argument call sends, and it is the only input a
     // function with no validator accepts.
     if (raw !== undefined && !chainValidates) throw new UncheckedInputError();
-    return raw as In;
+    return raw;
   }
-  if (built.validator === "unchecked") return raw as In;
-  const result = await built.validator["~standard"].validate(raw);
-  if ("issues" in result) throw new ValidationError(result.issues);
-  return result.value;
+  return applyValidator(built.validator, raw);
 }
 
 /**
  * What a handler is handed, which is TanStack's shape:
  * `.handler(async ({ data }) => …)`.
  *
- * `context` is what the middleware chain contributed, merged outermost-first.
+ * `context` is what the middleware chain contributed, merged outermost-first,
+ * and typed by what each middleware passed to `next({ context })`.
  * `signal` aborts with the request, so a handler can hand it to `fetch` and a
  * client that navigates away stops paying for the work.
  */
-export interface HandlerContext<In> {
+export interface HandlerContext<In, Context extends object = Empty> {
   readonly data: In;
-  readonly context: Record<string, unknown>;
+  readonly context: OpenContext<Context>;
   readonly signal: AbortSignal;
 }
 
-interface Built<In, Out> {
-  validator: Validator<In> | null;
+interface Built<Data, Out, Context extends object = Empty> {
+  validator: Validator<unknown> | null;
   middleware: readonly Middleware[];
-  handler: (context: HandlerContext<In>) => Out | Promise<Out>;
+  handler: (context: HandlerContext<Data, Context>) => Out | Promise<Out>;
 }
 
-type Staged = Omit<Built<unknown, unknown>, "handler">;
+interface Staged {
+  readonly validator: Validator<unknown> | null;
+  readonly middleware: readonly Middleware[];
+  readonly method: ServerFnMethod;
+}
+
+/**
+ * Where a server function's builder is: its chain, its own validator, its
+ * method, and whether what crosses the wire is checked.
+ */
+export interface ServerFnState {
+  readonly chain: Contribution;
+  readonly own: Contribution;
+  readonly method: ServerFnMethod;
+  readonly strict: Strictness;
+}
+
+export interface FreshServerFn<
+  Method extends ServerFnMethod,
+  Strict extends Strictness = true,
+> extends ServerFnState {
+  readonly chain: NoContribution;
+  readonly own: NoContribution;
+  readonly method: Method;
+  readonly strict: Strict;
+}
+
+export interface FnWithChain<State extends ServerFnState, Chain> extends ServerFnState {
+  readonly chain: ChainContribution<Chain>;
+  readonly own: State["own"];
+  readonly method: State["method"];
+  readonly strict: State["strict"];
+}
+
+export interface Validates<In, Out> extends Contribution {
+  readonly context: Empty;
+  readonly sent: Empty;
+  readonly clientContext: Empty;
+  readonly input: In;
+  readonly output: Out;
+  readonly validates: true;
+}
+
+export interface FnWithValidator<State extends ServerFnState, In, Out> extends ServerFnState {
+  readonly chain: State["chain"];
+  readonly own: Validates<In, Out>;
+  readonly method: State["method"];
+  readonly strict: State["strict"];
+}
+
+/**
+ * What a validator's input must also be: anything, unless it holds something
+ * the codec cannot carry, when it must be a type naming that, which nothing is.
+ */
+export type InputCheck<State extends ServerFnState, In> =
+  StrictOn<State["strict"], "input"> extends true
+    ? Crossable<InputProblem<In, State["method"]>>
+    : unknown;
+
+/** The same, for what a handler returns. */
+export type ResultCheck<State extends ServerFnState, Result> =
+  StrictOn<State["strict"], "output"> extends true ? Crossable<ResultProblem<Result>> : unknown;
+
+/**
+ * What the caller passes: the input of the first validator that runs, which is
+ * a middleware's when the chain validates. `undefined` when nothing validates,
+ * since a function that declares no validator accepts no argument.
+ */
+export type CallerInput<State extends ServerFnState> = State["chain"]["validates"] extends true
+  ? State["chain"]["input"]
+  : State["own"]["validates"] extends true
+    ? State["own"]["input"]
+    : undefined;
+
+/** What the handler is handed: the last validator's output. */
+export type HandlerData<State extends ServerFnState> = State["own"]["validates"] extends true
+  ? State["own"]["output"]
+  : State["chain"]["validates"] extends true
+    ? State["chain"]["output"]
+    : undefined;
+
+/** What the handler's `context` holds: the global middleware's, then its own chain's. */
+export type HandlerContextOf<State extends ServerFnState> = GlobalFunctionContext &
+  State["chain"]["context"];
 
 /**
  * The three-state discriminator, which is SvelteKit's idea and the best value
  * in the survey: no validator means any argument is a 400, and opening the
  * channel costs a schema or the literal `'unchecked'`.
+ *
+ * Every step is typed: the schema decides what a caller passes and what the
+ * handler is handed, and each middleware's `next({ context })` decides what the
+ * handler's `context` holds.
  */
-
-export interface ServerFnBuilder<In, Out> {
-  middleware(chain: readonly Middleware[]): ServerFnBuilder<In, Out>;
+export interface ServerFnBuilder<State extends ServerFnState = ServerFnState> {
+  middleware<const Chain extends readonly Middleware[]>(
+    chain: Chain,
+  ): ServerFnBuilder<FnWithChain<State, Chain>>;
   /**
    * Open the input channel: a Standard Schema, a function that returns the
    * validated value or throws, an object with a `parse`, or `"unchecked"`.
-   * What it produces is the type of `data` in the handler.
+   * What a caller passes is the schema's input, and what it produces is the
+   * type of `data` in the handler. The schema form is tried first: an arktype
+   * type is callable as well, and read as a function its input would be lost.
    */
-  validator<T>(schema: ValidatorInput<T>): ServerFnBuilder<T, Out>;
+  validator<Schema extends StandardSchemaLike>(
+    schema: Schema & InputCheck<State, StandardInput<Schema>>,
+  ): ServerFnBuilder<FnWithValidator<State, StandardInput<Schema>, StandardOutput<Schema>>>;
+  validator<In, Out>(
+    validate: ((input: In) => Out) & InputCheck<State, In>,
+  ): ServerFnBuilder<FnWithValidator<State, In, Awaited<Out>>>;
+  validator<In, Out>(
+    schema: { readonly parse: (input: In) => Out } & InputCheck<State, In>,
+  ): ServerFnBuilder<FnWithValidator<State, In, Awaited<Out>>>;
+  validator(unchecked: "unchecked"): ServerFnBuilder<FnWithValidator<State, unknown, unknown>>;
   /** TanStack's name for `validator`. */
-  inputValidator<T>(schema: ValidatorInput<T>): ServerFnBuilder<T, Out>;
-  handler<R>(
-    fn: (context: HandlerContext<In>) => R | Promise<R>,
-  ): ServerFn<In, Streamed<Awaited<R>>>;
+  inputValidator<Schema extends StandardSchemaLike>(
+    schema: Schema & InputCheck<State, StandardInput<Schema>>,
+  ): ServerFnBuilder<FnWithValidator<State, StandardInput<Schema>, StandardOutput<Schema>>>;
+  inputValidator<In, Out>(
+    validate: ((input: In) => Out) & InputCheck<State, In>,
+  ): ServerFnBuilder<FnWithValidator<State, In, Awaited<Out>>>;
+  inputValidator<In, Out>(
+    schema: { readonly parse: (input: In) => Out } & InputCheck<State, In>,
+  ): ServerFnBuilder<FnWithValidator<State, In, Awaited<Out>>>;
+  inputValidator(unchecked: "unchecked"): ServerFnBuilder<FnWithValidator<State, unknown, unknown>>;
+  /**
+   * The body. What it returns must cross the wire: a function, a symbol, or an
+   * instance of a class the codec refuses is a type error here, naming where
+   * it is. `createServerFn({ strict: false })` turns the check off.
+   */
+  handler<Result>(
+    fn: ((
+      context: HandlerContext<HandlerData<State>, HandlerContextOf<State>>,
+    ) => Result | Promise<Result>) &
+      ResultCheck<State, Result>,
+  ): ServerFn<CallerInput<State>, Streamed<Awaited<Result>>, State["method"]>;
 }
 
 /**
  * What `createServerFn` accepts.
  *
- * `method` is here so a function copied from a TanStack application is a
- * TYPE error rather than a silently different program — and `"GET"` is not
- * assignable, deliberately. A server function reachable by navigation is a link
- * that mutates: RedwoodSDK shipped exactly that, where an `<a href>` became a
- * one-click mutation carrying `SameSite=Lax` cookies. `server.ts` answers 405 to anything but POST and says so there too.
- * The option exists to be REFUSED with a reason, which is the only honest thing
- * to do with an option barq will not implement.
+ * `method` is TanStack's, with a different default: `POST`, the method a form
+ * can reach and a link cannot. `GET` is for a read the browser or a CDN may
+ * cache. A link still cannot reach one: every call carries the
+ * {@link RPC_CALLER} header, which nothing but script can set, and the server
+ * refuses a `GET` without it.
  */
-export interface ServerFnOptions {
-  readonly method?: "POST";
+export interface ServerFnOptions<
+  Method extends ServerFnMethod = ServerFnMethod,
+  Strict extends Strictness = Strictness,
+> {
+  readonly method?: Method;
+  /**
+   * Whether the types refuse an input or a result the codec cannot carry. On
+   * by default; `false` turns both off, `{ input: false }` or
+   * `{ output: false }` one side. The codec still refuses at runtime what it
+   * cannot carry: this only says the author knows, as for a class a
+   * `createSerializationAdapter` carries.
+   */
+  readonly strict?: Strict;
 }
 
 /**
@@ -278,32 +460,87 @@ export interface ServerFnOptions {
  * on both sides, so what it does when compiled by nothing is only the
  * uncompiled-development path: it runs the handler in-process.
  */
-export function createServerFn(options: ServerFnOptions = {}): ServerFnBuilder<undefined, unknown> {
+export function createServerFn<
+  Method extends ServerFnMethod = "POST",
+  const Strict extends Strictness = true,
+>(options: ServerFnOptions<Method, Strict> = {}): ServerFnBuilder<FreshServerFn<Method, Strict>> {
   // A runtime refusal beside the type one, because a JavaScript application has
-  // no type to fail and the reason is worth saying out loud.
-  if (options.method !== undefined && options.method !== "POST") {
+  // no type to fail.
+  const method = options.method ?? "POST";
+  if (method !== "POST" && method !== "GET") {
     throw new TypeError(
-      `[barq] \`createServerFn({ method: ${JSON.stringify(options.method)} })\` is not supported: a server function answers POST only, so that a link or a prefetch can never trigger one. ` +
-        "Remove `method`, and fetch read-only data from a route `loader` instead.",
+      `[barq] \`createServerFn({ method: ${JSON.stringify(method)} })\` is not supported: a server function answers GET or POST. ` +
+        "Use a route's `server.handlers` for any other method.",
     );
   }
-  // A NEW BUILDER PER STEP, as `createMiddleware` is: one that mutated a shared
-  // record would let a base kept in a variable and finished twice hand the first
-  // function the second one's handler, validator and chain.
-  const step = (staged: Staged): ServerFnBuilder<unknown, unknown> => ({
-    middleware: (chain) => step({ ...staged, middleware: chain }),
-    validator: (schema) => step({ ...staged, validator: toValidator(schema) }) as never,
-    inputValidator: (schema) => step({ ...staged, validator: toValidator(schema) }) as never,
-    handler: (fn) => serverRpc({ id: "" }, { ...staged, handler: fn }) as never,
-  });
-  return step({ validator: null, middleware: [] }) as never;
+  return builderAt<FreshServerFn<Method, Strict>>({ validator: null, middleware: [], method });
+}
+
+/**
+ * A NEW BUILDER PER STEP, as `createMiddleware` is: one that mutated a shared
+ * record would let a base kept in a variable and finished twice hand the first
+ * function the second one's handler, validator and chain.
+ */
+function builderAt<State extends ServerFnState>(staged: Staged): ServerFnBuilder<State> {
+  function validated<Schema extends StandardSchemaLike>(
+    schema: Schema & InputCheck<State, StandardInput<Schema>>,
+  ): ServerFnBuilder<FnWithValidator<State, StandardInput<Schema>, StandardOutput<Schema>>>;
+  function validated<In, Out>(
+    validate: ((input: In) => Out) & InputCheck<State, In>,
+  ): ServerFnBuilder<FnWithValidator<State, In, Awaited<Out>>>;
+  function validated<In, Out>(
+    schema: { readonly parse: (input: In) => Out } & InputCheck<State, In>,
+  ): ServerFnBuilder<FnWithValidator<State, In, Awaited<Out>>>;
+  function validated(
+    unchecked: "unchecked",
+  ): ServerFnBuilder<FnWithValidator<State, unknown, unknown>>;
+  function validated(
+    schema: ValidatorInput<unknown>,
+  ): ServerFnBuilder<FnWithValidator<State, unknown, unknown>> {
+    return builderAt({ ...staged, validator: toValidator(schema) });
+  }
+  return {
+    middleware: <const Chain extends readonly Middleware[]>(chain: Chain) =>
+      builderAt<FnWithChain<State, Chain>>({ ...staged, middleware: chain }),
+    validator: validated,
+    inputValidator: validated,
+    handler: <Result>(
+      fn: ((
+        context: HandlerContext<HandlerData<State>, HandlerContextOf<State>>,
+      ) => Result | Promise<Result>) &
+        ResultCheck<State, Result>,
+    ) =>
+      serverRpc<
+        CallerInput<State>,
+        Result,
+        HandlerData<State>,
+        HandlerContextOf<State>,
+        State["method"]
+      >(staged.method === "GET" ? { id: "", method: "GET" } : { id: "" }, {
+        validator: staged.validator,
+        middleware: staged.middleware,
+        handler: fn,
+      }),
+  };
 }
 
 /**
  * The server half. The compiler emits this in a module compiled for the server,
  * with the real handler and the id it assigned.
+ *
+ * `In` is what a caller passes and `Data` what the handler is handed; the
+ * validator is what turns one into the other, at runtime.
  */
-export function serverRpc<In, Out>(meta: ServerFnMeta, built: Built<In, Out>): ServerFn<In, Out> {
+export function serverRpc<
+  In,
+  Out,
+  Data = In,
+  Context extends object = Empty,
+  Method extends ServerFnMethod = "POST",
+>(
+  meta: ServerFnMeta,
+  built: Built<Data, Out, Context>,
+): ServerFn<In, Streamed<Awaited<Out>>, Method> {
   // The application's global function middleware runs ahead of the function's
   // own, and is read when it is first needed: `src/start.ts` may be evaluated
   // after the module that declares this function. Flattening drops a step the
@@ -344,7 +581,7 @@ export function serverRpc<In, Out>(meta: ServerFnMeta, built: Built<In, Out>): S
      * caller would leave `context.user` to whoever is not signed in.
      */
     clientContext?: Record<string, unknown>,
-  ): Promise<Out> => {
+  ): Promise<Streamed<Awaited<Out>>> => {
     const input = dataOf(options);
     const { chain, validates: chainValidates } = composition();
     // What the chain contributed, merged as it unwinds inward. One object the
@@ -364,24 +601,27 @@ export function serverRpc<In, Out>(meta: ServerFnMeta, built: Built<In, Out>): S
     // and a rejection that depended on the payload being well-formed would be
     // one an attacker could skip by sending a malformed one. A MIDDLEWARE's own
     // validator is the exception and has to be: its body is handed `data`.
-    const result = (await runMiddleware(chain, "server", {
+    const result = await runMiddleware(chain, "server", {
       data: input,
+      meta,
       signal,
       context,
       clientContext,
       sendContext,
       run: async (data) =>
         built.handler({
-          data: await checkInput(built, data, chainValidates),
-          context,
+          // What the validators produced and what the chain wrote: the two
+          // facts the builder's types describe, which exist only at runtime.
+          data: (await checkInput(built, data, chainValidates)) as Data,
+          context: context as OpenContext<Context>,
           signal,
         }),
-    })) as Out;
+    });
 
     offerSendContext(sendContext);
     // A `ReadableStream` is handed on as the async iterable every caller is
     // told to expect, so one in process reads what one in a browser does.
-    return (result instanceof ReadableStream ? valuesOf(result) : result) as Out;
+    return (result instanceof ReadableStream ? valuesOf(result) : result) as Streamed<Awaited<Out>>;
   };
 
   const fn = Object.assign(call, { [SERVER_FN]: true as const, meta, built, url: "" });

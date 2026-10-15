@@ -5,7 +5,14 @@ import * as mounts from "virtual:barq-server-fns";
 
 import { clientAssets } from "virtual:barq-client-assets";
 
+import { measure, readKey, side } from "./sides.ts";
+import { greetStatic } from "./statics.ts";
+
 void mounts;
+
+// Reached from the server too, so the build has a server half of each to keep
+// or to drop.
+(globalThis as unknown as Record<string, unknown>).sides = () => [readKey(), side(), measure];
 
 const PAGES: Record<string, string> = {
   "/": `<h1>home</h1><a href="/about">about</a><a href="/deep/page">deep</a>`,
@@ -41,8 +48,15 @@ const createFetch = (extra: Record<string, unknown>) => {
   const streaming = extra.stream !== false;
   return async (request: Request): Promise<Response> => {
     const url = new URL(request.url);
-    const body = PAGES[url.pathname];
-    if (body === undefined) return new Response("not found", { status: 404 });
+    const page = PAGES[url.pathname];
+    if (page === undefined) return new Response("not found", { status: 404 });
+    // A static server function, called while the page renders: at prerender
+    // time this is what writes its answer beside the page, one file per input.
+    const greeted =
+      url.pathname === "/" || url.pathname === "/about"
+        ? await greetStatic({ data: { name: url.pathname === "/" ? "salama" : "ada" } })
+        : undefined;
+    const body = greeted === undefined ? page : `${page}<p>${greeted.greeting}</p>`;
     const scripts = clientAssets.scripts
       .map((src) => `<script type="module" src="${src}"></script>`)
       .join("");

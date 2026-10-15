@@ -263,6 +263,16 @@ group("idsInStub", () => {
     expect(idsInStub(stub)).toEqual(["server/users.ts#getUser", "server/users.ts#default"]);
   });
 
+  test("reads an id whose stub carries a chain or a method after it", async () => {
+    // A function with middleware is the one the route-action check exists for,
+    // and its stub names the chain after the id. Missed, its route reached
+    // nothing and the check passed having compared nothing.
+    const stub =
+      `export const save = /* @__PURE__ */ clientRpc("server/users.ts#save", [requireSession]);\n` +
+      `export const read = /* @__PURE__ */ clientRpc("server/users.ts#read", [], { method: "GET" });\n`;
+    expect(idsInStub(stub)).toEqual(["server/users.ts#save", "server/users.ts#read"]);
+  });
+
   test("a module with no stubs yields nothing", async () => {
     expect(idsInStub(`export const x = 1;\n`)).toEqual([]);
   });

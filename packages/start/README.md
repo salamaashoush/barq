@@ -22,8 +22,19 @@ export const createPost = createServerFn()
 
 `.inputValidator` is the same method under TanStack's name. Both take a Standard
 Schema, a function that returns the validated value or throws, or an object with
-a `parse`; what it produces is the type of `data`. A function handed a form
-receives the `FormData` itself.
+a `parse`. The caller passes the schema's INPUT and the handler is handed its
+OUTPUT, so a schema that turns an ISO string into a `Date` is called with a
+string. A function validator's parameter type is what the caller passes:
+
+```ts
+export const byId = createServerFn()
+  .validator((input: { id: string }) => ({ id: Number(input.id) }))
+  .handler(({ data }) => db.users.find(data.id)); // data: { id: number }
+
+await byId({ data: { id: "41" } }); // { id: 41 } is a type error
+```
+
+A function handed a form receives the `FormData` itself.
 
 Call it like a function. It is an HTTP endpoint:
 
@@ -41,10 +52,32 @@ into a call that reaches nothing.
 opening the input is a decision you make per function. `.validator("unchecked")`
 takes anything.
 
-**POST only.** `createServerFn({ method: "GET" })` is a type error and a runtime
-refusal that says why: a mutation reachable by navigation is a link that mutates,
-and it has shipped that way elsewhere as a one-click CSRF carrying `SameSite=Lax`
-cookies.
+### GET
+
+`POST` is the default. A read the browser or a CDN may cache can ask for `GET`:
+
+```ts
+export const listNotes = createServerFn({ method: "GET" })
+  .middleware([requireSession])
+  .handler(({ context }) => {
+    setResponseHeader("cache-control", "private, max-age=60");
+    return notesOf(context.user);
+  });
+```
+
+The call is the same; the stub sends a `GET` with the payload in `?payload=`.
+`method` must be the literal `"GET"`, since the compiler reads it to write the
+stub.
+
+A link still cannot reach one. A mutation reachable by navigation is a one-click
+CSRF carrying `SameSite=Lax` cookies, and it has shipped that way elsewhere. So
+every `GET` call carries an `x-barq-fn` header, which a link, an `<img>`, a
+prefetch or a navigation cannot set, and the server answers a `GET` without it
+with a 403. A function answers its own method only (a `POST` to a `GET`
+function is a 405, and the reverse), a `GET` function has no form channel, and a
+payload longer than `maxBodySize` is a 413. Keep `public` out of `cache-control`
+for anything that reads a session: a shared cache would hand one user's answer to
+the next.
 
 A call takes three options beside `data`:
 
@@ -70,6 +103,48 @@ from `@barqjs/router` navigates on the redirect. A redirect whose `params` or
 `search` is a function cannot cross and arrives as its resolved target alone.
 
 `fn.url` is the address `<form action={fn}>` posts to.
+
+### What crosses the wire
+
+A handler's result and a validator's input are checked against what the codec
+carries, so a value it would refuse at runtime is a type error where it is
+written, naming where:
+
+```ts
+createServerFn().handler(() => ({ user: { format: () => "x" } }));
+// ... { readonly "cannot cross the wire": "the result.user.format is a function" }
+```
+
+Primitives, `bigint`, `Date`, `Error`, `Map`, `Set`, `Promise`, typed arrays and
+plain objects cross; a function, a symbol, a `RegExp`, a `URL`, a `Blob` and an
+instance of a class with methods do not. A form crosses as a `POST`'s input. A
+class with no methods is a plain object to a type and is refused by the codec
+at runtime only. `createServerFn({ strict: false })` turns the check off, and
+`{ input: false }` or `{ output: false }` one side of it, for a class a
+`createSerializationAdapter` carries.
+
+### Static server functions
+
+```ts
+import { staticFunctionMiddleware } from "@barqjs/start/client";
+
+export const buildInfo = createServerFn({ method: "GET" })
+  .middleware([staticFunctionMiddleware])
+  .validator((input: { page: string }) => input)
+  .handler(({ data }) => ({ page: data.page, builtAt: new Date() }));
+```
+
+While the build prerenders, each call writes its result to
+`/_barq/static/<key>.json` in the client output, one file per function and
+input, the input's key order notwithstanding. In the browser the call reads
+that file first and goes to the server only when there is none, so a page
+prerendered whole works from a host that serves files and nothing else.
+
+Import it from `@barqjs/start/client`, the subpath the client stub already
+imports from: a chain naming anything from another package is not carried into
+the browser. List it last, since the key is the input as it sees it. Only the
+result is stored: a `sendContext` is not, and a `Response` or a stream is never
+written. Two calls whose keys collide stop the build.
 
 ### Streaming
 
@@ -104,18 +179,35 @@ prevent.
 ## Middleware, and the check the build runs
 
 ```ts
-import { type Middleware, createServerFn, useSession } from "@barqjs/start";
+import { createMiddleware, createServerFn, useSession } from "@barqjs/start";
 
-export const requireSession: Middleware = async (next) => {
+export const requireSession = createMiddleware().server(async ({ next }) => {
   const session = await useSession<{ user: string }>(sessionConfig);
   if (session.data.user === undefined) throw new Response("sign in first", { status: 401 });
   return next({ context: { user: session.data.user } });
-};
+});
 
 export const adminStats = createServerFn()
   .middleware([requireSession])
-  .handler(({ context }) => stats(context.user));
+  .handler(({ context }) => stats(context.user)); // context.user: string
 ```
+
+What a middleware passes to `next({ context })` is TYPED into everything after
+it: the handler's `context`, the `context` of a middleware that lists it in its
+own `.middleware([...])`, and a route handler's under `server.middleware`. A key
+no typed step declared still reads, as `unknown`. A bare closure states what it
+adds, and is checked against it:
+
+```ts
+const tenant: Middleware<{ tenant: string }> = async (next) => next({ context: { tenant } });
+```
+
+A middleware's `.validator()` types its own `data` and, when the function has
+none of its own, the handler's and the caller's. A client half's `next()` takes
+`headers`, `sendContext` and `fetch`; the call's own `headers` and `fetch` win
+over a middleware's, and a later middleware's over an earlier one's. What a
+client half sends arrives on the server as `clientContext`, untyped on purpose:
+it is whatever the caller chose to send.
 
 Middleware runs BEFORE validation, deliberately: an unauthenticated caller
 should be refused without the server parsing its payload, and a rejection that
@@ -270,6 +362,37 @@ which runs in the browser around every call.
 A global request middleware runs after a call has passed the method, origin and
 id checks, and before its body is read, so a forged request reaches none of it.
 
+Register the instance and what the global middleware adds is typed too, in every
+handler's `context` and in `getGlobalStartContext()` (each key optional there,
+since it can be called outside a request):
+
+```ts
+declare module "@barqjs/start" {
+  interface Register {
+    start: typeof startInstance;
+  }
+}
+```
+
+### With Solid's async primitives
+
+A server function returns a promise, so it is what an async memo reads and what
+an `action` yields:
+
+```tsx
+const notes = createMemo(async () => listNotes());
+const [guesses, setGuesses] = createOptimistic<readonly Note[]>([]);
+
+const add = action(function* (text: string) {
+  setGuesses((list) => [...list, { id: -1, text }]); // shown at once, dropped when this settles
+  yield addNote({ data: { text } });
+  refresh(notes); // the real row arrives with the refreshed list
+});
+```
+
+On the server the memo's call is in-process and its answer seeds the page, so
+the browser does not ask again until `refresh`.
+
 ## The build and the server
 
 ```ts
@@ -368,7 +491,7 @@ a `virtual:` or `#`-prefixed specifier.
 | import                    | where it runs                                                            |
 | ------------------------- | ------------------------------------------------------------------------ |
 | `@barqjs/start`           | the isomorphic surface: `createServerFn`, the context, sessions, cookies |
-| `@barqjs/start/client`    | the RPC stub the compiler emits                                          |
+| `@barqjs/start/client`    | the RPC stub the compiler emits, and `staticFunctionMiddleware`          |
 | `@barqjs/start/server`    | `handleServerFn`, `mount`, the origin check                              |
 | `@barqjs/start/serve`     | `serveBarq`, the asset middleware                                        |
 | `@barqjs/start/vite`      | `barqStart()`                                                            |

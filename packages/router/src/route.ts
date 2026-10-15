@@ -9,6 +9,7 @@
  */
 
 import type { Child, JSXElement, Scope } from "@barqjs/core";
+import type { ChainContribution, Empty, Middleware, OpenContext } from "@barqjs/start";
 
 import type { FlatRoute } from "./matcher.ts";
 import { joinPattern, normalize, parsePattern } from "./path.ts";
@@ -173,6 +174,7 @@ export interface RouteDefinition<
   Params = Record<string, string>,
   Deps = undefined,
   Search = Record<string, unknown>,
+  ServerChain extends readonly Middleware[] = readonly Middleware[],
 > {
   /**
    * This route's pattern, relative to its parent. Omitted makes the route
@@ -491,7 +493,7 @@ export interface RouteDefinition<
    * database import, is in the client bundle, so the strip is not an
    * optimisation.
    */
-  readonly server?: RouteServer<Params>;
+  readonly server?: RouteServer<Params, ServerChain>;
   /**
    * Anything this route wants to carry that the router does not interpret.
    *
@@ -575,13 +577,20 @@ export interface RouteLifecycle<Params = Record<string, string>> {
 export type RouteMethod = "ANY" | "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "OPTIONS" | "HEAD";
 
 /** What a route handler is handed. */
-export interface RouteHandlerContext<Params = Record<string, string>> {
+export interface RouteHandlerContext<
+  Params = Record<string, string>,
+  Context extends object = Empty,
+> {
   readonly request: Request;
   readonly params: Params;
   /** The matched pathname, after any base has been stripped. */
   readonly pathname: string;
-  /** What this route's `server.middleware` contributed. */
-  readonly context: Record<string, unknown>;
+  /**
+   * What the middleware above this handler contributed, typed by what this
+   * route's own `server.middleware` passes to `next({ context })`. A key a
+   * parent route's middleware added still reads, as `unknown`.
+   */
+  readonly context: OpenContext<Context>;
 }
 
 /**
@@ -592,21 +601,30 @@ export interface RouteHandlerContext<Params = Record<string, string>> {
  * can return nothing for a browser and let the page render. TanStack spells the
  * same thing as `next()` (`serverRoute.ts:461`).
  */
-export type RouteHandler<Params = Record<string, string>> = (
-  context: RouteHandlerContext<Params>,
+export type RouteHandler<Params = Record<string, string>, Context extends object = Empty> = (
+  context: RouteHandlerContext<Params, Context>,
 ) => Response | undefined | Promise<Response | undefined>;
 
 /** One method's handler with the middleware that guards it alone. */
-export interface RouteHandlerEntry<Params = Record<string, string>> {
-  readonly middleware?: readonly import("@barqjs/start").Middleware[];
-  readonly handler: RouteHandler<Params>;
+export interface RouteHandlerEntry<
+  Params = Record<string, string>,
+  Context extends object = Empty,
+> {
+  readonly middleware?: readonly Middleware[];
+  readonly handler: RouteHandler<Params, Context>;
 }
 
-export type RouteHandlers<Params = Record<string, string>> = Partial<
-  Record<RouteMethod, RouteHandler<Params> | RouteHandlerEntry<Params>>
+export type RouteHandlers<
+  Params = Record<string, string>,
+  Context extends object = Empty,
+> = Partial<
+  Record<RouteMethod, RouteHandler<Params, Context> | RouteHandlerEntry<Params, Context>>
 >;
 
-export interface RouteServer<Params = Record<string, string>> {
+export interface RouteServer<
+  Params = Record<string, string>,
+  Chain extends readonly Middleware[] = readonly Middleware[],
+> {
   /**
    * Runs before this route's handler, outermost first, and INHERITED — a
    * middleware on `/api` covers everything under it.
@@ -616,17 +634,19 @@ export interface RouteServer<Params = Record<string, string>> {
    * manifest compares chains by closure identity, and a second middleware type
    * would be a second thing it cannot see.
    */
-  readonly middleware?: readonly import("@barqjs/start").Middleware[];
+  readonly middleware?: Chain;
   /**
    * The answers, by method. Each is a handler, or a handler with middleware of
    * its own that runs after the route's. The function form is TanStack's
    * `({ createHandlers }) => createHandlers({ GET: { middleware, handler } })`.
    */
   readonly handlers?:
-    | RouteHandlers<Params>
+    | RouteHandlers<Params, ChainContribution<Chain>["context"]>
     | ((options: {
-        readonly createHandlers: (handlers: RouteHandlers<Params>) => RouteHandlers<Params>;
-      }) => RouteHandlers<Params>);
+        readonly createHandlers: (
+          handlers: RouteHandlers<Params, ChainContribution<Chain>["context"]>,
+        ) => RouteHandlers<Params, ChainContribution<Chain>["context"]>;
+      }) => RouteHandlers<Params, ChainContribution<Chain>["context"]>);
   /**
    * Refuse a state-changing request a BROWSER made from another origin.
    * Default `true`.
@@ -667,7 +687,7 @@ export interface RouteServer<Params = Record<string, string>> {
  * `loaderData` read.
  */
 // oxlint-disable-next-line typescript/no-explicit-any
-export type AnyRouteDefinition = RouteDefinition<any, any, any, any>;
+export type AnyRouteDefinition = RouteDefinition<any, any, any, any, any>;
 
 /** A route after flattening: its own definition plus everything the matcher needs. */
 export interface Route {

@@ -27,7 +27,9 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import { type CookieOptions, deleteCookieLine, parseCookies, serializeCookie } from "./cookies.ts";
+import type { OpenContext } from "./middleware.ts";
 import type { OpenSession } from "./session.ts";
+import type { GlobalRequestContext } from "./start-instance.ts";
 
 /**
  * Headers and a status a handler asked for, merged into whatever is returned.
@@ -132,10 +134,20 @@ export interface RequestContext {
  * that tries to ENTER a request context off-server reaches the constructor, and
  * that one gets told what it did.
  */
-let storage: AsyncLocalStorage<RequestContext> | undefined;
+/**
+ * ONE storage per process, whichever copy of this module asks, for the reason
+ * the server-function registry is one: a build compiles this module into its
+ * server bundle, and a host serving that bundle through its own `serveBarq`
+ * has imported a second copy. Each holding its own, the host entered the
+ * request into one and the bundle's functions read the other, so every server
+ * function that read a cookie answered 500.
+ */
+const SHARED = ((globalThis as Record<symbol, unknown>)[Symbol.for("barq.start.request")] ??= {
+  storage: undefined,
+}) as { storage: AsyncLocalStorage<RequestContext> | undefined };
 
 function enterable(): AsyncLocalStorage<RequestContext> {
-  if (storage !== undefined) return storage;
+  if (SHARED.storage !== undefined) return SHARED.storage;
   if (typeof AsyncLocalStorage !== "function") {
     throw new Error(
       "[barq] `withRequest` was called where `AsyncLocalStorage` from `node:async_hooks` does not exist, so the request cannot be made available to the code it runs. " +
@@ -143,8 +155,8 @@ function enterable(): AsyncLocalStorage<RequestContext> {
         "move it behind a server function.",
     );
   }
-  storage = new AsyncLocalStorage<RequestContext>();
-  return storage;
+  SHARED.storage = new AsyncLocalStorage<RequestContext>();
+  return SHARED.storage;
 }
 
 /** A fresh, empty draft. One per request. */
@@ -167,7 +179,7 @@ export function createResponseDraft(): ResponseDraft {
  * back to the package's own sheet, which is where a module-scope rule belongs.
  */
 export function collectRequestCss(): string {
-  const store = storage?.getStore();
+  const store = SHARED.storage?.getStore();
   if (store?.lateCss !== undefined) return store.lateCss();
   return store?.css === undefined ? "" : [...store.css.values()].join("");
 }
@@ -180,7 +192,7 @@ interface CssSink {
 
 export function installCssSink(setSink: (sink: CssSink) => void): void {
   const sink: CssSink = (key, rules) => {
-    const store = storage?.getStore();
+    const store = SHARED.storage?.getStore();
     // Outside a request there is nothing to attribute the rule to — module
     // scope, which every request needs — so it goes to the package's own sheet.
     if (store === undefined) return false;
@@ -191,7 +203,7 @@ export function installCssSink(setSink: (sink: CssSink) => void): void {
   // The FIRST read of the whole sheet in a request is its `<head>`; a later
   // one is somebody else's and must not move the line.
   sink.head = (late) => {
-    const store = storage?.getStore();
+    const store = SHARED.storage?.getStore();
     if (store !== undefined) store.lateCss ??= late;
   };
   setSink(sink);
@@ -235,12 +247,12 @@ export function getRequest(): Request {
  * case. Code that must have one calls `getRequest` and gets the refusal.
  */
 export function peekRequest(): Request | undefined {
-  const found = storage?.getStore();
+  const found = SHARED.storage?.getStore();
   return found === undefined || found.refuse !== undefined ? undefined : found.request;
 }
 
 function context(): RequestContext {
-  const found = storage?.getStore();
+  const found = SHARED.storage?.getStore();
   if (found === undefined) {
     throw new Error(
       "[barq] A request helper such as `getRequest()`, `getCookie()` or `setResponseHeader()` was called outside a request, so there is no request to read and no response to write to. " +
@@ -260,7 +272,7 @@ function context(): RequestContext {
  * page rather than the requester, and the prerenderer can write it to disk.
  */
 export function peekResponseDraft(): ResponseDraft | undefined {
-  return storage?.getStore()?.response;
+  return SHARED.storage?.getStore()?.response;
 }
 
 /**
@@ -270,13 +282,13 @@ export function peekResponseDraft(): ResponseDraft | undefined {
  * a server function called in-process, whose caller is handed the result alone.
  */
 export function offerSendContext(sendContext: Record<string, unknown>): void {
-  const found = storage?.getStore();
+  const found = SHARED.storage?.getStore();
   if (found !== undefined) found.sendContext = sendContext;
 }
 
 /** Take the pending `sendContext`, leaving nothing behind for the next call. */
 export function takeSendContext(): Record<string, unknown> {
-  const found = storage?.getStore();
+  const found = SHARED.storage?.getStore();
   const taken = found?.sendContext ?? {};
   if (found !== undefined) found.sendContext = undefined;
   return taken;
@@ -285,14 +297,19 @@ export function takeSendContext(): Record<string, unknown> {
 /**
  * What this request's middleware chain has contributed, or an empty record
  * outside a request. TanStack's name.
+ *
+ * Typed by what the registered global request middleware passes to
+ * `next({ context })`, each key optional: outside a request, or before the
+ * chain has reached the step that adds it, it is not there.
  */
-export function getGlobalStartContext(): Record<string, unknown> {
-  return storage?.getStore()?.middlewareContext ?? {};
+export function getGlobalStartContext(): OpenContext<Partial<GlobalRequestContext>> {
+  const written: Record<string, unknown> = SHARED.storage?.getStore()?.middlewareContext ?? {};
+  return written;
 }
 
 /** Record what the request middleware chain is contributing, for the rest of the request. */
 export function setRequestMiddlewareContext(context: Record<string, unknown>): void {
-  const found = storage?.getStore();
+  const found = SHARED.storage?.getStore();
   if (found !== undefined) found.middlewareContext = context;
 }
 

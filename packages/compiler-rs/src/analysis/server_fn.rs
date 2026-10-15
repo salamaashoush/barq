@@ -13,7 +13,7 @@
 
 use oxc::ast::ast::{
     Argument, BindingPattern, Declaration, Expression, ImportDeclarationSpecifier,
-    ModuleExportName, Program, Statement,
+    ModuleExportName, ObjectPropertyKind, Program, Statement,
 };
 use oxc::semantic::{Scoping, SemanticBuilder, SymbolId};
 use oxc::span::Span;
@@ -38,6 +38,14 @@ pub struct Export {
     /// binding that is not there — and it is the same line the route-action
     /// verifier draws for the same reason.
     pub middleware: Vec<String>,
+    /// `"GET"` when the factory was called `createServerFn({ method: "GET" })`.
+    ///
+    /// The client stub has to send the method the server answers, and it is
+    /// synthesized from nothing, so the method is read here. Only a string
+    /// literal is read; anything else is a runtime value this cannot see, and
+    /// the stub POSTs, which the server answers with a 405 naming the method
+    /// it wants.
+    pub method: Option<String>,
 }
 
 /// One import statement the client stub may need to reproduce.
@@ -89,7 +97,7 @@ pub fn mentions(source: &str) -> bool {
     source.contains("createServerFn")
 }
 
-pub fn scan(program: &Program<'_>, start_source: &str) -> Scan {
+pub fn scan(program: &Program<'_>, start_source: &str, client_source: &str) -> Scan {
     // Semantic first: `symbol_id` is what it populates, so asking an import
     // specifier for one before it has run reads an empty cell and finds nothing.
     let scoping = SemanticBuilder::new().build(program).semantic.into_scoping();
@@ -108,7 +116,13 @@ pub fn scan(program: &Program<'_>, start_source: &str) -> Scan {
     for statement in &program.body {
         if let Statement::ImportDeclaration(import) = statement {
             let specifier = import.source.value.as_str();
-            if specifier.starts_with('.') || specifier.starts_with('/') {
+            // The client subpath as well: the stub already imports `clientRpc`
+            // from it, so it is client-safe by definition, and it is where a
+            // middleware the package ships for the client half lives.
+            if specifier.starts_with('.')
+                || specifier.starts_with('/')
+                || specifier == client_source
+            {
                 let names = import
                     .specifiers
                     .iter()
@@ -150,6 +164,10 @@ pub fn scan(program: &Program<'_>, start_source: &str) -> Scan {
                                 .as_ref()
                                 .map(|init| declared_middleware(init, factory, &scoping, &locals))
                                 .unwrap_or_default(),
+                            method: declarator
+                                .init
+                                .as_ref()
+                                .and_then(|init| declared_method(init, factory, &scoping, &locals)),
                         });
                     }
                 }
@@ -163,6 +181,7 @@ pub fn scan(program: &Program<'_>, start_source: &str) -> Scan {
                             span: id.1,
                             server_fn: false,
                             middleware: Vec::new(),
+                            method: None,
                         });
                     }
                 }
@@ -192,6 +211,9 @@ pub fn scan(program: &Program<'_>, start_source: &str) -> Scan {
                         // binding is, and this module cannot see through the
                         // alias to it.
                         middleware: Vec::new(),
+                        method: local_symbol(&specifier.local, &scoping)
+                            .and_then(|symbol| locals.get(&symbol).copied().flatten())
+                            .and_then(|init| declared_method(init, factory, &scoping, &locals)),
                     });
                 }
             }
@@ -214,6 +236,10 @@ pub fn scan(program: &Program<'_>, start_source: &str) -> Scan {
                         .as_expression()
                         .map(|init| declared_middleware(init, factory, &scoping, &locals))
                         .unwrap_or_default(),
+                    method: export
+                        .declaration
+                        .as_expression()
+                        .and_then(|init| declared_method(init, factory, &scoping, &locals)),
                 });
             }
             _ => {}
@@ -407,6 +433,68 @@ fn declared_middleware(
     }
 }
 
+/// The `method` the factory call names, when it names `"GET"` as a literal.
+///
+/// Walks the spine `rooted_at` walks, to the call whose callee IS the factory,
+/// and reads `{ method: "GET" }` off its first argument.
+fn declared_method(
+    expression: &Expression<'_>,
+    factory: Factory,
+    scoping: &Scoping,
+    locals: &Locals<'_, '_>,
+) -> Option<String> {
+    if !rooted_at(expression, factory, scoping, locals) {
+        return None;
+    }
+    let mut current = expression;
+    loop {
+        match unwrapped(current) {
+            Expression::CallExpression(call) => {
+                if is_factory(&call.callee, factory, scoping) {
+                    let Some(Argument::ObjectExpression(options)) = call.arguments.first() else {
+                        return None;
+                    };
+                    return options.properties.iter().find_map(|property| {
+                        let ObjectPropertyKind::ObjectProperty(property) = property else {
+                            return None;
+                        };
+                        if property.computed
+                            || property.key.static_name().as_deref() != Some("method")
+                        {
+                            return None;
+                        }
+                        match unwrapped(&property.value) {
+                            Expression::StringLiteral(value) if value.value == "GET" => {
+                                Some("GET".to_string())
+                            }
+                            _ => None,
+                        }
+                    });
+                }
+                current = &call.callee;
+            }
+            Expression::StaticMemberExpression(member) => current = &member.object,
+            other => match symbol_of(other, scoping).and_then(|symbol| locals.get(&symbol)) {
+                Some(Some(init)) => current = init,
+                _ => return None,
+            },
+        }
+    }
+}
+
+/// Whether a callee is the factory itself: the imported name, or the member of
+/// a namespace import.
+fn is_factory(callee: &Expression<'_>, factory: Factory, scoping: &Scoping) -> bool {
+    match unwrapped(callee) {
+        Expression::StaticMemberExpression(member) => {
+            member.property.name == "createServerFn"
+                && factory.namespace.is_some()
+                && symbol_of(&member.object, scoping) == factory.namespace
+        }
+        other => factory.named.is_some() && symbol_of(other, scoping) == factory.named,
+    }
+}
+
 /// Whether an expression is a call chain rooted at the factory.
 ///
 /// `createServerFn().validator(s).handler(f)` is a `CallExpression` whose callee
@@ -460,7 +548,7 @@ mod tests {
     fn scan_of(source: &str) -> Scan {
         let allocator = Allocator::new();
         let parsed = Parser::new(&allocator, source, SourceType::ts()).parse();
-        scan(&parsed.program, "@barqjs/start")
+        scan(&parsed.program, "@barqjs/start", "@barqjs/start/client")
     }
 
     const IMPORT: &str = "import { createServerFn } from '@barqjs/start';\n";
@@ -623,6 +711,33 @@ mod tests {
             "{IMPORT}import {{ listUsers }} from './users.ts';\nexport {{ listUsers }};"
         ));
         assert_eq!(scan.server_fns().count(), 0);
+    }
+
+    /// The stub has to send the method the server answers, and the literal on
+    /// the factory call is the only place it is written.
+    #[test]
+    fn a_get_function_says_so_and_a_post_one_does_not() {
+        let scan = scan_of(&format!(
+            "{IMPORT}export const read = createServerFn({{ method: 'GET' }}).handler(async () => 1);\n\
+             const base = createServerFn({{ method: \"GET\" }}).middleware([audit]);\n\
+             export const held = base.handler(async () => 2);\n\
+             export const write = createServerFn({{ method: 'POST' }}).handler(async () => 3);\n\
+             export const plain = createServerFn().handler(async () => 4);\n\
+             const chosen = 'GET';\n\
+             export const dynamic = createServerFn({{ method: chosen }}).handler(async () => 5);"
+        ));
+        let methods: Vec<(&str, Option<&str>)> =
+            scan.server_fns().map(|e| (e.name.as_str(), e.method.as_deref())).collect();
+        assert_eq!(
+            methods,
+            vec![
+                ("read", Some("GET")),
+                ("held", Some("GET")),
+                ("write", None),
+                ("plain", None),
+                ("dynamic", None),
+            ]
+        );
     }
 
     #[test]

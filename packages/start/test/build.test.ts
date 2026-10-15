@@ -23,6 +23,10 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { createBuilder } from "vite";
 
+import { decodeWire, encodeWire } from "@barqjs/server/codec";
+
+import { ServerFnError, clientRpc } from "../src/client.ts";
+import { staticFunctionMiddleware, staticUrl } from "../src/static-fn.ts";
 import { barqStart } from "../src/vite.ts";
 
 const ROOT = fileURLToPath(new URL("./build-fixture", import.meta.url));
@@ -79,6 +83,31 @@ describe("a production build", () => {
     expect(server).toContain("server-only-secret-must-not-ship");
     // What the client got instead: the synthesized stub, under the same id.
     expect(client).toContain("src/data.ts#loadUser");
+  });
+
+  test("keeps a GET function's body, and a middleware's server half, out of the browser", () => {
+    for (const secret of ["get-handler-secret-must-not-ship", "audit-server-half-must-not-ship"]) {
+      expect(client).not.toContain(secret);
+      expect(server).toContain(secret);
+    }
+    // What the client got: the stub, its method, and the chain's client half.
+    expect(client).toContain("src/reads.ts#readGreeting");
+    expect(client).toMatch(/method:\s*["'`]GET["'`]/);
+    expect(client).toContain("audit-client-half-reached-the-client");
+  });
+
+  test("gives each side only its own half of an environment function", () => {
+    for (const secret of [
+      "server-only-fn-body-must-not-ship",
+      "isomorphic-server-half-must-not-ship",
+    ]) {
+      expect(client).not.toContain(secret);
+      expect(server).toContain(secret);
+    }
+    expect(client).toContain("isomorphic-client-half-reached-the-client");
+    expect(client).toContain("client-only-fn-body-must-not-reach-the-server");
+    expect(server).not.toContain("isomorphic-client-half-reached-the-client");
+    expect(server).not.toContain("client-only-fn-body-must-not-reach-the-server");
   });
 
   /**
@@ -152,6 +181,82 @@ describe("prerendering", () => {
     const home = readFileSync(join(OUT, "client", "index.html"), "utf8");
     const asset = readdirSync(join(OUT, "client", "assets")).find((n) => n.endsWith(".js"));
     expect(home).toContain(asset as string);
+  });
+});
+
+/**
+ * Static server functions: what the prerender wrote, and a client reading it
+ * from a host that runs no server code at all.
+ */
+describe("static server functions", () => {
+  const ID = "src/statics.ts#greetStatic";
+  const fileOf = (name: string): string => join(OUT, "client", staticUrl(ID, { name }).slice(1));
+
+  test("the prerender wrote one file per input a page called with", () => {
+    for (const [name, greeting] of [
+      ["salama", "static hello salama"],
+      ["ada", "static hello ada"],
+    ] as const) {
+      const answer = decodeWire<{ result: { greeting: string; at: Date } }>(
+        JSON.parse(readFileSync(fileOf(name), "utf8")),
+      );
+      expect(answer.result.greeting).toBe(greeting);
+      expect(answer.result.at).toBeInstanceOf(Date);
+    }
+    expect(staticUrl(ID, { name: "salama" })).not.toBe(staticUrl(ID, { name: "ada" }));
+    // The page that called it carries the answer it rendered with.
+    expect(readFileSync(join(OUT, "client", "index.html"), "utf8")).toContain(
+      "static hello salama",
+    );
+  });
+
+  test("the stub carries the middleware, so the browser looks for the file first", () => {
+    expect(client).toContain("src/statics.ts#greetStatic");
+    expect(client).toContain("/_barq/static/");
+  });
+
+  test("the files are in the asset manifest, so the built server serves them", () => {
+    const manifest = readFileSync(join(OUT, "client", "barq-assets.json"), "utf8");
+    expect(manifest).toContain(staticUrl(ID, { name: "salama" }).slice(1));
+    expect(manifest).toContain(staticUrl(ID, { name: "ada" }).slice(1));
+  });
+
+  test("a client reads them from a host that serves files and nothing else", async () => {
+    const files = join(OUT, "client");
+    const asked: string[] = [];
+    const host = Bun.serve({
+      port: 0,
+      fetch: async (request) => {
+        const path = decodeURIComponent(new URL(request.url).pathname);
+        asked.push(path);
+        const file = Bun.file(join(files, path));
+        return (await file.exists())
+          ? new Response(file)
+          : new Response("no file", { status: 404 });
+      },
+    });
+    const realFetch = globalThis.fetch;
+    globalThis.fetch = ((input: RequestInfo | URL, init?: RequestInit) =>
+      realFetch(new URL(String(input), host.url), init)) as typeof fetch;
+    try {
+      const greet = clientRpc<{ name: string }, { greeting: string; at: Date }, "GET">(
+        ID,
+        [staticFunctionMiddleware],
+        { method: "GET" },
+      );
+      const answer = await greet({ data: { name: "salama" } });
+      expect(answer.greeting).toBe("static hello salama");
+      expect(answer.at).toBeInstanceOf(Date);
+      expect(asked).toEqual([staticUrl(ID, { name: "salama" })]);
+
+      // An input no page called with has no file, so the call goes on to a
+      // server, and this host has none.
+      await expect(greet({ data: { name: "zed" } })).rejects.toBeInstanceOf(ServerFnError);
+      expect(asked.at(-1)).toStartWith("/_barq/fn/");
+    } finally {
+      globalThis.fetch = realFetch;
+      void host.stop(true);
+    }
   });
 });
 
@@ -282,6 +387,21 @@ describe("`serve.js`, the half a person runs", () => {
       expect(chunk.status).toBe(200);
       expect(chunk.headers.get("content-type")).toContain("javascript");
       expect(missing.status).toBe(404);
+
+      // A GET server function, through the built server: answered for the
+      // stub's request, refused for the same URL without the stub's header.
+      const payload = encodeURIComponent(JSON.stringify({ input: encodeWire({ name: "salama" }) }));
+      const endpoint = `${base}/_barq/fn/${encodeURIComponent("src/reads.ts#readGreeting")}.data?payload=${payload}`;
+      const [called, linked] = await Promise.all([
+        fetch(endpoint, { headers: { "sec-fetch-site": "same-origin", "x-barq-fn": "1" } }),
+        fetch(endpoint, { headers: { "sec-fetch-site": "same-origin" } }),
+      ]);
+      expect(called.status).toBe(200);
+      expect(decodeWire<{ greeting: string; audited: string }>(await called.json())).toMatchObject({
+        greeting: "hello salama",
+        audited: "audit-server-half-must-not-ship",
+      });
+      expect(linked.status).toBe(403);
     } finally {
       child.kill();
       await child.exited;

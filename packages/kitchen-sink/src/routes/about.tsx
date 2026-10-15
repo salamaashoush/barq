@@ -6,9 +6,18 @@
  * in the config: the root route's nav links to it.
  */
 
+import { createMemo, createSignal, Loading } from "@barqjs/core";
 import { createFileRoute } from "@barqjs/router";
 
+import { buildInfo } from "../data/build-info.ts";
+
 function About() {
+  const built = createMemo(async () => buildInfo({ data: { page: "about" } }));
+  const [asked, setAsked] = createSignal("—");
+  const askAgain = async (): Promise<void> => {
+    const again = await buildInfo({ data: { page: "about" } });
+    setAsked(again.builtAt.toISOString());
+  };
   return (
     <section>
       <h2>About</h2>
@@ -16,6 +25,13 @@ function About() {
         This page was written to disk at build time by the same handler that serves a live request,
         with <code>stream: false</code> — which is a different renderer, not a buffered stream.
       </p>
+      <Loading fallback={<p>…</p>}>
+        <p id="built-at">built at {() => built().builtAt.toISOString()}</p>
+      </Loading>
+      <button type="button" id="ask-again" onClick={() => void askAgain()}>
+        ask again
+      </button>
+      <p id="asked-again">{() => asked()}</p>
     </section>
   );
 }

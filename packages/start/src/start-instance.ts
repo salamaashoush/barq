@@ -15,7 +15,7 @@
  * the browser around every call.
  */
 
-import type { Middleware } from "./middleware.ts";
+import type { ChainContribution, Empty, Middleware } from "./middleware.ts";
 
 export interface StartOptions {
   /** Runs for every request the server answers: a page, a route handler, a server function. */
@@ -24,9 +24,54 @@ export interface StartOptions {
   readonly functionMiddleware?: readonly Middleware[];
 }
 
-export interface StartInstance {
-  getOptions(): StartOptions;
+export interface StartInstance<Options extends StartOptions = StartOptions> {
+  getOptions(): Options;
 }
+
+declare const UNREGISTERED: unique symbol;
+
+/**
+ * Where an application tells the types about its `src/start.ts`:
+ *
+ * ```ts
+ * declare module "@barqjs/start" {
+ *   interface Register {
+ *     start: typeof startInstance;
+ *   }
+ * }
+ * ```
+ *
+ * With that, what the global middleware passes to `next({ context })` is typed
+ * in every server function's `context` and in `getGlobalStartContext()`.
+ * Without it they are untyped, never wrong. The member below exists so the
+ * interface is not the empty object type before anything augments it.
+ */
+export interface Register {
+  readonly [UNREGISTERED]?: never;
+}
+
+type RegisteredInstance = Register extends { readonly start: infer Instance }
+  ? Instance
+  : StartInstance;
+
+/** What an instance's request middleware adds, for the whole request. */
+export type RequestContextOf<Instance> =
+  Instance extends StartInstance<infer Options>
+    ? ChainContribution<NonNullable<Options["requestMiddleware"]>>["context"]
+    : Empty;
+
+/** What an instance's middleware hands every server function: request, then function. */
+export type FunctionContextOf<Instance> =
+  Instance extends StartInstance<infer Options>
+    ? RequestContextOf<Instance> &
+        ChainContribution<NonNullable<Options["functionMiddleware"]>>["context"]
+    : Empty;
+
+/** What the registered global request middleware adds, for the whole request. */
+export type GlobalRequestContext = RequestContextOf<RegisteredInstance>;
+
+/** What every server function's `context` starts from. */
+export type GlobalFunctionContext = FunctionContextOf<RegisteredInstance>;
 
 /**
  * One instance for the process, whichever copy of this module asks.
@@ -49,9 +94,11 @@ const NONE: StartOptions = Object.freeze({});
  * The function is called once, the first time anything asks, so a middleware
  * module that imports this one back is fully evaluated by then.
  */
-export function createStart(options: () => StartOptions): StartInstance {
-  let resolved: StartOptions | undefined;
-  const instance: StartInstance = { getOptions: () => (resolved ??= options()) };
+export function createStart<const Options extends StartOptions>(
+  options: () => Options,
+): StartInstance<Options> {
+  let resolved: Options | undefined;
+  const instance: StartInstance<Options> = { getOptions: () => (resolved ??= options()) };
   REGISTERED.instance = instance;
   return instance;
 }

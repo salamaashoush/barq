@@ -25,6 +25,8 @@ import { decodeWire, encodeWire } from "@barqjs/server/codec";
 import { type Middleware, flattenMiddleware, runMiddleware } from "./middleware.ts";
 import { startOptions } from "./start-instance.ts";
 
+export { STATIC_PREFIX, staticFunctionMiddleware, staticUrl } from "./static-fn.ts";
+
 export const SERVER_FN = Symbol.for("barq.server-fn");
 
 /** Where mounted server functions answer. */
@@ -220,10 +222,35 @@ export class ServerFnError extends Error {
   }
 }
 
+/**
+ * The HTTP methods a server function answers. `POST` is the default and the
+ * only one a form can reach; `GET` is for a read the browser and a CDN may
+ * cache, and see {@link RPC_CALLER} for what keeps a link from reaching one.
+ */
+export type ServerFnMethod = "GET" | "POST";
+
 export interface ServerFnMeta {
   /** Stable across edits and deploys: the module path and the export name. */
   id: string;
+  /** Absent for `POST`, which is every function that did not ask for `GET`. */
+  readonly method?: ServerFnMethod;
 }
+
+/**
+ * The request header every GET call the stub makes carries, and is refused
+ * without.
+ *
+ * A link, an `<img>`, a prefetch and a navigation cannot set a header; only
+ * script can, and a cross-origin script that sets one is preflighted and
+ * refused by the origin check. So a `GET` server function stays out of reach
+ * of everything that is not this application's own code, which is the reason
+ * `GET` was once refused outright: a mutation reachable by navigation is a
+ * one-click CSRF carrying `SameSite=Lax` cookies.
+ */
+export const RPC_CALLER = "x-barq-fn";
+
+/** Where a GET call's payload rides, since a GET has no body. */
+export const PAYLOAD_PARAM = "payload";
 
 /**
  * How a server function is CALLED: `fn({ data })`, and `fn()` when it takes
@@ -253,7 +280,7 @@ export interface ServerFnCallOptions {
   readonly fetch?: typeof fetch;
 }
 
-export type ServerFnArgs<In> = [undefined] extends [In]
+export type ServerFnArgs<In, Method extends ServerFnMethod = "POST"> = [undefined] extends [In]
   ? // The argument is OPTIONAL exactly when `undefined` is an acceptable input,
     // which covers both cases that want it: no validator at all (`In` is
     // `undefined`), and `.validator("unchecked")`, whose `In` is `unknown` and
@@ -264,8 +291,11 @@ export type ServerFnArgs<In> = [undefined] extends [In]
     // An optional ELEMENT, not a `void` one: a rest tuple with a `void` member
     // does not make the parameter optional, and `fn()` stayed "Expected 1
     // arguments, but got 0" until it was written this way.
-    [options?: ({ readonly data?: In } & ServerFnCallOptions) | FormData]
-  : [options: ({ readonly data: In } & ServerFnCallOptions) | FormData];
+    [options?: ({ readonly data?: In } & ServerFnCallOptions) | FormFor<Method>]
+  : [options: ({ readonly data: In } & ServerFnCallOptions) | FormFor<Method>];
+
+/** A form is a body, so only a `POST` function takes one. */
+type FormFor<Method extends ServerFnMethod> = Method extends "POST" ? FormData : never;
 
 /**
  * A server function, from either side.
@@ -276,7 +306,9 @@ export type ServerFnArgs<In> = [undefined] extends [In]
  * submission and the JS one reach the handler identically, which is the whole
  * point of that path. TanStack has no counterpart to match here.
  */
-export type ServerFn<In, Out> = ((...args: ServerFnArgs<In>) => Promise<Out>) & {
+export type ServerFn<In, Out, Method extends ServerFnMethod = "POST"> = ((
+  ...args: ServerFnArgs<In, Method>
+) => Promise<Out>) & {
   readonly [SERVER_FN]: true;
   readonly meta: ServerFnMeta;
   /**
@@ -290,9 +322,11 @@ export type ServerFn<In, Out> = ((...args: ServerFnArgs<In>) => Promise<Out>) & 
  * Any server function, whatever it takes and returns.
  *
  * `never` in, because the input sits in a parameter: a function that takes a
- * string does not accept `unknown`, and every function accepts `never`.
+ * string does not accept `unknown`, and every function accepts `never`. The
+ * method is `never` for the same reason: it decides whether a form is a
+ * parameter.
  */
-export type AnyServerFn = ServerFn<never, unknown>;
+export type AnyServerFn = ServerFn<never, unknown, never>;
 
 /** The form endpoint of a mounted id, or nothing for a function with none. */
 export function urlOf(id: string): string {
@@ -323,10 +357,12 @@ export function callOptionsOf(options: unknown): ServerFnCallOptions | undefined
  * in the client build, so a middleware may hold both without the server body —
  * or the database import it needed — reaching the browser.
  */
-export function clientRpc<In, Out>(
+export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
   id: string,
   chain: readonly Middleware[] = [],
-): ServerFn<In, Out> {
+  declared?: { readonly method?: Method },
+): ServerFn<In, Out, Method> {
+  const method: ServerFnMethod = declared?.method ?? "POST";
   // With the application's global function middleware ahead of the function's
   // own, read when first needed for the reason `serverRpc` gives.
   let composed: { from: readonly Middleware[] | undefined; chain: readonly Middleware[] } | null =
@@ -358,6 +394,8 @@ export function clientRpc<In, Out>(
     asked?: ServerFnCallOptions,
     /** What the client halves passed to `next({ headers })`. */
     chainHeaders?: Headers,
+    /** What the client halves passed to `next({ fetch })`, the last one winning. */
+    chainFetch?: typeof fetch,
   ): Promise<Out> => {
     // FormData goes as FormData. Routing it through the value codec would hand
     // the handler a plain OBJECT here and a real `FormData` on the no-JS path —
@@ -365,9 +403,30 @@ export function clientRpc<In, Out>(
     // which is the divergence progressive enhancement exists to avoid. It also
     // keeps files, which no value codec in this class carries.
     const form = input instanceof FormData;
+    if (form && method === "GET") {
+      throw new TypeError(
+        `[barq] The server function \`${id}\` answers GET, and a GET has no body to carry a form. ` +
+          'Declare it `createServerFn({ method: "POST" })` to accept a `FormData`.',
+      );
+    }
+    // Otherwise seroval's JSON channel, so an argument carries a Date, a Map or
+    // a cycle the same way a hydration seed does — and reconstructs through
+    // `fromJSON`, which evaluates nothing.
+    //
+    // `context` is what the CLIENT halves asked to send. It is absent from the
+    // payload when they asked for nothing, so an application with no client
+    // middleware sends exactly the bytes it sent before.
+    const payload = form
+      ? undefined
+      : JSON.stringify(
+          Object.keys(sendContext).length === 0
+            ? { input: encodeWire(input) }
+            : { input: encodeWire(input), context: encodeWire(sendContext) },
+        );
     // No content-type for the form case: the browser sets the multipart
-    // boundary, and setting it by hand produces a body nothing can parse.
-    let headers: HeadersInit | undefined = form ? undefined : JSON_BODY;
+    // boundary, and setting it by hand produces a body nothing can parse. None
+    // for a GET either, which has no body to describe.
+    let headers: HeadersInit | undefined = method === "GET" ? CALLER : form ? undefined : JSON_BODY;
     if (chainHeaders !== undefined || asked?.headers !== undefined) {
       const merged = new Headers(chainHeaders);
       if (asked?.headers !== undefined) {
@@ -375,30 +434,21 @@ export function clientRpc<In, Out>(
       }
       // Ours either way: the body is what this function encoded, whatever a
       // caller or a middleware believes it is sending.
-      if (form) merged.delete("content-type");
+      if (form || method === "GET") merged.delete("content-type");
       else merged.set("content-type", "application/json");
+      if (method === "GET") merged.set(RPC_CALLER, "1");
       headers = merged;
     }
-    const response = await (asked?.fetch ?? fetch)(
-      RPC_PREFIX + encodeURIComponent(id) + DATA_SUFFIX,
+    const endpoint = RPC_PREFIX + encodeURIComponent(id) + DATA_SUFFIX;
+    const response = await (asked?.fetch ?? chainFetch ?? fetch)(
+      method === "GET"
+        ? `${endpoint}?${PAYLOAD_PARAM}=${encodeURIComponent(payload ?? "")}`
+        : endpoint,
       {
-        method: "POST",
+        method,
         headers,
         signal: asked?.signal,
-        // Otherwise seroval's JSON channel, so an argument carries a Date, a Map
-        // or a cycle the same way a hydration seed does — and reconstructs
-        // through `fromJSON`, which evaluates nothing.
-        //
-        // `context` is what the CLIENT halves asked to send. It is absent from the
-        // body when they asked for nothing, so an application with no client
-        // middleware sends exactly the bytes it sent before.
-        body: form
-          ? input
-          : JSON.stringify(
-              Object.keys(sendContext).length === 0
-                ? { input: encodeWire(input) }
-                : { input: encodeWire(input), context: encodeWire(sendContext) },
-            ),
+        body: method === "GET" ? undefined : form ? input : payload,
         credentials: "same-origin",
         // `manual` so a handler that answers with its OWN 3xx — a real
         // `new Response(null, { status: 302 })`, not a `throw redirect(...)` —
@@ -443,17 +493,24 @@ export function clientRpc<In, Out>(
     const context: Record<string, unknown> = {};
     const sendContext: Record<string, unknown> = {};
     const headers = new Headers();
+    const chosen: { current: typeof fetch | undefined } = { current: undefined };
     return (await runMiddleware(flattened, "client", {
       data: input,
+      meta: { id },
       signal: asked?.signal ?? new AbortController().signal,
       context,
       sendContext,
       headers,
-      run: (data) => send(data, sendContext, context, asked, headers),
+      fetch: chosen,
+      run: (data) => send(data, sendContext, context, asked, headers, chosen.current),
     })) as Out;
   };
 
-  return Object.assign(call, { [SERVER_FN]: true as const, meta: { id }, url: urlOf(id) });
+  return Object.assign(call, {
+    [SERVER_FN]: true as const,
+    meta: method === "GET" ? { id, method } : { id },
+    url: urlOf(id),
+  });
 }
 
 /**
@@ -496,6 +553,9 @@ async function* received(
 
 /** One object for every JSON call, which only ever reads it. */
 const JSON_BODY = { "content-type": "application/json" };
+
+/** What a GET call carries in place of a body's type. */
+const CALLER = { [RPC_CALLER]: "1" };
 
 /** Shared, because the no-middleware path never writes to it. */
 const EMPTY_CONTEXT: Record<string, unknown> = {};

@@ -593,8 +593,8 @@ describe("the fetch handler", () => {
 /**
  * The call convention, and the one thing barq refuses to match.
  *
- * `fn({ data })` and `.handler(({ data, context }) => …)` are theirs, and
- * `method: "GET"` is theirs too, and it is refused here rather than accepted-and-ignored.
+ * `fn({ data })` and `.handler(({ data, context }) => …)` are theirs, and so
+ * is `method`, of which barq implements `GET` and `POST`.
  */
 describe("the call convention", () => {
   test("a function with no validator is called with NO argument", async () => {
@@ -668,17 +668,15 @@ describe("the call convention", () => {
   });
 
   /**
-   * A server function reachable by navigation is a link that mutates.
-   * RedwoodSDK shipped exactly that, where an `<a href>` became a one-click
-   * mutation carrying `SameSite=Lax` cookies. So
-   * the option a TanStack application would copy is REFUSED with the reason
-   * rather than accepted and quietly ignored.
+   * A method barq does not implement is REFUSED with the reason rather than
+   * accepted and quietly ignored. `GET` is implemented, behind the header no
+   * link can send; `get.test.ts` holds it to that.
    */
-  test("`method: 'GET'` is refused, and says why", () => {
-    expect(() => createServerFn({ method: "GET" as never })).toThrow(/POST only/);
-    // The one value barq does implement is accepted, so stating the intent is
-    // not itself an error.
+  test("a method other than GET or POST is refused, and says why", () => {
+    // @ts-expect-error a method the type does not admit, which JavaScript can still pass
+    expect(() => createServerFn({ method: "PUT" })).toThrow(/GET or POST/);
     expect(() => createServerFn({ method: "POST" })).not.toThrow();
+    expect(() => createServerFn({ method: "GET" })).not.toThrow();
   });
 });
 

@@ -20,7 +20,9 @@ import {
 } from "./context.ts";
 import {
   NOT_FOUND,
+  PAYLOAD_PARAM,
   REDIRECT,
+  RPC_CALLER,
   RPC_CONTEXT,
   RPC_CONTROL,
   RPC_RESPONSE,
@@ -31,7 +33,7 @@ import {
 import {
   type AnyServerFn,
   DATA_SUFFIX,
-  InputError,
+  isInputError,
   RPC_PREFIX,
   type ServerFn,
   isServerFn,
@@ -280,9 +282,11 @@ export async function handleServerFn(
 
   // A mutation must not be reachable by navigation. RedwoodSDK shipped server
   // functions invocable over GET, which made a plain link a one-click mutation
-  // carrying SameSite=Lax cookies.
-  if (request.method !== "POST") {
-    return new Response("method not allowed", { status: 405, headers: { allow: "POST" } });
+  // carrying SameSite=Lax cookies. A GET reaches only a function that asked for
+  // it, and only with the header no link can send; both are checked below.
+  const method = request.method;
+  if (method !== "POST" && method !== "GET") {
+    return new Response("method not allowed", { status: 405, headers: { allow: "GET, POST" } });
   }
   if (!originAllowed(request, options)) return new Response("forbidden", { status: 403 });
 
@@ -307,6 +311,16 @@ export async function handleServerFn(
   // Same answer as an unknown id, so a caller cannot tell a function that
   // exists but is unrouted from one that does not exist.
   if (options?.reachable?.(id) === false) return new Response("not found", { status: 404 });
+  // The function's own method, and only on the channel that can carry it: a
+  // form is a POST, so a GET function has the data channel alone.
+  const expected = fn.meta.method ?? "POST";
+  if (method !== expected) {
+    return new Response("method not allowed", { status: 405, headers: { allow: expected } });
+  }
+  if (method === "GET") {
+    if (!isData) return new Response("not found", { status: 404 });
+    if (request.headers.get(RPC_CALLER) === null) return new Response("forbidden", { status: 403 });
+  }
 
   const bodyLimit = options?.maxBodySize ?? DEFAULT_BODY_LIMIT;
   const target = fn;
@@ -322,9 +336,11 @@ export async function handleServerFn(
   const respond = async (): Promise<Response> => {
     let input: unknown;
     let clientContext: Record<string, unknown> | undefined;
-    if (isData && !isFormBody(request)) {
+    if (isData && (method === "GET" || !isFormBody(request))) {
       try {
-        const body = (await capped(request, bodyLimit).json()) as {
+        const body = (
+          method === "GET" ? queryPayload(url, bodyLimit) : await capped(request, bodyLimit).json()
+        ) as {
           input?: unknown;
           context?: unknown;
         };
@@ -425,7 +441,7 @@ export async function handleServerFn(
       // A validation failure is the caller's fault and says so. Anything else is
       // reported without a body: a handler's message can name a table, a column
       // or a path, and none of that is the caller's business.
-      if (error instanceof InputError) {
+      if (isInputError(error)) {
         return applyResponseDraft(
           isData
             ? Response.json({ error: "invalid input" }, { status: 400 })
@@ -726,6 +742,19 @@ function capped(request: Request, limit: number): Response {
     request.body === null ? null : limitBodyStream(request.body, limit),
     type === null ? undefined : { headers: { "content-type": type } },
   );
+}
+
+/**
+ * A GET call's payload: the body a POST would have sent, in `?payload=`.
+ *
+ * Held to the body limit, since a URL is a body a caller chose the size of,
+ * and refused as a 413 the way an oversized body is.
+ */
+function queryPayload(url: URL, limit: number): unknown {
+  const payload = url.searchParams.get(PAYLOAD_PARAM);
+  if (payload === null) return {};
+  if (payload.length > limit) throw createBodyTooLargeError(limit);
+  return JSON.parse(payload);
 }
 
 /**

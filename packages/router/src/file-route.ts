@@ -35,6 +35,7 @@
  */
 
 import { type Cell, type Child, createMemo } from "@barqjs/core";
+import type { Middleware } from "@barqjs/start";
 
 import { useRouteMatch } from "./components.ts";
 import type { NavigateFn } from "./register.ts";
@@ -231,9 +232,18 @@ function hooksFor<Data, Params>(id: string): Omit<FileRoute<Data, Params>, "id" 
  */
 export function createFileRoute<Data = unknown, Params = Record<string, string>, Deps = undefined>(
   id: string,
-): <Search = Record<string, unknown>>(
-  options: RouteDefinition<Data, Params, Deps, Search>,
-) => FileRoute<Data, Params, Deps, RouteDefinition<Data, Params, Deps, Search>, Search> {
+): <
+  Search = Record<string, unknown>,
+  const ServerChain extends readonly Middleware[] = readonly Middleware[],
+>(
+  options: RouteDefinition<Data, Params, Deps, Search, ServerChain>,
+) => FileRoute<
+  Data,
+  Params,
+  Deps,
+  RouteDefinition<Data, Params, Deps, Search, ServerChain>,
+  Search
+> {
   return (options) => ({ id, options, ...hooksFor<Data, Params>(id) }) as never;
 }
 

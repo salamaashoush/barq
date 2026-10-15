@@ -191,6 +191,38 @@ describe("fetch", () => {
     expect(await clientRpc<undefined, string | null>("mine")({ fetch: wire.fetch })).toBeNull();
     expect(wire.sent).toHaveLength(1);
   });
+
+  test("a client middleware's `next({ fetch })` is used, and the global one is not", async () => {
+    mountEcho("traced", "x-none");
+    const wire = throughHandler();
+    globalThis.fetch = (async () => {
+      throw new Error("the global fetch was used");
+    }) as unknown as typeof fetch;
+    const tracing = createMiddleware().client(({ next }) => next({ fetch: wire.fetch }));
+
+    expect(await clientRpc<undefined, string | null>("traced", [tracing])()).toBeNull();
+    expect(wire.sent).toHaveLength(1);
+  });
+
+  test("the call's own fetch wins over a middleware's, and a later middleware's over an earlier", async () => {
+    mountEcho("ranked", "x-none");
+    const used: string[] = [];
+    const named = (name: string): typeof fetch => {
+      const wire = throughHandler();
+      return (async (input: RequestInfo | URL, init?: RequestInit) => {
+        used.push(name);
+        return wire.fetch(input, init);
+      }) as typeof fetch;
+    };
+    const outer = createMiddleware().client(({ next }) => next({ fetch: named("outer") }));
+    const inner = createMiddleware().client(({ next }) => next({ fetch: named("inner") }));
+    const ranked = clientRpc<undefined, string | null>("ranked", [outer, inner]);
+
+    await ranked();
+    await ranked({ fetch: named("call") });
+
+    expect(used).toEqual(["inner", "call"]);
+  });
 });
 
 describe("a refusal the server wrote", () => {
