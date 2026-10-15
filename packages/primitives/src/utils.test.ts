@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createTrackedEffect, flush, getOwner, createRoot, createSignal } from "@barqjs/core";
+import { createEffect, flush, getOwner, createRoot, createSignal } from "@barqjs/core";
 import {
   access,
   arrayEquals,
@@ -29,9 +29,12 @@ describe("access", () => {
     const [count, setCount] = createSignal(0);
     const seen: number[] = [];
     createRoot(() => {
-      createTrackedEffect(() => {
-        seen.push(access(count));
-      });
+      createEffect(
+        () => access(count),
+        (value) => {
+          seen.push(value);
+        },
+      );
     });
     flush();
     setCount(1);

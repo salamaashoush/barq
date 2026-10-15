@@ -10,7 +10,7 @@ import {
   NotReadyError,
   createMemo,
   createRoot,
-  createTrackedEffect,
+  createEffect,
   flush,
   isPending,
   latest,
@@ -148,12 +148,8 @@ describe("refresh", () => {
       });
 
       const seen: number[] = [];
-      createTrackedEffect(() => {
-        try {
-          seen.push(data());
-        } catch (err) {
-          if (!(err instanceof NotReadyError)) throw err;
-        }
+      createEffect(data, (value) => {
+        seen.push(value);
       });
       flush();
 
@@ -238,8 +234,8 @@ describe("Errored boundary", () => {
       const el = Errored({
         fallback: (error: () => Error) => document.createTextNode(`caught: ${error().message}`),
         children: () => {
-          createTrackedEffect(() => {
-            if (trigger()) throw new Error("effect exploded");
+          createEffect(trigger, (fire) => {
+            if (fire) throw new Error("effect exploded");
           });
           return document.createTextNode("ok");
         },

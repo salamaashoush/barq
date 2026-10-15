@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createTrackedEffect, flush, createRoot } from "@barqjs/core";
+import { createEffect, flush, createRoot } from "@barqjs/core";
 import { ReactiveMap, ReactiveSet } from "./collections.ts";
 
 describe("ReactiveMap", () => {
@@ -25,18 +25,25 @@ describe("ReactiveMap", () => {
     const map = new ReactiveMap<string, number>();
     const runs = { a: 0, b: 0, size: 0 };
     const dispose = createRoot((d) => {
-      createTrackedEffect(() => {
-        map.get("a");
-        runs.a++;
-      });
-      createTrackedEffect(() => {
-        map.get("b");
-        runs.b++;
-      });
-      createTrackedEffect(() => {
-        expect(map.size).toBeGreaterThanOrEqual(0);
-        runs.size++;
-      });
+      createEffect(
+        () => map.get("a"),
+        () => {
+          runs.a++;
+        },
+      );
+      createEffect(
+        () => map.get("b"),
+        () => {
+          runs.b++;
+        },
+      );
+      createEffect(
+        () => map.size,
+        (size) => {
+          expect(size).toBeGreaterThanOrEqual(0);
+          runs.size++;
+        },
+      );
       flush();
       return d;
     });
@@ -67,14 +74,20 @@ describe("ReactiveMap", () => {
     let values = 0;
     let keys = 0;
     const dispose = createRoot((d) => {
-      createTrackedEffect(() => {
-        expect([...map.values()].length).toBeGreaterThanOrEqual(0);
-        values++;
-      });
-      createTrackedEffect(() => {
-        expect([...map.keys()].length).toBeGreaterThanOrEqual(0);
-        keys++;
-      });
+      createEffect(
+        () => [...map.values()].length,
+        (length) => {
+          expect(length).toBeGreaterThanOrEqual(0);
+          values++;
+        },
+      );
+      createEffect(
+        () => [...map.keys()].length,
+        (length) => {
+          expect(length).toBeGreaterThanOrEqual(0);
+          keys++;
+        },
+      );
       flush();
       return d;
     });
@@ -99,10 +112,12 @@ describe("ReactiveMap", () => {
     const runs = { a: 0, b: 0, c: 0 };
     const dispose = createRoot((d) => {
       for (const key of ["a", "b", "c"] as const) {
-        createTrackedEffect(() => {
-          map.get(key);
-          runs[key]++;
-        });
+        createEffect(
+          () => map.get(key),
+          () => {
+            runs[key]++;
+          },
+        );
       }
       flush();
       return d;
@@ -129,10 +144,12 @@ describe("ReactiveMap", () => {
     const map = new ReactiveMap<string, number>();
     let runs = 0;
     const inner = createRoot((d) => {
-      createTrackedEffect(() => {
-        map.get("a");
-        runs++;
-      });
+      createEffect(
+        () => map.get("a"),
+        () => {
+          runs++;
+        },
+      );
       flush();
       return d;
     });
@@ -165,14 +182,18 @@ describe("ReactiveSet", () => {
     const set = new ReactiveSet<string>();
     const runs = { a: 0, b: 0 };
     const dispose = createRoot((d) => {
-      createTrackedEffect(() => {
-        set.has("a");
-        runs.a++;
-      });
-      createTrackedEffect(() => {
-        set.has("b");
-        runs.b++;
-      });
+      createEffect(
+        () => set.has("a"),
+        () => {
+          runs.a++;
+        },
+      );
+      createEffect(
+        () => set.has("b"),
+        () => {
+          runs.b++;
+        },
+      );
       flush();
       return d;
     });
@@ -195,10 +216,13 @@ describe("ReactiveSet", () => {
     const set = new ReactiveSet<number>();
     let runs = 0;
     const dispose = createRoot((d) => {
-      createTrackedEffect(() => {
-        expect([...set].length).toBeGreaterThanOrEqual(0);
-        runs++;
-      });
+      createEffect(
+        () => [...set].length,
+        (length) => {
+          expect(length).toBeGreaterThanOrEqual(0);
+          runs++;
+        },
+      );
       flush();
       return d;
     });

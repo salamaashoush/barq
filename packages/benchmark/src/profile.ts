@@ -5,7 +5,13 @@
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 GlobalRegistrator.register();
 
-import { createSignal, createMemo, createTrackedEffect, flush, createRoot } from "@barqjs/core";
+import {
+  createSignal,
+  createMemo,
+  createEffect as barqCreateEffect,
+  flush,
+  createRoot,
+} from "@barqjs/core";
 import {
   createEffect,
   createMemo as solidCreateMemo,
@@ -85,10 +91,12 @@ profile("barq: effect trigger", () => {
   const [writeS, dispose] = createRoot((dispose) => {
     let runs = 0;
     const [s, writeS] = createSignal(0);
-    createTrackedEffect(() => {
-      s();
-      runs++;
-    });
+    barqCreateEffect(
+      () => s(),
+      () => {
+        runs++;
+      },
+    );
     return [writeS, dispose] as const;
   });
   flush();

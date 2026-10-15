@@ -29,11 +29,12 @@ import {
   cell,
   createMemo,
   createContext,
-  createTrackedEffect,
+  createEffect,
   element,
   insert,
   listen,
   onCleanup,
+  onSettled,
   props as sources,
   getOwner,
   provide,
@@ -469,27 +470,27 @@ export function clientHeadAssets(
   let held = new Map<string, Element>();
   let newest = 0;
   let first = options.initial !== undefined;
-  createTrackedEffect(() => {
+  createEffect(
     // SUBSCRIBED, all three, so a navigation that keeps the same match still
     // re-runs — the head depends on the params and the contexts too.
-    state.match();
-    state.location();
-    state.contexts();
-    // The boot already resolved this one, and re-resolving it would replace
-    // every tag the render just claimed.
-    if (first) {
-      first = false;
-      return;
-    }
-    const mine = ++newest;
-    void resolveHeadFor(state)
-      .then((assets) => {
-        if (mine === newest) setResolved(assets);
-      })
-      // A `head` that throws must not become an unhandled rejection that
-      // silently leaves the document describing the previous page.
-      .catch((error: unknown) => console.error(error));
-  });
+    () => [state.match(), state.location(), state.contexts()],
+    () => {
+      // The boot already resolved this one, and re-resolving it would replace
+      // every tag the render just claimed.
+      if (first) {
+        first = false;
+        return;
+      }
+      const mine = ++newest;
+      void resolveHeadFor(state)
+        .then((assets) => {
+          if (mine === newest) setResolved(assets);
+        })
+        // A `head` that throws must not become an unhandled rejection that
+        // silently leaves the document describing the previous page.
+        .catch((error: unknown) => console.error(error));
+    },
+  );
 
   return {
     // A GETTER: `<HeadContent />` reads this inside the list's own effect, so
@@ -1011,7 +1012,7 @@ export interface ClientOnlyProps {
  */
 export function useHydrated(): Accessor<boolean> {
   const [hydrated, setHydrated] = createSignal(!serverRendering() && !isHydrating());
-  createTrackedEffect(() => {
+  onSettled(() => {
     setHydrated(true);
   });
   return hydrated;

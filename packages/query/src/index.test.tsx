@@ -5,14 +5,7 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import {
-  Loading,
-  createTrackedEffect,
-  flush,
-  render,
-  createRoot,
-  runWithOwner,
-} from "@barqjs/core";
+import { Loading, createEffect, flush, render, createRoot, runWithOwner } from "@barqjs/core";
 import { QueryClient } from "@tanstack/query-core";
 import {
   QueryClientProvider,
@@ -252,14 +245,20 @@ describe("results are fine-grained", () => {
           return "same";
         },
       }));
-      createTrackedEffect(() => {
-        expect(query.data === undefined || typeof query.data === "string").toBe(true);
-        dataRuns++;
-      });
-      createTrackedEffect(() => {
-        expect(typeof query.isFetching).toBe("boolean");
-        fetchingRuns++;
-      });
+      createEffect(
+        () => query.data,
+        (data) => {
+          expect(data === undefined || typeof data === "string").toBe(true);
+          dataRuns++;
+        },
+      );
+      createEffect(
+        () => query.isFetching,
+        (fetching) => {
+          expect(typeof fetching).toBe("boolean");
+          fetchingRuns++;
+        },
+      );
       return <div>x</div>;
     }
 
@@ -308,10 +307,13 @@ describe("results are fine-grained", () => {
         queryKey: ["moving"],
         queryFn: async () => value,
       }));
-      createTrackedEffect(() => {
-        expect(query.data === undefined || typeof query.data === "string").toBe(true);
-        dataRuns++;
-      });
+      createEffect(
+        () => query.data,
+        (data) => {
+          expect(data === undefined || typeof data === "string").toBe(true);
+          dataRuns++;
+        },
+      );
       return <div>x</div>;
     }
 
@@ -354,11 +356,14 @@ describe("useQueries", () => {
           { queryKey: ["c"], queryFn: async () => "C" },
         ],
       }));
-      createTrackedEffect(() => {
-        seenLength = set.length;
-        values.length = 0;
-        for (const each of set) if (each.data !== undefined) values.push(each.data);
-      });
+      createEffect(
+        () => set.map((each) => each.data),
+        (data) => {
+          seenLength = data.length;
+          values.length = 0;
+          for (const each of data) if (each !== undefined) values.push(each);
+        },
+      );
       return <div>x</div>;
     }
 

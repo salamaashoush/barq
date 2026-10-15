@@ -19,8 +19,8 @@ import { rooted } from "./test-root.ts";
 import { describe, expect, test } from "bun:test";
 import {
   NotReadyError,
+  createEffect,
   createMemo,
-  createTrackedEffect,
   flush,
   createRoot,
   createSignal,
@@ -97,9 +97,12 @@ describe("A7: an async iterable", () => {
             await tick();
             yield 3;
           });
-          createTrackedEffect(() => {
-            seen.push(read(node));
-          });
+          createEffect(
+            () => read(node),
+            (value) => {
+              seen.push(value);
+            },
+          );
           flush();
           dispose = d;
           return d;
@@ -178,9 +181,10 @@ describe("A7: an async iterable", () => {
               closed = true;
             }
           });
-          createTrackedEffect(() => {
-            read(node);
-          });
+          createEffect(
+            () => read(node),
+            () => {},
+          );
           flush();
           dispose = d;
           return d;
@@ -238,9 +242,12 @@ describe("A7: an async iterable", () => {
               }
             })();
           });
-          createTrackedEffect(() => {
-            seen.push(read(node));
-          });
+          createEffect(
+            () => read(node),
+            (value) => {
+              seen.push(value);
+            },
+          );
           flush();
           dispose = d;
           return d;

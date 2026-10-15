@@ -3,7 +3,7 @@ import {
   boundary,
   createRoot,
   createSignal,
-  createTrackedEffect,
+  createEffect,
   flush,
   getOwner,
   render,
@@ -167,9 +167,12 @@ describe("eventSignal", () => {
     const dispose = createRoot((d) => {
       const last = eventSignal(target, "click");
       expect(last()).toBeUndefined();
-      createTrackedEffect(() => {
-        seen.push(last()?.type);
-      });
+      createEffect(
+        () => last()?.type,
+        (type) => {
+          seen.push(type);
+        },
+      );
       flush();
 
       target.dispatchEvent(new Event("click"));

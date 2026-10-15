@@ -1,18 +1,11 @@
 /**
  * An effect is where a component reaches outside itself, and a server render
- * has nothing there to reach. `createEffect`, `createTrackedEffect` and
- * `onSettled` do nothing while a page is being rendered, in every render mode,
- * including the build a parked boundary gets when it resumes.
+ * has nothing there to reach. `createEffect` and `onSettled` do nothing while
+ * a page is being rendered, in every render mode, including the build a
+ * parked boundary gets when it resumes.
  */
 
-import {
-  createEffect,
-  createMemo,
-  createSignal,
-  createTrackedEffect,
-  flush,
-  onSettled,
-} from "@barqjs/core";
+import { createEffect, createMemo, createSignal, flush, onSettled } from "@barqjs/core";
 import { afterEach, expect, test } from "bun:test";
 
 import { clearRenderData, renderPage, renderToStream, renderToString } from "./server.ts";
@@ -30,9 +23,6 @@ function page(ran: string[], body: () => unknown = () => "orders"): string {
       ran.push("effect");
     },
   );
-  createTrackedEffect(() => {
-    ran.push(`tracked ${count()}`);
-  });
   onSettled(() => {
     ran.push("settled");
   });
@@ -97,5 +87,5 @@ test("outside a render they run as they always have", () => {
   const ran: string[] = [];
   page(ran);
   flush();
-  expect(ran.toSorted()).toEqual(["effect", "settled", "tracked 1"]);
+  expect(ran.toSorted()).toEqual(["effect", "settled"]);
 });

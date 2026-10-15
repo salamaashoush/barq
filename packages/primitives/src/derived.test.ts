@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createTrackedEffect, flush, createRoot, createSignal } from "@barqjs/core";
+import { createEffect, flush, createRoot, createSignal } from "@barqjs/core";
 import { debounced, every, not, previous, selector, some, throttled, whenever } from "./derived.ts";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -55,8 +55,8 @@ describe("throttled", () => {
     const seen: number[] = [];
     const dispose = createRoot((d) => {
       const out = throttled(source, 30);
-      createTrackedEffect(() => {
-        seen.push(out());
+      createEffect(out, (value) => {
+        seen.push(value);
       });
       flush();
       return d;
@@ -181,10 +181,12 @@ describe("selector", () => {
     const dispose = createRoot((d) => {
       const isSelected = selector(selected);
       for (const id of [1, 2, 3]) {
-        createTrackedEffect(() => {
-          isSelected(id);
-          runs[id]!++;
-        });
+        createEffect(
+          () => isSelected(id),
+          () => {
+            runs[id]!++;
+          },
+        );
         flush();
       }
       return d;
@@ -235,9 +237,10 @@ describe("selector", () => {
     const [dispose, isSelected, inner] = createRoot((d) => {
       const isCurrent = selector(selected);
       const stopObserving = createRoot((innerDispose) => {
-        createTrackedEffect(() => {
-          isCurrent(42);
-        });
+        createEffect(
+          () => isCurrent(42),
+          () => {},
+        );
         return innerDispose;
       });
       return [d, isCurrent, stopObserving] as const;

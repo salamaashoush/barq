@@ -33,9 +33,10 @@ const cases: Case[] = [
     after: () => () => {
       NEW.createRoot((dispose) => {
         const [s] = NEW.createSignal(0);
-        NEW.createTrackedEffect(() => {
-          s();
-        });
+        NEW.createEffect(
+          () => s(),
+          () => {},
+        );
         NEW.flush();
         dispose();
       });
@@ -77,9 +78,10 @@ const cases: Case[] = [
     after: () => {
       const [, set] = NEW.createRoot(() => {
         const sig = NEW.createSignal(0);
-        NEW.createTrackedEffect(() => {
-          sig[0]();
-        });
+        NEW.createEffect(
+          () => sig[0](),
+          () => {},
+        );
         return sig;
       });
       NEW.flush();
@@ -117,9 +119,10 @@ const cases: Case[] = [
           const prev = c;
           c = NEW.createMemo(() => prev() + 1);
         }
-        NEW.createTrackedEffect(() => {
-          c();
-        });
+        NEW.createEffect(
+          () => c(),
+          () => {},
+        );
         return sig;
       });
       NEW.flush();
@@ -157,9 +160,10 @@ const cases: Case[] = [
           const prev = c;
           c = NEW.createMemo(() => prev() + 1);
         }
-        NEW.createTrackedEffect(() => {
-          c();
-        });
+        NEW.createEffect(
+          () => c(),
+          () => {},
+        );
         return sig;
       });
       NEW.flush();
@@ -203,9 +207,10 @@ const cases: Case[] = [
         }
         const last = c;
         for (let e = 0; e < 100; e++) {
-          NEW.createTrackedEffect(() => {
-            last();
-          });
+          NEW.createEffect(
+            () => last(),
+            () => {},
+          );
         }
         return sig;
       });
@@ -244,9 +249,10 @@ const cases: Case[] = [
           for (let k = 0; k < 10; k++) t += arr[k][0]();
           return t;
         });
-        NEW.createTrackedEffect(() => {
-          sum();
-        });
+        NEW.createEffect(
+          () => sum(),
+          () => {},
+        );
         return arr;
       });
       NEW.flush();

@@ -6,7 +6,7 @@
 import {
   createMemo as bComputed,
   createRoot as bScope,
-  createTrackedEffect as bEffect,
+  createEffect as bEffect,
   flush as bFlush,
   createSignal as bSignal,
 } from "@barqjs/core";
@@ -60,9 +60,10 @@ add(
   () => {
     bScope((dispose) => {
       const [s] = bSignal(0);
-      bEffect(() => {
-        s();
-      });
+      bEffect(
+        () => s(),
+        () => {},
+      );
       bFlush();
       dispose();
     });
@@ -103,9 +104,10 @@ add(
 {
   const [, setS] = bScope(() => {
     const sig = bSignal(0);
-    bEffect(() => {
-      sig[0]();
-    });
+    bEffect(
+      () => sig[0](),
+      () => {},
+    );
     return sig;
   });
   bFlush();
@@ -138,9 +140,10 @@ add(
 {
   const [, setS] = bScope(() => {
     const sig = bSignal(0);
-    bEffect(() => {
-      sig[0]();
-    });
+    bEffect(
+      () => sig[0](),
+      () => {},
+    );
     return sig;
   });
   bFlush();
@@ -180,9 +183,10 @@ add(
       const prev = c;
       c = bComputed(() => prev() + 1);
     }
-    bEffect(() => {
-      c();
-    });
+    bEffect(
+      () => c(),
+      () => {},
+    );
     return sig;
   });
   bFlush();
@@ -224,9 +228,10 @@ add(
     const a = bComputed(() => sig[0]() + 1);
     const b = bComputed(() => sig[0]() + 2);
     const d = bComputed(() => a() + b());
-    bEffect(() => {
-      d();
-    });
+    bEffect(
+      () => d(),
+      () => {},
+    );
     return sig;
   });
   bFlush();
@@ -268,9 +273,10 @@ add(
       for (let k = 0; k < 10; k++) t += arr[k][0]();
       return t;
     });
-    bEffect(() => {
-      sum();
-    });
+    bEffect(
+      () => sum(),
+      () => {},
+    );
     return arr;
   });
   bFlush();
@@ -362,9 +368,10 @@ add(
       const prev = c;
       c = bComputed(() => prev() + 1);
     }
-    bEffect(() => {
-      c();
-    });
+    bEffect(
+      () => c(),
+      () => {},
+    );
     return sig;
   });
   bFlush();

@@ -20,7 +20,7 @@ import type { Block, Cell, Scope } from "./scope.ts";
 import {
   childScope,
   disposeScope,
-  createTrackedEffect,
+  createEffect,
   flush,
   onCleanup,
   rootScope,
@@ -170,8 +170,8 @@ describe("O3.7 / B4 — after disposal nothing is retained", () => {
     let cleanups = 0;
 
     const body: Block<unknown> = (): Node => {
-      createTrackedEffect(() => {
-        runs.push(which());
+      createEffect(which, (value) => {
+        runs.push(value);
       });
       onCleanup(() => {
         cleanups++;

@@ -7,7 +7,13 @@ import type { BenchmarkResult } from "../types.ts";
 import { benchmark } from "../utils.ts";
 
 // Barq imports
-import { createRoot, createStore, createTrackedEffect, flush, reconcile } from "@barqjs/core";
+import {
+  createRoot,
+  createStore,
+  createEffect as barqCreateEffect,
+  flush,
+  reconcile,
+} from "@barqjs/core";
 
 // SolidJS imports
 import { createStore as solidCreateStore, produce as solidProduce, reconcile as solidReconcile } from "solid-js/store";
@@ -120,10 +126,12 @@ export async function runStoreBenchmarks(): Promise<BenchmarkResult[]> {
         const [setState, dispose] = createRoot((dispose) => {
           let effectRuns = 0;
           const [state, setState] = createStore({ a: 0, b: 0 });
-          createTrackedEffect(() => {
-            state.a;
-            effectRuns++;
-          });
+          barqCreateEffect(
+            () => state.a,
+            () => {
+              effectRuns++;
+            },
+          );
           return [setState, dispose] as const;
         });
         flush();

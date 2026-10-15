@@ -20,7 +20,7 @@ import { exitDuration } from "@barqjs/aria/presence";
 import { provideTriggerSlot } from "@barqjs/aria/utils";
 import {
   createContext,
-  createTrackedEffect,
+  createEffect,
   getContext,
   getOwner,
   onCleanup,
@@ -804,21 +804,29 @@ export function DrawerContent(props: Incoming<DrawerContentProps>) {
 
   // Where it rests is the caller's to move as well as the pointer's: a
   // controlled snap point, or a new list of them, lands here.
-  createTrackedEffect(() => {
-    drag.rest();
-    drag.overlayOpacity();
-    if (!drag.isDragging()) place();
-    return undefined;
-  });
+  createEffect(
+    () => {
+      drag.rest();
+      drag.overlayOpacity();
+      drag.position();
+      direction();
+      return drag.isDragging();
+    },
+    (dragging) => {
+      if (!dragging) place();
+    },
+  );
 
   // On the way OUT, not once it has gone: the page scales back and a parent
   // comes forward while this one is still sliding away.
-  createTrackedEffect(() => {
-    if (state.isOpen()) return undefined;
-    underlay?.setAttribute("data-state", "closed");
-    announce(false);
-    return undefined;
-  });
+  createEffect(
+    () => state.isOpen(),
+    (open) => {
+      if (open) return;
+      underlay?.setAttribute("data-state", "closed");
+      announce(false);
+    },
+  );
 
   const surface: DrawerSurface = {
     drag,

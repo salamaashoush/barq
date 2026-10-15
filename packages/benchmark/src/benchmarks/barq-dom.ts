@@ -10,7 +10,6 @@ import {
   type Child,
   type Component,
   render,
-  createTrackedEffect,
   createMemo,
   createSignal,
   flush,

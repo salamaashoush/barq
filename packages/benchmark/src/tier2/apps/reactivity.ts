@@ -24,7 +24,7 @@
  * 50`), so an adapter that did not flush would not be measuring the same
  * program, it would be failing the benchmark's own assertions.
  */
-import { createMemo as bComputed, createTrackedEffect as bEffect, flush as bFlush, createSignal as bSignal, createRoot as bScope } from "@barqjs/core"
+import { createMemo as bComputed, createEffect as bEffect, flush as bFlush, createSignal as bSignal, createRoot as bScope } from "@barqjs/core"
 import {
   createEffect as sEffect,
   createMemo as sMemo,
@@ -51,9 +51,7 @@ const barqFramework: ReactiveFramework = {
     return { read: () => m() }
   },
   effect: (fn) => {
-    bEffect(() => {
-      fn()
-    })
+    bEffect(fn, () => {})
   },
   withBatch: (fn) => {
     fn()

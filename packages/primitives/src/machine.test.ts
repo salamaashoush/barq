@@ -1,13 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import {
-  action,
-  createEffect,
-  createRoot,
-  createSignal,
-  createTrackedEffect,
-  flush,
-  onSettled,
-} from "@barqjs/core";
+import { action, createEffect, createRoot, createSignal, flush, onSettled } from "@barqjs/core";
 import { machine } from "./machine.ts";
 
 type State = "idle" | "loading" | "ready" | "failed";
@@ -82,9 +74,12 @@ describe("machine", () => {
     const seen: string[] = [];
     const [dispose, m] = createRoot((d) => {
       const instance = fetcher();
-      createTrackedEffect(() => {
-        seen.push(instance.state());
-      });
+      createEffect(
+        () => instance.state(),
+        (state) => {
+          seen.push(state);
+        },
+      );
       return [d, instance] as const;
     });
     flush();
@@ -180,8 +175,8 @@ describe("machine", () => {
     const [resolved, setResolved] = createSignal(false);
     const [dispose, m] = createRoot((d) => {
       const instance = fetcher();
-      createTrackedEffect(() => {
-        if (wanted()) instance.send("FETCH");
+      createEffect(wanted, (want) => {
+        if (want) instance.send("FETCH");
       });
       createEffect(resolved, (done) => {
         if (done) instance.send("RESOLVED", "the body");

@@ -28,7 +28,7 @@ import {
 export interface BarqApi {
   createSignal: <T>(v: T) => [() => T, (n: T) => void];
   createMemo: <T>(fn: () => T) => () => T;
-  createTrackedEffect: (fn: () => void) => void;
+  createEffect: <T>(compute: () => T, effect: (value: T) => void) => void;
   flush: () => void;
   createRoot: <T>(fn: (dispose: () => void) => T) => T;
 }
@@ -64,7 +64,7 @@ export function barqCases(B: BarqApi): Case[] {
   // on a module namespace object is an exotic lookup, and leaving it in the
   // loop taxes the barq side by 2-3x on the allocation-heavy rows while the
   // solid side reads a plain module binding.
-  const { createSignal, createMemo, createTrackedEffect, flush, createRoot } = B;
+  const { createSignal, createMemo, createEffect, flush, createRoot } = B;
   const makes: (() => () => void)[] = [
     () => () => {
       createSignal(0);
@@ -81,9 +81,10 @@ export function barqCases(B: BarqApi): Case[] {
     () => () => {
       createRoot((dispose) => {
         const [s] = createSignal(0);
-        createTrackedEffect(() => {
-          s();
-        });
+        createEffect(
+          () => s(),
+          () => {},
+        );
         flush();
         dispose();
       });
@@ -100,9 +101,10 @@ export function barqCases(B: BarqApi): Case[] {
     () => {
       const [, set] = createRoot(() => {
         const sig = createSignal(0);
-        createTrackedEffect(() => {
-          sig[0]();
-        });
+        createEffect(
+          () => sig[0](),
+          () => {},
+        );
         return sig;
       });
       flush();
@@ -116,9 +118,10 @@ export function barqCases(B: BarqApi): Case[] {
     () => {
       const [, set] = createRoot(() => {
         const sig = createSignal(0);
-        createTrackedEffect(() => {
-          sig[0]();
-        });
+        createEffect(
+          () => sig[0](),
+          () => {},
+        );
         return sig;
       });
       flush();
@@ -137,9 +140,10 @@ export function barqCases(B: BarqApi): Case[] {
           const prev = c;
           c = createMemo(() => prev() + 1);
         }
-        createTrackedEffect(() => {
-          c();
-        });
+        createEffect(
+          () => c(),
+          () => {},
+        );
         return sig;
       });
       flush();
@@ -156,9 +160,10 @@ export function barqCases(B: BarqApi): Case[] {
         const a = createMemo(() => sig[0]() + 1);
         const b = createMemo(() => sig[0]() + 2);
         const d = createMemo(() => a() + b());
-        createTrackedEffect(() => {
-          d();
-        });
+        createEffect(
+          () => d(),
+          () => {},
+        );
         return sig;
       });
       flush();
@@ -177,9 +182,10 @@ export function barqCases(B: BarqApi): Case[] {
           for (let k = 0; k < 10; k++) t += arr[k][0]();
           return t;
         });
-        createTrackedEffect(() => {
-          sum();
-        });
+        createEffect(
+          () => sum(),
+          () => {},
+        );
         return arr;
       });
       flush();
@@ -217,9 +223,10 @@ export function barqCases(B: BarqApi): Case[] {
           const prev = c;
           c = createMemo(() => prev() + 1);
         }
-        createTrackedEffect(() => {
-          c();
-        });
+        createEffect(
+          () => c(),
+          () => {},
+        );
         return sig;
       });
       flush();

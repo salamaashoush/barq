@@ -17,7 +17,7 @@ import {
   Portal,
   createContext,
   createSignal,
-  createTrackedEffect,
+  createEffect,
   createUniqueId,
   getContext,
   onCleanup,
@@ -861,22 +861,21 @@ export function Toast(props: Incoming<ToastProps>) {
 
   let first = true;
   let frame: number | undefined;
-  createTrackedEffect(() => {
-    void entry().title;
-    void entry().description;
-    void entry().type;
-    void entry().actionProps;
-    if (first) {
-      first = false;
-      return;
-    }
-    // After the frame, when the new text is what is being drawn.
-    if (frame !== undefined) cancelAnimationFrame(frame);
-    frame = requestAnimationFrame(() => {
-      frame = undefined;
-      measure();
-    });
-  });
+  createEffect(
+    () => [entry().title, entry().description, entry().type, entry().actionProps],
+    () => {
+      if (first) {
+        first = false;
+        return;
+      }
+      // After the frame, when the new text is what is being drawn.
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        frame = undefined;
+        measure();
+      });
+    },
+  );
 
   onCleanup(() => {
     if (frame !== undefined) cancelAnimationFrame(frame);

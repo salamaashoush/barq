@@ -17,9 +17,10 @@ const legacy = (m: Legacy) => () => {
 const current = () => {
   CUR.createRoot((dispose) => {
     const [s] = CUR.createSignal(0);
-    CUR.createTrackedEffect(() => {
-      s();
-    });
+    CUR.createEffect(
+      () => s(),
+      () => {},
+    );
     CUR.flush();
     dispose();
   });

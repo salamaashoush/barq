@@ -5,7 +5,7 @@
 import {
   createMemo as bComputed,
   createRoot as bScope,
-  createTrackedEffect as bEffect,
+  createEffect as bEffect,
   flush as bFlush,
   createSignal as bSignal,
   createStore as bStore,
@@ -88,10 +88,14 @@ console.log(
     const memos = sigs.map(([s]) => bComputed(() => s() * 2));
     for (let e = 0; e < 100; e++) {
       const slice = memos.slice(e * 10, e * 10 + 10);
-      bEffect(() => {
-        let t = 0;
-        for (const m of slice) t += m();
-      });
+      bEffect(
+        () => {
+          let t = 0;
+          for (const m of slice) t += m();
+          return t;
+        },
+        () => {},
+      );
     }
     return sigs;
   });
@@ -150,9 +154,10 @@ console.log(
 {
   const [, bset] = bScope(() => {
     const store = bStore({ a: { b: { c: 0 } }, list: [] as number[] });
-    bEffect(() => {
-      store[0].a.b.c;
-    });
+    bEffect(
+      () => store[0].a.b.c,
+      () => {},
+    );
     return store;
   });
   bFlush();

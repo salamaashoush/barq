@@ -9,7 +9,7 @@ import { benchmark, generateItems } from "./utils.ts";
 // Barq imports
 import {
   createRoot,
-  createTrackedEffect,
+  createEffect as barqCreateEffect,
   createMemo,
   createSignal,
   flush,
@@ -109,10 +109,12 @@ const suites: BenchmarkSuite[] = [
           const [writeCount, dispose] = createRoot((dispose) => {
             let effectRuns = 0;
             const [count, writeCount] = createSignal(0);
-            createTrackedEffect(() => {
-              const _ = count();
-              effectRuns++;
-            });
+            barqCreateEffect(
+              () => count(),
+              () => {
+                effectRuns++;
+              },
+            );
             return [writeCount, dispose] as const;
           });
           flush();

@@ -1,7 +1,7 @@
 import {
   For,
   createSignal,
-  createTrackedEffect,
+  createEffect,
   onCleanup,
   onSettled,
   type Child,
@@ -891,23 +891,21 @@ function ToastRow(props: Incoming<{ toast: Toast<Presentation>; stack: Stack }>)
 
   let first = true;
   let frame: number | undefined;
-  createTrackedEffect(() => {
-    void entry().title;
-    void entry().description;
-    void entry().kind;
-    void entry().action;
-    void entry().cancel;
-    if (first) {
-      first = false;
-      return;
-    }
-    // After the frame, when the new text is what is being drawn.
-    if (frame !== undefined) cancelAnimationFrame(frame);
-    frame = requestAnimationFrame(() => {
-      frame = undefined;
-      measure();
-    });
-  });
+  createEffect(
+    () => [entry().title, entry().description, entry().kind, entry().action, entry().cancel],
+    () => {
+      if (first) {
+        first = false;
+        return;
+      }
+      // After the frame, when the new text is what is being drawn.
+      if (frame !== undefined) cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        frame = undefined;
+        measure();
+      });
+    },
+  );
 
   const onPointerDown = (event: PointerEvent): void => {
     if (row === null || !isDismissible() || entry().kind === "loading") return;

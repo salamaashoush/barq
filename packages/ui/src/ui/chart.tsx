@@ -1,7 +1,7 @@
 import {
   createContext,
   createMemo,
-  createTrackedEffect,
+  createEffect,
   createUniqueId,
   Dynamic,
   For,
@@ -606,8 +606,7 @@ export function Chart(props: Incoming<ChartProps>) {
   // value the adapter was built with, and the definition's identity says
   // whether it is: a sibling built after this one may already have changed it.
   let first = true;
-  createTrackedEffect(() => {
-    const options = optionsOf();
+  createEffect(optionsOf, (options) => {
     if (first) {
       first = false;
       if (options.definition === built.definition) return;

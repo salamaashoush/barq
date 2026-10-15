@@ -7,7 +7,13 @@ import type { BenchmarkResult } from "../types.ts";
 import { benchmark } from "../utils.ts";
 
 // Barq imports - use raw signals for fair comparison
-import { createSignal, createMemo, createTrackedEffect, flush, createRoot } from "@barqjs/core";
+import {
+  createSignal,
+  createMemo,
+  createEffect as barqCreateEffect,
+  flush,
+  createRoot,
+} from "@barqjs/core";
 
 // SolidJS imports
 import {
@@ -104,10 +110,12 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
         const [writeCount, dispose] = createRoot((dispose) => {
           let effectRuns = 0;
           const [count, writeCount] = createSignal(0);
-          createTrackedEffect(() => {
-            const _ = count();
-            effectRuns++;
-          });
+          barqCreateEffect(
+            () => count(),
+            () => {
+              effectRuns++;
+            },
+          );
           return [writeCount, dispose] as const;
         });
         flush();

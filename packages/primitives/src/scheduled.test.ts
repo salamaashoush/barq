@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createEffect, createTrackedEffect, flush, createRoot, createSignal } from "@barqjs/core";
+import { createEffect, flush, createRoot, createSignal } from "@barqjs/core";
 import { debounce, leading, leadingAndTrailing, scheduled, throttle } from "./scheduled.ts";
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -192,10 +192,12 @@ describe("scheduled", () => {
     const runs: string[] = [];
     const dispose = createRoot((d) => {
       const settled = scheduled((fire) => debounce(fire, 20));
-      createTrackedEffect(() => {
-        const q = query();
-        if (settled()) runs.push(q);
-      });
+      createEffect(
+        () => [query(), settled()] as const,
+        ([q, open]) => {
+          if (open) runs.push(q);
+        },
+      );
       return d;
     });
 
@@ -253,14 +255,24 @@ describe("scheduled", () => {
     let b = 0;
     const dispose = createRoot((d) => {
       const settled = scheduled((fire) => debounce(fire, 10));
-      createTrackedEffect(() => {
-        source();
-        if (settled()) a++;
-      });
-      createTrackedEffect(() => {
-        source();
-        if (settled()) b++;
-      });
+      createEffect(
+        () => {
+          source();
+          return settled();
+        },
+        (open) => {
+          if (open) a++;
+        },
+      );
+      createEffect(
+        () => {
+          source();
+          return settled();
+        },
+        (open) => {
+          if (open) b++;
+        },
+      );
       return d;
     });
     await eventually(() => {

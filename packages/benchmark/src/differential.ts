@@ -23,9 +23,7 @@ const barq: Api = {
   },
   memo: (fn, opts) => B.createMemo(fn as never, opts as never) as never,
   effect: (fn) => {
-    B.createTrackedEffect(() => {
-      fn();
-    });
+    B.createEffect(fn, () => {});
   },
   root: (fn) => B.createRoot(fn),
   flush: () => B.flush(),

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createTrackedEffect, flush, createRoot } from "@barqjs/core";
+import { createEffect, flush, createRoot } from "@barqjs/core";
 import { bus, emitter, trigger } from "./bus.ts";
 
 describe("emitter", () => {
@@ -62,9 +62,12 @@ describe("bus", () => {
     const channel = bus<number>();
     const seen: (number | undefined)[] = [];
     const dispose = createRoot((d) => {
-      createTrackedEffect(() => {
-        seen.push(channel.last());
-      });
+      createEffect(
+        () => channel.last(),
+        (value) => {
+          seen.push(value);
+        },
+      );
       return d;
     });
     flush();
@@ -82,8 +85,7 @@ describe("trigger", () => {
     const [track, dirty] = trigger();
     let runs = 0;
     const dispose = createRoot((d) => {
-      createTrackedEffect(() => {
-        track();
+      createEffect(track, () => {
         runs++;
       });
       flush();

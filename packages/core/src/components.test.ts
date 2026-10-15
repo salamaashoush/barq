@@ -7,7 +7,7 @@ import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { For, Fragment, Match, Show, Switch } from "./components.ts";
 import { childToNodes, insert } from "./dom.ts";
 import type { Child } from "./dom.ts";
-import { createSignal, createTrackedEffect, createRoot, onCleanup, flush } from "./signals.ts";
+import { createSignal, createEffect, createRoot, onCleanup, onSettled, flush } from "./signals.ts";
 
 // Simple DOM setup for testing
 let container: HTMLDivElement;
@@ -237,8 +237,7 @@ describe("Show component", () => {
     const node = Show({
       when: show,
       children: () => {
-        createTrackedEffect(() => {
-          innerSignal();
+        createEffect(innerSignal, () => {
           effectRunCount++;
         });
         flush();
@@ -334,8 +333,7 @@ describe("Show component", () => {
       const node = Show({
         when: show,
         children: () => {
-          createTrackedEffect(() => {
-            innerSignal();
+          createEffect(innerSignal, () => {
             effectRunCount++;
           });
           flush();
@@ -432,8 +430,8 @@ describe("For component", () => {
     const node = For({
       each: items,
       children: (item: string, index: () => number) => {
-        createTrackedEffect(() => {
-          indices.push(index());
+        createEffect(index, (value) => {
+          indices.push(value);
         });
         flush();
         return document.createTextNode(item);
@@ -565,8 +563,7 @@ describe("For component", () => {
     const node = For({
       each: items,
       children: (item: string) => {
-        createTrackedEffect(() => {
-          trigger();
+        createEffect(trigger, () => {
           effectCounts[item]++;
         });
         flush();
@@ -753,8 +750,7 @@ describe("For component", () => {
     const node = For({
       each: items,
       children: (item: string) => {
-        createTrackedEffect(() => {
-          void item; // track
+        onSettled(() => {
           effectRuns++;
         });
         flush();
@@ -805,14 +801,13 @@ describe("For keyed={false} — the positional mode", () => {
       each: items,
       keyed: false,
       children: (item: () => string, _index: number) => {
-        createTrackedEffect(() => {
-          item(); // subscribe
+        createEffect(item, () => {
           updateCount++;
         });
         flush();
         const span = document.createElement("span");
-        createTrackedEffect(() => {
-          span.textContent = item();
+        createEffect(item, (text) => {
+          span.textContent = text;
         });
         flush();
         return span;
@@ -839,8 +834,8 @@ describe("For keyed={false} — the positional mode", () => {
       keyed: () => false,
       children: (item: () => string) => {
         const span = document.createElement("span");
-        createTrackedEffect(() => {
-          span.textContent = item();
+        createEffect(item, (text) => {
+          span.textContent = text;
         });
         flush();
         return span;
@@ -863,8 +858,8 @@ describe("For keyed={false} — the positional mode", () => {
       keyed: () => false,
       children: (item: () => string) => {
         const span = document.createElement("span");
-        createTrackedEffect(() => {
-          span.textContent = item();
+        createEffect(item, (text) => {
+          span.textContent = text;
         });
         flush();
         return span;
@@ -889,11 +884,12 @@ describe("For keyed={false} — the positional mode", () => {
       each: items,
       keyed: false,
       children: (item: () => string, index: number) => {
-        createTrackedEffect(() => {
-          item();
-          trigger();
-          effectCounts[index]++;
-        });
+        createEffect(
+          () => [item(), trigger()],
+          () => {
+            effectCounts[index]++;
+          },
+        );
         flush();
         return document.createTextNode(item());
       },
@@ -1032,9 +1028,12 @@ describe("Switch/Match components", () => {
           children: () => {
             renderCount++;
             const span = document.createElement("span");
-            createTrackedEffect(() => {
-              span.textContent = user().name;
-            });
+            createEffect(
+              () => user().name,
+              (name) => {
+                span.textContent = name;
+              },
+            );
             flush();
             return span;
           },
@@ -1065,8 +1064,7 @@ describe("Switch/Match components", () => {
         Match({
           when: () => value() === 1,
           children: () => {
-            createTrackedEffect(() => {
-              trigger();
+            createEffect(trigger, () => {
               effect1Runs++;
             });
             flush();
@@ -1076,8 +1074,7 @@ describe("Switch/Match components", () => {
         Match({
           when: () => value() === 2,
           children: () => {
-            createTrackedEffect(() => {
-              trigger();
+            createEffect(trigger, () => {
               effect2Runs++;
             });
             flush();
@@ -1148,16 +1145,14 @@ describe("Memory and cleanup", () => {
       Show({
         when: outer,
         children: () => {
-          createTrackedEffect(() => {
-            trigger();
+          createEffect(trigger, () => {
             outerEffectRuns++;
           });
           flush();
           return Show({
             when: inner,
             children: () => {
-              createTrackedEffect(() => {
-                trigger();
+              createEffect(trigger, () => {
                 innerEffectRuns++;
               });
               flush();
@@ -1201,8 +1196,7 @@ describe("Memory and cleanup", () => {
           For({
             each: items,
             children: (item: string) => {
-              createTrackedEffect(() => {
-                trigger();
+              createEffect(trigger, () => {
                 totalEffectRuns++;
               });
               flush();
