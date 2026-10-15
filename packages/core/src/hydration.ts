@@ -13,6 +13,9 @@
  *   <!--[k--> …  <!--]-->     the same range in a DEV build, `k` the key the
  *                             primitive CHOSE
  *   <!--[b:N--> … <!--]-->    a boundary the stream has not flushed yet
+ *   <!--[e:N--> … <!--]-->    an error boundary's content, which a stream
+ *                             replaces whole with `<!--[f:-->` and the fallback
+ *                             if something below it fails after the shell
  *   <!---->                   a skeleton marker, present on both sides
  *
  * and, as important, what it does NOT carry:
@@ -194,6 +197,8 @@ interface Session {
   built: number;
   /** Every range claimed so far, for `split` to keep their node lists whole. */
   taken: Range[];
+  /** The first mismatch handed over by `abandonClaim`, for `hydrate` to recover from. */
+  abandoned: HydrationMismatch | null;
 }
 
 let SESSION: Session | null = null;
@@ -258,7 +263,30 @@ export function beginHydration(container: Node): void {
     ranges: 0,
     built: 0,
     taken: [],
+    abandoned: null,
   };
+}
+
+/**
+ * Give `mismatch` to `hydrate` from a place where throwing it would hand it to
+ * the engine instead.
+ *
+ * A mismatch raised inside a computation, a list row or an error boundary's
+ * fallback, reaches no catcher of barq's by being thrown: the engine takes it
+ * for an uncaught application error, halts every update and reports a crash.
+ * Handed over here, it is the same full-page recovery, raised by `mount` once
+ * the build returns.
+ *
+ * `false` when no hydration is in progress, and the caller still owns it.
+ */
+export function abandonClaim(mismatch: HydrationMismatch): boolean {
+  if (SESSION === null) return false;
+  SESSION.abandoned ??= mismatch;
+  return true;
+}
+
+export function abandonedClaim(): HydrationMismatch | null {
+  return SESSION === null ? null : SESSION.abandoned;
 }
 
 /**

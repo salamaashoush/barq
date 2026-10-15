@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { compileSource } from "./harness.ts";
+import { type FixtureModule, compileSource } from "./harness.ts";
 import { census, compileText, host, reuse, shape, wire } from "./hydration.ts";
 
 /**
@@ -443,6 +443,67 @@ describe("hydrating a page the compiler never made hydratable", () => {
   });
 
   /**
+   * The same mismatch, judged by what the engine saw. A mismatch that leaves a
+   * computation with nothing to catch it is an uncaught error to the engine,
+   * which halts scheduling, logs `[REACTIVITY_HALTED]` and reports it to
+   * `window.onerror` as a crash. The page is rendered again either way; what
+   * the developer is told has to be the mismatch, and only the mismatch.
+   */
+  test.each([
+    ["under an Errored", GUARDED_LIST, "mut-guarded-halt"],
+    ["with no boundary", BARE_LIST, "mut-bare-halt"],
+  ])(
+    "raised inside a list %s, it reaches hydrate without halting the engine",
+    async (_, source, tag) => {
+      const compiled = await compileText(source, tag, true);
+      const core = await import("@barqjs/core");
+      const served = wire(compiled.ssr);
+      const drifted = served.replace("<li", "<p").replace("</li>", "</p>");
+      const container = host(drifted);
+
+      const logged: string[] = [];
+      const reported: unknown[] = [];
+      const originalError = console.error;
+      const originalReport = globalThis.reportError;
+      console.error = (...args: unknown[]) => {
+        logged.push(args.map(String).join(" "));
+      };
+      globalThis.reportError = (error: unknown) => {
+        reported.push(error);
+      };
+      const diagnostics = core.DEV.diagnostics.capture();
+      let dispose: () => void;
+      try {
+        dispose = core.hydrate(compiled.dom.default as never, container);
+      } finally {
+        console.error = originalError;
+        globalThis.reportError = originalReport;
+      }
+      const events = diagnostics.stop();
+      const report = core.hydrate.report;
+
+      expect(logged.filter((line) => line.includes("REACTIVITY_HALTED"))).toEqual([]);
+      expect(reported).toEqual([]);
+      expect(report.recovered).toBe(true);
+      const mismatch = events.find((event) => event.code === "HYDRATION_MISMATCH");
+      expect(mismatch?.message).toContain("Hydration mismatch (structure)");
+      expect(mismatch?.message).toContain("<li");
+
+      const setRows = (compiled.dom as FixtureModule & Record<string, unknown>).setRows as (
+        rows: string[],
+      ) => void;
+      setRows(["x", "y"]);
+      core.flush();
+      expect([...container.querySelectorAll("li.row")].map((row) => row.textContent)).toEqual([
+        "x",
+        "y",
+      ]);
+      dispose();
+      container.remove();
+    },
+  );
+
+  /**
    * The other direction, and the one a deployment can actually get wrong: the
    * SERVER was built hydratable and the CLIENT was not. The client's walk is
    * native `.firstChild`/`.nextSibling`, so it steps straight onto a boundary
@@ -690,7 +751,7 @@ describe("a region that claimed in place survives the hole around it", () => {
 
 const GUARDED_LIST = `
 import { Errored, For, createSignal } from "@barqjs/core";
-export const [rows] = createSignal(["a", "b", "c"]);
+export const [rows, setRows] = createSignal(["a", "b", "c"]);
 export default function Page() {
   return (
     <main>
@@ -701,6 +762,24 @@ export default function Page() {
           </ul>
         )}
       </Errored>
+    </main>
+  );
+}
+`;
+
+const BARE_LIST = `
+import { For, createSignal } from "@barqjs/core";
+export const [rows, setRows] = createSignal(["a", "b", "c"]);
+export default function Page() {
+  return (
+    <main>
+      <section>
+        {() => (
+          <ul>
+            <For each={rows()}>{(row) => <li class="row">{row}</li>}</For>
+          </ul>
+        )}
+      </section>
     </main>
   );
 }

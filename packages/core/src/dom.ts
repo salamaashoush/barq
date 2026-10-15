@@ -50,6 +50,7 @@ import type { Cell } from "./scope.ts";
 import { coerceLive, writeLive } from "./forms.ts";
 import {
   HydrationMismatch,
+  abandonedClaim,
   adopted,
   beginHydration,
   built as builtNode,
@@ -3210,6 +3211,10 @@ function mount(
       // insert that places the rest, as at every hole the compiler writes.
       insertRendered(root, claiming ? hole(container, null, block, WHOLE) : block(), container);
     });
+    // Raised before the flush, so the effects of an attempt about to be
+    // discarded never run.
+    const abandoned = claiming ? abandonedClaim() : null;
+    if (abandoned !== null) throw abandoned;
   } catch (error) {
     // `hydrate` recovers from a mismatch by rendering again, and the bindings
     // this attempt already filed must not outlive it beside the second tree.

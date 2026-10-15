@@ -34,6 +34,7 @@ import {
   runWithOwner,
   setContext as engineSetContext,
 } from "@solidjs/signals";
+import { abandonClaim, hydrating, mismatchIn } from "./hydration.ts";
 import type { OwnershipSink, ScopeKind } from "./trace.ts";
 
 export {
@@ -920,9 +921,41 @@ export function renderEffect<T>(
   apply: (value: T, prev: T | undefined) => void | (() => void),
 ): void {
   effectsAllocated++;
-  createRenderEffect<T>(
-    (OWNERSHIP.sink !== null ? traced(compute, "render") : compute) as never,
-    apply,
+  const run = (OWNERSHIP.sink !== null ? traced(compute, "render") : compute) as typeof compute;
+  if (hydrating()) {
+    claimEffect(run, apply);
+    return;
+  }
+  createRenderEffect<T>(run as never, apply);
+}
+
+const ABANDONED: unique symbol = Symbol("abandoned");
+
+/**
+ * A render effect created while a claim is live, whose reads may carry a
+ * mismatch raised inside a computation: a list row, a boundary's fallback. A
+ * render effect is where the engine treats an error nothing caught as a crash,
+ * halting every update and reporting it to `window.onerror`, so the mismatch
+ * is handed to `hydrate` here instead and the effect writes nothing.
+ */
+function claimEffect<T>(
+  compute: (prev: T | undefined) => T,
+  apply: (value: T, prev: T | undefined) => void | (() => void),
+): void {
+  createRenderEffect<T | typeof ABANDONED>(
+    (prev: T | typeof ABANDONED | undefined) => {
+      try {
+        return compute(prev === ABANDONED ? undefined : prev);
+      } catch (error) {
+        const mismatch = mismatchIn(error);
+        if (mismatch === null || !abandonClaim(mismatch)) throw error;
+        return ABANDONED;
+      }
+    },
+    (value: T | typeof ABANDONED, prev: T | typeof ABANDONED | undefined) => {
+      if (value === ABANDONED) return;
+      return apply(value, prev === ABANDONED ? undefined : prev);
+    },
   );
 }
 

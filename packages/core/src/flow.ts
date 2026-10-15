@@ -14,6 +14,7 @@ import type { Child } from "./dom.ts";
 import { LIVE_EDGES, childToNodes } from "./dom.ts";
 import {
   HydrationMismatch,
+  abandonClaim,
   atCursor,
   claimAt,
   cursorAtEnd,
@@ -1533,10 +1534,14 @@ function guarded(
 
   const view: () => unknown =
     kind === "error"
-      ? createErrorBoundary(compose, (error, reset): Failure => {
+      ? createErrorBoundary(compose, (error, reset): Failure | undefined => {
           const thrown = error();
-          // Not the application's error: thrown on, it reaches `hydrate`.
-          if (thrown instanceof HydrationMismatch) throw thrown;
+          // Not the application's error, so neither arm shows: `hydrate`
+          // discards this attempt and renders the page again.
+          if (thrown instanceof HydrationMismatch) {
+            if (abandonClaim(thrown)) return undefined;
+            throw thrown;
+          }
           return {
             thrown,
             reset: () => {
