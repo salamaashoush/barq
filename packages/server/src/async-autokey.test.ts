@@ -325,7 +325,7 @@ describe("createAsync auto-keying", () => {
     dispose();
 
     expect(events.map((event) => event.code)).toContain("HYDRATION_SEED_DRIFT");
-    expect(events[0]?.data).toEqual([Object.keys(both)[1]]);
+    expect(events[0]?.data).toEqual({ keys: [Object.keys(both)[1]] });
   });
 
   /**
@@ -386,7 +386,7 @@ describe("createAsync auto-keying", () => {
     container.remove();
 
     expect(events.map((event) => event.code)).toContain("HYDRATION_SEED_DRIFT");
-    expect(events[0]?.data).toEqual(["r9~ghost"]);
+    expect(events[0]?.data).toEqual({ keys: ["r9~ghost"] });
   });
 
   test("naming one read does not renumber its siblings", async () => {

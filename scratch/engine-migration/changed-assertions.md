@@ -728,3 +728,6 @@ into a root first. No expectation about what a handler does changed.
   severity. Inputs only; no expectation changed.
 - `compiler/src/vite.test.ts` "the panel is fed over a custom HMR event": the stub dev server
   gained the `watcher` the plugin now listens on. No expectation changed.
+- `server/src/async-autokey.test.ts`, two `HYDRATION_SEED_DRIFT` cases: `event.data` is
+  `{ keys: [...] }`, not the bare array. The engine's event types `data` as a record, and the
+  leftover keys are the same.
