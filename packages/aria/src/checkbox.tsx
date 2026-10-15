@@ -11,7 +11,7 @@ import {
   type Accessor,
   type Child,
   createContext,
-  createTrackedEffect,
+  createEffect,
   getContext,
   getOwner,
   type Incoming,
@@ -73,11 +73,14 @@ export function checkbox(
   const result = toggle(options, state, ref);
 
   // `indeterminate` has no attribute; it exists only as a property.
-  createTrackedEffect(() => {
-    const input = access(ref) as HTMLInputElement | null;
-    if (input === null) return;
-    input.indeterminate = access(options.isIndeterminate) === true;
-  });
+  createEffect(
+    () =>
+      [access(ref) as HTMLInputElement | null, access(options.isIndeterminate) === true] as const,
+    ([input, indeterminate]) => {
+      if (input === null) return;
+      input.indeterminate = indeterminate;
+    },
+  );
 
   return {
     ...result,

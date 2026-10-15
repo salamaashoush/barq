@@ -26,7 +26,7 @@ import {
   For,
   createMemo,
   createContext,
-  createTrackedEffect,
+  createEffect,
   getContext,
   type Incoming,
   isServer,
@@ -344,12 +344,18 @@ export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
   if (!isServer) {
     // A value arriving from OUTSIDE fills the field, and one taken away
     // empties it back to the placeholder.
-    createTrackedEffect(() => {
-      const current = value();
-      if (current === null) return;
-      setDraft(current instanceof CalendarDateTime ? current : CalendarDateTime.from(current));
-      setFilled(new Set(wanted()));
-    });
+    createEffect(
+      () => {
+        const current = value();
+        return current === null ? null : ([current, wanted()] as const);
+      },
+      (next) => {
+        if (next === null) return;
+        const [current, types] = next;
+        setDraft(current instanceof CalendarDateTime ? current : CalendarDateTime.from(current));
+        setFilled(new Set(types));
+      },
+    );
   }
 
   /**

@@ -19,7 +19,7 @@
  *   press that opened it.
  */
 
-import { type Accessor, createTrackedEffect, createSignal } from "@barqjs/core";
+import { type Accessor, createEffect, createSignal } from "@barqjs/core";
 import { tryCleanup } from "@barqjs/primitives/utils";
 import {
   activeElement,
@@ -675,19 +675,28 @@ export function selectableItem(options: SelectableItemOptions): SelectableItemRe
   };
 
   // Focus the item when it becomes the focused key.
-  createTrackedEffect(() => {
-    const active = manager();
-    if (active.focusedKey !== options.key || !active.isFocused || virtualFocus()) return;
-    const element = access(options.ref) as HTMLElement | null;
-    if (element !== null && activeElement(ownerDocument(element)) !== element) {
-      focusSafely(element);
-    }
-  });
+  createEffect(
+    () => {
+      const active = manager();
+      if (active.focusedKey !== options.key || !active.isFocused || virtualFocus()) return null;
+      return { element: access(options.ref) as HTMLElement | null };
+    },
+    (focused) => {
+      if (focused === null) return;
+      const { element } = focused;
+      if (element !== null && activeElement(ownerDocument(element)) !== element) {
+        focusSafely(element);
+      }
+    },
+  );
 
   // A disabled item cannot hold the roving focus.
-  createTrackedEffect(() => {
-    if (isDisabled() && manager().focusedKey === options.key) manager().setFocusedKey(null);
-  });
+  createEffect(
+    () => isDisabled() && manager().focusedKey === options.key,
+    (stranded) => {
+      if (stranded) manager().setFocusedKey(null);
+    },
+  );
 
   let modality: PointerType | null = null;
   let longPressWasEnabled = false;
@@ -1153,8 +1162,7 @@ export function selectableCollection(
   // The scroll position is restored when focus returns, so tabbing away and
   // back does not jump the list to the focused item.
   const scrollPosition = { top: 0, left: 0 };
-  createTrackedEffect(() => {
-    const element = scrollElement();
+  createEffect(scrollElement, (element) => {
     if (element === null) return undefined;
     const onScroll = (): void => {
       scrollPosition.top = element.scrollTop;
@@ -1229,82 +1237,100 @@ export function selectableCollection(
 
   // Bring the focused item into view when it changes by keyboard.
   let lastFocusedKey: Key | null = manager().focusedKey;
-  createTrackedEffect(() => {
-    const active = manager();
-    const focused = active.focusedKey;
-    const container = access(options.ref) as HTMLElement | null;
-    const scroller = scrollElement();
-
-    if (active.isFocused && focused !== null && focused !== lastFocusedKey && scroller !== null) {
-      const element = itemElement(container, focused);
-      if (element instanceof HTMLElement && getInteractionModality() === "keyboard") {
-        scrollIntoView(scroller, element);
-        scrollIntoViewport(element, { containingElement: container });
+  createEffect(
+    () => {
+      const active = manager();
+      return {
+        focused: active.focusedKey,
+        isFocused: active.isFocused,
+        container: access(options.ref) as HTMLElement | null,
+        scroller: scrollElement(),
+        virtual: virtualFocus(),
+      };
+    },
+    ({ focused, isFocused, container, scroller, virtual }) => {
+      if (isFocused && focused !== null && focused !== lastFocusedKey && scroller !== null) {
+        const element = itemElement(container, focused);
+        if (element instanceof HTMLElement && getInteractionModality() === "keyboard") {
+          scrollIntoView(scroller, element);
+          scrollIntoViewport(element, { containingElement: container });
+        }
       }
-    }
 
-    // The focused item was removed: the collection itself takes focus, or the
-    // user is left with focus on the body and no way back in.
-    if (!virtualFocus() && active.isFocused && focused === null && lastFocusedKey !== null) {
-      if (container !== null) focusSafely(container);
-    }
+      // The focused item was removed: the collection itself takes focus, or the
+      // user is left with focus on the body and no way back in.
+      if (!virtual && isFocused && focused === null && lastFocusedKey !== null) {
+        if (container !== null) focusSafely(container);
+      }
 
-    lastFocusedKey = focused;
-  });
+      lastFocusedKey = focused;
+    },
+  );
 
   const [autoFocused, setAutoFocused] = createSignal(
     access(options.autoFocus) !== undefined && access(options.autoFocus) !== false,
   );
-  createTrackedEffect(() => {
-    if (!autoFocused()) return;
-    const active = manager();
-    const where = access(options.autoFocus);
+  createEffect(
+    () => {
+      if (!autoFocused()) return null;
+      const active = manager();
+      const where = access(options.autoFocus);
 
-    let key: Key | null = null;
-    if (where === "first") key = delegate.getFirstKey?.() ?? null;
-    if (where === "last") key = delegate.getLastKey?.() ?? null;
+      let key: Key | null = null;
+      if (where === "first") key = delegate.getFirstKey?.() ?? null;
+      if (where === "last") key = delegate.getLastKey?.() ?? null;
 
-    // A selected item wins over an end: re-opening a select lands on what is
-    // already chosen.
-    for (const selected of active.selectedKeys) {
-      if (active.canSelectItem(selected)) {
-        key = selected;
-        break;
+      // A selected item wins over an end: re-opening a select lands on what is
+      // already chosen.
+      for (const selected of active.selectedKeys) {
+        if (active.canSelectItem(selected)) {
+          key = selected;
+          break;
+        }
       }
-    }
 
-    active.setFocused(true);
-    active.setFocusedKey(key);
+      return {
+        active,
+        key,
+        selects:
+          key !== null &&
+          selectOnFocus() &&
+          active.selectedKeys.size === 0 &&
+          active.canSelectItem(key),
+        container:
+          key === null && !virtualFocus() ? (access(options.ref) as HTMLElement | null) : null,
+        isLoaded: active.collection.size > 0,
+      };
+    },
+    (next) => {
+      if (next === null) return;
+      const { active, key, container } = next;
 
-    if (
-      key !== null &&
-      selectOnFocus() &&
-      active.selectedKeys.size === 0 &&
-      active.canSelectItem(key)
-    ) {
-      active.replaceSelection(key);
-    }
+      active.setFocused(true);
+      active.setFocusedKey(key);
 
-    if (key === null && !virtualFocus()) {
-      const container = access(options.ref) as HTMLElement | null;
+      if (key !== null && next.selects) active.replaceSelection(key);
+
       if (container !== null) focusSafely(container);
-    }
 
-    if (active.collection.size > 0) setAutoFocused(false);
-  });
+      if (next.isLoaded) setAutoFocused(false);
+    },
+  );
 
   // A virtualised collection reuses DOM nodes, so the element a focus scope
   // wants to restore to may now be a different item.
-  createTrackedEffect(() => {
-    const container = access(options.ref) as HTMLElement | null;
-    if (container === null) return undefined;
-    const onRestore = (event: Event): void => {
-      event.preventDefault();
-      manager().setFocused(true);
-    };
-    container.addEventListener("barq-focus-scope-restore", onRestore);
-    return () => container.removeEventListener("barq-focus-scope-restore", onRestore);
-  });
+  createEffect(
+    () => access(options.ref) as HTMLElement | null,
+    (container) => {
+      if (container === null) return undefined;
+      const onRestore = (event: Event): void => {
+        event.preventDefault();
+        manager().setFocused(true);
+      };
+      container.addEventListener("barq-focus-scope-restore", onRestore);
+      return () => container.removeEventListener("barq-focus-scope-restore", onRestore);
+    },
+  );
 
   const { typeSelectProps } = typeSelect({
     keyboardDelegate: delegate,

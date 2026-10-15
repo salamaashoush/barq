@@ -26,7 +26,7 @@ import {
   For,
   createMemo,
   createContext,
-  createTrackedEffect,
+  createEffect,
   getContext,
   getOwner,
   type Incoming,
@@ -547,12 +547,12 @@ export function sliderThumb(options: SliderThumbOptions, state: SliderState): Sl
   if (!isServer) {
     // The state decides which thumb is focused — the track hands focus to the
     // one a press picked up — so the DOM follows it rather than the reverse.
-    createTrackedEffect(() => {
-      if (isFocused()) focusInput();
+    createEffect(isFocused, (focused) => {
+      if (focused) focusInput();
     });
 
-    createTrackedEffect(() => {
-      state.setThumbEditable(index, !isDisabled());
+    createEffect(isDisabled, (disabled) => {
+      state.setThumbEditable(index, !disabled);
     });
   }
 

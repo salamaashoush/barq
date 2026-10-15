@@ -13,7 +13,7 @@
  * different element than the first.
  */
 
-import { type Accessor, createTrackedEffect, isServer, createSignal } from "@barqjs/core";
+import { type Accessor, createEffect, isServer, createSignal } from "@barqjs/core";
 import { tryCleanup } from "@barqjs/primitives/utils";
 import { contains, ownerDocument, targetElement } from "../dom.ts";
 import { access, type DOMProps, type MaybeAccessor } from "../utils.ts";
@@ -204,8 +204,8 @@ export function hover(options: HoverOptions): HoverResult {
 
   // Disabling mid-hover has to end it, or a tooltip stays open over a control
   // that no longer responds.
-  createTrackedEffect(() => {
-    if (isDisabled()) triggerHoverEnd(state.target, state.pointerType);
+  createEffect(isDisabled, (disabled) => {
+    if (disabled) triggerHoverEnd(state.target, state.pointerType);
   });
 
   return { hoverProps, isHovered: hovered };

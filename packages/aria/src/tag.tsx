@@ -24,7 +24,7 @@ import {
   For,
   createMemo,
   createContext,
-  createTrackedEffect,
+  createEffect,
   getContext,
   getOwner,
   type Incoming,
@@ -118,12 +118,13 @@ export function tagGroup(options: TagGroupOptions, state: ListState<unknown>): T
   if (!isServer) {
     // Removing the LAST tag leaves nowhere inside to stand.
     let previous = state.collection().size;
-    createTrackedEffect(() => {
-      const size = state.collection().size;
-      const element = access(options.ref) as HTMLElement | null;
-      if (previous > 0 && size === 0 && isFocusWithin() && element !== null) element.focus();
-      previous = size;
-    });
+    createEffect(
+      () => [state.collection().size, access(options.ref) as HTMLElement | null] as const,
+      ([size, element]) => {
+        if (previous > 0 && size === 0 && isFocusWithin() && element !== null) element.focus();
+        previous = size;
+      },
+    );
   }
 
   const isEmpty = (): boolean => state.collection().size === 0;

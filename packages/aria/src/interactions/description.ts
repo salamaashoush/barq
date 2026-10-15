@@ -9,7 +9,7 @@
  * rows offering the same long press adds one node, not two hundred.
  */
 
-import { createTrackedEffect, isServer, createSignal } from "@barqjs/core";
+import { createEffect, isServer, createSignal } from "@barqjs/core";
 import { tryCleanup } from "@barqjs/primitives/utils";
 import { access, type DOMProps, type MaybeAccessor } from "../utils.ts";
 
@@ -54,15 +54,17 @@ export function description(text: MaybeAccessor<string | undefined>): DOMProps {
   });
   if (isServer) return { "aria-describedby": describedBy };
 
-  createTrackedEffect(() => {
-    const value = access(text);
-    if (value === undefined || value === "") {
-      setDescribedBy(undefined);
-      return undefined;
-    }
-    setDescribedBy(acquire(value));
-    return () => release(value);
-  });
+  createEffect(
+    () => access(text),
+    (value) => {
+      if (value === undefined || value === "") {
+        setDescribedBy(undefined);
+        return undefined;
+      }
+      setDescribedBy(acquire(value));
+      return () => release(value);
+    },
+  );
 
   tryCleanup(() => setDescribedBy(undefined));
 

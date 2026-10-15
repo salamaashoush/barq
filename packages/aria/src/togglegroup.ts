@@ -21,7 +21,7 @@
  * is what a server render and the first paint need.
  */
 
-import { type Accessor, createSignal, createTrackedEffect, isServer } from "@barqjs/core";
+import { type Accessor, createSignal, createEffect, isServer } from "@barqjs/core";
 import { tryCleanup } from "@barqjs/primitives/utils";
 import { contains, focusWithoutScrolling, targetElement } from "./dom.ts";
 import { type ReadingDirection, useDirection } from "./i18n.ts";
@@ -121,21 +121,26 @@ export function toggleGroupState(options: ToggleGroupStateOptions = {}): ToggleG
   const usable = (key: string): boolean => records.get(key)?.isDisabled() !== true;
 
   if (!isServer) {
-    createTrackedEffect(() => {
-      const current = order();
-      const placed: { key: string; element: Element }[] = [];
-      for (const key of current) {
-        const element = records.get(key)?.element() ?? null;
-        // Not all built yet, or not in one tree yet: the registration order
-        // stands until they are, and each ref landing runs this again.
-        if (element === null || !element.isConnected) return;
-        placed.push({ key, element });
-      }
-      const sorted = placed
-        .toSorted((a, b) => inDocumentOrder(a.element, b.element))
-        .map((each) => each.key);
-      if (sorted.some((key, index) => key !== current[index])) setOrder(sorted);
-    });
+    createEffect(
+      () => {
+        const current = order();
+        return { current, elements: current.map((key) => records.get(key)?.element() ?? null) };
+      },
+      ({ current, elements }) => {
+        const placed: { key: string; element: Element }[] = [];
+        for (const [index, key] of current.entries()) {
+          const element = elements[index] ?? null;
+          // Not all built yet, or not in one tree yet: the registration order
+          // stands until they are, and each ref landing runs this again.
+          if (element === null || !element.isConnected) return;
+          placed.push({ key, element });
+        }
+        const sorted = placed
+          .toSorted((a, b) => inDocumentOrder(a.element, b.element))
+          .map((each) => each.key);
+        if (sorted.some((key, index) => key !== current[index])) setOrder(sorted);
+      },
+    );
   }
 
   const setSelected = (key: string, next: boolean): void => {
@@ -238,10 +243,13 @@ export function toggleGroup(
 
   if (!isServer && options.ref !== undefined) {
     const { ref } = options;
-    createTrackedEffect(() => {
-      const outer = access(ref)?.parentElement?.closest('[role="toolbar"]');
-      state.setYielding(outer !== null && outer !== undefined);
-    });
+    createEffect(
+      () => access(ref),
+      (element) => {
+        const outer = element?.parentElement?.closest('[role="toolbar"]');
+        state.setYielding(outer !== null && outer !== undefined);
+      },
+    );
   }
 
   const intentOf = (key: string): Intent | null => {

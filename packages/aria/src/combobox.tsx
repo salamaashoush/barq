@@ -31,7 +31,7 @@ import {
   createMemo,
   createContext,
   createProjection,
-  createTrackedEffect,
+  createEffect,
   getContext,
   getOwner,
   type Incoming,
@@ -365,36 +365,49 @@ export function comboBoxState<T>(options: ComboBoxStateOptions<T>): ComboBoxStat
   if (!isServer) {
     // The list is only ever the FOCUSED collection while it is open, and the
     // highlight does not survive a close: reopening starts from the selection.
-    createTrackedEffect(() => {
-      const isOpen = overlay.isOpen();
-      const manager = list.selectionManager();
-      manager.setFocused(isOpen);
-      if (!isOpen) manager.setFocusedKey(null);
-    });
+    createEffect(
+      () => [overlay.isOpen(), list.selectionManager()] as const,
+      ([isOpen, manager]) => {
+        manager.setFocused(isOpen);
+        if (!isOpen) manager.setFocusedKey(null);
+      },
+    );
 
     // A list that has filtered down to nothing is a dead end.
-    createTrackedEffect(() => {
-      if (!overlay.isOpen() || showAll()) return;
-      if (access(options.allowsEmptyCollection) === true) return;
-      if (list.collection().size === 0) overlay.close();
-    });
+    createEffect(
+      () =>
+        !overlay.isOpen() || showAll() || access(options.allowsEmptyCollection) === true
+          ? null
+          : list.collection(),
+      (collection) => {
+        if (collection !== null && collection.size === 0) overlay.close();
+      },
+    );
 
     // The field follows a selection made from OUTSIDE, and the selected
     // item's text if it arrives late. Never one this component just made, and
     // never while the user is in the field: either would rewrite what they
     // are typing.
-    createTrackedEffect(() => {
-      const key = selectedKey();
-      const item = selectedItem();
-      if (access(options.inputValue) !== undefined) return;
-      if (key !== syncedKey) {
-        syncedKey = key;
-        setInputValueRaw(item?.textValue ?? "");
-        return;
-      }
-      if (isFocused() || item === null) return;
-      if (inputValue() !== item.textValue) setInputValueRaw(item.textValue);
-    });
+    createEffect(
+      () =>
+        [
+          selectedKey(),
+          selectedItem(),
+          access(options.inputValue),
+          isFocused(),
+          inputValue(),
+        ] as const,
+      ([key, item, controlled, focused, text]) => {
+        if (controlled !== undefined) return;
+        if (key !== syncedKey) {
+          syncedKey = key;
+          setInputValueRaw(item?.textValue ?? "");
+          return;
+        }
+        if (focused || item === null) return;
+        if (text !== item.textValue) setInputValueRaw(item.textValue);
+      },
+    );
   }
 
   return {
@@ -1300,43 +1313,44 @@ function createComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>): ComboboxR
     // The list is only the focused collection while it is open, and neither
     // the highlight nor a half-typed query survives a close.
     let wasOpen = untrack(isOpen);
-    createTrackedEffect(() => {
-      const open = isOpen();
-      untrack(() => {
-        const manager = list.selectionManager();
-        manager.setFocused(open);
-        if (!open) {
-          manager.setFocusedKey(null);
-          setPending(null);
-          if (wasOpen) settleInput();
-        }
-        wasOpen = open;
-      });
+    createEffect(isOpen, (open) => {
+      const manager = list.selectionManager();
+      manager.setFocused(open);
+      if (!open) {
+        manager.setFocusedKey(null);
+        setPending(null);
+        if (wasOpen) settleInput();
+      }
+      wasOpen = open;
     });
 
     // An end of the list is highlighted once there is a list: the items render
     // after the popup opens, so the key that opened it cannot do this itself.
-    createTrackedEffect(() => {
-      const strategy = pending();
-      if (!isOpen() || strategy === null || list.collection().size === 0) return;
-      untrack(() => {
+    createEffect(
+      () => {
+        const strategy = pending();
+        if (!isOpen() || strategy === null || list.collection().size === 0) return null;
+        return strategy;
+      },
+      (strategy) => {
+        if (strategy === null) return;
         setPending(null);
         const key = strategy === "last" ? delegate.getLastKey() : delegate.getFirstKey();
         list.selectionManager().setFocusedKey(key);
-      });
-    });
+      },
+    );
 
     // A value set from outside is not a query, so the field goes back to
     // following it.
     let shownFor = untrack(() => values().map(keyOf).join("\u0000"));
-    createTrackedEffect(() => {
-      const now = values().map(keyOf).join("\u0000");
-      if (now === shownFor) return;
-      shownFor = now;
-      untrack(() => {
+    createEffect(
+      () => values().map(keyOf).join("\u0000"),
+      (now) => {
+        if (now === shownFor) return;
+        shownFor = now;
         if (!isMultiple() && !isOpen()) settleInput();
-      });
-    });
+      },
+    );
   }
 
   const removeAt = (index: number): void => {

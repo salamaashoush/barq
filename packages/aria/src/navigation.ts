@@ -47,13 +47,7 @@
  * finds it open and shuts it again.
  */
 
-import {
-  createSignal,
-  createTrackedEffect,
-  createUniqueId,
-  isServer,
-  type Accessor,
-} from "@barqjs/core";
+import { createSignal, createEffect, createUniqueId, isServer, type Accessor } from "@barqjs/core";
 import { resizeObserver } from "@barqjs/primitives/observers";
 import { ref as makeRef } from "@barqjs/primitives/refs";
 
@@ -456,49 +450,50 @@ export function navigationMenu(
     // While something is open, the rest of the page can close it: a press
     // anywhere that is not a trigger or the panel, focus going elsewhere, and
     // Escape from wherever the keyboard happens to be.
-    createTrackedEffect(() => {
-      if (state.value() === null) return undefined;
-      const nav = root();
-      if (nav === null) return undefined;
-      const doc = ownerDocument(nav);
+    createEffect(
+      () => (state.value() === null ? null : root()),
+      (nav) => {
+        if (nav === null) return undefined;
+        const doc = ownerDocument(nav);
 
-      const onPointerDown = (event: Event): void => {
-        const target = targetElement(event);
-        if (target === null) return;
-        if (contains(nav, target)) {
-          const content = openRecord()?.content() ?? null;
-          const view = viewport();
-          if (
-            (content !== null && contains(content, target)) ||
-            (view !== null && contains(view, target)) ||
-            target.closest(`[${ITEM}][aria-expanded]`) !== null
-          ) {
-            return;
+        const onPointerDown = (event: Event): void => {
+          const target = targetElement(event);
+          if (target === null) return;
+          if (contains(nav, target)) {
+            const content = openRecord()?.content() ?? null;
+            const view = viewport();
+            if (
+              (content !== null && contains(content, target)) ||
+              (view !== null && contains(view, target)) ||
+              target.closest(`[${ITEM}][aria-expanded]`) !== null
+            ) {
+              return;
+            }
           }
-        }
-        state.close();
-      };
+          state.close();
+        };
 
-      const onFocusIn = (event: Event): void => {
-        const target = targetElement(event);
-        if (target !== null && !contains(nav, target)) state.close();
-      };
+        const onFocusIn = (event: Event): void => {
+          const target = targetElement(event);
+          if (target !== null && !contains(nav, target)) state.close();
+        };
 
-      const onKeyDown = (event: KeyboardEvent): void => {
-        if (event.key !== "Escape" || event.defaultPrevented) return;
-        if (contains(nav, targetElement(event))) return;
-        state.close();
-      };
+        const onKeyDown = (event: KeyboardEvent): void => {
+          if (event.key !== "Escape" || event.defaultPrevented) return;
+          if (contains(nav, targetElement(event))) return;
+          state.close();
+        };
 
-      doc.addEventListener("pointerdown", onPointerDown, true);
-      doc.addEventListener("focusin", onFocusIn, true);
-      doc.addEventListener("keydown", onKeyDown);
-      return () => {
-        doc.removeEventListener("pointerdown", onPointerDown, true);
-        doc.removeEventListener("focusin", onFocusIn, true);
-        doc.removeEventListener("keydown", onKeyDown);
-      };
-    });
+        doc.addEventListener("pointerdown", onPointerDown, true);
+        doc.addEventListener("focusin", onFocusIn, true);
+        doc.addEventListener("keydown", onKeyDown);
+        return () => {
+          doc.removeEventListener("pointerdown", onPointerDown, true);
+          doc.removeEventListener("focusin", onFocusIn, true);
+          doc.removeEventListener("keydown", onKeyDown);
+        };
+      },
+    );
 
     // Where the open trigger is along the bar. Kept when the menu closes, so
     // the indicator fades out where it was rather than jumping to the corner.
@@ -514,10 +509,10 @@ export function navigationMenu(
           : { offset: box.top - bar.top, size: box.height },
       );
     };
-    createTrackedEffect(() => {
-      place();
-      return undefined;
-    });
+    createEffect(
+      () => [root(), openRecord()?.trigger() ?? null, orientation()] as const,
+      () => place(),
+    );
     resizeObserver(root, place);
   }
 
@@ -556,8 +551,7 @@ export function navigationMenu(
     if (!isServer) {
       // The panel is built after the key that asked for it, and a portalled one
       // is attached later still, so the focus waits for it.
-      createTrackedEffect(() => {
-        const element = content();
+      createEffect(content, (element) => {
         if (element === null || entering !== key) return undefined;
         let attempts = 4;
         const attempt = (): void => {
@@ -581,10 +575,10 @@ export function navigationMenu(
         if (element === null || !isOpen()) return;
         setViewportSize({ width: element.offsetWidth, height: element.offsetHeight });
       };
-      createTrackedEffect(() => {
-        report();
-        return undefined;
-      });
+      createEffect(
+        () => [content(), isOpen()] as const,
+        () => report(),
+      );
       resizeObserver(() => (isOpen() ? content() : null), report);
     }
 

@@ -23,7 +23,7 @@ import {
   type Child,
   For,
   createContext,
-  createTrackedEffect,
+  createEffect,
   getContext,
   getOwner,
   type Incoming,
@@ -180,16 +180,18 @@ export function disclosure(options: DisclosureOptions, state: DisclosureState): 
      * is visible while the state still says it is closed, and the next toggle
      * closes nothing.
      */
-    createTrackedEffect(() => {
-      const panel = access(options.panelRef) as HTMLElement | null;
-      if (panel === null) return undefined;
-      const onBeforeMatch = (): void => {
-        panel.setAttribute("hidden", "until-found");
-        state.expand();
-      };
-      panel.addEventListener("beforematch", onBeforeMatch);
-      return () => panel.removeEventListener("beforematch", onBeforeMatch);
-    });
+    createEffect(
+      () => access(options.panelRef) as HTMLElement | null,
+      (panel) => {
+        if (panel === null) return undefined;
+        const onBeforeMatch = (): void => {
+          panel.setAttribute("hidden", "until-found");
+          state.expand();
+        };
+        panel.addEventListener("beforematch", onBeforeMatch);
+        return () => panel.removeEventListener("beforematch", onBeforeMatch);
+      },
+    );
 
     /**
      * `until-found`, not `true`: the panel stays searchable while it is shut.
@@ -205,25 +207,27 @@ export function disclosure(options: DisclosureOptions, state: DisclosureState): 
      * nothing flashes open on the first render.
      */
     let hasOpened = false;
-    createTrackedEffect(() => {
-      const panel = access(options.panelRef) as HTMLElement | null;
-      if (panel === null) return undefined;
+    createEffect(
+      () => [access(options.panelRef) as HTMLElement | null, state.isExpanded()] as const,
+      ([panel, expanded]) => {
+        if (panel === null) return undefined;
 
-      const hide = (): void => panel.setAttribute("hidden", "until-found");
-      if (state.isExpanded()) {
-        hasOpened = true;
-        panel.removeAttribute("hidden");
-        return undefined;
-      }
+        const hide = (): void => panel.setAttribute("hidden", "until-found");
+        if (expanded) {
+          hasOpened = true;
+          panel.removeAttribute("hidden");
+          return undefined;
+        }
 
-      const closing = hasOpened ? exitDuration(panel) : 0;
-      if (closing <= 0) {
-        hide();
-        return undefined;
-      }
-      const timer = setTimeout(hide, closing);
-      return () => clearTimeout(timer);
-    });
+        const closing = hasOpened ? exitDuration(panel) : 0;
+        if (closing <= 0) {
+          hide();
+          return undefined;
+        }
+        const timer = setTimeout(hide, closing);
+        return () => clearTimeout(timer);
+      },
+    );
   }
 
   return {

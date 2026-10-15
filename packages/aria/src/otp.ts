@@ -29,7 +29,7 @@
  * boxes and clipped back, which moves the badge out beside them.
  */
 
-import { createSignal, createTrackedEffect, onCleanup, type Accessor } from "@barqjs/core";
+import { createSignal, createEffect, onCleanup, type Accessor } from "@barqjs/core";
 
 import { access, type MaybeAccessor } from "./utils.ts";
 
@@ -216,18 +216,21 @@ function passwordManagerBadge(
     setHasBadge(true);
   };
 
-  createTrackedEffect(() => {
-    if (strategy() === "none" || !isFocused()) return undefined;
-    const timers = [0, 2000, 5000].map((delay) => setTimeout(look, delay));
-    timers.push(
-      setTimeout(() => {
-        done = true;
-      }, 6000),
-    );
-    return () => {
-      for (const timer of timers) clearTimeout(timer);
-    };
-  });
+  createEffect(
+    () => (strategy() === "none" || !isFocused() ? null : strategy()),
+    (active) => {
+      if (active === null) return undefined;
+      const timers = [0, 2000, 5000].map((delay) => setTimeout(look, delay));
+      timers.push(
+        setTimeout(() => {
+          done = true;
+        }, 6000),
+      );
+      return () => {
+        for (const timer of timers) clearTimeout(timer);
+      };
+    },
+  );
 
   return () => strategy() === "increase-width" && hasBadge() && hasSpace();
 }
@@ -311,16 +314,17 @@ export function otpField(
   }
 
   let before: string | undefined;
-  createTrackedEffect(() => {
-    const next = value();
-    const full = maxLength();
-    held = next;
-    if (before !== undefined && next !== before && before.length < full && next.length === full) {
-      options.onComplete?.(next);
-    }
-    before = next;
-    return undefined;
-  });
+  createEffect(
+    () => [value(), maxLength()] as const,
+    ([next, full]) => {
+      held = next;
+      if (before !== undefined && next !== before && before.length < full && next.length === full) {
+        options.onComplete?.(next);
+      }
+      before = next;
+      return undefined;
+    },
+  );
 
   const willPushPasswordManagerBadge = passwordManagerBadge(
     input,

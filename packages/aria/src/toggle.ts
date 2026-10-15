@@ -13,7 +13,7 @@
  * left alone.
  */
 
-import { type Accessor, createTrackedEffect, createSignal } from "@barqjs/core";
+import { type Accessor, createEffect, createSignal } from "@barqjs/core";
 import { ownerDocument } from "./dom.ts";
 import { focusable, type FocusableOptions } from "./interactions/focusable.ts";
 import { press, type ElementRef, type PressEvent } from "./interactions/press.ts";
@@ -41,15 +41,17 @@ export function formReset<T>(
   initial: MaybeAccessor<T>,
   onReset: (value: T) => void,
 ): void {
-  createTrackedEffect(() => {
-    const element = access(ref) as HTMLInputElement | null;
-    const form = element?.form;
-    if (form === null || form === undefined) return undefined;
+  createEffect(
+    () => access(ref) as HTMLInputElement | null,
+    (element) => {
+      const form = element?.form;
+      if (form === null || form === undefined) return undefined;
 
-    const handle = (): void => onReset(access(initial) as T);
-    form.addEventListener("reset", handle);
-    return () => form.removeEventListener("reset", handle);
-  });
+      const handle = (): void => onReset(access(initial) as T);
+      form.addEventListener("reset", handle);
+      return () => form.removeEventListener("reset", handle);
+    },
+  );
 }
 
 export interface ToggleOptions extends FocusableOptions {

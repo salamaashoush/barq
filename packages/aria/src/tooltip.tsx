@@ -25,11 +25,12 @@ import {
   type Accessor,
   type Child,
   createContext,
-  createTrackedEffect,
+  createEffect,
   getContext,
   getOwner,
   type Incoming,
   isServer,
+  onCleanup,
   Portal,
   provide,
   Show,
@@ -225,7 +226,7 @@ export function tooltipTriggerState(options: TooltipTriggerStateOptions = {}): T
   };
 
   if (!isServer) {
-    createTrackedEffect(() => () => {
+    onCleanup(() => {
       closeTimer = clearTimer(closeTimer);
       openTooltips.delete(key);
     });
@@ -332,7 +333,10 @@ export function tooltipTrigger(
   // Both the hover and the focus rules ask what the user last did, and nothing
   // knows unless the listeners are installed.
   if (!isServer) {
-    createTrackedEffect(() => trackModality(access(options.ref)));
+    createEffect(
+      () => access(options.ref),
+      (element) => trackModality(element),
+    );
   }
 
   let hovered = false;

@@ -31,7 +31,7 @@
 import {
   type Accessor,
   createContext,
-  createTrackedEffect,
+  createEffect,
   getOwner,
   install,
   isServer,
@@ -381,59 +381,67 @@ export function formValidation(
 
   const isNative = (): boolean => access(options.validationBehavior) === "native";
 
-  createTrackedEffect(() => {
-    const element = access(ref) as ValidatableElement | null;
-    if (element === null || !isNative()) return;
-    if (typeof element.setCustomValidity !== "function") return;
-    if ((element as HTMLInputElement).disabled) return;
+  createEffect(
+    () => {
+      const element = access(ref) as ValidatableElement | null;
+      if (element === null || !isNative()) return null;
+      return [element, state.realtimeValidation()] as const;
+    },
+    (next) => {
+      if (next === null) return;
+      const [element, found] = next;
+      if (typeof element.setCustomValidity !== "function") return;
+      if ((element as HTMLInputElement).disabled) return;
 
-    const found = state.realtimeValidation();
-    element.setCustomValidity(
-      found.isInvalid ? found.validationErrors.join(" ") || "Invalid value." : "",
-    );
-    // Firefox shows the `title` in the validation bubble, so an empty one
-    // keeps the page's message from being repeated in the browser's.
-    if (!element.hasAttribute("title")) element.title = "";
+      element.setCustomValidity(
+        found.isInvalid ? found.validationErrors.join(" ") || "Invalid value." : "",
+      );
+      // Firefox shows the `title` in the validation bubble, so an empty one
+      // keeps the page's message from being repeated in the browser's.
+      if (!element.hasAttribute("title")) element.title = "";
 
-    if (!found.isInvalid) state.updateValidation(nativeValidity(element));
-  });
+      if (!found.isInvalid) state.updateValidation(nativeValidity(element));
+    },
+  );
 
-  createTrackedEffect(() => {
-    const element = access(ref) as ValidatableElement | null;
-    if (element === null) return undefined;
+  createEffect(
+    () => access(ref) as ValidatableElement | null,
+    (element) => {
+      if (element === null) return undefined;
 
-    const onInvalid = (event: Event): void => {
-      // Only when nothing is being shown yet: committing over a server error
-      // the user has not fixed would replace it with the browser's message.
-      if (!state.displayValidation().isInvalid) state.commitValidation();
+      const onInvalid = (event: Event): void => {
+        // Only when nothing is being shown yet: committing over a server error
+        // the user has not fixed would replace it with the browser's message.
+        if (!state.displayValidation().isInvalid) state.commitValidation();
 
-      const form = element.form;
-      if (!event.defaultPrevented && form !== null) {
-        const first = form.querySelector<ValidatableElement>(":invalid");
-        if (first === element) {
-          if (options.focus !== undefined) options.focus();
-          else element.focus();
-          // The focus ring shows: focus moved for a reason the user did not
-          // ask for, so they have to be able to see where it went.
-          setInteractionModality("keyboard");
+        const form = element.form;
+        if (!event.defaultPrevented && form !== null) {
+          const first = form.querySelector<ValidatableElement>(":invalid");
+          if (first === element) {
+            if (options.focus !== undefined) options.focus();
+            else element.focus();
+            // The focus ring shows: focus moved for a reason the user did not
+            // ask for, so they have to be able to see where it went.
+            setInteractionModality("keyboard");
+          }
         }
-      }
 
-      // The browser's own bubble is suppressed; the message is in the page.
-      event.preventDefault();
-    };
+        // The browser's own bubble is suppressed; the message is in the page.
+        event.preventDefault();
+      };
 
-    const onChange = (): void => state.commitValidation();
-    const onReset = (): void => state.resetValidation();
+      const onChange = (): void => state.commitValidation();
+      const onReset = (): void => state.resetValidation();
 
-    element.addEventListener("invalid", onInvalid);
-    element.addEventListener("change", onChange);
-    element.form?.addEventListener("reset", onReset);
+      element.addEventListener("invalid", onInvalid);
+      element.addEventListener("change", onChange);
+      element.form?.addEventListener("reset", onReset);
 
-    return () => {
-      element.removeEventListener("invalid", onInvalid);
-      element.removeEventListener("change", onChange);
-      element.form?.removeEventListener("reset", onReset);
-    };
-  });
+      return () => {
+        element.removeEventListener("invalid", onInvalid);
+        element.removeEventListener("change", onChange);
+        element.form?.removeEventListener("reset", onReset);
+      };
+    },
+  );
 }

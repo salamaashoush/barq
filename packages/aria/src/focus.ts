@@ -16,7 +16,7 @@
 import {
   type Accessor,
   createContext,
-  createTrackedEffect,
+  createEffect,
   getContext,
   getOwner,
   install,
@@ -873,9 +873,12 @@ export function focusScope(options: FocusScopeOptions = {}): FocusScopeResult {
   parentOf().add(node);
   scopeTree.register(node);
 
-  createTrackedEffect(() => {
-    node.contain = access(options.contain) === true;
-  });
+  createEffect(
+    () => access(options.contain) === true,
+    (contain) => {
+      node.contain = contain;
+    },
+  );
 
   const startRef = (element: Element | null): void => {
     if (element !== null && nodes.start === null) {
@@ -898,14 +901,16 @@ export function focusScope(options: FocusScopeOptions = {}): FocusScopeResult {
   onSettled(() => nodes.watch());
 
   // A restore inside a nested scope must not reach this one.
-  createTrackedEffect(() => {
-    const scope = nodes.read();
-    if (scope === null) return undefined;
-    for (const element of scope) element.addEventListener(RESTORE_EVENT, stopEvent);
-    return () => {
-      for (const element of scope) element.removeEventListener(RESTORE_EVENT, stopEvent);
-    };
-  });
+  createEffect(
+    () => nodes.read(),
+    (scope) => {
+      if (scope === null) return undefined;
+      for (const element of scope) element.addEventListener(RESTORE_EVENT, stopEvent);
+      return () => {
+        for (const element of scope) element.removeEventListener(RESTORE_EVENT, stopEvent);
+      };
+    },
+  );
 
   // Published to the subtree, so a nested scope parents itself here and a
   // descendant can reach this scope's manager.
@@ -945,169 +950,175 @@ function containFocus(nodes: ScopeNodes, options: FocusScopeOptions): void {
   let focusedNode: Element | undefined;
   let frame: number | undefined;
 
-  createTrackedEffect(() => {
-    const scope = nodes.read();
-    if (access(options.contain) !== true) {
-      if (frame !== undefined) {
-        cancelAnimationFrame(frame);
-        frame = undefined;
-      }
-      return undefined;
-    }
-
-    const doc = ownerDocument(scope?.[0]);
-
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (
-        event.key !== "Tab" ||
-        event.altKey ||
-        event.ctrlKey ||
-        event.metaKey ||
-        !shouldContainFocus(nodes) ||
-        event.isComposing
-      ) {
+  createEffect(
+    () => [nodes.read(), access(options.contain)] as const,
+    ([scope, contain]) => {
+      if (contain !== true) {
+        if (frame !== undefined) {
+          cancelAnimationFrame(frame);
+          frame = undefined;
+        }
         return undefined;
       }
 
-      const current = activeElement(doc);
-      const live = nodes.current;
-      if (live === null || live.length === 0 || !isInScope(current, live)) return;
+      const doc = ownerDocument(scope?.[0]);
 
-      const walker = focusableWalker(scopeRoot(live), { tabbable: true }, live);
-      if (current === null) return;
-      walker.currentNode = current;
-      let next = (event.shiftKey ? walker.previousNode() : walker.nextNode()) as Element | null;
-
-      if (next === null) {
-        walker.currentNode = (
-          event.shiftKey
-            ? live[live.length - 1]?.nextElementSibling
-            : live[0]?.previousElementSibling
-        ) as Element;
-        next = (event.shiftKey ? walker.previousNode() : walker.nextNode()) as Element | null;
-      }
-
-      event.preventDefault();
-      if (next !== null) {
-        focusElement(next, true);
-        if (next instanceof ownerWindow(next).HTMLInputElement) next.select();
-      }
-    };
-
-    const onFocus = (event: Event): void => {
-      const target = targetElement(event);
-      if (
-        (activeScope === null || isAncestorScope(activeScope, nodes)) &&
-        isInScope(target, nodes.current)
-      ) {
-        // A child scope taking focus becomes the active one; moving out to an
-        // ancestor is not allowed.
-        activeScope = nodes;
-        focusedNode = target ?? undefined;
-      } else if (
-        shouldContainFocus(nodes) &&
-        target !== null &&
-        !isInAnyChildScope(target, nodes)
-      ) {
-        // Focus arrived from outside the scope entirely, e.g. the user tabbed
-        // in from the browser's address bar.
-        if (focusedNode !== undefined) focusElement(focusedNode);
-        else if (activeScope?.current !== undefined && activeScope.current !== null) {
-          focusElement(firstInScope(activeScope.current));
-        }
-      } else if (shouldContainFocus(nodes)) {
-        focusedNode = target ?? undefined;
-      }
-    };
-
-    const onBlur = (event: Event): void => {
-      // Firefox does not put focus back without the frame.
-      if (frame !== undefined) cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        // TalkBack on Chrome cannot move its virtual cursor out of a contained
-        // scope, and coerces focus back forever. Focus is allowed to leave
-        // there, which is narrower than it sounds: only that combination.
-        const how = getInteractionModality();
-        const skip = (how === "virtual" || how === null) && isAndroid() && isChrome();
-
-        const active = activeElement(doc);
+      const onKeyDown = (event: KeyboardEvent): void => {
         if (
-          skip ||
-          active === null ||
+          event.key !== "Tab" ||
+          event.altKey ||
+          event.ctrlKey ||
+          event.metaKey ||
           !shouldContainFocus(nodes) ||
-          isInAnyChildScope(active, nodes)
+          event.isComposing
         ) {
-          return;
+          return undefined;
         }
 
-        activeScope = nodes;
+        const current = activeElement(doc);
+        const live = nodes.current;
+        if (live === null || live.length === 0 || !isInScope(current, live)) return;
+
+        const walker = focusableWalker(scopeRoot(live), { tabbable: true }, live);
+        if (current === null) return;
+        walker.currentNode = current;
+        let next = (event.shiftKey ? walker.previousNode() : walker.nextNode()) as Element | null;
+
+        if (next === null) {
+          walker.currentNode = (
+            event.shiftKey
+              ? live[live.length - 1]?.nextElementSibling
+              : live[0]?.previousElementSibling
+          ) as Element;
+          next = (event.shiftKey ? walker.previousNode() : walker.nextNode()) as Element | null;
+        }
+
+        event.preventDefault();
+        if (next !== null) {
+          focusElement(next, true);
+          if (next instanceof ownerWindow(next).HTMLInputElement) next.select();
+        }
+      };
+
+      const onFocus = (event: Event): void => {
         const target = targetElement(event);
-        if (target !== null && target.isConnected) {
-          focusedNode = target;
-          focusElement(focusedNode);
-        } else if (activeScope.current !== null) {
-          focusElement(firstInScope(activeScope.current));
+        if (
+          (activeScope === null || isAncestorScope(activeScope, nodes)) &&
+          isInScope(target, nodes.current)
+        ) {
+          // A child scope taking focus becomes the active one; moving out to an
+          // ancestor is not allowed.
+          activeScope = nodes;
+          focusedNode = target ?? undefined;
+        } else if (
+          shouldContainFocus(nodes) &&
+          target !== null &&
+          !isInAnyChildScope(target, nodes)
+        ) {
+          // Focus arrived from outside the scope entirely, e.g. the user tabbed
+          // in from the browser's address bar.
+          if (focusedNode !== undefined) focusElement(focusedNode);
+          else if (activeScope?.current !== undefined && activeScope.current !== null) {
+            focusElement(firstInScope(activeScope.current));
+          }
+        } else if (shouldContainFocus(nodes)) {
+          focusedNode = target ?? undefined;
         }
-      });
-    };
+      };
 
-    doc.addEventListener("keydown", onKeyDown as EventListener, false);
-    doc.addEventListener("focusin", onFocus, false);
-    for (const element of scope ?? []) {
-      element.addEventListener("focusin", onFocus, false);
-      element.addEventListener("focusout", onBlur, false);
-    }
+      const onBlur = (event: Event): void => {
+        // Firefox does not put focus back without the frame.
+        if (frame !== undefined) cancelAnimationFrame(frame);
+        frame = requestAnimationFrame(() => {
+          // TalkBack on Chrome cannot move its virtual cursor out of a contained
+          // scope, and coerces focus back forever. Focus is allowed to leave
+          // there, which is narrower than it sounds: only that combination.
+          const how = getInteractionModality();
+          const skip = (how === "virtual" || how === null) && isAndroid() && isChrome();
 
-    return () => {
-      doc.removeEventListener("keydown", onKeyDown as EventListener, false);
-      doc.removeEventListener("focusin", onFocus, false);
+          const active = activeElement(doc);
+          if (
+            skip ||
+            active === null ||
+            !shouldContainFocus(nodes) ||
+            isInAnyChildScope(active, nodes)
+          ) {
+            return;
+          }
+
+          activeScope = nodes;
+          const target = targetElement(event);
+          if (target !== null && target.isConnected) {
+            focusedNode = target;
+            focusElement(focusedNode);
+          } else if (activeScope.current !== null) {
+            focusElement(firstInScope(activeScope.current));
+          }
+        });
+      };
+
+      doc.addEventListener("keydown", onKeyDown as EventListener, false);
+      doc.addEventListener("focusin", onFocus, false);
       for (const element of scope ?? []) {
-        element.removeEventListener("focusin", onFocus, false);
-        element.removeEventListener("focusout", onBlur, false);
+        element.addEventListener("focusin", onFocus, false);
+        element.addEventListener("focusout", onBlur, false);
       }
-      if (frame !== undefined) cancelAnimationFrame(frame);
-    };
-  });
+
+      return () => {
+        doc.removeEventListener("keydown", onKeyDown as EventListener, false);
+        doc.removeEventListener("focusin", onFocus, false);
+        for (const element of scope ?? []) {
+          element.removeEventListener("focusin", onFocus, false);
+          element.removeEventListener("focusout", onBlur, false);
+        }
+        if (frame !== undefined) cancelAnimationFrame(frame);
+      };
+    },
+  );
 }
 
 function trackActiveScope(nodes: ScopeNodes, options: FocusScopeOptions): void {
-  createTrackedEffect(() => {
-    const scope = nodes.read();
-    // Containment and restoration each track this themselves.
-    if (access(options.restoreFocus) === true || access(options.contain) === true) return undefined;
+  createEffect(
+    () => [nodes.read(), access(options.restoreFocus), access(options.contain)] as const,
+    ([scope, restoreFocus, contain]) => {
+      // Containment and restoration each track this themselves.
+      if (restoreFocus === true || contain === true) return undefined;
 
-    const doc = ownerDocument(scope?.[0]);
+      const doc = ownerDocument(scope?.[0]);
 
-    const onFocus = (event: Event): void => {
-      const target = targetElement(event);
-      if (target === null) return;
-      if (isInScope(target, nodes.current)) activeScope = nodes;
-      else if (!isInAnyChildScope(target)) activeScope = null;
-    };
+      const onFocus = (event: Event): void => {
+        const target = targetElement(event);
+        if (target === null) return;
+        if (isInScope(target, nodes.current)) activeScope = nodes;
+        else if (!isInAnyChildScope(target)) activeScope = null;
+      };
 
-    doc.addEventListener("focusin", onFocus, false);
-    for (const element of scope ?? []) element.addEventListener("focusin", onFocus, false);
+      doc.addEventListener("focusin", onFocus, false);
+      for (const element of scope ?? []) element.addEventListener("focusin", onFocus, false);
 
-    return () => {
-      doc.removeEventListener("focusin", onFocus, false);
-      for (const element of scope ?? []) element.removeEventListener("focusin", onFocus, false);
-    };
-  });
+      return () => {
+        doc.removeEventListener("focusin", onFocus, false);
+        for (const element of scope ?? []) element.removeEventListener("focusin", onFocus, false);
+      };
+    },
+  );
 }
 
 function autoFocusOnMount(nodes: ScopeNodes, options: FocusScopeOptions): void {
   const [pending, setPending] = createSignal(access(options.autoFocus) === true);
 
-  createTrackedEffect(() => {
-    const scope = nodes.read();
-    if (!pending()) return;
-    if (scope === null || scope.length === 0) return;
-    setPending(false);
+  createEffect(
+    () => [nodes.read(), pending()] as const,
+    ([scope, isPending]) => {
+      if (!isPending) return;
+      if (scope === null || scope.length === 0) return;
+      setPending(false);
 
-    activeScope = nodes;
-    const doc = ownerDocument(scope[0]);
-    if (!isInScope(activeElement(doc), scope)) focusElement(firstInScope(scope));
-  });
+      activeScope = nodes;
+      const doc = ownerDocument(scope[0]);
+      if (!isInScope(activeElement(doc), scope)) focusElement(firstInScope(scope));
+    },
+  );
 }
 
 function restoreFocusOnDispose(
@@ -1117,100 +1128,107 @@ function restoreFocusOnDispose(
 ): void {
   // A restoring scope that is not containing still has to know when it becomes
   // active, so it can decide whether the restore is its to perform.
-  createTrackedEffect(() => {
-    const scope = nodes.read();
-    if (access(options.restoreFocus) !== true || access(options.contain) === true) return undefined;
+  createEffect(
+    () => [nodes.read(), access(options.restoreFocus), access(options.contain)] as const,
+    ([scope, restoreFocus, contain]) => {
+      if (restoreFocus !== true || contain === true) return undefined;
 
-    const doc = ownerDocument(scope?.[0]);
+      const doc = ownerDocument(scope?.[0]);
 
-    const onFocus = (): void => {
-      if (
-        (activeScope === null || isAncestorScope(activeScope, nodes)) &&
-        isInScope(activeElement(doc), nodes.current)
-      ) {
-        activeScope = nodes;
-      }
-    };
+      const onFocus = (): void => {
+        if (
+          (activeScope === null || isAncestorScope(activeScope, nodes)) &&
+          isInScope(activeElement(doc), nodes.current)
+        ) {
+          activeScope = nodes;
+        }
+      };
 
-    doc.addEventListener("focusin", onFocus, false);
-    for (const element of scope ?? []) element.addEventListener("focusin", onFocus, false);
+      doc.addEventListener("focusin", onFocus, false);
+      for (const element of scope ?? []) element.addEventListener("focusin", onFocus, false);
 
-    return () => {
-      doc.removeEventListener("focusin", onFocus, false);
-      for (const element of scope ?? []) element.removeEventListener("focusin", onFocus, false);
-    };
-  });
+      return () => {
+        doc.removeEventListener("focusin", onFocus, false);
+        for (const element of scope ?? []) element.removeEventListener("focusin", onFocus, false);
+      };
+    },
+  );
 
   // Tabbing out of a restoring scope goes to what follows the element focus
   // came from, not to what follows the scope in the DOM. For an overlay in a
   // portal at the end of the body those are very different places.
-  createTrackedEffect(() => {
-    if (access(options.restoreFocus) !== true || access(options.contain) === true) return undefined;
+  createEffect(
+    () => [access(options.restoreFocus), access(options.contain)] as const,
+    ([restoreFocus, contain]) => {
+      if (restoreFocus !== true || contain === true) return undefined;
 
-    const doc = ownerDocument(nodes.current?.[0]);
+      const doc = ownerDocument(nodes.current?.[0]);
 
-    const onKeyDown = (event: KeyboardEvent): void => {
-      if (
-        event.key !== "Tab" ||
-        event.altKey ||
-        event.ctrlKey ||
-        event.metaKey ||
-        !shouldContainFocus(nodes) ||
-        event.isComposing
-      ) {
-        return undefined;
-      }
+      const onKeyDown = (event: KeyboardEvent): void => {
+        if (
+          event.key !== "Tab" ||
+          event.altKey ||
+          event.ctrlKey ||
+          event.metaKey ||
+          !shouldContainFocus(nodes) ||
+          event.isComposing
+        ) {
+          return undefined;
+        }
 
-      const current = doc.activeElement;
-      if (current === null) return;
-      if (!isInAnyChildScope(current, nodes) || !shouldRestoreFocus(nodes)) return;
+        const current = doc.activeElement;
+        if (current === null) return;
+        if (!isInAnyChildScope(current, nodes) || !shouldRestoreFocus(nodes)) return;
+
+        const scopeNode = scopeTree.get(nodes);
+        if (scopeNode === undefined) return;
+
+        let target = scopeNode.restoreTo;
+        const walker = focusableWalker(doc.body, { tabbable: true });
+        walker.currentNode = current;
+        let next = (event.shiftKey ? walker.previousNode() : walker.nextNode()) as Element | null;
+
+        if (target === undefined || !target.isConnected || (target as Element) === doc.body) {
+          target = undefined;
+          scopeNode.restoreTo = undefined;
+        }
+
+        if ((next === null || !isInAnyChildScope(next, nodes)) && target !== undefined) {
+          walker.currentNode = target;
+          // Step over the scope itself, in case it immediately follows.
+          do {
+            next = (event.shiftKey ? walker.previousNode() : walker.nextNode()) as Element | null;
+          } while (next !== null && isInAnyChildScope(next, nodes));
+
+          event.preventDefault();
+          event.stopPropagation();
+          if (next !== null) {
+            focusElement(next, true);
+          } else if (!isInAnyChildScope(target)) {
+            // Leaving the outermost scope with nowhere to go: the browser chrome
+            // is next, so give focus up entirely.
+            (current as HTMLElement).blur();
+          } else {
+            focusElement(target, true);
+          }
+        }
+      };
+
+      doc.addEventListener("keydown", onKeyDown as EventListener, true);
+      return () => doc.removeEventListener("keydown", onKeyDown as EventListener, true);
+    },
+  );
+
+  createEffect(
+    () => (access(options.restoreFocus) === true ? { value: restoreTo() } : null),
+    (restoring) => {
+      if (restoring === null) return;
 
       const scopeNode = scopeTree.get(nodes);
       if (scopeNode === undefined) return;
-
-      let target = scopeNode.restoreTo;
-      const walker = focusableWalker(doc.body, { tabbable: true });
-      walker.currentNode = current;
-      let next = (event.shiftKey ? walker.previousNode() : walker.nextNode()) as Element | null;
-
-      if (target === undefined || !target.isConnected || (target as Element) === doc.body) {
-        target = undefined;
-        scopeNode.restoreTo = undefined;
-      }
-
-      if ((next === null || !isInAnyChildScope(next, nodes)) && target !== undefined) {
-        walker.currentNode = target;
-        // Step over the scope itself, in case it immediately follows.
-        do {
-          next = (event.shiftKey ? walker.previousNode() : walker.nextNode()) as Element | null;
-        } while (next !== null && isInAnyChildScope(next, nodes));
-
-        event.preventDefault();
-        event.stopPropagation();
-        if (next !== null) {
-          focusElement(next, true);
-        } else if (!isInAnyChildScope(target)) {
-          // Leaving the outermost scope with nowhere to go: the browser chrome
-          // is next, so give focus up entirely.
-          (current as HTMLElement).blur();
-        } else {
-          focusElement(target, true);
-        }
-      }
-    };
-
-    doc.addEventListener("keydown", onKeyDown as EventListener, true);
-    return () => doc.removeEventListener("keydown", onKeyDown as EventListener, true);
-  });
-
-  createTrackedEffect(() => {
-    if (access(options.restoreFocus) !== true) return;
-
-    const scopeNode = scopeTree.get(nodes);
-    const value = restoreTo();
-    if (scopeNode === undefined) return;
-    scopeNode.restoreTo = value ?? undefined;
-  });
+      scopeNode.restoreTo = restoring.value ?? undefined;
+    },
+  );
 
   /**
    * Put focus back where it came from.

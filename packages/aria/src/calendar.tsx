@@ -34,7 +34,7 @@ import {
   For,
   createMemo,
   createContext,
-  createTrackedEffect,
+  createEffect,
   getContext,
   type Incoming,
   isServer,
@@ -735,8 +735,7 @@ export function calendar(options: CalendarOptions, state: AnyCalendarState): Cal
     // The month changing under a pointer press has nothing on screen to say
     // so; a screen reader user pressing "next" hears only the button.
     let previous = title();
-    createTrackedEffect(() => {
-      const current = title();
+    createEffect(title, (current) => {
       if (current === previous) return;
       previous = current;
       if (!state.isFocused()) announce(current);
@@ -1010,12 +1009,15 @@ export function calendarCell(
   if (!isServer) {
     // The state decides which day is focused; the DOM follows it, so the
     // arrows move focus without every cell having to watch the keyboard.
-    createTrackedEffect(() => {
-      if (!isFocused()) return;
-      const element = access(options.ref) as HTMLElement | null;
-      if (element === null) return;
-      if (activeElement(ownerDocument(element)) !== element) focusSafely(element);
-    });
+    createEffect(
+      () => (isFocused() ? { element: access(options.ref) as HTMLElement | null } : null),
+      (focused) => {
+        if (focused === null) return;
+        const { element } = focused;
+        if (element === null) return;
+        if (activeElement(ownerDocument(element)) !== element) focusSafely(element);
+      },
+    );
   }
 
   const label = (): string => {

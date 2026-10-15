@@ -14,7 +14,7 @@
  * events after a tap on a form control.
  */
 
-import { createTrackedEffect } from "@barqjs/core";
+import { createEffect } from "@barqjs/core";
 import { contains, ownerDocument, targetElement, TOP_LAYER_ATTRIBUTE } from "../dom.ts";
 import { access, type MaybeAccessor } from "../utils.ts";
 import type { ElementRef } from "./press.ts";
@@ -59,65 +59,65 @@ function isOutside(event: Event, element: Element | null | undefined): boolean {
 export function interactOutside(options: InteractOutsideOptions): void {
   const state = { isPointerDown: false, ignoreEmulatedMouseEvents: false };
 
-  createTrackedEffect(() => {
-    if (access(options.isDisabled) === true) return undefined;
+  createEffect(
+    () => (access(options.isDisabled) === true ? null : ownerDocument(access(options.ref))),
+    (doc) => {
+      if (doc === null) return undefined;
 
-    const element = access(options.ref);
-    const doc = ownerDocument(element);
+      const onPointerDown = (event: Event): void => {
+        if (options.onInteractOutside === undefined) return;
+        if (!isOutside(event, access(options.ref))) return;
+        options.onInteractOutsideStart?.(event as PointerEvent);
+        state.isPointerDown = true;
+      };
 
-    const onPointerDown = (event: Event): void => {
-      if (options.onInteractOutside === undefined) return;
-      if (!isOutside(event, access(options.ref))) return;
-      options.onInteractOutsideStart?.(event as PointerEvent);
-      state.isPointerDown = true;
-    };
+      if (typeof PointerEvent !== "undefined") {
+        const onClick = (event: Event): void => {
+          if (state.isPointerDown && isOutside(event, access(options.ref))) {
+            options.onInteractOutside?.(event as PointerEvent);
+          }
+          state.isPointerDown = false;
+        };
 
-    if (typeof PointerEvent !== "undefined") {
-      const onClick = (event: Event): void => {
+        // Capturing: a handler in between may stop propagation, and a combobox
+        // that closes on selection removes the element before the bubble phase.
+        doc.addEventListener("pointerdown", onPointerDown, true);
+        doc.addEventListener("click", onClick, true);
+
+        return () => {
+          doc.removeEventListener("pointerdown", onPointerDown, true);
+          doc.removeEventListener("click", onClick, true);
+        };
+      }
+
+      const onMouseUp = (event: Event): void => {
+        if (state.ignoreEmulatedMouseEvents) {
+          state.ignoreEmulatedMouseEvents = false;
+        } else if (state.isPointerDown && isOutside(event, access(options.ref))) {
+          options.onInteractOutside?.(event as PointerEvent);
+        }
+        state.isPointerDown = false;
+      };
+
+      const onTouchEnd = (event: Event): void => {
+        state.ignoreEmulatedMouseEvents = true;
         if (state.isPointerDown && isOutside(event, access(options.ref))) {
           options.onInteractOutside?.(event as PointerEvent);
         }
         state.isPointerDown = false;
       };
 
-      // Capturing: a handler in between may stop propagation, and a combobox
-      // that closes on selection removes the element before the bubble phase.
-      doc.addEventListener("pointerdown", onPointerDown, true);
-      doc.addEventListener("click", onClick, true);
+      doc.addEventListener("mousedown", onPointerDown, true);
+      doc.addEventListener("mouseup", onMouseUp, true);
+      doc.addEventListener("touchstart", onPointerDown, true);
+      doc.addEventListener("touchend", onTouchEnd, true);
 
       return () => {
-        doc.removeEventListener("pointerdown", onPointerDown, true);
-        doc.removeEventListener("click", onClick, true);
+        doc.removeEventListener("mousedown", onPointerDown, true);
+        doc.removeEventListener("mouseup", onMouseUp, true);
+        doc.removeEventListener("touchstart", onPointerDown, true);
+        doc.removeEventListener("touchend", onTouchEnd, true);
       };
-    }
-
-    const onMouseUp = (event: Event): void => {
-      if (state.ignoreEmulatedMouseEvents) {
-        state.ignoreEmulatedMouseEvents = false;
-      } else if (state.isPointerDown && isOutside(event, access(options.ref))) {
-        options.onInteractOutside?.(event as PointerEvent);
-      }
-      state.isPointerDown = false;
-    };
-
-    const onTouchEnd = (event: Event): void => {
-      state.ignoreEmulatedMouseEvents = true;
-      if (state.isPointerDown && isOutside(event, access(options.ref))) {
-        options.onInteractOutside?.(event as PointerEvent);
-      }
-      state.isPointerDown = false;
-    };
-
-    doc.addEventListener("mousedown", onPointerDown, true);
-    doc.addEventListener("mouseup", onMouseUp, true);
-    doc.addEventListener("touchstart", onPointerDown, true);
-    doc.addEventListener("touchend", onTouchEnd, true);
-
-    return () => {
-      doc.removeEventListener("mousedown", onPointerDown, true);
-      doc.removeEventListener("mouseup", onMouseUp, true);
-      doc.removeEventListener("touchstart", onPointerDown, true);
-      doc.removeEventListener("touchend", onTouchEnd, true);
-    };
-  });
+    },
+  );
 }

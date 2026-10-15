@@ -26,7 +26,7 @@ import {
   type Child,
   For,
   createContext,
-  createTrackedEffect,
+  createEffect,
   createUniqueId,
   getContext,
   getOwner,
@@ -937,94 +937,104 @@ export function safelyMouseToSubmenu(options: SafelyMouseToSubmenuOptions): void
 
   // The parent menu stops answering the pointer while the user is on their way
   // across it. Restored on the way out, and on close, by the same effect.
-  createTrackedEffect(() => {
-    const menu_ = access(options.menuRef) as HTMLElement | null;
-    if (menu_ === null) return undefined;
-    menu_.style.pointerEvents = blocked() ? "none" : "";
-    return () => {
-      menu_.style.pointerEvents = "";
-    };
-  });
+  createEffect(
+    () => [access(options.menuRef) as HTMLElement | null, blocked()] as const,
+    ([menu_, isBlocked]) => {
+      if (menu_ === null) return undefined;
+      menu_.style.pointerEvents = isBlocked ? "none" : "";
+      return () => {
+        menu_.style.pointerEvents = "";
+      };
+    },
+  );
 
-  createTrackedEffect(() => {
-    const submenu = access(options.submenuRef) as HTMLElement | null;
-    const parent = access(options.menuRef) as HTMLElement | null;
-
-    if (
-      access(options.isDisabled) === true ||
-      submenu === null ||
-      parent === null ||
-      !access(options.isOpen) ||
-      getInteractionModality() !== "pointer"
-    ) {
-      reset();
-      return undefined;
-    }
-
-    rect = submenu.getBoundingClientRect();
-
-    const onPointerMove = (event: PointerEvent): void => {
-      if (event.pointerType === "touch" || event.pointerType === "pen") return;
-
-      const now = Date.now();
-      if (now - lastProcessed < THROTTLE_TIME) return;
-      clearTimeout(giveUp);
-
-      const x = event.clientX;
-      const y = event.clientY;
-
-      if (previous === null) {
-        previous = { x, y };
-        return;
+  createEffect(
+    () => {
+      const submenu = access(options.submenuRef) as HTMLElement | null;
+      const parent = access(options.menuRef) as HTMLElement | null;
+      if (
+        access(options.isDisabled) === true ||
+        submenu === null ||
+        parent === null ||
+        !access(options.isOpen) ||
+        getInteractionModality() !== "pointer"
+      ) {
+        return null;
       }
-      if (rect === null) return;
-
-      side ??= x > rect.right ? "left" : "right";
-
-      const bounds = parent.getBoundingClientRect();
-      if (x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) {
+      return [submenu, parent] as const;
+    },
+    (elements) => {
+      if (elements === null) {
         reset();
-        return;
+        return undefined;
       }
+      const [submenu, parent] = elements;
 
-      const toSubmenu = side === "right" ? rect.left - previous.x : previous.x - rect.right;
-      const angleTop = Math.atan2(previous.y - rect.top, toSubmenu) + ANGLE_PADDING;
-      const angleBottom = Math.atan2(previous.y - rect.bottom, toSubmenu) - ANGLE_PADDING;
-      const angle = Math.atan2(previous.y - y, side === "left" ? previous.x - x : x - previous.x);
-      const heading = angle < angleTop && angle > angleBottom;
+      rect = submenu.getBoundingClientRect();
 
-      towards = heading
-        ? Math.min(towards + 1, ALLOWED_INVALID_MOVEMENTS)
-        : Math.max(towards - 1, 0);
-      setBlocked(towards >= ALLOWED_INVALID_MOVEMENTS);
+      const onPointerMove = (event: PointerEvent): void => {
+        if (event.pointerType === "touch" || event.pointerType === "pen") return;
 
-      lastProcessed = now;
-      previous = { x, y };
+        const now = Date.now();
+        if (now - lastProcessed < THROTTLE_TIME) return;
+        clearTimeout(giveUp);
 
-      // Heading there but no longer moving: the user has stopped somewhere in
-      // the middle, and the item under them should take the hover after all.
-      if (heading) {
-        giveUp = setTimeout(() => {
+        const x = event.clientX;
+        const y = event.clientY;
+
+        if (previous === null) {
+          previous = { x, y };
+          return;
+        }
+        if (rect === null) return;
+
+        side ??= x > rect.right ? "left" : "right";
+
+        const bounds = parent.getBoundingClientRect();
+        if (x < bounds.left || x > bounds.right || y < bounds.top || y > bounds.bottom) {
           reset();
-          setTimeout(() => {
-            const under = document.elementFromPoint(x, y);
-            if (under !== null && contains(parent, under)) {
-              under.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
-            }
-          }, 100);
-        }, GIVE_UP_TIME);
-      }
-    };
+          return;
+        }
 
-    const view = ownerWindow(parent);
-    view.addEventListener("pointermove", onPointerMove as EventListener);
+        const toSubmenu = side === "right" ? rect.left - previous.x : previous.x - rect.right;
+        const angleTop = Math.atan2(previous.y - rect.top, toSubmenu) + ANGLE_PADDING;
+        const angleBottom = Math.atan2(previous.y - rect.bottom, toSubmenu) - ANGLE_PADDING;
+        const angle = Math.atan2(previous.y - y, side === "left" ? previous.x - x : x - previous.x);
+        const heading = angle < angleTop && angle > angleBottom;
 
-    return () => {
-      view.removeEventListener("pointermove", onPointerMove as EventListener);
-      clearTimeout(giveUp);
-      towards = ALLOWED_INVALID_MOVEMENTS;
-    };
-  });
+        towards = heading
+          ? Math.min(towards + 1, ALLOWED_INVALID_MOVEMENTS)
+          : Math.max(towards - 1, 0);
+        setBlocked(towards >= ALLOWED_INVALID_MOVEMENTS);
+
+        lastProcessed = now;
+        previous = { x, y };
+
+        // Heading there but no longer moving: the user has stopped somewhere in
+        // the middle, and the item under them should take the hover after all.
+        if (heading) {
+          giveUp = setTimeout(() => {
+            reset();
+            setTimeout(() => {
+              const under = document.elementFromPoint(x, y);
+              if (under !== null && contains(parent, under)) {
+                under.dispatchEvent(new PointerEvent("pointerover", { bubbles: true }));
+              }
+            }, 100);
+          }, GIVE_UP_TIME);
+        }
+      };
+
+      const view = ownerWindow(parent);
+      view.addEventListener("pointermove", onPointerMove as EventListener);
+
+      return () => {
+        view.removeEventListener("pointermove", onPointerMove as EventListener);
+        clearTimeout(giveUp);
+        towards = ALLOWED_INVALID_MOVEMENTS;
+      };
+    },
+  );
 }
 
 export interface SubmenuTriggerOptions {
@@ -1175,22 +1185,24 @@ export function submenuTrigger(
   // The submenu itself is EXCLUDED, and not as a nicety: it renders inside the
   // trigger item, so it is a DOM descendant of the parent menu, and its own
   // autofocus would otherwise close it the moment it opened.
-  createTrackedEffect(() => {
-    const parent = access(options.parentMenuRef) as Element | null;
-    if (parent === null) return undefined;
+  createEffect(
+    () => access(options.parentMenuRef) as Element | null,
+    (parent) => {
+      if (parent === null) return undefined;
 
-    const onFocusIn = (event: FocusEvent): void => {
-      if (!state.isOpen()) return;
-      const target = targetElement(event);
-      if (target === null || target === access(ref)) return;
-      const submenu = access(options.submenuRef) as Element | null;
-      if (submenu !== null && contains(submenu, target)) return;
-      if (contains(parent, target)) closeNow();
-    };
+      const onFocusIn = (event: FocusEvent): void => {
+        if (!state.isOpen()) return;
+        const target = targetElement(event);
+        if (target === null || target === access(ref)) return;
+        const submenu = access(options.submenuRef) as Element | null;
+        if (submenu !== null && contains(submenu, target)) return;
+        if (contains(parent, target)) closeNow();
+      };
 
-    parent.addEventListener("focusin", onFocusIn as EventListener);
-    return () => parent.removeEventListener("focusin", onFocusIn as EventListener);
-  });
+      parent.addEventListener("focusin", onFocusIn as EventListener);
+      return () => parent.removeEventListener("focusin", onFocusIn as EventListener);
+    },
+  );
 
   return {
     submenuTriggerProps: mergeProps(triggerKeyboardProps, {

@@ -36,7 +36,7 @@ import {
   type Accessor,
   type Child,
   createContext,
-  createTrackedEffect,
+  createEffect,
   getContext,
   type Incoming,
   isServer,
@@ -424,22 +424,24 @@ export function virtualizer(options: VirtualizerOptions): VirtualizerState {
   };
 
   if (!isServer) {
-    createTrackedEffect(() => {
-      const element = access(options.ref) as HTMLElement | null;
-      if (element === null) return undefined;
+    createEffect(
+      () => access(options.ref) as HTMLElement | null,
+      (element) => {
+        if (element === null) return undefined;
 
-      read();
-      element.addEventListener("scroll", read, { passive: true });
+        read();
+        element.addEventListener("scroll", read, { passive: true });
 
-      const observer =
-        typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => read());
-      observer?.observe(element);
+        const observer =
+          typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => read());
+        observer?.observe(element);
 
-      return () => {
-        element.removeEventListener("scroll", read);
-        observer?.disconnect();
-      };
-    });
+        return () => {
+          element.removeEventListener("scroll", read);
+          observer?.disconnect();
+        };
+      },
+    );
   }
 
   /**
@@ -573,21 +575,22 @@ export function rowStyle(info: LayoutInfo): Record<string, string> {
 export function measureRow(virtual: VirtualizerValue | null, key: Key, ref: ElementRef): void {
   if (isServer || virtual === null) return;
 
-  createTrackedEffect(() => {
-    if (!virtual.shouldMeasure()) return undefined;
-    const element = access(ref) as HTMLElement | null;
-    if (element === null) return undefined;
+  createEffect(
+    () => (virtual.shouldMeasure() ? (access(ref) as HTMLElement | null) : null),
+    (element) => {
+      if (element === null) return undefined;
 
-    const report = (): void => {
-      virtual.measure(key, { width: element.offsetWidth, height: element.offsetHeight });
-    };
-    report();
+      const report = (): void => {
+        virtual.measure(key, { width: element.offsetWidth, height: element.offsetHeight });
+      };
+      report();
 
-    if (typeof ResizeObserver === "undefined") return undefined;
-    const observer = new ResizeObserver(report);
-    observer.observe(element);
-    return () => observer.disconnect();
-  });
+      if (typeof ResizeObserver === "undefined") return undefined;
+      const observer = new ResizeObserver(report);
+      observer.observe(element);
+      return () => observer.disconnect();
+    },
+  );
 }
 
 export interface VirtualizerComponentProps {

@@ -25,7 +25,7 @@ import {
   type Child,
   createMemo,
   createContext,
-  createTrackedEffect,
+  createEffect,
   getContext,
   getOwner,
   type Incoming,
@@ -172,8 +172,7 @@ export function numberFieldState(options: NumberFieldStateOptions): NumberFieldS
   if (!isServer) {
     // The number changing from OUTSIDE reformats the field. A change the field
     // made itself is already in it, as typed.
-    createTrackedEffect(() => {
-      const value = numberValue();
+    createEffect(numberValue, (value) => {
       if (value === live) return;
       live = value;
       writeInputValue(asText(value));
@@ -394,18 +393,21 @@ export function spinButton(options: SpinButtonOptions): SpinButtonResult {
     // Announced assertively, because the input carries no spin button role to
     // announce it for us. `clearAnnouncer` first, so holding a stepper does
     // not queue up thirty values to read out in turn.
-    createTrackedEffect(() => {
-      const text = access(options.textValue) ?? String(access(options.value) ?? "");
-      // A hyphen-minus between a currency symbol and a number is read as a
-      // hyphen and swallowed; the real minus sign is announced.
-      const spoken = text === "" ? "Empty" : text.replace("-", "−");
-      if (!announced) {
-        announced = true;
-        return;
-      }
-      clearAnnouncer("assertive");
-      announce(spoken, "assertive");
-    });
+    createEffect(
+      () => [access(options.textValue), access(options.value)] as const,
+      ([textValue, value]) => {
+        const text = textValue ?? String(value ?? "");
+        // A hyphen-minus between a currency symbol and a number is read as a
+        // hyphen and swallowed; the real minus sign is announced.
+        const spoken = text === "" ? "Empty" : text.replace("-", "−");
+        if (!announced) {
+          announced = true;
+          return;
+        }
+        clearAnnouncer("assertive");
+        announce(spoken, "assertive");
+      },
+    );
   }
 
   /**

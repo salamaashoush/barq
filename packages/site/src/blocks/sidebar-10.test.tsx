@@ -15,6 +15,16 @@ async function settle(): Promise<void> {
   flush();
 }
 
+/**
+ * The page actions open themselves once the page settles, and while they are
+ * open the first press anywhere else only dismisses them.
+ */
+async function closePageActions(): Promise<void> {
+  await settle();
+  await user.click(screen.getByRole("button", { name: "Page actions" }));
+  await settle();
+}
+
 describe("sidebar-10", () => {
   test("the team, the favourites and the workspaces are all there", () => {
     render(() => <Sidebar10 />);
@@ -29,6 +39,7 @@ describe("sidebar-10", () => {
 
   test("the trigger collapses it", async () => {
     render(() => <Sidebar10 />);
+    await closePageActions();
     expect(shell().getAttribute("data-state")).toBe("expanded");
     await user.click(document.querySelector('[data-slot="sidebar-trigger"]') as HTMLElement);
     flush();
@@ -37,6 +48,7 @@ describe("sidebar-10", () => {
 
   test("a workspace opens to its pages", async () => {
     render(() => <Sidebar10 />);
+    await closePageActions();
     const toggle = screen.getByRole("button", { name: "Toggle Creative Projects" });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     await user.click(toggle);
@@ -62,11 +74,7 @@ describe("sidebar-10", () => {
 
   test("the team button opens the teams, and choosing one names it", async () => {
     render(() => <Sidebar10 />);
-    // The page actions open themselves, and while they are open the first
-    // press anywhere else only dismisses them.
-    await settle();
-    await user.click(screen.getByRole("button", { name: "Page actions" }));
-    await settle();
+    await closePageActions();
 
     const trigger = screen.getByText("Acme Inc").closest("button") as HTMLElement;
     expect(trigger.getAttribute("data-slot")).toBe("sidebar-menu-button");
@@ -98,6 +106,7 @@ describe("sidebar-10", () => {
 
   test("a favorite's menu holds its actions, with a rule before the last", async () => {
     render(() => <Sidebar10 />);
+    await closePageActions();
     await user.click(
       document.querySelector('[data-slot="sidebar-menu-action"][aria-haspopup]') as HTMLElement,
     );
@@ -121,6 +130,7 @@ describe("sidebar-10", () => {
 
   test("the team menu is labelled, lists the teams with shortcuts, then offers to add one", async () => {
     render(() => <Sidebar10 />);
+    await closePageActions();
     await user.click(screen.getByText("Acme Inc").closest("button") as HTMLElement);
     flush();
     await tick();

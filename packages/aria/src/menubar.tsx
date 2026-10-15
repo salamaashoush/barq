@@ -30,7 +30,6 @@ import {
   createContext,
   createEffect,
   createSignal,
-  createTrackedEffect,
   createUniqueId,
   flush,
   getContext,
@@ -179,8 +178,7 @@ export function Menubar(props: Incoming<MenubarComponentProps>) {
   // nothing: a press elsewhere that took focus keeps it.
   let switching = false;
   let wasOpen = "";
-  createTrackedEffect(() => {
-    const open = value();
+  createEffect(value, (open) => {
     const closed = wasOpen;
     wasOpen = open;
     if (open !== "" || closed === "" || switching) return;
@@ -362,9 +360,12 @@ export function MenubarMenu(props: Incoming<MenubarMenuComponentProps>) {
 
   // Another menu taking over closes this one from outside, without going
   // through `close`, so the submenus it had open are forgotten here.
-  createTrackedEffect(() => {
-    if (bar.value() !== value && state.expandedKeys().length > 0) state.close();
-  });
+  createEffect(
+    () => bar.value() !== value && state.expandedKeys().length > 0,
+    (taken) => {
+      if (taken) state.close();
+    },
+  );
 
   const { menuTriggerProps, menuProps } = menuTrigger({ isDisabled }, state);
 
@@ -443,8 +444,8 @@ export function menubarTrigger(options: MenubarTriggerOptions = {}): MenubarTrig
   const { value, trigger } = menu;
   const isDisabled = (): boolean => access(options.isDisabled) === true;
 
-  createTrackedEffect(() => {
-    menu.setDisabled(isDisabled());
+  createEffect(isDisabled, (disabled) => {
+    menu.setDisabled(disabled);
   });
 
   /** With a menu open the arrows carry it along; with none they only move focus. */

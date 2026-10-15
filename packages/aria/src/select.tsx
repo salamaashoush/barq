@@ -27,7 +27,7 @@ import {
   Portal,
   Show,
   createContext,
-  createTrackedEffect,
+  createEffect,
   getContext,
   getOwner,
   type Incoming,
@@ -452,20 +452,25 @@ export function hiddenSelect(
   // A `<select>` cannot hold a value its options do not offer, and the options
   // are inserted after the element. Written again once they exist, and again
   // whenever the collection changes.
-  createTrackedEffect(() => {
-    const element = access(options.selectRef) as HTMLSelectElement | null;
-    if (element === null) return;
-    state.collection();
-    const value = state.value();
-    const wanted =
-      value === null ? "" : Array.isArray(value) ? String(value[0] ?? "") : String(value);
-    if (element.multiple) {
-      const keys = new Set((Array.isArray(value) ? value : []).map(String));
-      for (const option of element.options) option.selected = keys.has(option.value);
-      return;
-    }
-    if (element.value !== wanted) element.value = wanted;
-  });
+  createEffect(
+    () =>
+      [
+        access(options.selectRef) as HTMLSelectElement | null,
+        state.collection(),
+        state.value(),
+      ] as const,
+    ([element, , value]) => {
+      if (element === null) return;
+      const wanted =
+        value === null ? "" : Array.isArray(value) ? String(value[0] ?? "") : String(value);
+      if (element.multiple) {
+        const keys = new Set((Array.isArray(value) ? value : []).map(String));
+        for (const option of element.options) option.selected = keys.has(option.value);
+        return;
+      }
+      if (element.value !== wanted) element.value = wanted;
+    },
+  );
 
   const onChange = (event: Event): void => {
     const element = event.currentTarget as HTMLSelectElement;
@@ -1054,22 +1059,23 @@ export function SelectRoot(props: Incoming<SelectRootComponentProps>) {
   // a list rendered here would be one the server's markup does not have and a
   // hydrating page would report every row of it. Before `hiddenSelect`, whose
   // own effect writes the value and needs the option it names to be there.
-  createTrackedEffect(() => {
-    const element = selectRef();
-    if (element === null) return;
-    const collection = state.collection();
-    while (element.options.length > 1) element.remove(1);
-    // By key rather than by walking the top level, which holds the GROUPS: a
-    // native `<select>` wants every option, whichever group it was written in.
-    for (const key of collection.getKeys()) {
-      const node = collection.getItem(key);
-      if (node === null || node.type !== "item") continue;
-      const option = element.ownerDocument.createElement("option");
-      option.value = String(node.key);
-      option.textContent = node.textValue;
-      element.append(option);
-    }
-  });
+  createEffect(
+    () => [selectRef(), state.collection()] as const,
+    ([element, collection]) => {
+      if (element === null) return;
+      while (element.options.length > 1) element.remove(1);
+      // By key rather than by walking the top level, which holds the GROUPS: a
+      // native `<select>` wants every option, whichever group it was written in.
+      for (const key of collection.getKeys()) {
+        const node = collection.getItem(key);
+        if (node === null || node.type !== "item") continue;
+        const option = element.ownerDocument.createElement("option");
+        option.value = String(node.key);
+        option.textContent = node.textValue;
+        element.append(option);
+      }
+    },
+  );
 
   const { containerProps, selectProps } = hiddenSelect(
     {

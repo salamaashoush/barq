@@ -23,7 +23,7 @@
 import {
   type Accessor,
   type Child,
-  createTrackedEffect,
+  createEffect,
   For,
   createContext,
   getContext,
@@ -132,25 +132,36 @@ export function tabListState<T>(options: TabListStateOptions<T>): TabListState<T
 
   if (!isServer) {
     // The selected tab going away IS a change, so this one reports.
-    createTrackedEffect(() => {
-      const collection = state.collection();
-      const selected = state.selectedKey();
-      if (access(options.selectedKey) !== undefined && access(options.selectedKey) !== null) return;
-      if (selected !== null && collection.getItem(selected) !== null) return;
+    createEffect(
+      () =>
+        [
+          state.collection(),
+          state.selectedKey(),
+          access(options.selectedKey),
+          state.disabledKeys(),
+        ] as const,
+      ([collection, selected, controlled, disabledKeys]) => {
+        if (controlled !== undefined && controlled !== null) return;
+        if (selected !== null && collection.getItem(selected) !== null) return;
 
-      const next = firstEnabled(collection, state.disabledKeys());
-      if (next !== null) state.setSelectedKey(next);
-    });
+        const next = firstEnabled(collection, disabledKeys);
+        if (next !== null) state.setSelectedKey(next);
+      },
+    );
 
     // The roving tabindex starts on the selected tab, so tabbing in reaches
     // what is showing rather than the first tab in the list.
-    createTrackedEffect(() => {
-      const manager = state.selectionManager();
-      const selected = state.selectedKey();
-      if (selected === null || manager.isFocused) return;
-      if (manager.focusedKey === selected) return;
-      manager.setFocusedKey(selected);
-    });
+    createEffect(
+      () => {
+        const manager = state.selectionManager();
+        return [manager, state.selectedKey(), manager.isFocused, manager.focusedKey] as const;
+      },
+      ([manager, selected, isFocused, focusedKey]) => {
+        if (selected === null || isFocused) return;
+        if (focusedKey === selected) return;
+        manager.setFocusedKey(selected);
+      },
+    );
   }
 
   return { ...state, isDisabled: () => access(options.isDisabled) === true };
@@ -422,16 +433,17 @@ function hasTabbableChild(ref: ElementRef, key: () => Key | null): Accessor<bool
   const [found, setFound] = createSignal(false);
   if (isServer) return found;
 
-  createTrackedEffect(() => {
+  createEffect(
     // Read, so swapping the panel's contents re-asks.
-    key();
-    const element = access(ref) as Element | null;
-    if (element === null) {
-      setFound(false);
-      return;
-    }
-    setFound(focusableWalker(element, { tabbable: true }).nextNode() !== null);
-  });
+    () => [key(), access(ref) as Element | null] as const,
+    ([, element]) => {
+      if (element === null) {
+        setFound(false);
+        return;
+      }
+      setFound(focusableWalker(element, { tabbable: true }).nextNode() !== null);
+    },
+  );
 
   return found;
 }

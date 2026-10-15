@@ -19,13 +19,7 @@
  * already handling them, and two handlers on one keypress move focus twice.
  */
 
-import {
-  type Child,
-  createTrackedEffect,
-  type Incoming,
-  isServer,
-  createSignal,
-} from "@barqjs/core";
+import { type Child, createEffect, type Incoming, isServer, createSignal } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { contains, targetElement } from "./dom.ts";
 import { createFocusManager } from "./focus.ts";
@@ -65,11 +59,13 @@ export function toolbar(options: ToolbarOptions): ToolbarResult {
   const flipped = (): boolean => locale().direction === "rtl" && orientation() === "horizontal";
 
   if (!isServer) {
-    createTrackedEffect(() => {
-      const element = access(options.ref) as Element | null;
-      const outer = element?.parentElement?.closest('[role="toolbar"]');
-      setNested(outer !== null && outer !== undefined);
-    });
+    createEffect(
+      () => access(options.ref) as Element | null,
+      (element) => {
+        const outer = element?.parentElement?.closest('[role="toolbar"]');
+        setNested(outer !== null && outer !== undefined);
+      },
+    );
   }
 
   let lastFocused: HTMLElement | null = null;

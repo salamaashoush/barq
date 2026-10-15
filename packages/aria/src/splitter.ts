@@ -27,7 +27,7 @@
  *   appears later lands between the right handles.
  */
 
-import { type Accessor, createSignal, createTrackedEffect, isServer, untrack } from "@barqjs/core";
+import { type Accessor, createSignal, createEffect, isServer, untrack } from "@barqjs/core";
 import { tryCleanup } from "@barqjs/primitives/utils";
 import { ownerWindow } from "./dom.ts";
 import { type ReadingDirection, useDirection } from "./i18n.ts";
@@ -783,41 +783,50 @@ export function splitterState(options: SplitterStateOptions): SplitterState {
   };
 
   if (!isServer) {
-    createTrackedEffect(() => {
-      const keys = order();
-      const placed: { key: string; element: Element }[] = [];
-      for (const key of keys) {
-        const entry = entries.get(key);
-        const element = entry === undefined ? null : elementOf(entry);
-        // Not all built yet, or not in one tree yet: the registration order
-        // stands until they are, and each ref landing runs this again.
-        if (element === null || !element.isConnected) return;
-        placed.push({ key, element });
-      }
-      const sorted = placed
-        .toSorted((a, b) => inDocumentOrder(a.element, b.element))
-        .map((each) => each.key);
-      if (sorted.some((key, index) => key !== keys[index])) setOrder(sorted);
-    });
+    createEffect(
+      () => {
+        const keys = order();
+        const elements = keys.map((key) => {
+          const entry = entries.get(key);
+          return entry === undefined ? null : elementOf(entry);
+        });
+        return { keys, elements };
+      },
+      ({ keys, elements }) => {
+        const placed: { key: string; element: Element }[] = [];
+        for (const [index, key] of keys.entries()) {
+          const element = elements[index] ?? null;
+          // Not all built yet, or not in one tree yet: the registration order
+          // stands until they are, and each ref landing runs this again.
+          if (element === null || !element.isConnected) return;
+          placed.push({ key, element });
+        }
+        const sorted = placed
+          .toSorted((a, b) => inDocumentOrder(a.element, b.element))
+          .map((each) => each.key);
+        if (sorted.some((key, index) => key !== keys[index])) setOrder(sorted);
+      },
+    );
 
-    createTrackedEffect(() => {
-      const element = access(options.ref);
-      if (element === null || element === undefined) return undefined;
-      // Read so a turn from row to column measures the other axis.
-      orientation();
-      const update = (): void => {
-        const next = measure();
-        if (next === untrack(groupPixels)) return;
-        setGroupPixels(next);
-        // Only a limit written as a length changes its share when the group does.
-        if (untrack(usesLengths)) settle();
-      };
-      update();
-      if (typeof ResizeObserver === "undefined") return undefined;
-      const observer = new ResizeObserver(update);
-      observer.observe(element);
-      return () => observer.disconnect();
-    });
+    createEffect(
+      // Orientation read so a turn from row to column measures the other axis.
+      () => [access(options.ref), orientation()] as const,
+      ([element]) => {
+        if (element === null || element === undefined) return undefined;
+        const update = (): void => {
+          const next = measure();
+          if (next === untrack(groupPixels)) return;
+          setGroupPixels(next);
+          // Only a limit written as a length changes its share when the group does.
+          if (untrack(usesLengths)) settle();
+        };
+        update();
+        if (typeof ResizeObserver === "undefined") return undefined;
+        const observer = new ResizeObserver(update);
+        observer.observe(element);
+        return () => observer.disconnect();
+      },
+    );
   }
 
   return {

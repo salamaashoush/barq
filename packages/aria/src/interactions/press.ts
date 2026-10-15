@@ -22,7 +22,7 @@
  *   drag and selection behaviour that call would also cancel.
  */
 
-import { type Accessor, createTrackedEffect, isServer, createSignal } from "@barqjs/core";
+import { type Accessor, createEffect, isServer, createSignal } from "@barqjs/core";
 import { tryCleanup } from "@barqjs/primitives/utils";
 import {
   contains,
@@ -840,8 +840,8 @@ export function press(options: PressOptions): PressResult {
 
   // A press in flight when the element is disabled has to be abandoned, or the
   // pressed state sticks for as long as the element exists.
-  createTrackedEffect(() => {
-    if (isDisabled() && state.isPressed && state.target !== null) {
+  createEffect(isDisabled, (disabled) => {
+    if (disabled && state.isPressed && state.target !== null) {
       cancel({
         currentTarget: state.target,
         shiftKey: false,
@@ -853,11 +853,13 @@ export function press(options: PressOptions): PressResult {
   });
 
   if (!isServer && options.ref !== undefined) {
-    createTrackedEffect(() => {
-      const element = access(options.ref);
-      if (element === null || element === undefined) return;
-      installPressableStyle(ownerDocument(element));
-    });
+    createEffect(
+      () => access(options.ref),
+      (element) => {
+        if (element === null || element === undefined) return;
+        installPressableStyle(ownerDocument(element));
+      },
+    );
   }
 
   tryCleanup(() => {

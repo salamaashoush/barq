@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createTrackedEffect, flush, createRoot, createSignal } from "@barqjs/core";
+import { createEffect, flush, createRoot, createSignal } from "@barqjs/core";
 import {
   chain,
   clamp,
@@ -318,8 +318,8 @@ describe("controllable", () => {
     const seen: number[] = [];
     const [dispose, setValue] = createRoot((stop) => {
       const [read, write] = controllable<number>(undefined, 0);
-      createTrackedEffect(() => {
-        seen.push(read());
+      createEffect(read, (value) => {
+        seen.push(value);
       });
       return [stop, write] as const;
     });
