@@ -23,16 +23,16 @@
 import {
   type Accessor,
   type Child,
-  effect,
+  createTrackedEffect,
   For,
-  context,
+  createContext,
   getContext,
   getOwner,
   type Incoming,
   install,
   isServer,
   Show,
-  signal,
+  createSignal,
   untrack,
 } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
@@ -46,7 +46,7 @@ import { focusableWalker } from "./focus.ts";
 import { focusRing } from "./focus.ts";
 import { hover } from "./interactions/hover.ts";
 import type { ElementRef } from "./interactions/press.ts";
-import { useLocale } from "./i18n.ts";
+import { provideDirection, useDirection, useLocale, type ReadingDirection } from "./i18n.ts";
 import {
   selectableCollection,
   selectableItem,
@@ -56,6 +56,7 @@ import {
 } from "./selection.ts";
 import {
   access,
+  controllable,
   type DOMProps,
   filterDOMProps,
   fromProps,
@@ -131,7 +132,7 @@ export function tabListState<T>(options: TabListStateOptions<T>): TabListState<T
 
   if (!isServer) {
     // The selected tab going away IS a change, so this one reports.
-    effect(() => {
+    createTrackedEffect(() => {
       const collection = state.collection();
       const selected = state.selectedKey();
       if (access(options.selectedKey) !== undefined && access(options.selectedKey) !== null) return;
@@ -143,7 +144,7 @@ export function tabListState<T>(options: TabListStateOptions<T>): TabListState<T
 
     // The roving tabindex starts on the selected tab, so tabbing in reaches
     // what is showing rather than the first tab in the list.
-    effect(() => {
+    createTrackedEffect(() => {
       const manager = state.selectionManager();
       const selected = state.selectedKey();
       if (selected === null || manager.isFocused) return;
@@ -418,18 +419,18 @@ export function tabPanel(options: TabPanelOptions, state: TabListState<unknown>)
  * because the answer is about the content and the content is what changes.
  */
 function hasTabbableChild(ref: ElementRef, key: () => Key | null): Accessor<boolean> {
-  const found = signal(false);
+  const [found, setFound] = createSignal(false);
   if (isServer) return found;
 
-  effect(() => {
+  createTrackedEffect(() => {
     // Read, so swapping the panel's contents re-asks.
     key();
     const element = access(ref) as Element | null;
     if (element === null) {
-      found.set(false);
+      setFound(false);
       return;
     }
-    found.set(focusableWalker(element, { tabbable: true }).nextNode() !== null);
+    setFound(focusableWalker(element, { tabbable: true }).nextNode() !== null);
   });
 
   return found;
@@ -446,8 +447,8 @@ interface TabsContextValue {
   keyboardActivation: Accessor<"automatic" | "manual">;
 }
 
-const TabsContext = context<TabsContextValue | null>(null);
-const TabNodeContext = context<Node<unknown> | null>(null);
+const TabsContext = createContext<TabsContextValue | null>(null);
+const TabNodeContext = createContext<Node<unknown> | null>(null);
 
 export function useTabs(): TabsContextValue {
   const value = getContext(TabsContext);
@@ -499,6 +500,8 @@ export function Tabs<T>(props: Incoming<TabsComponentProps<T>>) {
     ...(options as TabListStateOptions<T>),
     onSelectionChange: (key) => props.onSelectionChange?.()?.(key),
   });
+
+  declareDirection(props.dir);
 
   const baseId = id();
   const owner = getOwner();
@@ -557,7 +560,7 @@ export function TabList<T>(props: Incoming<TabListComponentProps<T>>) {
     },
   );
 
-  const render = props.children as unknown as (item: T) => Child;
+  const render = props.children;
 
   return (
     <div {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
@@ -615,6 +618,8 @@ export function Tab(props: Incoming<TabComponentProps>) {
       "data-pressed": isPressed,
       "data-hovered": isHovered,
       "data-disabled": isDisabled,
+      "data-state": () => (isSelected() ? "active" : "inactive"),
+      "data-orientation": tabs.orientation,
       "data-testid": () => props["data-testid"]?.(),
     },
   );
@@ -651,6 +656,8 @@ export function TabPanel<T>(props: Incoming<TabPanelComponentProps<T>>) {
     filterDOMProps(fromProps(props), { global: true }),
     styleProps(props),
     {
+      "data-state": "active",
+      "data-orientation": tabs.orientation,
       "data-testid": () => props["data-testid"]?.(),
     },
   );
@@ -673,5 +680,327 @@ export function TabPanel<T>(props: Incoming<TabPanelComponentProps<T>>) {
         }}
       </Show>
     </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tabs that name themselves
+// ---------------------------------------------------------------------------
+
+interface ValueTabsContextValue {
+  value: Accessor<string | null>;
+  select: (value: string) => void;
+  /** Called by each enabled tab as it is built; the first one stands in for a missing choice. */
+  adopt: (value: string) => void;
+  baseId: Accessor<string>;
+  orientation: Accessor<Orientation>;
+  activationMode: Accessor<"automatic" | "manual">;
+  isDisabled: Accessor<boolean>;
+}
+
+const ValueTabsContext = createContext<ValueTabsContextValue | null>(null);
+
+/** The enclosing {@link ValueTabs}, or `null` outside one. */
+export function useValueTabs(): ValueTabsContextValue | null {
+  return getContext(ValueTabsContext) ?? null;
+}
+
+function requireValueTabs(): ValueTabsContextValue {
+  const value = useValueTabs();
+  if (value === null) throw new Error("This must be rendered inside a ValueTabs.");
+  return value;
+}
+
+/**
+ * `dir` on the root is a declaration as well as an attribute.
+ *
+ * The attribute alone lays the text out and leaves the arrow keys following
+ * whatever direction the page has, so a mirrored tab list would walk backwards.
+ * `"auto"` is the browser's to resolve and says nothing here.
+ */
+function declareDirection(dir: Accessor<"ltr" | "rtl" | "auto" | undefined> | undefined): void {
+  if (dir === undefined) return;
+  const inherited = useDirection();
+  provideDirection((): ReadingDirection => {
+    const declared = dir();
+    return declared === "ltr" || declared === "rtl" ? declared : inherited();
+  });
+}
+
+/** An id is one token, and a value is whatever the caller wrote. */
+function valuePartId(base: string, value: string, part: "tab" | "tabpanel"): string {
+  return partId(base, value.replace(/\s+/g, "_"), part);
+}
+
+export interface ValueTabsComponentProps extends StyleProps {
+  children?: Child;
+  value?: string;
+  defaultValue?: string;
+  onValueChange?: (value: string) => void;
+  /** @default "horizontal" */
+  orientation?: Orientation;
+  /** Select as focus moves, or wait for Enter. @default "automatic" */
+  activationMode?: "automatic" | "manual";
+  isDisabled?: boolean;
+}
+
+/**
+ * Tabs written out as markup, each trigger and panel naming its `value`.
+ *
+ * ```tsx
+ * <ValueTabs defaultValue="account">
+ *   <ValueTabList aria-label="Settings">
+ *     <ValueTab value="account">Account</ValueTab>
+ *     <ValueTab value="password">Password</ValueTab>
+ *   </ValueTabList>
+ *   <ValueTabPanel value="account">…</ValueTabPanel>
+ *   <ValueTabPanel value="password">…</ValueTabPanel>
+ * </ValueTabs>
+ * ```
+ *
+ * {@link Tabs} takes its tabs as data and is the one to reach for when they
+ * are data. This is for a fixed handful known when the markup is written,
+ * where an `items` array would only restate it.
+ *
+ * - **The order is the document's.** The arrow keys walk the tabs as they sit
+ *   in the list at the moment of the keypress, so a tab that is rendered
+ *   conditionally takes its place without registering anywhere.
+ * - **There is always a selection.** With no `value` and no `defaultValue` the
+ *   first enabled tab stands in, and `onValueChange` is not called for it:
+ *   a default is not a choice.
+ * - **A disabled tab stays focusable by pointer and is skipped by the arrows**,
+ *   as in {@link Tabs}, so it can still be announced as disabled.
+ */
+export function ValueTabs(props: Incoming<ValueTabsComponentProps>) {
+  const [chosen, setChosen] = controllable<string | null>(
+    () => props.value?.(),
+    () => props.defaultValue?.() ?? null,
+    (next) => {
+      if (next !== null) props.onValueChange?.()?.(next);
+    },
+  );
+
+  // `ownedWrite`: a tab adopts while it is being built. The value is kept
+  // beside the signal because writes are staged, and the second tab would
+  // otherwise still read "nothing adopted" and take the place of the first.
+  let first: string | null = null;
+  const [adopted, setAdopted] = createSignal<string | null>(null, { ownedWrite: true });
+
+  const value = (): string | null => chosen() ?? adopted();
+  const orientation = (): Orientation => props.orientation?.() ?? "horizontal";
+
+  declareDirection(props.dir);
+
+  const owner = getOwner();
+  if (owner !== null) {
+    const context: ValueTabsContextValue = {
+      value,
+      select: (next) => {
+        if (untrack(value) !== next) setChosen(next);
+      },
+      adopt: (next) => {
+        if (first !== null) return;
+        first = next;
+        setAdopted(next);
+      },
+      baseId: id(),
+      orientation,
+      activationMode: () => props.activationMode?.() ?? "automatic",
+      isDisabled: () => props.isDisabled?.() === true,
+    };
+    install(owner, ValueTabsContext, () => context);
+  }
+
+  const elementProps = mergeProps(
+    filterDOMProps(fromProps(props), { global: true }),
+    styleProps(props),
+    {
+      "data-orientation": orientation,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
+
+  return <div {...elementProps}>{props.children}</div>;
+}
+
+export interface ValueTabListComponentProps extends StyleProps {
+  children?: Child;
+  /** Whether the arrows wrap round the ends. @default true */
+  loop?: boolean;
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
+  ref?: RefTarget<HTMLDivElement>;
+}
+
+export function ValueTabList(props: Incoming<ValueTabListComponentProps>) {
+  const tabs = requireValueTabs();
+  const direction = useDirection();
+
+  const onKeyDown = (event: KeyboardEvent): void => {
+    if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+    const list = event.currentTarget as HTMLElement;
+    const from = event.target as HTMLElement;
+    // A tablist nested in a panel of this one is its own list.
+    if (from.getAttribute("role") !== "tab" || from.closest('[role="tablist"]') !== list) return;
+
+    const horizontal = tabs.orientation() === "horizontal";
+    const forward = direction() === "rtl" ? "ArrowLeft" : "ArrowRight";
+    const backward = direction() === "rtl" ? "ArrowRight" : "ArrowLeft";
+
+    const stops = [...list.querySelectorAll<HTMLElement>('[role="tab"]')].filter(
+      (stop) =>
+        stop.closest('[role="tablist"]') === list &&
+        (stop === from || stop.getAttribute("aria-disabled") !== "true"),
+    );
+    const at = stops.indexOf(from);
+    const enabled = stops.filter((stop) => stop.getAttribute("aria-disabled") !== "true");
+    if (enabled.length === 0) return;
+
+    const step = (by: 1 | -1): HTMLElement | undefined => {
+      const next = at + by;
+      if (next >= 0 && next < stops.length) return stops[next];
+      if (props.loop?.() === false) return undefined;
+      return by === 1 ? stops[0] : stops[stops.length - 1];
+    };
+
+    let target: HTMLElement | undefined;
+    if (event.key === "Home") target = enabled[0];
+    else if (event.key === "End") target = enabled[enabled.length - 1];
+    else if (horizontal && event.key === forward) target = step(1);
+    else if (horizontal && event.key === backward) target = step(-1);
+    else if (!horizontal && event.key === "ArrowDown") target = step(1);
+    else if (!horizontal && event.key === "ArrowUp") target = step(-1);
+    else return;
+
+    event.preventDefault();
+    // A disabled tab the walk started from is in `stops`, and landing back on
+    // it after a full loop is not a move.
+    if (target === undefined || target === from) return;
+    target.focus();
+  };
+
+  const elementProps = mergeProps(
+    filterDOMProps(fromProps(props), { global: true, labelable: true }),
+    styleProps(props),
+    {
+      role: "tablist",
+      "aria-orientation": tabs.orientation,
+      "data-orientation": tabs.orientation,
+      "data-testid": () => props["data-testid"]?.(),
+      onKeyDown,
+    },
+  );
+
+  return (
+    <div {...elementProps} ref={mergeRefs(props.ref?.())}>
+      {props.children}
+    </div>
+  );
+}
+
+export interface ValueTabComponentProps extends StyleProps {
+  value: string;
+  children?: Child;
+  isDisabled?: boolean;
+  "aria-label"?: string;
+  ref?: RefTarget<HTMLButtonElement>;
+}
+
+export function ValueTab(props: Incoming<ValueTabComponentProps>) {
+  const tabs = requireValueTabs();
+
+  const isSelected = (): boolean => tabs.value() === props.value();
+  const isDisabled = (): boolean => tabs.isDisabled() || props.isDisabled?.() === true;
+
+  if (!untrack(isDisabled)) tabs.adopt(untrack(() => props.value()));
+
+  const { hoverProps, isHovered } = hover({ isDisabled });
+  const { focusProps, isFocused, isFocusVisible } = focusRing();
+
+  const select = (): void => {
+    if (!isDisabled()) tabs.select(props.value());
+  };
+
+  const elementProps = mergeProps(
+    hoverProps,
+    focusProps,
+    filterDOMProps(fromProps(props), { global: true, labelable: true }),
+    styleProps(props),
+    {
+      type: "button",
+      role: "tab",
+      id: () => valuePartId(tabs.baseId(), props.value(), "tab"),
+      "aria-selected": isSelected,
+      "aria-disabled": () => isDisabled() || undefined,
+      // Only the SELECTED tab controls a panel: the others control nothing
+      // that is on the page.
+      "aria-controls": () =>
+        isSelected() ? valuePartId(tabs.baseId(), props.value(), "tabpanel") : undefined,
+      tabIndex: () => (isSelected() ? 0 : -1),
+      "data-selected": isSelected,
+      "data-focused": isFocused,
+      "data-focus-visible": isFocusVisible,
+      "data-hovered": isHovered,
+      "data-disabled": isDisabled,
+      "data-state": () => (isSelected() ? "active" : "inactive"),
+      "data-orientation": tabs.orientation,
+      "data-testid": () => props["data-testid"]?.(),
+      onClick: select,
+      onKeyDown: (event: KeyboardEvent) => {
+        if (event.key === "Enter" || event.key === " ") select();
+      },
+      onFocus: () => {
+        if (tabs.activationMode() === "automatic") select();
+      },
+    },
+  );
+
+  return (
+    <button {...elementProps} ref={mergeRefs(props.ref?.())}>
+      {props.children}
+    </button>
+  );
+}
+
+export interface ValueTabPanelComponentProps extends StyleProps {
+  value: string;
+  children?: Child;
+  /** Keep the panel in the document while another is showing, hidden. */
+  forceMount?: boolean;
+  "aria-label"?: string;
+  ref?: RefTarget<HTMLDivElement>;
+}
+
+export function ValueTabPanel(props: Incoming<ValueTabPanelComponentProps>) {
+  const domRef = makeRef<HTMLDivElement>();
+  const tabs = requireValueTabs();
+
+  const isSelected = (): boolean => tabs.value() === props.value();
+  const focusable = hasTabbableChild(domRef, () => (isSelected() ? props.value() : null));
+
+  const elementProps = mergeProps(
+    filterDOMProps(fromProps(props), { global: true, labelable: true }),
+    styleProps(props),
+    {
+      role: "tabpanel",
+      id: () => valuePartId(tabs.baseId(), props.value(), "tabpanel"),
+      "aria-labelledby": () =>
+        props["aria-label"]?.() === undefined
+          ? valuePartId(tabs.baseId(), props.value(), "tab")
+          : undefined,
+      tabIndex: () => (focusable() ? undefined : 0),
+      hidden: () => !isSelected(),
+      "data-state": () => (isSelected() ? "active" : "inactive"),
+      "data-orientation": tabs.orientation,
+      "data-testid": () => props["data-testid"]?.(),
+    },
+  );
+
+  return (
+    <Show when={isSelected() || props.forceMount?.() === true}>
+      <div {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
+        {props.children}
+      </div>
+    </Show>
   );
 }

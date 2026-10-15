@@ -22,7 +22,7 @@
  *   drag and selection behaviour that call would also cancel.
  */
 
-import { type Accessor, effect, isServer, signal } from "@barqjs/core";
+import { type Accessor, createTrackedEffect, isServer, createSignal } from "@barqjs/core";
 import { tryCleanup } from "@barqjs/primitives/utils";
 import {
   contains,
@@ -339,7 +339,7 @@ function installPressableStyle(doc: Document): void {
  * ```
  */
 export function press(options: PressOptions): PressResult {
-  const pressed = signal(false);
+  const [pressed, setPressed] = createSignal(false);
   const listeners = globalListeners();
 
   const state: PressState = {
@@ -371,7 +371,7 @@ export function press(options: PressOptions): PressResult {
 
     state.isTriggeringEvent = false;
     state.didFirePressStart = true;
-    pressed.set(true);
+    setPressed(true);
     return stopPropagation;
   };
 
@@ -392,7 +392,7 @@ export function press(options: PressOptions): PressResult {
       stopPropagation = event.shouldStopPropagation;
     }
     options.onPressChange?.(false);
-    pressed.set(false);
+    setPressed(false);
 
     if (options.onPress !== undefined && wasPressed && !isDisabled()) {
       const event = new Press("press", pointerType, original);
@@ -840,7 +840,7 @@ export function press(options: PressOptions): PressResult {
 
   // A press in flight when the element is disabled has to be abandoned, or the
   // pressed state sticks for as long as the element exists.
-  effect(() => {
+  createTrackedEffect(() => {
     if (isDisabled() && state.isPressed && state.target !== null) {
       cancel({
         currentTarget: state.target,
@@ -853,7 +853,7 @@ export function press(options: PressOptions): PressResult {
   });
 
   if (!isServer && options.ref !== undefined) {
-    effect(() => {
+    createTrackedEffect(() => {
       const element = access(options.ref);
       if (element === null || element === undefined) return;
       installPressableStyle(ownerDocument(element));

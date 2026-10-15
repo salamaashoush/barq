@@ -15,12 +15,14 @@
 
 import {
   type Accessor,
-  context,
+  type Child,
+  type Incoming,
+  createContext,
+  createUniqueId,
   getContext,
-  getNextChildId,
   getOwner,
   install,
-  signal,
+  createSignal,
   untrack,
 } from "@barqjs/core";
 import { mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
@@ -138,15 +140,12 @@ export function mergeProps(...sources: (DOMProps | null | undefined)[]): Record<
  */
 const idGroups = new Map<string, { set: (next: string) => void }[]>();
 
-let fallbackCount = 0;
-
 /**
  * A stable, SSR-safe identifier.
  *
- * The value comes from the owner's position in the scope tree, so the server
- * and the client produce the same string for the same element and hydration
- * matches. Outside any owner it falls back to a counter, which is only ever
- * reached by code running at module scope.
+ * The value is `createUniqueId`'s: the declaration's position among the scopes
+ * of its render, so the server and the client produce the same string for the
+ * same element and hydration matches.
  *
  * ```tsx
  * const labelId = id();
@@ -155,18 +154,30 @@ let fallbackCount = 0;
  * ```
  */
 export function id(given?: MaybeAccessor<string | undefined>): Accessor<string> {
-  const owner = getOwner();
-  const generated =
-    owner !== null ? `barq-${getNextChildId(owner)}` : `barq-fallback-${fallbackCount++}`;
+  const generated = createUniqueId();
 
-  const current = signal(generated);
-  const entry = { set: (next: string): void => current.set(next) };
+  // `mergeIds` repoints this from a component body, and a second merge in the
+  // same body asks where the first one left it. The value therefore lives
+  // beside the signal, which only tells an attribute already bound to look
+  // again.
+  let now = generated;
+  const [track, publish] = createSignal(generated, { ownedWrite: true });
+  const current = (): string => {
+    track();
+    return now;
+  };
+  const entry = {
+    set: (next: string): void => {
+      now = next;
+      publish(next);
+    },
+  };
 
   const group = idGroups.get(generated);
   if (group === undefined) idGroups.set(generated, [entry]);
   else group.push(entry);
 
-  if (given === undefined) return () => current();
+  if (given === undefined) return current;
   return () => access(given) ?? current();
 }
 
@@ -438,7 +449,9 @@ export function controllable<T>(
   onChange?: (value: T) => void,
 ): Controllable<T> {
   const isControlled = (): boolean => access(value) !== undefined;
-  const internal = signal<T>((access(value) ?? access(defaultValue)) as T);
+  const [internal, setInternal] = createSignal<T>(
+    (access(value) ?? access(defaultValue)) as Exclude<T, Function>,
+  );
 
   // What the LAST setter call produced, kept only long enough for a second
   // call in the same event to compose from it. A controlled parent has not
@@ -472,7 +485,7 @@ export function controllable<T>(
 
     // Written even when controlled, so a component that later drops the prop
     // continues from where the caller left it rather than from its default.
-    if (!isControlled()) internal.set(resolved);
+    if (!isControlled()) setInternal(() => resolved);
     onChange?.(resolved);
   };
 
@@ -514,7 +527,7 @@ export type Options<P> = {
  * Calling a hook directly, outside a component, needs none of this: write the
  * options object by hand and pass handlers as themselves.
  */
-export function fromProps<P extends object>(props: { [K in keyof P]: () => P[K] }): Options<P> {
+export function fromProps<P extends object>(props: Incoming<P>): Options<P> {
   const wrappers = new Map<string, (...args: unknown[]) => void>();
 
   return new Proxy(props, {
@@ -561,7 +574,7 @@ export interface TriggerSlot {
   ref?(this: void, element: Element | null): void;
 }
 
-const TriggerSlotContext = context<TriggerSlot | null>(null);
+const TriggerSlotContext = createContext<TriggerSlot | null>(null);
 
 /**
  * Contribute props to the control rendered inside this component.
@@ -599,6 +612,45 @@ export function provideTriggerSlot(slot: TriggerSlot): void {
 /** What the surroundings want on this control, if anything. */
 export function triggerSlot(): TriggerSlot {
   return getContext(TriggerSlotContext) ?? { props: {} };
+}
+
+// ---------------------------------------------------------------------------
+// The caller's element in a part's place
+// ---------------------------------------------------------------------------
+
+/** What a part hands the element a caller draws in its place. */
+export interface PartRender {
+  /** The part's slot, class and state, and whatever the caller wrote on the part. */
+  props: DOMProps;
+  /** For the same element, so a `ref` written on the part still reaches it. */
+  ref: (element: Element | null) => void;
+}
+
+/**
+ * A part's `render`: another element in the place of the one it draws.
+ *
+ * shadcn's `asChild` clones its child; nothing is cloned here, so the caller
+ * builds the element from the props and the ref it is handed, as a trigger's
+ * `render` does.
+ *
+ * A part with state hands it as the second argument, every field an accessor:
+ * the element is built once, so a value read at that moment would never change.
+ *
+ * ```tsx
+ * <BreadcrumbLink render={(link) => <RouterLink {...link.props} ref={link.ref} to="/" />} />
+ *
+ * <QuestionnaireProgress
+ *   render={(part, state) => (
+ *     <div {...part.props} ref={part.ref}>{() => `${state.current()} / ${state.total()}`}</div>
+ *   )}
+ * />
+ * ```
+ */
+export type RenderPart<State = void> = (part: PartRender, state: State) => Child;
+
+export function partRender(props: DOMProps): PartRender {
+  const { ref, ...rest } = props as DOMProps & { ref?: RefTarget<Element | null> };
+  return { props: rest, ref: mergeRefs<Element | null>(ref) };
 }
 
 /**

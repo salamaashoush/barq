@@ -1,9 +1,17 @@
 import { describe, expect, test } from "bun:test";
-import { type Incoming, Show, signal } from "@barqjs/core";
+import { type Incoming, Show, createSignal, onSettled } from "@barqjs/core";
 import { accessibleName, render, screen, tick, user } from "@barqjs/testing";
 import { Button } from "./button.tsx";
 import { ref } from "@barqjs/primitives/refs";
-import { Dialog, Heading, Modal, Popover, useDialogDescription } from "./dialog.tsx";
+import {
+  Dialog,
+  Heading,
+  Modal,
+  Popover,
+  popoverStateProps,
+  PortalProvider,
+  useDialogDescription,
+} from "./dialog.tsx";
 
 /** The portal builds on a microtask after its marker connects. */
 async function settle(): Promise<void> {
@@ -70,14 +78,14 @@ describe("Modal", () => {
   });
 
   test("Escape closes it", async () => {
-    const open = signal(true);
+    const [open, setOpen] = createSignal(true);
     const changes: boolean[] = [];
     render(() => (
       <Confirm
         isOpen={open()}
         onOpenChange={(next) => {
           changes.push(next);
-          open.set(next);
+          setOpen(next);
         }}
       />
     ));
@@ -89,14 +97,14 @@ describe("Modal", () => {
   });
 
   test("a press outside closes it", async () => {
-    const open = signal(true);
+    const [open, setOpen] = createSignal(true);
     const changes: boolean[] = [];
     render(() => (
       <Confirm
         isOpen={open()}
         onOpenChange={(next) => {
           changes.push(next);
-          open.set(next);
+          setOpen(next);
         }}
       />
     ));
@@ -118,13 +126,13 @@ describe("Modal", () => {
   });
 
   test("the page is visible again once it closes", async () => {
-    const open = signal(true);
+    const [open, setOpen] = createSignal(true);
     render(() => <Confirm isOpen={open()} />);
     await tick();
 
     expect(screen.getByText("before").closest("[aria-hidden=true]")).not.toBeNull();
 
-    open.set(false);
+    setOpen(false);
     await tick();
 
     expect(screen.getByText("before").closest("[aria-hidden=true]")).toBeNull();
@@ -195,7 +203,7 @@ describe("Dialog", () => {
   });
 
   test("a description that leaves takes the attribute with it", async () => {
-    const showing = signal(true);
+    const [showing, setShowing] = createSignal(true);
     render(() => (
       <Dialog aria-label="Named">
         <Show when={showing()}>
@@ -205,7 +213,7 @@ describe("Dialog", () => {
     ));
     const dialog = screen.getByRole("dialog");
     expect(dialog.hasAttribute("aria-describedby")).toBe(true);
-    showing.set(false);
+    setShowing(false);
     await tick();
     expect(dialog.hasAttribute("aria-describedby")).toBe(false);
   });
@@ -228,13 +236,13 @@ function Description(props: Incoming<{ children?: unknown }>) {
 describe("a positioned overlay", () => {
   function Anchored() {
     const triggerRef = ref<HTMLElement>();
-    const open = signal(true);
+    const [open, setOpen] = createSignal(true);
     return (
       <>
         <button type="button" ref={triggerRef.set}>
           Open
         </button>
-        <Popover triggerRef={triggerRef} isOpen={open()} onOpenChange={open.set}>
+        <Popover triggerRef={triggerRef} isOpen={open()} onOpenChange={setOpen}>
           <Dialog>
             <Heading slot="title">Dimensions</Heading>
           </Dialog>
@@ -249,6 +257,47 @@ describe("a positioned overlay", () => {
 
     const popover = screen.getByRole("dialog").parentElement;
     expect(popover?.getAttribute("style") ?? "").toContain("position");
+  });
+
+  function Panel() {
+    return (
+      <div data-testid="panel" {...popoverStateProps()}>
+        Dimensions
+      </div>
+    );
+  }
+
+  test("says where it is, in both vocabularies, on itself and to what it holds", async () => {
+    const triggerRef = ref<HTMLElement>();
+    render(() => (
+      <>
+        <button type="button" ref={triggerRef.set}>
+          Open
+        </button>
+        <Popover triggerRef={triggerRef} isOpen placement="bottom start" data-testid="popover">
+          <Panel />
+        </Popover>
+      </>
+    ));
+    await settle();
+
+    const popover = screen.getByTestId("popover");
+    expect(popover.getAttribute("data-placement")).toBe("bottom");
+    expect(popover.getAttribute("data-side")).toBe("bottom");
+    expect(popover.getAttribute("data-align")).toBe("start");
+    expect(popover.getAttribute("data-state")).toBe("open");
+
+    const panel = screen.getByTestId("panel");
+    expect(panel.getAttribute("data-side")).toBe("bottom");
+    expect(panel.getAttribute("data-align")).toBe("start");
+    expect(panel.getAttribute("data-state")).toBe("open");
+  });
+
+  test("an element outside any popover gets no state at all", () => {
+    render(() => <Panel />);
+    const panel = screen.getByTestId("panel");
+    expect(panel.hasAttribute("data-state")).toBe(false);
+    expect(panel.hasAttribute("data-side")).toBe(false);
   });
 });
 
@@ -266,14 +315,14 @@ describe("a positioned overlay", () => {
  */
 describe("closing an overlay", () => {
   function Fixture() {
-    const open = signal(false);
+    const [open, setOpen] = createSignal(false);
     return (
       <>
-        <Button onPress={() => open.set(true)}>Open</Button>
-        <Modal isOpen={open()} onOpenChange={open.set}>
+        <Button onPress={() => setOpen(true)}>Open</Button>
+        <Modal isOpen={open()} onOpenChange={setOpen}>
           <Dialog>
             <Heading slot="title">Delete this?</Heading>
-            <Button onPress={() => open.set(false)}>Cancel</Button>
+            <Button onPress={() => setOpen(false)}>Cancel</Button>
           </Dialog>
         </Modal>
       </>
@@ -319,3 +368,208 @@ describe("closing an overlay", () => {
 function frame(): Promise<void> {
   return new Promise((resolve) => requestAnimationFrame(() => resolve()));
 }
+
+describe("what a design system puts on the underlay", () => {
+  test("reaches the underlay, and both elements say they are open", async () => {
+    render(() => (
+      <Modal
+        isOpen
+        underlayClass="dim"
+        underlayProps={{ "data-testid": "underlay", "data-tone": "dark", class: "blurred" }}
+      >
+        <Dialog aria-label="Settings">
+          <Button>Done</Button>
+        </Dialog>
+      </Modal>
+    ));
+    await settle();
+
+    const underlay = screen.getByTestId("underlay");
+    expect(underlay.hasAttribute("data-barq-underlay")).toBe(true);
+    expect(underlay.getAttribute("data-tone")).toBe("dark");
+    expect(underlay.className).toBe("dim blurred");
+    expect(underlay.getAttribute("data-state")).toBe("open");
+    expect(screen.getByRole("dialog").parentElement?.getAttribute("data-state")).toBe("open");
+  });
+});
+
+describe("PortalProvider", () => {
+  function Anchored(props: Incoming<{ label: string }>) {
+    const triggerRef = ref<HTMLElement>();
+    return (
+      <>
+        <button type="button" ref={triggerRef.set}>
+          {props.label()}
+        </button>
+        <Popover triggerRef={triggerRef} isOpen>
+          <Dialog aria-label={props.label()}>
+            <Button>Done</Button>
+          </Dialog>
+        </Popover>
+      </>
+    );
+  }
+
+  test("sends what is inside it to the container, and nothing beside it", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    render(() => (
+      <>
+        <PortalProvider getContainer={() => container}>
+          <Anchored label="Inside" />
+        </PortalProvider>
+        <Anchored label="Beside" />
+      </>
+    ));
+    await settle();
+
+    expect(container.contains(screen.getByRole("dialog", { name: "Inside" }))).toBe(true);
+    expect(container.contains(screen.getByRole("dialog", { name: "Beside" }))).toBe(false);
+    container.remove();
+  });
+});
+
+describe("a popover that leaves focus alone", () => {
+  function Card(props: Incoming<{ shouldContainFocus?: boolean }>) {
+    const triggerRef = ref<HTMLElement>();
+    const [open, setOpen] = createSignal(false);
+    return (
+      <>
+        <button type="button" ref={triggerRef.set} onClick={() => setOpen(true)}>
+          Open
+        </button>
+        <Popover
+          triggerRef={triggerRef}
+          isOpen={open()}
+          onOpenChange={setOpen}
+          shouldContainFocus={props.shouldContainFocus?.()}
+        >
+          <a href="https://example.com">Profile</a>
+        </Popover>
+      </>
+    );
+  }
+
+  test("an ordinary popover takes focus when it opens", async () => {
+    render(() => <Card />);
+    const trigger = screen.getByRole("button", { name: "Open" });
+    trigger.focus();
+    user.click(trigger);
+    await settle();
+
+    expect(document.activeElement?.textContent).toBe("Profile");
+  });
+
+  test("one told not to leaves it on whatever opened it", async () => {
+    render(() => <Card shouldContainFocus={false} />);
+    const trigger = screen.getByRole("button", { name: "Open" });
+    trigger.focus();
+    user.click(trigger);
+    await settle();
+
+    expect(screen.getByText("Profile")).toBeTruthy();
+    expect(document.activeElement).toBe(trigger);
+  });
+});
+
+/**
+ * A controlled overlay whose owner opens it the moment the page settles: a
+ * welcome popover, a dialog restored from the URL.
+ */
+describe("an overlay opened as soon as the page settles", () => {
+  test("a popover is open", async () => {
+    function Welcome() {
+      const triggerRef = ref<HTMLElement>();
+      const [open, setOpen] = createSignal(false);
+      onSettled(() => {
+        setOpen(true);
+      });
+      return (
+        <>
+          <button type="button" ref={triggerRef.set}>
+            Open
+          </button>
+          <Popover triggerRef={triggerRef} isOpen={open()} onOpenChange={setOpen}>
+            <Dialog aria-label="Welcome">
+              <Button>Done</Button>
+            </Dialog>
+          </Popover>
+        </>
+      );
+    }
+
+    render(() => <Welcome />);
+    await settle();
+    await settle();
+    expect(screen.getByRole("dialog", { name: "Welcome" })).toBeTruthy();
+  });
+
+  test("a modal is open", async () => {
+    function Restored() {
+      const [open, setOpen] = createSignal(false);
+      onSettled(() => {
+        setOpen(true);
+      });
+      return (
+        <Modal isOpen={open()} onOpenChange={setOpen}>
+          <Dialog aria-label="Restored">
+            <Button>Done</Button>
+          </Dialog>
+        </Modal>
+      );
+    }
+
+    render(() => <Restored />);
+    await settle();
+    await settle();
+    expect(screen.getByRole("dialog", { name: "Restored" })).toBeTruthy();
+  });
+});
+
+describe("a Modal that is not modal", () => {
+  function Panel(props: Incoming<{ autoFocus?: boolean }>) {
+    const [open, setOpen] = createSignal(true);
+    return (
+      <>
+        <button type="button">before</button>
+        <Modal isOpen={open()} onOpenChange={setOpen} isNonModal autoFocus={props.autoFocus?.()}>
+          <Dialog>
+            <Heading slot="title">Filters</Heading>
+            <Button>Apply</Button>
+          </Dialog>
+        </Modal>
+        <button type="button">after</button>
+      </>
+    );
+  }
+
+  test("the page behind stays reachable, by a screen reader, by Tab and by a press", async () => {
+    render(() => <Panel />);
+    await tick();
+    expect(document.activeElement?.textContent).toBe("Apply");
+    expect(screen.getByText("before").closest("[aria-hidden=true]")).toBeNull();
+    expect(document.documentElement.style.overflow).not.toBe("hidden");
+
+    user.tab();
+    expect(document.activeElement?.textContent).not.toBe("Apply");
+
+    await user.click(screen.getByText("before"));
+    await tick();
+    expect(screen.queryByRole("dialog")).not.toBeNull();
+  });
+
+  test("Escape still closes it", async () => {
+    render(() => <Panel />);
+    await tick();
+    user.key("Escape");
+    await tick();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  test("autoFocus={false} leaves focus where it was", async () => {
+    render(() => <Panel autoFocus={false} />);
+    await tick();
+    expect(screen.queryByRole("dialog")).not.toBeNull();
+    expect(document.activeElement?.textContent).not.toBe("Apply");
+  });
+});

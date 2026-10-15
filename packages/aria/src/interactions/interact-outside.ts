@@ -14,7 +14,7 @@
  * events after a tap on a form control.
  */
 
-import { effect } from "@barqjs/core";
+import { createTrackedEffect } from "@barqjs/core";
 import { contains, ownerDocument, targetElement, TOP_LAYER_ATTRIBUTE } from "../dom.ts";
 import { access, type MaybeAccessor } from "../utils.ts";
 import type { ElementRef } from "./press.ts";
@@ -59,7 +59,7 @@ function isOutside(event: Event, element: Element | null | undefined): boolean {
 export function interactOutside(options: InteractOutsideOptions): void {
   const state = { isPointerDown: false, ignoreEmulatedMouseEvents: false };
 
-  effect(() => {
+  createTrackedEffect(() => {
     if (access(options.isDisabled) === true) return undefined;
 
     const element = access(options.ref);

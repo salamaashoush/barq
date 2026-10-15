@@ -19,7 +19,7 @@
  *   press that opened it.
  */
 
-import { type Accessor, effect, signal } from "@barqjs/core";
+import { type Accessor, createTrackedEffect, createSignal } from "@barqjs/core";
 import { tryCleanup } from "@barqjs/primitives/utils";
 import {
   activeElement,
@@ -675,7 +675,7 @@ export function selectableItem(options: SelectableItemOptions): SelectableItemRe
   };
 
   // Focus the item when it becomes the focused key.
-  effect(() => {
+  createTrackedEffect(() => {
     const active = manager();
     if (active.focusedKey !== options.key || !active.isFocused || virtualFocus()) return;
     const element = access(options.ref) as HTMLElement | null;
@@ -685,7 +685,7 @@ export function selectableItem(options: SelectableItemOptions): SelectableItemRe
   });
 
   // A disabled item cannot hold the roving focus.
-  effect(() => {
+  createTrackedEffect(() => {
     if (isDisabled() && manager().focusedKey === options.key) manager().setFocusedKey(null);
   });
 
@@ -1153,7 +1153,7 @@ export function selectableCollection(
   // The scroll position is restored when focus returns, so tabbing away and
   // back does not jump the list to the focused item.
   const scrollPosition = { top: 0, left: 0 };
-  effect(() => {
+  createTrackedEffect(() => {
     const element = scrollElement();
     if (element === null) return undefined;
     const onScroll = (): void => {
@@ -1229,7 +1229,7 @@ export function selectableCollection(
 
   // Bring the focused item into view when it changes by keyboard.
   let lastFocusedKey: Key | null = manager().focusedKey;
-  effect(() => {
+  createTrackedEffect(() => {
     const active = manager();
     const focused = active.focusedKey;
     const container = access(options.ref) as HTMLElement | null;
@@ -1252,10 +1252,10 @@ export function selectableCollection(
     lastFocusedKey = focused;
   });
 
-  const autoFocused = signal(
+  const [autoFocused, setAutoFocused] = createSignal(
     access(options.autoFocus) !== undefined && access(options.autoFocus) !== false,
   );
-  effect(() => {
+  createTrackedEffect(() => {
     if (!autoFocused()) return;
     const active = manager();
     const where = access(options.autoFocus);
@@ -1290,12 +1290,12 @@ export function selectableCollection(
       if (container !== null) focusSafely(container);
     }
 
-    if (active.collection.size > 0) autoFocused.set(false);
+    if (active.collection.size > 0) setAutoFocused(false);
   });
 
   // A virtualised collection reuses DOM nodes, so the element a focus scope
   // wants to restore to may now be a different item.
-  effect(() => {
+  createTrackedEffect(() => {
     const container = access(options.ref) as HTMLElement | null;
     if (container === null) return undefined;
     const onRestore = (event: Event): void => {

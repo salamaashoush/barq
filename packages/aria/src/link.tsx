@@ -13,7 +13,7 @@ import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/re
 import { focusRing } from "./focus.ts";
 import { focusable, type FocusableOptions } from "./interactions/focusable.ts";
 import { hover } from "./interactions/hover.ts";
-import { handleLinkClick, syntheticLinkProps } from "./interactions/open-link.ts";
+import { handleLinkClick, router, syntheticLinkProps } from "./interactions/open-link.ts";
 import { press, type ElementRef, type PressEvent } from "./interactions/press.ts";
 import { label as labelHook } from "./label.ts";
 import { numberFormatter } from "./i18n.ts";
@@ -61,6 +61,7 @@ export function link(options: LinkOptions, ref?: ElementRef): LinkResult {
 
   const { pressProps, isPressed } = press({ ...options, ref });
   const { focusableProps } = focusable(options, ref);
+  const navigate = router();
 
   const roleProps: DOMProps = {
     // Anything that is not an `<a href>` has to say what it is, and be
@@ -85,7 +86,7 @@ export function link(options: LinkOptions, ref?: ElementRef): LinkResult {
         "aria-disabled": () => isDisabled() || undefined,
         "aria-current": () => access(options["aria-current"]),
         onClick: (event: MouseEvent) => {
-          handleLinkClick(event, access(options.href));
+          handleLinkClick(event, access(options.href), navigate);
         },
       },
     ),
@@ -253,22 +254,18 @@ export function Link(props: Incoming<LinkComponentProps>) {
   const { linkProps, isPressed } = link(options, domRef);
   const { hoverProps, isHovered } = hover({ isDisabled: options.isDisabled });
   const { focusProps, isFocused, isFocusVisible } = focusRing();
+  // `link()` delivers `onClick` itself; bound on the element as well, a
+  // caller's handler runs twice for every mouse click.
+  const { onClick: _, ...forwarded } = filterDOMProps(options, { global: true });
 
-  const elementProps = mergeProps(
-    linkProps,
-    hoverProps,
-    focusProps,
-    filterDOMProps(options, { global: true }),
-    styleProps(props),
-    {
-      "data-pressed": isPressed,
-      "data-hovered": isHovered,
-      "data-focused": isFocused,
-      "data-focus-visible": isFocusVisible,
-      "data-disabled": () => props.isDisabled?.() === true,
-      "data-testid": () => props["data-testid"]?.(),
-    },
-  );
+  const elementProps = mergeProps(linkProps, hoverProps, focusProps, forwarded, styleProps(props), {
+    "data-pressed": isPressed,
+    "data-hovered": isHovered,
+    "data-focused": isFocused,
+    "data-focus-visible": isFocusVisible,
+    "data-disabled": () => props.isDisabled?.() === true,
+    "data-testid": () => props["data-testid"]?.(),
+  });
 
   return (
     <a {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
@@ -279,6 +276,11 @@ export function Link(props: Incoming<LinkComponentProps>) {
 
 export interface SeparatorComponentProps extends StyleProps {
   orientation?: "horizontal" | "vertical";
+  /**
+   * Drawn and not announced: a rule that divides nothing a screen reader
+   * needs told about, such as the line between two toolbar buttons.
+   */
+  decorative?: boolean;
   "aria-label"?: string;
 }
 
@@ -291,8 +293,12 @@ export function Separator(props: Incoming<SeparatorComponentProps>) {
     filterDOMProps(options, { global: true }),
     styleProps(props),
     {
+      role: () => (props.decorative?.() === true ? "none" : undefined),
       "data-orientation": () => props.orientation?.() ?? "horizontal",
-      "aria-orientation": () => (props.orientation?.() === "vertical" ? "vertical" : undefined),
+      "aria-orientation": () =>
+        props.orientation?.() === "vertical" && props.decorative?.() !== true
+          ? "vertical"
+          : undefined,
       "data-testid": () => props["data-testid"]?.(),
     },
   );

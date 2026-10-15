@@ -23,15 +23,15 @@
 import {
   type Accessor,
   type Child,
-  computed,
-  context,
-  effect,
+  createMemo,
+  createContext,
+  createTrackedEffect,
   getContext,
   getOwner,
   type Incoming,
   install,
   isServer,
-  signal,
+  createSignal,
 } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { button } from "./button.tsx";
@@ -163,7 +163,7 @@ export function numberFieldState(options: NumberFieldStateOptions): NumberFieldS
   const initial = numberValue();
   const asText = (value: number): string => (Number.isNaN(value) ? "" : format().format(value));
 
-  const inputValue = signal(asText(numberValue()));
+  const [inputValue, writeInputValue] = createSignal(asText(numberValue()));
 
   // What the LAST write produced, so a keystroke reads its own change back
   // rather than the value a controlled owner has not caught up with yet.
@@ -172,20 +172,20 @@ export function numberFieldState(options: NumberFieldStateOptions): NumberFieldS
   if (!isServer) {
     // The number changing from OUTSIDE reformats the field. A change the field
     // made itself is already in it, as typed.
-    effect(() => {
+    createTrackedEffect(() => {
       const value = numberValue();
       if (value === live) return;
       live = value;
-      inputValue.set(asText(value));
+      writeInputValue(asText(value));
     });
   }
 
-  const parsed = computed(() => parser().parse(inputValue()));
+  const parsed = createMemo(() => parser().parse(inputValue()));
 
   const setNumberValue = (value: number): void => {
     live = value;
     setNumberValueRaw(value);
-    inputValue.set(asText(value));
+    writeInputValue(asText(value));
   };
 
   const commit = (override?: string): void => {
@@ -194,7 +194,7 @@ export function numberFieldState(options: NumberFieldStateOptions): NumberFieldS
     if (text.length === 0) {
       live = Number.NaN;
       setNumberValueRaw(Number.NaN);
-      inputValue.set(access(options.value) === undefined ? "" : asText(numberValue()));
+      writeInputValue(access(options.value) === undefined ? "" : asText(numberValue()));
       return;
     }
 
@@ -202,7 +202,7 @@ export function numberFieldState(options: NumberFieldStateOptions): NumberFieldS
     if (Number.isNaN(value)) {
       // Not a number after all: the field goes back to what it holds rather
       // than keeping text that means nothing.
-      inputValue.set(asText(numberValue()));
+      writeInputValue(asText(numberValue()));
       return;
     }
 
@@ -211,7 +211,7 @@ export function numberFieldState(options: NumberFieldStateOptions): NumberFieldS
     const clamped = parser().parse(asText(snaps() ? snap(value) : value));
     live = clamped;
     setNumberValueRaw(clamped);
-    inputValue.set(asText(access(options.value) === undefined ? clamped : numberValue()));
+    writeInputValue(asText(access(options.value) === undefined ? clamped : numberValue()));
   };
 
   /**
@@ -269,7 +269,7 @@ export function numberFieldState(options: NumberFieldStateOptions): NumberFieldS
     canIncrement: () => canStep("+"),
     canDecrement: () => canStep("-"),
     validate: (value) => parser().isValidPartialNumber(value, min(), max()),
-    setInputValue: (value) => inputValue.set(value),
+    setInputValue: (value) => writeInputValue(value),
     setNumberValue,
     commit,
     increment: () => setNumberValue(nextStep("+", min())),
@@ -394,7 +394,7 @@ export function spinButton(options: SpinButtonOptions): SpinButtonResult {
     // Announced assertively, because the input carries no spin button role to
     // announce it for us. `clearAnnouncer` first, so holding a stepper does
     // not queue up thirty values to read out in turn.
-    effect(() => {
+    createTrackedEffect(() => {
       const text = access(options.textValue) ?? String(access(options.value) ?? "");
       // A hyphen-minus between a currency symbol and a number is read as a
       // hyphen and swallowed; the real minus sign is announced.
@@ -673,7 +673,7 @@ interface NumberFieldContextValue {
   state: NumberFieldState;
 }
 
-const NumberFieldContext = context<NumberFieldContextValue | null>(null);
+const NumberFieldContext = createContext<NumberFieldContextValue | null>(null);
 
 export function useNumberField(): NumberFieldContextValue {
   const value = getContext(NumberFieldContext);

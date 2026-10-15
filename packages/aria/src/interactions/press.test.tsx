@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, type Incoming, signal } from "@barqjs/core";
+import { flush, type Incoming, createSignal } from "@barqjs/core";
 import { render, screen, user } from "@barqjs/testing";
 import { press, type PressEvent } from "./press.ts";
 
@@ -223,7 +223,7 @@ describe("press: disabled", () => {
   });
 
   test("becoming disabled mid-press ends it without firing", () => {
-    const disabled = signal(false);
+    const [disabled, setDisabled] = createSignal(false);
     const log: string[] = [];
     render(() => <Pressable log={log} isDisabled={disabled()} />);
     const button = screen.getByRole("button");
@@ -232,7 +232,7 @@ describe("press: disabled", () => {
     expect(log).toContain("start:mouse");
     log.length = 0;
 
-    disabled.set(true);
+    setDisabled(true);
     flush();
 
     expect(log).toEqual(["end:mouse", "change:false"]);

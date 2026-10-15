@@ -35,14 +35,13 @@
 import {
   type Accessor,
   type Child,
-  context,
-  effect,
+  createContext,
+  createTrackedEffect,
   getContext,
-  getOwner,
   type Incoming,
   isServer,
   provide,
-  signal,
+  createSignal,
   untrack,
 } from "@barqjs/core";
 import { ListCollection } from "./collections.ts";
@@ -407,8 +406,8 @@ export interface VirtualizerState {
  * a signal. Everything else falls out of that reactively.
  */
 export function virtualizer(options: VirtualizerOptions): VirtualizerState {
-  const visibleRect = signal<Rect>(rect(0, 0, 0, 0));
-  const revision = signal(0);
+  const [visibleRect, writeVisibleRect] = createSignal<Rect>(rect(0, 0, 0, 0));
+  const [revision, setRevision] = createSignal(0);
 
   const overscan = (): number => access(options.overscan) ?? 1;
 
@@ -421,11 +420,11 @@ export function virtualizer(options: VirtualizerOptions): VirtualizerState {
       element.clientWidth,
       element.clientHeight,
     );
-    if (!rectEquals(next, untrack(visibleRect))) visibleRect.set(next);
+    if (!rectEquals(next, untrack(visibleRect))) writeVisibleRect(next);
   };
 
   if (!isServer) {
-    effect(() => {
+    createTrackedEffect(() => {
       const element = access(options.ref) as HTMLElement | null;
       if (element === null) return undefined;
 
@@ -494,7 +493,7 @@ export function virtualizer(options: VirtualizerOptions): VirtualizerState {
   const contentSize = (): Size => laidOut().getContentSize();
 
   const measure = (key: Key, size: Size): void => {
-    if (options.layout.updateItemSize?.(key, size) === true) revision.update((n) => n + 1);
+    if (options.layout.updateItemSize?.(key, size) === true) setRevision((n) => n + 1);
   };
 
   return { visible, contentSize, visibleRect, measure, layout: options.layout };
@@ -527,7 +526,7 @@ export interface VirtualizerValue {
   shouldMeasure: Accessor<boolean>;
 }
 
-const VirtualizerContext = context<VirtualizerValue | null>(null);
+const VirtualizerContext = createContext<VirtualizerValue | null>(null);
 
 /** The enclosing {@link Virtualizer}, if the collection is inside one. */
 export function useVirtualizer(): VirtualizerValue | null {
@@ -574,7 +573,7 @@ export function rowStyle(info: LayoutInfo): Record<string, string> {
 export function measureRow(virtual: VirtualizerValue | null, key: Key, ref: ElementRef): void {
   if (isServer || virtual === null) return;
 
-  effect(() => {
+  createTrackedEffect(() => {
     if (!virtual.shouldMeasure()) return undefined;
     const element = access(ref) as HTMLElement | null;
     if (element === null) return undefined;
@@ -618,11 +617,19 @@ export interface VirtualizerComponentProps {
 export function Virtualizer(props: Incoming<VirtualizerComponentProps>) {
   // Boxed: a signal holding a FUNCTION would call it, and both of these are
   // functions that must be stored rather than read.
-  const collection = signal<{ read: Accessor<Collection<unknown>> }>({
-    read: () => new ListCollection<unknown>([]),
-  });
-  const scrollRef = signal<{ ref: ElementRef } | null>(null);
-  const focusedKey = signal<{ read: Accessor<Key | null> }>({ read: () => null });
+  //
+  // `ownedWrite` because the collection attaches from its own component body,
+  // which is the only place it knows what to hand over.
+  const ATTACHED = { ownedWrite: true } as const;
+  const [collection, setCollection] = createSignal<{ read: Accessor<Collection<unknown>> }>(
+    { read: () => new ListCollection<unknown>([]) },
+    ATTACHED,
+  );
+  const [scrollRef, setScrollRef] = createSignal<{ ref: ElementRef } | null>(null, ATTACHED);
+  const [focusedKey, setFocusedKey] = createSignal<{ read: Accessor<Key | null> }>(
+    { read: () => null },
+    ATTACHED,
+  );
   const layout = props.layout();
 
   const state = virtualizer({
@@ -646,9 +653,9 @@ export function Virtualizer(props: Incoming<VirtualizerComponentProps>) {
   const value: VirtualizerValue = {
     layout,
     attach: (source, ref, focused) => {
-      collection.set({ read: source });
-      scrollRef.set({ ref });
-      focusedKey.set({ read: focused });
+      setCollection({ read: source });
+      setScrollRef({ ref });
+      setFocusedKey({ read: focused });
     },
     visible: state.visible,
     contentSize: state.contentSize,
@@ -662,5 +669,5 @@ export function Virtualizer(props: Incoming<VirtualizerComponentProps>) {
     VirtualizerContext,
     () => value,
     () => props.children as unknown,
-  ) as never;
+  );
 }

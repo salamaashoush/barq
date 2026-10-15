@@ -35,6 +35,18 @@ function panel(): HTMLElement {
 }
 
 describe("Disclosure", () => {
+  test("a click handler on the button hears one click per click", async () => {
+    let clicks = 0;
+    render(() => (
+      <Disclosure>
+        <DisclosureButton onClick={() => clicks++}>Details</DisclosureButton>
+        <DisclosurePanel>Everything else</DisclosurePanel>
+      </Disclosure>
+    ));
+    await user.click(screen.getByRole("button", { name: "Details" }));
+    expect(clicks).toBe(1);
+  });
+
   test("the button says what it controls and whether it is open", () => {
     render(() => <Details />);
 
@@ -274,5 +286,151 @@ describe("a panel the stylesheet animates shut", () => {
 
     await new Promise((resolve) => setTimeout(resolve, 260));
     expect(panel().hasAttribute("hidden")).toBe(false);
+  });
+});
+
+describe("DisclosureGroup, written out rather than taken from items", () => {
+  function Written(
+    props: Incoming<{
+      isCollapsible?: boolean;
+      orientation?: "vertical" | "horizontal";
+      dir?: "ltr" | "rtl";
+      defaultExpandedKeys?: Iterable<Key>;
+      disabledSecond?: boolean;
+    }>,
+  ) {
+    return (
+      <DisclosureGroup
+        isCollapsible={props.isCollapsible?.()}
+        orientation={props.orientation?.()}
+        dir={props.dir?.()}
+        defaultExpandedKeys={props.defaultExpandedKeys?.()}
+      >
+        <DisclosureGroupItem id="one">
+          <DisclosureButton>One</DisclosureButton>
+          <DisclosurePanel>First</DisclosurePanel>
+        </DisclosureGroupItem>
+        <DisclosureGroupItem id="two" isDisabled={props.disabledSecond?.()}>
+          <DisclosureButton>Two</DisclosureButton>
+          <DisclosurePanel>Second</DisclosurePanel>
+        </DisclosureGroupItem>
+        <DisclosureGroupItem id="three">
+          <DisclosureButton>Three</DisclosureButton>
+          <DisclosurePanel>Third</DisclosurePanel>
+        </DisclosureGroupItem>
+      </DisclosureGroup>
+    );
+  }
+
+  const button = (name: string): HTMLElement => screen.getByRole("button", { name });
+
+  test("each section is keyed by its own id", () => {
+    render(() => <Written defaultExpandedKeys={["two"]} />);
+    expect(expandedNames()).toEqual(["Two"]);
+
+    user.click(button("Three"));
+    flush();
+    expect(expandedNames()).toEqual(["Three"]);
+  });
+
+  test("the button and the panel say open or closed", () => {
+    render(() => <Written defaultExpandedKeys={["one"]} />);
+    expect(button("One").getAttribute("data-state")).toBe("open");
+    expect(button("Two").getAttribute("data-state")).toBe("closed");
+    const panels = screen.getAllByRole("group", { hidden: true });
+    expect(panels[0]?.getAttribute("data-state")).toBe("open");
+    expect(panels[1]?.getAttribute("data-state")).toBe("closed");
+  });
+
+  test("a group that may not be empty keeps its open section open", () => {
+    render(() => <Written isCollapsible={false} defaultExpandedKeys={["one"]} />);
+    // Still focusable, so the keyboard does not skip it, and announced as
+    // unavailable because pressing it does nothing.
+    expect(button("One").getAttribute("aria-disabled")).toBe("true");
+    expect(button("One").hasAttribute("disabled")).toBe(false);
+
+    user.click(button("One"));
+    flush();
+    expect(expandedNames()).toEqual(["One"]);
+
+    user.click(button("Two"));
+    flush();
+    expect(expandedNames()).toEqual(["Two"]);
+    expect(button("One").hasAttribute("aria-disabled")).toBe(false);
+  });
+
+  test("the down and up arrows move between headers, and wrap", () => {
+    render(() => <Written />);
+    button("One").focus();
+    user.keyboard("{ArrowDown}");
+    expect(document.activeElement).toBe(button("Two"));
+    user.keyboard("{ArrowDown}{ArrowDown}");
+    expect(document.activeElement).toBe(button("One"));
+    user.keyboard("{ArrowUp}");
+    expect(document.activeElement).toBe(button("Three"));
+  });
+
+  test("Home and End go to the first and last header", () => {
+    render(() => <Written />);
+    button("Two").focus();
+    user.keyboard("{End}");
+    expect(document.activeElement).toBe(button("Three"));
+    user.keyboard("{Home}");
+    expect(document.activeElement).toBe(button("One"));
+  });
+
+  test("a disabled section is stepped over", () => {
+    render(() => <Written disabledSecond />);
+    expect(button("Two").getAttribute("data-disabled")).toBe("");
+    button("One").focus();
+    user.keyboard("{ArrowDown}");
+    expect(document.activeElement).toBe(button("Three"));
+  });
+
+  test("a horizontal group takes left and right instead, and says which way it runs", () => {
+    render(() => <Written orientation="horizontal" />);
+    expect(button("One").getAttribute("data-orientation")).toBe("horizontal");
+    button("One").focus();
+    user.keyboard("{ArrowDown}");
+    expect(document.activeElement).toBe(button("One"));
+    user.keyboard("{ArrowRight}");
+    expect(document.activeElement).toBe(button("Two"));
+    user.keyboard("{ArrowLeft}");
+    expect(document.activeElement).toBe(button("One"));
+  });
+
+  test("right to left, the right arrow goes back", () => {
+    render(() => <Written orientation="horizontal" dir="rtl" />);
+    button("Two").focus();
+    user.keyboard("{ArrowRight}");
+    expect(document.activeElement).toBe(button("One"));
+    user.keyboard("{ArrowLeft}{ArrowLeft}");
+    expect(document.activeElement).toBe(button("Three"));
+  });
+
+  test("the arrows inside a panel are the panel's own", () => {
+    render(() => (
+      <DisclosureGroup defaultExpandedKeys={["one"]}>
+        <DisclosureGroupItem id="one">
+          <DisclosureButton>One</DisclosureButton>
+          <DisclosurePanel>
+            <input aria-label="Notes" />
+          </DisclosurePanel>
+        </DisclosureGroupItem>
+        <DisclosureGroupItem id="two">
+          <DisclosureButton>Two</DisclosureButton>
+          <DisclosurePanel>Second</DisclosurePanel>
+        </DisclosureGroupItem>
+      </DisclosureGroup>
+    ));
+    const field = screen.getByRole("textbox", { name: "Notes" });
+    field.focus();
+    user.keyboard("{ArrowDown}");
+    expect(document.activeElement).toBe(field);
+  });
+
+  test("has no ARIA violations", () => {
+    const { container } = render(() => <Written defaultExpandedKeys={["two"]} />);
+    expectNoAriaViolations(container);
   });
 });

@@ -12,7 +12,7 @@
  * router that is listening sees the navigation it expects.
  */
 
-import { context, getContext } from "@barqjs/core";
+import { createContext, getContext } from "@barqjs/core";
 import { focusWithoutScrolling } from "../dom.ts";
 import { isFirefox, isIPad, isMac, isWebKit } from "../platform.ts";
 import { setOpeningLink } from "./flags.ts";
@@ -38,7 +38,7 @@ const NATIVE_ROUTER: Router = {
 };
 
 /** The router every link in the tree navigates through. */
-export const RouterContext = context<Router>(NATIVE_ROUTER);
+export const RouterContext = createContext<Router>(NATIVE_ROUTER);
 
 /** The router in scope, or the browser's own. */
 export function router(): Router {
@@ -171,9 +171,11 @@ export function syntheticLinkProps(props: {
 /**
  * Hand a click on a link to the client router, when there is one and the
  * modifiers allow it.
+ *
+ * `active` is the {@link router} the link read while it was being set up: a
+ * click has no owner to find one from.
  */
-export function handleLinkClick(event: MouseEvent, href: string | undefined): void {
-  const active = router();
+export function handleLinkClick(event: MouseEvent, href: string | undefined, active: Router): void {
   const target = event.currentTarget;
   if (
     active.isNative ||

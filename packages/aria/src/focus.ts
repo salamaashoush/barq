@@ -15,14 +15,14 @@
 
 import {
   type Accessor,
-  context,
-  effect,
+  createContext,
+  createTrackedEffect,
   getContext,
   getOwner,
   install,
   isServer,
-  onMount,
-  signal,
+  onSettled,
+  createSignal,
 } from "@barqjs/core";
 import { tryCleanup } from "@barqjs/primitives/utils";
 import {
@@ -300,7 +300,9 @@ class ScopeNodes {
   #start: Element | null = null;
   #end: Element | null = null;
 
-  #version = signal(0);
+  // The sentinels arrive through refs, which run while the component that
+  // holds them is still being built.
+  #version = createSignal(0, { ownedWrite: true });
   #observer: MutationObserver | null = null;
 
   /**
@@ -347,19 +349,19 @@ class ScopeNodes {
   }
 
   read(): Element[] | null {
-    this.#version();
+    this.#version[0]();
     return this.current;
   }
 
   bump(): void {
-    this.#version.update((n) => n + 1);
+    this.#version[1]((n) => n + 1);
   }
 
   /**
    * Re-read when the sentinels' parent gains or loses children.
    *
    * The sentinels may have no parent yet. A PORTALLED scope's content is built
-   * on a microtask after its marker connects, so `onMount` can run first — and
+   * on a microtask after its marker connects, so `onSettled` can run first — and
    * a scope that gave up here never observed anything, never re-read itself,
    * and stayed empty for its whole life. What that looked like: an overlay's
    * `autoFocus` did nothing, `Escape` did nothing, and focus was not contained,
@@ -602,7 +604,7 @@ interface FocusScopeContextValue {
   node: ScopeNode;
 }
 
-const FocusScopeContext = context<FocusScopeContextValue | null>(null);
+const FocusScopeContext = createContext<FocusScopeContextValue | null>(null);
 
 /** The manager for the nearest enclosing {@link focusScope}. */
 export function focusManager(): FocusManager | undefined {
@@ -828,7 +830,9 @@ export function focusScope(options: FocusScopeOptions = {}): FocusScopeResult {
    * A signal, because the effect below copies it onto the scope node and has
    * to run again when a scope that was created closed reopens.
    */
-  const restoreTo = signal<HTMLElement | SVGElement | null>(null);
+  const [restoreTo, setRestoreTo] = createSignal<HTMLElement | SVGElement | null>(null, {
+    ownedWrite: true,
+  });
 
   const stopEvent = (event: Event): void => event.stopPropagation();
 
@@ -869,13 +873,13 @@ export function focusScope(options: FocusScopeOptions = {}): FocusScopeResult {
   parentOf().add(node);
   scopeTree.register(node);
 
-  effect(() => {
+  createTrackedEffect(() => {
     node.contain = access(options.contain) === true;
   });
 
   const startRef = (element: Element | null): void => {
     if (element !== null && nodes.start === null) {
-      restoreTo.set(activeElement(ownerDocument(element)) as HTMLElement | SVGElement | null);
+      setRestoreTo(activeElement(ownerDocument(element)) as HTMLElement | SVGElement | null);
       const now = parentOf();
       if (now !== node.parent && now !== node) {
         node.parent?.remove(node);
@@ -891,12 +895,10 @@ export function focusScope(options: FocusScopeOptions = {}): FocusScopeResult {
 
   // The sentinels are siblings only once the fragment holding them has been
   // inserted, which is after the refs have run.
-  onMount(() => {
-    tryCleanup(nodes.watch());
-  });
+  onSettled(() => nodes.watch());
 
   // A restore inside a nested scope must not reach this one.
-  effect(() => {
+  createTrackedEffect(() => {
     const scope = nodes.read();
     if (scope === null) return undefined;
     for (const element of scope) element.addEventListener(RESTORE_EVENT, stopEvent);
@@ -943,7 +945,7 @@ function containFocus(nodes: ScopeNodes, options: FocusScopeOptions): void {
   let focusedNode: Element | undefined;
   let frame: number | undefined;
 
-  effect(() => {
+  createTrackedEffect(() => {
     const scope = nodes.read();
     if (access(options.contain) !== true) {
       if (frame !== undefined) {
@@ -1069,7 +1071,7 @@ function containFocus(nodes: ScopeNodes, options: FocusScopeOptions): void {
 }
 
 function trackActiveScope(nodes: ScopeNodes, options: FocusScopeOptions): void {
-  effect(() => {
+  createTrackedEffect(() => {
     const scope = nodes.read();
     // Containment and restoration each track this themselves.
     if (access(options.restoreFocus) === true || access(options.contain) === true) return undefined;
@@ -1094,13 +1096,13 @@ function trackActiveScope(nodes: ScopeNodes, options: FocusScopeOptions): void {
 }
 
 function autoFocusOnMount(nodes: ScopeNodes, options: FocusScopeOptions): void {
-  const pending = signal(access(options.autoFocus) === true);
+  const [pending, setPending] = createSignal(access(options.autoFocus) === true);
 
-  effect(() => {
+  createTrackedEffect(() => {
     const scope = nodes.read();
     if (!pending()) return;
     if (scope === null || scope.length === 0) return;
-    pending.set(false);
+    setPending(false);
 
     activeScope = nodes;
     const doc = ownerDocument(scope[0]);
@@ -1115,7 +1117,7 @@ function restoreFocusOnDispose(
 ): void {
   // A restoring scope that is not containing still has to know when it becomes
   // active, so it can decide whether the restore is its to perform.
-  effect(() => {
+  createTrackedEffect(() => {
     const scope = nodes.read();
     if (access(options.restoreFocus) !== true || access(options.contain) === true) return undefined;
 
@@ -1142,7 +1144,7 @@ function restoreFocusOnDispose(
   // Tabbing out of a restoring scope goes to what follows the element focus
   // came from, not to what follows the scope in the DOM. For an overlay in a
   // portal at the end of the body those are very different places.
-  effect(() => {
+  createTrackedEffect(() => {
     if (access(options.restoreFocus) !== true || access(options.contain) === true) return undefined;
 
     const doc = ownerDocument(nodes.current?.[0]);
@@ -1201,7 +1203,7 @@ function restoreFocusOnDispose(
     return () => doc.removeEventListener("keydown", onKeyDown as EventListener, true);
   });
 
-  effect(() => {
+  createTrackedEffect(() => {
     if (access(options.restoreFocus) !== true) return;
 
     const scopeNode = scopeTree.get(nodes);

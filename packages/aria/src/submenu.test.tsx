@@ -269,3 +269,105 @@ describe("a submenu trigger", () => {
     expectNoAriaViolations(document.body);
   });
 });
+
+/** The same tree with every item written as a child. */
+describe("a submenu written as children", () => {
+  function Written(props: Incoming<{ onAction?: (key: Key) => void }>) {
+    return (
+      <MenuTrigger>
+        <MenuButton>Edit</MenuButton>
+        <Menu aria-label="Actions" onAction={props.onAction?.()}>
+          <MenuItem id="cut">Cut</MenuItem>
+          <SubmenuTrigger>
+            <MenuItem>Share</MenuItem>
+            <Menu onAction={props.onAction?.()}>
+              <MenuItem id="email">Email</MenuItem>
+              <MenuItem id="messages">Messages</MenuItem>
+            </Menu>
+          </SubmenuTrigger>
+          <SubmenuTrigger>
+            <MenuItem>More</MenuItem>
+            <Menu>
+              <MenuItem id="print">Print</MenuItem>
+            </Menu>
+          </SubmenuTrigger>
+          <MenuItem id="delete">Delete</MenuItem>
+        </Menu>
+      </MenuTrigger>
+    );
+  }
+
+  test("the trigger item says what it opens, and the others say none of it", async () => {
+    render(() => <Written />);
+    await open();
+
+    expect(item("Share").getAttribute("aria-haspopup")).toBe("menu");
+    expect(item("Share").getAttribute("aria-expanded")).toBe("false");
+    expect(item("Share").getAttribute("data-state")).toBe("closed");
+    expect(item("Cut").hasAttribute("aria-haspopup")).toBe(false);
+    expect(screen.getAllByRole("menuitem").map((node) => node.textContent)).toEqual([
+      "Cut",
+      "Share",
+      "More",
+      "Delete",
+    ]);
+  });
+
+  test("ArrowRight opens it on its first item and names it from the trigger", async () => {
+    render(() => <Written />);
+    await open();
+    await openSubmenu("Share");
+
+    expect(item("Share").getAttribute("aria-expanded")).toBe("true");
+    expect(item("Share").getAttribute("data-state")).toBe("open");
+    const submenu = screen.getByRole("menu", { name: "Share" });
+    expect(within(submenu).getAllByRole("menuitem")).toHaveLength(2);
+    expect(document.activeElement?.textContent).toBe("Email");
+    // The submenu's own items are not triggers, though they sit inside one.
+    expect(item("Email").hasAttribute("aria-haspopup")).toBe(false);
+  });
+
+  test("ArrowLeft closes it and puts focus back on the trigger", async () => {
+    render(() => <Written />);
+    await open();
+    await openSubmenu("Share");
+
+    user.key("ArrowLeft");
+    flush();
+    await frame();
+
+    expect(screen.queryByRole("menu", { name: "Share" })).toBeNull();
+    expect(document.activeElement).toBe(item("Share"));
+  });
+
+  test("opening the second closes the first", async () => {
+    render(() => <Written />);
+    await open();
+    await openSubmenu("Share");
+    await openSubmenu("More");
+
+    expect(screen.queryByRole("menu", { name: "Share" })).toBeNull();
+    expect(screen.getByRole("menu", { name: "More" })).not.toBeNull();
+  });
+
+  test("choosing inside the submenu reports its key and closes the whole tree", async () => {
+    const actions: Key[] = [];
+    render(() => <Written onAction={(key) => actions.push(key)} />);
+    await open();
+    await openSubmenu("Share");
+
+    user.click(item("Messages"));
+    flush();
+    await tick();
+
+    expect(actions).toEqual(["messages"]);
+    expect(screen.queryByRole("menu")).toBeNull();
+  });
+
+  test("the whole written tree passes the aria rules", async () => {
+    render(() => <Written />);
+    await open();
+    await openSubmenu("Share");
+    expectNoAriaViolations(document.body);
+  });
+});

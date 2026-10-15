@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, signal } from "@barqjs/core";
+import { flush, createSignal } from "@barqjs/core";
 import {
   accessibleDescription,
   accessibleName,
@@ -132,6 +132,17 @@ describe("RadioGroup", () => {
 });
 
 describe("Link", () => {
+  test("a click handler hears one click per click", async () => {
+    let clicks = 0;
+    render(() => (
+      <Link href="#about" onClick={() => clicks++}>
+        About
+      </Link>
+    ));
+    await user.click(screen.getByRole("link", { name: "About" }));
+    expect(clicks).toBe(1);
+  });
+
   test("is an anchor with an href", () => {
     render(() => <Link href="/about">About</Link>);
     const link = screen.getByRole("link", { name: "About" });
@@ -180,6 +191,16 @@ describe("Separator", () => {
   test("a vertical one has to say so", () => {
     render(() => <Separator orientation="vertical" data-testid="sep" />);
     expect(screen.getByTestId("sep").getAttribute("aria-orientation")).toBe("vertical");
+  });
+
+  test("a decorative one is drawn and not announced", () => {
+    render(() => <Separator decorative orientation="vertical" data-testid="sep" />);
+    const sep = screen.getByTestId("sep");
+    expect(sep.getAttribute("role")).toBe("none");
+    expect(sep.hasAttribute("aria-orientation")).toBe(false);
+    // The stylesheet still needs to know which way to draw it.
+    expect(sep.getAttribute("data-orientation")).toBe("vertical");
+    expect(screen.queryByRole("separator")).toBeNull();
   });
 });
 
@@ -257,7 +278,7 @@ describe("TextField", () => {
   });
 
   test("controlled: the prop owns the value", () => {
-    const value = signal("start");
+    const [value, setValue] = createSignal("start");
     render(() => <TextField label="Name" value={value()} />);
     const input = screen.getByRole("textbox") as HTMLInputElement;
 
@@ -266,7 +287,7 @@ describe("TextField", () => {
     user.type(input, "x");
     expect(input.value).toBe("start");
 
-    value.set("next");
+    setValue("next");
     flush();
     expect(input.value).toBe("next");
   });

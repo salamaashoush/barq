@@ -22,7 +22,7 @@
  * ```
  */
 
-import { type Accessor, computed, signal } from "@barqjs/core";
+import { type Accessor, createMemo, createRenderEffect, createSignal } from "@barqjs/core";
 import { access, callback, controllable, type MaybeAccessor } from "./utils.ts";
 
 /** What identifies an item. */
@@ -350,11 +350,29 @@ export function multipleSelectionState(
   // Roving focus is where the machine IS, not what it intends: a key handler
   // moves it and the very next statement of the same gesture asks where it
   // landed. A staged write would answer with the position before the move, so
-  // these three land at once and only the rendered view waits for the flush.
-  const ROVING = { immediate: true } as const;
-  const isFocused = signal(false, ROVING);
-  const focusedKey = signal<Key | null>(null, ROVING);
-  const childFocusStrategy = signal<FocusStrategy | null>(null, ROVING);
+  // each of the three keeps the value it was last given: a read subscribes to
+  // the signal and answers from that, and only the rendered view waits for the
+  // flush.
+  let focusedNow = false;
+  let focusedKeyNow: Key | null = null;
+  let childFocusStrategyNow: FocusStrategy | null = null;
+  const [trackFocused, publishFocused] = createSignal(false);
+  const [trackFocusedKey, publishFocusedKey] = createSignal<Key | null>(null);
+  const [trackChildFocusStrategy, publishChildFocusStrategy] = createSignal<FocusStrategy | null>(
+    null,
+  );
+  const isFocused = (): boolean => {
+    trackFocused();
+    return focusedNow;
+  };
+  const focusedKey = (): Key | null => {
+    trackFocusedKey();
+    return focusedKeyNow;
+  };
+  const childFocusStrategy = (): FocusStrategy | null => {
+    trackChildFocusStrategy();
+    return childFocusStrategyNow;
+  };
 
   const [selectedKeys, setSelectedKeys] = controllable<SelectionValue>(
     () => toSelection(access(options.selectedKeys)),
@@ -365,9 +383,9 @@ export function multipleSelectionState(
   // The behaviour can be changed at runtime: a long press on touch enters
   // selection mode, which turns a `replace` list into a `toggle` one until the
   // selection empties again.
-  const behaviorOverride = signal<SelectionBehavior | null>(null);
+  const [behaviorOverride, setBehaviorOverride] = createSignal<SelectionBehavior | null>(null);
 
-  const selectionBehavior = computed<SelectionBehavior>(() => {
+  const selectionBehavior = createMemo<SelectionBehavior>(() => {
     const declared = access(options.selectionBehavior) ?? "toggle";
     const override = behaviorOverride();
     if (override === null) return declared;
@@ -384,7 +402,7 @@ export function multipleSelectionState(
     return override;
   });
 
-  const disabledKeys = computed(() => {
+  const disabledKeys = createMemo(() => {
     const declared = access(options.disabledKeys);
     return declared === undefined ? new Set<Key>() : new Set<Key>(declared);
   });
@@ -392,7 +410,7 @@ export function multipleSelectionState(
   return {
     selectionMode: () => access(options.selectionMode) ?? "none",
     selectionBehavior,
-    setSelectionBehavior: (behavior) => behaviorOverride.set(behavior),
+    setSelectionBehavior: (behavior) => setBehaviorOverride(behavior),
     disallowEmptySelection: () => access(options.disallowEmptySelection) === true,
     selectedKeys,
     setSelectedKeys(keys) {
@@ -407,12 +425,17 @@ export function multipleSelectionState(
     disabledKeys,
     disabledBehavior: () => access(options.disabledBehavior) ?? "all",
     isFocused,
-    setFocused: (focused) => isFocused.set(focused),
+    setFocused: (focused) => {
+      focusedNow = focused;
+      publishFocused(focused);
+    },
     focusedKey,
     childFocusStrategy,
     setFocusedKey(key, child = "first") {
-      focusedKey.set(key);
-      childFocusStrategy.set(child);
+      focusedKeyNow = key;
+      childFocusStrategyNow = child;
+      publishFocusedKey(key);
+      publishChildFocusStrategy(child);
     },
   };
 }
@@ -836,26 +859,32 @@ export interface ListState<T> {
 export function listState<T>(options: ListStateOptions<T>): ListState<T> {
   const selection = multipleSelectionState(options);
 
-  const collection = computed(() => {
+  const collection = createMemo(() => {
     const items = access(options.items) ?? [];
     const built = buildCollection(items, options);
     if (options.filter === undefined) return built;
     return new ListCollection(options.filter(built));
   });
 
-  const selectionManager = computed(
+  const selectionManager = createMemo(
     () =>
       new SelectionManager(collection() as Collection<unknown>, selection, {
         layoutDelegate: options.layoutDelegate,
       }),
   );
 
+  // The search reads, so it is the compute; moving focus writes, so it is the
+  // apply. In the render phase, so the repaired key is in place before any
+  // effect that moves DOM focus to it runs.
   let previous: ListCollection<T> | null = null;
-  const repaired = computed(() => {
-    const current = collection();
-    const focused = selection.focusedKey();
+  createRenderEffect(
+    (): { current: ListCollection<T>; repair: boolean; next: Key | null } => {
+      const current = collection();
+      const focused = selection.focusedKey();
+      if (focused === null || current.getItem(focused) !== null || previous === null) {
+        return { current, repair: false, next: null };
+      }
 
-    if (focused !== null && current.getItem(focused) === null && previous !== null) {
       const manager = selectionManager();
       let next: Key | null = null;
 
@@ -876,15 +905,16 @@ export function listState<T>(options: ListStateOptions<T>): ListState<T> {
         }
       }
 
-      selection.setFocusedKey(next);
-    }
-
-    previous = current;
-    return current;
-  });
+      return { current, repair: true, next };
+    },
+    ({ current, repair, next }) => {
+      if (repair) selection.setFocusedKey(next);
+      previous = current;
+    },
+  );
 
   return {
-    collection: repaired,
+    collection,
     selectionManager,
     disabledKeys: selection.disabledKeys,
   };

@@ -17,7 +17,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { flush, signal, type Child, type Incoming } from "@barqjs/core";
+import { flush, createSignal, type Child, type Incoming } from "@barqjs/core";
 import { render, screen } from "@barqjs/testing";
 
 function Box(props: Incoming<{ children?: Child }>) {
@@ -26,16 +26,16 @@ function Box(props: Incoming<{ children?: Child }>) {
 
 describe("a reactive read among a component's children", () => {
   test("moves when it is the only child", () => {
-    const on = signal(false);
+    const [on, setOn] = createSignal(false);
     render(() => <Box>{on() ? "yes" : "no"}</Box>);
     expect(screen.getByTestId("box").textContent).toBe("no");
-    on.set(true);
+    setOn(true);
     flush();
     expect(screen.getByTestId("box").textContent).toBe("yes");
   });
 
   test("moves beside another reactive read", () => {
-    const on = signal(false);
+    const [on, setOn] = createSignal(false);
     render(() => (
       <Box>
         {on() ? "yes" : "no"}
@@ -43,14 +43,14 @@ describe("a reactive read among a component's children", () => {
       </Box>
     ));
     expect(screen.getByTestId("box").textContent).toBe("no?");
-    on.set(true);
+    setOn(true);
     flush();
     expect(screen.getByTestId("box").textContent).toBe("yes!");
   });
 
   test("moves beside a plain element", () => {
     // The common shape, and the one that was broken: an icon beside a label.
-    const on = signal(false);
+    const [on, setOn] = createSignal(false);
     render(() => (
       <Box>
         <i data-testid="icon" />
@@ -58,14 +58,14 @@ describe("a reactive read among a component's children", () => {
       </Box>
     ));
     expect(screen.getByTestId("box").textContent).toBe("no");
-    on.set(true);
+    setOn(true);
     flush();
     expect(screen.getByTestId("box").textContent).toBe("yes");
     expect(screen.queryByTestId("icon"), "the element beside it was dropped").not.toBeNull();
   });
 
   test("moves beside a choice between two elements", () => {
-    const on = signal(false);
+    const [on, setOn] = createSignal(false);
     render(() => (
       <Box>
         {on() ? <i data-testid="yes" /> : <i data-testid="no" />}
@@ -73,7 +73,7 @@ describe("a reactive read among a component's children", () => {
       </Box>
     ));
     expect(screen.getByTestId("box").textContent).toBe("N");
-    on.set(true);
+    setOn(true);
     flush();
     expect(screen.getByTestId("box").textContent).toBe("Y");
   });
@@ -81,17 +81,17 @@ describe("a reactive read among a component's children", () => {
 
 describe("a choice between two elements among children", () => {
   test("swaps when it is the only child", () => {
-    const on = signal(false);
+    const [on, setOn] = createSignal(false);
     render(() => <Box>{on() ? <i data-testid="yes" /> : <i data-testid="no" />}</Box>);
     expect(screen.queryByTestId("no")).not.toBeNull();
-    on.set(true);
+    setOn(true);
     flush();
     expect(screen.queryByTestId("yes"), "the true branch never arrived").not.toBeNull();
     expect(screen.queryByTestId("no"), "the false branch was left behind").toBeNull();
   });
 
   test("swaps beside another child", () => {
-    const on = signal(false);
+    const [on, setOn] = createSignal(false);
     render(() => (
       <Box>
         {on() ? <i data-testid="yes" /> : <i data-testid="no" />}
@@ -99,7 +99,7 @@ describe("a choice between two elements among children", () => {
       </Box>
     ));
     expect(screen.queryByTestId("no")).not.toBeNull();
-    on.set(true);
+    setOn(true);
     flush();
     expect(screen.queryByTestId("yes"), "the true branch never arrived").not.toBeNull();
     expect(screen.queryByTestId("no"), "the false branch was left behind").toBeNull();
@@ -115,21 +115,21 @@ describe("a choice between two elements among children", () => {
     function B() {
       return <i data-testid="b" />;
     }
-    const on = signal(false);
+    const [on, setOn] = createSignal(false);
     render(() => <div data-testid="host">{on() ? <A /> : <B />}</div>);
     expect(screen.queryByTestId("b")).not.toBeNull();
-    on.set(true);
+    setOn(true);
     flush();
     expect(screen.queryByTestId("a"), "the true branch never arrived").not.toBeNull();
     expect(screen.queryByTestId("b"), "the false branch was left behind").toBeNull();
   });
 
   test("swaps inside an intrinsic element, which always worked", () => {
-    const on = signal(false);
+    const [on, setOn] = createSignal(false);
     render(() => (
       <div data-testid="host">{on() ? <i data-testid="yes" /> : <i data-testid="no" />}</div>
     ));
-    on.set(true);
+    setOn(true);
     flush();
     expect(screen.queryByTestId("yes")).not.toBeNull();
     expect(screen.queryByTestId("no")).toBeNull();

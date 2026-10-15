@@ -13,7 +13,7 @@
  * different element than the first.
  */
 
-import { type Accessor, effect, isServer, signal } from "@barqjs/core";
+import { type Accessor, createTrackedEffect, isServer, createSignal } from "@barqjs/core";
 import { tryCleanup } from "@barqjs/primitives/utils";
 import { contains, ownerDocument, targetElement } from "../dom.ts";
 import { access, type DOMProps, type MaybeAccessor } from "../utils.ts";
@@ -91,7 +91,7 @@ function trackEmulatedMouseEvents(): () => void {
  * ```
  */
 export function hover(options: HoverOptions): HoverResult {
-  const hovered = signal(false);
+  const [hovered, setHovered] = createSignal(false);
   const listeners = globalListeners();
 
   const state = {
@@ -121,7 +121,7 @@ export function hover(options: HoverOptions): HoverResult {
       pointerType: pointerType as "mouse",
     });
     options.onHoverChange?.(false);
-    hovered.set(false);
+    setHovered(false);
   };
 
   const triggerHoverStart = (event: Event, pointerType: PointerType): void => {
@@ -165,7 +165,7 @@ export function hover(options: HoverOptions): HoverResult {
       pointerType: pointerType as "mouse",
     });
     options.onHoverChange?.(true);
-    hovered.set(true);
+    setHovered(true);
   };
 
   const hoverProps: DOMProps = {};
@@ -204,7 +204,7 @@ export function hover(options: HoverOptions): HoverResult {
 
   // Disabling mid-hover has to end it, or a tooltip stays open over a control
   // that no longer responds.
-  effect(() => {
+  createTrackedEffect(() => {
     if (isDisabled()) triggerHoverEnd(state.target, state.pointerType);
   });
 

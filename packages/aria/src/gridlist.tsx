@@ -26,7 +26,7 @@ import {
   type Accessor,
   type Child,
   For,
-  context,
+  createContext,
   getContext,
   getOwner,
   type Incoming,
@@ -352,8 +352,8 @@ interface GridListContextValue {
   onAction: Accessor<((key: Key) => void) | undefined>;
 }
 
-const GridListContext = context<GridListContextValue | null>(null);
-const RowNodeContext = context<Node<unknown> | null>(null);
+const GridListContext = createContext<GridListContextValue | null>(null);
+const RowNodeContext = createContext<Node<unknown> | null>(null);
 
 export function useGridList(): GridListContextValue {
   const value = getContext(GridListContext);
@@ -380,7 +380,7 @@ export function GridListProvider(
     GridListContext,
     () => props.value(),
     () => props.children as unknown,
-  ) as never;
+  );
 }
 
 /** The collection node the row being built is for. */
@@ -467,7 +467,7 @@ export function GridList<T>(props: Incoming<GridListComponentProps<T>>) {
     },
   );
 
-  const render = props.children as unknown as (item: T) => Child;
+  const render = props.children;
 
   /** The whole collection, or the window of it the virtualiser says is on screen. */
   const rows = (): Node<T>[] => {

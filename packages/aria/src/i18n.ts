@@ -17,12 +17,12 @@
 
 import {
   type Accessor,
-  context,
+  createContext,
   getContext,
   getOwner,
   install,
   isServer,
-  signal,
+  createSignal,
 } from "@barqjs/core";
 import { tryCleanup } from "@barqjs/primitives/utils";
 import { access, type MaybeAccessor } from "./utils.ts";
@@ -112,12 +112,14 @@ export function defaultLocale(): Locale {
   return { locale: tag, direction: isRTL(tag) ? "rtl" : "ltr" };
 }
 
-const browserLocale = signal<Locale>(defaultLocale());
+const [browserLocale, setBrowserLocale] = createSignal<Locale>(defaultLocale());
 let languageListeners = 0;
 
 function watchLanguage(): () => void {
   if (isServer || typeof window === "undefined") return () => {};
-  const update = (): void => browserLocale.set(defaultLocale());
+  const update = (): void => {
+    setBrowserLocale(defaultLocale());
+  };
   if (languageListeners === 0) window.addEventListener("languagechange", update);
   languageListeners++;
   return () => {
@@ -127,7 +129,21 @@ function watchLanguage(): () => void {
 }
 
 /** The locale every widget below reads. */
-export const LocaleContext = context<Accessor<Locale> | null>(null);
+export const LocaleContext = createContext<Accessor<Locale> | null>(null);
+
+export type ReadingDirection = "ltr" | "rtl";
+
+/**
+ * A direction declared for a subtree on its own.
+ *
+ * Apart from the locale because the two are not the same decision: an English
+ * page mirrored to check a layout, or a left-to-right code sample inside an
+ * Arabic article, changes which way things run and not what language they are
+ * in. Every widget reads the direction through {@link useLocale}, so one
+ * declaration reaches the arrow keys, the submenu side and the slider's minimum
+ * end alike.
+ */
+export const DirectionContext = createContext<Accessor<ReadingDirection> | null>(null);
 
 /**
  * The locale in scope: the one an ancestor declared, or the browser's.
@@ -139,10 +155,21 @@ export const LocaleContext = context<Accessor<Locale> | null>(null);
  */
 export function useLocale(): Accessor<Locale> {
   const provided = getContext(LocaleContext);
-  if (provided !== null && provided !== undefined) return provided;
+  const declared = getContext(DirectionContext);
+  let base: Accessor<Locale>;
+  if (provided !== null && provided !== undefined) {
+    base = provided;
+  } else {
+    tryCleanup(watchLanguage());
+    base = browserLocale;
+  }
+  if (declared === null || declared === undefined) return base;
 
-  tryCleanup(watchLanguage());
-  return browserLocale;
+  return (): Locale => {
+    const locale = base();
+    const direction = declared();
+    return locale.direction === direction ? locale : { locale: locale.locale, direction };
+  };
 }
 
 /**
@@ -167,9 +194,63 @@ export function provideLocale(tag: MaybeAccessor<string>): {
   };
 
   const owner = getOwner();
-  if (owner !== null) install(owner, LocaleContext, () => value);
+  if (owner !== null) {
+    install(owner, LocaleContext, () => value);
+    // The nearest declaration wins, so a locale declared under a direction
+    // has to replace it rather than be overridden by it.
+    install(owner, DirectionContext, () => () => value().direction);
+  }
 
   return { lang: () => value().locale, dir: () => value().direction };
+}
+
+/**
+ * The direction in scope: the one an ancestor declared, or the locale's.
+ *
+ * ```tsx
+ * const direction = useDirection();
+ * const back = () => (direction() === "rtl" ? "ArrowRight" : "ArrowLeft");
+ * ```
+ */
+export function useDirection(): Accessor<ReadingDirection> {
+  const locale = useLocale();
+  return () => locale().direction;
+}
+
+/**
+ * The direction declared for this subtree, or `undefined` where none was.
+ *
+ * For an element drawn outside the one that carries `dir`: a dialog or a menu
+ * is appended to the body, and nothing there says which way the text runs. It
+ * writes this as its own `dir`. Where nothing was declared it writes none,
+ * because the page's own `dir` is then the only statement there is and the
+ * browser's language must not be read over it.
+ */
+export function declaredDirection(): Accessor<ReadingDirection | undefined> {
+  const declared = getContext(DirectionContext);
+  return () => (declared === null || declared === undefined ? undefined : declared());
+}
+
+/**
+ * Declare the direction for a subtree, leaving the locale as it is.
+ *
+ * Returns the `dir` for the element that wraps it, which is what makes the
+ * engine lay the text out that way too.
+ *
+ * ```tsx
+ * const directionProps = provideDirection(() => "rtl");
+ * <div {...directionProps}>{props.children}</div>
+ * ```
+ */
+export function provideDirection(direction: MaybeAccessor<ReadingDirection>): {
+  dir: Accessor<ReadingDirection>;
+} {
+  const value = (): ReadingDirection => access(direction);
+
+  const owner = getOwner();
+  if (owner !== null) install(owner, DirectionContext, () => value);
+
+  return { dir: value };
 }
 
 // ---------------------------------------------------------------------------
@@ -552,9 +633,16 @@ const dateFormatters = memoised(
     new Intl.DateTimeFormat(locale, options),
 );
 
-/** An `Intl.DateTimeFormat` for the locale in scope, cached. */
-export function dateFormatter(options?: Intl.DateTimeFormatOptions): Accessor<Intl.DateTimeFormat> {
-  const locale = useLocale();
+/**
+ * An `Intl.DateTimeFormat` for the locale in scope, cached.
+ *
+ * The locale in scope can only be found while there is an owner. A caller that
+ * formats later, from an event handler, passes the one it read during setup.
+ */
+export function dateFormatter(
+  options?: Intl.DateTimeFormatOptions,
+  locale: Accessor<Locale> = useLocale(),
+): Accessor<Intl.DateTimeFormat> {
   return () => dateFormatters(locale().locale, options);
 }
 

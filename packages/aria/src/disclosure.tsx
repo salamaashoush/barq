@@ -22,8 +22,8 @@ import {
   type Accessor,
   type Child,
   For,
-  context,
-  effect,
+  createContext,
+  createTrackedEffect,
   getContext,
   getOwner,
   type Incoming,
@@ -37,6 +37,7 @@ import type { ItemAccessors, Key, Node } from "./collections.ts";
 import { buildCollection, type ListCollection } from "./collections.ts";
 import { exitDuration } from "./presence.ts";
 import { focusRing } from "./focus.ts";
+import { useLocale } from "./i18n.ts";
 import { hover } from "./interactions/hover.ts";
 import type { ElementRef, PressEvent } from "./interactions/press.ts";
 import {
@@ -91,6 +92,12 @@ export interface DisclosureGroupStateOptions {
   defaultExpandedKeys?: MaybeAccessor<Iterable<Key> | undefined>;
   /** Let more than one panel be open at once. @default false */
   allowsMultiple?: MaybeAccessor<boolean | undefined>;
+  /**
+   * Whether the one open section may be shut, leaving none open. Read only
+   * without `allowsMultiple`, where every section closes on its own anyway.
+   * @default true
+   */
+  isCollapsible?: MaybeAccessor<boolean | undefined>;
   isDisabled?: MaybeAccessor<boolean | undefined>;
   onExpandedChange?: (keys: Set<Key>) => void;
 }
@@ -98,6 +105,8 @@ export interface DisclosureGroupStateOptions {
 export interface DisclosureGroupState {
   expandedKeys: Accessor<Set<Key>>;
   allowsMultiple: Accessor<boolean>;
+  /** Whether pressing this open section would do nothing. */
+  isLocked(key: Key): boolean;
   isDisabled: Accessor<boolean>;
   toggleKey(key: Key): void;
   setExpandedKeys(keys: Set<Key>): void;
@@ -117,15 +126,19 @@ export function disclosureGroupState(
   );
 
   const allowsMultiple = (): boolean => access(options.allowsMultiple) === true;
+  const isLocked = (key: Key): boolean =>
+    !allowsMultiple() && access(options.isCollapsible) === false && expandedKeys().has(key);
 
   return {
     expandedKeys,
     allowsMultiple,
+    isLocked,
     isDisabled: () => access(options.isDisabled) === true,
     setExpandedKeys,
     toggleKey: (key) => {
       const open = expandedKeys();
       if (open.has(key)) {
+        if (isLocked(key)) return;
         const next = new Set(open);
         next.delete(key);
         setExpandedKeys(next);
@@ -167,7 +180,7 @@ export function disclosure(options: DisclosureOptions, state: DisclosureState): 
      * is visible while the state still says it is closed, and the next toggle
      * closes nothing.
      */
-    effect(() => {
+    createTrackedEffect(() => {
       const panel = access(options.panelRef) as HTMLElement | null;
       if (panel === null) return undefined;
       const onBeforeMatch = (): void => {
@@ -192,7 +205,7 @@ export function disclosure(options: DisclosureOptions, state: DisclosureState): 
      * nothing flashes open on the first render.
      */
     let hasOpened = false;
-    effect(() => {
+    createTrackedEffect(() => {
       const panel = access(options.panelRef) as HTMLElement | null;
       if (panel === null) return undefined;
 
@@ -251,9 +264,14 @@ interface DisclosureContextValue {
   buttonProps: DOMProps;
   panelProps: DOMProps;
   panelRef: ReturnType<typeof makeRef<HTMLDivElement>>;
+  isDisabled: Accessor<boolean>;
+  /** Open, and not allowed to shut: the last open section of a group that may not be empty. */
+  isLocked?: Accessor<boolean>;
+  /** The group this section belongs to. Absent for a lone disclosure. */
+  group?: DisclosureGroupContextValue;
 }
 
-const DisclosureContext = context<DisclosureContextValue | null>(null);
+const DisclosureContext = createContext<DisclosureContextValue | null>(null);
 
 export function useDisclosure(): DisclosureContextValue {
   const value = getContext(DisclosureContext);
@@ -299,12 +317,18 @@ export function Disclosure(props: Incoming<DisclosureComponentProps>) {
     state,
   );
 
-  const value: DisclosureContextValue = { state, buttonProps, panelProps, panelRef };
+  const value: DisclosureContextValue = {
+    state,
+    buttonProps,
+    panelProps,
+    panelRef,
+    isDisabled: () => props.isDisabled?.() === true,
+  };
   return provide(
     DisclosureContext,
     () => value,
     () => props.children as unknown,
-  ) as never;
+  );
 }
 
 export interface DisclosureButtonComponentProps extends StyleProps {
@@ -323,26 +347,37 @@ export function DisclosureButton(props: Incoming<DisclosureButtonComponentProps>
   );
   const { hoverProps, isHovered } = hover({ isDisabled: () => props.isDisabled?.() });
   const { focusProps, isFocusVisible } = focusRing();
+  // `button()` delivers `onClick` itself; bound on the element as well, a
+  // caller's handler runs twice for every mouse click.
+  const { onClick: _, ...forwarded } = filterDOMProps(fromProps(props), { global: true });
 
   const elementProps = mergeProps(
     buttonProps,
     { id: value.buttonProps.id },
     hoverProps,
     focusProps,
-    filterDOMProps(fromProps(props), { global: true }),
+    forwarded,
     styleProps(props),
     {
+      "aria-disabled": () => value.isLocked?.() === true || undefined,
       "data-expanded": value.state.isExpanded,
+      "data-state": () => (value.state.isExpanded() ? "open" : "closed"),
+      "data-orientation": () => value.group?.orientation(),
       "data-pressed": isPressed,
       "data-hovered": isHovered,
       "data-focus-visible": isFocusVisible,
-      "data-disabled": () => props.isDisabled?.() === true,
+      "data-disabled": () => props.isDisabled?.() === true || value.isDisabled(),
       "data-testid": () => props["data-testid"]?.(),
     },
   );
 
+  const group = value.group;
+  const enlist = (element: HTMLButtonElement | null): void => {
+    if (element !== null && group !== undefined) headerGroups.set(element, group);
+  };
+
   return (
-    <button {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
+    <button {...elementProps} ref={mergeRefs(domRef.set, enlist, props.ref?.())}>
       {props.children}
     </button>
   );
@@ -362,10 +397,13 @@ export function DisclosurePanel(props: Incoming<DisclosurePanelComponentProps>) 
 
   const elementProps = mergeProps(
     value.panelProps,
-    filterDOMProps(fromProps(props), { global: true }),
+    filterDOMProps(fromProps(props), { global: true, labelable: true }),
     styleProps(props),
     {
       "data-expanded": value.state.isExpanded,
+      "data-state": () => (value.state.isExpanded() ? "open" : "closed"),
+      "data-orientation": () => value.group?.orientation(),
+      "data-disabled": value.isDisabled,
       "data-testid": () => props["data-testid"]?.(),
     },
   );
@@ -383,10 +421,20 @@ export function DisclosurePanel(props: Incoming<DisclosurePanelComponentProps>) 
 
 interface DisclosureGroupContextValue {
   state: DisclosureGroupState;
+  orientation: Accessor<"vertical" | "horizontal">;
 }
 
-const DisclosureGroupContext = context<DisclosureGroupContextValue | null>(null);
-const DisclosureNodeContext = context<Node<unknown> | null>(null);
+/**
+ * Which group each header button belongs to.
+ *
+ * By element rather than by a query, because an accordion inside another
+ * accordion's panel has headers that match any selector the outer one could
+ * write, and the arrow keys must not walk into them.
+ */
+const headerGroups = new WeakMap<Element, DisclosureGroupContextValue>();
+
+const DisclosureGroupContext = createContext<DisclosureGroupContextValue | null>(null);
+const DisclosureNodeContext = createContext<Node<unknown> | null>(null);
 
 export function useDisclosureGroup(): DisclosureGroupContextValue {
   const value = getContext(DisclosureGroupContext);
@@ -406,14 +454,23 @@ export function useDisclosureNode(): Node<unknown> {
 }
 
 export interface DisclosureGroupComponentProps<T> extends StyleProps, ItemAccessors<T> {
-  /** The sections, in order. */
-  items: Iterable<T>;
-  /** How one section renders. Return a `<DisclosureGroupItem>`. */
-  children: (item: T) => Child;
+  /** The sections, in order. Leave it out to write the sections as children. */
+  items?: Iterable<T>;
+  /**
+   * How one section renders, returning a `<DisclosureGroupItem>`. Without
+   * `items`, the sections themselves, each with an `id`.
+   */
+  children?: ((item: T) => Child) | Child;
   expandedKeys?: Iterable<Key>;
   defaultExpandedKeys?: Iterable<Key>;
   /** @default false */
   allowsMultiple?: boolean;
+  /** Whether the one open section may be shut. @default true */
+  isCollapsible?: boolean;
+  /** Which arrow keys move between the headers. @default "vertical" */
+  orientation?: "vertical" | "horizontal";
+  /** Overrides the direction in scope for the left and right arrows. */
+  dir?: "ltr" | "rtl";
   isDisabled?: boolean;
   ref?: RefTarget<HTMLDivElement>;
   onExpandedChange?: (keys: Set<Key>) => void;
@@ -432,6 +489,19 @@ export interface DisclosureGroupComponentProps<T> extends StyleProps, ItemAccess
  *   )}
  * </DisclosureGroup>
  * ```
+ *
+ * Or written out, each section naming itself:
+ *
+ * ```tsx
+ * <DisclosureGroup>
+ *   <DisclosureGroupItem id="billing">…</DisclosureGroupItem>
+ *   <DisclosureGroupItem id="shipping">…</DisclosureGroupItem>
+ * </DisclosureGroup>
+ * ```
+ *
+ * The arrow keys, Home and End move between the headers. The authoring
+ * practices call that optional; it is here because a long accordion is
+ * otherwise a Tab stop per section with nothing faster.
  */
 export function DisclosureGroup<T>(props: Incoming<DisclosureGroupComponentProps<T>>) {
   const options = fromProps(props as unknown as Incoming<Record<string, unknown>>);
@@ -440,19 +510,72 @@ export function DisclosureGroup<T>(props: Incoming<DisclosureGroupComponentProps
     onExpandedChange: (keys) => props.onExpandedChange?.()?.(keys),
   });
 
+  const items = props.items;
   const collection = (): ListCollection<T> =>
-    buildCollection(props.items(), props as unknown as ItemAccessors<T>);
+    buildCollection(items?.() ?? [], props as unknown as ItemAccessors<T>);
+
+  const locale = useLocale();
+  const orientation = (): "vertical" | "horizontal" => props.orientation?.() ?? "vertical";
+  const group: DisclosureGroupContextValue = { state, orientation };
 
   const owner = getOwner();
-  if (owner !== null) install(owner, DisclosureGroupContext, () => ({ state }));
+  if (owner !== null) install(owner, DisclosureGroupContext, () => group);
+
+  const onKeyDown = (event: KeyboardEvent): void => {
+    const root = event.currentTarget as Element | null;
+    const from = (event.target as Element | null)?.closest("button") ?? null;
+    if (root === null || from === null || headerGroups.get(from) !== group) return;
+
+    const rtl = (props.dir?.() ?? locale().direction) === "rtl";
+    const horizontal = orientation() === "horizontal";
+    const forward = horizontal ? (rtl ? "ArrowLeft" : "ArrowRight") : "ArrowDown";
+    const back = horizontal ? (rtl ? "ArrowRight" : "ArrowLeft") : "ArrowUp";
+    if (
+      event.key !== forward &&
+      event.key !== back &&
+      event.key !== "Home" &&
+      event.key !== "End"
+    ) {
+      return;
+    }
+
+    const headers = [...root.querySelectorAll<HTMLButtonElement>("button")].filter(
+      (candidate) => headerGroups.get(candidate) === group && !candidate.disabled,
+    );
+    const at = headers.indexOf(from);
+    if (at === -1) return;
+
+    let next = at;
+    if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = headers.length - 1;
+    else if (event.key === forward) next = (at + 1) % headers.length;
+    else next = (at - 1 + headers.length) % headers.length;
+
+    event.preventDefault();
+    headers[next]?.focus();
+  };
 
   const elementProps = mergeProps(
     filterDOMProps(fromProps(props), { global: true }),
     styleProps(props),
     {
+      onKeyDown,
+      "data-orientation": orientation,
+      "data-disabled": state.isDisabled,
       "data-testid": () => props["data-testid"]?.(),
     },
   );
+
+  if (items === undefined) {
+    // A written-out group inside a section of a collection-driven one must not
+    // key its sections by the outer section's node.
+    if (owner !== null) install(owner, DisclosureNodeContext, () => null);
+    return (
+      <div {...elementProps} ref={mergeRefs(props.ref?.())}>
+        {props.children}
+      </div>
+    );
+  }
 
   const render = props.children as unknown as (item: T) => Child;
 
@@ -475,6 +598,11 @@ export function DisclosureGroup<T>(props: Incoming<DisclosureGroupComponentProps
 export interface DisclosureGroupItemComponentProps {
   children?: Child;
   isDisabled?: boolean;
+  /**
+   * The key this section answers to in `expandedKeys`. Read when the group was
+   * given no `items`; with them the key is the item's own.
+   */
+  id?: Key;
 }
 
 /**
@@ -486,32 +614,42 @@ export interface DisclosureGroupItemComponentProps {
 export function DisclosureGroupItem(props: Incoming<DisclosureGroupItemComponentProps>) {
   const panelRef = makeRef<HTMLDivElement>();
   const group = useDisclosureGroup();
-  const node = useDisclosureNode();
+  const node = getContext(DisclosureNodeContext) ?? null;
+  const generated = id();
+  const key = (): Key => node?.key ?? props.id?.() ?? generated();
 
   const state: DisclosureState = {
-    isExpanded: () => group.state.expandedKeys().has(node.key),
+    isExpanded: () => group.state.expandedKeys().has(key()),
     setExpanded: (expanded) => {
-      if (expanded === group.state.expandedKeys().has(node.key)) return;
-      group.state.toggleKey(node.key);
+      if (expanded === group.state.expandedKeys().has(key())) return;
+      group.state.toggleKey(key());
     },
     expand: () => {
-      if (!group.state.expandedKeys().has(node.key)) group.state.toggleKey(node.key);
+      if (!group.state.expandedKeys().has(key())) group.state.toggleKey(key());
     },
     collapse: () => {
-      if (group.state.expandedKeys().has(node.key)) group.state.toggleKey(node.key);
+      if (group.state.expandedKeys().has(key())) group.state.toggleKey(key());
     },
-    toggle: () => group.state.toggleKey(node.key),
+    toggle: () => group.state.toggleKey(key()),
   };
 
   const isDisabled = (): boolean =>
-    props.isDisabled?.() === true || group.state.isDisabled() || node.props?.isDisabled === true;
+    props.isDisabled?.() === true || group.state.isDisabled() || node?.props?.isDisabled === true;
 
   const { buttonProps, panelProps } = disclosure({ panelRef, isDisabled }, state);
 
-  const value: DisclosureContextValue = { state, buttonProps, panelProps, panelRef };
+  const value: DisclosureContextValue = {
+    state,
+    buttonProps,
+    panelProps,
+    panelRef,
+    isDisabled,
+    isLocked: () => group.state.isLocked(key()),
+    group,
+  };
   return provide(
     DisclosureContext,
     () => value,
     () => props.children as unknown,
-  ) as never;
+  );
 }

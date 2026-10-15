@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
-import { flush, type Incoming, signal } from "@barqjs/core";
+import { flush, type Child, type Incoming, Show, createSignal } from "@barqjs/core";
 import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 import type { Key } from "./collections.ts";
-import { ListBox, Option, Section } from "./listbox.tsx";
+import { ListBox, Option, Section, useSectionHeading } from "./listbox.tsx";
 
 interface Fruit {
   id: string;
@@ -220,7 +220,7 @@ describe("ListBox", () => {
   });
 
   test("the items are data, so changing them updates the list", () => {
-    const items = signal<Fruit[]>([{ id: "a", name: "Apple" }]);
+    const [items, setItems] = createSignal<Fruit[]>([{ id: "a", name: "Apple" }]);
     render(() => (
       <ListBox label="Fruit" items={items()} selectionMode="single">
         {(fruit: Fruit) => <Option>{fruit.name}</Option>}
@@ -229,7 +229,7 @@ describe("ListBox", () => {
 
     expect(screen.getAllByRole("option")).toHaveLength(1);
 
-    items.set([
+    setItems([
       { id: "a", name: "Apple" },
       { id: "b", name: "Banana" },
     ]);
@@ -311,5 +311,182 @@ describe("a section", () => {
     list.focus();
     await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}");
     expect(document.activeElement?.textContent).toBe("Leek");
+  });
+});
+
+/**
+ * The same listbox with its options WRITTEN rather than rendered from data.
+ * Each one says what it is, and the collection is whatever rendered.
+ */
+describe("a listbox whose options are its children", () => {
+  function Written(
+    props: Incoming<{
+      onSelectionChange?: (keys: "all" | Set<Key>) => void;
+      showBanana?: boolean;
+      hideDate?: boolean;
+      onAction?: () => void;
+    }>,
+  ) {
+    return (
+      <ListBox label="Fruit" selectionMode="single" onSelectionChange={props.onSelectionChange?.()}>
+        <Option value="apple" onAction={props.onAction?.()}>
+          Apple
+        </Option>
+        <Show when={props.showBanana?.() !== false}>
+          <Option value="banana">Banana</Option>
+        </Show>
+        <Option value="cherry" isDisabled>
+          Cherry
+        </Option>
+        <Option value="date" isHidden={props.hideDate?.() === true}>
+          Date
+        </Option>
+      </ListBox>
+    );
+  }
+
+  test("is the same listbox: named, with one option per child", () => {
+    render(() => <Written />);
+    flush();
+
+    expect(accessibleName(screen.getByRole("listbox"))).toBe("Fruit");
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "Apple",
+      "Banana",
+      "Cherry",
+      "Date",
+    ]);
+    expectNoAriaViolations(screen.getByRole("listbox"));
+  });
+
+  test("the arrows walk the written options and skip a disabled one", () => {
+    render(() => <Written />);
+    flush();
+    const options = screen.getAllByRole("option");
+
+    user.focus(screen.getByRole("listbox"));
+    expect(document.activeElement).toBe(options[0] as HTMLElement);
+    user.keyDown("ArrowDown");
+    expect(document.activeElement).toBe(options[1] as HTMLElement);
+    user.keyDown("ArrowDown");
+    expect(document.activeElement).toBe(options[3] as HTMLElement);
+    expect(options[2]?.getAttribute("aria-disabled")).toBe("true");
+  });
+
+  test("an option's value is its key in the selection", () => {
+    const selections: string[][] = [];
+    render(() => <Written onSelectionChange={(keys) => selections.push(keysOf(keys))} />);
+    flush();
+
+    user.click(screen.getByText("Banana"));
+    flush();
+    expect(selections).toEqual([["banana"]]);
+    expect(screen.getByText("Banana").getAttribute("aria-selected")).toBe("true");
+  });
+
+  test("an option can say what choosing it does", () => {
+    let chosen = 0;
+    render(() => <Written onAction={() => chosen++} />);
+    flush();
+
+    user.focus(screen.getByRole("listbox"));
+    user.key("Enter");
+    expect(chosen).toBe(1);
+  });
+
+  test("typing jumps to the option whose own text matches", () => {
+    render(() => <Written />);
+    flush();
+
+    user.focus(screen.getByRole("listbox"));
+    user.keyDown("d");
+    expect(document.activeElement?.textContent).toBe("Date");
+  });
+
+  test("an option a <Show> takes away leaves the keyboard's path", () => {
+    const [banana, setBanana] = createSignal(true);
+    render(() => <Written showBanana={banana()} />);
+    flush();
+
+    setBanana(false);
+    flush();
+    user.focus(screen.getByRole("listbox"));
+    user.keyDown("ArrowDown");
+    expect(document.activeElement?.textContent).toBe("Date");
+  });
+
+  test("a hidden option stays in the document and out of the keyboard's path", () => {
+    render(() => <Written hideDate />);
+    flush();
+
+    expect(screen.getByText("Date").hasAttribute("hidden")).toBe(true);
+    user.focus(screen.getByRole("listbox"));
+    user.keyDown("End");
+    expect(document.activeElement?.textContent).toBe("Banana");
+  });
+
+  function Heading(props: Incoming<{ children?: Child }>) {
+    const headingId = useSectionHeading();
+    return (
+      <li role="presentation" id={headingId?.()}>
+        {props.children}
+      </li>
+    );
+  }
+
+  function WrittenGroups() {
+    return (
+      <ListBox aria-label="Food" selectionMode="single">
+        <Section title="Fruit">
+          <Option value="apple">Apple</Option>
+          <Option value="pear">Pear</Option>
+        </Section>
+        <Section>
+          <Heading>Vegetables</Heading>
+          <Option value="leek">Leek</Option>
+        </Section>
+      </ListBox>
+    );
+  }
+
+  test("a section is a group named by its title, or by a heading written inside it", () => {
+    render(() => <WrittenGroups />);
+    flush();
+
+    const groups = screen.getAllByRole("group");
+    expect(groups).toHaveLength(2);
+    expect(
+      groups.map(
+        (group) =>
+          document.getElementById(group.getAttribute("aria-labelledby") ?? "")?.textContent,
+      ),
+    ).toEqual(["Fruit", "Vegetables"]);
+    expect(screen.getAllByRole("option")).toHaveLength(3);
+  });
+
+  test("Down from the last of one written section reaches the first of the next", async () => {
+    render(() => <WrittenGroups />);
+    flush();
+
+    screen.getByRole("listbox").focus();
+    await user.keyboard("{ArrowDown}{ArrowDown}{ArrowDown}");
+    expect(document.activeElement?.textContent).toBe("Leek");
+  });
+
+  test("a value an id cannot hold still gives each option an id of its own", () => {
+    // `aria-activedescendant` is a list of ids separated by spaces, so an id
+    // holding one names two elements, neither of which exists.
+    render(() => (
+      <ListBox aria-label="Cities" selectionMode="single">
+        <Option value="New York">New York</Option>
+        <Option value="New-York">New-York</Option>
+        <Option value="New_York">New_York</Option>
+      </ListBox>
+    ));
+    flush();
+
+    const ids = screen.getAllByRole("option").map((option) => option.id);
+    expect(new Set(ids).size).toBe(3);
+    for (const id of ids) expect(id).toMatch(/^[A-Za-z][\w:.-]*$/);
   });
 });

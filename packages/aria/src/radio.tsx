@@ -13,7 +13,16 @@
  * roving `tabindex` that makes Tab skip the group once entered.
  */
 
-import { type Accessor, type Child, type Incoming, signal } from "@barqjs/core";
+import {
+  type Accessor,
+  type Child,
+  type Incoming,
+  createContext,
+  createSignal,
+  getContext,
+  getOwner,
+  install,
+} from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { ownerWindow, targetElement } from "./dom.ts";
 import { focusableWalker } from "./focus.ts";
@@ -23,7 +32,13 @@ import { focusable } from "./interactions/focusable.ts";
 import { press, type ElementRef, type PressEvent } from "./interactions/press.ts";
 import { useLocale } from "./i18n.ts";
 import { field, type FieldOptions } from "./label.ts";
-import { formReset, HIDDEN_INPUT_STYLE } from "./toggle.ts";
+import {
+  formReset,
+  HIDDEN_INPUT_STYLE,
+  pressesInput,
+  toggleElementType,
+  type ToggleElementType,
+} from "./toggle.ts";
 import {
   fieldValidation,
   type FormValidationState,
@@ -96,7 +111,7 @@ export function radioGroupState(options: RadioGroupStateOptions): RadioGroupStat
     (next) => options.onChange?.(next as string),
   );
 
-  const lastFocused = signal<string | null>(null);
+  const [lastFocused, setLastFocused] = createSignal<string | null>(null);
   const isReadOnly = (): boolean => access(options.isReadOnly) === true;
   const isDisabled = (): boolean => access(options.isDisabled) === true;
 
@@ -122,7 +137,7 @@ export function radioGroupState(options: RadioGroupStateOptions): RadioGroupStat
       validation.commitValidation();
     },
     lastFocusedValue: lastFocused,
-    setLastFocusedValue: (next) => lastFocused.set(next),
+    setLastFocusedValue: (next) => setLastFocused(next),
     defaultValue: () => access(options.defaultValue) ?? null,
     isDisabled,
     isReadOnly,
@@ -275,7 +290,7 @@ export function radio(
 
   const { pressProps, isPressed } = press({ isDisabled, onPress: options.onPress });
 
-  const labelPressed = signal(false);
+  const [labelPressed, setLabelPressed] = createSignal(false);
   const { pressProps: labelPressProps } = press({
     isDisabled: () => isDisabled() || state.isReadOnly(),
     onPressStart: (event) => {
@@ -283,14 +298,14 @@ export function radio(
         event.continuePropagation();
         return;
       }
-      labelPressed.set(true);
+      setLabelPressed(true);
     },
     onPressEnd: (event) => {
       if (event.pointerType === "keyboard" || event.pointerType === "virtual") {
         event.continuePropagation();
         return;
       }
-      labelPressed.set(false);
+      setLabelPressed(false);
     },
     onPress: (event) => {
       if (event.pointerType === "keyboard" || event.pointerType === "virtual") {
@@ -348,6 +363,9 @@ export function radio(
         value,
         disabled: isDisabled,
         required: () => state.isRequired(),
+        // On each radio as well as on the group: a screen reader moving
+        // through the radios reads theirs, not the group's.
+        "aria-invalid": () => state.isInvalid() || undefined,
         onChange: (event: Event) => {
           event.stopPropagation();
           state.setSelectedValue(value());
@@ -368,14 +386,12 @@ export function radio(
 // Components
 // ---------------------------------------------------------------------------
 
-import { context, getContext, getOwner, install } from "@barqjs/core";
-
 interface RadioGroupContextValue {
   state: RadioGroupState;
   name: Accessor<string>;
 }
 
-const RadioGroupContext = context<RadioGroupContextValue | null>(null);
+const RadioGroupContext = createContext<RadioGroupContextValue | null>(null);
 
 /** The enclosing radio group. Throws outside one, which is a coding error. */
 export function useRadioGroup(): RadioGroupContextValue {
@@ -463,6 +479,12 @@ export function RadioGroup(props: Incoming<RadioGroupComponentProps>) {
 export interface RadioComponentProps extends StyleProps {
   value: string;
   children?: Child;
+  /**
+   * `"label"` when the children are the radio's name, `"span"` when they are
+   * its drawing and the name comes from somewhere else. Defaults to a label
+   * with children and a span without.
+   */
+  elementType?: ToggleElementType;
   isDisabled?: boolean;
   autoFocus?: boolean;
   "aria-label"?: string;
@@ -472,6 +494,26 @@ export interface RadioComponentProps extends StyleProps {
   onFocus?: (event: FocusEvent) => void;
   onBlur?: (event: FocusEvent) => void;
   onPress?: (event: PressEvent) => void;
+}
+
+/** What a part drawn inside a radio reads. */
+export interface RadioContextValue {
+  isSelected: Accessor<boolean>;
+  isDisabled: Accessor<boolean>;
+}
+
+const RadioContext = createContext<RadioContextValue | null>(null);
+
+/**
+ * The radio a part is drawn inside: the dot of a design system's circle, which
+ * appears with a state it does not own.
+ */
+export function useRadio(): RadioContextValue {
+  const value = getContext(RadioContext);
+  if (value === null || value === undefined) {
+    throw new Error("This must be rendered inside a Radio.");
+  }
+  return value;
 }
 
 export function Radio(props: Incoming<RadioComponentProps>) {
@@ -488,6 +530,12 @@ export function Radio(props: Incoming<RadioComponentProps>) {
   const { hoverProps, isHovered } = hover({ isDisabled });
   const { focusProps, isFocused, isFocusVisible } = focusRing();
 
+  const owner = getOwner();
+  if (owner !== null) {
+    const value: RadioContextValue = { isSelected, isDisabled };
+    install(owner, RadioContext, () => value);
+  }
+
   const outerProps = mergeProps(
     labelProps,
     hoverProps,
@@ -500,14 +548,31 @@ export function Radio(props: Incoming<RadioComponentProps>) {
     styleProps(props),
     {
       "data-selected": isSelected,
+      "data-state": () => (isSelected() ? "checked" : "unchecked"),
       "data-pressed": isPressed,
       "data-hovered": isHovered,
       "data-focused": isFocused,
       "data-focus-visible": isFocusVisible,
       "data-disabled": isDisabled,
+      "data-invalid": group.state.isInvalid,
       "data-testid": () => props["data-testid"]?.(),
     },
   );
+
+  if (toggleElementType(props.elementType?.(), props.children) === "span") {
+    const onClick = pressesInput(() => access(inputRef), isDisabled);
+
+    return (
+      <span {...mergeProps(outerProps, { onClick })}>
+        <input
+          {...mergeProps(inputProps, focusProps)}
+          ref={mergeRefs(inputRef.set, props.ref?.())}
+          style={HIDDEN_INPUT_STYLE}
+        />
+        {props.children}
+      </span>
+    );
+  }
 
   return (
     <label {...outerProps}>

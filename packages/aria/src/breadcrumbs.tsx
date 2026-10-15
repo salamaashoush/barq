@@ -18,7 +18,7 @@
 import {
   type Child,
   For,
-  context,
+  createContext,
   getContext,
   getOwner,
   type Incoming,
@@ -118,8 +118,8 @@ interface BreadcrumbsContextValue {
   onAction: () => ((key: Key) => void) | undefined;
 }
 
-const BreadcrumbsContext = context<BreadcrumbsContextValue | null>(null);
-const CrumbNodeContext = context<{ node: Node<unknown>; isLast: boolean } | null>(null);
+const BreadcrumbsContext = createContext<BreadcrumbsContextValue | null>(null);
+const CrumbNodeContext = createContext<{ node: Node<unknown>; isLast: boolean } | null>(null);
 
 export function useBreadcrumbs(): BreadcrumbsContextValue {
   const value = getContext(BreadcrumbsContext);
@@ -181,7 +181,7 @@ export function Breadcrumbs<T>(props: Incoming<BreadcrumbsComponentProps<T>>) {
     },
   );
 
-  const render = props.children as unknown as (item: T) => Child;
+  const render = props.children;
 
   return (
     <nav {...elementProps} ref={mergeRefs(props.ref?.())}>

@@ -234,6 +234,16 @@ export interface ButtonComponentProps extends StyleProps {
 }
 
 /**
+ * `press` already delivers `onClick`, including the one a keyboard or a touch
+ * activation would have produced. Bound on the element as well, a caller's
+ * handler runs twice for every mouse click.
+ */
+function withoutClick(props: DOMProps): DOMProps {
+  const { onClick: _, ...rest } = props;
+  return rest;
+}
+
+/**
  * A button, with the interaction states as data attributes.
  *
  * `data-pressed`, `data-hovered`, `data-focused` and `data-focus-visible` are
@@ -267,7 +277,7 @@ export function Button(props: Incoming<ButtonComponentProps>) {
     buttonProps,
     hoverProps,
     focusProps,
-    filterDOMProps(options, { global: true }),
+    withoutClick(filterDOMProps(options, { global: true })),
     styleProps(props),
     {
       "data-pressed": isPressed,
@@ -312,7 +322,7 @@ export function ToggleButton(props: Incoming<ToggleButtonComponentProps>) {
     buttonProps,
     hoverProps,
     focusProps,
-    filterDOMProps(options, { global: true }),
+    withoutClick(filterDOMProps(options, { global: true })),
     styleProps(props),
     {
       "data-pressed": isPressed,

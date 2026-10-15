@@ -14,7 +14,7 @@
  * where focus went instead.
  */
 
-import { type Accessor, signal } from "@barqjs/core";
+import { type Accessor, createSignal } from "@barqjs/core";
 import { tryCleanup } from "@barqjs/primitives/utils";
 import { activeElement, contains, ownerDocument, targetElement } from "../dom.ts";
 import { access, type DOMProps, type MaybeAccessor } from "../utils.ts";
@@ -97,11 +97,11 @@ function watchDisabledBlur(onBlur: (event: FocusEvent) => void): {
  * ```
  */
 export function focused(options: FocusOptions = {}): FocusResult {
-  const isFocused = signal(false);
+  const [isFocused, setIsFocused] = createSignal(false);
 
   const onBlur = (event: FocusEvent): void => {
     if (targetElement(event) !== event.currentTarget && event.currentTarget !== null) return;
-    isFocused.set(false);
+    setIsFocused(false);
     options.onBlur?.(event);
     options.onFocusChange?.(false);
   };
@@ -115,7 +115,7 @@ export function focused(options: FocusOptions = {}): FocusResult {
     const active = activeElement(ownerDocument(target));
     if (target !== event.currentTarget || target !== active) return;
 
-    isFocused.set(true);
+    setIsFocused(true);
     options.onFocus?.(event);
     options.onFocusChange?.(true);
     disabledBlur.arm(event);
@@ -156,7 +156,7 @@ export interface FocusWithinResult {
  * listener on a container never hears a child take focus.
  */
 export function focusWithin(options: FocusWithinOptions = {}): FocusWithinResult {
-  const isFocusWithin = signal(false);
+  const [isFocusWithin, setIsFocusWithin] = createSignal(false);
   const listeners = globalListeners();
 
   const onBlur = (event: FocusEvent): void => {
@@ -167,7 +167,7 @@ export function focusWithin(options: FocusWithinOptions = {}): FocusWithinResult
     // where it is going.
     if (!isFocusWithin() || contains(currentTarget, event.relatedTarget as Element | null)) return;
 
-    isFocusWithin.set(false);
+    setIsFocusWithin(false);
     listeners.removeAll();
     options.onBlurWithin?.(event);
     options.onFocusWithinChange?.(false);
@@ -183,7 +183,7 @@ export function focusWithin(options: FocusWithinOptions = {}): FocusWithinResult
 
     options.onFocusWithin?.(event);
     options.onFocusWithinChange?.(true);
-    isFocusWithin.set(true);
+    setIsFocusWithin(true);
 
     // No blur fires when the focused element is removed. A focus landing
     // outside is the evidence that it left.

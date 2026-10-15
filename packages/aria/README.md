@@ -8,9 +8,9 @@ bun add @barqjs/aria
 
 ```tsx
 import { Button, ListBox, Option } from "@barqjs/aria";
-import { signal } from "@barqjs/core";
+import { createSignal } from "@barqjs/core";
 
-const picked = signal<Set<string>>(new Set());
+const [picked, setPicked] = createSignal<Set<string>>(new Set());
 const fruits = [
   { id: "apple", name: "Apple" },
   { id: "banana", name: "Banana" },
@@ -20,7 +20,7 @@ const fruits = [
   label="Fruit"
   items={fruits}
   selectionMode="multiple"
-  onSelectionChange={(keys) => picked.set(keys as Set<string>)}
+  onSelectionChange={(keys) => setPicked(keys as Set<string>)}
 >
   {(fruit) => <Option>{fruit.name}</Option>}
 </ListBox>;

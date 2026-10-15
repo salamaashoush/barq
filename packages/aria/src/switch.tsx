@@ -7,7 +7,15 @@
  * has already been applied rather than waiting for a Save.
  */
 
-import { type Child, type Incoming } from "@barqjs/core";
+import {
+  type Accessor,
+  type Child,
+  createContext,
+  getContext,
+  getOwner,
+  type Incoming,
+  install,
+} from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { focusRing } from "./focus.ts";
 import { hover } from "./interactions/hover.ts";
@@ -17,12 +25,16 @@ import type { ToggleState } from "./button.tsx";
 import {
   toggle,
   toggleState,
+  toggleElementType,
+  pressesInput,
   HIDDEN_INPUT_STYLE,
+  type ToggleElementType,
   type ToggleOptions,
   type ToggleResult,
 } from "./toggle.ts";
 import type { ValidateFunction, ValidationBehavior } from "./validation.ts";
 import {
+  access,
   callback,
   filterDOMProps,
   fromProps,
@@ -49,6 +61,12 @@ export function switchToggle(
 
 export interface SwitchComponentProps extends StyleProps {
   children?: Child;
+  /**
+   * `"label"` when the children are the switch's name, `"span"` when they are
+   * its drawing and the name comes from somewhere else. Defaults to a label
+   * with children and a span without.
+   */
+  elementType?: ToggleElementType;
   isSelected?: boolean;
   defaultSelected?: boolean;
   isDisabled?: boolean;
@@ -73,9 +91,41 @@ export interface SwitchComponentProps extends StyleProps {
   onPress?: (event: PressEvent) => void;
 }
 
+/** What a part drawn inside a switch reads. */
+export interface SwitchContextValue {
+  isSelected: Accessor<boolean>;
+  isDisabled: Accessor<boolean>;
+}
+
+const SwitchContext = createContext<SwitchContextValue | null>(null);
+
+/**
+ * The switch a part is drawn inside: the thumb of a design system's track,
+ * which has to move and recolour with a state it does not own.
+ */
+export function useSwitch(): SwitchContextValue {
+  const value = getContext(SwitchContext);
+  if (value === null || value === undefined) {
+    throw new Error("This must be rendered inside a Switch.");
+  }
+  return value;
+}
+
 /**
  * ```tsx
  * <Switch defaultSelected onChange={(on) => wifi.set(on)}>Wi-Fi</Switch>
+ * ```
+ *
+ * With children it is a `<label>` around them, and they name it. With none it
+ * is a `<span>`: an empty label names nothing, and a label may not contain
+ * another, so it could not be put inside the `<label>` that does carry the
+ * text. `elementType="span"` says the same for children that are a drawing (a
+ * track's thumb) rather than a name.
+ *
+ * ```tsx
+ * <label>
+ *   Wi-Fi <Switch />
+ * </label>
  * ```
  */
 export function Switch(props: Incoming<SwitchComponentProps>) {
@@ -96,6 +146,12 @@ export function Switch(props: Incoming<SwitchComponentProps>) {
   const { hoverProps, isHovered } = hover({ isDisabled: options.isDisabled });
   const { focusProps, isFocused, isFocusVisible } = focusRing();
 
+  const owner = getOwner();
+  if (owner !== null) {
+    const value: SwitchContextValue = { isSelected, isDisabled };
+    install(owner, SwitchContext, () => value);
+  }
+
   const outerProps = mergeProps(
     labelProps,
     hoverProps,
@@ -108,6 +164,7 @@ export function Switch(props: Incoming<SwitchComponentProps>) {
     styleProps(props),
     {
       "data-selected": isSelected,
+      "data-state": () => (isSelected() ? "checked" : "unchecked"),
       "data-pressed": isPressed,
       "data-hovered": isHovered,
       "data-focused": isFocused,
@@ -117,6 +174,23 @@ export function Switch(props: Incoming<SwitchComponentProps>) {
       "data-invalid": isInvalid,
     },
   );
+
+  const elementType = toggleElementType(props.elementType?.(), props.children);
+
+  if (elementType === "span") {
+    const onClick = pressesInput(() => access(inputRef), isDisabled);
+
+    return (
+      <span {...mergeProps(outerProps, { onClick })}>
+        <input
+          {...mergeProps(inputProps, focusProps)}
+          ref={mergeRefs(inputRef.set, props.ref?.())}
+          style={HIDDEN_INPUT_STYLE}
+        />
+        {props.children}
+      </span>
+    );
+  }
 
   return (
     <label {...outerProps}>

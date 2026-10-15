@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, signal } from "@barqjs/core";
+import { flush, createSignal } from "@barqjs/core";
 import {
   accessibleDescription,
   expectNoAriaViolations,
@@ -250,7 +250,7 @@ describe("server errors", () => {
   });
 
   test("a new set of errors is shown again", () => {
-    const errors = signal<ValidationErrors>({});
+    const [errors, setErrors] = createSignal<ValidationErrors>({});
     render(() => (
       <Form aria-label="Account" validationErrors={errors()}>
         <TextField label="Email" name="email" defaultValue="me@example.com" />
@@ -259,7 +259,7 @@ describe("server errors", () => {
 
     expect(field().hasAttribute("aria-invalid")).toBe(false);
 
-    errors.set({ email: "That address is already taken" });
+    setErrors({ email: "That address is already taken" });
     flush();
 
     expect(field().getAttribute("aria-invalid")).toBe("true");

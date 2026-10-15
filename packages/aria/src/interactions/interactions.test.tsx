@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, type Incoming, signal } from "@barqjs/core";
+import { flush, type Incoming, createSignal } from "@barqjs/core";
 import { render, screen, user } from "@barqjs/testing";
 import { focused, focusWithin } from "./focus-events.ts";
 import { hover } from "./hover.ts";
@@ -58,13 +58,13 @@ describe("hover", () => {
   });
 
   test("becoming disabled while hovered ends the hover", () => {
-    const disabled = signal(false);
+    const [disabled, setDisabled] = createSignal(false);
     const log: string[] = [];
     render(() => <Hoverable log={log} isDisabled={disabled()} />);
 
     user.hover(screen.getByRole("button"));
     log.length = 0;
-    disabled.set(true);
+    setDisabled(true);
     flush();
 
     expect(log).toEqual(["end:mouse", "change:false"]);

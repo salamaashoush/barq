@@ -9,7 +9,7 @@
  * why this binds the element directly.
  */
 
-import { effect } from "@barqjs/core";
+import { createTrackedEffect } from "@barqjs/core";
 import { access, type MaybeAccessor } from "../utils.ts";
 import type { ElementRef } from "./press.ts";
 
@@ -20,7 +20,7 @@ export interface ScrollWheelOptions {
 }
 
 export function scrollWheel(options: ScrollWheelOptions): void {
-  effect(() => {
+  createTrackedEffect(() => {
     if (access(options.isDisabled) === true || options.onScroll === undefined) return undefined;
     const element = access(options.ref);
     if (element === null || element === undefined) return undefined;

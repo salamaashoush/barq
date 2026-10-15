@@ -44,6 +44,7 @@ export {
   isVirtualPointerEvent,
   modality,
   onModalityChange,
+  resetInteractionModality,
   setInteractionModality,
   trackModality,
   untrackModality,

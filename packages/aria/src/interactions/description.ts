@@ -9,7 +9,7 @@
  * rows offering the same long press adds one node, not two hundred.
  */
 
-import { effect, isServer, signal } from "@barqjs/core";
+import { createTrackedEffect, isServer, createSignal } from "@barqjs/core";
 import { tryCleanup } from "@barqjs/primitives/utils";
 import { access, type DOMProps, type MaybeAccessor } from "../utils.ts";
 
@@ -47,20 +47,24 @@ function release(text: string): void {
  * ```
  */
 export function description(text: MaybeAccessor<string | undefined>): DOMProps {
-  const describedBy = signal<string | undefined>(undefined);
+  // `ownedWrite` for the cleanup below: it runs inside whichever computation
+  // disposed this scope, a list dropping a row for one.
+  const [describedBy, setDescribedBy] = createSignal<string | undefined>(undefined, {
+    ownedWrite: true,
+  });
   if (isServer) return { "aria-describedby": describedBy };
 
-  effect(() => {
+  createTrackedEffect(() => {
     const value = access(text);
     if (value === undefined || value === "") {
-      describedBy.set(undefined);
+      setDescribedBy(undefined);
       return undefined;
     }
-    describedBy.set(acquire(value));
+    setDescribedBy(acquire(value));
     return () => release(value);
   });
 
-  tryCleanup(() => describedBy.set(undefined));
+  tryCleanup(() => setDescribedBy(undefined));
 
   return { "aria-describedby": () => describedBy() };
 }

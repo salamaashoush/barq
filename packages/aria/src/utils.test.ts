@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { effect, flush, root, signal } from "@barqjs/core";
+import { createTrackedEffect, flush, createRoot, createSignal } from "@barqjs/core";
 import {
   chain,
   clamp,
@@ -42,11 +42,11 @@ describe("mergeProps", () => {
   });
 
   test("combines class when either side is an accessor", () => {
-    const variant = signal("primary");
+    const [variant, setVariant] = createSignal("primary");
     const merged = mergeProps({ class: "base" }, { class: () => variant() });
 
     expect((merged.class as () => string)()).toBe("base primary");
-    variant.set("danger");
+    setVariant("danger");
     flush();
     expect((merged.class as () => string)()).toBe("base danger");
   });
@@ -87,7 +87,7 @@ describe("mergeProps", () => {
 
 describe("id", () => {
   test("is stable across reads", () => {
-    root((dispose) => {
+    createRoot((dispose) => {
       const first = id();
       expect(first()).toBe(first());
       dispose();
@@ -95,7 +95,7 @@ describe("id", () => {
   });
 
   test("two ids under one owner differ", () => {
-    root((dispose) => {
+    createRoot((dispose) => {
       const a = id();
       const b = id();
       expect(a()).not.toBe(b());
@@ -104,7 +104,7 @@ describe("id", () => {
   });
 
   test("a given id overrides the generated one", () => {
-    root((dispose) => {
+    createRoot((dispose) => {
       const given = id("mine");
       expect(given()).toBe("mine");
       dispose();
@@ -113,7 +113,7 @@ describe("id", () => {
 
   test("the same owner tree produces the same ids twice, which is what hydration needs", () => {
     const run = (): string[] =>
-      root((dispose) => {
+      createRoot((dispose) => {
         const ids = [id()(), id()()];
         dispose();
         return ids;
@@ -131,7 +131,7 @@ describe("id", () => {
 
 describe("mergeIds", () => {
   test("repoints the accessor that was handed out", () => {
-    root((dispose) => {
+    createRoot((dispose) => {
       const a = id();
       const b = id();
       const original = a();
@@ -147,7 +147,7 @@ describe("mergeIds", () => {
   });
 
   test("a foreign id wins over one of ours", () => {
-    root((dispose) => {
+    createRoot((dispose) => {
       const ours = id();
       mergeIds("given", ours);
       flush();
@@ -238,84 +238,95 @@ describe("numbers", () => {
 
 describe("controllable", () => {
   test("uncontrolled: the setter owns the value", () => {
-    root((dispose) => {
-      const changes: number[] = [];
-      const [value, setValue] = controllable<number>(undefined, 0, (n) => changes.push(n));
+    const changes: number[] = [];
+    const [dispose, value, setValue] = createRoot(
+      (stop) => [stop, ...controllable<number>(undefined, 0, (n) => changes.push(n))] as const,
+    );
 
-      expect(value()).toBe(0);
-      setValue(1);
-      flush();
-      expect(value()).toBe(1);
-      expect(changes).toEqual([1]);
-      dispose();
-    });
+    expect(value()).toBe(0);
+    setValue(1);
+    flush();
+    expect(value()).toBe(1);
+    expect(changes).toEqual([1]);
+    dispose();
   });
 
   test("controlled: the prop owns the value and the setter only reports", () => {
-    root((dispose) => {
-      const outer = signal(0);
-      const changes: number[] = [];
-      const [value, setValue] = controllable<number>(
-        () => outer(),
-        0,
-        (n) => changes.push(n),
-      );
+    const [outer, setOuter] = createSignal(0);
+    const changes: number[] = [];
+    const [dispose, value, setValue] = createRoot(
+      (stop) =>
+        [
+          stop,
+          ...controllable<number>(
+            () => outer(),
+            0,
+            (n) => changes.push(n),
+          ),
+        ] as const,
+    );
 
-      setValue(1);
-      flush();
-      expect(changes).toEqual([1]);
-      expect(value()).toBe(0);
+    setValue(1);
+    flush();
+    expect(changes).toEqual([1]);
+    expect(value()).toBe(0);
 
-      outer.set(1);
-      flush();
-      expect(value()).toBe(1);
-      dispose();
-    });
+    setOuter(1);
+    flush();
+    expect(value()).toBe(1);
+    dispose();
   });
 
   test("a no-op set reports nothing", () => {
-    root((dispose) => {
-      const changes: number[] = [];
-      const [, setValue] = controllable<number>(undefined, 3, (n) => changes.push(n));
-      setValue(3);
-      flush();
-      expect(changes).toEqual([]);
-      dispose();
-    });
+    const changes: number[] = [];
+    const [dispose, , setValue] = createRoot(
+      (stop) => [stop, ...controllable<number>(undefined, 3, (n) => changes.push(n))] as const,
+    );
+    setValue(3);
+    flush();
+    expect(changes).toEqual([]);
+    dispose();
   });
 
   test("the functional form composes across two calls in one event", () => {
-    root((dispose) => {
-      const outer = signal(0);
-      const changes: number[] = [];
-      const [, setValue] = controllable<number>(
-        () => outer(),
-        0,
-        (n) => changes.push(n),
-      );
+    const [outer] = createSignal(0);
+    const changes: number[] = [];
+    const [dispose, , setValue] = createRoot(
+      (stop) =>
+        [
+          stop,
+          ...controllable<number>(
+            () => outer(),
+            0,
+            (n) => changes.push(n),
+          ),
+        ] as const,
+    );
 
-      setValue((n) => n + 1);
-      flush();
-      setValue((n) => n + 1);
-      flush();
+    setValue((n) => n + 1);
+    flush();
+    setValue((n) => n + 1);
+    flush();
 
-      // Controlled, so the prop has not moved. Composing from the prop would
-      // report 1 twice.
-      expect(changes).toEqual([1, 2]);
-      dispose();
-    });
+    // Controlled, so the prop has not moved. Composing from the prop would
+    // report 1 twice.
+    expect(changes).toEqual([1, 2]);
+    dispose();
   });
 
   test("reads are reactive", () => {
-    root((dispose) => {
-      const seen: number[] = [];
-      const [value, setValue] = controllable<number>(undefined, 0);
-      effect(() => seen.push(value()));
-      flush();
-      setValue(5);
-      flush();
-      expect(seen).toEqual([0, 5]);
-      dispose();
+    const seen: number[] = [];
+    const [dispose, setValue] = createRoot((stop) => {
+      const [read, write] = controllable<number>(undefined, 0);
+      createTrackedEffect(() => {
+        seen.push(read());
+      });
+      return [stop, write] as const;
     });
+    flush();
+    setValue(5);
+    flush();
+    expect(seen).toEqual([0, 5]);
+    dispose();
   });
 });

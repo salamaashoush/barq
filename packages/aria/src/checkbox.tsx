@@ -7,7 +7,16 @@
  * the value already was. A group's "select all" is the usual reason for one.
  */
 
-import { type Accessor, type Child, effect, type Incoming } from "@barqjs/core";
+import {
+  type Accessor,
+  type Child,
+  createContext,
+  createTrackedEffect,
+  getContext,
+  getOwner,
+  type Incoming,
+  install,
+} from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { focusRing } from "./focus.ts";
 import { hover } from "./interactions/hover.ts";
@@ -17,7 +26,10 @@ import { field, type FieldOptions } from "./label.ts";
 import {
   toggle,
   toggleState,
+  toggleElementType,
+  pressesInput,
   HIDDEN_INPUT_STYLE,
+  type ToggleElementType,
   type ToggleOptions,
   type ToggleResult,
 } from "./toggle.ts";
@@ -61,7 +73,7 @@ export function checkbox(
   const result = toggle(options, state, ref);
 
   // `indeterminate` has no attribute; it exists only as a property.
-  effect(() => {
+  createTrackedEffect(() => {
     const input = access(ref) as HTMLInputElement | null;
     if (input === null) return;
     input.indeterminate = access(options.isIndeterminate) === true;
@@ -234,6 +246,12 @@ export function checkboxGroup(
 
 export interface CheckboxComponentProps extends StyleProps {
   children?: Child;
+  /**
+   * `"label"` when the children are the checkbox's name, `"span"` when they
+   * are its drawing and the name comes from somewhere else. Defaults to a
+   * label with children and a span without.
+   */
+  elementType?: ToggleElementType;
   isSelected?: boolean;
   defaultSelected?: boolean;
   isIndeterminate?: boolean;
@@ -260,6 +278,32 @@ export interface CheckboxComponentProps extends StyleProps {
   onPress?: (event: PressEvent) => void;
 }
 
+/** What a part drawn inside a checkbox reads. */
+export interface CheckboxContextValue {
+  isSelected: Accessor<boolean>;
+  isIndeterminate: Accessor<boolean>;
+  isDisabled: Accessor<boolean>;
+}
+
+const CheckboxContext = createContext<CheckboxContextValue | null>(null);
+
+/**
+ * The checkbox a part is drawn inside: the tick or the dash of a design
+ * system's box, which appears with a state it does not own.
+ */
+export function useCheckbox(): CheckboxContextValue {
+  const value = getContext(CheckboxContext);
+  if (value === null || value === undefined) {
+    throw new Error("This must be rendered inside a Checkbox.");
+  }
+  return value;
+}
+
+function checkedState(value: CheckboxContextValue): "checked" | "unchecked" | "indeterminate" {
+  if (value.isIndeterminate()) return "indeterminate";
+  return value.isSelected() ? "checked" : "unchecked";
+}
+
 /**
  * ```tsx
  * <Checkbox defaultSelected onChange={(on) => agreed.set(on)}>
@@ -269,6 +313,15 @@ export interface CheckboxComponentProps extends StyleProps {
  *
  * The `<input>` is a real one, hidden with a clip rectangle rather than
  * `display: none`, so it stays focusable and keeps its place in the form.
+ *
+ * With children it is a `<label>` around them, and they name it. With none it
+ * is a `<span>`, so it can sit inside the `<label>` that carries the text:
+ *
+ * ```tsx
+ * <label>
+ *   <Checkbox /> I agree
+ * </label>
+ * ```
  */
 export function Checkbox(props: Incoming<CheckboxComponentProps>) {
   const inputRef = makeRef<HTMLInputElement>();
@@ -288,6 +341,14 @@ export function Checkbox(props: Incoming<CheckboxComponentProps>) {
   const { hoverProps, isHovered } = hover({ isDisabled: options.isDisabled });
   const { focusProps, isFocused, isFocusVisible } = focusRing();
 
+  const part: CheckboxContextValue = {
+    isSelected,
+    isIndeterminate: () => props.isIndeterminate?.() === true,
+    isDisabled,
+  };
+  const owner = getOwner();
+  if (owner !== null) install(owner, CheckboxContext, () => part);
+
   const outerProps = mergeProps(
     labelProps,
     hoverProps,
@@ -300,6 +361,7 @@ export function Checkbox(props: Incoming<CheckboxComponentProps>) {
     styleProps(props),
     {
       "data-selected": isSelected,
+      "data-state": () => checkedState(part),
       "data-indeterminate": () => props.isIndeterminate?.() === true,
       "data-pressed": isPressed,
       "data-hovered": isHovered,
@@ -310,6 +372,21 @@ export function Checkbox(props: Incoming<CheckboxComponentProps>) {
       "data-invalid": isInvalid,
     },
   );
+
+  if (toggleElementType(props.elementType?.(), props.children) === "span") {
+    const onClick = pressesInput(() => access(inputRef), isDisabled);
+
+    return (
+      <span {...mergeProps(outerProps, { onClick })}>
+        <input
+          {...mergeProps(inputProps, focusProps)}
+          ref={mergeRefs(inputRef.set, props.ref?.())}
+          style={HIDDEN_INPUT_STYLE}
+        />
+        {props.children}
+      </span>
+    );
+  }
 
   return (
     <label {...outerProps}>
@@ -435,6 +512,14 @@ export function GroupCheckbox(props: Incoming<GroupCheckboxProps>) {
   const { hoverProps, isHovered } = hover({ isDisabled });
   const { focusProps, isFocused, isFocusVisible } = focusRing();
 
+  const part: CheckboxContextValue = {
+    isSelected,
+    isIndeterminate: () => props.isIndeterminate?.() === true,
+    isDisabled,
+  };
+  const owner = getOwner();
+  if (owner !== null) install(owner, CheckboxContext, () => part);
+
   const outerProps = mergeProps(
     labelProps,
     hoverProps,
@@ -447,6 +532,7 @@ export function GroupCheckbox(props: Incoming<GroupCheckboxProps>) {
     styleProps(props),
     {
       "data-selected": isSelected,
+      "data-state": () => checkedState(part),
       "data-pressed": isPressed,
       "data-hovered": isHovered,
       "data-focused": isFocused,
@@ -456,6 +542,21 @@ export function GroupCheckbox(props: Incoming<GroupCheckboxProps>) {
       "data-testid": () => props["data-testid"]?.(),
     },
   );
+
+  if (toggleElementType(props.elementType?.(), props.children) === "span") {
+    const onClick = pressesInput(() => access(inputRef), isDisabled);
+
+    return (
+      <span {...mergeProps(outerProps, { onClick })}>
+        <input
+          {...mergeProps(inputProps, focusProps)}
+          ref={mergeRefs(inputRef.set, props.ref?.())}
+          style={HIDDEN_INPUT_STYLE}
+        />
+        {props.children}
+      </span>
+    );
+  }
 
   return (
     <label {...outerProps}>
@@ -473,14 +574,12 @@ export function GroupCheckbox(props: Incoming<GroupCheckboxProps>) {
 // The group's context
 // ---------------------------------------------------------------------------
 
-import { context, getContext, getOwner, install } from "@barqjs/core";
-
 interface CheckboxGroupContextValue {
   state: CheckboxGroupState;
   name: Accessor<string | undefined>;
 }
 
-const CheckboxGroupContext = context<CheckboxGroupContextValue | null>(null);
+const CheckboxGroupContext = createContext<CheckboxGroupContextValue | null>(null);
 
 function provideCheckboxGroup(state: CheckboxGroupState, options: CheckboxGroupOptions): void {
   const owner = getOwner();

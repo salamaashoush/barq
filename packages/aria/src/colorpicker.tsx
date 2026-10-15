@@ -23,14 +23,14 @@
 import {
   type Accessor,
   type Child,
-  computed,
-  context,
+  createMemo,
+  createContext,
   getContext,
   getOwner,
   type Incoming,
   install,
   isServer,
-  signal,
+  createSignal,
 } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import {
@@ -127,7 +127,7 @@ export function colorSliderState(options: ColorSliderStateOptions): ColorSliderS
     options.onChange,
   );
 
-  const dragging = signal(false);
+  const [dragging, writeDragging] = createSignal(false);
   const channel = (): ColorChannel => access(options.channel);
   const isDisabled = (): boolean => access(options.isDisabled) === true;
 
@@ -170,7 +170,7 @@ export function colorSliderState(options: ColorSliderStateOptions): ColorSliderS
     },
     setDragging: (next) => {
       const was = dragging();
-      dragging.set(next);
+      writeDragging(next);
       if (was && !next) options.onChangeEnd?.(live);
     },
     increment: (step) => setChannelValue(live.getChannelValue(channel()) + (step ?? range().step)),
@@ -225,7 +225,7 @@ export function colorAreaState(options: ColorAreaStateOptions): ColorAreaState {
     options.onChange,
   );
 
-  const dragging = signal(false);
+  const [dragging, writeDragging] = createSignal(false);
   const isDisabled = (): boolean => access(options.isDisabled) === true;
 
   let live = value();
@@ -287,7 +287,7 @@ export function colorAreaState(options: ColorAreaStateOptions): ColorAreaState {
     },
     setDragging: (next) => {
       const was = dragging();
-      dragging.set(next);
+      writeDragging(next);
       if (was && !next) options.onChangeEnd?.(live);
     },
     incrementX: (by) => step(xChannel(), by ?? live.getChannelRange(xChannel()).step),
@@ -646,7 +646,7 @@ export function colorWheelState(options: ColorWheelStateOptions = {}): ColorWhee
   // wherever the caller's default happens to point by then.
   const initial = value();
 
-  const dragging = signal(false);
+  const [dragging, writeDragging] = createSignal(false);
   const isDisabled = (): boolean => access(options.isDisabled) === true;
 
   // What the LAST write produced, so a drag reads its own change back rather
@@ -688,7 +688,7 @@ export function colorWheelState(options: ColorWheelStateOptions = {}): ColorWhee
     isDisabled,
     setDragging: (next) => {
       const was = dragging();
-      dragging.set(next);
+      writeDragging(next);
       if (was && !next) options.onChangeEnd?.(live);
     },
     increment: (amount) => {
@@ -927,7 +927,7 @@ export function colorField(
   ref: ElementRef<HTMLInputElement>,
 ): ColorFieldResult {
   const format = (): ColorFormat => access(options.format) ?? "hex";
-  const text = signal(state.value().toString(format()));
+  const [text, writeText] = createSignal(state.value().toString(format()));
 
   let live = state.value().toString(format());
   // What the field SHOWS. Enter commits in the same tick as the keystroke that
@@ -936,7 +936,7 @@ export function colorField(
   let typed = live;
   const setText = (next: string): void => {
     typed = next;
-    text.set(next);
+    writeText(next);
   };
 
   const sync = (): void => {
@@ -1022,7 +1022,7 @@ export interface ColorSwatchResult {
 
 /** A square of colour, named so it is not invisible to a screen reader. */
 export function colorSwatch(options: ColorSwatchOptions): ColorSwatchResult {
-  const color = computed(() => {
+  const color = createMemo(() => {
     const given = access(options.color);
     return typeof given === "string" ? parseColor(given) : given;
   });
@@ -1056,7 +1056,7 @@ interface ColorPickerContextValue {
   isDisabled: Accessor<boolean>;
 }
 
-const ColorPickerContext = context<ColorPickerContextValue | null>(null);
+const ColorPickerContext = createContext<ColorPickerContextValue | null>(null);
 
 /** The enclosing {@link ColorPicker}, if there is one. */
 export function useColorPicker(): ColorPickerContextValue | null {

@@ -13,7 +13,7 @@
  * where the answer is zero.
  */
 
-import { type Accessor, effect, isServer, signal } from "@barqjs/core";
+import { type Accessor, createEffect, isServer, createSignal, untrack } from "@barqjs/core";
 
 import type { ElementRef } from "./interactions/press.ts";
 import { access, type MaybeAccessor } from "./utils.ts";
@@ -113,8 +113,8 @@ export interface PresenceResult {
  */
 export function presence(options: PresenceOptions): PresenceResult {
   const open = (): boolean => access(options.isOpen) === true;
-  const isPresent = signal(open());
-  const isExiting = signal(false);
+  const [isPresent, setIsPresent] = createSignal(open());
+  const [isExiting, setIsExiting] = createSignal(false);
 
   if (isServer) return { isPresent: open, isExiting: () => false };
 
@@ -122,22 +122,25 @@ export function presence(options: PresenceOptions): PresenceResult {
   // sets would re-run itself, and this one has to fire on `isOpen` alone.
   let mounted = open();
 
-  effect(() => {
-    if (open()) {
+  // The open state is read in the compute half, which the graph keeps
+  // consistent, rather than inside an effect's own first run: one opened from
+  // `onSettled` was read there a pass too early and never seen again.
+  createEffect(open, (isOpen) => {
+    if (isOpen) {
       mounted = true;
-      isExiting.set(false);
-      isPresent.set(true);
+      setIsExiting(false);
+      setIsPresent(true);
       return undefined;
     }
     if (!mounted) return undefined;
 
     const leave = (): void => {
       mounted = false;
-      isExiting.set(false);
-      isPresent.set(false);
+      setIsExiting(false);
+      setIsPresent(false);
     };
 
-    const element = access(options.ref) as Element | null;
+    const element = untrack(() => access(options.ref)) as Element | null;
     if (element === null || element === undefined) {
       leave();
       return undefined;
@@ -151,7 +154,7 @@ export function presence(options: PresenceOptions): PresenceResult {
       return undefined;
     }
 
-    isExiting.set(true);
+    setIsExiting(true);
     const timer = setTimeout(leave, duration);
     return () => clearTimeout(timer);
   });

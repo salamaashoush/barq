@@ -22,9 +22,9 @@ import {
   type Accessor,
   type Child,
   For,
-  computed,
-  context,
-  effect,
+  createMemo,
+  createContext,
+  createTrackedEffect,
   getContext,
   getOwner,
   type Incoming,
@@ -118,7 +118,7 @@ export function tagGroup(options: TagGroupOptions, state: ListState<unknown>): T
   if (!isServer) {
     // Removing the LAST tag leaves nowhere inside to stand.
     let previous = state.collection().size;
-    effect(() => {
+    createTrackedEffect(() => {
       const size = state.collection().size;
       const element = access(options.ref) as HTMLElement | null;
       if (previous > 0 && size === 0 && isFocusWithin() && element !== null) element.focus();
@@ -256,8 +256,8 @@ interface TagGroupContextValue {
   onRemove: Accessor<((keys: Set<Key>) => void) | undefined>;
 }
 
-const TagGroupContext = context<TagGroupContextValue | null>(null);
-const TagNodeContext = context<Node<unknown> | null>(null);
+const TagGroupContext = createContext<TagGroupContextValue | null>(null);
+const TagNodeContext = createContext<Node<unknown> | null>(null);
 
 export function useTagGroup(): TagGroupContextValue {
   const value = getContext(TagGroupContext);
@@ -281,7 +281,7 @@ function TagGroupProvider(props: Incoming<{ value: TagGroupContextValue; childre
     TagGroupContext,
     () => props.value(),
     () => props.children as unknown,
-  ) as never;
+  );
 }
 
 export interface TagGroupComponentProps<T> extends StyleProps, ItemAccessors<T> {
@@ -346,7 +346,7 @@ export function TagGroup<T>(props: Incoming<TagGroupComponentProps<T>>) {
     },
   );
 
-  const render = props.children as unknown as (item: T) => Child;
+  const render = props.children;
 
   return (
     <TagGroupProvider value={value}>
@@ -428,7 +428,7 @@ export function Tag(props: Incoming<TagComponentProps>) {
     },
   );
 
-  const removeProps = computed(() =>
+  const removeProps = createMemo(() =>
     mergeProps(buttonProps, { id: removeButtonProps.id, type: "button" }),
   );
 

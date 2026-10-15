@@ -25,15 +25,17 @@ import {
   type Accessor,
   type Child,
   For,
-  context,
-  effect,
+  createContext,
+  createTrackedEffect,
+  createUniqueId,
   getContext,
   getOwner,
   type Incoming,
   install,
   isServer,
+  onCleanup,
   provide,
-  signal,
+  createSignal,
 } from "@barqjs/core";
 import { tryCleanup } from "@barqjs/primitives/utils";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
@@ -53,15 +55,17 @@ import {
   ownerWindow,
   targetElement,
 } from "./dom.ts";
-import { Popover } from "./dialog.tsx";
+import { Popover, popoverStateProps } from "./dialog.tsx";
 import { focusRing } from "./focus.ts";
 import { hover } from "./interactions/hover.ts";
 import { getInteractionModality, isFocusVisible } from "./interactions/modality.ts";
 import { keyboard, type BaseEvent } from "./interactions/keyboard.ts";
 import { globalListeners, type GlobalListeners } from "./interactions/listeners.ts";
 import { longPressHandlers } from "./interactions/long-press.ts";
+import { isOpeningLink } from "./interactions/flags.ts";
+import { router } from "./interactions/open-link.ts";
 import type { ElementRef, PressEvent } from "./interactions/press.ts";
-import { button, type ButtonOptions } from "./button.tsx";
+import { button, toggleState, type ButtonOptions } from "./button.tsx";
 import {
   overlayTrigger,
   overlayTriggerState,
@@ -71,9 +75,17 @@ import {
   type Placement,
 } from "./overlays.ts";
 import { useLocale } from "./i18n.ts";
+import { idFragment } from "./listbox.tsx";
 import { selectableItem, selectableList, type KeyboardDelegate } from "./selection.ts";
 import {
+  staticAccessors,
+  staticCollection,
+  staticItem,
+  type StaticCollection,
+} from "./static-collection.ts";
+import {
   access,
+  controllable,
   type DOMProps,
   filterDOMProps,
   fromProps,
@@ -171,7 +183,7 @@ export function menu(options: MenuOptions, state: ListState<unknown>): MenuResul
  * `listbox.tsx`.
  */
 export function menuItemIdFor(baseId: string, key: Key): string {
-  return `${baseId}-item-${String(key)}`;
+  return `${baseId}-item-${idFragment(key)}`;
 }
 
 export interface MenuItemOptions {
@@ -203,8 +215,40 @@ export interface MenuItemOptions {
   "aria-haspopup"?: MaybeAccessor<"menu" | "dialog" | undefined>;
   "aria-expanded"?: MaybeAccessor<boolean | undefined>;
   "aria-controls"?: MaybeAccessor<string | undefined>;
+  /**
+   * What this item is, when it says so itself.
+   *
+   * A menu rendered from data takes one selection mode for all of its items. A
+   * menu WRITTEN as children mixes them: a tick beside "Show toolbar", three
+   * radios under it and a plain "Print" at the bottom. Each item then carries
+   * its own kind and its own state, and the menu's selection is not consulted.
+   *
+   * @default decided by the menu's selection mode
+   */
+  type?: MaybeAccessor<MenuItemType | undefined>;
+  /** Whether a `checkbox` or `radio` item is on. */
+  isSelected?: MaybeAccessor<boolean | undefined>;
+  /** Turn a `checkbox` item over, or a `radio` item on. */
+  onToggle?: () => void;
+  /** Called when the item is chosen, before the menu closes; preventing it keeps the menu open. */
+  onSelect?: (event: MenuSelectEvent) => void;
   onAction?: (key: Key) => void;
   onClose?: () => void;
+}
+
+export type MenuItemType = "item" | "checkbox" | "radio";
+
+/**
+ * What an item's `onSelect` receives.
+ *
+ * Choosing an item closes the menu, and the one thing a caller needs to say
+ * about that is "not this time": a "Select all" that should leave the list up,
+ * or an item that opens a dialog and wants to hand focus over itself.
+ */
+export interface MenuSelectEvent {
+  readonly key: Key;
+  readonly defaultPrevented: boolean;
+  preventDefault: () => void;
 }
 
 export interface MenuItemResult {
@@ -233,8 +277,11 @@ export function menuItem(options: MenuItemOptions, state: ListState<unknown>): M
   const keyboardId = id();
 
   const manager = () => state.selectionManager();
+  const navigate = router();
   const isTrigger = (): boolean => access(options["aria-haspopup"]) !== undefined;
   const node = (): Node<unknown> | null => state.collection().getItem(options.key);
+  const kind = (): MenuItemType | undefined => access(options.type);
+  const checks = (): boolean => kind() === "checkbox" || kind() === "radio";
 
   /**
    * Whether choosing this item takes the menu away.
@@ -248,6 +295,12 @@ export function menuItem(options: MenuItemOptions, state: ListState<unknown>): M
     const declared = access(options.shouldCloseOnSelect);
     if (declared !== undefined) return declared;
     if (manager().isLink(options.key)) return true;
+    // An item that says what it is closes on any pointer choice: there is no
+    // menu-wide mode to read "and I am not done" from, and a caller who wants
+    // the list left up says so through `onSelect`.
+    if (kind() !== undefined) {
+      return event.pointerType !== "keyboard" || event.key === "Enter" || !checks();
+    }
     if (event.pointerType === "keyboard") {
       return event.key === "Enter" || manager().selectionMode === "none";
     }
@@ -274,10 +327,31 @@ export function menuItem(options: MenuItemOptions, state: ListState<unknown>): M
     onPress: (event) => {
       options.onPress?.(event);
       if (isTrigger() || item.isDisabled()) return;
+      if (checks()) options.onToggle?.();
+
+      let prevented = false;
+      options.onSelect?.({
+        key: options.key,
+        get defaultPrevented() {
+          return prevented;
+        },
+        preventDefault: () => {
+          prevented = true;
+        },
+      });
+
       const itemAction = node()?.props?.onAction;
       if (typeof itemAction === "function") (itemAction as () => void)();
       options.onAction?.(options.key);
-      if (shouldClose(event)) options.onClose?.();
+
+      const closes = !prevented && shouldClose(event);
+      // Followed here rather than by the collection, which was told to leave
+      // links alone: the menu is still up, so the anchor is still in the
+      // document for the browser to follow.
+      const element = access(options.ref) as Element | null;
+      const href = node()?.props?.href;
+      if (typeof href === "string" && element !== null) navigate.open(element, event, href);
+      if (closes) options.onClose?.();
     },
   });
 
@@ -295,8 +369,15 @@ export function menuItem(options: MenuItemOptions, state: ListState<unknown>): M
     onHoverChange: options.onHoverChange,
   });
 
+  const isSelected = (): boolean =>
+    kind() === undefined ? item.isSelected() : checks() && access(options.isSelected) === true;
+
   const role = (): string => {
     if (isTrigger()) return "menuitem";
+    const own = kind();
+    if (own === "checkbox") return "menuitemcheckbox";
+    if (own === "radio") return "menuitemradio";
+    if (own === "item") return "menuitem";
     const mode = manager().selectionMode;
     if (mode === "single") return "menuitemradio";
     if (mode === "multiple") return "menuitemcheckbox";
@@ -304,7 +385,7 @@ export function menuItem(options: MenuItemOptions, state: ListState<unknown>): M
   };
 
   return {
-    isSelected: item.isSelected,
+    isSelected,
     isFocused: item.isFocused,
     isPressed: item.isPressed,
     isDisabled: item.isDisabled,
@@ -316,8 +397,11 @@ export function menuItem(options: MenuItemOptions, state: ListState<unknown>): M
       "aria-disabled": () => item.isDisabled() || undefined,
       "aria-label": () => access(options["aria-label"]) ?? node()?.["aria-label"],
       "aria-describedby": () => access(options["aria-describedby"]),
-      "aria-checked": () =>
-        manager().selectionMode !== "none" && !isTrigger() ? item.isSelected() : undefined,
+      "aria-checked": () => {
+        if (isTrigger()) return undefined;
+        if (kind() !== undefined) return checks() ? isSelected() : undefined;
+        return manager().selectionMode !== "none" ? item.isSelected() : undefined;
+      },
       "aria-haspopup": () => access(options["aria-haspopup"]),
       "aria-expanded": () => access(options["aria-expanded"]),
       "aria-controls": () => access(options["aria-controls"]),
@@ -411,11 +495,11 @@ export interface RootMenuTriggerState extends MenuTriggerState {
 /** Whether the menu is open, and where focus lands when it opens. */
 export function menuTriggerState(options: MenuTriggerStateOptions = {}): RootMenuTriggerState {
   const overlay = overlayTriggerState(options);
-  const strategy = signal<FocusStrategy | null>(null);
-  const expanded = signal<Key[]>([]);
+  const [strategy, setStrategy] = createSignal<FocusStrategy | null>(null);
+  const [expanded, setExpanded] = createSignal<Key[]>([]);
 
   const close = (): void => {
-    expanded.set([]);
+    setExpanded([]);
     overlay.close();
   };
 
@@ -426,18 +510,18 @@ export function menuTriggerState(options: MenuTriggerStateOptions = {}): RootMen
     expandedKeys: expanded,
     openSubmenu: (triggerKey, level) => {
       if (level > expanded().length) return;
-      expanded.update((prev) => [...prev.slice(0, level), triggerKey]);
+      setExpanded((prev) => [...prev.slice(0, level), triggerKey]);
     },
     closeSubmenu: (triggerKey, level) => {
       if (expanded()[level] !== triggerKey) return;
-      expanded.update((prev) => prev.slice(0, level));
+      setExpanded((prev) => prev.slice(0, level));
     },
     open(focusStrategy: FocusStrategy | null = null) {
-      strategy.set(focusStrategy);
+      setStrategy(focusStrategy);
       overlay.open();
     },
     toggle(focusStrategy: FocusStrategy | null = null) {
-      strategy.set(focusStrategy);
+      setStrategy(focusStrategy);
       if (overlay.isOpen()) close();
       else overlay.open();
     },
@@ -478,16 +562,16 @@ export function submenuTriggerState(
   root: RootMenuTriggerState,
 ): SubmenuTriggerState {
   const level = root.expandedKeys().length;
-  const strategy = signal<FocusStrategy | null>(null);
+  const [strategy, setStrategy] = createSignal<FocusStrategy | null>(null);
   const isOpen = (): boolean => root.expandedKeys()[level] === options.triggerKey;
 
   const open = (focusStrategy: FocusStrategy | null = null): void => {
-    strategy.set(focusStrategy);
+    setStrategy(focusStrategy);
     root.openSubmenu(options.triggerKey, level);
   };
 
   const close = (): void => {
-    strategy.set(null);
+    setStrategy(null);
     root.closeSubmenu(options.triggerKey, level);
   };
 
@@ -619,7 +703,10 @@ export function menuTrigger(
         };
 
   return {
-    menuTriggerProps: mergeProps(triggerProps, interactionProps, keyboardProps, { id: triggerId }),
+    menuTriggerProps: mergeProps(triggerProps, interactionProps, keyboardProps, {
+      id: triggerId,
+      "data-state": () => (state.isOpen() ? "open" : "closed"),
+    }),
     menuProps: {
       ...overlayProps,
       "aria-labelledby": triggerId,
@@ -691,7 +778,7 @@ export function contextMenuTrigger(
   state: MenuTriggerState,
 ): ContextMenuTriggerResult {
   const menuId = id();
-  const anchor = signal<AnchorRect | null>(null);
+  const [anchor, setAnchor] = createSignal<AnchorRect | null>(null);
   const listeners = globalListeners();
   const isDisabled = (): boolean => access(options.isDisabled) === true;
 
@@ -705,7 +792,7 @@ export function contextMenuTrigger(
   };
 
   const openAt = (x: number, y: number, strategy: FocusStrategy | null): void => {
-    anchor.set({ top: y, left: x, width: 0, height: 0 });
+    setAnchor({ top: y, left: x, width: 0, height: 0 });
     state.open(strategy);
   };
 
@@ -767,6 +854,7 @@ export function contextMenuTrigger(
       // iOS puts its own callout over a held element, on top of this menu.
       style: { "-webkit-touch-callout": "none" },
       "data-open": () => state.isOpen(),
+      "data-state": () => (state.isOpen() ? "open" : "closed"),
       "data-disabled": () => isDisabled(),
     },
     menuProps: {
@@ -838,10 +926,10 @@ export function safelyMouseToSubmenu(options: SafelyMouseToSubmenuOptions): void
   let side: "left" | "right" | null = null;
   let towards = ALLOWED_INVALID_MOVEMENTS;
   let giveUp: ReturnType<typeof setTimeout> | undefined;
-  const blocked = signal(false);
+  const [blocked, setBlocked] = createSignal(false);
 
   const reset = (): void => {
-    blocked.set(false);
+    setBlocked(false);
     towards = ALLOWED_INVALID_MOVEMENTS;
     previous = null;
     side = null;
@@ -849,7 +937,7 @@ export function safelyMouseToSubmenu(options: SafelyMouseToSubmenuOptions): void
 
   // The parent menu stops answering the pointer while the user is on their way
   // across it. Restored on the way out, and on close, by the same effect.
-  effect(() => {
+  createTrackedEffect(() => {
     const menu_ = access(options.menuRef) as HTMLElement | null;
     if (menu_ === null) return undefined;
     menu_.style.pointerEvents = blocked() ? "none" : "";
@@ -858,7 +946,7 @@ export function safelyMouseToSubmenu(options: SafelyMouseToSubmenuOptions): void
     };
   });
 
-  effect(() => {
+  createTrackedEffect(() => {
     const submenu = access(options.submenuRef) as HTMLElement | null;
     const parent = access(options.menuRef) as HTMLElement | null;
 
@@ -908,7 +996,7 @@ export function safelyMouseToSubmenu(options: SafelyMouseToSubmenuOptions): void
       towards = heading
         ? Math.min(towards + 1, ALLOWED_INVALID_MOVEMENTS)
         : Math.max(towards - 1, 0);
-      blocked.set(towards >= ALLOWED_INVALID_MOVEMENTS);
+      setBlocked(towards >= ALLOWED_INVALID_MOVEMENTS);
 
       lastProcessed = now;
       previous = { x, y };
@@ -954,6 +1042,12 @@ export interface SubmenuTriggerOptions {
   triggerId: MaybeAccessor<string>;
   /** @default "menu" */
   type?: MaybeAccessor<"menu" | "dialog" | undefined>;
+  /**
+   * Escape inside the submenu closes every menu up to the root, and focus goes
+   * back to what opened the root, as Radix does. Otherwise it closes this
+   * submenu alone and focus goes back to its trigger item. @default false
+   */
+  shouldCloseAllOnEscape?: MaybeAccessor<boolean | undefined>;
   isDisabled?: MaybeAccessor<boolean | undefined>;
   /** How long a hover must last before the submenu opens. @default 200 */
   delay?: MaybeAccessor<number | undefined>;
@@ -1038,6 +1132,11 @@ export function submenuTrigger(
       event.continuePropagation();
       return;
     }
+    if (event.key === "Escape" && access(options.shouldCloseAllOnEscape) === true) {
+      cancelOpen();
+      state.closeAll();
+      return;
+    }
     closeNow();
     restoreFocus();
   };
@@ -1076,7 +1175,7 @@ export function submenuTrigger(
   // The submenu itself is EXCLUDED, and not as a nicety: it renders inside the
   // trigger item, so it is a DOM descendant of the parent menu, and its own
   // autofocus would otherwise close it the moment it opened.
-  effect(() => {
+  createTrackedEffect(() => {
     const parent = access(options.parentMenuRef) as Element | null;
     if (parent === null) return undefined;
 
@@ -1160,10 +1259,17 @@ interface MenuContextValue {
   shouldUseVirtualFocus: Accessor<boolean | undefined>;
   onAction: Accessor<((key: Key) => void) | undefined>;
   onClose: Accessor<(() => void) | undefined>;
+  /**
+   * Where a `<MenuItem>` written as a child registers itself.
+   *
+   * Present when the menu was given no `items`: the items that render ARE the
+   * collection, and each one says what it is rather than reading a node.
+   */
+  staticItems?: StaticCollection | undefined;
 }
 
-const MenuContext = context<MenuContextValue | null>(null);
-const MenuNodeContext = context<Node<unknown> | null>(null);
+const MenuContext = createContext<MenuContextValue | null>(null);
+const MenuNodeContext = createContext<Node<unknown> | null>(null);
 
 export function useMenu(): MenuContextValue {
   const value = getContext(MenuContext);
@@ -1209,9 +1315,28 @@ export interface MenuTriggerValue {
   placement: Placement;
   /** How far from the anchor the menu sits when it is not told. */
   offset: number;
+  /**
+   * Key handling for every menu in this trigger's tree, after the menu's own.
+   *
+   * A menubar needs it: the arrow that leaves one menu for its neighbour is
+   * pressed on an ITEM, three submenus deep or none, and belongs to the bar.
+   * `isSubmenu` says which level heard it, since the arrow pointing back at a
+   * submenu's trigger closes that submenu and is not the bar's to take.
+   */
+  onMenuKeyDown?: (event: KeyboardEvent, isSubmenu: boolean) => void;
 }
 
-const MenuTriggerContext = context<MenuTriggerValue | null>(null);
+const MenuTriggerContext = createContext<MenuTriggerValue | null>(null);
+
+/**
+ * Build `children` as the contents of a trigger this module did not make.
+ *
+ * A menubar's menu is a menu trigger whose open state belongs to the bar, so
+ * it builds the value itself and the `<Menu>` inside finds it the usual way.
+ */
+export function provideMenuTrigger(value: MenuTriggerValue, children: () => unknown): unknown {
+  return provide(MenuTriggerContext, () => value, children);
+}
 
 /** The enclosing {@link MenuTrigger}, if there is one. */
 export function useMenuTrigger(): MenuTriggerValue | null {
@@ -1242,7 +1367,7 @@ export interface SubmenuTriggerValue {
   popoverProps: DOMProps;
 }
 
-const SubmenuTriggerContext = context<SubmenuTriggerValue | null>(null);
+const SubmenuTriggerContext = createContext<SubmenuTriggerValue | null>(null);
 
 /** The enclosing {@link SubmenuTrigger}, if there is one. */
 export function useSubmenuTrigger(): SubmenuTriggerValue | null {
@@ -1255,6 +1380,8 @@ export interface SubmenuTriggerComponentProps {
   isDisabled?: boolean;
   /** How long a hover must last before the submenu opens. @default 200 */
   delay?: number;
+  /** Escape closes the whole menu rather than this submenu alone. @default false */
+  shouldCloseAllOnEscape?: boolean;
 }
 
 /**
@@ -1283,7 +1410,12 @@ export function SubmenuTrigger(props: Incoming<SubmenuTriggerComponentProps>) {
   const triggerRef = makeRef<HTMLLIElement>();
   const submenuRef = makeRef<HTMLUListElement>();
   const list = useMenu();
-  const node = useMenuNode();
+  // In a menu written as children there is no node to read: the trigger item
+  // inside registers under the key made here, which is how the two find each
+  // other.
+  const node: Pick<Node<unknown>, "key" | "props"> = list.staticItems === undefined
+    ? useMenuNode()
+    : { key: createUniqueId(), props: {} };
 
   const state = submenuTriggerState({ triggerKey: node.key }, list.root);
 
@@ -1292,9 +1424,13 @@ export function SubmenuTrigger(props: Incoming<SubmenuTriggerComponentProps>) {
       parentMenuRef: list.menuRef,
       submenuRef,
       triggerId: () => menuItemIdFor(list.baseId(), node.key),
-      isDisabled: () => props.isDisabled?.() === true || node.props?.isDisabled === true,
+      isDisabled: () =>
+        props.isDisabled?.() === true ||
+        node.props?.isDisabled === true ||
+        list.state.collection().getItem(node.key)?.props?.isDisabled === true,
       delay: () => props.delay?.(),
       shouldUseVirtualFocus: list.shouldUseVirtualFocus,
+      shouldCloseAllOnEscape: () => props.shouldCloseAllOnEscape?.(),
     },
     state,
     triggerRef,
@@ -1318,7 +1454,7 @@ export function SubmenuTrigger(props: Incoming<SubmenuTriggerComponentProps>) {
     SubmenuTriggerContext,
     () => value,
     () => props.children as unknown,
-  ) as never;
+  );
 }
 
 export interface MenuTriggerComponentProps {
@@ -1373,7 +1509,7 @@ export function MenuTrigger(props: Incoming<MenuTriggerComponentProps>) {
     MenuTriggerContext,
     () => value,
     () => props.children as unknown,
-  ) as never;
+  );
 }
 
 export interface MenuButtonComponentProps extends StyleProps {
@@ -1412,6 +1548,7 @@ export function MenuButton(props: Incoming<MenuButtonComponentProps>) {
       "data-focused": isFocused,
       "data-focus-visible": showsRing,
       "data-disabled": () => props.isDisabled?.() === true,
+      "data-state": () => (menuTriggerValue.state.isOpen() ? "open" : "closed"),
       "data-testid": () => props["data-testid"]?.(),
     },
   );
@@ -1475,7 +1612,7 @@ export function ContextMenu(props: Incoming<ContextMenuComponentProps>) {
     MenuTriggerContext,
     () => value,
     () => props.children as unknown,
-  ) as never;
+  );
 }
 
 export interface ContextMenuTriggerComponentProps extends StyleProps {
@@ -1502,7 +1639,7 @@ export function ContextMenuTrigger(props: Incoming<ContextMenuTriggerComponentPr
   const options = fromProps(props);
   const elementProps = mergeProps(
     trigger.menuTriggerProps,
-    filterDOMProps(options, { global: true }),
+    filterDOMProps(options, { global: true, labelable: true }),
     styleProps(props),
     { "data-testid": () => props["data-testid"]?.() },
   );
@@ -1515,10 +1652,15 @@ export function ContextMenuTrigger(props: Incoming<ContextMenuTriggerComponentPr
 }
 
 export interface MenuComponentProps<T> extends StyleProps, ItemAccessors<T> {
-  /** The values to render, in order. */
-  items: Iterable<T>;
-  /** How one value renders. Return a `<MenuItem>` or a `<MenuSection>`. */
-  children: (item: T) => Child;
+  /**
+   * The values to render, in order.
+   *
+   * Leave it out and the `<MenuItem>`s written as children are the collection:
+   * each one says what it is and what choosing it does.
+   */
+  items?: Iterable<T>;
+  /** How one value renders, returning a `<MenuItem>` or a `<MenuSection>`; or the items themselves. */
+  children: ((item: T) => Child) | Child;
   /** @default "none" */
   selectionMode?: SelectionMode;
   selectedKeys?: "all" | Iterable<Key>;
@@ -1533,6 +1675,8 @@ export interface MenuComponentProps<T> extends StyleProps, ItemAccessors<T> {
   /** Where the popover goes, when inside a {@link MenuTrigger}. @default "bottom start" */
   placement?: Placement;
   offset?: number;
+  /** Distance along the trigger's edge, from where `placement` aligns it. @default 0 */
+  crossOffset?: number;
   ref?: RefTarget<HTMLUListElement>;
   onSelectionChange?: (keys: "all" | Set<Key>) => void;
   onAction?: (key: Key) => void;
@@ -1575,6 +1719,7 @@ export function Menu<T>(props: Incoming<MenuComponentProps<T>>) {
           props.placement?.() ?? access(submenu.popoverProps.placement as MaybeAccessor<Placement>)
         }
         offset={props.offset?.() ?? 0}
+        crossOffset={props.crossOffset?.()}
         isNested
       >
         <MenuList of={props} trigger={null} />
@@ -1597,6 +1742,7 @@ export function Menu<T>(props: Incoming<MenuComponentProps<T>>) {
       onOpenChange={trigger.state.setOpen}
       placement={props.placement?.() ?? trigger.placement}
       offset={props.offset?.() ?? trigger.offset}
+      crossOffset={props.crossOffset?.()}
     >
       <MenuList of={props} trigger={trigger} />
     </Popover>
@@ -1626,9 +1772,15 @@ function MenuList<T>(listProps: Incoming<MenuListProps<T>>) {
   // One root for the whole tree. A menu with no trigger above it is its own
   // root, so a submenu still works inside a menu rendered inline.
   const root = enclosing?.root ?? trigger?.state ?? menuTriggerState();
+  const written = props.items === undefined ? staticCollection() : null;
+  // The trigger at the top of the tree, which a submenu is not handed.
+  const treeKeyDown = useMenuTrigger()?.onMenuKeyDown;
 
   const state = listState<T>({
     ...(options as ListStateOptions<T>),
+    ...(written === null
+      ? {}
+      : ({ items: written.entries, ...staticAccessors } as unknown as ListStateOptions<T>)),
     onSelectionChange: (keys) => props.onSelectionChange?.()?.(keys),
   });
 
@@ -1642,6 +1794,16 @@ function MenuList<T>(listProps: Incoming<MenuListProps<T>>) {
     {
       ...(options as unknown as MenuOptions),
       ...(submenu === null ? {} : (submenu.submenuProps as Record<string, never>)),
+      ...(treeKeyDown === undefined
+        ? {}
+        : {
+            onKeyDown: (event: KeyboardEvent): void => {
+              (submenu?.submenuProps.onKeyDown as ((event: KeyboardEvent) => void) | undefined)?.(
+                event,
+              );
+              treeKeyDown(event, submenu !== null);
+            },
+          }),
       ref: domRef,
       // A submenu with no label of its own is named by the ITEM that opens it,
       // which is what a screen reader announces on the way in.
@@ -1675,6 +1837,7 @@ function MenuList<T>(listProps: Incoming<MenuListProps<T>>) {
       shouldUseVirtualFocus: () => undefined,
       onAction: () => props.onAction?.(),
       onClose: () => close,
+      staticItems: written ?? undefined,
     };
     install(owner, MenuContext, () => value);
   }
@@ -1691,9 +1854,20 @@ function MenuList<T>(listProps: Incoming<MenuListProps<T>>) {
       "data-testid": () => props["data-testid"]?.(),
       "data-empty": () => state.collection().size === 0,
     },
+    // The popover's own element is the positioner; this is the one a design
+    // system names, so the side and the state are repeated on it.
+    popoverStateProps(),
   );
 
-  const render = props.children as unknown as (item: T) => Child;
+  if (written !== null) {
+    return (
+      <ul {...elementProps} ref={mergeRefs(domRef.set, submenu?.submenuRef.set, props.ref?.())}>
+        {props.children}
+      </ul>
+    );
+  }
+
+  const render = props.children;
 
   return (
     <ul {...elementProps} ref={mergeRefs(domRef.set, submenu?.submenuRef.set, props.ref?.())}>
@@ -1713,20 +1887,107 @@ export interface MenuItemComponentProps extends StyleProps {
   /** Override when the menu closes on this item. */
   shouldCloseOnSelect?: boolean;
   ref?: RefTarget<HTMLLIElement>;
+  /**
+   * The item's key, when it is written as a child of a menu with no `items`:
+   * what the menu's `onAction` reports. Generated when left out, and never the
+   * element's own `id`, which is derived from it.
+   */
+  id?: string;
+  /** What a typeahead matches, for a written item. @default its own text */
+  textValue?: string;
+  /** For a written item; one rendered from data reads its item's. */
+  isDisabled?: boolean;
+  /**
+   * Makes a written item a link; one rendered from data reads its item's
+   * `href`. See {@link MenuItem} for what that renders.
+   */
+  href?: string;
+  target?: string;
+  rel?: string;
+  download?: boolean | string;
+  /**
+   * What a written item is. A `radio` inside a {@link MenuRadioGroup} and a
+   * `checkbox` given `isSelected`, `defaultSelected` or `onChange` are both
+   * recognised without it.
+   */
+  type?: MenuItemType;
+  /** Whether a written checkbox item is ticked. */
+  isSelected?: boolean;
+  defaultSelected?: boolean;
+  /** Called when a written checkbox item is turned over. */
+  onChange?: (isSelected: boolean) => void;
+  /** What a written radio item stands for in its {@link MenuRadioGroup}. */
+  value?: string;
+  /** Called when a written item is chosen. */
+  onAction?: () => void;
+  /** Called when the item is chosen, before the menu closes; preventing it keeps the menu open. */
+  onSelect?: (event: MenuSelectEvent) => void;
 }
 
 /**
- * One item. Its key, value and disabled state come from the collection node
- * the enclosing {@link Menu} is rendering, so nothing is repeated here.
+ * One item. Rendered from data, its key, value and disabled state come from the
+ * collection node the enclosing {@link Menu} is rendering, so nothing is
+ * repeated here; written as a child, it says those things itself.
+ *
+ * An item with an `href` is a real `<a role="menuitem">` inside a
+ * presentational `<li>`, so a middle click and "copy link address" mean what
+ * they mean on any link. Choosing it is followed through the router with the
+ * modifiers the press carried, which is what keeps a Control-click a new tab
+ * and lets the menu close in the same gesture. A disabled one has no `href`.
  */
 export function MenuItem(props: Incoming<MenuItemComponentProps>) {
-  const domRef = makeRef<HTMLLIElement>();
+  const domRef = makeRef<HTMLElement>();
   const list = useMenu();
-  const node = useMenuNode();
+  const enclosing = useSubmenuTrigger();
+  const registry = list.staticItems;
+  // Written, the only item of THIS menu inside a `<SubmenuTrigger>` is the
+  // trigger: the submenu's own items belong to the menu it opens.
+  const opensWritten =
+    registry !== undefined && enclosing !== null && enclosing.parentBaseId === list.baseId
+      ? enclosing
+      : null;
+  const group = registry === undefined ? null : (getContext(MenuRadioGroupContext) ?? null);
+  const ownType = (): MenuItemType | undefined => {
+    if (registry === undefined) return undefined;
+    const declared = props.type?.();
+    if (declared !== undefined) return declared;
+    if (group !== null && props.value !== undefined) return "radio";
+    return props.isSelected !== undefined ||
+      props.defaultSelected !== undefined ||
+      props.onChange !== undefined
+      ? "checkbox"
+      : "item";
+  };
+  const ticked =
+    registry === undefined
+      ? null
+      : toggleState({
+          isSelected: () => props.isSelected?.(),
+          defaultSelected: () => props.defaultSelected?.(),
+          onChange: (isSelected) => props.onChange?.()?.(isSelected),
+        });
+
+  const written =
+    registry === undefined
+      ? null
+      : staticItem(registry, {
+          key: opensWritten?.triggerKey ?? props.id?.(),
+          textValue: () => props.textValue?.(),
+          props: () => ({
+            isDisabled: props.isDisabled?.() === true,
+            href: props.href?.(),
+            target: props.target?.(),
+            rel: props.rel?.(),
+            download: props.download?.(),
+            onAction: props.onAction?.(),
+          }),
+        });
+  const node: Pick<Node<unknown>, "key" | "props"> = written === null
+    ? useMenuNode()
+    : { key: written.key, props: {} };
   // Inside a `<SubmenuTrigger>` this item IS the trigger, and takes its
   // handlers and its `aria-haspopup` on top of an ordinary item's. The
   // submenu's OWN items are inside that same context and are not.
-  const enclosing = useSubmenuTrigger();
   const submenu =
     enclosing !== null &&
     enclosing.parentBaseId === list.baseId &&
@@ -1741,9 +2002,19 @@ export function MenuItem(props: Incoming<MenuItemComponentProps>) {
       ref: domRef,
       baseId: list.baseId,
       "aria-label": () => props["aria-label"]?.(),
-      isDisabled: () => node.props?.isDisabled === true,
+      isDisabled: () => props.isDisabled?.() === true || node.props?.isDisabled === true,
       shouldCloseOnSelect: () => props.shouldCloseOnSelect?.(),
       shouldUseVirtualFocus: list.shouldUseVirtualFocus,
+      type: ownType,
+      isSelected: () =>
+        ownType() === "radio" ? group?.value() === props.value?.() : ticked?.isSelected(),
+      onToggle: () => {
+        const value = props.value?.();
+        if (ownType() === "radio") {
+          if (value !== undefined) group?.setValue(value);
+        } else ticked?.toggle();
+      },
+      onSelect: (event) => props.onSelect?.()?.(event),
       onAction: (key) => list.onAction()?.(key),
       onClose: () => list.onClose()?.(),
       ...(opens as unknown as Record<string, never>),
@@ -1754,35 +2025,209 @@ export function MenuItem(props: Incoming<MenuItemComponentProps>) {
   const { hoverProps, isHovered } = hover({ isDisabled });
   const { focusProps, isFocusVisible: showsRing } = focusRing();
 
+  const toHref = router().href;
+  const linked = (name: "href" | "target" | "rel" | "download"): unknown =>
+    props[name]?.() ?? node.props?.[name];
+  const href = (): string | undefined => {
+    const to = linked("href");
+    return typeof to === "string" ? to : undefined;
+  };
+  const isLink = href() !== undefined;
+  const checks = (): boolean => {
+    const role = access(menuItemProps.role as MaybeAccessor<string>);
+    return submenu === null && (role === "menuitemcheckbox" || role === "menuitemradio");
+  };
+
   const elementProps = mergeProps(
     menuItemProps,
     hoverProps,
     focusProps,
-    filterDOMProps(fromProps(props), { global: true }),
+    // A written item's `id` is its key; the element's id is derived from it.
+    filterDOMProps(fromProps(props), { global: true, labelable: true, id: written === null }),
     styleProps(props),
     {
       "data-selected": isSelected,
       "data-focused": isFocused,
+      // Radix's name for the same thing, so a rule written for it applies.
+      "data-highlighted": isFocused,
       "data-focus-visible": showsRing,
       "data-pressed": isPressed,
       "data-hovered": isHovered,
       "data-disabled": isDisabled,
+      "data-state": () => {
+        if (submenu !== null) return submenu.state.isOpen() ? "open" : "closed";
+        if (!checks()) return undefined;
+        return isSelected() ? "checked" : "unchecked";
+      },
       "data-testid": () => props["data-testid"]?.(),
     },
   );
 
+  if (isLink) {
+    const linkProps = mergeProps(elementProps, {
+      href: () => {
+        const to = href();
+        return to === undefined || isDisabled() ? undefined : toHref(to);
+      },
+      target: () => linked("target"),
+      rel: () => linked("rel"),
+      download: () => linked("download"),
+      // The press follows the link, so no other click may: not the one that
+      // carried the press, and not the one `press` makes for a key the browser
+      // would ignore. The click the router dispatches is let through.
+      onClick: (event: MouseEvent) => {
+        if (!isOpeningLink()) event.preventDefault();
+      },
+    });
+    const anchorRef = (element: HTMLAnchorElement | null): void => {
+      domRef.set(element);
+      written?.ref(element);
+    };
+
+    return (
+      <li role="none">
+        <a {...linkProps} ref={anchorRef}>
+          {props.children}
+        </a>
+      </li>
+    );
+  }
+
   return (
-    <li {...elementProps} ref={mergeRefs(domRef.set, submenu?.triggerRef.set, props.ref?.())}>
+    <li
+      {...elementProps}
+      ref={mergeRefs(domRef.set, submenu?.triggerRef.set, written?.ref, props.ref?.())}
+    >
       {props.children}
     </li>
+  );
+}
+
+interface MenuRadioGroupValue {
+  value: Accessor<string | undefined>;
+  setValue: (value: string) => void;
+}
+
+const MenuRadioGroupContext = createContext<MenuRadioGroupValue | null>(null);
+
+interface MenuGroupHeading {
+  id: Accessor<string>;
+  readonly name: (has: boolean) => void;
+}
+
+const MenuGroupHeadingContext = createContext<MenuGroupHeading | null>(null);
+
+/**
+ * The id the enclosing group's heading must carry, for a heading written as
+ * one of the group's children.
+ *
+ * Calling it is what makes the group point at the heading, and leaving undoes
+ * that, so a group never names an element that is not there.
+ */
+export function useMenuGroupHeading(): Accessor<string> | null {
+  const heading = getContext(MenuGroupHeadingContext);
+  if (heading === null || heading === undefined) return null;
+  heading.name(true);
+  onCleanup(() => heading.name(false));
+  return heading.id;
+}
+
+interface WrittenGroupProps extends StyleProps {
+  heading?: Child;
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
+  children?: Child;
+}
+
+/**
+ * A `role="group"` around items written as children.
+ *
+ * It registers nothing: the items inside are the menu's own, in document
+ * order, so the arrows cross the boundary without the group taking part.
+ */
+function WrittenGroup(groupProps: Incoming<{ of: Incoming<WrittenGroupProps> }>) {
+  const props = groupProps.of();
+  const headingId = id();
+  const [isNamed, setNamed] = createSignal(false, { ownedWrite: true });
+  const hasHeading = (): boolean => props.heading?.() !== undefined;
+  const heading: MenuGroupHeading = { id: headingId, name: setNamed };
+
+  return (
+    <li role="presentation">
+      {props.heading === undefined ? null : (
+        <span role="presentation" id={headingId()}>
+          {props.heading}
+        </span>
+      )}
+      <ul
+        {...mergeProps(filterDOMProps(fromProps(props), { global: true }), styleProps(props), {
+          "data-testid": () => props["data-testid"]?.(),
+        })}
+        role="group"
+        aria-label={props["aria-label"]?.()}
+        aria-labelledby={
+          props["aria-labelledby"]?.() ?? (hasHeading() || isNamed() ? headingId() : undefined)
+        }
+      >
+        {provide(
+          MenuGroupHeadingContext,
+          () => heading,
+          () => props.children as unknown,
+        )}
+      </ul>
+    </li>
+  );
+}
+
+export interface MenuRadioGroupComponentProps extends StyleProps {
+  /** The `value` of the radio item that is on. */
+  value?: string;
+  defaultValue?: string;
+  onValueChange?: (value: string) => void;
+  heading?: Child;
+  "aria-label"?: string;
+  "aria-labelledby"?: string;
+  children?: Child;
+}
+
+/**
+ * A set of written radio items of which one is on.
+ *
+ * ```tsx
+ * <Menu aria-label="View">
+ *   <MenuRadioGroup value={density()} onValueChange={setDensity} aria-label="Density">
+ *     <MenuItem value="compact">Compact</MenuItem>
+ *     <MenuItem value="comfortable">Comfortable</MenuItem>
+ *   </MenuRadioGroup>
+ * </Menu>
+ * ```
+ *
+ * The group owns the value rather than the menu, because a written menu can
+ * hold two of these beside a checkbox and a plain item.
+ */
+export function MenuRadioGroup(props: Incoming<MenuRadioGroupComponentProps>) {
+  const [value, setValue] = controllable<string | undefined>(
+    () => props.value?.(),
+    () => props.defaultValue?.(),
+    (next) => {
+      if (next !== undefined) props.onValueChange?.()?.(next);
+    },
+  );
+  const group: MenuRadioGroupValue = { value, setValue };
+
+  return provide(
+    MenuRadioGroupContext,
+    () => group,
+    () => <WrittenGroup of={props} />,
   );
 }
 
 export interface MenuSectionComponentProps<T> extends StyleProps {
   heading?: Child;
   "aria-label"?: string;
-  /** How one child of this section renders. */
-  children: (item: T) => Child;
+  "aria-labelledby"?: string;
+  /** How one child of this section renders; or, in a written menu, its items. */
+  children: ((item: T) => Child) | Child;
 }
 
 /**
@@ -1804,6 +2249,10 @@ export interface MenuSectionComponentProps<T> extends StyleProps {
  * ```
  */
 export function MenuSection<T>(props: Incoming<MenuSectionComponentProps<T>>) {
+  if (useMenu().staticItems !== undefined) {
+    return <WrittenGroup of={props} />;
+  }
+
   const node = useMenuNode();
 
   const { itemProps, headingProps, groupProps } = menuSection({
@@ -1811,7 +2260,7 @@ export function MenuSection<T>(props: Incoming<MenuSectionComponentProps<T>>) {
     "aria-label": () => props["aria-label"]?.(),
   });
 
-  const render = props.children as unknown as (item: T) => Child;
+  const render = props.children;
 
   return (
     <li {...itemProps}>

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, signal, type Incoming } from "@barqjs/core";
+import { flush, createSignal, type Incoming } from "@barqjs/core";
 import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 import { Button } from "./button.tsx";
 import type { Key } from "./collections.ts";
@@ -199,7 +199,7 @@ describe("GridList", () => {
 describe("an action that arrives after the rows were built", () => {
   test("a row picks up an onAction the list did not have at construction", () => {
     const acted: Key[] = [];
-    const enabled = signal(false);
+    const [enabled, setEnabled] = createSignal(false);
 
     render(() => (
       <GridList
@@ -216,7 +216,7 @@ describe("an action that arrives after the rows were built", () => {
     user.click(screen.getByRole("row", { name: "Notes" }));
     expect(acted, "an action ran before one was declared").toEqual([]);
 
-    enabled.set(true);
+    setEnabled(true);
     flush();
 
     user.click(screen.getByRole("row", { name: "Notes" }));

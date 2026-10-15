@@ -24,15 +24,14 @@ import {
   type Accessor,
   type Child,
   For,
-  computed,
-  context,
-  effect,
+  createMemo,
+  createContext,
+  createTrackedEffect,
   getContext,
-  getOwner,
   type Incoming,
   isServer,
   provide,
-  signal,
+  createSignal,
 } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import {
@@ -176,11 +175,11 @@ export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
   );
 
   /** Which segments the user has actually filled in. */
-  const filled = signal<Set<SegmentType>>(
+  const [filled, setFilled] = createSignal<Set<SegmentType>>(
     new Set(value() === null ? [] : segmentsFor(granularity())),
   );
 
-  const placeholder = computed(() => {
+  const placeholder = createMemo(() => {
     const given = access(options.placeholderValue);
     if (given !== undefined) {
       return given instanceof CalendarDateTime ? given : CalendarDateTime.from(given);
@@ -195,10 +194,10 @@ export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
    * value stays null until every segment is filled, and without this the
    * month would be written and immediately thrown away.
    */
-  const draft = signal<CalendarDateTime>(placeholder());
+  const [draft, setDraft] = createSignal<CalendarDateTime>(placeholder());
 
   /** What the field SHOWS: the value if it has one, the draft if not. */
-  const displayValue = computed(() => {
+  const displayValue = createMemo(() => {
     const current = value();
     if (current !== null) {
       return current instanceof CalendarDateTime ? current : CalendarDateTime.from(current);
@@ -220,8 +219,8 @@ export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
    * whatever month happens to be showing into the form.
    */
   const commit = (next: CalendarDateTime, marked: Set<SegmentType>): void => {
-    filled.set(marked);
-    draft.set(next);
+    setFilled(marked);
+    setDraft(next);
     const complete = wanted().every((type) => type === "dayPeriod" || marked.has(type));
     if (!complete) {
       if (value() !== null) setValueRaw(null);
@@ -259,7 +258,7 @@ export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
     }
   };
 
-  const format = computed(() => {
+  const format = createMemo(() => {
     const parts: Intl.DateTimeFormatOptions = { year: "numeric", month: "2-digit", day: "2-digit" };
     const level = granularity();
     if (level !== "day") {
@@ -271,7 +270,7 @@ export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
     return dateFormatter(parts)();
   });
 
-  const segments = computed((): DateSegment[] => {
+  const segments = createMemo((): DateSegment[] => {
     const at = displayValue();
     const marked = filled();
     const parts = format().formatToParts(at.toDate());
@@ -345,11 +344,11 @@ export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
   if (!isServer) {
     // A value arriving from OUTSIDE fills the field, and one taken away
     // empties it back to the placeholder.
-    effect(() => {
+    createTrackedEffect(() => {
       const current = value();
       if (current === null) return;
-      draft.set(current instanceof CalendarDateTime ? current : CalendarDateTime.from(current));
-      filled.set(new Set(wanted()));
+      setDraft(current instanceof CalendarDateTime ? current : CalendarDateTime.from(current));
+      setFilled(new Set(wanted()));
     });
   }
 
@@ -407,7 +406,7 @@ export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
     isComplete,
     setValue: (next) => {
       setValueRaw(next);
-      filled.set(new Set(next === null ? [] : wanted()));
+      setFilled(new Set(next === null ? [] : wanted()));
     },
     increment: (type) => step(type, 1, false),
     decrement: (type) => step(type, -1, false),
@@ -427,7 +426,7 @@ export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
     },
     clear: () => {
       if (isDisabled() || isReadOnly()) return;
-      filled.set(new Set());
+      setFilled(new Set<SegmentType>());
       setValueRaw(null);
     },
     formatValue: (formatOptions) => {
@@ -435,6 +434,7 @@ export function dateFieldState(options: DateFieldStateOptions): DateFieldState {
       if (current === null) return "";
       return dateFormatter(
         formatOptions ?? { dateStyle: granularity() === "day" ? "long" : "long" },
+        locale,
       )().format(toCalendarDate(current).toDate());
     },
   };
@@ -711,7 +711,7 @@ interface DateFieldContextValue {
   state: DateFieldState;
 }
 
-const DateFieldContext = context<DateFieldContextValue | null>(null);
+const DateFieldContext = createContext<DateFieldContextValue | null>(null);
 
 export function useDateField(): DateFieldContextValue {
   const value = getContext(DateFieldContext);
@@ -726,7 +726,7 @@ function DateFieldProvider(props: Incoming<{ value: DateFieldContextValue; child
     DateFieldContext,
     () => props.value(),
     () => props.children as unknown,
-  ) as never;
+  );
 }
 
 export interface DateFieldComponentProps extends StyleProps {

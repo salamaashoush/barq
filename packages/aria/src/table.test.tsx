@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, signal, type Incoming } from "@barqjs/core";
+import { flush, createSignal, type Incoming } from "@barqjs/core";
 import {
   accessibleName,
   expectNoAriaViolations,
@@ -197,14 +197,14 @@ describe("Table", () => {
   });
 
   test("pressing a sortable header sorts ascending, then descending", () => {
-    const sort = signal<SortDescriptor | undefined>(undefined);
+    const [sort, setSort] = createSignal<SortDescriptor | undefined>(undefined);
     const changes: SortDescriptor[] = [];
     render(() => (
       <Files
         sortDescriptor={sort()}
         onSortChange={(descriptor) => {
           changes.push(descriptor);
-          sort.set(descriptor);
+          setSort(descriptor);
         }}
       />
     ));
@@ -290,14 +290,14 @@ describe("Table", () => {
 describe("an action that arrives after the rows were built", () => {
   test("a row picks up an onAction the table did not have at construction", () => {
     const acted: Key[] = [];
-    const enabled = signal(false);
+    const [enabled, setEnabled] = createSignal(false);
 
     render(() => <Files onAction={enabled() ? (key: Key) => acted.push(key) : undefined} />);
 
     user.click(cell("Budget", "Name"));
     expect(acted, "an action ran before one was declared").toEqual([]);
 
-    enabled.set(true);
+    setEnabled(true);
     flush();
 
     user.click(cell("Budget", "Name"));

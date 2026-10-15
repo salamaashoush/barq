@@ -12,7 +12,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { flush, signal, type Incoming } from "@barqjs/core";
+import { flush, createSignal, type Incoming } from "@barqjs/core";
 import { render, screen, user } from "@barqjs/testing";
 import type { Key, Node } from "./collections.ts";
 import { ListCollection } from "./collections.ts";
@@ -296,7 +296,7 @@ describe("a section", () => {
 
   test("a heading takes its own height and the rows follow it", () => {
     const layout = listLayout({ rowHeight: ROW, headingHeight: 30 });
-    const nodes = signal(GROUPS);
+    const [nodes] = createSignal(GROUPS);
     void nodes;
 
     render(() => (

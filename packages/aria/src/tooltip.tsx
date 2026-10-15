@@ -24,8 +24,8 @@
 import {
   type Accessor,
   type Child,
-  context,
-  effect,
+  createContext,
+  createTrackedEffect,
   getContext,
   getOwner,
   type Incoming,
@@ -33,15 +33,18 @@ import {
   Portal,
   provide,
   Show,
-  signal,
+  createSignal,
 } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { ownerDocument } from "./dom.ts";
+import { useLocale } from "./i18n.ts";
 import { focusable } from "./interactions/focusable.ts";
 import { hover } from "./interactions/hover.ts";
 import { getInteractionModality, isFocusVisible, trackModality } from "./interactions/modality.ts";
 import type { ElementRef } from "./interactions/press.ts";
 import {
+  alignOf,
+  followOpen,
   overlayPosition,
   overlayTriggerState,
   portalContainer,
@@ -107,6 +110,16 @@ export interface TooltipTriggerStateOptions extends OverlayTriggerStateOptions {
   delay?: MaybeAccessor<number | undefined>;
   /** How long it stays after the pointer leaves. @default 500 */
   closeDelay?: MaybeAccessor<number | undefined>;
+  /**
+   * How long after this tooltip goes the next one may still appear at once.
+   *
+   * Counted from the moment it is gone, so a tooltip that lingers for its
+   * close delay does not use the window up while it is still on screen. Zero
+   * means every tooltip waits.
+   *
+   * @default 500, or the close delay when that is longer
+   */
+  skipDelay?: MaybeAccessor<number | undefined>;
 }
 
 export interface TooltipTriggerState extends Omit<OverlayTriggerState, "open" | "close"> {
@@ -117,6 +130,11 @@ export interface TooltipTriggerState extends Omit<OverlayTriggerState, "open" | 
    * tooltip moving, not one fading out and another fading in.
    */
   shouldSkipAnimation: Accessor<boolean>;
+  /**
+   * Whether it opened without waiting: from the keyboard, or while the group
+   * was warm. A pointer that waited out the delay, however short, did not.
+   */
+  isInstant: Accessor<boolean>;
   open(immediate?: boolean): void;
   close(immediate?: boolean): void;
 }
@@ -124,7 +142,8 @@ export interface TooltipTriggerState extends Omit<OverlayTriggerState, "open" | 
 /** Whether a tooltip is showing, and the shared timing that decides when. */
 export function tooltipTriggerState(options: TooltipTriggerStateOptions = {}): TooltipTriggerState {
   const overlay = overlayTriggerState(options);
-  const skipAnimation = signal(false);
+  const [skipAnimation, setSkipAnimation] = createSignal(false);
+  const [isInstant, setInstant] = createSignal(false);
   const key = nextTooltip++;
 
   const delay = (): number => access(options.delay) ?? WARM_UP;
@@ -144,7 +163,7 @@ export function tooltipTriggerState(options: TooltipTriggerStateOptions = {}): T
     closeTimer = clearTimer(closeTimer);
     closeOthers();
     openTooltips.set(key, hide);
-    skipAnimation.set(instant);
+    setSkipAnimation(instant);
     warm = true;
     overlay.open();
     warmUpTimer = clearTimer(warmUpTimer);
@@ -152,7 +171,7 @@ export function tooltipTriggerState(options: TooltipTriggerStateOptions = {}): T
   };
 
   const hide = (immediate?: boolean, instant?: boolean): void => {
-    skipAnimation.set(instant === true);
+    setSkipAnimation(instant === true);
 
     if (immediate === true || closeDelay() <= 0) {
       closeTimer = clearTimer(closeTimer);
@@ -167,15 +186,21 @@ export function tooltipTriggerState(options: TooltipTriggerStateOptions = {}): T
     warmUpTimer = clearTimer(warmUpTimer);
     if (!warm) return;
 
+    const lingers = immediate === true ? 0 : Math.max(0, closeDelay());
+    const skipDelay = access(options.skipDelay);
+    const window = skipDelay === undefined ? Math.max(COOL_DOWN, lingers) : lingers + skipDelay;
+
     coolDownTimer = clearTimer(coolDownTimer);
-    coolDownTimer = setTimeout(
-      () => {
-        openTooltips.delete(key);
-        coolDownTimer = null;
-        warm = false;
-      },
-      Math.max(COOL_DOWN, closeDelay()),
-    );
+    if (window <= 0) {
+      openTooltips.delete(key);
+      warm = false;
+      return;
+    }
+    coolDownTimer = setTimeout(() => {
+      openTooltips.delete(key);
+      coolDownTimer = null;
+      warm = false;
+    }, window);
   };
 
   const warmUp = (): void => {
@@ -185,6 +210,7 @@ export function tooltipTriggerState(options: TooltipTriggerStateOptions = {}): T
     if (overlay.isOpen()) return;
 
     if (warm) {
+      setInstant(true);
       show(true);
       return;
     }
@@ -193,12 +219,13 @@ export function tooltipTriggerState(options: TooltipTriggerStateOptions = {}): T
     warmUpTimer = setTimeout(() => {
       warmUpTimer = null;
       warm = true;
+      setInstant(false);
       show(false);
     }, delay());
   };
 
   if (!isServer) {
-    effect(() => () => {
+    createTrackedEffect(() => () => {
       closeTimer = clearTimer(closeTimer);
       openTooltips.delete(key);
     });
@@ -209,12 +236,19 @@ export function tooltipTriggerState(options: TooltipTriggerStateOptions = {}): T
     setOpen: overlay.setOpen,
     toggle: overlay.toggle,
     shouldSkipAnimation: skipAnimation,
+    isInstant,
     open(immediate?: boolean) {
-      if (immediate !== true && delay() > 0 && closeTimer === null) warmUp();
+      if (immediate !== true && delay() > 0 && closeTimer === null) {
+        warmUp();
+        return;
+      }
+      // One already showing keeps the way it arrived: the pointer reaching the
+      // tooltip itself, or coming back before it has gone, opens nothing.
+      if (!overlay.isOpen()) setInstant(immediate === true || warm);
       // Focus opens at once, but only skips the animation if the group was
       // already warm — otherwise the first tooltip of a session would appear
       // with no transition at all.
-      else show(warm);
+      show(warm);
     },
     close: hide,
   };
@@ -228,6 +262,17 @@ export interface TooltipOptions {
   "aria-label"?: MaybeAccessor<string | undefined>;
   "aria-labelledby"?: MaybeAccessor<string | undefined>;
   "aria-describedby"?: MaybeAccessor<string | undefined>;
+  /** Whether resting the pointer on the tooltip holds it open. @default true */
+  isHoverable?: MaybeAccessor<boolean | undefined>;
+}
+
+/** `closed`, `delayed-open` or `instant-open`: the three states Radix names. */
+export type TooltipStateName = "closed" | "delayed-open" | "instant-open";
+
+/** The state of a tooltip as a design system's selectors spell it. */
+export function tooltipStateName(state: TooltipTriggerState): TooltipStateName {
+  if (!state.isOpen()) return "closed";
+  return state.isInstant() ? "instant-open" : "delayed-open";
 }
 
 export interface TooltipResult {
@@ -243,6 +288,7 @@ export interface TooltipResult {
  */
 export function tooltip(options: TooltipOptions = {}, state?: TooltipTriggerState): TooltipResult {
   const { hoverProps } = hover({
+    isDisabled: () => access(options.isHoverable) === false,
     onHoverStart: () => state?.open(true),
     onHoverEnd: () => state?.close(),
   });
@@ -250,6 +296,7 @@ export function tooltip(options: TooltipOptions = {}, state?: TooltipTriggerStat
   return {
     tooltipProps: mergeProps(filterDOMProps(options, { labelable: true }), hoverProps, {
       role: "tooltip",
+      "data-state": () => (state === undefined ? undefined : tooltipStateName(state)),
     }),
   };
 }
@@ -285,7 +332,7 @@ export function tooltipTrigger(
   // Both the hover and the focus rules ask what the user last did, and nothing
   // knows unless the listeners are installed.
   if (!isServer) {
-    effect(() => trackModality(access(options.ref) as Element | null));
+    createTrackedEffect(() => trackModality(access(options.ref)));
   }
 
   let hovered = false;
@@ -309,18 +356,19 @@ export function tooltipTrigger(
   // keeps DOM focus, so without this the tooltip stays under the pointer with
   // no way to dismiss it.
   if (!isServer) {
-    effect(() => {
-      if (!state.isOpen()) return undefined;
-      const element = access(options.ref) as Element | null;
-      const doc = ownerDocument(element);
-      const onKeyDown = (event: KeyboardEvent): void => {
-        if (event.key !== "Escape") return;
-        event.stopPropagation();
-        state.close(true);
-      };
-      doc.addEventListener("keydown", onKeyDown, true);
-      return () => doc.removeEventListener("keydown", onKeyDown, true);
-    });
+    followOpen(
+      () => (state.isOpen() ? ownerDocument(access(options.ref) as Element | null) : null),
+      (doc) => {
+        if (doc === null) return undefined;
+        const onKeyDown = (event: KeyboardEvent): void => {
+          if (event.key !== "Escape") return;
+          event.stopPropagation();
+          state.close(true);
+        };
+        doc.addEventListener("keydown", onKeyDown, true);
+        return () => doc.removeEventListener("keydown", onKeyDown, true);
+      },
+    );
   }
 
   const { hoverProps } = hover({
@@ -367,6 +415,7 @@ export function tooltipTrigger(
   return {
     triggerProps: mergeProps(focusHandlers, hoverProps, {
       "aria-describedby": () => (state.isOpen() ? tooltipId() : undefined),
+      "data-state": () => tooltipStateName(state),
       onPointerDown: dismissOnPress,
       onKeyDown: dismissOnPress,
     }),
@@ -383,9 +432,63 @@ export interface TooltipTriggerValue {
   triggerRef: ReturnType<typeof makeRef<HTMLElement>>;
   triggerProps: DOMProps;
   tooltipProps: DOMProps;
+  /** Whether resting the pointer on the tooltip holds it open. */
+  isContentHoverable: Accessor<boolean>;
 }
 
-const TooltipTriggerContext = context<TooltipTriggerValue | null>(null);
+/** The timing a {@link TooltipProvider} gives every tooltip inside it. */
+export interface TooltipGroup {
+  delay: Accessor<number | undefined>;
+  skipDelay: Accessor<number | undefined>;
+  isContentHoverable: Accessor<boolean | undefined>;
+}
+
+const TooltipGroupContext = createContext<TooltipGroup | null>(null);
+
+/** The enclosing {@link TooltipProvider}'s timing, if there is one. */
+export function useTooltipGroup(): TooltipGroup | null {
+  return getContext(TooltipGroupContext) ?? null;
+}
+
+export interface TooltipProviderComponentProps {
+  children?: Child;
+  /** How long the first tooltip inside waits. @default 1500 */
+  delay?: number;
+  /** How long after one goes the next may still appear at once. @default 500 */
+  skipDelay?: number;
+  /** Whether resting the pointer on a tooltip holds it open. @default true */
+  isContentHoverable?: boolean;
+}
+
+/**
+ * One set of timings for every tooltip inside.
+ *
+ * ```tsx
+ * <TooltipProvider delay={300} skipDelay={200}>
+ *   <Toolbar />
+ * </TooltipProvider>
+ * ```
+ *
+ * A tooltip works without one, and a tooltip that sets its own `delay` keeps
+ * it. Whether the group is WARM is still shared by the whole page rather than
+ * by the provider: two toolbars a pointer crosses in one movement are one
+ * gesture, and the second should not make it wait again.
+ */
+export function TooltipProvider(props: Incoming<TooltipProviderComponentProps>) {
+  const group: TooltipGroup = {
+    delay: () => props.delay?.(),
+    skipDelay: () => props.skipDelay?.(),
+    isContentHoverable: () => props.isContentHoverable?.(),
+  };
+
+  return provide(
+    TooltipGroupContext,
+    () => group,
+    () => props.children as unknown,
+  );
+}
+
+const TooltipTriggerContext = createContext<TooltipTriggerValue | null>(null);
 
 /** The enclosing {@link TooltipTrigger}, if there is one. */
 export function useTooltipTrigger(): TooltipTriggerValue {
@@ -405,8 +508,16 @@ export interface TooltipTriggerComponentProps {
   trigger?: "hover" | "focus";
   /** @default 1500 */
   delay?: number;
-  /** @default 500 */
+  /** @default 500, or 0 when the content is not hoverable */
   closeDelay?: number;
+  /** @default the enclosing {@link TooltipProvider}'s, then 500 */
+  skipDelay?: number;
+  /**
+   * Whether resting the pointer on the tooltip holds it open.
+   *
+   * @default the enclosing {@link TooltipProvider}'s, then true
+   */
+  isContentHoverable?: boolean;
   /** @default true */
   shouldCloseOnPress?: boolean;
   onOpenChange?: (isOpen: boolean) => void;
@@ -430,14 +541,31 @@ export interface TooltipTriggerComponentProps {
 export function TooltipTrigger(props: Incoming<TooltipTriggerComponentProps>) {
   const triggerRef = makeRef<HTMLElement>();
   const options = fromProps(props);
-  const state = tooltipTriggerState(options);
+  const group = useTooltipGroup();
+  const isContentHoverable = (): boolean =>
+    (props.isContentHoverable?.() ?? group?.isContentHoverable()) !== false;
+  const state = tooltipTriggerState({
+    ...options,
+    delay: () => props.delay?.() ?? group?.delay(),
+    skipDelay: () => props.skipDelay?.() ?? group?.skipDelay(),
+    // The close delay is the time a pointer has to travel from the trigger to
+    // the tooltip, and with nothing to travel to it is only a tooltip that
+    // will not go away.
+    closeDelay: () => props.closeDelay?.() ?? (isContentHoverable() ? undefined : 0),
+  });
 
   const { triggerProps, tooltipProps } = tooltipTrigger(
     { ...(options as unknown as TooltipTriggerOptions), ref: triggerRef },
     state,
   );
 
-  const value: TooltipTriggerValue = { state, triggerRef, triggerProps, tooltipProps };
+  const value: TooltipTriggerValue = {
+    state,
+    triggerRef,
+    triggerProps,
+    tooltipProps,
+    isContentHoverable,
+  };
   const owner = getOwner();
   if (owner === null) return <>{props.children}</>;
 
@@ -456,7 +584,7 @@ export function TooltipTrigger(props: Incoming<TooltipTriggerComponentProps>) {
       });
       return props.children;
     },
-  ) as never;
+  );
 }
 
 export interface TooltipComponentProps extends StyleProps {
@@ -482,19 +610,22 @@ export function Tooltip(props: Incoming<TooltipComponentProps>) {
   const target = usePortalTarget();
   const domRef = makeRef<HTMLDivElement>();
   const trigger = useTooltipTrigger();
+  const locale = useLocale();
+  const placement = (): Placement => props.placement?.() ?? "top";
 
   const position = overlayPosition({
     targetRef: trigger.triggerRef,
     overlayRef: domRef,
-    placement: () => props.placement?.() ?? "top",
+    placement,
     offset: () => props.offset?.() ?? 8,
     crossOffset: () => props.crossOffset?.(),
     shouldFlip: () => props.shouldFlip?.(),
     containerPadding: () => props.containerPadding?.(),
     isOpen: trigger.state.isOpen,
+    direction: () => locale().direction,
   });
 
-  const { tooltipProps } = tooltip({}, trigger.state);
+  const { tooltipProps } = tooltip({ isHoverable: trigger.isContentHoverable }, trigger.state);
 
   const elementProps = mergeProps(
     tooltipProps,
@@ -504,6 +635,8 @@ export function Tooltip(props: Incoming<TooltipComponentProps>) {
     styleProps(props),
     {
       "data-placement": position.placement,
+      "data-side": position.placement,
+      "data-align": () => alignOf(placement()),
       "data-skip-animation": trigger.state.shouldSkipAnimation,
       "data-testid": () => props["data-testid"]?.(),
     },

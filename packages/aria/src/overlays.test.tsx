@@ -1,9 +1,15 @@
 import { afterEach, describe, expect, test } from "bun:test";
-import { flush, signal } from "@barqjs/core";
+import { flush, createSignal } from "@barqjs/core";
 import { render } from "@barqjs/testing";
 import { ref } from "@barqjs/primitives/refs";
 
-import { overlayPosition, type PositionResult } from "./overlays.ts";
+import {
+  alignOf,
+  overlayPosition,
+  placementFor,
+  type Placement,
+  type PositionResult,
+} from "./overlays.ts";
 
 interface Rect {
   top: number;
@@ -209,7 +215,7 @@ describe("overlayPosition", () => {
 
     let overlay: HTMLElement | undefined;
     let position: PositionResult | undefined;
-    const open = signal(true);
+    const [open] = createSignal(true);
 
     function Fixture() {
       const targetRef = ref<HTMLElement>();
@@ -259,7 +265,7 @@ describe("overlayPosition", () => {
     // A context menu is anchored to the point the pointer was at, which has no
     // element and no box. The target stays whatever the point was inside, so
     // scrolling that away still closes the overlay.
-    const point = signal({ top: 80, left: 120, width: 0, height: 0 });
+    const [point, setPoint] = createSignal({ top: 80, left: 120, width: 0, height: 0 });
     let position: PositionResult | undefined;
 
     function Fixture() {
@@ -298,7 +304,7 @@ describe("overlayPosition", () => {
     expect(leftOf(position)).toBeCloseTo(122, 1);
     expect(Number.parseFloat(String(styleOf(position?.overlayProps).top ?? ""))).toBeCloseTo(80, 1);
 
-    point.set({ top: 200, left: 300, width: 0, height: 0 });
+    setPoint({ top: 200, left: 300, width: 0, height: 0 });
     flush();
 
     expect(leftOf(position)).toBeCloseTo(302, 1);
@@ -463,5 +469,65 @@ describe("overlayPosition", () => {
     const style = styleOf(position?.overlayProps);
     expect(style["--barq-available-width"]).toBeUndefined();
     expect(style["--barq-available-height"]).toBeUndefined();
+  });
+});
+
+describe("a side and an alignment", () => {
+  test("name the same position a placement does", () => {
+    expect(placementFor("bottom")).toBe("bottom");
+    expect(placementFor("bottom", "start")).toBe("bottom start");
+    expect(placementFor("top", "end")).toBe("top end");
+    expect(placementFor("right", "start")).toBe("right top");
+    expect(placementFor("left", "end")).toBe("left bottom");
+    expect(placementFor("inline-start", "start")).toBe("start top");
+    expect(placementFor("inline-end")).toBe("end");
+  });
+
+  test("and a placement reads back as its alignment", () => {
+    expect(alignOf("bottom")).toBe("center");
+    expect(alignOf("bottom start")).toBe("start");
+    expect(alignOf("right top")).toBe("start");
+    expect(alignOf("left bottom")).toBe("end");
+    expect(alignOf("top end")).toBe("end");
+  });
+
+  function placed(placement: Placement, direction: "ltr" | "rtl"): PositionResult | undefined {
+    let position: PositionResult | undefined;
+
+    function Fixture() {
+      const targetRef = ref<HTMLElement>();
+      const overlayRef = ref<HTMLElement>();
+      position = overlayPosition({ targetRef, overlayRef, placement, direction, isOpen: true });
+      return (
+        <>
+          <button
+            type="button"
+            ref={(node: HTMLElement) => {
+              box(node, { top: 100, left: 400, width: 200, height: 30 });
+              targetRef.set(node);
+            }}
+          >
+            Open
+          </button>
+          <div
+            ref={(node: HTMLElement) => {
+              box(node, { top: 0, left: 0, width: 100, height: 40 });
+              overlayRef.set(node);
+            }}
+          />
+        </>
+      );
+    }
+
+    render(() => <Fixture />);
+    flush();
+    position?.update();
+    return position;
+  }
+
+  test("start is the trigger's left edge, and its right edge in a right-to-left page", () => {
+    expect(leftOf(placed("bottom start", "ltr"))).toBe(400);
+    expect(leftOf(placed("bottom start", "rtl"))).toBe(500);
+    expect(leftOf(placed("bottom end", "rtl"))).toBe(400);
   });
 });

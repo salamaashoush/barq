@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, type Incoming } from "@barqjs/core";
+import { createSignal, flush, type Incoming } from "@barqjs/core";
 import {
   accessibleName,
   expectNoAriaViolations,
@@ -11,9 +11,18 @@ import {
 import {
   Calendar,
   calendarState,
+  dateMatches,
+  MultipleCalendar,
+  multipleCalendarState,
   RangeCalendar,
+  rangeCalendarState,
   type CalendarState,
+  type CalendarStateOptions,
   type DateRange,
+  type MultipleCalendarState,
+  type MultipleCalendarStateOptions,
+  type RangeCalendarState,
+  type RangeCalendarStateOptions,
 } from "./calendar.tsx";
 import { CalendarDate } from "./date.ts";
 
@@ -439,5 +448,495 @@ describe("RangeCalendar", () => {
   test("has no ARIA violations", () => {
     const { container } = render(() => <Stay />);
     expectNoAriaViolations(container);
+  });
+});
+
+/** A state built under an owner, which is where every state here lives. */
+function single(options: CalendarStateOptions): CalendarState {
+  let state: CalendarState | undefined;
+  function Probe() {
+    state = calendarState(options);
+    return <span />;
+  }
+  render(() => <Probe />);
+  return state as CalendarState;
+}
+
+function several(options: MultipleCalendarStateOptions): MultipleCalendarState {
+  let state: MultipleCalendarState | undefined;
+  function Probe() {
+    state = multipleCalendarState(options);
+    return <span />;
+  }
+  render(() => <Probe />);
+  return state as MultipleCalendarState;
+}
+
+function stay(options: RangeCalendarStateOptions): RangeCalendarState {
+  let state: RangeCalendarState | undefined;
+  function Probe() {
+    state = rangeCalendarState(options);
+    return <span />;
+  }
+  render(() => <Probe />);
+  return state as RangeCalendarState;
+}
+
+const span = (state: { visibleRange(): DateRange }): string[] => [
+  String(state.visibleRange().start),
+  String(state.visibleRange().end),
+];
+
+describe("dateMatches", () => {
+  const date = new CalendarDate(2024, 3, 7);
+
+  test("a day, a list of days and a yes or no", () => {
+    expect(dateMatches(date, new CalendarDate(2024, 3, 7))).toBe(true);
+    expect(dateMatches(date, new CalendarDate(2024, 3, 8))).toBe(false);
+    expect(dateMatches(date, [new CalendarDate(2024, 3, 1), new CalendarDate(2024, 3, 7)])).toBe(
+      true,
+    );
+    expect(dateMatches(date, true)).toBe(true);
+    expect(dateMatches(date, false)).toBe(false);
+  });
+
+  test("a range includes both of its ends, under either pair of names", () => {
+    const from = new CalendarDate(2024, 3, 7);
+    const to = new CalendarDate(2024, 3, 9);
+    expect(dateMatches(date, { from, to })).toBe(true);
+    expect(dateMatches(date, { start: from, end: to })).toBe(true);
+    expect(dateMatches(new CalendarDate(2024, 3, 10), { from, to })).toBe(false);
+  });
+
+  test("before and after exclude the day they name", () => {
+    expect(dateMatches(date, { before: new CalendarDate(2024, 3, 8) })).toBe(true);
+    expect(dateMatches(date, { before: new CalendarDate(2024, 3, 7) })).toBe(false);
+    expect(dateMatches(date, { after: new CalendarDate(2024, 3, 6) })).toBe(true);
+    expect(dateMatches(date, { after: new CalendarDate(2024, 3, 7) })).toBe(false);
+  });
+
+  test("before and after together are the days strictly between", () => {
+    const interval = { after: new CalendarDate(2024, 3, 5), before: new CalendarDate(2024, 3, 9) };
+    expect(dateMatches(date, interval)).toBe(true);
+    expect(dateMatches(new CalendarDate(2024, 3, 5), interval)).toBe(false);
+    expect(dateMatches(new CalendarDate(2024, 3, 9), interval)).toBe(false);
+  });
+
+  test("days of the week, Sunday as zero", () => {
+    // 2024-03-07 was a Thursday.
+    expect(dateMatches(date, { dayOfWeek: 4 })).toBe(true);
+    expect(dateMatches(date, { dayOfWeek: [0, 6] })).toBe(false);
+  });
+
+  test("a function, and any one of a list of matchers", () => {
+    expect(dateMatches(date, (each) => each.day === 7)).toBe(true);
+    expect(
+      dateMatches(date, [{ dayOfWeek: [0, 6] }, { before: new CalendarDate(2024, 3, 8) }]),
+    ).toBe(true);
+    expect(dateMatches(date, undefined)).toBe(false);
+  });
+});
+
+describe("several months on show", () => {
+  test("the visible range runs from the first month to the end of the last", () => {
+    const state = single({ defaultFocusedValue: MARCH, visibleMonths: 2 });
+    expect(span(state)).toEqual(["2024-03-01", "2024-04-30"]);
+    expect(state.visibleMonths()).toBe(2);
+  });
+
+  test("the page buttons slide the window one month, and focus goes with it", () => {
+    const state = single({ defaultFocusedValue: MARCH, visibleMonths: 2 });
+    state.focusNextPage();
+    flush();
+    expect(span(state)).toEqual(["2024-04-01", "2024-05-31"]);
+    expect(String(state.focusedDate())).toBe("2024-04-07");
+
+    state.focusPreviousPage();
+    flush();
+    expect(span(state)).toEqual(["2024-03-01", "2024-04-30"]);
+  });
+
+  test("paged navigation turns every month on show at once", () => {
+    const state = single({ defaultFocusedValue: MARCH, visibleMonths: 2, pagedNavigation: true });
+    state.focusNextPage();
+    flush();
+    expect(span(state)).toEqual(["2024-05-01", "2024-06-30"]);
+  });
+
+  test("focus moving into the second month leaves the window where it is", () => {
+    const state = single({ defaultFocusedValue: new CalendarDate(2024, 3, 31), visibleMonths: 2 });
+    const before = state.visibleRange();
+    state.focusNextDay();
+    flush();
+    expect(String(state.focusedDate())).toBe("2024-04-01");
+    expect(state.visibleRange()).toBe(before);
+  });
+
+  test("focus leaving the window drags it just far enough", () => {
+    const state = single({ defaultFocusedValue: new CalendarDate(2024, 4, 30), visibleMonths: 2 });
+    expect(span(state)).toEqual(["2024-04-01", "2024-05-31"]);
+    state.setFocusedDate(new CalendarDate(2024, 6, 1));
+    flush();
+    expect(span(state)).toEqual(["2024-05-01", "2024-06-30"]);
+
+    state.setFocusedDate(new CalendarDate(2024, 2, 10));
+    flush();
+    expect(span(state)).toEqual(["2024-02-01", "2024-03-31"]);
+  });
+
+  test("a month can be shown by name, at any position in the window", () => {
+    const state = single({ defaultFocusedValue: MARCH, visibleMonths: 2 });
+    state.showMonth(new CalendarDate(2025, 8, 1), 1);
+    flush();
+    expect(span(state)).toEqual(["2025-07-01", "2025-08-31"]);
+  });
+});
+
+describe("the month as a prop", () => {
+  test("a move that would turn the page reports the month it wants", () => {
+    const asked: string[] = [];
+    const state = single({
+      defaultFocusedValue: MARCH,
+      onVisibleMonthChange: (month) => asked.push(String(month)),
+    });
+    state.focusNextPage();
+    flush();
+    expect(asked).toEqual(["2024-04-01"]);
+    state.focusNextDay();
+    flush();
+    expect(asked).toEqual(["2024-04-01"]);
+  });
+
+  test("a controlled month stays until its owner moves it", () => {
+    const [month, setMonth] = createSignal(new CalendarDate(2024, 3, 1));
+    const state = single({ defaultFocusedValue: MARCH, visibleMonth: month });
+    state.focusNextPage();
+    flush();
+    expect(span(state)).toEqual(["2024-03-01", "2024-03-31"]);
+
+    setMonth(new CalendarDate(2024, 6, 1));
+    flush();
+    expect(span(state)).toEqual(["2024-06-01", "2024-06-30"]);
+  });
+});
+
+describe("the months that can be reached", () => {
+  test("paging stops at the first and the last month, though their days stay open", () => {
+    const state = single({
+      defaultFocusedValue: MARCH,
+      startMonth: new CalendarDate(2024, 3, 15),
+      endMonth: new CalendarDate(2024, 4, 2),
+    });
+    expect(state.isPreviousVisibleRangeInvalid()).toBe(true);
+    expect(state.isNextVisibleRangeInvalid()).toBe(false);
+    expect(state.isCellDisabled(new CalendarDate(2024, 3, 1))).toBe(false);
+
+    state.focusNextPage();
+    flush();
+    expect(state.isNextVisibleRangeInvalid()).toBe(true);
+    state.focusNextPage();
+    flush();
+    expect(span(state)).toEqual(["2024-04-01", "2024-04-30"]);
+  });
+});
+
+describe("days that are switched off", () => {
+  const weekends = (date: CalendarDate): boolean => dateMatches(date, { dayOfWeek: [0, 6] });
+
+  test("a disabled day cannot be chosen", () => {
+    const chosen: string[] = [];
+    const state = single({
+      defaultFocusedValue: MARCH,
+      isDateDisabled: weekends,
+      onChange: (value) => chosen.push(String(value)),
+    });
+    expect(state.isCellDisabled(new CalendarDate(2024, 3, 9))).toBe(true);
+    state.selectDate(new CalendarDate(2024, 3, 9));
+    state.selectDate(new CalendarDate(2024, 3, 11));
+    flush();
+    expect(chosen).toEqual(["2024-03-11"]);
+  });
+
+  test("the arrows step over them, in the direction of travel", () => {
+    const state = single({
+      defaultFocusedValue: new CalendarDate(2024, 3, 8),
+      isDateDisabled: weekends,
+    });
+    // Friday the 8th, then a weekend, then Monday the 11th.
+    state.focusNextDay();
+    flush();
+    expect(String(state.focusedDate())).toBe("2024-03-11");
+    state.focusPreviousDay();
+    flush();
+    expect(String(state.focusedDate())).toBe("2024-03-08");
+  });
+
+  test("when every day that way is off, focus stays where it is", () => {
+    const state = single({
+      defaultFocusedValue: MARCH,
+      isDateDisabled: (date) => date.compare(MARCH) > 0,
+    });
+    state.focusNextDay();
+    flush();
+    expect(String(state.focusedDate())).toBe("2024-03-07");
+  });
+});
+
+describe("today", () => {
+  test("is the caller's day when they name one", () => {
+    const state = single({ today: new CalendarDate(2020, 2, 29) });
+    expect(String(state.today())).toBe("2020-02-29");
+    expect(String(state.focusedDate())).toBe("2020-02-29");
+  });
+
+  test("is reckoned in the zone asked for", () => {
+    const ahead = single({ timeZone: "Pacific/Kiritimati" });
+    const behind = single({ timeZone: "Pacific/Pago_Pago" });
+    expect(ahead.today().compare(behind.today())).toBeGreaterThanOrEqual(1);
+  });
+});
+
+describe("multipleCalendarState", () => {
+  const eleventh = new CalendarDate(2024, 3, 11);
+  const twelfth = new CalendarDate(2024, 3, 12);
+  const thirteenth = new CalendarDate(2024, 3, 13);
+
+  test("a press adds a day and a second press takes it away", () => {
+    const seen: string[][] = [];
+    const state = several({
+      defaultFocusedValue: MARCH,
+      onChange: (value) => seen.push(value.map(String)),
+    });
+    state.selectDate(eleventh);
+    flush();
+    state.selectDate(thirteenth);
+    flush();
+    state.selectDate(eleventh);
+    flush();
+    expect(seen).toEqual([["2024-03-11"], ["2024-03-11", "2024-03-13"], ["2024-03-13"]]);
+    expect(state.isSelected(thirteenth)).toBe(true);
+    expect(state.isSelected(eleventh)).toBe(false);
+  });
+
+  test("no more than the maximum can be chosen", () => {
+    const state = several({ defaultValue: [eleventh, twelfth], max: 2 });
+    state.selectDate(thirteenth);
+    flush();
+    expect(state.value().map(String)).toEqual(["2024-03-11", "2024-03-12"]);
+  });
+
+  test("no fewer than the minimum can be left", () => {
+    const state = several({ defaultValue: [eleventh, twelfth], min: 2 });
+    state.selectDate(eleventh);
+    flush();
+    expect(state.value().map(String)).toEqual(["2024-03-11", "2024-03-12"]);
+  });
+
+  test("a required selection keeps its last day", () => {
+    const state = several({ defaultValue: [eleventh], required: true });
+    state.selectDate(eleventh);
+    flush();
+    expect(state.value().map(String)).toEqual(["2024-03-11"]);
+  });
+
+  test("a controlled list is the owner's to change", () => {
+    const [value, setValue] = createSignal<CalendarDate[]>([eleventh]);
+    const state = several({ value, onChange: () => {} });
+    state.selectDate(twelfth);
+    flush();
+    expect(state.value().map(String)).toEqual(["2024-03-11"]);
+    setValue([eleventh, twelfth]);
+    flush();
+    expect(state.isSelected(twelfth)).toBe(true);
+  });
+});
+
+describe("a range with a length", () => {
+  const eleventh = new CalendarDate(2024, 3, 11);
+
+  test("a range shorter than the minimum starts again from the second press", () => {
+    const ranges: string[][] = [];
+    const state = stay({
+      defaultFocusedValue: MARCH,
+      minDays: 3,
+      onChange: (value) =>
+        ranges.push(value === null ? [] : [String(value.start), String(value.end)]),
+    });
+    state.selectDate(eleventh);
+    state.selectDate(new CalendarDate(2024, 3, 12));
+    flush();
+    expect(ranges).toEqual([]);
+    expect(String(state.anchorDate())).toBe("2024-03-12");
+
+    state.selectDate(new CalendarDate(2024, 3, 14));
+    flush();
+    expect(ranges).toEqual([["2024-03-12", "2024-03-14"]]);
+  });
+
+  test("a range longer than the maximum starts again from the second press", () => {
+    const ranges: string[][] = [];
+    const state = stay({
+      defaultFocusedValue: MARCH,
+      maxDays: 3,
+      onChange: (value) =>
+        ranges.push(value === null ? [] : [String(value.start), String(value.end)]),
+    });
+    state.selectDate(eleventh);
+    state.selectDate(new CalendarDate(2024, 3, 14));
+    flush();
+    expect(ranges).toEqual([]);
+    expect(String(state.anchorDate())).toBe("2024-03-14");
+  });
+
+  test("a disabled day inside the range breaks it when asked to", () => {
+    const ranges: string[][] = [];
+    const state = stay({
+      defaultFocusedValue: MARCH,
+      isDateDisabled: (date) => date.day === 12,
+      excludeDisabled: true,
+      onChange: (value) =>
+        ranges.push(value === null ? [] : [String(value.start), String(value.end)]),
+    });
+    state.selectDate(eleventh);
+    state.selectDate(new CalendarDate(2024, 3, 13));
+    flush();
+    expect(ranges).toEqual([]);
+  });
+});
+
+describe("MultipleCalendar", () => {
+  function Shifts(props: Incoming<{ onChange?: (value: CalendarDate[]) => void; max?: number }>) {
+    return (
+      <MultipleCalendar
+        aria-label="Shifts"
+        defaultFocusedValue={MARCH}
+        max={props.max?.()}
+        onChange={props.onChange?.()}
+      />
+    );
+  }
+
+  test("the grid says it takes more than one day", () => {
+    render(() => <Shifts />);
+    expect(screen.getByRole("grid").getAttribute("aria-multiselectable")).toBe("true");
+  });
+
+  test("each press turns one day on or off and leaves the rest", () => {
+    const seen: string[][] = [];
+    render(() => <Shifts onChange={(value) => seen.push(value.map(String))} />);
+
+    user.click(day("Monday", 11, "March"));
+    flush();
+    user.click(day("Wednesday", 13, "March"));
+    flush();
+    expect(day("Monday", 11, "March").getAttribute("data-selected")).toBe("");
+    expect(day("Wednesday", 13, "March").getAttribute("data-selected")).toBe("");
+    expect(accessibleName(day("Monday", 11, "March"))).toContain("selected");
+
+    user.click(day("Monday", 11, "March"));
+    flush();
+    expect(day("Monday", 11, "March").hasAttribute("data-selected")).toBe(false);
+    expect(seen.at(-1)).toEqual(["2024-03-13"]);
+  });
+
+  test("Enter and Space choose the focused day, as a press does", () => {
+    const seen: string[][] = [];
+    render(() => <Shifts onChange={(value) => seen.push(value.map(String))} />);
+
+    const start = day("Thursday", 7, "March");
+    user.focus(start);
+    user.key("Enter", { target: start });
+    flush();
+    user.key("ArrowRight", { target: start });
+    flush();
+    user.key(" ", { target: day("Friday", 8, "March") });
+    flush();
+    expect(seen.at(-1)).toEqual(["2024-03-07", "2024-03-08"]);
+  });
+
+  test("has no ARIA violations", () => {
+    const { container } = render(() => <Shifts />);
+    expectNoAriaViolations(container);
+  });
+});
+
+describe("switched-off days in the grid", () => {
+  test("a disabled day says so and a press on it does nothing", () => {
+    const chosen: (CalendarDate | null)[] = [];
+    render(() => (
+      <Calendar
+        aria-label="Departure"
+        defaultFocusedValue={MARCH}
+        isDateDisabled={(date) => dateMatches(date, { dayOfWeek: [0, 6] })}
+        onChange={(value) => chosen.push(value)}
+      />
+    ));
+
+    const saturday = day("Saturday", 9, "March");
+    expect(saturday.getAttribute("data-disabled")).toBe("");
+    expect(saturday.parentElement?.getAttribute("aria-disabled")).toBe("true");
+    user.click(saturday);
+    flush();
+    expect(chosen).toEqual([]);
+    // Focus did not move to a day that cannot be chosen.
+    expect(day("Thursday", 7, "March").getAttribute("tabindex")).toBe("0");
+  });
+
+  test("a calendar asked for six rows always has six", () => {
+    // February 2026 begins on a Sunday and has 28 days: four rows on its own.
+    render(() => (
+      <Calendar
+        aria-label="Departure"
+        defaultFocusedValue={new CalendarDate(2026, 2, 10)}
+        fixedWeeks
+      />
+    ));
+    expect(screen.getAllByRole("row")).toHaveLength(6);
+  });
+});
+
+describe("clearing the chosen day", () => {
+  test("a second press on it leaves it chosen, unless clearing is allowed", () => {
+    const kept = single({ defaultValue: MARCH });
+    kept.selectDate(MARCH);
+    flush();
+    expect(String(kept.value())).toBe("2024-03-07");
+
+    const cleared = single({ defaultValue: MARCH, allowsDeselection: true });
+    cleared.selectDate(MARCH);
+    flush();
+    expect(cleared.value()).toBeNull();
+  });
+});
+
+describe("drawing a range from the keyboard", () => {
+  test("the arrows draw it as they move, and Enter finishes it", () => {
+    const ranges: string[][] = [];
+    render(() => (
+      <RangeCalendar
+        aria-label="Stay"
+        defaultFocusedValue={MARCH}
+        onChange={(value) =>
+          ranges.push(value === null ? [] : [String(value.start), String(value.end)])
+        }
+      />
+    ));
+
+    const start = day("Thursday", 7, "March");
+    user.focus(start);
+    user.key("Enter", { target: start });
+    flush();
+    user.key("ArrowRight", { target: start });
+    flush();
+    user.key("ArrowRight", { target: day("Friday", 8, "March") });
+    flush();
+
+    // What is highlighted is what Enter would give.
+    expect(day("Friday", 8, "March").getAttribute("data-selected")).toBe("");
+    expect(day("Saturday", 9, "March").getAttribute("data-selection-end")).toBe("");
+
+    user.key("Enter", { target: day("Saturday", 9, "March") });
+    flush();
+    expect(ranges).toEqual([["2024-03-07", "2024-03-09"]]);
   });
 });

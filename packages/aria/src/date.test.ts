@@ -7,6 +7,10 @@ import {
   endOfWeek,
   getDayOfWeek,
   getDaysInMonth,
+  getFirstDayOfWeek,
+  getISOWeek,
+  getMinimalDaysInFirstWeek,
+  getWeekOfYear,
   getWeeksInMonth,
   isLeapYear,
   isSameDay,
@@ -17,6 +21,7 @@ import {
   startOfMonth,
   startOfWeek,
   constrainDate,
+  today,
 } from "./date.ts";
 
 describe("CalendarDate", () => {
@@ -197,5 +202,60 @@ describe("constrainDate", () => {
     const value = new CalendarDateTime(2024, 2, 1, 9, 30);
     const constrained = constrainDate(value, new CalendarDate(2024, 3, 1));
     expect(constrained.toString()).toBe("2024-03-01T09:30:00");
+  });
+});
+
+describe("week numbers", () => {
+  test("an ISO week begins on Monday and belongs to the year its Thursday is in", () => {
+    // 2021-01-03 was a Sunday, so it closes the last week of 2020.
+    expect(getISOWeek(new CalendarDate(2021, 1, 3))).toBe(53);
+    expect(getISOWeek(new CalendarDate(2021, 1, 4))).toBe(1);
+    expect(getISOWeek(new CalendarDate(2024, 3, 7))).toBe(10);
+    // 2024-12-30 is a Monday whose Thursday is in 2025.
+    expect(getISOWeek(new CalendarDate(2024, 12, 30))).toBe(1);
+  });
+
+  test("a locale week counts from the week that holds the first of January", () => {
+    // Sunday-first, and the week holding 1 January is week 1 however short.
+    expect(getWeekOfYear(new CalendarDate(2024, 1, 1))).toBe(1);
+    expect(getWeekOfYear(new CalendarDate(2024, 1, 7))).toBe(2);
+    expect(getWeekOfYear(new CalendarDate(2024, 3, 7))).toBe(10);
+    // The last days of December already sit in the next year's first week.
+    expect(getWeekOfYear(new CalendarDate(2024, 12, 31))).toBe(1);
+  });
+
+  test("the ISO rule is the general one with Monday and a four-day first week", () => {
+    for (const date of [new CalendarDate(2021, 1, 3), new CalendarDate(2026, 10, 13)]) {
+      expect(getWeekOfYear(date, 1, 4)).toBe(getISOWeek(date));
+    }
+  });
+});
+
+describe("today in a time zone", () => {
+  test("two zones a day apart disagree about the date", () => {
+    // UTC+14 and UTC-11 are 25 hours apart, so no instant is the same day in both.
+    const ahead = today("Pacific/Kiritimati");
+    const behind = today("Pacific/Pago_Pago");
+    expect(ahead.compare(behind)).toBeGreaterThanOrEqual(1);
+  });
+
+  test("with no zone it is the local day", () => {
+    const at = new Date();
+    expect(today().toString()).toBe(
+      new CalendarDate(at.getFullYear(), at.getMonth() + 1, at.getDate()).toString(),
+    );
+  });
+});
+
+describe("what a locale says about its week", () => {
+  test("the first day is the locale's, not Sunday everywhere", () => {
+    expect(getFirstDayOfWeek("en-US")).toBe(0);
+    expect(getFirstDayOfWeek("en-GB")).toBe(1);
+    expect(getFirstDayOfWeek("ar-EG")).toBe(6);
+  });
+
+  test("how much of a week must be in the year for it to be the first", () => {
+    expect(getMinimalDaysInFirstWeek("en-US")).toBe(1);
+    expect(getMinimalDaysInFirstWeek("de-DE")).toBe(4);
   });
 });

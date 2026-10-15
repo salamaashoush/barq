@@ -30,12 +30,12 @@
 
 import {
   type Accessor,
-  context,
-  effect,
+  createContext,
+  createTrackedEffect,
   getOwner,
   install,
   isServer,
-  signal,
+  createSignal,
   useContext,
 } from "@barqjs/core";
 import type { ElementRef } from "./interactions/press.ts";
@@ -81,7 +81,7 @@ export const VALID_RESULT: ValidationResult = {
 /** Errors a submission came back with, by field name. */
 export type ValidationErrors = Record<string, string | string[]>;
 
-const FormValidationContext = context<ValidationErrors>({});
+const FormValidationContext = createContext<ValidationErrors>({});
 
 /** Hand a form's server errors to the fields inside it. */
 export function provideValidationErrors(errors: MaybeAccessor<ValidationErrors>): void {
@@ -91,7 +91,7 @@ export function provideValidationErrors(errors: MaybeAccessor<ValidationErrors>)
 
 // Wrapped in an object, because a context whose default IS `undefined` cannot
 // tell "nobody provided one" from "somebody provided undefined".
-const ValidationBehaviorContext = context<{ behavior?: ValidationBehavior }>({});
+const ValidationBehaviorContext = createContext<{ behavior?: ValidationBehavior }>({});
 
 /**
  * One behaviour for every field inside a form.
@@ -188,27 +188,26 @@ export function formValidationState<T>(
     return found;
   };
 
-  /**
-   * A server error is CLEARED by the next edit.
-   *
-   * The user changing the value has invalidated whatever the server said about
-   * the old one, and leaving it up would be telling them they still have a
-   * problem they have just fixed.
-   */
-  const serverCleared = signal(false);
-  let lastErrors: ValidationErrors | undefined;
-
   // The CELL, read once here where there is an owner. Reading the context on
   // every call would throw from an event handler, which is where a commit
   // comes from.
   const serverErrors = useContext(FormValidationContext);
 
+  /**
+   * A server error is CLEARED by the next edit.
+   *
+   * The user changing the value has invalidated whatever the server said about
+   * the old one, and leaving it up would be telling them they still have a
+   * problem they have just fixed. It is derived from the errors themselves, so
+   * a fresh answer from the server is shown whatever was cleared before it.
+   */
+  const [serverCleared, setServerCleared] = createSignal<boolean>(() => {
+    serverErrors();
+    return false;
+  });
+
   const server = (): ValidationResult | null => {
     const errors = serverErrors() ?? {};
-    if (errors !== lastErrors) {
-      lastErrors = errors;
-      serverCleared.set(false);
-    }
     if (serverCleared()) return null;
 
     const name = access(options.name);
@@ -221,7 +220,7 @@ export function formValidationState<T>(
 
   /** What has been found but not yet shown, under `"native"`. */
   let pending: ValidationResult = VALID_RESULT;
-  const shown = signal<ValidationResult>(VALID_RESULT);
+  const [shown, setShown] = createSignal<ValidationResult>(VALID_RESULT);
 
   const realtimeValidation = (): ValidationResult =>
     controlled() ?? server() ?? client() ?? builtin() ?? VALID_RESULT;
@@ -238,7 +237,7 @@ export function formValidationState<T>(
       // Under `"aria"` everything is shown as it happens; under `"native"` it
       // waits for a commit.
       if (behavior() === "aria") {
-        if (!sameResult(shown(), result)) shown.set(result);
+        if (!sameResult(shown(), result)) setShown(result);
         return;
       }
       pending = result;
@@ -246,15 +245,15 @@ export function formValidationState<T>(
     resetValidation: () => {
       // Back to valid even if the native validity still says otherwise: it
       // will say so again on the next submit.
-      if (!sameResult(shown(), VALID_RESULT)) shown.set(VALID_RESULT);
+      if (!sameResult(shown(), VALID_RESULT)) setShown(VALID_RESULT);
       pending = VALID_RESULT;
-      serverCleared.set(true);
+      setServerCleared(true);
     },
     commitValidation: () => {
-      serverCleared.set(true);
+      setServerCleared(true);
       if (behavior() !== "native") return;
       const found = client() ?? builtin() ?? pending;
-      if (!sameResult(shown(), found)) shown.set(found);
+      if (!sameResult(shown(), found)) setShown(found);
     },
   };
 }
@@ -382,7 +381,7 @@ export function formValidation(
 
   const isNative = (): boolean => access(options.validationBehavior) === "native";
 
-  effect(() => {
+  createTrackedEffect(() => {
     const element = access(ref) as ValidatableElement | null;
     if (element === null || !isNative()) return;
     if (typeof element.setCustomValidity !== "function") return;
@@ -399,7 +398,7 @@ export function formValidation(
     if (!found.isInvalid) state.updateValidation(nativeValidity(element));
   });
 
-  effect(() => {
+  createTrackedEffect(() => {
     const element = access(ref) as ValidatableElement | null;
     if (element === null) return undefined;
 

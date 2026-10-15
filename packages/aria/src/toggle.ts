@@ -13,7 +13,7 @@
  * left alone.
  */
 
-import { type Accessor, effect, signal } from "@barqjs/core";
+import { type Accessor, createTrackedEffect, createSignal } from "@barqjs/core";
 import { ownerDocument } from "./dom.ts";
 import { focusable, type FocusableOptions } from "./interactions/focusable.ts";
 import { press, type ElementRef, type PressEvent } from "./interactions/press.ts";
@@ -41,7 +41,7 @@ export function formReset<T>(
   initial: MaybeAccessor<T>,
   onReset: (value: T) => void,
 ): void {
-  effect(() => {
+  createTrackedEffect(() => {
     const element = access(ref) as HTMLInputElement | null;
     const form = element?.form;
     if (form === null || form === undefined) return undefined;
@@ -144,7 +144,7 @@ export function toggle(
     isDisabled,
   });
 
-  const labelPressed = signal(false);
+  const [labelPressed, setLabelPressed] = createSignal(false);
 
   // On the label, for the pressed STATE only.
   //
@@ -166,7 +166,7 @@ export function toggle(
       }
       options.onPressStart?.(event);
       options.onPressChange?.(true);
-      labelPressed.set(true);
+      setLabelPressed(true);
     },
     onPressEnd(event) {
       if (event.pointerType === "keyboard" || event.pointerType === "virtual") {
@@ -175,7 +175,7 @@ export function toggle(
       }
       options.onPressEnd?.(event);
       options.onPressChange?.(false);
-      labelPressed.set(false);
+      setLabelPressed(false);
     },
     onPress(event) {
       if (event.pointerType === "keyboard" || event.pointerType === "virtual") {
@@ -241,6 +241,61 @@ export function toggle(
     errors,
     isInvalid,
     errorMessage,
+  };
+}
+
+/** The element a toggle's visual is drawn on. */
+export type ToggleElementType = "label" | "span";
+
+/**
+ * What a toggle's own element is when the caller did not say.
+ *
+ * A `<label>` when the children are its name. A `<span>` when there are none:
+ * an empty label names nothing, and a label may not contain another, so it
+ * could not sit inside the `<label>` or `<Field>` that does carry the text.
+ */
+export function toggleElementType(
+  asked: ToggleElementType | undefined,
+  children: unknown,
+): ToggleElementType {
+  return asked ?? (children === undefined ? "span" : "label");
+}
+
+/**
+ * The click handler for a toggle drawn on a `<span>`.
+ *
+ * A `<label>` forwards a press on itself to its input; a `<span>` does not, so
+ * this does, unless a label around it is about to. An enclosing label runs its
+ * activation for a press anywhere inside it, this element included, and
+ * forwarding as well would toggle twice and leave the control where it started.
+ *
+ * What is handed on is a click with the original's `detail`, not
+ * `input.click()`. That one counts no clicks, which is how a screen reader's
+ * activation is told from a mouse's: the page would read a mouse press as
+ * virtual and draw a focus ring for it.
+ */
+export function pressesInput(
+  input: () => HTMLInputElement | null,
+  isDisabled: Accessor<boolean>,
+): (event: MouseEvent) => void {
+  return (event) => {
+    const control = input();
+    if (control === null || event.target === control || isDisabled()) return;
+    const label = (event.currentTarget as Element).closest("label");
+    if (label !== null && label.control === control) return;
+    control.dispatchEvent(
+      new MouseEvent("click", {
+        bubbles: true,
+        cancelable: true,
+        composed: true,
+        detail: event.detail,
+        ctrlKey: event.ctrlKey,
+        shiftKey: event.shiftKey,
+        altKey: event.altKey,
+        metaKey: event.metaKey,
+      }),
+    );
+    control.focus();
   };
 }
 

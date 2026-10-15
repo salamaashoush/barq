@@ -13,8 +13,17 @@
  *   selectable item that does nothing.
  */
 
-import { type Accessor, type Child, For, getOwner, type Incoming, install } from "@barqjs/core";
-import { context, getContext, provide } from "@barqjs/core";
+import {
+  type Accessor,
+  type Child,
+  createSignal,
+  For,
+  getOwner,
+  type Incoming,
+  install,
+  onCleanup,
+} from "@barqjs/core";
+import { createContext, getContext, provide } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import type {
   ItemAccessors,
@@ -30,6 +39,13 @@ import { hover } from "./interactions/hover.ts";
 import type { ElementRef } from "./interactions/press.ts";
 import { field, type FieldOptions } from "./label.ts";
 import { selectableItem, selectableList, type LinkBehavior } from "./selection.ts";
+import {
+  provideStaticSection,
+  staticAccessors,
+  staticCollection,
+  staticItem,
+  type StaticCollection,
+} from "./static-collection.ts";
 import {
   contentStyle,
   measureRow,
@@ -129,7 +145,23 @@ export function listBox(options: ListBoxOptions, state: ListState<unknown>): Lis
  * write the same id twice.
  */
 export function optionIdFor(baseId: string, key: Key): string {
-  return `${baseId}-option-${String(key)}`;
+  return `${baseId}-option-${idFragment(key)}`;
+}
+
+/**
+ * A key as part of an id.
+ *
+ * A key is whatever the caller's data uses, and "New York" is a reasonable one;
+ * an id holding a space is read by `aria-activedescendant` and
+ * `aria-labelledby` as two ids, neither of which exists. Letters, digits and
+ * hyphens pass through, so an ordinary key reads the same in the markup, and
+ * everything else is written as its code point so that no two keys collide.
+ */
+export function idFragment(key: Key): string {
+  return String(key).replace(
+    /[^A-Za-z0-9-]/g,
+    (character) => `_${(character.codePointAt(0) ?? 0).toString(36)}_`,
+  );
 }
 
 export interface OptionOptions {
@@ -143,6 +175,8 @@ export interface OptionOptions {
   isVirtualized?: MaybeAccessor<boolean | undefined>;
   "aria-label"?: MaybeAccessor<string | undefined>;
   onAction?: () => void;
+  /** Whether `onAction` does anything. @default `onAction !== undefined` */
+  hasAction?: MaybeAccessor<boolean | undefined>;
 }
 
 export interface OptionResult {
@@ -235,10 +269,17 @@ export interface ListBoxContextValue {
   baseId: Accessor<string>;
   shouldSelectOnPressUp: Accessor<boolean | undefined>;
   shouldUseVirtualFocus: Accessor<boolean | undefined>;
+  /**
+   * Where an `<Option>` written as a child registers itself.
+   *
+   * Present when the list was given no `items`: the options that render ARE the
+   * collection, and each one says what it is rather than reading a node.
+   */
+  staticItems?: StaticCollection | undefined;
 }
 
-const ListBoxContext = context<ListBoxContextValue | null>(null);
-const ItemNodeContext = context<Node<unknown> | null>(null);
+const ListBoxContext = createContext<ListBoxContextValue | null>(null);
+const ItemNodeContext = createContext<Node<unknown> | null>(null);
 
 type ItemRender = (item: unknown) => Child;
 
@@ -249,7 +290,7 @@ type ItemRender = (item: unknown) => Child;
  * without this a caller would have to pass the callback to `<Section>` by hand
  * at every use, and the two could disagree.
  */
-const ItemRenderContext = context<ItemRender | null>(null);
+const ItemRenderContext = createContext<ItemRender | null>(null);
 
 /**
  * Make `<Option>` usable inside something that is not a `<ListBox>`.
@@ -269,7 +310,7 @@ export function ListBoxProvider(props: Incoming<{ value: ListBoxContextValue; ch
     ListBoxContext,
     () => props.value(),
     () => props.children as unknown,
-  ) as never;
+  );
 }
 
 /** The collection node the row being built is for. */
@@ -330,6 +371,9 @@ export interface SectionComponentProps extends Omit<StyleProps, "title"> {
  * already reaches the first of the next.
  */
 export function Section(props: Incoming<SectionComponentProps>) {
+  const registry = getContext(ListBoxContext)?.staticItems;
+  if (registry !== undefined) return <StaticSection of={props} registry={registry} />;
+
   const node = useItemNode();
   const render = getContext(ItemRenderContext);
   if (render === null || render === undefined) {
@@ -367,11 +411,86 @@ export function Section(props: Incoming<SectionComponentProps>) {
   );
 }
 
+interface SectionHeading {
+  id: Accessor<string>;
+  readonly name: (has: boolean) => void;
+}
+
+const SectionHeadingContext = createContext<SectionHeading | null>(null);
+
+/**
+ * The id the enclosing section's heading must carry, for a heading written as
+ * one of the section's children rather than as its `title`.
+ *
+ * Calling it is what makes the group point at the heading, and leaving undoes
+ * that, so a section never names an element that is not there.
+ */
+export function useSectionHeading(): Accessor<string> | null {
+  const heading = getContext(SectionHeadingContext);
+  if (heading === null || heading === undefined) return null;
+  heading.name(true);
+  onCleanup(() => heading.name(false));
+  return heading.id;
+}
+
+function StaticSection(
+  sectionProps: Incoming<{ of: Incoming<SectionComponentProps>; registry: StaticCollection }>,
+) {
+  const props = sectionProps.of();
+  const list = useListBox();
+  const section = staticItem(sectionProps.registry(), { type: "section", textValue: "" });
+  const headingId = id();
+  const [isNamed, setNamed] = createSignal(false, { ownedWrite: true });
+  const hasTitle = (): boolean => props.title?.() !== undefined;
+  const heading: SectionHeading = { id: headingId, name: setNamed };
+
+  return (
+    <li
+      role="presentation"
+      {...styleProps(props)}
+      data-slot={props["data-slot"]?.() ?? "section"}
+      // A section a filter has emptied still renders its heading, and a design
+      // system hides the whole thing off this.
+      data-empty={(list.state.collection().getItem(section.key)?.childNodes.length ?? 0) === 0}
+      ref={section.ref}
+    >
+      <span
+        id={hasTitle() ? headingId() : undefined}
+        aria-hidden="true"
+        data-slot={props.titleSlot?.() ?? "section-title"}
+        class={props.titleClass?.()}
+      >
+        {props.title}
+      </span>
+      <ul
+        role="group"
+        aria-label={props["aria-label"]?.()}
+        aria-labelledby={hasTitle() || isNamed() ? headingId() : undefined}
+      >
+        {
+          provideStaticSection(section.key, () =>
+            provide(
+              SectionHeadingContext,
+              () => heading,
+              () => props.children as unknown,
+            ),
+          ) as Child
+        }
+      </ul>
+    </li>
+  );
+}
+
 export interface ListBoxComponentProps<T> extends StyleProps, ItemAccessors<T> {
-  /** The values to render, in order. */
-  items: Iterable<T>;
-  /** How one value renders. Return an `<Option>`. */
-  children: (item: T) => Child;
+  /**
+   * The values to render, in order.
+   *
+   * Leave it out and the `<Option>`s written as children are the collection:
+   * each one carries its own `value`, and nothing is rendered from data.
+   */
+  items?: Iterable<T>;
+  /** How one value renders, returning an `<Option>`; or the options themselves. */
+  children: ((item: T) => Child) | Child;
   label?: Child;
   description?: Child;
   errorMessage?: Child;
@@ -411,9 +530,13 @@ export interface ListBoxComponentProps<T> extends StyleProps, ItemAccessors<T> {
 export function ListBox<T>(props: Incoming<ListBoxComponentProps<T>>) {
   const domRef = makeRef<HTMLUListElement>();
   const options = fromProps(props as unknown as Incoming<Record<string, unknown>>);
+  const rendered = props.items === undefined ? staticCollection() : null;
 
   const state = listState<T>({
     ...(options as ListStateOptions<T>),
+    ...(rendered === null
+      ? {}
+      : ({ items: rendered.entries, ...staticAccessors } as unknown as ListStateOptions<T>)),
     onSelectionChange: (keys) => props.onSelectionChange?.()?.(keys),
   });
 
@@ -439,6 +562,7 @@ export function ListBox<T>(props: Incoming<ListBoxComponentProps<T>>) {
       baseId,
       shouldSelectOnPressUp: () => undefined,
       shouldUseVirtualFocus: () => undefined,
+      staticItems: rendered ?? undefined,
     };
     install(owner, ListBoxContext, () => value);
   }
@@ -455,7 +579,7 @@ export function ListBox<T>(props: Incoming<ListBoxComponentProps<T>>) {
     },
   );
 
-  const render = props.children as unknown as (item: T) => Child;
+  const render = props.children;
 
   /** The whole collection, or the window of it the virtualiser says is on screen. */
   const rows = (): Node<T>[] => {
@@ -468,6 +592,19 @@ export function ListBox<T>(props: Incoming<ListBoxComponentProps<T>>) {
   };
 
   provideItemRender(render as unknown as (item: unknown) => Child);
+
+  if (rendered !== null) {
+    return (
+      <>
+        <span {...labelProps}>{props.label}</span>
+        <ul {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
+          {props.children}
+        </ul>
+        <span {...descriptionProps}>{props.description}</span>
+        <span {...errorMessageProps}>{props.errorMessage}</span>
+      </>
+    );
+  }
 
   return (
     <>
@@ -490,6 +627,23 @@ export interface OptionComponentProps extends StyleProps {
   children?: Child;
   "aria-label"?: string;
   ref?: RefTarget<HTMLLIElement>;
+  /**
+   * What the option is, when it is written as a child of a list with no
+   * `items`: its key in the selection. Generated when left out.
+   */
+  value?: Key;
+  /** What a typeahead matches, for a written option. @default its own text */
+  textValue?: string;
+  /** For a written option; one rendered from data reads its item's. */
+  isDisabled?: boolean;
+  /** Keep a written option mounted and take it out of the collection. */
+  isHidden?: boolean;
+  /**
+   * Called when the option is acted on: a press where nothing is selectable,
+   * and Enter where something is, which is the split every list here makes
+   * between choosing a row and opening it.
+   */
+  onAction?: () => void;
 }
 
 /**
@@ -499,7 +653,18 @@ export interface OptionComponentProps extends StyleProps {
 export function Option(props: Incoming<OptionComponentProps>) {
   const domRef = makeRef<HTMLLIElement>();
   const list = useListBox();
-  const node = useItemNode();
+  const written =
+    list.staticItems === undefined
+      ? null
+      : staticItem(list.staticItems, {
+          key: props.value?.(),
+          textValue: () => props.textValue?.(),
+          props: () => ({ isDisabled: props.isDisabled?.() === true }),
+          isHidden: () => props.isHidden?.(),
+        });
+  const node: Pick<Node<unknown>, "key" | "props"> = written === null
+    ? useItemNode()
+    : { key: written.key, props: {} };
   const virtual = useVirtualizer();
 
   measureRow(virtual, node.key, domRef);
@@ -510,10 +675,12 @@ export function Option(props: Incoming<OptionComponentProps>) {
       ref: domRef,
       baseId: list.baseId,
       "aria-label": () => props["aria-label"]?.(),
-      isDisabled: () => node.props?.isDisabled === true,
+      isDisabled: () => props.isDisabled?.() === true || node.props?.isDisabled === true,
       shouldSelectOnPressUp: list.shouldSelectOnPressUp,
       shouldUseVirtualFocus: list.shouldUseVirtualFocus,
       isVirtualized: () => virtual !== null,
+      onAction: () => props.onAction?.()?.(),
+      hasAction: () => props.onAction?.() !== undefined,
     },
     list.state,
   );
@@ -525,7 +692,7 @@ export function Option(props: Incoming<OptionComponentProps>) {
     optionProps,
     hoverProps,
     focusProps,
-    filterDOMProps(fromProps(props), { global: true }),
+    filterDOMProps(fromProps(props), { global: true, labelable: true }),
     styleProps(props),
     {
       "data-selected": isSelected,
@@ -534,6 +701,7 @@ export function Option(props: Incoming<OptionComponentProps>) {
       "data-pressed": isPressed,
       "data-hovered": isHovered,
       "data-disabled": isDisabled,
+      hidden: () => props.isHidden?.() === true || undefined,
       "data-testid": () => props["data-testid"]?.(),
       // Positioned by the LAYOUT: the rows above it are not rendered, so
       // document flow has nothing to place it against.
@@ -546,7 +714,7 @@ export function Option(props: Incoming<OptionComponentProps>) {
   );
 
   return (
-    <li {...elementProps} ref={mergeRefs(domRef.set, props.ref?.())}>
+    <li {...elementProps} ref={mergeRefs(domRef.set, written?.ref, props.ref?.())}>
       {props.children}
     </li>
   );

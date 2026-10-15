@@ -22,7 +22,7 @@
 import {
   type Accessor,
   type Child,
-  context,
+  createContext,
   getContext,
   getOwner,
   type Incoming,
@@ -221,7 +221,7 @@ interface DatePickerContextValue {
   state: DatePickerState;
 }
 
-const DatePickerContext = context<DatePickerContextValue | null>(null);
+const DatePickerContext = createContext<DatePickerContextValue | null>(null);
 
 export function useDatePicker(): DatePickerContextValue {
   const value = getContext(DatePickerContext);

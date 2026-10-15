@@ -14,7 +14,7 @@
  * makes that a lie.
  */
 
-import { type Accessor, isServer, signal } from "@barqjs/core";
+import { type Accessor, isServer, createSignal } from "@barqjs/core";
 import { activeElement, eventTarget, ownerDocument, ownerWindow } from "../dom.ts";
 import { isAndroid, isMac } from "../platform.ts";
 import { tryCleanup } from "@barqjs/primitives/utils";
@@ -308,6 +308,20 @@ export function setInteractionModality(next: Modality): void {
   notify(next, null);
 }
 
+/**
+ * Forget what was observed, as on a page nobody has touched yet.
+ *
+ * Modality is the one piece of interaction state that outlives the elements it
+ * was produced on. A test harness calls this between tests, or the first focus
+ * of one test is read through the last press of another.
+ */
+export function resetInteractionModality(): void {
+  currentModality = null;
+  currentPointerType = "keyboard";
+  hasEventBeforeFocus = false;
+  hasBlurredWindowRecently = false;
+}
+
 /** The last pointer type observed. */
 export function getPointerType(): PointerType {
   return currentPointerType;
@@ -368,11 +382,11 @@ function shouldReportKeyboardFocus(
  * ```
  */
 export function modality(): Accessor<Modality | null> {
-  const current = signal(currentModality);
+  const [current, setCurrent] = createSignal(currentModality);
   if (isServer) return current;
 
   trackModality();
-  tryCleanup(onModalityChange(() => current.set(currentModality)));
+  tryCleanup(onModalityChange(() => setCurrent(currentModality)));
 
   return current;
 }
@@ -386,12 +400,12 @@ export function modality(): Accessor<Modality | null> {
 export function focusVisible(
   options: { isTextInput?: boolean; autoFocus?: boolean } = {},
 ): Accessor<boolean> {
-  const current = signal(options.autoFocus === true || isFocusVisible());
+  const [current, setCurrent] = createSignal(options.autoFocus === true || isFocusVisible());
   if (isServer) return current;
 
   trackModality();
   tryCleanup(
-    onModalityChange(() => current.set(isFocusVisible()), { isTextInput: options.isTextInput }),
+    onModalityChange(() => setCurrent(isFocusVisible()), { isTextInput: options.isTextInput }),
   );
 
   return current;

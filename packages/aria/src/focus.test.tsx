@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { flush, signal, Show, type Incoming } from "@barqjs/core";
+import { flush, createSignal, Show, type Incoming } from "@barqjs/core";
 import { render, screen, tick, user } from "@barqjs/testing";
 import { createFocusManager, focusRing, focusScope, focusableWalker } from "./focus.ts";
 import { setInteractionModality } from "./interactions/modality.ts";
@@ -265,11 +265,11 @@ describe("a scope whose content appears later", () => {
   }
 
   test("autofocus lands inside once the content is there", async () => {
-    const open = signal(false);
+    const [open, setOpen] = createSignal(false);
     render(() => <Late open={open()} />);
     expect(document.activeElement?.textContent).not.toBe("inside first");
 
-    open.set(true);
+    setOpen(true);
     flush();
     await tick();
     flush();

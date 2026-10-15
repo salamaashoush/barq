@@ -46,6 +46,44 @@ describe("navigationMenuState", () => {
     expect(state.value()).toBe("pricing");
   });
 
+  test("just after closing, the next hover does not wait either", async () => {
+    // Someone who has just had a panel open is still using the bar.
+    const state = navigationMenuState({ delay: 1000, skipDelay: 60 });
+    state.open("products");
+    flush();
+    state.close();
+    flush();
+    state.openSoon("pricing");
+    flush();
+    expect(state.value()).toBe("pricing");
+  });
+
+  test("once that window has passed the first open waits again", async () => {
+    const state = navigationMenuState({ delay: 40, skipDelay: 30 });
+    state.open("products");
+    flush();
+    state.close();
+    flush();
+    await after(30);
+    state.openSoon("pricing");
+    flush();
+    expect(state.value()).toBeNull();
+    await after(40);
+    expect(state.value()).toBe("pricing");
+  });
+
+  test("a window of zero makes every first open wait", () => {
+    const state = navigationMenuState({ delay: 1000, skipDelay: 0 });
+    state.open("products");
+    flush();
+    state.close();
+    flush();
+    state.openSoon("pricing");
+    flush();
+    expect(state.value()).toBeNull();
+    state.close();
+  });
+
   test("closing waits, because the pointer has to cross the gap to the panel", async () => {
     const state = navigationMenuState({ closeDelay: 40 });
     state.open("products");

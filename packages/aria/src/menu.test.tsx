@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, type Incoming, signal } from "@barqjs/core";
+import { flush, type Child, type Incoming, provide, Show, createSignal } from "@barqjs/core";
 import {
   accessibleName,
   expectNoAriaViolations,
@@ -9,7 +9,17 @@ import {
   user,
 } from "@barqjs/testing";
 import type { Key } from "./collections.ts";
-import { Menu, MenuButton, MenuItem, MenuSection, MenuTrigger } from "./menu.tsx";
+import { RouterContext } from "./interactions/open-link.ts";
+import {
+  Menu,
+  MenuButton,
+  MenuItem,
+  MenuRadioGroup,
+  MenuSection,
+  MenuTrigger,
+  useMenuGroupHeading,
+  type MenuSelectEvent,
+} from "./menu.tsx";
 
 interface Action {
   id: string;
@@ -234,7 +244,7 @@ describe("Menu", () => {
   });
 
   test("the items are data, so changing them updates the menu", () => {
-    const items = signal<Action[]>([{ id: "a", name: "Cut" }]);
+    const [items, setItems] = createSignal<Action[]>([{ id: "a", name: "Cut" }]);
     render(() => (
       <Menu aria-label="Actions" items={items()}>
         {(action: Action) => <MenuItem>{action.name}</MenuItem>}
@@ -243,7 +253,7 @@ describe("Menu", () => {
 
     expect(screen.getAllByRole("menuitem")).toHaveLength(1);
 
-    items.set([
+    setItems([
       { id: "a", name: "Cut" },
       { id: "b", name: "Copy" },
     ]);
@@ -470,5 +480,514 @@ describe("MenuTrigger", () => {
     await tick();
 
     expectNoAriaViolations(container);
+  });
+});
+
+/**
+ * The same menu with its items WRITTEN rather than rendered from data. Each
+ * one says what it is, and the collection is whatever rendered.
+ */
+describe("a menu whose items are its children", () => {
+  function Written(
+    props: Incoming<{
+      onAction?: (key: Key) => void;
+      onRename?: () => void;
+      onSelect?: (event: MenuSelectEvent) => void;
+      onClose?: () => void;
+      showCopy?: boolean;
+    }>,
+  ) {
+    return (
+      <Menu aria-label="Actions" onAction={props.onAction?.()} onClose={props.onClose?.()}>
+        <MenuItem id="rename" onAction={props.onRename?.()} onSelect={props.onSelect?.()}>
+          Rename
+        </MenuItem>
+        <Show when={props.showCopy?.() !== false}>
+          <MenuItem id="copy">Copy</MenuItem>
+        </Show>
+        <MenuItem id="paste" isDisabled>
+          Paste
+        </MenuItem>
+        <MenuItem id="delete">Delete</MenuItem>
+      </Menu>
+    );
+  }
+
+  test("is the same menu: named, with one menuitem per child", () => {
+    const { container } = render(() => <Written />);
+    flush();
+
+    expect(accessibleName(screen.getByRole("menu"))).toBe("Actions");
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual([
+      "Rename",
+      "Copy",
+      "Paste",
+      "Delete",
+    ]);
+    for (const item of screen.getAllByRole("menuitem")) {
+      expect(item.hasAttribute("aria-checked")).toBe(false);
+    }
+    expectNoAriaViolations(container);
+  });
+
+  test("the arrows walk the written items, skip a disabled one and wrap", () => {
+    render(() => <Written />);
+    flush();
+    const items = screen.getAllByRole("menuitem");
+
+    user.focus(screen.getByRole("menu"));
+    expect(document.activeElement).toBe(items[0] as HTMLElement);
+    user.keyDown("ArrowDown");
+    expect(document.activeElement).toBe(items[1] as HTMLElement);
+    user.keyDown("ArrowDown");
+    expect(document.activeElement).toBe(items[3] as HTMLElement);
+    expect(items[2]?.getAttribute("aria-disabled")).toBe("true");
+    expect(items[2]?.getAttribute("data-disabled")).toBe("");
+    user.keyDown("ArrowDown");
+    expect(document.activeElement).toBe(items[0] as HTMLElement);
+    expect(items[0]?.getAttribute("data-highlighted")).toBe("");
+  });
+
+  test("Home, End and typing a letter find the written items", () => {
+    render(() => <Written />);
+    flush();
+
+    user.focus(screen.getByRole("menu"));
+    user.keyDown("End");
+    expect(document.activeElement?.textContent).toBe("Delete");
+    user.keyDown("Home");
+    expect(document.activeElement?.textContent).toBe("Rename");
+    user.keyDown("c");
+    expect(document.activeElement?.textContent).toBe("Copy");
+  });
+
+  test("choosing one runs its own action, reports its key and closes", () => {
+    const keys: Key[] = [];
+    let renamed = 0;
+    let closed = 0;
+    render(() => (
+      <Written
+        onAction={(key) => keys.push(key)}
+        onRename={() => renamed++}
+        onClose={() => closed++}
+      />
+    ));
+    flush();
+
+    user.click(screen.getByRole("menuitem", { name: "Rename" }));
+    expect(renamed).toBe(1);
+    expect(keys).toEqual(["rename"]);
+    expect(closed).toBe(1);
+  });
+
+  test("a disabled written item does nothing", () => {
+    const keys: Key[] = [];
+    render(() => <Written onAction={(key) => keys.push(key)} />);
+    flush();
+
+    user.click(screen.getByRole("menuitem", { name: "Paste" }));
+    expect(keys).toEqual([]);
+  });
+
+  test("an item's onSelect can keep the menu open", () => {
+    let closed = 0;
+    const seen: Key[] = [];
+    render(() => (
+      <Written
+        onClose={() => closed++}
+        onSelect={(event) => {
+          seen.push(event.key);
+          event.preventDefault();
+        }}
+      />
+    ));
+    flush();
+
+    user.click(screen.getByRole("menuitem", { name: "Rename" }));
+    expect(seen).toEqual(["rename"]);
+    expect(closed).toBe(0);
+  });
+
+  test("an item a <Show> takes away leaves the keyboard's path", () => {
+    const [copy, setCopy] = createSignal(true);
+    render(() => <Written showCopy={copy()} />);
+    flush();
+
+    setCopy(false);
+    flush();
+    user.focus(screen.getByRole("menu"));
+    user.keyDown("ArrowDown");
+    expect(document.activeElement?.textContent).toBe("Delete");
+  });
+
+  test("the element's id is derived from the key, not taken from it", () => {
+    render(() => <Written />);
+    flush();
+
+    const rename = screen.getByRole("menuitem", { name: "Rename" });
+    expect(rename.id).not.toBe("rename");
+    expect(rename.id.endsWith("-item-rename")).toBe(true);
+  });
+
+  function View(
+    props: Incoming<{
+      onToolbar?: (isSelected: boolean) => void;
+      onDensity?: (value: string) => void;
+      onClose?: () => void;
+    }>,
+  ) {
+    const [density, setDensity] = createSignal("compact");
+    return (
+      <Menu aria-label="View" onClose={props.onClose?.()}>
+        <MenuItem defaultSelected onChange={props.onToolbar?.()}>
+          Toolbar
+        </MenuItem>
+        <MenuItem type="checkbox">Status bar</MenuItem>
+        <MenuRadioGroup
+          aria-label="Density"
+          value={density()}
+          onValueChange={(value) => {
+            setDensity(value);
+            props.onDensity?.()?.(value);
+          }}
+        >
+          <MenuItem value="compact">Compact</MenuItem>
+          <MenuItem value="comfortable">Comfortable</MenuItem>
+        </MenuRadioGroup>
+        <MenuItem>Print</MenuItem>
+      </Menu>
+    );
+  }
+
+  test("one written menu mixes checkboxes, radios and plain items", () => {
+    const { container } = render(() => <View />);
+    flush();
+
+    expect(screen.getAllByRole("menuitemcheckbox").map((item) => item.textContent)).toEqual([
+      "Toolbar",
+      "Status bar",
+    ]);
+    expect(screen.getAllByRole("menuitemradio").map((item) => item.textContent)).toEqual([
+      "Compact",
+      "Comfortable",
+    ]);
+    expect(screen.getAllByRole("menuitem").map((item) => item.textContent)).toEqual(["Print"]);
+    expect(accessibleName(screen.getByRole("group"))).toBe("Density");
+    expectNoAriaViolations(container);
+  });
+
+  test("a checkbox item holds its own tick and says so both ways", () => {
+    const changes: boolean[] = [];
+    render(() => <View onToolbar={(isSelected) => changes.push(isSelected)} />);
+    flush();
+
+    const toolbar = screen.getByRole("menuitemcheckbox", { name: "Toolbar" });
+    const status = screen.getByRole("menuitemcheckbox", { name: "Status bar" });
+    expect(toolbar.getAttribute("aria-checked")).toBe("true");
+    expect(toolbar.getAttribute("data-state")).toBe("checked");
+    expect(toolbar.getAttribute("data-selected")).toBe("");
+    expect(status.getAttribute("aria-checked")).toBe("false");
+    expect(status.getAttribute("data-state")).toBe("unchecked");
+
+    user.click(toolbar);
+    flush();
+    expect(changes).toEqual([false]);
+    expect(toolbar.getAttribute("aria-checked")).toBe("false");
+    expect(toolbar.getAttribute("data-state")).toBe("unchecked");
+  });
+
+  test("Space ticks a checkbox item and stays; Enter ticks it and closes", () => {
+    let closed = 0;
+    render(() => <View onClose={() => closed++} />);
+    flush();
+
+    user.focus(screen.getByRole("menu"));
+    user.keyDown("ArrowDown");
+    user.key(" ");
+    flush();
+    const status = screen.getByRole("menuitemcheckbox", { name: "Status bar" });
+    expect(status.getAttribute("aria-checked")).toBe("true");
+    expect(closed).toBe(0);
+
+    user.key("Enter");
+    flush();
+    expect(status.getAttribute("aria-checked")).toBe("false");
+    expect(closed).toBe(1);
+  });
+
+  test("a radio group holds the value and one radio is on", () => {
+    const values: string[] = [];
+    render(() => <View onDensity={(value) => values.push(value)} />);
+    flush();
+
+    const compact = screen.getByRole("menuitemradio", { name: "Compact" });
+    const comfortable = screen.getByRole("menuitemradio", { name: "Comfortable" });
+    expect(compact.getAttribute("aria-checked")).toBe("true");
+    expect(comfortable.getAttribute("data-state")).toBe("unchecked");
+
+    user.click(comfortable);
+    flush();
+    expect(values).toEqual(["comfortable"]);
+    expect(compact.getAttribute("aria-checked")).toBe("false");
+    expect(comfortable.getAttribute("aria-checked")).toBe("true");
+    expect(comfortable.getAttribute("data-state")).toBe("checked");
+  });
+
+  test("the arrows cross a group's boundary as though it were not there", () => {
+    render(() => <View />);
+    flush();
+
+    user.focus(screen.getByRole("menu"));
+    user.keyDown("ArrowDown");
+    user.keyDown("ArrowDown");
+    expect(document.activeElement?.textContent).toBe("Compact");
+    user.keyDown("ArrowDown");
+    user.keyDown("ArrowDown");
+    expect(document.activeElement?.textContent).toBe("Print");
+  });
+
+  function Heading(props: Incoming<{ children?: Child }>) {
+    const headingId = useMenuGroupHeading();
+    return (
+      <li role="presentation" id={headingId?.()}>
+        {props.children}
+      </li>
+    );
+  }
+
+  test("a written section is a group named by a heading written inside it", () => {
+    const { container } = render(() => (
+      <Menu aria-label="Actions">
+        <MenuSection heading="Edit">
+          <MenuItem>Cut</MenuItem>
+        </MenuSection>
+        <MenuSection>
+          <Heading>View</Heading>
+          <MenuItem>Zoom</MenuItem>
+        </MenuSection>
+      </Menu>
+    ));
+    flush();
+
+    expect(screen.getAllByRole("group").map((group) => accessibleName(group))).toEqual([
+      "Edit",
+      "View",
+    ]);
+    expect(screen.getAllByRole("menuitem")).toHaveLength(2);
+    expectNoAriaViolations(container);
+  });
+
+  /** Every click on an anchor that nothing cancelled: what the browser would follow. */
+  function watchLinks(): { followed: { href: string; ctrlKey: boolean }[]; stop: () => void } {
+    const followed: { href: string; ctrlKey: boolean }[] = [];
+    const record = (event: MouseEvent): void => {
+      const anchor = (event.target as Element).closest("a");
+      if (anchor === null) return;
+      queueMicrotask(() => {
+        if (event.defaultPrevented) return;
+        followed.push({ href: anchor.getAttribute("href") ?? "", ctrlKey: event.ctrlKey });
+      });
+    };
+    document.addEventListener("click", record, true);
+    return { followed, stop: () => document.removeEventListener("click", record, true) };
+  }
+
+  function Links(props: Incoming<{ onClose?: () => void; onAction?: (key: Key) => void }>) {
+    return (
+      <Menu aria-label="Go" onClose={props.onClose?.()} onAction={props.onAction?.()}>
+        <MenuItem id="docs" href="#docs">
+          Documentation
+        </MenuItem>
+        <MenuItem id="billing" href="#billing" target="_blank" rel="noreferrer" isDisabled>
+          Billing
+        </MenuItem>
+        <MenuItem id="sign-out">Sign out</MenuItem>
+      </Menu>
+    );
+  }
+
+  test("a written item with an href is a real link that is still a menu item", () => {
+    const { container } = render(() => <Links />);
+    flush();
+
+    const link = screen.getByRole("menuitem", { name: "Documentation" });
+    expect(link.tagName).toBe("A");
+    expect(link.getAttribute("href")).toBe("#docs");
+    expect(link.parentElement?.tagName).toBe("LI");
+    expect(link.parentElement?.getAttribute("role")).toBe("none");
+    expect(screen.getAllByRole("menuitem")).toHaveLength(3);
+    expectNoAriaViolations(container);
+  });
+
+  test("the arrows reach a link item like any other", () => {
+    render(() => <Links />);
+    flush();
+
+    user.focus(screen.getByRole("menu"));
+    expect(document.activeElement?.textContent).toBe("Documentation");
+    user.keyDown("ArrowDown");
+    expect(document.activeElement?.textContent).toBe("Sign out");
+  });
+
+  test("a press follows the link, reports the item and closes the menu", async () => {
+    let closed = 0;
+    const keys: Key[] = [];
+    render(() => <Links onClose={() => closed++} onAction={(key) => keys.push(key)} />);
+    flush();
+
+    const links = watchLinks();
+    user.click(screen.getByRole("menuitem", { name: "Documentation" }));
+    await tick();
+    links.stop();
+
+    // Once: the press follows it, and the click that carried the press does not.
+    expect(links.followed).toEqual([{ href: "#docs", ctrlKey: false }]);
+    expect(keys).toEqual(["docs"]);
+    expect(closed).toBe(1);
+  });
+
+  test("a click with a modifier held reaches the browser with the modifier", async () => {
+    render(() => <Links />);
+    flush();
+
+    const links = watchLinks();
+    user.click(screen.getByRole("menuitem", { name: "Documentation" }), { ctrlKey: true });
+    await tick();
+    links.stop();
+    expect(links.followed).toEqual([{ href: "#docs", ctrlKey: true }]);
+  });
+
+  test("Enter follows a link item and closes the menu", async () => {
+    let closed = 0;
+    render(() => <Links onClose={() => closed++} />);
+    flush();
+
+    user.focus(screen.getByRole("menu"));
+    const links = watchLinks();
+    user.key("Enter");
+    await tick();
+    links.stop();
+    expect(links.followed).toEqual([{ href: "#docs", ctrlKey: false }]);
+    expect(closed).toBe(1);
+  });
+
+  test("Space follows it too, once", async () => {
+    render(() => <Links />);
+    flush();
+
+    user.focus(screen.getByRole("menu"));
+    const links = watchLinks();
+    user.key(" ");
+    await tick();
+    links.stop();
+    expect(links.followed).toEqual([{ href: "#docs", ctrlKey: false }]);
+  });
+
+  test("a disabled link item has nothing to follow and does nothing", async () => {
+    let closed = 0;
+    const keys: Key[] = [];
+    render(() => <Links onClose={() => closed++} onAction={(key) => keys.push(key)} />);
+    flush();
+
+    const billing = screen.getByRole("menuitem", { name: "Billing" });
+    expect(billing.tagName).toBe("A");
+    expect(billing.hasAttribute("href")).toBe(false);
+    expect(billing.getAttribute("target")).toBe("_blank");
+    expect(billing.getAttribute("rel")).toBe("noreferrer");
+    expect(billing.getAttribute("aria-disabled")).toBe("true");
+
+    const links = watchLinks();
+    user.click(billing);
+    await tick();
+    links.stop();
+    expect(links.followed).toEqual([]);
+    expect(keys).toEqual([]);
+    expect(closed).toBe(0);
+  });
+
+  test("a client router takes the navigation instead of the browser", async () => {
+    const opened: string[] = [];
+    function Routed() {
+      return provide(
+        RouterContext,
+        () => ({
+          isNative: false,
+          open: (_target: Element, _modifiers: object, href: string) => opened.push(href),
+          href: (href: string) => `/app${href}`,
+        }),
+        () => (
+          <Menu aria-label="Go">
+            <MenuItem href="/settings">Settings</MenuItem>
+          </Menu>
+        ),
+      ) as never;
+    }
+    render(() => <Routed />);
+    flush();
+
+    const link = screen.getByRole("menuitem", { name: "Settings" });
+    expect(link.getAttribute("href")).toBe("/app/settings");
+
+    const links = watchLinks();
+    user.click(link);
+    await tick();
+    links.stop();
+    expect(opened).toEqual(["/settings"]);
+    expect(links.followed).toEqual([]);
+  });
+
+  test("an item rendered from data with an href is the same link", async () => {
+    let closed = 0;
+    render(() => (
+      <Menu
+        aria-label="Go"
+        items={[
+          { id: "docs", name: "Documentation", href: "#docs" },
+          { id: "out", name: "Sign out" },
+        ]}
+        onClose={() => closed++}
+      >
+        {(entry: { name: string }) => <MenuItem>{entry.name}</MenuItem>}
+      </Menu>
+    ));
+    flush();
+
+    const link = screen.getByRole("menuitem", { name: "Documentation" });
+    expect(link.tagName).toBe("A");
+    expect(link.getAttribute("href")).toBe("#docs");
+    expect(screen.getByRole("menuitem", { name: "Sign out" }).tagName).toBe("LI");
+
+    const links = watchLinks();
+    user.click(link);
+    await tick();
+    links.stop();
+    expect(links.followed).toEqual([{ href: "#docs", ctrlKey: false }]);
+    expect(closed).toBe(1);
+  });
+
+  test("opened from a trigger it lands on the first written item", async () => {
+    render(() => (
+      <MenuTrigger>
+        <MenuButton>Actions</MenuButton>
+        <Menu>
+          <MenuItem>Cut</MenuItem>
+          <MenuItem>Copy</MenuItem>
+        </Menu>
+      </MenuTrigger>
+    ));
+
+    const button = screen.getByRole("button", { name: "Actions" });
+    expect(button.getAttribute("data-state")).toBe("closed");
+    user.focus(button);
+    user.keyDown("ArrowDown");
+    await tick();
+    flush();
+
+    expect(button.getAttribute("data-state")).toBe("open");
+    expect(document.activeElement?.textContent).toBe("Cut");
+    const menu = screen.getByRole("menu");
+    expect(menu.getAttribute("data-state")).toBe("open");
+    expect(menu.getAttribute("data-side")).toBe("bottom");
+    expect(menu.getAttribute("data-align")).toBe("start");
   });
 });

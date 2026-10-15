@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush, signal, type Incoming } from "@barqjs/core";
+import { flush, createSignal, type Incoming } from "@barqjs/core";
 import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 import type { Key } from "./collections.ts";
 import { Tag, TagGroup } from "./tag.tsx";
@@ -157,8 +157,8 @@ describe("TagGroup", () => {
   });
 
   test("removing the last tag focuses the group", () => {
-    const items = signal<Filter[]>([{ id: "barcelona", name: "Barcelona" }]);
-    render(() => <Filters items={items()} onRemove={() => items.set([])} />);
+    const [items, setItems] = createSignal<Filter[]>([{ id: "barcelona", name: "Barcelona" }]);
+    render(() => <Filters items={items()} onRemove={() => setItems([])} />);
 
     user.focus(screen.getAllByRole("row")[0] as HTMLElement);
     user.keyDown("Delete");

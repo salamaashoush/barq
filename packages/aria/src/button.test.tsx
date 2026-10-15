@@ -1,11 +1,18 @@
 import { describe, expect, test } from "bun:test";
-import { context, flush, getOwner, provide, signal, type Child, type Incoming } from "@barqjs/core";
+import {
+  createContext,
+  flush,
+  provide,
+  createSignal,
+  type Child,
+  type Incoming,
+} from "@barqjs/core";
 import { expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
 import { Button, ToggleButton } from "./button.tsx";
 import { provideTriggerSlot } from "./utils.ts";
 
 /** Something for `provide` to carry; the slot is what the test is about. */
-const probe = context<number>(0);
+const probe = createContext<number>(0);
 
 describe("Button", () => {
   test("is a button with an accessible name", () => {
@@ -13,6 +20,20 @@ describe("Button", () => {
     const button = screen.getByRole("button", { name: "Save" });
     expect(button.tagName).toBe("BUTTON");
     expect(button.getAttribute("type")).toBe("button");
+  });
+
+  test("a click handler hears one click per click", async () => {
+    let clicks = 0;
+    render(() => <Button onClick={() => clicks++}>Save</Button>);
+    await user.click(screen.getByRole("button"));
+    expect(clicks).toBe(1);
+  });
+
+  test("a toggle's click handler hears one click per click", async () => {
+    let clicks = 0;
+    render(() => <ToggleButton onClick={() => clicks++}>Bold</ToggleButton>);
+    await user.click(screen.getByRole("button"));
+    expect(clicks).toBe(1);
   });
 
   test("fires onPress for a click, a key and a screen reader", () => {
@@ -120,7 +141,7 @@ describe("ToggleButton", () => {
   });
 
   test("controlled: the prop owns the state", () => {
-    const selected = signal(false);
+    const [selected, setSelected] = createSignal(false);
     const changes: boolean[] = [];
     render(() => (
       <ToggleButton isSelected={selected()} onChange={(on) => changes.push(on)}>
@@ -133,7 +154,7 @@ describe("ToggleButton", () => {
     expect(changes).toEqual([true]);
     expect(button.getAttribute("aria-pressed")).toBe("false");
 
-    selected.set(true);
+    setSelected(true);
     flush();
     expect(button.getAttribute("aria-pressed")).toBe("true");
   });

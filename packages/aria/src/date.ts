@@ -399,10 +399,41 @@ export function parseDateTime(value: string): CalendarDateTime {
   return CalendarDateTime.from(parseDate(date), parseTime(time));
 }
 
-/** Today, as the LOCAL zone reckons it. */
-export function today(): CalendarDate {
+const zoneFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/**
+ * Today, as the LOCAL zone reckons it, or as a named IANA zone does.
+ *
+ * The one question about a zone a calendar of days has to answer: which day it
+ * is there right now. `Intl.DateTimeFormat` is the only part of the IANA
+ * database a browser exposes, and it is enough for this.
+ */
+export function today(timeZone?: string): CalendarDate {
   const at = new Date();
-  return new CalendarDate(at.getFullYear(), at.getMonth() + 1, at.getDate());
+  if (timeZone === undefined) {
+    return new CalendarDate(at.getFullYear(), at.getMonth() + 1, at.getDate());
+  }
+
+  let format = zoneFormatters.get(timeZone);
+  if (format === undefined) {
+    format = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      calendar: "gregory",
+      numberingSystem: "latn",
+      year: "numeric",
+      month: "numeric",
+      day: "numeric",
+    });
+    zoneFormatters.set(timeZone, format);
+  }
+
+  const fields = { year: 0, month: 0, day: 0 };
+  for (const part of format.formatToParts(at)) {
+    if (part.type === "year" || part.type === "month" || part.type === "day") {
+      fields[part.type] = Number(part.value);
+    }
+  }
+  return new CalendarDate(fields.year, fields.month, fields.day);
 }
 
 /** The wall-clock time now, as the local zone reckons it. */
@@ -479,8 +510,64 @@ export function isSameMonth(a: DateValue, b: DateValue): boolean {
   return left.year === right.year && left.month === right.month;
 }
 
-export function isToday(date: DateValue): boolean {
-  return isSameDay(date, today());
+export function isToday(date: DateValue, timeZone?: string): boolean {
+  return isSameDay(date, today(timeZone));
+}
+
+/**
+ * Which week of its year a day is in.
+ *
+ * Two numbers decide it and locales disagree about both: the day a week begins
+ * on, and how early in January a day must fall for its week to count as the
+ * first. The United States begins on Sunday and counts the week holding 1
+ * January; ISO 8601 begins on Monday and counts the week holding 4 January,
+ * which is the first with most of its days in the new year.
+ *
+ * A day at either end of a year can belong to a week of the year beside it.
+ */
+export function getWeekOfYear(
+  date: DateValue,
+  firstDayOfWeek = 0,
+  firstWeekContainsDate = 1,
+): number {
+  const day = toCalendarDate(date);
+  const firstWeekOf = (year: number): CalendarDate =>
+    startOfWeek(new CalendarDate(year, 1, firstWeekContainsDate), firstDayOfWeek);
+
+  let first = firstWeekOf(day.year + 1);
+  if (day.compare(first) < 0) {
+    first = firstWeekOf(day.year);
+    if (day.compare(first) < 0) first = firstWeekOf(day.year - 1);
+  }
+  return Math.floor((day.epochDay - first.epochDay) / 7) + 1;
+}
+
+/** The ISO 8601 week: Monday first, and week 1 is the one holding 4 January. */
+export function getISOWeek(date: DateValue): number {
+  return getWeekOfYear(date, 1, 4);
+}
+
+interface WeekInfo {
+  firstDay?: number;
+  weekend?: number[];
+  minimalDays?: number;
+}
+
+/**
+ * What `Intl.Locale` knows about a locale's week, or nothing.
+ *
+ * The specification settled on a `getWeekInfo()` method after engines had
+ * shipped a `weekInfo` getter, and each engine has one or the other.
+ */
+function weekInfo(locale: string): WeekInfo | undefined {
+  if (typeof Intl.Locale !== "function") return undefined;
+  try {
+    const info: { getWeekInfo?: () => WeekInfo; weekInfo?: WeekInfo } = new Intl.Locale(locale);
+    return typeof info.getWeekInfo === "function" ? info.getWeekInfo() : info.weekInfo;
+  } catch {
+    // A tag the engine will not take.
+    return undefined;
+  }
 }
 
 /**
@@ -491,20 +578,10 @@ export function isToday(date: DateValue): boolean {
  * browser implements it; the fallback is the most common pair.
  */
 export function getWeekendDays(locale: string): number[] {
-  const info = (
-    Intl as unknown as { Locale?: new (tag: string) => { weekInfo?: { weekend?: number[] } } }
-  ).Locale;
-  if (info !== undefined) {
-    try {
-      // `weekInfo` numbers Monday as 1 and Sunday as 7; `getDay` numbers
-      // Sunday as 0.
-      const weekend = new info(locale).weekInfo?.weekend;
-      if (weekend !== undefined) return weekend.map((day) => day % 7);
-    } catch {
-      // An engine without `weekInfo`, or a tag it will not take.
-    }
-  }
-  return [0, 6];
+  // The week is numbered Monday as 1 and Sunday as 7; `getDay` numbers
+  // Sunday as 0.
+  const weekend = weekInfo(locale)?.weekend;
+  return weekend === undefined ? [0, 6] : weekend.map((day) => day % 7);
 }
 
 export function isWeekend(date: DateValue, locale: string): boolean {
@@ -519,20 +596,26 @@ export function isWeekend(date: DateValue, locale: string): boolean {
  * column, which reads as the calendar being simply wrong.
  */
 export function getFirstDayOfWeek(locale: string): number {
-  const info = (
-    Intl as unknown as {
-      Locale?: new (tag: string) => { weekInfo?: { firstDay?: number } };
-    }
-  ).Locale;
-  if (info !== undefined) {
-    try {
-      const first = new info(locale).weekInfo?.firstDay;
-      if (first !== undefined) return first % 7;
-    } catch {
-      // As above.
-    }
-  }
-  return 0;
+  const first = weekInfo(locale)?.firstDay;
+  return first === undefined ? 0 : first % 7;
+}
+
+/**
+ * How many days of a week must fall in a year for it to be that year's first.
+ *
+ * One in the United States, four wherever ISO 8601 is followed. It is also the
+ * day of January the first week always holds, which is the form
+ * {@link getWeekOfYear} takes it in.
+ *
+ * `Intl.Locale` stopped reporting this, so where the engine gives nothing a
+ * week that begins on Monday is taken to be an ISO one. That is right for
+ * Europe and wrong for a few Monday-first locales that count from 1 January;
+ * a caller who needs a particular rule passes it to {@link getWeekOfYear}.
+ */
+export function getMinimalDaysInFirstWeek(locale: string): number {
+  const info = weekInfo(locale);
+  if (info?.minimalDays !== undefined) return info.minimalDays;
+  return info?.firstDay === 1 ? 4 : 1;
 }
 
 /** `value` held between `min` and `max`, either of which may be absent. */

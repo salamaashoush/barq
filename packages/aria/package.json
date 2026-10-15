@@ -75,6 +75,11 @@
       "barq": "./src/combobox.tsx",
       "bun": "./src/combobox.tsx"
     },
+    "./command": {
+      "types": "./src/command.tsx",
+      "barq": "./src/command.tsx",
+      "bun": "./src/command.tsx"
+    },
     "./date": {
       "types": "./src/date.ts",
       "barq": "./src/date.ts",
@@ -160,10 +165,20 @@
       "barq": "./src/menu.tsx",
       "bun": "./src/menu.tsx"
     },
+    "./menubar": {
+      "types": "./src/menubar.tsx",
+      "barq": "./src/menubar.tsx",
+      "bun": "./src/menubar.tsx"
+    },
     "./numberfield": {
       "types": "./src/numberfield.tsx",
       "barq": "./src/numberfield.tsx",
       "bun": "./src/numberfield.tsx"
+    },
+    "./otp": {
+      "types": "./src/otp.ts",
+      "barq": "./src/otp.ts",
+      "bun": "./src/otp.ts"
     },
     "./overlays": {
       "types": "./src/overlays.ts",
@@ -179,6 +194,11 @@
       "types": "./src/platform.ts",
       "barq": "./src/platform.ts",
       "bun": "./src/platform.ts"
+    },
+    "./questionnaire": {
+      "types": "./src/questionnaire.tsx",
+      "barq": "./src/questionnaire.tsx",
+      "bun": "./src/questionnaire.tsx"
     },
     "./radio": {
       "types": "./src/radio.tsx",
@@ -200,10 +220,20 @@
       "barq": "./src/selection.ts",
       "bun": "./src/selection.ts"
     },
+    "./static-collection": {
+      "types": "./src/static-collection.ts",
+      "barq": "./src/static-collection.ts",
+      "bun": "./src/static-collection.ts"
+    },
     "./slider": {
       "types": "./src/slider.tsx",
       "barq": "./src/slider.tsx",
       "bun": "./src/slider.tsx"
+    },
+    "./splitter": {
+      "types": "./src/splitter.ts",
+      "barq": "./src/splitter.ts",
+      "bun": "./src/splitter.ts"
     },
     "./switch": {
       "types": "./src/switch.tsx",
@@ -234,6 +264,11 @@
       "types": "./src/toggle.ts",
       "barq": "./src/toggle.ts",
       "bun": "./src/toggle.ts"
+    },
+    "./togglegroup": {
+      "types": "./src/togglegroup.ts",
+      "barq": "./src/togglegroup.ts",
+      "bun": "./src/togglegroup.ts"
     },
     "./toolbar": {
       "types": "./src/toolbar.tsx",
@@ -274,7 +309,7 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "bun test",
+    "test": "bun test && bun test --conditions=development",
     "test:coverage": "bun test --coverage"
   },
   "devDependencies": {
@@ -292,8 +327,8 @@
     "@barqjs/primitives": ">=0.1.0",
     "@barqjs/server": ">=0.1.0"
   },
+  "peerDependenciesMeta": {},
   "engines": {
     "bun": ">=1.1.0"
-  },
-  "peerDependenciesMeta": {}
+  }
 }

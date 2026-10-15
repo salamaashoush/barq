@@ -8,7 +8,7 @@
  * is going, so VoiceOver reads the wrong thing.
  */
 
-import { effect, isServer, signal } from "@barqjs/core";
+import { createTrackedEffect, isServer, createSignal } from "@barqjs/core";
 import { activeElement, focusWithoutScrolling, ownerDocument, runAfterTransition } from "../dom.ts";
 import { access, mergeProps, type DOMProps, type MaybeAccessor } from "../utils.ts";
 import { focused, type FocusOptions } from "./focus-events.ts";
@@ -63,14 +63,14 @@ export function focusable(options: FocusableOptions, ref?: ElementRef): Focusabl
   const { focusProps } = focused(options);
   const { keyboardProps } = keyboard(options);
 
-  const shouldAutoFocus = signal(access(options.autoFocus) === true);
+  const [shouldAutoFocus, setShouldAutoFocus] = createSignal(access(options.autoFocus) === true);
 
   if (!isServer) {
-    effect(() => {
+    createTrackedEffect(() => {
       if (!shouldAutoFocus()) return;
       const element = ref === undefined ? null : access(ref);
       if (element === null || element === undefined) return;
-      shouldAutoFocus.set(false);
+      setShouldAutoFocus(false);
       focusSafely(element as HTMLElement);
     });
   }

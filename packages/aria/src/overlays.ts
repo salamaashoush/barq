@@ -19,13 +19,15 @@
 
 import {
   type Accessor,
-  context,
-  effect,
+  createContext,
+  createEffect,
   getContext,
   getOwner,
   install,
   isServer,
-  signal,
+  provide,
+  createSignal,
+  untrack,
 } from "@barqjs/core";
 import {
   addEvent,
@@ -59,6 +61,27 @@ import {
 // ---------------------------------------------------------------------------
 // Open state
 // ---------------------------------------------------------------------------
+
+/**
+ * Do something for as long as an overlay is open, and undo it after.
+ *
+ * `read` is where the open state and anything else that matters is READ, and
+ * `apply` is what is done about the answer; what `apply` returns undoes it
+ * before the next answer and on disposal.
+ *
+ * The two are apart on purpose. A tracked effect reads inside its own first
+ * run, and that run can fall in the same pass as a write made by an effect
+ * before it: it then sees the value from before the write and is never woken
+ * for the one after. An overlay opened from `onSettled` is exactly that, a
+ * welcome popover or a dialog restored from the URL, and it stayed closed
+ * while its owner's signal said open. A read made here is part of the graph,
+ * which is kept consistent across that pass.
+ */
+export function followOpen<T>(read: () => T, apply: (value: T) => (() => void) | undefined): void {
+  // `apply` measures and reads refs as they are at that moment, on purpose:
+  // what it depends on is what `read` returned.
+  createEffect(read, (value) => untrack(() => apply(value)));
+}
 
 export interface OverlayTriggerStateOptions {
   isOpen?: MaybeAccessor<boolean | undefined>;
@@ -146,7 +169,7 @@ export function overlayTrigger(
  */
 export type PortalTarget = () => Element | null;
 
-const PortalTargetContext = context<PortalTarget | null>(null);
+const PortalTargetContext = createContext<PortalTarget | null>(null);
 
 /**
  * Send every overlay below here somewhere other than the body.
@@ -158,6 +181,17 @@ const PortalTargetContext = context<PortalTarget | null>(null);
 export function providePortalTarget(target: PortalTarget | null): void {
   const owner = getOwner();
   if (owner !== null) install(owner, PortalTargetContext, () => target);
+}
+
+/**
+ * Build `children` with every overlay inside them sent to `target`.
+ *
+ * {@link providePortalTarget} installs on whatever scope is current, which is
+ * right in a component that owns one and wrong in one that does not: there it
+ * lands on the surrounding scope and the siblings read it too.
+ */
+export function withPortalTarget(target: PortalTarget | null, children: () => unknown): unknown {
+  return provide(PortalTargetContext, () => target, children);
 }
 
 /** The portal target in scope, if one was provided. */
@@ -199,6 +233,16 @@ export interface OverlayOptions {
   shouldCloseOnBlur?: MaybeAccessor<boolean | undefined>;
   /** @default false */
   isKeyboardDismissDisabled?: MaybeAccessor<boolean | undefined>;
+  /**
+   * Hear Escape wherever focus is, not only inside the overlay.
+   *
+   * For an overlay that never takes focus: a hover card opened from the
+   * keyboard leaves focus on its trigger, which is outside it, and a handler
+   * on the overlay alone would never hear the key.
+   *
+   * @default false
+   */
+  shouldCloseOnEscapeAnywhere?: MaybeAccessor<boolean | undefined>;
   /** Veto a dismissal for an interaction with a particular element. */
   shouldCloseOnInteractOutside?: (element: Element) => boolean;
   /**
@@ -224,15 +268,22 @@ export function overlay(options: OverlayOptions, ref: ElementRef): OverlayResult
   let lastTopMost: ElementRef | undefined;
   const inside: ElementRef = options.groupRef ?? ref;
 
-  effect(() => {
-    if (access(options.isOpen) !== true) return undefined;
-    if (openOverlays.includes(ref)) return undefined;
-    openOverlays.push(ref);
-    return () => {
-      const at = openOverlays.indexOf(ref);
-      if (at >= 0) openOverlays.splice(at, 1);
-    };
-  });
+  // Not on the server, where the effects of a render still run: the stack is
+  // module state, and a request that opened an overlay would leave it there
+  // for every request after.
+  if (!isServer) {
+    followOpen(
+      () => access(options.isOpen) === true,
+      (isOpen) => {
+        if (!isOpen || openOverlays.includes(ref)) return undefined;
+        openOverlays.push(ref);
+        return () => {
+          const at = openOverlays.indexOf(ref);
+          if (at >= 0) openOverlays.splice(at, 1);
+        };
+      },
+    );
+  }
 
   const isTopMost = (): boolean => openOverlays[openOverlays.length - 1] === ref;
 
@@ -247,7 +298,9 @@ export function overlay(options: OverlayOptions, ref: ElementRef): OverlayResult
 
   interactOutside({
     ref: inside,
-    isDisabled: () => access(options.isDismissable) !== true || access(options.isOpen) !== true,
+    // The server has no document to hear a press on.
+    isDisabled: () =>
+      isServer || access(options.isDismissable) !== true || access(options.isOpen) !== true,
     onInteractOutsideStart: (event) => {
       lastTopMost = openOverlays[openOverlays.length - 1];
       if (shouldClose(targetElement(event)) && isTopMost()) event.stopPropagation();
@@ -284,6 +337,24 @@ export function overlay(options: OverlayOptions, ref: ElementRef): OverlayResult
     hide();
   };
 
+  if (!isServer) {
+    followOpen(
+      () => access(options.isOpen) === true && access(options.shouldCloseOnEscapeAnywhere) === true,
+      (listens) => {
+        if (!listens) return undefined;
+        const doc = ownerDocument(access(ref));
+        const onDocumentKeyDown = (event: KeyboardEvent): void => {
+          // Inside the overlay its own handler has already answered, and an
+          // overlay further up the stack is the one Escape belongs to.
+          if (event.defaultPrevented || !isTopMost()) return;
+          onKeyDown(event);
+        };
+        doc.addEventListener("keydown", onDocumentKeyDown);
+        return () => doc.removeEventListener("keydown", onDocumentKeyDown);
+      },
+    );
+  }
+
   return {
     overlayProps: mergeProps(focusWithinProps, { onKeyDown }),
     underlayProps: {},
@@ -302,22 +373,27 @@ export function closeOnScroll(options: {
   isOpen?: MaybeAccessor<boolean | undefined>;
   onClose?: (() => void) | null;
 }): void {
-  effect(() => {
-    if (access(options.isOpen) !== true || options.onClose === null) return undefined;
+  if (isServer) return;
 
-    const trigger = access(options.triggerRef) as Element | null;
-    if (trigger === null) return undefined;
+  followOpen(
+    () =>
+      access(options.isOpen) !== true || options.onClose === null
+        ? null
+        : ((access(options.triggerRef) as Element | null) ?? null),
+    (trigger) => {
+      if (trigger === null) return undefined;
 
-    const onScroll = (event: Event): void => {
-      const target = targetElement(event);
-      // A scroller elsewhere in the page does not move the trigger.
-      if (target !== null && !contains(target, trigger)) return;
-      if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
-      options.onClose?.();
-    };
+      const onScroll = (event: Event): void => {
+        const target = targetElement(event);
+        // A scroller elsewhere in the page does not move the trigger.
+        if (target !== null && !contains(target, trigger)) return;
+        if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) return;
+        options.onClose?.();
+      };
 
-    return addEvent(propagationTargets(trigger), "scroll", onScroll, true);
-  });
+      return addEvent(propagationTargets(trigger), "scroll", onScroll, true);
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -514,22 +590,27 @@ let releaseScroll: (() => void) | null = null;
 export function preventScroll(
   options: { isDisabled?: MaybeAccessor<boolean | undefined> } = {},
 ): void {
-  effect(() => {
-    if (isServer || access(options.isDisabled) === true) return undefined;
+  if (isServer) return;
 
-    scrollLocks++;
-    if (scrollLocks === 1) {
-      releaseScroll = isIOS() && isWebKit() ? preventScrollWebKitIOS() : preventScrollStandard();
-    }
+  followOpen(
+    () => access(options.isDisabled) !== true,
+    (locks) => {
+      if (!locks) return undefined;
 
-    return () => {
-      scrollLocks--;
-      if (scrollLocks === 0) {
-        releaseScroll?.();
-        releaseScroll = null;
+      scrollLocks++;
+      if (scrollLocks === 1) {
+        releaseScroll = isIOS() && isWebKit() ? preventScrollWebKitIOS() : preventScrollStandard();
       }
-    };
-  });
+
+      return () => {
+        scrollLocks--;
+        if (scrollLocks === 0) {
+          releaseScroll?.();
+          releaseScroll = null;
+        }
+      };
+    },
+  );
 }
 
 function preventScrollStandard(): () => void {
@@ -646,6 +727,34 @@ export type Placement =
 
 export type Axis = "top" | "bottom" | "left" | "right";
 
+/** Which edge of the trigger an overlay hangs off, as Radix and Base UI name it. */
+export type Side = "top" | "right" | "bottom" | "left" | "inline-start" | "inline-end";
+
+/** Where along that edge it sits. */
+export type Align = "start" | "center" | "end";
+
+/**
+ * The {@link Placement} a side and an alignment name.
+ *
+ * Two vocabularies for one position: `side="bottom" align="start"` is
+ * `"bottom start"`, and `side="right" align="end"` is `"right bottom"`, because
+ * a placement names the cross axis by the edge it lines up with.
+ */
+export function placementFor(side: Side, align: Align = "center"): Placement {
+  const main = side === "inline-start" ? "start" : side === "inline-end" ? "end" : side;
+  if (align === "center") return main;
+  if (main === "top" || main === "bottom") return `${main} ${align}`;
+  return `${main} ${align === "start" ? "top" : "bottom"}`;
+}
+
+/** The alignment a {@link Placement} asks for, in the other vocabulary. */
+export function alignOf(placement: Placement): Align {
+  const cross = placement.split(" ")[1];
+  if (cross === "start" || cross === "top") return "start";
+  if (cross === "end" || cross === "bottom") return "end";
+  return "center";
+}
+
 export interface PositionOptions {
   /** The element the overlay is anchored to. */
   targetRef: ElementRef;
@@ -712,6 +821,11 @@ function resolveAxis(placement: Placement, direction: "ltr" | "rtl"): [Axis, str
   const [side, align = "center"] = placement.split(" ") as [string, string?];
   if (side === "start") return [direction === "rtl" ? "right" : "left", align];
   if (side === "end") return [direction === "rtl" ? "left" : "right", align];
+  // `start` and `end` under or over a trigger are its inline edges, so they
+  // trade places with the text direction.
+  if (direction === "rtl" && (side === "top" || side === "bottom")) {
+    return [side, align === "start" ? "end" : align === "end" ? "start" : align];
+  }
   return [side as Axis, align];
 }
 
@@ -756,8 +870,8 @@ function place(
   } else {
     left =
       axis === "left" ? target.left - panel.width - offset : target.left + target.width + offset;
-    if (align === "top") top = target.top;
-    else if (align === "bottom") top = target.top + target.height - panel.height;
+    if (align === "top" || align === "start") top = target.top;
+    else if (align === "bottom" || align === "end") top = target.top + target.height - panel.height;
     else top = target.top + target.height / 2 - panel.height / 2;
     top += cross;
   }
@@ -789,7 +903,7 @@ function fits(
  * trigger rather than sliding across the screen.
  */
 export function overlayPosition(options: PositionOptions): PositionResult {
-  const position = signal<{
+  const [position, setPosition] = createSignal<{
     top: number;
     left: number;
     maxHeight: number;
@@ -808,8 +922,8 @@ export function overlayPosition(options: PositionOptions): PositionResult {
     originX: 0,
     originY: 0,
   });
-  const arrowOffset = signal<number | undefined>(undefined);
-  const resolvedAxis = signal<Axis>("bottom");
+  const [arrowOffset, setArrowOffset] = createSignal<number | undefined>(undefined);
+  const [resolvedAxis, setResolvedAxis] = createSignal<Axis>("bottom");
 
   const update = (): void => {
     const target = access(options.targetRef) ?? null;
@@ -902,7 +1016,7 @@ export function overlayPosition(options: PositionOptions): PositionResult {
 
     // The overlay is positioned relative to the page, so the scroll offset is
     // part of the answer.
-    position.set({
+    setPosition({
       top: placed.top + view.scrollY,
       left: placed.left + view.scrollX,
       maxHeight: Math.max(0, maxHeight),
@@ -912,7 +1026,7 @@ export function overlayPosition(options: PositionOptions): PositionResult {
       originX,
       originY,
     });
-    resolvedAxis.set(axis);
+    setResolvedAxis(axis);
 
     const arrow = access(options.arrowRef ?? undefined) as Element | null;
     if (arrow !== null && arrow !== undefined) {
@@ -924,12 +1038,12 @@ export function overlayPosition(options: PositionOptions): PositionResult {
       // no longer aligned, and the arrow has to keep pointing at the trigger.
       if (axis === "top" || axis === "bottom") {
         const centre = targetBox.left + targetBox.width / 2 - placed.left;
-        arrowOffset.set(
+        setArrowOffset(
           Math.min(Math.max(centre - arrowBox.width / 2, 0), overlayBox.width - arrowBox.width),
         );
       } else {
         const centre = targetBox.top + targetBox.height / 2 - placed.top;
-        arrowOffset.set(
+        setArrowOffset(
           Math.min(Math.max(centre - arrowBox.height / 2, 0), overlayBox.height - arrowBox.height),
         );
       }
@@ -937,42 +1051,53 @@ export function overlayPosition(options: PositionOptions): PositionResult {
   };
 
   if (!isServer) {
-    effect(() => {
-      if (access(options.isOpen) === false) return undefined;
-      // Read the refs so the position is recomputed once they resolve.
-      void access(options.targetRef);
-      void access(options.targetRect);
-      void access(options.overlayRef);
-      void access(options.placement);
-      update();
+    const onChange = (): void => update();
+    const whileOpen = (ref: ElementRef): Element | null =>
+      access(options.isOpen) === false ? null : (access(ref) as Element | null);
 
-      const view = window;
-      const onChange = (): void => update();
-      view.addEventListener("resize", onChange);
-      view.addEventListener("scroll", onChange, true);
+    // The FIRST measurement is taken the moment the ref resolves, which is
+    // before the browser has laid the overlay out: a popover measured 275px
+    // wide, was centred on that, and then rendered at 288px, sitting 7px off
+    // its trigger until something else forced a resize. Observing both boxes
+    // re-places it once the real sizes exist, and again whenever the content
+    // grows.
+    resizeObserver(() => whileOpen(options.targetRef), onChange);
+    resizeObserver(() => whileOpen(options.overlayRef), onChange);
 
-      // The FIRST measurement is taken the moment the ref resolves, which is
-      // before the browser has laid the overlay out: a popover measured 275px
-      // wide, was centred on that, and then rendered at 288px, sitting 7px off
-      // its trigger until something else forced a resize. Observing both boxes
-      // re-places it once the real sizes exist, and again whenever the content
-      // grows.
-      const stopTarget = resizeObserver(
-        () => access(options.targetRef) as Element | null,
-        onChange,
-      );
-      const stopOverlay = resizeObserver(
-        () => access(options.overlayRef) as Element | null,
-        onChange,
-      );
+    followOpen(
+      // Everything the placement is computed from, so it is recomputed when the
+      // refs resolve and whenever one of the answers changes. A fresh array
+      // each time: any of them moving is a reason to place again.
+      () =>
+        access(options.isOpen) === false
+          ? null
+          : [
+              access(options.targetRef),
+              access(options.targetRect),
+              access(options.overlayRef),
+              access(options.boundaryRef ?? undefined),
+              access(options.arrowRef ?? undefined),
+              access(options.placement),
+              access(options.offset),
+              access(options.crossOffset),
+              access(options.shouldFlip),
+              access(options.containerPadding),
+              access(options.direction),
+            ],
+      (measured) => {
+        if (measured === null) return undefined;
+        update();
 
-      return () => {
-        view.removeEventListener("resize", onChange);
-        view.removeEventListener("scroll", onChange, true);
-        stopTarget();
-        stopOverlay();
-      };
-    });
+        const view = window;
+        view.addEventListener("resize", onChange);
+        view.addEventListener("scroll", onChange, true);
+
+        return () => {
+          view.removeEventListener("resize", onChange);
+          view.removeEventListener("scroll", onChange, true);
+        };
+      },
+    );
   }
 
   closeOnScroll({
@@ -1046,6 +1171,8 @@ export function overlayPosition(options: PositionOptions): PositionResult {
 export interface ModalOverlayOptions extends OverlayOptions {
   /** Let the page scroll behind the modal. @default false */
   isScrollDisabled?: MaybeAccessor<boolean | undefined>;
+  /** Nothing outside is hidden from assistive technology, and it is not marked modal. */
+  isNonModal?: MaybeAccessor<boolean | undefined>;
 }
 
 export interface ModalOverlayResult extends OverlayResult {
@@ -1070,15 +1197,16 @@ export function modalOverlay(
     isDisabled: () => !state.isOpen() || access(options.isScrollDisabled) === true,
   });
 
-  effect(() => {
-    if (!state.isOpen()) return undefined;
-    const element = access(ref) as Element | null;
-    if (element === null) return undefined;
-    return ariaHideOutside([element]);
-  });
+  followOpen(
+    () =>
+      state.isOpen() && access(options.isNonModal) !== true
+        ? ((access(ref) as Element | null) ?? null)
+        : null,
+    (element) => (element === null ? undefined : ariaHideOutside([element])),
+  );
 
   return {
-    modalProps: { "data-barq-modal": true },
+    modalProps: { "data-barq-modal": () => access(options.isNonModal) !== true || undefined },
     overlayProps,
     underlayProps,
   };

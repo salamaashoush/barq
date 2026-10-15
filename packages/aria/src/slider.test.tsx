@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { flush, type Incoming } from "@barqjs/core";
 import { accessibleName, expectNoAriaViolations, render, screen, user } from "@barqjs/testing";
+import { provideDirection } from "./i18n.ts";
 import { Slider } from "./slider.tsx";
 
 function Volume(
@@ -14,6 +15,8 @@ function Volume(
     formatOptions?: Intl.NumberFormatOptions;
     onChange?: (value: number[]) => void;
     onChangeEnd?: (value: number[]) => void;
+    isInverted?: boolean;
+    minStepsBetweenThumbs?: number;
   }>,
 ) {
   return (
@@ -28,6 +31,8 @@ function Volume(
       formatOptions={props.formatOptions?.()}
       onChange={props.onChange?.()}
       onChangeEnd={props.onChangeEnd?.()}
+      isInverted={props.isInverted?.()}
+      minStepsBetweenThumbs={props.minStepsBetweenThumbs?.()}
     />
   );
 }
@@ -175,5 +180,159 @@ describe("Slider", () => {
   test("has no ARIA violations", () => {
     const { container } = render(() => <Volume defaultValue={[20, 60]} />);
     expectNoAriaViolations(container);
+  });
+});
+
+describe("Slider, by the arrow keys", () => {
+  test("right and up raise the value, left and down lower it", () => {
+    render(() => <Volume />);
+    user.focus(thumb());
+    user.keyDown("ArrowRight");
+    flush();
+    expect(thumb().value).toBe("31");
+    user.keyDown("ArrowUp");
+    flush();
+    expect(thumb().value).toBe("32");
+    user.keyDown("ArrowLeft");
+    user.keyDown("ArrowDown");
+    flush();
+    expect(thumb().value).toBe("30");
+  });
+
+  test("right to left, the minimum is on the right, so right lowers it", () => {
+    function Mirrored() {
+      provideDirection("rtl");
+      return <Volume />;
+    }
+    render(() => <Mirrored />);
+    user.focus(thumb());
+    user.keyDown("ArrowRight");
+    flush();
+    expect(thumb().value).toBe("29");
+    user.keyDown("ArrowLeft");
+    user.keyDown("ArrowLeft");
+    flush();
+    expect(thumb().value).toBe("31");
+  });
+
+  test("inverted puts the minimum at the far end, and the keys follow what is drawn", () => {
+    render(() => <Volume isInverted />);
+    expect(screen.getByRole("group").getAttribute("data-inverted")).toBe("");
+    user.focus(thumb());
+    user.keyDown("ArrowRight");
+    flush();
+    expect(thumb().value).toBe("29");
+    user.keyDown("ArrowLeft");
+    user.keyDown("ArrowLeft");
+    flush();
+    expect(thumb().value).toBe("31");
+    // Up and down are not mirrored by a horizontal inversion.
+    user.keyDown("ArrowUp");
+    flush();
+    expect(thumb().value).toBe("32");
+  });
+
+  test("inverted and right to left cancel out", () => {
+    function Mirrored() {
+      provideDirection("rtl");
+      return <Volume isInverted />;
+    }
+    render(() => <Mirrored />);
+    user.focus(thumb());
+    user.keyDown("ArrowRight");
+    flush();
+    expect(thumb().value).toBe("31");
+  });
+
+  test("an inverted vertical slider has its minimum at the top, so up lowers it", () => {
+    render(() => <Volume orientation="vertical" isInverted />);
+    user.focus(thumb());
+    user.keyDown("ArrowUp");
+    flush();
+    expect(thumb().value).toBe("29");
+    user.keyDown("ArrowDown");
+    user.keyDown("ArrowDown");
+    flush();
+    expect(thumb().value).toBe("31");
+  });
+
+  test("an arrow key reports the end of its gesture", () => {
+    const ends: number[][] = [];
+    render(() => <Volume onChangeEnd={(value) => ends.push(value)} />);
+    user.focus(thumb());
+    user.keyDown("ArrowRight");
+    flush();
+    expect(ends).toEqual([[31]]);
+  });
+});
+
+describe("Slider, with thumbs kept apart", () => {
+  test("each thumb's range stops short of its neighbour", () => {
+    render(() => <Volume defaultValue={[20, 60]} step={5} minStepsBetweenThumbs={2} />);
+    expect(thumb(0).max).toBe("50");
+    expect(thumb(1).min).toBe("30");
+  });
+
+  test("a thumb pushed at its neighbour stops the gap away", () => {
+    const changes: number[][] = [];
+    render(() => (
+      <Volume
+        defaultValue={[20, 60]}
+        step={5}
+        minStepsBetweenThumbs={2}
+        onChange={(value) => changes.push(value)}
+      />
+    ));
+    user.focus(thumb(0));
+    user.keyDown("End");
+    flush();
+    expect(changes.at(-1)).toEqual([50, 60]);
+  });
+
+  test("values that start too close are opened out", () => {
+    render(() => <Volume defaultValue={[40, 42]} step={1} minStepsBetweenThumbs={5} />);
+    expect(Number(thumb(1).value) - Number(thumb(0).value)).toBeGreaterThanOrEqual(5);
+  });
+});
+
+describe("Slider, by the pointer", () => {
+  function press(track: Element, clientX: number): void {
+    track.dispatchEvent(
+      new MouseEvent("mousedown", { bubbles: true, cancelable: true, button: 0, clientX }),
+    );
+    window.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+  }
+
+  function trackOf(group: HTMLElement): HTMLElement {
+    const track = thumb().parentElement?.parentElement as HTMLElement;
+    expect(group.contains(track)).toBe(true);
+    track.getBoundingClientRect = () =>
+      ({ left: 0, top: 0, width: 200, height: 10, right: 200, bottom: 10 }) as DOMRect;
+    return track;
+  }
+
+  test("a press a quarter of the way along sets a quarter", () => {
+    render(() => <Volume />);
+    press(trackOf(screen.getByRole("group")), 50);
+    flush();
+    expect(thumb().value).toBe("25");
+  });
+
+  test("inverted, the same press sets three quarters", () => {
+    render(() => <Volume isInverted />);
+    press(trackOf(screen.getByRole("group")), 50);
+    flush();
+    expect(thumb().value).toBe("75");
+  });
+
+  test("right to left, the same press sets three quarters", () => {
+    function Mirrored() {
+      provideDirection("rtl");
+      return <Volume />;
+    }
+    render(() => <Mirrored />);
+    press(trackOf(screen.getByRole("group")), 50);
+    flush();
+    expect(thumb().value).toBe("75");
   });
 });
