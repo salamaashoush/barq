@@ -46,8 +46,9 @@ test("a function validator's return is the handler's data, and its throw is a 40
   expect(await answerOf(await send("double", 21))).toBe(42);
   const refused = await send("double", -1);
   expect(refused?.status).toBe(400);
-  // The validator's own message stays on the server.
-  expect(await refused?.text()).not.toContain("positive");
+  // The validator's message is about the caller's own input, so it is the issue.
+  const body = (await refused?.json()) as { issues: unknown } | undefined;
+  expect(body?.issues).toEqual([{ message: "must be a positive number" }]);
 });
 
 test("an object with parse is accepted, synchronous or not", async () => {

@@ -45,6 +45,7 @@ import {
   applyResponseDraft,
   createResponseDraft,
   draftedStatus,
+  markResponseSent,
   peekResponseDraft,
   runRequestMiddleware,
   setRequestMiddlewareContext,
@@ -1334,6 +1335,9 @@ export function createPageHandler(
       // still signed out.
       if (thrown !== null) return applyResponseDraft(thrown, draft);
       throw error;
+    } finally {
+      // What streams on after the shell writes into a draft nobody reads.
+      markResponseSent(draft);
     }
   };
 }

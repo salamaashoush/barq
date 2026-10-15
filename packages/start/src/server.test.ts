@@ -100,12 +100,18 @@ describe("input is fail-closed", () => {
     expect(decodeWire<string>(await response?.json())).toBe("ok");
   });
 
-  test("a schema rejects bad input with 400 and no detail", async () => {
+  test("a schema rejects bad input with 400 and says what was wrong with it", async () => {
     mountOf(define("checked", ({ data }: { data: number }) => data * 2, positiveInt));
 
     const bad = await handleServerFn(post("checked", -1));
     expect(bad?.status).toBe(400);
-    expect(await bad?.json()).toEqual({ error: "invalid input" });
+    expect(await bad?.json()).toEqual({
+      error: "invalid input",
+      message:
+        "The `data` passed to this server function failed validation against its `.validator(schema)`, so the handler did not run. " +
+        "Read `error.issues` for what failed.",
+      issues: [{ message: "expected a positive integer" }],
+    });
 
     const good = await handleServerFn(post("checked", 21));
     expect(decodeWire<number>(await good?.json())).toBe(42);
@@ -1248,8 +1254,8 @@ describe("createMiddleware", () => {
       mountOf(withChain("refusing", [refuse], () => null, null));
       const response = await handleServerFn(post("refusing", "x"));
       expect(response?.status).toBe(400);
-      // No detail: the issues are the server's, not the caller's.
-      expect(await response!.text()).not.toContain("no");
+      // The issues describe the caller's own input, so the caller is told them.
+      expect(((await response!.json()) as { issues: unknown }).issues).toEqual([{ message: "no" }]);
     });
   });
 

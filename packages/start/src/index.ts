@@ -28,6 +28,7 @@ export {
   getGlobalStartContext,
   getRequest,
   getRequestHeader,
+  markResponseSent,
   getRequestHeaders,
   getRequestHost,
   getRequestIP,
@@ -124,6 +125,7 @@ export {
   staticFunctionMiddleware,
   staticUrl,
 } from "./client.ts";
+export type { ServerFnInputAnswer, ServerFnIssue, ServerFnThrown } from "./client.ts";
 
 import {
   type AnyServerFn,

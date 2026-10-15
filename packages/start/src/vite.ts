@@ -26,6 +26,7 @@ import { type BarqCompilerOptions, barqVitePlugin, optimizable } from "@barqjs/c
 import { NodeRequest, sendNodeResponse } from "srvx/node";
 import type { Plugin, RunnableDevEnvironment, ViteBuilder, ViteDevServer } from "vite";
 
+import { serverDiagnostics } from "./dev-diagnostics.ts";
 import { RPC_PREFIX } from "./index.ts";
 import {
   type PrerenderSitemap,
@@ -1528,6 +1529,10 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
         return undefined;
       }
 
+      const diagnostics = serverDiagnostics(viteServer, (specifier) =>
+        environment.runner.import(specifier),
+      );
+
       const report = (error: unknown): void => {
         try {
           viteServer.ssrFixStacktrace(error as Error);
@@ -1578,11 +1583,13 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
             // What registers the application's global middleware. A call can
             // arrive before any page has imported it.
             await environment.runner.import(START_ENTRY_ID);
+            await diagnostics.ready();
 
             const response = await start.handleServerFn(new NodeRequest({ req, res }), {
               allowedOrigins: options.allowedOrigins,
               maxBodySize: options.server?.maxBodySize,
               maxFormSize: options.server?.maxFormSize,
+              revealError: diagnostics.revealError,
             });
             if (response === null) {
               next();
@@ -1659,6 +1666,7 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
           void (async () => {
             try {
               req.url = pathOf(req);
+              await diagnostics.ready();
               const response = await (await pageFetch())(new NodeRequest({ req, res }));
               await sendNodeResponse(res, response);
             } catch (error) {

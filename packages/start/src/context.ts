@@ -26,6 +26,8 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 
+import { diagnosticsEnabled, emitDiagnostic } from "@barqjs/core/internal";
+
 import { type CookieOptions, deleteCookieLine, parseCookies, serializeCookie } from "./cookies.ts";
 import type { OpenContext } from "./middleware.ts";
 import type { OpenSession } from "./session.ts";
@@ -41,6 +43,11 @@ export interface ResponseDraft {
   readonly headers: Headers;
   status?: number;
   statusText?: string;
+  /**
+   * The response this draft describes has been handed to the server, status
+   * and headers with it. A write after this reaches nothing.
+   */
+  sent?: boolean;
 }
 
 export interface RequestContext {
@@ -426,6 +433,50 @@ export function getRequestProtocol(options: { readonly xForwardedProto?: boolean
 // The response, written
 // ---------------------------------------------------------------------------
 
+/**
+ * Mark the draft's response as handed to the server. A streamed page goes on
+ * rendering after this, and so does a streamed server function, and a header
+ * one of them writes now changes nothing the browser receives.
+ */
+export function markResponseSent(draft: ResponseDraft | undefined): void {
+  if (draft !== undefined) draft.sent = true;
+}
+
+/**
+ * The draft a write goes to, reporting the write when the response has already
+ * gone. `api` is the public function the caller called, so the stack the
+ * report carries starts at the caller rather than in here.
+ */
+function draftFor(api: (...args: never[]) => unknown, argument?: unknown): ResponseDraft {
+  const draft = context().response;
+  if (draft.sent === true && diagnosticsEnabled()) reportLateWrite(api, argument);
+  return draft;
+}
+
+function reportLateWrite(api: (...args: never[]) => unknown, argument: unknown): void {
+  const call = `${api.name}(${argument === undefined ? "" : JSON.stringify(argument)})`;
+  const error = new Error(`${call} ran after the response was sent`);
+  Error.captureStackTrace(error, api);
+  const caller = /^\s*at\s+(.*)$/m.exec(error.stack?.split("\n").slice(1).join("\n") ?? "")?.[1];
+  emitDiagnostic(
+    {
+      code: "LATE_HEADER_WRITE",
+      kind: "head",
+      severity: "warn",
+      message:
+        `\`${call}\` ran ${caller === undefined ? "" : `at ${caller} `}after the response's status ` +
+        "and headers had been sent, so it changed nothing the browser receives. Code runs that late " +
+        "inside a part of the page that renders after the shell (a `<Loading>` boundary or a " +
+        "loader the shell does not wait for), or in a streamed server function after its first " +
+        "value. Set the status, headers and cookies while the response is still open: in a " +
+        "`beforeLoad`, a loader the route awaits, a route handler, a middleware, or a server " +
+        "function before it returns.",
+      data: { call, error },
+    },
+    null,
+  );
+}
+
 export function getResponseHeaders(): Headers {
   return context().response.headers;
 }
@@ -439,7 +490,7 @@ export function getResponseHeader(name: string): string | undefined {
  * that may legitimately repeat needs.
  */
 export function setResponseHeader(name: string, value: string | readonly string[]): void {
-  const headers = context().response.headers;
+  const headers = draftFor(setResponseHeader, name).headers;
   if (typeof value === "string") {
     headers.set(name, value);
     return;
@@ -455,7 +506,7 @@ export function setResponseHeader(name: string, value: string | readonly string[
  * than one caller. `setResponseHeader` replaces.
  */
 export function appendResponseHeader(name: string, value: string): void {
-  context().response.headers.append(name, value);
+  draftFor(appendResponseHeader, name).headers.append(name, value);
 }
 
 export function setResponseHeaders(headers: Record<string, string>): void {
@@ -463,12 +514,12 @@ export function setResponseHeaders(headers: Record<string, string>): void {
 }
 
 export function removeResponseHeader(name: string): void {
-  context().response.headers.delete(name);
+  draftFor(removeResponseHeader, name).headers.delete(name);
 }
 
 /** Clear the named headers, or every header this request has drafted. */
 export function clearResponseHeaders(names?: readonly string[]): void {
-  const headers = context().response.headers;
+  const headers = draftFor(clearResponseHeaders).headers;
   if (names !== undefined) {
     for (const name of names) headers.delete(name);
     return;
@@ -490,7 +541,7 @@ export function getResponseStatus(): number {
  * `applyResponseDraft`, which says why.
  */
 export function setResponseStatus(status: number, statusText?: string): void {
-  const draft = context().response;
+  const draft = draftFor(setResponseStatus, status);
   if (!Number.isInteger(status) || status < 200 || status > 599) {
     throw new RangeError(
       `[barq] \`setResponseStatus(${status})\` was given a value that is not an HTTP response status. Pass an integer from 200 to 599, such as \`setResponseStatus(404)\`.`,
@@ -530,7 +581,10 @@ export function getCookie(name: string): string | undefined {
  * request is the caller's business — the last one wins in the browser, as ever.
  */
 export function setCookie(name: string, value: string, options?: CookieOptions): void {
-  context().response.headers.append("set-cookie", serializeCookie(name, value, rooted(options)));
+  draftFor(setCookie, name).headers.append(
+    "set-cookie",
+    serializeCookie(name, value, rooted(options)),
+  );
 }
 
 /**
@@ -542,7 +596,7 @@ export function setCookie(name: string, value: string, options?: CookieOptions):
  * them. `setCookie` appends, which is right for everything else.
  */
 export function replaceCookie(name: string, value: string, options?: CookieOptions): void {
-  const headers = context().response.headers;
+  const headers = draftFor(replaceCookie, name).headers;
   // Serialized before anything is removed, so a cookie that is refused leaves
   // the draft as it was.
   const line = serializeCookie(name, value, rooted(options));
@@ -575,7 +629,10 @@ function rooted(options: CookieOptions | undefined): CookieOptions {
  * which is what `setCookie` gave a cookie that was set with none.
  */
 export function deleteCookie(name: string, options?: CookieOptions): void {
-  context().response.headers.append("set-cookie", deleteCookieLine(name, rooted(options)));
+  draftFor(deleteCookie, name).headers.append(
+    "set-cookie",
+    deleteCookieLine(name, rooted(options)),
+  );
 }
 
 // ---------------------------------------------------------------------------

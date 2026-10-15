@@ -8,6 +8,7 @@
  * Each is cheap to close and expensive to retrofit.
  */
 
+import { diagnosticsEnabled, emitDiagnostic } from "@barqjs/core/internal";
 import { decodeWire, encodeWire } from "@barqjs/server/codec";
 import { createBodyTooLargeError, limitBodyStream } from "srvx/body-limit";
 
@@ -16,6 +17,7 @@ import {
   applyResponseDraft,
   createResponseDraft,
   draftedStatus,
+  markResponseSent,
   setRequestMiddlewareContext,
   withRequest,
 } from "./context.ts";
@@ -31,10 +33,14 @@ import {
   RPC_STREAM,
   type RpcControl,
   type RpcStreamLine,
+  type ServerFnInputAnswer,
+  type ServerFnIssue,
+  type ServerFnThrown,
 } from "./client.ts";
 import {
   type AnyServerFn,
   DATA_SUFFIX,
+  type InputError,
   isInputError,
   RPC_PREFIX,
   type ServerFn,
@@ -180,6 +186,17 @@ export interface HandlerOptions {
    * hold.
    */
   maxFormSize?: number;
+  /**
+   * What a failed call may tell its caller about the error, beyond its status.
+   *
+   * Only the development server passes it, so a production server answers a
+   * handler's failure with the status and a fixed line and nothing of the
+   * error: its message can name a table, a column or a path. In development the
+   * caller is the developer, and the error's name, message and stack (mapped
+   * to source by the dev server) are what make the failure debuggable from the
+   * browser.
+   */
+  revealError?: (error: unknown) => ServerFnThrown;
   /**
    * Whether some route in this application can reach this id.
    *
@@ -391,7 +408,9 @@ export async function handleServerFn(
         return applyResponseDraft(result, draft);
       }
       if (isIterable(result)) {
-        if (isData) return applyResponseDraft(streamed(result, sendContext, id), draft);
+        if (isData) {
+          return applyResponseDraft(streamed(result, sendContext, id, options?.revealError), draft);
+        }
         // A browser following a form has nothing to read a stream with, so the
         // function is told nobody is listening and the form goes back.
         void result[Symbol.asyncIterator]().return?.();
@@ -440,22 +459,20 @@ export async function handleServerFn(
           draft,
         );
       }
-      // A validation failure is the caller's fault and says so. Anything else is
-      // reported without a body: a handler's message can name a table, a column
-      // or a path, and none of that is the caller's business.
+      // A validation failure is the caller's fault and says so, with what was
+      // wrong with each field: the issues describe the caller's own input, so a
+      // form can show them. Anything else is reported without a body: a
+      // handler's message can name a table, a column or a path, and none of that
+      // is the caller's business.
       if (isInputError(error)) {
         return applyResponseDraft(
           isData
-            ? Response.json({ error: "invalid input" }, { status: 400 })
+            ? Response.json(inputAnswer(error), { status: 400 })
             : new Response("invalid input", { status: 400 }),
           draft,
         );
       }
-      console.error(
-        `[barq] The server function ${JSON.stringify(id)} threw, so the call answered 500 without the error's text. The error:`,
-        error,
-      );
-      return applyResponseDraft(new Response("internal server error", { status: 500 }), draft);
+      return applyResponseDraft(failed(id, error, isData, options, "threw"), draft);
     }
   };
 
@@ -480,12 +497,86 @@ export async function handleServerFn(
   } catch (error) {
     // A request middleware refuses the way a function's own does.
     if (error instanceof Response) return thrownAnswer(error, isData, draft);
-    console.error(
-      `[barq] A request middleware threw before the server function ${JSON.stringify(id)} ran, so the call answered 500. The error:`,
-      error,
-    );
-    return applyResponseDraft(new Response("internal server error", { status: 500 }), draft);
+    return applyResponseDraft(failed(id, error, isData, options, "middleware"), draft);
+  } finally {
+    markResponseSent(draft);
   }
+}
+
+/**
+ * The 400 a refused input answers with: the refusal and each issue with the
+ * path to the field it is about.
+ */
+function inputAnswer(error: InputError): ServerFnInputAnswer {
+  const issues = (error as { issues?: ReadonlyArray<unknown> }).issues ?? [];
+  return {
+    error: "invalid input",
+    message: error.message,
+    issues: issues.map((issue): ServerFnIssue => {
+      const { message, path } = (issue ?? {}) as { message?: unknown; path?: unknown };
+      const keys = Array.isArray(path)
+        ? path.map((segment: unknown) => {
+            const key =
+              typeof segment === "object" && segment !== null && "key" in segment
+                ? segment.key
+                : segment;
+            return typeof key === "number" ? key : String(key);
+          })
+        : [];
+      return keys.length === 0
+        ? { message: String(message) }
+        : { message: String(message), path: keys };
+    }),
+  };
+}
+
+/**
+ * A call that failed on the server: logged there, reported on the diagnostics
+ * channel, and answered 500. The caller learns what was thrown only when the
+ * development server asked for it.
+ */
+function failed(
+  id: string,
+  error: unknown,
+  isData: boolean,
+  options: HandlerOptions | undefined,
+  where: "threw" | "middleware",
+): Response {
+  const thrown = options?.revealError?.(error);
+  const happened =
+    where === "threw"
+      ? `The server function ${JSON.stringify(id)} threw`
+      : `A request middleware threw before the server function ${JSON.stringify(id)} ran`;
+  if (diagnosticsEnabled()) reportFailure(id, error, happened);
+  console.error(
+    `[barq] ${happened}, so the call answered 500${thrown === undefined ? " without the error's text" : ""}. The error:`,
+    error,
+  );
+  if (thrown === undefined) return new Response("internal server error", { status: 500 });
+  return isData
+    ? Response.json({ error: "internal server error", thrown }, { status: 500 })
+    : new Response(
+        `internal server error\n\n${thrown.stack ?? `${thrown.name}: ${thrown.message}`}`,
+        {
+          status: 500,
+        },
+      );
+}
+
+function reportFailure(id: string, error: unknown, happened: string): void {
+  const text = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  emitDiagnostic(
+    {
+      code: "SERVER_FUNCTION_FAILED",
+      kind: "ssr",
+      severity: "error",
+      message:
+        `${happened}: \`${text}\`. The caller received a 500. Fix the throw at the top of the ` +
+        "stack, or throw a `Response`, `redirect()` or `notFound()` to answer the caller on purpose.",
+      data: { id, error },
+    },
+    null,
+  );
 }
 
 /**
@@ -670,6 +761,7 @@ function streamed(
   values: AsyncIterable<unknown>,
   sendContext: Record<string, unknown>,
   id: string,
+  reveal: ((error: unknown) => ServerFnThrown) | undefined,
 ): Response {
   const encoder = new TextEncoder();
   const line = (payload: RpcStreamLine): Uint8Array =>
@@ -699,11 +791,14 @@ function streamed(
       if (!cancelled) controller.close();
     } catch (error) {
       if (cancelled) return;
+      const thrown = reveal?.(error);
+      const happened = `The server function ${JSON.stringify(id)} threw while streaming its result`;
+      if (diagnosticsEnabled()) reportFailure(id, error, happened);
       console.error(
-        `[barq] The server function ${JSON.stringify(id)} threw while streaming its result, so the stream ended early and the caller receives a \`ServerFnError\`. The error:`,
+        `[barq] ${happened}, so the stream ended early and the caller receives a \`ServerFnError\`. The error:`,
         error,
       );
-      controller.enqueue(line({ e: 1 }));
+      controller.enqueue(line(thrown === undefined ? { e: 1 } : { e: 1, t: thrown }));
       controller.close();
     }
   };

@@ -21,6 +21,7 @@ import { DATA_SUFFIX, PAYLOAD_PARAM, RPC_CALLER, RPC_PREFIX } from "../src/index
 const ROOT = fileURLToPath(new URL("./fixture", import.meta.url));
 
 let server: ViteDevServer;
+const hotSent: { event?: string; data?: unknown }[] = [];
 let http: Server;
 let origin: string;
 
@@ -47,6 +48,12 @@ beforeAll(async () => {
   // Discovery rides the client transform, so the module has to have been asked
   // for at least once — which in a real app is what importing it does.
   await server.environments.client.transformRequest("/todos.ts");
+  await server.environments.client.transformRequest("/failing.ts");
+  const send = server.hot.send.bind(server.hot);
+  server.hot.send = ((payload: { event?: string; data?: unknown }) => {
+    hotSent.push(payload);
+    send(payload as Parameters<typeof send>[0]);
+  }) as typeof server.hot.send;
 
   // A REAL socket, because that is what the handler is written against: srvx
   // builds its `Request` from a Node req/res pair, and a hand-rolled stand-in
@@ -197,5 +204,48 @@ describe("pages in dev", () => {
       "virtual:barq-entry-client",
     );
     expect(resolved?.id ?? "").toContain("fixture/src/entry-client.ts");
+  });
+});
+
+/**
+ * A server function that throws, in development: the caller is told what was
+ * thrown with its stack mapped to the source file, and the overlay is sent the
+ * same failure from the server's side.
+ */
+describe("a failing server function in dev", () => {
+  test("answers with the error's name, message and source-mapped stack", async () => {
+    const logged = console.error;
+    console.error = () => {};
+    try {
+      const response = await call("failing.ts#placeOrder", {});
+      expect(response.status).toBe(500);
+      const body = (await response.json()) as {
+        error: string;
+        thrown: { name: string; message: string; stack?: string };
+      };
+      expect(body.error).toBe("internal server error");
+      expect(body.thrown.name).toBe("TypeError");
+      expect(body.thrown.message).toContain("length");
+      expect(body.thrown.stack).toContain(`${ROOT}/failing.ts:6:`);
+    } finally {
+      console.error = logged;
+    }
+  });
+
+  test("is shown in the overlay as a server entry pointing at the line that threw", async () => {
+    const logged = console.error;
+    console.error = () => {};
+    hotSent.length = 0;
+    try {
+      await call("failing.ts#placeOrder", {});
+    } finally {
+      console.error = logged;
+    }
+    const entries = hotSent
+      .filter((payload) => payload.event === "barq:server-diagnostics")
+      .map((payload) => payload.data as { code?: string; at?: { file: string; line: number } });
+    const failure = entries.find((entry) => entry.code === "SERVER_FUNCTION_FAILED");
+    expect(failure?.at?.file).toBe(`${ROOT}/failing.ts`);
+    expect(failure?.at?.line).toBe(6);
   });
 });

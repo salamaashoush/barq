@@ -89,7 +89,38 @@ export const RPC_THROWN = "thrown";
 export const RPC_STREAM = "stream";
 
 /** One line of a streamed answer: a value, the chain's `sendContext`, or a failure. */
-export type RpcStreamLine = { readonly v: unknown } | { readonly c: unknown } | { readonly e: 1 };
+export type RpcStreamLine =
+  | { readonly v: unknown }
+  | { readonly c: unknown }
+  | { readonly e: 1; readonly t?: ServerFnThrown };
+
+/** What a handler threw, as a development server tells its caller. */
+export interface ServerFnThrown {
+  readonly name: string;
+  readonly message: string;
+  /** Mapped to the source files by the development server. */
+  readonly stack?: string;
+}
+
+/** One thing wrong with a call's input, and the path to the field it is about. */
+export interface ServerFnIssue {
+  readonly message: string;
+  readonly path?: readonly (string | number)[];
+}
+
+/** The body of a 400 for refused input. */
+export interface ServerFnInputAnswer {
+  readonly error: "invalid input";
+  readonly message: string;
+  readonly issues: readonly ServerFnIssue[];
+}
+
+/** What a failed call's JSON body may carry. */
+interface FailedAnswer {
+  readonly message?: string;
+  readonly issues?: readonly ServerFnIssue[];
+  readonly thrown?: ServerFnThrown;
+}
 
 /**
  * What a caller is handed for a handler's result.
@@ -202,6 +233,18 @@ export class RpcNotFound extends Error {
 export class ServerFnError extends Error {
   readonly status: number;
   /**
+   * What was wrong with the input, for a 400 the validator refused: one entry
+   * per issue, with the path to the field it is about. Sent in every build,
+   * because it describes the caller's own input.
+   */
+  readonly issues?: readonly ServerFnIssue[];
+  /**
+   * What the handler threw: its name, message and source-mapped stack. Only a
+   * development server sends it; in production this is `undefined`, so handle
+   * a failure by its `status` rather than by this.
+   */
+  readonly thrown?: ServerFnThrown;
+  /**
    * The answer itself, unread.
    *
    * The server's own refusals land here: a 400 for input, a 403 for an origin,
@@ -211,14 +254,50 @@ export class ServerFnError extends Error {
    * for the reason above.
    */
   readonly response?: Response;
-  constructor(id: string, status: number, response?: Response) {
-    super(
-      `The server function \`${id}\` answered ${status}. A handler's own error text is never sent to the browser, so read it in the server's log. ` +
-        "`error.response` holds the server's answer.",
-    );
+  constructor(id: string, status: number, response?: Response, answer?: FailedAnswer) {
+    super(failureMessage(id, status, answer));
     this.name = "ServerFnError";
     this.status = status;
     this.response = response;
+    if (answer?.issues !== undefined) this.issues = answer.issues;
+    if (answer?.thrown !== undefined) this.thrown = answer.thrown;
+  }
+}
+
+function failureMessage(id: string, status: number, answer: FailedAnswer | undefined): string {
+  const issues = answer?.issues;
+  if (issues !== undefined && issues.length > 0) {
+    const listed = issues
+      .map((issue) =>
+        issue.path === undefined ? issue.message : `\`${issue.path.join(".")}\`: ${issue.message}`,
+      )
+      .join("; ");
+    return (
+      `The server function \`${id}\` refused its input (${status}): ${listed}. ` +
+      "`error.issues` holds each issue with the path to its field."
+    );
+  }
+  const thrown = answer?.thrown;
+  if (thrown !== undefined) {
+    return (
+      `The server function \`${id}\` threw \`${thrown.name}: ${thrown.message}\` and answered ${status}. ` +
+      "The server's stack is in `error.thrown.stack` and in the development overlay. A production " +
+      "server sends only the status, so handle a failure by `error.status`."
+    );
+  }
+  return (
+    `The server function \`${id}\` answered ${status}. A handler's own error text is never sent to the browser, so read it in the server's log. ` +
+    "`error.response` holds the server's answer."
+  );
+}
+
+/** The JSON a failed call answered with, read from a copy so `error.response` stays unread. */
+async function failedAnswer(response: Response): Promise<FailedAnswer | undefined> {
+  if (!(response.headers.get("content-type") ?? "").includes("application/json")) return undefined;
+  try {
+    return (await response.clone().json()) as FailedAnswer;
+  } catch {
+    return undefined;
   }
 }
 
@@ -477,7 +556,9 @@ export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
     if (control === RPC_THROWN) throw response;
     if (control === RPC_STREAM) return received(response, id, context) as Out;
     if (control !== null) throw fromControl((await response.json()) as RpcControl);
-    if (!response.ok) throw new ServerFnError(id, response.status, response);
+    if (!response.ok) {
+      throw new ServerFnError(id, response.status, response, await failedAnswer(response));
+    }
     if (response.headers.get(RPC_CONTEXT) === null) return decodeWire<Out>(await response.json());
     const envelope = decodeWire<RpcEnvelope>(await response.json());
     // What the SERVER's chain sent back, merged into the same object the client
@@ -549,7 +630,7 @@ async function* received(
       while (end !== -1) {
         const line = JSON.parse(pending.slice(0, end)) as RpcStreamLine;
         pending = pending.slice(end + 1);
-        if ("e" in line) throw new ServerFnError(id, 500);
+        if ("e" in line) throw new ServerFnError(id, 500, undefined, { thrown: line.t });
         if ("c" in line) {
           if (context !== undefined) Object.assign(context, decodeWire(line.c));
         } else yield decodeWire(line.v);
