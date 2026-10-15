@@ -11,13 +11,13 @@ import {
   createRenderEffect,
   createRoot,
   createSignal,
-  createTrackedEffect,
+  createEffect,
   flush,
   onCleanup,
   runWithOwner,
 } from "./signals.ts";
 import { Dynamic, Errored, For, Loading, Match, Portal, Show, Switch } from "./components.ts";
-import { mergeProps, splitProps } from "./props.ts";
+import { merge, omit } from "./props.ts";
 
 let container: HTMLDivElement;
 
@@ -171,8 +171,7 @@ describe("For keyed={false} reactivity", () => {
       children: (itemAccessor: () => string, idx: number) => {
         const span = document.createElement("span");
         // itemAccessor is a signal that should update when items[idx] changes
-        createTrackedEffect(() => {
-          const value = itemAccessor();
+        createEffect(itemAccessor, (value) => {
           observedValues.push(`${idx}:${value}`);
           span.textContent = value;
         });
@@ -202,9 +201,9 @@ describe("For keyed={false} reactivity", () => {
       keyed: false,
       children: (itemAccessor: () => number, _idx: number) => {
         const span = document.createElement("span");
-        createTrackedEffect(() => {
+        createEffect(itemAccessor, (value) => {
           effectRuns++;
-          span.textContent = String(itemAccessor());
+          span.textContent = String(value);
         });
         flush();
         return span;
@@ -428,8 +427,7 @@ describe("Show keyed rendering", () => {
     const node = Show({
       when: show,
       children: () => {
-        createTrackedEffect(() => {
-          counter();
+        createEffect(counter, () => {
           effectRuns++;
         });
         flush();
@@ -535,9 +533,12 @@ describe("Batch behavior", () => {
     const [b, setB] = createSignal(2);
     const values: number[] = [];
 
-    createTrackedEffect(() => {
-      values.push(a() + b());
-    });
+    createEffect(
+      () => a() + b(),
+      (sum) => {
+        values.push(sum);
+      },
+    );
     flush();
 
     flush();
@@ -557,8 +558,8 @@ describe("Batch behavior", () => {
     const [s, setS] = createSignal(0);
     const values: number[] = [];
 
-    createTrackedEffect(() => {
-      values.push(s());
+    createEffect(s, (value) => {
+      values.push(value);
     });
     flush();
 
@@ -734,8 +735,7 @@ describe("Effect cleanup order", () => {
     const log: string[] = [];
 
     createRoot(() => {
-      createTrackedEffect(() => {
-        const current = trigger();
+      createEffect(trigger, (current) => {
         log.push(`run:${current}`);
         return () => {
           log.push(`cleanup:${current}`);
@@ -811,8 +811,7 @@ describe("scope disposal", () => {
 
     createRoot((d) => {
       dispose = d;
-      createTrackedEffect(() => {
-        trigger();
+      createEffect(trigger, () => {
         effectRuns++;
       });
       flush();
@@ -841,8 +840,7 @@ describe("scope disposal", () => {
 
     createRoot((d) => {
       disposeOuter = d;
-      createTrackedEffect(() => {
-        trigger();
+      createEffect(trigger, () => {
         outerRuns++;
       });
       flush();
@@ -851,8 +849,7 @@ describe("scope disposal", () => {
       runWithOwner(null, () =>
         createRoot((dInner) => {
           disposeInner = dInner;
-          createTrackedEffect(() => {
-            trigger();
+          createEffect(trigger, () => {
             innerRuns++;
           });
           flush();
@@ -887,7 +884,7 @@ describe("scope disposal", () => {
 });
 
 // ============================================================================
-// New Utilities: Dynamic, splitProps, mergeProps, children
+// New Utilities: Dynamic, omit, merge, children
 // ============================================================================
 describe("Dynamic component", () => {
   test("renders intrinsic elements dynamically", () => {
@@ -980,37 +977,34 @@ describe("Dynamic component", () => {
   });
 });
 
-describe("splitProps", () => {
-  test("splits props into two objects", () => {
+describe("omit", () => {
+  test("leaves out the named keys", () => {
     const props = { a: 1, b: 2, c: 3, d: 4 };
-    const [picked, rest] = splitProps(props, ["a", "c"]);
+    const rest = omit(props, "a", "c");
 
-    expect(picked).toEqual({ a: 1, c: 3 });
     expect(rest).toEqual({ b: 2, d: 4 });
   });
 
   test("handles missing keys", () => {
     const props = { a: 1, b: 2 };
-    const [picked, rest] = splitProps(props, ["a", "c"] as (keyof typeof props)[]);
+    const rest = omit(props, ...(["a", "c"] as (keyof typeof props)[]));
 
-    expect(picked).toEqual({ a: 1 } as never);
     expect(rest).toEqual({ b: 2 } as never);
   });
 
-  test("handles empty keys array", () => {
+  test("handles no keys", () => {
     const props = { a: 1, b: 2 };
-    const [picked, rest] = splitProps(props, []);
+    const rest = omit(props);
 
-    expect(picked).toEqual({});
     expect(rest).toEqual({ a: 1, b: 2 });
   });
 });
 
-describe("mergeProps", () => {
+describe("merge", () => {
   test("merges multiple props objects", () => {
     const a = { x: 1, y: 2 };
     const b = { y: 3, z: 4 };
-    const result = mergeProps(a, b);
+    const result = merge(a, b);
 
     expect(result).toEqual({ x: 1, y: 3, z: 4 });
   });
@@ -1019,7 +1013,7 @@ describe("mergeProps", () => {
     const a = { value: "a" };
     const b = { value: "b" };
     const c = { value: "c" };
-    const result = mergeProps(a, b, c);
+    const result = merge(a, b, c);
 
     expect(result.value).toBe("c");
   });
@@ -1028,19 +1022,19 @@ describe("mergeProps", () => {
     const a = { x: 1 };
     const b = undefined as { y: number } | undefined;
     const c = { z: 3 };
-    const result = mergeProps(a, b, c);
+    const result = merge(a, b, c);
 
     expect(result).toEqual({ x: 1, z: 3 });
   });
 
   // `children` is not special. It is a Block like any other slot, and a Block
   // is not an array a merge can concatenate. Last source wins, exactly as for
-  // every other key, which is what makes `mergeProps` one line over the source
+  // every other key, which is what makes `merge` one line over the source
   // list instead of a `for…in` body with a special case.
   test("children is an ordinary key: the last source wins", () => {
     const a = { children: ["a", "b"] };
     const b = { children: ["c"] };
-    const result = mergeProps(a, b);
+    const result = merge(a, b);
 
     expect(result.children).toEqual(["c"]);
   });

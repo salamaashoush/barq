@@ -203,26 +203,21 @@ describe("SVG dangerouslySetInnerHTML", () => {
   });
 });
 
-describe("SVG classList", () => {
-  // `classList` is the other half of O5: a public typed prop on SVGAttributes
-  // as well as HTMLAttributes. Without a branch of its own it falls through to
-  // setElementAttr and writes classlist="[object Object]"; with one it has to
-  // reach the class attribute through DOMTokenList and never touch .className,
-  // which on an SVG element is get-only.
+describe("SVG class values", () => {
+  // `class` on an SVG element has to reach the attribute and never touch
+  // `.className`, which on an SVG element is get-only, whatever shape the value
+  // takes.
 
-  test("a static map toggles classes without touching className", () => {
+  test("a map writes its truthy keys without touching className", () => {
     const el = withReadOnlyClassName(svg("circle"));
-    el.setAttribute("class", "dot");
-    setProp(el, "classList", { ring: true, hidden: false });
-    expect(el.getAttribute("class")).toBe("dot ring");
-    expect(el.hasAttribute("classlist")).toBe(false);
+    setProp(el, "class", { ring: true, hidden: false });
+    expect(el.getAttribute("class")).toBe("ring");
   });
 
-  test("a reactive map removes the keys that vanished and leaves the rest", () => {
+  test("a reactive list follows its source", () => {
     const el = withReadOnlyClassName(svg("circle"));
-    el.setAttribute("class", "dot");
     const [state, setState] = createSignal<Record<string, unknown>>({ ring: true, busy: true });
-    setProp(el, "classList", () => state());
+    setProp(el, "class", () => ["dot", state()]);
     expect(el.getAttribute("class")).toBe("dot ring busy");
 
     setState({ busy: true, done: true });
@@ -230,33 +225,21 @@ describe("SVG classList", () => {
     expect(el.getAttribute("class")).toBe("dot busy done");
   });
 
-  test("a per-key accessor toggles on its own", () => {
-    const el = withReadOnlyClassName(svg("circle"));
-    const [on, setOn] = createSignal(false);
-    setProp(el, "classList", { ring: () => on() });
-    expect(el.getAttribute("class") ?? "").toBe("");
-
-    setOn(true);
-    flush();
-    expect(el.getAttribute("class")).toBe("ring");
-  });
-
-  test("createElement applies it to an SVG element", () => {
+  test("createElement applies a list to an SVG element", () => {
     const el = withReadOnlySvgPrototype(
-      () => element("circle", { classList: { ring: true } }) as SVGElement,
+      () => element("circle", { class: ["dot", { ring: true }] }) as SVGElement,
     );
     expect(el.namespaceURI).toBe(SVG_NS);
-    expect(el.getAttribute("class")).toBe("ring");
-    expect(el.hasAttribute("classlist")).toBe(false);
+    expect(el.getAttribute("class")).toBe("dot ring");
   });
 
-  test("spread applies it to an SVG element", () => {
+  test("spread applies a map to an SVG element", () => {
     const el = withReadOnlyClassName(svg("circle"));
-    const [props, setProps] = createSignal<Record<string, unknown>>({ classList: { ring: true } });
+    const [props, setProps] = createSignal<Record<string, unknown>>({ class: { ring: true } });
     spread(el, () => props());
     expect(el.getAttribute("class")).toBe("ring");
 
-    setProps({ classList: { done: true } });
+    setProps({ class: { done: true } });
     flush();
     expect(el.getAttribute("class")).toBe("done");
   });

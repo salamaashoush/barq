@@ -757,28 +757,11 @@ export function setLive(element: Element, name: string, value: unknown): unknown
 }
 
 /**
- * `bool:` — presence, not text. Distinct from `setAttr`'s boolean branch, which
- * only fires for a value that IS a boolean: here truthiness decides, so
- * `bool:hidden={count()}` is the author saying what the name means rather than
- * the runtime guessing from the value that arrived.
- */
-export function setBool(element: Element, name: string, value: unknown, prev?: unknown): unknown {
-  const on = Boolean(value);
-  if (on === prev) return on;
-  if (on) {
-    element.setAttribute(name, "");
-  } else {
-    element.removeAttribute(name);
-  }
-  return on;
-}
-
-/**
  * The `class` channel, normalised from a string, array or object — and it emits
  * only the tokens it OWNS.
  *
  * `element.className = …` owns the whole attribute, so every class another
- * channel put there — `classList`, a `ref`, a directive — is erased the moment
+ * channel put there — a `ref`, a directive — is erased the moment
  * this value changes. B1/B2 remove that in two places, and they cover different
  * cases: the fused record guards `class` on its own field, so an UNRELATED prop
  * can no longer reach this channel at all, and the branch below keeps a real
@@ -865,29 +848,6 @@ export function setStyle(element: Element, _name: string, value: unknown, prev?:
     for (const cssProperty in prev) style.removeProperty(cssProperty);
   }
   return undefined;
-}
-
-/** One css declaration, with the property name resolved at compile time. */
-export function setStyleProp(
-  element: Element,
-  name: string,
-  value: unknown,
-  prev?: unknown,
-): unknown {
-  if (value === prev && arguments.length > 3) return prev;
-  const style = (element as Partial<ElementCSSInlineStyle>).style;
-  if (style) setStylePropDirect(style, name, value);
-  return value;
-}
-
-/** Additive per-key toggling, diffed against the previously applied map. */
-export function setClassList(
-  element: Element,
-  _name: string,
-  value: unknown,
-  prev?: unknown,
-): unknown {
-  return diffClassList(element, isObject(value) ? value : null, isClassMap(prev) ? prev : null);
 }
 
 /** `dangerouslySetInnerHTML={{ __html }}`. */
@@ -1145,7 +1105,7 @@ export function bindProp(element: Element, write: Channel, name: string, value: 
   // either. A single tracked function would make the two paths disagree about
   // what an element effect depends on, which is a divergence no DOM comparison
   // would show until something in a channel started reading.
-  const keyed = write === setStyle || write === setClassList;
+  const keyed = write === setStyle;
   // A property is the one channel a function can be the VALUE of. Everywhere
   // else a Cell that yields a Cell is read through, which is what a compiled
   // call is when the call hands back an accessor: `title={labelOf(row)}`.
@@ -1318,7 +1278,6 @@ function channelOf(key: string, isSvg: boolean, tag: string): Channel {
   if (key === "class") return setClass;
   if (key === "className") return setClass;
   if (key === "style") return setStyle;
-  if (key === "classList") return setClassList;
   if (key === "ref") return setRef;
   if (key === "dangerouslySetInnerHTML") return setHtml;
   // The user-mutable channel comes before the plain property one: these are
@@ -1359,7 +1318,7 @@ const STYLE_MAP = Symbol("barq-style-map");
 interface StyleMap extends Record<string, string> {}
 
 /**
- * A `style` or `classList` object with every getter it holds called.
+ * A `style` object with every getter it holds called.
  *
  * A key may be live on its own, `{ color: () => tone() }`, and the read is the
  * tracked half of a binding: called here, the key is a dependency of the
@@ -1430,85 +1389,35 @@ function diffStyleObjects(
   return applied;
 }
 
-const CLASS_MAP = Symbol("barq-class-map");
-
-interface ClassMap extends Record<string, true> {}
-
-function isClassMap(value: unknown): value is ClassMap {
-  return typeof value === "object" && value !== null && CLASS_MAP in value;
-}
-
 /**
- * Apply a classList object: toggle every truthy key on, remove the keys that
- * vanished since the previous run, and leave every other class on the element
- * alone. A key may name several classes ("a b"), matching `classList.add`.
+ * Normalize a class value to a string, or null for no class at all. A list may
+ * hold strings, maps and further lists, joined in order, as Solid 2.0's `class`
+ * takes them.
  */
-function diffClassList(
-  element: Element,
-  next: Record<string, unknown> | null,
-  prev: ClassMap | null,
-): ClassMap {
-  // The rule is WRONG here and `tsc` says so: `defineProperty<T>(o: T)`
-  // returns `T`, so without the annotation `applied` is `{}` and every
-  // write below is TS7053. `oxlint --fix` removed it and broke the build.
-  // oxlint-disable-next-line typescript/no-unnecessary-type-assertion
-  const applied = Object.defineProperty({} as ClassMap, CLASS_MAP, { value: true });
-  const tokens = element.classList;
-
-  for (const key in next) {
-    const raw = next[key];
-
-    // Per-key reactive values keep their own effect (static object case)
-    if (isSignalGetter(raw)) {
-      renderEffect(
-        () => Boolean(raw()),
-        (on) => {
-          toggleClassTokens(tokens, key, on);
-        },
-      );
-      continue;
-    }
-
-    if (!raw) continue;
-    applied[key] = true;
-    if (!prev || !prev[key]) toggleClassTokens(tokens, key, true);
-  }
-
-  if (prev) {
-    for (const key in prev) {
-      if (!(key in applied)) toggleClassTokens(tokens, key, false);
-    }
-  }
-
-  return applied;
-}
-
-function toggleClassTokens(tokens: DOMTokenList, key: string, on: boolean): void {
-  for (const token of key.split(/\s+/)) {
-    if (token === "") continue;
-    if (on) {
-      tokens.add(token);
-    } else {
-      tokens.remove(token);
-    }
-  }
-}
-
-/** Normalize a class value (string, array, or object) to a string or null */
 export function classToString(value: unknown): string | null {
   if (isNullish(value) || value === false) return null;
   if (isString(value)) return value;
-  if (isArray<string>(value)) return value.filter(Boolean).join(" ");
-  if (isObject(value)) {
-    let className = "";
-    for (const k in value) {
-      if (value[k]) {
-        className += (className ? " " : "") + k;
-      }
-    }
-    return className;
-  }
+  if (isArray(value) || isObject(value)) return appendClasses("", value);
   return null;
+}
+
+function appendClasses(into: string, value: unknown): string {
+  if (isArray(value)) {
+    let out = into;
+    for (let i = 0; i < value.length; i++) out = appendClasses(out, value[i]);
+    return out;
+  }
+  if (isObject(value)) {
+    let out = into;
+    for (const k in value) {
+      if (value[k]) out += (out ? " " : "") + k;
+    }
+    return out;
+  }
+  if (typeof value !== "string" && typeof value !== "number") return into;
+  if (value === "" || value === 0) return into;
+  const name = String(value);
+  return into ? `${into} ${name}` : name;
 }
 
 /**
@@ -2308,8 +2217,9 @@ function detectTextDrift(claimed: readonly Node[], produced: Child): void {
  *
  * The compiled path never reaches this: every attribute resolves to exactly one
  * channel at compile time. What is left here is what `createElement` and
- * `spread` need, plus the namespace syntax so the two paths accept the same
- * source.
+ * `spread` need, plus the `prop:` and `bind:` namespaces so the two paths accept
+ * the same source. Any other prefix is part of an attribute's name, `on:click`
+ * included.
  */
 export function setProp(element: Element, key: string, value: unknown): void {
   const isSvg = element.namespaceURI === SVG_NS;
@@ -2318,26 +2228,8 @@ export function setProp(element: Element, key: string, value: unknown): void {
   if (colon > 0) {
     const rest = key.slice(colon + 1);
     switch (key.slice(0, colon)) {
-      case "on":
-        // Verbatim: no lowercasing, which is the other half of the
-        // custom-element story.
-        bindEvent(element, rest, value);
-        return;
-      case "capture":
-        // `on:`'s capture-phase sibling, verbatim for the same reason.
-        bindEvent(element, rest, value, true);
-        return;
       case "prop":
         bindProp(element, setDomProp, rest, value);
-        return;
-      case "attr":
-        bindProp(element, setAttr, attrNameOf(rest, isSvg), value);
-        return;
-      case "bool":
-        bindProp(element, setBool, attrNameOf(rest, isSvg), value);
-        return;
-      case "style":
-        bindProp(element, setStyleProp, cssName(rest), value);
         return;
       case "bind": {
         if (rest === "this") {
@@ -2357,14 +2249,16 @@ export function setProp(element: Element, key: string, value: unknown): void {
   // `onceUpon` really does bind a `ceupon` listener and the compiler agrees.
   // The `Capture` suffix is tested FIRST, or `onKeyDownCapture` would bind a
   // bubble-phase listener for an event called `keydowncapture`.
-  const captured = captureTypeOf(key);
-  if (captured !== null) {
-    bindEvent(element, captured, value, true);
-    return;
-  }
-  if (key[0] === "o" && key[1] === "n") {
-    bindEvent(element, key.slice(2).toLowerCase(), value);
-    return;
+  if (colon < 0) {
+    const captured = captureTypeOf(key);
+    if (captured !== null) {
+      bindEvent(element, captured, value, true);
+      return;
+    }
+    if (key[0] === "o" && key[1] === "n") {
+      bindEvent(element, key.slice(2).toLowerCase(), value);
+      return;
+    }
   }
 
   if (key === "ref") {
@@ -2529,7 +2423,7 @@ export function spread(
       // the Node it built and read the DOM constants off it as css declarations.
       refuseBlock(value, `The \`${key}\` prop in a spread`);
       const held = isSignalGetter(value) ? value() : value;
-      resolved[key] = key === "style" || key === "classList" ? readKeys(held) : held;
+      resolved[key] = key === "style" ? readKeys(held) : held;
     }
     return resolved;
   };

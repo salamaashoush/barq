@@ -392,7 +392,6 @@ export function attr(name: string, value: unknown, tag?: string): string {
   if (key === "value" && tag !== undefined && tag in VALUE_IS_NOT_AN_ATTRIBUTE) return "";
 
   if (key === "class") return classAttr(classToString(unwrap(value)));
-  if (key === "classList") return classAttr(clsList(value));
   if (key === "style") {
     const css = styleToString(unwrap(value));
     return css === null ? "" : ` style="${escapeAttribute(css)}"`;
@@ -462,7 +461,6 @@ const ATTR_INTERCEPTED: Record<string, 1> = {
   className: 1,
   htmlFor: 1,
   class: 1,
-  classList: 1,
   style: 1,
   value: 1,
   defaultValue: 1,
@@ -571,34 +569,9 @@ function classAttr(name: string | null): string {
 }
 
 /**
- * `classList`, which is NOT `class`. `diffClassList` calls a per-key value that
- * is a function and toggles on the RESULT, where `classToString` treats the
- * same function as a truthy key — the same object, two answers, and the DOM
- * path really does give both.
- *
- * Only an OBJECT contributes tokens, and no token means no attribute: the DOM
- * path is `diffClassList(element, isObject(value) ? value : null, …)`, which
- * writes nothing for a string or an array and never creates a `class` the
- * element did not already have. Hence `null` rather than `""` — `cls` has to
- * tell "this list added nothing" from "this class is present and empty".
- */
-export function clsList(value: unknown): string | null {
-  const resolved = unwrap(value);
-  if (!isObject(resolved)) return null;
-  let out = "";
-  for (const key in resolved) {
-    let slot: unknown = resolved[key];
-    if (typeof slot === "function") slot = (slot as () => unknown)();
-    if (slot) out += (out ? " " : "") + key;
-  }
-  return out === "" ? null : out;
-}
-
-/**
  * The one class attribute for an element whose class arrives in more than one
- * piece — a baked literal, a dynamic `class`, a `classList` object. The DOM
- * path can write them separately because `classList` is additive; markup has
- * exactly one `class=` slot, so they are joined here instead.
+ * piece — a baked literal and a dynamic `class`. Markup has exactly one
+ * `class=` slot, so they are joined here.
  */
 export function cls(...parts: unknown[]): string {
   let out = "";

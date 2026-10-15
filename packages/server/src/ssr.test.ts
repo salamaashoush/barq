@@ -18,7 +18,6 @@ import {
   attr,
   attrLit,
   cls,
-  clsList,
   content,
   esc,
   escapeAttribute,
@@ -326,7 +325,7 @@ describe("attributes", () => {
     expect(attr("className", ["a", "", "b"])).toBe(' class="a b"');
     expect(attr("class", { a: true, b: false, c: 1 })).toBe(' class="a c"');
     expect(attr("class", null)).toBe("");
-    expect(attr("classList", { a: true, b: false })).toBe(' class="a"');
+    expect(attr("class", ["a", { b: true, c: false }, ["d"]])).toBe(' class="a b d"');
     expect(attr("style", "color: red")).toBe(' style="color: red"');
     expect(attr("style", { fontSize: 12, zIndex: 3, opacity: 0.5, lineHeight: 2 })).toBe(
       ' style="font-size: 12px; z-index: 3; opacity: 0.5; line-height: 2;"',
@@ -347,7 +346,7 @@ describe("attributes", () => {
     expect(cls("a", () => "b")).toBe(' class="a b"');
   });
 
-  test("an empty class is present, an absent one is not, and classList is neither", () => {
+  test("an empty class is present, an absent one is not", () => {
     // The DOM path assigns `""` to `className` — which leaves `class=""` on the
     // element — and calls `removeAttribute` only for nullish and `false`. The
     // string backend used to omit the attribute for both, so `class={() => ""}`
@@ -359,18 +358,6 @@ describe("attributes", () => {
     expect(attr("class", false)).toBe("");
     expect(attr("class", undefined)).toBe("");
     expect(cls(null, undefined, "")).toBe(' class=""');
-    expect(cls(null, clsList({ a: false }))).toBe("");
-
-    // `classList` writes tokens or nothing at all: `diffClassList` toggles the
-    // keys of an OBJECT and does nothing whatever with a string or an array, so
-    // no token means no attribute rather than an empty one.
-    expect(attr("classList", { a: false })).toBe("");
-    expect(attr("classList", "a b")).toBe("");
-    expect(attr("classList", ["a", "b"])).toBe("");
-    expect(clsList({ a: false })).toBeNull();
-    expect(clsList("a b")).toBeNull();
-    expect(clsList({ a: true, b: () => true })).toBe("a b");
-    expect(cls("k", clsList({ hit: true }))).toBe(' class="k hit"');
   });
 
   test("…and the line between them is the ORACLE's, not this file's", () => {
@@ -384,12 +371,14 @@ describe("attributes", () => {
     // question asked is the only one that matters — would a browser given the
     // markup have the element the client builds?
     const wrong: string[] = [];
-    for (const name of ["class", "className", "classList"]) {
+    for (const name of ["class", "className"]) {
       for (const value of [
         "",
         "a b",
         [],
         ["a", "b"],
+        ["a", { b: true, c: false }],
+        [["a"], { b: false }, ""],
         {},
         { a: false },
         { a: true, b: false },
@@ -411,7 +400,6 @@ describe("attributes", () => {
     // empty one is the one that regressed.
     expect(renderToString(() => element("div", { class: "" }))).toBe('<div class=""></div>');
     expect(renderToString(() => element("div", { class: null }))).toBe("<div></div>");
-    expect(renderToString(() => element("div", { classList: {} }))).toBe("<div></div>");
   });
 
   test("spreadAttrs writes the object in its own key order", () => {

@@ -487,8 +487,8 @@ export namespace JSX {
 
     /**
      * A custom element. Its attributes are its own, so beyond the global ones
-     * any name is accepted; `prop:`, `attr:` and `bool:` say which channel a
-     * name the compiler cannot classify is written through.
+     * any name is accepted; `prop:` writes a name as a property rather than an
+     * attribute.
      */
     [tag: `${string}-${string}`]: CustomElementAttributes;
   }
@@ -526,16 +526,16 @@ export namespace JSX {
   type AriaBoolean = boolean | "false" | "true";
 
   /**
-   * What the `class` channel normalises: a string, a list of names with the
-   * falsy members dropped, or a map of name to whether it applies. A list is
-   * joined as written, so its members are names and not further lists or maps.
+   * What the `class` channel normalises: a string, a map of name to whether it
+   * applies, or a list of either (and of further lists) joined in order with
+   * the falsy members dropped.
    */
   export type ClassValue =
     | string
     | false
     | null
     | undefined
-    | readonly (string | false | null | undefined)[]
+    | readonly ClassValue[]
     | Record<string, boolean | null | undefined>;
 
   interface DOMEventHandlers<T> {
@@ -916,27 +916,12 @@ export namespace JSX {
   }
 
   /**
-   * A handler for an event named verbatim. Declared as a method so its
-   * parameter is checked bivariantly: a custom event hands over a `CustomEvent`,
-   * and a handler written for one has to fit a slot that only knows `Event`.
+   * `prop:` writes a property where the compiler would pick an attribute from
+   * the name, which is how a custom element is handed a value that is not a
+   * string.
    */
-  type NamedEventHandler<T> =
-    | { handle(event: Event): void }["handle"]
-    | BoundEventHandler<T, Event>;
-
-  /**
-   * The prefixes that override the channel the compiler would pick from the
-   * name: `on:` and `capture:` bind an event by its exact name, `prop:` writes a
-   * property, `attr:` an attribute, `bool:` presence by truthiness, `style:` one
-   * style property.
-   */
-  interface NamespacedAttributes<T> {
-    [key: `on:${string}`]: NamedEventHandler<T> | undefined;
-    [key: `capture:${string}`]: NamedEventHandler<T> | undefined;
+  interface NamespacedAttributes {
     [key: `prop:${string}`]: unknown;
-    [key: `attr:${string}`]: Attr<string | number | boolean | null>;
-    [key: `bool:${string}`]: unknown;
-    [key: `style:${string}`]: Attr<string | number | null>;
   }
 
   interface AriaAttributes {
@@ -1087,7 +1072,7 @@ export namespace JSX {
       DOMEventHandlers<T>,
       DOMEventHandlersLowerCase<T>,
       DOMEventHandlersCapture<T>,
-      NamespacedAttributes<T>,
+      NamespacedAttributes,
       AriaAttributes,
       CallSite<AsDeclared> {
     /**
@@ -1101,7 +1086,6 @@ export namespace JSX {
     id?: Attr<string>;
     class?: Attr<ClassValue>;
     className?: Attr<ClassValue>;
-    classList?: Attr<Record<string, FunctionMaybe<boolean | undefined>>>;
     style?: Attr<string | CSSProperties>;
     tabindex?: Attr<number | string>;
     tabIndex?: Attr<number | string>;

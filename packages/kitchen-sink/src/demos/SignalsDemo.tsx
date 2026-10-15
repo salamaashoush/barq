@@ -461,11 +461,11 @@ function ContextDemo() {
         </Button>
       </div>
 
-      <ThemeContext.Provider value={theme}>
-        <UserContext.Provider value={user}>
+      <ThemeContext value={theme}>
+        <UserContext value={user}>
           <ContextConsumer />
-        </UserContext.Provider>
-      </ThemeContext.Provider>
+        </UserContext>
+      </ThemeContext>
 
       <p class={noteStyle}>Context provides dependency injection without prop drilling.</p>
     </DemoCard>

@@ -337,9 +337,9 @@ function Page() {
 }
 ```
 
-The context is its own provider component, as in Solid 2.0. `Theme.Provider`
-is the same function and still works. `useContext` returns a Cell, so a
-provider that changes value updates the consumers that read it.
+The context is its own provider component, as in Solid 2.0; there is no
+`Theme.Provider`. `useContext` returns a Cell, so a provider that changes value
+updates the consumers that read it.
 
 ## Subpaths
 

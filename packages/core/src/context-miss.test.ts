@@ -32,8 +32,8 @@ describe("a context miss", () => {
     expect(error).toBeInstanceOf(ContextNotFoundError);
     expect((error as Error).message).toStartWith(
       "The context `theme` was read with no provider above the component that reads it, so " +
-        "there is no value to return. Wrap that component in the context's `Provider`, or give " +
-        "`createContext` a default value. ",
+        "there is no value to return. Wrap that component in the context, as in " +
+        "`<Theme value={…}>`, or give `createContext` a default value. ",
     );
   });
 

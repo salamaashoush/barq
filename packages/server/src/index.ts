@@ -24,7 +24,6 @@ export {
   boundary,
   branch,
   cls,
-  clsList,
   content,
   resolveDynamic,
   each,

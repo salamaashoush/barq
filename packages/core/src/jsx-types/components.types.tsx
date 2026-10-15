@@ -7,7 +7,7 @@
  * directory: every positive compiles and every `@ts-expect-error` fires.
  */
 
-import { createContext, merge, mergeProps, omit, provide, splitProps } from "../index.ts";
+import { createContext, merge, omit, provide } from "../index.ts";
 import type {
   Accessor,
   Child,
@@ -198,18 +198,6 @@ declare const defaults: { variant: "primary"; size: number };
 declare const given: { variant?: "primary" | "danger"; label: string; size?: number | undefined };
 declare const maybe: { extra: boolean } | undefined;
 
-/** A later `undefined` does not override, so a default makes its key required. */
-export function MergePropsTypesADefault(): void {
-  const merged = mergeProps(defaults, given);
-  assertType<
-    Equal<typeof merged, { variant: "primary" | "danger"; size: number; label: string }>
-  >();
-  const withAbsent = mergeProps(given, maybe);
-  assertType<Equal<(typeof withAbsent)["extra"], boolean | undefined>>();
-  const dynamic = mergeProps(defaults, () => given);
-  assertType<Equal<(typeof dynamic)["label"], string>>();
-}
-
 /** With `undefined` as a value, an optional later key leaves either source's answer. */
 export function MergeKeepsUndefined(): void {
   const merged = merge(defaults, given);
@@ -219,13 +207,16 @@ export function MergeKeepsUndefined(): void {
   assertType<Equal<(typeof overridden)["variant"], "primary">>();
   const one = merge(given);
   assertType<Equal<typeof one, typeof given>>();
+  const withAbsent = merge(given, maybe);
+  assertType<Equal<(typeof withAbsent)["extra"], boolean | undefined>>();
+  const dynamic = merge(defaults, () => given);
+  assertType<Equal<(typeof dynamic)["label"], string>>();
 }
 
-export function OmitAndSplitAreExact(props: Incoming<{ a: string; b?: number; c: boolean }>): void {
+export function OmitIsExact(props: Incoming<{ a: string; b?: number; c: boolean }>): void {
   const rest = omit(props, "a");
   assertType<Equal<keyof typeof rest, "b" | "c">>();
-  const [picked, others] = splitProps(props, ["a", "b"]);
-  assertType<Equal<keyof typeof picked, "a" | "b">>();
+  const others = omit(props, "a", "b");
   assertType<Equal<keyof typeof others, "c">>();
   // @ts-expect-error `a` was omitted
   void rest.a;

@@ -31,10 +31,10 @@ type View = Record<string, (props: object) => JSXElement> & {
 };
 
 describe("a context as its own provider", () => {
-  test("is a function, and `.Provider` is the same function", () => {
+  test("is a function with no `.Provider` beside it", () => {
     const Theme = createContext("light", "theme");
     expect(typeof Theme).toBe("function");
-    expect(Theme.Provider).toBe(Theme);
+    expect("Provider" in Theme).toBe(false);
     expect(Theme.defaultValue).toBe("light");
     expect(Theme.id.description).toBe("theme");
   });

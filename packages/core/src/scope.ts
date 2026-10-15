@@ -99,7 +99,7 @@ export function provide<T>(context: Context<T>, value: Cell<T>, block: Block<unk
   try {
     // A Block forwarded inside a Cell, or inside the ARRAY several children
     // arrive as, is still a Block and has to run here, inside the scope that
-    // carries the binding. `context`'s Provider walks the same way, and both
+    // carries the binding. A context's own provider walks the same way, and both
     // call the same function so they cannot drift apart again.
     const out = runWithOwner(instance, () =>
       unwrapBlocks((block as unknown as () => JSXElement)(), instance),

@@ -56,14 +56,11 @@ import {
   listen,
   ref,
   setAttr,
-  setBool,
   setClass,
-  setClassList,
   setDomProp,
   setLive,
   setHtml,
   setStyle,
-  setStyleProp,
   spread,
   type Channel,
 } from "./dom.ts";
@@ -82,26 +79,14 @@ type Diff = "identity" | "always" | "thread";
 type Plan = "once" | "live" | "opaque";
 
 /** The channel set, spelled the same way the compiler spells it. */
-type Chan =
-  | "attr"
-  | "prop"
-  | "live"
-  | "bool"
-  | "class"
-  | "style"
-  | "styleProp"
-  | "classList"
-  | "html";
+type Chan = "attr" | "prop" | "live" | "class" | "style" | "html";
 
 const CHANNEL: Record<Chan, Channel> = {
   attr: setAttr,
   prop: setDomProp,
   live: setLive,
-  bool: setBool,
   class: setClass,
   style: setStyle,
-  styleProp: setStyleProp,
-  classList: setClassList,
   html: setHtml,
 };
 
@@ -356,9 +341,7 @@ function fuse(members: readonly SetLive[], nodes: readonly Node[], slots: readon
   bindEffect(
     () =>
       members.map((member) =>
-        member[5] === "style" || member[5] === "classList"
-          ? readKeys(slots[member[3]]())
-          : slots[member[3]](),
+        member[5] === "style" ? readKeys(slots[member[3]]()) : slots[member[3]](),
       ),
     (values: unknown[], prev: unknown[] | undefined) => {
       for (let i = 0; i < members.length; i++) {

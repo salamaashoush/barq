@@ -106,7 +106,7 @@ import { selector } from "@barqjs/primitives";
 const [selected, setSelected] = createSignal(1);
 const isSelected = selector(selected);
 
-<For each={rows}>{(row) => <li classList={{ on: isSelected(row.id) }}>{row.name}</li>}</For>;
+<For each={rows}>{(row) => <li class={{ on: isSelected(row.id) }}>{row.name}</li>}</For>;
 ```
 
 `whenever(condition, fn)` runs `fn` only while the condition is truthy and

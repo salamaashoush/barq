@@ -3,7 +3,7 @@
  *
  * An attribute belongs to the elements that have it, an enumerated one to its
  * words, and the spellings the compiler and the runtime already accept have to
- * typecheck: the channel prefixes, custom elements, a list of refs, a class
+ * typecheck: the `prop:` prefix, custom elements, a list of refs, a class
  * written as a list or a map.
  *
  * `attribute-types.test.ts` typechecks this directory: every positive compiles
@@ -135,18 +135,7 @@ export const aria = (
   />
 );
 
-export const channels = (
-  <div
-    on:click={(event) => event.type}
-    on:opened={opened}
-    capture:focus={(event) => event.type}
-    prop:scrollTop={0}
-    attr:data-state="open"
-    bool:hidden={on()}
-    style:color="red"
-    style:font-size={12}
-  />
-);
+export const channels = <div prop:scrollTop={0} data-state="open" hidden={on()} />;
 
 export const classes = (
   <div>
@@ -154,8 +143,8 @@ export const classes = (
     <p class={["one", on() && "two", undefined, null]} />
     <p class={{ one: true, two: on(), three: undefined }} />
     <p class={on() && "one"} />
-    <p classList={{ one: true, two: on }} />
-    <p classList={() => ({ "one two": on(), three: !on() })} />
+    <p class={["one", { two: on(), three: !on() }]} />
+    <p class={["one", ["two", { three: on() }]]} />
   </div>
 );
 
@@ -168,21 +157,14 @@ export const refs = (
 );
 
 export const customElements = (
-  <my-toggle
-    pressed
-    prop:value={{ nested: 1 }}
-    attr:size="lg"
-    bool:open={on()}
-    class="x"
-    on:toggled={opened}
-  >
+  <my-toggle pressed prop:value={{ nested: 1 }} size="lg" open={on()} class="x" onToggled={opened}>
     <slot-content some-attribute="anything" />
   </my-toggle>
 );
 
 export const svg = (
   <svg viewBox="0 0 10 10" role="img" aria-label="chart" class={["chart"]} ref={[]}>
-    <path d="M0 0" stroke-width={2} on:click={(event) => event.type} style:fill="red" />
+    <path d="M0 0" stroke-width={2} onClick={(event) => event.type} style={{ fill: "red" }} />
     <circle cx={1} cy={1} r={1} fill="red" data-point="1" />
   </svg>
 );
@@ -241,26 +223,32 @@ export const refused = (
     <div muted />
     {/* @ts-expect-error `loading` is lazy or eager */}
     <img src="/a.png" loading="later" />
-    {/* @ts-expect-error a list of class names holds names, not further lists */}
-    <p class={["one", ["two"]]} />
-    {/* @ts-expect-error a list of class names holds names, not maps */}
-    <p class={["one", { two: true }]} />
+    {/* @ts-expect-error a class map says whether each name applies */}
+    <p class={["one", { two: "yes" }]} />
     {/* @ts-expect-error a ref holds an element */}
     <div ref={{ current: null as string | null }} />
     {/* @ts-expect-error a ref callback is handed this element, which is not a canvas */}
     <div ref={(element: HTMLCanvasElement) => element.getContext("2d")} />
     {/* @ts-expect-error an unknown tag without a hyphen is not a custom element */}
     <mytoggle />
-    {/* @ts-expect-error `on:` takes a handler */}
-    <div on:click="alert(1)" />
+    {/* @ts-expect-error an event is `onClick`; `on:` is not a namespace */}
+    <div on:click={() => {}} />
+    {/* @ts-expect-error a capture-phase listener is `onFocusCapture` */}
+    <div capture:focus={() => {}} />
+    {/* @ts-expect-error an attribute is written by its own name */}
+    <div attr:title="open" />
+    {/* @ts-expect-error presence is `hidden={on()}` */}
+    <div bool:hidden={on()} />
+    {/* @ts-expect-error one style property is a key of `style` */}
+    <div style:color="red" />
     {/* @ts-expect-error a name ending in Capture binds the capture phase, so this one has no camelCase form */}
     <div onGotPointerCapture={() => {}} />
     {/* @ts-expect-error `target` is not an attribute of a button */}
     <button target="_blank" />
     {/* @ts-expect-error `popovertargetaction` is one of three words */}
     <button popovertargetaction="open" />
-    {/* @ts-expect-error a classList accessor returns a map of names to booleans */}
-    <p classList={() => ["one"]} />
+    {/* @ts-expect-error class toggles are a map in `class` */}
+    <p classList={{ one: true }} />
     {/* @ts-expect-error `<math>` is displayed as a block or inline */}
     <math display="flex" />
     {/* @ts-expect-error `form` on an operator is prefix, infix or postfix */}

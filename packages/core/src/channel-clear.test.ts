@@ -5,7 +5,7 @@
  */
 
 import { expect, test } from "bun:test";
-import { setAttr, setDomProp, setStyleProp } from "./dom.ts";
+import { setAttr, setDomProp } from "./dom.ts";
 import { DEV } from "./signals.ts";
 
 test("an attribute written and then given undefined is removed", () => {
@@ -31,13 +31,6 @@ test("a string property given undefined is emptied, not spelled out", () => {
   setDomProp(holder, "innerHTML", "<b>x</b>");
   setDomProp(holder, "innerHTML", undefined);
   expect(holder.innerHTML).toBe("");
-});
-
-test("one css declaration given undefined is taken off", () => {
-  const element = document.createElement("p");
-  setStyleProp(element, "color", "red");
-  setStyleProp(element, "color", undefined);
-  expect(element.style.color).toBe("");
 });
 
 test("a caller that passes what it applied still skips an unchanged write", () => {

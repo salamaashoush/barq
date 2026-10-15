@@ -134,7 +134,7 @@ export function not(source: MaybeAccessor<unknown>): Accessor<boolean> {
  *
  * ```tsx
  * const isSelected = selector(selectedId);
- * <For each={rows}>{(row) => <li classList={{ on: isSelected(row.id) }}>…</li>}</For>
+ * <For each={rows}>{(row) => <li class={{ on: isSelected(row.id) }}>…</li>}</For>
  * ```
  *
  * With the default comparison a change costs two map lookups. A custom

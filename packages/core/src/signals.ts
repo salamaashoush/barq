@@ -22,7 +22,6 @@ import {
   createContext as engineCreateContext,
   createEffect as engineCreateEffect,
   createMemo as engineCreateMemo,
-  createTrackedEffect as engineCreateTrackedEffect,
   onSettled as engineOnSettled,
   createOwner,
   createRenderEffect,
@@ -91,7 +90,6 @@ export {
   runWithOwner,
   setSnapshotCapture,
   snapshot,
-  storePath,
   until,
   untrack,
 } from "@solidjs/signals";
@@ -135,7 +133,7 @@ export type {
 } from "@solidjs/signals";
 
 /**
- * `createEffect`, `createTrackedEffect` and `onSettled` do nothing while a page
+ * `createEffect` and `onSettled` do nothing while a page
  * is being rendered on a server.
  *
  * An effect is where a component reaches outside itself: a listener on
@@ -149,13 +147,6 @@ export const createEffect = ((...args: Parameters<typeof engineCreateEffect>): v
   if (activeAsyncSession !== null) return;
   engineCreateEffect(...args);
 }) as typeof engineCreateEffect;
-
-export const createTrackedEffect = (
-  ...args: Parameters<typeof engineCreateTrackedEffect>
-): void => {
-  if (activeAsyncSession !== null) return;
-  engineCreateTrackedEffect(...args);
-};
 
 export const onSettled = (...args: Parameters<typeof engineOnSettled>): void => {
   if (activeAsyncSession !== null) return;
@@ -654,7 +645,7 @@ export function lookupContext(scope: Scope | null, key: string | symbol): unknow
 /** Value can be static or a reactive accessor */
 type MaybeAccessor<T> = T | (() => T);
 
-// Type-only: keeps Provider usable as a JSX component (no runtime cycle)
+// Type-only: keeps a context usable as a JSX component (no runtime cycle)
 import type { JSXElement } from "./dom.ts";
 
 /** What a context provider is handed: `value` is a Cell, `children` a Block. */
@@ -673,11 +664,6 @@ export type ContextProviderComponent<T> = (props: ContextProviderProps<T>) => JS
 export interface Context<T> extends ContextProviderComponent<T> {
   readonly id: symbol;
   readonly defaultValue: T | undefined;
-  /**
-   * The same function as the context itself. Solid 2.0 removed `.Provider`;
-   * it stays here while code that still spells `<Ctx.Provider>` exists.
-   */
-  readonly Provider: Context<T>;
 }
 
 /**
@@ -716,10 +702,9 @@ export function createContext<T>(
     }
   };
 
-  const context: { id?: symbol; defaultValue?: T; Provider?: unknown } & typeof provider = provider;
+  const context: { id?: symbol; defaultValue?: T } & typeof provider = provider;
   context.id = id;
   context.defaultValue = defaultValue;
-  context.Provider = context;
   return context as Context<T>;
 }
 
@@ -860,7 +845,8 @@ export function contextNotFound(context: { readonly id: symbol }): ContextNotFou
   if (name !== undefined && name !== "context") {
     error.message =
       `The context \`${name}\` was read with no provider above the component that reads it, ` +
-      `so there is no value to return. Wrap that component in the context's \`Provider\`, or ` +
+      `so there is no value to return. Wrap that component in the context, as in ` +
+      `\`<Theme value={…}>\`, or ` +
       `give \`createContext\` a default value. ${error.message}`;
   }
   return error;

@@ -32,7 +32,6 @@ export {
   createRoot,
   createSignal,
   createStore,
-  createTrackedEffect,
   deep,
   enableExternalSource,
   enforceLoadingBoundary,
@@ -61,7 +60,6 @@ export {
   runWithOwner,
   setSnapshotCapture,
   snapshot,
-  storePath,
   until,
   untrack,
 } from "./signals.ts";
@@ -150,21 +148,10 @@ export { readSlot } from "./signals.ts";
 export type { Block, Cell, Scope, Slot } from "./scope.ts";
 
 // The props model. `props` and `cell` are the two
-// carriers the compiler emits; the four helpers are views over the same
+// carriers the compiler emits; `merge` and `omit` are views over the same
 // source list and copy nothing.
-export {
-  props,
-  cell,
-  block,
-  isBlock,
-  BLOCK,
-  mergeProps,
-  merge,
-  omit,
-  splitProps,
-  SOURCES,
-} from "./props.ts";
-export type { Merge, MergeProps, Source } from "./props.ts";
+export { props, cell, block, isBlock, BLOCK, merge, omit, SOURCES } from "./props.ts";
+export type { Merge, Source } from "./props.ts";
 
 // What a JSX call site writes, and what a component body reads.
 export type {
@@ -208,11 +195,8 @@ export {
   setAttr,
   setDomProp,
   setLive,
-  setBool,
   setClass,
   setStyle,
-  setStyleProp,
-  setClassList,
   setHtml,
   setRef,
   bindProp,

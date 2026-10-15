@@ -8,7 +8,7 @@
  *
  * That is what makes the getter-flattening class impossible rather than
  * diagnosable: `{...props}`, a rest destructure, `Object.assign`, `for…in`,
- * `mergeProps`, `splitProps` and `omit` all copy Cells, and copying a Cell
+ * `merge` and `omit` all copy Cells, and copying a Cell
  * evaluates nothing. `props.test.ts` is the falsification procedure.
  */
 
@@ -36,33 +36,26 @@ function recordOf(source: Source): Held {
 /** The key a source list is published under, so a merge over a merge stays flat. */
 export const SOURCES = "$";
 
-/** Which keys a view admits. `null` means all of them. */
+/** Which keys a view drops. `null` drops none. */
 interface Filter {
   readonly keys: ReadonlySet<string> | null;
-  /** With `keys`, whether they are the kept set or the dropped set. */
-  readonly keep: boolean;
-  /** `mergeProps`: a later `undefined` does not override an earlier value. */
-  readonly skipUndefined: boolean;
   /**
    * Whether a plain value is presented as the Cell the props model says every
    * prop is. See {@link carrier}.
    *
-   * True for the COMPILER's carrier and nothing else. `mergeProps`,
-   * `splitProps`, `omit` and `merge` are utilities over ordinary objects, and a
+   * True for the COMPILER's carrier and nothing else. `omit` and `merge` are
+   * utilities over ordinary objects, and a
    * caller merging `{ count: 1 }` wants `count` to be `1`.
    */
   readonly carriers: boolean;
 }
 
-const ALL: Filter = { keys: null, keep: false, skipUndefined: false, carriers: false };
-const ALL_DEFINED: Filter = { keys: null, keep: false, skipUndefined: true, carriers: false };
+const ALL: Filter = { keys: null, carriers: false };
 /** {@link props}: the compiler's source list, where every prop is a Cell. */
-const ALL_AS_CARRIERS: Filter = { keys: null, keep: false, skipUndefined: false, carriers: true };
+const ALL_AS_CARRIERS: Filter = { keys: null, carriers: true };
 
 function admits(filter: Filter, key: string): boolean {
-  const keys = filter.keys;
-  if (keys === null) return true;
-  return filter.keep ? keys.has(key) : !keys.has(key);
+  return filter.keys === null || !filter.keys.has(key);
 }
 
 /**
@@ -147,9 +140,7 @@ function lookup(sources: readonly Source[], filter: Filter, key: string): unknow
     const source = recordOf(sources[i]);
     if (source === null || source === undefined) continue;
     if (!(key in source)) continue;
-    const value = source[key];
-    if (filter.skipUndefined && value === undefined) continue;
-    return value;
+    return source[key];
   }
   return undefined;
 }
@@ -160,7 +151,6 @@ function present(sources: readonly Source[], filter: Filter, key: string): boole
     const source = recordOf(sources[i]);
     if (source === null || source === undefined) continue;
     if (!(key in source)) continue;
-    if (filter.skipUndefined && source[key] === undefined) continue;
     return true;
   }
   return false;
@@ -174,7 +164,6 @@ function keysOf(sources: readonly Source[], filter: Filter): string[] {
     for (const key of Object.keys(source)) {
       if (key === SOURCES) continue;
       if (!admits(filter, key)) continue;
-      if (filter.skipUndefined && !present(sources, filter, key)) continue;
       seen.add(key);
     }
   }
@@ -188,7 +177,7 @@ function keysOf(sources: readonly Source[], filter: Filter): string[] {
  *
  * An unfiltered view republishes its list under `$`; a filtered one does not,
  * because a consumer that spliced the raw list back in would resurrect the
- * keys `omit` and `splitProps` exist to remove.
+ * keys `omit` exists to remove.
  */
 function view(sources: readonly Source[], filter: Filter): Record<string, unknown> {
   const list = flatten(sources);
@@ -280,11 +269,6 @@ export function cell<T>(value: T): Cell<T> {
 }
 
 /**
- * Later sources override earlier ones; a later `undefined` does not. Copies
- * nothing: the result is a view over the same carriers, so a Cell that has not
- * been called still has not been called.
- */
-/**
  * Whether reading a key from `source` has to go through a live lookup.
  *
  * A props VIEW resolves its keys from a source list on read, and a STORE
@@ -309,7 +293,7 @@ function isLive(source: Held): boolean {
  * plain value stays LIVE — mutating the source after the merge changes what the
  * merge answers, which nobody merging `{ type: "button" }` into props means.
  */
-function fold(sources: readonly Source[], skipUndefined: boolean): Record<string, unknown> | null {
+function fold(sources: readonly Source[]): Record<string, unknown> | null {
   let last: Record<string, unknown> | null = null;
   let lastIndex = -1;
   for (let i = 0; i < sources.length; i++) {
@@ -328,10 +312,8 @@ function fold(sources: readonly Source[], skipUndefined: boolean): Record<string
     if (source === null || source === undefined) continue;
     for (const key of Object.keys(source)) {
       if (key === "__proto__" || key === "constructor") continue;
-      const value = source[key];
-      if (skipUndefined && value === undefined && key in out) continue;
       if (i !== lastIndex) fromLastOnly = false;
-      out[key] = value;
+      out[key] = source[key];
     }
   }
   // Every key came from the last source, so the merge IS that source.
@@ -357,24 +339,6 @@ type Flatten<T> = T extends unknown ? { [K in keyof T]: T[K] } : never;
 
 type OptionalKeys<T> = { [K in keyof T]-?: object extends Pick<T, K> ? K : never }[keyof T];
 
-/** A later value with its `undefined` replaced by the earlier value. */
-type Defined<Later, Earlier> = Later extends undefined ? Earlier : Later;
-
-/**
- * One source laid over another where a later `undefined` does not override.
- * Both halves are homomorphic, so a key is required when either source
- * requires it: that is how `mergeProps(defaults, props)` types a default.
- */
-type OverDefined<T, U> = T extends unknown
-  ? U extends unknown
-    ? Flatten<
-        { [K in keyof T]: K extends keyof U ? Defined<U[K], T[K]> : T[K] } & {
-          [K in keyof U]: K extends keyof T ? Defined<U[K], T[K]> : U[K];
-        }
-      >
-    : never
-  : never;
-
 /**
  * One source laid over another where `undefined` is a value. A key the later
  * source requires is the later source's, whatever it holds. A key it declares
@@ -392,16 +356,7 @@ type Over<T, U> = T extends unknown
     : never
   : never;
 
-/** What `mergeProps` answers with: its sources, each laid over the ones before it. */
-export type MergeProps<T extends unknown[]> = T extends []
-  ? object
-  : T extends [infer Only]
-    ? SourceRecord<Only>
-    : T extends [infer First, infer Second, ...infer Rest]
-      ? MergeProps<[OverDefined<SourceRecord<First>, SourceRecord<Second>>, ...Rest]>
-      : Record<string, unknown>;
-
-/** What `merge` answers with: the same fold, with `undefined` as a value. */
+/** What `merge` answers with: its sources, each laid over the ones before it. */
 export type Merge<T extends unknown[]> = T extends []
   ? object
   : T extends [infer Only]
@@ -410,15 +365,15 @@ export type Merge<T extends unknown[]> = T extends []
       ? Merge<[Over<SourceRecord<First>, SourceRecord<Second>>, ...Rest]>
       : Record<string, unknown>;
 
-export function mergeProps<T extends unknown[]>(...sources: T): MergeProps<T> {
-  const list = sources as Source[];
-  return (fold(list, true) ?? view(list, ALL_DEFINED)) as MergeProps<T>;
-}
-
-/** `mergeProps` with `undefined` treated as a value (Solid 2.0's `merge`). */
+/**
+ * Later sources override earlier ones, and a later `undefined` is a value that
+ * overrides too. Copies nothing: over a props view the result is a view over
+ * the same carriers, so a Cell that has not been called still has not been
+ * called.
+ */
 export function merge<T extends unknown[]>(...sources: T): Merge<T> {
   const list = sources as Source[];
-  return (fold(list, false) ?? view(list, ALL)) as Merge<T>;
+  return (fold(list) ?? view(list, ALL)) as Merge<T>;
 }
 
 /** The props without `keys`. What a rest destructure would do, without copying. */
@@ -426,22 +381,5 @@ export function omit<T extends Record<string, unknown>, K extends keyof T & stri
   source: T,
   ...keys: K[]
 ): Omit<T, K> {
-  return view([source], {
-    keys: new Set(keys),
-    keep: false,
-    skipUndefined: false,
-    carriers: false,
-  }) as Omit<T, K>;
-}
-
-/** Two views of one source list: the `keys` and everything else. */
-export function splitProps<T extends Record<string, unknown>, K extends keyof T & string>(
-  source: T,
-  keys: readonly K[],
-): [Pick<T, K>, Omit<T, K>] {
-  const set = new Set<string>(keys);
-  return [
-    view([source], { keys: set, keep: true, skipUndefined: false, carriers: false }) as Pick<T, K>,
-    view([source], { keys: set, keep: false, skipUndefined: false, carriers: false }) as Omit<T, K>,
-  ];
+  return view([source], { keys: new Set(keys), carriers: false }) as Omit<T, K>;
 }

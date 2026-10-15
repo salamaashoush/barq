@@ -9,7 +9,7 @@ This page lists where it does not, and why. A difference that is not here is a b
 **Props are Cells.** Every prop arrives as a function you call: `props.title()`, not
 `props.title`. The compiler wraps each attribute in a Cell at the call site and a spread is
 an ordered list of sources read on demand, so there are no getters to flatten and
-`{...props}`, `splitProps`, `mergeProps` and a destructured parameter all copy the
+`{...props}`, `merge`, `omit` and a destructured parameter all copy the
 functions rather than reading them (`src/props.ts`). The price is the call at every read,
 which the compiler's diagnostics BARQ001, BARQ002, BARQ003 and BARQ005 catch when it is
 forgotten.
@@ -22,10 +22,6 @@ value is stored as a Cell for the same reason a prop is, so a provider whose `va
 changes updates its consumers without rebuilding its children. `getContext(ctx, owner?)`
 is the owner-targeted read and answers with the value.
 
-**`Context.Provider` still exists.** A context is its own provider, `<Theme value="dark">`,
-as in Solid 2.0. `Theme.Provider` is the same function, kept because code in this
-repository still spells it that way. Whether it goes is an open decision.
-
 **`createContext(defaultValue, name)`** also takes a plain string as its second argument,
 beside Solid's `{ name }`. Either names the context in the error a missing provider
 throws.
@@ -34,11 +30,11 @@ throws.
 `Card({ title, children })`, and children are deferred as Blocks the callee runs in its own
 scope. Nothing needs a runtime wrapper around that call.
 
-**`dynamic` is the compiler's helper, not Solid's factory.** `@barqjs/core`'s `dynamic`
-renders a resolved component or tag with a props list, and the compiler imports it under
-that name. Solid's `dynamic(source)` factory, which returns a stable component, is
-therefore not shipped yet; `<Dynamic component={…}>` works and is the way to choose a
-component at run time.
+**`<Dynamic component={…}>` is how to choose a component at run time.** Solid 2.0
+deprecates it in favour of the `dynamic(source)` factory but still ships it
+(`packages/web/src/index.ts` in Solid). barq keeps it until the factory exists, because the
+factory needs a string-backend half for server rendering that barq does not have yet.
+`resolveDynamic` is the compiler's helper behind both.
 
 **`DEV` is barq's renderer channel.** `DEV.diagnostics` carries what the renderer can see
 and the engine cannot (hydration mismatches, a write to a read-only binding, a Block run
@@ -57,8 +53,56 @@ module registry for it to key.
 the same reason it does not read a hydration module registry, so `peek()` during
 hydration answers what has loaded on the client and nothing more.
 
-**`classList`** is still accepted. Solid 2.0 removed it in favour of `class` with an object
-or an array, which barq also accepts.
+**Events.** `onClick` binds `click`, and an event name may also be written in lowercase,
+`onclick`, which Solid 2.0 instead treats as the HTML inline-handler attribute. A name
+ending in `Capture`, `onKeyDownCapture`, binds the capture phase, which Solid 2.0 has no
+spelling for. `prop:` writes a property, as in Solid 2.0, and `bind:` is barq's two-way
+binding.
+
+**`clearDelegatedEvents`** is exported. Solid 2.0 dropped it when delegated listeners
+became owned by each render root; barq's delegated listeners are still installed on the
+document, and this is what removes them.
+
+## Solid 1.x APIs barq does not have
+
+These are gone from Solid 2.0, or deprecated by it, and barq does not export them. Each is
+listed with its 2.0 replacement, from Solid's `documentation/solid-2.0/MIGRATION.md`.
+
+- `Suspense`, `SuspenseList`, `ErrorBoundary`: `Loading`, `Reveal`, `Errored`.
+- `Index`, `indexArray`: `<For keyed={false}>`, `mapArray` with `keyed: false`.
+- `createResource`: an async `createMemo` (or `createStore(fn)`) under `Loading`;
+  `refresh` for a refetch.
+- `startTransition`, `useTransition`: transitions are built in; `isPending`, `Loading`
+  and the optimistic primitives.
+- `batch`: writes are batched; `flush()` applies them now.
+- `createComputed`: `createMemo`, a split `createEffect`, or `createSignal(fn)`.
+- `createSelector`: `createProjection` or `createStore(fn)`.
+- `on`: the compute half of `createEffect`, with `{ defer: true }` for the deferred form.
+- `onMount`: `onSettled`.
+- `onError`, `catchError`, `resetErrorBoundaries`: `Errored` and an effect's `error`
+  option; boundaries recover on their own.
+- `createTrackedEffect`: `createEffect(compute, effect)`, or `onSettled` for one-time work
+  after render. Solid 2.0 still exports it, marked deprecated and kept for migration only.
+- `produce`, `createMutable`, `modifyMutable`, `storePath`: a store setter takes a draft
+  (`setStore((s) => { s.user.name = "salama"; })`).
+- `unwrap`: `snapshot`.
+- `mergeProps`, `splitProps`: `merge` (a later `undefined` overrides) and `omit` (read the
+  props you keep straight off `props`).
+- `equalFn`, `getListener`: `isEqual`, `getObserver`.
+- `from`, `observable`: an async iterable in a computation; `createEffect` pushes values
+  outward.
+- `Context.Provider`: the context is its own provider, `<Theme value="dark">`.
+- `classList`: `class` takes a map of names to whether each applies, or a list of names,
+  maps and further lists: `class={["card", { active: on() }]}`.
+- `use:` directives: `ref={directive(options)}`, and `ref={[a, b]}` for several.
+- `on:`, `oncapture:`, `attr:`, `bool:`, `style:` and `class:`: `onClick`, a ref that
+  calls `addEventListener`, the attribute's own name, `style` and `class` values.
+
+`Context.Provider`, `classList` and the namespaces still parse, so the compiler reports
+them with the replacement: [BARQ022](../../compiler-rs/docs/BARQ022.md),
+[BARQ023](../../compiler-rs/docs/BARQ023.md) and
+[BARQ024](../../compiler-rs/docs/BARQ024.md). The rest are missing exports, which
+TypeScript and the bundler report.
 
 ## Checked at compile time
 
@@ -82,8 +126,9 @@ and BARQ001 to BARQ003 report `props.name` used the same way.
 
 ## Not yet in barq
 
-- `createDeferred`. It is in `@solidjs/signals` after rc.14, which is the version barq
-  depends on, and arrives with the next engine update.
+- `createDeferred`. Solid 2.0 keeps the name for an async memo that may lag but never
+  leads. It is in `@solidjs/signals` after rc.15, which is the version barq depends on,
+  and arrives with the next engine update.
 - `Hydration`, `isHydratable` and `clientOnly` belong to the server rendering and
   hydration work and are not exported yet.
-- The `dynamic(source)` factory, for the reason above.
+- The `dynamic(source)` factory, for the reason given under `<Dynamic>` above.

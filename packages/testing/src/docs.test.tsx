@@ -31,7 +31,6 @@ import {
   createRoot,
   createSignal,
   createStore,
-  createTrackedEffect,
   flush,
   isPending,
   onCleanup,
@@ -164,7 +163,7 @@ describe("packages/core/README.md", () => {
     dispose();
   });
 
-  test("context, read through a Provider", () => {
+  test("context, read under the context as its own provider", () => {
     const Theme = createContext<"light" | "dark">("light");
     const host = mount();
 
@@ -175,9 +174,9 @@ describe("packages/core/README.md", () => {
 
     const dispose = render(
       () => (
-        <Theme.Provider value="dark">
+        <Theme value="dark">
           <Page />
-        </Theme.Provider>
+        </Theme>
       ),
       host,
     );
@@ -386,9 +385,12 @@ describe("packages/core/README.md", () => {
     const seen: number[] = [];
     const [count, setCount] = createSignal(0);
     const second = createRoot((release) => {
-      createTrackedEffect(() => {
-        seen.push(untrack(count));
-      });
+      createEffect(
+        () => untrack(count),
+        (value) => {
+          seen.push(value);
+        },
+      );
       return release;
     });
     flush();
@@ -529,10 +531,12 @@ describe("packages/primitives/README.md", () => {
     const dispose = createRoot((release) => {
       const isSelected = selector(selected);
       for (const id of [1, 2, 3]) {
-        createTrackedEffect(() => {
-          isSelected(id);
-          runs[id] = (runs[id] ?? 0) + 1;
-        });
+        createEffect(
+          () => isSelected(id),
+          () => {
+            runs[id] = (runs[id] ?? 0) + 1;
+          },
+        );
       }
       return release;
     });
@@ -583,14 +587,19 @@ describe("packages/primitives/README.md", () => {
     const users = new ReactiveMap<string, string>();
     const runs = { ada: 0, size: 0 };
     const dispose = createRoot((release) => {
-      createTrackedEffect(() => {
-        users.get("ada");
-        runs.ada++;
-      });
-      createTrackedEffect(() => {
-        expect(users.size).toBeGreaterThanOrEqual(0);
-        runs.size++;
-      });
+      createEffect(
+        () => users.get("ada"),
+        () => {
+          runs.ada++;
+        },
+      );
+      createEffect(
+        () => users.size,
+        (size) => {
+          expect(size).toBeGreaterThanOrEqual(0);
+          runs.size++;
+        },
+      );
       return release;
     });
     flush();

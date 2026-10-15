@@ -2,12 +2,12 @@
  * LAZINESS CONFORMANCE, as an acceptance test.
  *
  * A counting Cell must read **zero** after spread, rest-destructure,
- * `Object.assign`, `for…in`, `mergeProps`, `splitProps`, `omit`, and
- * forwarding through three wrappers.
+ * `Object.assign`, `for…in`, `merge`, `omit`, and forwarding through three
+ * wrappers.
  *
  * This is the falsification procedure for C3's Law 4 (copy-transparency). It
  * matters because the defect it replaces was not diagnosable: barq's six props
- * helpers all flattened getters, so `mergeProps(a, b)` EVALUATED every prop of
+ * helpers all flattened getters, so `merge(a, b)` EVALUATED every prop of
  * both, and a component that spread its props evaluated them again at every
  * hop. With a Cell there is nothing to flatten — copying a function copies a
  * function — and the property is a consequence of the language rather than of
@@ -19,7 +19,7 @@
  */
 
 import { describe, expect, test } from "bun:test";
-import { cell, merge, mergeProps, omit, props, splitProps, SOURCES } from "./props.ts";
+import { cell, merge, omit, props, SOURCES } from "./props.ts";
 import { createSignal } from "./signals.ts";
 
 /** A Cell that records every call. Reading it is the only way to its value. */
@@ -81,30 +81,16 @@ describe("laziness conformance: a counting Cell reads 0 after", () => {
     expect(seen.toSorted()).toEqual(["x", "y"]);
   });
 
-  test("mergeProps", () => {
+  test("merge", () => {
     const box = counting("v");
     const other = counting("w");
-    const merged = mergeProps({ x: box.carrier }, { y: other.carrier });
+    const merged = merge({ x: box.carrier }, { y: other.carrier });
 
     expect(box.reads).toBe(0);
     expect(other.reads).toBe(0);
     expect(merged.x()).toBe("v");
     expect(box.reads).toBe(1);
     expect(other.reads).toBe(0);
-  });
-
-  test("splitProps", () => {
-    const box = counting("v");
-    const other = counting("w");
-    const [picked, rest] = splitProps({ x: box.carrier, y: other.carrier }, ["x"]);
-
-    expect(box.reads).toBe(0);
-    expect(other.reads).toBe(0);
-    expect(Object.keys(picked)).toEqual(["x"]);
-    expect(Object.keys(rest)).toEqual(["y"]);
-    expect(box.reads).toBe(0);
-    expect(picked.x()).toBe("v");
-    expect(box.reads).toBe(1);
   });
 
   test("omit", () => {
@@ -128,7 +114,7 @@ describe("laziness conformance: a counting Cell reads 0 after", () => {
     // nothing and the kind cannot change on the way.
     const one = (p: Record<string, unknown>): Record<string, unknown> => props([p]);
     const two = (p: Record<string, unknown>): Record<string, unknown> =>
-      one(mergeProps(p, { hop: cell(2) }));
+      one(merge(p, { hop: cell(2) }));
     const three = (p: Record<string, unknown>): Record<string, unknown> =>
       two(merge(p, { hop: cell(3) }));
 
@@ -145,13 +131,12 @@ describe("laziness conformance: a counting Cell reads 0 after", () => {
     let carried: Record<string, unknown> = { x: box.carrier };
     carried = { ...carried };
     carried = Object.assign({}, carried);
-    carried = mergeProps(carried, { pad: cell(0) });
+    carried = merge(carried, { pad: cell(0) });
     carried = omit(carried, "pad");
-    const [split] = splitProps(carried, ["x"]);
-    for (const _key in split) {
-      // walking the keys is itself one of the eight operations
+    for (const _key in carried) {
+      // walking the keys is itself one of the operations
     }
-    const { ...rest } = split;
+    const { ...rest } = carried;
 
     expect(box.reads).toBe(0);
     expect((rest.x as () => string)()).toBe("v");
@@ -175,8 +160,7 @@ describe("the source list", () => {
     expect((outer as unknown as { $: unknown[] }).$.length).toBe(3);
   });
 
-  test("mergeProps skips a later undefined; merge treats it as a value", () => {
-    expect(mergeProps({ x: cell(1) }, { x: undefined }).x).not.toBeUndefined();
+  test("merge treats a later undefined as a value", () => {
     expect(merge({ x: cell(1) }, { x: undefined }).x).toBeUndefined();
   });
 
@@ -339,10 +323,10 @@ describe("a spread of plain values into a component", () => {
     expect(merged["trend"]).toBe(cellular);
   });
 
-  // `mergeProps` and friends are utilities over ordinary objects, where a
-  // caller merging `{ count: 1 }` wants `count` to be `1`.
-  test("mergeProps is untouched by any of this", () => {
-    const merged = mergeProps({ count: 1 }, { flag: true });
+  // `merge` and `omit` are utilities over ordinary objects, where a caller
+  // merging `{ count: 1 }` wants `count` to be `1`.
+  test("merge is untouched by any of this", () => {
+    const merged = merge({ count: 1 }, { flag: true });
     expect(merged["count"]).toBe(1);
     expect(merged["flag"]).toBe(true);
   });

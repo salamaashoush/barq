@@ -13,10 +13,12 @@
 
 import { afterAll, describe, expect, test } from "bun:test";
 import { type ReactiveFramework, SkipTest, testSuite } from "reactive-framework-test-suite";
+// The suite's `effect` tracks and acts in one function. Only the engine's
+// deprecated `createTrackedEffect` does that, and barq does not export it.
+import { createTrackedEffect } from "@solidjs/signals";
 import {
   createMemo,
   createRoot,
-  createTrackedEffect,
   flush,
   getOwner,
   createSignal,

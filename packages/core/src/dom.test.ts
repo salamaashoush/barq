@@ -1337,10 +1337,11 @@ describe("capture-phase events", () => {
     expect(seen).toEqual(["capture"]);
   });
 
-  test("the capture: namespace is the verbatim form", () => {
+  test("a `capture:` or `on:` prefix is part of an attribute's name", () => {
     const seen: string[] = [];
     const parent = document.createElement("div");
-    setProp(parent, "capture:keydown", () => seen.push("capture"));
+    setProp(parent, "capture:keydown", "first");
+    setProp(parent, "on:keydown", "second");
     const child = document.createElement("input");
     parent.appendChild(child);
     container.appendChild(parent);
@@ -1348,7 +1349,9 @@ describe("capture-phase events", () => {
     child.dispatchEvent(new KeyboardEvent("keydown", { key: "a", bubbles: true }));
 
     flush();
-    expect(seen).toEqual(["capture"]);
+    expect(seen).toEqual([]);
+    expect(parent.getAttribute("capture:keydown")).toBe("first");
+    expect(parent.getAttribute("on:keydown")).toBe("second");
   });
 
   test("a spread binds both phases of one event type", () => {
