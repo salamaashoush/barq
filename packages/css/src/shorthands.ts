@@ -17,20 +17,35 @@
  * rather than a guess.
  */
 
-/** `[longhands, howManyValuesTheShorthandTakes]`, in CSS's own box order. */
-const BOX = ["top", "right", "bottom", "left"] as const;
-
-function box(property: string, suffix = ""): readonly string[] {
-  return BOX.map((side) => `${property}-${side}${suffix}`);
-}
-
+/**
+ * Each shorthand's longhands, in the order its values are counted into them.
+ *
+ * Written out rather than built, like the two tables after it: the compiler
+ * generates its own copy from this text at build time, so neither side holds a
+ * list the other could drift from.
+ */
 export const SHORTHANDS: Readonly<Record<string, readonly string[]>> = {
-  margin: box("margin"),
-  padding: box("padding"),
+  margin: ["margin-top", "margin-right", "margin-bottom", "margin-left"],
+  padding: ["padding-top", "padding-right", "padding-bottom", "padding-left"],
   inset: ["top", "right", "bottom", "left"],
-  "border-width": box("border", "-width"),
-  "border-style": box("border", "-style"),
-  "border-color": box("border", "-color"),
+  "border-width": [
+    "border-top-width",
+    "border-right-width",
+    "border-bottom-width",
+    "border-left-width",
+  ],
+  "border-style": [
+    "border-top-style",
+    "border-right-style",
+    "border-bottom-style",
+    "border-left-style",
+  ],
+  "border-color": [
+    "border-top-color",
+    "border-right-color",
+    "border-bottom-color",
+    "border-left-color",
+  ],
   "border-radius": [
     "border-top-left-radius",
     "border-top-right-radius",
@@ -49,7 +64,95 @@ export const SHORTHANDS: Readonly<Record<string, readonly string[]>> = {
   "margin-inline": ["margin-inline-start", "margin-inline-end"],
   "padding-block": ["padding-block-start", "padding-block-end"],
   "padding-inline": ["padding-inline-start", "padding-inline-end"],
+  "border-block-width": ["border-block-start-width", "border-block-end-width"],
+  "border-block-style": ["border-block-start-style", "border-block-end-style"],
+  "border-block-color": ["border-block-start-color", "border-block-end-color"],
+  "border-inline-width": ["border-inline-start-width", "border-inline-end-width"],
+  "border-inline-style": ["border-inline-start-style", "border-inline-end-style"],
+  "border-inline-color": ["border-inline-start-color", "border-inline-end-color"],
 };
+
+/**
+ * One row an axis: its physical longhands, then the logical longhands that
+ * land on the same sides.
+ *
+ * `padding-left` and `padding-inline-start` are two properties and one side of
+ * the box, so both apply and the stylesheet's order decides between them, which
+ * is whichever was used first anywhere on the page. A merge that keeps the last
+ * class per PROPERTY cannot see that, so a longhand also takes the place of
+ * every longhand on its axis written the other way: the later key wins, as it
+ * does between a shorthand and its own longhand.
+ *
+ * The whole axis rather than one side, because which side `inline-start` is
+ * depends on the element's direction and that is not known here. The rows are
+ * the horizontal writing modes', where the block axis is the vertical one.
+ */
+export const AXES: readonly (readonly [readonly string[], readonly string[]])[] = [
+  [
+    ["margin-top", "margin-bottom"],
+    ["margin-block-start", "margin-block-end"],
+  ],
+  [
+    ["margin-left", "margin-right"],
+    ["margin-inline-start", "margin-inline-end"],
+  ],
+  [
+    ["padding-top", "padding-bottom"],
+    ["padding-block-start", "padding-block-end"],
+  ],
+  [
+    ["padding-left", "padding-right"],
+    ["padding-inline-start", "padding-inline-end"],
+  ],
+  [
+    ["top", "bottom"],
+    ["inset-block-start", "inset-block-end"],
+  ],
+  [
+    ["left", "right"],
+    ["inset-inline-start", "inset-inline-end"],
+  ],
+  [
+    ["border-top-width", "border-bottom-width"],
+    ["border-block-start-width", "border-block-end-width"],
+  ],
+  [
+    ["border-left-width", "border-right-width"],
+    ["border-inline-start-width", "border-inline-end-width"],
+  ],
+  [
+    ["border-top-style", "border-bottom-style"],
+    ["border-block-start-style", "border-block-end-style"],
+  ],
+  [
+    ["border-left-style", "border-right-style"],
+    ["border-inline-start-style", "border-inline-end-style"],
+  ],
+  [
+    ["border-top-color", "border-bottom-color"],
+    ["border-block-start-color", "border-block-end-color"],
+  ],
+  [
+    ["border-left-color", "border-right-color"],
+    ["border-inline-start-color", "border-inline-end-color"],
+  ],
+  [
+    ["border-top-left-radius", "border-top-right-radius"],
+    ["border-start-start-radius", "border-start-end-radius"],
+  ],
+  [
+    ["border-bottom-left-radius", "border-bottom-right-radius"],
+    ["border-end-start-radius", "border-end-end-radius"],
+  ],
+];
+
+/** Each longhand of {@link AXES}, and the longhands it takes the place of. */
+export const DISPLACES: ReadonlyMap<string, readonly string[]> = new Map(
+  AXES.flatMap(([physical, logical]) => [
+    ...physical.map((name) => [name, logical] as const),
+    ...logical.map((name) => [name, physical] as const),
+  ]),
+);
 
 /**
  * Shorthands that cannot be expanded by counting values, and so cannot take
@@ -86,26 +189,59 @@ export const UNEXPANDABLE = new Set([
  * CSS's own rule for a box shorthand: 1 value is all four, 2 is block/inline,
  * 3 is top/inline/bottom, 4 is each side. A two-longhand shorthand takes 1 or
  * 2. Anything else is left whole for the caller to refuse.
+ *
+ * `!important` is the declaration's and not a side's, so it is taken off
+ * before the values are counted and written back onto every longhand.
  */
 export function expand(property: string, value: string): [string, string][] | null {
   const longhands = SHORTHANDS[property];
   if (longhands === undefined) return null;
+  const bang = /\s*!\s*important\s*$/i.exec(value);
+  const important = bang === null ? "" : " !important";
+  const body = bang === null ? value : value.slice(0, bang.index);
+  const values = property === "border-radius" ? radii(body) : sides(longhands.length, body);
+  if (values === null) return null;
+  return longhands.map((name, index) => [name, `${values[index]}${important}`]);
+}
+
+function sides(count: number, value: string): string[] | null {
   const parts = splitValues(value);
-  if (longhands.length === 2) {
-    if (parts.length === 1) return longhands.map((name) => [name, parts[0]] as [string, string]);
-    if (parts.length === 2) {
-      return longhands.map((name, index) => [name, parts[index]] as [string, string]);
-    }
-    return null;
+  if (count === 2) {
+    if (parts.length === 1) return [parts[0], parts[0]];
+    return parts.length === 2 ? parts : null;
   }
-  const [top, right = top, bottom = top, left = right] = parts;
   if (parts.length < 1 || parts.length > 4) return null;
-  return [
-    [longhands[0], top],
-    [longhands[1], right],
-    [longhands[2], bottom],
-    [longhands[3], left],
+  const [top, right = top, bottom = top, left = right] = parts as [
+    string,
+    string?,
+    string?,
+    string?,
   ];
+  return [top, right, bottom, left];
+}
+
+/**
+ * `border-radius` is two box shorthands either side of a slash, the
+ * horizontal radii and the vertical, and each corner takes one of each.
+ */
+function radii(value: string): string[] | null {
+  const slash = topLevel(value, "/");
+  if (slash < 0) return sides(4, value);
+  const horizontal = sides(4, value.slice(0, slash));
+  const vertical = sides(4, value.slice(slash + 1));
+  if (horizontal === null || vertical === null) return null;
+  return horizontal.map((radius, corner) => `${radius} ${vertical[corner]}`);
+}
+
+function topLevel(value: string, wanted: string): number {
+  let depth = 0;
+  for (let index = 0; index < value.length; index++) {
+    const character = value[index];
+    if (character === "(") depth++;
+    else if (character === ")") depth--;
+    else if (character === wanted && depth === 0) return index;
+  }
+  return -1;
 }
 
 /** Top-level whitespace split, so `calc(1px + 2px)` and `var(--a, b)` stay whole. */
@@ -117,11 +253,12 @@ function splitValues(value: string): string[] {
     const character = value[index];
     if (character === "(") depth++;
     else if (character === ")") depth--;
-    else if ((index === value.length || /\s/.test(character ?? "")) && depth === 0) {
-      const part = value.slice(start, index).trim();
-      if (part !== "") out.push(part);
+    else if (depth === 0 && (character === undefined || WHITESPACE.includes(character))) {
+      if (index > start) out.push(value.slice(start, index));
       start = index + 1;
     }
   }
   return out;
 }
+
+const WHITESPACE = " \t\n\r\f";

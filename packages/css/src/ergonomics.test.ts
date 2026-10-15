@@ -18,6 +18,7 @@ import {
   variants,
   globalVars,
 } from "./index.ts";
+import type { VariantProps } from "./index.ts";
 import { TIERS, dynamicVar, tierOf } from "./internal.ts";
 
 /**
@@ -706,5 +707,232 @@ describe("props and dynamic", () => {
       .split(" ")
       .find((name) => name.startsWith("a-background-color_")) as string;
     expect(ruleFor(background)).toContain("background-color:green");
+  });
+});
+
+describe("atoms > a shorthand the box rule cannot count on its own", () => {
+  test("`!important` goes to every side rather than being counted as one", () => {
+    const names = atoms({ margin: "0 auto !important" }).split(" ");
+    expect(names.map(ruleFor)).toEqual([
+      `.${names[0]}{margin-top:0 !important}`,
+      `.${names[1]}{margin-right:auto !important}`,
+      `.${names[2]}{margin-bottom:0 !important}`,
+      `.${names[3]}{margin-left:auto !important}`,
+    ]);
+  });
+
+  test("a radius with a slash pairs each corner's two radii", () => {
+    const names = atoms({ borderRadius: "1px 2px / 3px" }).split(" ");
+    expect(names.map(ruleFor)).toEqual([
+      `.${names[0]}{border-top-left-radius:1px 3px}`,
+      `.${names[1]}{border-top-right-radius:2px 3px}`,
+      `.${names[2]}{border-bottom-right-radius:1px 3px}`,
+      `.${names[3]}{border-bottom-left-radius:2px 3px}`,
+    ]);
+    expect(atoms({ borderRadius: "50%/10%" })).toBe(atoms({ borderRadius: "50% / 10%" }));
+  });
+
+  test("and a corner written afterwards still replaces exactly that corner", () => {
+    const names = atoms({ borderRadius: "4px / 8px" }, { borderTopLeftRadius: 0 }).split(" ");
+    expect(names).toHaveLength(4);
+    expect(names.map(ruleFor)).toContain(`.${names[0]}{border-top-left-radius:0}`);
+  });
+});
+
+describe("atoms > values", () => {
+  test("a number that is a ratio or a count stays a bare number", () => {
+    const names = atoms({ fillOpacity: 0.5, strokeOpacity: 0.25, WebkitLineClamp: 3 }).split(" ");
+    expect(names.map(ruleFor)).toEqual([
+      `.${names[0]}{fill-opacity:0.5}`,
+      `.${names[1]}{stroke-opacity:0.25}`,
+      `.${names[2]}{-webkit-line-clamp:3}`,
+    ]);
+  });
+
+  test("a vendor prefix written in camel case gets its dash back", () => {
+    const camel = atoms({ WebkitUserSelect: "none", MozAppearance: "none", msTransform: "none" });
+    const dashed = atoms({
+      "-webkit-user-select": "none",
+      "-moz-appearance": "none",
+      "-ms-transform": "none",
+    });
+    expect(camel).toBe(dashed);
+    expect(ruleFor(camel.split(" ")[0])).toContain("{-webkit-user-select:none}");
+  });
+
+  test("a number that is not one declares nothing", () => {
+    expect(atoms({ width: Number.NaN, height: Number.POSITIVE_INFINITY })).toBe("");
+    expect(collectCss()).not.toContain("NaN");
+  });
+
+  test("a value that would close its own rule declares nothing", () => {
+    const before = collectCss();
+    expect(atoms({ color: "red;} body{display:none" })).toBe("");
+    expect(atoms({ color: "red}" })).toBe("");
+    expect(atoms({ backgroundImage: "url(" })).toBe("");
+    expect(atoms({ fontFamily: '"Inter' })).toBe("");
+    expect(collectCss()).toBe(before);
+  });
+
+  test("but punctuation inside a string or a function is the value's own", () => {
+    const names = atoms({
+      "::before": { content: '"};{"' },
+      backgroundImage: "url(data:image/svg+xml;base64,AAA=)",
+      gridTemplateColumns: "[full-start] 1fr [full-end]",
+      quotes: '"\\\\" "}"',
+    }).split(" ");
+    expect(names).toHaveLength(4);
+    expect(collectCss()).toContain(`.${names[0]}::before{content:"};{"}`);
+  });
+
+  test("classes separated by any whitespace merge like classes separated by a space", () => {
+    const red = atoms({ color: "red" });
+    const blue = atoms({ color: "blue" });
+    expect(atoms(`\n  ${red}\n\t${blue}\n`)).toBe(blue);
+    expect(atoms(`mine\n${red}`, blue)).toBe(`mine ${blue}`);
+  });
+
+  test("a class is the same after the memo behind it has been dropped", () => {
+    const first = atoms({ minWidth: 1 });
+    // Values that declare nothing, so the memo fills and the sheet does not.
+    for (let width = 0; width < 12_000; width++) atoms({ minWidth: `${width}}` });
+    expect(atoms({ minWidth: 1 })).toBe(first);
+    expect(collectCss().split(`.${first}{`).length - 1).toBe(1);
+  });
+});
+
+describe("dynamic > what cannot be one custom property", () => {
+  test("a condition is skipped rather than named as if it were a property", () => {
+    const hover = dynamic((colour: string) => ({ ":hover": { color: colour }, color: colour }));
+    const applied = hover("red");
+    expect(applied.$vars).toEqual({ [dynamicVar("color")]: "red" });
+    expect(applied.$class.split(" ")).toHaveLength(1);
+  });
+
+  test("a longhand after its shorthand replaces that side, as it does in `atoms`", () => {
+    const box = dynamic((all: string, left: string) => ({ padding: all, paddingLeft: left }));
+    const names = box("4px", "8px").$class.split(" ");
+    expect(names.filter((name) => name.startsWith("a-padding-left_"))).toHaveLength(1);
+    expect(ruleFor(names.find((name) => name.startsWith("a-padding-left_")) as string)).toContain(
+      `padding-left:var(${dynamicVar("padding-left")})`,
+    );
+  });
+});
+
+describe("variants > a selection", () => {
+  test("is told apart from another that spells the same text", () => {
+    const pick = variants({
+      variants: { a: { "x|y": "A1", x: "A2" }, b: { z: "B1", "y|z": "B2" } },
+    });
+    expect(pick({ a: "x|y", b: "z" })).toBe("A1 B1");
+    expect(pick({ a: "x", b: "y|z" })).toBe("A2 B2");
+  });
+
+  test("is typed from the function, for a component's own props", () => {
+    const badge = variants({
+      variants: { size: { sm: "s", lg: "l" }, loud: { true: "T", false: "F" } },
+    });
+    const chosen: VariantProps<typeof badge> = { size: "lg", loud: false };
+    expect(badge(chosen)).toBe("l F");
+    expect(badge({ size: null, loud: "true" })).toBe("T");
+  });
+});
+
+describe("variants > a compound arm", () => {
+  const badge = variants({
+    variants: { size: { sm: "s", md: "m", lg: "l" }, loud: { true: "T", false: "F" } },
+    compound: [
+      { when: { size: ["sm", "md"] }, use: "compact" },
+      { when: { size: ["lg"], loud: [true] }, use: "shout" },
+    ],
+  });
+
+  test("matches any of the arms it lists", () => {
+    expect(badge({ size: "sm" })).toBe("s compact");
+    expect(badge({ size: "md" })).toBe("m compact");
+    expect(badge({ size: "lg" })).toBe("l");
+  });
+
+  test("and still needs every axis it names", () => {
+    expect(badge({ size: "lg", loud: true })).toBe("l T shout");
+    expect(badge({ size: "lg", loud: false })).toBe("l F");
+  });
+});
+
+describe("variants > slots", () => {
+  const field = variants({
+    slots: {
+      root: atoms({ display: "grid", gap: 4 }),
+      label: atoms({ fontWeight: 500 }),
+      hint: "hint",
+    },
+    variants: {
+      size: {
+        sm: { root: atoms({ gap: 2 }) },
+        lg: { root: atoms({ gap: 8 }), label: atoms({ fontSize: 18 }) },
+      },
+      invalid: { true: { label: atoms({ color: "red" }), hint: "hint-invalid" } },
+    },
+    defaults: { size: "sm" },
+    compound: [{ when: { size: "lg", invalid: true }, use: { label: atoms({ fontWeight: 700 }) } }],
+  });
+
+  test("returns a class for every part, merged the way one class is", () => {
+    const parts = field();
+    expect(Object.keys(parts)).toEqual(["root", "label", "hint"]);
+    expect(parts.root).toBe(atoms({ display: "grid", gap: 2 }));
+    expect(parts.label).toBe(atoms({ fontWeight: 500 }));
+    expect(parts.hint).toBe("hint");
+  });
+
+  test("an arm changes only the parts it names", () => {
+    const parts = field({ size: "lg", invalid: true });
+    expect(parts.root).toBe(atoms({ display: "grid", gap: 8 }));
+    expect(parts.label).toBe(atoms({ fontWeight: 700, fontSize: 18, color: "red" }));
+    expect(parts.hint).toBe("hint hint-invalid");
+  });
+
+  test("the same selection is the same object, so a reader can compare it", () => {
+    expect(field({ size: "lg" })).toBe(field({ size: "lg", invalid: null }));
+  });
+
+  test("a spec with no axes is its slots", () => {
+    const plain = variants({ slots: { root: "r", icon: "i" } });
+    expect(plain()).toEqual({ root: "r", icon: "i" });
+  });
+});
+
+describe("defineVars > a group of tokens", () => {
+  const tokens = defineVars({
+    radius: "8px",
+    color: { brand: "#3b82f6", text: { muted: "#666" } },
+  });
+
+  test("is a group of references, each named by its path", () => {
+    expect(tokens.radius).toMatch(/^var\(--radius-\w+\)$/);
+    expect(tokens.color.brand).toMatch(/^var\(--color-brand-\w+\)$/);
+    expect(tokens.color.text.muted).toMatch(/^var\(--color-text-muted-\w+\)$/);
+    const property = tokens.color.text.muted.slice(4, -1);
+    expect(collectCss()).toContain(`${property}:#666`);
+  });
+
+  test("a theme redeclares a token inside a group, and only that one", () => {
+    const dark = createTheme(tokens, { color: { text: { muted: "#aaa" } } });
+    const property = tokens.color.text.muted.slice(4, -1);
+    expect(ruleFor(dark)).toBe(`.${dark}{${property}:#aaa}`);
+  });
+
+  test("and globalVars names a grouped token by its path alone", () => {
+    const named = globalVars({ space: { sm: "4px", lg: "16px" } });
+    expect(named.space.lg).toBe("var(--space-lg)");
+    expect(collectCss()).toContain(":root{--space-sm:4px;--space-lg:16px}");
+  });
+});
+
+describe("defineVars > a token named in another script", () => {
+  test("keeps its letters, which is the name the compiler gives it", () => {
+    const tokens = defineVars({ größe: "4px" });
+    expect(tokens.größe).toMatch(/^var\(--größe-\w+\)$/);
+    expect(globalVars({ größe: "4px" }).größe).toBe("var(--größe)");
   });
 });

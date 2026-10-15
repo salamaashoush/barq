@@ -17,11 +17,53 @@ import { hash, register } from "./sheet.ts";
 
 export type TokenValue = string | number;
 
-/** The `var()` reference for each token, and its custom-property name. */
-export type Vars<T> = { readonly [K in keyof T]: string };
+/** A token set: values, and groups of values to any depth. */
+export type Tokens = { readonly [name: string]: TokenValue | Tokens };
+
+/** The `var()` reference for each token, in the shape the tokens were given. */
+export type Vars<T> = {
+  readonly [K in keyof T]: T[K] extends TokenValue ? string : Vars<T[K]>;
+};
+
+/** Some of a token set's values, in the shape {@link Vars} has. */
+export type ThemeValues<T> = {
+  readonly [K in keyof T]?: T[K] extends string ? TokenValue : ThemeValues<T[K]>;
+};
+
+/**
+ * Letters and digits of any script are kept, which is what the compiler keeps:
+ * a token named `größe` is one property whichever of the two names it.
+ */
+function safe(token: string): string {
+  return token.replace(/[^\p{Alphabetic}\p{N}_-]/gu, "-");
+}
 
 function propertyName(group: string, token: string): string {
-  return `--${token.replace(/[^\w-]/g, "-")}-${group}`;
+  return `--${safe(token)}-${group}`;
+}
+
+/**
+ * Every token as a declaration and a reference. A group's tokens are named by
+ * their path, so `{ color: { brand } }` is `--color-brand`.
+ */
+function declare(
+  tokens: Tokens,
+  name: (path: string) => string,
+  declarations: string[],
+  prefix = "",
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [token, value] of Object.entries(tokens)) {
+    const path = prefix === "" ? token : `${prefix}-${token}`;
+    if (typeof value === "object") {
+      out[token] = declare(value, name, declarations, path);
+      continue;
+    }
+    const property = name(path);
+    declarations.push(`${property}:${String(value)}`);
+    out[token] = `var(${property})`;
+  }
+  return out;
 }
 
 /**
@@ -31,15 +73,10 @@ function propertyName(group: string, token: string): string {
  * same tokens share them and two declaring a `brand` that differs do not
  * collide. Nothing here needs to know the file it is in.
  */
-export function defineVars<T extends Record<string, TokenValue>>(tokens: T): Vars<T> {
+export function defineVars<T extends Tokens>(tokens: T): Vars<T> {
   const group = hash(JSON.stringify(tokens)).slice(1);
   const declarations: string[] = [];
-  const out: Record<string, string> = {};
-  for (const [token, value] of Object.entries(tokens)) {
-    const property = propertyName(group, token);
-    declarations.push(`${property}:${String(value)}`);
-    out[token] = `var(${property})`;
-  }
+  const out = declare(tokens, (path) => propertyName(group, path), declarations);
   register(`vars:${group}`, `:root{${declarations.join(";")}}`);
   return out as Vars<T>;
 }
@@ -67,17 +104,20 @@ export function defineVars<T extends Record<string, TokenValue>>(tokens: T): Var
  * Use {@link defineVars} when the tokens are yours alone and a collision would
  * be a bug; use this when the names are the point.
  */
-export function globalVars<T extends Record<string, TokenValue>>(tokens: T): Vars<T> {
+export function globalVars<T extends Tokens>(tokens: T): Vars<T> {
   const declarations: string[] = [];
-  const out: Record<string, string> = {};
-  for (const [token, value] of Object.entries(tokens)) {
-    const property = `--${token.replace(/[^\w-]/g, "-")}`;
-    declarations.push(`${property}:${String(value)}`);
-    out[token] = `var(${property})`;
-  }
+  const names: string[] = [];
+  const out = declare(
+    tokens,
+    (path) => {
+      names.push(path);
+      return `--${safe(path)}`;
+    },
+    declarations,
+  );
   // Keyed by the NAMES, so declaring the same set twice replaces it rather
   // than stacking two `:root` blocks that disagree.
-  register(`vars:${hash(Object.keys(tokens).join(","))}`, `:root{${declarations.join(";")}}`);
+  register(`vars:${hash(names.join(","))}`, `:root{${declarations.join(";")}}`);
   return out as Vars<T>;
 }
 
@@ -88,21 +128,31 @@ export function globalVars<T extends Record<string, TokenValue>>(tokens: T): Var
  * that is what a custom property does. No component has to be re-rendered and
  * no second copy of any rule is produced.
  */
-export function createTheme<T extends Record<string, string>>(
-  vars: T,
-  values: Partial<Record<keyof T, TokenValue>>,
-): string {
+export function createTheme<T extends Vars<Tokens>>(vars: T, values: ThemeValues<T>): string {
   const declarations: string[] = [];
-  for (const [token, value] of Object.entries(values)) {
-    if (value === undefined) continue;
-    // The property name is already in the reference the token set handed back,
-    // so a theme needs nothing from the call that produced it.
-    const property = /^var\((--[^,)]+)/.exec(vars[token] ?? "")?.[1];
-    if (property === undefined) continue;
-    declarations.push(`${property}:${String(value)}`);
-  }
+  redeclare(vars, values, declarations);
   const declaration = declarations.join(";");
   const name = hash(declaration);
   register(name, `.${name}{${declaration}}`);
   return name;
+}
+
+type ValueTree = { readonly [token: string]: TokenValue | ValueTree | undefined };
+
+function redeclare(vars: Record<string, unknown>, values: ValueTree, declarations: string[]): void {
+  for (const [token, value] of Object.entries(values)) {
+    if (value === undefined) continue;
+    const reference = vars[token];
+    if (typeof value === "object") {
+      if (typeof reference === "object" && reference !== null) {
+        redeclare(reference as Record<string, unknown>, value, declarations);
+      }
+      continue;
+    }
+    // The property name is already in the reference the token set handed back,
+    // so a theme needs nothing from the call that produced it.
+    const property = /^var\((--[^,)]+)/.exec(typeof reference === "string" ? reference : "")?.[1];
+    if (property === undefined) continue;
+    declarations.push(`${property}:${String(value)}`);
+  }
 }

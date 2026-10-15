@@ -17,8 +17,8 @@
 
 import type * as CSS from "csstype";
 
-import { expand } from "./shorthands.ts";
-import { hash, register } from "./sheet.ts";
+import { DISPLACES, expand } from "./shorthands.ts";
+import { hash, onReset, registerAtom } from "./sheet.ts";
 
 export type AtomValue = string | number | false | null | undefined | Fallback;
 
@@ -44,6 +44,52 @@ function isFallback(value: unknown): value is Fallback {
 
 /** A condition path, joined. `@media …` outside, `:hover` inside. */
 export const NEST = "\u0000";
+
+/** What a key has to look like to be read as a condition rather than a property. */
+export type Condition =
+  | `:${string}`
+  | `@${string}`
+  | `&${string}`
+  | `[${string}`
+  | `${string}&${string}`;
+
+/**
+ * Conditions, named once.
+ *
+ * A breakpoint or a theme selector is written in every component that uses
+ * it, and one of them spelled `min-width:768px` is a second condition with a
+ * second hash and its own place in the media tier. Named, there is one
+ * spelling:
+ *
+ * ```ts
+ * export const when = defineConditions({
+ *   md: "@media (min-width: 768px)",
+ *   dark: "[data-theme=dark] &",
+ * });
+ *
+ * atoms({ padding: { default: 4, [when.md]: 8 }, [when.dark]: { color: "white" } });
+ * ```
+ *
+ * The object comes back as it went in, so a name is the condition's own text
+ * and a computed key is the same key written out: same class, same rule. The
+ * compiler reads the literal where it is declared, and through an import the
+ * way it reads a `create` group through one.
+ */
+export function defineConditions<const T extends Readonly<Record<string, Condition>>>(
+  conditions: T,
+): T {
+  for (const name in conditions) {
+    const condition: unknown = conditions[name];
+    if (typeof condition !== "string" || !looksLikeCondition(condition)) {
+      throw new TypeError(
+        `[barq] \`${name}\` is not a condition: its value \`${String(condition)}\` does not start with ` +
+          "`:`, `@`, `&` or `[` and holds no `&`. Used as a key in `atoms`, it would be read as a CSS property and the styles under it would never apply. " +
+          'Write the condition in full, such as `"@media (min-width: 768px)"` or `":hover"`.',
+      );
+    }
+  }
+  return conditions;
+}
 
 function looksLikeCondition(name: string): boolean {
   return (
@@ -77,11 +123,9 @@ export type AtomStyles = {
   readonly [K in keyof CSS.Properties]?: AtomValue | AtomConditions;
 } & {
   /**
-   * A custom property, and a vendor-prefixed one.
-   *
-   * `-webkit-user-select` has no other spelling: camel-cased to
-   * `WebkitUserSelect` it comes back out of `kebab` as `webkit-user-select`,
-   * which is not a property any browser has.
+   * A custom property, and a vendor-prefixed one written the way CSS writes
+   * it. `WebkitUserSelect` is the same declaration: a leading capital, or a
+   * leading `ms`, is a vendor prefix and gets its dash back.
    */
   readonly [key: `-${string}`]: AtomValue | AtomConditions;
 } & {
@@ -93,17 +137,26 @@ export type AtomStyles = {
 };
 
 /** Properties whose bare number is a count, not a length. */
-const UNITLESS = new Set([
+export const UNITLESS = new Set([
+  "-webkit-box-flex",
+  "-webkit-box-ordinal-group",
+  "-webkit-line-clamp",
   "animation-iteration-count",
   "aspect-ratio",
   "border-image-outset",
   "border-image-slice",
   "border-image-width",
+  "box-flex",
+  "box-flex-group",
+  "box-ordinal-group",
   "column-count",
   "columns",
+  "fill-opacity",
   "flex",
   "flex-grow",
   "flex-shrink",
+  "flood-opacity",
+  "font-size-adjust",
   "font-weight",
   "grid-area",
   "grid-column",
@@ -112,12 +165,23 @@ const UNITLESS = new Set([
   "grid-row",
   "grid-row-end",
   "grid-row-start",
+  "hyphenate-limit-chars",
+  "initial-letter",
   "line-clamp",
   "line-height",
+  "mask-border-outset",
+  "mask-border-slice",
+  "mask-border-width",
+  "math-depth",
+  "max-lines",
   "opacity",
   "order",
   "orphans",
   "scale",
+  "shape-image-threshold",
+  "stop-opacity",
+  "stroke-miterlimit",
+  "stroke-opacity",
   "tab-size",
   "widows",
   "z-index",
@@ -127,23 +191,79 @@ const UNITLESS = new Set([
 const kebabbed = new Map<string, string>();
 
 /**
- * Memoised because it is the hottest thing here: a regex and a lowercase per
- * property per call, over an alphabet of maybe forty property names in a whole
- * application.
+ * Memoised over an alphabet of maybe forty property names in a whole
+ * application. A custom property is returned as written and never held: its
+ * name can be computed, and a map keyed on computed names only grows.
+ *
+ * Every capital gets a dash, including a leading one, so `WebkitLineClamp` is
+ * `-webkit-line-clamp`. `ms` is the one prefix written in lower case.
  */
 export function kebab(property: string): string {
+  if (property.startsWith("--")) return property;
   const hit = kebabbed.get(property);
   if (hit !== undefined) return hit;
-  const out = property.startsWith("--")
-    ? property
-    : property.replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+  const dashed = property.replace(/[A-Z]/g, "-$&").toLowerCase();
+  const out = dashed.startsWith("ms-") ? `-${dashed}` : dashed;
   kebabbed.set(property, out);
   return out;
 }
 
+/**
+ * A custom property's number is written as given: nothing here knows what
+ * reads `--columns`, and `4px` in a `repeat()` is not a count.
+ */
 function cssValue(property: string, value: string | number): string {
-  if (typeof value !== "number" || value === 0 || UNITLESS.has(property)) return String(value);
-  return `${value}px`;
+  if (typeof value !== "number" || value === 0) return String(value);
+  return property.startsWith("--") || UNITLESS.has(property) ? String(value) : `${value}px`;
+}
+
+/** The index of the quote closing the string that opens at `open`, or `-1`. */
+function stringEnd(value: string, open: number): number {
+  for (let index = open + 1; index < value.length; index++) {
+    const character = value[index];
+    if (character === "\\") index++;
+    else if (character === value[open]) return index;
+    else if (character === "\n") return -1;
+  }
+  return -1;
+}
+
+/**
+ * Whether a value stays inside the declaration it is written into.
+ *
+ * A value reaches the sheet as text, and one that closes a brace it did not
+ * open ends the rule and starts another: `red;} body{display:none` is a
+ * stylesheet, not a colour. Every value the runtime sees is one the compiler
+ * could not read, which is exactly the set that may have come from a URL or a
+ * form. The one `;` allowed is the one {@link firstThatWorks} writes, between
+ * two declarations of the same property.
+ */
+function contained(property: string, value: string): boolean {
+  let nested = 0;
+  let braces = 0;
+  for (let index = 0; index < value.length; index++) {
+    const character = value[index];
+    if (character === "\\") {
+      if (++index >= value.length) return false;
+    } else if (character === '"' || character === "'") {
+      index = stringEnd(value, index);
+      if (index < 0) return false;
+    } else if (character === "/" && value[index + 1] === "*") {
+      index = value.indexOf("*/", index + 2);
+      if (index < 0) return false;
+      index++;
+    } else if (character === "(" || character === "[") nested++;
+    else if (character === ")" || character === "]") {
+      if (--nested < 0) return false;
+    } else if (character === "{") braces++;
+    else if (character === "}") {
+      if (--braces < 0) return false;
+    } else if (character === ";" && nested === 0 && braces === 0) {
+      if (!value.startsWith(`${property}:`, index + 1)) return false;
+      index += property.length + 1;
+    }
+  }
+  return nested === 0 && braces === 0;
 }
 
 /**
@@ -279,23 +399,7 @@ function rule(name: string, condition: string, declaration: string, into = ""): 
   return into === "" ? inner : `@layer ${into}{${inner}}`;
 }
 
-/**
- * `(property, condition, value)` -> class, and its rule already registered.
- *
- * A component re-rendering hands `atoms` a FRESH object every time, so there is
- * nothing to memoise on identity — but the declarations inside it repeat, and
- * they are what costs: a hash and a sheet write per declaration. Keyed on the
- * three strings, a re-render is a `Map` hit and a `join`.
- */
-const named = new Map<string, string>();
-
-function atom(property: string, condition: string, value: string, into = ""): string {
-  // The layer belongs to the atom's identity: the same declaration in and out
-  // of a layer is two different rules, and one class name cannot carry both.
-  const memo =
-    into === "" ? `${property}|${condition}|${value}` : `${into}|${property}|${condition}|${value}`;
-  const hit = named.get(memo);
-  if (hit !== undefined) return hit;
+function atom(property: string, condition: string, value: string, into: string): string {
   // The suffix hashes the VALUE, and nothing else. The key already carries the
   // property and the condition, so the value is all that is left to tell two
   // atoms of one key apart — and hashing it alone means every atom holding that
@@ -303,39 +407,150 @@ function atom(property: string, condition: string, value: string, into = ""): st
   // one value, and a compressor reads three of the four suffixes as
   // back-references instead of as noise. Measured over `@barqjs/ui`'s
   // stylesheet, 1,078 atoms: 16.2 KB brotli down to 13.1.
+  //
+  // The layer belongs to the atom's identity: the same declaration in and out
+  // of a layer is two different rules, and one class name cannot carry both.
   const name = `${atomKey(property, condition)}_${hash(into === "" ? value : `${into}|${value}`).slice(1)}`;
-  register(name, rule(name, condition, `${property}:${value}`, into), tierOf(condition));
-  named.set(memo, name);
+  registerAtom(name, rule(name, condition, `${property}:${value}`, into), tierOf(condition));
   return name;
 }
 
-function isConditions(value: unknown): value is AtomConditions {
-  return typeof value === "object" && value !== null;
+const NONE: readonly string[] = [];
+
+let displacements = new Map<string, readonly string[]>();
+
+/**
+ * The keys a class takes the place of besides its own: the same axis written
+ * the other way, under the same condition.
+ *
+ * Read off the key, as the merge itself is, so a class string another call
+ * produced displaces exactly as the object that made it would have. A key is
+ * its property and then, under a condition, a dash and that condition's hash,
+ * so a key that is not a property outright is tried without its last segment.
+ */
+function displaced(mergeKey: string): readonly string[] {
+  const hit = displacements.get(mergeKey);
+  if (hit !== undefined) return hit;
+  const name = mergeKey.slice(2);
+  let others = DISPLACES.get(name);
+  let suffix = "";
+  if (others === undefined) {
+    const cut = name.lastIndexOf("-");
+    others = cut < 0 ? undefined : DISPLACES.get(name.slice(0, cut));
+    suffix = cut < 0 ? "" : name.slice(cut);
+  }
+  const out = others === undefined ? NONE : others.map((other) => `a-${other}${suffix}`);
+  if (displacements.size >= HELD_LIMIT) displacements = new Map();
+  displacements.set(mergeKey, out);
+  return out;
+}
+
+/** A name with the keys it displaces in front of it, each paired with `""`. */
+function place(out: string[], name: string): void {
+  const own = key(name);
+  for (const other of displaced(own)) out.push(other, "");
+  out.push(own, name);
 }
 
 /**
- * Declarations, as classes.
+ * One declaration as the atoms it is: `key, class, key, class, …`, where an
+ * empty class takes the key out instead of setting it.
+ */
+type Resolved = readonly string[];
+
+type Scope = Map<string, Map<string | number, Resolved>>;
+
+/**
+ * layer -> condition -> property as written -> value as written -> its atoms.
  *
- * Later arguments win per property, and a falsy argument contributes nothing —
- * `atoms(base, active() && { color: "blue" })` is the ordinary shape.
+ * A component re-rendering hands `atoms` a FRESH object every time, so there is
+ * nothing to memoise on identity — but the declarations inside it repeat, and
+ * they are what costs: a shorthand to expand, a hash and a sheet write each.
+ * Keyed on strings the caller already holds, a re-render is two lookups a
+ * declaration and builds no string to look anything up by.
+ */
+let resolved = new Map<string, Map<string, Scope>>();
+let held = 0;
+
+/**
+ * A value that changes every frame is a new entry every frame, so the memo is
+ * dropped whole when it has grown past anything a stylesheet written by hand
+ * reaches. Nothing is lost but the lookups: a class name is a function of its
+ * declaration, and registering a rule the sheet holds is a no-op.
+ */
+const HELD_LIMIT = 10_000;
+
+function scopeOf(into: string, condition: string): Scope {
+  let conditions = resolved.get(into);
+  if (conditions === undefined) {
+    conditions = new Map();
+    resolved.set(into, conditions);
+  }
+  let scope = conditions.get(condition);
+  if (scope === undefined) {
+    scope = new Map();
+    conditions.set(condition, scope);
+  }
+  return scope;
+}
+
+function resolve(
+  into: string,
+  condition: string,
+  property: string,
+  value: string | number,
+): Resolved {
+  if (typeof value === "number" && !Number.isFinite(value)) return [];
+  const text = cssValue(property, value);
+  if (!contained(property, text)) return [];
+  const expanded = expand(property, text);
+  const out: string[] = [];
+  if (expanded === null) {
+    place(out, atom(property, condition, text, into));
+    return out;
+  }
+  for (const [longhand, own] of expanded) place(out, atom(longhand, condition, own, into));
+  return out;
+}
+
+function assign(applied: Map<string, string>, found: Resolved): void {
+  for (let index = 0; index < found.length; index += 2) {
+    const name = found[index + 1];
+    if (name === "") applied.delete(found[index]);
+    else applied.set(found[index], name);
+  }
+}
+
+/**
+ * One declaration, applied: a later one replaces an earlier one per key.
+ *
+ * `rawKey` is the property as the caller wrote it, which is what the memo is
+ * keyed on, so the common case never reaches `kebab` either.
  */
 function apply(
   applied: Map<string, string>,
-  property: string,
-  condition: string,
-  text: string,
+  scope: Scope,
   into: string,
+  condition: string,
+  rawKey: string,
+  value: string | number,
 ): void {
-  const expanded = expand(property, text);
-  if (expanded === null) {
-    const name = atom(property, condition, text, into);
-    applied.set(key(name), name);
-    return;
+  let values = scope.get(rawKey);
+  if (values === undefined) {
+    values = new Map();
+    scope.set(rawKey, values);
   }
-  for (const [longhand, own] of expanded) {
-    const name = atom(longhand, condition, own, into);
-    applied.set(key(name), name);
+  let found = values.get(value);
+  if (found === undefined) {
+    found = resolve(into, condition, kebab(rawKey), value);
+    if (++held > HELD_LIMIT) {
+      resolved = new Map();
+      held = 0;
+    } else {
+      values.set(value, found);
+    }
   }
+  assign(applied, found);
 }
 
 /**
@@ -364,47 +579,54 @@ function walk(
   condition: string,
   into: string,
 ): void {
+  const scope = scopeOf(into, condition);
   for (const rawKey in style) {
     const raw = style[rawKey];
+    if (typeof raw === "string" || typeof raw === "number") {
+      // A key the memo already holds was a property the first time, so only a
+      // key seen for the first time is asked what it is.
+      if (!scope.has(rawKey) && looksLikeCondition(rawKey)) continue;
+      apply(applied, scope, into, condition, rawKey, raw);
+      continue;
+    }
+    if (typeof raw !== "object") continue;
     // A top-level condition key holds a whole style object: `'::placeholder'`,
     // `'@media …'`, `'&:hover .x'`.
     if (looksLikeCondition(rawKey)) {
-      if (isConditions(raw)) {
-        walk(applied, raw, join(condition, rawKey), into);
-      }
+      if (raw !== null)
+        walk(applied, raw as Record<string, unknown>, join(condition, rawKey), into);
       continue;
     }
-    const property = kebab(rawKey);
+    if (raw === null) {
+      remove(applied, kebab(rawKey), condition);
+      continue;
+    }
     if (isFallback(raw)) {
-      apply(applied, property, condition, declarations(property, raw), into);
+      apply(applied, scope, into, condition, rawKey, declarations(kebab(rawKey), raw));
       continue;
     }
-    if (!isConditions(raw)) {
-      if (raw === null) remove(applied, property, condition);
-      else if (typeof raw === "string" || typeof raw === "number") {
-        apply(applied, property, condition, cssValue(property, raw), into);
-      }
-      continue;
-    }
-    for (const inner in raw) {
-      const value = raw[inner];
+    const conditions = raw as Record<string, unknown>;
+    for (const inner in conditions) {
+      const value = conditions[inner];
       const where = inner === "default" ? condition : join(condition, inner);
-      if (isConditions(value) && !isFallback(value)) {
-        walk(applied, { [rawKey]: value }, where, into);
-        continue;
-      }
-      if (isFallback(value)) {
-        apply(applied, property, where, declarations(property, value), into);
+      if (typeof value === "string" || typeof value === "number") {
+        const within = inner === "default" ? scope : scopeOf(into, where);
+        apply(applied, within, into, where, rawKey, value);
         continue;
       }
       // `null` under a non-default condition has no meaning, so it is skipped
       // rather than removing the default a sibling key just set.
       if (value === null) {
-        if (inner === "default") remove(applied, property, condition);
+        if (inner === "default") remove(applied, kebab(rawKey), condition);
         continue;
       }
-      if (typeof value !== "string" && typeof value !== "number") continue;
-      apply(applied, property, where, cssValue(property, value), into);
+      if (typeof value !== "object") continue;
+      if (isFallback(value)) {
+        const text = declarations(kebab(rawKey), value);
+        apply(applied, scopeOf(into, where), into, where, rawKey, text);
+        continue;
+      }
+      walk(applied, { [rawKey]: value }, where, into);
     }
   }
 }
@@ -529,27 +751,103 @@ export function layer(name: string): Layer {
   return bound;
 }
 
-function build(into: string, styles: (AtomInput | readonly AtomInput[])[]): string {
-  const applied = new Map<string, string>();
-
-  for (const style of styles.flat(4)) {
-    if (style === false || style === null || style === undefined) continue;
-    // A class string is already atomic and its rules are already registered,
-    // so merging it needs only the key each name carries. A class that is NOT
-    // one of ours — an application's own, arriving through a `class` prop —
-    // has no property in its name and nothing to merge against, so it is kept
-    // as it is rather than keyed on a slice of itself and dropped when another
-    // happens to slice the same way.
-    if (typeof style === "string") {
-      for (const name of style.split(" ")) {
-        if (name === "") continue;
-        applied.set(atomic(name) ? key(name) : name, name);
-      }
-      continue;
-    }
-    walk(applied, style, "default", into);
+function build(into: string, styles: readonly unknown[]): string {
+  const [first, second] = styles;
+  const pair =
+    styles.length <= 2 &&
+    typeof first === "string" &&
+    (typeof second === "string" || second === undefined || second === null || second === false);
+  if (!pair) {
+    const applied = new Map<string, string>();
+    for (const style of styles) feed(applied, into, style);
+    return joined(applied);
   }
-  return [...applied.values()].join(" ");
+  const over = typeof second === "string" ? second : "";
+  let overs = pairs.get(first);
+  const hit = overs?.get(over);
+  if (hit !== undefined) return hit;
+  const applied = new Map<string, string>();
+  feed(applied, into, first);
+  feed(applied, into, over);
+  const out = joined(applied);
+  if (++paired > HELD_LIMIT) {
+    pairs = new Map();
+    paired = 0;
+    overs = undefined;
+  }
+  if (overs === undefined) {
+    overs = new Map();
+    pairs.set(first, overs);
+  }
+  overs.set(over, out);
+  return out;
+}
+
+/**
+ * One class string over another, already merged: first -> second -> result.
+ *
+ * `ui(shared.ring, props.class?.())` is most of what a component library asks
+ * at run time, and both strings are the same text on every render.
+ */
+let pairs = new Map<string, Map<string, string>>();
+let paired = 0;
+
+onReset(() => {
+  displacements = new Map();
+  resolved = new Map();
+  held = 0;
+  pairs = new Map();
+  paired = 0;
+  split = new Map();
+});
+
+function joined(applied: Map<string, string>): string {
+  let out = "";
+  for (const name of applied.values()) out = out === "" ? name : `${out} ${name}`;
+  return out;
+}
+
+function feed(applied: Map<string, string>, into: string, style: unknown): void {
+  // A class string is already atomic and its rules are already registered,
+  // so merging it needs only the key each name carries.
+  if (typeof style === "string") {
+    assign(applied, namesOf(style));
+    return;
+  }
+  if (typeof style !== "object" || style === null) return;
+  if (Array.isArray(style)) {
+    for (const item of style) feed(applied, into, item);
+    return;
+  }
+  walk(applied, style as Record<string, unknown>, "default", into);
+}
+
+/**
+ * A class string as `key, class, key, class, …`, read once per string.
+ *
+ * The strings that reach a merge are few and repeat: a group a module made
+ * once, a variant arm, a `class` prop that is the same text every render.
+ */
+let split = new Map<string, Resolved>();
+
+function namesOf(classes: string): Resolved {
+  const hit = split.get(classes);
+  if (hit !== undefined) return hit;
+  const out: string[] = [];
+  // Any whitespace separates two classes, which is what the `class` attribute
+  // itself says: a string written across several lines is still a list.
+  for (const name of classes.split(/\s+/)) {
+    if (name === "") continue;
+    // A class that is NOT one of ours — an application's own, arriving through
+    // a `class` prop — has no property in its name and nothing to merge
+    // against, so it is kept as it is rather than keyed on a slice of itself
+    // and dropped when another happens to slice the same way.
+    if (atomic(name)) place(out, name);
+    else out.push(name, name);
+  }
+  if (split.size >= HELD_LIMIT) split = new Map();
+  split.set(classes, out);
+  return out;
 }
 
 /**
@@ -624,6 +922,11 @@ function isDynamic(value: unknown): value is DynamicStyle {
   return typeof value === "object" && value !== null && "$class" in value;
 }
 
+/** `Array.isArray` narrows a readonly array to `any[]`, which would type every item `any`. */
+function isList(style: PropInput | readonly PropInput[]): style is readonly PropInput[] {
+  return Array.isArray(style);
+}
+
 /**
  * Styles as the two attributes an element takes.
  *
@@ -653,17 +956,23 @@ export function props(...styles: (PropInput | readonly PropInput[])[]): Props {
  * style objects passed here take this one.
  */
 export function propsIn(into: string, ...styles: (PropInput | readonly PropInput[])[]): Props {
-  const classes: AtomInput[] = [];
+  const applied = new Map<string, string>();
   let vars: Record<string, string | number> | undefined;
-  for (const style of styles.flat(4)) {
-    if (isDynamic(style)) {
-      classes.push(style.$class);
-      vars = vars === undefined ? { ...style.$vars } : Object.assign(vars, style.$vars);
-      continue;
+  const take = (style: PropInput | readonly PropInput[]): void => {
+    if (isList(style)) {
+      for (const item of style) take(item);
+    } else if (isDynamic(style)) {
+      feed(applied, into, style.$class);
+      vars ??= {};
+      for (const name in style.$vars) {
+        vars[name] = variableValue(name, style.$vars[name]);
+      }
+    } else {
+      feed(applied, into, style);
     }
-    classes.push(style);
-  }
-  const merged = build(into, classes);
+  };
+  for (const style of styles) take(style);
+  const merged = joined(applied);
   return vars === undefined ? { class: merged } : { class: merged, style: vars };
 }
 
@@ -675,7 +984,29 @@ export function propsIn(into: string, ...styles: (PropInput | readonly PropInput
  * carries its own key.
  */
 export function dynamicVar(property: string): string {
-  return `--${property}-${hash(property).slice(1)}`;
+  let name = variables.get(property);
+  if (name === undefined) {
+    name = `--${property}-${hash(property).slice(1)}`;
+    variables.set(property, name);
+  }
+  return name;
+}
+
+const variables = new Map<string, string>();
+
+/**
+ * A dynamic group's value as the text its declaration would have held.
+ *
+ * `width: var(--width-…)` reads the variable verbatim, so `8` there is not a
+ * length and the declaration is dropped. The unit goes on where the variable
+ * is written rather than where the group is called, because a compiled group
+ * leaves the caller's expression in `$vars` untouched and this is the one
+ * place both forms pass through. The property is in the variable's own name.
+ */
+function variableValue(name: string, value: string | number): string | number {
+  if (typeof value !== "number") return value;
+  const property = name.slice(2, name.lastIndexOf("-"));
+  return dynamicVar(property) === name ? cssValue(property, value) : value;
 }
 
 /**
@@ -704,21 +1035,21 @@ export function dynamicIn<A extends unknown[]>(
   declare: (...args: A) => AtomStyles,
 ): (...args: A) => DynamicStyle {
   return (...args) => {
-    const declared = declare(...args);
-    const classes: string[] = [];
+    const declared = declare(...args) as Record<string, unknown>;
+    const applied = new Map<string, string>();
     const vars: Record<string, string | number> = {};
-    for (const rawProperty in declared) {
-      const property = kebab(rawProperty);
-      const value = (declared as Record<string, AtomValue>)[rawProperty];
-      // A fallback list is a set of declarations, not one value, so it has
-      // nothing to put in a custom property.
-      if (value === false || value === null || value === undefined || isFallback(value)) continue;
-      const name = dynamicVar(property);
+    const scope = scopeOf(into, "default");
+    for (const rawKey in declared) {
+      const value = declared[rawKey];
+      // A fallback list is a set of declarations and a condition is a set of
+      // rules: neither is one value, so neither has anything to put in a
+      // custom property.
+      if (typeof value !== "string" && typeof value !== "number") continue;
+      if (looksLikeCondition(rawKey)) continue;
+      const name = dynamicVar(kebab(rawKey));
       vars[name] = value;
-      const applied = new Map<string, string>();
-      apply(applied, property, "default", `var(${name})`, into);
-      classes.push(...applied.values());
+      apply(applied, scope, into, "default", rawKey, `var(${name})`);
     }
-    return { $class: classes.join(" "), $vars: vars };
+    return { $class: joined(applied), $vars: vars };
   };
 }

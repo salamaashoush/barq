@@ -1,5 +1,14 @@
 import { describe, expect, test } from "bun:test";
-import { collectCss, css, globalCss, keyframes, registerCss, setCssSink } from "./index.ts";
+import {
+  atoms,
+  atomsIn,
+  collectCss,
+  css,
+  globalCss,
+  keyframes,
+  registerCss,
+  setCssSink,
+} from "./index.ts";
 
 /** The rules a block registered, without its class name in the way. */
 function rulesFor(name: string): string {
@@ -271,5 +280,111 @@ describe("registerCss", () => {
     registerCss("/a/known.tsx", ".bknown{color:teal}");
     setCssSink(null);
     expect(taken).toEqual([]);
+  });
+});
+
+describe("the sheet > a brace inside a string", () => {
+  test("closes nothing, so a layer holds its own rules and nobody else's", () => {
+    const first = atomsIn("barq.quoted", { caretColor: "teal" });
+    const plain = atoms({ caretColor: "olive" });
+    const quoted = atomsIn("barq.quoted", { "::before": { content: '"}"' } });
+    const sheet = collectCss();
+    expect(sheet).toContain(
+      `@layer barq.quoted{.${first}{caret-color:teal}.${quoted}::before{content:"}"}}`,
+    );
+    expect(sheet).toContain(`}.${plain}{caret-color:olive}`);
+  });
+
+  test("and a compiled module's stylesheet is split at the same places", () => {
+    registerCss(
+      "/a/quoted.tsx",
+      '@layer barq.braces{.q1::after{content:"{"}}@layer barq.braces{/* } */.q2{color:red}}',
+    );
+    expect(collectCss()).toContain(
+      '@layer barq.braces{.q1::after{content:"{"}/* } */.q2{color:red}}',
+    );
+  });
+});
+
+describe("the sheet > tier order across modules", () => {
+  test("a module's atoms are ordered against another module's", () => {
+    registerCss(
+      "/a/tier-early.tsx",
+      "@layer barq.tiers{@media (min-width:1px){.a-width-1x_m{width:10px}}}" +
+        "@media (min-width:1px){.a-height-1x_m{height:10px}}",
+    );
+    registerCss(
+      "/a/tier-late.tsx",
+      "@layer barq.tiers{.a-width_b{width:100%}}.a-height_b{height:100%}",
+    );
+    const sheet = collectCss();
+    expect(sheet.indexOf(".a-width_b{")).toBeLessThan(sheet.indexOf(".a-width-1x_m{"));
+    expect(sheet.indexOf(".a-height_b{")).toBeLessThan(sheet.indexOf(".a-height-1x_m{"));
+  });
+
+  test("a rule that is not an atom keeps its place among them", () => {
+    registerCss(
+      "/a/pinned.tsx",
+      "@layer barq.pinned{@media print{.a-color-p_1{color:red}}" +
+        ".sr-only{position:absolute}.a-color_2{color:blue}}",
+    );
+    expect(collectCss()).toContain(
+      "@layer barq.pinned{.a-color_2{color:blue}.sr-only{position:absolute}" +
+        "@media print{.a-color-p_1{color:red}}}",
+    );
+  });
+
+  test("every shape of atom sorts where the runtime would have put it", () => {
+    registerCss(
+      "/a/shapes.tsx",
+      "@layer barq.shapes{" +
+        "@media print{.a-color-m_1{color:red}}" +
+        ".a-color-e_1::before{color:red}" +
+        ".a-color-s_1:hover{color:red}" +
+        ".dark .a-color-a_1{color:red}" +
+        ".a-color_1{color:red}" +
+        ".a-color-d_1 > *{color:red}" +
+        "@media print{.a-color-n_1 svg{color:red}}}",
+    );
+    const sheet = collectCss();
+    const names = ["d_1 > *", "n_1 svg", "color_1{", "s_1:hover", "a_1{", "e_1::before", "m_1{"];
+    const found = names.map((name) => sheet.indexOf(name));
+    expect(found).toEqual(found.toSorted((a, b) => a - b));
+    expect(found.every((at) => at >= 0)).toBe(true);
+  });
+
+  test("an unlayered atom two modules both carry is written once", () => {
+    registerCss("/a/twice-one.tsx", ".a-cursor_tw{cursor:pointer}");
+    registerCss("/a/twice-two.tsx", ".a-cursor_tw{cursor:pointer}.plain-tw{color:red}");
+    const sheet = collectCss();
+    expect(sheet.split(".a-cursor_tw{cursor:pointer}").length - 1).toBe(1);
+  });
+});
+
+describe("keyframes and css > the same text", () => {
+  test("is a block and an animation, and each has its rule", () => {
+    const block = css`
+      to {
+        opacity: 0.25;
+      }
+    `;
+    const animation = keyframes`
+      to { opacity: 0.25 }
+    `;
+    const sheet = collectCss();
+    expect(sheet).toContain(`.${block} to{opacity: 0.25}`);
+    expect(sheet).toContain(`@keyframes ${animation}{to { opacity: 0.25 }}`);
+  });
+});
+
+describe("globalCss > a declaration with no selector", () => {
+  test("has nothing to apply to, so it writes no rule", () => {
+    globalCss`
+      color: fuchsia;
+      .probe-global { color: teal }
+    `;
+    const sheet = collectCss();
+    expect(sheet).toContain(".probe-global{color: teal}");
+    expect(sheet).not.toContain("{color: fuchsia}");
   });
 });

@@ -23,6 +23,15 @@ import { atoms } from "./atoms.ts";
 
 export type VariantGroups = Record<string, Record<string, string>>;
 
+/** The axes of a spec, whatever each arm holds. */
+type Axes = Record<string, Record<string, unknown>>;
+
+/**
+ * The values that select an arm of one axis: its names, and a boolean when the
+ * axis is an on/off one, spelled `{ true: …, false: … }`.
+ */
+type Arm<A> = keyof A | (Extract<keyof A, "true" | "false"> extends never ? never : boolean);
+
 /**
  * Which arm of each axis, or nothing to take the default.
  *
@@ -31,8 +40,15 @@ export type VariantGroups = Record<string, Record<string, string>>;
  * `null` and `undefined` mean "not chosen" and fall to the default; so does any
  * value the axis has no arm for.
  */
-export type VariantSelection<G extends VariantGroups> = {
-  readonly [K in keyof G]?: keyof G[K] | boolean | null | undefined;
+export type VariantSelection<G extends Axes> = {
+  readonly [K in keyof G]?: Arm<G[K]> | null | undefined;
+};
+
+/**
+ * What a compound arm matches on: one arm of an axis, or any of several.
+ */
+export type VariantMatch<G extends Axes> = {
+  readonly [K in keyof G]?: Arm<G[K]> | readonly Arm<G[K]>[] | null | undefined;
 };
 
 export interface VariantSpec<G extends VariantGroups> {
@@ -45,12 +61,130 @@ export interface VariantSpec<G extends VariantGroups> {
    * design system needs once the axes stop being independent.
    */
   readonly compound?: readonly {
-    readonly when: VariantSelection<G>;
+    readonly when: VariantMatch<G>;
     readonly use: string;
   }[];
 }
 
 export type VariantFn<G extends VariantGroups> = (props?: VariantSelection<G>) => string;
+
+/** A class for some of a component's parts. */
+export type SlotClasses<S extends string> = { readonly [K in S]?: string };
+
+export type SlotGroups<S extends string> = Record<string, Record<string, SlotClasses<S>>>;
+
+/**
+ * {@link VariantSpec} for a component made of several elements: each arm names
+ * a class for whichever parts it changes.
+ */
+export interface SlotSpec<S extends string, G extends SlotGroups<S>> {
+  /** Every part, and the class it always carries. */
+  readonly slots: { readonly [K in S]: string };
+  readonly variants?: G;
+  readonly defaults?: { readonly [K in keyof G]?: keyof G[K] };
+  readonly compound?: readonly {
+    readonly when: VariantMatch<G>;
+    readonly use: SlotClasses<S>;
+  }[];
+}
+
+export type SlotFn<S extends string, G extends SlotGroups<S>> = (props?: VariantSelection<G>) => {
+  readonly [K in S]: string;
+};
+
+/**
+ * The selection a {@link variants} function takes, for a component's own props.
+ *
+ * ```ts
+ * type ButtonProps = VariantProps<typeof button> & { class?: string };
+ * ```
+ */
+export type VariantProps<F> = F extends (props?: infer P) => unknown ? NonNullable<P> : never;
+
+interface Axis {
+  readonly name: string;
+  readonly arms: readonly string[];
+  /** Arm name to its place, counted from one: zero is "no arm". */
+  readonly places: Map<string, number>;
+  readonly fallback: number;
+  readonly stride: number;
+}
+
+/** What selects an arm once the types are erased: its name, or a boolean for an on/off axis. */
+type Chosen = PropertyKey | boolean | null | undefined;
+
+type Selection = Readonly<Record<string, Chosen>>;
+
+interface Compound {
+  readonly when: Readonly<Record<string, Chosen | readonly Chosen[]>>;
+  readonly use: unknown;
+}
+
+/**
+ * A spec's selections, numbered.
+ *
+ * One number per SELECTION, and a spec has finitely many: the product of its
+ * axes, which is small by construction because a variant set is enumerated by
+ * hand. Numbered rather than spelled, because two selections can spell the
+ * same text however the arms are joined and no two share a number.
+ */
+function selections(
+  groups: Axes,
+  defaults: Selection | undefined,
+): {
+  select: (props: Selection | undefined) => number;
+  chosen: (selection: number) => Record<string, string | undefined>;
+} {
+  const axes: Axis[] = [];
+  let stride = 1;
+  for (const name of Object.keys(groups)) {
+    const arms = Object.keys(groups[name] ?? {});
+    const places = new Map(arms.map((arm, index) => [arm, index + 1]));
+    const preferred = defaults?.[name];
+    const fallback = preferred === undefined ? 0 : (places.get(String(preferred)) ?? 0);
+    axes.push({ name, arms, places, fallback, stride });
+    stride *= arms.length + 1;
+  }
+  return {
+    select(props) {
+      let selection = 0;
+      for (const axis of axes) {
+        const asked = props?.[axis.name];
+        // By TEXT, so `{ loud: false }` selects the `false` arm of a boolean
+        // axis rather than meaning "not chosen".
+        const place =
+          asked === null || asked === undefined ? undefined : axis.places.get(String(asked));
+        selection += (place ?? axis.fallback) * axis.stride;
+      }
+      return selection;
+    },
+    chosen(selection) {
+      const out: Record<string, string | undefined> = {};
+      for (const axis of axes) {
+        const place = Math.floor(selection / axis.stride) % (axis.arms.length + 1);
+        out[axis.name] = place === 0 ? undefined : axis.arms[place - 1];
+      }
+      return out;
+    },
+  };
+}
+
+/**
+ * Whether a compound arm applies. A `when` entry that names no value is not a
+ * condition, so it matches.
+ */
+function matches(when: Compound["when"], chosen: Record<string, string | undefined>) {
+  for (const group in when) {
+    const wanted = when[group];
+    if (wanted === null || wanted === undefined) continue;
+    const arm = chosen[group];
+    const met = Array.isArray(wanted)
+      ? wanted.some((one) => String(one) === arm)
+      : String(wanted) === arm;
+    if (!met) return false;
+  }
+  return true;
+}
 
 /**
  * A function from a selection of variants to the class it composes.
@@ -72,56 +206,71 @@ export type VariantFn<G extends VariantGroups> = (props?: VariantSelection<G>) =
  *
  * A selection typed against the groups, so `button({ size: "md" })` does not
  * compile.
+ *
+ * With `slots`, the same thing for a component made of several elements: every
+ * arm names a class per part, and the function returns a class per part.
+ *
+ * ```ts
+ * const field = variants({
+ *   slots: { root: ui({ display: "grid" }), label: ui({ fontWeight: 500 }) },
+ *   variants: { size: { lg: { root: ui({ gap: 8 }), label: ui({ fontSize: 18 }) } } },
+ * });
+ * const { root, label } = field({ size: "lg" });
+ * ```
  */
-export function variants<G extends VariantGroups>(spec: VariantSpec<G>): VariantFn<G> {
-  const groups = Object.keys(spec.variants) as (keyof G)[];
+export function variants<G extends VariantGroups>(spec: VariantSpec<G>): VariantFn<G>;
+export function variants<S extends string, G extends SlotGroups<S>>(
+  spec: SlotSpec<S, G>,
+): SlotFn<S, G>;
+export function variants(spec: {
+  readonly base?: string;
+  readonly slots?: Record<string, string>;
+  readonly variants?: Axes;
+  readonly defaults?: Selection;
+  readonly compound?: readonly Compound[];
+}): unknown {
+  const groups = spec.variants ?? {};
+  const { select, chosen } = selections(groups, spec.defaults);
+  const { slots } = spec;
 
-  // One entry per SELECTION, and a spec has finitely many: the product of its
-  // axes, which is small by construction because a variant set is enumerated by
-  // hand. A component re-rendering asks for the same selection over and over,
-  // and merging it again each time is the whole cost.
-  const composed = new Map<string, string>();
-
-  return (props) => {
-    const chosen = {} as Record<keyof G, string | undefined>;
-    for (const group of groups) {
-      const asked = props?.[group];
-      // By TEXT, so `{ loud: false }` selects the `false` arm of a boolean
-      // axis. It used to mean "not chosen": `false` was the sentinel AND a
-      // legal key, so an off state silently took the default instead of the
-      // arm written for it.
-      const named = asked === null || asked === undefined ? undefined : String(asked);
-      const value =
-        named !== undefined && Object.hasOwn(spec.variants[group] ?? {}, named)
-          ? named
-          : spec.defaults?.[group];
-      chosen[group] = value === undefined ? undefined : String(value);
+  // Base first, then the axes, then the compounds — and merged, so the later
+  // one wins per property rather than both applying. `part` picks one slot's
+  // class out of an arm, or takes the arm whole when there are no slots.
+  const compose = (selection: number, part: (arm: unknown) => unknown, base?: string): string => {
+    const arms = chosen(selection);
+    const out: unknown[] = [base];
+    for (const group in groups) {
+      const arm = arms[group];
+      if (arm !== undefined) out.push(part(groups[group]?.[arm]));
     }
-    const key = groups.map((group) => chosen[group] ?? "\u0000").join("|");
-    const hit = composed.get(key);
-    if (hit !== undefined) return hit;
-
-    const out: string[] = [];
-    if (spec.base !== undefined && spec.base !== "") out.push(spec.base);
-    for (const group of groups) {
-      const value = chosen[group];
-      if (value === undefined) continue;
-      const className = spec.variants[group]?.[value];
-      if (className !== undefined && className !== "") out.push(className);
-    }
-    // Last, so a combination wins over the single-axis classes it refines. A
-    // `when` entry that names no value is not a condition, so it matches.
     for (const rule of spec.compound ?? []) {
-      const matches = Object.entries(rule.when).every(
-        ([group, value]) =>
-          value === null || value === undefined || chosen[group as keyof G] === String(value),
-      );
-      if (matches && rule.use !== "") out.push(rule.use);
+      if (matches(rule.when, arms)) out.push(part(rule.use));
     }
-    // Base first, then the axes, then the compounds — and merged, so the later
-    // one wins per property rather than both applying.
-    const merged = atoms(...out);
-    composed.set(key, merged);
-    return merged;
+    return atoms(...out.filter((name) => typeof name === "string"));
+  };
+
+  // A component re-rendering asks for the same selection over and over, and
+  // merging it again each time is the whole cost.
+  const composed = new Map<number, unknown>();
+  return (props?: Selection) => {
+    const selection = select(props);
+    let hit = composed.get(selection);
+    if (hit === undefined) {
+      if (slots === undefined) {
+        hit = compose(selection, (arm) => arm, spec.base);
+      } else {
+        const parts: Record<string, string> = {};
+        for (const slot in slots) {
+          parts[slot] = compose(
+            selection,
+            (arm) => (arm as Record<string, unknown> | undefined)?.[slot],
+            slots[slot],
+          );
+        }
+        hit = Object.freeze(parts);
+      }
+      composed.set(selection, hit);
+    }
+    return hit;
   };
 }

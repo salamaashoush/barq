@@ -16,7 +16,7 @@
  * did not compile.
  */
 
-import { hash, register } from "./sheet.ts";
+import { hash, onReset, register } from "./sheet.ts";
 
 /**
  * The public surface, written out rather than re-exported wholesale.
@@ -33,6 +33,7 @@ export {
   atomsIn,
   create,
   createIn,
+  defineConditions,
   dynamic,
   dynamicIn,
   firstThatWorks,
@@ -46,6 +47,7 @@ export type {
   AtomsFn,
   AtomStyles,
   AtomValue,
+  Condition,
   DynamicStyle,
   Fallback,
   Layer,
@@ -55,18 +57,46 @@ export type {
 
 // Tokens as custom properties.
 export { createTheme, defineVars, globalVars } from "./theme.ts";
-export type { TokenValue, Vars } from "./theme.ts";
+export type { ThemeValues, Tokens, TokenValue, Vars } from "./theme.ts";
 
 // A class per combination, over classes that already compiled.
 export { variants } from "./variants.ts";
-export type { VariantFn, VariantGroups, VariantSelection, VariantSpec } from "./variants.ts";
+export type {
+  SlotClasses,
+  SlotFn,
+  SlotGroups,
+  SlotSpec,
+  VariantFn,
+  VariantGroups,
+  VariantMatch,
+  VariantProps,
+  VariantSelection,
+  VariantSpec,
+} from "./variants.ts";
 
 // The one registry, and how a server render reads it.
 export { collectCss, registerCss, setCssSink } from "./sheet.ts";
+export type { CssSink } from "./sheet.ts";
 
 export type CssValue = string | number | false | null | undefined;
 
 const compiled = new Map<string, string>();
+const animations = new Map<string, string>();
+
+onReset(() => {
+  compiled.clear();
+  animations.clear();
+});
+
+/**
+ * An interpolation that changes every render is a new source every render, so
+ * a memo of sources is emptied before it outgrows any stylesheet a person
+ * wrote. The name is a hash of the source, so forgetting one costs a hash.
+ */
+function remember(memo: Map<string, string>, source: string, name: string): void {
+  if (memo.size >= 10_000) memo.clear();
+  memo.set(source, name);
+}
 
 /**
  * The next `;`, `{` or `}` that is not inside a string, a comment, or brackets.
@@ -162,8 +192,11 @@ function emit(source: string, scope: string, conditions: string[], out: string[]
   const close = "}".repeat(conditions.length);
   let pending: string[] = [];
   const flush = (): void => {
-    if (pending.length === 0) return;
-    out.push(`${open}${scope}{${pending.join(";")}}${close}`);
+    // `globalCss` starts with no scope, and a declaration outside any rule
+    // there has no selector to be written under.
+    if (pending.length > 0 && scope !== "") {
+      out.push(`${open}${scope}{${pending.join(";")}}${close}`);
+    }
     pending = [];
   };
 
@@ -224,7 +257,7 @@ export function css(strings: TemplateStringsArray, ...values: CssValue[]): strin
   const name = hash(source);
   const rules: string[] = [];
   emit(source, `.${name}`, [], rules);
-  compiled.set(source, name);
+  remember(compiled, source, name);
   register(name, rules.join(""));
   return name;
 }
@@ -232,11 +265,13 @@ export function css(strings: TemplateStringsArray, ...values: CssValue[]): strin
 /** A `@keyframes` body, as the animation name to reference it by. */
 export function keyframes(strings: TemplateStringsArray, ...values: CssValue[]): string {
   const source = join(strings, values);
-  const cached = compiled.get(source);
+  const cached = animations.get(source);
   if (cached !== undefined) return cached;
   const name = hash(source);
-  compiled.set(source, name);
-  register(name, `@keyframes ${name}{${source.trim()}}`);
+  remember(animations, source, name);
+  // Keyed apart from a block: the two are named by the same hash, so the same
+  // text as a `css` block is the same name and would replace that block's rule.
+  register(`@keyframes ${name}`, `@keyframes ${name}{${source.trim()}}`);
   return name;
 }
 

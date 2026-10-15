@@ -16,7 +16,100 @@
  * declined registers here too. So dev, tests, server rendering and the fallback
  * all read one sheet instead of falling into the gap between two.
  */
-const registered = new Map<string, string>();
+interface Entry {
+  rules: string;
+  tier: number;
+  /** The entry as statements, split once: it is read on every repaint. */
+  parts: Part[] | null;
+  /** The {@link clock} when these rules were registered. */
+  mark: number;
+}
+
+/**
+ * One statement, and the layer it was written in.
+ *
+ * A layer's contents are held a statement at a time rather than as the block's
+ * text, because ordering and deduplication are both questions about one rule.
+ */
+interface Part {
+  readonly layer: string;
+  readonly text: string;
+  /** `PINNED` for a rule that is not an atom: it keeps the place it was given. */
+  readonly tier: number;
+  /** Where the rule sorts inside the media tier, and `null` in every other. */
+  readonly media: MediaRank | null;
+  /** The class of the atom this rule IS, where that is checked: see {@link atomOf}. */
+  readonly atom: string | null;
+  /**
+   * The rule and the layer it is in, as one string: the same text in two
+   * layers is two rules. Held because every repaint asks a set for it.
+   */
+  readonly id: string;
+}
+
+const PINNED = -1;
+
+/** A sheet arranged: the top level, with one empty-text part where each layer sits. */
+interface Arranged {
+  readonly top: Part[];
+  readonly layers: Map<string, Part[]>;
+}
+
+const registered = new Map<string, Entry>();
+
+/**
+ * Counts registrations that changed the sheet, so "what did this page's head
+ * hold" is one number a render keeps rather than a copy of the sheet.
+ */
+let clock = 0;
+
+/**
+ * The server's head sheet, once a client has found one in the document.
+ *
+ * A client's registry starts empty and fills as modules load, so for most of a
+ * hydration it holds less than the server sent. A sheet written from the
+ * registry alone is missing every rule a module has not registered yet, under
+ * markup that is already on the page. Adopted, the server's rules stay where
+ * they are and the registry only adds to them.
+ */
+let adopted: Arranged | null = null;
+
+/** Every rule a server sheet already holds, head and late, by {@link Part.id}. */
+let served: Set<string> | null = null;
+
+/** The elements {@link adopted} and the late half of {@link served} were read from. */
+let owned: Element | null = null;
+let late: Element | null = null;
+
+/**
+ * The sheet as text, kept until a registration changes it: a server reads the
+ * whole sheet once a request, and most requests register nothing.
+ */
+let serialised: string | null = null;
+
+const resets: (() => void)[] = [];
+
+/** A memo that names rules this sheet holds, to be dropped when the sheet is. */
+export function onReset(hook: () => void): void {
+  resets.push(hook);
+}
+
+/**
+ * An empty sheet, for a test that compares one against another.
+ *
+ * A class name is a function of its declaration, so nothing a caller already
+ * holds becomes wrong; its rule is simply registered again on next use.
+ */
+export function resetCss(): void {
+  registered.clear();
+  serialised = null;
+  adopted = null;
+  served = null;
+  owned = null;
+  late = null;
+  for (const hook of resets) hook();
+  if (typeof document !== "undefined") document.getElementById(SHEET_ID)?.remove();
+}
 
 /**
  * FNV-1a over 32 bits.
@@ -35,6 +128,23 @@ export function hash(text: string): string {
 }
 
 const SHEET_ID = "barq-css";
+
+/** The sheet a server writes at the end of `<body>`, for what its render registered. */
+const LATE_ID = "barq-css-late";
+
+/**
+ * Whether a failure here should stop the page rather than be lived with.
+ *
+ * Read through a `try`, because a browser has no `process` unless a bundler
+ * replaced the expression, and one that did not is a production page.
+ */
+const STRICT = ((): boolean => {
+  try {
+    return process.env.NODE_ENV !== "production";
+  } catch {
+    return false;
+  }
+})();
 
 /**
  * How an atom is ORDERED against another atom, and nothing more.
@@ -71,13 +181,6 @@ const SHEET_ID = "barq-css";
 export const TIERS = ["descendant", "base", "select", "element", "media"] as const;
 
 /**
- * The tier each rule sorts in, for the one ordering specificity cannot give:
- * a base against the same property under an at-rule, since `@media` adds no
- * specificity. Everything not an atom is tier 0 and keeps insertion order.
- */
-const tiers = new Map<string, number>();
-
-/**
  * Registered under a key rather than pushed, so a block evaluated on every
  * render inserts one rule and a module re-evaluated by HMR REPLACES its own.
  *
@@ -107,30 +210,78 @@ const tiers = new Map<string, number>();
  * and every request after it carried none, and the page arrived with no rules
  * for its own layout at all. The cost of the copy is bytes a later page cannot
  * use; the cost of the move was a page with no styles.
+ *
+ * WHAT A PAGE IS OWED is everything registered after ITS head was read, by any
+ * request, and the rule and its key cannot say that. Two renders in flight
+ * share one sheet: the second reads its head, the first then registers a rule,
+ * and the second uses it — as a class string a module already holds, or out of
+ * a memo, so it registers nothing and is offered nothing. The rule is in
+ * neither of that page's sheets. So `head` is told each time the whole sheet is
+ * read, which is how a host serialises `<head>`, and handed `late`: a reader
+ * for every rule registered after that read, arranged as the sheet itself is.
  */
-let sink: ((key: string, rules: string) => boolean) | null = null;
+export interface CssSink {
+  (key: string, rules: string): boolean;
+  head?(late: () => string): void;
+}
+
+let sink: CssSink | null = null;
 
 /** The sink's return value is unused: a rule reaches the sheet either way. */
-export function setCssSink(next: ((key: string, rules: string) => boolean) | null): void {
+export function setCssSink(next: CssSink | null): void {
   sink = next;
 }
 
 export function register(key: string, rules: string, tier = 0): string {
+  const held = registered.get(key);
   // Only what the shared sheet did NOT already have, so a rule the head was
   // serialised with is not emitted a second time at the end of the body.
-  if (registered.get(key) === rules) return key;
+  if (held !== undefined && held.rules === rules) return key;
   sink?.(key, rules);
-  registered.set(key, rules);
-  if (tier !== 0) tiers.set(key, tier);
+  const mark = ++clock;
+  if (held === undefined) {
+    registered.set(key, { rules, tier, parts: null, mark });
+  } else {
+    if (served !== null) retire(held, rules, tier);
+    held.rules = rules;
+    held.tier = tier;
+    held.parts = null;
+    held.mark = mark;
+  }
+  serialised = null;
   paint();
   return key;
+}
+
+/**
+ * One atom's rule, under the class its declaration hashes to.
+ *
+ * The class is the declaration's name, so a different rule under a class the
+ * sheet already holds is two declarations that hash alike, and one of them is
+ * about to style the other's elements. Nothing downstream can tell: the markup
+ * carries one class and the sheet one rule.
+ */
+export function registerAtom(name: string, rule: string, tier: number): string {
+  const held = registered.get(name);
+  if (STRICT && held !== undefined && held.rules !== rule) throw collision(name, held.rules, rule);
+  return register(name, rule, tier);
+}
+
+function collision(name: string, first: string, second: string): Error {
+  return new Error(
+    `[barq] two declarations hash to the class \`${name}\`: \`${first}\` and \`${second}\`. ` +
+      "One class cannot carry both; change either value's spelling, `8px` to `0.5rem` or " +
+      "`#fff` to `white`, so they hash apart.",
+  );
 }
 
 function paint(): void {
   if (typeof document === "undefined") return;
   const element = document.getElementById(SHEET_ID) as HTMLStyleElement | null;
   if (element !== null) {
-    element.textContent = collectCss();
+    adopt(element);
+    const text = sheet();
+    if (element.textContent !== text) element.textContent = text;
     return;
   }
   // `document.head` is NULL for part of a hydration: the client render rebuilds
@@ -146,8 +297,74 @@ function paint(): void {
   if (host === null) return;
   const created = document.createElement("style");
   created.id = SHEET_ID;
-  created.textContent = collectCss();
+  owned = created;
+  adoptLate();
+  created.textContent = sheet();
   host.appendChild(created);
+}
+
+/**
+ * Take a sheet this module did not write as the start of its own.
+ *
+ * Whatever the document already holds under the sheet's id was written by a
+ * server, and its text is that server's whole registry in the order the server
+ * arranged it. Read back into the same parts, it is what this side's rules are
+ * merged INTO: none of it is dropped and none of it changes place.
+ */
+function adopt(element: Element): void {
+  if (element !== owned) {
+    owned = element;
+    const text = element.textContent ?? "";
+    adopted = arrange(partsOf({ rules: text, tier: 0, parts: null, mark: 0 }), null, false);
+    served = new Set();
+    for (const part of adopted.top) if (part.text !== "") served.add(part.id);
+    for (const held of adopted.layers.values()) for (const part of held) served.add(part.id);
+    late = null;
+    serialised = null;
+  }
+  adoptLate();
+}
+
+/** The late sheet's rules count as held, and the element itself is never written. */
+function adoptLate(): void {
+  const element = document.getElementById(LATE_ID);
+  if (element === null || element === late) return;
+  late = element;
+  served ??= new Set();
+  const text = element.textContent ?? "";
+  for (const part of partsOf({ rules: text, tier: 0, parts: null, mark: 0 })) {
+    served.add(part.id);
+  }
+  serialised = null;
+}
+
+/**
+ * Drop what a replaced entry alone had brought, out of the adopted sheet.
+ *
+ * A module re-evaluated by HMR replaces its own rules, and after a hydration
+ * the ones it is replacing are in the server's text rather than in anything
+ * this side wrote. Only what no other entry still holds goes: an atom two
+ * modules share stays for the one that was not edited.
+ */
+function retire(entry: Entry, rules: string, tier: number): void {
+  if (served === null) return;
+  const next = new Set(partsOf({ rules, tier, parts: null, mark: 0 }).map((part) => part.id));
+  const gone = partsOf(entry)
+    .map((part) => part.id)
+    .filter((name) => served?.has(name) === true && !next.has(name));
+  if (gone.length === 0) return;
+  const kept = new Set<string>();
+  for (const other of registered.values()) {
+    if (other !== entry) for (const part of partsOf(other)) kept.add(part.id);
+  }
+  const drop = new Set(gone.filter((name) => !kept.has(name)));
+  if (drop.size === 0) return;
+  for (const name of drop) served.delete(name);
+  if (adopted === null) return;
+  const keep = (part: Part): boolean => part.text === "" || !drop.has(part.id);
+  const layers = new Map<string, Part[]>();
+  for (const [name, held] of adopted.layers) layers.set(name, held.filter(keep));
+  adopted = { top: adopted.top.filter(keep), layers };
 }
 
 /**
@@ -181,13 +398,51 @@ export function registerCss(key: string, rules: string): void {
  * it collects them from the sink it installed.
  */
 export function collectCss(): string {
-  // A STABLE sort, so everything within a tier keeps the order it registered
-  // in — which is what a scoped block and a global rule need.
-  const rules = [...registered.entries()]
-    .map((entry, index) => [entry, index] as const)
-    .toSorted(([a, i], [b, j]) => (tiers.get(a[0]) ?? 0) - (tiers.get(b[0]) ?? 0) || i - j)
-    .map(([entry]) => entry[1]);
+  const text = sheet();
+  if (sink?.head !== undefined) {
+    const read = clock;
+    sink.head(() => since(read));
+  }
+  return text;
+}
 
+function sheet(): string {
+  if (serialised !== null) return serialised;
+  const own = arrange(everyPart(registered.values()), served, true);
+  serialised = print(adopted === null ? own : joined(adopted, own));
+  return serialised;
+}
+
+/**
+ * Every rule registered after `mark`, arranged as the whole sheet is.
+ *
+ * Less whatever the sheet held at `mark` under another key, so a page is not
+ * sent one rule in both of its sheets: an atom two modules share is in the
+ * head if either module was registered by then.
+ */
+function since(mark: number): string {
+  const fresh: Entry[] = [];
+  const held = new Set<string>();
+  for (const entry of registered.values()) {
+    if (entry.mark > mark) fresh.push(entry);
+    else for (const part of partsOf(entry)) held.add(part.id);
+  }
+  return fresh.length === 0 ? "" : print(arrange(everyPart(fresh), held, true));
+}
+
+function* everyPart(entries: Iterable<Entry>): Generator<Part> {
+  for (const entry of entries) yield* partsOf(entry);
+}
+
+/**
+ * Parts as the sheet they make: one list for the top level, one a layer.
+ *
+ * `skip` names rules already on the page, which are left out. `order` is off
+ * for a sheet read back from a server, whose order is the thing being kept.
+ */
+function arrange(parts: Iterable<Part>, skip: Set<string> | null, order: boolean): Arranged {
+  const top: Part[] = [];
+  const layers = new Map<string, Part[]>();
   // One block per cascade layer. A layered atom carries its own
   // `@layer barq.ui{…}`, and a package with a thousand of them wrote the
   // wrapper a thousand times: 16 KB of the 110 KB the sheet weighed, and the
@@ -197,106 +452,437 @@ export function collectCss(): string {
   // would not be. Order still decides between two rules INSIDE the layer, and
   // that order is kept; against anything outside it the layer decides, whatever
   // the order. The block sits where the layer was first named.
-  const out: string[] = [];
-  const layers = new Map<string, string[]>();
-  // Each ENTRY split into its top-level statements first. An entry is one
-  // registration — a module's whole compiled stylesheet — and the compiler
-  // emits several `@layer barq.ui{…}` blocks for a module with several `ui()`
-  // calls. Asking whether the entry IS a layer therefore said no, and the whole
-  // entry was written out where it happened to be registered instead of being
-  // gathered: its atoms escaped the tier order, so a plain `width: 100%` from a
-  // late module beat a `@media` width from an early one and the customizer came
-  // out full width with the preview at zero. Splitting first makes the question
-  // one per statement, which is the level the answer was always about.
-  for (const rule of rules) {
-    for (const statement of statements(rule)) {
-      const split = wrapped(statement);
-      if (split === null) {
-        out.push(statement);
-        continue;
-      }
-      const held = layers.get(split.layer);
-      if (held === undefined) {
-        layers.set(split.layer, [split.body]);
-        out.push(`\u0000${split.layer}`);
-      } else {
-        held.push(split.body);
-      }
+  for (const part of parts) {
+    if (skip?.has(part.id) === true) continue;
+    if (part.layer === "") {
+      top.push(part);
+      continue;
+    }
+    const held = layers.get(part.layer);
+    if (held === undefined) {
+      layers.set(part.layer, [part]);
+      top.push({ layer: part.layer, text: "", tier: PINNED, media: null, atom: null, id: "" });
+    } else {
+      held.push(part);
     }
   }
-
-  return out
-    .map((part) =>
-      part.startsWith("\u0000")
-        ? `@layer ${part.slice(1)}{${once((layers.get(part.slice(1)) ?? []).join(""))}}`
-        : part,
-    )
-    .join("");
+  if (!order) return { top, layers };
+  // A compiled module's atoms arrive in that module's order, which puts a
+  // `@media` rule from one module before a base rule from the next. Ordered the
+  // way `orderCss` orders the built asset, so a page is the same served by the
+  // dev server as built. The atoms the runtime registered are ordered WITH
+  // them: in a run of their own, a narrow breakpoint the runtime wrote would
+  // sit after a wide one a compiled module has, and win above it.
+  orderAtoms(top);
+  for (const held of layers.values()) orderAtoms(held);
+  return { top, layers };
 }
 
 /**
- * A blob of CSS as its top-level statements.
+ * This side's rules, put into a sheet a server arranged.
  *
- * Balanced-brace scanning rather than a parser, because that is all the
- * question needs: a statement is whatever closes back to depth zero. A tail
- * that never closes is handed back whole rather than guessed at.
+ * Inserted rather than sorted in. `orderAtoms` moves atoms between the places
+ * atoms hold, which carries one across a rule that is not an atom whenever the
+ * count before it changes — and the server's rules are exactly what must not
+ * change place. An atom goes after the last rule that sorts no later than it
+ * does; anything else goes at the end, where a registration puts it.
  */
-function statements(text: string): string[] {
-  const out: string[] = [];
-  let from = 0;
-  let depth = 0;
-  for (let index = 0; index < text.length; index++) {
-    if (text[index] === "{") depth++;
-    else if (text[index] === "}" && --depth === 0) {
-      out.push(text.slice(from, index + 1));
-      from = index + 1;
+function joined(server: Arranged, own: Arranged): Arranged {
+  const top = [...server.top];
+  const layers = new Map<string, Part[]>();
+  for (const [name, held] of server.layers) layers.set(name, [...held]);
+  for (const part of own.top) {
+    if (part.text !== "") {
+      insert(top, part);
+      continue;
+    }
+    const held = own.layers.get(part.layer) ?? [];
+    const into = layers.get(part.layer);
+    if (into === undefined) {
+      layers.set(part.layer, [...held]);
+      top.push(part);
+    } else {
+      for (const inner of held) insert(into, inner);
     }
   }
-  const tail = text.slice(from);
-  if (tail !== "") out.push(tail);
+  return { top, layers };
+}
+
+function insert(list: Part[], part: Part): void {
+  if (part.tier === PINNED) {
+    list.push(part);
+    return;
+  }
+  let after = -1;
+  let first = -1;
+  for (let index = 0; index < list.length; index++) {
+    const held = list[index];
+    if (held.tier === PINNED) continue;
+    if (first < 0) first = index;
+    if (precedes(held, part) <= 0) after = index;
+  }
+  if (after >= 0) list.splice(after + 1, 0, part);
+  else if (first >= 0) list.splice(first, 0, part);
+  else list.push(part);
+}
+
+function print(arranged: Arranged): string {
+  let out = "";
+  // An atom two modules both use is in both stylesheets, and the compiler
+  // cannot see across them. Identical text, so which copy survives does not
+  // matter. A rule that is not an atom is only dropped inside a layer, where
+  // its position against the rest of the page is the layer's and not its own.
+  const seen = new Set<string>();
+  const classes = STRICT ? new Map<string, string>() : null;
+  for (const part of arranged.top) {
+    if (part.layer === "") {
+      if (part.tier !== PINNED) {
+        if (seen.has(part.text)) continue;
+        seen.add(part.text);
+        if (classes !== null) distinct(classes, part);
+      }
+      out += part.text;
+      continue;
+    }
+    const within = new Set<string>();
+    out += `@layer ${part.layer}{`;
+    for (const inner of arranged.layers.get(part.layer) ?? []) {
+      if (within.has(inner.text)) continue;
+      within.add(inner.text);
+      if (classes !== null && inner.tier !== PINNED) distinct(classes, inner);
+      out += inner.text;
+    }
+    out += "}";
+  }
   return out;
 }
 
 /**
- * A layer's contents with each rule written once.
+ * The same check {@link registerAtom} makes, for atoms that arrive as text.
  *
- * The compiler emits a module's atoms with the module, and an atom two modules
- * both use is in both blobs — it dedupes within one compilation and cannot see
- * the others. Measured over `@barqjs/ui`: 1,955 rules where 552 were distinct,
- * and the sheet weighed 210 KB instead of 93. Identical text, so which copy
- * survives does not matter.
+ * A compiled module's sheet is one registration under the module's id, so two
+ * modules whose declarations hash alike never meet at a key. They meet here,
+ * as two different rules naming one class.
  */
-function once(body: string): string {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  let from = 0;
-  let depth = 0;
-  for (let index = 0; index < body.length; index++) {
-    if (body[index] === "{") depth++;
-    else if (body[index] === "}" && --depth === 0) {
-      const statement = body.slice(from, index + 1);
-      if (!seen.has(statement)) {
-        seen.add(statement);
-        out.push(statement);
-      }
-      from = index + 1;
-    }
-  }
-  // Whatever did not close is not a statement this can reason about.
-  return out.join("") + body.slice(from);
+function distinct(classes: Map<string, string>, part: Part): void {
+  if (part.atom === null) return;
+  const key = `${part.layer}\u0000${part.atom}`;
+  const held = classes.get(key);
+  if (held === undefined) classes.set(key, part.text);
+  else if (held !== part.text) throw collision(part.atom, held, part.text);
 }
 
-/** A rule that is exactly one cascade layer, as its name and its contents. */
-function wrapped(rule: string): { layer: string; body: string } | null {
-  const match = /^@layer ([\w.-]+)\{/.exec(rule);
-  if (match === null || !rule.endsWith("}")) return null;
-  const open = match[0].length;
-  // The layer must CLOSE at the end, or this is a layer holding something that
-  // closes early and the text after it would be lifted out of the layer.
-  let depth = 1;
-  for (let at = open; at < rule.length - 1; at++) {
-    if (rule[at] === "{") depth++;
-    else if (rule[at] === "}" && --depth === 0) return null;
+/**
+ * An entry as the statements it holds, each with the layer it is in.
+ *
+ * An entry is one registration, and a compiled module's is its whole
+ * stylesheet: several `@layer barq.ui{…}` blocks for a module with several
+ * `ui()` calls. Whether something is a layer is therefore a question about a
+ * statement, never about an entry.
+ */
+function partsOf(entry: Entry): Part[] {
+  if (entry.parts !== null) return entry.parts;
+  const parts: Part[] = [];
+  const add = (layer: string, text: string, closed: boolean): void => {
+    // The runtime knows an atom's tier from its condition. A compiled
+    // stylesheet is text, so the tier is read back off each rule.
+    const name = closed ? atomClass(text) : null;
+    const tier = entry.tier !== 0 ? entry.tier : name === null ? PINNED : tierOfRule(text, name);
+    const media = tier === MEDIA ? mediaRank(text) : null;
+    const atom = STRICT && name !== null ? atomOf(layer, text, name) : null;
+    parts.push({ layer, text, tier, media, atom, id: `${layer}\u0000${text}` });
+  };
+  const outer = statements(entry.rules);
+  for (const statement of outer.closed) {
+    const open = layerOpen(statement);
+    if (open === 0) {
+      add("", statement, true);
+      continue;
+    }
+    const layer = statement.slice("@layer ".length, open - 1);
+    const inner = statements(statement.slice(open, -1));
+    for (const rule of inner.closed) add(layer, rule, true);
+    if (inner.tail !== "") add(layer, inner.tail, false);
   }
-  return { layer: match[1] ?? "", body: rule.slice(open, -1) };
+  if (outer.tail !== "") add("", outer.tail, false);
+  entry.parts = parts;
+  return parts;
+}
+
+const MEDIA = TIERS.length - 1;
+
+/**
+ * Where a rule under an at-rule sorts against another in the media tier.
+ *
+ * Two queries that both match are two rules of one specificity, so the later
+ * one wins, and without this "later" is whichever query a page happened to use
+ * first. Mobile-first is the order in which the more specific query is always
+ * the later one:
+ *
+ * 1. `min-width` queries, narrowest floor first; from one floor, the widest
+ *    ceiling first and no ceiling before any.
+ * 2. `max-width` queries with no floor, widest ceiling first.
+ * 3. Everything else: `print`, `prefers-*`, `@supports`, `@container`, a width
+ *    in a unit that is not `px`, `em` or `rem`.
+ *
+ * Ties, and the whole of the third group, go by the at-rule text itself, which
+ * is arbitrary and the same on every page. `barq_css`'s `order.rs` sorts a
+ * built asset by this rule, read off the same text.
+ */
+interface MediaRank {
+  readonly group: number;
+  readonly first: number;
+  readonly second: number;
+  readonly prelude: string;
+}
+
+function mediaRank(rule: string): MediaRank {
+  let at = 0;
+  while (rule[at] === "@") {
+    const brace = rule.indexOf("{", at);
+    if (brace < 0) break;
+    at = brace + 1;
+  }
+  const prelude = rule.slice(0, at);
+  const floor = bound(prelude, "min-width", ">");
+  const ceiling = bound(prelude, "max-width", "<");
+  if (floor !== null) {
+    return { group: 0, first: floor, second: ceiling === null ? -Infinity : -ceiling, prelude };
+  }
+  if (ceiling !== null) return { group: 1, first: -ceiling, second: 0, prelude };
+  return { group: 2, first: 0, second: 0, prelude };
+}
+
+/**
+ * The first width a prelude bounds from one side, in pixels: `min-width: 40em`
+ * or its range spelling `width >= 40em`.
+ */
+function bound(prelude: string, feature: string, operator: string): number | null {
+  for (let at = prelude.indexOf(feature); at >= 0; at = prelude.indexOf(feature, at + 1)) {
+    const colon = pastSpace(prelude, at + feature.length);
+    if (prelude[colon] !== ":") continue;
+    const found = pixels(prelude, pastSpace(prelude, colon + 1));
+    if (found !== null) return found;
+  }
+  for (let at = prelude.indexOf("width"); at >= 0; at = prelude.indexOf("width", at + 1)) {
+    const before = prelude[at - 1];
+    if (before !== "(" && !SPACE.includes(before ?? "x")) continue;
+    let next = pastSpace(prelude, at + "width".length);
+    if (prelude[next] !== operator) continue;
+    next += prelude[next + 1] === "=" ? 2 : 1;
+    const found = pixels(prelude, pastSpace(prelude, next));
+    if (found !== null) return found;
+  }
+  return null;
+}
+
+const SPACE = " \t\n\r\f";
+
+function pastSpace(text: string, from: number): number {
+  let at = from;
+  while (at < text.length && SPACE.includes(text[at])) at++;
+  return at;
+}
+
+const DIGITS = "0123456789";
+
+/** A length at `from` as pixels, at the 16px an `em` is in a media query. */
+function pixels(text: string, from: number): number | null {
+  let at = from;
+  while (DIGITS.includes(text[at] ?? "x")) at++;
+  if (text[at] === "." && DIGITS.includes(text[at + 1] ?? "x")) {
+    at++;
+    while (DIGITS.includes(text[at] ?? "x")) at++;
+  }
+  if (at === from) return null;
+  const value = Number(text.slice(from, at));
+  let end = at;
+  while (/[a-zA-Z]/.test(text[end] ?? "")) end++;
+  const unit = text.slice(at, end).toLowerCase();
+  if (unit === "px") return value;
+  return unit === "em" || unit === "rem" ? value * 16 : null;
+}
+
+/** Negative when `a` sorts first, zero when only arrival separates them. */
+function precedes(a: Part, b: Part): number {
+  if (a.tier !== b.tier) return a.tier - b.tier;
+  const x = a.media;
+  const y = b.media;
+  if (x === null || y === null) return 0;
+  return (
+    compare(x.group, y.group) ||
+    compare(x.first, y.first) ||
+    compare(x.second, y.second) ||
+    compare(x.prelude, y.prelude)
+  );
+}
+
+function compare<T extends number | string>(a: T, b: T): number {
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/**
+ * The atoms of one list, sorted by tier into the places atoms already held.
+ *
+ * A rule that is not an atom does not move: a hand-written block carries its
+ * author's intent about where it sits. Stable, so two atoms of one tier keep
+ * the order they arrived in, which is what decides between them.
+ */
+function orderAtoms(list: Part[]): void {
+  const slots: number[] = [];
+  let sorted = true;
+  let last: Part | null = null;
+  for (let index = 0; index < list.length; index++) {
+    const part = list[index];
+    if (part.tier === PINNED) continue;
+    slots.push(index);
+    if (last !== null && precedes(last, part) > 0) sorted = false;
+    last = part;
+  }
+  if (sorted) return;
+  const atoms = slots.map((slot) => list[slot]).toSorted(precedes);
+  for (let index = 0; index < slots.length; index++) {
+    list[slots[index]] = atoms[index];
+  }
+}
+
+/**
+ * A blob of CSS as its top-level statements, and whatever never closed.
+ *
+ * Balanced-brace scanning rather than a parser, because that is all the
+ * question needs: a statement is whatever closes back to depth zero. A brace
+ * inside a string or a comment closes nothing: counted, `content:"}"` ends its
+ * rule a brace early and the next rule lands inside that rule's layer.
+ *
+ * A `;` at depth zero closes one too: `@layer a, b;` and `@import` are whole
+ * statements. Left joined to the rule after them, the pair is one statement in
+ * a sheet read back from a server and two in the registry that wrote it.
+ */
+function statements(text: string): { closed: string[]; tail: string } {
+  const closed: string[] = [];
+  let from = 0;
+  let depth = 0;
+  let nested = 0;
+  for (let index = 0; index < text.length; index++) {
+    const character = text[index];
+    if (character === "{") depth++;
+    else if (character === "}") {
+      if (--depth === 0) {
+        closed.push(text.slice(from, index + 1));
+        from = index + 1;
+      }
+    } else if (character === "(") nested++;
+    else if (character === ")") nested--;
+    else if (character === ";" && depth === 0 && nested <= 0) {
+      closed.push(text.slice(from, index + 1));
+      from = index + 1;
+    } else if (character === "\\") index++;
+    else if (character === '"' || character === "'") index = stringEnd(text, index);
+    else if (character === "/" && text[index + 1] === "*") {
+      const close = text.indexOf("*/", index + 2);
+      index = close < 0 ? text.length : close + 1;
+    }
+  }
+  return { closed, tail: text.slice(from) };
+}
+
+/** The index of the quote that closes the string opening at `open`. */
+function stringEnd(text: string, open: number): number {
+  const quote = text[open];
+  for (let index = open + 1; index < text.length; index++) {
+    const character = text[index];
+    if (character === "\\") index++;
+    // An unescaped newline ends a string whether or not it was closed, which
+    // is CSS's own recovery and keeps one stray quote from eating the sheet.
+    else if (character === quote || character === "\n") return index;
+  }
+  return text.length;
+}
+
+/**
+ * Where a statement's contents start when it is exactly one named layer, and
+ * `0` when it is anything else.
+ */
+function layerOpen(statement: string): number {
+  const match = /^@layer [\w.-]+\{/.exec(statement);
+  return match === null ? 0 : match[0].length;
+}
+
+/** `a-<property>_<hash>`, the first class a rule names, or `null`. */
+function atomClass(rule: string): string | null {
+  const at = rule.indexOf(".a-");
+  if (at < 0) return null;
+  const name = /^[\w-]+/.exec(rule.slice(at + 1))?.[0] ?? "";
+  return name.includes("_") ? name : null;
+}
+
+/**
+ * `name` when the rule is that atom's own, and `null` when it only names it.
+ *
+ * `.a-card__title{…}` is somebody's BEM and `.a-color_x .b1{…}` is a block
+ * scoped under an atom; both start with a class shaped like ours, and two such
+ * rules differing is not two declarations colliding. An atom's rule is the one
+ * whose value hashes to its own suffix, which nothing else does by accident.
+ */
+function atomOf(layer: string, rule: string, name: string): string | null {
+  let at = 0;
+  let wraps = 0;
+  while (rule[at] === "@") {
+    const brace = rule.indexOf("{", at);
+    if (brace < 0) return null;
+    at = brace + 1;
+    wraps++;
+  }
+  const open = rule.indexOf("{", at);
+  if (open < 0) return null;
+  const body = rule.slice(open + 1, rule.length - 1 - wraps);
+  const colon = body.indexOf(":");
+  if (colon < 0) return null;
+  const value = body.slice(colon + 1);
+  const suffix = name.slice(name.lastIndexOf("_") + 1);
+  return hash(layer === "" ? value : `${layer}|${value}`).slice(1) === suffix ? name : null;
+}
+
+/**
+ * The tier the rule of the atom `name` sorts in, read back off its text, or
+ * `PINNED` when the text is not one rule.
+ *
+ * `tierOf` in `atoms.ts` decides the same thing from the condition, before the
+ * rule exists, and the compiler's `tier_of_rule` decides it from the text of a
+ * built asset. The three agree or a page is ordered one way in dev and another
+ * once built.
+ */
+function tierOfRule(rule: string, name: string): number {
+  let at = 0;
+  while (rule[at] === "@") {
+    const brace = rule.indexOf("{", at);
+    if (brace < 0) return PINNED;
+    at = brace + 1;
+  }
+  const brace = rule.indexOf("{", at);
+  if (brace < 0) return PINNED;
+  const selector = rule.slice(at, brace).trim();
+  if (!aboutSelf(selector, name)) return 0;
+  if (at > 0) return 4;
+  if (selector.includes("::")) return 3;
+  return selector.length === name.length + 1 ? 1 : 2;
+}
+
+/** Whether nothing after the class reaches for another element. */
+function aboutSelf(selector: string, name: string): boolean {
+  const at = selector.lastIndexOf(name);
+  if (at < 0) return true;
+  let depth = 0;
+  for (let index = at + name.length; index < selector.length; index++) {
+    const character = selector[index];
+    if (character === "(" || character === "[") depth++;
+    else if (character === ")" || character === "]") depth--;
+    else if (
+      depth === 0 &&
+      (character === " " || character === ">" || character === "+" || character === "~")
+    ) {
+      return false;
+    }
+  }
+  return true;
 }

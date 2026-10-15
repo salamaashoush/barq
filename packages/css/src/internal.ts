@@ -11,7 +11,7 @@
  * you find useful belongs in the index instead.
  */
 
-export { NEST, kebab, tierOf } from "./atoms.ts";
-export { TIERS, hash, register } from "./sheet.ts";
+export { NEST, UNITLESS, kebab, tierOf } from "./atoms.ts";
+export { TIERS, hash, register, resetCss } from "./sheet.ts";
 export { SHORTHANDS, UNEXPANDABLE, expand } from "./shorthands.ts";
 export { dynamicVar } from "./atoms.ts";

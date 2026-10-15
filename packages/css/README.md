@@ -256,6 +256,11 @@ export const theme = defineVars({ brand: "#3b82f6" });
 
 export const dark = createTheme(theme, { brand: "#60a5fa" });
 // a class that redeclares only `--brand-1a2b3c`
+
+// Tokens group to any depth, and a token is named by its path.
+export const scale = globalVars({ space: { sm: "4px", lg: "16px" } });
+// :root{--space-sm:4px;--space-lg:16px}
+// { space: { sm: "var(--space-sm)", lg: "var(--space-lg)" } }
 ```
 
 **Reach for `globalVars` when the names are published and `defineVars` when they
@@ -357,6 +362,25 @@ one property both apply and the stylesheet's order decides, so a `size` that
 sets `width` over a `base` that sets `width` lost to its own base. Merging costs
 a whole-block arm nothing — a `css` block's class carries no property, so it
 merges against itself and survives whatever follows it.
+
+A compound arm may list several arms of an axis, and matches any of them:
+`when: { size: ["sm", "md"] }`. `VariantProps<typeof button>` is the selection
+as a type, for a component's own props.
+
+A component made of several elements passes `slots`, and every arm names a class
+for whichever parts it changes. The function then returns a class per part:
+
+```ts
+const field = variants({
+  slots: { root: ui({ display: "grid" }), label: ui({ fontWeight: 500 }) },
+  variants: {
+    size: { lg: { root: ui({ gap: 8 }), label: ui({ fontSize: 18 }) } },
+    invalid: { true: { label: ui({ color: "red" }) } },
+  },
+});
+
+const { root, label } = field({ size: "lg", invalid: true });
+```
 
 ## A value from another file
 
