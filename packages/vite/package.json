@@ -1,0 +1,76 @@
+{
+  "name": "@barqjs/vite",
+  "version": "0.1.0",
+  "description": "The barq Vite plugin: the compiler, file routes and the server half, from one call.",
+  "keywords": [
+    "barq",
+    "ssr",
+    "vite",
+    "vite-plugin"
+  ],
+  "homepage": "https://github.com/salamaashoush/barq#readme",
+  "bugs": {
+    "url": "https://github.com/salamaashoush/barq/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/salamaashoush/barq.git",
+    "directory": "packages/vite"
+  },
+  "files": [
+    "dist",
+    "boundary-modules.d.ts"
+  ],
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./boundary-modules": {
+      "types": "./boundary-modules.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {
+    "@barqjs/compiler": "workspace:*"
+  },
+  "devDependencies": {
+    "@barqjs/compiler-rs": "workspace:*",
+    "@barqjs/core": "workspace:*",
+    "@barqjs/css": "workspace:*",
+    "@barqjs/router": "workspace:*",
+    "@barqjs/server": "workspace:*",
+    "@barqjs/start": "workspace:*",
+    "@types/bun": "^1.4.3",
+    "srvx": "^1.0.5",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
+  },
+  "peerDependencies": {
+    "@barqjs/router": ">=0.1.0",
+    "@barqjs/start": ">=0.1.0",
+    "vite": ">=8.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@barqjs/router": {
+      "optional": true
+    },
+    "@barqjs/start": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}
