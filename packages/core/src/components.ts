@@ -58,8 +58,8 @@
  * element-creation path, `ErrorBoundary`'s build-then-install ordering, and
  * `Suspense`'s two `queueMicrotask`s that subscribed to nothing. `markers.ts`
  * went at M9 — these re-exported it and never called it — and so did
- * `children()`, `dynamic()` and the `DocumentFragment` `Fragment` built, which
- * C8 replaced with an array.
+ * `dynamic()` and the `DocumentFragment` `Fragment` built, which C8 replaced
+ * with an array.
  *
  * `For`'s own copy of the arity rule is gone: `each`'s `keyMode` resolves the
  * keying carrier for both the adapter and the compiled path, so there is one
@@ -67,14 +67,16 @@
  */
 
 import type { Accessor, AsDeclared, CallSite, StrictAccessor, StrictChild } from "./config.ts";
-import type { Child, JSXElement } from "./dom.ts";
-import { dynamic } from "./dom.ts";
+import type { ArrayElement, Child, JSXElement } from "./dom.ts";
+import { resolveDynamic } from "./dom.ts";
 import { COUNT, boundary, branch, each, island, portal, reveal } from "./flow.ts";
 import type { ComponentProps, JSX } from "./jsx-runtime.ts";
 import type { Block, Cell } from "./scope.ts";
 import { omit } from "./props.ts";
 import {
+  NotReadyError,
   createMemo,
+  getOwner,
   internalMemo,
   createRoot,
   isBlock,
@@ -270,6 +272,76 @@ function callSlot(slot: unknown, ...args: unknown[]): unknown {
   return typeof slot === "function" ? (slot as Block<unknown, unknown[]>)(...args) : slot;
 }
 
+/** One child after `children()` has resolved it: never an array, never a function to call. */
+export type ResolvedElement = Exclude<JSXElement, ArrayElement>;
+export type ResolvedChildren = ResolvedElement | ResolvedElement[];
+export type ChildrenReturn = Accessor<ResolvedChildren> & { toArray: () => ResolvedElement[] };
+
+/**
+ * Solid 2.0's `children()`: the children a component was handed, resolved, for
+ * a component that has to inspect or iterate them rather than render them
+ * through.
+ *
+ * A zero-arity function is called until it yields something else, which builds
+ * a Block's nodes and reads a Cell; a Block is handed the memo as its scope, so
+ * what it builds is owned here and disposed when the memo recomputes or its
+ * owner goes. Arrays are flattened. A function that takes arguments is a render
+ * callback and is returned untouched, as Solid's `flatten` does.
+ *
+ * Lazy, as Solid's is, so the children are built on the first read and not at
+ * the call.
+ */
+export function children(fn: () => unknown): ChildrenReturn {
+  const memo = internalMemo(() => resolveChildren(fn()), { lazy: true });
+  return Object.assign(memo, {
+    toArray: (): ResolvedElement[] => {
+      const value = memo();
+      if (Array.isArray(value)) return value;
+      return value === null || value === undefined ? [] : [value];
+    },
+  });
+}
+
+function callChild(value: unknown): unknown {
+  let at = value;
+  while (typeof at === "function" && at.length === 0) {
+    at = isBlock(at) ? (at as (scope: unknown) => unknown)(getOwner()) : (at as () => unknown)();
+  }
+  return at;
+}
+
+function resolveChildren(value: unknown): ResolvedChildren {
+  const at = callChild(value);
+  if (!Array.isArray(at)) return at as ResolvedElement;
+  const out: ResolvedElement[] = [];
+  const pending = flattenChildren(at, out);
+  if (pending !== null) throw pending;
+  return out;
+}
+
+/**
+ * Every entry is resolved even when one is not ready yet, so the siblings that
+ * are get built now; the first `NotReadyError` is rethrown afterwards.
+ */
+function flattenChildren(list: readonly unknown[], out: ResolvedElement[]): NotReadyError | null {
+  let pending: NotReadyError | null = null;
+  for (const entry of list) {
+    try {
+      const at = callChild(entry);
+      if (Array.isArray(at)) {
+        const nested = flattenChildren(at, out);
+        pending ??= nested;
+      } else {
+        out.push(at as ResolvedElement);
+      }
+    } catch (error) {
+      if (!(error instanceof NotReadyError)) throw error;
+      pending ??= error;
+    }
+  }
+  return pending;
+}
+
 export function Fragment(props: { children?: Child | Child[] }): JSXElement {
   // C8: a fragment is an ARRAY of its parts. Nothing builds a DocumentFragment.
   const kids = props.children;
@@ -364,13 +436,13 @@ export function Switch(props: SwitchProps): JSXElement {
   };
 
   const arms = internalMemo(() => {
-    const children = descriptors() as Array<{
+    const listed = descriptors() as Array<{
       when?: unknown;
       keyed?: unknown;
       children?: unknown;
     }>;
-    for (let i = 0; i < children.length; i++) {
-      const child = children[i];
+    for (let i = 0; i < listed.length; i++) {
+      const child = listed[i];
       if (!child || typeof child !== "object" || !("when" in child)) continue;
       const value = readValue(child.when, "Match.when");
       if (value) return { index: i, value, match: child };
@@ -483,7 +555,9 @@ export function Dynamic<T extends DynamicTag>(
     return typeof slot === "function" ? (slot as () => unknown)() : slot;
   });
   const rest = omit(props, "component");
-  return branch(null, null, component, () => dynamic(component as unknown as Cell<never>, rest));
+  return branch(null, null, component, () =>
+    resolveDynamic(component as unknown as Cell<never>, rest),
+  );
 }
 
 /**
@@ -544,17 +618,24 @@ export function lazy<M, T extends (props: never) => unknown>(
   load: () => Promise<M>,
   pick: (module: M) => T,
 ): LazyComponent<T>;
+export function lazy<M extends Record<string, unknown>, K extends keyof M & string>(
+  load: () => Promise<M>,
+  options: { export: K },
+): LazyComponent<M[K]>;
 // `P` is the props type of the component this RETURNS, which is the only
 // thing a caller can say about a module whose export is not typed as a component.
 // oxlint-disable-next-line typescript/no-unnecessary-type-parameters
 export function lazy<P = unknown>(
   load: () => Promise<Record<string, unknown>>,
-  pick?: (module: Record<string, unknown>) => unknown,
+  pick?: ((module: Record<string, unknown>) => unknown) | { export?: string },
 ): LazyComponent<(props: P) => JSXElement>;
 export function lazy(
   load: () => Promise<Record<string, unknown>>,
-  pick: (module: Record<string, unknown>) => unknown = (module) => module.default,
+  which?: ((module: Record<string, unknown>) => unknown) | { export?: string },
 ): LazyComponent<(props: unknown) => JSXElement> {
+  const name = typeof which === "object" ? (which.export ?? "default") : "default";
+  const pick =
+    typeof which === "function" ? which : (module: Record<string, unknown>) => module[name];
   let cell: Cell<unknown> | null = null;
   let here = false;
   const resolved = (): Cell<unknown> =>
@@ -615,4 +696,38 @@ export function lazy(
   };
 
   return component;
+}
+
+/** What `lazyModule` returns: the cached import, callable, with its two probes. */
+export type LazyModule<T> = (() => Promise<T>) & {
+  preload: () => Promise<T>;
+  peek: () => T | undefined;
+};
+
+/**
+ * Solid 2.0's `lazyModule`: a cached dynamic import for a module that is not a
+ * component. Calling it or `preload()` starts the import once and answers the
+ * same promise; `peek()` answers the module once it has landed.
+ *
+ * A failed import is not cached, so the next call imports again: the platform
+ * re-fetches a failed dynamic import, and a retry expects it to.
+ */
+export function lazyModule<T>(load: () => Promise<T>): LazyModule<T> {
+  let pending: Promise<T> | undefined;
+  let landed: T | undefined;
+  const read = (): Promise<T> => {
+    if (pending !== undefined) return pending;
+    const current = load();
+    pending = current;
+    current.then(
+      (module) => {
+        landed = module;
+      },
+      () => {
+        if (pending === current) pending = undefined;
+      },
+    );
+    return current;
+  };
+  return Object.assign(read, { preload: read, peek: (): T | undefined => landed });
 }

@@ -13,7 +13,7 @@
 
 import { expect, test } from "bun:test";
 
-import { dynamic, ssrDynamic } from "./ssr.ts";
+import { resolveDynamic, ssrDynamic } from "./ssr.ts";
 
 const markupOf = (value: unknown): string => String(value);
 
@@ -48,8 +48,8 @@ async function elementsIn(markup: string): Promise<string[]> {
 test("a stylesheet reaches a dynamic <style> undecorated", () => {
   const css = "ul > li { color: red }";
 
-  expect(markupOf(dynamic("style", { children: css }))).toBe(`<style>${css}</style>`);
-  expect(markupOf(dynamic("style", { children: css }))).toBe(
+  expect(markupOf(resolveDynamic("style", { children: css }))).toBe(`<style>${css}</style>`);
+  expect(markupOf(resolveDynamic("style", { children: css }))).toBe(
     ssrDynamic({ component: "style", children: css }).t,
   );
 });
@@ -57,13 +57,15 @@ test("a stylesheet reaches a dynamic <style> undecorated", () => {
 test("a script reaches a dynamic <script> undecorated", () => {
   const source = "if (a < b && c > d) run()";
 
-  expect(markupOf(dynamic("script", { children: source }))).toBe(`<script>${source}</script>`);
+  expect(markupOf(resolveDynamic("script", { children: source }))).toBe(
+    `<script>${source}</script>`,
+  );
 });
 
 test("a script body cannot close its own element", () => {
   const source = 'const tag = "</script><img src=x onerror=alert(1)>"';
 
-  expect(markupOf(dynamic("script", { children: source }))).toBe(
+  expect(markupOf(resolveDynamic("script", { children: source }))).toBe(
     '<script>const tag = "<\\/script><img src=x onerror=alert(1)>"</script>',
   );
 });
@@ -72,7 +74,7 @@ test("a tag name the tokenizer reads as text does not turn an attribute into mar
   const title = "<img src=x onerror=alert(1)>";
   let markup = "";
   try {
-    markup = markupOf(dynamic("_x", { title }));
+    markup = markupOf(resolveDynamic("_x", { title }));
   } catch {
     // Refusing the name is one of the two acceptable answers.
   }
@@ -82,8 +84,8 @@ test("a tag name the tokenizer reads as text does not turn an attribute into mar
 
 test("both spellings refuse a tag name that does not begin with an ASCII letter", () => {
   for (const name of ["_x", ":x", "1x", "\u00e9x"]) {
-    expect(() => dynamic(name, {}), name).toThrow("is not a valid tag name");
+    expect(() => resolveDynamic(name, {}), name).toThrow("is not a valid tag name");
     expect(() => ssrDynamic({ component: name }), name).toThrow("is not a valid tag name");
   }
-  expect(markupOf(dynamic("x-card", { title: "ok" }))).toBe('<x-card title="ok"></x-card>');
+  expect(markupOf(resolveDynamic("x-card", { title: "ok" }))).toBe('<x-card title="ok"></x-card>');
 });

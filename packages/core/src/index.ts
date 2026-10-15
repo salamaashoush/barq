@@ -17,6 +17,7 @@ export {
   action,
   affects,
   clearSnapshots,
+  configureClientErrors,
   createEffect,
   createErrorBoundary,
   createLoadingBoundary,
@@ -46,6 +47,7 @@ export {
   isWrappable,
   latest,
   mapArray,
+  markRaw,
   markSnapshotScope,
   onCleanup,
   onSettled,
@@ -65,7 +67,12 @@ export {
 } from "./signals.ts";
 export type {
   Accessor,
+  ArrayFilterFn,
+  ClientErrorContext,
+  ClientErrorHook,
+  ClientErrorsConfig,
   ComputeFunction,
+  CustomPartial,
   EffectBundle,
   EffectFunction,
   EffectOptions,
@@ -74,16 +81,25 @@ export type {
   ExternalSourceFactory,
   Maybe,
   MemoOptions,
+  NoInfer,
+  NotWrappable,
   Part,
+  PathSetter,
+  ProjectionOptions,
+  ProjectionStoreReturn,
   Refreshable,
   RevealOrder,
   Setter,
   Signal,
   SignalOptions,
+  SolidStore,
   SourceAccessor,
   Store,
+  StoreOptions,
   StorePathRange,
+  StoreReturn,
   StoreSetter,
+  Truthy,
   UntilOptions,
 } from "./signals.ts";
 
@@ -103,7 +119,14 @@ export {
   resetChildIds,
   createUniqueId,
 } from "./signals.ts";
-export type { Context, ContextRecord, DiagnosticEvent, Owner } from "./signals.ts";
+export type {
+  Context,
+  ContextProviderComponent,
+  ContextProviderProps,
+  ContextRecord,
+  DiagnosticEvent,
+  Owner,
+} from "./signals.ts";
 
 // Scope — the ownership spine.
 export {
@@ -173,7 +196,7 @@ export {
 
 // DOM
 export {
-  dynamic,
+  resolveDynamic,
   element,
   render,
   hydrate,
@@ -268,12 +291,16 @@ export {
   Portal,
   Dynamic,
 } from "./components.ts";
+export { children } from "./components.ts";
 // Not one of the ten. `lazy` is a `computed` over an import — a reactivity
 // primitive that happens to return a component — and it is here rather than in
 // a router because every mechanism it rides is private to `signals.ts` and
 // `flow.ts`.
-export { lazy } from "./components.ts";
+export { lazy, lazyModule } from "./components.ts";
 export type {
+  ChildrenReturn,
+  ResolvedChildren,
+  ResolvedElement,
   ShowProps,
   ShowItem,
   ForProps,
@@ -293,6 +320,7 @@ export type {
   DynamicTag,
   DynamicTarget,
   LazyComponent,
+  LazyModule,
 } from "./components.ts";
 
 // JSX — the TYPES stay whole; `jsx`/`jsxs`/`jsxDEV` are gone. Bun's JSX

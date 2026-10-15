@@ -411,7 +411,7 @@ function TimerDemo() {
 
         <div class={boxStyle}>
           <p>
-            Message: <strong>{() => message || "(none)"}</strong>
+            Message: <strong>{() => message() || "(none)"}</strong>
           </p>
           <Button
             onClick={() => {

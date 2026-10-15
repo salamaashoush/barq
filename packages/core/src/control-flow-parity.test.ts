@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { For, Repeat, Show } from "./components.ts";
 import { cell } from "./props.ts";
-import { dynamic, element, render } from "./dom.ts";
+import { element, render, resolveDynamic } from "./dom.ts";
 import { branch } from "./flow.ts";
 import { createRoot, flush, createSignal } from "./signals.ts";
 
@@ -191,7 +191,7 @@ describe("dynamic — a tag chosen at run time (§3.13 item 4)", () => {
     const props = { class: "x", children: "hi" };
 
     createRoot((_dispose) => {
-      const el = branch(null, null, which, () => dynamic(which, props));
+      const el = branch(null, null, which, () => resolveDynamic(which, props));
       render(el, container);
     });
     flush();

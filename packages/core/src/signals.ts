@@ -48,6 +48,7 @@ export {
   action,
   affects,
   clearSnapshots,
+  configureClientErrors,
   createErrorBoundary,
   createLoadingBoundary,
   createOptimistic,
@@ -74,6 +75,7 @@ export {
   isWrappable,
   latest,
   mapArray,
+  markRaw,
   markSnapshotScope,
   merge,
   omit,
@@ -94,7 +96,12 @@ export {
 } from "@solidjs/signals";
 export type {
   Accessor,
+  ArrayFilterFn,
+  ClientErrorContext,
+  ClientErrorHook,
+  ClientErrorsConfig,
   ComputeFunction,
+  CustomPartial,
   EffectBundle,
   EffectFunction,
   EffectOptions,
@@ -103,17 +110,26 @@ export type {
   ExternalSourceFactory,
   Maybe,
   MemoOptions,
+  NoInfer,
+  NotWrappable,
   Part,
+  PathSetter,
+  ProjectionOptions,
+  ProjectionStoreReturn,
   Refreshable,
   RevealOrder,
   Setter,
   Signal,
   SignalOptions,
+  SolidStore,
   SourceAccessor,
   Store,
   StoreNode,
+  StoreOptions,
   StorePathRange,
+  StoreReturn,
   StoreSetter,
+  Truthy,
   UntilOptions,
 } from "@solidjs/signals";
 
@@ -640,18 +656,40 @@ type MaybeAccessor<T> = T | (() => T);
 // Type-only: keeps Provider usable as a JSX component (no runtime cycle)
 import type { JSXElement } from "./dom.ts";
 
-export interface Context<T> {
+/** What a context provider is handed: `value` is a Cell, `children` a Block. */
+export interface ContextProviderProps<T> {
+  value: MaybeAccessor<T>;
+  children: unknown;
+}
+
+export type ContextProviderComponent<T> = (props: ContextProviderProps<T>) => JSXElement;
+
+/**
+ * A context is its own provider component, as in Solid 2.0: `<Theme
+ * value="dark">`. The compiler calls a tag as `Comp(props)`, so the call
+ * signature is the whole of what makes that spelling work.
+ */
+export interface Context<T> extends ContextProviderComponent<T> {
   readonly id: symbol;
   readonly defaultValue: T | undefined;
-  /** C1/X1: `Comp(props)`. `value` is a Cell, `children` a Block. */
-  Provider: (props: { value: MaybeAccessor<T>; children: unknown }) => JSXElement;
+  /**
+   * The same function as the context itself. Solid 2.0 removed `.Provider`;
+   * it stays here while code that still spells `<Ctx.Provider>` exists.
+   */
+  readonly Provider: Context<T>;
 }
 
 /**
- * Create a context for dependency injection.
+ * Create a context for dependency injection. The second argument names the
+ * context in a missing-provider error, either as a string or as Solid's
+ * `{ name }`.
  */
-export function createContext<T>(defaultValue?: T, description?: string): Context<T> {
-  const id = Symbol(description ?? "context");
+export function createContext<T>(
+  defaultValue?: T,
+  description?: string | { name?: string },
+): Context<T> {
+  const name = typeof description === "string" ? description : description?.name;
+  const id = Symbol(name || "context");
 
   /**
    * X1: open -> bind -> INVOKE, in that order. `children` is a Block, so there
@@ -659,7 +697,7 @@ export function createContext<T>(defaultValue?: T, description?: string): Contex
    * built": the only party holding the instance scope is this function, and it
    * writes the binding before it runs the body under that scope.
    */
-  const Provider = (props: { value: MaybeAccessor<T>; children: unknown }): JSXElement => {
+  const provider = (props: ContextProviderProps<T>): JSXElement => {
     const instance = childScope(getOwner(), "provide");
     provideOn(instance, id, cellOf(props.value));
     let built = false;
@@ -677,11 +715,11 @@ export function createContext<T>(defaultValue?: T, description?: string): Contex
     }
   };
 
-  return {
-    id,
-    defaultValue,
-    Provider,
-  };
+  const context: { id?: symbol; defaultValue?: T; Provider?: unknown } & typeof provider = provider;
+  context.id = id;
+  context.defaultValue = defaultValue;
+  context.Provider = context;
+  return context as Context<T>;
 }
 
 /**
@@ -894,9 +932,13 @@ export function renderEffect<T>(
  * It takes no position. A memo only one backend needs, counted, moved every
  * key and id declared after it on that side and on no other.
  */
-export function internalMemo<T>(compute: (prev: T | undefined) => T): SourceAccessor<T> {
+export function internalMemo<T>(
+  compute: (prev: T | undefined) => T,
+  options?: MemoOptions<T>,
+): SourceAccessor<T> {
   return engineCreateMemo<T>(
     (OWNERSHIP.sink !== null ? traced(compute as never, "pure") : compute) as never,
+    options,
   );
 }
 
@@ -1238,6 +1280,15 @@ function asyncAware<T>(
           // its flight starts, so a boundary that had not settled when the shell
           // flushed is on the wire as something to await rather than as a hole.
           if (isThenable(value)) {
+            // A promise the stream has already settled carries seroval's stamp,
+            // `s` 1 for a value and 2 for a failure and `v` what it settled on.
+            // Read now, so the content builds in the pass that claims the
+            // server's markup for it: a `.then` answers a microtask too late,
+            // and a failure the server rendered an error boundary for would
+            // otherwise reach the client as content that is not ready yet.
+            const stamped = value as { s?: unknown; v?: unknown };
+            if (stamped.s === 2) throw stamped.v;
+            if (stamped.s === 1 && !isAbandonedSeed(stamped.v)) return stamped.v as T;
             // Followed without a key: the wait is this read's own work, and
             // what arrives is the server's value, already on the page.
             return follow(

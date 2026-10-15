@@ -14,6 +14,9 @@ whatever generic JSX transform is configured and gets different semantics: props
 arrive as plain values instead of Cells, and children are built eagerly instead
 of being deferred.
 
+The API is Solid 2.0's. Where barq differs, and why, is in
+[docs/solid-2.0.md](docs/solid-2.0.md).
+
 ## Signals, memos and effects
 
 The reactive primitives are Solid 2.0's, from `@solidjs/signals`, exported under
@@ -322,9 +325,9 @@ const Theme = createContext<"light" | "dark">("light");
 
 function App() {
   return (
-    <Theme.Provider value="dark">
+    <Theme value="dark">
       <Page />
-    </Theme.Provider>
+    </Theme>
   );
 }
 
@@ -334,8 +337,9 @@ function Page() {
 }
 ```
 
-`useContext` returns a Cell, so a provider that changes value updates the
-consumers that read it.
+The context is its own provider component, as in Solid 2.0. `Theme.Provider`
+is the same function and still works. `useContext` returns a Cell, so a
+provider that changes value updates the consumers that read it.
 
 ## Subpaths
 
