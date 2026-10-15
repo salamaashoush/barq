@@ -24,6 +24,7 @@ import {
   rootScope,
   runWithOwner,
   settle,
+  errorOwnerPath,
 } from "@barqjs/core";
 import {
   abandonPendingSeeds,
@@ -33,6 +34,8 @@ import {
   pendingSeedsOf,
   setAsyncSession,
   settleStep,
+  diagnosticsEnabled,
+  emitDiagnostic,
   thrownBy,
 } from "@barqjs/core/internal";
 import {
@@ -664,6 +667,32 @@ function defaultStreamError(error: unknown): void {
   console.error(error);
 }
 
+/**
+ * A failure after the shell, on the diagnostics channel. The status has gone
+ * out with the shell, so the response cannot say it, and this is where a
+ * development server picks it up to show it over the page.
+ */
+function reportContained(error: unknown): void {
+  const thrown = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+  emitDiagnostic(
+    {
+      code: "SSR_RENDER_ERROR_CONTAINED",
+      kind: "ssr",
+      severity: "error",
+      message:
+        `Part of the page threw \`${thrown}\` while it rendered after the shell had been sent. ` +
+        "The status and headers were already on the wire, so the page streamed on: the nearest " +
+        "error boundary the stream wrote shows its fallback, and without one the part keeps its " +
+        "loading fallback and the browser builds it again. Fix the throw at the top of the stack, " +
+        "or wrap the part in `<Errored>` or give its route an `errorComponent` to show the " +
+        "failure on purpose.",
+      data: { error },
+      ownerPath: errorOwnerPath(error),
+    },
+    null,
+  );
+}
+
 const BOUNDARY_TIMEOUT = 5_000;
 
 /**
@@ -1112,7 +1141,11 @@ export function renderToStream(
   }
   placeParked(shell, "html", [...parked, ...guards]);
 
-  const report = options?.onError ?? defaultStreamError;
+  const onError = options?.onError ?? defaultStreamError;
+  const report = (error: unknown): void => {
+    if (diagnosticsEnabled()) reportContained(error);
+    onError(error);
+  };
 
   /**
    * The swap that puts an error boundary's fallback where its content stood,

@@ -9,6 +9,7 @@
  */
 
 import {
+  DEV,
   HYDRATE,
   Loading,
   NotReadyError,
@@ -1250,6 +1251,20 @@ describe("a throw after the shell", () => {
       console.error = original;
     }
     expect(logged.map(String)).toEqual(["Error: late boom"]);
+  });
+
+  test("is reported on the diagnostics channel, for a development server to show", async () => {
+    const capture = DEV.diagnostics.capture();
+    await collect(renderToStream(pageThatThrowsLate(), { timeout: 100, onError: () => {} }));
+    const events = capture.stop().filter((event) => event.code === "SSR_RENDER_ERROR_CONTAINED");
+    expect(events).toHaveLength(1);
+    const [event] = events;
+    expect(event?.severity).toBe("error");
+    expect(event?.message).toStartWith(
+      "Part of the page threw `Error: late boom` while it rendered after the shell had been sent.",
+    );
+    expect(String(event?.data?.error)).toBe("Error: late boom");
+    expect(event?.docs).toEndWith("/packages/core/docs/diagnostics/SSR_RENDER_ERROR_CONTAINED.md");
   });
 
   // ONE boundary failing is one boundary failing. Its sibling is still owed its
