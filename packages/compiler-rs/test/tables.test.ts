@@ -51,7 +51,7 @@ describe("the compiler's tables against dom.ts as it is on disk", () => {
   });
 
   it("nothing is both delegated and non-bubbling", () => {
-    // A document listener for a non-bubbling type never fires from a
+    // A root's listener for a non-bubbling type never fires from a
     // descendant, so a name in both tables makes the compiler emit an expando
     // the runtime warns about and that never runs.
     expect(DELEGATED_EVENTS.filter((event) => NON_BUBBLING_EVENTS.includes(event))).toEqual([]);

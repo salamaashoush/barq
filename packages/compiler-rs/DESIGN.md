@@ -775,7 +775,7 @@ Output is built with `oxc_ast::AstBuilder` in the same arena and printed by `oxc
 **Module preamble.** Hoisted `const _tmpl$N = /*#__PURE__*/ _$template("…")` — safe to mark pure
 because `template()` closes over a string and does no DOM work until first call. Then hoisted
 handlers `const _h$N = …`. Then one `_$delegateEvents([...])`. Module evaluation order
-guarantees the document listeners are installed before any event can fire.
+guarantees every render root listens for the module's types before any event can fire.
 
 **SVG templates.** `template(html, isSVG)` with `isSVG = true` wraps the html in
 `<svg xmlns="…">…</svg>` and returns `svgEl.firstChild` (`dom.ts:991`). So `isSVG = true` is for

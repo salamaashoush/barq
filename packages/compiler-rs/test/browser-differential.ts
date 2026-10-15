@@ -39,6 +39,7 @@ import { join } from "node:path";
 
 import type { Page } from "./chrome.ts";
 import {
+  assertDeclaresItsDelegatedTypes,
   browserOnlySource,
   compileBrowserOnly,
   compileFixture,
@@ -59,7 +60,7 @@ const PRAGMA = "/** @jsxImportSource @barqjs/core */\n";
  *
  * `export *` skips a name the module also exports locally, so `template` here is
  * the one every compiled module binds and every other export is the real one;
- * the runtime's own module state (the installed delegated event set above all)
+ * the runtime's own module state (the declared delegated event set above all)
  * stays shared exactly as it is in production.
  *
  * Without it the marker-layout channel had to ask "does this module clone each
@@ -92,16 +93,6 @@ export function template(html, isSVG) {
   }
 }
 `;
-
-/** The event types the emitted module registers with `delegateEvents([...])`. */
-function delegatedTypes(code: string): string[] {
-  const call = code.match(/_\$+delegateEvents\(\[([^\]]*)\]\)/);
-  if (!call) return [];
-  return call[1]
-    .split(",")
-    .map((entry) => entry.trim().replace(/^["']|["']$/g, ""))
-    .filter((entry) => entry.length > 0);
-}
 
 export interface BrowserDivergence {
   fixture: string;
@@ -164,7 +155,6 @@ export interface DifferentialReport {
  */
 interface PageRow {
   name: string;
-  delegated: string[];
   /** Attribute names the patch code applies after the clone — read off the code. */
   patched: string[];
   /** Whether the module emits `_$spread`, whose names the compiler cannot know. */
@@ -177,15 +167,15 @@ function entrySource(fixtures: PageRow[]): string {
     .join("\n");
   const table = fixtures
     .map(
-      ({ name, delegated, patched, spread }, i) =>
-        `  [${JSON.stringify(name)}, compiled${i}, ${JSON.stringify(delegated)}, ` +
+      ({ name, patched, spread }, i) =>
+        `  [${JSON.stringify(name)}, compiled${i}, ` +
         `${JSON.stringify(patched)}, ${JSON.stringify(spread)}],`,
     )
     .join("\n");
 
   return `${PRAGMA}${imports}
 import { normalizeChannels, resetIdentity } from "../../normalize.ts"
-import { clearDelegatedEvents, delegateEvents, flush, render } from "@barqjs/core"
+import { flush, render } from "@barqjs/core"
 
 const CORPUS = [
 ${table}
@@ -198,14 +188,6 @@ async function settle() {
   await new Promise((resolve) => setTimeout(resolve, 0))
 }
 
-// The installed-delegated-events set is MODULE state on the runtime, and it is
-// torn down between renders so one fixture cannot free-ride on the listener
-// another installed. In the happy-dom harness each module is imported
-// immediately before its render, so the compiled module's own
-// \`delegateEvents([...])\` runs at the right moment; here every module is
-// evaluated once when the bundle loads, long before the first teardown. The
-// types are the ones read out of THAT call at build time, so a compiler that
-// stopped emitting it installs nothing and the event frames go quiet.
 // A fixture that never settles used to hang the whole page, and the only thing
 // that noticed was \`beforeAll\`'s 300-second timeout — which names no fixture
 // and produces no report. A watchdog turns it into an ordinary divergence
@@ -234,8 +216,7 @@ function liveTemplateAnchors(container) {
   return anchors
 }
 
-async function drive(mod, delegated) {
-  if (delegated.length > 0) delegateEvents(delegated)
+async function drive(mod) {
   const container = document.createElement("div")
   document.body.appendChild(container)
   // Node identity is stamped on first sight, so the two paths only line up when
@@ -274,7 +255,6 @@ async function drive(mod, delegated) {
     dispose?.()
     container.remove()
     document.body.innerHTML = ""
-    clearDelegatedEvents()
   }
 }
 
@@ -284,10 +264,10 @@ window.__barqDifferential = async function () {
   let frames = 0
   let attributeLines = 0
 
-  for (const [name, compiledModule, delegated, patched, spread] of CORPUS) {
+  for (const [name, compiledModule, patched, spread] of CORPUS) {
     let compiled
     try {
-      compiled = await withDeadline(drive(compiledModule, delegated), name)
+      compiled = await withDeadline(drive(compiledModule), name)
     } catch (error) {
       divergences.push({ fixture: name, kind: "threw", expected: "", actual: String(error && error.stack || error) })
       continue
@@ -387,13 +367,16 @@ export async function buildDifferentialPage(
   const fixtures = rows.map(({ name, compile }, i) => {
     const clean = compile(name.replace("browser-only/", ""));
     const code = corrupt ? corrupt(name, clean) : clean;
+    // Every module's `delegateEvents([...])` runs when the bundle loads, so the
+    // declared set is the whole corpus's before the first render and a module
+    // that dropped its own call would still see its events. It is checked here.
+    assertDeclaresItsDelegatedTypes(code, name);
     writeFileSync(
       join(workdir, `compiled-${i}.tsx`),
       PRAGMA + code.replaceAll('from "@barqjs/core"', 'from "./core-instrumented.ts"'),
     );
     return {
       name,
-      delegated: delegatedTypes(code),
       patched: [...patchedAttributeNames(code)],
       spread: code.includes("_$spread("),
     };

@@ -238,17 +238,16 @@ describe("L4 — the leak oracle", () => {
     expect(registered.filter((record) => record.outstanding)).toEqual([]);
   });
 
-  it("delegation is not counted as a leak, and is not counted as nothing either", () => {
-    // One `document` listener per event type is module state for the whole
-    // process. Folding it in would report a finding for every fixture that uses
-    // `onClick`, and none of them would be the bug B4 is about — but a probe
-    // that could not SEE the delegated listener would also not be able to see a
-    // delegated listener that stopped being removed.
+  it("a root's delegated listeners are seen, and leave with the root", () => {
+    // Delegated listeners sit on the container `render` mounted into and are
+    // removed when that root is disposed, so B4 holds them to the same count as
+    // every other listener. A probe that could not SEE them would report the
+    // same zero for a root that stopped removing them.
     const delegated = [...sessions.values()].flatMap((s) =>
       s.listeners.filter((record) => record.delegated),
     );
     expect(delegated.length).toBeGreaterThan(0);
-    expect(findings.some((f) => f.id.startsWith("listener@document"))).toBe(false);
+    expect(delegated.filter((record) => record.outstanding)).toEqual([]);
   });
 
   it("the channel declares exactly the rules it can report", () => {

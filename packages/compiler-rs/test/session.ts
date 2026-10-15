@@ -63,7 +63,6 @@ interface CoreLike {
   createRoot<T>(fn: (dispose: () => void) => T): T;
   resetErrorHalt(): void;
   runWithOwner<T>(owner: unknown, fn: () => T): T;
-  clearDelegatedEvents(): void;
   childScope(parent: unknown, kind: string): object;
   dispose(scope: object): void;
   beginOwnershipTrace(): void;
@@ -580,7 +579,7 @@ export async function openSession(
       type: record.type,
       target: describeTarget(record.target),
       outstanding: listenerProbe.live.includes(record),
-      delegated: typeof document !== "undefined" && record.target === document,
+      delegated: record.target === container,
     }));
 
     return {
@@ -610,7 +609,6 @@ export async function openSession(
     listenerProbe.stop();
     container.remove();
     document.body.innerHTML = "";
-    core.clearDelegatedEvents();
   }
 }
 

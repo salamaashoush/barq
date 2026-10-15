@@ -2015,9 +2015,9 @@ The rule was NOT deregistered on the strength of a green probe. `leaks.test.ts` 
 row, that every non-delegated listener the corpus registers was matched to its removal *and* that the
 corpus registers listeners at all — a probe that stopped discriminating would report the same zero.
 
-Delegated handlers are deliberately not counted and are not a leak: one `document` listener per event
-type is module state for the whole process, installed by `delegateEvents` and removed by
-`clearDelegatedEvents`, and B4 is about the listener a POSITION owns.
+Delegated handlers are counted like every other listener: their listeners sit on the container a
+`render` or `hydrate` mounted into, one per declared event type, and are removed when that root is
+disposed, so one still registered after `dispose()` is a B4 leak.
 
 What is NOT claimed: the second sentence of the rule. Handler identity is bound once by default, which
 holds; `on:click={cell}` as the explicit live form is not implemented, and `on:` today takes a

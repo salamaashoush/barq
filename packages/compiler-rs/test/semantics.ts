@@ -101,14 +101,12 @@ function bindRule(kit: Kit, rule: string): Kit {
   };
 }
 
-async function teardown(containers: HTMLElement[]): Promise<void> {
-  const core = await import("@barqjs/core");
+function teardown(containers: HTMLElement[]): void {
   for (const host of containers) host.remove();
   containers.length = 0;
   // Portal targets default to document.body, and a fixture that died mid-render
   // can leave a marker pair behind; neither may reach the next claim.
   document.body.innerHTML = "";
-  core.clearDelegatedEvents();
 }
 
 export interface FixtureRun {
@@ -175,7 +173,7 @@ export async function runSemanticFixture(
         crashed = true;
       }
     } finally {
-      await teardown(containers);
+      teardown(containers);
     }
     outcomes.push({
       fixture: name,

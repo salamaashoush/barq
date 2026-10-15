@@ -9,7 +9,7 @@
  * An `Errored` standing directly over the button caught nothing.
  *
  * Both halves are driven, because they are two different registrations: the
- * delegated set routes through the document-level dispatcher, and everything
+ * delegated set routes through the render root's dispatcher, and everything
  * else through the listener the element owns.
  *
  * The third claim is the CONTROL, and it is what makes the first two evidence

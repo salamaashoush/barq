@@ -313,7 +313,6 @@ interface CoreLike {
   dispose(scope: object): void;
   runWithOwner<T>(owner: unknown, fn: () => T): T;
   render(node: unknown, container: Element): () => void;
-  clearDelegatedEvents(): void;
   beginOwnershipTrace(): void;
   endOwnershipTrace(): OwnershipEvent[];
 }
@@ -386,9 +385,9 @@ export async function trace(
     // `endOwnershipTrace` is idempotent about the sink, so a throw above still
     // leaves the runtime uninstrumented for whatever runs next.
     core.endOwnershipTrace();
+    clear?.();
     container.remove();
     document.body.innerHTML = "";
-    core.clearDelegatedEvents();
   }
 }
 

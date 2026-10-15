@@ -410,6 +410,7 @@ if (!shared.prepared) {
  * to "did these two renders share a signal".
  */
 export async function loadModule(code: string, tag: string): Promise<FixtureModule> {
+  assertDeclaresItsDelegatedTypes(code, tag);
   for (let attempt = 0; ; attempt++) {
     const id = `${RUN}-${tag}-${shared.seq++}`;
     const file = join(TMP_DIR, `${id}.tsx`);
@@ -451,6 +452,34 @@ export async function loadModule(code: string, tag: string): Promise<FixtureModu
           "by hash alone, so two generated modules are served each other's code.",
       );
     }
+  }
+}
+
+/**
+ * Every `__bq_<type>` expando a module writes has its type in the module's own
+ * `delegateEvents([...])`.
+ *
+ * The declared set is process state, as Solid's is: once any module declares
+ * `click`, every render root listens for it. A render can therefore not tell a
+ * module that registered its types from one that relies on an earlier module
+ * having done so, and this is where a compiler that dropped the registration
+ * is caught instead.
+ */
+export function assertDeclaresItsDelegatedTypes(code: string, tag: string): void {
+  const written = new Set(
+    [...stripLiterals(code).matchAll(/\.__bq_([a-z]+)\s*=(?!=)/g)].map((match) => match[1]),
+  );
+  if (written.size === 0) return;
+  const call = /_\$+delegateEvents\(\[([^\]]*)\]\)/.exec(stripComments(code));
+  const declared = new Set(
+    call === null ? [] : [...call[1].matchAll(/"([a-z]+)"/g)].map((match) => match[1]),
+  );
+  const missing = [...written].filter((type) => !declared.has(type));
+  if (missing.length > 0) {
+    throw new Error(
+      `${tag} writes delegated handlers for ${missing.join(", ")} and never declares them ` +
+        `with delegateEvents, so no render root listens for them.`,
+    );
   }
 }
 
@@ -508,6 +537,7 @@ export async function renderModule(mod: FixtureModule): Promise<RenderResult> {
 
   const trace: Trace = beginTrace();
   let dispose: (() => void) | undefined;
+  let unmount: (() => void) | undefined;
 
   const channels: DomChannels[] = [];
   const expectedAnchors: number[] = [];
@@ -535,7 +565,7 @@ export async function renderModule(mod: FixtureModule): Promise<RenderResult> {
         // C1: the default export is a component, so `render` is handed the
         // BLOCK and opens the scope it runs under itself. Calling it here would
         // construct the subtree before any scope existed.
-        core.render(mod.default as never, container);
+        unmount = core.render(mod.default as never, container);
       }),
     );
 
@@ -550,9 +580,8 @@ export async function renderModule(mod: FixtureModule): Promise<RenderResult> {
     }
 
     // Events go through the real DOM, so a compiled path that never binds a
-    // handler diverges here and nowhere else. The container stays attached to
-    // document.body for the whole render because delegated handlers only fire
-    // once the event reaches document.
+    // handler diverges here and nowhere else. Delegated handlers fire from the
+    // render root's listener, which is on the container.
     const eventFrames: string[] = [];
     for (const dispatch of mod.events ?? []) {
       dispatch(container);
@@ -572,18 +601,12 @@ export async function renderModule(mod: FixtureModule): Promise<RenderResult> {
     };
   } finally {
     endTrace();
+    unmount?.();
     dispose?.();
     container.remove();
     // Portal targets default to document.body; leaving them attached would leak
     // into the next fixture's snapshot.
     document.body.innerHTML = "";
-    // The runtime's installed-delegated-events set is MODULE state: it outlives
-    // every scope and both renders share it. Without this the compiled render
-    // free-rides on the listener the oracle's createElement path installed, and
-    // dropping the emitted `_$delegateEvents([...])` altogether leaves every
-    // behavioural test green — target #7 becomes unfalsifiable. Tearing it down
-    // makes each render install what it actually asked for.
-    core.clearDelegatedEvents();
   }
 }
 

@@ -37,10 +37,9 @@
  * across the corpus, and `leaks.test.ts` asserts it together with the probe's
  * own discrimination.
  *
- * Delegated handlers are not here and were never a leak: one `document`
- * listener per event type is module state for the whole process, installed by
- * `delegateEvents` and removed by `clearDelegatedEvents`. B4 is about the
- * listener a POSITION owns.
+ * Delegated handlers are held to the same count: their listeners sit on the
+ * container a `render` mounted into and are removed when that root is
+ * disposed.
  *
  * The table is empty and the four assertions in `leaks.test.ts` still run
  * against it — an unregistered leak is still a suite failure, which is the half
@@ -174,12 +173,18 @@ export const LEAK_FAILURES: readonly LeakKnownFailure[] = Object.freeze(
  * Then 284 to 283: a component's children are a Block, and a Block is built
  * once and placed, where it used to sit inside an effect that had nothing to
  * follow. Each live hole among the children has an effect of its own instead.
+ *
+ * Then 32 listeners to 328: delegated events are owned by the render root, so
+ * each session's root adds one listener to its container per declared event
+ * type and removes it at disposal. Those registrations used to be one listener
+ * per type on the document for the whole process, outside every session. They
+ * are counted, and none is outstanding.
  */
 export const LEAK_REACH: Readonly<Record<string, number>> = Object.freeze({
   sessions: 158,
   scopesEntered: 501,
   effectsCreated: 324,
-  listeners: 32,
+  listeners: 328,
 });
 
 export function leakKey(fixture: string, leak: string): string {

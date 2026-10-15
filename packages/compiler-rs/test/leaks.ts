@@ -69,18 +69,6 @@ export interface LeakFinding {
   message: string;
 }
 
-/**
- * A listener on `document` is module-scope event delegation, not per-position
- * state: one handler per event type for the whole process, installed by
- * `delegateEvents` and removed by `clearDelegatedEvents`. B4 is about the
- * listener a POSITION owns, and folding delegation in would report one finding
- * per fixture that uses `onClick` — which is every interesting fixture, and none
- * of them is the bug.
- */
-function isDelegation(target: string, delegated: boolean): boolean {
-  return delegated || target === "document";
-}
-
 export function findLeaks(session: Session): LeakFinding[] {
   const found: LeakFinding[] = [];
   const say = (kind: LeakKind, id: string, message: string): void => {
@@ -116,7 +104,6 @@ export function findLeaks(session: Session): LeakFinding[] {
   const outstanding = new Map<string, number>();
   for (const record of session.listeners) {
     if (!record.outstanding) continue;
-    if (isDelegation(record.target, record.delegated)) continue;
     const key = `${record.target}.${record.type}`;
     outstanding.set(key, (outstanding.get(key) ?? 0) + 1);
   }
