@@ -306,7 +306,7 @@ for (const key of Object.keys(dtlFireEvent) as Array<keyof typeof dtlFireEvent>)
 /**
  * Configure the testing library
  */
-export const configure = configureDTL;
+export const configure: typeof configureDTL = configureDTL;
 
 // Re-export everything from @testing-library/dom EXCEPT screen
 // We provide our own lazy screen implementation

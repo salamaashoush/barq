@@ -223,7 +223,7 @@ const native = createRequire(import.meta.url)("@barqjs/compiler-rs") as Native;
 export function routeTree(
   root: string,
   dir: string,
-  outFile = DEFAULT_ROUTE_TREE,
+  outFile: string = DEFAULT_ROUTE_TREE,
   writeIds = false,
 ): RouteTree {
   return native.routeTree(root, dir, outFile, writeIds);

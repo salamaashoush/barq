@@ -22,7 +22,7 @@ export const easing = {
   cubicInOut: (t: number): number =>
     t < 0.5 ? 4 * t * t * t : (t - 1) * (2 * t - 2) * (2 * t - 2) + 1,
   expoOut: (t: number): number => (t === 1 ? 1 : 1 - 2 ** (-10 * t)),
-} as const satisfies Record<string, Easing>;
+} as const;
 
 /**
  * A CSS-style cubic Bézier easing.

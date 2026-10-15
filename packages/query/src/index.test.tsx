@@ -5,7 +5,15 @@
  */
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { Loading, createEffect, flush, render, createRoot, runWithOwner } from "@barqjs/core";
+import {
+  type JSXElement,
+  Loading,
+  createEffect,
+  flush,
+  render,
+  createRoot,
+  runWithOwner,
+} from "@barqjs/core";
 import { QueryClient } from "@tanstack/query-core";
 import {
   QueryClientProvider,
@@ -28,14 +36,14 @@ function client(): QueryClient {
 
 const seen: QueryClient[] = [];
 
-export function ClientProbe() {
+export function ClientProbe(): JSXElement {
   seen.push(useQueryClient());
   return <div>probe</div>;
 }
 
 const results: string[] = [];
 
-export function UsersView() {
+export function UsersView(): JSXElement {
   const query = useQuery<string[]>(() => ({
     queryKey: ["users"],
     queryFn: async () => ["alice", "bob"],
@@ -43,12 +51,12 @@ export function UsersView() {
   return <div>{() => (query.data ?? []).join(",")}</div>;
 }
 
-export function FetchingCount() {
+export function FetchingCount(): JSXElement {
   const count = useIsFetching();
   return <div>{() => `fetching:${count()}`}</div>;
 }
 
-export function Adder() {
+export function Adder(): JSXElement {
   const mutation = useMutation<string, Error, string>(() => ({
     mutationFn: async (name: string) => {
       results.push(name);

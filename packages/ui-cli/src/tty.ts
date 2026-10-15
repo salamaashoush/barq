@@ -15,15 +15,17 @@ const CSI = "\u001B[";
 /** `NO_COLOR` is the convention every tool honours, and a pipe is not a terminal. */
 const styled = stdout.isTTY && process.env["NO_COLOR"] === undefined;
 
-const code = (open: string): ((text: string) => string) =>
+type Style = (text: string) => string;
+
+const code = (open: string): Style =>
   styled ? (text) => `${CSI}${open}m${text}${CSI}0m` : (text) => text;
 
-export const dim = code("2");
-export const bold = code("1");
-export const green = code("32");
-export const red = code("31");
-export const yellow = code("33");
-export const cyan = code("36");
+export const dim: Style = code("2");
+export const bold: Style = code("1");
+export const green: Style = code("32");
+export const red: Style = code("31");
+export const yellow: Style = code("33");
+export const cyan: Style = code("36");
 
 export function say(line = ""): void {
   stdout.write(`${line}\n`);

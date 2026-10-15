@@ -34,7 +34,7 @@ import { startOptions } from "./start-instance.ts";
 export { STATIC_PREFIX, staticFunctionMiddleware, staticUrl } from "./static-fn.ts";
 export { NOT_FOUND, REDIRECT } from "./middleware.ts";
 
-export const SERVER_FN = Symbol.for("barq.server-fn");
+export const SERVER_FN: unique symbol = Symbol.for("barq.server-fn");
 
 /** Where mounted server functions answer. */
 export const RPC_PREFIX = "/_barq/fn/";
@@ -601,7 +601,7 @@ function fromControl(control: RpcControl): Error {
 }
 
 /** Where a server function keeps the middleware it declared, for another to inline. */
-export const SERVER_FN_CHAIN = Symbol.for("barq.server-fn-chain");
+export const SERVER_FN_CHAIN: unique symbol = Symbol.for("barq.server-fn-chain");
 
 /** What `.middleware([...])` takes: a middleware, or a server function whose chain it inlines. */
 export type ChainStep = Middleware | AnyServerFn;

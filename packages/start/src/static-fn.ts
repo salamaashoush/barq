@@ -16,7 +16,13 @@
 
 import { decodeWire, encodeWire } from "@barqjs/server/codec";
 
-import { createMiddleware } from "./middleware.ts";
+import {
+  type BuiltMiddleware,
+  type FreshMiddleware,
+  type WithClient,
+  type WithServer,
+  createMiddleware,
+} from "./middleware.ts";
 
 /** Where a static answer is served from, under the client output. */
 export const STATIC_PREFIX = "/_barq/static/";
@@ -144,7 +150,9 @@ async function readStatic(id: string, input: unknown): Promise<unknown> {
  * Only the RESULT is stored. What a server middleware sends back with
  * `sendContext` is not, and a `Response` or a stream is never written.
  */
-export const staticFunctionMiddleware = /* @__PURE__ */ createMiddleware({ type: "function" })
+export const staticFunctionMiddleware: BuiltMiddleware<
+  WithServer<WithClient<FreshMiddleware, Promise<{} | null>>, Promise<unknown>>
+> = /* @__PURE__ */ createMiddleware({ type: "function" })
   .client(async ({ next, data, serverFnMeta }) => {
     if (serverFnMeta === undefined || serverFnMeta.id === "" || data instanceof FormData) {
       return next();

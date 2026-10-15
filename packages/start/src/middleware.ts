@@ -611,8 +611,8 @@ export type BuiltMiddleware<State extends MiddlewareState = MiddlewareState> = M
  * declaration is `REDIRECT` / `NOT_FOUND` in `packages/router/src/errors.ts`,
  * and `server.test.ts` checks the two agree.
  */
-export const REDIRECT = Symbol.for("barq.redirect");
-export const NOT_FOUND = Symbol.for("barq.not-found");
+export const REDIRECT: unique symbol = Symbol.for("barq.redirect");
+export const NOT_FOUND: unique symbol = Symbol.for("barq.not-found");
 
 /**
  * What a middleware handed back, held to TanStack's rule: it ends in

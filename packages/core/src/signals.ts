@@ -204,7 +204,7 @@ export function isBlock(value: unknown): boolean {
 export class ScopeMissingError extends Error {
   constructor(
     readonly origin: string,
-    message = `\`${origin}\` was called with \`undefined\` where its owner is expected, so ` +
+    message: string = `\`${origin}\` was called with \`undefined\` where its owner is expected, so ` +
       "nothing would dispose the effects and listeners it creates. Pass the owner from " +
       "`getOwner()`, or `null` to run without one on purpose.",
   ) {

@@ -12,6 +12,7 @@ import {
   createSortedRowModel,
   filterFns,
   sortFns,
+  type StockFeatures,
   stockFeatures,
   tableFeatures,
 } from "./index.ts";
@@ -41,7 +42,21 @@ export const people: Person[] = [
   person(5, "omar", 50, "infra"),
 ];
 
-export const features = tableFeatures({
+export interface Features extends StockFeatures {
+  filteredRowModel: ReturnType<typeof createFilteredRowModel>;
+  groupedRowModel: ReturnType<typeof createGroupedRowModel>;
+  sortedRowModel: ReturnType<typeof createSortedRowModel>;
+  expandedRowModel: ReturnType<typeof createExpandedRowModel>;
+  paginatedRowModel: ReturnType<typeof createPaginatedRowModel>;
+  facetedRowModel: ReturnType<typeof createFacetedRowModel>;
+  facetedMinMaxValues: ReturnType<typeof createFacetedMinMaxValues>;
+  facetedUniqueValues: ReturnType<typeof createFacetedUniqueValues>;
+  filterFns: typeof filterFns;
+  sortFns: typeof sortFns;
+  aggregationFns: typeof aggregationFns;
+}
+
+export const features: Features = tableFeatures({
   ...stockFeatures,
   filteredRowModel: createFilteredRowModel(),
   groupedRowModel: createGroupedRowModel(),
@@ -55,8 +70,6 @@ export const features = tableFeatures({
   sortFns,
   aggregationFns,
 });
-
-export type Features = typeof features;
 
 export interface Mounted {
   host: HTMLElement;

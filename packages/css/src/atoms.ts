@@ -157,7 +157,7 @@ export type AtomStyles = {
 };
 
 /** Properties whose bare number is a count, not a length. */
-export const UNITLESS = new Set([
+export const UNITLESS: Set<string> = new Set([
   "-webkit-box-flex",
   "-webkit-box-ordinal-group",
   "-webkit-line-clamp",

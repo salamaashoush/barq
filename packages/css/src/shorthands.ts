@@ -158,7 +158,7 @@ export const DISPLACES: ReadonlyMap<string, readonly string[]> = new Map(
  * Shorthands that cannot be expanded by counting values, and so cannot take
  * part in a merge. Named so the diagnostic can say which one and why.
  */
-export const UNEXPANDABLE = new Set([
+export const UNEXPANDABLE: Set<string> = new Set([
   "animation",
   "background",
   "border",

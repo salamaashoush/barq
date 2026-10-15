@@ -7,4 +7,4 @@ import type { MountedRef } from "./types.ts";
  * reaches a rendered one: a tree left mounted keeps its document listeners and
  * its place on the overlay stack, and the next test inherits them.
  */
-export const mountedContainers = new Set<MountedRef>();
+export const mountedContainers: Set<MountedRef> = new Set<MountedRef>();

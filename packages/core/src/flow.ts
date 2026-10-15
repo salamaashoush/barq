@@ -78,9 +78,9 @@ import {
 // counters, and removed.
 
 /** The key expression reads nothing reactive: evaluate once, open no effect. */
-export const STATIC_KEY = 1 << 0;
+export const STATIC_KEY: number = 1 << 0;
 /** No body registers anything disposable: activate without allocating a Scope. */
-export const NO_SCOPE = 1 << 1;
+export const NO_SCOPE: number = 1 << 1;
 
 /**
  * The module was compiled `hydratable`, so this range is written to the wire
@@ -88,7 +88,7 @@ export const NO_SCOPE = 1 << 1;
  * sets it from one option for both backends, so the bytes
  * the string backend writes and the claim this side makes are one decision.
  */
-export const HYDRATE = 1 << 2;
+export const HYDRATE: number = 1 << 2;
 
 /**
  * `hydration.ts`'s `WHOLE`, re-exported on the flag integer the ABI already

@@ -79,4 +79,4 @@ export function swapDeferredRange(n: number, wrapped?: boolean, failed?: boolean
 }
 
 /** The same function, as the bytes a page gets. Inlined once per stream. */
-export const SWAP_SNIPPET = `window.__BARQ_SWAP__=${swapDeferredRange.toString()};`;
+export const SWAP_SNIPPET: string = `window.__BARQ_SWAP__=${swapDeferredRange.toString()};`;

@@ -37,8 +37,8 @@ import { toSearchString } from "./search.ts";
  * `Redirect` classes, and a redirect thrown through one is invisible to the
  * other's `instanceof`. A brand is the same symbol in both.
  */
-export const REDIRECT = Symbol.for("barq.redirect");
-export const NOT_FOUND = Symbol.for("barq.not-found");
+export const REDIRECT: unique symbol = Symbol.for("barq.redirect");
+export const NOT_FOUND: unique symbol = Symbol.for("barq.not-found");
 
 /**
  * What a redirect looks like to anything that did not construct it.

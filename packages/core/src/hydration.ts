@@ -129,7 +129,7 @@ export function mismatchIn(error: unknown): HydrationMismatch | null {
  * `insert`'s trailing argument. A hole has no flags integer and a region has no
  * spare argument, so the two spellings are unavoidable; the two VALUES are not.
  */
-export const WHOLE = 1 << 4;
+export const WHOLE: number = 1 << 4;
 
 /**
  * The compiler's `TAGGED` (`ir/region.rs`): no range on the wire here, but the
@@ -140,7 +140,7 @@ export const WHOLE = 1 << 4;
  * those out of a `<template>`, so they compile to `element()` and every one of
  * them took the cold path.
  */
-export const TAGGED = 1 << 5;
+export const TAGGED: number = 1 << 5;
 
 /**
  * A claimed range and the nodes inside it.

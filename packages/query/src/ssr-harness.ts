@@ -26,7 +26,7 @@ const GENERATED = join(PACKAGE, "node_modules", ".cache", "barq-query-ssr");
 const SERVER = join(import.meta.dir, "ssr-server.ts");
 
 /** The adapter's entries, for a fixture to import by path. */
-export const ENTRY = {
+export const ENTRY: { index: string; router: string } = {
   index: join(import.meta.dir, "index.ts"),
   router: join(import.meta.dir, "router.ts"),
 };

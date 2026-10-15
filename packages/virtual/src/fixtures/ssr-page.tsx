@@ -1,8 +1,8 @@
-import { For } from "@barqjs/core";
+import { For, type JSXElement } from "@barqjs/core";
 import { renderToString } from "@barqjs/server";
 import { type VirtualItem, createVirtualizer, createWindowVirtualizer } from "../index.ts";
 
-export function ElementList() {
+export function ElementList(): JSXElement {
   const virtualizer = createVirtualizer<HTMLDivElement, HTMLDivElement>({
     count: 1000,
     getScrollElement: () => null,
@@ -28,7 +28,7 @@ export function ElementList() {
   );
 }
 
-export function WindowList() {
+export function WindowList(): JSXElement {
   const virtualizer = createWindowVirtualizer<HTMLDivElement>(() => ({
     count: 1000,
     estimateSize: () => 40,

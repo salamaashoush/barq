@@ -777,7 +777,30 @@ export function paste(element: Element, text: string): void {
  * user.tab({ shift: true });
  * ```
  */
-export const user = {
+export const user: {
+  blur: typeof blur;
+  clear: typeof clear;
+  click: typeof click;
+  dblClick: typeof dblClick;
+  focus: typeof focus;
+  hover: typeof hover;
+  key: typeof key;
+  keyboard: typeof keyboard;
+  keyDown: typeof keyDown;
+  keyUp: typeof keyUp;
+  paste: typeof paste;
+  pointerCancel: typeof pointerCancel;
+  pointerDown: typeof pointerDown;
+  pointerHold: typeof pointerHold;
+  pointerMove: typeof pointerMove;
+  pointerUp: typeof pointerUp;
+  rightClick: typeof rightClick;
+  tab: typeof tab;
+  tap: typeof tap;
+  type: typeof type;
+  unhover: typeof unhover;
+  virtualClick: typeof virtualClick;
+} = {
   blur,
   clear,
   click,

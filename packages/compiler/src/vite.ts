@@ -385,7 +385,11 @@ const CSS_QUERY = ".barq.css";
  *
  * Keyed by module id, so re-evaluating the module replaces its rules.
  */
-export function cssRegistration(id: string, css: string, cssSource = DEFAULT_CSS_SOURCE): string {
+export function cssRegistration(
+  id: string,
+  css: string,
+  cssSource: string = DEFAULT_CSS_SOURCE,
+): string {
   return cssRegistrations([[id, css]], cssSource);
 }
 

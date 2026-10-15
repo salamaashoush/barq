@@ -20,6 +20,7 @@ import {
   type Child,
   type JSXElement,
   type Cell,
+  type Context,
   type Incoming,
   HYDRATE,
   bindProp,
@@ -84,7 +85,7 @@ import { wrapWith } from "./ssr.ts";
 /** The real ABI. `RouteComponent` is declared props-first for TypeScript's sake. */
 type Invoked = (props: RouteProps) => unknown;
 
-const RouterContext = createContext<RouterState>(undefined, "barq-router");
+const RouterContext: Context<RouterState> = createContext<RouterState>(undefined, "barq-router");
 
 /**
  * The string backend's own `Link` and `NavLink`, installed by `renderRoutes`.
@@ -145,7 +146,10 @@ export interface LinkBackend {
 // `null` is the DEFAULT, not `undefined`: a context created with `undefined`
 // has no default at all, and reading one nobody provided THROWS. The DOM path
 // provides nothing here, so the default is the answer it gets.
-export const LinkBackendContext = createContext<LinkBackend | null>(null, "barq-router-link");
+export const LinkBackendContext: Context<LinkBackend | null> = createContext<LinkBackend | null>(
+  null,
+  "barq-router-link",
+);
 
 /** `null` on the DOM path, which is every path but a string render. */
 function linkBackend(): LinkBackend | null {
@@ -231,7 +235,10 @@ export interface HeadAssets {
   readonly tagTree?: (list: () => readonly ManagedTag[]) => unknown;
 }
 
-export const HeadAssetsContext = createContext<HeadAssets | null>(null, "barq-router-head");
+export const HeadAssetsContext: Context<HeadAssets | null> = createContext<HeadAssets | null>(
+  null,
+  "barq-router-head",
+);
 
 /**
  * TanStack's `<HeadContent />`: every managed tag for the matched chain.
@@ -950,7 +957,8 @@ export interface RouteMatchInfo {
   readonly blocking: boolean;
 }
 
-export const RouteMatchContext = createContext<RouteMatchInfo | null>(null, "barq-router-match");
+export const RouteMatchContext: Context<RouteMatchInfo | null> =
+  createContext<RouteMatchInfo | null>(null, "barq-router-match");
 
 /**
  * Run `body` with `match` ambient.

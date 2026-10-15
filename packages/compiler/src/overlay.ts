@@ -600,7 +600,7 @@ a.code:hover { color: var(--fg); text-decoration: underline; }
 }
 
 /** The lines around a position, for the overlay to show. */
-export function frameAround(source: string, line: number, endLine = line): OverlayFrame {
+export function frameAround(source: string, line: number, endLine: number = line): OverlayFrame {
   const lines = source.split("\n");
   const first = Math.max(1, line - 2);
   const last = Math.min(lines.length, Math.max(line, endLine) + 2);

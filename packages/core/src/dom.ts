@@ -1060,16 +1060,15 @@ function routedListener(
  * itself — `_n1.__bq_click = h` — and this exists for the un-compiled walk and for
  * `spread`, so both record the owning scope the dispatcher routes a throw
  * through.
+ *
+ * @param owner The scope a throw from the handler is routed through. A caller
+ * that binds from an effect's write has no ambient owner to read, and names the
+ * one it captured.
  */
 export function delegate(
   element: Element,
   type: string,
   handler: DelegatedHandler | undefined,
-  /**
-   * The scope a throw from the handler is routed through. A caller that binds
-   * from an effect's write has no ambient owner to read, and names the one it
-   * captured.
-   */
   owner: Scope | null = getOwner(),
 ): void {
   refuseBlock(handler, `The \`on${type}\` handler`);
@@ -1961,16 +1960,15 @@ function effectUnder<T>(
  * whatever happened to be current — and the ownership trace gets a `given` that
  * was threaded rather than read back off `CURRENT`, which is the one comparison
  * that cannot fail.
+ *
+ * @param mode `hydration.ts`'s `WHOLE`, emitted only by a `hydratable` build
+ * and only at a hole that owns its parent's child list. The string backend
+ * wrote no boundary comments there, so the claim is every child of `parent`.
  */
 export function insert(
   parent: Node,
   value: Child | (() => Child),
   marker?: Node | null,
-  /**
-   * `hydration.ts`'s `WHOLE`, emitted only by a `hydratable` build and only at a
-   * hole that owns its parent's child list. The string backend wrote no
-   * boundary comments there, so the claim is every child of `parent`.
-   */
   mode?: number,
 ): void {
   const given = getOwner();
@@ -2322,16 +2320,16 @@ export function bindEvent(element: Element, type: string, value: unknown, captur
  * (E2.2). They were neither until M5's repair: `directListeners` was consulted
  * when a prop CHANGED or VANISHED and never at teardown, and the handler was
  * bound raw.
+ *
+ * @param later The names written on the element AFTER this spread, in
+ * `spreadKey`'s spelling. They are the later writer's:
+ * `<div {...rest} title={label()}>` keeps the explicit title, as the object it
+ * reads like would, and a spread that applied its own on every update took it
+ * back each time `rest` moved.
  */
 export function spread(
   element: Element,
   props: Record<string, unknown> | (() => Record<string, unknown>),
-  /**
-   * The names written on the element AFTER this spread, in `spreadKey`'s
-   * spelling. They are the later writer's: `<div {...rest} title={label()}>`
-   * keeps the explicit title, as the object it reads like would, and a spread
-   * that applied its own on every update took it back each time `rest` moved.
-   */
   later?: readonly string[],
 ): void {
   const given = getOwner();
@@ -2474,7 +2472,7 @@ function holdsAFunction(child: Child): boolean {
  * it, a snapshot of what stood before the edge on the day it was taken. `each`
  * asks, so that a row it moves is the row as it stands.
  */
-export const LIVE_EDGES = new WeakSet<Node>();
+export const LIVE_EDGES: WeakSet<Node> = new WeakSet<Node>();
 
 /**
  * A Cell that is not the whole value of a hole: one entry of a children array,
@@ -2932,14 +2930,14 @@ function eventFor(rec: CapturedEvent): Event {
  * put around theirs: without it the client's owner tree is a level shallower
  * than the server's, and `computed`'s auto-keys — which are owner-tree ids —
  * address different values on the two sides.
+ *
+ * @param container `document` hydrates the WHOLE page, which is what a tree
+ * rooted at `<html>` needs — the shell is a component like any other, so the
+ * head is reactive and a navigation updates it without a second mechanism
+ * beside the render.
  */
 export function hydrate(
   fn: () => JSXElement,
-  /**
-   * `document` hydrates the WHOLE page, which is what a tree rooted at `<html>`
-   * needs — the shell is a component like any other, so the head is reactive and
-   * a navigation updates it without a second mechanism beside the render.
-   */
   container: HTMLElement | Document,
   options?: { data?: Record<string, unknown> },
 ): () => void {
