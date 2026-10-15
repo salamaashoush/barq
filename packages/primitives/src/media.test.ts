@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { flush, createRoot, createSignal } from "@barqjs/core";
+import { flush, createRoot, createSignal, hydrate } from "@barqjs/core";
 import { breakpoints, mediaQuery } from "./media.ts";
 
 interface FakeList {
@@ -63,6 +63,37 @@ describe("mediaQuery", () => {
     dispose();
     await Promise.resolve();
     expect(lists.get(q)!.listeners.size).toBe(0);
+  });
+
+  test("reads the server's answer while the page hydrates, then the browser's", async () => {
+    const q = query();
+    window.matchMedia(q);
+    lists.get(q)!.matches = true;
+    const container = document.createElement("div");
+    container.textContent = "wide";
+    const seen: boolean[] = [];
+    let read = (): boolean => false;
+    const dispose = hydrate(() => {
+      read = mediaQuery(q);
+      seen.push(read());
+      return read() ? "narrow" : "wide";
+    }, container);
+    expect(seen).toEqual([false]);
+    expect(hydrate.report.mismatches).toEqual([]);
+    await Promise.resolve();
+    flush();
+    expect(read()).toBe(true);
+    dispose();
+  });
+
+  test("a query first asked after hydration reads the browser at once", () => {
+    const q = query();
+    window.matchMedia(q);
+    lists.get(q)!.matches = true;
+    createRoot((dispose) => {
+      expect(mediaQuery(q)()).toBe(true);
+      dispose();
+    });
   });
 
   test("a reactive query switches sources", () => {

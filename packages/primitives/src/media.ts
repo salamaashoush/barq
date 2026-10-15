@@ -1,11 +1,22 @@
-import { type Accessor, createMemo, isServer, createSignal } from "@barqjs/core";
+import {
+  type Accessor,
+  createMemo,
+  createSignal,
+  isHydrating,
+  isServer,
+  onHydrationEnd,
+} from "@barqjs/core";
 import { on } from "./event.ts";
 import { type MaybeAccessor, access, sharedKeyed } from "./utils.ts";
 
 const source = sharedKeyed((query: string): Accessor<boolean> => {
   if (isServer) return () => false;
   const list = window.matchMedia(query);
-  const [matches, setMatches] = createSignal(list.matches);
+  // A page being hydrated has to build what the server wrote, and the server
+  // answered `false`. The browser's own answer takes over once that is done.
+  const hydrating = isHydrating();
+  const [matches, setMatches] = createSignal(hydrating ? false : list.matches);
+  if (hydrating) onHydrationEnd(() => setMatches(list.matches));
   // `change` on the list itself, not a resize listener: the browser already
   // knows when the answer changed, and a resize handler that re-evaluates
   // every query on the page is the usual way this gets expensive.
@@ -20,8 +31,9 @@ const source = sharedKeyed((query: string): Accessor<boolean> => {
  * system asking `(min-width: 768px)` in forty components installs one listener.
  * A reactive query switches which shared source is read.
  *
- * On the server every query reads `false`. Pass an accessor and read it after
- * hydration if a first paint has to differ.
+ * On the server, and in the browser while the page is being hydrated, every
+ * query reads `false`, so the first client render matches the server's markup.
+ * The real answer arrives as soon as hydration ends.
  */
 export function mediaQuery(query: MaybeAccessor<string>): Accessor<boolean> {
   if (typeof query === "string") return source(query);
