@@ -51,7 +51,55 @@ function cells(values: object | undefined): Slots {
   return out;
 }
 
-export function createFormHookContexts() {
+type LooseFieldApi<TData> = FieldApi<
+  Loose,
+  string,
+  TData,
+  Loose,
+  Loose,
+  Loose,
+  Loose,
+  Loose,
+  Loose,
+  Loose,
+  Loose,
+  Loose,
+  Loose,
+  Loose,
+  Loose,
+  Loose,
+  Loose,
+  Loose,
+  Loose,
+  Loose,
+  Loose,
+  Loose,
+  Loose
+>;
+
+type LooseFormApi = BarqFormExtendedApi<
+  Record<string, never>,
+  Loose,
+  Loose,
+  Loose,
+  Loose,
+  Loose,
+  Loose,
+  Loose,
+  Loose,
+  Loose,
+  Loose,
+  Loose
+>;
+
+export interface FormHookContexts {
+  fieldContext: Context<AnyFieldApi>;
+  useFieldContext: <TData>() => Accessor<LooseFieldApi<TData>>;
+  useFormContext: () => LooseFormApi;
+  formContext: Context<AnyFormApi>;
+}
+
+export function createFormHookContexts(): FormHookContexts {
   const fieldContext = createContext<AnyFieldApi>(undefined, "barq-form-field");
 
   function useFieldContext<TData>() {
@@ -64,33 +112,7 @@ export function createFormHookContexts() {
         { cause },
       );
     }
-    return field as Accessor<
-      FieldApi<
-        Loose,
-        string,
-        TData,
-        Loose,
-        Loose,
-        Loose,
-        Loose,
-        Loose,
-        Loose,
-        Loose,
-        Loose,
-        Loose,
-        Loose,
-        Loose,
-        Loose,
-        Loose,
-        Loose,
-        Loose,
-        Loose,
-        Loose,
-        Loose,
-        Loose,
-        Loose
-      >
-    >;
+    return field as Accessor<LooseFieldApi<TData>>;
   }
 
   const formContext = createContext<AnyFormApi>(undefined, "barq-form");
@@ -107,20 +129,7 @@ export function createFormHookContexts() {
     }
     // Typed without the form's data: a component that needs it takes the form
     // through `withForm` instead.
-    return form() as BarqFormExtendedApi<
-      Record<string, never>,
-      Loose,
-      Loose,
-      Loose,
-      Loose,
-      Loose,
-      Loose,
-      Loose,
-      Loose,
-      Loose,
-      Loose,
-      Loose
-    >;
+    return form() as LooseFormApi;
   }
 
   return { fieldContext, useFieldContext, useFormContext, formContext };
@@ -280,15 +289,8 @@ export interface WithFieldGroupProps<
   ) => JSXElement;
 }
 
-/**
- * Binds a set of field and form components to `createForm`, so a form built
- * with `useAppForm` reaches them as `field.TextField` and `form.SubmitButton`.
- */
-export function createFormHook<
-  const TComponents extends Components,
-  const TFormComponents extends Components,
->(opts: CreateFormHookProps<TComponents, TFormComponents>) {
-  function useAppForm<
+export interface FormHook<TComponents extends Components, TFormComponents extends Components> {
+  useAppForm: <
     TFormData,
     TOnMount extends MaybeFormValidator<TFormData>,
     TOnChange extends MaybeFormValidator<TFormData>,
@@ -318,7 +320,7 @@ export function createFormHook<
         TSubmitMeta
       >
     >,
-  ): AppFieldExtendedBarqFormApi<
+  ) => AppFieldExtendedBarqFormApi<
     TFormData,
     TOnMount,
     TOnChange,
@@ -333,29 +335,8 @@ export function createFormHook<
     TSubmitMeta,
     TComponents,
     TFormComponents
-  > {
-    const form = createForm(props);
-    const field = form.Field as unknown as (fieldProps: Slots) => JSXElement;
-
-    const AppForm = (formProps: Slots): JSXElement =>
-      provide(opts.formContext, cell(form as unknown as AnyFormApi), () =>
-        renderSlot(formProps.children),
-      );
-
-    const AppField = (fieldProps: Slots): JSXElement =>
-      field(
-        merge(fieldProps, {
-          children: (api: Accessor<AnyFieldApi>) =>
-            provide(opts.fieldContext, api, () =>
-              renderSlot(fieldProps.children, Object.assign(api, opts.fieldComponents)),
-            ),
-        }),
-      );
-
-    return Object.assign(form, { AppField, AppForm }, opts.formComponents) as never;
-  }
-
-  function withForm<
+  >;
+  withForm: <
     TFormData,
     TOnMount extends MaybeFormValidator<TFormData>,
     TOnChange extends MaybeFormValidator<TFormData>,
@@ -369,26 +350,25 @@ export function createFormHook<
     TOnServer extends MaybeFormAsyncValidator<TFormData>,
     TSubmitMeta,
     TRenderProps extends object = NoProps,
-  >({
-    render,
-    props,
-  }: WithFormProps<
-    TFormData,
-    TOnMount,
-    TOnChange,
-    TOnChangeAsync,
-    TOnBlur,
-    TOnBlurAsync,
-    TOnSubmit,
-    TOnSubmitAsync,
-    TOnDynamic,
-    TOnDynamicAsync,
-    TOnServer,
-    TSubmitMeta,
-    TComponents,
-    TFormComponents,
-    TRenderProps
-  >): (
+  >(
+    options: WithFormProps<
+      TFormData,
+      TOnMount,
+      TOnChange,
+      TOnChangeAsync,
+      TOnBlur,
+      TOnBlurAsync,
+      TOnSubmit,
+      TOnSubmitAsync,
+      TOnDynamic,
+      TOnDynamicAsync,
+      TOnServer,
+      TSubmitMeta,
+      TComponents,
+      TFormComponents,
+      TRenderProps
+    >,
+  ) => (
     props: Incoming<
       Partial<TRenderProps> & {
         form: AppFieldExtendedBarqFormApi<
@@ -410,22 +390,16 @@ export function createFormHook<
         children?: Child;
       }
     >,
-  ) => JSXElement {
-    const defaults = cells(props);
-    return (innerProps) => render(merge(defaults, innerProps) as never);
-  }
-
-  function withFieldGroup<TFieldGroupData, TSubmitMeta, TRenderProps extends object = NoProps>({
-    render,
-    props,
-    defaultValues,
-  }: WithFieldGroupProps<
-    TFieldGroupData,
-    TComponents,
-    TFormComponents,
-    TSubmitMeta,
-    TRenderProps
-  >): <
+  ) => JSXElement;
+  withFieldGroup: <TFieldGroupData, TSubmitMeta, TRenderProps extends object = NoProps>(
+    options: WithFieldGroupProps<
+      TFieldGroupData,
+      TComponents,
+      TFormComponents,
+      TSubmitMeta,
+      TRenderProps
+    >,
+  ) => <
     TFormData,
     TOnMount extends MaybeFormValidator<TFormData>,
     TOnChange extends MaybeFormValidator<TFormData>,
@@ -482,26 +456,13 @@ export function createFormHook<
         children?: Child;
       }
     >,
-  ) => JSXElement {
-    const defaults = cells(props);
-    return (innerProps) => {
-      const groupOptions = {
-        form: untrack(innerProps.form),
-        fields: untrack(innerProps.fields),
-        defaultValues,
-        formComponents: opts.formComponents,
-      };
-      const group = createFieldGroup(() => groupOptions as never);
-      return render(merge(defaults, innerProps, { group: cell(group) }) as never);
-    };
-  }
-
+  ) => JSXElement;
   /**
    * The form `<form.AppForm>` provides, typed from the options it was built
    * with. Prefer `withForm`: nothing checks that the options here are the ones
    * the provided form was created from.
    */
-  function useTypedAppFormContext<
+  useTypedAppFormContext: <
     TFormData,
     TOnMount extends MaybeFormValidator<TFormData>,
     TOnChange extends MaybeFormValidator<TFormData>,
@@ -529,7 +490,7 @@ export function createFormHook<
       TOnServer,
       TSubmitMeta
     >,
-  ): AppFieldExtendedBarqFormApi<
+  ) => AppFieldExtendedBarqFormApi<
     TFormData,
     TOnMount,
     TOnChange,
@@ -544,7 +505,76 @@ export function createFormHook<
     TSubmitMeta,
     TComponents,
     TFormComponents
-  > {
+  >;
+  extendForm: <
+    const TNewField extends Components & {
+      [
+        K in keyof TComponents
+      ]?: "Error: field component names must be unique, this key already exists in the base form";
+    },
+    const TNewForm extends Components & {
+      [
+        K in keyof TFormComponents
+      ]?: "Error: form component names must be unique, this key already exists in the base form";
+    },
+  >(extension: {
+    fieldComponents?: TNewField;
+    formComponents?: TNewForm;
+  }) => FormHook<TComponents & TNewField, TFormComponents & TNewForm>;
+}
+
+/**
+ * Binds a set of field and form components to `createForm`, so a form built
+ * with `useAppForm` reaches them as `field.TextField` and `form.SubmitButton`.
+ */
+export function createFormHook<
+  const TComponents extends Components,
+  const TFormComponents extends Components,
+>(opts: CreateFormHookProps<TComponents, TFormComponents>): FormHook<TComponents, TFormComponents> {
+  type Hook = FormHook<TComponents, TFormComponents>;
+
+  const useAppForm: Hook["useAppForm"] = (props) => {
+    const form = createForm(props);
+    const field = form.Field as unknown as (fieldProps: Slots) => JSXElement;
+
+    const AppForm = (formProps: Slots): JSXElement =>
+      provide(opts.formContext, cell(form as unknown as AnyFormApi), () =>
+        renderSlot(formProps.children),
+      );
+
+    const AppField = (fieldProps: Slots): JSXElement =>
+      field(
+        merge(fieldProps, {
+          children: (api: Accessor<AnyFieldApi>) =>
+            provide(opts.fieldContext, api, () =>
+              renderSlot(fieldProps.children, Object.assign(api, opts.fieldComponents)),
+            ),
+        }),
+      );
+
+    return Object.assign(form, { AppField, AppForm }, opts.formComponents) as never;
+  };
+
+  const withForm: Hook["withForm"] = ({ render, props }) => {
+    const defaults = cells(props);
+    return (innerProps) => render(merge(defaults, innerProps) as never);
+  };
+
+  const withFieldGroup: Hook["withFieldGroup"] = ({ render, props, defaultValues }) => {
+    const defaults = cells(props);
+    return (innerProps) => {
+      const groupOptions = {
+        form: untrack(innerProps.form),
+        fields: untrack(innerProps.fields),
+        defaultValues,
+        formComponents: opts.formComponents,
+      };
+      const group = createFieldGroup(() => groupOptions as never);
+      return render(merge(defaults, innerProps, { group: cell(group) }) as never);
+    };
+  };
+
+  const useTypedAppFormContext: Hook["useTypedAppFormContext"] = () => {
     try {
       return useContext(opts.formContext)() as never;
     } catch (cause) {
@@ -553,7 +583,7 @@ export function createFormHook<
         { cause },
       );
     }
-  }
+  };
 
   function extendForm<
     const TNewField extends Components & {
@@ -566,7 +596,10 @@ export function createFormHook<
         K in keyof TFormComponents
       ]?: "Error: form component names must be unique, this key already exists in the base form";
     },
-  >(extension: { fieldComponents?: TNewField; formComponents?: TNewForm }) {
+  >(extension: {
+    fieldComponents?: TNewField;
+    formComponents?: TNewForm;
+  }): FormHook<TComponents & TNewField, TFormComponents & TNewForm> {
     return createFormHook({
       fieldContext: opts.fieldContext,
       formContext: opts.formContext,
