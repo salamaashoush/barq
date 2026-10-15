@@ -97,6 +97,7 @@ export {
  */
 export {
   type AnyServerFn,
+  type ChainStep,
   type RpcControl,
   type ServerFn,
   type ServerFnArgs,
@@ -126,20 +127,25 @@ export {
 
 import {
   type AnyServerFn,
+  type ChainStep,
   SERVER_FN,
+  SERVER_FN_CHAIN,
   type ServerFn,
   type ServerFnMeta,
   type ServerFnMethod,
   type Streamed,
   callOptionsOf,
   dataOf,
+  inlineServerFns,
   urlOf,
 } from "./client.ts";
 import { getGlobalStartContext, offerSendContext, peekRequest } from "./context.ts";
 import {
+  type Carries,
   type ChainContribution,
   type Contribution,
   type Empty,
+  type Merged,
   type Middleware,
   type NoContribution,
   type OpenContext,
@@ -335,7 +341,7 @@ export interface FreshServerFn<
 }
 
 export interface FnWithChain<State extends ServerFnState, Chain> extends ServerFnState {
-  readonly chain: ChainContribution<Chain>;
+  readonly chain: Merged<State["chain"], ChainContribution<Chain>>;
   readonly own: State["own"];
   readonly method: State["method"];
   readonly strict: State["strict"];
@@ -402,7 +408,12 @@ export type HandlerContextOf<State extends ServerFnState> = GlobalFunctionContex
  * handler's `context` holds.
  */
 export interface ServerFnBuilder<State extends ServerFnState = ServerFnState> {
-  middleware<const Chain extends readonly Middleware[]>(
+  /**
+   * Middleware that runs before the handler, after any listed before. A server
+   * function in the list stands for the middleware it declared: its guards
+   * run here, its handler does not.
+   */
+  middleware<const Chain extends readonly ChainStep[]>(
     chain: Chain,
   ): ServerFnBuilder<FnWithChain<State, Chain>>;
   /**
@@ -422,7 +433,7 @@ export interface ServerFnBuilder<State extends ServerFnState = ServerFnState> {
     schema: { readonly parse: (input: In) => Out } & InputCheck<State, In>,
   ): ServerFnBuilder<FnWithValidator<State, In, Awaited<Out>>>;
   validator(unchecked: "unchecked"): ServerFnBuilder<FnWithValidator<State, unknown, unknown>>;
-  /** TanStack's name for `validator`. */
+  /** `validator` under the name TanStack's release candidates used. */
   inputValidator<Schema extends StandardSchemaLike>(
     schema: Schema & InputCheck<State, StandardInput<Schema>>,
   ): ServerFnBuilder<FnWithValidator<State, StandardInput<Schema>, StandardOutput<Schema>>>;
@@ -443,15 +454,16 @@ export interface ServerFnBuilder<State extends ServerFnState = ServerFnState> {
       context: HandlerContext<HandlerData<State>, HandlerContextOf<State>>,
     ) => Result | Promise<Result>) &
       ResultCheck<State, Result>,
-  ): ServerFn<CallerInput<State>, Streamed<Awaited<Result>>, State["method"]>;
+  ): ServerFn<CallerInput<State>, Streamed<Awaited<Result>>, State["method"]> &
+    Carries<State["chain"]>;
 }
 
 /**
  * What `createServerFn` accepts.
  *
- * `method` is TanStack's, with a different default: `POST`, the method a form
- * can reach and a link cannot. `GET` is for a read the browser or a CDN may
- * cache. A link still cannot reach one: every call carries the
+ * `method` is TanStack's, with TanStack's default: `GET`. A function that
+ * writes declares `POST`, which is also the only method a form can reach. A
+ * link still cannot reach a `GET` one: every call carries the
  * {@link RPC_CALLER} header, which nothing but script can set, and the server
  * refuses a `GET` without it.
  */
@@ -476,12 +488,12 @@ export interface ServerFnOptions<
  * uncompiled-development path: it runs the handler in-process.
  */
 export function createServerFn<
-  Method extends ServerFnMethod = "POST",
+  Method extends ServerFnMethod = "GET",
   const Strict extends Strictness = true,
 >(options: ServerFnOptions<Method, Strict> = {}): ServerFnBuilder<FreshServerFn<Method, Strict>> {
   // A runtime refusal beside the type one, because a JavaScript application has
   // no type to fail.
-  const method = options.method ?? "POST";
+  const method = options.method ?? "GET";
   if (method !== "POST" && method !== "GET") {
     throw new TypeError(
       `[barq] \`createServerFn({ method: ${JSON.stringify(method)} })\` is not supported: a server function answers GET or POST. ` +
@@ -515,8 +527,11 @@ function builderAt<State extends ServerFnState>(staged: Staged): ServerFnBuilder
     return builderAt({ ...staged, validator: toValidator(schema) });
   }
   return {
-    middleware: <const Chain extends readonly Middleware[]>(chain: Chain) =>
-      builderAt<FnWithChain<State, Chain>>({ ...staged, middleware: chain }),
+    middleware: <const Chain extends readonly ChainStep[]>(chain: Chain) =>
+      builderAt<FnWithChain<State, Chain>>({
+        ...staged,
+        middleware: [...staged.middleware, ...inlineServerFns(chain)],
+      }),
     validator: validated,
     inputValidator: validated,
     handler: <Result>(
@@ -645,6 +660,7 @@ export function serverRpc<
 
   const fn = Object.assign(call, {
     [SERVER_FN]: true as const,
+    [SERVER_FN_CHAIN]: built.middleware,
     meta,
     serverFnMeta: meta,
     method: meta.method ?? "POST",

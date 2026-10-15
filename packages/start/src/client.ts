@@ -72,6 +72,13 @@ export const RPC_CONTROL = "x-barq-rpc";
 export const RPC_RESPONSE = "response";
 
 /**
+ * The {@link RPC_CONTROL} value for a `Response` a handler, a validator or a
+ * middleware THREW: the call rejects with that response itself, as TanStack's
+ * does. Its body and status are what the author wrote for the caller.
+ */
+export const RPC_THROWN = "thrown";
+
+/**
  * The {@link RPC_CONTROL} value for an answer that arrives over time.
  *
  * The body is then one JSON line for each value the function yielded, each
@@ -197,16 +204,17 @@ export class ServerFnError extends Error {
   /**
    * The answer itself, unread.
    *
-   * A middleware that refuses with `throw new Response("sign in first", {
-   * status: 401 })` wrote that body for the caller, and this is where the
-   * caller reads it. A handler's own failure has nothing here worth reading:
-   * the server answers those with one fixed line, for the reason above.
+   * The server's own refusals land here: a 400 for input, a 403 for an origin,
+   * a 404, a 405, a 413. A `Response` a middleware or a handler THREW is not
+   * wrapped at all; the call rejects with it. A handler's own failure has
+   * nothing here worth reading: the server answers those with one fixed line,
+   * for the reason above.
    */
   readonly response?: Response;
   constructor(id: string, status: number, response?: Response) {
     super(
       `The server function \`${id}\` answered ${status}. A handler's own error text is never sent to the browser, so read it in the server's log. ` +
-        "`error.response` holds the answer when a middleware refused the call.",
+        "`error.response` holds the server's answer.",
     );
     this.name = "ServerFnError";
     this.status = status;
@@ -355,10 +363,11 @@ export function callOptionsOf(options: unknown): ServerFnCallOptions | undefined
  */
 export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
   id: string,
-  chain: readonly Middleware[] = [],
+  declaredChain: readonly ChainStep[] = [],
   declared?: { readonly method?: Method },
 ): ServerFn<In, Out, Method> {
   const method: ServerFnMethod = declared?.method ?? "POST";
+  const chain = inlineServerFns(declaredChain);
   // With the application's global function middleware ahead of the function's
   // own, read when first needed for the reason `serverRpc` gives.
   let composed: { from: readonly Middleware[] | undefined; chain: readonly Middleware[] } | null =
@@ -465,6 +474,7 @@ export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
     // Before the status check: a response the handler returned is its answer
     // whatever status it chose.
     if (control === RPC_RESPONSE) return response as Out;
+    if (control === RPC_THROWN) throw response;
     if (control === RPC_STREAM) return received(response, id, context) as Out;
     if (control !== null) throw fromControl((await response.json()) as RpcControl);
     if (!response.ok) throw new ServerFnError(id, response.status, response);
@@ -506,6 +516,7 @@ export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
   const meta: ServerFnMeta = method === "GET" ? { id, method } : { id };
   return Object.assign(call, {
     [SERVER_FN]: true as const,
+    [SERVER_FN_CHAIN]: chain,
     meta,
     serverFnMeta: meta,
     method,
@@ -586,6 +597,29 @@ function fromControl(control: RpcControl): Error {
   return new Error(
     `[barq] server function answered with an unrecognised ${RPC_CONTROL} kind ` +
       `${JSON.stringify((control as { kind: string }).kind)}; the server is newer than this client bundle.`,
+  );
+}
+
+/** Where a server function keeps the middleware it declared, for another to inline. */
+export const SERVER_FN_CHAIN = Symbol.for("barq.server-fn-chain");
+
+/** What `.middleware([...])` takes: a middleware, or a server function whose chain it inlines. */
+export type ChainStep = Middleware | AnyServerFn;
+
+/**
+ * A chain with each server function in it replaced by the middleware that
+ * function declared, which is TanStack's rule: listing a function lists its
+ * guards, never its handler.
+ */
+export function inlineServerFns(chain: readonly ChainStep[]): readonly Middleware[] {
+  return chain.flatMap((step): readonly Middleware[] =>
+    isServerFn(step) ? chainOf(step) : [step as Middleware],
+  );
+}
+
+function chainOf(fn: AnyServerFn | ServerFn<unknown, unknown>): readonly Middleware[] {
+  return (
+    (fn as unknown as Record<symbol, readonly Middleware[] | undefined>)[SERVER_FN_CHAIN] ?? []
   );
 }
 

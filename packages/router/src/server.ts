@@ -961,6 +961,10 @@ export function createPageHandler(
       for (const key of SHARED_ROUTER_OPTIONS) {
         if (options[key] !== undefined) shared[key] = options[key];
       }
+      // `createStart({ defaultSsr })` is the application's, and wins over the
+      // router's own, as TanStack's does.
+      const startSsr = startOptions().defaultSsr;
+      if (startSsr !== undefined) shared.defaultSsr = startSsr;
       const config: RouterConfig = {
         ...(shared as SharedRouterOptions),
         // The request was rewritten on the way in, above; what is left for the

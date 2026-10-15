@@ -569,7 +569,7 @@ export type BuiltMiddleware<State extends MiddlewareState = MiddlewareState> = M
       readonly parse: (input: In) => Out;
     }): BuiltMiddleware<WithValidator<State, In, Awaited<Out>>>;
     validator(unchecked: "unchecked"): BuiltMiddleware<WithValidator<State, unknown, unknown>>;
-    /** TanStack's name for `validator`. */
+    /** `validator` under the name TanStack's release candidates used. */
     inputValidator<Schema extends StandardSchemaLike>(
       schema: Schema,
     ): BuiltMiddleware<WithValidator<State, StandardInput<Schema>, StandardOutput<Schema>>>;

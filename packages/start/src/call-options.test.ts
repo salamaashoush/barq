@@ -226,7 +226,7 @@ describe("fetch", () => {
 });
 
 describe("a refusal the server wrote", () => {
-  test("is on the error, body and all", async () => {
+  test("is what the call rejects with, body and all, as TanStack's is", async () => {
     const refuse = createMiddleware().server(() => {
       throw new Response("sign in first", { status: 401, headers: { "www-authenticate": "x" } });
     });
@@ -243,11 +243,46 @@ describe("a refusal the server wrote", () => {
       () => null,
       (thrown: unknown) => thrown,
     );
-    expect(error).toBeInstanceOf(ServerFnError);
-    const refused = error as ServerFnError;
+    expect(error).toBeInstanceOf(Response);
+    const refused = error as Response;
     expect(refused.status).toBe(401);
-    expect(refused.response?.headers.get("www-authenticate")).toBe("x");
-    expect(await refused.response?.text()).toBe("sign in first");
+    expect(refused.headers.get("www-authenticate")).toBe("x");
+    expect(await refused.text()).toBe("sign in first");
+  });
+
+  test("a Response the handler throws is rethrown too, and one it returns is resolved", async () => {
+    mount(
+      "thrown",
+      serverRpc<undefined, null>(
+        { id: "thrown" },
+        {
+          validator: null,
+          middleware: [],
+          handler: () => {
+            throw new Response("gone", { status: 410 });
+          },
+        },
+      ),
+    );
+    mount(
+      "returned",
+      serverRpc<undefined, Response>(
+        { id: "returned" },
+        { validator: null, middleware: [], handler: () => new Response("here", { status: 202 }) },
+      ),
+    );
+    globalThis.fetch = throughHandler().fetch;
+
+    const thrown = await clientRpc<undefined, null>("thrown")().then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(thrown instanceof Response ? [thrown.status, await thrown.text()] : thrown).toEqual([
+      410,
+      "gone",
+    ]);
+    const returned = await clientRpc<undefined, Response>("returned")();
+    expect(returned.status).toBe(202);
   });
 
   test("a handler's own failure still says nothing but its status", async () => {

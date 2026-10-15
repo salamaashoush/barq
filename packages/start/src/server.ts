@@ -12,6 +12,7 @@ import { decodeWire, encodeWire } from "@barqjs/server/codec";
 import { createBodyTooLargeError, limitBodyStream } from "srvx/body-limit";
 
 import {
+  type ResponseDraft,
   applyResponseDraft,
   createResponseDraft,
   draftedStatus,
@@ -26,6 +27,7 @@ import {
   RPC_CONTEXT,
   RPC_CONTROL,
   RPC_RESPONSE,
+  RPC_THROWN,
   RPC_STREAM,
   type RpcControl,
   type RpcStreamLine,
@@ -424,7 +426,7 @@ export async function handleServerFn(
       // The draft rides an error out as well. A middleware that rotated a session
       // cookie and THEN refused must not lose the rotation — the browser would
       // keep replaying a token the server has already retired.
-      if (error instanceof Response) return applyResponseDraft(error, draft);
+      if (error instanceof Response) return thrownAnswer(error, isData, draft);
       // `throw redirect(...)` and `throw notFound()` are ANSWERS, and a server
       // function is entitled to both — a handler that finds the session expired
       // redirects to the login page, and one asked for a row that is gone says
@@ -477,13 +479,23 @@ export async function handleServerFn(
     return applyResponseDraft(response, draft);
   } catch (error) {
     // A request middleware refuses the way a function's own does.
-    if (error instanceof Response) return applyResponseDraft(error, draft);
+    if (error instanceof Response) return thrownAnswer(error, isData, draft);
     console.error(
       `[barq] A request middleware threw before the server function ${JSON.stringify(id)} ran, so the call answered 500. The error:`,
       error,
     );
     return applyResponseDraft(new Response("internal server error", { status: 500 }), draft);
   }
+}
+
+/**
+ * A `Response` the chain or the handler threw, as the answer. The data
+ * channel's client rejects the call with it, so the header says it was thrown
+ * rather than returned; a browser following a form needs no telling.
+ */
+function thrownAnswer(error: Response, isData: boolean, draft: ResponseDraft): Response {
+  if (isData) draft.headers.set(RPC_CONTROL, RPC_THROWN);
+  return applyResponseDraft(error, draft);
 }
 
 /**

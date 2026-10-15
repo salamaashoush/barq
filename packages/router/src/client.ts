@@ -111,14 +111,18 @@ export async function startClient(options: StartClientOptions = {}): Promise<Rou
     options.history ??
     browserHistory(config.basepath === undefined ? undefined : { base: config.basepath });
   const { config, getRouter } = entry;
+  // The application's `createStart({ defaultSsr })` wins over the router's, on
+  // this side as on the server, so both agree on what was rendered there.
+  const startSsr = start?.startInstance?.getOptions().defaultSsr;
+  const ssr = startSsr === undefined ? {} : { defaultSsr: startSsr };
   let state: RouterState;
   if (getRouter !== undefined) {
     state = await withRouterOverrides(
-      (own) => ({ history: own.history ?? historyFor(own) }),
+      (own) => ({ history: own.history ?? historyFor(own), ...ssr }),
       getRouter,
     );
   } else if (config !== undefined) {
-    state = createRouter({ ...config, history: historyFor(config) });
+    state = createRouter({ ...config, history: historyFor(config), ...ssr });
   } else {
     throw new Error(
       "[barq-router] `src/router.ts` exports neither `config` nor `getRouter`, so there is no router to start. " +

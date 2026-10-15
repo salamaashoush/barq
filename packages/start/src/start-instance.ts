@@ -30,6 +30,13 @@ export interface StartOptions {
    * options are first read, which both sides do before they encode anything.
    */
   readonly serializationAdapters?: readonly AnySerializationAdapter[];
+  /**
+   * What a route that says nothing about `ssr` does, for every route: `true`,
+   * `false` (rendered in the browser alone) or `"data-only"` (loaders run on
+   * the server, the component in the browser). Wins over the router's own
+   * `defaultSsr`, as TanStack's does.
+   */
+  readonly defaultSsr?: boolean | "data-only";
   readonly serverFns?: {
     /**
      * The `fetch` every call goes out through, in place of the global one. A
