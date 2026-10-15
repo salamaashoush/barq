@@ -267,8 +267,13 @@ export function errorFallbackFor(
   // reporter. A `notFound()` is an ANSWER rather than a failure and is not
   // reported at all.
   let reported: unknown = null;
+  watchUnload();
   return (error, reset) => {
     const thrown = error();
+    if (abortedByUnload(thrown)) {
+      retries.add(reset);
+      return null;
+    }
     const missing = isNotFound(thrown);
     if (!missing && reported !== thrown) {
       reported = thrown;
@@ -324,6 +329,43 @@ export function errorFallbackFor(
     if (!missing) reportUnhandled(chain[depth]?.id ?? `depth ${depth}`, thrown);
     return null;
   };
+}
+
+let unloading = false;
+let watching = false;
+const retries = new Set<() => void>();
+
+/**
+ * A browser cancels the fetches of a page it is unloading, and the rejection
+ * reaches a route like any other. `pagehide` is the one event every browser
+ * fires on the way out, and `pageshow` the one that says the page came back
+ * from the back/forward cache, where what the unload stopped is asked again.
+ */
+function watchUnload(): void {
+  if (watching || typeof window === "undefined") return;
+  watching = true;
+  window.addEventListener("pagehide", () => {
+    unloading = true;
+  });
+  window.addEventListener("pageshow", () => {
+    unloading = false;
+    const due = [...retries];
+    retries.clear();
+    for (const retry of due) retry();
+  });
+}
+
+function isAbortError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { readonly name?: unknown }).name === "AbortError"
+  );
+}
+
+/** An abort the browser raised because the page is going away, which no route caused. */
+export function abortedByUnload(error: unknown): boolean {
+  return unloading && isAbortError(error);
 }
 
 /** The router-wide answers a chain falls back to: `defaultErrorComponent` and friends. */

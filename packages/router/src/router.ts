@@ -29,7 +29,7 @@ import {
 } from "@barqjs/core";
 
 import type { SerializationAdapter } from "@barqjs/server/codec";
-import { PathParamError, isNotFound, isRedirect } from "./errors.ts";
+import { PathParamError, abortedByUnload, isNotFound, isRedirect } from "./errors.ts";
 import {
   type History,
   type Location,
@@ -1699,6 +1699,10 @@ export function createRouter(provided: RouterConfig): RouterState {
                   setLoads(bump);
                   return value;
                 } catch (error) {
+                  // Aborted by the router, this run was superseded by a newer
+                  // one or its entry was disposed. What it threw is the abort,
+                  // and the entry's state belongs to the run that replaced it.
+                  if (own.signal.aborted) throw error;
                   if (controller === own) {
                     controller = null;
                     finish();
@@ -1707,6 +1711,7 @@ export function createRouter(provided: RouterConfig): RouterState {
                   if (entry.settled !== null) entry.hold[1](bump);
                   entry.error = error;
                   setLoads(bump);
+                  if (abortedByUnload(error)) throw error;
                   if (!isRedirect(error) && !isNotFound(error)) {
                     route.definition.onError?.(error);
                   }
