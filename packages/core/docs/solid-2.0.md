@@ -30,11 +30,13 @@ throws.
 `Card({ title, children })`, and children are deferred as Blocks the callee runs in its own
 scope. Nothing needs a runtime wrapper around that call.
 
-**`<Dynamic component={…}>` is how to choose a component at run time.** Solid 2.0
-deprecates it in favour of the `dynamic(source)` factory but still ships it
-(`packages/web/src/index.ts` in Solid). barq keeps it until the factory exists, because the
-factory needs a string-backend half for server rendering that barq does not have yet.
-`resolveDynamic` is the compiler's helper behind both.
+**`dynamic(source)`** takes no options and its source answers synchronously. Solid's
+also takes `{ static, deferStream }` and a source that answers with a promise or an async
+iterable; barq's reads the source in a memo per instance and keys a `branch` on it.
+`@barqjs/server` has the string half under the same name, and the compiler's server backend
+calls it where a `.jsx` or `.tsx` module calls `@barqjs/core`'s, so call `dynamic` in one of
+those rather than in a plain `.ts` module that a server build loads. `dynamicComponent`, the
+component-only variant, is not exported.
 
 **`DEV` is barq's renderer channel.** `DEV.diagnostics` carries what the renderer can see
 and the engine cannot (hydration mismatches, a write to a read-only binding, a Block run
@@ -59,9 +61,14 @@ ending in `Capture`, `onKeyDownCapture`, binds the capture phase, which Solid 2.
 spelling for. `prop:` writes a property, as in Solid 2.0, and `bind:` is barq's two-way
 binding.
 
-**`clearDelegatedEvents`** is exported. Solid 2.0 dropped it when delegated listeners
-became owned by each render root; barq's delegated listeners are still installed on the
-document, and this is what removes them.
+**Delegated events** are owned by the render root, as in Solid 2.0: `render` and `hydrate`
+listen on the container they mount into and stop when the root is disposed, a nested root
+walks its own tree before the root around it resumes from its container, and a portal
+mounted outside its root has its box registered for that root, so an event inside the portal
+bubbles to the handlers around the `<Portal>`. The difference is the box: barq mounts a
+portal's content into a `<div style="display: contents">` of its own and registers that,
+where Solid registers the mount element. A handler on an element no root rendered never
+runs, and there is no `clearDelegatedEvents`; dispose the root instead.
 
 ## Solid 1.x APIs barq does not have
 
@@ -92,16 +99,20 @@ listed with its 2.0 replacement, from Solid's `documentation/solid-2.0/MIGRATION
 - `from`, `observable`: an async iterable in a computation; `createEffect` pushes values
   outward.
 - `Context.Provider`: the context is its own provider, `<Theme value="dark">`.
+- `<Dynamic component={…}>`, `createDynamic`: the `dynamic(source)` factory, hoisted and
+  rendered as a component: `const Field = dynamic(() => (rich() ? Editor : "input"))`, then
+  `<Field value={value()} />`. Solid 2.0 still exports `<Dynamic>`, deprecated.
+- `clearDelegatedEvents`: dispose the render root, which removes its listeners.
 - `classList`: `class` takes a map of names to whether each applies, or a list of names,
   maps and further lists: `class={["card", { active: on() }]}`.
 - `use:` directives: `ref={directive(options)}`, and `ref={[a, b]}` for several.
 - `on:`, `oncapture:`, `attr:`, `bool:`, `style:` and `class:`: `onClick`, a ref that
   calls `addEventListener`, the attribute's own name, `style` and `class` values.
 
-`Context.Provider`, `classList` and the namespaces still parse, so the compiler reports
-them with the replacement: [BARQ022](../../compiler-rs/docs/BARQ022.md),
-[BARQ023](../../compiler-rs/docs/BARQ023.md) and
-[BARQ024](../../compiler-rs/docs/BARQ024.md). The rest are missing exports, which
+`Context.Provider`, `classList`, the namespaces and `<Dynamic>` still parse, so the compiler
+reports them with the replacement: [BARQ022](../../compiler-rs/docs/BARQ022.md),
+[BARQ023](../../compiler-rs/docs/BARQ023.md), [BARQ024](../../compiler-rs/docs/BARQ024.md)
+and [BARQ025](../../compiler-rs/docs/BARQ025.md). The rest are missing exports, which
 TypeScript and the bundler report.
 
 ## Checked at compile time
@@ -131,4 +142,3 @@ and BARQ001 to BARQ003 report `props.name` used the same way.
   and arrives with the next engine update.
 - `Hydration`, `isHydratable` and `clientOnly` belong to the server rendering and
   hydration work and are not exported yet.
-- The `dynamic(source)` factory, for the reason given under `<Dynamic>` above.
