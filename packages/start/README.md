@@ -249,7 +249,7 @@ Declare the same closure on the route, and the build checks the two agree:
 
 ```ts
 // vite.config.ts
-barqStart({ verify: { reachability: () => reachability } });
+barq({ ssr: true, start: { verify: true } });
 
 // src/routes/admin.tsx
 export const Route = createFileRoute("/admin")({ middleware: [requireSession] });
@@ -435,15 +435,20 @@ the browser does not ask again until `refresh`.
 
 ## The build and the server
 
-```ts
-import { barqStart } from "@barqjs/start/vite";
+The Vite side is `@barqjs/vite`, one plugin for the compiler, the file routes
+and this package's build:
 
-barqStart({
-  compiler: { hydratable: true, routes: () => routes },
-  prerender: { routes: ["/"] },
-  pages: false, // an SPA: this plugin keeps the RPC and drops the document
-});
+```ts
+import barq from "@barqjs/vite";
+
+barq({ ssr: true, start: { prerender: { routes: ["/"] } } }); // server-rendered
+barq({ start: true }); // an SPA: `index.html` is the document, the server keeps the RPC
 ```
+
+`start` is what this package adds: server functions and API routes, the dev
+server's page and function middleware, `vite preview`, and a `vite build` that
+builds the client and then the server. `ssr` decides whether the server renders
+pages, and with them whether both halves compile hydratable.
 
 `vite build` emits two directories:
 
@@ -452,6 +457,7 @@ dist/client/    the browser bundle, plus every prerendered page
 dist/server/
   server.js     importable; default-exports the handler and serves nothing
   serve.js      runnable: `bun dist/server/serve.js`
+  index.js      `{ fetch }` over server functions and pages, for a host
 ```
 
 They are two files because `bun <file>` auto-serves any default export carrying
@@ -464,15 +470,28 @@ then server functions, then the page handler. The static lookup costs 0.33 µs
 per request against the 0.75 µs a `statSync` costs, and a prerendered page keeps
 the status it was rendered as.
 
+`vite preview` serves `dist/client` and sends everything else through
+`index.js`, so it runs what a deployment runs.
+
+A plugin that owns the `ssr` environment, such as `@cloudflare/vite-plugin` or
+Nitro, runs the server half itself. The dev server then leaves pages and server
+functions to that plugin's runtime, which imports the `index` input the way a
+deployment does, and a host that orchestrates `vite build` builds the server
+after barq has built the client. `prerender` and `verify` import the server
+bundle barq builds, so under such a host they do not run, and the build says so.
+
 Prerendering takes three more options:
 
 ```ts
-barqStart({
-  prerender: {
-    routes: ["/", "/404"],
-    retryCount: 2, // ask again after a throw or a 5xx; a 4xx is an answer
-    retryDelay: 500, // ms between attempts
-    sitemap: { host: "https://example.com" }, // outputPath defaults to sitemap.xml
+barq({
+  ssr: true,
+  start: {
+    prerender: {
+      routes: ["/", "/404"],
+      retryCount: 2, // ask again after a throw or a 5xx; a 4xx is an answer
+      retryDelay: 500, // ms between attempts
+      sitemap: { host: "https://example.com" }, // outputPath defaults to sitemap.xml
+    },
   },
 });
 ```
@@ -484,8 +503,13 @@ a static host serves for a path it has no file for.
 SPA mode renders the pages in the browser from one shell:
 
 ```ts
-barqStart({ spa: { enabled: true, maskPath: "/", prerender: { outputPath: "/_shell.html" } } });
+barq({
+  ssr: true,
+  start: { spa: { enabled: true, maskPath: "/", prerender: { outputPath: "/_shell.html" } } },
+});
 ```
+
+`ssr` stays on: the server renders the shell and the client hydrates it.
 
 The build renders the root route once, with nothing under it, and writes that
 document. The server then renders no pages: a navigation nothing else answers
@@ -500,10 +524,13 @@ check sees `http://` where the browser said `https://` and refuses every server
 function:
 
 ```ts
-barqStart({
-  server: {
-    trustProxy: "loopback", // or true, or the proxy addresses
-    allowedOrigins: ["https://admin.example.com"], // beyond the server's own
+barq({
+  ssr: true,
+  start: {
+    server: {
+      trustProxy: "loopback", // or true, or the proxy addresses
+      allowedOrigins: ["https://admin.example.com"], // beyond the server's own
+    },
   },
 });
 ```
@@ -515,7 +542,13 @@ cannot run there. `vite build` fails when code from a `.server.` file is in a
 browser chunk or code from a `.client.` file is in the server bundle, naming the
 file and what imported it. It reads the rendered bundle, so a `.server.` import
 used only inside `createServerOnlyFn`, or a module whose exports are server
-functions, is not a violation. `importProtection: false` turns it off.
+functions, is not a violation. `start: { importProtection: false }` turns it off.
+
+`import "server-only"` and `import "client-only"` mark a module the same way at
+the import itself: `@barqjs/vite` fails the build where the browser bundle
+imports `server-only` or the server bundle imports `client-only`, naming the
+importer. Add `/// <reference types="@barqjs/vite/boundary-modules" />` for
+their types.
 
 Deployment goes through [srvx](https://github.com/h3js/srvx), so Node, Bun, Deno
 and Cloudflare take the same entry.
@@ -534,5 +567,5 @@ a `virtual:` or `#`-prefixed specifier.
 | `@barqjs/start/client`    | the RPC stub the compiler emits, and `staticFunctionMiddleware`          |
 | `@barqjs/start/server`    | `handleServerFn`, `mount`, the origin check                              |
 | `@barqjs/start/serve`     | `serveBarq`, the asset middleware                                        |
-| `@barqjs/start/vite`      | `barqStart()`                                                            |
+| `@barqjs/start/vite`      | `barqStart()`, used by `@barqjs/vite`                                    |
 | `@barqjs/start/prerender` | the prerenderer, for a custom build                                      |

@@ -39,5 +39,5 @@ check. It stays a warning even with `defaultCategory: "error"`, so a stale comme
 fail a build. To stop reporting it for the whole project:
 
 ```ts
-barqVitePlugin({ checks: { BARQ008: "suppress" } });
+barq({ compiler: { checks: { BARQ008: "suppress" } } });
 ```

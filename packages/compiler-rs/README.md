@@ -94,12 +94,15 @@ derived from are recorded in `src/compile.rs`.
 ## Using it from Vite
 
 ```ts
-import { barqVitePlugin } from "@barqjs/compiler/vite"
+import barq from "@barqjs/vite"
 
 export default defineConfig({
-  plugins: [barqVitePlugin()],
+  plugins: [barq()],
 })
 ```
+
+`@barqjs/vite` composes this compiler with the router and the server half. The
+compiler's own plugin is `barqVitePlugin` from `@barqjs/compiler/vite`.
 
 There is one pipeline, so the plugin throws if the binary is missing rather than compiling the
 file some other way.

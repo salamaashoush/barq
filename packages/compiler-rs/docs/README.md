@@ -82,9 +82,11 @@ nothing and it is rendered on the page.
 ## Changing a level for the whole project
 
 ```ts
-barqVitePlugin({
-  checks: { BARQ004: "suppress", BARQ001: "error" },
-  defaultCategory: "warning",
+barq({
+  compiler: {
+    checks: { BARQ004: "suppress", BARQ001: "error" },
+    defaultCategory: "warning",
+  },
 });
 ```
 

@@ -31,6 +31,9 @@ create-barq [directory] [options]
 | `spa` | rendered in the browser, from your own `index.html` | yes | yes | `bun dist/server/serve.js` |
 | `minimal` | one `index.html` | no | no | any static host |
 
+Each `vite.config.ts` is one call to the plugin from `@barqjs/vite`:
+`barq({ ssr: true, start })`, `barq({ start: true })` and `barq()`.
+
 `full-stack` is the default. Every one of them builds, typechecks and runs
 before it is published: `test/scaffold.test.ts` scaffolds each into a temporary
 directory, runs its own `vite build` and `tsc`, starts the server it produced
@@ -41,8 +44,8 @@ and fetches from it.
 - **No entry files.** `src/entry-client.tsx` and `src/entry-server.tsx` are
   optional overrides. The defaults are two lines each and the plugin supplies
   them.
-- **No `src/routeTree.gen.ts`.** `barqRouter` writes it on the first build or
-  dev start. Commit it: it is an ordinary module the project imports by path,
+- **No `src/routeTree.gen.ts`.** The Vite plugin writes it on the first build
+  or dev start. Commit it: it is an ordinary module the project imports by path,
   and it typechecks and reads like one.
 - **No `src/virtual.d.ts`.** The declarations for the build's own modules ship
   inside `@barqjs/router`.

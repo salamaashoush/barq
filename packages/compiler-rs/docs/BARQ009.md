@@ -44,5 +44,5 @@ This code has no per-line form. It stays a warning even with `defaultCategory: "
 so a comment cannot fail a build. To stop reporting it for the whole project:
 
 ```ts
-barqVitePlugin({ checks: { BARQ009: "suppress" } });
+barq({ compiler: { checks: { BARQ009: "suppress" } } });
 ```

@@ -4,7 +4,7 @@ File-based routing, server rendering, prerendering and API routes.
 
 ```bash
 bun add @barqjs/router @barqjs/core @barqjs/server @barqjs/start
-bun add -d @barqjs/compiler vite
+bun add -d @barqjs/vite vite
 ```
 
 The fastest way in is `bun create barq my-app`, which writes a project that
@@ -13,31 +13,28 @@ already builds. This document is what that project is made of.
 ## The Vite plugin
 
 ```ts
-import { barqRouter } from "@barqjs/router/vite";
-import { barqStart } from "@barqjs/start/vite";
+import barq from "@barqjs/vite";
 import { defineConfig } from "vite";
 
-let routes: readonly string[] = [];
-
 export default defineConfig({
-  plugins: [
-    barqRouter({ onRoutes: (patterns) => (routes = patterns) }),
-    barqStart({ compiler: { hydratable: true, routes: () => routes } }),
-  ],
+  plugins: [barq({ ssr: true, start: true })],
 });
 ```
 
-`barqRouter` scans `src/routes`, writes `src/routeTree.gen.ts`, and splits each
-route's components into their own chunk. `barqStart` compiles the app and builds
-the server.
+`@barqjs/vite` turns file routes on when `src/routes` exists: it writes
+`src/routeTree.gen.ts`, splits each route's components into their own chunk, and
+hands the compiler the route set `BARQ013` checks links against.
+`barq({ router: { routesDir, routeTree, codeSplitting } })` moves or tunes it.
 
-`hydratable: true` is required for server rendering and is off by default: the
-server writes hydration markers and the client walks them, and both halves of
-one deployment must agree.
+`ssr: true` makes both halves hydratable, which server rendering requires: the
+server writes hydration markers and the client walks them.
 
-`routes` is a THUNK. `onRoutes` fires during config resolution and the compiler
-reads this per transform, so an array here is captured while it is still empty
-and every `<Link to>` is reported as matching no route.
+Under `vite dev`, an edit inside a route's component replaces the component in
+place. An edit to the route's options (`loader`, `head`, `validateSearch`)
+reloads the page, because the router read them when it was created.
+
+`barqRouter()` from `@barqjs/router/vite` is the route-table plugin on its own,
+for a build that composes its plugins by hand.
 
 ## `src/routeTree.gen.ts`
 
@@ -166,7 +163,7 @@ export const Route = createFileRoute("/feed")({ ssr: "data-only" }); // loaders 
 ```
 
 `prerender` writes the page at build time. The build renders the seed paths from
-`barqStart({ prerender: { routes } })`, follows same-origin links out of what
+`barq({ start: { prerender: { routes } } })`, follows same-origin links out of what
 each page produced, and keeps a crawled path only when the route it matched asks
 for one.
 
@@ -187,7 +184,7 @@ createFileRoute("/docs/$kind")({
 ```
 
 `createPageHandler({ shell: true })` renders the root route with nothing under
-it, which is the document `barqStart({ spa: { enabled: true } })` writes once and
+it, which is the document `barq({ ssr: true, start: { spa: { enabled: true } } })` writes once and
 serves for every path.
 
 ## The router, per request
@@ -300,7 +297,7 @@ await navigate("/posts/2", { replace: true });
 
 `BARQ013` checks every `<Link to>` against the route set the same scan produced,
 at compile time. If your project mounts a second router with its own table, add
-those patterns to `barqStart({ compiler: { routes } })` — the check's premise is
+those patterns to `barq({ compiler: { routes } })` — the check's premise is
 one route table per project, and an application is not obliged to satisfy it.
 
 ## Subpaths
@@ -310,7 +307,7 @@ one route table per project, and an application is not obliged to satisfy it.
 | `@barqjs/router`        | isomorphic: routes, components, hooks         |
 | `@barqjs/router/client` | `startClient()`, the hydrating boot           |
 | `@barqjs/router/server` | `createStartHandler()`, `createPageHandler()` |
-| `@barqjs/router/vite`   | `barqRouter()`                                |
+| `@barqjs/router/vite`   | `barqRouter()`, used by `@barqjs/vite`        |
 
 Do not import `@barqjs/router/server` from a route module. A root route ships to
 the browser like any other route, and that subpath reaches `node:async_hooks`.
