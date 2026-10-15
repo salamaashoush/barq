@@ -13,7 +13,7 @@
     "@barqjs/css": "^0.1.0"
   },
   "devDependencies": {
-    "@barqjs/compiler": "^0.1.0",
+    "@barqjs/vite": "^0.1.0",
     "typescript": "^7.0.2",
     "vite": "^8.3.4"
   }

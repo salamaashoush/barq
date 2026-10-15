@@ -17,8 +17,8 @@ export interface Template {
   /**
    * Where the browser's half lands, project-relative.
    *
-   * `barqStart` splits the output in two so the server half has somewhere to
-   * go; a template built by Vite alone keeps Vite's own `dist`.
+   * `start` splits the output in two so the server half has somewhere to go;
+   * a template with no `start` keeps Vite's own `dist`.
    */
   readonly clientOut: string;
 }

@@ -9,7 +9,8 @@ the static files.
 npm install
 npm run dev        # http://localhost:5173
 npm run build      # dist/client and dist/server
-npm run preview    # bun dist/server/serve.js
+npm run preview    # the built server, through vite preview
+npm start          # bun dist/server/serve.js
 npm run typecheck
 ```
 

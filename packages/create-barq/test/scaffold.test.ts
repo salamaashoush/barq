@@ -35,7 +35,7 @@ const OWN_MODULES = fileURLToPath(new URL("../node_modules", import.meta.url));
  * entry imports `collectCss` from `@barqjs/css`, so a project that never writes
  * a `css` block still resolves it.
  */
-const WORKSPACE = ["core", "css", "router", "server", "start", "compiler", "compiler-rs"];
+const WORKSPACE = ["core", "css", "router", "server", "start", "compiler", "compiler-rs", "vite"];
 
 /** Built once for the whole file: a template resolves `@barqjs/*` through it. */
 function ensureBuilt(): void {
@@ -269,7 +269,7 @@ describe("the templates and the workspace agree", () => {
 
   test.each(TEMPLATES.map((template) => template.name))("%s emits nothing generated", (name) => {
     const directory = join(fileURLToPath(new URL("../templates", import.meta.url)), name);
-    // `routeTree.gen.ts` is written by `barqRouter` and committed by the
+    // `routeTree.gen.ts` is written by the Vite plugin and committed by the
     // project, TanStack's arrangement. A template that shipped one would ship a
     // stale table; a template that gitignored it would hide a file people read.
     expect(existsSync(join(directory, "src", "routeTree.gen.ts"))).toBe(false);

@@ -32,6 +32,7 @@
     "@barqjs/compiler": "workspace:*",
     "@barqjs/compiler-rs": "workspace:*",
     "@barqjs/testing": "workspace:*",
+    "@barqjs/vite": "workspace:*",
     "@happy-dom/global-registrator": "^21.0.1",
     "@types/bun": "^1.4.3",
     "@types/d3-shape": "^3.2.0",

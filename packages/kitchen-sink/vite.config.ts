@@ -1,14 +1,12 @@
+import barq from "@barqjs/vite";
 import { defineConfig, type Plugin } from "vite";
-import { barqRouter } from "@barqjs/router/vite";
-import { barqStart } from "@barqjs/start/vite";
 
 /**
- * The route set `BARQ013` checks every `<Link to>` against.
+ * Patterns `BARQ013` accepts beside the file routes.
  *
- * The app's own routes are FILE-BASED now, so `barqRouter({ onRoutes })` reports
- * them from the same scan the table was built from. What it cannot know about is
- * `src/demos/RoutingDemo.tsx`, which mounts a SECOND router on a `memoryHistory`
- * with its own table — so those patterns are declared here and unioned in.
+ * `src/demos/RoutingDemo.tsx` mounts a SECOND router on a `memoryHistory` with
+ * its own table, which the file scan cannot know about, so its patterns are
+ * declared here and unioned in.
  *
  * BARQ013's premise is one route table per project, and an application is not
  * obliged to satisfy it. This is what "declare the union" looks like.
@@ -22,19 +20,6 @@ const NESTED_DEMO_ROUTES = [
   "/demo/dashboard/posts/$id",
   "/demo/dashboard/admin",
 ];
-
-let fileRoutes: readonly string[] = [];
-
-/**
- * Route -> the server-fn ids that route's CLIENT module graph reaches.
- *
- * Produced by `barqRouter`'s `buildEnd` in the client environment and consumed
- * by `barqStart`'s `buildApp` after the ssr build — two moments, two plugins,
- * and no closure they can share, because `builder.sharedConfigBuild` is false
- * and each environment re-resolves the config. A module-scope variable is the
- * channel, exactly as `fileRoutes` above is for the compiler's route table.
- */
-let reachability: ReadonlyMap<string, ReadonlySet<string>> | undefined;
 
 // The demos fetch these. In production they are prerendered away or client-only,
 // so this is a dev convenience rather than part of the app.
@@ -110,45 +95,31 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Both environments must resolve `@barqjs/*` the SAME way. In this workspace the
-// `bun` condition takes them to `src`, and an ssr environment that took `import`
-// to `dist` instead would give the app two copies of `@barqjs/core` — one holding
-// the async session a streamed render parks into, the other holding the loop
-// that would resume it. Measured: the page parked forever and the stream closed
-// with no seed.
-const CONDITIONS = ["bun", "import", "module", "browser", "default"];
-
 export default defineConfig({
-  resolve: { conditions: CONDITIONS },
-  environments: { ssr: { resolve: { conditions: CONDITIONS } } },
   plugins: [
-    barqRouter({
-      onRoutes: (patterns) => (fileRoutes = patterns),
-      onReachability: (found) => (reachability = found),
-    }),
-    barqStart({
-      compiler: {
-        hydratable: true,
-        // A thunk, not a value: `onRoutes` fires in `configResolved` and this
-        // is read per transform, and every layer between spreads its options —
-        // so an array here is snapshotted while it is still empty and BARQ013
-        // reports every link in the project as matching no route.
-        routes: () => [...fileRoutes, ...NESTED_DEMO_ROUTES],
-      },
-      prerender: {
+    barq({
+      ssr: true,
+      // In this workspace the `bun` condition takes `@barqjs/*` to `src`, and
+      // both environments must resolve them the same way: an ssr environment
+      // that took `import` to `dist` would give the app two copies of
+      // `@barqjs/core`, one holding the async session a streamed render parks
+      // into and the other the loop that would resume it.
+      conditions: ["bun"],
+      start: {
         // `/` seeds it; `/about` is found by crawling the layout's own nav.
-        routes: ["/"],
+        prerender: { routes: ["/"] },
+        /**
+         * The route-action chain check, ARMED.
+         *
+         * `/admin` declares `middleware: [requireSession]`, and both server
+         * functions in `admin.data.ts` carry the same closure. Delete
+         * `.middleware([requireSession])` from either and this build fails
+         * naming the route, the function and how many of the chain it is
+         * missing.
+         */
+        verify: true,
       },
-      /**
-       * The route-action chain check, ARMED: the strongest thing barq builds,
-       * and nobody has shipped it in a mainstream framework.
-       *
-       * `/admin` declares `middleware: [requireSession]`, and both server
-       * functions in `admin.data.ts` carry the same closure. Delete
-       * `.middleware([requireSession])` from either and this build fails naming
-       * the route, the function and how many of the chain it is missing.
-       */
-      verify: { reachability: () => reachability },
+      compiler: { routes: NESTED_DEMO_ROUTES },
     }),
     mockApiPlugin(),
   ],
