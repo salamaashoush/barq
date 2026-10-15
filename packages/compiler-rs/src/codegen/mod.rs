@@ -11,15 +11,15 @@ pub use backend::{At, Backend};
 
 use oxc::allocator::{Allocator, TakeIn, Vec as ArenaVec};
 use oxc::ast::ast::{
-    Argument, ArrowFunctionBody, ArrowFunctionExpression, Expression, IdentifierName, Program,
-    Statement,
+    Argument, ArrowFunctionBody, ArrowFunctionExpression, CallExpression, Expression,
+    IdentifierName, Program, Statement,
 };
 use oxc::ast::builder::AstBuilder;
 use oxc::ast_visit::VisitMut;
 use oxc::ast_visit::walk_mut::{walk_arrow_function_expression, walk_expression, walk_statements};
 use oxc::span::{GetSpan, Span};
 
-use crate::ir::{Module, NONE, Ns, Root, Site, TemplateId, Unit, UnitId};
+use crate::ir::{Module, NONE, Ns, Prim, Root, Site, SourceKind, TemplateId, Unit, UnitId};
 use crate::options::{Opt, ResolvedOptions};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -56,7 +56,7 @@ impl Target {
     }
 }
 
-pub const HELPER_COUNT: usize = 59;
+pub const HELPER_COUNT: usize = 58;
 
 /// The first helper that lives in `<server_source>` rather than in the
 /// module source itself. The string backend calls into `ssr.ts`, which the DOM
@@ -97,11 +97,10 @@ pub enum Helper {
     Insert = 1,
     SetProp = 2,
     /// `_$element($s, tag, props)` — one element by tag NAME, built rather than
-    /// cloned. Two shapes need it: a tag chosen at run time
-    /// (`dynamic`'s string arm), and an intrinsic the tree builder would not produce
-    /// as written, which a template therefore cannot carry. Both go through
-    /// `spread` and `insert` from there, so the props and children rules are the
-    /// compiled ones.
+    /// cloned, for an intrinsic the tree builder would not produce as written,
+    /// which a template therefore cannot carry. `dynamic`'s string arm calls the
+    /// same function at run time. It goes through `spread` and `insert` from
+    /// there, so the props and children rules are the compiled ones.
     Element = 3,
     /// `_$spread($s, el, sources)` on an element. The one
     /// channel whose NAMES are not a compile-time fact, so the object travels
@@ -159,9 +158,10 @@ pub enum Helper {
     /// one of the four primitives and never was; what M9 removed is the
     /// component around it.
     Reveal = 16,
-    /// `_$resolveDynamic(component, props)`. The branch that swaps it is
-    /// the compiler's; the one question left is whether the resolved value is a
-    /// tag or a component, and only the value can answer that.
+    /// `_$dynamic(source)` — Solid 2.0's factory, which the AUTHOR calls. The
+    /// server backend points that call here, at the string half of the same
+    /// name, because the client half builds DOM; the DOM backend never emits
+    /// it and leaves the author's import of `@barqjs/core`'s alone.
     Dynamic = 17,
     /// `_$readSlot(v, "origin")` — the Cell-slot read, at the one
     /// place the compiler cannot perform it itself: a prop that arrived through
@@ -256,32 +256,31 @@ pub enum Helper {
     /// the string backend's answer when the construct was never lowered, exactly
     /// as [`SsrPortal`] is for `Portal`.
     SsrIsland = 50,
-    SsrDynamic = 51,
-    SsrReveal = 52,
+    SsrReveal = 51,
     /// `_$formAttr(value)` — the string half of `formAction`. A URL is written
     /// and a handler is not: there is no byte on the wire that means client
     /// behaviour, and `ssr.ts` states the consequence for a pre-hydration submit.
-    FormAttr = 53,
+    FormAttr = 52,
     // ── `<module_source>/interp` ──────────────────────────────────────────
-    Interp = 54,
+    Interp = 53,
     /// `_$getOwner()` — the ambient owner, read where a scope VALUE is needed
     /// rather than a construction under one. The delegated-event dispatcher
     /// stores it on the element (`__bqs`) so a throw routes to the scope's
     /// catcher; nothing else needs it, because every construct reads the
     /// ambient itself.
-    GetOwner = 55,
+    GetOwner = 54,
     /// `_$readKeys(value)` — a `style` object with the getters
     /// it holds called, in the READ half of the binding that writes it. A key
     /// may be live on its own, and the read is where that becomes a
     /// dependency; the write half is handed values only.
-    ReadKeys = 56,
+    ReadKeys = 55,
     /// `_$classToString(value)` — a lone `class` binding's value in its applied
     /// form, computed in the READ half so the effect's own equality decides
     /// whether the write half runs at all.
-    ClassToString = 57,
+    ClassToString = 56,
     /// `_$untrack(() => Comp(props))` — a component called where a compute may
     /// be running, so a signal its setup reads does not rebuild it.
-    Untrack = 58,
+    Untrack = 57,
 }
 
 const IMPORTED: [&str; HELPER_COUNT] = [
@@ -302,7 +301,7 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "island",
     "COUNT",
     "reveal",
-    "resolveDynamic",
+    "dynamic",
     "readSlot",
     "setAttr",
     "setDomProp",
@@ -336,7 +335,6 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "ssrErrored",
     "ssrPortal",
     "ssrIsland",
-    "ssrDynamic",
     "ssrReveal",
     "formAttr",
     "interp",
@@ -734,6 +732,11 @@ impl<'a> VisitMut<'a> for Emit<'a, '_> {
     }
 
     fn visit_expression(&mut self, it: &mut Expression<'a>) {
+        if self.target == Target::Ssr
+            && let Expression::CallExpression(call) = it
+        {
+            self.server_dynamic(call);
+        }
         if let Expression::Identifier(identifier) = it
             && let Some(index) = self.module.uids.root_index(identifier.name.as_str())
         {
@@ -754,6 +757,39 @@ impl<'a> VisitMut<'a> for Emit<'a, '_> {
             *it = self.jsx(taken);
         }
         walk_expression(self, it);
+    }
+}
+
+impl<'a> Emit<'a, '_> {
+    /// `dynamic(source)` from the runtime, pointed at the server's half. The
+    /// author imported the client's, which builds DOM. A named import whose
+    /// every call was pointed here loses its specifier in `install`; the
+    /// namespace spelling keeps the namespace, which serves other names.
+    fn server_dynamic(&mut self, call: &mut CallExpression<'a>) {
+        // A module that is not JSX is never bound, so it has no symbols to ask.
+        if self.module.env.kind.is_empty() {
+            return;
+        }
+        let named =
+            crate::analysis::symbol_of(&self.module.scoping, &call.callee).filter(|symbol| {
+                self.module.env.kind_of(*symbol) == SourceKind::Primitive(Prim::Dynamic)
+            });
+        let namespaced = match crate::analysis::without_type_wrappers(&call.callee) {
+            Expression::StaticMemberExpression(member) => {
+                member.property.name == "dynamic"
+                    && crate::analysis::symbol_of(&self.module.scoping, &member.object)
+                        .is_some_and(|object| self.module.env.namespaces.contains(&object))
+            }
+            _ => false,
+        };
+        if named.is_none() && !namespaced {
+            return;
+        }
+        let span = call.callee.span();
+        call.callee = self.helper(Helper::Dynamic, span);
+        if let Some(symbol) = named {
+            self.module.flow_rewrites.push(symbol);
+        }
     }
 }
 

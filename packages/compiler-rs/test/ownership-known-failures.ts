@@ -250,11 +250,17 @@ export const WRAPPER_GATE_FIXTURE = "own-provider-wrapper";
  *
  * Then 252 to 250: a Block handed to a hole is built once and placed rather
  * than wrapped in an effect that had nothing to follow.
+ *
+ * Then 275 to 276: `dynamic` renders through the `dynamic` factory instead of
+ * `<Dynamic>`, and the factory's instance memo of its source is an `own` event
+ * that the lowered `<Dynamic>` region, keyed on a Cell the compiler wrote, did
+ * not raise. Its component, `Tagged`, is made by a call, so the census lists it
+ * as opaque.
  */
 export const OWNERSHIP_REACH: Readonly<Record<string, number>> = Object.freeze({
   fixtures: 144,
   scopes: 416,
-  effects: 275,
+  effects: 276,
   clones: 320,
   determined: 318,
   unattributed: 1,

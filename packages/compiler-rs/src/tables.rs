@@ -83,7 +83,7 @@ pub fn is_delegated_event(event: &str) -> bool {
     DELEGATED_EVENTS.binary_search(&event).is_ok()
 }
 
-/// A document listener for one of these can never fire from a descendant, so
+/// A root's listener for one of these can never fire from a descendant, so
 /// emitting an expando for it produces a silently dead handler.
 #[inline]
 pub fn is_non_bubbling_event(event: &str) -> bool {
@@ -263,7 +263,7 @@ mod tests {
         assert!(!attr_intercepts("classList"));
     }
 
-    /// A document listener for a non-bubbling type can never fire from a
+    /// A root's listener for a non-bubbling type can never fire from a
     /// descendant, so a name in both tables would make the compiler emit an
     /// expando the runtime immediately warns about and that never runs.
     #[test]

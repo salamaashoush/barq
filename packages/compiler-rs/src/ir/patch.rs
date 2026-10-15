@@ -49,7 +49,7 @@ pub enum Op {
         value: ExprId,
         /// `addEventListener`'s third argument. Set by `on…Capture` and
         /// `capture:x`, and it forces the direct path: delegation is one
-        /// document listener in the BUBBLE phase and cannot serve it.
+        /// listener per render root in the BUBBLE phase and cannot serve it.
         capture: bool,
     },
     /// `el.__bq_click = h`, or `el.__bq_click = [h, data]` for the bound-tuple form.

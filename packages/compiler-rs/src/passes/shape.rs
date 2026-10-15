@@ -628,7 +628,7 @@ impl<'a> Shaper<'a, '_> {
         // runtime invoke it with a construct's arguments instead.
         //
         // An UNNAMED slot is a data slot too: `each`'s source, `when`, a
-        // `Dynamic`'s component. A parameterised function there is a value the
+        // `Portal`'s mount. A parameterised function there is a value the
         // primitive reads, and branded it is refused as a Block in a Cell slot.
         // The unnamed construction slots go through `construction_slot`.
         if channel.is_some_and(is_construction_channel) && self.takes_arguments(&value) {
@@ -2547,6 +2547,7 @@ mod tests {
     /// O3 is the one documented divergence M3 leaves standing, so it is not
     /// allowed to be silent. O7 is gone: it warned that `Dynamic` spreading its
     /// props reads every getter once, and after M3 there are no getters to read.
+    /// Its shape is now a `dynamic` component given a live prop.
     #[test]
     fn the_documented_divergence_is_reported_and_the_getter_one_is_gone() {
         let notes = dev(
@@ -2611,9 +2612,10 @@ mod tests {
         );
 
         // O7's shape, now silent, and the emitted module says why: no getter.
-        let dynamic = dev("import { Dynamic, createSignal } from \"@barqjs/core\";\n\
+        let dynamic = dev("import { dynamic, createSignal } from \"@barqjs/core\";\n\
              const [n] = createSignal(0);\n\
-             const V = () => <Dynamic component=\"b\" total={n()} />;\n");
+             const Chosen = dynamic(() => \"b\");\n\
+             const V = () => <Chosen total={n()} />;\n");
         assert!(dynamic.warnings.is_empty(), "{:?}", dynamic.warnings);
         assert!(!dynamic.code.contains("get total()"), "{}", dynamic.code);
         assert!(dynamic.code.contains("total: () => n()"), "{}", dynamic.code);

@@ -121,6 +121,9 @@ function dispatched(
 ): void {
   const host = document.createElement("div")
   document.body.appendChild(host)
+  // A render root, because a delegated handler is dispatched by the root that
+  // owns the element and by nothing else.
+  const unmount = render(() => null, host)
   const node = document.createElement("div")
   let caught: unknown = null
   runWithOwner(s, () =>
@@ -142,6 +145,7 @@ function dispatched(
   node.dispatchEvent(event)
   // The boundary shows its fallback at the flush the routed error scheduled.
   flush()
+  unmount()
   host.remove()
   if (caught !== null) throw caught
 }
@@ -309,7 +313,7 @@ export const claims: Claim[] = [
             // `branch`'s KEY is deliberately unguarded against a Cell that
             // YIELDS a Block, and `flow.ts` records why: the key's value is
             // only ever compared with `===`, never invoked or inserted, and
-            // guarding it made `<Dynamic component={C} />` impossible because
+            // guarding it made `dynamic(() => C)` impossible because
             // a compiled component IS a Block. An exception with a reason, not
             // a hole: every other slot READS its value.
             const exempt = shape === "laundered" && slot.name === "branch key"

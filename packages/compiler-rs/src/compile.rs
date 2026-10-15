@@ -1053,15 +1053,14 @@ fn located(
 }
 
 /// What the analysis wants the author to know: O3's note where a keyed `For`
-/// cannot be traced back to its rows, O7's warning where `Dynamic` will flatten
-/// the getters P4 built. Both are deliberate divergences, so neither is allowed
-/// to be silent.
+/// cannot be traced back to its rows. It is a deliberate divergence, so it is
+/// not allowed to be silent.
 ///
 /// What is NOT here any more is `uninlinable_flow`. It scanned every symbol and
 /// dropped the whole module to the DOM backend when any of eight flow components
 /// was referenced, which measured at 41.88x on the 100-row page for one import.
-/// The string backend has the four primitives and a string component for all
-/// thirteen constructs now, so the split it decided no longer exists to decide.
+/// The string backend has the four primitives and a string component for every
+/// construct now, so the split it decided no longer exists to decide.
 fn analysis_diagnostics(
     module: &Module<'_>,
     filename: &str,
@@ -1427,8 +1426,55 @@ mod tests {
             .warnings
             .into_iter()
             .filter_map(|d| d.code.map(|code| (code, d.message)))
-            .filter(|(code, _)| matches!(code, Code::Barq022 | Code::Barq023 | Code::Barq024))
+            .filter(|(code, _)| {
+                matches!(code, Code::Barq022 | Code::Barq023 | Code::Barq024 | Code::Barq025)
+            })
             .collect()
+    }
+
+    #[test]
+    fn the_dynamic_component_is_reported_with_the_factory_spelling() {
+        let found = codes_of(
+            "import { Dynamic } from \"@barqjs/core\";\n\
+             const Card = (p) => <b>{p.label()}</b>;\n\
+             export const App = (p) => <Dynamic component={p.on() ? Card : \"i\"} label=\"x\" />;\n",
+        );
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].0, Code::Barq025);
+        assert!(found[0].1.contains("const Chosen = dynamic(() => …)"), "{}", found[0].1);
+        assert!(found[0].1.contains("<Chosen …/>"), "{}", found[0].1);
+
+        let namespaced = codes_of(
+            "import * as core from \"@barqjs/core\";\n\
+             export const App = () => <core.Dynamic component=\"i\">x</core.Dynamic>;\n",
+        );
+        assert_eq!(namespaced.iter().map(|(code, _)| *code).collect::<Vec<_>>(), [Code::Barq025]);
+
+        let renamed = codes_of(
+            "import { Dynamic as Pick } from \"@barqjs/core\";\n\
+             export const App = () => <Pick component=\"i\" />;\n",
+        );
+        assert_eq!(renamed.iter().map(|(code, _)| *code).collect::<Vec<_>>(), [Code::Barq025]);
+    }
+
+    #[test]
+    fn a_dynamic_that_is_not_the_runtime_one_is_left_alone() {
+        let local = codes_of(
+            "const Dynamic = (p) => <b>{p.children}</b>;\n\
+             export const App = () => <Dynamic>x</Dynamic>;\n",
+        );
+        assert!(local.is_empty(), "{local:?}");
+        let imported = codes_of(
+            "import { Dynamic } from \"./dynamic\";\n\
+             export const App = () => <Dynamic component=\"i\" />;\n",
+        );
+        assert!(imported.is_empty(), "{imported:?}");
+        let factory = codes_of(
+            "import { dynamic } from \"@barqjs/core\";\n\
+             const Chosen = dynamic(() => \"i\");\n\
+             export const App = () => <Chosen>x</Chosen>;\n",
+        );
+        assert!(factory.is_empty(), "{factory:?}");
     }
 
     #[test]
@@ -1673,7 +1719,8 @@ mod tests {
     /// `BARQ006` (O7) warned that `Dynamic`'s `{ component: _, ...rest }` reads
     /// every getter once. Under M3 there are no getters — every prop is a Cell,
     /// and a copy of a Cell is the same Cell (C3.4) — so the warning's premise
-    /// is gone and warning anyway would be a lie about the emitted module.
+    /// is gone and warning anyway would be a lie about the emitted module. The
+    /// shape is now a `dynamic` component given a live prop.
     ///
     /// `BARQ007` announced the whole-module SSR→DOM downgrade. M6 deleted the
     /// downgrade: every construct has a string lowering, so there is no module
@@ -1683,9 +1730,10 @@ mod tests {
     /// would be the same defect with the evidence removed.
     #[test]
     fn the_two_diagnostics_that_no_longer_have_anything_to_report() {
-        let o7 = "import { Dynamic, createSignal } from \"@barqjs/core\";\n\
+        let o7 = "import { dynamic, createSignal } from \"@barqjs/core\";\n\
                   const [n] = createSignal(0);\n\
-                  export const V = () => <Dynamic component=\"div\" total={n()} />;\n";
+                  const Chosen = dynamic(() => \"div\");\n\
+                  export const V = () => <Chosen total={n()} />;\n";
         let output = compile(o7, &diagnosing("App.tsx")).expect("compiles");
         assert!(codes(&output).is_empty(), "{:?}", codes(&output));
 
@@ -1878,7 +1926,7 @@ export const Route = createFileRoute("/x")({
     /// A capture binding is the only way to see an event before a descendant
     /// handles it, which is what a component needs when the meaning of a key
     /// depends on state a child does not have. Delegation cannot serve one —
-    /// the document listener runs after the whole bubble path — so a capture
+    /// a root's listener runs after the whole bubble path — so a capture
     /// prop is always a direct `addEventListener` with `true`, even for a name
     /// that is in the delegated set.
     #[test]
@@ -3895,7 +3943,7 @@ export const Route = createFileRoute("/x")({ component: Page });
 
     /// Target #7. A delegated name becomes a direct expando write plus ONE
     /// module-level delegateEvents call; everything outside the generated
-    /// 22-name set stays an addEventListener, because a document listener for a
+    /// 22-name set stays an addEventListener, because a root's listener for a
     /// non-delegated type would never fire.
     #[test]
     fn a_delegated_event_is_an_expando_write_and_the_rest_are_listeners() {

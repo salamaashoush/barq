@@ -45,13 +45,18 @@ const VALUES: { [K in keyof State]: State[K][] } = {
   tag: ["b", "i"],
 };
 
-/** Which signal a fragment of source reads, by the call that reads it. */
+/**
+ * Which signal a fragment of source reads, by the call that reads it, or by the
+ * helper whose source reads it.
+ */
 const READS: [keyof State, string][] = [
   ["on", "on()"],
+  ["on", "<DynamicComponent"],
   ["k", "k()"],
   ["n", "list()"],
   ["label", "label()"],
   ["tag", "tag()"],
+  ["tag", "<DynamicTag"],
 ];
 
 const LEAVES: Record<string, string> = {
@@ -71,8 +76,8 @@ const LEAVES: Record<string, string> = {
   "For unkeyed": `<For each={list()} keyed={false}>{(row) => <li>{row().name}</li>}</For>`,
   Loading: `<Loading fallback={<i>wait</i>}><b>{label()}</b></Loading>`,
   Portal: `<Portal><p class="portal">{label()}</p></Portal>`,
-  Dynamic: `<Dynamic component={tag()}>dyn</Dynamic>`,
-  "Dynamic component": `<Dynamic component={on() ? Wrap : Pass}>dc</Dynamic>`,
+  dynamic: `<DynamicTag>dyn</DynamicTag>`,
+  "dynamic component": `<DynamicComponent>dc</DynamicComponent>`,
   Repeat: `<Repeat count={list().length}>{(i) => <u>{i}</u>}</Repeat>`,
   array: `{[<b>a</b>, label(), [<i>c</i>, "d"]]}`,
   "array built where it stands": `{[LEAD, <b>a</b>, () => label()]}`,
@@ -87,6 +92,8 @@ function Pass(props) { return props.children; }
 function Frag(props) { return <>{props.children}</>; }
 function Lead(props) { return <><hr />{props.children}</>; }
 function Tail(props) { return <>{props.children}<hr /></>; }
+const DynamicTag = dynamic(() => tag());
+const DynamicComponent = dynamic(() => (on() ? Wrap : Pass));
 `;
 
 interface Container {
@@ -314,7 +321,7 @@ export function Case${offset + i}() {
 }`;
   });
   return `
-import { Show, For, Repeat, Switch, Match, Loading, Portal, Dynamic, createSignal, onSettled, createEffect, createRenderEffect } from "@barqjs/core";
+import { Show, For, Repeat, Switch, Match, Loading, Portal, dynamic, createSignal, onSettled, createEffect, createRenderEffect } from "@barqjs/core";
 const ROWS = [{ id: 1, name: "r1" }, { id: 2, name: "r2" }, { id: 3, name: "r3" }];
 const LEAD = "lead ";
 const TAIL = "tail";
@@ -406,7 +413,7 @@ function withValue<K extends keyof State>(state: State, key: K, value: State[K])
 
 function used(c: Case): (keyof State)[] {
   const source = c.jsx + c.decls.join("");
-  const out = READS.filter(([, read]) => source.includes(read)).map(([key]) => key);
+  const out = [...new Set(READS.filter(([, read]) => source.includes(read)).map(([key]) => key))];
   if (/<For |For row/.test(source) && !out.includes("n")) out.push("n");
   return out;
 }

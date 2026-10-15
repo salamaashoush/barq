@@ -1,13 +1,13 @@
-import { Dynamic, createSignal } from "@barqjs/core"
+import { createSignal, dynamic } from "@barqjs/core"
 
 export const [tag, setTag] = createSignal<"span" | "b">("span")
+
+const Tagged = dynamic(() => tag())
 
 export default function DynamicFixture() {
   return (
     <div>
-      <Dynamic component={() => tag()} class="dyn">
-        inner
-      </Dynamic>
+      <Tagged class="dyn">inner</Tagged>
     </div>
   )
 }
@@ -17,13 +17,11 @@ export const optimality = {
   target: 8,
   milestone: 9,
   templates: 1,
-  // K5 lowers `Dynamic` onto the `branch` it always reached, keyed on the
-  // component itself: the swap and the teardown are the primitive's, and the
-  // body is one call that resolves the value. Its string arm builds through
-  // `spread` and `insert` — the two entry points every other element goes
-  // through — so the fifth element-creation path that kept this construct on
-  // its adapter does not exist to emit.
-  emits: ["branch(", "dynamic(", '() => "dyn"', '() => "inner"'],
-  // The adapter frame, and the props record it read `component` out of.
+  // `dynamic` is a component the author hoists, so the call site is an
+  // ordinary component call whose props are Cells. The `branch` keyed on the
+  // source, the swap and the teardown are the factory's at run time, and its
+  // string arm builds through `spread` and `insert` like every other element.
+  emits: ["dynamic(() => tag())", "Tagged({", '() => "dyn"', '() => "inner"'],
+  // `<Dynamic>`'s adapter frame, and the props record it read `component` out of.
   absent: ["Dynamic(", "component: "],
 }

@@ -8,7 +8,7 @@ import { compileSource, loadModule } from "./harness.ts";
  * it; the same spread on an element has always followed its source.
  */
 const SOURCE = `
-import { Dynamic, createSignal } from "@barqjs/core";
+import { createSignal, dynamic } from "@barqjs/core";
 export const [rest, setRest] = createSignal<Record<string, unknown>>({ title: "first" });
 export const [wide, setWide] = createSignal(false);
 const narrow = { lang: "en" };
@@ -25,7 +25,8 @@ export function Called() { return <Row {...rest()} />; }
 export function Chosen() { return <Row {...(wide() ? broad : narrow)} />; }
 export function Shadowed() { return <Row {...rest()} title="fixed" />; }
 export function Forwarded() { return <Passes {...rest()} />; }
-export function Tag() { return <Dynamic component="p" {...rest()} />; }
+const Para = dynamic(() => "p");
+export function Tag() { return <Para {...rest()} />; }
 `;
 
 async function mounted(name: string) {
@@ -102,7 +103,7 @@ describe("a component spread whose source moves", () => {
     }
   });
 
-  test("<Dynamic> forwards the change to the element it made", async () => {
+  test("a dynamic component forwards the change to the element it made", async () => {
     const view = await mounted("Tag");
     try {
       expect(view.element().title).toBe("first");

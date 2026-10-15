@@ -1,28 +1,30 @@
 /**
  * C7 on `branch` keyed by a component VALUE rather than by an index.
  *
- * `Dynamic` is the case the lowering handles by letting `bodies` be a single Block used
- * for every key — one `typeof` per activation and no flag. Each tag change is
- * one activation of that single Block, and the replayed step in between is none.
+ * A `dynamic` component is a `branch` whose `bodies` is a single Block used for
+ * every key — one `typeof` per activation and no flag. Each tag change is one
+ * activation of that single Block, and the replayed step in between is none.
  *
- * The `Dynamic` is the component's whole output on purpose: the frame and the
+ * The `dynamic` component is the whole output on purpose: the frame and the
  * region are then the same thing, so `rebuilds` says something exact about every
  * element in the frame rather than about a subset a class cannot name.
  */
-import { Dynamic, createSignal } from "@barqjs/core"
+import { createSignal, dynamic } from "@barqjs/core"
 
 export const log: string[] = []
 
 export const [tag, setTag] = createSignal<"span" | "b">("span")
 
+const Tagged = dynamic(() => tag())
+
 export default function C7Dynamic() {
   return (
-    <Dynamic component={() => tag()} class="dyn">
+    <Tagged class="dyn">
       {() => {
         log.push("dyn")
         return "inner"
       }}
-    </Dynamic>
+    </Tagged>
   )
 }
 

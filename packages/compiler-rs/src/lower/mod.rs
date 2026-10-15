@@ -129,7 +129,7 @@ enum AttrKind {
     /// a delegated expando or an `addEventListener`; P2 picks which
     Event,
     /// `addEventListener(type, handler, true)`. Never delegated: delegation is
-    /// one document listener in the BUBBLE phase.
+    /// one listener per render root in the BUBBLE phase.
     CaptureEvent,
     /// `bind:x` — resolved into `(property, event)` by the element
     Bind,

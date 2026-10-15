@@ -37,7 +37,7 @@ pub enum OwnKind {
     Component,
     /// `<Ctx value>` — `provide` (X1)
     Provide,
-    /// `Show` / `Switch` / `Match` / `Dynamic` and the boundaries — `branch`
+    /// `Show` / `Switch` / `Match` and the boundaries — `branch`
     Branch,
     /// `For` / `Repeat` — an `each` row
     Each,

@@ -50,7 +50,7 @@ const CONSUMERS: Record<string, string> = {
   "branch (key unchanged, driving effect re-runs)": "mm-branch-nonkeyed-truthy",
   "branch (key flip, A → B → A)": "mm-branch-flip",
   "branch (Switch/Match arms)": "mm-switch-arm",
-  "branch (Dynamic, one Block for every key)": "c7-dynamic",
+  "branch (dynamic, one Block for every key)": "c7-dynamic",
   "branch (nested)": "mm-nested-branch",
   "each (keyed, by function)": "mm-keyed-move",
   "each (keyed, grow and shrink)": "mm-keyed-grow-shrink",

@@ -876,7 +876,7 @@ describe("target 7 — delegated events as expando writes", () => {
 
   it("non-delegated-event: onMouseEnter/onFocus are bound directly, never as an expando", () => {
     const code = compileFixtureBody("non-delegated-event");
-    // A document listener for a non-bubbling type can never fire from a
+    // A root's listener for a non-bubbling type can never fire from a
     // descendant, so the expando would be silently dead. The positive clauses
     // are what make this more than "the compiler emitted nothing".
     // B4: the listener is registered THROUGH the scope, so it dies with the
@@ -996,11 +996,9 @@ describe("K5 — the thirteen constructs, and the four they lower onto", () => {
     "Errored",
     "ErrorBoundary",
     "Portal",
-    // M9. `Await` is two boundaries, `Dynamic` a branch whose body resolves the
-    // component, `Reveal` a `reveal` call — the provide scope it always was,
-    // with the component around it gone.
+    // M9. `Await` is two boundaries, `Reveal` a `reveal` call — the provide
+    // scope it always was, with the component around it gone.
     "Await",
-    "Dynamic",
     "Reveal",
   ];
 
@@ -1022,30 +1020,28 @@ describe("K5 — the thirteen constructs, and the four they lower onto", () => {
     // construct's props and refused. What M10 found is that it did not need to
     // read the one prop the refusal was written for — `keyed` is already a
     // runtime argument `each` dispatches on, and the row Block's parameter list
-    // does not change with it. The other four constructs a spread reaches
-    // (`Show`, `Match`, `Switch`, `Dynamic`) still refuse, each for a reason
+    // does not change with it. The other three constructs a spread reaches
+    // (`Show`, `Match`, `Switch`) still refuse, each for a reason
     // stated in `passes::flow::admits_spread`, and none of them is in `LOWERED`
     // with a spread fixture behind it.
     expect(survivors).toEqual([]);
   });
 
-  it("the three constructs M8 refused now lower too, onto what they always were", () => {
-    // The refusals were three facts about the constructs, and M9 answered each
-    // one rather than routing around it:
+  it("the constructs M8 refused now lower too, onto what they always were", () => {
+    // The refusals were facts about the constructs, and M9 answered each one
+    // rather than routing around it. A third, `Dynamic`, is no construct now:
+    // Solid 2.0 replaced it with the `dynamic` factory, which BARQ025 names.
     //
     //  - `Await`'s three states are what READING a resource does — throw
     //    `NotReady`, throw the error, return the value — so it is a loading
     //    boundary around an error boundary and the property test that told a
     //    Resource from a Cell carrying one is gone with the key it fed.
-    //  - `Dynamic`'s string arm builds through `spread` and `insert` like every
-    //    other element, so the fifth element-creation path it needed does not
-    //    exist to emit.
     //  - `Reveal` is still a provide scope rather than a range, and is lowered
     //    to the CALL that says so — not onto `branch`, which would have put a
     //    context binding where a conditional belongs.
     const bodies = listFixtures().map((name) => [name, compileFixtureBody(name)] as const);
     for (const [name, code] of bodies) {
-      for (const construct of ["Await", "Dynamic", "Reveal"]) {
+      for (const construct of ["Await", "Reveal"]) {
         expect(
           new RegExp(`(?<![\\w$])${construct}\\(_s\\$`).test(stripLiterals(code)),
           `${name}: ${construct} still reaches its adapter`,
@@ -1054,7 +1050,7 @@ describe("K5 — the thirteen constructs, and the four they lower onto", () => {
     }
     // And the primitives they reach instead really are emitted.
     const all = bodies.map(([, code]) => code).join("\n");
-    for (const primitive of ["_$reveal(", "_$resolveDynamic(", "_$boundary("]) {
+    for (const primitive of ["_$reveal(", "_$boundary("]) {
       expect(all, `${primitive} is emitted by no fixture`).toContain(primitive);
     }
   });
@@ -1096,8 +1092,8 @@ describe("K5 — the thirteen constructs, and the four they lower onto", () => {
    *    needle to be a fact about `-O0` makes "the adapter frame it no longer
    *    emits" a difference between two programs instead of a sentence.
    *
-   * The refusals are deliberately out of scope: `Await`, `Dynamic`, `Reveal`
-   * and `control-flow-for-keyed-spread` emit the same adapter at both levels,
+   * The refusals are deliberately out of scope: `Await`, `Reveal` and
+   * `control-flow-for-keyed-spread` emit the same adapter at both levels,
    * so there is no difference for them to name, and the two tests above pin
    * them by their own criterion.
    */

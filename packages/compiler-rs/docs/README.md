@@ -28,11 +28,12 @@ exists and how to silence it.
 | [BARQ022](BARQ022.md) | error | A context is rendered through `.Provider`, which a context does not have |
 | [BARQ023](BARQ023.md) | error | `classList` is written on an element, where it is an ordinary attribute |
 | [BARQ024](BARQ024.md) | error | An attribute uses a Solid 1.x namespace such as `on:` or `attr:` |
+| [BARQ025](BARQ025.md) | error | `<Dynamic>` is rendered, where Solid 2.0 uses the `dynamic` factory |
 
 BARQ001, BARQ002, BARQ003, BARQ005, BARQ011 and BARQ018 to BARQ021 are reported when the
 `diagnostics` option is on, which it is in development builds. BARQ004 and BARQ010 are reported in development
 builds only.
-BARQ012 to BARQ017 and BARQ022 to BARQ024 are reported in every build, so they can fail CI. BARQ008 and BARQ009
+BARQ012 to BARQ017 and BARQ022 to BARQ025 are reported in every build, so they can fail CI. BARQ008 and BARQ009
 report on your own suppression comments.
 
 [BARQ006](BARQ006.md) was removed and is not reported.
@@ -42,7 +43,7 @@ report on your own suppression comments.
 A code is never renamed and never reused, because a suppression comment in your source
 refers to it by name. A new code arrives in a minor release at warning level or below,
 except one that reports a spelling the runtime no longer understands, as BARQ022 to
-BARQ024 do: that code would otherwise be a page that builds and then misbehaves.
+BARQ025 do: that code would otherwise be a page that builds and then misbehaves.
 With `defaultCategory: "error"`, a new code can therefore turn a minor upgrade into a
 failing build.
 

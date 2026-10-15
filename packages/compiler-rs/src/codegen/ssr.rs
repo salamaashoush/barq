@@ -1141,7 +1141,6 @@ pub(crate) fn server_flow(flow: Flow) -> Helper {
         Flow::Loading => Helper::SsrLoading,
         Flow::Errored => Helper::SsrErrored,
         Flow::Portal => Helper::SsrPortal,
-        Flow::Dynamic => Helper::SsrDynamic,
         Flow::Reveal => Helper::SsrReveal,
         // The COMPONENT form: `server_flow` is the un-lowered path, and a
         // component takes `(s, props)`. The region form is `Helper::Island`.
@@ -1558,32 +1557,25 @@ mod tests {
         assert!(!nodes.contains("@barqjs/server"), "{nodes}");
     }
 
-    /// What the flow pass REFUSES still has a string answer, and every one of
-    /// the thirteen has one: the component call survives and is rewritten to the
-    /// adapter over the same four primitives.
+    /// What the flow pass REFUSES still has a string answer, and every construct
+    /// has one: the component call survives and is rewritten to the adapter over
+    /// the same four primitives.
     ///
-    /// The example is `Dynamic` behind a spread, and it used to be `For`, then
-    /// `Show`. Both of those lower now: M10 admits a spread for ten of the
-    /// thirteen. What is left is stated in `admits_spread` and none of it is
-    /// about spreads — `Dynamic`'s unrecognised props are the RESOLVED
-    /// component's rather than the construct's, and `Switch` needs literal
+    /// The example used to be `For`, then `Show`. Both of those lower now: M10
+    /// admits a spread for most constructs. What is left is stated in
+    /// `admits_spread` and none of it is about spreads: `Switch` needs literal
     /// `<Match>` arms it can read (`admits_arms`), which takes `Match` with it.
     #[test]
     fn a_refused_construct_becomes_its_string_component() {
-        let code = ssr("import { Dynamic } from \"@barqjs/core\";\n\
-             export const V = () => <div><Dynamic {...p}/></div>;\n")
-        .code;
-        assert!(code.contains("_$ssrDynamic("), "{code}");
-        // Markup, so no escaper wraps it.
-        assert!(!code.contains("_$esc(_$ssr"), "{code}");
-        assert!(code.contains("from \"@barqjs/server\""), "{code}");
-
         // A `Switch` whose arms are not literal `<Match>` elements, which is the
         // refusal no spread work can close.
         let scanned = ssr("import { Switch } from \"@barqjs/core\";\n\
              export const V = () => <div><Switch>{arms.map((a) => a)}</Switch></div>;\n")
         .code;
         assert!(scanned.contains("_$ssrSwitch("), "{scanned}");
+        // Markup, so no escaper wraps it.
+        assert!(!scanned.contains("_$esc(_$ssr"), "{scanned}");
+        assert!(scanned.contains("from \"@barqjs/server\""), "{scanned}");
 
         // And the other direction, which is the half that moved: a spread the
         // pass DOES admit reaches the primitive here exactly as it does on the
@@ -1623,8 +1615,8 @@ mod tests {
     /// `uninlinable_flow` dropped the WHOLE module to the DOM backend when any
     /// of eight flow components was referenced — one import, and every unrelated
     /// page in the module lost its string backend. It is deleted, and the shape
-    /// that used to trigger it is asserted here for all thirteen constructs at
-    /// once: the string backend, no `_$template`, and nothing to warn about.
+    /// that used to trigger it is asserted here for all twelve names at once:
+    /// the string backend, no `_$template`, and nothing to warn about.
     #[test]
     fn no_construct_sends_the_module_to_another_backend() {
         for name in [
@@ -1639,7 +1631,6 @@ mod tests {
             "Suspense",
             "Await",
             "Portal",
-            "Dynamic",
             "ErrorBoundary",
         ] {
             // A SPREAD, so the flow pass refuses and the construct really does
@@ -1813,35 +1804,74 @@ mod tests {
             .to_string()
     }
 
+    /// `dynamic` is imported from the client entry and called by the author,
+    /// not emitted, so the server backend points the call at the string half of
+    /// the same name. The specifier comes off with its last reader, and the DOM
+    /// backend leaves the call alone.
+    #[test]
+    fn the_dynamic_factory_calls_the_string_half() {
+        let source = "import { dynamic, createSignal } from \"@barqjs/core\";\n\
+             const [tag] = createSignal(\"b\");\n\
+             const Tagged = dynamic(() => tag());\n\
+             export const V = () => <div><Tagged class=\"x\">y</Tagged></div>;\n";
+        let code = ssr(source).code;
+        assert!(code.contains("const Tagged = _$dynamic(() => tag());"), "{code}");
+        assert!(code.contains("dynamic as _$dynamic"), "{code}");
+        assert!(!core_import(&code).contains("dynamic"), "{code}");
+        assert!(core_import(&code).contains("createSignal"), "{code}");
+
+        let kept = ssr("import { dynamic } from \"@barqjs/core\";\n\
+             export const make = dynamic;\n\
+             export const B = dynamic(() => \"b\");\n")
+        .code;
+        assert!(core_import(&kept).contains("dynamic"), "{kept}");
+
+        let options = ResolvedOptions::with_filename("V.tsx");
+        let dom = compile(source, &options).expect("compiles").code;
+        assert!(dom.contains("const Tagged = dynamic(() => tag());"), "{dom}");
+        assert!(!dom.contains("_$dynamic"), "{dom}");
+
+        // A module that is not JSX is not bound, and compiles untouched. The
+        // stylesheet pass resolves its references, so one that mentions
+        // `@barqjs/css` has reference ids and still no symbol table to ask.
+        let plain = ResolvedOptions { ssr: true, ..ResolvedOptions::with_filename("plain.ts") };
+        let script = "import { create } from \"@barqjs/css\";\n\
+                      import { hash } from \"./sheet.ts\";\n\
+                      export const card = create({ a: { color: \"red\" } });\n\
+                      export function f(x: string) { return hash(x); }\n";
+        let plain = compile(script, &plain).expect("a plain module compiles").code;
+        assert!(plain.contains("return hash(x);"), "{plain}");
+    }
+
     /// A rewritten callee leaves its import specifier with no reader, and that
     /// name drags `@barqjs/core`'s whole DOM runtime into a server bundle. It
     /// comes off only when EVERY reference was rewritten.
     #[test]
     fn an_import_whose_every_reference_was_rewritten_comes_off() {
-        let gone = ssr("import { Dynamic } from \"@barqjs/core\";\n\
-             export const V = () => <div><Dynamic {...p}/></div>;\n")
+        let gone = ssr("import { Switch } from \"@barqjs/core\";\n\
+             export const V = () => <div><Switch>{arms}</Switch></div>;\n")
         .code;
-        assert!(gone.contains("_$ssrDynamic("), "{gone}");
+        assert!(gone.contains("_$ssrSwitch("), "{gone}");
         // The SPECIFIER is what has to come off, not the whole import: since
         // `codegen::brand`, every component declaration carries `_$block`,
         // which is a shared-ABI helper and lives in the module source, so the
         // import itself survives with one specifier that is not `Show`.
-        assert!(!core_import(&gone).contains("Dynamic"), "{gone}");
+        assert!(!core_import(&gone).contains("Switch"), "{gone}");
 
         // One reader left is one reader too many.
-        let kept = ssr("import { Dynamic } from \"@barqjs/core\";\n\
-             const alias = Dynamic;\n\
-             export const V = () => <div><Dynamic {...p}/></div>;\n")
+        let kept = ssr("import { Switch } from \"@barqjs/core\";\n\
+             const alias = Switch;\n\
+             export const V = () => <div><Switch>{arms}</Switch></div>;\n")
         .code;
-        assert!(core_import(&kept).contains("Dynamic"), "{kept}");
+        assert!(core_import(&kept).contains("Switch"), "{kept}");
 
         // And a binding the backend never rewrote is untouched.
-        let other = ssr("import { Dynamic, createSignal } from \"@barqjs/core\";\n\
+        let other = ssr("import { Switch, createSignal } from \"@barqjs/core\";\n\
              export const [n] = createSignal(0);\n\
-             export const V = () => <div><Dynamic {...p}/></div>;\n")
+             export const V = () => <div><Switch>{arms}</Switch></div>;\n")
         .code;
         assert!(core_import(&other).contains("createSignal"), "{other}");
-        assert!(!core_import(&other).contains("Dynamic"), "{other}");
+        assert!(!core_import(&other).contains("Switch"), "{other}");
     }
 
     /// Every fixture in the corpus compiles through the string backend, and

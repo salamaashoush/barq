@@ -17,8 +17,8 @@ import { assemble } from "./stream.ts";
 
 const HEAD = `
 import {
-  Dynamic, Errored, For, Loading, Match, Portal, Repeat, Show, Switch,
-  createContext, createMemo, createSignal, lazy, useContext,
+  Errored, For, Loading, Match, Portal, Repeat, Show, Switch,
+  createContext, createMemo, createSignal, dynamic, lazy, useContext,
 } from "@barqjs/core"
 export const counts = { fetches: 0 }
 function Read(props) {
@@ -166,13 +166,13 @@ export default function Page() {
   </Loading></div>
 }`,
   },
-  "Dynamic, then a sibling": {
+  "dynamic, then a sibling": {
     values: ["value-a", "value-b"],
     source: `
 export default function Page() {
-  const [which] = createSignal(() => Read)
+  const Chosen = dynamic(() => Read)
   return <div><Loading fallback={<i>wait</i>}>
-    <Dynamic component={which()} tag="a" />
+    <Chosen tag="a" />
     <Read tag="b" />
   </Loading></div>
 }`,

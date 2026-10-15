@@ -110,6 +110,7 @@ codes! {
     Barq022 = "BARQ022", Error, "A context is rendered through `.Provider`, which a context does not have";
     Barq023 = "BARQ023", Error, "`classList` is written on an element, where it is an ordinary attribute";
     Barq024 = "BARQ024", Error, "An attribute uses a Solid 1.x namespace such as `on:` or `attr:`";
+    Barq025 = "BARQ025", Error, "`<Dynamic>` is rendered, where Solid 2.0 uses the `dynamic` factory";
 }
 
 /// Where the pages live. A consumer gets this string verbatim — the Vite panel

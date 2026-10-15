@@ -175,7 +175,7 @@ impl<'a> Classify<'a, '_> {
         value: ExprId,
         capture: bool,
     ) -> Option<Op> {
-        // A capture binding is never delegated: the document listener that
+        // A capture binding is never delegated: the root listener that
         // serves the delegated set runs after the whole bubble path, which is
         // the opposite of what capture is for.
         let delegated = !capture && tables::is_delegated_event(self.interner.name(event).text);

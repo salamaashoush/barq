@@ -3,9 +3,10 @@
 //! Each one still parses and most still type-check somewhere (a `.jsx` file, a
 //! custom element, which takes any attribute), and each compiles to something
 //! that silently does the wrong thing: `<Theme.Provider>` calls `undefined`,
-//! `classList={{ … }}` writes `classlist="[object Object]"`, and `on:click`
-//! writes an attribute instead of binding a listener. So they are reported
-//! where they are written, with the 2.0 spelling.
+//! `classList={{ … }}` writes `classlist="[object Object]"`, `on:click`
+//! writes an attribute instead of binding a listener, and `<Dynamic>` imports a
+//! name that is not there. So they are reported where they are written, with
+//! the 2.0 spelling.
 
 use oxc::ast::ast::{
     JSXAttributeItem, JSXAttributeName, JSXElementName, JSXMemberExpressionObject,
@@ -16,7 +17,7 @@ use oxc::semantic::Scoping;
 use oxc::span::Span;
 
 use crate::diag::Code;
-use crate::ir::Module;
+use crate::ir::{Module, Prim, SourceKind};
 
 pub struct Removed {
     pub code: Code,
@@ -41,6 +42,33 @@ impl<'a> Visit<'a> for Scan<'_, 'a> {
         match &it.name {
             JSXElementName::Identifier(_) => self.intrinsic(it),
             JSXElementName::NamespacedName(_) => self.intrinsic(it),
+            JSXElementName::IdentifierReference(tag) => {
+                let removed = tag
+                    .reference_id
+                    .get()
+                    .and_then(|id| self.scoping.get_reference(id).symbol_id())
+                    .is_some_and(|symbol| {
+                        self.module.env.kind_of(symbol)
+                            == SourceKind::Primitive(Prim::RemovedDynamic)
+                    });
+                if removed {
+                    self.dynamic(tag.span);
+                }
+            }
+            JSXElementName::MemberExpression(member)
+                if member.property.name == "Dynamic"
+                    && matches!(
+                        &member.object,
+                        JSXMemberExpressionObject::IdentifierReference(object)
+                            if object
+                                .reference_id
+                                .get()
+                                .and_then(|id| self.scoping.get_reference(id).symbol_id())
+                                .is_some_and(|symbol| self.module.env.namespaces.contains(&symbol))
+                    ) =>
+            {
+                self.dynamic(member.span);
+            }
             JSXElementName::MemberExpression(member) if member.property.name == "Provider" => {
                 if let JSXMemberExpressionObject::IdentifierReference(object) = &member.object
                     && let Some(symbol) = object
@@ -68,6 +96,19 @@ impl<'a> Visit<'a> for Scan<'_, 'a> {
 }
 
 impl Scan<'_, '_> {
+    fn dynamic(&mut self, span: Span) {
+        self.found.push(Removed {
+            code: Code::Barq025,
+            span,
+            message: "`<Dynamic>` is not exported by barq: Solid 2.0 deprecates it in favour of \
+                      the `dynamic` factory, which is all barq has. Hoist one to the component \
+                      body, or to the module when the choice reads only module state: \
+                      `const Chosen = dynamic(() => …)` with what `component` held, then render \
+                      `<Chosen …/>` with the other props."
+                .to_string(),
+        });
+    }
+
     fn intrinsic(&mut self, it: &JSXOpeningElement<'_>) {
         for item in &it.attributes {
             let JSXAttributeItem::Attribute(attribute) = item else { continue };

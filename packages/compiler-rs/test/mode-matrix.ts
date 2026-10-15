@@ -75,7 +75,7 @@ export const MATRIX_EXCEPTIONS = {
    * That looks like the reference backend being ignored and is not: this one
    * leaves the template path entirely, so there is no template for the
    * reference backend to serialise beside the module — `c7-dynamic`'s whole
-   * output is a `Dynamic`, which is a component call.
+   * output is a `dynamic` component, which is a component call.
    *
    * `spread-static-mix` was here until M9 and is not any more: a spread stays
    * on the template path now, so the fixture has a template and the reference

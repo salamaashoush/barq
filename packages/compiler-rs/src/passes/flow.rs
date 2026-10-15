@@ -20,13 +20,15 @@
 //! | `Errored` | `boundary("error")` | the collector's |
 //! | `Portal` | `portal` | the mount |
 //!
-//! `Dynamic` and `Reveal` lower too, since M9. `Reveal` is a `reveal` call
-//! rather than a region row, because it creates a PROVIDE scope and not a range.
+//! `Reveal` lowers too, since M9. It is a `reveal` call rather than a region
+//! row, because it creates a PROVIDE scope and not a range.
 //!
-//! There are ten constructs, not thirteen: `Suspense`, `Await` and
+//! There are nine constructs, not thirteen: `Suspense`, `Await` and
 //! `ErrorBoundary` went at M10 because Solid 2.0 ships neither, and each was a
 //! spelling of something here — `Loading`, a `Loading` around an `Errored`, and
-//! `Errored` with the error by value.
+//! `Errored` with the error by value. `Dynamic` went because Solid 2.0
+//! deprecates it for the `dynamic` factory, which is a call the author writes
+//! and not a construct; BARQ025 reports it.
 //!
 //! ## What is not, and why each refusal is a fact rather than a gap
 //!
@@ -34,8 +36,6 @@
 //!   of arms, or a component that returns one, is a runtime scan
 //!   ([`admits_arms`]). `Match` goes with it: it is only ever read by a `Switch`
 //!   that folded it.
-//! - **`Dynamic` behind a spread.** Everything but `component` is the RESOLVED
-//!   component's props, so the source list is not the construct's to read off.
 //! - **An unreadable `keyed` written as a static attribute.** `<Show keyed={x}>`
 //!   is refused where `<Show {...p}>` is not, and the asymmetry is deliberate:
 //!   off a spread the pass emits both programs and tests at run time
@@ -85,10 +85,6 @@ fn recognised(flow: Flow) -> &'static [&'static str] {
         Flow::Portal => &["mount"],
         Flow::Match => &["when", "keyed"],
         Flow::Reveal => &["order", "collapsed"],
-        // Every other attribute IS the props of whatever the component resolves
-        // to, so there is no row to close here: `admits` reads the tag's own
-        // props off the list and hands the rest through.
-        Flow::Dynamic => &[],
         // A hydration directive takes nothing: it wraps children and says who
         // claims them.
         Flow::NoHydration => &[],
@@ -102,14 +98,13 @@ fn required(flow: Flow) -> &'static [&'static str] {
         Flow::For => &["each"],
         Flow::Repeat => &["count"],
         Flow::Errored => &["fallback"],
-        Flow::Dynamic => &["component"],
         _ => &[],
     }
 }
 
 fn kind_of(flow: Flow) -> Option<RegionKind> {
     Some(match flow {
-        Flow::Show | Flow::Switch | Flow::Dynamic => RegionKind::Branch,
+        Flow::Show | Flow::Switch => RegionKind::Branch,
         Flow::For | Flow::Repeat => RegionKind::Each,
         Flow::Loading => RegionKind::Loading,
         Flow::Errored => RegionKind::Error,
@@ -158,15 +153,13 @@ pub(super) fn admits_reveal<'a>(shaper: &Shaper<'a, '_>, element: &JSXElement<'a
 /// keyed body already dispatches, so the table is an optimisation of it rather
 /// than a second mechanism.
 ///
-/// What is left, and neither is about spreads:
+/// What is left is not about spreads:
 ///
 /// - **`Switch`** refuses on [`admits_arms`]: its arms must be literal `<Match>`
 ///   elements resolved by `SymbolId`, and `<Switch>{arms.map(…)}</Switch>` is a
 ///   runtime scan. `Match` goes with it, because it is only ever read by a
 ///   `Switch` that folded it. Those two adapters are not deletable by any amount
 ///   of spread work.
-/// - **`Dynamic`**'s unrecognised props ARE the resolved component's, so its
-///   source list is not the construct's to read off.
 fn admits_spread(flow: Flow) -> bool {
     #[expect(clippy::match_same_arms, reason = "one arm per construct, each with its own reason")]
     match flow {
@@ -182,8 +175,6 @@ fn admits_spread(flow: Flow) -> bool {
         Flow::Match => false,
         // `admits_arms` — a fact about the construct, not about spreads.
         Flow::Switch => false,
-        // The source list is the resolved component's props, not the region's.
-        Flow::Dynamic => false,
     }
 }
 
@@ -209,13 +200,7 @@ fn admits_element<'a>(shaper: &Shaper<'a, '_>, flow: Flow, element: &JSXElement<
         let name = identifier.name.as_str();
         // A `children=` attribute competes with the JSX children for one slot,
         // and `component_call` already owns that precedence rule.
-        //
-        // `Dynamic` is the one construct whose extra attributes are not its own:
-        // everything but `component` is the resolved component's props, and it
-        // passes them through as a source list rather than reading them.
-        let admitted = recognised(flow).contains(&name)
-            || (flow == Flow::Dynamic && name != "children")
-            || (flow == Flow::Dynamic && name == "component");
+        let admitted = recognised(flow).contains(&name);
         if !admitted || seen.contains(&name) {
             return false;
         }
@@ -543,7 +528,6 @@ pub(super) fn lower<'a>(
         Flow::Repeat => repeat(shaper, &mut bag, kids, span),
         Flow::Loading | Flow::Errored => boundary(shaper, &mut bag, kids, span),
         Flow::Portal => portal(shaper, &mut bag, kids, span),
-        Flow::Dynamic => dynamic(shaper, &mut bag, kids, span),
         Flow::NoHydration => island(shaper, &mut bag, kids, span),
         Flow::Match | Flow::Reveal => unreachable!("refused by `admits`"),
     };
@@ -926,47 +910,6 @@ fn portal<'a>(
         arrow(shaper, void, span)
     }));
     region.body = body;
-    region
-}
-
-/// `Dynamic` — a `branch` keyed on the component VALUE with ONE body, which is
-/// what the adapter always did; what M9 removes is the props OBJECT it built by
-/// `omit`, and the fifth element-creation path its string arm had.
-fn dynamic<'a>(
-    shaper: &mut Shaper<'a, '_>,
-    bag: &mut Bag<'a>,
-    kids: Vec<Expression<'a>>,
-    span: Span,
-) -> Region<'a> {
-    let component = bag.take(shaper, "component").expect("checked by `admits`");
-    let cell = shaper.cell_value(component.value, component.span);
-
-    let mut properties = Vec::with_capacity(bag.statik.len() + 1);
-    for attr in std::mem::take(&mut bag.statik) {
-        let value = shaper.cell_value(attr.value, attr.span);
-        properties.push(shaper.property(attr.name, value, attr.span));
-    }
-    if let Some(children) = body_slot_of(shaper, kids, span) {
-        properties.push(shaper.property("children", children, span));
-    }
-    let properties = ArenaVec::from_iter_in(properties, &shaper.allocator);
-    let props = Expression::new_object_expression(span, properties, &shaper.ast);
-
-    let callee = shaper.helper(Helper::Dynamic, span);
-    let call = call(shaper, callee, vec![dup(shaper, &cell), props], span);
-    let body = Expression::new_arrow_function_expression(
-        span,
-        false,
-        None,
-        params(shaper, &[], span),
-        None,
-        ArrowFunctionBody::from(call),
-        &shaper.ast,
-    );
-
-    let mut region = blank(shaper, span);
-    region.key = Some(cell);
-    region.body = shaper.brand(body, span);
     region
 }
 

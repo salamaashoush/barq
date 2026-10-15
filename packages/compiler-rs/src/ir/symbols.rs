@@ -78,6 +78,12 @@ pub enum Prim {
     /// `isPending(fn)` / `latest(fn)` — A5 (f)'s read surface. They INVOKE
     /// their argument, so the read is theirs and not the call site's.
     ReadMode,
+    /// `dynamic(source)`, Solid 2.0's factory for a component chosen at run
+    /// time. The server backend calls the string half of the same name.
+    Dynamic,
+    /// `Dynamic`, which Solid 2.0 deprecates in favour of `dynamic` and barq
+    /// does not export. Resolved only so BARQ025 can name the replacement.
+    RemovedDynamic,
     Flow(Flow),
 }
 
@@ -116,7 +122,8 @@ impl Prim {
             "Errored" => Prim::Flow(Flow::Errored),
             "Reveal" => Prim::Flow(Flow::Reveal),
             "Portal" => Prim::Flow(Flow::Portal),
-            "Dynamic" => Prim::Flow(Flow::Dynamic),
+            "dynamic" => Prim::Dynamic,
+            "Dynamic" => Prim::RemovedDynamic,
             "NoHydration" => Prim::Flow(Flow::NoHydration),
             _ => return None,
         })
@@ -193,22 +200,22 @@ pub enum Flow {
     Errored,
     Reveal,
     Portal,
-    Dynamic,
     /// NOT control flow, and it sits in this enum only because the lowering
     /// tables are keyed by it. `NoHydration` renders its children once and
     /// unconditionally; what it decides is whether the CLIENT claims the markup.
-    /// Solid ships it from `dom-expressions` rather than as one of the ten, and
+    /// Solid ships it from `dom-expressions` rather than as one of the nine, and
     /// the count below is unchanged by it.
     NoHydration,
 }
 
 // `Suspense`, `Await` and `ErrorBoundary` were here until M10 and are gone.
-// Solid 2.0's shipped control-flow surface is ten constructs — `For`, `Repeat`,
+// Solid 2.0's control-flow surface is nine constructs — `For`, `Repeat`,
 // `Show`, `Switch`, `Match`, `Errored`, `Loading`, `Reveal` from `solid-js`,
-// plus `Portal` and `Dynamic` from `@solidjs/web` — read out of
-// `solid-js@2.0.0-rc.0` rather than out of its documentation. None of the three
-// is in it, and all three were already legacy duplicates of `Loading` /
-// `resource` / `Errored`.
+// plus `Portal` from `@solidjs/web` — read out of `solid-js@2.0.0-rc.0` rather
+// than out of its documentation. None of the three is in it, and all three
+// were already legacy duplicates of `Loading` / `resource` / `Errored`.
+// `<Dynamic>` left too: Solid 2.0 deprecates it for the `dynamic` factory,
+// which is a function returning a component and not a construct.
 //
 // `Suspense` was `Loading` under its pre-2.0 name and forwarded to it verbatim.
 // `ErrorBoundary` was `Errored` with the error handed over BY VALUE instead of
@@ -239,7 +246,6 @@ impl Flow {
             Flow::Errored => "Errored",
             Flow::Reveal => "Reveal",
             Flow::Portal => "Portal",
-            Flow::Dynamic => "Dynamic",
         }
     }
 
@@ -260,7 +266,6 @@ impl Flow {
             (Flow::Portal, "mount") => Some("portal target"),
             (Flow::Loading, "on") => Some("boundary on"),
             (Flow::Reveal, "order" | "collapsed") => Some("branch key"),
-            (Flow::Dynamic, "component") => Some("branch key"),
             _ => None,
         }
     }
@@ -487,7 +492,6 @@ mod tests {
             Flow::Errored,
             Flow::Reveal,
             Flow::Portal,
-            Flow::Dynamic,
         ];
         // M6 deleted `inlinable_on_server`, the six/eight split it named, and
         // the whole-module downgrade it drove. What replaced it is a TOTAL map
@@ -495,12 +499,13 @@ mod tests {
         // asserting is that the map has no hole: every construct resolves to a
         // helper, and a helper resolves to a name in `IMPORTED`.
         //
-        // TEN, since M10. Solid 2.0's shipped surface is `For`, `Repeat`,
-        // `Show`, `Switch`, `Match`, `Errored`, `Loading` and `Reveal` from
-        // `solid-js`, plus `Portal` and `Dynamic` from `@solidjs/web` — read out
-        // of `solid-js@2.0.0-rc.0`. `Suspense`, `Await` and `ErrorBoundary` were
-        // the three barq carried beyond it and are gone.
-        assert_eq!(all.len(), 10);
+        // NINE. Solid 2.0's surface is `For`, `Repeat`, `Show`, `Switch`,
+        // `Match`, `Errored`, `Loading` and `Reveal` from `solid-js`, plus
+        // `Portal` from `@solidjs/web` — read out of `solid-js@2.0.0-rc.0`.
+        // `Suspense`, `Await` and `ErrorBoundary` were the three barq carried
+        // beyond it, and `Dynamic` is deprecated there for the `dynamic`
+        // factory; all four are gone.
+        assert_eq!(all.len(), 9);
         for flow in all {
             let helper = crate::codegen::ssr::server_flow(flow);
             assert!(

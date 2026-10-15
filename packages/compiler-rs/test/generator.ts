@@ -43,10 +43,11 @@
  *  - **Throwing, and `ErrorBoundary`** — the routed error entry points are among
  *    the VIOLATED rules; a generated throw would report a known defect as a
  *    level divergence and drown the signal.
- *  - **`Portal` and `Dynamic`** — `Portal` renders outside the container the
+ *  - **`Portal` and `dynamic`** — `Portal` renders outside the container the
  *    harness snapshots, so a divergence inside one is invisible rather than
- *    caught, which is worse than not generating it. `Dynamic`'s component is a
- *    value, and generating a well-typed one adds no shape the direct call lacks.
+ *    caught, which is worse than not generating it. A `dynamic` source answers
+ *    with a value, and generating a well-typed one adds no shape the direct
+ *    call lacks.
  *  - **`ref`, `dangerouslySetInnerHTML`, custom elements, SVG and MathML** —
  *    each is a namespace or an escape hatch whose corpus fixture is hand-written
  *    precisely because its correctness argument is not compositional.

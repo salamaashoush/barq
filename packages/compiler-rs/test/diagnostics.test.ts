@@ -304,6 +304,9 @@ describe("the diagnostic engine", () => {
         "const [on] = createSignal(false);\n" +
         "export const V = () => <p classList={{ on: on() }} />;\n",
       BARQ024: 'export const V = () => <p attr:title="salama" />;\n',
+      BARQ025:
+        `import { Dynamic } from "@barqjs/core";\n` +
+        'export const V = () => <Dynamic component="p">salama</Dynamic>;\n',
     };
 
     const advertised = native

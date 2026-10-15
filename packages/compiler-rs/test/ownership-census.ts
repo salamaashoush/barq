@@ -153,7 +153,7 @@ const ROWS: readonly CensusRow[] = [
   { fixture: "derived-local-thunk", clones: 1, unattributed: 0, opaque: [] },
   { fixture: "diagnostic-accessor-coercion", clones: 1, unattributed: 0, opaque: [] },
   { fixture: "dom-prop-static-value", clones: 1, unattributed: 0, opaque: [] },
-  { fixture: "dynamic", clones: 1, unattributed: 0, opaque: [] },
+  { fixture: "dynamic", clones: 1, unattributed: 0, opaque: ["Tagged"] },
   { fixture: "no-hydration-island", clones: 2, unattributed: 0, opaque: [] },
   { fixture: "equal-liveness", clones: 1, unattributed: 0, opaque: [] },
   { fixture: "escaped-text-and-attribute", clones: 1, unattributed: 0, opaque: [] },

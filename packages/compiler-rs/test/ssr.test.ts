@@ -345,7 +345,9 @@ describe("dual render: the compiled SSR string", () => {
     // And the eight names that used to trigger it are still IN the corpus, so
     // the zero above is a fact about the backend rather than about a corpus that
     // stopped exercising them. A fixture set with no `Portal` in it would
-    // satisfy the assertion above by having nothing to test.
+    // satisfy the assertion above by having nothing to test. `<Dynamic>` is
+    // the `dynamic` factory now, which the server backend points at its string
+    // half, so the corpus is held to exercising that instead.
     const EIGHT = [
       "Loading",
       "Errored",
@@ -353,7 +355,7 @@ describe("dual render: the compiled SSR string", () => {
       "Suspense",
       "Await",
       "Portal",
-      "Dynamic",
+      "dynamic",
       "ErrorBoundary",
     ];
     const exercised = new Set<string>();

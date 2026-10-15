@@ -37,12 +37,12 @@ pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
     }
     // Target #7: capture-free handlers become module-scope constants, so a
     // thousand rows allocate zero closures. Then ONE delegateEvents call
-    // replaces the N private `ensureDelegatedListener` calls applyProp makes —
-    // module evaluation order guarantees the document listeners are installed
-    // before any event can fire.
+    // declares the module's delegated types, and every render root listens for
+    // a declared type from then on, so module evaluation order guarantees the
+    // listeners are installed before any event can fire.
     //
     // Both are DOM concepts. P8b drops every event patch, so the wire carries no
-    // `__bq_click`, the document listener has nothing to serve, and a hoisted
+    // `__bq_click`, a root's listener has nothing to serve, and a hoisted
     // handler would be a module-scope binding with no reader.
     // A constant prop Cell is an ABI fact, not a DOM one: both backends call the
     // same component with the same props object, so `_k$N` is declared for every
