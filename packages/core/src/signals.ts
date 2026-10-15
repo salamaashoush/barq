@@ -908,11 +908,21 @@ export function renderEffect<T>(
 ): void {
   effectsAllocated++;
   const run = (OWNERSHIP.sink !== null ? traced(compute, "render") : compute) as typeof compute;
-  if (hydrating()) {
-    claimEffect(run, apply);
+  if (hydrating() && claiming !== null) {
+    claiming(run, apply);
     return;
   }
   createRenderEffect<T>(run as never, apply);
+}
+
+/**
+ * `claimEffect`, installed by `hydrate` so a page that never hydrates does not
+ * ship it. Nothing hydrates before `hydrate` has run, which installs it first.
+ */
+let claiming: typeof claimEffect | null = null;
+
+export function installClaimEffect(): void {
+  claiming = claimEffect;
 }
 
 const ABANDONED: unique symbol = Symbol("abandoned");

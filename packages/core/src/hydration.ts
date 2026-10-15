@@ -208,6 +208,79 @@ export function hydrating(): boolean {
   return SESSION !== null && SESSION.stack.length > 0;
 }
 
+/**
+ * The claim walk, reached through this table and installed by
+ * `beginHydration`. A page that only ever calls `render` never references the
+ * table, so a bundler drops the walk with it; called directly, every one of
+ * these functions was kept in every bundle by the render path's own
+ * `hydrating()` branches.
+ *
+ * With no table installed no `hydrate` has started, so `SESSION` is null and
+ * each entry below answers exactly as its walk does with no session.
+ */
+let walk: typeof WALK | null = null;
+
+export function claimNode(template: Node, detect?: boolean): Node | null {
+  return walk === null ? null : walk.claimNode(template, detect);
+}
+
+export function claimText(value: string): Text | null {
+  return walk === null ? null : walk.claimText(value);
+}
+
+export function claimElement(tag: string): Element | null {
+  return walk === null ? null : walk.claimElement(tag);
+}
+
+export function withRangeTaken<T>(
+  range: Range,
+  body: () => T,
+  after?: Taken,
+): { value: T; taken: Node[]; held: Text[] } {
+  return walk === null
+    ? { value: body(), taken: [], held: [] }
+    : walk.withRangeTaken(range, body, after);
+}
+
+export function hole<T>(
+  parent: Node | null,
+  anchor: Node | null,
+  build: () => T,
+  mode?: number,
+): T {
+  return walk === null ? build() : walk.hole(parent, anchor, build, mode);
+}
+
+export function claimRange(parent: Node | null, anchor: Node | null, mode?: number): Range | null {
+  if (walk !== null) return walk.claimRange(parent, anchor, mode);
+  if ((anchor !== null ? anchor.parentNode : parent) === null) throw strayRange();
+  return null;
+}
+
+export function claimAt(parent: Node | null, anchor: Node | null, mode?: number): Range | null {
+  if (walk !== null) return walk.claimAt(parent, anchor, mode);
+  if (parent !== null || anchor !== null) return claimRange(parent, anchor, mode);
+  throw noSession();
+}
+
+export function probeRange(parent: Node | null, anchor: Node | null): Range | null {
+  return walk === null ? null : walk.probeRange(parent, anchor);
+}
+
+function strayRange(): HydrationMismatch {
+  return new HydrationMismatch(
+    "range",
+    "the browser looked for server-rendered content at a node that is not in the document",
+  );
+}
+
+function noSession(): HydrationMismatch {
+  return new HydrationMismatch(
+    "range",
+    "a component looked for server-rendered content while no `hydrate` call is running",
+  );
+}
+
 export function mismatches(): readonly Mismatch[] {
   return SESSION === null ? [] : SESSION.mismatches;
 }
@@ -254,6 +327,7 @@ function firstClaimable(container: Node): Node | null {
 }
 
 export function beginHydration(container: Node): void {
+  walk = WALK;
   SESSION = {
     container,
     marked: hasRanges(container),
@@ -453,7 +527,7 @@ export function withRange<T>(range: Range, body: () => T): T {
  * its caller no node to insert. Comparing produced-lists removes the page;
  * asking the cursor does not. `flow.ts`'s `attempt` asks the same question.
  */
-export function withRangeTaken<T>(
+function withRangeTakenWalk<T>(
   range: Range,
   body: () => T,
   /**
@@ -503,7 +577,7 @@ export interface Taken {
  * documented consequence of NOT catching it is event handlers attached to the
  * wrong elements.
  */
-export function claimNode(template: Node, detect?: boolean): Node | null {
+function claimNodeWalk(template: Node, detect?: boolean): Node | null {
   if (SESSION === null) return null;
   const cursor = SESSION.stack[SESSION.stack.length - 1];
   if (cursor === undefined) return null;
@@ -549,7 +623,7 @@ export function claimNode(template: Node, detect?: boolean): Node | null {
  * the stack belongs to something else, and taking that one's next node would
  * be taking a neighbour's.
  */
-export function claimText(value: string): Text | null {
+function claimTextWalk(value: string): Text | null {
   if (SESSION === null) return null;
   const cursor = SESSION.stack[SESSION.stack.length - 1];
   if (cursor === undefined) return null;
@@ -640,7 +714,7 @@ export function inDocumentOrder<T>(body: () => T): T {
  * `claimNode`'s — the walk below this point addresses the server's children, so
  * a wrong element here puts every binding under it on the wrong node.
  */
-export function claimElement(tag: string): Element | null {
+function claimElementWalk(tag: string): Element | null {
   if (SESSION === null) return null;
   const cursor = SESSION.stack[SESSION.stack.length - 1];
   if (cursor === undefined) return null;
@@ -782,12 +856,7 @@ function verifySubtree(want: Node, have: Node, path: string): void {
  * `(parent, anchor)`. That is a lookup and not a mutation, so the two agree by
  * construction rather than by a handshake.
  */
-export function hole<T>(
-  parent: Node | null,
-  anchor: Node | null,
-  build: () => T,
-  mode?: number,
-): T {
+function holeWalk<T>(parent: Node | null, anchor: Node | null, build: () => T, mode?: number): T {
   if (!hydrating()) return build();
   // `null` is the compiler saying "this position has no address" — the fallback
   // element path. There is no RANGE to claim, but since `TAGGED` the build
@@ -1001,14 +1070,9 @@ export function sib(node: Node, k: number, back?: number): Node | null {
  * `mode` is the compiler's `WHOLE`: a hole that owns its parent's child list
  * was written with no comments at all.
  */
-export function claimRange(parent: Node | null, anchor: Node | null, mode?: number): Range | null {
+function claimRangeWalk(parent: Node | null, anchor: Node | null, mode?: number): Range | null {
   const host = anchor !== null ? anchor.parentNode : parent;
-  if (host === null) {
-    throw new HydrationMismatch(
-      "range",
-      "the browser looked for server-rendered content at a node that is not in the document",
-    );
-  }
+  if (host === null) throw strayRange();
   // The position has to be somewhere the SERVER wrote. A parent the client just
   // built — `createElement`'s element, a template clone nothing claimed — is
   // detached from the container, and its children are the client's own with no
@@ -1078,14 +1142,9 @@ function took(range: Range): Range {
  * — there is no template around them to walk — so the range is the next thing at
  * the cursor, exactly as a `template()` call there would claim the next node.
  */
-export function claimAt(parent: Node | null, anchor: Node | null, mode?: number): Range | null {
+function claimAtWalk(parent: Node | null, anchor: Node | null, mode?: number): Range | null {
   if (parent !== null || anchor !== null) return claimRange(parent, anchor, mode);
-  if (SESSION === null) {
-    throw new HydrationMismatch(
-      "range",
-      "a component looked for server-rendered content while no `hydrate` call is running",
-    );
-  }
+  if (SESSION === null) throw noSession();
   const cursor = SESSION.stack[SESSION.stack.length - 1];
   if (cursor === undefined) {
     throw new HydrationMismatch(
@@ -1154,7 +1213,7 @@ export function claimAt(parent: Node | null, anchor: Node | null, mode?: number)
  * arm that swallows a mismatch, which this file does not have; this is a
  * separate entry point that does not raise one.
  */
-export function probeRange(parent: Node | null, anchor: Node | null): Range | null {
+function probeRangeWalk(parent: Node | null, anchor: Node | null): Range | null {
   try {
     return claimAt(parent, anchor);
   } catch (error) {
@@ -1197,3 +1256,14 @@ export function rangeAnchor(range: Range): Node | null {
 }
 
 export { MARKER, OPEN, CLOSE };
+
+const WALK = {
+  claimNode: claimNodeWalk,
+  claimText: claimTextWalk,
+  claimElement: claimElementWalk,
+  withRangeTaken: withRangeTakenWalk,
+  hole: holeWalk,
+  claimRange: claimRangeWalk,
+  claimAt: claimAtWalk,
+  probeRange: probeRangeWalk,
+};

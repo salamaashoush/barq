@@ -14,6 +14,7 @@ import {
   NotReadyError,
   onCleanup,
   getObserver,
+  installClaimEffect,
   getOwner,
   isDisposed,
   ScopeMissingError,
@@ -832,6 +833,16 @@ export function setDomProp(
     parsesTo(element, value)
   ) {
     return value;
+  }
+  // Text over the one text node the last write left is that node's `data`:
+  // `textContent` would remove it and make another. The empty string is not,
+  // because it leaves the element with no child at all.
+  if (name === "textContent" && (typeof value === "string" || typeof value === "number")) {
+    const only = element.firstChild;
+    if (value !== "" && only !== null && only.nodeType === 3 && only.nextSibling === null) {
+      (only as Text).data = String(value);
+      return value;
+    }
   }
   // `undefined` is not a value a property has: assigned as it is, a string
   // property spells it out and `innerHTML` renders the word.
@@ -2109,7 +2120,9 @@ export function insert(
     if (OWNERSHIP.sink !== null) OWNERSHIP.sink.blockEnter("insert", given);
     try {
       if (claim !== null) {
-        placeClaimed(parent, claim, anchor, () => childToNodes(buildChild(build, given), given));
+        claims().placeClaimed(parent, claim, anchor, () =>
+          childToNodes(buildChild(build, given), given),
+        );
         return;
       }
       value = buildChild(build, given);
@@ -2184,13 +2197,13 @@ export function insert(
         // synthesised anchor to insert. Reconciling `null` against the claim
         // would remove the whole subtree the region just adopted; measured on
         // a router page as a `<div>shell:` with its route emptied out of it.
-        if (taken !== null && taken.length > 0 && claimedItAll(produced, taken)) {
+        if (taken !== null && taken.length > 0 && claims().claimedItAll(produced, taken)) {
           current = taken;
           return CLAIMED;
         }
         if (claiming !== null) {
-          detectTextDrift(current, produced);
-          adoptText(current, produced);
+          claims().detectTextDrift(current, produced);
+          claims().adoptText(current, produced);
         }
         return resolveInsert(produced, current, given);
       },
@@ -2212,7 +2225,7 @@ export function insert(
   if (claim !== null) {
     const taken = takenAtHole(claim);
     if (holdsAFunction(value)) {
-      placeClaimed(parent, claim, anchor, () => childToNodes(value, given), taken);
+      claims().placeClaimed(parent, claim, anchor, () => childToNodes(value, given), taken);
       return;
     }
     // The same question the live path asks its cursor: a value that is all
@@ -2220,15 +2233,15 @@ export function insert(
     // adopted where it stands. Reconciled, the range comments a region inside
     // it anchors on would be removed, and the region would then insert beside
     // a node that is no longer in the document.
-    if (taken.taken.length > 0 && claimedItAll(value, taken.taken)) return;
+    if (taken.taken.length > 0 && claims().claimedItAll(value, taken.taken)) return;
     // An array's strings are made into nodes against the cursor, which is the
     // only thing that knows which of the server's text nodes each one is.
     if (isArray(value)) {
-      placeClaimed(parent, claim, anchor, () => childToNodes(value, given), taken);
+      claims().placeClaimed(parent, claim, anchor, () => childToNodes(value, given), taken);
       return;
     }
-    detectTextDrift(claim.nodes, value);
-    adoptText(claim.nodes, value);
+    claims().detectTextDrift(claim.nodes, value);
+    claims().adoptText(claim.nodes, value);
     applyInsert(parent, value, claim.nodes, anchor, given);
     return;
   }
@@ -2274,6 +2287,21 @@ function placeClaimed(
 ): void {
   const built = withRangeTaken(claim, () => inDocumentOrder(build), after).value;
   placeInsert(parent, built, claim.nodes, anchor);
+}
+
+/**
+ * The halves of `insert` that only a claim reaches, installed by `hydrate` for
+ * the reason `hydration.ts` installs its walk: reached directly from `insert`,
+ * a page that never hydrates shipped them.
+ */
+const INSERT_CLAIMS = { placeClaimed, adoptText, detectTextDrift, claimedItAll };
+let insertClaims: typeof INSERT_CLAIMS | null = null;
+
+function claims(): typeof INSERT_CLAIMS {
+  if (insertClaims === null) {
+    throw new Error("barq: a server range was claimed while no `hydrate` call was running");
+  }
+  return insertClaims;
 }
 
 /** Text written through the one text node the server sent is that node, reused. */
@@ -3046,7 +3074,7 @@ function eventFor(rec: CapturedEvent): Event {
  * head is reactive and a navigation updates it without a second mechanism
  * beside the render.
  */
-export function hydrate(
+function hydrateContainer(
   fn: () => JSXElement,
   container: HTMLElement | Document,
   options?: { data?: Record<string, unknown> },
@@ -3068,6 +3096,8 @@ export function hydrate(
   // id epoch is the other half of that.
   const seeds = { ...(globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__ };
   registerDelegatedRoot(container);
+  insertClaims = INSERT_CLAIMS;
+  installClaimEffect();
   beginHydration(container);
   const marked = wireIsMarked();
   // The server numbered every scope it opened, whether or not a value was
@@ -3167,22 +3197,27 @@ export interface HydrationOutcome extends HydrationReport {
   /** The claim failed and the page was rendered cold — today's behaviour. */
   recovered: boolean;
 }
-// eslint-disable-next-line @typescript-eslint/no-namespace
-export declare namespace hydrate {
-  // eslint-disable-next-line no-var
-  // `hydrate.report` is the public name and the module-level `report` is the
-  // mismatch reporter; the collision is between an API and an internal, and
-  // only one of them is free to move.
-  // oxlint-disable-next-line no-shadow
-  export let report: HydrationOutcome;
+export interface Hydrate {
+  (
+    fn: () => JSXElement,
+    container: HTMLElement | Document,
+    options?: { data?: Record<string, unknown> },
+  ): () => void;
+  report: HydrationOutcome;
 }
-hydrate.report = {
-  mismatches: [],
-  claimed: 0,
-  ranges: 0,
-  built: 0,
-  recovered: false,
-} satisfies HydrationOutcome;
+
+// Attached in one pure expression rather than assigned at module scope: the
+// assignment is a side effect, and it kept `hydrate` and the whole claim walk
+// in every bundle that only ever calls `render`.
+export const hydrate: Hydrate = /* @__PURE__ */ Object.assign(hydrateContainer, {
+  report: {
+    mismatches: [],
+    claimed: 0,
+    ranges: 0,
+    built: 0,
+    recovered: false,
+  } satisfies HydrationOutcome,
+});
 
 /**
  * `render`, with the one line that makes it hydration or not.

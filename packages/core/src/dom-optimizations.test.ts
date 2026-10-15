@@ -5,7 +5,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { element, hydrate, insert, render, setProp, spread } from "./dom.ts";
+import { bindProp, element, hydrate, insert, render, setDomProp, setProp, spread } from "./dom.ts";
 import { flush, createSignal } from "./signals.ts";
 
 // The container is a render root, as every element an application shows is
@@ -370,5 +370,39 @@ describe("pre-hydration replay across a swap", () => {
     ]);
 
     expect(input.value).toBe("typed before the bundle arrived");
+  });
+});
+
+describe("textContent: the text node is kept", () => {
+  test("a live textContent writes through the text node its first write made", () => {
+    const el = document.createElement("a");
+    container.appendChild(el);
+    const [label, setLabel] = createSignal("salama");
+    bindProp(el, setDomProp, "textContent", label);
+    flush();
+    const text = el.firstChild;
+    expect(text?.nodeType).toBe(3);
+
+    setLabel("salama !!!");
+    flush();
+    expect(el.textContent).toBe("salama !!!");
+    expect(el.firstChild).toBe(text);
+    expect(el.childNodes.length).toBe(1);
+
+    setLabel(7 as unknown as string);
+    flush();
+    expect(el.textContent).toBe("7");
+    expect(el.firstChild).toBe(text);
+  });
+
+  test("the empty string still leaves no child, and other children are replaced", () => {
+    const el = document.createElement("a");
+    el.append("salama", document.createElement("b"));
+    setDomProp(el, "textContent", "example.com");
+    expect(el.childNodes.length).toBe(1);
+    expect(el.textContent).toBe("example.com");
+
+    setDomProp(el, "textContent", "");
+    expect(el.childNodes.length).toBe(0);
   });
 });
