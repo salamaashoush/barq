@@ -568,3 +568,76 @@ value, and a pattern nested under a prop's key.
   spells an id the same way the plugin does": a stub for a function that names no method is
   `clientRpc(id, [], { method: "GET" })`, so the id is read up to the first `,` or `)` and the
   expected stub text carries the method. The ids compared are unchanged.
+
+## Solid 2.0's removed and deprecated APIs dropped
+
+Tests whose subject was an API Solid 2.0 removed or deprecates (`Context.Provider`,
+`mergeProps`, `splitProps`, `classList`, `createTrackedEffect`, `storePath`, the `on:`,
+`capture:`, `attr:`, `bool:` and `style:` namespaces) were migrated to the replacement or
+deleted with it.
+
+- `core/src/context-provider.test.ts` "is a function, and `.Provider` is the same function"
+  now asserts the context has no `Provider` member.
+- `core/src/context-miss.test.ts` "useContext names the context it could not find": the
+  message tells the reader to wrap the component in the context, `<Theme value={…}>`,
+  instead of in its `Provider`.
+- `core/src/dom-classlist.test.ts` deleted with `classList`; `dom-class-values.test.ts`
+  covers `class` given maps and nested lists through `setProp`, `element` and `spread`, and
+  that `classList` is an ordinary attribute. `dom-svg.test.ts` "SVG classList" became "SVG
+  class values" with the same four shapes on `class`.
+- `core/src/channel-clear.test.ts` "one css declaration given undefined is taken off"
+  deleted with `setStyleProp`.
+- `core/src/dom.test.ts` "the capture: namespace is the verbatim form" now asserts that
+  `capture:keydown` and `on:keydown` are attributes and bind no listener.
+- `core/src/props.test.ts`: the `mergeProps` laziness case runs on `merge`; the
+  `splitProps` case is deleted (`omit` has its own); "mergeProps skips a later undefined;
+  merge treats it as a value" keeps only the `merge` half; the sequence case drops its
+  `splitProps` step.
+- `core/src/rendering.test.ts`: the `splitProps` block asserts `omit`'s result (the picked
+  half has no 2.0 counterpart); the `mergeProps` block runs on `merge` unchanged.
+- `core/src/jsx-types/*.types.tsx`: the namespace and `classList` positives became
+  negatives, a class list may hold maps and lists, and the `mergeProps` type cases moved
+  onto `merge`.
+- `core/src/conformance.test.ts` imports `createTrackedEffect` from `@solidjs/signals`,
+  since the suite's single-function `effect` needs it and barq does not export it.
+- `server/src/ssr.test.ts`: the `classList` and `clsList` expectations are gone with the
+  attribute; the class oracle drops the `classList` name and gains nested-list values.
+- `server/src/effects-on-server.test.ts` "outside a render they run as they always have":
+  expected `["effect", "settled"]` instead of also logging a tracked effect.
+- `testing/src/docs.test.tsx` "context, read through a Provider" renders `<Theme value>`.
+- `compiler-rs/src/tables.rs`, `lower/names.rs`, `ir/intern.rs`: `classList` left the
+  intercepted-name lists and is asserted as an ordinary name; the generator-sensitivity
+  edit moved from the `classList` branch to the `dangerouslySetInnerHTML` one.
+- `compiler-rs/src/compile.rs`: the capture test uses `onClickCapture` instead of
+  `capture:click`; the threaded-record test uses `class` in place of `classList`; the
+  intercepted-constant test drops its `classList` attribute.
+- `compiler-rs/src/ownership.rs`, `passes/shape.rs`: provider cases are written
+  `<Ctx value>` and the node is labelled `Ctx`.
+- `site/src/blocks/sidebar-10.test.tsx`: five cases now dismiss the self-opening page
+  actions popover first (`closePageActions`), as the team-button case already did. The
+  popover's outside-press listener sits in `interactOutside`, which ran as a
+  `createTrackedEffect` that never saw `isOpen` turn true in the same flush, so a press
+  outside an open popover went through. As `createEffect` it arms, and the first outside
+  press only dismisses the popover, which is what the file's own comment states. No
+  expectation changed.
+- `compiler-rs/fixtures`: `class-list-prop`, `attribute-namespaces`, `class-empty-string`,
+  `class-owns-only-its-tokens`, `class-with-live-siblings` and `context-provider` were
+  rewritten onto `class` lists and maps, plain attributes, a ref-added listener and
+  `<Theme value>`, with their `emits`/`absent` restated to match. The member-tag claim
+  `(0, Theme.Provider)(` left `context-provider`; `src/compile.rs` still pins it.
+  `sem-err-handler-throw` dispatches `mouseenter` through `onMouseEnter` instead of a
+  custom `on:my-signal`. The `sem-ctx-*` regexes find the provider call by the context's
+  name (`Outer(`, `Ctx(`, `Locale(`).
+- `compiler-rs/test/ownership-census.ts` `own-cross-module`: `opaque` is `["Theme",
+  "Card"]`. `Theme` is imported, so `<Theme value>` is an ordinary component the tree
+  cannot follow, where `.Provider` used to be recognised by name. Clone and unattributed
+  counts are unchanged.
+- `compiler-rs/test/optimisation.test.ts` "normalising channel still removes": the probe
+  uses `style`, since `setClass` recovers its previous value from the element and a class
+  map no longer separates the mutant.
+- `compiler-rs/test/generator.ts`, `differential.test.ts`: the "classList object" feature
+  is "class map". `tracer.ts` lists `onSettled` where it listed `createTrackedEffect`.
+- Snapshots: `roundtrip.test.ts.snap` (emitted code of the six rewritten fixtures),
+  `oracle.test.ts.snap` rendered DOM of `class-empty-string`, `class-list-prop` and
+  `class-with-live-siblings` (same tokens, list order), `modes.test.ts.snap` digests of the
+  23 edited fixtures.
