@@ -51,6 +51,7 @@ import type { Cell } from "./scope.ts";
 import { coerceLive, writeLive } from "./forms.ts";
 import {
   HydrationMismatch,
+  claimingTemplate,
   abandonedClaim,
   adopted,
   beginHydration,
@@ -580,13 +581,15 @@ export function delegateEvents(types: string[]): void {
     const type = types[i];
     if (NON_BUBBLING_EVENTS.has(type) && !warnedNonBubbling.has(type)) {
       warnedNonBubbling.add(type);
-      emitDiagnostic(
-        "DELEGATED_EVENT_DOES_NOT_BUBBLE",
-        "warning",
-        `\`delegateEvents(["${type}"])\` asks for a listener on each render root, but ` +
+      emitDiagnostic({
+        code: "DELEGATED_EVENT_DOES_NOT_BUBBLE",
+        kind: "render",
+        severity: "warn",
+        message:
+          `\`delegateEvents(["${type}"])\` asks for a listener on each render root, but ` +
           `the \`${type}\` event does not bubble, so a handler registered this way never runs. ` +
           `Attach it to the element itself: \`listen(element, "${type}", handler)\`.`,
-      );
+      });
     }
     declareDelegated(type);
   }
@@ -783,13 +786,15 @@ export function setAttr(element: Element, name: string, value: unknown, prev?: u
   // `title={on() ? label : "x"}` picks the function, and its source text is
   // what the page shows.
   if (typeof value === "function") {
-    emitDiagnostic(
-      "FUNCTION_AS_ATTRIBUTE",
-      "warning",
-      `The \`${name}\` attribute on \`<${element.localName}>\` was given a function, so the ` +
+    emitDiagnostic({
+      code: "FUNCTION_AS_ATTRIBUTE",
+      kind: "render",
+      severity: "warn",
+      message:
+        `The \`${name}\` attribute on \`<${element.localName}>\` was given a function, so the ` +
         "function's source text is written to the page instead of its value. Call the accessor " +
         `where the value is chosen: \`${name}={open() ? label() : "closed"}\`.`,
-    );
+    });
   }
   if (isBoolean(value)) {
     if (isEnumeratedAttr(name)) {
@@ -1311,15 +1316,17 @@ export function bindValue(element: Element, name: string, type: string, value: u
   const set =
     pair !== null && typeof pair[1] === "function" ? (pair[1] as (next: unknown) => unknown) : null;
   if (read === null || set === null) {
-    emitDiagnostic(
-      "BIND_TARGET_NOT_WRITABLE",
-      "error",
-      `\`bind:${name}\` on \`<${element.localName}>\` was given a value of type ` +
+    emitDiagnostic({
+      code: "BIND_TARGET_NOT_WRITABLE",
+      kind: "render",
+      severity: "error",
+      message:
+        `\`bind:${name}\` on \`<${element.localName}>\` was given a value of type ` +
         `\`${typeof value}\` instead of a signal, so the element does not follow the value and ` +
         "what the user types is never written back. Pass the whole signal, the `[read, write]` " +
         `pair \`createSignal\` returns: \`const text = createSignal("")\` and then ` +
         `\`bind:${name}={text}\`.`,
-    );
+    });
   }
   const write = (next: unknown): void => {
     if (name === "group") {
@@ -2763,14 +2770,16 @@ export function render(block: JSXElement | (() => JSXElement), container: HTMLEl
   container.textContent = ""; // Faster than innerHTML = ""
 
   if (typeof block !== "function") {
-    emitDiagnostic(
-      "RENDER_SUBTREE_NOT_OWNED",
-      "warning",
-      "`render` was given nodes that were built before the call, as in `const view = <App />` " +
+    emitDiagnostic({
+      code: "RENDER_SUBTREE_NOT_OWNED",
+      kind: "owner",
+      severity: "warn",
+      message:
+        "`render` was given nodes that were built before the call, as in `const view = <App />` " +
         "followed by `render(view, host)`, so the function it returns removes the nodes but " +
         "cannot dispose their effects and listeners. Pass a function instead: " +
         "`render(() => <App />, host)`.",
-    );
+    });
   }
   const root = rootScope();
   ownRange(root, () => {
@@ -3161,12 +3170,17 @@ function hydrateContainer(
       built: claimReport.built,
       recovered: true,
     };
-    emitDiagnostic(
-      "HYDRATION_MISMATCH",
-      "warning",
-      `${failure.message} The server's markup was discarded and the whole page was rendered ` +
-        "again in the browser, so it works but the server-rendered first paint was thrown away.",
-    );
+    emitDiagnostic({
+      code: "HYDRATION_MISMATCH",
+      kind: "ssr",
+      severity: "warn",
+      message:
+        `${failure.message}${failure.template === undefined ? "" : ` The template being hydrated is at ${failure.template}.`} ` +
+        "The server's markup was discarded and the whole page was rendered again in the browser, " +
+        "so it works but the server-rendered first paint was thrown away.",
+      data: { kind: failure.kind, template: failure.template },
+      ownerPath: failure.ownerPath,
+    });
   } else {
     hydrate.report = { ...claimReport, recovered: false };
   }
@@ -3286,7 +3300,12 @@ function mount(
  * Create a template function for fast DOM cloning (like SolidJS)
  * The template is parsed once and cloned for each use
  */
-export function template(html: string, foreign: boolean | 2 = false, detect = false): () => Node {
+export function template(
+  html: string,
+  foreign: boolean | 2 = false,
+  detect = false,
+  at?: string,
+): () => Node {
   let cached: Node | null = null;
 
   const create = (): Node => {
@@ -3337,8 +3356,19 @@ export function template(html: string, foreign: boolean | 2 = false, detect = fa
       // `detect` is the detection axis, threaded from the compiler to the one
       // call that holds both trees at once. A production build passes nothing
       // and the subtree comparison never runs.
-      const claimed = claimNode(cached, detect);
-      if (claimed !== null) return claimed;
+      if (at !== undefined) {
+        try {
+          const claimed = claimNode(cached, detect);
+          claimingTemplate(at);
+          if (claimed !== null) return claimed;
+        } catch (error) {
+          if (error instanceof HydrationMismatch) error.template = at;
+          throw error;
+        }
+      } else {
+        const claimed = claimNode(cached, detect);
+        if (claimed !== null) return claimed;
+      }
     }
     builtNode();
     return cached.cloneNode(true);

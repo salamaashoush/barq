@@ -32,6 +32,14 @@ import {
   onCleanup,
   runWithOwner,
   setContext as engineSetContext,
+  DEV as ENGINE_DEV,
+  OBSERVE,
+  type Dev as EngineDev,
+  type DiagnosticCode,
+  type DiagnosticEvent as EngineDiagnosticEvent,
+  type DiagnosticKind,
+  type DiagnosticSeverity,
+  type DiagnosticSubject,
 } from "@solidjs/signals";
 import { abandonClaim, hydrating, mismatchIn } from "./hydration.ts";
 import type { OwnershipSink, ScopeKind } from "./trace.ts";
@@ -43,6 +51,7 @@ export {
   ContextNotFoundError,
   NoOwnerError,
   NotReadyError,
+  OBSERVE,
   TimeoutError,
   SUPPORTS_PROXY,
   action,
@@ -100,6 +109,11 @@ export type {
   ClientErrorHook,
   ClientErrorsConfig,
   ComputeFunction,
+  DiagnosticCode,
+  DiagnosticKind,
+  DiagnosticSeverity,
+  DiagnosticSubject,
+  Observe,
   CustomPartial,
   EffectBundle,
   EffectFunction,
@@ -251,32 +265,131 @@ export function readSlot(value: unknown, origin: string): unknown {
 // Dev diagnostics
 // ============================================================================
 
-export interface DiagnosticEvent {
-  sequence: number;
-  code: string;
-  severity: "error" | "warning";
-  message: string;
+/**
+ * What barq reports that the engine cannot see: the renderer's bindings, the
+ * hydration walk, the server renderer and Start's response.
+ */
+export type BarqDiagnosticCode =
+  | "BIND_TARGET_NOT_WRITABLE"
+  | "BLOCK_EVALUATED_TWICE"
+  | "DELEGATED_EVENT_DOES_NOT_BUBBLE"
+  | "FUNCTION_AS_ATTRIBUTE"
+  | "HYDRATION_MISMATCH"
+  | "HYDRATION_SEED_DRIFT"
+  | "LATE_HEADER_WRITE"
+  | "RENDER_SUBTREE_NOT_OWNED"
+  | "SERVER_FUNCTION_FAILED"
+  | "SSR_RENDER_ERROR_CONTAINED";
+
+/**
+ * One finding on the one channel the engine and barq share: the engine's event
+ * shape, with barq's codes beside the engine's and the page that explains the
+ * code.
+ */
+export interface DiagnosticEvent extends Omit<EngineDiagnosticEvent, "code"> {
+  code: DiagnosticCode | BarqDiagnosticCode;
+  /** What the code means and how to fix it. */
   docs?: string;
+}
+
+export type DiagnosticListener = (
+  event: DiagnosticEvent,
+  subject: DiagnosticSubject | undefined,
+) => void;
+
+/** A finding as a host runtime reports it: the engine numbers it and finds its owner path. */
+export interface DiagnosticReport {
+  code: BarqDiagnosticCode;
+  kind: DiagnosticKind;
+  severity: DiagnosticSeverity;
+  message: string;
   nodeName?: string;
-  data?: unknown;
+  data?: Record<string, unknown>;
+  /** For a finding whose owners are not the engine's, such as a server render's. */
+  ownerPath?: string[];
+}
+
+export interface DiagnosticCapture {
+  readonly events: readonly DiagnosticEvent[];
+  clear(): void;
+  stop(): DiagnosticEvent[];
+}
+
+export interface DiagnosticsChannel {
+  subscribe(listener: DiagnosticListener): () => void;
+  capture(): DiagnosticCapture;
+}
+
+/**
+ * The engine's channel as a host sees it. `emit` takes any code at run time and
+ * its declaration names only the engine's own; a host reporting its own codes
+ * is the case the method exists for, and declaring it as a method here is what
+ * lets barq's wider codes through without restating the engine's types.
+ */
+interface HostChannel {
+  subscribe(listener: DiagnosticListener): () => void;
+  emit(
+    event: Omit<DiagnosticEvent, "sequence">,
+    subject?: DiagnosticSubject | null,
+  ): DiagnosticEvent;
 }
 
 const DIAGNOSTIC_DOCS =
   "https://github.com/salamaashoush/barq/blob/main/packages/core/docs/diagnostics";
 
+/**
+ * Present in the engine's development and observe builds and absent from its
+ * production build, which keeps no channel. barq's codes then reach barq's own
+ * listeners only, so a test or a production subscriber still hears them.
+ */
+const ENGINE_CHANNEL: HostChannel | undefined = OBSERVE?.diagnostics;
+
 let diagnosticSequence = 0;
-const diagnosticListeners = new Set<(event: DiagnosticEvent) => void>();
-/** Mirrors `diagnosticListeners.size !== 0` as a single load for hot paths */
+const localListeners = new Set<DiagnosticListener>();
+let listening = 0;
+let reporter: ((event: DiagnosticEvent) => void) | null = null;
+/** Mirrors "anything will hear it" as a single load for hot paths. */
 let diagnosticsOn = false;
 
-function addDiagnosticListener(listener: (event: DiagnosticEvent) => void): void {
-  diagnosticListeners.add(listener);
-  diagnosticsOn = true;
+function refreshDiagnosticsOn(): void {
+  diagnosticsOn = listening !== 0 || reporter !== null;
 }
 
-function removeDiagnosticListener(listener: (event: DiagnosticEvent) => void): void {
-  diagnosticListeners.delete(listener);
-  diagnosticsOn = diagnosticListeners.size !== 0;
+/** The page for a code: barq's for its own, the engine's repair guide for the engine's. */
+function docsFor(code: string, ours: boolean): string | undefined {
+  return ours ? `${DIAGNOSTIC_DOCS}/${code}.md` : ENGINE_DEV?.guideUrl(code as DiagnosticCode);
+}
+
+function addDiagnosticListener(listener: DiagnosticListener): () => void {
+  let release: () => void;
+  if (ENGINE_CHANNEL !== undefined) {
+    release = ENGINE_CHANNEL.subscribe((event, subject) => {
+      event.docs ??= docsFor(event.code, false);
+      listener(event, subject);
+    });
+  } else {
+    localListeners.add(listener);
+    release = () => localListeners.delete(listener);
+  }
+  listening++;
+  refreshDiagnosticsOn();
+  let live = true;
+  return () => {
+    if (!live) return;
+    live = false;
+    release();
+    listening--;
+    refreshDiagnosticsOn();
+  };
+}
+
+/**
+ * The console face. The development entry installs one; anything else hears
+ * findings by subscribing.
+ */
+export function setDiagnosticReporter(report: ((event: DiagnosticEvent) => void) | null): void {
+  reporter = report;
+  refreshDiagnosticsOn();
 }
 
 /**
@@ -287,49 +400,105 @@ export function diagnosticsEnabled(): boolean {
   return diagnosticsOn;
 }
 
+/**
+ * Report a finding on the shared channel. `subject` locates it, the current
+ * owner by default, and the engine turns it into the owner path
+ * (`<App> › <Row>`) where its build keeps owner names.
+ */
 export function emitDiagnostic(
-  code: string,
-  severity: "error" | "warning",
-  message: string,
-  nodeName?: string,
-  data?: unknown,
-): void {
-  if (!diagnosticsOn) return;
-  const event: DiagnosticEvent = {
-    sequence: diagnosticSequence++,
-    code,
-    severity,
-    message,
-    docs: `${DIAGNOSTIC_DOCS}/${code}.md`,
-    nodeName,
-    data,
-  };
-  for (const listener of diagnosticListeners) {
-    listener(event);
+  report: DiagnosticReport,
+  subject: DiagnosticSubject | null = getOwner(),
+): DiagnosticEvent | undefined {
+  if (!diagnosticsOn) return undefined;
+  const docs = docsFor(report.code, true);
+  let event: DiagnosticEvent;
+  if (ENGINE_CHANNEL !== undefined) {
+    event = ENGINE_CHANNEL.emit({ ...report, docs }, subject);
+  } else {
+    event = { sequence: ++diagnosticSequence, ...report, docs };
+    for (const listener of localListeners) listener(event, subject ?? undefined);
+  }
+  reporter?.(event);
+  return event;
+}
+
+/**
+ * The component path from the root to `subject`, as `["<App>", "<Row>"]`.
+ * Names exist where a development compile labelled the components and the
+ * engine keeps them, so this is `undefined` in a production build.
+ */
+export function ownerPathOf(subject: DiagnosticSubject | null | undefined): string[] | undefined {
+  return OBSERVE?.ownerPath(subject);
+}
+
+const OWNER_PATH = Symbol.for("barq.ownerPath");
+
+/**
+ * Where an error was thrown, as a component path: the innermost component
+ * whose body threw it, or the computation the engine says it left.
+ */
+export function errorOwnerPath(error: unknown): string[] | undefined {
+  if (typeof error !== "object" || error === null) return undefined;
+  const marked = (error as Record<symbol, unknown>)[OWNER_PATH];
+  if (Array.isArray(marked)) return marked as string[];
+  const source = (error as { source?: unknown }).source;
+  if (typeof source === "object" && source !== null && "_parent" in source) {
+    return ownerPathOf(source as DiagnosticSubject);
+  }
+  const cause = (error as { cause?: unknown }).cause;
+  return cause === error ? undefined : errorOwnerPath(cause);
+}
+
+/**
+ * Call a component under an owner named for it, so a finding, an error and a
+ * hydration report inside it say `in <App> › <Row>`.
+ *
+ * A development compile emits this in place of `Row(props)`. The owner is
+ * transparent, so the engine numbers what is inside it exactly as it would
+ * without it, and the body runs untracked, as the compiled call already does.
+ * With no owner to attach to, the component is called as it is: an owner made
+ * here would be one nothing ever disposes, and would hide the engine's own
+ * report about the missing owner.
+ */
+export function createComponent<P, R>(component: (props: P) => R, props: P, name?: string): R {
+  const parent = getOwner();
+  if (parent === null) return component(props);
+  const owner = runWithOwner(parent, openTransparent);
+  owner._name = `<${name || component.name || "Anonymous"}>`;
+  try {
+    return runWithOwner(owner, () => component(props));
+  } catch (error) {
+    if (typeof error === "object" && error !== null && !(OWNER_PATH in error)) {
+      const path = ownerPathOf(owner);
+      if (path !== undefined) {
+        Object.defineProperty(error, OWNER_PATH, { value: path, configurable: true });
+      }
+    }
+    throw error;
   }
 }
 
 /**
- * barq's own structured diagnostics, for what the renderer can see and the
- * engine cannot: HYDRATION_SEED_DRIFT, HYDRATION_MISMATCH,
- * RUN_WITH_DISPOSED_OWNER, BLOCK_EVALUATED_TWICE. Zero-cost when nothing is
- * subscribed. The engine's own channel is `@solidjs/signals`'s `DEV`.
+ * The engine's development tier (devtools hooks, graph traversal, the console
+ * face) with the channel both the engine's and barq's findings arrive on. The
+ * engine's tier is empty in its production build; the channel is not.
  */
-export const DEV = {
+export const DEV: Partial<EngineDev> & { readonly diagnostics: DiagnosticsChannel } = {
+  ...ENGINE_DEV,
   diagnostics: {
-    subscribe(listener: (event: DiagnosticEvent) => void): () => void {
-      addDiagnosticListener(listener);
-      return () => removeDiagnosticListener(listener);
-    },
-    capture(): { stop(): DiagnosticEvent[] } {
+    subscribe: addDiagnosticListener,
+    capture(): DiagnosticCapture {
       const events: DiagnosticEvent[] = [];
-      const listener = (event: DiagnosticEvent) => {
+      const stop = addDiagnosticListener((event) => {
         events.push(event);
-      };
-      addDiagnosticListener(listener);
+      });
       return {
+        events,
+        clear() {
+          events.length = 0;
+        },
         stop() {
-          removeDiagnosticListener(listener);
+          stop();
           return events;
         },
       };
@@ -1630,18 +1799,19 @@ export function unclaimedSeeds(): string[] {
   const store = (globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__;
   const unclaimed = store === undefined ? [] : Object.keys(store);
   if (unclaimed.length !== 0) {
-    emitDiagnostic(
-      "HYDRATION_SEED_DRIFT",
-      "warning",
-      `The server sent ${unclaimed.length} async ${unclaimed.length === 1 ? "value" : "values"} ` +
+    emitDiagnostic({
+      code: "HYDRATION_SEED_DRIFT",
+      kind: "ssr",
+      severity: "warn",
+      message:
+        `The server sent ${unclaimed.length} async ${unclaimed.length === 1 ? "value" : "values"} ` +
         `that no \`createMemo\` in the browser asked for (${unclaimed.join(", ")}). The browser ` +
         "rendered a different set of components than the server did, so an async memo may be " +
         "showing a value the server computed for another one. Render the same components on " +
         "both sides, and name each async memo so that a mismatch fetches again instead: " +
         '`createMemo(load, { name: "user" })`.',
-      undefined,
-      unclaimed,
-    );
+      data: { keys: unclaimed },
+    });
   }
   return unclaimed;
 }

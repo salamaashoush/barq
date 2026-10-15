@@ -18,7 +18,9 @@ export { keyMode } from "./flow.ts";
 export {
   ERROR_BOUNDARY,
   clearHydrationData,
+  diagnosticsEnabled,
   disposeScope,
+  emitDiagnostic,
   getHydrationData,
   internalMemo,
   provideOn,

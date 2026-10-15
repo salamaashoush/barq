@@ -607,14 +607,16 @@ const lastSeen = new WeakMap<object, number>();
 
 function countCall(body: object): void {
   if (lastSeen.get(body) === activation) {
-    emitDiagnostic(
-      "BLOCK_EVALUATED_TWICE",
-      "error",
-      "The content of one `<Show>`, `<For>`, `<Loading>` or `<Portal>` was built twice for a " +
+    emitDiagnostic({
+      code: "BLOCK_EVALUATED_TWICE",
+      kind: "render",
+      severity: "error",
+      message:
+        "The content of one `<Show>`, `<For>`, `<Loading>` or `<Portal>` was built twice for a " +
         "single render, so its effects exist twice and one copy of its DOM was thrown away. " +
         "This is a bug in barq, not in your component: please report it with the component " +
         "that triggered it.",
-    );
+    });
   }
   lastSeen.set(body, activation);
 }

@@ -57,6 +57,8 @@ const CLOSE = "]";
 /** `<!---->` — a DOM insert anchor, present in the template and on the wire. */
 const MARKER = "";
 
+import { OBSERVE, getOwner } from "@solidjs/signals";
+
 /** What a mismatch was, for the report a caller can assert against. */
 export type MismatchKind = "structure" | "range" | "key" | "text" | "portal" | "not-hydratable";
 
@@ -71,10 +73,19 @@ export interface Mismatch {
  */
 export class HydrationMismatch extends Error {
   readonly kind: MismatchKind;
+  /**
+   * `file:line:column` of the JSX whose template was being claimed, where a
+   * development compile wrote it beside the template.
+   */
+  template: string | undefined;
+  /** The component path the walk was in, where the engine keeps owner names. */
+  readonly ownerPath: string[] | undefined;
   constructor(kind: MismatchKind, detail: string) {
     super(`Hydration mismatch (${kind}): ${detail}. ${CAUSES[kind]}`);
     this.name = "HydrationMismatch";
     this.kind = kind;
+    this.template = SESSION?.template;
+    this.ownerPath = OBSERVE?.ownerPath(getOwner());
   }
 }
 
@@ -199,9 +210,16 @@ interface Session {
   taken: Range[];
   /** The first mismatch handed over by `abandonClaim`, for `hydrate` to recover from. */
   abandoned: HydrationMismatch | null;
+  /** Where the last template claimed was written, in a development build. */
+  template?: string;
 }
 
 let SESSION: Session | null = null;
+
+/** Record where the template being claimed was written, for a mismatch below it. */
+export function claimingTemplate(at: string): void {
+  if (SESSION !== null) SESSION.template = at;
+}
 
 /** True while a claim is live. Every hot path tests this and nothing else. */
 export function hydrating(): boolean {

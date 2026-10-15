@@ -65,7 +65,8 @@ describe("the development console sink", () => {
           "`function` instead of a signal, so the element does not follow the value and what " +
           "the user types is never written back. Pass the whole signal, the `[read, write]` " +
           'pair `createSignal` returns: `const text = createSignal("")` and then ' +
-          "`bind:value={text}`.",
+          "`bind:value={text}`.\n" +
+          "  docs: https://github.com/salamaashoush/barq/blob/main/packages/core/docs/diagnostics/BIND_TARGET_NOT_WRITABLE.md",
       );
     } finally {
       error.mockRestore();
