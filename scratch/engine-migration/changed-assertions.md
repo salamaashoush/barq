@@ -351,3 +351,136 @@ Assertions restated, each because the behaviour it pinned was the defect:
   parent's child list, inserted with `WHOLE`: the string backend writes nothing there, and the
   client claimed a range the server never wrote (a recovered page), or, built outside the hole,
   the portal took the next region's range for its own. Every other column is byte-identical.
+
+## Server rendering: late failures and error-boundary fallbacks (2026-10-15)
+
+- `compiler-rs/test/hydration.ts` `HYDRATION_KNOWN`: the rows for `control-flow-error-boundary`
+  (reuse 33), `control-flow-errored-loading` (reuse 67) and `flow-prop-eta-boundary` (reuse 94)
+  are removed. An error boundary that caught on the server now writes its fallback under
+  `<!--[f:-->`, which the client already reads as "these nodes are the fallback", so the client
+  builds the failing content aside and its fallback claims the server's nodes: all three now
+  claim 100% with no mismatch. Without a row a fixture is held to the strict standard (no
+  recovery, no mismatch, 100% reuse, hydrated shape equals the cold one), and the "every
+  registered row is still failing" guard requires the rows to go once they pass.
+- `compiler-rs/src/ir/region.rs` `a_streaming_boundary_never_takes_the_undelimited_form` is now
+  `a_boundary_never_takes_the_undelimited_form`: `RegionKind::Error` moved from the list that
+  ships `WHOLE` to the list that never does, beside `Loading`. Whether a body throws is a
+  run-time fact like whether a promise is ready, and a caught boundary writes `<!--[f:-->`
+  comments the client must not read as "no comments here". Branch, Each and Portal still ship
+  it, asserted as before.
+
+## start: server functions answer GET
+
+- `packages/start/src/server.test.ts` "`method: 'GET'` is refused, and says why" is now "a
+  method other than GET or POST is refused, and says why". `createServerFn({ method: "GET" })`
+  is implemented (TanStack Start parity: a read the browser or a CDN may cache), so asserting it
+  throws would assert the feature away. The behaviour the old test protected, that a link, an
+  `<img>`, a prefetch or a navigation can never invoke a server function, is kept and covered in
+  `packages/start/src/get.test.ts`: a GET without the `x-barq-fn` header that only script can
+  set answers 403, a cross-site GET answers 403, a GET to a POST function still answers 405
+  (`server.test.ts` "GET is refused" and `global-middleware.test.ts` are unchanged), and a GET
+  on the form channel answers 404. An unsupported method (`PUT`) is still refused with the reason.
+- `compiler-rs/test/__snapshots__/modes.test.ts.snap` "the matrix is locked": the
+  `dom-hydratable` and `ssr-hydratable` digests of `l4/c7-error-boundary`,
+  `l4/c7-error-boundary-fallback`, `semantics/sem-err-notready-passthrough` and
+  `corpus/control-flow-error-boundary` moved, and only
+  those two columns: their error boundary is the only child of its element and no longer ships
+  `WHOLE`, so both backends write and claim the boundary's own comments. Every other column of
+  those rows is byte-identical.
+
+## DOM output: a lone `class` binding is a scalar effect
+
+- `compiler-rs/test/__snapshots__/roundtrip.test.ts.snap` "emitted code snapshots" for
+  `class-empty-string`, `class-list-array-object`, `dashboard-composite`, `read-mode-binding`
+  and `table-rows`: an element whose only live binding is `class` now emits
+  `_$bindEffect(() => _$classToString(read), (_v$, _p$) => { _$setClass(el, "class", _v$, _p$); })`
+  (the `classToString` call is left out when the expression can only be a string) instead of
+  the one-slot record `({ a: read })`. The compute returns the applied class string, so an
+  unchanged class stops at the effect's equality check and the write half does not run; the
+  record allocated an object per run and always ran the write. Only the emitted text moved.
+  What the old shape protected (the class follows its reads, a foreign token survives, a
+  multi-prop element still fuses into one record) is covered by the unchanged runtime suites,
+  `effect-counts`, the hydration grammar, and `compiler-rs/test/class-binding.test.ts`, which also
+  pins a new fix: a class map held in a store now follows a key written inside it.
+- `compiler-rs/test/__snapshots__/modes.test.ts.snap` "the matrix is locked": the `dom-O0` digest, and
+  the `dom-Ox` and `dom-hydratable` digests where the optimiser leaves a lone class binding, of `corpus/class-empty-string`,
+  `corpus/class-list-array-object`, `corpus/class-owns-only-its-tokens`,
+  `corpus/class-with-live-siblings`, `corpus/dashboard-composite`, `corpus/equal-liveness`,
+  `corpus/reactive-attribute`, `corpus/read-mode-binding`, `corpus/svg-dynamic-class`,
+  `corpus/table-rows` and `semantics/sem-own-given-scope-wins`, for the same emission change.
+  Checked by digesting the matrix with a compiler built from the tree minus this change: those
+  eleven rows matched the lock, and only `corpus/control-flow-error-boundary` (not this change)
+  differed.
+- `compiler-rs/src/passes/shape.rs` `a_tracked_read_beside_an_unknown_member_is_still_tracked`:
+  the attribute half now expects `_$bindEffect(() => _$classToString(on() ? styles.on : styles.off)`
+  where it expected `_$bindEffect(() => ({ a: on() ? styles.on : styles.off })`. The test is about
+  the read staying inside a tracked compute next to an unclassifiable member, which the new
+  string still asserts; only the record around it is gone.
+
+## @barqjs/css, dynamic groups
+
+- `packages/css/src/ergonomics.test.ts` "a condition is skipped rather than named as if it were a
+  property" is now "a condition is its own variable rather than named as if it were a property".
+  `dynamic` now takes values under conditions (`{ ":hover": { color: c } }`, `{ color: { default:
+  c, "@media …": d } }`), which it used to drop without a word at run time while the compiler
+  declined the call. The `:hover` value now has a variable named for `color` under `:hover`, so the
+  expected `$vars` gained that entry and `$class` two atoms instead of one. What the old assertion
+  protected, that a condition key is never taken for a property name, is still asserted: no
+  variable name contains the condition's text.
+- `compiler-rs/test/__snapshots__/modes.test.ts.snap`, again for `corpus/control-flow-error-boundary`
+  (`dom-hydratable`, `ssr-hydratable`): the row had gone back to its old digests in the
+  working tree, so the update above was re-applied.
+
+## SSR attribute emission (2026-10-15)
+
+- `compiler-rs/test/__snapshots__/modes.test.ts.snap` "the matrix is locked": the `ssr-Ox`,
+  `ssr-O0` and `ssr-hydratable` digests moved for `auto-thunked-read`,
+  `component-forwarded-handler-tuple`, `component-function-props`, `control-flow-for`,
+  `escaped-text-and-attribute`, `escaping-adversarial`, `for-unkeyed-rows`, `live-call-hole`,
+  `signal-alias`, `static-attribute-expression` and `table-rows`, and only those columns. Each
+  has an attribute whose value is provably a string (a template, `String(…)`, a `+` with a
+  string side, or a literal the -O0 build does not fold), which now writes its name and quotes
+  into the template and calls `escAttr` for the value instead of `attrLit`. The markup is
+  unchanged: the dual-render, oracle and hydration suites compare it byte for byte and pass.
+  Columns other agents moved were left alone.
+
+## DOM output: a component called where a compute may run is untracked (R1)
+
+- `compiler-rs/src/passes/shape.rs` `a_choice_of_components_at_a_hole_is_a_choice_rather_than_a_result`
+  and `a_moving_child_is_a_hole_beside_a_sibling_that_builds`: a component reached through a
+  choice now emits `_$untrack(() => A({}))` inside the thunk, so the expected strings
+  `() => on() ? A({}) : B({})` and `[() => on() ? A({}) : B({})]` gained the wrapper. Without it
+  a signal read in the component's setup became a dependency of the hole and rebuilt the
+  component (SEMANTICS R1). What the tests protect, the thunk on the choice, is asserted
+  unchanged. The negative check `!code.contains("() => A({}))")`, which meant "a directly
+  written child is placed once with no closure", would now match the wrapper of the other two
+  holes, so it is restated as the positive `_$insert(_el$3, A({}))`.
+- `compiler-rs/test/__snapshots__/modes.test.ts.snap` "the matrix is locked": the DOM-side
+  digests of `semantics/sem-err-construction-throw` for the same wrapper.
+
+## `dynamic` helper renamed `resolveDynamic`
+
+- `compiler-rs/test/optimality.test.ts` and `compiler-rs/test/optimisation.test.ts` list the
+  primitives by emitted name; `_$dynamic(` / `"dynamic"` became `_$resolveDynamic(` /
+  `"resolveDynamic"`. `core/src/control-flow-parity.test.ts` and
+  `server/src/dynamic-tag.test.ts` call the renamed function. Nothing they assert changed.
+- `compiler-rs/test/__snapshots__/roundtrip.test.ts.snap` "emitted code snapshots dynamic" and
+  the matrix rows `corpus/dynamic` and `l4/c7-dynamic` (all seven columns, since both backends
+  import the helper): the import and call spell the new name. The name is freed so core can
+  export Solid 2.0's `dynamic(source)` factory.
+
+## reactive-framework-test-suite 0.1.0
+
+- `core/src/conformance.test.ts`: the upgrade adds cases, and three of them assert a
+  model the engine does not run, so they join the `differs` table and are expected to fail.
+  #233 reads a memo right after a cleanup writes its source, and #235 reads a signal right
+  after writing it inside a batch. Both see the published value, which is the reason #67 and
+  its peers already carry. #242 expects a memo's previous child effect to clean up before the
+  memo re-runs. The engine retires a re-run's old children when the flush commits
+  (`disposeChildren` in `core/owner.js`, "a re-pass leaves the frame reacting until the
+  commit"), so the cleanup comes after the new run. A case in the table that starts passing
+  fails the suite, so the table cannot go stale silently.
+- The same file, development build only: #226, #227, #228, #237, #238, #241, #243 and #244
+  create an effect inside an effect, which that build refuses with
+  `PRIMITIVE_IN_FORBIDDEN_SCOPE`. They join the strict list beside #43 and its peers. The
+  production build passes all eight.
