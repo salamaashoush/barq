@@ -1,0 +1,59 @@
+{
+  "name": "@barqjs/virtual",
+  "version": "0.1.0",
+  "description": "TanStack Virtual for Barq: createVirtualizer and createWindowVirtualizer over @tanstack/virtual-core",
+  "keywords": [
+    "barq",
+    "headless",
+    "tanstack",
+    "virtual",
+    "virtualization"
+  ],
+  "homepage": "https://github.com/salamaashoush/barq#readme",
+  "bugs": {
+    "url": "https://github.com/salamaashoush/barq/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/salamaashoush/barq.git",
+    "directory": "packages/virtual"
+  },
+  "files": [
+    "dist",
+    "src"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "test": "bun test && bun test --conditions=development",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "bun run build"
+  },
+  "dependencies": {
+    "@tanstack/virtual-core": "^3.19.4"
+  },
+  "devDependencies": {
+    "@barqjs/compiler": "workspace:*",
+    "@barqjs/compiler-rs": "workspace:*",
+    "@barqjs/core": "workspace:*",
+    "@barqjs/server": "workspace:*",
+    "@happy-dom/global-registrator": "^20.11.6",
+    "@types/bun": "^1.4.0",
+    "typescript": "^7.0.2"
+  },
+  "peerDependencies": {
+    "@barqjs/core": ">=0.1.0"
+  }
+}
