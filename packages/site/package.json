@@ -25,16 +25,16 @@
     "@barqjs/ui": "workspace:*",
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource-variable/geist-mono": "^5.3.0",
-    "@tanstack/charts": "^0.16.0",
+    "@tanstack/charts": "^1.1.0",
     "d3-shape": "3.2.0"
   },
   "devDependencies": {
     "@barqjs/compiler": "workspace:*",
     "@barqjs/compiler-rs": "workspace:*",
     "@barqjs/testing": "workspace:*",
-    "@happy-dom/global-registrator": "^20.11.6",
-    "@types/bun": "^1.4.0",
+    "@happy-dom/global-registrator": "^21.0.1",
+    "@types/bun": "^1.4.3",
     "@types/d3-shape": "^3.2.0",
-    "vite": "^8.2.2"
+    "vite": "^8.3.4"
   }
 }

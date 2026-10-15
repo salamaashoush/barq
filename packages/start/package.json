@@ -82,16 +82,16 @@
   },
   "dependencies": {
     "@barqjs/css": "workspace:*",
-    "srvx": "^0.12.7"
+    "srvx": "^1.0.5"
   },
   "devDependencies": {
     "@barqjs/compiler": "workspace:*",
     "@barqjs/compiler-rs": "workspace:*",
     "@barqjs/core": "workspace:*",
     "@barqjs/server": "workspace:*",
-    "@types/bun": "^1.4.0",
+    "@types/bun": "^1.4.3",
     "typescript": "^7.0.2",
-    "vite": "^8.2.2"
+    "vite": "^8.3.4"
   },
   "peerDependencies": {
     "@barqjs/compiler": ">=0.1.0",

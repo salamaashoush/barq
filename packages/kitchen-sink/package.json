@@ -17,12 +17,12 @@
     "@barqjs/router": "workspace:*",
     "@barqjs/server": "workspace:*",
     "@barqjs/start": "workspace:*",
-    "@tanstack/query-core": "^5.102.8"
+    "@tanstack/query-core": "^5.104.3"
   },
   "devDependencies": {
     "@barqjs/compiler": "workspace:*",
-    "@types/bun": "^1.4.0",
+    "@types/bun": "^1.4.3",
     "typescript": "^7.0.2",
-    "vite": "^8.2.2"
+    "vite": "^8.3.4"
   }
 }

@@ -76,15 +76,15 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@solidjs/signals": "2.0.0-rc.14",
+    "@solidjs/signals": "2.0.0-rc.15",
     "csstype": "^3.2.3"
   },
   "devDependencies": {
     "@barqjs/compiler-rs": "workspace:*",
-    "@biomejs/biome": "^2.5.9",
-    "@happy-dom/global-registrator": "^20.11.6",
-    "@types/bun": "^1.4.0",
-    "reactive-framework-test-suite": "^0.0.2",
+    "@biomejs/biome": "^2.5.15",
+    "@happy-dom/global-registrator": "^21.0.1",
+    "@types/bun": "^1.4.3",
+    "reactive-framework-test-suite": "^0.1.0",
     "typescript": "^7.0.2"
   },
   "peerDependencies": {

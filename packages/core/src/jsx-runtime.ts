@@ -79,7 +79,7 @@ export type VoidProps<P = NoProps> = Incoming<P> & { children?: never };
 export type FlowProps<P = NoProps, C = Child> = Incoming<P & { children: C }>;
 
 /** A props declaration with nothing in it, which intersects cleanly with `children`. */
-type NoProps = Record<never, never>;
+type NoProps = object;
 
 /**
  * A component, given the props its CALLER declares: the body receives each one

@@ -54,17 +54,17 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "isbot": "^5.2.1"
+    "isbot": "^5.2.2"
   },
   "devDependencies": {
     "@barqjs/compiler-rs": "workspace:*",
     "@barqjs/core": "workspace:*",
     "@barqjs/server": "workspace:*",
     "@barqjs/start": "workspace:*",
-    "@happy-dom/global-registrator": "^20.11.6",
-    "@types/bun": "^1.4.0",
+    "@happy-dom/global-registrator": "^21.0.1",
+    "@types/bun": "^1.4.3",
     "typescript": "^7.0.2",
-    "vite": "^8.2.2"
+    "vite": "^8.3.4"
   },
   "peerDependencies": {
     "@barqjs/core": ">=0.1.0",

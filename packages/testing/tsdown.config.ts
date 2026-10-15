@@ -18,12 +18,14 @@ export default defineConfig({
   format: ["esm"],
   dts: true,
   clean: true,
-  external: [
-    "@barqjs/core",
-    "@barqjs/server",
-    "@barqjs/router",
-    "@barqjs/start",
-    "@testing-library/dom",
-  ],
+  deps: {
+    neverBundle: [
+      "@barqjs/core",
+      "@barqjs/server",
+      "@barqjs/router",
+      "@barqjs/start",
+      "@testing-library/dom",
+    ],
+  },
   outExtensions: () => ({ js: ".js", dts: ".d.ts" }),
 });

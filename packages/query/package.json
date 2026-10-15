@@ -57,7 +57,7 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@tanstack/query-core": "^5.102.8"
+    "@tanstack/query-core": "^5.104.3"
   },
   "devDependencies": {
     "@barqjs/compiler": "workspace:*",
@@ -65,18 +65,18 @@
     "@barqjs/core": "workspace:*",
     "@barqjs/router": "workspace:*",
     "@barqjs/server": "workspace:*",
-    "@happy-dom/global-registrator": "^20.11.6",
-    "@tanstack/query-devtools": "5.102.8",
-    "@tanstack/query-persist-client-core": "5.102.8",
-    "@types/bun": "^1.4.0",
+    "@happy-dom/global-registrator": "^21.0.1",
+    "@tanstack/query-devtools": "5.104.3",
+    "@tanstack/query-persist-client-core": "5.104.3",
+    "@types/bun": "^1.4.3",
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
     "@barqjs/core": ">=0.1.0",
     "@barqjs/router": ">=0.1.0",
-    "@tanstack/query-core": "^5.102.8",
-    "@tanstack/query-devtools": "^5.102.8",
-    "@tanstack/query-persist-client-core": "^5.102.8"
+    "@tanstack/query-core": "^5.104.3",
+    "@tanstack/query-devtools": "^5.104.3",
+    "@tanstack/query-persist-client-core": "^5.104.3"
   },
   "peerDependenciesMeta": {
     "@barqjs/router": {

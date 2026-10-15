@@ -7,13 +7,15 @@ export default defineConfig({
   outExtensions: () => ({ js: ".js", dts: ".d.ts" }),
   dts: true,
   clean: true,
-  external: [
-    "@barqjs/core",
-    "@barqjs/router",
-    "@tanstack/query-core",
-    "@tanstack/query-devtools",
-    "@tanstack/query-persist-client-core",
-  ],
+  deps: {
+    neverBundle: [
+      "@barqjs/core",
+      "@barqjs/router",
+      "@tanstack/query-core",
+      "@tanstack/query-devtools",
+      "@tanstack/query-persist-client-core",
+    ],
+  },
   esbuildOptions: {
     jsx: "automatic",
     jsxImportSource: "@barqjs/core",

@@ -3,8 +3,8 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "h3": "^2.0.1-rc.29",
-    "srvx": "^0.12.7",
+    "h3": "^2.0.2",
+    "srvx": "^1.0.5",
     "ufo": "^1.6.4"
   }
 }

@@ -7,5 +7,5 @@ export default defineConfig({
   outExtensions: () => ({ js: ".js", dts: ".d.ts" }),
   dts: true,
   clean: true,
-  external: ["vite", "@barqjs/compiler-rs"],
+  deps: { neverBundle: ["vite", "@barqjs/compiler-rs"] },
 });

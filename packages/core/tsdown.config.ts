@@ -27,7 +27,7 @@ export default defineConfig({
   outExtensions: () => ({ js: ".js", dts: ".d.ts" }),
   dts: true,
   clean: true,
-  external: ["csstype"],
+  deps: { neverBundle: ["csstype"] },
   esbuildOptions: {
     jsx: "automatic",
     jsxImportSource: ".",

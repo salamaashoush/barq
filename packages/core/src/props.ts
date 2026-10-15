@@ -394,7 +394,7 @@ type Over<T, U> = T extends unknown
 
 /** What `mergeProps` answers with: its sources, each laid over the ones before it. */
 export type MergeProps<T extends unknown[]> = T extends []
-  ? Record<never, never>
+  ? object
   : T extends [infer Only]
     ? SourceRecord<Only>
     : T extends [infer First, infer Second, ...infer Rest]
@@ -403,7 +403,7 @@ export type MergeProps<T extends unknown[]> = T extends []
 
 /** What `merge` answers with: the same fold, with `undefined` as a value. */
 export type Merge<T extends unknown[]> = T extends []
-  ? Record<never, never>
+  ? object
   : T extends [infer Only]
     ? SourceRecord<Only>
     : T extends [infer First, infer Second, ...infer Rest]

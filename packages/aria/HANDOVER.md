@@ -248,7 +248,7 @@ asserting where focus went needs to await a frame as well.
   row on every read**, and the row holding focus is destroyed under the user.
   `datefield.tsx` keys its segments by INDEX for this reason.
 - **A component's JSX assigned to a `const` is built EAGERLY.** `const body =
-(<>…</>)` in a component body constructs it there and then, so a `<Show>`
+  (<>…</>)` in a component body constructs it there and then, so a `<Show>`
   around it gates nothing. This is what made every menu build at mount rather
   than on open, which then read its autofocus strategy before the trigger had
   set one.

@@ -13,4 +13,4 @@ doctest = false
 # update`. Only `Statement`, `QualifiedRule`, `Declaration`, `AtRule` and `Span`
 # are touched, which is the part of the AST least likely to move.
 [dependencies]
-oxc-css-parser = "=0.0.12"
+oxc-css-parser = "=0.0.17"

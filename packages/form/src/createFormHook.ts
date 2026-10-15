@@ -28,7 +28,7 @@ import { type Slots, renderSlot } from "./internal.ts";
 import type { Loose, MaybeFormAsyncValidator, MaybeFormValidator } from "./types.ts";
 
 /** No props of its own: an empty object, with no index signature to collide with `form`. */
-type NoProps = Record<never, never>;
+type NoProps = object;
 
 export type Components = Record<string, (props: never) => JSXElement>;
 
@@ -44,10 +44,10 @@ type UnwrapDefaultOrLoose<DefaultT, T> = [DefaultT] extends [T]
     : T
   : T;
 
-function cells(values: Record<string, unknown> | undefined): Slots {
+function cells(values: object | undefined): Slots {
   const out: Slots = {};
   if (values === undefined) return out;
-  for (const key of Object.keys(values)) out[key] = cell(values[key]);
+  for (const [key, value] of Object.entries(values)) out[key] = cell(value);
   return out;
 }
 
@@ -202,7 +202,7 @@ export interface WithFormProps<
   TSubmitMeta,
   TFieldComponents extends Components,
   TFormComponents extends Components,
-  TRenderProps extends Record<string, unknown> = NoProps,
+  TRenderProps extends object = NoProps,
 > extends FormOptions<
   TFormData,
   TOnMount,
@@ -248,7 +248,7 @@ export interface WithFieldGroupProps<
   TFieldComponents extends Components,
   TFormComponents extends Components,
   TSubmitMeta,
-  TRenderProps extends Record<string, unknown> = NoProps,
+  TRenderProps extends object = NoProps,
 > extends BaseFormOptions<TFieldGroupData, TSubmitMeta> {
   props?: TRenderProps;
   render: (
@@ -368,7 +368,7 @@ export function createFormHook<
     TOnDynamicAsync extends MaybeFormAsyncValidator<TFormData>,
     TOnServer extends MaybeFormAsyncValidator<TFormData>,
     TSubmitMeta,
-    TRenderProps extends Record<string, unknown> = NoProps,
+    TRenderProps extends object = NoProps,
   >({
     render,
     props,
@@ -415,11 +415,7 @@ export function createFormHook<
     return (innerProps) => render(merge(defaults, innerProps) as never);
   }
 
-  function withFieldGroup<
-    TFieldGroupData,
-    TSubmitMeta,
-    TRenderProps extends Record<string, unknown> = NoProps,
-  >({
+  function withFieldGroup<TFieldGroupData, TSubmitMeta, TRenderProps extends object = NoProps>({
     render,
     props,
     defaultValues,

@@ -38,5 +38,5 @@ export default defineConfig({
   outExtensions: () => ({ js: ".js", dts: ".d.ts" }),
   dts: true,
   clean: true,
-  external: ["@barqjs/core"],
+  deps: { neverBundle: ["@barqjs/core"] },
 });

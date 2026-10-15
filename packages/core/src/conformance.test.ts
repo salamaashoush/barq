@@ -129,7 +129,7 @@ differs(
 );
 differs(
   "a write is published at the next flush, and effects run there: a read on the line after a write still sees the published value",
-  [67, 70, 133, 134, 179, 182, 200, 224],
+  [67, 70, 133, 134, 179, 182, 200, 224, 233, 235],
 );
 differs(
   "a dependency written away and back inside one batch still re-runs its dependents, since nothing compares against a value snapshot",
@@ -138,6 +138,10 @@ differs(
 differs(
   "a single-function effect's cleanup runs while the effect is still observing, so a read inside it subscribes",
   [40, 178],
+);
+differs(
+  "what a derived value's previous run created is retired when the flush commits, after the new run, so the old children stay live until the new ones exist",
+  [242],
 );
 
 /**
@@ -161,7 +165,7 @@ const STRICT = ((): boolean => {
 if (STRICT) {
   differs(
     "the development build refuses a node created inside an effect that takes no children",
-    [43, 45, 48, 163, 164, 170, 209, 210, 214, 222],
+    [43, 45, 48, 163, 164, 170, 209, 210, 214, 222, 226, 227, 228, 237, 238, 241, 243, 244],
   );
   differs("the development build refuses a write made while a derived value is computing", [57]);
   // The same refusal turns these two around: the write they expect to see

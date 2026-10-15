@@ -67,7 +67,7 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@testing-library/dom": "^10.4.1"
+    "@testing-library/dom": "^10.4.2"
   },
   "devDependencies": {
     "@barqjs/compiler": "workspace:*",
@@ -78,9 +78,9 @@
     "@barqjs/router": "workspace:*",
     "@barqjs/server": "workspace:*",
     "@barqjs/start": "workspace:*",
-    "@happy-dom/global-registrator": "^20.11.6",
-    "@types/bun": "^1.4.0",
-    "happy-dom": "^20.11.6",
+    "@happy-dom/global-registrator": "^21.0.1",
+    "@types/bun": "^1.4.3",
+    "happy-dom": "^21.0.1",
     "typescript": "^7.0.2"
   },
   "peerDependencies": {

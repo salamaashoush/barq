@@ -49,8 +49,8 @@
     "@barqjs/compiler": "workspace:*",
     "@barqjs/compiler-rs": "workspace:*",
     "@barqjs/core": "workspace:*",
-    "@happy-dom/global-registrator": "^20.11.6",
-    "@types/bun": "^1.4.0",
+    "@happy-dom/global-registrator": "^21.0.1",
+    "@types/bun": "^1.4.3",
     "typescript": "^7.0.2"
   },
   "peerDependencies": {

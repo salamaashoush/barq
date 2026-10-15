@@ -305,6 +305,12 @@ fn not_css(statement: &Statement<'_>) -> String {
                     and choose between their classes."
                 .to_string();
         }
+        Statement::UnknownQualifiedRule(_) => {
+            return "This block's prelude is not a selector, so the browser drops the rule. A \
+                    percentage such as `50% { ... }` belongs inside `@keyframes`, and a property \
+                    is written as a declaration, `font-family: sans-serif`, not as a block."
+                .to_string();
+        }
         _ => "A Less construct",
     };
     format!(
@@ -331,5 +337,6 @@ fn statement_span(statement: &Statement<'_>) -> Span {
         Statement::LessMixinDefinition(definition) => definition.span,
         Statement::LessVariableCall(call) => call.span,
         Statement::LessVariableDeclaration(declaration) => declaration.span,
+        Statement::UnknownQualifiedRule(rule) => rule.span,
     }
 }
