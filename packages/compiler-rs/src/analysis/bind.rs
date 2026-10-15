@@ -318,10 +318,10 @@ const CELL_MEMBERS: &[&str] = &["apply", "bind", "call"];
 /// read off one is code written for a callable signal, and the write half is
 /// the second element of the pair `createSignal` returned.
 ///
-/// `length` and `name` are a function's too, and are left off on purpose: an
-/// accessor's provenance is `createSignal` or `createMemo`, whose arity and name
-/// nobody reads, and `items.length` for `items().length` is the commonest
-/// accessor mistake in a list, rendering `0` with nothing else wrong.
+/// `length` is a function's too, and is left off on purpose: an accessor's
+/// provenance is `createSignal` or `createMemo`, whose arity nobody reads, and
+/// `items.length` for `items().length` is the commonest accessor mistake in a
+/// list, rendering `0` with nothing else wrong.
 const ACCESSOR_MEMBERS: &[&str] = &[
     "apply",
     "arguments",
@@ -329,6 +329,7 @@ const ACCESSOR_MEMBERS: &[&str] = &[
     "call",
     "caller",
     "constructor",
+    "name",
     "prototype",
     "toString",
     "valueOf",
@@ -592,10 +593,10 @@ impl<'a> Binder<'_, 'a> {
                      is always true and its other branch never runs. Call it: `{fix}`."
                 ),
                 _ => match member {
-                    Some(own @ ("length" | "name")) => format!(
-                        "`{name}` is an accessor, so `.{own}` is the function's own {} and not \
-                         the {own} of the value it returns. Call it first: `{fix}`.",
-                        if own == "length" { "parameter count, `0`," } else { "name" }
+                    Some("length") => format!(
+                        "`{name}` is an accessor, so `.length` is the function's own parameter \
+                         count, `0`, and not the length of the value it returns. Call it first: \
+                         `{fix}`."
                     ),
                     _ => format!(
                         "`{name}` is an accessor, so `.{}` is read from the function and not \

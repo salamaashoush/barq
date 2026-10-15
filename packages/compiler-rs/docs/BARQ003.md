@@ -35,10 +35,11 @@ accessor has no `.value`, `.set` or `.peek`, and writing goes through the setter
 `createSignal` returns beside it. A prop works the same way: `props.user.email` has to be
 `props.user().email`.
 
-`items.length` and `user.name` are reported too, with their own message. Every function
-has them, so they never come back `undefined`: `items.length` is the accessor's parameter
-count, `0`, and a list that shows `0` items has nothing else wrong with it. Write
-`items().length` and `user().name`.
+`items.length` is reported too, with its own message. Every function has a `length`, so it
+never comes back `undefined`: it is the accessor's parameter count, `0`, and a list that
+shows `0` items has nothing else wrong with it. Write `items().length`. `user.name` is not
+reported, because a function's own `name` is sometimes read on purpose; write
+`user().name` for the value's.
 
 ## Silencing one line
 

@@ -110,24 +110,20 @@ describe("the diagnostic engine", () => {
   });
 
   /**
-   * A function's own `length` and `name` are the two members an accessor HAS,
-   * and the two a list reads by mistake: `items.length` renders `0`.
+   * A function's own `length` is a member an accessor HAS, and the one a list
+   * reads by mistake: `items.length` renders `0`.
    */
-  it("reports `.length` and `.name` read off an accessor, with what they really are", () => {
+  it("reports `.length` read off an accessor, with what it really is", () => {
     const raw = diagnose(
       `import { createMemo, createSignal } from "@barqjs/core";\n` +
         `const [items] = createSignal(["salama"]);\n` +
-        `const user = createMemo(() => ({ name: "salama" }));\n` +
-        "export const V = () => <p>{items.length} {user.name} {items().length}</p>;\n",
+        `const rows = createMemo(() => items());\n` +
+        "export const V = () => <p>{items.length} {rows.length} {items().length}</p>;\n",
     );
     expect(codes(raw)).toEqual(["BARQ003", "BARQ003"]);
     expect(raw.diagnostics[0].message).toBe(
       "`items` is an accessor, so `.length` is the function's own parameter count, `0`, and not " +
         "the length of the value it returns. Call it first: `items().length`.",
-    );
-    expect(raw.diagnostics[1].message).toBe(
-      "`user` is an accessor, so `.name` is the function's own name and not the name of the " +
-        "value it returns. Call it first: `user().name`.",
     );
   });
 
