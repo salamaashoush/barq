@@ -388,8 +388,8 @@ const REACTIVITY_PROBES: Array<{ what: string; source: string; before: string; a
     // B2. The REMOVAL half of a normalising channel's diff, which exists only
     // because the record slot holds what the channel returned. Downgrade
     // `Diff::Thread` to the plain `!==` guard and the channel is handed
-    // `undefined` every run: it can still add `b`, and it can no longer take
-    // `a` away. L3 is structurally blind to this — P2 `classify` is shared by
+    // `undefined` every run: it can still add `margin`, and it can no longer
+    // take `color` away. L3 is structurally blind to this — P2 `classify` is shared by
     // both levels and all three backends, so `-O0`, `-Ox` and `Interp` are
     // wrong in exactly the same way — which is why the probe is here.
     what: "a normalising channel still REMOVES what vanished",
@@ -397,11 +397,11 @@ const REACTIVITY_PROBES: Array<{ what: string; source: string; before: string; a
       'import { createSignal } from "@barqjs/core"\n' +
       "export const [on, setOn] = createSignal(true)\n" +
       "export default function P() {\n" +
-      '  return <p data-probe="yes" classList={() => ({ a: on(), b: !on() })} />\n' +
+      '  return <p data-probe="yes" style={() => (on() ? { color: "red" } : { margin: "0px" })} />\n' +
       "}\n" +
       "export const steps = [() => setOn(false)]\n",
-    before: '<p class="a" data-probe="yes"></p>',
-    after: '<p class="b" data-probe="yes"></p>',
+    before: '<p data-probe="yes" style="color: red;"></p>',
+    after: '<p data-probe="yes" style="margin: 0px;"></p>',
   },
   {
     what: "a normalising channel replaces its own class and keeps nothing stale",

@@ -228,7 +228,7 @@ function Themed() {
 }
 export default function Page() {
   return <div><Loading fallback={<i>wait</i>}>
-    <Theme.Provider value="dark"><Themed /></Theme.Provider>
+    <Theme value="dark"><Themed /></Theme>
     <Read tag="b" />
   </Loading></div>
 }`,

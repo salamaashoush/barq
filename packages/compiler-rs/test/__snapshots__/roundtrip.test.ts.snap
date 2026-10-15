@@ -101,9 +101,8 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots attribute-namespaces 1`] = `
-"import { createSignal, template as _$template, bindEffect as _$bindEffect, setAttr as _$setAttr, setDomProp as _$setDomProp, setBool as _$setBool, ref as _$ref, listen as _$listen } from "@barqjs/core";
+"import { createSignal, template as _$template, bindEffect as _$bindEffect, setAttr as _$setAttr, setDomProp as _$setDomProp, ref as _$ref } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div><my-grid label="grid"></my-grid><button type="button">beep</button></div>\`);
-const _h$1 = () => setBeeps(beeps() + 1);
 export const [rows, setRows] = createSignal(2);
 export const [compact, setCompact] = createSignal(true);
 export const [beeps, setBeeps] = createSignal(0);
@@ -111,8 +110,10 @@ let grid: Element | null = null;
 /**
 * B5. A name the compiler cannot classify has
 * no correct default, so the author says which channel it is: \`prop:\` writes the
-* property, \`attr:\` the attribute, \`bool:\` its presence, \`on:\` a verbatim event
-* name with no lowercasing.
+* property. Every other name on a custom element is an attribute, a boolean
+* value is its presence, and an event whose name is not a JSX handler name is
+* bound in a \`ref\`, verbatim, with no lowercasing; the function the \`ref\`
+* returns removes it when the element's scope is disposed (B4).
 *
 * \`prop:rows\` is the case the rule exists for. \`<my-grid rows={n}>\` under a
 * name table becomes \`setAttribute("rows", …)\` — and for an object value,
@@ -132,9 +133,13 @@ export default function AttributeNamespaces() {
     b: compact()
   }), (_v$, _p$ = {}) => {
     if (_v$.a !== _p$.a) _$setDomProp(_el$2, "rows", _v$.a);
-    if (_v$.b !== _p$.b) _$setBool(_el$2, "compact", _v$.b);
+    if (_v$.b !== _p$.b) _$setAttr(_el$2, "compact", _v$.b);
   });
-  _$listen(_el$3, "my-beep", _h$1);
+  _$ref(_el$3, (el: Element) => {
+    const beep = () => setBeeps(beeps() + 1);
+    el.addEventListener("my-beep", beep);
+    return () => el.removeEventListener("my-beep", beep);
+  });
   _$bindEffect(() => String(beeps()), (_v$, _p$) => {
     if (_v$ !== _p$) _$setAttr(_el$3, "data-beeps", _v$);
   });
@@ -168,15 +173,13 @@ export const optimality = {
   // lowercased into \`mybeep\`.
   emits: [
     "setDomProp(",
-    "setBool(",
-    "listen(",
     "\\"my-beep\\"",
     "label=\\"grid\\""
   ],
   absent: [
     "setProp(",
     "\\"mybeep\\"",
-    "addEventListener",
+    "listen(",
     "delegateEvents"
   ]
 };
@@ -388,12 +391,13 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots class-empty-string 1`] = `
-"import { createSignal, template as _$template, bindEffect as _$bindEffect, setClass as _$setClass, setClassList as _$setClassList, classToString as _$classToString } from "@barqjs/core";
-const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="host"><span data-p="static" class=""></span><span data-p="dynamic"></span><span data-p="merged"></span><span data-p="not-an-object"></span></div>\`);
+"import { createSignal, template as _$template, bindEffect as _$bindEffect, setClass as _$setClass, classToString as _$classToString } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="host"><span data-p="static" class=""></span><span data-p="dynamic"></span><span data-p="merged"></span><span data-p="map"></span></div>\`);
 export const [label, setLabel] = createSignal("");
 export const [extra, setExtra] = createSignal(false);
 /**
-* An empty class is PRESENT; an absent class is not, and \`classList\` is neither.
+* An empty class is PRESENT, an absent class is not, and a list or a map with
+* no token in it is empty rather than absent.
 *
 * \`classToString\` answers \`null\` for nullish and \`false\` — the DOM path calls
 * \`removeAttribute\` for that — and \`""\` for an empty string, an empty array and
@@ -406,10 +410,10 @@ export const [extra, setExtra] = createSignal(false);
 * \`class\` thunk that returns one; it is pinned in \`packages/core/src/ssr.test.ts\`
 * against \`renderToString\` of the same value.
 *
-* \`classList\` is the other half. \`diffClassList\` toggles the keys of an OBJECT
-* and does nothing at all with a string or an array, and no token means no
-* attribute — never an empty one — so the two spellings really do disagree
-* about the same value and the string backend must disagree the same way.
+* A list or a map is the other half. Every falsy entry and every false key
+* contributes nothing, so a list whose only string is \`""\` and a map whose
+* every key is off both stringify to \`""\`, and the string backend has to write
+* the same empty attribute the DOM path leaves.
 */
 export default function ClassEmptyString() {
   const _el$1 = _tmpl$1();
@@ -419,11 +423,15 @@ export default function ClassEmptyString() {
   _$bindEffect(() => _$classToString(label()), (_v$, _p$) => {
     _$setClass(_el$4, "class", _v$, _p$);
   });
-  _$bindEffect(() => extra() ? "on" : "", (_v$, _p$) => {
+  _$bindEffect(() => _$classToString([extra() ? "on" : "", { hit: extra() }]), (_v$, _p$) => {
     _$setClass(_el$3, "class", _v$, _p$);
   });
-  _$setClassList(_el$3, "classList", { hit: () => extra() });
-  _$setClassList(_el$2, "classList", ("a b" as unknown) as Record<string, boolean>);
+  _$bindEffect(() => _$classToString({
+    a: extra(),
+    b: extra()
+  }), (_v$, _p$) => {
+    _$setClass(_el$2, "class", _v$, _p$);
+  });
   return _el$1;
 }
 export const steps = [() => setLabel("b"), () => setExtra(true)];
@@ -433,8 +441,8 @@ export const optimality = {
   templates: 1,
   // An empty literal class is still an attribute, and it is baked as one.
   emits: ["<span data-p=\\"static\\" class=\\"\\">"],
-  // \`classList\` is a different channel from \`class\` and never becomes markup.
-  absent: ["classList=\\""]
+  // A live list or map is applied whole by the class channel, never baked.
+  absent: ["data-p=\\"merged\\" class=", "data-p=\\"map\\" class="]
 };
 "
 `;
@@ -473,27 +481,26 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots class-list-prop 1`] = `
-"import { createSignal, template as _$template, bindEffect as _$bindEffect, setClassList as _$setClassList, readKeys as _$readKeys } from "@barqjs/core";
-const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="host"><span class="badge">keyed</span><span>reactive</span></div>\`);
+"import { createSignal, template as _$template, bindEffect as _$bindEffect, setClass as _$setClass, classToString as _$classToString } from "@barqjs/core";
+const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="host"><span>keyed</span><span>reactive</span></div>\`);
 export const [on, setOn] = createSignal(false);
 /**
-* \`classList\` is additive per key and diffed against the previous map, so it is
-* not the same channel as \`class\` and must never be baked into the template as
-* an attribute.
+* \`class\` takes a list of strings and maps, nested to any depth, and the whole
+* value is one channel: the string tokens and the map's true keys are applied
+* together, so none of it may be baked into the template as an attribute.
 */
 export default function ClassListProp() {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$1.lastChild;
-  _$setClassList(_el$2, "classList", {
-    active: () => on(),
+  _$bindEffect(() => _$classToString(["badge", {
+    active: on(),
     muted: false
+  }]), (_v$, _p$) => {
+    _$setClass(_el$2, "class", _v$, _p$);
   });
-  _$bindEffect(() => ({ a: _$readKeys({
-    "one two": on(),
-    three: !on()
-  }) }), (_v$, _p$ = {}) => {
-    _v$.a = _$setClassList(_el$3, "classList", _v$.a, _p$.a);
+  _$bindEffect(() => _$classToString([{ "one two": on() }, ["four", { three: !on() }]]), (_v$, _p$) => {
+    _$setClass(_el$3, "class", _v$, _p$);
   });
   return _el$1;
 }
@@ -503,21 +510,20 @@ export const optimality = {
   milestone: 5,
   templates: 1,
   patchCalls: 2,
-  // \`classList\` is additive per key and diffed against the previous map, so it
-  // is a different channel from \`class\` and the two do not merge: the static
-  // \`class="badge"\` is baked while the \`classList\` beside it stays in the patch.
+  // The list reaches the class channel whole, so the static \`"badge"\` inside it
+  // is not split off into the template and nothing is joined at compile time.
   emits: [
-    "<span class=\\"badge\\">keyed</span>",
-    "\\"classList\\", {",
-    "\\"one two\\": on()"
+    "<span>keyed</span>",
+    "\\"one two\\": on()",
+    "bindEffect("
   ],
-  absent: ["classList=\\"", "class=\\"badge active\\""]
+  absent: ["class=\\"badge", "class=\\"four"]
 };
 "
 `;
 
 exports[`emitted code snapshots class-owns-only-its-tokens 1`] = `
-"import { createSignal, template as _$template, bindEffect as _$bindEffect, setAttr as _$setAttr, setClass as _$setClass, setClassList as _$setClassList, ref as _$ref } from "@barqjs/core";
+"import { createSignal, template as _$template, bindEffect as _$bindEffect, setAttr as _$setAttr, setClass as _$setClass, ref as _$ref } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<b>x</b>\`);
 export const [tone, setTone] = createSignal("red");
 export const [label, setLabel] = createSignal("first");
@@ -525,12 +531,13 @@ export const [label, setLabel] = createSignal("first");
 * The wipe, made unrepresentable — and this is the fixture it used to be
 * reproduced on.
 *
-* Three channels write classes onto one element: \`class\`, \`classList\`, and a
-* \`ref\` callback that adds one imperatively, which is the third case B1's prose
-* names and the one no compiler analysis can see. Before M5 the \`class\` channel
-* assigned \`element.className\` whole, so every time its value changed the other
-* two were erased; joining it to a shared effect made an *unrelated* prop change
-* erase them as well, which is why it was excluded from grouping instead.
+* Two channels write classes onto one element: \`class\`, whose list carries a
+* fixed \`pinned\` key beside the live tone, and a \`ref\` callback that adds one
+* imperatively, which is the case B1's prose names and the one no compiler
+* analysis can see. Before M5 the \`class\` channel assigned \`element.className\`
+* whole, so every time its value changed the ref's token was erased; joining it
+* to a shared effect made an *unrelated* prop change erase it as well, which is
+* why it was excluded from grouping instead.
 *
 * Both halves of the fix are structural, and each covers a case the other does
 * not:
@@ -538,9 +545,9 @@ export const [label, setLabel] = createSignal("first");
 *  - the fused record guards \`class\` on its own field, so \`title\` changing
 *  cannot reach the class channel at all;
 *  - the class channel diffs the tokens it applied last time against the ones
-*  it applies now, so even a real class change leaves \`pinned\` and \`ref-added\`
-*  alone. This is the half a differential cannot see — the un-compiled path
-*  calls the same channel, so both paths were wrong together.
+*  it applies now, so even a real class change keeps \`pinned\` and leaves
+*  \`ref-added\` alone. This is the half a differential cannot see — the
+*  un-compiled path calls the same channel, so both paths were wrong together.
 *
 * Step 0 changes only \`label\`; step 1 changes \`tone\`. The token survival is
 * asserted absolutely, in \`optimality.test.ts\`.
@@ -549,13 +556,12 @@ export default function ClassOwnsOnlyItsTokens() {
   const _el$1 = _tmpl$1();
   _$ref(_el$1, (el: Element) => el.classList.add("ref-added"));
   _$bindEffect(() => ({
-    a: tone(),
+    a: [tone(), { pinned: true }],
     b: label()
   }), (_v$, _p$ = {}) => {
     _v$.a = _$setClass(_el$1, "class", _v$.a, _p$.a);
     if (_v$.b !== _p$.b) _$setAttr(_el$1, "title", _v$.b);
   });
-  _$setClassList(_el$1, "classList", { pinned: true });
   return _el$1;
 }
 export const steps = [() => setLabel("second"), () => setTone("blue")];
@@ -573,12 +579,10 @@ export const optimality = {
   milestone: 5,
   effects: 1,
   templates: 1,
-  // One effect for the element. \`ref\` is its own channel and \`classList\` a
-  // static object, so neither opens one.
+  // One effect for the element. \`ref\` is its own channel and opens none.
   emits: [
     "bindEffect(",
     "setClass(",
-    "setClassList(",
     "ref("
   ],
   absent: ["bindProp(", "setProp"]
@@ -587,7 +591,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots class-with-live-siblings 1`] = `
-"import { createSignal, template as _$template, bindEffect as _$bindEffect, setAttr as _$setAttr, setClass as _$setClass, setClassList as _$setClassList } from "@barqjs/core";
+"import { createSignal, template as _$template, bindEffect as _$bindEffect, setAttr as _$setAttr, setClass as _$setClass } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div>x</div>\`);
 export const [tone, setTone] = createSignal("red");
 export const [label, setLabel] = createSignal("first");
@@ -597,24 +601,24 @@ export const [label, setLabel] = createSignal("first");
 * Until M5 this fixture asserted the OPPOSITE: \`class\` had to stay out of the
 * group, because \`setClass\` wrote \`element.className\` whole and a compiled
 * effect covering \`class\` alongside \`title\` re-wrote it whenever the TITLE
-* changed — wiping the \`extra\` key \`classList\` had put there. That is the
-* defect B1 names, and the exclusion was a workaround for it.
+* changed, re-applying the whole list for a change that was not its own. That
+* is the defect B1 names, and the exclusion was a workaround for it.
 *
 * Two structural changes remove it rather than avoid it:
 *
 *  - the fused record gives every field its own guard, so \`class\` is written
 *  ONLY when the class value changed. \`title\` changing cannot reach it;
 *  - the class channel emits only the tokens it OWNS, diffing what it applied
-*  last time against what it applies now, so even a real class change leaves
-*  \`extra\` alone.
+*  last time against what it applies now, so a real class change swaps the
+*  tone and leaves \`extra\` where it is.
 *
 * Step 0 changes only \`label\`; step 1 changes only \`tone\`. \`extra\` survives
-* both, and it survived neither at M4.
+* both.
 */
 export default function ClassWithLiveSiblings() {
   const _el$1 = _tmpl$1();
   _$bindEffect(() => ({
-    a: tone(),
+    a: [tone(), { extra: true }],
     b: label(),
     c: label()
   }), (_v$, _p$ = {}) => {
@@ -622,7 +626,6 @@ export default function ClassWithLiveSiblings() {
     if (_v$.b !== _p$.b) _$setAttr(_el$1, "title", _v$.b);
     if (_v$.c !== _p$.c) _$setAttr(_el$1, "id", _v$.c);
   });
-  _$setClassList(_el$1, "classList", { extra: true });
   return _el$1;
 }
 export const steps = [() => setLabel("second"), () => setTone("blue")];
@@ -1150,7 +1153,7 @@ function Badge() {
 export default function ContextProvider() {
   const _el$2 = _tmpl$2();
   const _el$3 = _el$2.firstChild;
-  _$insert(_el$2, (0, Theme.Provider)({
+  _$insert(_el$2, Theme({
     value: theme,
     children: _$block(() => Badge({}))
   }), _el$3);
@@ -1162,13 +1165,11 @@ export const optimality = {
   target: 1,
   milestone: 5,
   templates: 2,
-  // A MEMBER tag. \`createElement\` calls \`tag(finalProps)\` with no receiver, so
-  // the compiled call must not hand \`Theme.Provider\` a \`this\` the oracle never
-  // gave it — that is what the comma expression says. \`useContext\` returns
-  // whatever was provided, so the read inside \`Badge\` stays Opaque and is
-  // emitted exactly as written.
-  emits: ["(0, Theme.Provider)(", "value: theme"],
-  absent: ["Theme.Provider({", "get value()"]
+  // The context is its own provider, called like any component. \`useContext\`
+  // returns whatever was provided, so the read inside \`Badge\` stays Opaque and
+  // is emitted exactly as written.
+  emits: ["Theme({", "value: theme"],
+  absent: ["Theme.Provider", "get value()"]
 };
 "
 `;

@@ -155,6 +155,7 @@ pub fn classify<'a>(
     // can feed back into this.
     binder.props_params();
     binder.fixpoint();
+    binder.contexts();
     binder.derive();
     binder.report();
     binder.publish_components();
@@ -999,6 +1000,19 @@ impl<'a> Binder<'_, 'a> {
         self.env.derived = derived;
     }
 
+    fn contexts(&mut self) {
+        for decl in &self.decls {
+            let InitOf::Call(callee) = decl.init else { continue };
+            if decl.element.is_none()
+                && !decl.member
+                && !self.scoping.symbol_is_mutated(decl.symbol)
+                && self.env.kind_of(callee) == SourceKind::Primitive(Prim::CreateContext)
+            {
+                self.env.contexts.push(decl.symbol);
+            }
+        }
+    }
+
     /// C3.1/C3.9. `const { text } = props` binds the Cell `props.text` yields,
     /// so the binding answers what a props member read answers and forwards by
     /// identity out of the component. Every other object pattern stays Opaque.
@@ -1052,6 +1066,7 @@ impl<'a> Binder<'_, 'a> {
             // `useContext` hands back whatever was provided; guessing is the one
             // kind of wrong verdict that produces a silently dead UI.
             Prim::UseContext => Produced::OPAQUE,
+            Prim::CreateContext => Produced::OPAQUE,
             // `isPending` answers a boolean and `latest` answers the value; a
             // binding initialised from either holds a plain value, so READING
             // that binding is not a tracked read. What IS a tracked read is the

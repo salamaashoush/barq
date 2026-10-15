@@ -445,6 +445,11 @@ fn compile_on_this_stack(
     // Before harvest: it reads the JSX the harvest is about to move out. After
     // `bind`: it resolves flow components and local components by `SymbolId`.
     let mut ownership = options.ownership.then(|| crate::ownership::build(&program, &module));
+    let removed = if source_type.is_jsx() {
+        analysis::migration::scan(&program, &module)
+    } else {
+        Vec::new()
+    };
 
     // The `scope` pass used to prepend a scope parameter to every component and
     // deferred body here. Ownership is ambient now — the runtime enters the
@@ -488,6 +493,16 @@ fn compile_on_this_stack(
                 names.join("`, `")
             ),
             span,
+            filename,
+            &mut lines,
+        ));
+    }
+    for found in removed {
+        warnings.push(located(
+            found.code.default_level(),
+            found.code,
+            found.message,
+            found.span,
             filename,
             &mut lines,
         ));
@@ -1405,6 +1420,81 @@ mod tests {
         assert!(!code.contains("/home/me"), "{code}");
     }
 
+    fn codes_of(source: &str) -> Vec<(Code, String)> {
+        let options = ResolvedOptions::with_filename("removed.tsx");
+        let output = compile(source, &options).expect("a removed spelling is a diagnostic");
+        output
+            .warnings
+            .into_iter()
+            .filter_map(|d| d.code.map(|code| (code, d.message)))
+            .filter(|(code, _)| matches!(code, Code::Barq022 | Code::Barq023 | Code::Barq024))
+            .collect()
+    }
+
+    #[test]
+    fn a_provider_member_on_a_context_is_reported_with_the_context_spelling() {
+        let found = codes_of(
+            "import { createContext } from \"@barqjs/core\";\n\
+             const Theme = createContext(\"light\");\n\
+             export const App = () => <Theme.Provider value=\"dark\"><p /></Theme.Provider>;\n",
+        );
+        assert_eq!(found.len(), 1, "{found:?}");
+        assert_eq!(found[0].0, Code::Barq022);
+        assert!(found[0].1.contains("<Theme value={…}>"), "{}", found[0].1);
+    }
+
+    #[test]
+    fn a_provider_member_on_anything_else_is_left_alone() {
+        let found = codes_of(
+            "import { Tooltip } from \"./tooltip\";\n\
+             export const App = () => <Tooltip.Provider><p /></Tooltip.Provider>;\n",
+        );
+        assert!(found.is_empty(), "{found:?}");
+        let found = codes_of(
+            "import { createContext } from \"@barqjs/core\";\n\
+             const Theme = createContext(\"light\");\n\
+             export const App = () => <Theme value=\"dark\"><p classList=\"x\" /></Theme>;\n",
+        );
+        assert_eq!(found.iter().map(|(code, _)| *code).collect::<Vec<_>>(), [Code::Barq023]);
+    }
+
+    #[test]
+    fn class_list_on_an_element_names_the_class_spelling() {
+        let found = codes_of(
+            "export const A = (p) => <div classList={{ active: p.on() }} />;\n\
+             export const B = (p) => <Card classList={{ active: p.on() }} />;\n",
+        );
+        assert_eq!(found.len(), 1, "a component's own prop is not reported: {found:?}");
+        assert_eq!(found[0].0, Code::Barq023);
+        assert!(found[0].1.contains("class={[\"card\", { active: on() }]}"), "{}", found[0].1);
+    }
+
+    #[test]
+    fn each_solid_one_namespace_names_its_replacement() {
+        let found = codes_of(
+            "export const A = (p) => (\n\
+               <div on:click={p.go} on:my-beep={p.go} capture:focus={p.go} attr:title=\"t\" \
+                    bool:hidden={p.on()} style:color=\"red\" class:active={p.on()} use:tip={1} \
+                    prop:value={1} xlink:href=\"#a\" />\n\
+             );\n",
+        );
+        let messages: Vec<&str> = found.iter().map(|(_, message)| message.as_str()).collect();
+        assert!(found.iter().all(|(code, _)| *code == Code::Barq024), "{found:?}");
+        assert_eq!(found.len(), 8, "`prop:` and `xlink:` are not reported: {messages:?}");
+        for expected in [
+            "`onClick={handler}`",
+            "addEventListener(\"my-beep\", handler)",
+            "`onFocusCapture={handler}`",
+            "`title={…}`",
+            "`hidden={on()}`",
+            "`style={{ \"color\": … }}`",
+            "`class={{ \"active\": on() }}`",
+            "`ref={tip(…)}`",
+        ] {
+            assert!(messages.iter().any(|m| m.contains(expected)), "{expected} in {messages:?}");
+        }
+    }
+
     /// A module the compiler cannot replace wholesale is refused rather than
     /// half-replaced — otherwise synthesis would delete the component.
     #[test]
@@ -1783,7 +1873,7 @@ export const Route = createFileRoute("/x")({
         assert!(!output.code.contains("_s$"), "a scope name was emitted:\n{}", output.code);
     }
 
-    /// The CAPTURE phase, in both spellings.
+    /// The CAPTURE phase.
     ///
     /// A capture binding is the only way to see an event before a descendant
     /// handles it, which is what a component needs when the meaning of a key
@@ -1794,7 +1884,7 @@ export const Route = createFileRoute("/x")({
     #[test]
     fn a_capture_prop_binds_a_direct_capturing_listener() {
         let source = r#"export function Row(props) {
-  return <div onKeyDownCapture={props.onKeyDownCapture} capture:click={props.onClick} />;
+  return <div onKeyDownCapture={props.onKeyDownCapture} onClickCapture={props.onClick} />;
 }
 "#;
         let output = compile_ok(source, "a.tsx");
@@ -3772,8 +3862,8 @@ export const Route = createFileRoute("/x")({ component: Page });
         assert!(!output.code.contains("(() => b())"), "{}", output.code);
     }
 
-    /// B2. `style` and `classList` apply a NORMALISED value — the css map, the
-    /// toggled key set — and the runtime used to hold that between runs, which
+    /// B2. `style` and `class` apply a NORMALISED value — the css map, the
+    /// class string — and the runtime used to hold that between runs, which
     /// is the whole reason they were kept out of an effect. The record slot holds
     /// it now: the channel is handed `_p$.a` and its return is written back into
     /// `_v$.a`, so the REMOVAL half of the diff survives inside a shared effect.
@@ -3782,7 +3872,7 @@ export const Route = createFileRoute("/x")({ component: Page });
     fn a_prop_whose_applied_value_is_normalised_threads_it_through_the_record() {
         let source = format!(
             "{CORE}const [s] = createSignal({{}});\n\
-             const V = () => <p style={{() => s()}} classList={{() => s()}} title={{() => s()}} />;\n"
+             const V = () => <p style={{() => s()}} class={{() => s()}} title={{() => s()}} />;\n"
         );
         let output = compile_ok(&source, "V.tsx");
         assert_eq!(output.code.matches("_$bindEffect(").count(), 1, "{}", output.code);
@@ -3792,7 +3882,7 @@ export const Route = createFileRoute("/x")({ component: Page });
             output.code
         );
         assert!(
-            output.code.contains("_v$.b = _$setClassList(_el$1, \"classList\", _v$.b, _p$.b);"),
+            output.code.contains("_v$.b = _$setClass(_el$1, \"class\", _v$.b, _p$.b);"),
             "{}",
             output.code
         );
@@ -3912,25 +4002,18 @@ export const Route = createFileRoute("/x")({ component: Page });
     }
 
     /// P3 Fold may not bake a name the runtime INTERCEPTS: `applyResolvedProp`
-    /// never lets `classList` or `dangerouslySetInnerHTML` reach
-    /// `setElementAttr`, so the attribute the parser would build is not what the
-    /// runtime writes. Nothing pinned this — deleting the refusal baked
-    /// `classList="a b"` into the template HTML with both suites green.
+    /// never lets `dangerouslySetInnerHTML` or `ref` reach `setElementAttr`, so
+    /// the attribute the parser would build is not what the runtime writes.
     #[test]
     fn a_constant_the_runtime_intercepts_is_never_baked_into_the_template() {
-        let source = "const CLS = \"a b\";\nconst HTML = \"<b>x</b>\";\nconst REF = \"r\";\n\
-                      const V = () => <div classList={CLS} dangerouslySetInnerHTML={HTML} ref={REF} />;\n";
+        let source = "const HTML = \"<b>x</b>\";\nconst REF = \"r\";\n\
+                      const V = () => <div dangerouslySetInnerHTML={HTML} ref={REF} />;\n";
         let output = compile_ok(source, "V.tsx");
-        for forbidden in ["classList=", "dangerouslySetInnerHTML=", "ref="] {
+        for forbidden in ["dangerouslySetInnerHTML=", "ref="] {
             for line in output.code.lines().filter(|line| line.contains("_$template(")) {
                 assert!(!line.contains(forbidden), "{forbidden}\n{}", output.code);
             }
         }
-        assert!(
-            output.code.contains("_$setClassList(_el$1, \"classList\", CLS)"),
-            "{}",
-            output.code
-        );
         assert!(output.code.contains("\"dangerouslySetInnerHTML\", HTML"), "{}", output.code);
         // B3: `ref` is a channel of its own, never a prop.
         assert!(output.code.contains("_$ref(_el$1, REF)"), "{}", output.code);

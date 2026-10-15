@@ -1,5 +1,5 @@
 /**
- * Browser-backed check for O5: a dynamic `class` (and `classList`) on an SVG
+ * Browser-backed check for O5: a dynamic `class`, a string or a map, on an SVG
  * element.
  *
  * `SVGElement.className` is a get-only `SVGAnimatedString`, so `element.className
@@ -50,8 +50,8 @@ result.probes.setPropClass = one.getAttribute("class")
 
 const two = document.createElementNS(SVG, "circle")
 two.setAttribute("class", "keep")
-setProp(two, "classList", { ring: true, hidden: false })
-result.probes.setPropClassList = two.getAttribute("class")
+setProp(two, "class", { ring: true, hidden: false })
+result.probes.setPropClassMap = two.getAttribute("class")
 
 // The compiled fixture, rendered and driven.
 const root = document.createElement("div")
@@ -78,7 +78,7 @@ export interface Probe {
   classNameIsAnimatedString: boolean;
   classNameAssignment: string;
   setPropClass: string | null;
-  setPropClassList: string | null;
+  setPropClassMap: string | null;
 }
 
 export interface Fixture {
@@ -174,9 +174,9 @@ export function svgClassClaims({
       probes.setPropClass,
     ],
     [
-      'setProp(svg, "classList", …) toggles keys additively on the class attribute',
-      probes.setPropClassList === "keep ring",
-      probes.setPropClassList,
+      'setProp(svg, "class", { … }) adds its keys beside a class it does not own',
+      probes.setPropClassMap === "keep ring",
+      probes.setPropClassMap,
     ],
     ["the compiled fixture renders class=dot", fixture.initial === "dot", fixture.initial],
     [

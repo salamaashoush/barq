@@ -38,7 +38,7 @@
  *    rendered.
  *
  * The second is the one that names the Provider bug. For
- * `<Ctx.Provider value={…}><Child/></Ctx.Provider>` the compiler says the
+ * `<Ctx value={…}><Child/></Ctx>` the compiler says the
  * child's `<span>` occurs at `["root","provide"]` and only there; the runtime
  * clones it at `["root"]`, because `Child({})` is an argument and runs at the
  * call site. That is O2, reported as O2, from two artefacts that were produced

@@ -1097,7 +1097,7 @@ export function groupTargets(code: string): string[][] {
  * property name can never collide with an attribute name in the channel below
  * because the channel only ever looks at names the DOM actually reported.
  */
-const ATTRIBUTE_ALIASES: Record<string, string> = { classList: "class", className: "class" };
+const ATTRIBUTE_ALIASES: Record<string, string> = { className: "class" };
 
 /**
  * A channel name as the DOM reports it back.
@@ -1112,8 +1112,8 @@ const ATTRIBUTE_ALIASES: Record<string, string> = { classList: "class", classNam
  * attribute AFTER a patched one: `type,readonly` has no patched name in front
  * of the misclassified one, so the walk ended clean. It surfaced the moment
  * `value` began reaching the wire and `type,value,readonly` put a real patched
- * name first. The alias map handles the two that do not merely change case
- * (`className`/`classList`); lowercasing handles the rest.
+ * name first. The alias map handles the one that does not merely change case
+ * (`className`); lowercasing handles the rest.
  */
 function reportedAs(name: string): string {
   return (ATTRIBUTE_ALIASES[name] ?? name).toLowerCase();
@@ -1126,7 +1126,7 @@ function reportedAs(name: string): string {
  * scanner pinned to one prefix would silently see no writes at all.
  */
 export const CHANNEL_CALL =
-  /_\$+(setAttr|setDomProp|setLive|setBool|setClass|setStyleProp|setStyle|setClassList|setHtml)\(\s*(_el\$+\d+)\s*,\s*"([^"]+)"/g;
+  /_\$+(setAttr|setDomProp|setLive|setClass|setStyle|setHtml)\(\s*(_el\$+\d+)\s*,\s*"([^"]+)"/g;
 
 /** `_$bindProp(el, _$setAttr, "id", v)` — the channel is the second argument. */
 export const BIND_PROP_CALL = /_\$+bindProp\(\s*(_el\$+\d+)\s*,[^,]+,\s*"([^"]+)"/g;

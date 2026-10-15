@@ -1,10 +1,10 @@
 /**
- * `<Ctx.Provider value={…}><Child/></Ctx.Provider>` — the shape the whole
- * redesign exists for, written the way a user writes it.
+ * `<Ctx value={…}><Child/></Ctx>` — the shape the whole redesign exists for,
+ * written the way a user writes it.
  *
  * The corpus already has `context-provider.tsx`, and it passes. It is written
- * `<Theme.Provider value={…}>{() => <Badge />}</Theme.Provider>`, which is the
- * hand-written workaround for this exact defect — the same workaround
+ * `<Theme value={…}>{() => <Badge />}</Theme>`, which is the hand-written
+ * workaround for this exact defect — the same workaround
  * `packages/extra/src/router.tsx:1766` carries with the author's own comment
  * next to it. 117 fixtures missed the bug because every one of them is written
  * that way. This one is not.
@@ -37,9 +37,9 @@ function Child() {
 function Direct() {
   return (
     <div>
-      <Ctx.Provider value={() => provided()}>
+      <Ctx value={() => provided()}>
         <Child />
-      </Ctx.Provider>
+      </Ctx>
     </div>
   )
 }
@@ -47,7 +47,7 @@ function Direct() {
 function Thunked() {
   return (
     <div>
-      <Ctx.Provider value={() => provided()}>{() => <Child />}</Ctx.Provider>
+      <Ctx value={() => provided()}>{() => <Child />}</Ctx>
     </div>
   )
 }
@@ -78,7 +78,7 @@ export const claims: Claim[] = [
       )
       if (host.textContent !== "provided") {
         kit.fail(
-          `<Ctx.Provider value={…}><Child/></Ctx.Provider> rendered ${JSON.stringify(host.textContent)}, ` +
+          `<Ctx value={…}><Child/></Ctx> rendered ${JSON.stringify(host.textContent)}, ` +
             `expected "provided" (${formatThrown(thrown)}). ` +
             `Child ran at the Provider's call site, under the caller's owner, before the Provider's ` +
             `instance scope existed`,
@@ -131,11 +131,11 @@ export const claims: Claim[] = [
     says: "JSX children lower to a Block — a function taking the scope — never to a built node",
     check(kit) {
       kit.precondition(
-        /\bProvider\)\(\s*\{/.test(kit.emitted),
+        /\bCtx\(\s*\{/.test(kit.emitted),
         "the emitted module contains no Provider call at all, so there is no children slot to " +
           "inspect and this claim would pass for a fixture that renders nothing",
       )
-      const call = /\bProvider\)\(\s*\{[\s\S]{0,200}?children:\s*([A-Za-z_$][\w$]*)\(/.exec(kit.emitted)
+      const call = /\bCtx\(\s*\{[\s\S]{0,200}?children:\s*([A-Za-z_$][\w$]*)\(/.exec(kit.emitted)
       // The scope brand is the ONE call that leaves the slot deferred: it
       // marks the function in place and hands it back. Every other call in this
       // position has already produced a node.

@@ -18,13 +18,13 @@ export const [on, setOn] = createSignal(true);
 function Reads() { const theme = useContext(Theme); return <i>{theme()}</i>; }
 function Wrapped() { return <>{on() ? <Reads /> : null}</>; }
 export function Choice() {
-  return <main><Theme.Provider value="dark">{on() ? <Reads /> : null}</Theme.Provider></main>;
+  return <main><Theme value="dark">{on() ? <Reads /> : null}</Theme></main>;
 }
 export function InAFragment() {
-  return <main><Theme.Provider value="dark"><Wrapped /></Theme.Provider></main>;
+  return <main><Theme value="dark"><Wrapped /></Theme></main>;
 }
 export function BesideAnElement() {
-  return <main><Theme.Provider value="dark"><b>x</b>{on() ? <Reads /> : null}</Theme.Provider></main>;
+  return <main><Theme value="dark"><b>x</b>{on() ? <Reads /> : null}</Theme></main>;
 }
 `;
 

@@ -23,12 +23,12 @@ function Label() {
 export default function C7Provider() {
   return (
     <div class="host">
-      <Locale.Provider value={() => locale()}>
+      <Locale value={() => locale()}>
         {() => {
           log.push("provided")
           return <Label />
         }}
-      </Locale.Provider>
+      </Locale>
     </div>
   )
 }

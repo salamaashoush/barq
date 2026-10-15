@@ -103,8 +103,7 @@ const reverseBakedAttributes = inTemplates((html) =>
 /** Reverse the order the patch code applies props in, run by consecutive run. */
 function reverseAppliedProps(code: string): string {
   // A resolved channel write: `_$setAttr(_el$1, "href", v)`.
-  const writes =
-    /_\$+(setAttr|setDomProp|setLive|setBool|setClass|setStyle|setStyleProp|setClassList|setHtml|bindProp)\(/;
+  const writes = /_\$+(setAttr|setDomProp|setLive|setClass|setStyle|setHtml|bindProp)\(/;
   if (!writes.test(code)) {
     throw new Error("self-check corruption is stale: the emitted module applies no props");
   }

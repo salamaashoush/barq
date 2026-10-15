@@ -4,7 +4,8 @@ export const [label, setLabel] = createSignal("")
 export const [extra, setExtra] = createSignal(false)
 
 /**
- * An empty class is PRESENT; an absent class is not, and `classList` is neither.
+ * An empty class is PRESENT, an absent class is not, and a list or a map with
+ * no token in it is empty rather than absent.
  *
  * `classToString` answers `null` for nullish and `false` — the DOM path calls
  * `removeAttribute` for that — and `""` for an empty string, an empty array and
@@ -17,10 +18,10 @@ export const [extra, setExtra] = createSignal(false)
  * `class` thunk that returns one; it is pinned in `packages/core/src/ssr.test.ts`
  * against `renderToString` of the same value.
  *
- * `classList` is the other half. `diffClassList` toggles the keys of an OBJECT
- * and does nothing at all with a string or an array, and no token means no
- * attribute — never an empty one — so the two spellings really do disagree
- * about the same value and the string backend must disagree the same way.
+ * A list or a map is the other half. Every falsy entry and every false key
+ * contributes nothing, so a list whose only string is `""` and a map whose
+ * every key is off both stringify to `""`, and the string backend has to write
+ * the same empty attribute the DOM path leaves.
  */
 export default function ClassEmptyString() {
   return (
@@ -30,11 +31,8 @@ export default function ClassEmptyString() {
           corpus compares attribute ORDER as well as content. */}
       <span data-p="static" class="" />
       <span data-p="dynamic" class={() => label()} />
-      <span data-p="merged" class={() => (extra() ? "on" : "")} classList={{ hit: () => extra() }} />
-      {/* The cast is the claim: the type forbids a non-object `classList`
-          because `diffClassList` ignores one, and an author who defeats the
-          type must still get the same DOM out of both backends. */}
-      <span data-p="not-an-object" classList={"a b" as unknown as Record<string, boolean>} />
+      <span data-p="merged" class={() => [extra() ? "on" : "", { hit: extra() }]} />
+      <span data-p="map" class={() => ({ a: extra(), b: extra() })} />
     </div>
   )
 }
@@ -47,6 +45,6 @@ export const optimality = {
   templates: 1,
   // An empty literal class is still an attribute, and it is baked as one.
   emits: ['<span data-p="static" class="">'],
-  // `classList` is a different channel from `class` and never becomes markup.
-  absent: ['classList="'],
+  // A live list or map is applied whole by the class channel, never baked.
+  absent: ['data-p="merged" class=', 'data-p="map" class='],
 }

@@ -28,9 +28,9 @@ function Badge() {
 function Direct() {
   return (
     <div>
-      <Theme.Provider value="dark">
+      <Theme value="dark">
         <Badge />
-      </Theme.Provider>
+      </Theme>
       <Badge />
     </div>
   )
@@ -39,7 +39,7 @@ function Direct() {
 function Thunked() {
   return (
     <div>
-      <Theme.Provider value="dark">{() => <Badge />}</Theme.Provider>
+      <Theme value="dark">{() => <Badge />}</Theme>
       <Badge />
     </div>
   )
@@ -66,7 +66,7 @@ export const claims: Claim[] = [
       kit.precondition(badges.length === 2, TWO)
       if (badges[0] !== "dark") {
         kit.fail(
-          `the badge inside <Theme.Provider value="dark"> rendered ${JSON.stringify(badges[0] ?? text)}, ` +
+          `the badge inside <Theme value="dark"> rendered ${JSON.stringify(badges[0] ?? text)}, ` +
             `expected "dark" (${formatThrown(thrown)}). Nothing threw and nothing was logged — ` +
             `the default made the failure silent`,
         )

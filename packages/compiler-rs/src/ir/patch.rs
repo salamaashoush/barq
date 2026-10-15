@@ -40,8 +40,7 @@ pub enum Op {
     },
 
     // ── events ────────────────────────────────────────────────────────────
-    /// An event whose TYPE the compiler resolved — `onClick` → `click`,
-    /// `on:my-event` → `my-event`, verbatim and with no lowercasing —
+    /// An event whose TYPE the compiler resolved — `onClick` → `click` —
     /// but whose value it could not prove is a handler. `bindEvent` makes the
     /// delegated/direct choice the compiler already made and applies the
     /// runtime's own `isEventHandlerValue` test to the value.
@@ -150,15 +149,10 @@ pub enum Chan {
     /// channel exists to replace, so leaving it in front would suppress the
     /// repair the channel is for.
     Live,
-    /// `bool:` — presence, decided by truthiness rather than by the value's type.
-    Bool,
     /// the whole `class` attribute
     Class,
     /// the whole `style` attribute
     Style,
-    /// one css declaration; the name is the kebab-cased property
-    StyleProp,
-    ClassList,
     /// `dangerouslySetInnerHTML={{ __html }}`
     Html,
 }
@@ -171,7 +165,7 @@ impl Chan {
     /// lets these join the fused record instead of being excluded from it.
     #[inline]
     pub fn threads_prev(self) -> bool {
-        matches!(self, Chan::Class | Chan::Style | Chan::ClassList | Chan::Html)
+        matches!(self, Chan::Class | Chan::Style | Chan::Html)
     }
 }
 

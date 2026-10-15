@@ -164,8 +164,8 @@ impl<'a> Classify<'a, '_> {
 
     // ── events (target #7) ────────────────────────────────────────────────
 
-    /// The TYPE was resolved at P1 — `onClick` → `click`, `on:my-event`
-    /// verbatim — so what is left here is the one question that needs the
+    /// The TYPE was resolved at P1 — `onClick` → `click`, `onKeyDownCapture`
+    /// → `keydown` — so what is left here is the one question that needs the
     /// analysis: whether the value is a function the compiler may take over
     /// from the runtime, and whether it is capture-free enough to hoist.
     fn event(

@@ -43,14 +43,14 @@ Writing a destructured name where a function is accepted is correct and is not r
 A truthiness test such as `text ? … : …` asks whether the prop was passed, as it does for
 `props.text`, and is not reported either.
 
-To pass the remaining props on, separate the ones the component reads with `splitProps`:
+To pass the remaining props on, leave out the ones the component reads with `omit`:
 
 ```tsx
-import { splitProps } from "@barqjs/core";
+import { omit } from "@barqjs/core";
 
 export function Chip(props) {
-  const [own, rest] = splitProps(props, ["tone"]);
-  return <span data-tone={own.tone?.() ?? "warm"} {...rest} />;
+  const rest = omit(props, "tone");
+  return <span data-tone={props.tone?.() ?? "warm"} {...rest} />;
 }
 ```
 

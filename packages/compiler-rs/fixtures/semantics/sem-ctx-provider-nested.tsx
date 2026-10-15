@@ -33,19 +33,19 @@ function Leaf() {
 
 function Direct() {
   return (
-    <Outer.Provider value="O">
-      <Inner.Provider value="I">
+    <Outer value="O">
+      <Inner value="I">
         <Leaf />
-      </Inner.Provider>
-    </Outer.Provider>
+      </Inner>
+    </Outer>
   )
 }
 
 function Thunked() {
   return (
-    <Outer.Provider value="O">
-      {() => <Inner.Provider value="I">{() => <Leaf />}</Inner.Provider>}
-    </Outer.Provider>
+    <Outer value="O">
+      {() => <Inner value="I">{() => <Leaf />}</Inner>}
+    </Outer>
   )
 }
 
@@ -97,10 +97,10 @@ export const claims: Claim[] = [
     says: "a JSX-valued children slot lowers to a Block, so nesting providers nests scopes rather than argument evaluation",
     check(kit) {
       kit.precondition(
-        /\bProvider\)\(\s*\{/.test(kit.emitted),
+        /\bOuter\(\s*\{/.test(kit.emitted),
         "the emitted module contains no Provider call, so there is no children slot to inspect",
       )
-      const nested = /\bProvider\)\(\s*\{[\s\S]{0,200}?children:\s*\(0,\s*[\w$]+\.Provider\)\(/.exec(
+      const nested = /\bOuter\(\s*\{[\s\S]{0,200}?children:\s*Inner\(/.exec(
         kit.emitted,
       )
       if (nested) {

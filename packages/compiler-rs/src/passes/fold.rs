@@ -249,7 +249,7 @@ fn fold_unit<'a>(
 /// shape that survives the round trip: `classToString` returns a string
 /// unchanged, and a string style is written with `setAttribute` verbatim.
 /// Anything else those two normalise — an array class, a style object — and
-/// every value on `classList` or `dangerouslySetInnerHTML` is refused, because
+/// every value on `dangerouslySetInnerHTML` is refused, because
 /// the attribute the parser would produce is not what the channel writes.
 fn bakeable(
     interner: &Interner<'_>,
@@ -265,9 +265,7 @@ fn bakeable(
     match chan {
         Chan::Attr => true,
         Chan::Class | Chan::Style => matches!(konst, Const::Str(_)),
-        Chan::Prop | Chan::Live | Chan::Bool | Chan::StyleProp | Chan::ClassList | Chan::Html => {
-            false
-        }
+        Chan::Prop | Chan::Live | Chan::Html => false,
     }
 }
 

@@ -35,7 +35,7 @@ pub enum OwnKind {
     Root,
     /// a user component call. Owns nothing (O1).
     Component,
-    /// `<Ctx.Provider>` — `provide` (X1)
+    /// `<Ctx value>` — `provide` (X1)
     Provide,
     /// `Show` / `Switch` / `Match` / `Dynamic` and the boundaries — `branch`
     Branch,
@@ -93,7 +93,7 @@ pub struct OwnNode {
     /// `span.start` of the JSX element, which is what joins a node to the
     /// region the compiler built from it. Not serialised.
     pub span: u32,
-    /// the construct as written: `Theme.Provider`, `Show`, `Badge`
+    /// the construct as written: `Theme`, `Show`, `Badge`
     pub label: String,
     pub line: u32,
     pub column: u32,
@@ -520,7 +520,7 @@ struct Builder<'a, 'p, 'm> {
 /// Without this the tree encodes the EMITTER's belief — that a call site's
 /// children belong to the call site — and a user-written provider wrapper
 /// (`<ThemeProvider><Label/></ThemeProvider>` over
-/// `<Theme.Provider …>{props.children}</Theme.Provider>`) has its defect
+/// `<Theme value={…}>{props.children}</Theme>`) has its defect
 /// attributed to exactly the place the runtime wrongly puts it, so the two
 /// agree and the channel reports nothing. That is the same-belief failure this
 /// channel exists to escape, and the shape every `AuthProvider` in the world
@@ -742,6 +742,9 @@ impl<'a, 'p> Builder<'a, 'p, '_> {
                     .get()
                     .and_then(|id| self.scoping.get_reference(id).symbol_id());
                 let label = identifier.name.to_string();
+                if symbol.is_some_and(|symbol| self.module.env.contexts.contains(&symbol)) {
+                    return Tag::Provide(label);
+                }
                 match symbol
                     .map(|symbol| self.module.env.kind_of(symbol))
                     .and_then(|kind| kind.flow())
@@ -767,9 +770,6 @@ impl<'a, 'p> Builder<'a, 'p, '_> {
                     && let Some(flow) = self.module.env.namespace_flow(symbol, property)
                 {
                     return Tag::Flow(flow, label);
-                }
-                if property == "Provider" {
-                    return Tag::Provide(label);
                 }
                 Tag::Component(label, None)
             }
@@ -913,18 +913,14 @@ mod tests {
     #[test]
     fn a_provider_owns_its_direct_child() {
         let tree = tree_of(
-            "import { context } from '@barqjs/core';\n\
-             const Ctx = context();\n\
+            "import { createContext } from '@barqjs/core';\n\
+             const Ctx = createContext();\n\
              const Child = () => <span>x</span>;\n\
-             export default function App() { return <Ctx.Provider value={1}><Child /></Ctx.Provider>; }\n",
+             export default function App() { return <Ctx value={1}><Child /></Ctx>; }\n",
         );
         assert_eq!(
             labels(&tree, "App"),
-            vec![
-                ("root", "App".into()),
-                ("provide", "Ctx.Provider".into()),
-                ("component", "Child".into())
-            ]
+            vec![("root", "App".into()), ("provide", "Ctx".into()), ("component", "Child".into())]
         );
         // The span's owner chain, filtered to O1's creation set.
         assert_eq!(tree.scope_path(node_of(&tree, "App", "Child")), vec!["root", "provide"]);
@@ -941,10 +937,10 @@ mod tests {
     #[test]
     fn a_wrapper_component_forwards_its_children_into_the_construct_it_hands_them_to() {
         let tree = tree_of(
-            "import { context } from '@barqjs/core';\n\
-             const Ctx = context();\n\
+            "import { createContext } from '@barqjs/core';\n\
+             const Ctx = createContext();\n\
              const Label = () => <span>x</span>;\n\
-             function Shell(props) { return <Ctx.Provider value={1}>{props.children}</Ctx.Provider>; }\n\
+             function Shell(props) { return <Ctx value={1}>{props.children}</Ctx>; }\n\
              export default function App() { return <Shell><Label /></Shell>; }\n",
         );
         assert_eq!(tree.scope_path(node_of(&tree, "App", "Label")), vec!["root", "provide"]);

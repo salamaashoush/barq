@@ -347,13 +347,13 @@ mod tests {
     #[test]
     fn the_names_whose_applied_value_differs_from_their_input_thread_it() {
         use crate::lower::names::channel_of;
-        for name in ["class", "className", "style", "classList", "dangerouslySetInnerHTML"] {
+        for name in ["class", "className", "style", "dangerouslySetInnerHTML"] {
             assert!(
                 channel_of(name, false, "div").threads_prev(),
                 "{name} applies a normalised value, so its record slot holds the channel's return"
             );
         }
-        for name in ["title", "id", "href", "data-width"] {
+        for name in ["title", "id", "href", "data-width", "classList"] {
             assert!(!channel_of(name, false, "div").threads_prev(), "{name}");
         }
     }

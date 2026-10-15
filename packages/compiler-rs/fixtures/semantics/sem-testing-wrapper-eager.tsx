@@ -47,7 +47,7 @@ function Badge() {
 
 function ThemeProvider(props: { children: unknown }) {
   order.push("wrapper")
-  return <Theme.Provider value="dark">{props.children as never}</Theme.Provider>
+  return <Theme value="dark">{props.children as never}</Theme>
 }
 
 function Wrapper(props: { children: unknown }) {

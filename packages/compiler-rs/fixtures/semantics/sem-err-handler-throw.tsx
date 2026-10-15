@@ -2,9 +2,9 @@
  * E2 entry point #6 — a handler that throws routes to the enclosing boundary.
  *
  * A handler is code the FRAMEWORK invoked: it reached the DOM through
- * `onClick={…}` or `on:…={…}`, and the framework is what called it. Before M5 an
- * exception out of one escaped to `window.onerror` with no framework
- * involvement at all — the delegated dispatcher had no `try`, and a
+ * `onClick={…}` or `onMouseEnter={…}`, and the framework is what called it.
+ * Before M5 an exception out of one escaped to `window.onerror` with no
+ * framework involvement at all — the delegated dispatcher had no `try`, and a
  * non-delegated handler was a bare `addEventListener` with nothing around it.
  * An `Errored` standing directly over the button caught nothing.
  *
@@ -43,10 +43,10 @@ function Delegated() {
   )
 }
 
-/** `my-signal` is nothing the document could ever dispatch, so it is a listener. */
+/** `mouseenter` does not bubble, so it is never delegated: it is a listener. */
 function Direct() {
   return (
-    <button type="button" class="direct" on:my-signal={() => Boom()}>
+    <button type="button" class="direct" onMouseEnter={() => Boom()}>
       go
     </button>
   )
@@ -115,7 +115,7 @@ export const claims: Claim[] = [
     async check(kit) {
       const { host, thrown } = await mount(kit, GuardedDirect as never)
       if (thrown.length > 0) kit.fail(`the mount itself threw: ${thrown[0].message}`)
-      await fire(kit, host, "button.direct", "my-signal")
+      await fire(kit, host, "button.direct", "mouseenter")
       if (host.querySelector("b.fb") === null) {
         kit.fail(
           `the boundary over a listener never recovered; the container reads ` +
@@ -132,7 +132,7 @@ export const claims: Claim[] = [
     async check(kit) {
       const { host, thrown } = await mount(kit, Nested as never)
       if (thrown.length > 0) kit.fail(`the mount itself threw: ${thrown[0].message}`)
-      await fire(kit, host, "button.direct", "my-signal")
+      await fire(kit, host, "button.direct", "mouseenter")
       if (host.querySelector("b.fb") === null) {
         kit.fail(`the inner boundary did not recover: ${JSON.stringify(host.textContent)}`)
       }

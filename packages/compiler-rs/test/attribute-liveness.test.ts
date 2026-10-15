@@ -29,7 +29,7 @@ export function YieldsACell() {
   return <p title={labelOf()} />;
 }
 export function Cleared() {
-  return <button title={on() ? "saved" : undefined} disabled={on() ? true : undefined} style:color={on() ? "red" : undefined} />;
+  return <button title={on() ? "saved" : undefined} disabled={on() ? true : undefined} style={{ color: on() ? "red" : undefined }} />;
 }
 export function Property() {
   return <input value={double()} disabled={double() > 2} />;

@@ -171,7 +171,7 @@ mod tests {
                 "const DELEGATED_EVENTS = new Set([\n",
                 "const DELEGATED_EVENTS = new Set([\n  \"zz\",\n",
             ),
-            ("if (key === \"classList\")", "if (key === \"zzList\")"),
+            ("if (key === \"dangerouslySetInnerHTML\")", "if (key === \"zzHTML\")"),
             ("propKey !== \"viewBox\"", "propKey !== \"zzBox\""),
         ] {
             assert!(dom.contains(before), "dom.ts no longer contains {before:?}");
@@ -191,10 +191,10 @@ mod tests {
     /// they come off `dom.ts` like every other table.
     #[test]
     fn the_intercepted_names_are_read_off_the_runtime_branches() {
-        for name in ["class", "className", "classList", "style", "ref", "dangerouslySetInnerHTML"] {
+        for name in ["class", "className", "style", "ref", "dangerouslySetInnerHTML"] {
             assert!(is_intercepted(name), "{name} is intercepted by dom.ts");
         }
-        assert!(!is_intercepted("title") && !is_intercepted("id"));
+        assert!(!is_intercepted("title") && !is_intercepted("id") && !is_intercepted("classList"));
 
         assert_eq!(SVG_KEBAB_EXEMPT_NAMES, ["class", "viewBox"]);
         assert!(is_svg_kebab_exempt("viewBox") && !is_svg_kebab_exempt("strokeWidth"));
@@ -245,7 +245,6 @@ mod tests {
         // wrong attribute on the wire.
         for name in [
             "class",
-            "classList",
             "style",
             "value",
             "className",
@@ -261,6 +260,7 @@ mod tests {
             assert!(attr_intercepts(name), "{name} is decided by attr itself");
         }
         assert!(!attr_intercepts("title") && !attr_intercepts("data-id") && !attr_intercepts("id"));
+        assert!(!attr_intercepts("classList"));
     }
 
     /// A document listener for a non-bubbling type can never fire from a

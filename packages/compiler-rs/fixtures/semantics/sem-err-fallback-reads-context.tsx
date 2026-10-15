@@ -6,7 +6,7 @@
  * workaround form, so it DOES catch — the child throws from an effect and the
  * fallback renders. Only the provider above it is written in the direct form.
  * That is enough: `Errored({…})` is evaluated as an argument to
- * `Locale.Provider({…})`, so the boundary — and everything it later builds,
+ * `Locale({…})`, so the boundary — and everything it later builds,
  * including its fallback — was constructed at the provider's call site and has
  * no scope carrying the binding on its chain.
  *
@@ -18,7 +18,7 @@
  * O2 and X3.
  */
 import type { Block } from "@barqjs/core"
-import { createContext, createTrackedEffect, Errored, hasContext, getOwner, render, useContext } from "@barqjs/core"
+import { createContext, createEffect, Errored, hasContext, getOwner, render, useContext } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 import { formatThrown } from "../../test/semantics-support.ts"
@@ -35,10 +35,13 @@ const RAISED =
   "the child under test never threw, so no boundary ever recovered and no fallback ever ran"
 
 function Late() {
-  createTrackedEffect(() => {
-    raised++
-    throw new Error("late")
-  })
+  createEffect(
+    () => undefined,
+    () => {
+      raised++
+      throw new Error("late")
+    },
+  )
   return <span class="content">content</span>
 }
 
@@ -50,17 +53,17 @@ function Fallback() {
 
 function Direct() {
   return (
-    <Locale.Provider value="fr">
+    <Locale value="fr">
       <Errored fallback={() => <Fallback />}>{() => <Late />}</Errored>
-    </Locale.Provider>
+    </Locale>
   )
 }
 
 function Thunked() {
   return (
-    <Locale.Provider value="fr">
+    <Locale value="fr">
       {() => <Errored fallback={() => <Fallback />}>{() => <Late />}</Errored>}
-    </Locale.Provider>
+    </Locale>
   )
 }
 

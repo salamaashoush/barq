@@ -677,8 +677,8 @@ describe("target 4 — one effect per element, not one per prop", () => {
    * B1/B2's PROOF, and the reason it is here rather than in `oracle.test.ts`:
    * the differential is structurally blind to it. Both paths call the same
    * `setClass`, so when the class channel owned the whole attribute they wiped
-   * `classList` and the ref's token together, agreed perfectly, and the oracle
-   * certified the bug. Nothing but an absolute assertion can see this.
+   * the ref's token together, agreed perfectly, and the oracle certified the
+   * bug. Nothing but an absolute assertion can see this.
    */
   it("class-owns-only-its-tokens: nothing another channel wrote is ever wiped", async () => {
     const run = await renderViaCompiler("class-owns-only-its-tokens");
@@ -688,9 +688,9 @@ describe("target 4 — one effect per element, not one per prop", () => {
     const frames = [run.html, ...run.frames];
     expect(frames, "the mount plus one frame per step").toHaveLength(3);
 
-    // The precondition: the three channels really did all write. Without it a
-    // fixture that stopped applying `classList` at all would pass every claim
-    // below by producing an absence.
+    // The precondition: both channels really did write. Without it a fixture
+    // whose ref stopped adding its token at all would pass every claim below by
+    // producing an absence.
     expect(classes(run.html).sort(), "mount: every channel's tokens are present").toEqual([
       "pinned",
       "red",
@@ -708,8 +708,8 @@ describe("target 4 — one effect per element, not one per prop", () => {
     ]);
 
     // Frame 1 changes `class` itself. The old channel assigned the whole
-    // attribute, so this erased `pinned` and `ref-added` even with the
-    // exclusion in place. The channel now emits only the tokens it applied.
+    // attribute, so this erased `ref-added` even with the exclusion in place.
+    // The channel now emits only the tokens it applied.
     expect(classes(frames[2]!), "a real class change must remove only its own token").toEqual([
       "blue",
       "pinned",

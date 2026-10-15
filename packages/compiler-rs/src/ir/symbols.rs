@@ -67,6 +67,8 @@ pub enum Prim {
     Computed,
     Store,
     UseContext,
+    /// `createContext()`. Its result is the provider component itself.
+    CreateContext,
     Optimistic,
     OptimisticStore,
     Projection,
@@ -92,6 +94,7 @@ impl Prim {
             // constructor — reading what the owner tree provides is its own
             // operation, and it answers with the Cell compiled code wants.
             "useContext" => Prim::UseContext,
+            "createContext" => Prim::CreateContext,
             "createOptimistic" => Prim::Optimistic,
             "createOptimisticStore" => Prim::OptimisticStore,
             "createProjection" => Prim::Projection,
@@ -296,6 +299,9 @@ pub struct ReactiveEnv<'a> {
     /// tag, so `<Show>…</Show>` reads as two uses of one binding; anything
     /// counting real uses has to subtract these.
     pub jsx_closings: Vec<SymbolId>,
+    /// Every never-reassigned binding initialised by `createContext()`, so a
+    /// tag naming one is known to be a provider, `<Theme value>`.
+    pub contexts: Vec<SymbolId>,
     /// `(body span, name)` for every function this module writes as a tag or
     /// exports and that returns JSX. The only component IDENTITY the IR carries:
     /// `Skeleton::origin` is html-byte-offset → JSX span, which answers "where
@@ -381,6 +387,7 @@ impl<'a> ReactiveEnv<'a> {
             diagnostics: AVec::new_in(&allocator),
             namespaces: Vec::new(),
             jsx_closings: Vec::new(),
+            contexts: Vec::new(),
             components: Vec::new(),
             cell_slots: Vec::new(),
             root_blocks: Vec::new(),

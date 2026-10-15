@@ -28,7 +28,7 @@ use crate::options::ResolvedOptions;
 use super::classify::Lift;
 
 /// P4 Shape. Every JSX element whose tag resolves to a COMPONENT — a user
-/// component, a control-flow builtin, a `Ns.Provider` member — becomes a real
+/// component, a control-flow builtin, a `Ns.Item` member — becomes a real
 /// call expression built in the same arena.
 ///
 /// The call is what buys fine-grained flow across a component boundary.
@@ -456,7 +456,7 @@ impl<'a> Shaper<'a, '_> {
         // becomes the many-child case.
         //
         // `chooses_dom` and not "reactive": a plain `<Child />` is an opaque
-        // CALL, so any weaker test wrapped `<Ctx.Provider><Child /></…>` and
+        // CALL, so any weaker test wrapped `<Ctx value><Child /></Ctx>` and
         // took the child back out of its Block.
         let lone_hole = kids.len() == 1
             && kids.first().is_some_and(|kid| self.chooses_dom(kid) || (body && moves[0]));
@@ -1757,16 +1757,16 @@ mod tests {
     #[test]
     fn a_child_is_a_block_taking_nothing_never_a_built_node() {
         let code = emit(
-            "import { context } from \"@barqjs/core\";\n\
-             const Ctx = context();\n\
-             const Child = () => <span>{Ctx.use()()}</span>;\n\
-             export const App = () => <Ctx.Provider value={1}><Child /></Ctx.Provider>;\n",
+            "import { createContext, useContext } from \"@barqjs/core\";\n\
+             const Ctx = createContext();\n\
+             const Child = () => <span>{useContext(Ctx)()}</span>;\n\
+             export const App = () => <Ctx value={1}><Child /></Ctx>;\n",
         )
         .code;
         assert!(code.contains("children: _$block(() => Child({})"), "{code}");
         // O2's negation, written down: the child as a syntactic argument.
         assert!(!code.contains("children: Child("), "{code}");
-        assert!(code.contains("(0, Ctx.Provider)({"), "{code}");
+        assert!(code.contains("Ctx({"), "{code}");
         assert!(!code.contains("_s$"), "{code}");
     }
 
@@ -2197,8 +2197,7 @@ mod tests {
 
     /// C9. A spread is a COMPILER CONSTRUCT: an ordered list of sources in
     /// WRITTEN order, read last-wins. There is no object to spread, so the
-    /// getter-flattening class — `{...props}`, `mergeProps`, `splitProps`,
-    /// `omit` — is impossible by construction rather than diagnosable.
+    /// getter-flattening class — `{...props}`, `merge`, `omit` — is impossible by construction rather than diagnosable.
     #[test]
     fn a_spread_becomes_a_source_list_in_written_order() {
         let code = emit("const V = () => <Foo {...a} b={x()} {...c} />;\n").code;

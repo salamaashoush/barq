@@ -1,5 +1,6 @@
 mod bind;
 pub mod link;
+pub mod migration;
 mod render;
 pub mod server_fn;
 

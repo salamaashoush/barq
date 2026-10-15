@@ -127,7 +127,7 @@ const REQUIRED_FEATURES = [
   "thunked hole",
   "adjacent holes",
   "style object",
-  "classList object",
+  "class map",
   "reassigned binding",
 ];
 

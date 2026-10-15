@@ -184,7 +184,7 @@ export function installTracer(
   const creators: [name: string, kind: EffectKind][] = [
     ["createRenderEffect", "render"],
     ["createEffect", "user"],
-    ["createTrackedEffect", "user"],
+    ["onSettled", "user"],
   ];
   const patched: Record<string, unknown> = { ...snapshot };
   for (const [name, kind] of creators) {

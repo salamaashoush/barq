@@ -295,6 +295,15 @@ describe("the diagnostic engine", () => {
         `import { createMemo, createSignal } from "@barqjs/core";\n` +
         'const [unit] = createSignal("kg");\n' +
         "export const w = createMemo(async () => (await Promise.resolve(1)) + unit());\n",
+      BARQ022:
+        `import { createContext } from "@barqjs/core";\n` +
+        'const Theme = createContext("light");\n' +
+        'export const V = (props) => <Theme.Provider value="dark">{props.children}</Theme.Provider>;\n',
+      BARQ023:
+        `import { createSignal } from "@barqjs/core";\n` +
+        "const [on] = createSignal(false);\n" +
+        "export const V = () => <p classList={{ on: on() }} />;\n",
+      BARQ024: 'export const V = () => <p attr:title="salama" />;\n',
     };
 
     const advertised = native

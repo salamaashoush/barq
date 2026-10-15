@@ -229,7 +229,7 @@ const ROWS: readonly CensusRow[] = [
   { fixture: "void-elements", clones: 1, unattributed: 0, opaque: [] },
   { fixture: "walk-from-the-back", clones: 1, unattributed: 0, opaque: [] },
   { fixture: "whitespace-only", clones: 1, unattributed: 0, opaque: [] },
-  { fixture: "own-cross-module", clones: 1, unattributed: 1, opaque: ["Card"] },
+  { fixture: "own-cross-module", clones: 1, unattributed: 1, opaque: ["Theme", "Card"] },
   { fixture: "own-nested-scopes-dispose", clones: 4, unattributed: 0, opaque: [] },
   { fixture: "own-provider-direct", clones: 2, unattributed: 0, opaque: [] },
   { fixture: "own-provider-thunked", clones: 2, unattributed: 0, opaque: [] },

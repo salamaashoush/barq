@@ -107,6 +107,9 @@ codes! {
     Barq019 = "BARQ019", Warning, "State is written while a component body or a computation runs";
     Barq020 = "BARQ020", Warning, "A store is destructured in a component body, so each name is a snapshot";
     Barq021 = "BARQ021", Warning, "An async computation reads a source after its first `await`, which is not tracked";
+    Barq022 = "BARQ022", Error, "A context is rendered through `.Provider`, which a context does not have";
+    Barq023 = "BARQ023", Error, "`classList` is written on an element, where it is an ordinary attribute";
+    Barq024 = "BARQ024", Error, "An attribute uses a Solid 1.x namespace such as `on:` or `attr:`";
 }
 
 /// Where the pages live. A consumer gets this string verbatim — the Vite panel

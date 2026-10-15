@@ -56,17 +56,17 @@ impl Target {
     }
 }
 
-pub const HELPER_COUNT: usize = 64;
+pub const HELPER_COUNT: usize = 59;
 
 /// The first helper that lives in `<server_source>` rather than in the
 /// module source itself. The string backend calls into `ssr.ts`, which the DOM
 /// bundle must never pull in.
-pub const FIRST_SERVER_HELPER: usize = 37;
+pub const FIRST_SERVER_HELPER: usize = Helper::Esc as usize;
 
 /// The first helper that lives in `<module_source>/interp`. The reference
 /// backend is DEV and test only, so its entry point is a third source and never
 /// reaches a production bundle through the other two.
-pub const FIRST_INTERP_HELPER: usize = 59;
+pub const FIRST_INTERP_HELPER: usize = Helper::Interp as usize;
 
 /// The names that exist in BOTH runtime halves: the three ABI constructors and
 /// `flow.ts`'s four primitives with `each`'s count symbol.
@@ -184,20 +184,17 @@ pub enum Helper {
     /// than against what the framework last applied, and preserves the caret of
     /// whatever the user is inside. Emitted only for the names that need it.
     SetLive = 21,
-    SetBool = 22,
-    SetClass = 23,
-    SetStyle = 24,
-    SetStyleProp = 25,
-    SetClassList = 26,
-    SetHtml = 27,
+    SetClass = 22,
+    SetStyle = 23,
+    SetHtml = 24,
     /// `_$bindProp($s, el, _$setAttr, "id", v)` — the ONE question kept
     /// at run time: whether the value that arrived is a live Cell. The channel
     /// is the compiler's and is passed in.
-    BindProp = 28,
+    BindProp = 25,
     /// `bind:` — the two-way channel, property and reporting event resolved.
-    BindValue = 29,
+    BindValue = 26,
     /// A scope-owned `ref` registration (B3, E2 #7).
-    Ref = 30,
+    Ref = 27,
     /// `_$formAction($s, el, value)`. `action` on a
     /// `<form>` is a URL or a SUBMIT HANDLER, and nothing about the expression
     /// tells them apart: an `action()` is `(...args) => Promise<R>`, so its
@@ -205,12 +202,12 @@ pub enum Helper {
     /// exactly
     /// as it does for `on*`. It takes a scope because the listener it installs
     /// is owned by the position (B4).
-    FormAction = 31,
+    FormAction = 28,
     /// A scope-owned `addEventListener` (B4, E2 #6).
-    Listen = 32,
+    Listen = 29,
     /// The delegated/direct choice made at compile time, applied to a value the
     /// compiler could not prove is a handler.
-    BindEvent = 33,
+    BindEvent = 30,
     // ── the hydration-only walk ───────────────────────────────────────────
     //
     // Under `hydratable` the template walk
@@ -224,9 +221,9 @@ pub enum Helper {
     // the flag off not one of these appears.
     /// `_$child(base, k)` — the k-th logical child, from the start when `k >= 0`
     /// and from the end when `k < 0` (`-1` is the last).
-    Child = 34,
+    Child = 31,
     /// `_$sib(base, k)` — `k` logical siblings forward, or `-k` backward.
-    Sib = 35,
+    Sib = 32,
     /// `_$hole(parent, anchor, build)` — claim the server's range at a hole,
     /// THEN build the value that goes in it.
     ///
@@ -236,57 +233,55 @@ pub enum Helper {
     /// the cursor rather than from its own hole. The compiler knows the position
     /// statically — that is what an address IS — so it says so, instead of the
     /// runtime guessing from the shape of the tree it is walking.
-    Hole = 36,
+    Hole = 33,
     // ── `<server_source>` ─────────────────────────────────────────────────
-    Esc = 37,
-    EscAttr = 38,
-    Attr = 39,
-    Cls = 40,
-    Content = 41,
-    Html = 42,
-    RawText = 43,
-    SpreadAttrs = 44,
-    SsrFor = 45,
-    SsrRepeat = 46,
-    SsrShow = 47,
-    SsrSwitch = 48,
-    SsrMatch = 49,
-    ClsList = 50,
-    AttrLit = 51,
-    SsrLoading = 52,
-    SsrErrored = 53,
-    SsrPortal = 54,
+    Esc = 34,
+    EscAttr = 35,
+    Attr = 36,
+    Content = 37,
+    Html = 38,
+    RawText = 39,
+    SpreadAttrs = 40,
+    SsrFor = 41,
+    SsrRepeat = 42,
+    SsrShow = 43,
+    SsrSwitch = 44,
+    SsrMatch = 45,
+    AttrLit = 46,
+    SsrLoading = 47,
+    SsrErrored = 48,
+    SsrPortal = 49,
     /// `ssrIsland(s, props)` — the COMPONENT form, for a build whose flow pass
     /// is off. [`Island`] is the region form and lives in [`SHARED_ABI`]; this is
     /// the string backend's answer when the construct was never lowered, exactly
     /// as [`SsrPortal`] is for `Portal`.
-    SsrIsland = 55,
-    SsrDynamic = 56,
-    SsrReveal = 57,
+    SsrIsland = 50,
+    SsrDynamic = 51,
+    SsrReveal = 52,
     /// `_$formAttr(value)` — the string half of `formAction`. A URL is written
     /// and a handler is not: there is no byte on the wire that means client
     /// behaviour, and `ssr.ts` states the consequence for a pre-hydration submit.
-    FormAttr = 58,
+    FormAttr = 53,
     // ── `<module_source>/interp` ──────────────────────────────────────────
-    Interp = 59,
+    Interp = 54,
     /// `_$getOwner()` — the ambient owner, read where a scope VALUE is needed
     /// rather than a construction under one. The delegated-event dispatcher
     /// stores it on the element (`__bqs`) so a throw routes to the scope's
     /// catcher; nothing else needs it, because every construct reads the
     /// ambient itself.
-    GetOwner = 60,
-    /// `_$readKeys(value)` — a `style` or `classList` object with the getters
+    GetOwner = 55,
+    /// `_$readKeys(value)` — a `style` object with the getters
     /// it holds called, in the READ half of the binding that writes it. A key
     /// may be live on its own, and the read is where that becomes a
     /// dependency; the write half is handed values only.
-    ReadKeys = 61,
+    ReadKeys = 56,
     /// `_$classToString(value)` — a lone `class` binding's value in its applied
     /// form, computed in the READ half so the effect's own equality decides
     /// whether the write half runs at all.
-    ClassToString = 62,
+    ClassToString = 57,
     /// `_$untrack(() => Comp(props))` — a component called where a compute may
     /// be running, so a signal its setup reads does not rebuild it.
-    Untrack = 63,
+    Untrack = 58,
 }
 
 const IMPORTED: [&str; HELPER_COUNT] = [
@@ -312,11 +307,8 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "setAttr",
     "setDomProp",
     "setLive",
-    "setBool",
     "setClass",
     "setStyle",
-    "setStyleProp",
-    "setClassList",
     "setHtml",
     "bindProp",
     "bindValue",
@@ -330,7 +322,6 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "esc",
     "escAttr",
     "attr",
-    "cls",
     "content",
     "html",
     "rawText",
@@ -340,7 +331,6 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "ssrShow",
     "ssrSwitch",
     "ssrMatch",
-    "clsList",
     "attrLit",
     "ssrLoading",
     "ssrErrored",

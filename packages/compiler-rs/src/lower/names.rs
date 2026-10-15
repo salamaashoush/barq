@@ -4,20 +4,16 @@ use crate::ir::Chan;
 
 pub use crate::tables::{is_dom_prop, is_math_tag, is_svg_tag};
 
-/// What a `namespace:name` attribute means. The prefix is the author overriding
-/// a decision the compiler would otherwise take from the name, and it is
-/// the whole custom-element story: a name the compiler cannot classify has no
-/// correct default, so the author gets to say.
+/// What a `namespace:name` attribute means. `prop:` is the author overriding a
+/// decision the compiler would otherwise take from the name, which is how a
+/// custom element is handed a property; every other prefix is part of an
+/// attribute's name, as it is in Solid 2.0.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Prefixed<'a> {
     /// no prefix, or one that names nothing this compiler knows
     Plain(&'a str),
-    /// `prop:` / `attr:` / `bool:` / `style:` — a forced value channel
+    /// `prop:` — a forced value channel
     Chan(&'a str, Chan),
-    /// `on:` — a verbatim event name, with NO lowercasing
-    Event(&'a str),
-    /// `capture:` — the same, bound in the CAPTURE phase
-    CaptureEvent(&'a str),
     /// `bind:x` — the two-way channel; `bind:this` is a ref
     Bind(&'a str),
     Ref,
@@ -37,15 +33,10 @@ pub fn prefixed(name: &str) -> Prefixed<'_> {
     let rest = &name[colon + 1..];
     match &name[..colon] {
         "prop" => Prefixed::Chan(rest, Chan::Prop),
-        "attr" => Prefixed::Chan(rest, Chan::Attr),
-        "bool" => Prefixed::Chan(rest, Chan::Bool),
-        "style" => Prefixed::Chan(rest, Chan::StyleProp),
-        "on" => Prefixed::Event(rest),
-        "capture" => Prefixed::CaptureEvent(rest),
         "bind" if rest == "this" => Prefixed::Ref,
         "bind" => Prefixed::Bind(rest),
-        // `xlink:href` and friends: a name with a colon the runtime writes
-        // verbatim, exactly as it does today.
+        // `xlink:href`, and `on:click` with it: a name with a colon the runtime
+        // writes verbatim.
         _ => Prefixed::Plain(name),
     }
 }
@@ -56,7 +47,6 @@ pub fn channel_of(name: &str, is_svg: bool, tag: &str) -> Chan {
     match name {
         "class" | "className" => Chan::Class,
         "style" => Chan::Style,
-        "classList" => Chan::ClassList,
         "dangerouslySetInnerHTML" => Chan::Html,
         // The third parser fact — see `state_attribute`.
         _ if state_attribute(name, tag) => Chan::Attr,
@@ -125,11 +115,6 @@ pub fn to_kebab<'a>(name: &str, allocator: &'a Allocator) -> &'a str {
         out.push(byte.to_ascii_lowercase() as char);
     }
     allocator.alloc_str(&out)
-}
-
-/// `cssName` (`dom.ts`): a custom property is written as the author spelled it.
-pub fn css_name<'a>(name: &'a str, allocator: &'a Allocator) -> &'a str {
-    if name.starts_with("--") { name } else { to_kebab(name, allocator) }
 }
 
 /// `setElementAttr` kebab-cases every SVG attribute except `class` and
@@ -342,7 +327,6 @@ mod tests {
         // `setProp(el, "on-click", h)` binds an event called "-click".
         let allocator = Allocator::new();
         assert_eq!(attr_name("onClick", true, &allocator), "onClick");
-        assert_eq!(attr_name("classList", true, &allocator), "classList");
         assert_eq!(
             attr_name("dangerouslySetInnerHTML", true, &allocator),
             "dangerouslySetInnerHTML"
@@ -360,8 +344,6 @@ mod tests {
         assert!(!bakeable("style", false, "div"));
         assert!(!bakeable("onClick", false, "div"));
         assert!(!bakeable("ref", false, "div"));
-        assert!(!bakeable("classList", false, "div"));
-        assert!(!bakeable("classList", true, "path"));
         assert!(!bakeable("dangerouslySetInnerHTML", true, "path"));
         assert!(bakeable("class", false, "div"));
         assert!(bakeable("class", true, "path"));

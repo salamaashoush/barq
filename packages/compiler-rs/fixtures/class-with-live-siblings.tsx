@@ -9,27 +9,26 @@ export const [label, setLabel] = createSignal("first")
  * Until M5 this fixture asserted the OPPOSITE: `class` had to stay out of the
  * group, because `setClass` wrote `element.className` whole and a compiled
  * effect covering `class` alongside `title` re-wrote it whenever the TITLE
- * changed — wiping the `extra` key `classList` had put there. That is the
- * defect B1 names, and the exclusion was a workaround for it.
+ * changed, re-applying the whole list for a change that was not its own. That
+ * is the defect B1 names, and the exclusion was a workaround for it.
  *
  * Two structural changes remove it rather than avoid it:
  *
  *  - the fused record gives every field its own guard, so `class` is written
  *  ONLY when the class value changed. `title` changing cannot reach it;
  *  - the class channel emits only the tokens it OWNS, diffing what it applied
- *  last time against what it applies now, so even a real class change leaves
- *  `extra` alone.
+ *  last time against what it applies now, so a real class change swaps the
+ *  tone and leaves `extra` where it is.
  *
  * Step 0 changes only `label`; step 1 changes only `tone`. `extra` survives
- * both, and it survived neither at M4.
+ * both.
  */
 export default function ClassWithLiveSiblings() {
   return (
     <div
-      class={() => tone()}
+      class={() => [tone(), { extra: true }]}
       title={() => label()}
       id={() => label()}
-      classList={{ extra: true }}
     >
       x
     </div>

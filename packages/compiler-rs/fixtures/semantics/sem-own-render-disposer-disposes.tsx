@@ -14,7 +14,7 @@
  *
  * O5, O3.7.
  */
-import { createRoot, DEV, createTrackedEffect, onCleanup, render, createRenderEffect, createSignal, runWithOwner } from "@barqjs/core"
+import { createRoot, DEV, createEffect, onCleanup, render, createRenderEffect, createSignal, runWithOwner } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 import { formatThrown } from "../../test/semantics-support.ts"
@@ -35,8 +35,8 @@ function painted(): string | null {
 }
 
 function Leaf() {
-  createTrackedEffect(() => {
-    runs.push(`effect:${count()}`)
+  createEffect(count, (value) => {
+    runs.push(`effect:${value}`)
   })
   onCleanup(() => cleanups.push("leaf"))
   return <span class="leaf">{() => count()}</span>
@@ -305,8 +305,8 @@ export const claims: Claim[] = [
       // Ownerless, and in the same synchronous turn as the mount below: the
       // orphan list bounds the claim in TIME, not by PROVENANCE, so this is the
       // ordinary module-initialisation shape and not a contrived one.
-      createTrackedEffect(() => {
-        library.push(pulse())
+      createEffect(pulse, (value) => {
+        library.push(value)
       })
       onCleanup(() => {
         libraryCleanups++

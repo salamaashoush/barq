@@ -1,9 +1,8 @@
 /**
  * The provider bug in the shape every real application has it: a user-written
  * wrapper. `<ThemeProvider><Label/></ThemeProvider>`, where `ThemeProvider`
- * renders `<Theme.Provider value={…}>{props.children}</Theme.Provider>`. Every
- * `AuthProvider`, `QueryClientProvider` and `StoreProvider` in existence is
- * this shape.
+ * renders `<Theme value={…}>{props.children}</Theme>`. Every `AuthProvider`,
+ * `QueryClientProvider` and `StoreProvider` in existence is this shape.
  *
  * It is here because the channel could not see it. The static tree attributed
  * the call site's children to the CALL SITE, which is where the runtime wrongly
@@ -32,7 +31,7 @@ function Label() {
 }
 
 function ThemeProvider(props: { children: unknown }) {
-  return <Theme.Provider value={() => "provided-theme"}>{props.children}</Theme.Provider>
+  return <Theme value={() => "provided-theme"}>{props.children}</Theme>
 }
 
 export default function OwnProviderWrapper() {

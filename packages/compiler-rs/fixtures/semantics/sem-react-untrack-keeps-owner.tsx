@@ -9,7 +9,7 @@
  *
  * O6.
  */
-import { createTrackedEffect, onCleanup, render, createSignal, untrack } from "@barqjs/core"
+import { createEffect, onCleanup, render, createSignal, untrack } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 
@@ -23,9 +23,12 @@ const Subject = () => {
   untrack(() => {
     onCleanup(() => cleanups.push("registered-inside-untrack"))
   })
-  createTrackedEffect(() => {
-    runs.push(untrack(() => count()))
-  })
+  createEffect(
+    () => untrack(() => count()),
+    (value) => {
+      runs.push(value)
+    },
+  )
   return <span class="subject">subject</span>
 }
 

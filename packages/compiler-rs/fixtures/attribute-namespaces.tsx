@@ -9,8 +9,10 @@ let grid: Element | null = null
 /**
  * B5. A name the compiler cannot classify has
  * no correct default, so the author says which channel it is: `prop:` writes the
- * property, `attr:` the attribute, `bool:` its presence, `on:` a verbatim event
- * name with no lowercasing.
+ * property. Every other name on a custom element is an attribute, a boolean
+ * value is its presence, and an event whose name is not a JSX handler name is
+ * bound in a `ref`, verbatim, with no lowercasing; the function the `ref`
+ * returns removes it when the element's scope is disposed (B4).
  *
  * `prop:rows` is the case the rule exists for. `<my-grid rows={n}>` under a
  * name table becomes `setAttribute("rows", …)` — and for an object value,
@@ -26,12 +28,16 @@ export default function AttributeNamespaces() {
           grid = el
         }}
         prop:rows={() => rows()}
-        attr:label="grid"
-        bool:compact={() => compact()}
+        label="grid"
+        compact={() => compact()}
       />
       <button
         type="button"
-        on:my-beep={() => setBeeps(beeps() + 1)}
+        ref={(el: Element) => {
+          const beep = () => setBeeps(beeps() + 1)
+          el.addEventListener("my-beep", beep)
+          return () => el.removeEventListener("my-beep", beep)
+        }}
         data-beeps={() => String(beeps())}
       >
         beep
@@ -72,6 +78,6 @@ export const optimality = {
   // The channels are resolved at compile time, so the emitted module names the
   // write and never the classification: no `setProp`, and `my-beep` is never
   // lowercased into `mybeep`.
-  emits: ['setDomProp(', "setBool(", 'listen(', '"my-beep"', 'label="grid"'],
-  absent: ["setProp(", '"mybeep"', "addEventListener", "delegateEvents"],
+  emits: ["setDomProp(", '"my-beep"', 'label="grid"'],
+  absent: ["setProp(", '"mybeep"', "listen(", "delegateEvents"],
 }

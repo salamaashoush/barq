@@ -277,7 +277,7 @@ describe("the M3 gate", () => {
     expect(run, `${GATE_FIXTURE} did not run`).toBeDefined();
     expect(
       (run?.findings ?? []).map((f) => `${f.rule}: ${f.detail}`).join("\n"),
-      `${GATE_FIXTURE} is <Theme.Provider><Label/></Theme.Provider> written the way a user ` +
+      `${GATE_FIXTURE} is <Theme><Label/></Theme> written the way a user ` +
         "writes it. `children` is a Block, so `Label` is built by `provide` under the instance " +
         "scope and not at the call site. A finding here is the Provider bug back.",
     ).toBe("");
@@ -290,7 +290,7 @@ describe("the M3 gate", () => {
     expect(
       (run?.findings ?? []).map((f) => `${f.rule}: ${f.detail}`).join("\n"),
       `${WRAPPER_GATE_FIXTURE} is <ThemeProvider><Label/></ThemeProvider> over ` +
-        "<Theme.Provider>{props.children}</Theme.Provider> — the shape every AuthProvider and " +
+        "<Theme>{props.children}</Theme> — the shape every AuthProvider and " +
         "QueryClientProvider in existence has. Forwarding is identity, so the Block reaches the " +
         "provider unbuilt and runs under the scope the provider entered.",
     ).toBe("");
@@ -587,8 +587,8 @@ describe("self-check: the assertion would notice", () => {
     // value does, and the previously-clean run must stop being clean.
     const clean = ownershipSource("own-provider-thunked");
     const moved = clean.replace(
-      '<Theme.Provider value={() => "provided-theme"}>{() => <Label />}</Theme.Provider>',
-      '<Theme.Provider value={() => "provided-theme"}>{() => <i />}</Theme.Provider>\n      <Label />',
+      '<Theme value={() => "provided-theme"}>{() => <Label />}</Theme>',
+      '<Theme value={() => "provided-theme"}>{() => <i />}</Theme>\n      <Label />',
     );
     expect(moved, "the mutation matched nothing").not.toBe(clean);
     const { tree } = staticTree(moved, "own-provider-thunked.tsx");

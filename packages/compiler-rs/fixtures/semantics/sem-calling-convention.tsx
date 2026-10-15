@@ -20,7 +20,7 @@
  *
  * C1, C2, C3.
  */
-import { mergeProps, omit, render, splitProps } from "@barqjs/core"
+import { merge, omit, render } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 import { formatThrown } from "../../test/semantics-support.ts"
@@ -65,8 +65,8 @@ function Middle(props: Carried & { drop?: () => string }) {
 }
 
 function Outer(props: Carried) {
-  const [taken, others] = splitProps(props, ["keep"])
-  const merged = mergeProps(others, { keep: taken.keep }) as unknown as Carried
+  const others = omit(props, "keep")
+  const merged = merge(others, { keep: props.keep }) as unknown as Carried
   return <Middle {...merged} drop={() => "dropped"} />
 }
 
@@ -157,14 +157,14 @@ export const claims: Claim[] = [
   {
     id: "forwarding-through-three-wrappers-reads-nothing",
     rule: "C3",
-    says: "a prop is a Cell and forwarding is a copy of the carrier, so spread, omit, splitProps and mergeProps evaluate nothing",
+    says: "a prop is a Cell and forwarding is a copy of the carrier, so spread, omit and merge evaluate nothing",
     async check(kit) {
       const run = await mount(kit)
       kit.precondition(run.text.length > 0 || run.html.length > 0, BUILT)
       if (run.readsAtBuild !== 0) {
         kit.fail(
-          `a counting Cell forwarded through three compiled wrappers (spread, omit, splitProps, ` +
-            `mergeProps) was read ${run.readsAtBuild} time(s) during construction, expected 0 ` +
+          `a counting Cell forwarded through three compiled wrappers (spread, omit, merge) ` +
+            `was read ${run.readsAtBuild} time(s) during construction, expected 0 ` +
             `(${run.thrown}). A getter-valued prop is read by every operation that copies own ` +
             `enumerable properties; a Cell is not`,
         )

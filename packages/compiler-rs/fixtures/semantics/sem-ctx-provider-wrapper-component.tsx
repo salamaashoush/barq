@@ -2,12 +2,12 @@
  * `<ThemeProvider><Label/></ThemeProvider>` — the provider bug in the shape
  * every application actually has it.
  *
- * `sem-ctx-provider-direct-child.tsx` writes `<Ctx.Provider>` and its child on
+ * `sem-ctx-provider-direct-child.tsx` writes `<Ctx>` and its child on
  * adjacent lines, which is the shape that makes the defect explainable. It is
  * not the shape anybody writes. What people write is a wrapper — `AuthProvider`,
  * `QueryClientProvider`, `StoreProvider`, `ThemeProvider` — a component whose
- * body is `<Ctx.Provider value={…}>{props.children}</Ctx.Provider>` and whose
- * call site is a plain element with children.
+ * body is `<Ctx value={…}>{props.children}</Ctx>` and whose call site is a
+ * plain element with children.
  *
  * That distance is the whole point. The thunk that works around O2 has to be
  * written at the CALL SITE of a component whose body the author is not looking
@@ -50,7 +50,7 @@ function Label() {
 }
 
 function ThemeProvider(props: { children: unknown }) {
-  return <Theme.Provider value="provided-theme">{props.children as never}</Theme.Provider>
+  return <Theme value="provided-theme">{props.children as never}</Theme>
 }
 
 function Direct() {

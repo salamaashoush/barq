@@ -30,7 +30,7 @@ function Label() {
 export default function OwnProviderThunked() {
   return (
     <div class="host">
-      <Theme.Provider value={() => "provided-theme"}>{() => <Label />}</Theme.Provider>
+      <Theme value={() => "provided-theme"}>{() => <Label />}</Theme>
     </div>
   )
 }

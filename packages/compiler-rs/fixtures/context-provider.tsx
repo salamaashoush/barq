@@ -12,7 +12,7 @@ function Badge() {
 export default function ContextProvider() {
   return (
     <div>
-      <Theme.Provider value={() => theme()}>{() => <Badge />}</Theme.Provider>
+      <Theme value={() => theme()}>{() => <Badge />}</Theme>
       <Badge />
     </div>
   )
@@ -24,11 +24,9 @@ export const optimality = {
   target: 1,
   milestone: 5,
   templates: 2,
-  // A MEMBER tag. `createElement` calls `tag(finalProps)` with no receiver, so
-  // the compiled call must not hand `Theme.Provider` a `this` the oracle never
-  // gave it — that is what the comma expression says. `useContext` returns
-  // whatever was provided, so the read inside `Badge` stays Opaque and is
-  // emitted exactly as written.
-  emits: ["(0, Theme.Provider)(", "value: theme"],
-  absent: ["Theme.Provider({", "get value()"],
+  // The context is its own provider, called like any component. `useContext`
+  // returns whatever was provided, so the read inside `Badge` stays Opaque and
+  // is emitted exactly as written.
+  emits: ["Theme({", "value: theme"],
+  absent: ["Theme.Provider", "get value()"],
 }

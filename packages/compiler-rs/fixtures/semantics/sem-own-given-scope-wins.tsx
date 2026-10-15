@@ -23,7 +23,7 @@
  *
  * O4.5.
  */
-import { block, branch, createSignal, createTrackedEffect, dispose, getOwner, insert, onCleanup, rootScope, runWithOwner, setProp } from "@barqjs/core"
+import { block, branch, createEffect, createSignal, dispose, getOwner, insert, onCleanup, rootScope, runWithOwner, setProp } from "@barqjs/core"
 import type { Scope } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
@@ -62,8 +62,8 @@ export const ambientCleanups: string[] = []
 /** A compiled component whose body reads the ambient owner. */
 function AmbientBody() {
   onCleanup(() => ambientCleanups.push("ambient"))
-  createTrackedEffect(() => {
-    ambientRuns.push(`effect:${pulse()}`)
+  createEffect(pulse, (value) => {
+    ambientRuns.push(`effect:${value}`)
   })
   return <i class="ambient">ambient</i>
 }

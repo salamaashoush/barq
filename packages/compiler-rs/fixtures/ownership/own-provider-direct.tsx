@@ -1,6 +1,6 @@
 /**
- * `<Ctx.Provider value={…}><Child/></Ctx.Provider>` — the M0 gate for L2b, and
- * the shape the whole redesign exists for.
+ * `<Ctx value={…}><Child/></Ctx>` — the M0 gate for L2b, and the shape the
+ * whole redesign exists for.
  *
  * The context has a DEFAULT, which is what makes this fixture the one worth
  * writing. With no default the defect announces itself as a
@@ -15,7 +15,7 @@
  * `<span class="label"> </span>` occurs at `root > provide` and at no other
  * position in this module; the runtime clones it at `root`, because
  * `Label({})` is an *argument* of the provider call and runs before
- * `scope` inside `Provider` has made the scope that
+ * `scope` inside the provider has made the scope that
  * `owner._context[id] = props.value` writes into.
  *
  * O2, O2.1 and X1, X3; C6.
@@ -33,9 +33,9 @@ function Label() {
 export default function OwnProviderDirect() {
   return (
     <div class="host">
-      <Theme.Provider value={() => "provided-theme"}>
+      <Theme value={() => "provided-theme"}>
         <Label />
-      </Theme.Provider>
+      </Theme>
     </div>
   )
 }

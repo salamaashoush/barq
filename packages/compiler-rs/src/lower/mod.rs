@@ -610,30 +610,24 @@ impl<'a> Lower<'a, '_> {
             // plus the author's override, and never again.
             let (kind, key) = match names::prefixed(raw) {
                 names::Prefixed::Ref => (AttrKind::Ref, "ref"),
-                // The type is resolved here and never re-derived: `on:` is
-                // verbatim, `onX` is `key.slice(2).toLowerCase()`.
-                names::Prefixed::Event(event) => (AttrKind::Event, event),
-                names::Prefixed::CaptureEvent(event) => (AttrKind::CaptureEvent, event),
                 names::Prefixed::Bind(name) => (AttrKind::Bind, name),
-                names::Prefixed::Chan(name, chan) => (
-                    AttrKind::Chan(chan),
-                    match chan {
-                        crate::ir::Chan::Attr | crate::ir::Chan::Bool => {
-                            names::attr_name(name, in_svg, self.allocator)
-                        }
-                        crate::ir::Chan::StyleProp => names::css_name(name, self.allocator),
-                        _ => name,
-                    },
-                ),
+                names::Prefixed::Chan(name, chan) => (AttrKind::Chan(chan), name),
                 // Before the plain `on` rule: `onKeyDownCapture` is a capture
                 // binding for `keydown`, not a bubble one for `keydowncapture`.
-                names::Prefixed::Plain(name) if names::capture_event(name).is_some() => (
-                    AttrKind::CaptureEvent,
-                    self.allocator
-                        .alloc_str(&names::capture_event(name).expect("checked by the guard"))
-                        as &'a str,
-                ),
-                names::Prefixed::Plain(name) if name.starts_with("on") => (
+                // The type is resolved here and never re-derived: `onX` is
+                // `key.slice(2).toLowerCase()`, and a name with a colon in it is
+                // an attribute.
+                names::Prefixed::Plain(name)
+                    if !name.contains(':') && names::capture_event(name).is_some() =>
+                {
+                    (
+                        AttrKind::CaptureEvent,
+                        self.allocator
+                            .alloc_str(&names::capture_event(name).expect("checked by the guard"))
+                            as &'a str,
+                    )
+                }
+                names::Prefixed::Plain(name) if name.starts_with("on") && !name.contains(':') => (
                     AttrKind::Event,
                     self.allocator.alloc_str(&name[2..].to_ascii_lowercase()) as &'a str,
                 ),
@@ -654,12 +648,10 @@ impl<'a> Lower<'a, '_> {
                     names::attr_name(name, in_svg, self.allocator),
                 ),
             };
-            // Only a plain name or an explicit `attr:` may become template
-            // bytes: every other channel writes something the HTML parser does
-            // not produce.
+            // Only a plain name may become template bytes: every other channel
+            // writes something the HTML parser does not produce.
             let bakeable = !spread_seen
                 && match (kind, names::prefixed(raw)) {
-                    (AttrKind::Chan(crate::ir::Chan::Attr), names::Prefixed::Chan(..)) => true,
                     (AttrKind::Chan(_), names::Prefixed::Plain(_)) => {
                         names::bakeable(names::normalize(raw), in_svg, tag)
                     }
@@ -836,7 +828,6 @@ impl<'a> Lower<'a, '_> {
             AttrKind::Event => format!("on:{name}"),
             AttrKind::CaptureEvent => format!("oncapture:{name}"),
             AttrKind::Ref => "ref".to_string(),
-            AttrKind::Chan(crate::ir::Chan::StyleProp) => return None,
             AttrKind::Chan(_) => name.to_string(),
             _ => return None,
         };

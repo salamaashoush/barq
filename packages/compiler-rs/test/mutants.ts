@@ -227,10 +227,10 @@ const MUTANTS: Mutant[] = [
   },
   {
     /**
-     * B2's exact predecessor defect, re-introduced. `class`, `style`,
-     * `classList` and `dangerouslySetInnerHTML` apply a NORMALISED value — the
-     * class string, the css map, the toggled key set — so their record slot has
-     * to hold what the CHANNEL returned, not what the compute produced. Downgrade
+     * B2's exact predecessor defect, re-introduced. `class`, `style` and
+     * `dangerouslySetInnerHTML` apply a NORMALISED value — the class string, the
+     * css map — so their record slot has to hold what the CHANNEL returned, not
+     * what the compute produced. Downgrade
      * `Thread` to `Identity` and the channel is handed `undefined` as its
      * previous value on every run: it can only ever ADD, and it re-writes the
      * whole class attribute on any field's account. That is what `STATEFUL_DIFF`
@@ -252,8 +252,8 @@ const MUTANTS: Mutant[] = [
     /**
      * channel resolution's whole claim is that the channel is a compile-time fact. Collapse
      * every channel onto `setAttr` and the name reaches the DOM as an attribute
-     * whatever it meant: a `DOM_PROPS` name stops writing the property, a
-     * `classList` object is stringified into `class`, `style` is written whole.
+     * whatever it meant: a `DOM_PROPS` name stops writing the property and
+     * `style` is written whole.
      */
     id: "channel-drops-its-resolution",
     pass: "(ungated front end)",

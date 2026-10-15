@@ -14,7 +14,8 @@
  *  - Elements from a closed tag set, nested under a two-level content model
  *    (`flow` / `phrasing`), so no generated tree can trip HTML tree
  *    construction. Static attributes, constant-expression attributes,
- *    live (thunked) attributes, `style` objects and `classList` objects.
+ *    live (thunked) attributes, `style` objects and `class` maps, alone or in a
+ *    list beside a static class.
  *  - Text children; constant holes (`{"a&b"}`, `{42}`, `{null}`) which P3 may
  *    fold; live holes in BOTH the explicit-thunk form `{() => n0()}` and the
  *    direct form `{n0()}`, since the direct form is what compiler-mode
@@ -232,7 +233,11 @@ class Gen {
   private attributes(context: Context, inRow: boolean): string {
     const out: string[] = [];
     let titled = false;
-    if (this.chance(6)) out.push(` class="${this.word()}-${this.next()}"`);
+    let staticClass: string | null = null;
+    if (this.chance(6)) {
+      staticClass = `${this.word()}-${this.next()}`;
+      out.push(` class="${staticClass}"`);
+    }
     if (this.chance(3)) out.push(` id="id-${this.next()}"`);
     if (this.chance(3)) out.push(` data-k="${this.word()}"`);
     if (this.chance(3)) {
@@ -249,8 +254,10 @@ class Gen {
       this.features.add("style object");
       out.push(` style={{ color: "red", marginTop: ${this.number()}() }}`);
     } else if (this.chance(2)) {
-      this.features.add("classList object");
-      out.push(` classList={{ on: ${this.flag()}(), off: false }}`);
+      this.features.add("class map");
+      const map = `{ on: ${this.flag()}(), off: false }`;
+      if (staticClass === null) out.push(` class={${map}}`);
+      else out[0] = ` class={["${staticClass}", ${map}]}`;
     }
     // Handlers are not a flow-content concept — a `<span>` inside a `For` row is
     // where a capturing one actually occurs, and gating this on `flow` left the

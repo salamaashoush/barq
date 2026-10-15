@@ -360,21 +360,10 @@ fn open_tag<'a>(
         return;
     }
 
-    // The class arrives in as many pieces as the author wrote (a baked literal,
-    // a dynamic `class`, a `classList` object) and markup has exactly one
-    // `class=` slot, so the pieces are joined into one `cls(...)` at the
-    // position of the first of them.
-    let split_class = class_parts(ctx, unit, node);
-    let mut emitted_class = false;
-
     for (_, item) in items {
         match item {
             Item::Baked(index) => {
                 let attr = element.attrs[index];
-                if split_class.is_some() && is_class(ctx, attr.name) {
-                    emit_class(ctx, unit, chunks, node, &mut emitted_class);
-                    continue;
-                }
                 chunks.text(" ");
                 chunks.text(ctx.module.interner.name(attr.name).text);
                 if let SkelAttrValue::Str(value) = attr.value {
@@ -384,12 +373,6 @@ fn open_tag<'a>(
                 }
             }
             Item::Patch(index) => {
-                if split_class.is_some()
-                    && patch_name(unit, index).is_some_and(|name| is_class(ctx, name))
-                {
-                    emit_class(ctx, unit, chunks, node, &mut emitted_class);
-                    continue;
-                }
                 let patch = unit.patch[index];
                 let mut backend = Ssr { ctx, unit, chunks, place: Place::OpenTag(tag) };
                 lower(&mut backend, At::one(patch));
@@ -529,13 +512,6 @@ fn attribute_slot(op: Op) -> Slot {
         // in the child list (`node_into`), or is a grouping marker with no
         // effects to group. `Region` is a child position like `Insert`.
         Op::Insert { .. } | Op::Region { .. } | Op::EffectGroup { .. } => Slot::Elsewhere,
-    }
-}
-
-fn patch_name(unit: &Unit<'_>, index: usize) -> Option<u32> {
-    match attribute_slot(unit.patch[index].op) {
-        Slot::Named(name) => Some(name),
-        Slot::Unnamed | Slot::Elsewhere => None,
     }
 }
 
@@ -981,91 +957,6 @@ fn name_start(ch: char) -> bool {
 fn name_rest(ch: char) -> bool {
     matches!(ch,
         '-' | '.' | '0'..='9' | '\u{b7}' | '\u{300}'..='\u{36f}' | '\u{203f}'..='\u{2040}')
-}
-
-fn is_class(ctx: &Emit<'_, '_>, name: u32) -> bool {
-    matches!(ctx.module.interner.name(name).text, "class" | "classList")
-}
-
-/// `Some` when the element's class really does arrive in more than one piece.
-fn class_parts(ctx: &Emit<'_, '_>, unit: &Unit<'_>, node: NodeId) -> Option<()> {
-    let mut list = false;
-    let mut pieces = 0;
-    for attr in unit.skeleton.node(node).as_element()?.attrs {
-        if is_class(ctx, attr.name) {
-            pieces += 1;
-        }
-    }
-    for index in 0..unit.patch.len() {
-        if unit.patch[index].target != node {
-            continue;
-        }
-        let Some(name) = patch_name(unit, index) else { continue };
-        if !is_class(ctx, name) {
-            continue;
-        }
-        pieces += 1;
-        list |= ctx.module.interner.name(name).text == "classList";
-    }
-    (list && pieces > 1).then_some(())
-}
-
-fn emit_class<'a>(
-    ctx: &mut Emit<'a, '_>,
-    unit: &mut Unit<'a>,
-    chunks: &mut Chunks<'a>,
-    node: NodeId,
-    emitted: &mut bool,
-) {
-    if *emitted {
-        return;
-    }
-    *emitted = true;
-    let span = unit.spans[node as usize];
-    let call = class_call(ctx, unit, node, span);
-    chunks.hole(call);
-}
-
-fn class_call<'a>(
-    ctx: &mut Emit<'a, '_>,
-    unit: &mut Unit<'a>,
-    node: NodeId,
-    span: Span,
-) -> Expression<'a> {
-    let element = *unit.skeleton.node(node).as_element().expect("an element owns its class");
-    let mut arguments: Vec<Argument<'a>> = Vec::new();
-    for attr in element.attrs {
-        if !is_class(ctx, attr.name) {
-            continue;
-        }
-        if let SkelAttrValue::Str(value) = attr.value {
-            let text = ctx.module.interner.str(value);
-            let text = decode_entities(ctx, text);
-            arguments.push(Argument::from(ctx.string(text, span)));
-        }
-    }
-    for index in 0..unit.patch.len() {
-        if unit.patch[index].target != node {
-            continue;
-        }
-        let Some(name) = patch_name(unit, index) else { continue };
-        if !is_class(ctx, name) {
-            continue;
-        }
-        let Some(value) = unit.patch[index].op.value() else { continue };
-        let at = unit.patch[index].span;
-        let mut piece = take(ctx, unit, value, at);
-        // `classList` is not `class`: a per-key FUNCTION is called and the
-        // result decides, where `classToString` reads the function itself as a
-        // truthy key. The two names really do disagree about the same object.
-        if ctx.module.interner.name(name).text == "classList" {
-            let callee = ctx.helper(Helper::ClsList, at);
-            piece = ctx.call(callee, vec![Argument::from(piece)], at);
-        }
-        arguments.push(Argument::from(piece));
-    }
-    let callee = ctx.helper(Helper::Cls, span);
-    ctx.call(callee, arguments, span)
 }
 
 /// The one sequence a raw-text element's content may not contain: the one that

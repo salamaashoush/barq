@@ -143,24 +143,24 @@ attrs 2: 0/0 button: type"
 `;
 
 exports[`rendered DOM golden class-empty-string: rendered DOM 1`] = `
-"initial: <div class="host"><span class="" data-p="static"></span><span class="" data-p="dynamic"></span><span class="" data-p="merged"></span><span data-p="not-an-object"></span></div>
-step 0: <div class="host"><span class="" data-p="static"></span><span class="b" data-p="dynamic"></span><span class="" data-p="merged"></span><span data-p="not-an-object"></span></div>
-step 1: <div class="host"><span class="" data-p="static"></span><span class="b" data-p="dynamic"></span><span class="on hit" data-p="merged"></span><span data-p="not-an-object"></span></div>
+"initial: <div class="host"><span class="" data-p="static"></span><span class="" data-p="dynamic"></span><span class="" data-p="merged"></span><span class="" data-p="map"></span></div>
+step 0: <div class="host"><span class="" data-p="static"></span><span class="b" data-p="dynamic"></span><span class="" data-p="merged"></span><span class="" data-p="map"></span></div>
+step 1: <div class="host"><span class="" data-p="static"></span><span class="b" data-p="dynamic"></span><span class="on hit" data-p="merged"></span><span class="a b" data-p="map"></span></div>
 attrs 0: 0 div: class
 attrs 0: 0/0 span: data-p,class
 attrs 0: 0/1 span: data-p,class
 attrs 0: 0/2 span: data-p,class
-attrs 0: 0/3 span: data-p
+attrs 0: 0/3 span: data-p,class
 attrs 1: 0 div: class
 attrs 1: 0/0 span: data-p,class
 attrs 1: 0/1 span: data-p,class
 attrs 1: 0/2 span: data-p,class
-attrs 1: 0/3 span: data-p
+attrs 1: 0/3 span: data-p,class
 attrs 2: 0 div: class
 attrs 2: 0/0 span: data-p,class
 attrs 2: 0/1 span: data-p,class
 attrs 2: 0/2 span: data-p,class
-attrs 2: 0/3 span: data-p"
+attrs 2: 0/3 span: data-p,class"
 `;
 
 exports[`rendered DOM golden class-list-array-object: rendered DOM 1`] = `
@@ -176,9 +176,9 @@ attrs 2: 0/1 span: class"
 `;
 
 exports[`rendered DOM golden class-list-prop: rendered DOM 1`] = `
-"initial: <div class="host"><span class="badge">keyed</span><span class="three">reactive</span></div>
-step 0: <div class="host"><span class="badge active">keyed</span><span class="one two">reactive</span></div>
-step 1: <div class="host"><span class="badge">keyed</span><span class="three">reactive</span></div>
+"initial: <div class="host"><span class="badge">keyed</span><span class="four three">reactive</span></div>
+step 0: <div class="host"><span class="badge active">keyed</span><span class="one two four">reactive</span></div>
+step 1: <div class="host"><span class="badge">keyed</span><span class="four three">reactive</span></div>
 attrs 0: 0 div: class
 attrs 0: 0/0 span: class
 attrs 0: 0/1 span: class
@@ -202,7 +202,7 @@ attrs 2: 0 b: class,title"
 exports[`rendered DOM golden class-with-live-siblings: rendered DOM 1`] = `
 "initial: <div class="red extra" id="first" title="first">x</div>
 step 0: <div class="red extra" id="second" title="second">x</div>
-step 1: <div class="extra blue" id="second" title="second">x</div>
+step 1: <div class="blue extra" id="second" title="second">x</div>
 attrs 0: 0 div: class,title,id
 attrs 1: 0 div: class,title,id
 attrs 2: 0 div: class,title,id"

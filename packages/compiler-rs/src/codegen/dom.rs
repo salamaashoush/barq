@@ -109,11 +109,8 @@ pub(super) fn channel_helper(chan: Chan) -> Helper {
         Chan::Attr => Helper::SetAttr,
         Chan::Prop => Helper::SetDomProp,
         Chan::Live => Helper::SetLive,
-        Chan::Bool => Helper::SetBool,
         Chan::Class => Helper::SetClass,
         Chan::Style => Helper::SetStyle,
-        Chan::StyleProp => Helper::SetStyleProp,
-        Chan::ClassList => Helper::SetClassList,
         Chan::Html => Helper::SetHtml,
     }
 }
@@ -1154,8 +1151,8 @@ pub(super) fn handler_expression<'a>(
 /// The value a live prop resolves to, read INSIDE the coalesced effect. A
 /// user-written `() => expr` is unwrapped rather than called, which deletes the
 /// closure the source allocated per element.
-/// The read half of one live prop, with a `style` or `classList` object's own
-/// getters called there too.
+/// The read half of one live prop, with a `style` object's own getters called
+/// there too.
 ///
 /// `style={{ color: () => tone() }}` keeps a key live on its own, and the
 /// object can arrive from anywhere — a prop, a spread, a variable. The write
@@ -1173,7 +1170,7 @@ fn keyed_read<'a>(
     span: Span,
 ) -> Expression<'a> {
     let read = value_expression(ctx, unit, value, span);
-    if !matches!(chan, Chan::Style | Chan::ClassList) || holds_no_getter(&read) {
+    if chan != Chan::Style || holds_no_getter(&read) {
         return read;
     }
     let callee = ctx.helper(Helper::ReadKeys, span);
