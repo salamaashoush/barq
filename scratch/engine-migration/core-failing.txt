@@ -1,0 +1,29 @@
+createAsync > pending status propagates through derived computeds
+isPending / latest > isPending rethrows non-NotReady errors
+isPending / latest > latest answers undefined for a never-resolved value outside a derivation
+a construct's body runs under the scope the construct opened > Show: the child's owner descends from
+a construct's body runs under the scope the construct opened > For: the child's owner descends from 
+a construct's body runs under the scope the construct opened > Errored: the child's owner descends f
+A8: the loading window > the loading value leaves the lineage: a refetch is an ordinary revalidation
+A8: the loading window > a Loading boundary above it shows CONTENT during the first flight, and stal
+A8: through `resource` > and a refetch after it is an ordinary revalidation
+resource > reports refreshing rather than pending once data exists
+resource > refetch triggers manual refetch
+Resource edge cases > EDGE CASE: fetcher receives previous value
+Resource with reactive consumers > multiple effects can subscribe to same resource
+$TARGET / $PROXY > $TARGET gives the raw object behind a store
+$TARGET / $PROXY > $PROXY on the raw object gives the store proxy back
+storePath > missing intermediate paths are a no-op, not a crash
+lazy > preload warms the same cell, so rendering does not fetch again
+lazy > `pick` takes a named export
+lazy > the cell outlives the boundary that first read it
+mapArray - keyed by identity (default) > index accessor tracks position
+repeat > negative count is treated as zero
+feedback writes do not strand heap nodes > effect writing its own lower-height dependency does not l
+introspection primitives > isEqual matches default signal equality
+introspection primitives > child ids are stable and sequential; peek does not consume
+trackedEffect > creating a primitive inside reports a diagnostic
+resolve > refuses to run inside a tracked scope
+Loading revalidation > fallback only for initial readiness; revalidation keeps stale content
+DEV.diagnostics > REACTIVE_WRITE_IN_OWNED_SCOPE warns on writes inside derived computations
+DEV.diagnostics > an ownerless cleanup is claimed by the next root and runs on dispose
