@@ -3,7 +3,7 @@ import {
   createMemo,
   createEffect,
   createUniqueId,
-  Dynamic,
+  dynamic,
   For,
   getContext,
   onCleanup,
@@ -844,23 +844,26 @@ export function ChartLegendContent(props: Incoming<ChartLegendContentProps>) {
         data-align={props.verticalAlign?.() ?? "bottom"}
       >
         <For each={() => entries()}>
-          {(item: ChartPayloadItem) => (
-            <div class={legendItem} data-slot="chart-legend-item">
-              <Show
-                when={props.hideIcon?.() !== true && entryOf(item)?.icon !== undefined}
-                fallback={
-                  <span
-                    class={legendSwatch}
-                    data-slot="chart-legend-swatch"
-                    style={{ background: item.color }}
-                  />
-                }
-              >
-                <Dynamic component={entryOf(item)?.icon} />
-              </Show>
-              {entryOf(item)?.label}
-            </div>
-          )}
+          {(item: ChartPayloadItem) => {
+            const Icon = dynamic(() => entryOf(item)?.icon);
+            return (
+              <div class={legendItem} data-slot="chart-legend-item">
+                <Show
+                  when={props.hideIcon?.() !== true && entryOf(item)?.icon !== undefined}
+                  fallback={
+                    <span
+                      class={legendSwatch}
+                      data-slot="chart-legend-swatch"
+                      style={{ background: item.color }}
+                    />
+                  }
+                >
+                  <Icon />
+                </Show>
+                {entryOf(item)?.label}
+              </div>
+            );
+          }}
         </For>
       </div>
     </Show>
@@ -1012,42 +1015,42 @@ export function ChartTooltipContent(props: Incoming<ChartTooltipContentProps>) {
         <Show when={!nested()}>{headingElement()}</Show>
         <div class={tooltipNames}>
           <For each={() => shown().map((item, index) => ({ item, index }))}>
-            {(row: { item: ChartPayloadItem; index: number }) => (
-              <div class={tooltipRow} data-slot="chart-tooltip-row" data-indicator={indicator()}>
-                <Show
-                  when={formatted(row.item, row.index) === undefined}
-                  fallback={formatted(row.item, row.index)}
-                >
+            {(row: { item: ChartPayloadItem; index: number }) => {
+              const Icon = dynamic(() => entryOf(row.item)?.icon);
+              return (
+                <div class={tooltipRow} data-slot="chart-tooltip-row" data-indicator={indicator()}>
                   <Show
-                    when={entryOf(row.item)?.icon === undefined}
-                    fallback={<Dynamic component={entryOf(row.item)?.icon} />}
+                    when={formatted(row.item, row.index) === undefined}
+                    fallback={formatted(row.item, row.index)}
                   >
-                    <Show when={props.hideIndicator?.() !== true}>
-                      <span
-                        class={tooltipIndicator}
-                        data-slot="chart-tooltip-indicator"
-                        data-indicator={indicator()}
-                        data-nested={nested() ? "" : undefined}
-                        style={
-                          indicator() === "dashed"
-                            ? { "border-color": paintOf(row.item) }
-                            : { background: paintOf(row.item) }
-                        }
-                      />
+                    <Show when={entryOf(row.item)?.icon === undefined} fallback={<Icon />}>
+                      <Show when={props.hideIndicator?.() !== true}>
+                        <span
+                          class={tooltipIndicator}
+                          data-slot="chart-tooltip-indicator"
+                          data-indicator={indicator()}
+                          data-nested={nested() ? "" : undefined}
+                          style={
+                            indicator() === "dashed"
+                              ? { "border-color": paintOf(row.item) }
+                              : { background: paintOf(row.item) }
+                          }
+                        />
+                      </Show>
                     </Show>
-                  </Show>
-                  <div class={tooltipText} data-nested={nested() ? "" : undefined}>
-                    <div class={tooltipNames}>
-                      <Show when={nested()}>{headingElement()}</Show>
-                      <span class={tooltipName}>{entryOf(row.item)?.label ?? row.item.name}</span>
+                    <div class={tooltipText} data-nested={nested() ? "" : undefined}>
+                      <div class={tooltipNames}>
+                        <Show when={nested()}>{headingElement()}</Show>
+                        <span class={tooltipName}>{entryOf(row.item)?.label ?? row.item.name}</span>
+                      </div>
+                      <Show when={row.item.value !== undefined}>
+                        <span class={tooltipValue}>{written(row.item.value ?? "")}</span>
+                      </Show>
                     </div>
-                    <Show when={row.item.value !== undefined}>
-                      <span class={tooltipValue}>{written(row.item.value ?? "")}</span>
-                    </Show>
-                  </div>
-                </Show>
-              </div>
-            )}
+                  </Show>
+                </div>
+              );
+            }}
           </For>
         </div>
       </div>

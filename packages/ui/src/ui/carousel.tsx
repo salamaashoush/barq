@@ -222,7 +222,8 @@ export function Carousel(props: Incoming<CarouselProps>) {
      * embla's first `getComputedStyle` reads `null.getComputedStyle` and the
      * whole init throws. `onSettled` does not promise a connected node: it
      * promises the reactive work has settled, which is a different moment, and
-     * a component placed by `<Dynamic />` reaches the first before the second.
+     * a component placed by a `dynamic` component reaches the first before the
+     * second.
      * Measured on the site's own carousel page as
      * `connected=false view=false parent=DIV`, followed by a second build that
      * succeeded — the carousel worked and reported a TypeError on every load.

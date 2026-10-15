@@ -1,4 +1,4 @@
-import { Dynamic, For } from "@barqjs/core";
+import { For, dynamic } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { Link, useParams } from "@barqjs/router";
 import {
@@ -86,10 +86,11 @@ const full = css`
 export function BlockPage() {
   const params = useParams();
   const block = (): BlockEntry | undefined => blockNamed(params().name ?? "");
+  const Found = dynamic(() => block()?.component);
 
   return (
     <div class={full} data-slot="block-page">
-      {/* `Dynamic`, not `found.component()`. A component is a Block and calling
+      {/* `dynamic`, not `found.component()`. A component is a Block and calling
           one outside a scope throws "a Block was invoked without a scope" — the
           function is a description of a subtree, not the subtree. */}
       {() =>
@@ -102,7 +103,7 @@ export function BlockPage() {
             </Empty>
           </Page>
         ) : (
-          <Dynamic component={block()?.component} />
+          <Found />
         )
       }
     </div>

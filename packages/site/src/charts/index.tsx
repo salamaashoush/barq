@@ -1,4 +1,4 @@
-import { Dynamic, For } from "@barqjs/core";
+import { For, dynamic } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { Button } from "@barqjs/ui";
 import { Link, useLocation, useParams } from "@barqjs/router";
@@ -17,7 +17,7 @@ import type { Child } from "@barqjs/core";
 export interface ChartEntry {
   readonly name: string;
   readonly description: string;
-  /** The chart's own component, rendered through `Dynamic` rather than called. */
+  /** The chart's own component, rendered through `dynamic` rather than called. */
   readonly component: () => Child;
 }
 
@@ -89,7 +89,10 @@ export function ChartsPage() {
       </div>
       <div class={grid}>
         <For each={() => found()?.charts ?? []}>
-          {(chart: ChartEntry) => <Dynamic component={chart.component} />}
+          {(chart: ChartEntry) => {
+            const Chart = dynamic(() => chart.component);
+            return <Chart />;
+          }}
         </For>
       </div>
     </Page>

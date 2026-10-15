@@ -3,7 +3,7 @@
  * `apps/v4/registry/new-york-v4/blocks/sidebar-15/`.
  */
 
-import { Dynamic, For, createSignal, type Incoming } from "@barqjs/core";
+import { For, createSignal, dynamic, type Incoming } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import {
   Avatar,
@@ -600,6 +600,7 @@ const CALENDARS: readonly CalendarGroup[] = [
 
 function TeamSwitcher() {
   const [team, setTeam] = createSignal(TEAMS[0]!);
+  const Logo = dynamic(() => team().logo);
 
   return (
     <SidebarMenu>
@@ -608,7 +609,7 @@ function TeamSwitcher() {
           <DropdownMenuTrigger>
             <SidebarMenuButton class={teamButton}>
               <div class={teamMark}>
-                <Dynamic component={team().logo} />
+                <Logo />
               </div>
               <span class={teamName}>{team().name}</span>
               <ChevronDown class={faded} />

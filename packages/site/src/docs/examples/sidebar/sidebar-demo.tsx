@@ -1,4 +1,4 @@
-import { Dynamic, For, createSignal } from "@barqjs/core";
+import { For, createSignal, dynamic } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { AudioWaveform } from "@barqjs/lucide/icons/audio-waveform";
 import { BadgeCheck } from "@barqjs/lucide/icons/badge-check";
@@ -312,6 +312,7 @@ const square = css`
 function TeamSwitcher() {
   const sidebar = useSidebar();
   const [activeTeam, setActiveTeam] = createSignal(teams[0]!);
+  const Logo = dynamic(() => activeTeam().logo);
 
   return (
     <SidebarMenu>
@@ -320,7 +321,7 @@ function TeamSwitcher() {
           <DropdownMenuTrigger>
             <SidebarMenuButton size="lg" class={opened}>
               <div class={logo}>
-                <Dynamic component={() => activeTeam().logo} />
+                <Logo />
               </div>
               <div class={lines}>
                 <span class={strong}>{activeTeam().name}</span>

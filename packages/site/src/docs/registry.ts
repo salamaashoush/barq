@@ -9,8 +9,8 @@
  * A ported page's demos live in `examples/<slug>/`, one file per example, and
  * the code under each is that file's own text, so what is shown is what runs.
  * They are COMPONENTS rather than JSX, because a component is a Block and a
- * Block invoked outside a scope throws: the page places them with
- * `<Dynamic />`.
+ * Block invoked outside a scope throws: the page places them with a `dynamic`
+ * component.
  */
 
 import type { Child } from "@barqjs/core";

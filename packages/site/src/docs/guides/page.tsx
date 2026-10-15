@@ -2,7 +2,7 @@
  * One guide's page: `/docs/<slug>`, in the shell the component pages use.
  */
 
-import { Dynamic, type Child } from "@barqjs/core";
+import { dynamic, type Child } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { Link, useParams } from "@barqjs/router";
 import { Button, Empty } from "@barqjs/ui";
@@ -34,6 +34,7 @@ function components(): readonly RailEntry[] {
 export function GuidePage(): Child {
   const params = useParams();
   const guide = (): Guide | undefined => guideNamed(params().page ?? "");
+  const Body = dynamic(() => guide()?.body);
 
   return (
     <>
@@ -60,7 +61,7 @@ export function GuidePage(): Child {
             sections={() => guide()?.sections ?? []}
           >
             <div class={`${typeset} ${prose}`} data-slot="guide">
-              <Dynamic component={() => guide()?.body} />
+              <Body />
             </div>
           </DocsPage>
         )

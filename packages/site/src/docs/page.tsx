@@ -7,7 +7,7 @@
  * variants come after `## Usage` with one card each.
  */
 
-import { Dynamic, For, type Child, type Incoming } from "@barqjs/core";
+import { For, dynamic, type Child, type Incoming } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { ArrowLeft } from "@barqjs/lucide/icons/arrow-left";
 import { ArrowRight } from "@barqjs/lucide/icons/arrow-right";
@@ -99,6 +99,7 @@ function Prose(props: Incoming<{ text: string }>) {
 }
 
 function DemoSection(props: Incoming<{ demo: Demo }>) {
+  const Example = dynamic(() => props.demo().component);
   return (
     <>
       {props.demo().title === undefined ? null : (
@@ -117,7 +118,7 @@ function DemoSection(props: Incoming<{ demo: Demo }>) {
         size={props.demo().size}
         rtl={props.demo().rtl}
       >
-        <Dynamic component={props.demo().component} />
+        <Example />
       </ComponentPreview>
     </>
   );
@@ -182,6 +183,7 @@ function Actions(props: Incoming<{ slug: string }>) {
 function Found(props: Incoming<{ entry: ComponentDoc }>) {
   const entry = (): ComponentDoc => props.entry();
   const hero = (): Demo | undefined => entry().demos[0];
+  const Hero = dynamic(() => hero()?.component);
   const rest = (): readonly Demo[] => entry().demos.slice(1);
   const around = (): { previous?: ComponentDoc; next?: ComponentDoc } => neighbours(entry().slug);
 
@@ -202,7 +204,7 @@ function Found(props: Incoming<{ entry: ComponentDoc }>) {
               size={() => hero()?.size}
               rtl={() => hero()?.rtl}
             >
-              <Dynamic component={() => hero()?.component} />
+              <Hero />
             </ComponentPreview>
           )
         }

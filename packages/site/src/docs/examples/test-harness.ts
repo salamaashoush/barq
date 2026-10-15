@@ -36,12 +36,12 @@ interface Framed {
  */
 const frame = (slug: string): string =>
   [
-    'import { Dynamic } from "@barqjs/core";',
+    'import { dynamic } from "@barqjs/core";',
     `import { demos } from ${JSON.stringify(join(examples, slug, "index.ts"))};`,
-    "export const framed = demos.map((demo) => ({",
-    "  title: demo.title,",
-    '  page: () => <div data-slot="preview"><Dynamic component={demo.component} /></div>,',
-    "}));",
+    "export const framed = demos.map((demo) => {",
+    "  const Demo = dynamic(() => demo.component);",
+    '  return { title: demo.title, page: () => <div data-slot="preview"><Demo /></div> };',
+    "});",
     "",
   ].join("\n");
 
