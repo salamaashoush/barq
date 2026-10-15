@@ -21,7 +21,9 @@ import {
 } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { createFileRoute } from "@barqjs/router";
+import { ServerFnError } from "@barqjs/start/client";
 
+import { describeCall, neverAnswers } from "../data/calls.ts";
 import { type Note, addNote, attach, countdown, exportCsv, listNotes } from "../data/notes.ts";
 import { Button, DemoCard, DemoSection } from "../demos/shared";
 import { renderedOn } from "../where.ts";
@@ -141,6 +143,39 @@ function StreamDemo() {
   );
 }
 
+function CallDemo() {
+  const [lines, setLines] = createSignal<readonly string[]>([]);
+  const describe = async (): Promise<void> => {
+    const call = await describeCall();
+    setLines([
+      `${call.method} ${call.id}`,
+      `middleware: ${call.trace}`,
+      `left the browser at ${call.sentAt?.toISOString().slice(11, 23) ?? "?"}`,
+    ]);
+  };
+  const refused = async (): Promise<void> => {
+    try {
+      await neverAnswers();
+      setLines(["answered, which it should not have"]);
+    } catch (error) {
+      setLines([`refused: ${error instanceof ServerFnError ? error.status : String(error)}`]);
+    }
+  };
+  return (
+    <DemoCard title="What a call knows, and a middleware that forgot next()">
+      <div class={rowStyle}>
+        <Button onClick={() => void describe()}>describe the call</Button>
+        <Button variant="secondary" onClick={() => void refused()}>
+          call past a broken middleware
+        </Button>
+      </div>
+      <ul id="call-lines">
+        <For each={lines}>{(line: string) => <li>{line}</li>}</For>
+      </ul>
+    </DemoCard>
+  );
+}
+
 function Start() {
   return (
     <section>
@@ -150,6 +185,7 @@ function Start() {
         <NotesDemo />
         <UploadDemo />
         <StreamDemo />
+        <CallDemo />
       </DemoSection>
     </section>
   );
