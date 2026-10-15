@@ -6,12 +6,22 @@
  * both, without a DOM.
  */
 
-import { describe, expect, test } from "bun:test";
+import { flush, insert, render, spread } from "@barqjs/core";
+import { afterEach, describe, expect, test } from "bun:test";
 
-import { linkHref, linkIsActive } from "./components.ts";
+import {
+  Link,
+  NavLink,
+  RouterProvider,
+  createLink,
+  linkHref,
+  linkIsActive,
+  linkOptions,
+  useLinkProps,
+} from "./components.ts";
 import { memoryHistory } from "./history.ts";
 import { type AnyRouteDefinition } from "./route.ts";
-import { createRouter } from "./router.ts";
+import { type RouterState, createRouter } from "./router.ts";
 
 const table = [
   { path: "/", component: (() => null) as never },
@@ -158,5 +168,312 @@ describe("navigate honours the policy", () => {
     expect(router.location().pathname).toBe("/posts/7/");
     await router.navigate("/posts/8");
     expect(router.location().pathname).toBe("/posts/8");
+  });
+});
+
+/**
+ * Everything below renders a real anchor under a real provider, because what it
+ * checks is what a click, a hover and a location change DO.
+ */
+describe("a rendered link", () => {
+  const tick = (ms = 0) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  const loads: string[] = [];
+  const routes = (home: () => unknown): AnyRouteDefinition[] =>
+    [
+      {
+        path: "/",
+        component: home,
+      },
+      {
+        path: "/posts/$id",
+        component: () => document.createTextNode("post"),
+        loader: ({ params }: { params: { id: string } }) => {
+          loads.push(params.id);
+          return params.id;
+        },
+      },
+      { path: "/feed", component: () => document.createTextNode("feed") },
+    ] as never;
+
+  /** The home route renders `home`, so whatever it builds is under the provider. */
+  const mounted = (
+    home: () => unknown,
+    config: Record<string, unknown> = {},
+  ): { state: RouterState; host: HTMLElement; dispose: () => void } => {
+    loads.length = 0;
+    const state = createRouter({
+      routeTree: routes(home),
+      history: memoryHistory({ initial: ["/"] }),
+      ...config,
+    });
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const dispose = render(
+      (() =>
+        (RouterProvider as never as (p: unknown) => unknown)({
+          state: () => state,
+        })) as never,
+      host,
+    );
+    flush();
+    return { state, host, dispose };
+  };
+
+  /** Props as the compiler hands them over: each one an accessor. */
+  const cells = (props: Record<string, unknown>): Record<string, unknown> =>
+    Object.fromEntries(
+      Object.entries(props).map(([name, value]) => [
+        name,
+        name.startsWith("on") ? value : () => value,
+      ]),
+    );
+
+  const anchor = (
+    props: Record<string, unknown>,
+    component: unknown = Link,
+    config?: Record<string, unknown>,
+  ): { state: RouterState; element: HTMLAnchorElement; dispose: () => void } => {
+    const { state, host, dispose } = mounted(
+      () => (component as (p: unknown) => Node)(cells({ children: "go", ...props })),
+      config,
+    );
+    return { state, element: host.querySelector("a") as HTMLAnchorElement, dispose };
+  };
+
+  const click = (element: Element): MouseEvent => {
+    const event = new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 });
+    element.dispatchEvent(event);
+    return event;
+  };
+
+  test("a click commits the location its href shows: params, search updater and hash", async () => {
+    const { state, element, dispose } = anchor({
+      to: "/posts/$id",
+      params: { id: "7" },
+      search: (current: Record<string, unknown>) => ({ ...current, tab: "a" }),
+      hash: "top",
+      state: { via: "link" },
+    });
+    expect(element.getAttribute("href")).toBe("/posts/7?tab=a#top");
+    const event = click(element);
+    expect(event.defaultPrevented).toBe(true);
+    await tick();
+    expect(state.location().pathname + state.location().search + state.location().hash).toBe(
+      "/posts/7?tab=a#top",
+    );
+    expect(state.location().state).toEqual({ via: "link" });
+    dispose();
+  });
+
+  test("`mask` shows one url and renders another", async () => {
+    const { state, element, dispose } = anchor({
+      to: "/posts/$id",
+      params: { id: "5" },
+      mask: { to: "/feed" },
+    });
+    click(element);
+    await tick();
+    expect(state.history.current().pathname).toBe("/feed");
+    expect(state.match()?.route.id).toBe("/posts/$id");
+    dispose();
+  });
+
+  test("`reloadDocument` leaves the click to the browser, and nothing is committed", async () => {
+    const { state, element, dispose } = anchor({ to: "/posts/7", reloadDocument: true });
+    const event = click(element);
+    await tick();
+    // Not prevented, so the anchor navigates the document itself.
+    expect(event.defaultPrevented).toBe(false);
+    expect(state.location().pathname).toBe("/");
+    dispose();
+  });
+
+  test("`preloadDelay` is how long a hover has to last before it warms anything", async () => {
+    const { element, dispose } = anchor({ to: "/posts/7", preload: "intent", preloadDelay: 40 });
+    element.dispatchEvent(new Event("mouseenter"));
+    await tick(15);
+    expect(loads).toEqual([]);
+    await tick(50);
+    expect(loads).toEqual(["7"]);
+    dispose();
+
+    // Leaving inside the window is not intent at all.
+    const second = anchor({ to: "/posts/8", preload: "intent", preloadDelay: 40 });
+    second.element.dispatchEvent(new Event("mouseenter"));
+    await tick(10);
+    second.element.dispatchEvent(new Event("mouseleave"));
+    await tick(60);
+    expect(loads).toEqual([]);
+    second.dispose();
+  });
+
+  test("the router's `defaultPreloadDelay` is the delay a link does not give", async () => {
+    const { element, dispose } = anchor({ to: "/posts/7", preload: "intent" }, Link, {
+      defaultPreloadDelay: 5,
+    });
+    element.dispatchEvent(new Event("mouseenter"));
+    await tick(25);
+    expect(loads).toEqual(["7"]);
+    dispose();
+  });
+
+  test("a plain Link with `activeProps` marks itself, and flips when the location moves", async () => {
+    loads.length = 0;
+    const state = createRouter({
+      routeTree: [
+        {
+          id: "__root__",
+          path: "/",
+          // A layout, so the link SURVIVES the navigation it is watching.
+          component: (props: { children: unknown }) => {
+            const nav = document.createElement("nav");
+            nav.append(
+              (Link as never as (p: unknown) => Node)(
+                cells({
+                  to: "/feed",
+                  class: "nav",
+                  activeProps: { class: "on", "data-state": "open" },
+                  inactiveProps: { title: "go to feed" },
+                  children: "feed",
+                }),
+              ),
+            );
+            insert(nav, () => props.children as never);
+            return nav;
+          },
+          children: [
+            { id: "/", path: "", component: () => document.createTextNode("home") },
+            { id: "/feed", path: "feed", component: () => document.createTextNode("feed") },
+          ],
+        },
+      ] as never,
+      history: memoryHistory({ initial: ["/"] }),
+    });
+    const host = document.createElement("div");
+    document.body.appendChild(host);
+    const dispose = render(
+      (() =>
+        (RouterProvider as never as (p: unknown) => unknown)({
+          state: () => state,
+        })) as never,
+      host,
+    );
+    flush();
+    const element = host.querySelector("a") as HTMLAnchorElement;
+    expect(element.className).toBe("nav");
+    expect(element.getAttribute("aria-current")).toBeNull();
+    expect(element.getAttribute("data-state")).toBeNull();
+    expect(element.getAttribute("title")).toBe("go to feed");
+
+    await state.navigate("/feed");
+    flush();
+    expect(host.querySelector("a")).toBe(element);
+    expect(element.className).toBe("nav on");
+    expect(element.getAttribute("aria-current")).toBe("page");
+    expect(element.getAttribute("data-status")).toBe("active");
+    expect(element.getAttribute("data-state")).toBe("open");
+    // Set by the inactive record only, so the flip takes it away.
+    expect(element.getAttribute("title")).toBeNull();
+    dispose();
+  });
+
+  test("an active NavLink carries aria-current, data-status and its active record", async () => {
+    const { element, dispose } = anchor(
+      {
+        to: "/",
+        class: "nav",
+        activeProps: () => ({ class: "on", "data-state": "open" }),
+        inactiveProps: { title: "elsewhere" },
+        activeOptions: { exact: true },
+      },
+      NavLink,
+    );
+    expect(element.className).toBe("nav active on");
+    expect(element.getAttribute("aria-current")).toBe("page");
+    expect(element.getAttribute("data-status")).toBe("active");
+    expect(element.getAttribute("data-state")).toBe("open");
+    // Present in the inactive record only, so it is absent while active.
+    expect(element.getAttribute("title")).toBeNull();
+    dispose();
+  });
+
+  test("useLinkProps is a link's behaviour for an element the caller draws", async () => {
+    const clicked: string[] = [];
+    const { state, host, dispose } = mounted(() => {
+      const props = useLinkProps({
+        to: "/posts/$id",
+        params: { id: "7" },
+        search: { tab: "a" },
+        activeProps: { class: "on" },
+        id: "custom",
+        onClick: () => clicked.push("caller"),
+      });
+      const element = document.createElement("a");
+      spread(element, props);
+      element.append("go");
+      return element;
+    });
+    const element = host.querySelector("a") as HTMLAnchorElement;
+    expect(element.getAttribute("href")).toBe("/posts/7?tab=a");
+    expect(element.id).toBe("custom");
+    expect(element.getAttribute("aria-current")).toBeNull();
+    const event = click(element);
+    expect(clicked).toEqual(["caller"]);
+    expect(event.defaultPrevented).toBe(true);
+    await tick();
+    expect(state.location().pathname).toBe("/posts/7");
+    dispose();
+  });
+
+  test("a caller's handler that prevents the click keeps the link from navigating", async () => {
+    const { state, host, dispose } = mounted(() => {
+      const props = useLinkProps({
+        to: "/posts/7",
+        onClick: (event: Event) => event.preventDefault(),
+      });
+      const element = document.createElement("a");
+      spread(element, props);
+      return element;
+    });
+    click(host.querySelector("a") as HTMLAnchorElement);
+    await tick();
+    expect(state.location().pathname).toBe("/");
+    dispose();
+  });
+
+  test("createLink gives a component of the caller's the same behaviour", async () => {
+    const Fancy = createLink((props) => {
+      const element = document.createElement("a");
+      element.dataset.fancy = "yes";
+      spread(element, props);
+      element.append(String((props.children as () => unknown)()));
+      return element;
+    });
+    const { state, element, dispose } = anchor(
+      { to: "/posts/$id", params: { id: "9" }, children: "open" },
+      Fancy,
+    );
+    expect(element.dataset.fancy).toBe("yes");
+    expect(element.getAttribute("href")).toBe("/posts/9");
+    expect(element.textContent).toBe("open");
+    click(element);
+    await tick();
+    expect(state.location().pathname).toBe("/posts/9");
+    dispose();
+  });
+
+  test("linkOptions hands back what it was given, for a link and a navigate to share", async () => {
+    const options = linkOptions({ to: "/posts/$id", params: { id: "4" }, search: { tab: "b" } });
+    expect(options).toEqual({ to: "/posts/$id", params: { id: "4" }, search: { tab: "b" } });
+    const { state, element, dispose } = anchor(options);
+    expect(element.getAttribute("href")).toBe("/posts/4?tab=b");
+    await state.navigate(options);
+    expect(state.location().pathname + state.location().search).toBe("/posts/4?tab=b");
+    dispose();
   });
 });

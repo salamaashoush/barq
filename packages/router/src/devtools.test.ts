@@ -6,7 +6,7 @@
  * trusted.
  */
 
-import { type Scope, flush, insert, render, settle } from "@barqjs/core";
+import { flush, insert, render, settle } from "@barqjs/core";
 import { afterEach, describe, expect, test } from "bun:test";
 
 import { RouterProvider } from "./components.ts";

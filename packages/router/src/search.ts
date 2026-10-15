@@ -21,6 +21,10 @@
  * (`searchParams.ts:67-73`), so decode-then-encode is not identity. barq's wire
  * format stays a plain query string and coercion is the schema's job — which is
  * where the author already declared what the types are.
+ *
+ * That is about the DEFAULT. The router's `parseSearch` and `stringifySearch`
+ * replace the pair for an application with a format of its own, and keeping
+ * that format a fixpoint is then the application's to do.
  */
 
 import type { StandardSchema } from "@barqjs/start";
@@ -64,11 +68,15 @@ export function validateSearch(
     const result = validator["~standard"].validate(input);
     if (result instanceof Promise) {
       throw new SearchParamError(
-        "a search validator returned a promise; validation has to finish before the location commits",
+        "A route's `validateSearch` returned a promise, but the search has to be validated before the navigation completes. " +
+          "Use a validator that answers synchronously.",
       );
     }
     if ("issues" in result && result.issues !== undefined) {
-      throw new SearchParamError("search did not validate", result.issues);
+      throw new SearchParamError(
+        "The URL's search parameters did not pass this route's `validateSearch`. Read `error.issues` for what failed.",
+        result.issues,
+      );
     }
     return (result as { value: Record<string, unknown> }).value;
   }

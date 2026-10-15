@@ -113,6 +113,45 @@ describe("routeTree, across the napi boundary", () => {
     expect(tree.files).toEqual([]);
     expect(tree.source).toContain("export const routeTree");
   });
+
+  test("the generated file is already formatted, so regenerating it is not a diff", async () => {
+    const route = (id: string, options = "component: () => null"): string =>
+      `export const Route = createFileRoute(${JSON.stringify(id)})({ ${options} });`;
+    const root = project({
+      "src/routes/__root.tsx": route("__root__"),
+      "src/routes/index.tsx": route("/", "component: () => null, prerender: true"),
+      "src/routes/about.tsx": route("/about", "component: () => null, ssr: false"),
+      "src/routes/a.tsx": route("/a"),
+      "src/routes/shop.tsx": route("/shop"),
+      "src/routes/shop.index.tsx": route("/shop/"),
+      "src/routes/docs.tsx": route("/docs"),
+      "src/routes/docs.index.tsx": route("/docs/"),
+      "src/routes/docs.$page.tsx": route("/docs/$page"),
+      "src/routes/_layout.tsx": route("/_layout"),
+      "src/routes/_layout.settings.tsx": route("/_layout/settings"),
+      "src/routes/api/health.ts": route("/api/health", "server: { handlers: {} }"),
+      "src/routes/reports.{$name}[.]csv.tsx": route("/reports/{$name}.csv"),
+      "src/routes/a-very-long-section-name.with-a-nested-page-whose-name-is-long.tsx": route(
+        "/a-very-long-section-name/with-a-nested-page-whose-name-is-long",
+      ),
+    });
+
+    const first = routeTree(root, "src/routes").source;
+    expect(routeTree(root, "src/routes").source).toBe(first);
+    // Every shape the printer decides between is in this table: a route that
+    // fits on its line and one that does not, a single child and several, a
+    // union that breaks, a bare key and quoted ones.
+    expect(first).toContain("component: Outlet");
+    expect(first).toContain("    | ");
+    expect(first).toContain("  __root__: typeof rootRoute;");
+
+    const { format } = await import("oxfmt");
+    for (const source of [first, routeTree(project({}), "src/routes").source]) {
+      const formatted = await format("routeTree.gen.ts", source);
+      expect(formatted.errors).toEqual([]);
+      expect(formatted.code).toBe(source);
+    }
+  });
 });
 
 describe("the plugin", () => {
@@ -324,6 +363,19 @@ console.log(routeTree.length);
  * is no longer a second way to say it — it is reported, so a half-migrated file
  * is loud rather than silently server-rendered.
  */
+/** One route's object in the emitted table, whether it was printed on one line or several. */
+function entryOf(source: string, id: string): string {
+  const at = source.indexOf(`id: ${JSON.stringify(id)},`);
+  if (at < 0) throw new Error(`no route ${id} in:\n${source}`);
+  const start = source.lastIndexOf("{", at);
+  let depth = 0;
+  for (let index = start; index < source.length; index++) {
+    if (source[index] === "{") depth++;
+    else if (source[index] === "}" && --depth === 0) return source.slice(start, index + 1);
+  }
+  throw new Error(`route ${id} is not closed in:\n${source}`);
+}
+
 describe("a route's own declarations", () => {
   test("a literal `ssr` and `prerender` reach the emitted table", () => {
     const root = project({
@@ -332,12 +384,12 @@ describe("a route's own declarations", () => {
         'export const Route = createFileRoute("/about")({ ssr: "data-only", prerender: true });',
     });
     const tree = routeTree(root, "src/routes");
-    const about = tree.source.split("\n").find((line) => line.includes('"/about"')) ?? "";
+    const about = entryOf(tree.source, "/about");
     expect(about).toContain('ssr: "data-only"');
     expect(about).toContain("prerender: true");
     // A route that declares nothing emits nothing, so the runtime default stays
     // the runtime's to decide rather than the generator's.
-    const home = tree.source.split("\n").find((line) => line.includes('"/"')) ?? "";
+    const home = entryOf(tree.source, "/");
     expect(home).not.toContain("ssr:");
     expect(home).not.toContain("prerender:");
     expect(tree.warnings).toEqual([]);
@@ -349,7 +401,7 @@ describe("a route's own declarations", () => {
         'export const Route = createFileRoute("/feed")({ prerender: shouldPrerender() });',
     });
     const tree = routeTree(root, "src/routes");
-    const feed = tree.source.split("\n").find((line) => line.includes('"/feed"')) ?? "";
+    const feed = entryOf(tree.source, "/feed");
     expect(feed).not.toContain("prerender:");
     expect(tree.warnings).toHaveLength(1);
     expect(tree.warnings[0]).toContain("feed.tsx");
@@ -370,10 +422,12 @@ describe("a route's own declarations", () => {
         'export const Route = createFileRoute("/admin")({ component: Admin });',
     });
     const tree = routeTree(root, "src/routes");
-    const admin = tree.source.split("\n").find((line) => line.includes('"/admin"')) ?? "";
+    const admin = entryOf(tree.source, "/admin");
     expect(admin).not.toContain("ssr:");
     expect(tree.warnings).toHaveLength(1);
-    expect(tree.warnings[0]).toContain("`export const ssr` is no longer read");
+    expect(tree.warnings[0]).toContain(
+      "`export const ssr` at the top level of a route file is not read",
+    );
   });
 
   /**
@@ -407,7 +461,9 @@ describe("a route's own declarations", () => {
         'export const Route = createFileRoute("/posts/$postId")({ component: Post });',
     });
     const plugin = hooks(barqRouter({ routeTree: false }));
-    expect(() => resolve(plugin, root, "build")).toThrow(/disagree with the id their filename/);
+    expect(() => resolve(plugin, root, "build")).toThrow(
+      /differs from the id their filename gives/,
+    );
   });
 });
 

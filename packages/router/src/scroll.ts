@@ -59,6 +59,30 @@ export interface ScrollOptions {
    * there is no saved position to put back.
    */
   readonly toTop?: readonly (string | (() => Element | null | undefined))[];
+  /** How a restore or a reset moves: `"auto"`, `"smooth"` or `"instant"`. */
+  readonly behavior?: ScrollBehavior;
+  /**
+   * Whether a location's `#hash` is scrolled into view, and how. Default `true`;
+   * an object is handed to `scrollIntoView`.
+   */
+  readonly hashScrollIntoView?: boolean | ScrollIntoViewOptions;
+}
+
+/** What `useElementScrollRestoration` answers with: TanStack's field names. */
+export interface ScrollPosition {
+  readonly scrollX: number;
+  readonly scrollY: number;
+}
+
+/**
+ * Where one scroll container was left under a restoration key.
+ *
+ * `id` is the container's `data-scroll-id`, or `"window"`. For a virtualised
+ * list, which has to be told its initial offset before it renders rows.
+ */
+export function savedScrollPosition(key: string, id: string): ScrollPosition | undefined {
+  const at = read()[key]?.[id];
+  return at === undefined ? undefined : { scrollX: at.x, scrollY: at.y };
 }
 
 function storage(): Storage | null {
@@ -100,12 +124,17 @@ function write(all: Record<string, Entry>): void {
 }
 
 /** Every element that opted in, plus the window. */
-function containers(): { id: string; get: () => Offsets; set: (to: Offsets) => void }[] {
+function containers(
+  behavior?: ScrollBehavior,
+): { id: string; get: () => Offsets; set: (to: Offsets) => void }[] {
   const out = [
     {
       id: "window",
       get: (): Offsets => ({ x: window.scrollX, y: window.scrollY }),
-      set: (to: Offsets): void => window.scrollTo(to.x, to.y),
+      set: (to: Offsets): void => {
+        if (behavior === undefined) window.scrollTo(to.x, to.y);
+        else window.scrollTo({ left: to.x, top: to.y, behavior });
+      },
     },
   ];
   for (const element of document.querySelectorAll(`[${SCROLL_ID_ATTRIBUTE}]`)) {
@@ -145,7 +174,14 @@ export interface ScrollRestoration {
   /** Remember where the CURRENT page is, before leaving it. */
   save(location: Location): void;
   /** Put the new page where it was, or at the top, or at its hash. */
-  restore(location: Location, options?: { readonly reset?: boolean }): void;
+  restore(
+    location: Location,
+    options?: {
+      readonly reset?: boolean;
+      /** This navigation's answer, over the configured one. */
+      readonly hashScrollIntoView?: boolean | ScrollIntoViewOptions;
+    },
+  ): void;
   dispose(): void;
 }
 
@@ -186,7 +222,7 @@ export function scrollRestoration(options: ScrollOptions = {}): ScrollRestoratio
       const saved = to?.reset === true ? undefined : read()[keyOf(location)];
       const apply = (): void => {
         if (saved !== undefined) {
-          for (const container of containers()) {
+          for (const container of containers(options.behavior)) {
             const at = saved[container.id];
             if (at !== undefined) container.set(at);
           }
@@ -195,14 +231,17 @@ export function scrollRestoration(options: ScrollOptions = {}): ScrollRestoratio
         // A hash wins over the top, which the old router never handled at all:
         // it scrolled to `(0,0)` for every `#section` link.
         const id = location.hash.slice(1);
-        if (id !== "") {
+        const intoView = to?.hashScrollIntoView ?? options.hashScrollIntoView ?? true;
+        if (id !== "" && intoView !== false) {
           const target = document.getElementById(id);
           if (target !== null) {
-            target.scrollIntoView();
+            if (intoView === true) target.scrollIntoView();
+            else target.scrollIntoView(intoView);
             return;
           }
         }
-        window.scrollTo(0, 0);
+        if (options.behavior === undefined) window.scrollTo(0, 0);
+        else window.scrollTo({ left: 0, top: 0, behavior: options.behavior });
         // …and anything else that scrolls. A layout whose `<main>` is the
         // scroller leaves the window at zero, so resetting the window alone
         // moves nothing a visitor can see.
@@ -228,9 +267,24 @@ export function scrollRestoration(options: ScrollOptions = {}): ScrollRestoratio
   };
 }
 
+/** What a `types` function is told about the navigation it is naming types for. */
+export interface ViewTransitionInfo {
+  readonly fromLocation: Location | null;
+  readonly toLocation: Location;
+  readonly pathChanged: boolean;
+  readonly hrefChanged: boolean;
+  readonly hashChanged: boolean;
+}
+
 export interface ViewTransitionOptions {
   /** Skip the transition for this navigation. */
   readonly enabled?: boolean;
+  /**
+   * View transition TYPES, for `:active-view-transition-type()` in CSS. A
+   * function decides per navigation, and `false` from it skips the transition.
+   * A browser without typed transitions runs a plain one.
+   */
+  readonly types?: readonly string[] | ((info: ViewTransitionInfo) => readonly string[] | false);
 }
 
 let transitionsInert = false;
@@ -275,7 +329,7 @@ let inFlight = false;
  */
 export async function withViewTransition(
   commit: () => void,
-  options?: ViewTransitionOptions,
+  options?: Omit<ViewTransitionOptions, "types"> & { readonly types?: readonly string[] },
 ): Promise<void> {
   const supported =
     typeof document !== "undefined" &&
@@ -299,14 +353,29 @@ export async function withViewTransition(
   makeTransitionsInert();
   inFlight = true;
   try {
-    const transition = (
+    const start = (
       document as unknown as {
-        startViewTransition: (callback: () => void) => {
+        startViewTransition: (
+          update: (() => void) | { update: () => void; types: readonly string[] },
+        ) => {
           updateCallbackDone: Promise<void>;
           finished: Promise<void>;
         };
       }
-    ).startViewTransition(commit);
+    ).startViewTransition.bind(document);
+    const types = options.types;
+    let transition: ReturnType<typeof start>;
+    if (types === undefined || types.length === 0) {
+      transition = start(commit);
+    } else {
+      // The object form throws where typed transitions are not implemented, and
+      // the callback has not run when it does.
+      try {
+        transition = start({ update: commit, types });
+      } catch {
+        transition = start(commit);
+      }
+    }
     // The animation is left to run unobserved, and its rejection is swallowed
     // here rather than becoming an unhandled one.
     void transition.finished.catch(() => {});

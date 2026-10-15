@@ -17,7 +17,7 @@ import {
   setResponseStatus,
 } from "@barqjs/start";
 import { mount, unmountAll } from "@barqjs/start/server";
-import { computed, flush, hole, hydrate, insert, template } from "@barqjs/core";
+import { createMemo, flush, hole, hydrate, insert, template } from "@barqjs/core";
 import { describe, expect, test } from "bun:test";
 
 import {
@@ -247,25 +247,25 @@ describe("redirect() from a loader", () => {
 
 describe("the document", () => {
   test("wraps the app, and the head is flushed before the body settles", async () => {
-    const late = computed(
-      async () => {
-        await tick();
-        return "Ada";
-      },
-      { key: "r:/users/$id|id=7" },
-    );
-
     const handler = createPageHandler({
       routeTree: baseTable,
-      app: () =>
-        ssrHtml(
+      app: () => {
+        const late = createMemo(
+          async () => {
+            await tick();
+            return "Ada";
+          },
+          { key: "r:/users/$id|id=7" },
+        );
+        return ssrHtml(
           `<main>${esc(
             ssrLoading({
               fallback: () => ssrHtml("<i>loading</i>"),
               children: () => ssrHtml(`<b>${esc(late())}</b>`),
             }),
           )}</main>`,
-        ),
+        );
+      },
       document,
     });
 
@@ -296,7 +296,9 @@ describe("the document", () => {
       app: () => ssrHtml("<main>x</main>"),
       document: () => "<html><body>oops</body></html>",
     });
-    expect(handler(get("/"))).rejects.toThrow(/must place its `body` argument/);
+    expect(handler(get("/"))).rejects.toThrow(
+      /`document` function did not put its `body` argument/,
+    );
   });
 });
 
@@ -1255,14 +1257,17 @@ describe("chainVerifier", () => {
       "guarded",
       createServerFn()
         .middleware([gate])
-        .handler(async () => "ok") as never,
+        .handler(async () => "ok"),
     );
     expect(await chainVerifier(table)(new Map([["/admin", new Set(["guarded"])]]))).toBe("");
   });
 
   test("one that does not is reported, naming both", async () => {
     unmountAll();
-    mount("bare", createServerFn().handler(async () => "ok") as never);
+    mount(
+      "bare",
+      createServerFn().handler(async () => "ok"),
+    );
     const report = await chainVerifier(table)(new Map([["/admin", new Set(["bare"])]]));
     expect(report).toContain("bare is reachable from /admin");
     expect(report).toContain("separate HTTP endpoint");
@@ -1286,10 +1291,11 @@ describe("chainVerifier", () => {
       "leaky",
       createServerFn()
         .middleware([requireSession])
-        .handler(async () => "ok") as never,
+        .handler(async () => "ok"),
     );
     const report = await chainVerifier(table)(new Map());
-    expect(report).toContain("leaky carries `requireSession`");
+    expect(report).toContain("leaky uses `requireSession`");
+    expect(report).toContain("use a plain function as middleware");
     expect(report).toContain("createMiddleware()");
   });
 
@@ -1299,7 +1305,7 @@ describe("chainVerifier", () => {
       "clean",
       createServerFn()
         .middleware([gate])
-        .handler(async () => "ok") as never,
+        .handler(async () => "ok"),
     );
     expect(await chainVerifier(table)(new Map())).toBe("");
   });
@@ -1387,6 +1393,18 @@ describe("shellComponent", () => {
 
   test("a route with no head still inherits the layout's", async () => {
     const body = await render(table());
+    expect(body).toContain("Site");
+    expect(body).toContain('content="site"');
+  });
+
+  // The client builds the head from the chain it renders, which on an unmatched
+  // path is the root standing in. A server that projected the MATCH instead
+  // wrote no title, and hydration found a `<style>` where it built a `<title>`.
+  test("an unmatched path carries the head of the chain that renders it", async () => {
+    const handler = createPageHandler({ routeTree: table(), app: (s) => renderRoutes(s) });
+    const response = await handler(get("/nowhere"));
+    expect(response.status).toBe(404);
+    const body = await response.text();
     expect(body).toContain("Site");
     expect(body).toContain('content="site"');
   });
@@ -2042,6 +2060,32 @@ describe("a route's own HTTP handlers", () => {
     const response = await send(handler, "GET");
     expect(response.status).toBe(401);
     expect(await response.text()).toBe("nope");
+  });
+
+  test("a second next() never reaches the handler past a guard that refused", async () => {
+    let ran = 0;
+    const retryOnce: Middleware = async (next) => {
+      try {
+        return await next();
+      } catch {
+        return await next();
+      }
+    };
+    const guard: Middleware = async () => {
+      throw new Response("nope", { status: 401 });
+    };
+    const handler = api({
+      middleware: [retryOnce, guard],
+      handlers: {
+        GET: () => {
+          ran += 1;
+          return Response.json("unreachable");
+        },
+      },
+    });
+    const response = await send(handler, "GET");
+    expect(ran).toBe(0);
+    expect(response.status).toBe(401);
   });
 
   test("a handler can set cookies through the ambient response", async () => {
@@ -2776,12 +2820,12 @@ describe("notFoundMode", () => {
       // `Outlet`, not `() => null`: a layout that never places its children
       // renders nothing below it, and the not-found lives at the depth the
       // matched route would have occupied.
-      component: Outlet as never,
+      component: Outlet,
       children: [
         { path: "", component: (() => null) as never },
         {
           path: "shop",
-          component: Outlet as never,
+          component: Outlet,
           notFoundComponent: (() => ssrHtml("<p>no such aisle</p>")) as never,
           children: [{ path: "", component: (() => null) as never }],
         },
@@ -2832,7 +2876,7 @@ describe("ClientOnly", () => {
   const table: AnyRouteDefinition[] = [
     {
       path: "/",
-      component: ((scope: unknown) =>
+      component: (() =>
         (ClientOnly as never as (p: unknown) => unknown)({
           fallback: () => ssrHtml("<p>skeleton</p>"),
           children: () => ssrHtml("<p>the chart</p>"),
@@ -2850,5 +2894,97 @@ describe("ClientOnly", () => {
     const html = await (await handler(get("/"))).text();
     expect(html).toContain("skeleton");
     expect(html).not.toContain("the chart");
+  });
+});
+
+/**
+ * The router options that mean the same on the server: the context every route
+ * starts from, TanStack's `default*` names, and what an options-form
+ * `notFound` says about the response.
+ */
+describe("router options on the server", () => {
+  const leaf = (props: { data: () => unknown }): unknown =>
+    ssrHtml(`<main>${esc(String(props.data()))}</main>`);
+
+  test("`context` is what beforeLoad and the loader start from", async () => {
+    const handler = createPageHandler({
+      routeTree: [
+        {
+          path: "/who",
+          beforeLoad: ({ context }: { context: { user: string } }) => ({
+            greeting: `hello ${context.user}`,
+          }),
+          loader: ({ context }: { context: { user: string; greeting: string } }) =>
+            `${context.greeting} from ${context.user}`,
+          component: leaf,
+        },
+      ] as never,
+      context: { user: "salama" },
+      stream: false,
+      app: (state) => renderRoutes(state),
+      document,
+    });
+    const response = await handler(get("/who"));
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain("<main>hello salama from salama</main>");
+  });
+
+  test("defaultErrorComponent and defaultNotFoundComponent render where no route declares one", async () => {
+    const handler = createPageHandler({
+      routeTree: [
+        {
+          path: "/broken",
+          loader: () => {
+            throw new Error("boom");
+          },
+          component: leaf,
+        },
+        {
+          path: "/missing",
+          loader: () => notFound({ data: "row 7" }),
+          component: leaf,
+        },
+      ] as never,
+      defaultErrorComponent: ((props: { error: () => Error }) =>
+        ssrHtml(`<p>default error: ${esc(props.error().message)}</p>`)) as never,
+      defaultNotFoundComponent: ((props: { data: () => unknown }) =>
+        ssrHtml(`<p>default missing: ${esc(String(props.data()))}</p>`)) as never,
+      stream: false,
+      app: (state) => renderRoutes(state),
+      document,
+    });
+    expect(await (await handler(get("/broken"))).text()).toContain("<p>default error: boom</p>");
+    const missing = await handler(get("/missing"));
+    expect(missing.status).toBe(404);
+    expect(await missing.text()).toContain("<p>default missing: row 7</p>");
+  });
+
+  test("a notFound's headers ride the 404, from a loader and from beforeLoad", async () => {
+    const handler = createPageHandler({
+      routeTree: [
+        {
+          path: "/loader",
+          loader: () => notFound({ headers: { "cache-control": "no-store" }, throw: true }),
+          component: leaf,
+          notFoundComponent: () => ssrHtml("<p>gone</p>"),
+        },
+        {
+          path: "/before",
+          beforeLoad: () => {
+            throw notFound({ headers: { "x-reason": "retired" } });
+          },
+          component: leaf,
+        },
+      ] as never,
+      stream: false,
+      app: (state) => renderRoutes(state),
+      document,
+    });
+    const fromLoader = await handler(get("/loader"));
+    expect(fromLoader.status).toBe(404);
+    expect(fromLoader.headers.get("cache-control")).toBe("no-store");
+    const fromBefore = await handler(get("/before"));
+    expect(fromBefore.status).toBe(404);
+    expect(fromBefore.headers.get("x-reason")).toBe("retired");
   });
 });

@@ -16,6 +16,7 @@ export default defineConfig({
     "node:fs",
     "node:path",
     "#barq-router-entry",
+    "#barq-start-entry",
     /^virtual:barq-/,
   ],
   // `package.json` names `./dist/index.js` and `./dist/index.d.ts`. tsdown 0.22

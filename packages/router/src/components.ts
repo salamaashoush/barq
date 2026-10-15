@@ -20,7 +20,6 @@ import {
   type Child,
   type JSXElement,
   type Cell,
-  type Scope,
   type Incoming,
   HYDRATE,
   bindProp,
@@ -28,9 +27,9 @@ import {
   boundary,
   branch,
   cell,
-  computed,
-  context,
-  effect,
+  createMemo,
+  createContext,
+  createTrackedEffect,
   element,
   insert,
   listen,
@@ -41,12 +40,16 @@ import {
   read,
   readSlot,
   setAttr,
-  signal,
+  createSignal,
   setClass,
   template,
+  toString,
   untrack,
   WHOLE,
+  isHydrating,
+  type Accessor,
 } from "@barqjs/core";
+import { serverRendering } from "@barqjs/core/internal";
 
 import {
   type ManagedTag,
@@ -59,24 +62,28 @@ import {
   tagProps,
 } from "./head.ts";
 import type { JSX as CoreJSX } from "@barqjs/core/jsx-runtime";
-import type { ToPath } from "./register.ts";
+import type { NavigateOptionsFor, ToPath } from "./register.ts";
 import { type MatchRouteOptions, type RouterState, createRouter } from "./router.ts";
 import { type Route, type RouteProps } from "./route.ts";
 import { NotFound, errorFallbackFor } from "./errors.ts";
-import { addBase } from "./history.ts";
 import {
-  applyTrailingSlash,
-  interpolate,
-  isUnder,
-  leavesTheApp,
-  resolvePath,
-  withoutTrailingSlash,
-} from "./path.ts";
+  type LinkState,
+  LINK_OWN_PROPS,
+  attributeValue,
+  eventNameOf,
+  linkBehavior,
+  linkElementProps,
+  linkIsActive,
+  linkNavigation,
+  linkState,
+} from "./link.ts";
+import { publicHref } from "./rewrite.ts";
+import { wrapWith } from "./ssr.ts";
 
 /** The real ABI. `RouteComponent` is declared props-first for TypeScript's sake. */
 type Invoked = (props: RouteProps) => unknown;
 
-const RouterContext = context<RouterState>(undefined, "barq-router");
+const RouterContext = createContext<RouterState>(undefined, "barq-router");
 
 /**
  * The string backend's own `Link` and `NavLink`, installed by `renderRoutes`.
@@ -118,6 +125,8 @@ export interface LinkBackend {
     errorFallback: Block<unknown>,
     children: Block<unknown>,
   ) => unknown;
+  /** `<CatchBoundary>`, on the string backend: the error boundary on its own. */
+  readonly caught?: (errorFallback: Block<unknown>, children: Block<unknown>) => unknown;
   readonly link: (
     href: string,
     className: string,
@@ -135,7 +144,7 @@ export interface LinkBackend {
 // `null` is the DEFAULT, not `undefined`: a context created with `undefined`
 // has no default at all, and reading one nobody provided THROWS. The DOM path
 // provides nothing here, so the default is the answer it gets.
-export const LinkBackendContext = context<LinkBackend | null>(null, "barq-router-link");
+export const LinkBackendContext = createContext<LinkBackend | null>(null, "barq-router-link");
 
 /** `null` on the DOM path, which is every path but a string render. */
 function linkBackend(): LinkBackend | null {
@@ -221,7 +230,7 @@ export interface HeadAssets {
   readonly tagTree?: (list: () => readonly ManagedTag[]) => unknown;
 }
 
-export const HeadAssetsContext = context<HeadAssets | null>(null, "barq-router-head");
+export const HeadAssetsContext = createContext<HeadAssets | null>(null, "barq-router-head");
 
 /**
  * TanStack's `<HeadContent />`: every managed tag for the matched chain.
@@ -441,7 +450,9 @@ export function clientHeadAssets(
     readonly initial?: readonly import("./head.ts").MatchAssets[];
   } = {},
 ): HeadAssets {
-  const resolved = signal<readonly import("./head.ts").MatchAssets[]>(options.initial ?? []);
+  const [resolved, setResolved] = createSignal<readonly import("./head.ts").MatchAssets[]>(
+    options.initial ?? [],
+  );
   /**
    * The head nodes this document already has, by `tagKey`.
    *
@@ -458,7 +469,7 @@ export function clientHeadAssets(
   let held = new Map<string, Element>();
   let newest = 0;
   let first = options.initial !== undefined;
-  effect(() => {
+  createTrackedEffect(() => {
     // SUBSCRIBED, all three, so a navigation that keeps the same match still
     // re-runs — the head depends on the params and the contexts too.
     state.match();
@@ -473,7 +484,7 @@ export function clientHeadAssets(
     const mine = ++newest;
     void resolveHeadFor(state)
       .then((assets) => {
-        if (mine === newest) resolved.set(assets);
+        if (mine === newest) setResolved(assets);
       })
       // A `head` that throws must not become an unhandled rejection that
       // silently leaves the document describing the previous page.
@@ -591,7 +602,7 @@ export function Document(props: {
   // would hydrate into a different tree than it served.
   return provide(HeadAssetsContext, cell(assets), () =>
     provide(RouterContext, cell(state), () => shell({ children })),
-  ) as JSXElement;
+  );
 }
 
 /**
@@ -633,48 +644,14 @@ export function linkHref(state: RouterState, props: Incoming<LinkProps>): string
  * appears on "open in new tab", a reload, or a crawler.
  */
 export function linkAttrHref(state: RouterState, to: string): string {
-  return state.base === "" || leavesTheApp(to) ? to : addBase(to, state.base);
+  return publicHref(to, {
+    rewrite: state.config.rewrite,
+    origin: state.config.origin,
+    base: state.base,
+  });
 }
 
-/** Whether a `<NavLink>` points at where you are, for either backend. */
-export function linkIsActive(
-  state: RouterState,
-  href: string,
-  end: boolean,
-  options?: ActiveOptions,
-): boolean {
-  // Split once: `to` may carry a query and a fragment now that `<Link>` writes
-  // both, and comparing the whole string against a pathname never matched.
-  const hashAt = href.indexOf("#");
-  const withoutHash = hashAt === -1 ? href : href.slice(0, hashAt);
-  const linkHash = hashAt === -1 ? "" : href.slice(hashAt + 1);
-  const queryAt = withoutHash.indexOf("?");
-  const to = queryAt === -1 ? withoutHash : withoutHash.slice(0, queryAt);
-  const linkQuery = queryAt === -1 ? "" : withoutHash.slice(queryAt + 1);
-
-  // COMPARED without either trailing slash. The location a browser arrived at
-  // is whatever was typed or linked, so `/about/` against a link built as
-  // `/about` was inactive — and under `trailingSlash: "always"` the two sides
-  // disagree the other way round.
-  const here = withoutTrailingSlash(state.location().pathname);
-  const target = withoutTrailingSlash(to);
-  const exact = options?.exact ?? end;
-  if (!(exact ? here === target : isUnder(here, target))) return false;
-
-  if (options?.includeSearch === true) {
-    // A SUBSET rather than an equality: a link to `?tab=a` is active on
-    // `?tab=a&page=2`, which is what a tab strip beside a paginator needs.
-    const current = state.search();
-    for (const [key, value] of new URLSearchParams(linkQuery)) {
-      if (current.get(key) !== value) return false;
-    }
-  }
-  if (options?.includeHash === true) {
-    const currentHash = state.location().hash.replace(/^#/, "");
-    if (currentHash !== linkHash) return false;
-  }
-  return true;
-}
+export { linkIsActive };
 
 /** The router this subtree is under. Resolved through the SCOPE chain, so a portalled `<Link>` still finds it. */
 export function useRouter(): RouterState {
@@ -716,7 +693,7 @@ export function renderDepth(
   depth: number,
   parent: Node | null,
   anchor: Node | null,
-): Node | null {
+): Node | Node[] | null {
   const routeAt = (): Route | null => state.chain()[depth] ?? null;
 
   /**
@@ -756,8 +733,9 @@ export function renderDepth(
         untrack(() => state.chain()),
         depth - 1,
         () => state.params(),
+        state.config.defaults,
       )(() => NOT_FOUND_ERROR, NOOP_RESET);
-      if (own !== null && own !== undefined) return own as Node;
+      if (own !== null && own !== undefined) return own;
       const fallback = state.config.notFound;
       if (fallback !== undefined) {
         // A not-found route has no next depth, so its `children` is the Block
@@ -824,6 +802,7 @@ export function renderDepth(
             untrack(() => state.chain()),
             depth,
             () => state.params(),
+            state.config.defaults,
           )(error, reset);
           return shown === null || shown === undefined ? null : shown;
         }) as Block<unknown>,
@@ -847,8 +826,9 @@ export function renderDepth(
       // Re-arm on navigation: when `on()` changes while work is pending the
       // fallback comes back instead of holding the previous route's content.
       // This is the whole of "show the skeleton again on navigation" and it
-      // needs no transition API, which this codebase does not have.
-      () => state.location().pathname,
+      // needs no transition API, which this codebase does not have. A
+      // `blocking` reload moves it too, for the same reason.
+      () => `${state.location().pathname} ${state.blockingReloads()}`,
     );
   };
 
@@ -869,7 +849,7 @@ export function renderDepth(
  * only the thing that renders the fallback knows that moment.
  */
 function routeFallback(state: RouterState, route: Route): Block<unknown> | null {
-  const pending = route.definition.pendingComponent;
+  const pending = route.definition.pendingComponent ?? state.config.defaults?.pendingComponent;
   if (pending === undefined) return null;
   const delay = route.definition.pendingMs ?? state.config.defaults?.pendingMs ?? 0;
 
@@ -912,7 +892,7 @@ function routeFallback(state: RouterState, route: Route): Block<unknown> | null 
  * accessor whose result is the component — which is a Block, and a Block in a
  * Cell slot is exactly what `readSlot` exists to catch. Here it is the point.
  */
-function componentSlot(slot: unknown): unknown {
+export function componentSlot(slot: unknown): unknown {
   if (slot === undefined) return undefined;
   return typeof slot === "function" ? untrack(() => (slot as () => unknown)()) : slot;
 }
@@ -930,7 +910,7 @@ export function routePropsFor(
     {
       params: () => state.params(),
       data: () => (route === null ? undefined : state.dataFor(route, state.params(), blocking)()),
-      context: () => state.contexts()[depth] ?? {},
+      context: () => state.contexts()[depth] ?? state.config.context ?? {},
       children,
     },
   ]) as unknown as RouteProps;
@@ -969,7 +949,7 @@ export interface RouteMatchInfo {
   readonly blocking: boolean;
 }
 
-export const RouteMatchContext = context<RouteMatchInfo | null>(null, "barq-router-match");
+export const RouteMatchContext = createContext<RouteMatchInfo | null>(null, "barq-router-match");
 
 /**
  * Run `body` with `match` ambient.
@@ -1008,7 +988,7 @@ export function useRouteMatch(): RouteMatchInfo | null {
  * used to say an outlet could not have it; it can, as long as the outlet places
  * a Block rather than a pre-built tree.
  */
-export function Outlet(_props?: Record<string, never>): JSXElement {
+export function Outlet(): JSXElement {
   const match = read(RouteMatchContext)();
   if (match === null) return null;
   return match.children() as JSXElement;
@@ -1019,6 +999,22 @@ export interface ClientOnlyProps {
   readonly children?: unknown;
   /** Shown on the server, and on the first client render. Nothing by default. */
   readonly fallback?: unknown;
+}
+
+/**
+ * Whether this part of the page is past hydration: `false` on the server and
+ * through the render that claims the server's markup, `true` from then on.
+ *
+ * Built after the page is live, by a navigation or a render with no server
+ * markup, it starts `true`. Nothing that render produces has to match the
+ * server, so content waiting on it shows at once rather than one frame late.
+ */
+export function useHydrated(): Accessor<boolean> {
+  const [hydrated, setHydrated] = createSignal(!serverRendering() && !isHydrating());
+  createTrackedEffect(() => {
+    setHydrated(true);
+  });
+  return hydrated;
 }
 
 /**
@@ -1040,12 +1036,7 @@ export interface ClientOnlyProps {
  * FIRST render, which is the render that has to match the server's.
  */
 function ClientOnlyImpl(props: Incoming<ClientOnlyProps>): JSXElement {
-  const shown = signal(false);
-  // Never runs on the string backend, which is what makes the server's answer
-  // the fallback without asking what environment this is.
-  effect(() => {
-    shown.set(true);
-  });
+  const shown = useHydrated();
   // A Block is INVOKED with the scope the branch is holding, exactly as
   // `Outlet` invokes the next depth; anything else is a value and is returned.
   // That is what lets `<ClientOnly>` take JSX children and a JSX fallback.
@@ -1127,7 +1118,7 @@ function AwaitImpl<T>(props: Incoming<AwaitProps<T>>): JSXElement {
   // TRACKED on purpose: `props.promise` is a slot over the loader's data, so a
   // navigation that produces a different promise re-runs this and the region
   // parks again rather than holding the previous page's value.
-  const settled = computed(
+  const settled = createMemo(
     async () => await (readSlot(props.promise, "Await.promise") as Promise<T>),
   );
 
@@ -1146,7 +1137,7 @@ function AwaitImpl<T>(props: Incoming<AwaitProps<T>>): JSXElement {
     // park that hole and not this boundary, so the fallback would never show;
     // reading it here is what makes "pending" a fact about the region.
     settled();
-    return (props.children as unknown as (value: Cell<T>) => unknown)(settled);
+    return props.children(settled);
   };
 
   // The enclosing route's own fallback, walked outward from this depth exactly
@@ -1160,6 +1151,7 @@ function AwaitImpl<T>(props: Incoming<AwaitProps<T>>): JSXElement {
       untrack(() => match.state.chain()),
       match.depth,
       () => match.state.params(),
+      match.state.config.defaults,
     )(error, reset);
     return shown === null || shown === undefined ? null : shown;
   }) as Block<unknown>;
@@ -1273,7 +1265,19 @@ export interface RouterProps {
 function RouterProviderImpl(props: Incoming<{ state: RouterState }>): unknown {
   const state = readSlot(props.state, "RouterProvider.state") as RouterState;
   void state.start();
-  return provide(RouterContext, cell(state), () => renderDepth(state, 0, null, null));
+  return routed(state);
+}
+
+/**
+ * The matched routes under the router's context, inside `Wrap` and around
+ * `InnerWrap`. The string backend nests the same three in the same order.
+ */
+function routed(state: RouterState): unknown {
+  return wrapWith(state.options.Wrap, () =>
+    provide(RouterContext, cell(state), () =>
+      wrapWith(state.options.InnerWrap, () => renderDepth(state, 0, null, null)),
+    ),
+  );
 }
 
 function RouterImpl(props: Incoming<RouterProps>): unknown {
@@ -1301,7 +1305,7 @@ function RouterImpl(props: Incoming<RouterProps>): unknown {
   });
   onCleanup(() => state.dispose());
   void state.start();
-  return provide(RouterContext, cell(state), () => renderDepth(state, 0, null, null));
+  return routed(state);
 }
 
 /**
@@ -1313,8 +1317,6 @@ function RouterImpl(props: Incoming<RouterProps>): unknown {
  */
 export type PreloadStrategy = "intent" | "viewport" | "render" | false;
 
-/** Hover before it counts as intent. TanStack's default, and it is a good one. */
-const PRELOAD_DELAY = 50;
 /** How early a viewport link counts as visible. TanStack's `rootMargin`. */
 const VIEWPORT_MARGIN = "100px";
 
@@ -1341,56 +1343,53 @@ type AnchorProps = Omit<
   "href" | "children" | "preload"
 >;
 
-export interface LinkProps extends AnchorProps {
-  /**
-   * A path, or a route id when `params` is given.
-   *
-   * Narrowed to the application's own routes once a `routeTree.gen.ts` has
-   * registered them, so an editor offers them and a typo is visible. It still
-   * ADMITS any string — see `ToPath` for why barq stops one step short of
-   * TanStack's strictness, and which checker catches the typo instead.
-   */
-  readonly to: ToPath;
+/** What every link takes besides its destination. */
+interface LinkOwnProps extends AnchorProps {
   /** Warm the cache for this link's target. The router's `defaults.preload` otherwise. */
   readonly preload?: PreloadStrategy;
-  readonly params?: Record<string, string>;
-  /**
-   * The query, as a string, a record, or a FUNCTION of the current one.
-   *
-   * The functional form is what a link that edits one parameter needs:
-   * `search={(prev) => ({ ...prev, page: "2" })}` keeps the rest of the query
-   * instead of replacing it, which is otherwise a read of `useSearch()` at
-   * every call site.
-   */
-  readonly search?:
-    | string
-    | Record<string, string>
-    | ((current: Record<string, string>) => Record<string, string>);
-  /** The fragment, without its `#`. Written into the href and carried by a click. */
-  readonly hash?: string;
-  readonly replace?: boolean;
-  readonly state?: unknown;
+  /** Hover or focus this long before `preload: "intent"` counts. The router's `defaults.preloadDelay` otherwise. */
+  readonly preloadDelay?: number;
   readonly class?: string;
-  /**
-   * Resolve a relative `to` against THIS path rather than the current location.
-   *
-   * A `<Link to="../edit">` inside a component rendered under several routes
-   * otherwise means something different depending on where it was rendered.
-   */
-  readonly from?: string;
-  /**
-   * Leave the click to the browser: a full document load rather than a
-   * navigation. For a link out of the application's own routing.
-   */
-  readonly reloadDocument?: boolean;
   /** Refuse the click, and mark the anchor `aria-disabled`. */
   readonly disabled?: boolean;
-  /** Scroll to the top after this navigation. Default `true`. */
-  readonly resetScroll?: boolean;
-  /** Wrap this navigation in a view transition. The router's default otherwise. */
-  readonly viewTransition?: boolean;
+  /**
+   * Attributes applied while this link points at where you are.
+   *
+   * A record rather than a second class name, because "active" is not only ever
+   * a class: `aria-current` is set for you, but a nav may also want
+   * `data-state`, a `title`, or `tabindex="-1"` on the link to the page it is
+   * already on. A `class` in it is appended to the link's own. A function is
+   * called for the record, which is TanStack's other spelling.
+   */
+  readonly activeProps?: LinkStateProps | (() => LinkStateProps);
+  /** Attributes applied while it does not. */
+  readonly inactiveProps?: LinkStateProps | (() => LinkStateProps);
+  readonly activeOptions?: ActiveOptions;
   readonly children?: unknown;
 }
+
+type LinkStateProps = Record<string, string | null | undefined>;
+
+/**
+ * `<Link>`'s props: an anchor's, plus TanStack's navigation options.
+ *
+ * `to` is a path, or a route id when it has parameters. It is narrowed to the
+ * application's own routes once a `routeTree.gen.ts` has registered them, so an
+ * editor offers them, and it still ADMITS any string: see `ToPath` for why barq
+ * stops one step short of TanStack's strictness, and which checker catches the
+ * typo instead. What `to` says types the rest: a pattern with a parameter makes
+ * `params` required, and a registered route gives `search` its validated shape.
+ *
+ * `search` may be a string, a record, or a FUNCTION of the current one, which
+ * is what a link that edits one parameter needs:
+ * `search={(prev) => ({ ...prev, page: 2 })}` keeps the rest of the query.
+ *
+ * `from` resolves a relative `to` against THAT path rather than the current
+ * location, so a `<Link to="../edit">` in a component rendered under several
+ * routes means one thing. `reloadDocument` leaves the click to the browser.
+ */
+export type LinkProps<To extends string = string, From extends string = string> = LinkOwnProps &
+  NavigateOptionsFor<To, From> & { readonly to: To | ToPath };
 
 /** The default not-found, as an element the server writes identically. */
 const notFoundTemplate = template(`<p>${NOT_FOUND}</p>`);
@@ -1410,158 +1409,6 @@ const NOT_FOUND_ERROR = new NotFound(NOT_FOUND);
 const anchorTemplate = template("<a></a>");
 
 /**
- * The props `<Link>` and `<NavLink>` interpret themselves. Everything else is
- * an attribute of the anchor.
- *
- * A SET rather than a check per name, because this runs once per link built and
- * the list is fixed.
- */
-/**
- * The DOM event a prop name addresses, or `null` for an ordinary attribute.
- *
- * `onClick` and `onclick` both, because `IntrinsicElements["a"]` declares each
- * spelling and an author may write either.
- */
-function eventNameOf(name: string): string | null {
-  if (!name.startsWith("on") || name.length < 3) return null;
-  const rest = name.slice(2);
-  // `on-` prefixed data attributes are not events; a letter has to follow.
-  if (!/^[a-zA-Z]/.test(rest)) return null;
-  return rest.toLowerCase();
-}
-
-const LINK_OWN_PROPS = new Set([
-  "to",
-  "preload",
-  "params",
-  "search",
-  "hash",
-  "replace",
-  "state",
-  "class",
-  "from",
-  "reloadDocument",
-  "disabled",
-  "resetScroll",
-  "viewTransition",
-  "children",
-  "activeClass",
-  "end",
-  "activeOptions",
-  "activeProps",
-  "inactiveProps",
-]);
-
-/**
- * Resolve a `to` that may be a route ID, a relative path or an absolute one.
- *
- * A route id is tried first and falls through to path resolution, so
- * `to="/users/$id"` with `params` builds `/users/7` while `to="/users/7"` is
- * taken as it stands.
- */
-function resolveTo(state: RouterState, props: Incoming<LinkProps>): string {
-  const to = readSlot(props.to, "Link.to") as string;
-  if (leavesTheApp(to)) return to;
-
-  const given = props.params === undefined ? undefined : readSlot(props.params, "Link.params");
-  const destination = state.matcher.routes.find((route) => route.id === to);
-  const pattern = destination?.fullPath;
-  const params =
-    given === undefined
-      ? undefined
-      : stringifyParams(destination?.chain, given as Record<string, unknown>);
-  // `from` pins what a relative `to` is relative TO. Without it a
-  // `<Link to="../edit">` in a shared component means something different
-  // depending on which route rendered it.
-  const origin =
-    props.from === undefined
-      ? state.location().pathname
-      : (readSlot(props.from, "Link.from") as string);
-  const built =
-    pattern !== undefined
-      ? interpolate(pattern, params ?? {})
-      : params !== undefined
-        ? interpolate(to, params)
-        : resolvePath(to, origin);
-  // A `to` that is a route ID carries the pattern's spelling, not the caller's,
-  // so `"preserve"` reads the ORIGIN when `to` addressed nowhere new — which is
-  // the `<Link to=".">` that re-renders where you already are.
-  const path = applyTrailingSlash(
-    built,
-    state.trailingSlash,
-    (to === "" || to === "." ? origin : to).endsWith("/"),
-  );
-
-  const query = queryFor(state, props);
-  const hash = props.hash === undefined ? "" : (readSlot(props.hash, "Link.hash") as string);
-  const fragment = hash === "" ? "" : `#${hash.replace(/^#/, "")}`;
-  return (query === "" ? path : `${path}?${query}`) + fragment;
-}
-
-/**
- * `params.stringify`, for every route on the way to the destination.
- *
- * The inverse of the `parse` that produced the value: a route working in `Date`
- * has to write a URL, and `interpolate` only knows how to encode a string. Runs
- * outermost first so a leaf can override what a layout wrote for a shared name,
- * which is the direction every other chain merge in the router goes.
- *
- * A THROW IS SWALLOWED, which is TanStack's choice (`router.ts:1943-1952`) and
- * the right one here: this runs while a link is being rendered, where there is
- * no boundary to catch it and nobody waiting on an answer. The paired `parse`
- * refuses the same value on the way back in, with a boundary, if the link is
- * ever followed.
- */
-function stringifyParams(
-  chain: readonly Route[] | undefined,
-  given: Record<string, unknown>,
-): Record<string, string> {
-  let out: Record<string, unknown> = given;
-  for (const route of chain ?? []) {
-    const stringify = route.definition.params?.stringify;
-    if (stringify === undefined) continue;
-    try {
-      out = { ...out, ...stringify(out) };
-    } catch {
-      /* see above: a link cannot report this and must still render */
-    }
-  }
-  return out as Record<string, string>;
-}
-
-/**
- * The query string a link contributes, in whichever of the three forms it gave.
- *
- * A FUNCTION is handled before `readSlot` rather than through it, and that is
- * forced rather than chosen: every prop in barq is a slot, so `readSlot` calls
- * a function prop as an accessor with no arguments — which makes an updater and
- * an accessor the same thing to it, and made `(prev) => ({ ...prev, page })`
- * spread `undefined` and silently drop the rest of the query.
- *
- * Calling it with the current query instead serves both spellings: an accessor
- * that ignores its argument behaves exactly as it did, and an updater gets what
- * it needs. That is why there is no separate prop for it.
- */
-function queryFor(state: RouterState, props: Incoming<LinkProps>): string {
-  if (props.search === undefined) return "";
-  const raw = props.search as unknown;
-  let search: unknown =
-    typeof raw === "function"
-      ? (raw as (current: Record<string, string>) => unknown)(searchRecordOf(state))
-      : readSlot(props.search, "Link.search");
-  // TWICE, at most: the compiler wraps a JSX attribute in an accessor, so an
-  // updater written in a route file arrives as `() => (prev) => ({...})`. The
-  // first call unwraps the accessor and hands the record to something that
-  // ignores it; the second reaches the updater. A plain accessor returning a
-  // record settles on the first, and nothing loops.
-  if (typeof search === "function") {
-    search = (search as (current: Record<string, string>) => unknown)(searchRecordOf(state));
-  }
-  if (typeof search === "string") return search.replace(/^\?/, "");
-  return new URLSearchParams(search as Record<string, string>).toString();
-}
-
-/**
  * The props a link did not interpret, flattened for the string backend.
  *
  * The DOM path binds these reactively; a string render happens once, so it
@@ -1573,9 +1420,9 @@ export function linkExtraAttrs(props: Incoming<LinkProps>): Record<string, strin
     if (LINK_OWN_PROPS.has(name)) continue;
     // A handler has no markup counterpart; the DOM half attaches it.
     if (eventNameOf(name) !== null) continue;
-    const read = readSlot((props as Record<string, unknown>)[name], `Link.${name}`);
-    if (read === false || read === null || read === undefined) continue;
-    out[name] = String(read);
+    const resolved = readSlot((props as Record<string, unknown>)[name], `Link.${name}`);
+    if (resolved === false || resolved === null || resolved === undefined) continue;
+    out[name] = toString(resolved);
   }
   // The one interpreted prop that still has to reach the markup: the DOM path
   // binds `aria-disabled`, and without it here the server's anchor and the
@@ -1586,27 +1433,28 @@ export function linkExtraAttrs(props: Incoming<LinkProps>): Record<string, strin
   return out;
 }
 
-/** The current query as a plain record, for the functional `search` form. */
-function searchRecordOf(state: RouterState): Record<string, string> {
-  const current: Record<string, string> = {};
-  for (const [key, value] of state.search()) current[key] = value;
-  return current;
+/**
+ * Resolve a `to` that may be a route ID, a relative path or an absolute one.
+ *
+ * `buildLocation` does the resolving, which is what makes a link's href the
+ * location a click on it commits.
+ */
+function resolveTo(state: RouterState, props: Incoming<LinkProps>): string {
+  return state.buildLocation(linkNavigation(state, props)).href;
 }
 
-function anchorElement(
-  props: Incoming<LinkProps>,
-  extra: (element: HTMLAnchorElement, target: () => string) => void,
-): Node {
+function anchorElement(props: Incoming<NavLinkProps>, activeClass: string | null): Node {
   const state = useRouter();
   const element = anchorTemplate() as HTMLAnchorElement;
+  const link = linkBehavior(state, props, activeClass);
   // Read inside the effect, not captured at construction: a surviving `<Link>`
   // under a layout must re-resolve when the location moves, or it points at the
   // path it was built under forever.
   const target = (): string => resolveTo(state, props);
 
   bindProp(element, setAttr, "href", () => linkAttrHref(state, target()));
-  if (props.class !== undefined) {
-    bindProp(element, setClass, "class", () => readSlot(props.class, "Link.class"));
+  if (props.class !== undefined || link.tracksActive) {
+    bindProp(element, setClass, "class", link.className);
   }
 
   // EVERY OTHER PROP REACHES THE ANCHOR. A `<Link>` is an `<a>`, and an `<a>`
@@ -1627,115 +1475,57 @@ function anchorElement(
       });
       continue;
     }
-    bindProp(element, setAttr, name, () => {
-      const read = readSlot(value, `Link.${name}`);
-      // `false` and `null` REMOVE, so `download={false}` is not the string
-      // "false" — which is truthy as an attribute and would enable it.
-      return read === false || read === null || read === undefined ? null : String(read);
-    });
+    bindProp(element, setAttr, name, attributeValue.bind(null, value, name));
   }
 
-  // The strategy is read WHEN A LISTENER FIRES, so a link whose prop moves acts
-  // on what it now says — but the OBSERVER is constructed only for `viewport`.
-  // The old router built an `IntersectionObserver` for every link regardless,
-  // checked the strategy inside the callback, and therefore never disconnected
-  // one for a link that was not `viewport`: a list of 500 default links kept 500
-  // live observers doing layout work for nothing.
-  const strategy = (): PreloadStrategy =>
-    props.preload === undefined
-      ? // The router's answer when the link does not give one. `false` still,
-        // unless a project turned preloading on for every link at once.
-        (state.config.defaults?.preload ?? false)
-      : ((readSlot(props.preload, "Link.preload") as PreloadStrategy) ?? false);
-
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const warm = (): void => {
-    const to = target();
-    if (leavesTheApp(to)) return;
-    void state.preload(to);
-  };
-  const cancel = (): void => {
-    clearTimeout(timer);
-    timer = undefined;
-  };
-  // Cleared on UNMOUNT as well as on leave. The old router cleared only on
-  // `mouseleave`, so unmounting inside the hover window still fired a preload
-  // against a disposed scope.
-  onCleanup(cancel);
-
-  const onIntent = (): void => {
-    if (strategy() !== "intent" || timer !== undefined) return;
-    timer = setTimeout(() => {
-      timer = undefined;
-      warm();
-    }, state.config.defaults?.preloadDelay ?? PRELOAD_DELAY);
-  };
-
-  listen(element, "mouseenter", onIntent);
-  listen(element, "mouseleave", cancel);
+  listen(element, "mouseenter", link.onIntent);
+  listen(element, "mouseleave", link.onLeave);
   // Keyboard and touch users preloaded not at all in the old router, which had
   // `mouseenter` and nothing else. A touch fires immediately: there is no hover
   // before a tap, so a delay is just latency.
-  listen(element, "focusin", onIntent);
-  listen(element, "blur", cancel);
-  listen(element, "touchstart", () => {
-    if (strategy() !== "intent") return;
-    cancel();
-    warm();
-  });
+  listen(element, "focusin", link.onIntent);
+  listen(element, "blur", link.onLeave);
+  listen(element, "touchstart", link.onTouch);
 
-  if (untrack(strategy) === "render") {
-    warm();
-  } else if (untrack(strategy) === "viewport" && typeof IntersectionObserver !== "undefined") {
+  // The OBSERVER is constructed only for `viewport`. The old router built an
+  // `IntersectionObserver` for every link regardless, checked the strategy
+  // inside the callback, and therefore never disconnected one for a link that
+  // was not `viewport`: a list of 500 default links kept 500 live observers
+  // doing layout work for nothing.
+  if (untrack(link.strategy) === "render") {
+    link.warm();
+  } else if (untrack(link.strategy) === "viewport" && typeof IntersectionObserver !== "undefined") {
     const observer = new IntersectionObserver(
       (entries) => {
         if (!entries[entries.length - 1]?.isIntersecting) return;
         observer.disconnect();
-        warm();
+        link.warm();
       },
       { rootMargin: VIEWPORT_MARGIN },
     );
     observer.observe(element);
-    onCleanup(() => observer.disconnect());
+    onCleanup(observer.disconnect.bind(observer));
   }
-
-  const flag = (value: unknown, name: string): boolean | undefined =>
-    value === undefined ? undefined : Boolean(readSlot(value, name));
 
   // `aria-disabled` rather than the `disabled` attribute, which an `<a>` does
-  // not have. The click is refused below; this is what says so to a screen
-  // reader.
+  // not have. The click is refused by the link itself; this is what says so to
+  // a screen reader.
   if (props.disabled !== undefined) {
-    bindProp(element, setAttr, "aria-disabled", () =>
-      flag(props.disabled, "Link.disabled") === true ? "true" : null,
-    );
+    bindProp(element, setAttr, "aria-disabled", stateAttribute.bind(null, link, "aria-disabled"));
   }
 
-  listen(element, "click", ((event: MouseEvent) => {
-    if (flag(props.disabled, "Link.disabled") === true) {
-      // Refused entirely: no navigation and no document load either.
-      event.preventDefault();
-      return;
-    }
-    const to = target();
-    if (leavesTheApp(to)) return;
-    if (event.defaultPrevented || event.button !== 0) return;
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-    if (element.hasAttribute("download") || element.target === "_blank") return;
-    // `reloadDocument` hands the click back to the browser, which is the whole
-    // of it: no `preventDefault`, so the anchor navigates the document.
-    if (flag(props.reloadDocument, "Link.reloadDocument") === true) return;
-    event.preventDefault();
-    void state.navigate(to, {
-      replace:
-        props.replace === undefined ? false : Boolean(readSlot(props.replace, "Link.replace")),
-      state: props.state === undefined ? undefined : readSlot(props.state, "Link.state"),
-      resetScroll: flag(props.resetScroll, "Link.resetScroll"),
-      viewTransition: flag(props.viewTransition, "Link.viewTransition"),
-    });
-  }) as EventListener);
+  listen(element, "click", link.onClick as EventListener);
 
-  extra(element, target);
+  if (link.tracksActive) {
+    bindProp(element, setAttr, "aria-current", stateAttribute.bind(null, link, "aria-current"));
+    bindProp(element, setAttr, "data-status", stateAttribute.bind(null, link, "data-status"));
+    // Every name from BOTH records gets a binding, so a name present in one and
+    // absent from the other is REMOVED when the state flips rather than left
+    // behind — which is what a naive "apply the active record" does.
+    for (const name of link.stateAttributeNames) {
+      bindProp(element, setAttr, name, stateAttribute.bind(null, link, name));
+    }
+  }
 
   // `insert`, NEVER `append`. The template CLAIMS the server's `<a>` during
   // hydration, text and all, so appending the children put a SECOND copy of
@@ -1755,21 +1545,32 @@ function anchorElement(
   return element;
 }
 
+/** One of the attributes a link's own state decides, or `null` to remove it. */
+function stateAttribute(link: LinkState, name: string): string | null {
+  if (name === "aria-disabled") return link.isDisabled() ? "true" : null;
+  if (name === "aria-current") return link.isActive() ? "page" : null;
+  if (name === "data-status") return link.isActive() ? "active" : null;
+  return link.stateAttributes()[name] ?? null;
+}
+
+/** A link on the string backend: the same state, written once. */
+function anchorMarkup(
+  backend: LinkBackend,
+  props: Incoming<NavLinkProps>,
+  activeClass: string | null,
+): Node {
+  const link = linkState(useRouter(), props, activeClass);
+  const attributes = linkExtraAttrs(props);
+  for (const name of link.stateAttributeNames) {
+    const value = stateAttribute(link, name);
+    if (value !== null) attributes[name] = value;
+  }
+  return backend.link(link.href(), link.className(), props.children, attributes) as never;
+}
+
 function LinkImpl(props: Incoming<LinkProps>): Node {
   const backend = linkBackend();
-  if (backend !== null) {
-    const className =
-      props.class === undefined ? "" : (readSlot(props.class, "Link.class") as string);
-    const state = useRouter();
-    // The ATTRIBUTE carries the base; nothing else does. See `linkAttrHref`.
-    return backend.link(
-      linkAttrHref(state, linkHref(state, props)),
-      className,
-      props.children,
-      linkExtraAttrs(props),
-    ) as never;
-  }
-  return anchorElement(props, () => {});
+  return backend === null ? anchorElement(props, null) : anchorMarkup(backend, props, null);
 }
 
 /**
@@ -1789,100 +1590,57 @@ export interface ActiveOptions {
   readonly includeHash?: boolean;
 }
 
-export interface NavLinkProps extends LinkProps {
+export type NavLinkProps<To extends string = string, From extends string = string> = LinkProps<
+  To,
+  From
+> & {
   readonly activeClass?: string;
   /** Exact match instead of the default segment-prefix match. `activeOptions.exact` is the same thing. */
   readonly end?: boolean;
-  readonly activeOptions?: ActiveOptions;
-  /**
-   * Attributes applied while this link points at where you are.
-   *
-   * A record rather than a second class name, because "active" is not only ever
-   * a class: `aria-current` is set for you, but a nav may also want
-   * `data-state`, a `title`, or `tabindex="-1"` on the link to the page it is
-   * already on.
-   */
-  readonly activeProps?: Record<string, string | null>;
-  /** Attributes applied while it does not. */
-  readonly inactiveProps?: Record<string, string | null>;
-}
+};
 
 function NavLinkImpl(props: Incoming<NavLinkProps>): Node {
-  const state = useRouter();
   const backend = linkBackend();
-  if (backend !== null) {
-    const href = linkHref(state, props);
-    const end = props.end === undefined ? false : Boolean(readSlot(props.end, "NavLink.end"));
-    const base =
-      props.class === undefined ? "" : (readSlot(props.class, "NavLink.class") as string);
-    const activeClass =
-      props.activeClass === undefined
-        ? ""
-        : (readSlot(props.activeClass, "NavLink.activeClass") as string);
-    const activeOptions =
-      props.activeOptions === undefined
-        ? undefined
-        : (readSlot(props.activeOptions, "NavLink.activeOptions") as ActiveOptions);
-    const active = linkIsActive(state, href, end, activeOptions);
-    const className = active ? `${base} ${activeClass}`.trim() : base;
-    return backend.link(
-      linkAttrHref(state, href),
-      className,
-      props.children,
-      linkExtraAttrs(props),
-    ) as never;
-  }
-  return anchorElement(props, (element, target) => {
-    // ONE implementation, shared with the string backend. It used to be
-    // duplicated here and compared the whole `to` against a pathname, so a link
-    // carrying a query or a fragment — which `<Link>` now writes — never
-    // matched.
-    const active = (): boolean =>
-      linkIsActive(
-        state,
-        target(),
-        props.end === undefined ? false : Boolean(readSlot(props.end, "NavLink.end")),
-        props.activeOptions === undefined
-          ? undefined
-          : (readSlot(props.activeOptions, "NavLink.activeOptions") as ActiveOptions),
-      );
-    const activeClass = (): string =>
-      props.activeClass === undefined
-        ? "active"
-        : (readSlot(props.activeClass, "NavLink.activeClass") as string);
-    bindProp(element, setAttr, "aria-current", () => (active() ? "page" : null));
+  return backend === null ? anchorElement(props, "active") : anchorMarkup(backend, props, "");
+}
 
-    // Every name from BOTH records gets a binding, so a name present in one and
-    // absent from the other is REMOVED when the state flips rather than left
-    // behind — which is what a naive "apply the active record" does.
-    const activeProps = (): Record<string, string | null> =>
-      props.activeProps === undefined
-        ? {}
-        : ((readSlot(props.activeProps, "NavLink.activeProps") ?? {}) as Record<
-            string,
-            string | null
-          >);
-    const inactiveProps = (): Record<string, string | null> =>
-      props.inactiveProps === undefined
-        ? {}
-        : ((readSlot(props.inactiveProps, "NavLink.inactiveProps") ?? {}) as Record<
-            string,
-            string | null
-          >);
-    const names = new Set([
-      ...Object.keys(untrack(activeProps)),
-      ...Object.keys(untrack(inactiveProps)),
-    ]);
-    for (const name of names) {
-      bindProp(element, setAttr, name, () =>
-        active() ? (activeProps()[name] ?? null) : (inactiveProps()[name] ?? null),
-      );
-    }
-    bindProp(element, setClass, "class", () => {
-      const base = props.class === undefined ? "" : (readSlot(props.class, "Link.class") as string);
-      return active() ? `${base} ${activeClass()}`.trim() : base;
-    });
-  });
+/**
+ * TanStack's `useLinkProps`: a link's `href`, handlers and state attributes, for
+ * an element the caller draws. Spread the result onto it.
+ */
+export function useLinkProps<const To extends string = string, const From extends string = string>(
+  options: LinkProps<To, From>,
+): Record<string, unknown> {
+  return linkElementProps(useRouter(), options as never, null);
+}
+
+/**
+ * TanStack's `createLink`: a component of the caller's that navigates the way
+ * `<Link>` does. It is handed what `useLinkProps` answers with, plus `children`.
+ */
+export function createLink(
+  component: (props: Record<string, unknown>) => unknown,
+): <const To extends string = string, const From extends string = string>(
+  props: LinkProps<To, From>,
+) => JSXElement {
+  const created = (props: Incoming<LinkProps>): unknown => {
+    const link = linkElementProps(useRouter(), props, null);
+    link.children = props.children;
+    return component(link);
+  };
+  return created as never;
+}
+
+/**
+ * TanStack's `linkOptions`: a link's options checked where they are written, so
+ * one object can feed `<Link>`, `navigate` and `redirect` alike.
+ */
+export function linkOptions<
+  const To extends string = string,
+  const From extends string = string,
+  const Options extends NavigateOptionsFor<To, From> = NavigateOptionsFor<To, From>,
+>(options: Options & NavigateOptionsFor<To, From>): Options {
+  return options;
 }
 
 /** Navigate on construction. */
@@ -1907,8 +1665,18 @@ export const Router = RouterImpl as unknown as Authored<RouterProps>;
 export const RouterProvider = RouterProviderImpl as unknown as Authored<{
   state: RouterState;
 }>;
-export const Link = LinkImpl as unknown as Authored<LinkProps>;
-export const NavLink = NavLinkImpl as unknown as Authored<NavLinkProps>;
+export const Link = LinkImpl as unknown as <
+  const To extends string = string,
+  const From extends string = string,
+>(
+  props: LinkProps<To, From>,
+) => JSXElement;
+export const NavLink = NavLinkImpl as unknown as <
+  const To extends string = string,
+  const From extends string = string,
+>(
+  props: NavLinkProps<To, From>,
+) => JSXElement;
 export const Redirect = RedirectImpl as unknown as Authored<RedirectProps>;
 
 export { RouterContext };

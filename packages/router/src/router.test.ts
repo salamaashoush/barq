@@ -22,6 +22,8 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { Await, Link, NavLink, Router, RouterProvider, linkHref, useRouter } from "./components.ts";
 import { notFound, redirect } from "./errors.ts";
 import { retainSearchParams } from "./search.ts";
+import { RpcRedirect } from "@barqjs/start/client";
+
 import { memoryHistory } from "./history.ts";
 import {
   useLocation,
@@ -627,7 +629,7 @@ describe("loaderDeps and the reload policy", () => {
             return "good";
           },
           pendingComponent: page("SKELETON"),
-          errorComponent: (scope: Scope | null) => {
+          errorComponent: () => {
             const node = document.createElement("b");
             insert(node, () => "ERROR");
             return node;
@@ -736,7 +738,7 @@ describe("loaderDeps and the reload policy", () => {
     await settle();
     flush();
     expect(host.textContent).toBe("v1");
-    state.invalidate();
+    void state.invalidate();
     flush();
     await settle();
     flush();
@@ -836,7 +838,7 @@ describe("validateSearch", () => {
         {
           path: "/u",
           validateSearch: (input: Record<string, unknown>) => ({ n: Number(input.n) + 1 }),
-          component: (scope: Scope | null) => {
+          component: () => {
             const node = document.createElement("span");
             const s = useSearch<{ n: number }>();
             insert(node, () => String(s().n));
@@ -1304,7 +1306,7 @@ describe("errorComponent on the DOM backend", () => {
             notFound("no row 7");
           },
           pendingComponent: page("loading"),
-          errorComponent: (scope: Scope | null) => {
+          errorComponent: () => {
             const node = document.createElement("p");
             insert(node, () => "generic");
             return node;
@@ -1470,7 +1472,7 @@ describe("Link", () => {
       routeTree: [
         {
           path: "/u/$id",
-          component: (scope: Scope | null) => {
+          component: () => {
             const wrapper = document.createElement("div");
             wrapper.append(
               (Link as never as (p: unknown) => Node)({
@@ -1721,7 +1723,7 @@ describe("NavLink", () => {
       routeTree: [
         {
           path: "/user/$id",
-          component: (scope: Scope | null) => {
+          component: () => {
             const wrapper = document.createElement("div");
             wrapper.append(
               (NavLink as never as (p: unknown) => Node)({
@@ -1859,7 +1861,7 @@ describe("guards", () => {
         beforeEach: [({ to }) => (to.pathname === "/" ? true : "/a")],
       });
       await (go as unknown as (to: string) => Promise<void>)("/a");
-      expect(errors.join(" ")).toContain("redirects");
+      expect(errors.join(" ")).toContain("redirected more than 10 times");
       dispose();
     } finally {
       console.error = original;
@@ -2414,7 +2416,7 @@ test("navigating to a lazy() route reveals it once the module lands", async () =
   const host = document.createElement("div");
   document.body.appendChild(host);
   const dispose = render(
-    ((s: unknown) =>
+    (() =>
       (RouterProvider as never as (p: unknown) => unknown)({
         state: () => state,
       })) as never,
@@ -3005,6 +3007,30 @@ describe("useServerFn", () => {
       expect(state.location().pathname).toBe("/");
       dispose();
     }
+  });
+
+  /**
+   * A redirect a server function threw arrives rebuilt by `@barqjs/start`, not
+   * as this package's class, and carries the navigation it described.
+   */
+  test("a redirect off the wire navigates with the options it described", async () => {
+    const { call, state, dispose } = wrapped(async () => {
+      throw new RpcRedirect("/login?from=home#form", 307, {
+        to: "/login",
+        search: { from: "home" },
+        hash: "form",
+        replace: true,
+      });
+    });
+    const depth = state.history.depth?.() ?? 0;
+    await call();
+    await tick();
+    expect(state.location().pathname).toBe("/login");
+    expect(state.location().search).toBe("?from=home");
+    expect(state.location().hash).toBe("#form");
+    // `replace` crossed: the entry was swapped rather than pushed.
+    expect(state.history.depth?.() ?? 0).toBe(depth);
+    dispose();
   });
 });
 

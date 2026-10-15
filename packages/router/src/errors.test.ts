@@ -146,7 +146,7 @@ describe("onCatch", () => {
       { onCatch: (e: Error) => seen.push(`root:${e.message}`) },
       {
         onCatch: (e: Error) => seen.push(`leaf:${e.message}`),
-        errorComponent: (() => null) as never,
+        errorComponent: () => null,
       },
     );
     const fallback = errorFallbackFor(chain, 1, () => ({}));
@@ -176,7 +176,7 @@ describe("onCatch", () => {
     const seen: string[] = [];
     const chain = chainOf({
       onCatch: (e: Error) => seen.push(e.message),
-      notFoundComponent: (() => null) as never,
+      notFoundComponent: () => null,
     });
     errorFallbackFor(chain, 0, () => ({}))(
       () => new NotFound("gone"),

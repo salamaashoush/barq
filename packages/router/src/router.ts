@@ -17,13 +17,14 @@
 import {
   type Cell,
   NotReadyError,
-  computed,
+  createMemo,
   flush,
   latest,
   refresh,
-  root,
+  createRoot,
   runWithOwner,
-  signal,
+  createSignal,
+  type Signal,
   untrack,
 } from "@barqjs/core";
 
@@ -38,12 +39,13 @@ import {
   normalizeBase,
   parseLocation,
 } from "./history.ts";
-import { ROOT_ROUTE_ID } from "./file-route.ts";
+import { type LocationRewrite, defaultOrigin, publicHref, rewriteHistory } from "./rewrite.ts";
 import { type Match, type Matcher, createMatcher } from "./matcher.ts";
 import {
   type AnyRouteDefinition,
   type Route,
   type RouteLifecycle,
+  ROOT_ROUTE_ID,
   flattenRoutes,
   pendingChunks,
   preloadMatched,
@@ -59,9 +61,12 @@ import {
   withoutTrailingSlash,
 } from "./path.ts";
 import type { TrailingSlash } from "./path.ts";
+import type { NavigateFn } from "./register.ts";
+import { type RouterOptions, type ServerSsr, applyRouterOverrides } from "./ssr.ts";
 import {
   type ScrollOptions,
   type ScrollRestoration,
+  type ViewTransitionOptions,
   scrollRestoration,
   withViewTransition,
 } from "./scroll.ts";
@@ -75,6 +80,12 @@ import {
 } from "./search.ts";
 
 const NOOP = (): void => {};
+const NO_SEARCH = new URLSearchParams();
+const NO_LOADER = async (): Promise<unknown> => undefined;
+
+/** How a cell is read: called, or through `untrack`. */
+type Reader = <T>(cell: () => T) => T;
+const track: Reader = (cell) => cell();
 
 /**
  * The router-wide answer for a per-route option.
@@ -98,6 +109,42 @@ export interface RouteDefaults {
   readonly preloadDelay?: number;
   /** What every route runs on the server when it does not say. Default `true`. */
   readonly ssr?: boolean | "data-only";
+  /** Shown while a route that declares no `pendingComponent` is loading. */
+  readonly pendingComponent?: AnyRouteDefinition["pendingComponent"];
+  /** Rendered when no route up the chain declares an `errorComponent`. */
+  readonly errorComponent?: AnyRouteDefinition["errorComponent"];
+  /** Rendered when no route up the chain declares a `notFoundComponent`. */
+  readonly notFoundComponent?: AnyRouteDefinition["notFoundComponent"];
+  /** Told about a caught error when no route up the chain declares an `onCatch`. */
+  readonly onCatch?: (error: Error) => void;
+}
+
+/**
+ * TanStack's `default*` router options, resolved onto {@link RouteDefaults}.
+ *
+ * Both spellings configure the same thing, and the top-level one wins where a
+ * config gives both.
+ */
+function resolveDefaults(config: RouterConfig): RouterConfig {
+  const named: RouteDefaults = {
+    pendingMs: config.defaultPendingMs,
+    pendingMinMs: config.defaultPendingMinMs,
+    staleTime: config.defaultStaleTime,
+    preloadStaleTime: config.defaultPreloadStaleTime,
+    gcTime: config.defaultGcTime,
+    preloadGcTime: config.defaultPreloadGcTime,
+    staleReloadMode: config.defaultStaleReloadMode,
+    preload: config.defaultPreload,
+    preloadDelay: config.defaultPreloadDelay,
+    ssr: config.defaultSsr,
+    pendingComponent: config.defaultPendingComponent,
+    errorComponent: config.defaultErrorComponent,
+    notFoundComponent: config.defaultNotFoundComponent,
+    onCatch: config.defaultOnCatch,
+  };
+  const given = Object.entries(named).filter(([, value]) => value !== undefined);
+  if (given.length === 0) return config;
+  return { ...config, defaults: { ...config.defaults, ...Object.fromEntries(given) } };
 }
 
 /** How many resolved loader cells to keep. Beyond this the oldest go. */
@@ -134,14 +181,21 @@ export type SsrMode = boolean | "data-only";
  * downward, `"data-only"` clamps a child's `true`, and a child may always
  * declare `false` for itself.
  */
-export function resolveSsr(chain: readonly Route[], fallback: SsrMode = true): readonly SsrMode[] {
+export function resolveSsr(
+  chain: readonly Route[],
+  fallback: SsrMode = true,
+  /** What each route's functional `ssr` answered for this request, by route id. */
+  decided?: ReadonlyMap<string, SsrMode>,
+): readonly SsrMode[] {
   const out: SsrMode[] = [];
   let parent: SsrMode = true;
   for (const route of chain) {
     // `fallback` is the router's `defaults.ssr`, which is how a project makes
     // every route client-only without writing `ssr: false` on each. A route
     // that says something itself always wins.
-    const own = route.definition.ssr ?? fallback;
+    const declared = route.definition.ssr;
+    const own =
+      decided?.get(route.id) ?? (typeof declared === "function" ? undefined : declared) ?? fallback;
     let mode: SsrMode;
     if (parent === false) mode = false;
     else if (own === true && parent === "data-only") mode = "data-only";
@@ -152,12 +206,16 @@ export function resolveSsr(chain: readonly Route[], fallback: SsrMode = true): r
   return out;
 }
 
+const bump = (n: number): number => n + 1;
+
 /** One cached loader result, and everything the reload policy reads. */
 interface Entry {
   readonly key: string;
   readonly route: Route;
-  /** The keyed async `computed`. Reloaded with `refresh`, never replaced. */
-  readonly cell: Cell<unknown>;
+  /** The keyed async memo. Reloaded with `reload`, never replaced. */
+  cell: Cell<unknown>;
+  /** Asks the loader again. Nothing to ask when the route has no loader. */
+  reload: () => void;
   /**
    * Disposes the entry's own scope, which ABORTS whatever is in flight.
    *
@@ -186,13 +244,14 @@ interface Entry {
   /** What `loaderDeps` selected for this entry, so `shouldReload` can see it. */
   readonly deps: unknown;
   /**
-   * Bumped to make a held read re-evaluate — see `pendingMinMs`.
+   * Bumped to make a held read re-evaluate — see `pendingMinMs` — and when a
+   * reload starts and settles, which is what a `blocking` read waits on.
    *
    * A signal rather than a timer the reader owns, because the READ is what has
    * to notice: the value may have settled while the fallback was still being
    * held, and nothing else would wake the boundary.
    */
-  readonly hold: ReturnType<typeof signal<number>>;
+  readonly hold: Signal<number>;
   /** When this entry's `pending` fallback was first shown. `0` if it never was. */
   shownAt: number;
   /** Whether this entry was born of a preload, which picks the stale budget. */
@@ -200,6 +259,21 @@ interface Entry {
   /** Aborts the run in flight, if any. */
   abort: (reason: string) => void;
   inFlight: boolean;
+  /** Settles when the run in flight does, whichever way it goes. */
+  running: Promise<void> | null;
+  /** Settles `running`. A no-op while nothing is in flight. */
+  done: () => void;
+  /** The raw segments and the parsed params this entry was minted for. */
+  readonly raw: Readonly<Record<string, string>>;
+  readonly params: Readonly<Record<string, string>>;
+}
+
+/** Where a loader runs when that is not the committed location: a preload's target. */
+interface Lane {
+  readonly chain: readonly Route[];
+  readonly raw: Readonly<Record<string, string>>;
+  readonly location: Location;
+  readonly contexts: readonly Record<string, unknown>[];
 }
 
 /**
@@ -218,17 +292,37 @@ export function depsKey(value: unknown): string {
   return `{${names.map((name) => `${JSON.stringify(name)}:${depsKey(record[name])}`).join(",")}}`;
 }
 
-export interface NavigateOptions {
-  readonly replace?: boolean;
+/**
+ * A function of the current value.
+ *
+ * Declared as a METHOD, which TypeScript checks both ways in its parameter: an
+ * updater written against `Record<string, string>` still fits where the
+ * current value is typed wider, and one written against a route's own search
+ * fits where it is typed narrower.
+ */
+export type Updater<Current, Next> = { update(current: Current): Next }["update"];
+
+type RecordUpdater = Updater<Record<string, unknown>, Record<string, unknown>>;
+
+/**
+ * Where a navigation goes: TanStack's `ToOptions`.
+ *
+ * `true` for `params`, `search`, `hash` or `state` keeps the current one, and a
+ * function is handed the current one and answers with the next.
+ */
+export interface ToOptions {
+  /** A path, a route id, or a path relative to `from`. The current path when absent. */
+  readonly to?: string;
+  /** What a relative `to` is relative to: a path or a route id. The current location otherwise. */
+  readonly from?: string;
+  /** Laid over the current params, so a route keeps the ones it is not told to change. */
+  readonly params?: true | Record<string, unknown> | RecordUpdater;
+  /** A string is taken as written; a record replaces the query; `true` keeps it. */
+  readonly search?: true | string | Record<string, unknown> | RecordUpdater;
+  /** The fragment, without its `#`. */
+  readonly hash?: true | string | ((current: string) => string);
+  /** `history.state` for the new entry. A function is handed the current one. */
   readonly state?: unknown;
-  /**
-   * Go to the top instead of wherever this location was left.
-   *
-   * A filter change is not a place you return to, so `useSearchParams` sets it.
-   */
-  readonly resetScroll?: boolean;
-  /** Wrap this navigation's commit in a view transition. */
-  readonly viewTransition?: boolean;
   /**
    * Show a DIFFERENT url than the one being rendered.
    *
@@ -237,10 +331,88 @@ export interface NavigateOptions {
    * feed. The real target rides in `history.state`, which survives a reload in
    * the same tab and does NOT survive being pasted somewhere else: a shared
    * masked URL renders the MASK, which is the whole point of choosing it.
+   *
+   * A string is the url to show; an object is built the way a `to` is.
    */
-  readonly mask?: string;
+  readonly mask?: string | ToMaskOptions;
+  /** A fully built url, instead of `to`. For somewhere outside the application. */
+  readonly href?: string;
+}
+
+/** A mask described the way a destination is. */
+export interface ToMaskOptions extends Omit<ToOptions, "mask" | "href"> {
+  readonly unmaskOnReload?: boolean;
+}
+
+/** TanStack's `NavigateOptions`. */
+export interface NavigateOptions extends ToOptions {
+  readonly replace?: boolean;
+  /**
+   * Go to the top instead of wherever this location was left.
+   *
+   * A filter change is not a place you return to, so `useSearchParams` sets it.
+   */
+  readonly resetScroll?: boolean;
+  /** Whether this navigation scrolls its `#hash` into view, and how. */
+  readonly hashScrollIntoView?: boolean | ScrollIntoViewOptions;
+  /** Wrap this navigation's commit in a view transition, optionally a typed one. */
+  readonly viewTransition?: boolean | ViewTransitionOptions;
+  /** Go even if a blocker would refuse. */
+  readonly ignoreBlocker?: boolean;
+  /** Load the target as a document instead of navigating to it. */
+  readonly reloadDocument?: boolean;
   /** Whether THIS mask survives a page load. Overrides the router-wide answer. */
   readonly unmaskOnReload?: boolean;
+}
+
+/** What `buildLocation` answers with. */
+export interface BuiltLocation extends Location {
+  /** `pathname + search + hash`, or the whole url when it leaves the application. */
+  readonly href: string;
+  /** The target is outside the application, so only a document load reaches it. */
+  readonly external: boolean;
+  /** What the address bar shows instead, when a `mask` was given. */
+  readonly maskedLocation?: { readonly href: string; readonly unmaskOnReload?: boolean };
+}
+
+/**
+ * One route in the matched chain, as TanStack's `RouteMatch`.
+ *
+ * `id` is unique per match (route, params and loader deps) and `routeId` is the
+ * route's own. `fullPath` and `definition` are the route itself, so a match can
+ * be read wherever a `Route` was.
+ */
+export interface RouteMatch<Data = unknown> {
+  readonly id: string;
+  readonly routeId: string;
+  readonly fullPath: string;
+  /** This route's part of the location, with its parameters filled in. */
+  readonly pathname: string;
+  readonly params: Record<string, string>;
+  readonly search: Record<string, unknown>;
+  readonly loaderData: Data | undefined;
+  readonly loaderDeps: unknown;
+  readonly context: Record<string, unknown>;
+  readonly status: "pending" | "success" | "error" | "notFound";
+  /** Loader work in flight, including a background reload under a `success`. */
+  readonly isFetching: false | "loader";
+  readonly error: unknown;
+  readonly paramsError: unknown;
+  readonly searchError: unknown;
+  readonly updatedAt: number;
+  readonly cause: LoadCause;
+  readonly staticData: Record<string, unknown>;
+  readonly definition: AnyRouteDefinition;
+}
+
+/** The router's state at one instant: TanStack's `router.state`. */
+export interface RouterSnapshot {
+  readonly status: "pending" | "idle";
+  readonly isLoading: boolean;
+  readonly isTransitioning: boolean;
+  readonly matches: readonly RouteMatch[];
+  readonly location: Location;
+  readonly resolvedLocation: Location | undefined;
 }
 
 /**
@@ -337,8 +509,20 @@ export interface RouteMask {
   readonly params?:
     | Record<string, string>
     | ((captured: Record<string, string>) => Record<string, string>);
+  /** The query the mask shows. A function is handed the query being navigated to. */
+  readonly search?: Record<string, unknown> | RecordUpdater;
   /** Overrides the router-wide `unmaskOnReload` for this mask alone. */
   readonly unmaskOnReload?: boolean;
+}
+
+/**
+ * TanStack's `createRouteMask`: a typed way to write one {@link RouteMask}.
+ *
+ * `routeTree` is accepted because theirs takes it for inference, and dropped.
+ */
+export function createRouteMask(mask: RouteMask & { readonly routeTree?: unknown }): RouteMask {
+  const { routeTree: _routeTree, ...rest } = mask;
+  return rest;
 }
 
 /**
@@ -351,6 +535,8 @@ export interface RouteMask {
  */
 export interface MatchRouteOptions {
   readonly to: string;
+  /** Resolves a relative `to`, as it does for a navigation. */
+  readonly from?: string;
   /** Every key given must equal what the location captured. */
   readonly params?: Record<string, string>;
   /** Every key given must equal what the current query holds. */
@@ -434,7 +620,7 @@ export type RouterListener = (event: RouterEvent) => void;
  * which is the safe direction: an unrecognised value reports "changed" and the
  * reader re-runs, exactly as it did before.
  */
-function sameShape(a: unknown, b: unknown, depth = 0): boolean {
+export function sameShape(a: unknown, b: unknown, depth = 0): boolean {
   if (Object.is(a, b)) return true;
   if (depth > 8 || a === null || b === null) return false;
   if (typeof a !== "object" || typeof b !== "object") return false;
@@ -497,7 +683,33 @@ export type Guard = (context: {
 export type Blocker = (context: {
   readonly from: Location;
   readonly to: Location;
+  /** The same two places as TanStack's `shouldBlockFn` describes them. */
+  readonly current: BlockerLocation;
+  readonly next: BlockerLocation;
+  readonly action: HistoryAction;
 }) => boolean | void | Promise<boolean | void>;
+
+/** How a navigation was asked for. `BACK` and `FORWARD` are the browser's own buttons. */
+export type HistoryAction = "PUSH" | "REPLACE" | "BACK" | "FORWARD" | "GO";
+
+/** One end of a navigation, as a blocker sees it. */
+export interface BlockerLocation {
+  /** `"__notFound__"` when nothing matched. */
+  readonly routeId: string;
+  readonly fullPath: string;
+  readonly pathname: string;
+  readonly params: Record<string, string>;
+  readonly search: Record<string, unknown>;
+}
+
+export interface BlockOptions {
+  /**
+   * Also ask the browser to confirm closing or reloading the tab. A function is
+   * asked each time. Default `false` for `router.block`, `true` for `useBlocker`
+   * given options, as TanStack's is.
+   */
+  readonly enableBeforeUnload?: boolean | (() => boolean);
+}
 
 export interface RouterConfig {
   /**
@@ -509,6 +721,73 @@ export interface RouterConfig {
    */
   readonly routeTree: readonly AnyRouteDefinition[];
   readonly history?: History;
+  /**
+   * What every route's `context`, `beforeLoad` and loader start from: TanStack's
+   * router context, for handing a query client or an auth object to the tree.
+   *
+   * `createRootRouteWithContext<T>()` is what types it.
+   */
+  readonly context?: Record<string, unknown>;
+  /**
+   * Runs on the server once the matched loaders have settled, and its result
+   * travels in the document to `hydrate`. A promise or an async iterable inside
+   * it is streamed: what it settles on follows the shell.
+   */
+  readonly dehydrate?: RouterOptions["dehydrate"];
+  /** Runs in the browser with what `dehydrate` returned, before the first render. */
+  readonly hydrate?: RouterOptions["hydrate"];
+  /** A component around the whole router output, outside the router's context. */
+  readonly Wrap?: RouterOptions["Wrap"];
+  /** A component around the matched routes, inside the router's context. */
+  readonly InnerWrap?: RouterOptions["InnerWrap"];
+  /**
+   * What the server decided each route runs for the request this router serves,
+   * by route id, over whatever the route declares: a functional `ssr`'s answer,
+   * or `false` below the root of a shell. The page handler fills it; a browser
+   * has none.
+   */
+  readonly ssrDecisions?: ReadonlyMap<string, SsrMode>;
+  /**
+   * A two-way mapping between the URL shown and the URL matched, applied where
+   * the history is read and written and where a `<Link>` writes its `href`.
+   * `basepath` composes with it: stripped before `input`, added after `output`.
+   */
+  readonly rewrite?: LocationRewrite;
+  /** The origin a rewrite's `URL` is built on. The browser's, or `http://localhost`. */
+  readonly origin?: string;
+  /**
+   * Replace how the query is read into a record and written back.
+   *
+   * The default pair is a plain query string and a fixpoint. A custom pair is
+   * the application's own format and its own responsibility to keep one.
+   */
+  readonly parseSearch?: (search: string) => Record<string, unknown>;
+  readonly stringifySearch?: (search: Record<string, unknown>) => string;
+  /** TanStack's names for the entries of `defaults`. */
+  readonly defaultPreload?: RouteDefaults["preload"];
+  readonly defaultPreloadDelay?: number;
+  readonly defaultPendingMs?: number;
+  readonly defaultPendingMinMs?: number;
+  readonly defaultStaleTime?: number;
+  readonly defaultPreloadStaleTime?: number;
+  readonly defaultGcTime?: number;
+  readonly defaultPreloadGcTime?: number;
+  readonly defaultStaleReloadMode?: "background" | "blocking";
+  readonly defaultSsr?: boolean | "data-only";
+  readonly defaultPendingComponent?: RouteDefaults["pendingComponent"];
+  readonly defaultErrorComponent?: RouteDefaults["errorComponent"];
+  readonly defaultNotFoundComponent?: RouteDefaults["notFoundComponent"];
+  readonly defaultOnCatch?: (error: Error) => void;
+  /** TanStack's name for `viewTransition`, and it may carry transition types. */
+  readonly defaultViewTransition?: boolean | ViewTransitionOptions;
+  /** Whether a navigation scrolls its `#hash` into view, and how. Default `true`. */
+  readonly defaultHashScrollIntoView?: boolean | ScrollIntoViewOptions;
+  /** How a scroll restore or reset moves. TanStack's name for `scroll.behavior`. */
+  readonly scrollRestorationBehavior?: ScrollBehavior;
+  /** TanStack's name for `scroll.toTop`. */
+  readonly scrollToTopSelectors?: ScrollOptions["toTop"];
+  /** TanStack's name for `scroll.getKey`. */
+  readonly getScrollRestorationKey?: (location: Location) => string;
   /**
    * The path the application is mounted under, when it is not the origin root.
    *
@@ -573,7 +852,7 @@ export interface RouterConfig {
    * The SAME LIST has to reach the server, where `createPageHandler` registers
    * it: a payload names an adapter by key and both ends look it up.
    */
-  readonly serializationAdapters?: readonly SerializationAdapter<never, unknown>[];
+  readonly serializationAdapters?: readonly SerializationAdapter[];
   /**
    * Whether a mask survives a page load. Default `false`.
    *
@@ -700,6 +979,14 @@ export interface RouterState {
   paramsErrorAt(depth: number): Error | null;
   readonly matcher: Matcher<Route>;
   readonly config: RouterConfig;
+  /**
+   * `dehydrate`, `hydrate`, `Wrap` and `InnerWrap`, read when they are used
+   * rather than when the router was built, so an integration installs its own
+   * around the application's after `createRouter` has returned.
+   */
+  readonly options: RouterOptions;
+  /** The render this router is being served by. Absent in a browser. */
+  serverSsr?: ServerSsr;
   readonly history: History;
   /**
    * The normalised `basepath`, or `""`. Read by `<Link>` to write an href a
@@ -726,6 +1013,14 @@ export interface RouterState {
    * fallback knows when that was.
    */
   markPending(route: Route): void;
+  /**
+   * Counts the reloads a `blocking` route has started.
+   *
+   * A boundary that has shown its content keeps it through a later wait, which
+   * is what a `background` reload wants. A `blocking` one wants the fallback
+   * back, and a boundary only brings it back when what it is keyed on moves.
+   */
+  readonly blockingReloads: Cell<number>;
   /** The loader cell for one route at one set of params, created once per key. */
   dataFor(
     route: Route,
@@ -762,7 +1057,44 @@ export interface RouterState {
    * `server` skips the depths `resolveSsr` says do not run there.
    */
   prime(server?: boolean): void;
-  navigate(to: string, options?: NavigateOptions): Promise<void>;
+  /**
+   * Go somewhere: `navigate("/posts/7")`, or TanStack's
+   * `navigate({ to: "/posts/$id", params: { id: "7" }, search: (prev) => ... })`.
+   */
+  readonly navigate: NavigateFn;
+  /**
+   * Resolve a destination to the location it addresses, without going there.
+   *
+   * What `navigate` and `<Link>` both build from, so the href a link shows is
+   * the location a click commits. Reads the current location, so a caller in a
+   * tracking scope re-runs when it moves.
+   */
+  buildLocation(options?: ToOptions): BuiltLocation;
+  /** The matched chain as TanStack's `RouteMatch`es, outermost first. */
+  readonly matches: Cell<readonly RouteMatch[]>;
+  /** `"pending"` while a navigation or a cold loader in the chain is unsettled. */
+  readonly status: Cell<"pending" | "idle">;
+  /** `status() === "pending"`. A background reload does not count. */
+  readonly isLoading: Cell<boolean>;
+  /** A commit is being written: after the location was accepted, before the DOM settled. */
+  readonly isTransitioning: Cell<boolean>;
+  /** The last location that finished loading. `undefined` until the first one has. */
+  readonly resolvedLocation: Cell<Location | undefined>;
+  /** All of the above read once, untracked. */
+  readonly state: RouterSnapshot;
+  /**
+   * Start the current chain's loaders and resolve when they have settled.
+   *
+   * Fresh entries stay fresh and stale ones revalidate. `sync` also waits for a
+   * background reload, which otherwise carries on behind the promise.
+   */
+  load(options?: { readonly sync?: boolean }): Promise<void>;
+  /** Resolves once the loaders the current chain has started have settled. */
+  settled(): Promise<void>;
+  /** Drop cached loader results that are not on screen, optionally only some. */
+  clearCache(options?: { readonly filter?: (match: RouteMatch) => boolean }): void;
+  /** Warm the cache for a destination, described the way `navigate` takes it. */
+  preloadRoute(options: NavigateOptions): Promise<readonly RouteMatch[] | undefined>;
   /**
    * The merged route context, one entry per depth, outermost first.
    *
@@ -843,7 +1175,7 @@ export interface RouterState {
    * It runs before `beforeLoad`, because a navigation nobody is going to make
    * should not be building context for it.
    */
-  block(blocker: Blocker): () => void;
+  block(blocker: Blocker, options?: BlockOptions): () => void;
   /**
    * Be told when a navigation reaches one of its six moments.
    *
@@ -868,7 +1200,11 @@ export interface RouterState {
    * beside it would drift — which is the whole reason `linkIsActive` and this
    * share their trailing-slash handling.
    */
-  matchRoute(options: MatchRouteOptions): Record<string, string> | false;
+  matchRoute(
+    options: MatchRouteOptions,
+    /** TanStack's second argument; the same flags may ride in the first. */
+    matchOptions?: Pick<MatchRouteOptions, "fuzzy" | "includeSearch">,
+  ): Record<string, string> | false;
   /** Whether there is anything to go back TO. See `History.depth`. */
   canGoBack(): boolean;
   /**
@@ -879,12 +1215,19 @@ export interface RouterState {
    * is where blockers, guards and `beforeLoad` run.
    */
   readonly isNavigating: Cell<boolean>;
-  /** Drop every cached loader result and re-read the current location. */
-  invalidate(): void;
+  /**
+   * Ask cached loaders again, all of them or the ones `filter` picks. `sync`
+   * resolves once the reloads have settled.
+   */
+  invalidate(options?: {
+    readonly filter?: (match: RouteMatch) => boolean;
+    readonly sync?: boolean;
+  }): Promise<void>;
   dispose(): void;
 }
 
-export function createRouter(config: RouterConfig): RouterState {
+export function createRouter(provided: RouterConfig): RouterState {
+  const config = resolveDefaults(applyRouterOverrides(provided));
   const base = config.basepath === undefined ? "" : normalizeBase(config.basepath);
   const trailingSlash: TrailingSlash = config.trailingSlash ?? "never";
   /**
@@ -908,16 +1251,18 @@ export function createRouter(config: RouterConfig): RouterState {
         );
 
   /** The URL a target should SHOW, when a mask claims it. */
-  const maskFor = (pathname: string): { to: string; unmaskOnReload: boolean } | null => {
+  const maskFor = (target: Location): { to: string; unmaskOnReload: boolean } | null => {
     if (maskTable === null) return null;
-    const hit = maskTable.match(pathname);
+    const hit = maskTable.match(target.pathname);
     const mask = hit?.route.chain[0];
     if (mask === undefined) return null;
     const captured = hit?.params ?? {};
     const filled =
       typeof mask.params === "function" ? mask.params(captured) : (mask.params ?? captured);
+    const shown =
+      typeof mask.search === "function" ? mask.search(readSearch(target.search)) : mask.search;
     return {
-      to: interpolate(mask.to, filled),
+      to: interpolate(mask.to, filled) + (shown === undefined ? "" : writeSearch(shown)),
       unmaskOnReload: mask.unmaskOnReload ?? config.unmaskOnReload ?? false,
     };
   };
@@ -932,22 +1277,48 @@ export function createRouter(config: RouterConfig): RouterState {
   // history is doing exactly what it says. That is the wrong default in the one
   // place a router is normally used. On a server, or under a test with no
   // `window`, memory is still the only thing that can work.
-  const history =
+  const origin = config.origin ?? defaultOrigin();
+  const givenHistory =
     config.history ?? (typeof window === "undefined" ? memoryHistory() : browserHistory());
+  const history =
+    config.rewrite === undefined
+      ? givenHistory
+      : rewriteHistory(givenHistory, config.rewrite, origin);
+
+  /** The query as a record and back, through the application's pair when it gave one. */
+  const readSearch = (forSearch: URLSearchParams | string): Record<string, unknown> => {
+    if (config.parseSearch === undefined) {
+      return searchRecord(
+        typeof forSearch === "string" ? new URLSearchParams(forSearch) : forSearch,
+      );
+    }
+    const text = typeof forSearch === "string" ? forSearch : forSearch.toString();
+    return config.parseSearch(text === "" || text.startsWith("?") ? text : `?${text}`);
+  };
+  const writeSearch = (record: Record<string, unknown>): string => {
+    if (config.stringifySearch === undefined) return toSearchString(record);
+    const text = config.stringifySearch(record);
+    return text === "" || text.startsWith("?") ? text : `?${text}`;
+  };
   const matcher = createMatcher(flattenRoutes(config.routeTree), {
     caseSensitive: config.caseSensitive,
   });
 
-  const location = signal<Location>(history.current());
+  const [location, setLocation] = createSignal<Location>(history.current());
   // Bumped by `invalidate`, and read by every loader cell, so invalidating is a
   // reactive fact rather than a cache the router has to reach into.
-  const generation = signal(0);
+  const [generation, setGeneration] = createSignal(0);
+  const [blockingReloads, setBlockingReloads] = createSignal(0);
+  // Bumped when a loader starts over or settles, which is the only thing that
+  // moves a match's `status` without moving the location.
+  const [loads, setLoads] = createSignal(0, { ownedWrite: true });
+  const rootContext: Record<string, unknown> = config.context ?? {};
 
   // MATCHED against the unmasked path, and displayed as `location()`. A mask is
   // the one place those differ, and keeping the split here means nothing else in
   // the router has to know about it: links stay active against what the user
   // sees, and the chain is built from what is actually being rendered.
-  const match = computed<Match<Route> | null>(() => matcher.match(unmask(location())));
+  const match = createMemo<Match<Route> | null>(() => matcher.match(unmask(location())));
   /**
    * The segments the URL gave, as strings, before any route has looked at them.
    *
@@ -962,13 +1333,13 @@ export function createRouter(config: RouterConfig): RouterState {
   // strict-equality path stays exactly what `computed` does by default.
   const shared = config.structuralSharing === false ? undefined : { equals: sameShape };
 
-  const rawParams = computed<Record<string, string>>(() => match()?.params ?? {}, shared);
+  const rawParams = createMemo<Record<string, string>>(() => match()?.params ?? {}, shared);
   /**
    * Shared too, by the query STRING: a hash-only move leaves the search alone,
    * and a fresh `URLSearchParams` per location made `dataFor`'s memo rebuild
    * for it — which is the refetch that comment records.
    */
-  const search = computed(
+  const search = createMemo(
     () => new URLSearchParams(location().search),
     config.structuralSharing === false
       ? undefined
@@ -1013,9 +1384,11 @@ export function createRouter(config: RouterConfig): RouterState {
         // refused parameter and gets the name that says so.
         failures.push(
           isRedirect(error) || isNotFound(error)
-            ? (error as unknown as PathParamError)
+            ? error
             : new PathParamError(
-                error instanceof Error ? error.message : "a path parameter did not parse",
+                error instanceof Error
+                  ? error.message
+                  : "A path parameter in the URL did not pass this route's `params.parse`.",
                 { cause: error },
               ),
         );
@@ -1059,23 +1432,23 @@ export function createRouter(config: RouterConfig): RouterState {
    * Either way the ROOT renders — that part is not a mode, it is what stops a
    * 404 being a blank document that disagrees with what the client builds.
    */
-  const fuzzyChain = computed<readonly Route[]>(() => {
+  const fuzzyChain = createMemo<readonly Route[]>(() => {
     if ((config.notFoundMode ?? "fuzzy") === "root") return rootChain;
     const prefix = matcher.matchPrefix(unmask(location()));
     return prefix === null ? rootChain : prefix.route.chain;
   });
 
-  const chain = computed<readonly Route[]>(() => match()?.route.chain ?? fuzzyChain());
+  const chain = createMemo<readonly Route[]>(() => match()?.route.chain ?? fuzzyChain());
 
   /** Nothing matched, so the chain above is the root standing in. */
-  const missed = computed<boolean>(() => match() === null);
+  const missed = createMemo<boolean>(() => match() === null);
 
-  const validated = computed<{
+  const validated = createMemo<{
     readonly slices: readonly Record<string, unknown>[];
     readonly defaults: ReadonlyMap<string, unknown>;
     readonly failures: readonly (SearchParamError | null)[];
   }>(() => {
-    const raw = searchRecord(search());
+    const raw = readSearch(search());
     const slices: Record<string, unknown>[] = [];
     const failures: (SearchParamError | null)[] = [];
     const searchDefaults = new Map<string, unknown>();
@@ -1099,7 +1472,10 @@ export function createRouter(config: RouterConfig): RouterState {
         failures.push(
           error instanceof SearchParamError
             ? error
-            : new SearchParamError((error as Error).message ?? "search did not validate"),
+            : new SearchParamError(
+                (error as Error).message ??
+                  "The URL's search parameters did not pass this route's `validateSearch`.",
+              ),
         );
         slices.push(merged);
       }
@@ -1107,7 +1483,7 @@ export function createRouter(config: RouterConfig): RouterState {
     return { slices, defaults: searchDefaults, failures };
   });
 
-  const parsedParams = computed(() => parseChain(chain(), rawParams()));
+  const parsedParams = createMemo(() => parseChain(chain(), rawParams()));
 
   /**
    * What every reader gets: the raw params with the whole chain's `parse`
@@ -1123,12 +1499,12 @@ export function createRouter(config: RouterConfig): RouterState {
    * reason: `useSearch()` reads it from a hole, and a fresh record per
    * navigation re-runs that hole when nothing in the query moved.
    */
-  const validSearch = computed<Record<string, unknown>>(() => {
+  const validSearch = createMemo<Record<string, unknown>>(() => {
     const { slices } = validated();
-    return slices[slices.length - 1] ?? searchRecord(search());
+    return slices[slices.length - 1] ?? readSearch(search());
   }, shared);
 
-  const params = computed<Record<string, string>>(() => {
+  const params = createMemo<Record<string, string>>(() => {
     const { slices } = parsedParams();
     return (slices[slices.length - 1] ?? rawParams()) as Record<string, string>;
   }, shared);
@@ -1210,12 +1586,17 @@ export function createRouter(config: RouterConfig): RouterState {
      * user is still on. Passing it explicitly is the only correct answer.
      */
     forContext?: Record<string, unknown>,
+    /**
+     * Where this entry is being loaded FOR, when that is not the committed
+     * location: a preload's own chain, segments and target.
+     */
+    lane?: Lane,
   ): Entry => {
     const loader = route.definition.loader;
     let entry!: Entry;
 
     const cell = runWithOwner(null, () =>
-      root<Cell<unknown>>((disposeScope) => {
+      createRoot<Cell<unknown>>((disposeScope) => {
         let controller: AbortController | null = null;
         const abort = (reason: string): void => {
           const live = controller;
@@ -1223,62 +1604,14 @@ export function createRouter(config: RouterConfig): RouterState {
           if (live !== null) live.abort(reason);
         };
 
-        const built: Cell<unknown> =
-          loader === undefined
-            ? () => undefined
-            : computed(
-                async () => {
-                  // One controller per RUN, aborted when a newer run supersedes
-                  // it and when the entry is disposed. `resource` has exactly
-                  // this (its A1/A2) and cannot be used: a SEEDED resource can
-                  // never be reloaded, because a seeded first run never enters
-                  // `compute`, so `bump` never becomes a dependency and
-                  // `refetch()` invalidates nothing. Measured — 0 fetches after
-                  // a seed, against 1 for a keyed `computed` plus `refresh()`.
-                  abort("a newer request was issued");
-                  const own = new AbortController();
-                  controller = own;
-                  entry.inFlight = true;
-                  // `null` when nothing is pending, so the common case does not
-                  // pay even a microtask.
-                  if (contextsReady !== null) await contextsReady;
-                  try {
-                    const value = await loader({
-                      params: forParams as never,
-                      search: route.definition.loaderDeps === undefined ? forSearch : undefined,
-                      deps: deps as never,
-                      cause: entry.cause,
-                      context: forContext ?? contextAt(route),
-                      signal: own.signal,
-                    });
-                    if (controller === own) controller = null;
-                    entry.inFlight = false;
-                    entry.updatedAt = now();
-                    entry.settled = { value };
-                    entry.error = undefined;
-                    return value;
-                  } catch (error) {
-                    if (controller === own) controller = null;
-                    entry.inFlight = false;
-                    entry.error = error;
-                    config.onLoaderError?.(error);
-                    throw error;
-                  }
-                },
-                // LAZY on purpose. A route's loader must run when the route's
-                // data is asked for — a read, or an explicit preload — not
-                // when the cache entry is minted. It is also the one shape
-                // that cannot run eagerly: the body reads `entry`, which this
-                // cell is being built to fill in.
-                { key: seedKey, lazy: true },
-              );
-
         entry = {
           key: seedKey,
           route,
-          cell: built,
+          cell: () => undefined,
+          reload: () => {},
           dispose: () => {
             abort("the router collected this cache entry");
+            finish();
             disposeScope();
           },
           updatedAt: 0,
@@ -1286,13 +1619,117 @@ export function createRouter(config: RouterConfig): RouterState {
           error: undefined,
           cause,
           deps,
-          hold: signal(0),
+          hold: createSignal(0),
           shownAt: 0,
           preload: cause === "preload",
           abort,
           inFlight: false,
+          running: null,
+          done: NOOP,
+          raw: lane?.raw ?? untrack(rawParams),
+          params: forParams,
         };
-        return built;
+        // One promise per stretch of work, begun by whichever comes first of a
+        // reload being asked for and the run it leads to, so a waiter that
+        // arrives between the two is waiting on the right one.
+        const begin = (): void => {
+          if (entry.done !== NOOP) return;
+          entry.running = new Promise<void>((resolve) => {
+            entry.done = resolve;
+          });
+        };
+        const finish = (): void => {
+          const done = entry.done;
+          entry.done = NOOP;
+          done();
+        };
+        // A memo is computed where it is declared, and its body reads
+        // `entry`, so the entry exists first. An entry is minted when its
+        // data is asked for — a read, or an explicit preload — which is when
+        // the loader should run.
+        const load =
+          loader === undefined
+            ? NO_LOADER
+            : async (): Promise<unknown> => {
+                // One controller per RUN, aborted when a newer run supersedes
+                // it and when the entry is disposed. `resource` has exactly
+                // this (its A1/A2) and cannot be used: a SEEDED resource can
+                // never be reloaded, because a seeded first run never enters
+                // `compute`, so `bump` never becomes a dependency and
+                // `refetch()` invalidates nothing. Measured — 0 fetches after
+                // a seed, against 1 for a keyed `computed` plus `refresh()`.
+                abort("a newer request was issued");
+                const own = new AbortController();
+                controller = own;
+                entry.inFlight = true;
+                begin();
+                // `null` when nothing is pending, so the common case does not
+                // pay even a microtask.
+                if (contextsReady !== null) await contextsReady;
+                try {
+                  const value = await loader({
+                    params: forParams as never,
+                    search: route.definition.loaderDeps === undefined ? forSearch : undefined,
+                    deps: deps as never,
+                    cause: entry.cause,
+                    context: forContext ?? contextAt(route),
+                    signal: own.signal,
+                    abortController: own,
+                    preload: entry.preload,
+                    location: lane?.location ?? untrack(location),
+                    navigate,
+                    get parentMatchPromise() {
+                      return parentMatch(route, forSearch, entry.cause, lane);
+                    },
+                    route,
+                  });
+                  // A `redirect({...})` or a `notFound({...})` that was RETURNED
+                  // is the same answer as one that was thrown, and rendering
+                  // it as data would show an instruction where a page belongs.
+                  if (isRedirect(value) || isNotFound(value)) throw value;
+                  if (controller === own) {
+                    controller = null;
+                    finish();
+                  }
+                  entry.inFlight = false;
+                  entry.updatedAt = now();
+                  if (entry.settled !== null) entry.hold[1](bump);
+                  entry.settled = { value };
+                  entry.error = undefined;
+                  setLoads(bump);
+                  return value;
+                } catch (error) {
+                  if (controller === own) {
+                    controller = null;
+                    finish();
+                  }
+                  entry.inFlight = false;
+                  if (entry.settled !== null) entry.hold[1](bump);
+                  entry.error = error;
+                  setLoads(bump);
+                  if (!isRedirect(error) && !isNotFound(error)) {
+                    route.definition.onError?.(error);
+                  }
+                  config.onLoaderError?.(error);
+                  throw error;
+                }
+              };
+        const source = loader === undefined ? null : createMemo(load, { key: seedKey });
+        if (source !== null) {
+          entry.cell = source;
+          entry.reload = () => {
+            // In flight from here, not from the microtask the re-ask runs on:
+            // the commit that asked renders before that.
+            entry.inFlight = true;
+            begin();
+            entry.hold[1](bump);
+            const mode = route.definition.staleReloadMode ?? defaults.staleReloadMode;
+            if (mode === "blocking") setBlockingReloads(bump);
+            setLoads(bump);
+            void refresh(source);
+          };
+        }
+        return entry.cell;
       }),
     );
     void cell;
@@ -1316,8 +1753,7 @@ export function createRouter(config: RouterConfig): RouterState {
     for (const [key, entry] of entries) {
       if (entries.size <= limit) return;
       if (live.has(key) || entry.inFlight) continue;
-      entry.dispose();
-      entries.delete(key);
+      collect(key, entry);
     }
   };
 
@@ -1347,8 +1783,7 @@ export function createRouter(config: RouterConfig): RouterState {
         ? (definition.preloadGcTime ?? defaults.preloadGcTime ?? DEFAULT_PRELOAD_GC_TIME)
         : (definition.gcTime ?? defaults.gcTime ?? DEFAULT_GC_TIME);
       if (at - entry.updatedAt < budget) continue;
-      entry.dispose();
-      entries.delete(key);
+      collect(key, entry);
     }
   };
 
@@ -1422,22 +1857,28 @@ export function createRouter(config: RouterConfig): RouterState {
       const minimum = entry.route.definition.pendingMinMs ?? defaults.pendingMinMs ?? 0;
       if (minimum === 0 || entry.shownAt === 0) return false;
       // Read the signal so this re-evaluates when the hold expires.
-      entry.hold();
+      const [hold, setHold] = entry.hold;
+      hold();
       const remaining = entry.shownAt + minimum - now();
       if (remaining <= 0) return false;
-      setTimeout(() => entry.hold.set(untrack(entry.hold) + 1), remaining);
+      setTimeout(() => setHold(bump), remaining);
       return true;
     };
     const plain: Cell<unknown> = () => {
       // A settled value that arrived while the fallback was still being held
       // keeps throwing until the hold expires, so a skeleton that appeared does
       // not vanish two frames later.
-      if (held()) throw new NotReadyError({ _flags: 0 });
+      if (held()) throw new NotReadyError(undefined);
+      // A reload keeps answering with the value it is replacing, which is what
+      // `background` wants and the opposite of what this mode is. The signal is
+      // read so the settle, which bumps it, is what brings the value back.
+      entry.hold[0]();
+      if (entry.inFlight && entry.settled !== null) throw new NotReadyError(undefined);
       return entry.cell();
     };
     if (blocking || mode === "blocking") return plain;
     return () => {
-      if (held()) throw new NotReadyError({ _flags: 0 });
+      if (held()) throw new NotReadyError(undefined);
       try {
         return latest(entry.cell);
       } catch (error) {
@@ -1464,8 +1905,22 @@ export function createRouter(config: RouterConfig): RouterState {
    */
   const memo = new Map<
     Route,
-    { params: unknown; search: unknown; blocking: boolean; reader: Cell<unknown> }
+    { params: unknown; search: unknown; blocking: boolean; reader: Cell<unknown>; entry: Entry }
   >();
+
+  /**
+   * Take one entry out of the cache, and out of the per-route memo with it.
+   *
+   * The memo hands back a reader bound to an entry, and it is keyed on the
+   * identity of the params and the search, which structural sharing keeps the
+   * same across a navigation away and back. Leaving it behind made a collected
+   * entry the one a returning route read: its loader was never asked again.
+   */
+  const collect = (key: string, entry: Entry): void => {
+    entry.dispose();
+    entries.delete(key);
+    if (memo.get(entry.route)?.entry === entry) memo.delete(entry.route);
+  };
 
   const dataFor = (
     route: Route,
@@ -1501,11 +1956,15 @@ export function createRouter(config: RouterConfig): RouterState {
     // the current location, so the router's own raw record is the right one.
     const entry = acquire(route, untrack(rawParams), forParams, causeFor(route));
     const reader = readerFor(entry, blocking);
-    memo.set(route, { params: forParams, search: forSearch, blocking, reader });
+    memo.set(route, { params: forParams, search: forSearch, blocking, reader, entry });
     return reader;
   };
 
-  const contexts = signal<readonly Record<string, unknown>[]>([]);
+  // `ownedWrite`: `start()` is called from the provider's body, and it writes
+  // the context the first render's loaders are handed.
+  const [contexts, writeContexts] = createSignal<readonly Record<string, unknown>[]>([], {
+    ownedWrite: true,
+  });
 
   /**
    * Resolves once a context exists for the current location.
@@ -1530,7 +1989,7 @@ export function createRouter(config: RouterConfig): RouterState {
     });
   };
   const settleContexts = (next: readonly Record<string, unknown>[]): void => {
-    contexts.set(next);
+    writeContexts(next);
     releaseContexts();
     releaseContexts = NOOP;
     contextsReady = null;
@@ -1544,14 +2003,21 @@ export function createRouter(config: RouterConfig): RouterState {
   const runBeforeLoad = async (
     to: Location,
     candidate: Match<Route> | null,
-    options?: { readonly server?: boolean },
+    options?: { readonly server?: boolean; readonly preload?: boolean },
   ): Promise<BeforeLoadResult> => {
-    const modes = resolveSsr(candidate?.route.chain ?? [], defaults.ssr ?? true);
+    const modes = resolveSsr(
+      candidate?.route.chain ?? [],
+      defaults.ssr ?? true,
+      config.ssrDecisions,
+    );
     const out: Record<string, unknown>[] = [];
     const produced: (Record<string, unknown> | undefined)[] = [];
     // Parent-to-child by SPREAD, child wins on a collision — TanStack's rule
     // (`load-client.ts:391-395`, `:455-458`) and its type-level `Assign` agrees.
-    let merged: Record<string, unknown> = {};
+    let merged: Record<string, unknown> = rootContext;
+    const entering = candidate?.route.chain ?? [];
+    const abortController = new AbortController();
+    const preload = options?.preload === true;
     // Parsed down the chain, so a `beforeLoad` reads the parameter its own
     // route asked for rather than the segment the URL happened to carry.
     const { slices } = parseChain(candidate?.route.chain ?? [], candidate?.params ?? {});
@@ -1565,13 +2031,34 @@ export function createRouter(config: RouterConfig): RouterState {
         continue;
       }
       const forParams = slices[depth] ?? candidate?.params ?? {};
-      const given = { params: forParams, search: forSearch, location: to, context: merged };
+      const given = {
+        params: forParams,
+        search: forSearch,
+        location: to,
+        context: merged,
+        abortController,
+        preload,
+        cause: preload ? ("preload" as const) : causeFor(route),
+        navigate,
+        buildLocation,
+        matches: entering,
+        routeId: route.id,
+      };
       const sync = route.definition.context?.(given as never);
       if (sync !== undefined) merged = { ...merged, ...sync };
-      const own = (await route.definition.beforeLoad?.({
-        ...given,
-        context: merged,
-      } as never)) as Record<string, unknown> | undefined | null;
+      let own: Record<string, unknown> | undefined | null;
+      try {
+        own = (await route.definition.beforeLoad?.({
+          ...given,
+          context: merged,
+        } as never)) as Record<string, unknown> | undefined | null;
+        if (isRedirect(own) || isNotFound(own)) throw own;
+      } catch (error) {
+        if (!isRedirect(error) && !isNotFound(error) && !(error instanceof Response)) {
+          route.definition.onError?.(error);
+        }
+        throw error;
+      }
       if (own !== undefined && own !== null) merged = { ...merged, ...own };
       out.push(merged);
       produced.push(own ?? undefined);
@@ -1590,13 +2077,26 @@ export function createRouter(config: RouterConfig): RouterState {
   const hydrateContexts = (to: Location, produced: BeforeLoadSeed["produced"]): void => {
     const candidate = matcher.match(unmask(to));
     const out: Record<string, unknown>[] = [];
-    let merged: Record<string, unknown> = {};
+    let merged: Record<string, unknown> = rootContext;
     const { slices } = parseChain(candidate?.route.chain ?? [], candidate?.params ?? {});
     const forSearch = new URLSearchParams(to.search);
+    const abortController = new AbortController();
 
     for (const [depth, route] of (candidate?.route.chain ?? []).entries()) {
       const forParams = slices[depth] ?? candidate?.params ?? {};
-      const given = { params: forParams, search: forSearch, location: to, context: merged };
+      const given = {
+        params: forParams,
+        search: forSearch,
+        location: to,
+        context: merged,
+        abortController,
+        preload: false,
+        cause: "enter" as const,
+        navigate,
+        buildLocation,
+        matches: candidate?.route.chain ?? [],
+        routeId: route.id,
+      };
       const sync = route.definition.context?.(given as never);
       if (sync !== undefined) merged = { ...merged, ...sync };
       const own = produced[depth];
@@ -1630,25 +2130,331 @@ export function createRouter(config: RouterConfig): RouterState {
     const query = hashAt === -1 ? rest : rest.slice(0, hashAt);
     const hash = hashAt === -1 ? "" : rest.slice(hashAt);
 
-    const candidate = matcher.match(pathPart === "" ? untrack(location).pathname : pathPart);
+    const built = searchFor(
+      pathPart === "" ? untrack(location).pathname : pathPart,
+      null,
+      query,
+      untrack,
+    );
+    return built === query ? to : `${pathPart}${built}${hash}`;
+  };
+
+  /**
+   * The query a location being built ends up with: the caller's intent, run
+   * through the destination chain's search middlewares.
+   *
+   * `intent` is a record to write, or `null` when the caller wrote the query as
+   * text, which is then left exactly as written unless a middleware has a say.
+   */
+  const searchFor = (
+    pathname: string,
+    intent: Record<string, unknown> | null,
+    query: string,
+    read: Reader,
+  ): string => {
+    const candidate = matcher.match(pathname);
     const middlewares: SearchMiddleware[] = [];
     for (const route of candidate?.route.chain ?? []) {
       for (const step of route.definition.search?.middlewares ?? []) middlewares.push(step);
     }
-    if (middlewares.length === 0) return to;
-
-    const built = applySearchMiddleware(
-      middlewares,
-      searchRecord(untrack(search)),
-      searchRecord(new URLSearchParams(query)),
-      untrack(validated).defaults,
+    if (middlewares.length === 0) return intent === null ? query : writeSearch(intent);
+    return writeSearch(
+      applySearchMiddleware(
+        middlewares,
+        readSearch(read(search)),
+        intent ?? readSearch(query),
+        read(validated).defaults,
+      ),
     );
-    return `${pathPart}${toSearchString(built)}${hash}`;
+  };
+
+  /** A route id or pattern as a concrete path, filled from the current params. */
+  const concrete = (path: string, read: Reader): string => {
+    if (!/(^|\/)\$|\{-?\$/.test(path)) return path;
+    try {
+      return interpolate(path, read(rawParams));
+    } catch {
+      return path;
+    }
+  };
+
+  /**
+   * `params.stringify`, for every route on the way to the destination.
+   *
+   * The inverse of the `parse` that produced the value: a route working in
+   * `Date` has to write a URL, and `interpolate` only knows how to encode a
+   * string. Runs outermost first so a leaf can override what a layout wrote for
+   * a shared name, which is the direction every other chain merge in the router
+   * goes.
+   *
+   * A THROW IS SWALLOWED, which is TanStack's choice (`router.ts:1943-1952`) and
+   * the right one here: this runs while a link is being rendered, where there
+   * is no boundary to catch it and nobody waiting on an answer. The paired
+   * `parse` refuses the same value on the way back in, with a boundary, if the
+   * link is ever followed.
+   */
+  const stringifyParams = (
+    forChain: readonly Route[] | undefined,
+    values: Record<string, unknown>,
+  ): Record<string, string> => {
+    let out: Record<string, unknown> = values;
+    for (const route of forChain ?? []) {
+      const stringify = route.definition.params?.stringify;
+      if (stringify === undefined) continue;
+      try {
+        out = { ...out, ...stringify(out) };
+      } catch {
+        /* see above: a link cannot report this and must still render */
+      }
+    }
+    return out as Record<string, string>;
+  };
+
+  /**
+   * `read` is how the current location is read: tracked for a `<Link>`, whose
+   * href follows it, and `untrack` for a navigation, which asks once.
+   */
+  const locate = (options: ToOptions, read: Reader): BuiltLocation => {
+    const outside = options.href ?? (leavesTheApp(options.to ?? ".") ? options.to : undefined);
+    if (outside !== undefined) {
+      return {
+        pathname: outside,
+        search: "",
+        hash: "",
+        state: null,
+        key: "",
+        href: outside,
+        external: true,
+      };
+    }
+    const to = options.to ?? ".";
+    const cut = to.search(/[?#]/);
+    const pathPart = cut === -1 ? to : to.slice(0, cut);
+    const rest = cut === -1 ? "" : to.slice(cut);
+    const hashAt = rest.indexOf("#");
+    const written = hashAt === -1 ? rest : rest.slice(0, hashAt);
+    const here = read(location);
+    // `from` pins what a relative `to` is relative TO. Without it a
+    // `<Link to="../edit">` in a shared component means something different
+    // depending on which route rendered it.
+    const anchor = options.from === undefined ? here.pathname : concrete(options.from, read);
+
+    const destination = matcher.routes.find((route) => route.id === pathPart);
+    const given = options.params;
+    const next = (): Record<string, unknown> =>
+      given === undefined || given === true
+        ? read(rawParams)
+        : { ...read(rawParams), ...(typeof given === "function" ? given(read(params)) : given) };
+    // A route id is tried first and falls through to path resolution, so
+    // `to: "/users/$id"` with `params` builds `/users/7` while `to: "/users/7"`
+    // is taken as it stands.
+    const resolved = resolvePath(pathPart, anchor);
+    const built =
+      destination !== undefined
+        ? interpolate(destination.fullPath, stringifyParams(destination.chain, next()))
+        : given !== undefined && given !== true
+          ? interpolate(resolved, stringifyParams(undefined, next()))
+          : concrete(resolved, read);
+    // A `to` that is a route ID carries the pattern's spelling, not the
+    // caller's, so `"preserve"` reads the ORIGIN when `to` addressed nowhere
+    // new, which is the `to: "."` that re-renders where you already are.
+    const pathname = applyTrailingSlash(
+      built,
+      trailingSlash,
+      (pathPart === "" || pathPart === "." ? anchor : pathPart).endsWith("/"),
+    );
+
+    const asked = options.search;
+    const intent =
+      asked === undefined || typeof asked === "string"
+        ? null
+        : asked === true
+          ? read(validSearch)
+          : typeof asked === "function"
+            ? asked(read(validSearch))
+            : asked;
+    const text = typeof asked === "string" ? asked : written;
+    const query = searchFor(
+      pathname,
+      intent,
+      text === "" || text.startsWith("?") ? text : `?${text}`,
+      read,
+    );
+
+    const fragment =
+      options.hash === undefined
+        ? hashAt === -1
+          ? ""
+          : rest.slice(hashAt + 1)
+        : options.hash === true
+          ? here.hash.slice(1)
+          : typeof options.hash === "function"
+            ? options.hash(here.hash.slice(1))
+            : options.hash.replace(/^#/, "");
+    const state =
+      options.state === true
+        ? here.state
+        : typeof options.state === "function"
+          ? (options.state as (current: unknown) => unknown)(here.state)
+          : (options.state ?? null);
+
+    const target = parseLocation(
+      `${pathname}${query}${fragment === "" ? "" : `#${fragment}`}`,
+      state,
+    );
+    const mask = options.mask;
+    return {
+      ...target,
+      href: href(target),
+      external: false,
+      ...(mask === undefined
+        ? {}
+        : {
+            maskedLocation:
+              typeof mask === "string"
+                ? { href: mask }
+                : { href: locate(mask, read).href, unmaskOnReload: mask.unmaskOnReload },
+          }),
+    };
+  };
+
+  const buildLocation = (options: ToOptions = {}): BuiltLocation => locate(options, track);
+
+  const matchOf = (
+    route: Route,
+    at: {
+      readonly raw: Readonly<Record<string, string>>;
+      readonly params: Readonly<Record<string, unknown>>;
+      readonly search: URLSearchParams;
+      readonly valid: Record<string, unknown>;
+      readonly context: Record<string, unknown>;
+      readonly paramsError?: unknown;
+      readonly searchError?: unknown;
+      /** A cached entry to describe as it stands, whatever the location says. */
+      readonly entry?: Entry;
+    },
+  ): RouteMatch => {
+    const { seedKey, deps } =
+      at.entry === undefined
+        ? keyOf(route, at.raw, at.search)
+        : { seedKey: at.entry.key, deps: at.entry.deps };
+    const entry =
+      at.entry ?? (route.definition.loader === undefined ? undefined : entries.get(seedKey));
+    let failure: unknown = at.paramsError ?? at.searchError ?? undefined;
+    let status: RouteMatch["status"] = failure === undefined ? "success" : "error";
+    let loaderData: unknown;
+    const failed = (error: unknown): void => {
+      failure = error;
+      status = isNotFound(error) ? "notFound" : "error";
+    };
+    if (failure === undefined && route.definition.loader !== undefined) {
+      if (entry === undefined) status = "pending";
+      else if (entry.settled !== null) loaderData = entry.settled.value;
+      else if (entry.error !== undefined) failed(entry.error);
+      else if (entry.inFlight) status = "pending";
+      else {
+        // Neither run nor failed: the value came from the server's seed, which
+        // answers the read without the loader ever being entered.
+        try {
+          loaderData = untrack(entry.cell);
+        } catch (error) {
+          if (error instanceof NotReadyError) status = "pending";
+          else failed(error);
+        }
+      }
+    }
+    let pathname = route.fullPath;
+    try {
+      pathname = interpolate(route.fullPath, at.raw);
+    } catch {
+      /* a pattern the captured params cannot fill is shown as the pattern */
+    }
+    return {
+      id: seedKey,
+      routeId: route.id,
+      fullPath: route.fullPath,
+      pathname,
+      params: at.params as Record<string, string>,
+      search: at.valid,
+      loaderData,
+      loaderDeps: deps,
+      context: at.context,
+      status,
+      isFetching: entry?.inFlight === true ? "loader" : false,
+      error: failure,
+      paramsError: at.paramsError ?? undefined,
+      searchError: at.searchError ?? undefined,
+      updatedAt: entry?.updatedAt ?? 0,
+      cause: entry?.cause ?? causeFor(route),
+      staticData: route.definition.staticData ?? {},
+      definition: route.definition,
+    };
+  };
+
+  const matches = (): readonly RouteMatch[] => {
+    loads();
+    const raw = rawParams();
+    const forSearch = search();
+    const searched = validated();
+    const parsed = parsedParams();
+    const all = contexts();
+    return chain().map((route, depth) =>
+      matchOf(route, {
+        raw,
+        params: parsed.slices[depth] ?? raw,
+        search: forSearch,
+        valid: searched.slices[depth] ?? readSearch(forSearch),
+        context: all[depth] ?? rootContext,
+        paramsError: parsed.failures[depth] ?? undefined,
+        searchError: searched.failures[depth] ?? undefined,
+      }),
+    );
+  };
+
+  const parentMatch = async (
+    route: Route,
+    forSearch: URLSearchParams,
+    cause: LoadCause,
+    lane?: Lane,
+  ): Promise<RouteMatch | undefined> => {
+    const laneChain = lane?.chain ?? untrack(chain);
+    const at = laneChain.indexOf(route);
+    const parent = at > 0 ? laneChain[at - 1] : undefined;
+    if (parent === undefined) return undefined;
+    const raw = lane?.raw ?? untrack(rawParams);
+    const forParams = (parseChain(laneChain, raw).slices[at - 1] ?? raw) as Record<string, string>;
+    const context = lane?.contexts[at - 1] ?? untrack(contexts)[at - 1] ?? rootContext;
+    if (parent.definition.loader !== undefined) {
+      const { seedKey, deps } = keyOf(parent, raw, forSearch);
+      const entry =
+        entries.get(seedKey) ??
+        mint(
+          parent,
+          forParams,
+          forSearch,
+          seedKey,
+          deps,
+          cause,
+          lane === undefined ? undefined : context,
+          lane,
+        );
+      if (entry.running !== null) await entry.running;
+    }
+    return matchOf(parent, {
+      raw,
+      params: forParams,
+      search: forSearch,
+      valid: readSearch(forSearch),
+      context,
+    });
   };
 
   const primeChain = (server = false): void => {
+    // A loader started while a write is still staged reads it, and is asked
+    // again when the write is published: two fetches for one navigation.
+    flush();
     const forParams = untrack(params);
-    const modes = resolveSsr(untrack(chain), defaults.ssr ?? true);
+    const modes = resolveSsr(untrack(chain), defaults.ssr ?? true, config.ssrDecisions);
     for (const [depth, route] of untrack(chain).entries()) {
       if (route.definition.loader === undefined) continue;
       // On the server a route that opted out runs nothing, so priming it would
@@ -1671,7 +2477,7 @@ export function createRouter(config: RouterConfig): RouterState {
   /** The merged context as of one route's depth in the current chain. */
   const contextAt = (route: Route): Record<string, unknown> => {
     const at = untrack(chain).indexOf(route);
-    return untrack(contexts)[at] ?? {};
+    return untrack(contexts)[at] ?? rootContext;
   };
 
   /** `enter` the first time a route appears in the chain, `stay` while it stays. */
@@ -1725,7 +2531,7 @@ export function createRouter(config: RouterConfig): RouterState {
       const { seedKey } = keyOf(route, forRaw, forSearch);
       const entry = entries.get(seedKey);
       if (entry === undefined) continue;
-      if (shouldReload(entry, forParams)) refresh(entry.cell);
+      if (shouldReload(entry, forParams)) entry.reload();
     }
     previous = untrack(chain);
   };
@@ -1745,7 +2551,9 @@ export function createRouter(config: RouterConfig): RouterState {
    */
   let newestEntry = 0;
 
-  const unsubscribe = history.subscribe((next) => {
+  const accept = (next: Location): void => {
+    noteIdle();
+    committedIndex = history.depth?.() ?? 0;
     const asked = pendingNavigate;
     // A SEPARATE FLAG, not `asked !== undefined`. `navigate("/a")` passes no
     // options, so `pendingNavigate` stays undefined for it and a popstate could
@@ -1783,7 +2591,7 @@ export function createRouter(config: RouterConfig): RouterState {
       // BEFORE the location moves, which is the whole difference between this
       // and `onLoad`: a listener here still sees the page being left.
       emit("onBeforeRouteMount", untrack(location), next);
-      location.set(next);
+      setLocation(next);
 
       // A popstate has no `navigate` to have run `beforeLoad`, so the context
       // for the entry it lands on is rebuilt asynchronously and the render sees
@@ -1793,7 +2601,7 @@ export function createRouter(config: RouterConfig): RouterState {
         pendingContexts = null;
       } else {
         const candidate = matcher.match(unmask(next));
-        contexts.set([]);
+        writeContexts([]);
         if (chainNeedsContext(candidate?.route.chain ?? [])) armContexts();
         void runBeforeLoad(next, candidate).then(
           (result) => settleContexts(result.contexts),
@@ -1805,6 +2613,9 @@ export function createRouter(config: RouterConfig): RouterState {
       }
 
       previous = before;
+      // A write is staged until the flush, and everything below reads what the
+      // new location derives: the chain, its params, the search.
+      flush();
       revalidate();
       // AFTER `revalidate`, which is what sets `previous` to the committed
       // chain, and before the loaders start: a hook that reads the match should
@@ -1853,27 +2664,96 @@ export function createRouter(config: RouterConfig): RouterState {
        */
       const mine = ++newestEntry;
       const chunks = pendingChunks(matcher.match(unmask(next))?.route.chain ?? []);
-      // SYNCHRONOUS when there is nothing to fetch. A navigation to a route
-      // whose module is already in memory commits in the same task it always
-      // did; only a cold chunk defers, which is the case that was broken.
-      if (chunks.length > 0) {
-        await Promise.allSettled(chunks);
-        if (mine !== newestEntry) return;
+      setCommitting(untrack(committing) + 1);
+      try {
+        // SYNCHRONOUS when there is nothing to fetch. A navigation to a route
+        // whose module is already in memory commits in the same task it always
+        // did; only a cold chunk defers, which is the case that was broken.
+        if (chunks.length > 0) {
+          await Promise.allSettled(chunks);
+          if (mine !== newestEntry) return;
+        }
+        const wanted =
+          asked?.viewTransition ?? config.defaultViewTransition ?? config.viewTransition ?? false;
+        const info = changeInfo(leaving, next);
+        const types =
+          typeof wanted !== "object"
+            ? undefined
+            : typeof wanted.types === "function"
+              ? wanted.types({
+                  fromLocation: info.from,
+                  toLocation: info.to,
+                  pathChanged: info.pathChanged,
+                  hrefChanged: info.hrefChanged,
+                  hashChanged: info.hashChanged,
+                })
+              : wanted.types;
+        await withViewTransition(commit, {
+          enabled:
+            wanted !== false &&
+            types !== false &&
+            (typeof wanted !== "object" || wanted.enabled !== false),
+          types: types === false ? undefined : types,
+        });
+      } finally {
+        setCommitting(untrack(committing) - 1);
       }
-      await withViewTransition(commit, {
-        enabled: asked?.viewTransition ?? config.viewTransition ?? false,
-      });
       // The DOM is written — `withViewTransition` awaits the update callback
       // rather than the animation — so this is the first moment a listener can
       // measure the new page.
       emit("onResolved", leaving, next);
-      scroll.restore(next, { reset: asked?.resetScroll });
+      scroll.restore(next, {
+        reset: asked?.resetScroll,
+        hashScrollIntoView: asked?.hashScrollIntoView,
+      });
       emit("onRendered", leaving, next);
     };
     void restoreScroll();
 
     for (const hook of config.afterEach ?? []) hook(next);
+  };
+
+  /** Where the history was when the location on screen was accepted. */
+  let committedIndex = history.depth?.() ?? 0;
+  /** The index a `go` this router issued to undo a refused pop will land on. */
+  let undoing: number | null = null;
+  let popAsks = 0;
+
+  /**
+   * A back or forward button has ALREADY moved the browser by the time anything
+   * hears of it, so refusing one means going back by the same distance. The
+   * page is not touched until the blockers have answered.
+   */
+  const unsubscribe = history.subscribe((next, action) => {
+    const index = history.depth?.() ?? 0;
+    if (action !== "pop" || pendingIsNavigate) {
+      accept(next);
+      return;
+    }
+    if (undoing === index) {
+      undoing = null;
+      return;
+    }
+    undoing = null;
+    const delta = index - committedIndex;
+    if (blockers.size === 0 || history.depth === undefined || delta === 0) {
+      accept(next);
+      return;
+    }
+    void answerPop(next, delta);
   });
+
+  const answerPop = async (landed: Location, delta: number): Promise<void> => {
+    const mine = ++popAsks;
+    const refused = await isBlocked(untrack(location), landed, delta < 0 ? "BACK" : "FORWARD");
+    if (mine !== popAsks) return;
+    if (!refused) {
+      accept(landed);
+      return;
+    }
+    undoing = committedIndex;
+    history.go(-delta);
+  };
 
   const runGuards = async (to: Location): Promise<boolean | string> => {
     const from = untrack(location);
@@ -1895,7 +2775,67 @@ export function createRouter(config: RouterConfig): RouterState {
     return true;
   };
 
-  const blockers = new Set<Blocker>();
+  const blockers = new Map<Blocker, BlockOptions | undefined>();
+
+  const blockerLocation = (at: Location): BlockerLocation => {
+    const hit = matcher.match(unmask(at));
+    return {
+      routeId: hit?.route.id ?? "__notFound__",
+      fullPath: hit?.route.fullPath ?? at.pathname,
+      pathname: at.pathname,
+      params: hit?.params ?? {},
+      search: readSearch(at.search),
+    };
+  };
+
+  /**
+   * Every registered blocker is asked, in registration order, and the FIRST
+   * refusal ends it. A snapshot, so a blocker that unregisters another while it
+   * is being asked does not break the iteration.
+   */
+  const isBlocked = async (
+    from: Location,
+    to: Location,
+    action: HistoryAction,
+  ): Promise<boolean> => {
+    if (blockers.size === 0) return false;
+    const context = {
+      from,
+      to,
+      current: blockerLocation(from),
+      next: blockerLocation(to),
+      action,
+    };
+    for (const blocker of Array.from(blockers.keys())) {
+      if (await blocker(context)) return true;
+    }
+    return false;
+  };
+
+  const onBeforeUnload = (event: BeforeUnloadEvent): void => {
+    for (const options of blockers.values()) {
+      const enabled = options?.enableBeforeUnload;
+      if (typeof enabled === "function" ? enabled() : enabled === true) {
+        // Both, because browsers disagree about which one asks.
+        event.preventDefault();
+        event.returnValue = "";
+        return;
+      }
+    }
+  };
+  let unloadGuarded = false;
+  const guardUnload = (): void => {
+    if (typeof window === "undefined") return;
+    const wanted = Array.from(blockers.values()).some(
+      (options) =>
+        options?.enableBeforeUnload !== undefined && options.enableBeforeUnload !== false,
+    );
+    if (wanted === unloadGuarded) return;
+    unloadGuarded = wanted;
+    if (wanted) window.addEventListener("beforeunload", onBeforeUnload, { capture: true });
+    else window.removeEventListener("beforeunload", onBeforeUnload, { capture: true });
+  };
+
   const listeners = new Map<RouterEventType, Set<RouterListener>>();
 
   /**
@@ -1918,16 +2858,42 @@ export function createRouter(config: RouterConfig): RouterState {
       try {
         listener(event);
       } catch (error) {
-        console.error(`[barq/router] a ${type} listener threw`, error);
+        console.error(
+          `[barq-router] A listener passed to \`router.subscribe(${JSON.stringify(type)}, ...)\` threw. The navigation continued and the other listeners still ran. The error:`,
+          error,
+        );
       }
     }
   };
 
-  const navigating = signal(0);
+  const [navigating, setNavigating] = createSignal(0);
+  const [committing, setCommitting] = createSignal(0, { ownedWrite: true });
+  const status = (): "pending" | "idle" =>
+    navigating() > 0 || committing() > 0 || matches().some((found) => found.status === "pending")
+      ? "pending"
+      : "idle";
+  /** The last location seen idle, kept for as long as the router is not. */
+  let resolved: Location | undefined;
+  const noteIdle = (): void => {
+    if (untrack(status) === "idle") resolved = untrack(location);
+  };
+  const resolvedLocation = (): Location | undefined => {
+    const at = location();
+    if (status() === "idle") resolved = at;
+    return resolved;
+  };
+  const isLoading = (): boolean => status() === "pending";
+  const isTransitioning = (): boolean => committing() > 0;
   const scroll: ScrollRestoration =
     config.scrollRestoration === false
       ? { save: () => {}, restore: () => {}, dispose: () => {} }
-      : scrollRestoration(config.scroll);
+      : scrollRestoration({
+          ...config.scroll,
+          getKey: config.getScrollRestorationKey ?? config.scroll?.getKey,
+          toTop: config.scrollToTopSelectors ?? config.scroll?.toTop,
+          behavior: config.scrollRestorationBehavior ?? config.scroll?.behavior,
+          hashScrollIntoView: config.defaultHashScrollIntoView ?? config.scroll?.hashScrollIntoView,
+        });
   // Set by `navigate` and read by the subscription, because the COMMIT is where
   // both of these apply and only the caller knows what it asked for.
   let pendingNavigate: NavigateOptions | undefined;
@@ -1937,38 +2903,39 @@ export function createRouter(config: RouterConfig): RouterState {
   let hops = 0;
   const MAX_REDIRECTS = 10;
 
-  const navigate = async (to: string, options?: NavigateOptions): Promise<void> => {
-    navigating.set(untrack(navigating) + 1);
+  const navigate = (async (to: string | NavigateOptions, options?: NavigateOptions) => {
+    noteIdle();
+    setNavigating(untrack(navigating) + 1);
     try {
-      return await attemptNavigate(to, options);
+      return await attemptNavigate(typeof to === "string" ? { ...options, to } : to);
     } finally {
-      navigating.set(untrack(navigating) - 1);
+      setNavigating(untrack(navigating) - 1);
     }
-  };
+  }) as NavigateFn;
 
-  const attemptNavigate = async (to: string, options?: NavigateOptions): Promise<void> => {
-    if (leavesTheApp(to)) {
-      if (typeof window !== "undefined") window.location.assign(to);
+  /** A redirect thrown in process still has the navigation it described; one off the wire has `to`. */
+  const follow = (answer: {
+    readonly to: string;
+    readonly options?: NavigateOptions;
+  }): Promise<void> =>
+    answer.options === undefined
+      ? navigate(answer.to, { replace: true })
+      : navigate({ ...answer.options, replace: true, ignoreBlocker: true });
+
+  const attemptNavigate = async (asked: NavigateOptions): Promise<void> => {
+    // Middlewares run on the way OUT, while the location is being built, so a
+    // retained key is present in it rather than patched on afterwards.
+    const target = locate(asked, untrack);
+    if (target.external || asked.reloadDocument === true) {
+      if (typeof window !== "undefined") {
+        const url = target.external
+          ? target.href
+          : publicHref(target.href, { rewrite: config.rewrite, origin, base });
+        if (asked.replace === true) window.location.replace(url);
+        else window.location.assign(url);
+      }
       return;
     }
-    // Split the query and hash off BEFORE resolving. `resolvePath` works on
-    // segments and treats `?role=user` as one, so resolving the whole string
-    // and then re-appending the query wrote it twice — `/?role=user?role=user`.
-    // Middlewares run on the way OUT, before the path is resolved, so a
-    // retained key is present when the location is built rather than patched
-    // onto it afterwards.
-    const intended = buildSearch(to);
-    const cut = intended.search(/[?#]/);
-    const pathPart = cut === -1 ? intended : intended.slice(0, cut);
-    const rest = cut === -1 ? "" : intended.slice(cut);
-    const here = untrack(location).pathname;
-    const asked = pathPart === "" ? here : pathPart;
-    const resolved = applyTrailingSlash(
-      resolvePath(asked, here),
-      trailingSlash,
-      asked.endsWith("/"),
-    );
-    const target = parseLocation(resolved + rest, options?.state ?? null);
     // BEFORE the blockers, so a listener hears about navigations that are then
     // refused — which is what a progress bar and a devtool both want, and what
     // `beforeEach` cannot say because it IS one of the refusals.
@@ -1976,15 +2943,11 @@ export function createRouter(config: RouterConfig): RouterState {
 
     // Blockers first: a navigation nobody is going to make should not be
     // running guards, building context or warming a cache for itself.
-    if (blockers.size > 0) {
-      const from = untrack(location);
-      // A snapshot, not the live Set: a blocker that unregisters another while
-      // it is being asked must not break the iteration — the same reason
-      // `history.ts` snapshots its listeners.
-      // oxlint-disable-next-line unicorn/no-useless-spread
-      for (const blocker of [...blockers]) {
-        if (await blocker({ from, to: target })) return;
-      }
+    if (
+      asked.ignoreBlocker !== true &&
+      (await isBlocked(untrack(location), target, asked.replace === true ? "REPLACE" : "PUSH"))
+    ) {
+      return;
     }
 
     const verdict = await runGuards(target);
@@ -1993,7 +2956,8 @@ export function createRouter(config: RouterConfig): RouterState {
       if (hops++ >= MAX_REDIRECTS) {
         hops = 0;
         console.error(
-          `[barq/router] more than ${MAX_REDIRECTS} redirects; giving up at ${verdict}`,
+          `[barq-router] This navigation was redirected more than ${MAX_REDIRECTS} times and was abandoned at ${JSON.stringify(verdict)}. ` +
+            "Two `beforeEach` or `beforeEnter` guards are probably redirecting to each other: make one of them let the navigation through.",
         );
         return;
       }
@@ -2018,26 +2982,29 @@ export function createRouter(config: RouterConfig): RouterState {
       if (isRedirect(error)) {
         if (hops++ >= MAX_REDIRECTS) {
           hops = 0;
-          console.error(`[barq/router] more than ${MAX_REDIRECTS} redirects; giving up`);
+          console.error(
+            `[barq-router] This navigation was redirected more than ${MAX_REDIRECTS} times and was abandoned. ` +
+              "Two routes are probably redirecting to each other from `beforeLoad`: make one of them let the navigation through.",
+          );
           return;
         }
-        await navigate(error.to, { replace: true });
+        await follow(error);
         hops = 0;
         return;
       }
       throw error;
     }
     pendingContexts = produced;
-    pendingNavigate = options;
+    pendingNavigate = asked;
     pendingIsNavigate = true;
     // The per-call `mask` wins: a call site that names one has said something
     // about THIS navigation that a table cannot know.
-    const declared = maskFor(target.pathname);
-    const mask = options?.mask ?? declared?.to;
+    const declared = maskFor(target);
+    const mask = target.maskedLocation?.href ?? declared?.to;
     // Where the page being LEFT is, recorded before it stops being current.
     scroll.save(untrack(location));
     if (mask === undefined) {
-      history.push(href(target), { replace: options?.replace, state: options?.state });
+      history.push(target.href, { replace: asked.replace, state: target.state });
       return;
     }
     // The mask goes in the URL; the real target goes in the state the URL
@@ -2045,20 +3012,123 @@ export function createRouter(config: RouterConfig): RouterState {
     // `unmaskOnReload` says otherwise, and then the page load that wrote it is
     // recorded beside it and a later one stops honouring it.
     const survives =
-      options?.mask !== undefined
-        ? (options.unmaskOnReload ?? config.unmaskOnReload ?? false)
+      target.maskedLocation !== undefined
+        ? (target.maskedLocation.unmaskOnReload ??
+          asked.unmaskOnReload ??
+          config.unmaskOnReload ??
+          false)
         : (declared?.unmaskOnReload ?? false);
     history.push(mask, {
-      replace: options?.replace,
+      replace: asked.replace,
       state: {
-        ...(options?.state as object | null),
-        [MASK]: href(target),
+        ...(target.state as object | null),
+        [MASK]: target.href,
         ...(survives ? { [MASK_SESSION]: MASK_KEY } : {}),
       },
     });
   };
 
-  return {
+  /** The loaders of the chain on screen that are still running. */
+  const settleChain = async (reloads: boolean): Promise<void> => {
+    const forRaw = untrack(rawParams);
+    const forSearch = untrack(search);
+    const waits: Promise<void>[] = [];
+    for (const route of untrack(chain)) {
+      const entry = entries.get(keyOf(route, forRaw, forSearch).seedKey);
+      if (entry === undefined || entry.running === null || !entry.inFlight) continue;
+      if (reloads || entry.settled === null) waits.push(entry.running);
+    }
+    await Promise.all(waits);
+  };
+
+  const entryMatch = (entry: Entry): RouteMatch =>
+    matchOf(entry.route, {
+      raw: entry.raw,
+      params: entry.params,
+      search: NO_SEARCH,
+      valid: {},
+      context: rootContext,
+      entry,
+    });
+
+  const preloadLocation = async (
+    target: BuiltLocation,
+  ): Promise<readonly RouteMatch[] | undefined> => {
+    if (target.external) return undefined;
+    const candidate = matcher.match(target.pathname);
+    if (candidate === null) return undefined;
+
+    /**
+     * The MODULES, started before the guards rather than after the loaders.
+     *
+     * A preload that warmed only the loaders warmed the half that was never
+     * the wait. The commit holds for the chunk, so an intent preload that
+     * leaves it cold has bought nothing for the one thing it was asked to
+     * shorten. TanStack's `preloadClientRoute` runs `executeClientLane`, the
+     * same lane a real load takes, and `loadRouteChunk` is in it.
+     *
+     * NOT AWAITED: a preload is speculative and its caller does not wait, so
+     * the fetch starting is the whole of what this line is for.
+     */
+    void preloadMatched(candidate.route.chain);
+
+    let produced: readonly Record<string, unknown>[];
+    try {
+      produced = (await runBeforeLoad(target, candidate, { preload: true })).contexts;
+    } catch {
+      // A preload that would have been refused simply does not warm anything.
+      return undefined;
+    }
+
+    // The SAME key path a navigation takes, including the search — the old
+    // router preloaded with an EMPTY search while its cache key included one,
+    // so every slot it filled was one no navigation could read, and the
+    // loader was handed the wrong query as well.
+    const forSearch = new URLSearchParams(target.search);
+    const forRaw = candidate.params;
+    // The TARGET's chain, not the committed one: a preload warms a page the
+    // user is not on yet, so `parsedParams` is answering about the wrong URL.
+    const { slices } = parseChain(candidate.route.chain, forRaw);
+    const lane: Lane = {
+      chain: candidate.route.chain,
+      raw: forRaw,
+      location: target,
+      contexts: produced,
+    };
+    const valid = readSearch(forSearch);
+    return candidate.route.chain.map((route, depth) => {
+      const forParams = (slices[depth] ?? forRaw) as Record<string, string>;
+      if (route.definition.loader !== undefined && route.definition.preload !== false) {
+        const { seedKey, deps } = keyOf(route, forRaw, forSearch);
+        const entry =
+          entries.get(seedKey) ??
+          mint(
+            route,
+            forParams,
+            forSearch,
+            seedKey,
+            deps,
+            "preload",
+            produced[depth] ?? rootContext,
+            lane,
+          );
+        try {
+          entry.cell();
+        } catch {
+          /* pending or failed; both are states the cache now holds */
+        }
+      }
+      return matchOf(route, {
+        raw: forRaw,
+        params: forParams,
+        search: forSearch,
+        valid,
+        context: produced[depth] ?? rootContext,
+      });
+    });
+  };
+
+  const api: RouterState = {
     location,
     match,
     params,
@@ -2066,12 +3136,55 @@ export function createRouter(config: RouterConfig): RouterState {
     chain,
     matcher,
     config,
+    options: {
+      dehydrate: config.dehydrate,
+      hydrate: config.hydrate,
+      Wrap: config.Wrap,
+      InnerWrap: config.InnerWrap,
+    },
     history,
     base,
     trailingSlash,
     missed,
     dataFor,
     navigate,
+    buildLocation,
+    matches,
+    status,
+    isLoading,
+    isTransitioning,
+    resolvedLocation,
+    get state() {
+      return untrack(() => ({
+        status: status(),
+        isLoading: status() === "pending",
+        isTransitioning: committing() > 0,
+        matches: matches(),
+        location: location(),
+        resolvedLocation: resolvedLocation(),
+      }));
+    },
+    async load(options) {
+      if (started) {
+        flush();
+        revalidate();
+        primeChain();
+      } else {
+        await api.start();
+      }
+      await settleChain(options?.sync === true);
+    },
+    settled: () => settleChain(false),
+    clearCache(options) {
+      const live = liveKeys();
+      for (const [key, entry] of entries) {
+        if (live.has(key)) continue;
+        if (options?.filter !== undefined && !options.filter(entryMatch(entry))) continue;
+        collect(key, entry);
+      }
+      setLoads(bump);
+    },
+    preloadRoute: (options) => preloadLocation(locate(options, untrack)),
     buildSearch,
     validSearch: validSearch,
     searchErrorAt(depth) {
@@ -2080,6 +3193,7 @@ export function createRouter(config: RouterConfig): RouterState {
     paramsErrorAt(depth) {
       return untrack(parsedParams).failures[depth] ?? null;
     },
+    blockingReloads,
     contexts,
     setContexts(next) {
       settleContexts(next);
@@ -2138,11 +3252,23 @@ export function createRouter(config: RouterConfig): RouterState {
       if (entry !== undefined && entry.shownAt === 0) entry.shownAt = now();
     },
     prime: primeChain,
-    block(blocker) {
-      blockers.add(blocker);
-      return () => blockers.delete(blocker);
+    block(blocker, options) {
+      blockers.set(blocker, options);
+      guardUnload();
+      return () => {
+        blockers.delete(blocker);
+        guardUnload();
+      };
     },
-    matchRoute(options) {
+    matchRoute(asked, matchOptions) {
+      const options = {
+        ...asked,
+        ...matchOptions,
+        to:
+          asked.from === undefined || asked.to.startsWith("/")
+            ? asked.to
+            : resolvePath(asked.to, asked.from),
+      };
       const here = location();
       const hit = matcher.match(unmask(here));
       if (hit === null) return false;
@@ -2192,71 +3318,9 @@ export function createRouter(config: RouterConfig): RouterState {
     },
     canGoBack: () => (history.depth?.() ?? 0) > 0,
     isNavigating: () => navigating() > 0,
-    ssrModes: () => resolveSsr(chain(), defaults.ssr ?? true),
+    ssrModes: () => resolveSsr(chain(), defaults.ssr ?? true, config.ssrDecisions),
     async preload(to) {
-      if (leavesTheApp(to)) return;
-      // RESOLVED, parsed and base-stripped, exactly as `navigate` does it. The
-      // old router handed the raw href straight to the matcher, so
-      // `/about?x=1` matched nothing and `/users/7?tab=a` matched with
-      // `id = "7?tab=a"` — a garbage param, cached under a key no navigation
-      // would ever read.
-      const intended = buildSearch(to);
-      const cut = intended.search(/[?#]/);
-      const pathPart = cut === -1 ? intended : intended.slice(0, cut);
-      const rest = cut === -1 ? "" : intended.slice(cut);
-      const resolved = resolvePath(
-        pathPart === "" ? untrack(location).pathname : pathPart,
-        untrack(location).pathname,
-      );
-      const target = parseLocation(resolved + rest, null);
-      const candidate = matcher.match(target.pathname);
-      if (candidate === null) return;
-
-      /**
-       * The MODULES, started before the guards rather than after the loaders.
-       *
-       * A preload that warmed only the loaders warmed the half that was never
-       * the wait. The commit holds for the chunk, so an intent preload that
-       * leaves it cold has bought nothing for the one thing it was asked to
-       * shorten. TanStack's `preloadClientRoute` runs `executeClientLane`, the
-       * same lane a real load takes, and `loadRouteChunk` is in it.
-       *
-       * NOT AWAITED: a preload is speculative and its caller does not wait, so
-       * the fetch starting is the whole of what this line is for.
-       */
-      void preloadMatched(candidate.route.chain);
-
-      let produced: readonly Record<string, unknown>[];
-      try {
-        produced = (await runBeforeLoad(target, candidate)).contexts;
-      } catch {
-        // A preload that would have been refused simply does not warm anything.
-        return;
-      }
-
-      // The SAME key path a navigation takes, including the search — the old
-      // router preloaded with an EMPTY search while its cache key included one,
-      // so every slot it filled was one no navigation could read, and the
-      // loader was handed the wrong query as well.
-      const forSearch = new URLSearchParams(target.search);
-      const forRaw = candidate.params;
-      // The TARGET's chain, not the committed one: a preload warms a page the
-      // user is not on yet, so `parsedParams` is answering about the wrong URL.
-      const { slices } = parseChain(candidate.route.chain, forRaw);
-      for (const [depth, route] of candidate.route.chain.entries()) {
-        if (route.definition.loader === undefined) continue;
-        const forParams = (slices[depth] ?? forRaw) as Record<string, string>;
-        const { seedKey, deps } = keyOf(route, forRaw, forSearch);
-        const existing = entries.get(seedKey);
-        const entry =
-          existing ??
-          mint(route, forParams, forSearch, seedKey, deps, "preload", produced[depth] ?? {});
-        try {
-          entry.cell();
-        } catch {
-          /* pending or failed; both are states the cache now holds */
-        }
-      }
+      await preloadLocation(locate({ to }, untrack));
     },
     /**
      * Ask every cached loader again.
@@ -2268,16 +3332,22 @@ export function createRouter(config: RouterConfig): RouterState {
      * key, which on the client would have re-consumed a seed that is gone and on
      * the server would have re-read the session bucket.
      */
-    invalidate() {
-      for (const entry of entries.values()) refresh(entry.cell);
-      generation.set(untrack(generation) + 1);
+    async invalidate(options) {
+      for (const entry of entries.values()) {
+        if (options?.filter === undefined || options.filter(entryMatch(entry))) entry.reload();
+      }
+      setGeneration(untrack(generation) + 1);
+      if (options?.sync === true) await settleChain(true);
     },
     dispose() {
       unsubscribe();
       scroll.dispose();
+      blockers.clear();
+      guardUnload();
       for (const entry of entries.values()) entry.dispose();
       entries.clear();
       memo.clear();
     },
   };
+  return api;
 }

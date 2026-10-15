@@ -8,10 +8,13 @@
  * emitted calls had nothing to land in.
  */
 
-import type { Child, Component, Scope } from "@barqjs/core";
+import type { Child, JSXElement, Scope } from "@barqjs/core";
 
 import type { FlatRoute } from "./matcher.ts";
 import { joinPattern, normalize, parsePattern } from "./path.ts";
+
+/** The root route's id. `/` is the root INDEX, so the two cannot share one. */
+export const ROOT_ROUTE_ID = "__root__";
 
 /** What a route component is handed. */
 export interface RouteProps<
@@ -64,16 +67,24 @@ export interface ErrorProps<Params = Record<string, string>> {
   readonly error: () => Error;
   readonly reset: () => void;
   readonly params: () => Params;
+  /** What `notFound({ data })` carried. `undefined` for anything else. */
+  readonly data: () => unknown;
 }
 
 export type ErrorComponent<Params = Record<string, string>> = (
   props: ErrorProps<Params>,
 ) => unknown;
 
-/** The invoked form: what the router actually calls. */
-export type InvokedRouteComponent<Data = unknown, Params = Record<string, string>> = Component<
-  RouteProps<Data, Params>
->;
+/**
+ * The invoked form: what the router actually calls.
+ *
+ * `RouteProps` already declares each prop as the Cell the router passes, so the
+ * component takes it as it stands. Core's `Component<P>` is given the props a
+ * CALLER declares and wraps each one itself, which would say `props.data()()`.
+ */
+export type InvokedRouteComponent<Data = unknown, Params = Record<string, string>> = (
+  props: RouteProps<Data, Params>,
+) => JSXElement;
 
 /**
  * A loader is an ORDINARY isomorphic function that may CALL a server function.
@@ -116,6 +127,19 @@ export type Loader<Data = unknown, Params = Record<string, string>, Deps = undef
   /** The merged route context, parent-to-child, as of this route's depth. */
   readonly context: Record<string, unknown>;
   readonly signal: AbortSignal;
+  /** The controller behind `signal`, which is TanStack's spelling of it. */
+  readonly abortController: AbortController;
+  /** Whether this run is a preload rather than a navigation. */
+  readonly preload: boolean;
+  /** The location being loaded, which for a preload is not the current one. */
+  readonly location: import("./history.ts").Location;
+  readonly navigate: import("./register.ts").NavigateFn;
+  /**
+   * The parent route's match once ITS loader has settled, so a child can wait on
+   * data its parent fetched instead of fetching it again. `undefined` at the top.
+   */
+  readonly parentMatchPromise: Promise<import("./router.ts").RouteMatch | undefined>;
+  readonly route: Route;
 }) => Data | Promise<Data>;
 
 /** What `beforeLoad` and `context` are handed. */
@@ -123,8 +147,16 @@ export interface BeforeLoadContext<Params = Record<string, string>> {
   readonly params: Params;
   readonly search: URLSearchParams;
   readonly location: import("./history.ts").Location;
-  /** Everything the routes ABOVE this one contributed. */
+  /** Everything the routes ABOVE this one contributed, over the router's own `context`. */
   readonly context: Record<string, unknown>;
+  readonly abortController: AbortController;
+  readonly preload: boolean;
+  readonly cause: import("./router.ts").LoadCause;
+  readonly navigate: import("./register.ts").NavigateFn;
+  readonly buildLocation: import("./router.ts").RouterState["buildLocation"];
+  /** The routes being entered, outermost first. */
+  readonly matches: readonly Route[];
+  readonly routeId: string;
 }
 
 /** What `shouldReload` is told about a cached entry it may or may not refresh. */
@@ -140,6 +172,7 @@ export interface RouteDefinition<
   Data = unknown,
   Params = Record<string, string>,
   Deps = undefined,
+  Search = Record<string, unknown>,
 > {
   /**
    * This route's pattern, relative to its parent. Omitted makes the route
@@ -200,7 +233,18 @@ export interface RouteDefinition<
    * (`router.ts:1567-1574`). A failure becomes a `SearchParamError` on this
    * route's error boundary.
    */
-  readonly validateSearch?: import("./search.ts").SearchValidator;
+  readonly validateSearch?: import("./search.ts").SearchValidator<Search>;
+  /**
+   * Whether THIS route's literal segments must match the URL's case. The
+   * router's `caseSensitive` otherwise.
+   */
+  readonly caseSensitive?: boolean;
+  /**
+   * `false` keeps a `<Link preload>` or `preloadRoute` from warming this route.
+   * For a route whose loader is expensive or has side effects worth one request
+   * and not two.
+   */
+  readonly preload?: boolean;
   /**
    * The two directions of a path parameter, when a string is not what the route
    * wants to work in.
@@ -415,8 +459,12 @@ export interface RouteDefinition<
    * put them in; a parent's `"data-only"` CLAMPS a child's `true` down to
    * `"data-only"` for the same reason; but a child may still declare `false`
    * under either, because opting further out is always allowed.
+   *
+   * A FUNCTION decides for one request, from the parameters and the search it
+   * was asked with. It runs on the server only, before `beforeLoad`, and
+   * answering nothing leaves the router's default to decide.
    */
-  readonly ssr?: boolean | "data-only";
+  readonly ssr?: boolean | "data-only" | SsrDecider;
   /**
    * Write this route to disk at build time.
    *
@@ -469,7 +517,7 @@ export interface RouteDefinition<
   readonly remountDeps?: (options: {
     readonly routeId: string;
     readonly params: Params;
-    readonly search: Record<string, unknown>;
+    readonly search: Search;
   }) => unknown;
   /**
    * Called when this route ENTERS the matched chain, STAYS in it across a
@@ -494,8 +542,25 @@ export interface RouteDefinition<
    * error reaches a crash reporter.
    */
   readonly onCatch?: (error: Error) => void;
+  /**
+   * Called when this route's `beforeLoad` or loader fails with anything that is
+   * not a `redirect()` or a `notFound()`.
+   */
+  readonly onError?: (error: unknown) => void;
   readonly children?: readonly AnyRouteDefinition[];
 }
+
+/** One of a request's inputs as a route's own validation left it. */
+export type Validated<Value> =
+  | { readonly status: "success"; readonly value: Value }
+  | { readonly status: "error"; readonly error: unknown };
+
+/** TanStack's functional `ssr`: what of this route runs on the server, for this request. */
+export type SsrDecider = (context: {
+  readonly params: Validated<Record<string, unknown>>;
+  readonly search: Validated<Record<string, unknown>>;
+  readonly location: import("./history.ts").Location;
+}) => boolean | "data-only" | void | Promise<boolean | "data-only" | void>;
 
 /** What a lifecycle hook is told about the route it concerns. */
 export interface RouteLifecycle<Params = Record<string, string>> {
@@ -531,6 +596,16 @@ export type RouteHandler<Params = Record<string, string>> = (
   context: RouteHandlerContext<Params>,
 ) => Response | undefined | Promise<Response | undefined>;
 
+/** One method's handler with the middleware that guards it alone. */
+export interface RouteHandlerEntry<Params = Record<string, string>> {
+  readonly middleware?: readonly import("@barqjs/start").Middleware[];
+  readonly handler: RouteHandler<Params>;
+}
+
+export type RouteHandlers<Params = Record<string, string>> = Partial<
+  Record<RouteMethod, RouteHandler<Params> | RouteHandlerEntry<Params>>
+>;
+
 export interface RouteServer<Params = Record<string, string>> {
   /**
    * Runs before this route's handler, outermost first, and INHERITED — a
@@ -542,7 +617,16 @@ export interface RouteServer<Params = Record<string, string>> {
    * would be a second thing it cannot see.
    */
   readonly middleware?: readonly import("@barqjs/start").Middleware[];
-  readonly handlers?: Partial<Record<RouteMethod, RouteHandler<Params>>>;
+  /**
+   * The answers, by method. Each is a handler, or a handler with middleware of
+   * its own that runs after the route's. The function form is TanStack's
+   * `({ createHandlers }) => createHandlers({ GET: { middleware, handler } })`.
+   */
+  readonly handlers?:
+    | RouteHandlers<Params>
+    | ((options: {
+        readonly createHandlers: (handlers: RouteHandlers<Params>) => RouteHandlers<Params>;
+      }) => RouteHandlers<Params>);
   /**
    * Refuse a state-changing request a BROWSER made from another origin.
    * Default `true`.
@@ -583,7 +667,7 @@ export interface RouteServer<Params = Record<string, string>> {
  * `loaderData` read.
  */
 // oxlint-disable-next-line typescript/no-explicit-any
-export type AnyRouteDefinition = RouteDefinition<any, any, any>;
+export type AnyRouteDefinition = RouteDefinition<any, any, any, any>;
 
 /** A route after flattening: its own definition plus everything the matcher needs. */
 export interface Route {
@@ -593,9 +677,9 @@ export interface Route {
 }
 
 /** Identity, plus a place to hang inference later. */
-export function route<Data, Params, Deps = undefined>(
-  definition: RouteDefinition<Data, Params, Deps>,
-): RouteDefinition<Data, Params, Deps> {
+export function route<Data, Params, Deps = undefined, Search = Record<string, unknown>>(
+  definition: RouteDefinition<Data, Params, Deps, Search>,
+): RouteDefinition<Data, Params, Deps, Search> {
   return definition;
 }
 
@@ -614,16 +698,27 @@ export function flattenRoutes(table: readonly AnyRouteDefinition[]): FlatRoute<R
     definitions: readonly AnyRouteDefinition[],
     parentPath: string,
     parentChain: readonly Route[],
+    parentCase: readonly (boolean | undefined)[],
   ): void => {
     for (const definition of definitions) {
       const fullPath = joinPattern(parentPath, definition.path);
       const id = definition.id ?? fullPath;
       const self: Route = { id, fullPath, definition };
       const chain = [...parentChain, self];
+      // One answer per SEGMENT, so a route's `caseSensitive` governs the
+      // segments it contributed and not the ones its layout did.
+      const total = parsePattern(fullPath).length;
+      const inherited = definition.path?.startsWith("/") === true ? [] : parentCase;
+      const sensitive = [
+        ...inherited.slice(0, total),
+        ...Array.from<boolean | undefined>({
+          length: Math.max(0, total - inherited.length),
+        }).fill(definition.caseSensitive),
+      ];
 
       const children = definition.children;
       if (children !== undefined && children.length > 0) {
-        visit(children, fullPath, chain);
+        visit(children, fullPath, chain, sensitive);
         continue;
       }
 
@@ -633,7 +728,10 @@ export function flattenRoutes(table: readonly AnyRouteDefinition[]): FlatRoute<R
       // only the child's id has to be unique. A layout is reached through its
       // chain and is never looked up by id.
       if (seen.has(id)) {
-        throw new Error(`two routes claim the id ${JSON.stringify(id)}`);
+        throw new Error(
+          `Two routes have the id ${JSON.stringify(id)}. Routes are looked up by id, so one of them could never be matched. ` +
+            "Give one of them a different `path`, or its own `id`.",
+        );
       }
       seen.add(id);
 
@@ -642,11 +740,12 @@ export function flattenRoutes(table: readonly AnyRouteDefinition[]): FlatRoute<R
         fullPath,
         segments: parsePattern(fullPath),
         chain,
+        ...(sensitive.some((flag) => flag !== undefined) ? { sensitive } : {}),
       });
     }
   };
 
-  visit(table, "", []);
+  visit(table, "", [], []);
   return out;
 }
 

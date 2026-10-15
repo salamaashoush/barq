@@ -363,19 +363,24 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
     tree = routeTree(root, routesDir, treeFile ?? DEFAULT_ROUTE_TREE, writeIds);
     for (const warning of tree.warnings ?? []) warn?.(`[barq-router] ${warning}`);
     for (const file of tree.rewritten ?? []) {
-      warn?.(`[barq-router] ${file}: rewrote its route id to match the filename`);
+      warn?.(
+        `[barq-router] \`${file}\`: the id passed to \`createFileRoute\` differed from the id the filename gives, so the dev server rewrote it in the file.`,
+      );
     }
     // A BUILD refuses rather than warns. The id is what the route table, the
     // loader cache and the route-action manifest all key by, so shipping a
     // literal that disagrees with the tree is shipping two names for one route.
     if ((tree.mismatches ?? []).length > 0) {
       throw new Error(
-        `[barq-router] a route id literal is generated and these disagree with the id their ` +
-          `filename derives:\n` +
+        `[barq-router] These route files pass \`createFileRoute\` an id that differs from the id their filename gives:\n` +
           tree.mismatches
-            .map(({ file, declared, expected }) => `  ${file}: "${declared}" -> "${expected}"`)
+            .map(
+              ({ file, declared, expected }) =>
+                `  ${file}: ${JSON.stringify(declared)} should be ${JSON.stringify(expected)}`,
+            )
             .join("\n") +
-          `\nRun the dev server once to rewrite them, or correct them by hand.`,
+          `\nRoutes, loader data and route actions are looked up by this id, so the build stops instead of shipping two ids for one route. ` +
+          `Run the dev server once to rewrite them, or correct them by hand.`,
       );
     }
     options.onRoutes?.(tree.patterns);

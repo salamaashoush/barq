@@ -50,7 +50,7 @@
     "build": "tsdown",
     "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
-    "test": "bun test",
+    "test": "bun test && bun test --conditions=development",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {

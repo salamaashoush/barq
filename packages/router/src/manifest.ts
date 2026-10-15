@@ -37,7 +37,13 @@
  * of those shapes and needs no compiler work at all.
  */
 
-import { type Middleware, flattenMiddleware, isBuiltMiddleware, middlewareOf } from "@barqjs/start";
+import {
+  type AnyServerFn,
+  type Middleware,
+  flattenMiddleware,
+  isBuiltMiddleware,
+  middlewareOf,
+} from "@barqjs/start";
 
 import type { AnyRouteDefinition, Route } from "./route.ts";
 import { flattenRoutes } from "./route.ts";
@@ -57,7 +63,7 @@ export interface VerifyOptions {
   /** route id -> server-fn ids reachable from that route's module graph. */
   readonly reachability: Reachability;
   /** id -> the mounted function, normally `REGISTRY.get`. */
-  readonly lookup: (id: string) => { readonly meta: { id: string } } | undefined;
+  readonly lookup: (id: string) => AnyServerFn | undefined;
 }
 
 /**
@@ -87,7 +93,7 @@ export async function verifyRouteChains(options: VerifyOptions): Promise<Violati
     for (const id of ids) {
       const fn = options.lookup(id);
       if (fn === undefined) continue;
-      const carried = middlewareOf(fn as never);
+      const carried = middlewareOf(fn);
       const missing = expected.filter((step) => !carried.includes(step)).length;
       if (missing > 0) violations.push({ routeId: route.id, serverFnId: id, missing });
     }
@@ -131,7 +137,7 @@ export function verifyClientChains(
   for (const id of ids) {
     const fn = lookup(id);
     if (fn === undefined) continue;
-    const names = flattenMiddleware(middlewareOf(fn as never))
+    const names = flattenMiddleware(middlewareOf(fn))
       .filter((step) => !isBuiltMiddleware(step))
       // A `const` arrow takes the binding's name, which is what the author
       // wrote and what they have to find. An anonymous one says so.
@@ -143,23 +149,20 @@ export function verifyClientChains(
 
 /** A build-stopping message for {@link verifyClientChains}. */
 export function describeUnbuilt(unbuilt: readonly UnbuiltChain[]): string {
-  const lines = unbuilt.map(
-    ({ serverFnId, names }) => `  ${serverFnId} carries ${names.join(", ")}`,
-  );
+  const lines = unbuilt.map(({ serverFnId, names }) => `  ${serverFnId} uses ${names.join(", ")}`);
   return [
-    `${unbuilt.length} server function(s) carry a middleware the client build cannot strip.`,
+    `${unbuilt.length} server function(s) use a plain function as middleware, which would put that function's code in the browser bundle.`,
     "",
     ...lines,
     "",
-    "A server function's chain is carried into its client stub so a middleware's",
-    "`.client()` half can run in the browser, which means the module declaring it is",
-    "imported there. The compiler deletes `.server(…)` and `.validator(…)` from a",
-    "`createMiddleware` middleware and everything only they reached; a bare closure",
-    "has no such marker, so its body — and whatever it imports to open a session or",
-    "reach a database — arrives whole.",
+    "A server function's middleware is imported into the browser build so that a",
+    "middleware's `.client()` step can run there. The build removes `.server(...)` and",
+    "`.validator(...)` from a `createMiddleware` middleware, but it cannot remove the",
+    "body of a plain function, so whatever that function imports to read a session or",
+    "reach a database would ship to the browser.",
     "",
-    "Write it as `createMiddleware().server(async ({ next }) => …)`. A bare closure is",
-    "still fine on a route, and on a function no client stub carries.",
+    "Write it as `createMiddleware().server(async ({ next }) => next())`. A plain",
+    "function is still fine as a route's `middleware`.",
   ].join("\n");
 }
 
@@ -188,16 +191,17 @@ export async function chainOf(chain: readonly Route[]): Promise<readonly Middlew
 export function describe(violations: readonly Violation[]): string {
   const lines = violations.map(
     ({ routeId, serverFnId, missing }) =>
-      `  ${serverFnId} is reachable from ${routeId} but is missing ${missing} of its middleware`,
+      `  ${serverFnId} is reachable from ${routeId} but is missing ${missing} of that route's middleware`,
   );
   return [
-    `${violations.length} server function(s) do not carry the middleware of a route that reaches them.`,
+    `${violations.length} server function(s) are missing the middleware of a route that can call them.`,
     "",
     ...lines,
     "",
     "A server function is a separate HTTP endpoint: a check on the route that renders it",
-    "does not run when the function is called directly. Add the route's middleware to the",
-    "function with `.middleware([...])`, or move the function out of that route's graph.",
+    "does not run when the function is called directly, so the check can be skipped. Add",
+    "the route's middleware to the function with `.middleware([...])`, or stop importing",
+    "the function from that route's modules.",
   ].join("\n");
 }
 

@@ -6,20 +6,49 @@
  * one page work and what makes a router die with the scope that made it.
  */
 
-import { type Cell, onCleanup } from "@barqjs/core";
+import { type Cell, createMemo, onCleanup } from "@barqjs/core";
 
+import { type BlockerResolver, type UseBlockerOptions, blockWith } from "./blocker.ts";
 import { useRouter } from "./components.ts";
 import { isRedirect } from "./errors.ts";
 import type { Location } from "./history.ts";
-import type { Route } from "./route.ts";
-import type { Blocker, MatchRouteOptions, NavigateOptions } from "./router.ts";
+import { type MatchHookOptions, type Thrown, loaderCell, matchCell, matchesCell } from "./match.ts";
+import type { NavigateFn } from "./register.ts";
+import { type ScrollPosition, savedScrollPosition, scrollKey } from "./scroll.ts";
+import {
+  type Blocker,
+  type MatchRouteOptions,
+  type RouteMatch,
+  type RouterSnapshot,
+  sameShape,
+} from "./router.ts";
 
-export function useLocation(): Cell<Location> {
-  return useRouter().location;
+/** The current location, or a memoized part of it. */
+export function useLocation(): Cell<Location>;
+export function useLocation<Selected>(options: {
+  readonly select: (location: Location) => Selected;
+}): Cell<Selected>;
+export function useLocation(options?: {
+  readonly select: (location: Location) => unknown;
+}): Cell<unknown> {
+  const state = useRouter();
+  if (options === undefined) return state.location;
+  return createMemo(() => options.select(state.location()), { equals: sameShape });
 }
 
-export function useParams<P extends Record<string, string> = Record<string, string>>(): Cell<P> {
-  return useRouter().params as unknown as Cell<P>;
+/**
+ * The path parameters. With no options, the whole chain's, as they stand.
+ *
+ * `from` reads them off one route's match and throws if that route is not
+ * matched; `select` narrows the value and memoizes what it returns.
+ */
+export function useParams<
+  P extends Record<string, unknown> = Record<string, string>,
+  Selected = P,
+  Throw extends boolean = true,
+>(options?: MatchHookOptions<P, Selected, Throw>): Cell<Thrown<Selected, Throw>> {
+  if (options === undefined) return useRouter().params as unknown as Cell<Selected>;
+  return matchCell("useParams", options, "leaf", (match) => match.params as P);
 }
 
 /**
@@ -30,13 +59,31 @@ export function useParams<P extends Record<string, string> = Record<string, stri
  * route that declares none gets the raw record. The `URLSearchParams` is still
  * one `location().search` away, and `useSearchParams` is unchanged.
  */
-export function useSearch<S extends Record<string, unknown> = Record<string, unknown>>(): Cell<S> {
-  return useRouter().validSearch as unknown as Cell<S>;
+export function useSearch<
+  S extends Record<string, unknown> = Record<string, unknown>,
+  Selected = S,
+  Throw extends boolean = true,
+>(options?: MatchHookOptions<S, Selected, Throw>): Cell<Thrown<Selected, Throw>> {
+  if (options === undefined) return useRouter().validSearch as unknown as Cell<Selected>;
+  return matchCell("useSearch", options, "leaf", (match) => match.search as S);
 }
 
-export function useNavigate(): (to: string, options?: NavigateOptions) => Promise<void> {
+/**
+ * `navigate`, in both forms: `navigate("/posts/7")` and TanStack's
+ * `navigate({ to: "/posts/$id", params: { id: "7" } })`.
+ *
+ * `from` here is the default for every call, so a component can navigate
+ * relatively without repeating where it is.
+ */
+export function useNavigate(defaults?: { readonly from?: string }): NavigateFn {
   const state = useRouter();
-  return (to, options) => state.navigate(to, options);
+  const from = defaults?.from;
+  if (from === undefined) return state.navigate;
+  const navigate = (to: unknown, options?: object): Promise<void> =>
+    typeof to === "string"
+      ? state.navigate(to, { from, ...options })
+      : state.navigate({ from, ...(to as object) });
+  return navigate;
 }
 
 /**
@@ -49,9 +96,12 @@ export function useNavigate(): (to: string, options?: NavigateOptions) => Promis
  * reads it once, which is the ordinary barq distinction and needs no dependency
  * array to express.
  */
-export function useMatchRoute(): (options: MatchRouteOptions) => Record<string, string> | false {
+export function useMatchRoute(): (
+  options: MatchRouteOptions,
+  matchOptions?: Pick<MatchRouteOptions, "fuzzy" | "includeSearch">,
+) => Record<string, string> | false {
   const state = useRouter();
-  return (options) => state.matchRoute(options);
+  return (options, matchOptions) => state.matchRoute(options, matchOptions);
 }
 
 /**
@@ -82,11 +132,11 @@ export function useServerFn<Args extends readonly unknown[], Out>(
       result = await fn(...args);
     } catch (error) {
       if (!isRedirect(error)) throw error;
-      await state.navigate(error.to);
+      await state.navigate(error.options ?? { to: error.to });
       return undefined as Out;
     }
     if (isRedirect(result)) {
-      await state.navigate(result.to);
+      await state.navigate(result.options ?? { to: result.to });
       return undefined as Out;
     }
     return result;
@@ -98,56 +148,109 @@ export function useServerFn<Args extends readonly unknown[], Out>(
  *
  * A component that wants its own depth's slice reads `props.context()`, which is
  * what a route is handed; this is the whole-chain answer, which is what a
- * component further down the tree — a button, a widget — actually wants.
+ * component further down the tree — a button, a widget — actually wants. `from`
+ * reads it as of one route instead.
  */
 export function useRouteContext<
   C extends Record<string, unknown> = Record<string, unknown>,
->(): Cell<C> {
+  Selected = C,
+  Throw extends boolean = true,
+>(options?: MatchHookOptions<C, Selected, Throw>): Cell<Thrown<Selected, Throw>> {
+  if (options === undefined) {
+    const state = useRouter();
+    return () => {
+      const all = state.contexts();
+      return (all[all.length - 1] ?? state.config.context ?? {}) as Selected;
+    };
+  }
+  return matchCell("useRouteContext", options, "leaf", (match) => match.context as C);
+}
+
+/**
+ * One matched route, as TanStack's `RouteMatch`.
+ *
+ * `useMatch("/admin")` is barq's own spelling: that route's match, or `null`
+ * when it is not in the current chain, so a component can ask "am I under
+ * /admin" without knowing where it sits. With no argument it is the LEAF.
+ *
+ * `useMatch({ from, select, shouldThrow })` is theirs: the nearest match when
+ * `from` is absent, and a throw when `from` is not matched unless `shouldThrow`
+ * is `false`.
+ */
+export function useMatch(routeId?: string): Cell<RouteMatch | null>;
+export function useMatch<Selected = RouteMatch, Throw extends boolean = true>(
+  options: MatchHookOptions<RouteMatch, Selected, Throw>,
+): Cell<Thrown<Selected, Throw>>;
+export function useMatch(given?: string | MatchHookOptions<RouteMatch, unknown>): Cell<unknown> {
+  if (typeof given === "object") {
+    return matchCell("useMatch", given, "nearest", (match) => match);
+  }
   const state = useRouter();
   return () => {
-    const all = state.contexts();
-    return (all[all.length - 1] ?? {}) as C;
+    const all = state.matches();
+    const match =
+      given === undefined ? all.at(-1) : all.find((candidate) => candidate.routeId === given);
+    return match ?? null;
   };
 }
 
 /**
- * One matched route by id, or the LEAF when no id is given.
+ * A route's loader value. Reading it starts the loader, and a read before it
+ * settles parks the nearest loading boundary.
  *
- * `null` when that route is not in the current chain, so a component can ask
- * "am I under /admin" without knowing where it sits.
+ * The route rendering the caller when `from` is absent.
  */
-export function useMatch(routeId?: string): Cell<Route | null> {
-  const state = useRouter();
-  return () => {
-    const chain = state.chain();
-    if (routeId === undefined) return chain[chain.length - 1] ?? null;
-    return chain.find((route) => route.id === routeId) ?? null;
-  };
+export function useLoaderData<Data = unknown, Selected = Data, Throw extends boolean = true>(
+  options?: MatchHookOptions<Data, Selected, Throw>,
+): Cell<Thrown<Selected, Throw>> {
+  return loaderCell(options);
+}
+
+/** What a route's `loaderDeps` selected, which is what its loader is keyed by. */
+export function useLoaderDeps<Deps = unknown, Selected = Deps, Throw extends boolean = true>(
+  options?: MatchHookOptions<Deps, Selected, Throw>,
+): Cell<Thrown<Selected, Throw>> {
+  return matchCell("useLoaderDeps", options, "nearest", (match) => match.loaderDeps as Deps);
+}
+
+/** What `useRouterState` answers with: TanStack's router state, and barq's two extras. */
+export interface RouterStateValue extends RouterSnapshot {
+  readonly params: Record<string, string>;
+  /** A navigation has been asked for and has not committed. */
+  readonly isNavigating: boolean;
 }
 
 /**
  * The router's state as ONE reactive value, for a component that wants several
  * pieces of it without subscribing to each separately.
  *
- * `isLoading` is deliberately NOT a router-wide counter: loading is a `Loading`
- * boundary per route depth, and a global spinner is how a page ends up with two
- * of them disagreeing. What is here is `isNavigating`: a navigation has been
- * asked for and has not committed, which is a fact about the ROUTER rather than
- * about any route's data.
+ * `select` is how to take ONE piece and be told only when it changed:
+ * `useRouterState({ select: (s) => s.location.pathname })`.
+ *
+ * `isLoading` follows the navigation and the chain's cold loaders, as theirs
+ * does. A background reload does not move it: that is a `Loading` boundary per
+ * route depth, and each match's `isFetching` says which.
  */
-export function useRouterState(): Cell<{
-  readonly location: Location;
-  readonly matches: readonly Route[];
-  readonly params: Record<string, string>;
-  readonly isNavigating: boolean;
-}> {
+export function useRouterState(): Cell<RouterStateValue>;
+export function useRouterState<Selected>(options: {
+  readonly select: (state: RouterStateValue) => Selected;
+}): Cell<Selected>;
+export function useRouterState(options?: {
+  readonly select: (state: RouterStateValue) => unknown;
+}): Cell<unknown> {
   const state = useRouter();
-  return () => ({
+  const value = (): RouterStateValue => ({
+    status: state.status(),
+    isLoading: state.isLoading(),
+    isTransitioning: state.isTransitioning(),
+    matches: state.matches(),
     location: state.location(),
-    matches: state.chain(),
+    resolvedLocation: state.resolvedLocation(),
     params: state.params(),
     isNavigating: state.isNavigating(),
   });
+  if (options === undefined) return value;
+  return createMemo(() => options.select(value()), { equals: sameShape });
 }
 
 /**
@@ -155,10 +258,21 @@ export function useRouterState(): Cell<{
  *
  * Unregisters on cleanup, so a form that unmounts stops blocking — the failure
  * mode of a blocker that outlives its form being an app nobody can navigate.
+ *
+ * A function is barq's own form and returns the unregister. TanStack's options
+ * form also covers the back button and, unless `enableBeforeUnload` is `false`,
+ * closing the tab; with `withResolver` it returns a cell holding `proceed` and
+ * `reset` while a navigation is waiting on an answer.
  */
-export function useBlocker(blocker: Blocker): () => void {
+export function useBlocker(blocker: Blocker): () => void;
+export function useBlocker(
+  options: UseBlockerOptions & { readonly withResolver: true },
+): Cell<BlockerResolver>;
+export function useBlocker(options: UseBlockerOptions): void;
+export function useBlocker(given: Blocker | UseBlockerOptions): unknown {
   const state = useRouter();
-  const off = state.block(blocker);
+  if (typeof given !== "function") return blockWith(state, given);
+  const off = state.block(given);
   onCleanup(off);
   return off;
 }
@@ -173,9 +287,45 @@ export function useCanGoBack(): Cell<boolean> {
   };
 }
 
-/** The matched chain, outermost first. */
-export function useMatches(): Cell<readonly Route[]> {
-  return useRouter().chain;
+/** The matched chain as TanStack's `RouteMatch`es, outermost first. */
+export function useMatches<Selected = readonly RouteMatch[]>(options?: {
+  readonly select?: (matches: readonly RouteMatch[]) => Selected;
+}): Cell<Selected> {
+  return matchesCell("all", options);
+}
+
+/** The matches BELOW the route rendering the caller. */
+export function useChildMatches<Selected = readonly RouteMatch[]>(options?: {
+  readonly select?: (matches: readonly RouteMatch[]) => Selected;
+}): Cell<Selected> {
+  return matchesCell("children", options);
+}
+
+/** The matches ABOVE the route rendering the caller. */
+export function useParentMatches<Selected = readonly RouteMatch[]>(options?: {
+  readonly select?: (matches: readonly RouteMatch[]) => Selected;
+}): Cell<Selected> {
+  return matchesCell("parents", options);
+}
+
+/**
+ * Where a scroll container was left for the current location, so a virtualised
+ * list can start there instead of at the top.
+ *
+ * `id` is the container's `data-scroll-id`; `getElement` reads the id off an
+ * element that carries one.
+ */
+export function useElementScrollRestoration(options: {
+  readonly id?: string;
+  readonly getElement?: () => Element | null | undefined;
+  readonly getKey?: (location: Location) => string;
+}): ScrollPosition | undefined {
+  const state = useRouter();
+  const config = state.config;
+  const keyOf =
+    options.getKey ?? config.getScrollRestorationKey ?? config.scroll?.getKey ?? scrollKey;
+  const id = options.id ?? options.getElement?.()?.getAttribute("data-scroll-id") ?? undefined;
+  return id === undefined ? undefined : savedScrollPosition(keyOf(state.location()), id);
 }
 
 /**
@@ -186,7 +336,9 @@ export function useMatches(): Cell<readonly Route[]> {
  */
 export function useInvalidate(): () => void {
   const state = useRouter();
-  return () => state.invalidate();
+  return () => {
+    void state.invalidate();
+  };
 }
 
 /**

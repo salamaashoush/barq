@@ -174,6 +174,66 @@ for one.
 `false`, a parent's `"data-only"` clamps a child's `true` down to
 `"data-only"`, and a child may always opt further out.
 
+`ssr` may also be a function, which decides for one request. It runs on the
+server only, before `beforeLoad`, and answering nothing leaves the default:
+
+```tsx
+createFileRoute("/docs/$kind")({
+  ssr: ({ params, search }) => {
+    if (params.status === "success" && params.value.kind === "sheet") return false;
+    if (search.status === "success" && search.value.details) return "data-only";
+  },
+});
+```
+
+`createPageHandler({ shell: true })` renders the root route with nothing under
+it, which is the document `barqStart({ spa: { enabled: true } })` writes once and
+serves for every path.
+
+## The router, per request
+
+`src/router.ts` exports `config`, or `getRouter` when a router needs more than
+configuration. `getRouter` runs once for each request on the server and once in
+the browser, so what it creates belongs to one visitor:
+
+```ts
+export function getRouter() {
+  const queryClient = new QueryClient();
+  const router = createRouter({ routeTree, context: { queryClient } });
+  setupRouterSsrQueryIntegration({ router, queryClient }); // @barqjs/query/router
+  return router;
+}
+```
+
+It has to call `createRouter` before it first awaits: that call is where the
+server hands over the request's location, and a router built after an `await`
+is refused by name.
+
+A router carries four hooks, as configuration or installed on `router.options`
+after `createRouter` has returned:
+
+```ts
+createRouter({
+  routeTree,
+  dehydrate: () => ({ flags }), // server, once the matched loaders have settled
+  hydrate: (dehydrated) => restore(dehydrated.flags), // browser, before the first render
+  Wrap: (props) => <Theme>{props.children()}</Theme>, // around the router output
+  InnerWrap: (props) => <Session>{props.children()}</Session>, // inside the router context
+});
+```
+
+What `dehydrate` returns crosses with its types intact. A promise or an async
+iterable inside it is streamed: the shell goes first and what settles later
+follows it. During a render `router.serverSsr` offers `injectScript(source)` and
+`onRenderFinished(listener)`.
+
+A context for one request, without `getRouter`, is a function on the handler. It
+runs inside the request and is laid over the router's own context:
+
+```ts
+createStartHandler({ context: async (request) => ({ tenant: await tenantOf(request) }) });
+```
+
 ## API routes
 
 An API route is an ordinary route file that declares handlers instead of a
@@ -199,6 +259,27 @@ export const Route = createFileRoute("/api/health")({
 
 The compiler deletes `server` from the client build, so a handler's body — and
 the database driver it imports — is in no client chunk.
+
+Middleware goes on the route, where everything under it inherits it, or on one
+method through `createHandlers`:
+
+```ts
+createFileRoute("/api/posts")({
+  server: {
+    middleware: [requireSession],
+    handlers: ({ createHandlers }) =>
+      createHandlers({
+        GET: () => Response.json(posts()),
+        POST: { middleware: [rateLimited], handler: ({ context }) => create(context.user) },
+      }),
+  },
+});
+```
+
+A request passes the application's global request middleware first (`createStart`
+in `@barqjs/start`), then the route's, then the method's own, and each one's
+`next({ context })` reaches the handler's `context`. A cross-origin refusal is
+answered before any of them runs.
 
 A route handler answers before the method gate, which is the whole point of one:
 a page can only be a GET. `csrf` is on by default and refuses a state-changing

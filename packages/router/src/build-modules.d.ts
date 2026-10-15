@@ -34,8 +34,21 @@
  * `src/router.tsx` the same way.
  */
 declare module "#barq-router-entry" {
-  const config: import("./router.ts").RouterConfig;
-  export { config };
+  const config: import("./router.ts").RouterConfig | undefined;
+  /** Builds a router for one request on the server, and the one router of a browser. */
+  const getRouter:
+    | (() => import("./router.ts").RouterState | Promise<import("./router.ts").RouterState>)
+    | undefined;
+  export { config, getRouter };
+}
+
+/**
+ * The project's `src/start.ts`, or an empty module when it has not written one.
+ * Imported for its effect: `createStart` registers the global middleware.
+ */
+declare module "#barq-start-entry" {
+  const startInstance: import("@barqjs/start").StartInstance | undefined;
+  export { startInstance };
 }
 
 /** Route id -> the client chunks that route needs, for `<link rel=modulepreload>`. */

@@ -76,7 +76,7 @@ describe("interpolate", () => {
   });
 
   test("a missing parameter is an error naming itself", () => {
-    expect(() => interpolate("/users/$id", {})).toThrow(/missing route parameter "id"/);
+    expect(() => interpolate("/users/$id", {})).toThrow(/is missing its route parameter "id"/);
   });
 });
 
@@ -187,7 +187,7 @@ describe("interpolate, with the braced forms", () => {
 
   /** A REQUIRED parameter with no value is still an error. */
   test("a required parameter still refuses to go missing", () => {
-    expect(() => interpolate("/users/$id", {})).toThrow(/missing route parameter/);
+    expect(() => interpolate("/users/$id", {})).toThrow(/is missing its route parameter/);
   });
 
   test("a decorated splat wraps its first and last segment", () => {

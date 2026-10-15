@@ -38,7 +38,26 @@ interface Manifest {
   name: string;
   main?: string;
   types?: string;
-  exports?: Record<string, Record<string, string>>;
+  exports?: Record<string, Conditions>;
+}
+
+/** A condition names a file, or a narrower set of conditions. */
+interface Conditions {
+  [condition: string]: string | Conditions;
+}
+
+/** Every file a subpath's conditions name, except the ones `bun` resolves to source. */
+function builtTargets(conditions: Conditions, under = ""): [condition: string, target: string][] {
+  const out: [string, string][] = [];
+  for (const [condition, target] of Object.entries(conditions)) {
+    // `bun` points at source on purpose — that is how the workspace
+    // resolves — so it is the one condition that is not a build artefact.
+    if (condition === "bun") continue;
+    const named = under === "" ? condition : `${under}.${condition}`;
+    if (typeof target === "string") out.push([named, target]);
+    else for (const nested of builtTargets(target, named)) out.push(nested);
+  }
+  return out;
 }
 
 function manifest(pkg: string): Manifest {
@@ -52,10 +71,7 @@ describe("published entry points", () => {
     const missing: string[] = [];
 
     for (const [subpath, conditions] of Object.entries(p.exports ?? {})) {
-      for (const [condition, target] of Object.entries(conditions)) {
-        // `bun` points at source on purpose — that is how the workspace
-        // resolves — so it is the one condition that is not a build artefact.
-        if (condition === "bun") continue;
+      for (const [condition, target] of builtTargets(conditions)) {
         if (!existsSync(join(dir, target))) missing.push(`${subpath} [${condition}] -> ${target}`);
       }
     }
@@ -81,7 +97,7 @@ describe("published entry points", () => {
     const p = manifest(pkg);
     for (const conditions of Object.values(p.exports ?? {})) {
       const bun = conditions.bun;
-      if (bun === undefined) continue;
+      if (typeof bun !== "string") continue;
       // `./src/server.ts` in the exports map must appear as an entry — either
       // spelled out, or as the module NAME a computed entry list maps over.
       // `@barqjs/primitives` builds its 28 entries with

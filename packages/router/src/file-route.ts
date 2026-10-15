@@ -34,14 +34,14 @@
  * and barq's tree is emitted whole by the compiler.
  */
 
-import type { Cell, Child } from "@barqjs/core";
+import { type Cell, type Child, createMemo } from "@barqjs/core";
 
 import { useRouteMatch } from "./components.ts";
-import type { AnyRouteDefinition, Route, RouteDefinition } from "./route.ts";
-import type { NavigateOptions } from "./router.ts";
+import type { NavigateFn } from "./register.ts";
+import { type AnyRouteDefinition, type RouteDefinition, ROOT_ROUTE_ID } from "./route.ts";
+import { type RouteMatch, sameShape } from "./router.ts";
 
-/** The root route's id. `/` is the root INDEX, so the two cannot share one. */
-export const ROOT_ROUTE_ID = "__root__";
+export { ROOT_ROUTE_ID };
 
 /**
  * What a root route may declare that no other route may.
@@ -54,7 +54,8 @@ export interface RootRouteOptions<
   Data = unknown,
   Params = Record<string, string>,
   Deps = undefined,
-> extends RouteDefinition<Data, Params, Deps> {
+  Search = Record<string, unknown>,
+> extends RouteDefinition<Data, Params, Deps, Search> {
   /**
    * `children` is a `Child` rather than a Block for the reason `RouteProps`
    * gives: `{props.children}` is the entire shell pattern and has to typecheck,
@@ -76,17 +77,42 @@ export interface FileRoute<
   Params = Record<string, string>,
   Deps = undefined,
   Options extends AnyRouteDefinition = RouteDefinition<Data, Params, Deps>,
+  Search = Record<string, unknown>,
 > {
   readonly id: string;
   readonly options: Options;
+  /**
+   * Never set. It is how this route's types reach whatever reads `Register`:
+   * a `<Link to>` typing its `search`, `getRouteApi` typing its hooks.
+   */
+  readonly types?: {
+    readonly loaderData: Data;
+    readonly params: Params;
+    readonly search: Search;
+    readonly loaderDeps: Deps;
+  };
   /** This route's loader value. Reading it is what STARTS the loader. */
-  useLoaderData(): Cell<Data>;
-  useParams(): Cell<Params>;
+  useLoaderData<Selected = Data>(options?: Selecting<Data, Selected>): Cell<Selected>;
+  useParams<Selected = Params>(options?: Selecting<Params, Selected>): Cell<Selected>;
+  /** The validated search as of this route's depth. */
+  useSearch<Selected = Search>(options?: Selecting<Search, Selected>): Cell<Selected>;
+  /** What this route's `loaderDeps` selected. */
+  useLoaderDeps<Selected = Deps>(options?: Selecting<Deps, Selected>): Cell<Selected>;
   /** This route's slice of the route context — its own `beforeLoad` included. */
-  useRouteContext<C extends Record<string, unknown> = Record<string, unknown>>(): Cell<C>;
+  useRouteContext<C extends Record<string, unknown> = Record<string, unknown>, Selected = C>(
+    options?: Selecting<C, Selected>,
+  ): Cell<Selected>;
   /** This route's match, or `null` if it somehow is not the one rendering. */
-  useMatch(): Cell<Route | null>;
-  useNavigate(): (to: string, options?: NavigateOptions) => Promise<void>;
+  useMatch<Selected = RouteMatch<Data> | null>(
+    options?: Selecting<RouteMatch<Data> | null, Selected>,
+  ): Cell<Selected>;
+  /** `navigate`, with a relative `to` resolved from this route. */
+  useNavigate(): NavigateFn;
+}
+
+/** TanStack's `select`: narrow a hook's value, and be told only when the result changed. */
+export interface Selecting<Value, Selected> {
+  readonly select?: (value: Value) => Selected;
 }
 
 /**
@@ -99,22 +125,20 @@ export interface FileRoute<
 function matchFor(id: string): {
   readonly state: import("./router.ts").RouterState;
   readonly depth: number;
-  readonly route: Route | null;
+  readonly route: import("./route.ts").Route | null;
   readonly blocking: boolean;
 } {
   const match = useRouteMatch();
   if (match === null) {
     throw new Error(
-      `[barq-router] Route.use…() for "${id}" was called outside a route component. ` +
-        "The route-scoped hooks read the match that is rendering; from anywhere else use " +
-        "the plain `useParams`/`useRouteContext`/`useMatch` hooks.",
+      `[barq-router] A \`Route.use...()\` hook of the route "${id}" was called outside a route component, so there is no rendering route for it to read. ` +
+        "Call it inside the component that route renders. Anywhere else, use the plain `useParams()`, `useRouteContext()` or `useMatch()` hooks.",
     );
   }
   if (match.route !== null && match.route.id !== id) {
     throw new Error(
-      `[barq-router] Route.use…() for "${id}" was called while "${match.route.id}" is ` +
-        "rendering. A route-scoped hook belongs to the module that declared it — reaching " +
-        "another route's data is what `useMatch(id)` is for.",
+      `[barq-router] A \`Route.use...()\` hook of the route "${id}" was called while the route "${match.route.id}" is rendering, where it would return that route's data under the wrong types. ` +
+        `Call it only in the component "${id}" renders. To read another route from here, use \`useMatch(${JSON.stringify(id)})\`.`,
     );
   }
   return match;
@@ -132,31 +156,73 @@ function matchFor(id: string): {
  * being an ordinary hook reading match context.
  */
 function hooksFor<Data, Params>(id: string): Omit<FileRoute<Data, Params>, "id" | "options"> {
-  return {
-    useLoaderData: () => {
+  /** `read`, through `select` when one was given, and then memoized by content. */
+  const selected = <Value, Selected>(
+    state: import("./router.ts").RouterState,
+    read: () => Value,
+    options: Selecting<Value, Selected> | undefined,
+  ): Cell<Selected> => {
+    const select = options?.select;
+    if (select === undefined) return read as unknown as Cell<Selected>;
+    return createMemo(
+      () => select(read()),
+      state.config.structuralSharing === false ? undefined : { equals: sameShape },
+    );
+  };
+  const hooks = {
+    useLoaderData: (options?: Selecting<unknown, unknown>) => {
       const match = matchFor(id);
-      return () => {
-        if (match.route === null) return undefined as Data;
-        return match.state.dataFor(match.route, match.state.params(), match.blocking)() as Data;
-      };
+      return selected(
+        match.state,
+        () => {
+          if (match.route === null) return undefined;
+          return match.state.dataFor(match.route, match.state.params(), match.blocking)();
+        },
+        options,
+      );
     },
-    useParams: () => {
+    useParams: (options?: Selecting<unknown, unknown>) => {
       const match = matchFor(id);
-      return () => match.state.params() as Params;
+      return selected(match.state, () => match.state.params(), options);
     },
-    useRouteContext: <C extends Record<string, unknown> = Record<string, unknown>>() => {
+    useSearch: (options?: Selecting<unknown, unknown>) => {
       const match = matchFor(id);
-      return (() => (match.state.contexts()[match.depth] ?? {}) as C) as Cell<C>;
+      return selected(
+        match.state,
+        () => match.state.matches()[match.depth]?.search ?? match.state.validSearch(),
+        options,
+      );
     },
-    useMatch: () => {
+    useLoaderDeps: (options?: Selecting<unknown, unknown>) => {
       const match = matchFor(id);
-      return () => match.route;
+      return selected(match.state, () => match.state.matches()[match.depth]?.loaderDeps, options);
+    },
+    useRouteContext: (options?: Selecting<unknown, unknown>) => {
+      const match = matchFor(id);
+      return selected(
+        match.state,
+        () => match.state.contexts()[match.depth] ?? match.state.config.context ?? {},
+        options,
+      );
+    },
+    useMatch: (options?: Selecting<unknown, unknown>) => {
+      const match = matchFor(id);
+      return selected(
+        match.state,
+        () => (match.route === null ? null : (match.state.matches()[match.depth] ?? null)),
+        options,
+      );
     },
     useNavigate: () => {
       const match = matchFor(id);
-      return (to, options) => match.state.navigate(to, options);
+      const navigate = (to: unknown, options?: object): Promise<void> =>
+        typeof to === "string"
+          ? match.state.navigate(to, { from: id, ...options })
+          : match.state.navigate({ from: id, ...(to as object) });
+      return navigate as NavigateFn;
     },
   };
+  return hooks as unknown as Omit<FileRoute<Data, Params>, "id" | "options">;
 }
 
 /**
@@ -165,23 +231,34 @@ function hooksFor<Data, Params>(id: string): Omit<FileRoute<Data, Params>, "id" 
  */
 export function createFileRoute<Data = unknown, Params = Record<string, string>, Deps = undefined>(
   id: string,
-): (options: RouteDefinition<Data, Params, Deps>) => FileRoute<Data, Params, Deps> {
-  return (options) => ({ id, options, ...hooksFor<Data, Params>(id) });
+): <Search = Record<string, unknown>>(
+  options: RouteDefinition<Data, Params, Deps, Search>,
+) => FileRoute<Data, Params, Deps, RouteDefinition<Data, Params, Deps, Search>, Search> {
+  return (options) => ({ id, options, ...hooksFor<Data, Params>(id) }) as never;
 }
 
 /** The root route: the document, and everything every page inherits. */
-export function createRootRoute<Data = unknown, Params = Record<string, string>, Deps = undefined>(
-  options: RootRouteOptions<Data, Params, Deps> = {},
-): FileRoute<Data, Params, Deps, RootRouteOptions<Data, Params, Deps>> {
+export function createRootRoute<
+  Data = unknown,
+  Params = Record<string, string>,
+  Deps = undefined,
+  Search = Record<string, unknown>,
+>(
+  options: RootRouteOptions<Data, Params, Deps, Search> = {},
+): FileRoute<Data, Params, Deps, RootRouteOptions<Data, Params, Deps, Search>, Search> {
   return {
     id: ROOT_ROUTE_ID,
     options,
     ...hooksFor<Data, Params>(ROOT_ROUTE_ID),
-  };
+  } as never;
 }
 
 /**
- * The root route, with the type of the context every route inherits.
+ * The root route, with the type of the context the ROUTER supplies.
+ *
+ * `createRouter({ context })` is where the value comes from, and every
+ * `context`, `beforeLoad` and loader in the tree is handed it with whatever the
+ * routes above added.
  *
  * Curried for the reason theirs is: TypeScript has
  * no partial type-argument inference, so the context has to be named in a call
@@ -191,16 +268,21 @@ export function createRootRouteWithContext<Context extends Record<string, unknow
   Data = unknown,
   Params = Record<string, string>,
   Deps = undefined,
+  Search = Record<string, unknown>,
 >(
-  options?: Omit<RootRouteOptions<Data, Params, Deps>, "context" | "beforeLoad"> & {
-    readonly context?: (options: import("./route.ts").BeforeLoadContext<Params>) => Context;
-    /** Handed the context `context()` produced, which is the point of naming it. */
+  options?: Omit<RootRouteOptions<Data, Params, Deps, Search>, "context" | "beforeLoad"> & {
+    readonly context?: (
+      options: Omit<import("./route.ts").BeforeLoadContext<Params>, "context"> & {
+        readonly context: Context;
+      },
+    ) => Record<string, unknown>;
+    /** Handed the router's context with what `context()` added to it. */
     readonly beforeLoad?: (
       options: Omit<import("./route.ts").BeforeLoadContext<Params>, "context"> & {
         readonly context: Context;
       },
     ) => Record<string, unknown> | void | Promise<Record<string, unknown> | void>;
   },
-) => FileRoute<Data, Params, Deps, RootRouteOptions<Data, Params, Deps>> {
+) => FileRoute<Data, Params, Deps, RootRouteOptions<Data, Params, Deps, Search>, Search> {
   return (options) => createRootRoute(options as RootRouteOptions<never, never, never>) as never;
 }

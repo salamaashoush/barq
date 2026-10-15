@@ -13,6 +13,21 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 // default is `about:blank`, where `location.pathname` reads "blank".
 GlobalRegistrator.register({ url: "http://localhost/" });
 
+import { followAsync, resetErrorHalt } from "@barqjs/core";
+import { afterEach } from "bun:test";
+
+// Tests await loaders with `settle`, so async memos are followed here the way a
+// server render follows its own.
+followAsync(true);
+
+// An error nothing catches halts the reactive engine for good and is handed to
+// `reportError`. A test that provokes one has already asserted on it: the halt
+// must not reach the next test, and the report must not fail the run.
+globalThis.reportError = () => {};
+afterEach(() => {
+  resetErrorHalt();
+});
+
 import { createRequire } from "node:module";
 import { plugin } from "bun";
 

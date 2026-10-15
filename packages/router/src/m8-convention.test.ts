@@ -281,7 +281,7 @@ describe("the workarounds the first pass left behind", () => {
     expect(ROUTER).not.toMatch(/openingChain\.some\(\(route\) => route\.loader\)/);
     // There is no entry navigation to gate any more: the location is seeded
     // from the history synchronously at construction.
-    expect(ROUTER).toContain("signal<Location>(history.current())");
+    expect(ROUTER).toContain("createSignal<Location>(history.current())");
   });
 
   // `setTimeout(…, 0)` for ORDERING — a guess that the DOM has been written by
@@ -440,6 +440,11 @@ describe("the convention, from the other side", () => {
       "history.ts": "history.test.ts",
       "head.ts": "head.test.ts",
       "hooks.ts": "router.test.ts",
+      "blocker.ts": "blocker.test.ts",
+      "catch.ts": "catch.test.ts",
+      "link.ts": "link.test.ts",
+      "match.ts": "match.test.ts",
+      "rewrite.ts": "rewrite.test.ts",
       "manifest.ts": "manifest.test.ts",
       "matcher.ts": "matcher.test.ts",
       "path.ts": "path.test.ts",
@@ -449,6 +454,8 @@ describe("the convention, from the other side", () => {
       "scroll.ts": "scroll.test.ts",
       "search.ts": "search.test.ts",
       "server.ts": "server.test.ts",
+      "ssr.ts": "ssr.test.ts",
+      "ssr-server.ts": "ssr.test.ts",
       "vite.ts": "vite.test.ts",
       "index.ts": "exports.test.ts",
     };

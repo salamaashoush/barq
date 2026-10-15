@@ -15,13 +15,14 @@
  * client's.
  */
 
-import { type Scope, hydrate } from "@barqjs/core";
+import { hydrate } from "@barqjs/core";
 import { type SerializationAdapter, registerSerializationAdapters } from "@barqjs/server/codec";
 
 import { Document, RouterProvider, resolveHeadFor } from "./components.ts";
 import { browserHistory } from "./history.ts";
 import { preloadMatched } from "./route.ts";
-import { type RouterState, createRouter } from "./router.ts";
+import { type RouterConfig, type RouterState, createRouter } from "./router.ts";
+import { hydrateRouter, withRouterOverrides } from "./ssr.ts";
 import type { AnyRouteDefinition } from "./route.ts";
 
 export interface StartClientOptions {
@@ -73,9 +74,7 @@ export interface StartClientOptions {
  * whose server had adapters registered, and an application with none never
  * emitted the bootstrap at all.
  */
-function installSerializationAdapters(
-  adapters: readonly SerializationAdapter<never, unknown>[],
-): void {
+function installSerializationAdapters(adapters: readonly SerializationAdapter[]): void {
   if (adapters.length > 0) registerSerializationAdapters(adapters);
   const holder = globalThis as unknown as {
     __BARQ_ADAPTERS__?: Map<string, (value: never) => unknown>;
@@ -96,38 +95,52 @@ export async function startClient(options: StartClientOptions = {}): Promise<Rou
   // `src/router.ts`, not a synthesised module — the client must never reach
   // `virtual:barq-server-fns`, which would put the whole server registry in the
   // browser bundle.
-  const config =
+  // The project's `src/start.ts` first: importing it registers the global
+  // middleware whose client halves run around every server-function call.
+  if (options.routeTree === undefined) await import("#barq-start-entry");
+  const entry =
     options.routeTree === undefined
-      ? (await import("#barq-router-entry")).config
-      : { routeTree: options.routeTree };
-  // BEFORE `createRouter`, and before anything reads a seeded value. The seed
-  // is an inline script that ran while this module was still being fetched, so
-  // it queued its assignment rather than making it — see `ADAPTER_BOOTSTRAP`.
-  // Registering here and draining is what turns the queue into `__BARQ_DATA__`.
-  installSerializationAdapters(
-    (config as { serializationAdapters?: readonly SerializationAdapter<never, unknown>[] })
-      .serializationAdapters ?? [],
-  );
+      ? await import("#barq-router-entry")
+      : { config: { routeTree: options.routeTree }, getRouter: undefined };
+  // The base reaches the HISTORY, not only the router: `browserHistory`
+  // strips it from `window.location` on the way in and adds it back on every
+  // push, and it is the only thing that reads `window.location` at all. A
+  // router given a `basepath` over a history without one matched
+  // `/app/about` as `/app/about` and found nothing.
+  const historyFor = (config: RouterConfig): RouterState["history"] =>
+    options.history ??
+    browserHistory(config.basepath === undefined ? undefined : { base: config.basepath });
+  const { config, getRouter } = entry;
+  let state: RouterState;
+  if (getRouter !== undefined) {
+    state = await withRouterOverrides(
+      (own) => ({ history: own.history ?? historyFor(own) }),
+      getRouter,
+    );
+  } else if (config !== undefined) {
+    state = createRouter({ ...config, history: historyFor(config) });
+  } else {
+    throw new Error(
+      "[barq-router] `src/router.ts` exports neither `config` nor `getRouter`, so there is no router to start. " +
+        "Export one of them: `export const config = { routeTree }` or `export function getRouter() { return createRouter({ routeTree }); }`.",
+    );
+  }
+  // BEFORE anything reads a seeded value. The seed is an inline script that
+  // ran while this module was still being fetched, so it queued its assignment
+  // rather than making it — see `ADAPTER_BOOTSTRAP`. Registering here and
+  // draining is what turns the queue into `__BARQ_DATA__`.
+  installSerializationAdapters(state.config.serializationAdapters ?? []);
 
-  const state = createRouter({
-    ...config,
-    // The base reaches the HISTORY, not only the router: `browserHistory`
-    // strips it from `window.location` on the way in and adds it back on every
-    // push, and it is the only thing that reads `window.location` at all. A
-    // router given a `basepath` over a history without one matched
-    // `/app/about` as `/app/about` and found nothing.
-    history:
-      options.history ??
-      browserHistory(config.basepath === undefined ? undefined : { base: config.basepath }),
-  });
-
+  // Before `start`, which is what runs the first loaders: one that asks an
+  // integration for data has to find what the server already fetched.
+  await hydrateRouter(state);
   await state.start();
   await preloadMatched(state.chain());
   const head = await resolveHeadFor(state);
 
   const provider = RouterProvider as never as (props: unknown) => unknown;
   hydrate(
-    (() =>
+    () =>
       Document({
         state: () => state,
         head: () => head,
@@ -135,7 +148,7 @@ export async function startClient(options: StartClientOptions = {}): Promise<Rou
         // scope by the time this runs, so the provider is built under it
         // without anything being handed over.
         children: () => provider({ state: () => state }),
-      })) as never,
+      }),
     options.container ?? globalThis.document,
   );
 

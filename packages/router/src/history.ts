@@ -82,6 +82,35 @@ export function addBase(path: string, base: string): string {
   return path === "/" ? base : `${base}${path}`;
 }
 
+/**
+ * Where an entry sits in the session's stack, kept in `history.state`.
+ *
+ * `popstate` says where the browser went and not how far, and blocking a back
+ * button means undoing it by exactly that distance. TanStack keeps the same
+ * number under `__TSR_index`.
+ */
+const INDEX = "__barqIndex";
+
+function indexOf(state: unknown): number | undefined {
+  if (state === null || typeof state !== "object") return undefined;
+  const at = (state as Record<string, unknown>)[INDEX];
+  return typeof at === "number" ? at : undefined;
+}
+
+/** A primitive state cannot carry the index and is written as it stands. */
+function withIndex(state: unknown, index: number): unknown {
+  if (state === null || state === undefined) return { [INDEX]: index };
+  if (typeof state !== "object" || Array.isArray(state)) return state;
+  return { ...state, [INDEX]: index };
+}
+
+/** What the application put there, with the bookkeeping taken back out. */
+function withoutIndex(state: unknown): unknown {
+  if (indexOf(state) === undefined) return state;
+  const { [INDEX]: _index, ...rest } = state as Record<string, unknown>;
+  return Object.keys(rest).length === 0 ? null : rest;
+}
+
 export interface MemoryHistoryOptions {
   readonly initial?: readonly string[];
   readonly index?: number;
@@ -156,14 +185,15 @@ export function browserHistory(options: BrowserHistoryOptions = {}): History {
   const read = (): Location =>
     parseLocation(
       stripBase(window.location.pathname, base) + window.location.search + window.location.hash,
-      window.history.state,
+      withoutIndex(window.history.state),
     );
 
   let current = read();
-  // Pushes SINCE THIS PAGE LOADED, which is the only "can I go back" a browser
-  // makes available: `history.length` counts the whole session, including
-  // entries from other origins, and there is no API for the real question.
-  let seen = 0;
+  // The entry's position among the ones THIS application pushed, which is the
+  // only "can I go back" a browser makes available: `history.length` counts the
+  // whole session, including entries from other origins, and there is no API
+  // for the real question. An entry nothing here wrote reads as the first.
+  let seen = indexOf(window.history.state) ?? 0;
 
   const emit = (location: Location, action: NavigationAction): void => {
     current = location;
@@ -176,6 +206,7 @@ export function browserHistory(options: BrowserHistoryOptions = {}): History {
   window.addEventListener(
     "popstate",
     () => {
+      seen = indexOf(window.history.state) ?? 0;
       emit(read(), "pop");
     },
     { signal: options.signal },
@@ -185,7 +216,6 @@ export function browserHistory(options: BrowserHistoryOptions = {}): History {
     current: () => current,
     depth: () => seen,
     go(delta) {
-      seen = Math.max(0, seen + delta);
       window.history.go(delta);
     },
     push(to, pushOptions) {
@@ -193,10 +223,10 @@ export function browserHistory(options: BrowserHistoryOptions = {}): History {
       const url = addBase(location.pathname, base) + location.search + location.hash;
       const replace = pushOptions?.replace === true;
       if (replace) {
-        window.history.replaceState(location.state, "", url);
+        window.history.replaceState(withIndex(location.state, seen), "", url);
       } else {
-        window.history.pushState(location.state, "", url);
         seen++;
+        window.history.pushState(withIndex(location.state, seen), "", url);
       }
       emit(location, replace ? "replace" : "push");
     },
@@ -237,11 +267,11 @@ export function hashHistory(options: HashHistoryOptions = {}): History {
 
   const read = (): Location => {
     const raw = window.location.hash.slice(1);
-    return parseLocation(raw === "" ? "/" : raw, window.history.state);
+    return parseLocation(raw === "" ? "/" : raw, withoutIndex(window.history.state));
   };
 
   let current = read();
-  let seen = 0;
+  let seen = indexOf(window.history.state) ?? 0;
 
   const emit = (location: Location, action: NavigationAction): void => {
     current = location;
@@ -254,6 +284,9 @@ export function hashHistory(options: HashHistoryOptions = {}): History {
   window.addEventListener(
     "hashchange",
     () => {
+      // A hash typed into the address bar is an entry nothing here stamped, and
+      // it sits wherever the last known one did.
+      seen = indexOf(window.history.state) ?? seen;
       emit(read(), "pop");
     },
     { signal: options.signal },
@@ -263,19 +296,18 @@ export function hashHistory(options: HashHistoryOptions = {}): History {
     current: () => current,
     depth: () => seen,
     go(delta) {
-      seen = Math.max(0, seen + delta);
       window.history.go(delta);
     },
     push(to, pushOptions) {
       const location = parseLocation(to, pushOptions?.state ?? null);
       const url = `#${href(location)}`;
       if (pushOptions?.replace === true) {
-        window.history.replaceState(location.state, "", url);
+        window.history.replaceState(withIndex(location.state, seen), "", url);
         emit(location, "replace");
         return;
       }
-      window.history.pushState(location.state, "", url);
       seen++;
+      window.history.pushState(withIndex(location.state, seen), "", url);
       emit(location, "push");
     },
     subscribe(listener) {

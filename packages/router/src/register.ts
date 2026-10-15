@@ -19,6 +19,8 @@
  * "anything", not "nothing".
  */
 
+import type { NavigateOptions, ToOptions, Updater } from "./router.ts";
+
 // oxlint-disable-next-line typescript/no-empty-object-type -- the augmentation target
 export interface Register {}
 
@@ -125,3 +127,137 @@ export type FileRoutesById = RoutesOf<RegisteredRouteTree>;
  * alive — a bare `| string` collapses the union and the editor offers nothing.
  */
 export type ToPath = ToPathOf<RegisteredRouteTree>;
+
+// ------------------------------------------------------------ typed navigation
+
+type Simplify<T> = { [K in keyof T]: T[K] } & Record<never, never>;
+
+type SegmentParams<Segment extends string> = Segment extends "$"
+  ? { _splat?: string }
+  : Segment extends `${string}{-$${infer Name}}${string}`
+    ? { [K in Name]?: string | number }
+    : Segment extends `${string}{$}${string}`
+      ? { _splat?: string }
+      : Segment extends `${string}{$${infer Name}}${string}`
+        ? { [K in Name]: string | number }
+        : Segment extends `$${infer Name}`
+          ? { [K in Name]: string | number }
+          : Record<never, never>;
+
+type PathParams<Path extends string> = Path extends `${infer Head}/${infer Tail}`
+  ? SegmentParams<Head> & PathParams<Tail>
+  : SegmentParams<Path>;
+
+/**
+ * The params a path pattern takes, read off the pattern itself:
+ * `/posts/$postId` is `{ postId }`, `{-$locale}` is optional and a splat is
+ * `_splat`. A `string` that is not a literal says nothing, and takes anything.
+ */
+export type ParamsOfPath<Path extends string> = string extends Path
+  ? Record<string, unknown>
+  : Simplify<PathParams<Path>>;
+
+type ParentPath<Path extends string> = Path extends `${infer Head}/${infer Tail}`
+  ? Tail extends `${string}/${string}`
+    ? `${Head}/${ParentPath<Tail>}`
+    : Head
+  : "";
+
+type JoinPath<From extends string, To extends string> = From extends `${infer Head}/`
+  ? `${Head}/${To}`
+  : `${From}/${To}`;
+
+/**
+ * A `to` resolved against a `from`, as `resolvePath` does it at runtime: `.`,
+ * `..`, `./x` and `../x`. Anything else relative is appended.
+ */
+export type ResolveRelativePath<From extends string, To extends string> = string extends To
+  ? string
+  : To extends `/${string}`
+    ? To
+    : string extends From
+      ? string
+      : To extends "." | ""
+        ? From
+        : To extends `./${infer Rest}`
+          ? ResolveRelativePath<From, Rest>
+          : To extends ".."
+            ? ParentPath<From> extends ""
+              ? "/"
+              : ParentPath<From>
+            : To extends `../${infer Rest}`
+              ? ResolveRelativePath<ParentPath<From>, Rest>
+              : JoinPath<From, To>;
+
+/**
+ * What a route's `validateSearch` produces, by route id. A route that
+ * validates nothing, or a path no route registered, takes any record.
+ */
+export type SearchOfRoute<Tree, Id> = Id extends keyof RoutesOf<Tree>
+  ? [RoutesOf<Tree>[Id]] extends [never]
+    ? Record<string, unknown>
+    : RoutesOf<Tree>[Id] extends { readonly types?: { readonly search: infer Search } }
+      ? Search
+      : Record<string, unknown>
+  : Record<string, unknown>;
+
+type ParamsOption<Path extends string> = string extends Path
+  ? { readonly params?: ToOptions["params"] }
+  : Record<never, never> extends PathParams<Path>
+    ? {
+        readonly params?:
+          | true
+          | ParamsOfPath<Path>
+          | Updater<Record<string, unknown>, ParamsOfPath<Path>>;
+      }
+    : {
+        readonly params:
+          | true
+          | ParamsOfPath<Path>
+          | Updater<Record<string, unknown>, ParamsOfPath<Path>>;
+      };
+
+/**
+ * `ToOptions`, with `params` and `search` narrowed by where it goes.
+ *
+ * A `to` whose pattern has a required parameter makes `params` required. A `to`
+ * that is a registered route gives `search` that route's validated shape, every
+ * key optional because a validator's defaults fill what is left out.
+ */
+export type ToOptionsFor<
+  To extends string,
+  From extends string = string,
+  Tree = RegisteredRouteTree,
+> = Omit<ToOptions, "to" | "from" | "params" | "search"> & {
+  readonly to?: To | ToPathOf<Tree>;
+  readonly from?: From | IdsOf<Tree>;
+  readonly search?:
+    | true
+    | string
+    | Partial<SearchOfRoute<Tree, ResolveRelativePath<From, To>>>
+    | Updater<
+        SearchOfRoute<Tree, From>,
+        Partial<SearchOfRoute<Tree, ResolveRelativePath<From, To>>>
+      >;
+} & ParamsOption<ResolveRelativePath<From, To>>;
+
+export type NavigateOptionsFor<
+  To extends string,
+  From extends string = string,
+  Tree = RegisteredRouteTree,
+> = Omit<NavigateOptions, keyof ToOptions> &
+  Pick<NavigateOptions, "hash" | "state" | "mask" | "href"> &
+  ToOptionsFor<To, From, Tree>;
+
+/**
+ * `navigate`, in both of its forms.
+ *
+ * The string form is barq's own. The object form is TanStack's, and its `to` is
+ * what types the rest of it.
+ */
+export interface NavigateFn {
+  (to: ToPath, options?: NavigateOptions): Promise<void>;
+  <const To extends string = ".", const From extends string = string>(
+    options: NavigateOptionsFor<To, From>,
+  ): Promise<void>;
+}

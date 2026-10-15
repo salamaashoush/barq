@@ -33,6 +33,11 @@ export interface FlatRoute<T = unknown> {
   readonly segments: readonly Segment[];
   /** Outermost first, this route last. Every one of them renders. */
   readonly chain: readonly T[];
+  /**
+   * Per segment, whether its literal text must match the URL's case. An absent
+   * entry takes the matcher's own `caseSensitive`.
+   */
+  readonly sensitive?: readonly (boolean | undefined)[];
 }
 
 export interface Match<T = unknown> {
@@ -57,6 +62,8 @@ interface Decorated<T> {
 interface TrieNode<T> {
   /** Static edges, by segment text. */
   readonly statics: Map<string, TrieNode<T>>;
+  /** Static edges that ignore case, by LOWERED segment text. */
+  folded: Map<string, TrieNode<T>> | null;
   /** The one parameter edge, if any route takes one here. */
   param: TrieNode<T> | null;
   /** Its name, needed to build `params` on the way out. */
@@ -80,6 +87,7 @@ interface TrieNode<T> {
 function node<T>(): TrieNode<T> {
   return {
     statics: new Map(),
+    folded: null,
     param: null,
     paramName: "",
     decorated: null,
@@ -174,13 +182,15 @@ export function createMatcher<T>(
   for (const route of routes) {
     let current = root;
     let splatted = false;
-    for (const segment of route.segments) {
+    for (const [at, segment] of route.segments.entries()) {
       if (segment.kind === "static") {
-        const key = fold(segment.value);
-        let next = current.statics.get(key);
+        const exact = route.sensitive?.[at] ?? sensitive;
+        const edges = exact ? current.statics : (current.folded ??= new Map());
+        const key = exact ? segment.value : segment.value.toLowerCase();
+        let next = edges.get(key);
         if (next === undefined) {
           next = node<T>();
-          current.statics.set(key, next);
+          edges.set(key, next);
         }
         current = next;
       } else if (segment.kind === "param") {
@@ -199,8 +209,8 @@ export function createMatcher<T>(
           // `params` depend on which one matched, which is exactly the class of
           // bug the old matcher's pass-ordered `paramNames` shipped.
           throw new Error(
-            `route ${route.fullPath} names a parameter $${segment.name} where ` +
-              `another route names $${current.paramName}; one position, one name`,
+            `The route \`${route.fullPath}\` names a parameter \`$${segment.name}\` at a position where another route names it \`$${current.paramName}\`. ` +
+              `\`params\` would then carry a different key depending on which route matched. Use one name for that position in both routes.`,
           );
         } else {
           current = current.param;
@@ -210,7 +220,9 @@ export function createMatcher<T>(
         current = edgeFor(current.optional, segment.prefix, segment.suffix, segment.name).next;
       } else {
         if (current.splat !== null) {
-          throw new Error(`two routes claim the splat at ${route.fullPath}`);
+          throw new Error(
+            `Two routes end in a splat at \`${route.fullPath}\`, so the same URLs match both and one could never be reached. Remove one, or give it a different prefix.`,
+          );
         }
         current.splat = route;
         current.splatName = segment.name;
@@ -223,7 +235,8 @@ export function createMatcher<T>(
     if (splatted) continue;
     if (current.leaf !== null) {
       throw new Error(
-        `two routes match the same path: ${current.leaf.fullPath} and ${route.fullPath}`,
+        `Two routes match the same path: \`${current.leaf.fullPath}\` (id ${JSON.stringify(current.leaf.id)}) and \`${route.fullPath}\` (id ${JSON.stringify(route.id)}). ` +
+          "One of them could never be reached. Remove one, or change its `path`.",
       );
     }
     current.leaf = route;
@@ -268,11 +281,19 @@ export function createMatcher<T>(
 
     // Static first. A literal is more specific than anything that could also
     // match it, and taking this edge first is the whole of the ranking rule.
-    const nextStatic = current.statics.get(fold(segment));
+    const nextStatic = current.statics.get(segment);
     if (nextStatic !== undefined) {
       names[index] = null;
       const found = walk(nextStatic, segments, index + 1, values, names);
       if (found !== null) return found;
+    }
+    if (current.folded !== null) {
+      const nextFolded = current.folded.get(segment.toLowerCase());
+      if (nextFolded !== undefined) {
+        names[index] = null;
+        const found = walk(nextFolded, segments, index + 1, values, names);
+        if (found !== null) return found;
+      }
     }
 
     // Then a DECORATED parameter, before a bare one: `{$name}.csv` demands
@@ -358,7 +379,7 @@ export function createMatcher<T>(
         if (owned.length === 0 || owned.length >= segments.length) continue;
         let matches = true;
         for (let i = 0; i < owned.length; i++) {
-          if (fold(owned[i] as string) !== fold(segments[i] as string)) {
+          if (fold(owned[i]) !== fold(segments[i])) {
             matches = false;
             break;
           }

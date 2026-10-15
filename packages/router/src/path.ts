@@ -175,7 +175,10 @@ export function interpolate(pattern: string, params: Readonly<Record<string, str
     if (value === undefined || value === "") {
       if (segment.kind === "optional") continue;
       if (segment.kind === "splat" && value === "") continue;
-      throw new Error(`missing route parameter ${JSON.stringify(segment.name)} for ${pattern}`);
+      throw new Error(
+        `The path \`${pattern}\` is missing its route parameter ${JSON.stringify(segment.name)}, so no URL can be built from it. ` +
+          `Pass it in \`params\`: \`params: { ${segment.name}: "..." }\`.`,
+      );
     }
     // A splat's value is many segments and is spliced in whole; a parameter's
     // is one segment and is encoded, so a `/` inside it cannot invent one.
@@ -252,6 +255,7 @@ export function resolvePath(to: string, from: string): string {
     base.pop();
     rest = "";
   }
+  if (rest === ".") rest = "";
   return normalize([...base, ...splitPath(rest)].join("/"));
 }
 

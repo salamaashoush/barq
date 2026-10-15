@@ -8,8 +8,15 @@
 
 import { describe, expect, test } from "bun:test";
 
+import { Outlet } from "./components.ts";
 import { createMatcher } from "./matcher.ts";
-import { type AnyRouteDefinition, flattenRoutes } from "./route.ts";
+import {
+  type AnyRouteDefinition,
+  type InvokedRouteComponent,
+  type RouteComponent,
+  type RouteProps,
+  flattenRoutes,
+} from "./route.ts";
 
 const noop = (): null => null;
 
@@ -178,7 +185,7 @@ describe("nesting", () => {
 
 describe("conflicts are refused, not resolved by declaration order", () => {
   test("two routes at the same path collide on their derived id", () => {
-    expect(() => matcherFor([leaf("/a"), leaf("/a")])).toThrow(/claim the id/);
+    expect(() => matcherFor([leaf("/a"), leaf("/a")])).toThrow(/Two routes have the id/);
   });
 
   test("…and on the path itself when their ids were given by hand", () => {
@@ -187,7 +194,7 @@ describe("conflicts are refused, not resolved by declaration order", () => {
         { id: "one", path: "/a", component: noop as never } as AnyRouteDefinition,
         { id: "two", path: "/a", component: noop as never } as AnyRouteDefinition,
       ]),
-    ).toThrow(/two routes match the same path/);
+    ).toThrow(/Two routes match the same path: `\/a` \(id "one"\) and `\/a` \(id "two"\)/);
   });
 
   test("one position, two parameter names", () => {
@@ -195,7 +202,7 @@ describe("conflicts are refused, not resolved by declaration order", () => {
     // order, so `/a/$id/b/$rest` could report the two names swapped. Naming a
     // position twice is refused instead.
     expect(() => matcherFor([leaf("/x/$id"), leaf("/x/$slug/y")])).toThrow(
-      /one position, one name/,
+      /names a parameter `\$slug` at a position where another route names it `\$id`/,
     );
   });
 
@@ -205,7 +212,7 @@ describe("conflicts are refused, not resolved by declaration order", () => {
         { id: "same", path: "/a", component: noop as never } as AnyRouteDefinition,
         { id: "same", path: "/b", component: noop as never } as AnyRouteDefinition,
       ]),
-    ).toThrow(/claim the id/);
+    ).toThrow(/Two routes have the id/);
   });
 });
 
@@ -388,5 +395,58 @@ describe("caseSensitive", () => {
   test("a parameter keeps the case it was given", () => {
     const matcher = createMatcher(flattenRoutes(table), { caseSensitive: false });
     expect(matcher.match("/USERS/AbC")?.params).toEqual({ id: "AbC" });
+  });
+});
+
+/**
+ * The route component types say what the router passes, once: a prop is a Cell,
+ * so `props.data()` is the data and not another accessor.
+ */
+describe("what a route component is handed, as types", () => {
+  /** Compile-time only: `Actual` has to be exactly `Expected`. */
+  type Same<Actual, Expected> = [Actual] extends [Expected]
+    ? [Expected] extends [Actual]
+      ? true
+      : false
+    : false;
+  const assertType = <T extends true>(proof: T): T => proof;
+
+  interface Data {
+    readonly title: string;
+  }
+  interface Params {
+    readonly id: string;
+  }
+  type Handed = Parameters<InvokedRouteComponent<Data, Params>>[0];
+
+  test("the invoked form takes the same props an authored component does", () => {
+    assertType<Same<Handed, RouteProps<Data, Params>>>(true);
+    assertType<Same<Parameters<RouteComponent<Data, Params>>[0], Handed>>(true);
+  });
+
+  test("each prop is read with one call", () => {
+    assertType<Same<ReturnType<Handed["data"]>, Data>>(true);
+    assertType<Same<ReturnType<Handed["params"]>, Params>>(true);
+    assertType<Same<ReturnType<Handed["context"]>, Record<string, unknown>>>(true);
+  });
+
+  test("an authored component is callable as the invoked form", () => {
+    const authored: RouteComponent<Data, Params> = (props) => props.data().title;
+    const invoked = authored as InvokedRouteComponent<Data, Params>;
+    const title = invoked({
+      data: () => ({ title: "first" }),
+      params: () => ({ id: "7" }),
+      context: () => ({}),
+      children: null,
+    });
+    expect(title as unknown).toBe("first");
+  });
+
+  test("`Outlet` is a route component as it stands, and takes no props", () => {
+    const table: AnyRouteDefinition[] = [{ path: "/layout", component: Outlet }];
+    expect(table[0]?.component).toBe(Outlet);
+    // @ts-expect-error an outlet renders the matched child and is given nothing
+    const misuse = () => Outlet({ id: "x" });
+    expect(misuse).toBeInstanceOf(Function);
   });
 });

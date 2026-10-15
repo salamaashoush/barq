@@ -32,7 +32,7 @@ import {
   ssrErrored,
   ssrLoading,
 } from "@barqjs/server";
-import { HYDRATE, type Block, type Scope, cell, getOwner, provide, untrack } from "@barqjs/core";
+import { HYDRATE, type Block, cell, provide, untrack } from "@barqjs/core";
 import {
   type SerializationAdapter,
   encodeSeed,
@@ -40,18 +40,24 @@ import {
 } from "@barqjs/server/codec";
 import { isbot } from "isbot";
 
-import type { Middleware } from "@barqjs/start";
+import type { Middleware, ResponseDraft } from "@barqjs/start";
 import {
   applyResponseDraft,
   createResponseDraft,
   draftedStatus,
   peekResponseDraft,
+  runRequestMiddleware,
+  setRequestMiddlewareContext,
+  startOptions,
   withRequest,
 } from "@barqjs/start";
-import { crossOriginRefused, mounted, mountedFn } from "@barqjs/start/server";
+import { crossOriginRefused, mountOnDemand, mounted, mountedFn } from "@barqjs/start/server";
 import { PRERENDER_HEADER } from "@barqjs/start/protocol";
 
-import { NotFound, errorFallbackFor, isNotFound, isRedirect } from "./errors.ts";
+import { type Redirect, NotFound, errorFallbackFor, isNotFound, isRedirect } from "./errors.ts";
+import { type LocationRewrite, rewriteHref } from "./rewrite.ts";
+import { withRouterOverrides, wrapWith } from "./ssr.ts";
+import { type RenderChannel, createRenderChannel } from "./ssr-server.ts";
 import { type ManagedTag, projectHead, tagKey, tagProps } from "./head.ts";
 import {
   type Reachability,
@@ -71,7 +77,10 @@ import {
   type AnyRouteDefinition,
   type Route,
   type RouteHandler,
+  type RouteHandlers,
   type RouteMethod,
+  type RouteServer,
+  ROOT_ROUTE_ID,
   flattenRoutes,
   preloadMatched,
 } from "./route.ts";
@@ -81,9 +90,9 @@ import {
   type RouteDefaults,
   type RouterConfig,
   type RouterState,
+  type SsrMode,
   ROUTE_CONTEXT_GLOBAL,
   createRouter,
-  resolveSsr,
 } from "./router.ts";
 import {
   type HeadAssets,
@@ -93,6 +102,7 @@ import {
   NOT_FOUND,
   RouteMatchContext,
   RouterContext,
+  linkAttrHref,
   routePropsFor,
 } from "./components.ts";
 
@@ -172,6 +182,9 @@ const linkBackend = {
       },
       HYDRATE,
     ),
+  /** `<CatchBoundary>`: the error boundary on its own, as the client builds it. */
+  caught: (errorFallback: Block<unknown>, children: Block<unknown>): unknown =>
+    ssrErrored({ fallback: errorFallback, children }, HYDRATE),
 };
 
 /** A not-found for an unmatched LOCATION has nothing to retry. */
@@ -251,10 +264,12 @@ export function renderRoutes(state: RouterState): unknown {
       // `notFoundComponent` walking outward from the deepest layout owning a
       // prefix of the path, then `config.notFound`, then a `<p>` holding the
       // default text as STATIC content — no range, so the client claims it.
-      const own = errorFallbackFor(chain, depth - 1, () => state.params())(
-        () => NOT_FOUND_ERROR,
-        NOOP_RESET,
-      );
+      const own = errorFallbackFor(
+        chain,
+        depth - 1,
+        () => state.params(),
+        state.config.defaults,
+      )(() => NOT_FOUND_ERROR, NOOP_RESET);
       if (own !== null && own !== undefined) return own;
       const fallback = state.config.notFound;
       if (fallback === undefined) return ssrHtml(`<p>${esc(NOT_FOUND)}</p>`);
@@ -265,7 +280,8 @@ export function renderRoutes(state: RouterState): unknown {
 
     const children = ((): unknown => at(depth + 1)) as never;
     const component = route.definition.component;
-    const pendingComponent = route.definition.pendingComponent;
+    const pendingComponent =
+      route.definition.pendingComponent ?? state.config.defaults?.pendingComponent;
     // The same match the DOM path provides, so `<Outlet />` and the route-scoped
     // hooks work in a component that is rendered on BOTH sides — which is every
     // component. Without it a layout using `<Outlet />` rendered its own markup
@@ -332,7 +348,12 @@ export function renderRoutes(state: RouterState): unknown {
               // The string backend hands an error fallback `(error, reset)`
               // positionally, exactly as `flow.ts`'s does.
               fallback: (error: () => Error, reset: () => void) => {
-                const shown = errorFallbackFor(chain, depth, () => state.params())(error, reset);
+                const shown = errorFallbackFor(
+                  chain,
+                  depth,
+                  () => state.params(),
+                  state.config.defaults,
+                )(error, reset);
                 return shown === null || shown === undefined ? ssrHtml("") : shown;
               },
               children: content,
@@ -344,7 +365,15 @@ export function renderRoutes(state: RouterState): unknown {
     );
   };
 
-  return at(0);
+  const { Wrap, InnerWrap } = state.options;
+  if (Wrap === undefined && InnerWrap === undefined) return at(0);
+  // The order `RouterProvider` nests them in, so a wrapper that renders markup
+  // writes it where the client's tree expects to claim it.
+  return wrapWith(Wrap, () =>
+    provide(RouterContext, cell(state), () =>
+      provide(LinkBackendContext, cell(linkBackend), () => wrapWith(InnerWrap, () => at(0))),
+    ),
+  );
 }
 
 export {
@@ -403,9 +432,89 @@ export interface DocumentParts {
   readonly url: URL;
 }
 
-export interface PageHandlerOptions {
+/**
+ * The router options that mean the same on the server and are handed straight
+ * to the request's router: its search format and TanStack's `default*` names.
+ */
+type SharedRouterOptions = Pick<
+  RouterConfig,
+  | "origin"
+  | "parseSearch"
+  | "stringifySearch"
+  | "defaultPendingMs"
+  | "defaultPendingMinMs"
+  | "defaultStaleTime"
+  | "defaultPreloadStaleTime"
+  | "defaultGcTime"
+  | "defaultPreloadGcTime"
+  | "defaultStaleReloadMode"
+  | "defaultSsr"
+  | "defaultPendingComponent"
+  | "defaultErrorComponent"
+  | "defaultNotFoundComponent"
+  | "defaultOnCatch"
+  | "dehydrate"
+  | "hydrate"
+  | "Wrap"
+  | "InnerWrap"
+>;
+
+const SHARED_ROUTER_OPTIONS: readonly (keyof SharedRouterOptions)[] = [
+  "origin",
+  "parseSearch",
+  "stringifySearch",
+  "defaultPendingMs",
+  "defaultPendingMinMs",
+  "defaultStaleTime",
+  "defaultPreloadStaleTime",
+  "defaultGcTime",
+  "defaultPreloadGcTime",
+  "defaultStaleReloadMode",
+  "defaultSsr",
+  "defaultPendingComponent",
+  "defaultErrorComponent",
+  "defaultNotFoundComponent",
+  "defaultOnCatch",
+  "dehydrate",
+  "hydrate",
+  "Wrap",
+  "InnerWrap",
+];
+
+/** What every route of one request starts from, or how to build it for that request. */
+export type PageContext =
+  | Record<string, unknown>
+  | ((request: Request) => Record<string, unknown> | Promise<Record<string, unknown>>);
+
+export interface PageHandlerOptions extends SharedRouterOptions {
   /** The route table, as `routeTree.gen.ts` exports it. */
   readonly routeTree: readonly AnyRouteDefinition[];
+  /**
+   * The router context, matching `RouterConfig`'s, or a function of the request
+   * that builds one.
+   *
+   * The function runs once for each request, inside its request context, and
+   * its result is laid over whatever the router's own configuration declares:
+   * the place for a value two visitors must not share.
+   */
+  readonly context?: PageContext;
+  /**
+   * Builds the router for one request, in place of the handler building its own.
+   *
+   * A project's `src/router.ts` exports it when a router needs more than
+   * configuration: a query client made for the request and tied to the router
+   * it belongs to. It has to call `createRouter` before it first awaits, which
+   * is where the handler hands over the request's location.
+   */
+  readonly getRouter?: () => RouterState | Promise<RouterState>;
+  /**
+   * The URL rewrite, matching `RouterConfig`'s.
+   *
+   * `input` runs on the request, after the base is stripped and before anything
+   * matches. `output` runs on every href the render writes and on the
+   * `Location` of an options-form redirect.
+   */
+  readonly rewrite?: LocationRewrite;
   /**
    * The path the application is mounted under, matching `RouterConfig`'s.
    *
@@ -427,7 +536,7 @@ export interface PageHandlerOptions {
    * The client half registers the same list, which is what makes the two ends
    * agree on a key.
    */
-  readonly serializationAdapters?: readonly SerializationAdapter<never, unknown>[];
+  readonly serializationAdapters?: readonly SerializationAdapter[];
   /**
    * How a built path ends, matching `RouterConfig`'s.
    *
@@ -573,6 +682,14 @@ export interface PageHandlerOptions {
    * unreachable in a build however it was configured.
    */
   readonly pages?: boolean;
+  /**
+   * Render the SHELL: the root route, with every route under it left to the
+   * browser as `ssr: false` leaves one.
+   *
+   * What an application that renders its pages in the browser serves for every
+   * path. The build asks for it once and writes the answer to a file.
+   */
+  readonly shell?: boolean;
 }
 
 /**
@@ -602,12 +719,54 @@ function allowHeader(match: Match<Route> | null): string {
   return withHead.length === 0 ? "GET, HEAD" : withHead.join(", ");
 }
 
-function handlersOf(
-  match: Match<Route> | null,
-): Partial<Record<RouteMethod, RouteHandler>> | undefined {
-  return match?.route.chain.at(-1)?.definition.server?.handlers as
-    | Partial<Record<RouteMethod, RouteHandler>>
+function handlersOf(match: Match<Route> | null): RouteHandlers | undefined {
+  const declared = match?.route.chain.at(-1)?.definition.server?.handlers as
+    | RouteServer["handlers"]
     | undefined;
+  return typeof declared === "function"
+    ? declared({ createHandlers: (handlers) => handlers })
+    : declared;
+}
+
+/** What a route answers one request with, resolved before anything runs. */
+interface Answering {
+  readonly handler: RouteHandler;
+  /** The handler's own middleware, which runs inside the route's. */
+  readonly middleware: readonly Middleware[];
+  /** A `HEAD` answered by the route's `GET`: the same headers, and no body. */
+  readonly headFallback: boolean;
+  /** A browser made this state-changing request from another origin. */
+  readonly refused: boolean;
+}
+
+/**
+ * The matched route's handler for this method, or `null` when it has none.
+ *
+ * Resolved first so the cross-origin refusal can be answered before any
+ * middleware has run. A forged request must cost nothing and reach nothing, and
+ * refusing after a middleware has already touched a database is a refusal that
+ * still did work for the attacker.
+ */
+function answering(request: Request, match: Match<Route> | null): Answering | null {
+  const handlers = handlersOf(match);
+  if (handlers === undefined || match === null) return null;
+  const method = request.method.toUpperCase() as RouteMethod;
+  // RFC 9110 §9.3.2: HEAD must answer with the same header fields as GET, so a
+  // route with a GET and no HEAD gets one for free, and its body is stripped
+  // rather than sent. Theirs resolves it in the same order.
+  const declared =
+    method === "HEAD"
+      ? (handlers.HEAD ?? handlers.GET ?? handlers.ANY)
+      : (handlers[method] ?? handlers.ANY);
+  if (declared === undefined) return null;
+  const own = typeof declared === "function" ? { handler: declared } : declared;
+  const server = match.route.chain.at(-1)?.definition.server;
+  return {
+    handler: own.handler,
+    middleware: own.middleware ?? [],
+    headFallback: method === "HEAD" && handlers.HEAD === undefined,
+    refused: server?.csrf !== false && crossOriginRefused(request, server?.allowedOrigins),
+  };
 }
 
 /**
@@ -618,74 +777,36 @@ function handlersOf(
  * handler for this method, and the handler ran and DECLINED by returning
  * `undefined`. The third is what lets one route answer JSON to a `fetch` and
  * render a page for a browser.
+ *
+ * Runs inside the request context the page handler entered, so the handler, its
+ * middleware and the page that follows a decline share one draft.
  */
 async function runRouteHandlers(
   request: Request,
   url: URL,
   match: Match<Route> | null,
-  refuse?: string,
+  route: Answering | null,
+  draft: ResponseDraft,
+  /** What the request middleware has contributed, and where this chain adds to it. */
+  context: Record<string, unknown>,
 ): Promise<Response | null> {
-  const handlers = handlersOf(match);
-  if (handlers === undefined || match === null) return null;
-
-  const method = request.method.toUpperCase() as RouteMethod;
-  // RFC 9110 §9.3.2: HEAD must answer with the same header fields as GET, so a
-  // route with a GET and no HEAD gets one for free, and its body is stripped
-  // below rather than sent. Theirs resolves it in the same order.
-  const handler =
-    method === "HEAD"
-      ? (handlers.HEAD ?? handlers.GET ?? handlers.ANY)
-      : (handlers[method] ?? handlers.ANY);
-  if (handler === undefined) return null;
-  const headFallback = method === "HEAD" && handlers.HEAD === undefined;
-
-  // CSRF, BEFORE the middleware and before the body is read. A forged request
-  // must cost nothing and reach nothing — refusing after a middleware has
-  // already touched a database is a refusal that still did work for the
-  // attacker.
-  const server = match.route.chain.at(-1)?.definition.server;
-  if (server?.csrf !== false && crossOriginRefused(request, server?.allowedOrigins)) {
-    return new Response("forbidden", { status: 403 });
-  }
+  if (route === null || match === null) return null;
 
   // INHERITED, outermost first: a middleware on `/api` covers everything under
   // it, which is the only way a rate limit or an auth check is declared once.
+  // The handler's own comes last, nearest to it.
   const chain: Middleware[] = [];
-  for (const route of match.route.chain) {
-    for (const one of route.definition.server?.middleware ?? []) chain.push(one);
+  for (const each of match.route.chain) {
+    for (const one of each.definition.server?.middleware ?? []) chain.push(one);
   }
-
-  const draft = createResponseDraft();
-  const context: Record<string, unknown> = {};
-  const run = async (): Promise<Response | undefined> =>
-    handler({
-      request,
-      params: match.params,
-      pathname: url.pathname,
-      context,
-    });
+  for (const one of route.middleware) chain.push(one);
 
   let answered: Response | undefined;
   try {
-    answered = await withRequest(
-      request,
-      async () => {
-        let index = 0;
-        const next = async (step?: {
-          readonly context?: Record<string, unknown>;
-        }): Promise<unknown> => {
-          if (step?.context !== undefined) Object.assign(context, step.context);
-          const middleware = chain[index++];
-          return middleware === undefined ? run() : middleware(next);
-        };
-        return (await next()) as Response | undefined;
-      },
-      // The PRERENDER REFUSAL reaches a handler too. A build mints the
-      // `Request`, so `getRequest()` inside one would answer with the build
-      // machine's headers and a cookie jar that is empty for everyone — the
-      // same trap the page render already refuses, and a handler is if anything
-      // likelier to read a header than a component is.
-      { refuse, response: draft },
+    answered = await runRequestMiddleware(
+      chain,
+      { request, pathname: url.pathname, handlerType: "router", context },
+      async () => route.handler({ request, params: match.params, pathname: url.pathname, context }),
     );
   } catch (error) {
     // A middleware refuses by throwing a `Response`, exactly as a server
@@ -700,7 +821,7 @@ async function runRouteHandlers(
   if (answered === undefined) return null;
 
   const merged = applyResponseDraft(answered, draft);
-  if (!headFallback) return merged;
+  if (!route.headFallback) return merged;
   // §9.3.2 again: the same headers, no body.
   return new Response(null, {
     status: merged.status,
@@ -736,380 +857,473 @@ export function createPageHandler(
     // deployment never claimed.
     const inside = base === "" || url.pathname === base || url.pathname.startsWith(`${base}/`);
     if (!inside) return new Response("not found", { status: 404 });
-    const pathname = base === "" ? url.pathname : stripBase(url.pathname, base);
-    if (base !== "") url.pathname = pathname;
+    if (base !== "") url.pathname = stripBase(url.pathname, base);
+    if (options.rewrite?.input !== undefined) {
+      const rewritten = new URL(
+        rewriteHref(options.rewrite.input, url.pathname + url.search, url.origin),
+        url,
+      );
+      url.pathname = rewritten.pathname;
+      url.search = rewritten.search;
+    }
+    const pathname = url.pathname;
     const match = matcher.match(pathname);
 
     // A ROUTE'S OWN HANDLER ANSWERS FIRST, and before the method gate, because
     // the whole point of one is to answer a `POST` that a page never could.
-    const handled = await runRouteHandlers(request, url, match, options.refuseRequest);
-    if (handled !== null) return handled;
+    const handling = answering(request, match);
+    if (handling?.refused === true) return new Response("forbidden", { status: 403 });
 
-    // AFTER the handlers, so an API route still answers, and before the method
-    // gate, so a POST to a path with no handler is a 404 rather than a 405 for
-    // a page that does not exist here.
-    if (options.pages === false) return new Response("not found", { status: 404 });
-
-    // A page is a GET. Nothing upstream filters the method — Vite's dev
-    // middlewares check none of them and `serveBarq` matches server functions
-    // and then falls through — so without this a `POST /users/7` ran every
-    // `beforeLoad`, every loader and every server function a loader calls, and
-    // answered with an HTML document.
-    if (request.method !== "GET" && request.method !== "HEAD") {
-      return new Response("method not allowed", {
-        status: 405,
-        headers: { allow: allowHeader(match) },
-      });
-    }
-
-    // Rule 1. Everything that can decide a status happens here, before any
-    // byte of the shell exists.
-    if (options.beforeEach !== undefined) {
-      const location = {
-        pathname: url.pathname,
-        search: url.search,
-        hash: "",
-        state: null,
-        key: "",
-      };
-      for (const guard of options.beforeEach) {
-        let verdict: boolean | string;
-        try {
-          verdict = await guard({ from: location, to: location, params: match?.params ?? {} });
-        } catch (error) {
-          const answer = asResponse(error);
-          if (answer !== null) return answer;
-          throw error;
-        }
-        if (verdict === false) return new Response("forbidden", { status: 403 });
-        if (typeof verdict === "string") return redirectResponse(verdict, 302);
-      }
-    }
-
-    const status = match === null ? 404 : 200;
-
-    // What the matched route says about being written to disk, for a
-    // PRERENDERER to read off the response.
-    //
-    // A header rather than a second entry point: the prerenderer lives in
-    // `@barqjs/start`, which must not depend on the router, and "is this path
-    // prerenderable" is a fact about the route table. It is emitted only for the
-    // handler a prerender built — a live response carries nothing extra.
-    const prerenderable =
-      options.refuseRequest === undefined
-        ? null
-        : (match?.route.chain ?? []).at(-1)?.definition.prerender === true
-          ? "1"
-          : "0";
-
-    // Request-scoped, so the answer a loader throws cannot reach another
-    // request. A module-level "current answer" hands one request's to the next.
-    let answer: Response | null = null;
-    // `notFound()` is an ANSWER, not a failure: the page still renders (its
-    // `notFoundComponent` does), and what changes is the status. Tracked
-    // separately from `answer` for that reason — turning it into a `Response`
-    // here would discard the markup the render just produced.
-    let missing = false;
-    const config: RouterConfig = {
-      routeTree: options.routeTree,
-      beforeEach: options.beforeEach,
-      basepath: options.basepath,
-      defaults: options.defaults,
-      notFoundMode: options.notFoundMode,
-      caseSensitive: options.caseSensitive,
-      trailingSlash: options.trailingSlash,
-      history: memoryHistory({ initial: [pathname + url.search] }),
-      onLoaderError(error) {
-        if (isNotFound(error)) missing = true;
-        answer ??= asResponse(error);
-      },
-    };
-
-    // Rule 2. The whole render, including every loader and every server
-    // function a loader calls, runs with this request ambient.
-    // The draft a loader, a `beforeLoad` or a route handler writes to through
-    // `setCookie` / `setResponseHeader`. Held here, outside the render, because
-    // the response is built after all of them have run — and because a STREAMED
-    // response is handed back before its body exists, so the draft has to be
-    // read at the moment the `Response` is constructed and not later.
+    // ONE draft and one request context for everything this request runs: the
+    // global request middleware, the route's handler and the page. Whatever any
+    // of them writes with `setCookie` or `setResponseHeader` leaves on the one
+    // response.
     const draft = createResponseDraft();
-    try {
-      return await withRequest(
-        request,
-        async () => {
-          const state = createRouter(config);
-          // HOISTED, and the hoist is the fix rather than a tidy-up.
-          //
-          // This used to be declared just above the render, which left
-          // everything between here and there — `runBeforeLoad`,
-          // `preloadMatched`, `projectHead`, `contextScript`, `preloadTags` —
-          // outside any guard. `projectHead` swallows a PER-ROUTE failure
-          // (correct, and what `projectLane` does), but a rejection from the
-          // `Promise.all` itself escaped, and so did a `lazy()` chunk that
-          // failed to import. The request's whole router state leaked with it:
-          // its history subscription, its loader cache, every in-flight cell.
-          let disposed = false;
-          const dispose = (): void => {
-            if (disposed) return;
-            disposed = true;
-            state.dispose();
-          };
-          // `beforeLoad` runs BEFORE the shell, which is the whole reason it is a
-          // separate phase from the loader: here the status is still open, so a
-          // `throw redirect(...)` becomes a real 302 and a `throw notFound()` a
-          // real 404. The same throw from a LOADER cannot — see `redirectScript`.
-          let before: BeforeLoadResult;
+    const context: Record<string, unknown> = {};
+
+    const answerPage = async (): Promise<Response> => {
+      // AFTER the handlers, so an API route still answers, and before the method
+      // gate, so a POST to a path with no handler is a 404 rather than a 405 for
+      // a page that does not exist here.
+      if (options.pages === false) return new Response("not found", { status: 404 });
+
+      // A page is a GET. Nothing upstream filters the method — Vite's dev
+      // middlewares check none of them and `serveBarq` matches server functions
+      // and then falls through — so without this a `POST /users/7` ran every
+      // `beforeLoad`, every loader and every server function a loader calls, and
+      // answered with an HTML document.
+      if (request.method !== "GET" && request.method !== "HEAD") {
+        return new Response("method not allowed", {
+          status: 405,
+          headers: { allow: allowHeader(match) },
+        });
+      }
+
+      // Rule 1. Everything that can decide a status happens here, before any
+      // byte of the shell exists.
+      if (options.beforeEach !== undefined) {
+        const location = {
+          pathname: url.pathname,
+          search: url.search,
+          hash: "",
+          state: null,
+          key: "",
+        };
+        for (const guard of options.beforeEach) {
+          let verdict: boolean | string;
           try {
-            before = await state.runBeforeLoad(
-              {
-                pathname: url.pathname,
-                search: url.search,
-                hash: url.hash,
-                state: null,
-                key: "",
-              },
-              match,
-              { server: true },
-            );
+            verdict = await guard({ from: location, to: location, params: match?.params ?? {} });
           } catch (error) {
-            dispose();
-            if (isNotFound(error)) return html("not found", 404);
-            const early = asResponse(error);
-            // THE DRAFT RIDES THE EARLY RETURN, and this is the login shape:
-            // a `beforeLoad` that authenticates seats the session cookie and
-            // THEN redirects. Returning the redirect bare dropped the cookie and
-            // sent a user who is somehow still signed out — with the redirect
-            // making it look as though it had worked.
-            if (early !== null) return applyResponseDraft(early, draft);
+            const answer = asResponse(error);
+            if (answer !== null) return answer;
             throw error;
           }
-          // THE GUARD STARTS HERE, not at the render. Everything from this
-          // point to the handover — the chunk imports, the head projection, the
-          // asset tags — can throw, and a throw that skips `dispose` leaks the
-          // request's whole router state.
-          // THE GUARD STARTS HERE, not at the render. Everything from this
-          // point to the handover — the chunk imports, the head projection, the
-          // asset tags — can throw, and a throw that skips `dispose` leaks the
-          // request's whole router state.
-          try {
-            state.setContexts(before.contexts);
-            // The matched chain's MODULES, before the render.
-            //
-            // Every route a file-based table generates is `lazy()`, and a cold
-            // cell throws `NotReadyError` — which the depth's boundary parks on.
-            // Parking resumes once the import lands, and only THEN is the next
-            // depth constructed, so a chain of N costs N import round trips one
-            // after another. Awaiting here costs the same imports in ONE round.
-            //
-            // THE REASON THIS COMMENT USED TO GIVE IS STALE, and the measurement
-            // it carried belongs to it: the non-streamed arm rendered exactly
-            // TWICE, so a two-deep chain resolved its layout on the second pass
-            // and its leaf on a third that never came — measured on the reference
-            // application as a prerendered page with a nav and no content. That
-            // pass is gone (`@barqjs/server`'s `renderPage` parks and resumes
-            // like the stream), so the cost is now latency rather than a
-            // truncated page. Preloading is right either way.
-            await preloadMatched(match?.route.chain ?? []);
-            // Decided BEFORE the head is projected, because it is what decides
-            // whether `head` sees `loaderData` at all.
-            const buffered = options.stream === false || isCrawler(request, options);
-            const shell = shellComponentOf(options.routeTree);
-            // `projectLane`, in the same pre-shell phase. Every route's `head` and
-            // `scripts` run here with the params, the context and whatever
-            // `loaderData` has already settled — which on a streamed page is
-            // nothing, and on a buffered one is everything. `preloadMatched` has
-            // just imported every module they live in.
-            const chain = match?.route.chain ?? [];
-            // `state.params()`, not the matcher's raw record: a `head` reads the
-            // same parameter its component does, and `dataFor` memoises on this
-            // value's identity — so settling a loader here fills the entry the
-            // render is about to read rather than a second one beside it.
-            const params = state.params();
-            // THE LANE BREAKS AT `ssr: false`, and it is theirs rather than an
-            // invention: `projectLane` runs the match's own `head` and THEN
-            // `if (match.ssr === false || …) break`
-            // (`router-core/src/load-server.ts:651-653`). So a route that opts out
-            // still contributes its own tags — with whatever context and
-            // `loaderData` exist, which for it is none, since its `beforeLoad` and
-            // its loader were both skipped — and nothing BELOW it contributes any,
-            // because the server rendered none of those routes.
-            //
-            // Mapping the whole chain, which is what this did, shipped a head
-            // describing markup the document does not contain.
-            // ONE session for the whole request, minted here rather than inside
-            // the renderer, so that a loader awaited to give `head` its
-            // `loaderData` is attributed to the SAME bucket the render seeds
-            // from. A value first read under a different session is seeded into
-            // nobody — measured previously as `__BARQ_DATA__=({})` with the
-            // client refetching everything the server had already fetched.
-            const session = Symbol("page-session");
-            const restore = setAsyncSession(session);
-            const modes = resolveSsr(chain, options.defaults?.ssr ?? true);
-            const projected: { route: Route; ssr: boolean }[] = [];
-            for (const [depth, route] of chain.entries()) {
-              // `ssr: false` means NOTHING of this route runs on the server, so
-              // its head runs (theirs does too) but its loader must not be
-              // awaited for one — awaiting it is the single fetch `ssr: false`
-              // exists to prevent, and it would seed a value the client is
-              // supposed to fetch for itself. Caught by falsifying the fast-path
-              // gate, which turned three `ssr` tests red at the same time.
-              projected.push({ route, ssr: modes[depth] !== false });
-              if (modes[depth] === false) break;
-            }
-            const assets = await projectHead(
-              await Promise.all(
-                projected.map(async ({ route, ssr }) => ({
-                  params,
-                  // A FUNCTION head is the signal that this route's loader must
-                  // settle before the head is serialized — and the ONLY signal,
-                  // because a `head` written as a plain object cannot read data
-                  // and so must never cost a wait.
-                  //
-                  // MEASURED, on a 300 ms loader: an object head streams its
-                  // first byte at 5 ms, a function head at 301 ms. Theirs waits
-                  // for the whole matched chain on every page, so a static
-                  // title pays there and does not here.
-                  loaderData:
-                    ssr && typeof route.definition.head === "function"
-                      ? await settleLoader(state, route, params, session)
-                      : undefined,
-                  definition: route.definition as never,
-                })),
-              ),
-              // `console.error` and a rendered page, which is what `projectLane`
-              // does with the same failure: a broken `head` costs that route its
-              // tags, never the document.
-              { nonce: options.nonce, onError: (error) => console.error(error) },
-            );
-            setAsyncSession(restore);
-            const context = contextScript(url, before.produced, options.nonce);
-            const preloads = chainFiles(match?.route.chain ?? null, options.routeAssets);
-            const preload = preloadTags(match?.route.chain ?? null, options.routeAssets);
-            const headAssets: HeadAssets = {
-              matches: assets,
-              nonce: options.nonce,
-              // The entry's stylesheets plus the matched chain's. The entry
-              // carries only what its own static graph imports, which for a
-              // route-split application is usually nothing at all.
-              clientAssets: {
-                ...options.clientAssets,
-                css: [
-                  ...(options.clientAssets?.css ?? []),
-                  ...chainFiles(match?.route.chain ?? null, options.routeCss),
-                ],
-              },
-              inlineCss: options.inlineCss?.(),
-              // This request's own rules, and no other request's. Read at
-              // `<Scripts />`, after the body — the only moment it is complete.
-              lateCss: () => options.requestCss?.() ?? "",
-              preloads,
-              preload,
-              // The string backend's own renderer, handed over the way
-              // `LinkBackend` is: `HeadContent` and `Scripts` live in the
-              // ISOMORPHIC entry because the ROOT ROUTE MODULE — which is where a
-              // shell is declared — ships to the browser. Importing
-              // `@barqjs/router/server` from it drags `node:async_hooks` into the
-              // client bundle, and Vite answers that with "Module has been
-              // externalized for browser compatibility" and an empty page.
-              raw: (markup: string) => ssrHtml(markup),
-              // The string backend's list primitive, handed over the same way
-              // `raw` is. Keyed, so the two backends reconcile the same way and a
-              // navigation reuses the tag it already has rather than replacing it.
-              // NO range comments. The DOM side builds these with `element()`,
-              // which claims the next node by TAG rather than by a delimited
-              // range — so the wire carries the tags and nothing else, and the
-              // enclosing `<head>` claim walks straight through them.
-              tagTree: (list) =>
-                ssrEach(
-                  null,
-                  null,
-                  list as never,
-                  (tag: ManagedTag, index: number) => tagKey(tag, index),
-                  (tag: () => ManagedTag, index: () => number) =>
-                    ssrDynamic({
-                      component: tag().tag,
-                      ...tagProps(tag(), index()),
-                    }),
-                ),
-            };
-            // The whole document when a shell is declared, the app's markup when
-            // it is not — and the `document()` template then wraps it.
-            const root = (): unknown =>
-              shell === undefined ? options.app(state) : renderShell(state, shell, headAssets);
-            // A streamed response is not finished when this function returns it:
-            // `renderToStream` hands back the `ReadableStream` before a byte of the
-            // body exists, and the boundaries resume against this state afterwards.
-            // Disposing in a `finally` therefore cleared the loader cache and
-            // unsubscribed history MID-RENDER, and every entry was re-minted on
-            // resume — masked today only because a re-minted cell for a settled key
-            // answers from the session bucket instead of refetching.
-            if (buffered) {
-              // `renderPage`, not `renderToString`: the sync one does not await an
-              // async value, so every loader on the page would render as its
-              // fallback and the seed would be empty. Measured on exactly that
-              // mistake — a server function's result stringified as
-              // "[object Promise]" and its handler ran detached from the render.
-              const page = await renderPage(() => root() as never, {
-                nonce: options.nonce,
-                session,
-              });
-              // A loader that threw a `Response` or a `Redirect` decided this
-              // page, even though the render completed around it.
-              dispose();
-              if (answer !== null) return answer;
-              return html(
-                await shellOf(
-                  options,
-                  shell === undefined
-                    ? documentOf(options, {
-                        body: page.html,
-                        seed: page.script,
-                        chain: match?.route.chain ?? null,
-                        preload,
-                        context,
-                        url,
-                      })
-                    : DOCTYPE + withSeed(page.html, context + page.script),
-                  url,
-                ),
-                // A rendered 404 rather than a bare one. In STREAM mode the status
-                // is already on the wire by the time a loader can say this, so a
-                // `notFound()` that must set the status belongs where the status
-                // is still open — the same rule redirects follow.
-                missing ? 404 : status,
-                prerenderable === null ? undefined : { [PRERENDER_HEADER]: prerenderable },
+          if (verdict === false) return new Response("forbidden", { status: 403 });
+          if (typeof verdict === "string") return redirectResponse(verdict, 302);
+        }
+      }
+
+      const status = match === null ? 404 : 200;
+
+      // What the matched route says about being written to disk, for a
+      // PRERENDERER to read off the response.
+      //
+      // A header rather than a second entry point: the prerenderer lives in
+      // `@barqjs/start`, which must not depend on the router, and "is this path
+      // prerenderable" is a fact about the route table. It is emitted only for the
+      // handler a prerender built — a live response carries nothing extra.
+      const prerenderable =
+        options.refuseRequest === undefined
+          ? null
+          : (match?.route.chain ?? []).at(-1)?.definition.prerender === true
+            ? "1"
+            : "0";
+
+      // Request-scoped, so the answer a loader throws cannot reach another
+      // request. A module-level "current answer" hands one request's to the next.
+      let answer: Response | null = null;
+      // `notFound()` is an ANSWER, not a failure: the page still renders (its
+      // `notFoundComponent` does), and what changes is the status. Tracked
+      // separately from `answer` for that reason — turning it into a `Response`
+      // here would discard the markup the render just produced.
+      let missing = false;
+      let missingHeaders: HeadersInit | undefined;
+      // The request's router, for the redirects that need one to be resolved.
+      let router: RouterState | null = null;
+      const answerFor = (error: unknown): Response | null =>
+        asResponse(error, (redirect) =>
+          router === null || redirect.options === undefined
+            ? redirect.to
+            : linkAttrHref(router, router.buildLocation(redirect.options).href),
+        );
+      const shared: Partial<Record<keyof SharedRouterOptions, unknown>> = {};
+      for (const key of SHARED_ROUTER_OPTIONS) {
+        if (options[key] !== undefined) shared[key] = options[key];
+      }
+      const config: RouterConfig = {
+        ...(shared as SharedRouterOptions),
+        // The request was rewritten on the way in, above; what is left for the
+        // router is the way out, on the hrefs it writes.
+        rewrite:
+          options.rewrite?.output === undefined ? undefined : { output: options.rewrite.output },
+        routeTree: options.routeTree,
+        beforeEach: options.beforeEach,
+        basepath: options.basepath,
+        defaults: options.defaults,
+        notFoundMode: options.notFoundMode,
+        caseSensitive: options.caseSensitive,
+        trailingSlash: options.trailingSlash,
+        history: memoryHistory({ initial: [pathname + url.search] }),
+        onLoaderError(error) {
+          if (isNotFound(error)) {
+            missing = true;
+            missingHeaders ??= error.headers;
+          }
+          answer ??= answerFor(error);
+        },
+      };
+
+      // Rule 2. The whole render, including every loader and every server
+      // function a loader calls, runs with this request ambient.
+      // The draft a loader, a `beforeLoad` or a route handler writes to through
+      // `setCookie` / `setResponseHeader`. Held here, outside the render, because
+      // the response is built after all of them have run — and because a STREAMED
+      // response is handed back before its body exists, so the draft has to be
+      // read at the moment the `Response` is constructed and not later.
+      const channel = createRenderChannel(options.nonce);
+      return (async () => {
+        const decisions = new Map<string, SsrMode>();
+        const forRequest: RouterConfig = {
+          ...config,
+          ssrDecisions: decisions,
+          context:
+            typeof options.context === "function"
+              ? await options.context(request)
+              : options.context,
+        };
+        const state =
+          options.getRouter === undefined
+            ? createRouter(forRequest)
+            : await withRouterOverrides(
+                // The request was rewritten on the way in, so the router's
+                // own rewrite keeps only its way out.
+                (own) => ({
+                  ...forRequest,
+                  rewrite: { output: forRequest.rewrite?.output ?? own.rewrite?.output },
+                }),
+                options.getRouter,
               );
-            }
-            const stream = renderToStream(() => root() as never, {
-              signal: request.signal,
+        state.serverSsr = channel.serverSsr;
+        await decideSsr(state, decisions, options.shell === true);
+        router = state;
+        // HOISTED, and the hoist is the fix rather than a tidy-up.
+        //
+        // This used to be declared just above the render, which left
+        // everything between here and there — `runBeforeLoad`,
+        // `preloadMatched`, `projectHead`, `contextScript`, `preloadTags` —
+        // outside any guard. `projectHead` swallows a PER-ROUTE failure
+        // (correct, and what `projectLane` does), but a rejection from the
+        // `Promise.all` itself escaped, and so did a `lazy()` chunk that
+        // failed to import. The request's whole router state leaked with it:
+        // its history subscription, its loader cache, every in-flight cell.
+        let disposed = false;
+        const dispose = (): void => {
+          if (disposed) return;
+          disposed = true;
+          state.dispose();
+        };
+        // `beforeLoad` runs BEFORE the shell, which is the whole reason it is a
+        // separate phase from the loader: here the status is still open, so a
+        // `throw redirect(...)` becomes a real 302 and a `throw notFound()` a
+        // real 404. The same throw from a LOADER cannot — see `redirectScript`.
+        let before: BeforeLoadResult;
+        try {
+          before = await state.runBeforeLoad(
+            {
+              pathname: url.pathname,
+              search: url.search,
+              hash: url.hash,
+              state: null,
+              key: "",
+            },
+            match,
+            { server: true },
+          );
+        } catch (error) {
+          dispose();
+          if (isNotFound(error)) {
+            return html("not found", 404, headerRecord(error.headers));
+          }
+          const early = answerFor(error);
+          // THE DRAFT RIDES THE EARLY RETURN, and this is the login shape:
+          // a `beforeLoad` that authenticates seats the session cookie and
+          // THEN redirects. Returning the redirect bare dropped the cookie and
+          // sent a user who is somehow still signed out — with the redirect
+          // making it look as though it had worked.
+          if (early !== null) return applyResponseDraft(early, draft);
+          throw error;
+        }
+        // THE GUARD STARTS HERE, not at the render. Everything from this
+        // point to the handover — the chunk imports, the head projection, the
+        // asset tags — can throw, and a throw that skips `dispose` leaks the
+        // request's whole router state.
+        // THE GUARD STARTS HERE, not at the render. Everything from this
+        // point to the handover — the chunk imports, the head projection, the
+        // asset tags — can throw, and a throw that skips `dispose` leaks the
+        // request's whole router state.
+        try {
+          state.setContexts(before.contexts);
+          // The matched chain's MODULES, before the render.
+          //
+          // Every route a file-based table generates is `lazy()`, and a cold
+          // cell throws `NotReadyError` — which the depth's boundary parks on.
+          // Parking resumes once the import lands, and only THEN is the next
+          // depth constructed, so a chain of N costs N import round trips one
+          // after another. Awaiting here costs the same imports in ONE round.
+          //
+          // THE REASON THIS COMMENT USED TO GIVE IS STALE, and the measurement
+          // it carried belongs to it: the non-streamed arm rendered exactly
+          // TWICE, so a two-deep chain resolved its layout on the second pass
+          // and its leaf on a third that never came — measured on the reference
+          // application as a prerendered page with a nav and no content. That
+          // pass is gone (`@barqjs/server`'s `renderPage` parks and resumes
+          // like the stream), so the cost is now latency rather than a
+          // truncated page. Preloading is right either way.
+          //
+          // `state.chain()`, not the match's: an unmatched location renders the
+          // root (or the deepest layout owning a prefix of the path) standing
+          // in, and the client builds its head, its preloads and its sheets
+          // from that chain. Projecting the match instead wrote a 404 with no
+          // `<title>` at all, which hydration then found a `<style>` in place of.
+          const rendered = untrack(state.chain);
+          await preloadMatched(rendered);
+          // Decided BEFORE the head is projected, because it is what decides
+          // whether `head` sees `loaderData` at all.
+          const buffered = options.stream === false || isCrawler(request, options);
+          const shell = shellComponentOf(options.routeTree);
+          // `projectLane`, in the same pre-shell phase. Every route's `head` and
+          // `scripts` run here with the params, the context and whatever
+          // `loaderData` has already settled — which on a streamed page is
+          // nothing, and on a buffered one is everything. `preloadMatched` has
+          // just imported every module they live in.
+          const chain = rendered;
+          // `state.params()`, not the matcher's raw record: a `head` reads the
+          // same parameter its component does, and `dataFor` memoises on this
+          // value's identity — so settling a loader here fills the entry the
+          // render is about to read rather than a second one beside it.
+          const params = state.params();
+          // THE LANE BREAKS AT `ssr: false`, and it is theirs rather than an
+          // invention: `projectLane` runs the match's own `head` and THEN
+          // `if (match.ssr === false || …) break`
+          // (`router-core/src/load-server.ts:651-653`). So a route that opts out
+          // still contributes its own tags — with whatever context and
+          // `loaderData` exist, which for it is none, since its `beforeLoad` and
+          // its loader were both skipped — and nothing BELOW it contributes any,
+          // because the server rendered none of those routes.
+          //
+          // Mapping the whole chain, which is what this did, shipped a head
+          // describing markup the document does not contain.
+          // ONE session for the whole request, minted here rather than inside
+          // the renderer, so that a loader awaited to give `head` its
+          // `loaderData` is attributed to the SAME bucket the render seeds
+          // from. A value first read under a different session is seeded into
+          // nobody — measured previously as `__BARQ_DATA__=({})` with the
+          // client refetching everything the server had already fetched.
+          const session = Symbol("page-session");
+          const modes = untrack(state.ssrModes);
+          const projected: { route: Route; ssr: boolean }[] = [];
+          for (const [depth, route] of chain.entries()) {
+            // `ssr: false` means NOTHING of this route runs on the server, so
+            // its head runs (theirs does too) but its loader must not be
+            // awaited for one — awaiting it is the single fetch `ssr: false`
+            // exists to prevent, and it would seed a value the client is
+            // supposed to fetch for itself. Caught by falsifying the fast-path
+            // gate, which turned three `ssr` tests red at the same time.
+            projected.push({ route, ssr: modes[depth] !== false });
+            if (modes[depth] === false) break;
+          }
+          const assets = await projectHead(
+            await Promise.all(
+              projected.map(async ({ route, ssr }) => ({
+                params,
+                // A FUNCTION head is the signal that this route's loader must
+                // settle before the head is serialized — and the ONLY signal,
+                // because a `head` written as a plain object cannot read data
+                // and so must never cost a wait.
+                //
+                // MEASURED, on a 300 ms loader: an object head streams its
+                // first byte at 5 ms, a function head at 301 ms. Theirs waits
+                // for the whole matched chain on every page, so a static
+                // title pays there and does not here.
+                loaderData:
+                  ssr && typeof route.definition.head === "function"
+                    ? await settleLoader(state, route, params, session)
+                    : undefined,
+                definition: route.definition as never,
+              })),
+            ),
+            // `console.error` and a rendered page, which is what `projectLane`
+            // does with the same failure: a broken `head` costs that route its
+            // tags, never the document.
+            { nonce: options.nonce, onError: (error) => console.error(error) },
+          );
+          const context = contextScript(url, before.produced, options.nonce);
+          const preloads = chainFiles(rendered, options.routeAssets);
+          const preload = preloadTags(rendered, options.routeAssets);
+          const headAssets: HeadAssets = {
+            matches: assets,
+            nonce: options.nonce,
+            // The entry's stylesheets plus the matched chain's. The entry
+            // carries only what its own static graph imports, which for a
+            // route-split application is usually nothing at all.
+            clientAssets: {
+              ...options.clientAssets,
+              css: [
+                ...(options.clientAssets?.css ?? []),
+                ...chainFiles(rendered, options.routeCss),
+              ],
+            },
+            inlineCss: options.inlineCss?.(),
+            // This request's own rules, and no other request's. Read at
+            // `<Scripts />`, after the body — the only moment it is complete.
+            lateCss: () => options.requestCss?.() ?? "",
+            preloads,
+            preload,
+            // The string backend's own renderer, handed over the way
+            // `LinkBackend` is: `HeadContent` and `Scripts` live in the
+            // ISOMORPHIC entry because the ROOT ROUTE MODULE — which is where a
+            // shell is declared — ships to the browser. Importing
+            // `@barqjs/router/server` from it drags `node:async_hooks` into the
+            // client bundle, and Vite answers that with "Module has been
+            // externalized for browser compatibility" and an empty page.
+            raw: (markup: string) => ssrHtml(markup),
+            // The string backend's list primitive, handed over the same way
+            // `raw` is. Keyed, so the two backends reconcile the same way and a
+            // navigation reuses the tag it already has rather than replacing it.
+            // NO range comments. The DOM side builds these with `element()`,
+            // which claims the next node by TAG rather than by a delimited
+            // range — so the wire carries the tags and nothing else, and the
+            // enclosing `<head>` claim walks straight through them.
+            tagTree: (list) =>
+              ssrEach(
+                null,
+                null,
+                list as never,
+                (tag: ManagedTag, index: number) => tagKey(tag, index),
+                (tag: () => ManagedTag, index: () => number) =>
+                  ssrDynamic({
+                    component: tag().tag,
+                    ...tagProps(tag(), index()),
+                  }),
+              ),
+          };
+          // The whole document when a shell is declared, the app's markup when
+          // it is not — and the `document()` template then wraps it.
+          const root = (): unknown =>
+            shell === undefined ? options.app(state) : renderShell(state, shell, headAssets);
+          // A streamed response is not finished when this function returns it:
+          // `renderToStream` hands back the `ReadableStream` before a byte of the
+          // body exists, and the boundaries resume against this state afterwards.
+          // Disposing in a `finally` therefore cleared the loader cache and
+          // unsubscribed history MID-RENDER, and every entry was re-minted on
+          // resume — masked today only because a re-minted cell for a settled key
+          // answers from the session bucket instead of refetching.
+          if (buffered) {
+            // `renderPage`, not `renderToString`: the sync one does not await an
+            // async value, so every loader on the page would render as its
+            // fallback and the seed would be empty. Measured on exactly that
+            // mistake — a server function's result stringified as
+            // "[object Promise]" and its handler ran detached from the render.
+            const page = await renderPage(() => root() as never, {
               nonce: options.nonce,
               session,
             });
-            return new Response(
-              shell === undefined
-                ? wrapStream(
-                    stream,
-                    options,
-                    match?.route.chain ?? null,
-                    url,
-                    dispose,
-                    () => answer,
-                    context,
-                  )
-                : shellStream(stream, options, url, dispose, () => answer, context),
+            // A loader that threw a `Response` or a `Redirect` decided this
+            // page, even though the render completed around it.
+            channel.renderFinished();
+            if (answer === null) channel.dehydrate(state);
+            await channel.written();
+            const carried = channel.drain();
+            dispose();
+            if (answer !== null) return answer;
+            return html(
+              await shellOf(
+                options,
+                shell === undefined
+                  ? documentOf(options, {
+                      body: page.html,
+                      seed: page.script + carried,
+                      chain: match?.route.chain ?? null,
+                      preload,
+                      context,
+                      url,
+                    })
+                  : DOCTYPE + withSeed(page.html, context + page.script + carried),
+                url,
+              ),
+              // A rendered 404 rather than a bare one. In STREAM mode the status
+              // is already on the wire by the time a loader can say this, so a
+              // `notFound()` that must set the status belongs where the status
+              // is still open — the same rule redirects follow.
+              missing ? 404 : status,
               {
-                status,
-                headers: { "content-type": "text/html; charset=utf-8" },
+                ...(missing ? headerRecord(missingHeaders) : undefined),
+                ...(prerenderable === null ? undefined : { [PRERENDER_HEADER]: prerenderable }),
               },
             );
-          } catch (error) {
-            // The stream was never handed over, so nothing else will dispose it.
-            dispose();
-            throw error;
           }
+          const stream = renderToStream(() => root() as never, {
+            signal: request.signal,
+            nonce: options.nonce,
+            session,
+          });
+          // The shell has gone and the loaders it started have not settled.
+          channel.dehydrate(state, state.settled());
+          return new Response(
+            shell === undefined
+              ? wrapStream(
+                  stream,
+                  options,
+                  match?.route.chain ?? null,
+                  url,
+                  dispose,
+                  () => answer,
+                  context,
+                  channel,
+                )
+              : shellStream(stream, options, url, dispose, () => answer, context, channel),
+            {
+              status,
+              headers: { "content-type": "text/html; charset=utf-8" },
+            },
+          );
+        } catch (error) {
+          // The stream was never handed over, so nothing else will dispose it.
+          dispose();
+          throw error;
+        }
+      })();
+    };
+
+    try {
+      const response = await withRequest(
+        request,
+        () => {
+          setRequestMiddlewareContext(context);
+          return runRequestMiddleware(
+            startOptions().requestMiddleware ?? [],
+            { request, pathname, handlerType: "router", context },
+            async () =>
+              (await runRouteHandlers(request, url, match, handling, draft, context)) ??
+              (await answerPage()),
+          );
         },
+        // The PRERENDER REFUSAL reaches a handler too. A build mints the
+        // `Request`, so `getRequest()` inside one would answer with the build
+        // machine's headers and a cookie jar that is empty for everyone.
         { refuse: options.refuseRequest, response: draft },
       );
+      return applyResponseDraft(response, draft);
     } catch (error) {
       const thrown = asResponse(error);
       // A `beforeLoad` that sets a cookie and THEN redirects keeps the cookie —
@@ -1127,13 +1341,24 @@ export function createPageHandler(
  * a `Redirect`. Both are answers, not failures, and both become this page's
  * response rather than a 500.
  */
-function asResponse(error: unknown): Response | null {
+function asResponse(
+  error: unknown,
+  /** Where an options-form redirect goes, which only a router can say. */
+  locate?: (redirect: Redirect) => string,
+): Response | null {
   if (error instanceof Response) return error;
-  if (isRedirect(error)) return redirectResponse(error.to, error.status);
+  if (isRedirect(error)) {
+    return redirectResponse(locate?.(error) ?? error.to, error.status, error.headers);
+  }
   return null;
 }
 
-function redirectResponse(to: string, status: number): Response {
+/** `HeadersInit` as the plain record the response helpers take. */
+function headerRecord(headers: HeadersInit | undefined): Record<string, string> | undefined {
+  return headers === undefined ? undefined : Object.fromEntries(new Headers(headers));
+}
+
+function redirectResponse(to: string, status: number, extra?: HeadersInit): Response {
   if (!isNavigable(to)) {
     // Inert in a 302, but this is the one place both arms can share a rule, and
     // a `Location: javascript:…` on the wire is a smell whatever the browser
@@ -1141,7 +1366,9 @@ function redirectResponse(to: string, status: number): Response {
     reportRefusedRedirect(to);
     return new Response("bad redirect", { status: 500 });
   }
-  return new Response(null, { status, headers: { location: to } });
+  const headers = new Headers(extra);
+  headers.set("location", to);
+  return new Response(null, { status, headers });
 }
 
 /**
@@ -1153,10 +1380,9 @@ function redirectResponse(to: string, status: number): Response {
  */
 function reportRefusedRedirect(to: string): void {
   console.error(
-    `[barq-router] refused to redirect to ${JSON.stringify(to)}: only a path or an http(s) URL ` +
-      "is navigable. A `javascript:` target EXECUTES when a streamed redirect replays it in the " +
-      "browser, so this is cross-site scripting rather than a broken link — check whatever " +
-      "produced it.",
+    `[barq-router] A redirect to ${JSON.stringify(to)} was refused, because only a path or an \`http(s)\` URL is a valid target. ` +
+      "A target such as `javascript:` or `data:` can run as script in the browser, which is cross-site scripting. " +
+      "Validate the value passed to `redirect()` before using it, especially when it comes from the request.",
   );
 }
 
@@ -1370,19 +1596,29 @@ export interface StartHandler {
  */
 export function createStartHandler(extra: Partial<PageHandlerOptions> = {}): StartHandler {
   let parts: Promise<PageHandlerOptions> | undefined;
+  // MOUNTS every server function the build found. Importing it is what gives
+  // each one a URL — without it `/_barq/fn/<id>` 404s for all of them, and
+  // `verifyChains` has an empty registry to ask.
+  //
+  // Offered to the function endpoint as well as awaited below: a call can
+  // arrive before any page has been rendered, and it must not find the
+  // registry empty because nothing had asked for a page yet.
+  let manifest: Promise<unknown> | undefined;
+  const mountManifest = (): Promise<unknown> =>
+    // With the project's `src/start.ts`, whose import is what registers the
+    // application's global middleware for a call as well as for a page.
+    (manifest ??= Promise.all([import("virtual:barq-server-fns"), import("#barq-start-entry")]));
+  mountOnDemand(mountManifest);
   const app = (): Promise<PageHandlerOptions> => {
     parts ??= (async (): Promise<PageHandlerOptions> => {
-      const [{ config }, { routeAssets, routeCss }, { clientAssets }] = await Promise.all([
+      const [entry, { routeAssets, routeCss }, { clientAssets }] = await Promise.all([
         import("#barq-router-entry"),
         import("virtual:barq-route-assets"),
         import("virtual:barq-client-assets"),
       ]);
-      // MOUNTS every server function the build found. Importing it is what
-      // gives each one a URL — without it `/_barq/fn/<id>` 404s for all of them,
-      // and `verifyChains` has an empty registry to ask.
-      await import("virtual:barq-server-fns");
+      await mountManifest();
       return {
-        ...config,
+        ...(await entryOptions(entry)),
         routeAssets,
         routeCss,
         clientAssets,
@@ -1397,7 +1633,15 @@ export function createStartHandler(extra: Partial<PageHandlerOptions> = {}): Sta
   ): ((request: Request) => Promise<Response>) => {
     let handler: ((request: Request) => Promise<Response>) | undefined;
     return async (request: Request): Promise<Response> => {
-      handler ??= createPageHandler({ ...(await app()), ...extra, ...more });
+      if (handler === undefined) {
+        const own = await app();
+        handler = createPageHandler({
+          ...own,
+          ...extra,
+          ...more,
+          context: layered(own.context, extra.context, more.context),
+        });
+      }
       return handler(request);
     };
   };
@@ -1407,6 +1651,124 @@ export function createStartHandler(extra: Partial<PageHandlerOptions> = {}): Sta
     createFetch,
     verifyChains: async (reachability) => chainVerifier((await app()).routeTree)(reachability),
   };
+}
+
+/**
+ * Ask each matched route's functional `ssr` what it wants for this request.
+ *
+ * Before `beforeLoad`, which is the first thing the answer decides. A route
+ * that answers nothing is left to the router's default.
+ */
+async function decideSsr(
+  state: RouterState,
+  decisions: Map<string, SsrMode>,
+  shell: boolean,
+): Promise<void> {
+  for (const [depth, route] of untrack(state.chain).entries()) {
+    // A shell is the root route and nothing under it: the document every path
+    // of a client-rendered application starts from, whichever one was asked for.
+    if (shell && route.id !== ROOT_ROUTE_ID) {
+      decisions.set(route.id, false);
+      continue;
+    }
+    const decide = route.definition.ssr;
+    if (typeof decide !== "function") continue;
+    const paramsError = state.paramsErrorAt(depth);
+    const searchError = state.searchErrorAt(depth);
+    const decided = await decide({
+      params:
+        paramsError === null
+          ? { status: "success", value: untrack(state.params) }
+          : { status: "error", error: paramsError },
+      search:
+        searchError === null
+          ? { status: "success", value: untrack(state.validSearch) }
+          : { status: "error", error: searchError },
+      location: untrack(state.location),
+    });
+    if (decided !== undefined) decisions.set(route.id, decided);
+  }
+}
+
+/**
+ * What a project's `src/router.ts` says, as the handler's options.
+ *
+ * `config` is the whole of it for a project that exports one. A project that
+ * exports `getRouter` alone is asked for one router, to read the configuration
+ * every request is matched with; that router serves nothing, and what belongs
+ * to it alone stays behind.
+ */
+async function entryOptions(entry: {
+  readonly config?: RouterConfig;
+  readonly getRouter?: () => RouterState | Promise<RouterState>;
+}): Promise<Pick<PageHandlerOptions, "routeTree" | "getRouter" | "context">> {
+  if (entry.getRouter === undefined) {
+    if (entry.config === undefined) {
+      throw new Error(
+        "[barq-router] `src/router.ts` exports neither `config` nor `getRouter`, so there is no router to start. " +
+          "Export one of them: `export const config = { routeTree }` or `export function getRouter() { return createRouter({ routeTree }); }`.",
+      );
+    }
+    return entry.config;
+  }
+  if (entry.config !== undefined) return { ...entry.config, getRouter: entry.getRouter };
+  const probe = await entry.getRouter();
+  const {
+    context: _context,
+    history: _history,
+    dehydrate: _dehydrate,
+    hydrate: _hydrate,
+    Wrap: _wrap,
+    InnerWrap: _innerWrap,
+    ...config
+  } = probe.config;
+  probe.dispose();
+  return { ...config, getRouter: entry.getRouter };
+}
+
+/** Several contexts as one, each laid over the ones before it. */
+function layered(...contexts: readonly (PageContext | undefined)[]): PageContext | undefined {
+  const given = contexts.filter((context) => context !== undefined);
+  if (given.length < 2) return given[0];
+  if (given.every((context) => typeof context !== "function")) return Object.assign({}, ...given);
+  return async (request) => {
+    const merged: Record<string, unknown> = {};
+    for (const context of given) {
+      Object.assign(merged, typeof context === "function" ? await context(request) : context);
+    }
+    return merged;
+  };
+}
+
+/**
+ * Read a render to its end, handing over each chunk as it arrives and whatever
+ * was injected between two of them.
+ *
+ * Nothing is injected ahead of the first chunk: that one is the shell, and a
+ * script in front of it would be the first child of the element the client
+ * hydrates.
+ */
+async function relay(
+  reader: ReadableStreamDefaultReader<Uint8Array>,
+  channel: RenderChannel,
+  emit: (chunk: Uint8Array) => void | Promise<void>,
+  inject: (markup: string) => void,
+): Promise<void> {
+  let next = reader.read();
+  let injected: Promise<void> | null = null;
+  for (;;) {
+    const turn = injected === null ? await next : await Promise.race([next, injected]);
+    if (turn === undefined) {
+      inject(channel.drain());
+      injected = channel.waiting();
+      continue;
+    }
+    if (turn.done) return;
+    await emit(turn.value);
+    inject(channel.drain());
+    injected = channel.waiting();
+    next = reader.read();
+  }
 }
 
 /**
@@ -1461,6 +1823,7 @@ function wrapStream(
   answer: () => Response | null,
   /** The route-context handoff, which goes in the head like the preloads. */
   context: string,
+  channel: RenderChannel,
 ): ReadableStream<Uint8Array> {
   const document = documentOf(options, {
     body: BODY_MARKER,
@@ -1475,7 +1838,8 @@ function wrapStream(
   const cut = document.indexOf(BODY_MARKER);
   if (cut === -1) {
     throw new Error(
-      "the document function must place its `body` argument in the markup it returns",
+      "[barq-router] The `document` function did not put its `body` argument in the markup it returned, so the page would be sent without the application. " +
+        "Include `parts.body` in the string that `document(parts)` returns.",
     );
   }
   const head = document.slice(0, cut);
@@ -1489,16 +1853,18 @@ function wrapStream(
       controller.enqueue(encoder.encode(await shellOf(options, head, url)));
       const reader = stream.getReader();
       reading = reader;
+      const inject = (markup: string): void => {
+        if (markup !== "") controller.enqueue(encoder.encode(markup));
+      };
       try {
-        for (;;) {
-          const { done: finished, value } = await reader.read();
-          if (finished) break;
-          controller.enqueue(value);
-        }
+        await relay(reader, channel, (chunk) => controller.enqueue(chunk), inject);
       } finally {
         reading = null;
         reader.releaseLock();
       }
+      channel.renderFinished();
+      await channel.written();
+      inject(channel.drain());
       const late = redirectScript(answer());
       if (late !== "") controller.enqueue(encoder.encode(late));
       controller.enqueue(encoder.encode(tail));
@@ -1574,7 +1940,6 @@ export function renderShell(
 ): unknown {
   const body = (): unknown => renderRoutes(state);
   if (shell === undefined) return body();
-  const owner = getOwner();
   // THE CHILDREN ARE BUILT FIRST, and the shell is wrapped around the result.
   //
   // `<head>` comes before `<body>` in the shell's own markup, so a shell that
@@ -1626,14 +1991,23 @@ async function settleLoader(
   params: Readonly<Record<string, string>>,
   session: symbol,
 ): Promise<unknown> {
-  const loaded = state.dataFor(route, params, true);
+  // Named for exactly as long as the read takes. The wait below yields to
+  // every other request in the process, and a session still named across it
+  // is the one their declarations would be filed under.
+  const restore = setAsyncSession(session);
+  let loaded: () => unknown;
   try {
-    loaded();
-  } catch {
-    // `NotReadyError` is the point: the read STARTED the fetch. Anything else a
-    // cold cell throws is the loader's own failure, which the render will throw
-    // again with a boundary to catch it — swallowing it here is what keeps this
-    // from turning a route error into a request error.
+    loaded = state.dataFor(route, params, true);
+    try {
+      loaded();
+    } catch {
+      // `NotReadyError` is the point: the read STARTED the fetch. Anything else a
+      // cold cell throws is the loader's own failure, which the render will throw
+      // again with a boundary to catch it — swallowing it here is what keeps this
+      // from turning a route error into a request error.
+    }
+  } finally {
+    setAsyncSession(restore);
   }
   await settle(session);
   try {
@@ -1665,9 +2039,8 @@ function shellComponentOf(
 function documentOf(options: PageHandlerOptions, parts: DocumentParts): string {
   if (options.document !== undefined) return options.document(parts);
   throw new Error(
-    "[barq-router] this route table declares no `shellComponent` on its root route and no " +
-      "`document` was passed. One of them has to say what the document is — prefer the shell: " +
-      "`export const shellComponent = ({ children }) => <html>…<HeadContent /></html>`.",
+    "[barq-router] The root route declares no `shellComponent` and no `document` option was passed, so there is no HTML document to render the page into. " +
+      "Add a shell to `__root.tsx`: `createRootRoute({ shellComponent: (props) => <html><head><HeadContent /></head><body>{props.children}<Scripts /></body></html> })`.",
   );
 }
 
@@ -1729,6 +2102,7 @@ function shellStream(
    * the body, so anywhere before that will do.
    */
   context: string,
+  channel: RenderChannel,
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   let first = true;
@@ -1754,33 +2128,38 @@ function shellStream(
     async start(controller) {
       const reader = stream.getReader();
       reading = reader;
-      try {
-        for (;;) {
-          const { done: finished, value } = await reader.read();
-          if (finished) break;
-          if (first) {
-            first = false;
-            let head = DOCTYPE + new TextDecoder().decode(value);
-            if (options.transformShell !== undefined) {
-              head = await options.transformShell(head, url);
-            }
-            // The LAST one: a `</body>` inside the page's own text is escaped,
-            // but a shell is free to contain more than one element that ends in
-            // one, and the document's is the final.
-            const cut = head.lastIndexOf("</body>");
-            if (cut !== -1) {
-              tail = head.slice(cut);
-              head = head.slice(0, cut);
-            }
-            controller.enqueue(encoder.encode(head));
-            continue;
-          }
+      const inject = (markup: string): void => {
+        if (markup !== "") controller.enqueue(encoder.encode(markup));
+      };
+      const forward = async (value: Uint8Array): Promise<void> => {
+        if (!first) {
           controller.enqueue(value);
+          return;
         }
+        first = false;
+        let head = DOCTYPE + new TextDecoder().decode(value);
+        if (options.transformShell !== undefined) {
+          head = await options.transformShell(head, url);
+        }
+        // The LAST one: a `</body>` inside the page's own text is escaped,
+        // but a shell is free to contain more than one element that ends in
+        // one, and the document's is the final.
+        const cut = head.lastIndexOf("</body>");
+        if (cut !== -1) {
+          tail = head.slice(cut);
+          head = head.slice(0, cut);
+        }
+        controller.enqueue(encoder.encode(head));
+      };
+      try {
+        await relay(reader, channel, forward, inject);
       } finally {
         reading = null;
         reader.releaseLock();
       }
+      channel.renderFinished();
+      await channel.written();
+      inject(channel.drain());
       const late = redirectScript(answer());
       if (late !== "") controller.enqueue(encoder.encode(late));
       if (context !== "") controller.enqueue(encoder.encode(context));

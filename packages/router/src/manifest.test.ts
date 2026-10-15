@@ -149,7 +149,7 @@ group("verifyRouteChains", () => {
         await verifyRouteChains({
           routeTree: routes,
           reachability: new Map([["/admin", new Set(["x"])]]),
-          lookup: (id) => (id === "x" ? (fn as never) : undefined),
+          lookup: (id) => (id === "x" ? fn : undefined),
         }),
       ).toEqual([]);
     }

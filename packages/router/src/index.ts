@@ -37,10 +37,21 @@ export {
 } from "./matcher.ts";
 
 export {
+  type LocationRewrite,
+  type LocationRewriteFunction,
+  composeRewrites,
+  rewriteHistory,
+  rewriteHref,
+} from "./rewrite.ts";
+
+export {
+  type ScrollPosition,
   type ScrollRestoration,
+  type ViewTransitionInfo,
   type ViewTransitionOptions,
   SCROLL_ID_ATTRIBUTE,
   type ScrollOptions,
+  savedScrollPosition,
   scrollKey,
   scrollRestoration,
   withViewTransition,
@@ -88,7 +99,9 @@ export {
  * `@barqjs/router/server` still exports the class for code that needs it.
  */
 export {
+  type NotFoundOptions,
   type RedirectLike,
+  type RedirectOptions,
   NOT_FOUND,
   NotFound,
   PathParamError,
@@ -110,11 +123,15 @@ export {
   type RouteComponent,
   type RouteDefinition,
   type RouteHandler,
+  type RouteHandlerEntry,
+  type RouteHandlers,
   type RouteLifecycle,
   type RouteHandlerContext,
   type RouteMethod,
   type RouteProps,
   type RouteServer,
+  type SsrDecider,
+  type Validated,
   flattenRoutes,
   pathOf,
   preloadMatched,
@@ -134,6 +151,7 @@ export {
   type MatchRouteProps,
   Await,
   ClientOnly,
+  useHydrated,
   MatchRoute,
   Link,
   NavLink,
@@ -142,24 +160,51 @@ export {
   Router,
   RouterContext,
   RouterProvider,
+  createLink,
   linkAttrHref,
+  linkOptions,
   renderDepth,
+  useLinkProps,
   useRouteMatch,
   useRouter,
 } from "./components.ts";
 
 export {
+  type CatchBoundaryProps,
+  type CatchNotFoundProps,
+  CatchBoundary,
+  CatchNotFound,
+} from "./catch.ts";
+
+export {
+  type BlockProps,
+  type BlockerResolver,
+  type ShouldBlockArgs,
+  type UseBlockerOptions,
+  Block,
+} from "./blocker.ts";
+
+export { type MatchHookOptions, type RouteApi, getRouteApi, useAwaited } from "./match.ts";
+
+export {
   type FileRoutesById,
+  type NavigateFn,
+  type NavigateOptionsFor,
+  type ParamsOfPath,
   type Register,
   type RegisteredRouteTree,
+  type ResolveRelativePath,
   type RouteId,
   type RoutePath,
+  type SearchOfRoute,
+  type ToOptionsFor,
   type ToPath,
 } from "./register.ts";
 
 export {
   type FileRoute,
   type RootRouteOptions,
+  type Selecting,
   ROOT_ROUTE_ID,
   createFileRoute,
   createRootRoute,
@@ -195,11 +240,17 @@ export {
 } from "./head.ts";
 
 export {
+  type RouterStateValue,
   useBlocker,
   useCanGoBack,
+  useChildMatches,
+  useElementScrollRestoration,
   useInvalidate,
+  useLoaderData,
+  useLoaderDeps,
   useLocation,
   useMatch,
+  useParentMatches,
   useRouteContext,
   useRouterState,
   useMatches,
@@ -214,20 +265,29 @@ export {
 export {
   type BeforeLoadResult,
   type BeforeLoadSeed,
+  type BlockOptions,
   type Blocker,
+  type BlockerLocation,
+  type BuiltLocation,
   type Guard,
+  type HistoryAction,
   type LoadCause,
   type NavigateOptions,
   type RouteDefaults,
   type MatchRouteOptions,
   type RouteMask,
+  type RouteMatch,
   type RouterEvent,
   type RouterEventType,
   type RouterListener,
   type RouterConfig,
+  type RouterSnapshot,
   type RouterState,
   type SsrMode,
+  type ToMaskOptions,
+  type ToOptions,
   ROUTE_CONTEXT_GLOBAL,
+  createRouteMask,
   createRouter,
   depsKey,
   unmask,
@@ -235,6 +295,17 @@ export {
   resolveSsr,
   searchKey,
 } from "./router.ts";
+
+export {
+  type RouterOptions,
+  type ServerSsr,
+  type WrapComponent,
+  type WrapProps,
+  ROUTER_DEHYDRATED_GLOBAL,
+  hydrateRouter,
+  takeDehydrated,
+  withRouterOverrides,
+} from "./ssr.ts";
 
 /**
  * The route-action manifest is NOT exported here.
