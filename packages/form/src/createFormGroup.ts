@@ -1,0 +1,401 @@
+import { type Accessor, type Child, type Incoming, type JSXElement, untrack } from "@barqjs/core";
+import {
+  type AnyFormGroupApi,
+  type DeepKeys,
+  type DeepValue,
+  FormGroupApi,
+  type FormGroupApiOptions,
+  type FormGroupOptions,
+} from "@tanstack/form-core";
+
+import { type Slots, mountWith, optionsOf, renderSlot, updateWith } from "./internal.ts";
+import type {
+  MaybeFormAsyncValidator,
+  MaybeFormValidator,
+  MaybeGroupAsyncValidator,
+  MaybeGroupValidator,
+} from "./types.ts";
+import { useSelector } from "./useStore.ts";
+
+function formGroupOf(opts: () => AnyFormGroupApi["options"]): Accessor<AnyFormGroupApi> {
+  const api: AnyFormGroupApi = new FormGroupApi(untrack(opts));
+
+  mountWith(api);
+  updateWith(opts, api.update);
+
+  const track = useSelector(api.store);
+  return () => {
+    track();
+    return api;
+  };
+}
+
+export function createFormGroup<
+  TParentData,
+  TName extends DeepKeys<TParentData>,
+  TData extends DeepValue<TParentData, TName>,
+  TOnMount extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnChange extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnChangeAsync extends MaybeGroupAsyncValidator<TParentData, TName, TData>,
+  TOnBlur extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnBlurAsync extends MaybeGroupAsyncValidator<TParentData, TName, TData>,
+  TOnSubmit extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnSubmitAsync extends MaybeGroupAsyncValidator<TParentData, TName, TData>,
+  TOnDynamic extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnDynamicAsync extends MaybeGroupAsyncValidator<TParentData, TName, TData>,
+  TSubmitMeta,
+  TFormOnMount extends MaybeFormValidator<TParentData>,
+  TFormOnChange extends MaybeFormValidator<TParentData>,
+  TFormOnChangeAsync extends MaybeFormAsyncValidator<TParentData>,
+  TFormOnBlur extends MaybeFormValidator<TParentData>,
+  TFormOnBlurAsync extends MaybeFormAsyncValidator<TParentData>,
+  TFormOnSubmit extends MaybeFormValidator<TParentData>,
+  TFormOnSubmitAsync extends MaybeFormAsyncValidator<TParentData>,
+  TFormOnDynamic extends MaybeFormValidator<TParentData>,
+  TFormOnDynamicAsync extends MaybeFormAsyncValidator<TParentData>,
+  TFormOnServer extends MaybeFormAsyncValidator<TParentData>,
+  TParentSubmitMeta,
+>(
+  opts: () => FormGroupApiOptions<
+    TParentData,
+    TName,
+    TData,
+    TOnMount,
+    TOnChange,
+    TOnChangeAsync,
+    TOnBlur,
+    TOnBlurAsync,
+    TOnSubmit,
+    TOnSubmitAsync,
+    TOnDynamic,
+    TOnDynamicAsync,
+    TSubmitMeta,
+    TFormOnMount,
+    TFormOnChange,
+    TFormOnChangeAsync,
+    TFormOnBlur,
+    TFormOnBlurAsync,
+    TFormOnSubmit,
+    TFormOnSubmitAsync,
+    TFormOnDynamic,
+    TFormOnDynamicAsync,
+    TFormOnServer,
+    TParentSubmitMeta
+  >,
+): Accessor<
+  FormGroupApi<
+    TParentData,
+    TName,
+    TData,
+    TOnMount,
+    TOnChange,
+    TOnChangeAsync,
+    TOnBlur,
+    TOnBlurAsync,
+    TOnSubmit,
+    TOnSubmitAsync,
+    TOnDynamic,
+    TOnDynamicAsync,
+    TSubmitMeta,
+    TFormOnMount,
+    TFormOnChange,
+    TFormOnChangeAsync,
+    TFormOnBlur,
+    TFormOnBlurAsync,
+    TFormOnSubmit,
+    TFormOnSubmitAsync,
+    TFormOnDynamic,
+    TFormOnDynamicAsync,
+    TFormOnServer,
+    TParentSubmitMeta
+  >
+> {
+  return formGroupOf(opts as never) as never;
+}
+
+export type FormGroupComponentBoundProps<
+  TParentData,
+  TName extends DeepKeys<TParentData>,
+  TData extends DeepValue<TParentData, TName>,
+  TOnMount extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnChange extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnChangeAsync extends MaybeGroupAsyncValidator<TParentData, TName, TData>,
+  TOnBlur extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnBlurAsync extends MaybeGroupAsyncValidator<TParentData, TName, TData>,
+  TOnSubmit extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnSubmitAsync extends MaybeGroupAsyncValidator<TParentData, TName, TData>,
+  TOnDynamic extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnDynamicAsync extends MaybeGroupAsyncValidator<TParentData, TName, TData>,
+  TSubmitMeta,
+  TFormOnMount extends MaybeFormValidator<TParentData>,
+  TFormOnChange extends MaybeFormValidator<TParentData>,
+  TFormOnChangeAsync extends MaybeFormAsyncValidator<TParentData>,
+  TFormOnBlur extends MaybeFormValidator<TParentData>,
+  TFormOnBlurAsync extends MaybeFormAsyncValidator<TParentData>,
+  TFormOnSubmit extends MaybeFormValidator<TParentData>,
+  TFormOnSubmitAsync extends MaybeFormAsyncValidator<TParentData>,
+  TFormOnDynamic extends MaybeFormValidator<TParentData>,
+  TFormOnDynamicAsync extends MaybeFormAsyncValidator<TParentData>,
+  TFormOnServer extends MaybeFormAsyncValidator<TParentData>,
+  TParentSubmitMeta,
+  ExtendedApi = unknown,
+> = Incoming<
+  FormGroupOptions<
+    TParentData,
+    TName,
+    TData,
+    TOnMount,
+    TOnChange,
+    TOnChangeAsync,
+    TOnBlur,
+    TOnBlurAsync,
+    TOnSubmit,
+    TOnSubmitAsync,
+    TOnDynamic,
+    TOnDynamicAsync,
+    TSubmitMeta,
+    TFormOnMount,
+    TFormOnChange,
+    TFormOnChangeAsync,
+    TFormOnBlur,
+    TFormOnBlurAsync,
+    TFormOnSubmit,
+    TFormOnSubmitAsync,
+    TFormOnDynamic,
+    TFormOnDynamicAsync,
+    TFormOnServer,
+    TParentSubmitMeta
+  >
+> & {
+  children: (
+    group: Accessor<
+      FormGroupApi<
+        TParentData,
+        TName,
+        TData,
+        TOnMount,
+        TOnChange,
+        TOnChangeAsync,
+        TOnBlur,
+        TOnBlurAsync,
+        TOnSubmit,
+        TOnSubmitAsync,
+        TOnDynamic,
+        TOnDynamicAsync,
+        TSubmitMeta,
+        TFormOnMount,
+        TFormOnChange,
+        TFormOnChangeAsync,
+        TFormOnBlur,
+        TFormOnBlurAsync,
+        TFormOnSubmit,
+        TFormOnSubmitAsync,
+        TFormOnDynamic,
+        TFormOnDynamicAsync,
+        TFormOnServer,
+        TParentSubmitMeta
+      >
+    > &
+      ExtendedApi,
+  ) => Child;
+};
+
+export type FormGroupComponent<
+  in out TParentData,
+  in out TFormOnMount extends MaybeFormValidator<TParentData>,
+  in out TFormOnChange extends MaybeFormValidator<TParentData>,
+  in out TFormOnChangeAsync extends MaybeFormAsyncValidator<TParentData>,
+  in out TFormOnBlur extends MaybeFormValidator<TParentData>,
+  in out TFormOnBlurAsync extends MaybeFormAsyncValidator<TParentData>,
+  in out TFormOnSubmit extends MaybeFormValidator<TParentData>,
+  in out TFormOnSubmitAsync extends MaybeFormAsyncValidator<TParentData>,
+  in out TFormOnDynamic extends MaybeFormValidator<TParentData>,
+  in out TFormOnDynamicAsync extends MaybeFormAsyncValidator<TParentData>,
+  in out TFormOnServer extends MaybeFormAsyncValidator<TParentData>,
+  in out TParentSubmitMeta,
+  in out ExtendedApi = unknown,
+> = <
+  const TName extends DeepKeys<TParentData>,
+  TData extends DeepValue<TParentData, TName>,
+  TOnMount extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnChange extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnChangeAsync extends MaybeGroupAsyncValidator<TParentData, TName, TData>,
+  TOnBlur extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnBlurAsync extends MaybeGroupAsyncValidator<TParentData, TName, TData>,
+  TOnSubmit extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnSubmitAsync extends MaybeGroupAsyncValidator<TParentData, TName, TData>,
+  TOnDynamic extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnDynamicAsync extends MaybeGroupAsyncValidator<TParentData, TName, TData>,
+  TSubmitMeta,
+>(
+  props: FormGroupComponentBoundProps<
+    TParentData,
+    TName,
+    TData,
+    TOnMount,
+    TOnChange,
+    TOnChangeAsync,
+    TOnBlur,
+    TOnBlurAsync,
+    TOnSubmit,
+    TOnSubmitAsync,
+    TOnDynamic,
+    TOnDynamicAsync,
+    TSubmitMeta,
+    TFormOnMount,
+    TFormOnChange,
+    TFormOnChangeAsync,
+    TFormOnBlur,
+    TFormOnBlurAsync,
+    TFormOnSubmit,
+    TFormOnSubmitAsync,
+    TFormOnDynamic,
+    TFormOnDynamicAsync,
+    TFormOnServer,
+    TParentSubmitMeta,
+    ExtendedApi
+  >,
+) => JSXElement;
+
+export type FormGroupComponentProps<
+  TParentData,
+  TName extends DeepKeys<TParentData>,
+  TData extends DeepValue<TParentData, TName>,
+  TOnMount extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnChange extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnChangeAsync extends MaybeGroupAsyncValidator<TParentData, TName, TData>,
+  TOnBlur extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnBlurAsync extends MaybeGroupAsyncValidator<TParentData, TName, TData>,
+  TOnSubmit extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnSubmitAsync extends MaybeGroupAsyncValidator<TParentData, TName, TData>,
+  TOnDynamic extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnDynamicAsync extends MaybeGroupAsyncValidator<TParentData, TName, TData>,
+  TSubmitMeta,
+  TFormOnMount extends MaybeFormValidator<TParentData>,
+  TFormOnChange extends MaybeFormValidator<TParentData>,
+  TFormOnChangeAsync extends MaybeFormAsyncValidator<TParentData>,
+  TFormOnBlur extends MaybeFormValidator<TParentData>,
+  TFormOnBlurAsync extends MaybeFormAsyncValidator<TParentData>,
+  TFormOnSubmit extends MaybeFormValidator<TParentData>,
+  TFormOnSubmitAsync extends MaybeFormAsyncValidator<TParentData>,
+  TFormOnDynamic extends MaybeFormValidator<TParentData>,
+  TFormOnDynamicAsync extends MaybeFormAsyncValidator<TParentData>,
+  TFormOnServer extends MaybeFormAsyncValidator<TParentData>,
+  TParentSubmitMeta,
+> = Incoming<
+  FormGroupApiOptions<
+    TParentData,
+    TName,
+    TData,
+    TOnMount,
+    TOnChange,
+    TOnChangeAsync,
+    TOnBlur,
+    TOnBlurAsync,
+    TOnSubmit,
+    TOnSubmitAsync,
+    TOnDynamic,
+    TOnDynamicAsync,
+    TSubmitMeta,
+    TFormOnMount,
+    TFormOnChange,
+    TFormOnChangeAsync,
+    TFormOnBlur,
+    TFormOnBlurAsync,
+    TFormOnSubmit,
+    TFormOnSubmitAsync,
+    TFormOnDynamic,
+    TFormOnDynamicAsync,
+    TFormOnServer,
+    TParentSubmitMeta
+  >
+> & {
+  children: (
+    group: Accessor<
+      FormGroupApi<
+        TParentData,
+        TName,
+        TData,
+        TOnMount,
+        TOnChange,
+        TOnChangeAsync,
+        TOnBlur,
+        TOnBlurAsync,
+        TOnSubmit,
+        TOnSubmitAsync,
+        TOnDynamic,
+        TOnDynamicAsync,
+        TSubmitMeta,
+        TFormOnMount,
+        TFormOnChange,
+        TFormOnChangeAsync,
+        TFormOnBlur,
+        TFormOnBlurAsync,
+        TFormOnSubmit,
+        TFormOnSubmitAsync,
+        TFormOnDynamic,
+        TFormOnDynamicAsync,
+        TFormOnServer,
+        TParentSubmitMeta
+      >
+    >,
+  ) => Child;
+};
+
+export function FormGroup<
+  TParentData,
+  TName extends DeepKeys<TParentData>,
+  TData extends DeepValue<TParentData, TName>,
+  TOnMount extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnChange extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnChangeAsync extends MaybeGroupAsyncValidator<TParentData, TName, TData>,
+  TOnBlur extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnBlurAsync extends MaybeGroupAsyncValidator<TParentData, TName, TData>,
+  TOnSubmit extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnSubmitAsync extends MaybeGroupAsyncValidator<TParentData, TName, TData>,
+  TOnDynamic extends MaybeGroupValidator<TParentData, TName, TData>,
+  TOnDynamicAsync extends MaybeGroupAsyncValidator<TParentData, TName, TData>,
+  TSubmitMeta,
+  TFormOnMount extends MaybeFormValidator<TParentData>,
+  TFormOnChange extends MaybeFormValidator<TParentData>,
+  TFormOnChangeAsync extends MaybeFormAsyncValidator<TParentData>,
+  TFormOnBlur extends MaybeFormValidator<TParentData>,
+  TFormOnBlurAsync extends MaybeFormAsyncValidator<TParentData>,
+  TFormOnSubmit extends MaybeFormValidator<TParentData>,
+  TFormOnSubmitAsync extends MaybeFormAsyncValidator<TParentData>,
+  TFormOnDynamic extends MaybeFormValidator<TParentData>,
+  TFormOnDynamicAsync extends MaybeFormAsyncValidator<TParentData>,
+  TFormOnServer extends MaybeFormAsyncValidator<TParentData>,
+  TParentSubmitMeta,
+>(
+  props: FormGroupComponentProps<
+    TParentData,
+    TName,
+    TData,
+    TOnMount,
+    TOnChange,
+    TOnChangeAsync,
+    TOnBlur,
+    TOnBlurAsync,
+    TOnSubmit,
+    TOnSubmitAsync,
+    TOnDynamic,
+    TOnDynamicAsync,
+    TSubmitMeta,
+    TFormOnMount,
+    TFormOnChange,
+    TFormOnChangeAsync,
+    TFormOnBlur,
+    TFormOnBlurAsync,
+    TFormOnSubmit,
+    TFormOnSubmitAsync,
+    TFormOnDynamic,
+    TFormOnDynamicAsync,
+    TFormOnServer,
+    TParentSubmitMeta
+  >,
+): JSXElement {
+  const slots: Slots = props;
+  const group = formGroupOf(() => optionsOf(slots, "FormGroup") as never);
+  return renderSlot(slots.children, group);
+}
