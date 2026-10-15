@@ -269,7 +269,8 @@ describe("L5-S the streaming mechanism itself", () => {
   for (const name of Object.keys(STREAM_SOURCES)) {
     // The dehydrated fixture never settles by design, so it has its own row
     // below rather than the swap-and-converge one.
-    if (name === "stream-dehydrated-boundary") continue;
+    if (name === "stream-dehydrated-boundary" || name === "stream-errored-around-boundary")
+      continue;
     test(`${name} defers, swaps, converges and hydrates`, async () => {
       const result = (await STREAMED).get(name) as StreamResult;
 
@@ -358,9 +359,35 @@ describe("L5-S the streaming mechanism itself", () => {
     expect(result.hydratedShape).toContain("after");
   }, 60_000);
 
+  /**
+   * A failure after the shell, outside the boundary that failed. The stream has
+   * sent the error boundary's markup already, so nothing is swapped: the loading
+   * fallback stands and the client rebuilds the content, which fails from the
+   * seed and shows the error fallback. The buffered page shows that fallback
+   * itself, and the client claims it rather than building it again.
+   */
+  test("a failure the stream cannot place is left to the client, and a buffered page places it", async () => {
+    const result = (await STREAMED).get("stream-errored-around-boundary") as StreamResult;
+
+    expect({ swaps: result.swaps, templates: result.templates }).toEqual({
+      swaps: 0,
+      templates: 0,
+    });
+    expect(result.streamedShape).toContain("skel");
+    expect(result.bufferedShape).toContain("failed: late boom");
+    expect(result.bufferedShape).not.toContain("skel");
+    expect({ recovered: result.recovered, mismatches: result.mismatches }).toEqual({
+      recovered: false,
+      mismatches: [],
+    });
+    expect<string | null>(result.hydratedShape).toBe(result.bufferedShape);
+  }, 60_000);
+
   test("each boundary is delivered exactly once: one template, one swap", async () => {
     for (const [name, result] of await STREAMED) {
-      if (name === "stream-dehydrated-boundary") continue;
+      if (name === "stream-dehydrated-boundary" || name === "stream-errored-around-boundary") {
+        continue;
+      }
       // A template with no swap is content that never reaches the page; a swap
       // with no template is a snippet looking for a payload that never arrived.
       expect({ name, templates: result.templates, swaps: result.swaps }).toEqual({

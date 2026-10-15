@@ -178,6 +178,53 @@ export default function StreamDehydratedBoundary() {
 }
 `,
 
+  /**
+   * An error boundary INSIDE a loading boundary, whose read fails after the
+   * shell. The swap delivers the error boundary's fallback, and the client has
+   * to claim it as one: its own read fails from the seed in the same pass.
+   */
+  "stream-errored-inside-boundary": `
+import { Errored, Loading, createMemo } from "@barqjs/core"
+export default function StreamErroredInsideBoundary() {
+  const bad = createMemo(() => new Promise((_, reject) => setTimeout(() => reject(new Error("late boom")), 0)))
+  return (
+    <div>
+      <p class="before">before</p>
+      <Loading fallback={<span class="skel">skel</span>}>
+        <Errored fallback={(error) => <em class="err">failed: {error().message}</em>}>
+          <b class="content">{() => bad()}</b>
+        </Errored>
+      </Loading>
+      <p class="after">after</p>
+    </div>
+  )
+}
+`,
+
+  /**
+   * An error boundary AROUND a loading boundary whose read fails after the
+   * shell. A stream has sent the error boundary's markup by then, so the
+   * loading fallback stands and the client rebuilds the failed content; a
+   * buffered page is still being assembled and shows the error fallback.
+   */
+  "stream-errored-around-boundary": `
+import { Errored, Loading, createMemo } from "@barqjs/core"
+export default function StreamErroredAroundBoundary() {
+  const bad = createMemo(() => new Promise((_, reject) => setTimeout(() => reject(new Error("late boom")), 0)))
+  return (
+    <div>
+      <p class="before">before</p>
+      <Errored fallback={(error) => <em class="err">failed: {error().message}</em>}>
+        <Loading fallback={<span class="skel">skel</span>}>
+          <b class="content">{() => bad()}</b>
+        </Loading>
+      </Errored>
+      <p class="after">after</p>
+    </div>
+  )
+}
+`,
+
   /** A boundary INSIDE a boundary, the inner one settling last. */
   "stream-nested-boundaries": `
 import { Loading, createMemo } from "@barqjs/core"

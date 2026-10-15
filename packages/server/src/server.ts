@@ -35,8 +35,18 @@ import {
   settleStep,
   thrownBy,
 } from "@barqjs/core/internal";
-import { type SsrHtml, type StreamSink, esc, escapeAttribute, setStreamSink } from "./ssr.ts";
+import {
+  type LateCatcher,
+  type SsrHtml,
+  type StreamSink,
+  esc,
+  escapeAttribute,
+  setStreamSink,
+} from "./ssr.ts";
 import { createSeedEncoder, encodeSeed, serializationAdapters } from "./codec.ts";
+import { SWAP_SNIPPET, swapDeferredRange } from "#swap";
+
+export { swapDeferredRange };
 
 /**
  * Render synchronously to an HTML string. Pending async values render
@@ -157,10 +167,11 @@ export async function renderPage(
   // settles exactly one level of nesting, so a boundary inside a boundary
   // shipped a skeleton whatever happened.
   const parked: Buffered[] = [];
+  const catchers: LateCatcher[] = [];
   let nextId = 0;
   let stamp: string | null = null;
   const sink: StreamSink = {
-    defer(resume, fallback, flags, parkedOn): string {
+    defer(resume, fallback, flags, parkedOn, catcher): string {
       const id = nextId++;
       stamp ??= crypto.randomUUID();
       const open = `<!--[b:${id}:${stamp}-->`;
@@ -173,8 +184,17 @@ export async function renderPage(
         hydrate: (flags & HYDRATE) !== 0,
         open,
         close,
+        catcher,
       });
       return open + fallback + close;
+    },
+    guard(catcher, content): string {
+      const id = nextId++;
+      stamp ??= crypto.randomUUID();
+      catcher.open = `<!--[e:${id}:${stamp}-->`;
+      catcher.close = `<!--]e:${id}:${stamp}-->`;
+      catchers.push(catcher);
+      return catcher.open + content + catcher.close;
     },
   };
 
@@ -213,8 +233,11 @@ export async function renderPage(
       setStreamSink(prevSink);
     }
 
-    // Session-scoped: concurrent renders don't wait on each other's fetches
-    await settle(session);
+    // Session-scoped: concurrent renders don't wait on each other's fetches.
+    // Bounded by the boundary deadline, because `settle` waits for every flight
+    // and a fetch that never answers would hold the response for good; what is
+    // still parked past it is abandoned by the drain below.
+    await withinDeadline(settle(session), BOUNDARY_TIMEOUT);
 
     if (stringMode) markup = await drainParked(markup, parked, sink, session);
 
@@ -224,9 +247,19 @@ export async function renderPage(
     // parked is still here.
     html = stringMode ? markup : ((container as HTMLElement | null)?.innerHTML ?? "");
     for (const record of parked) {
-      html = replaceParked(html, record, (fallback) => deferredRange(record.id, fallback));
+      html = replaceBetween(html, record.open, record.close, (fallback) =>
+        deferredRange(record.id, fallback),
+      );
     }
-    data = await settleNested(getHydrationData(session));
+    for (const catcher of catchers) {
+      html = replaceBetween(html, catcher.open!, catcher.close!, (inner) => inner);
+    }
+    // A key whose read FAILED is owed to the client as much as one that
+    // settled: the page already shows the error boundary that caught it, and a
+    // client that refetched instead would build the content over that markup.
+    const flights = pendingSeedsOf(session);
+    abandonPendingSeeds(session);
+    data = await settleNested(await withFailures(getHydrationData(session), flights));
   } finally {
     // Whether the render finished or threw. Anything still in flight is given
     // up on, exactly as the streamed arm does: a buffered page settles
@@ -260,19 +293,26 @@ async function drainParked(
 ): Promise<string> {
   let out = markup;
   const unsettled: Buffered[] = [];
+  // Set once a failure has replaced an error boundary's markup, which may have
+  // taken boundaries still parked inside it off the page.
+  let cut = false;
   while (parked.length > 0) {
     const round = parked.splice(0, parked.length);
     const again: Buffered[] = [];
     for (const record of round) {
+      if (cut && !out.includes(record.open)) continue;
       const restore = setAsyncSession(session);
       const outerSink = setStreamSink(sink);
-      let settled: string | null;
+      let settled: string | null = null;
       try {
         settled = record.resume();
       } catch (error) {
-        if (!(error instanceof NotReadyError)) throw error;
+        if (!(error instanceof NotReadyError)) {
+          out = failLate(out, record, error);
+          cut = true;
+          continue;
+        }
         record.parkedOn = error;
-        settled = null;
       } finally {
         setStreamSink(outerSink);
         setAsyncSession(restore);
@@ -289,7 +329,7 @@ async function drainParked(
       // the shell. A page that does not hydrate keeps neither comment: the
       // markers existed only so this patch could find the range.
       const content = record.hydrate ? `<!--[-->${settled}<!--]-->` : settled;
-      out = replaceParked(out, record, () => content);
+      out = replaceBetween(out, record.open, record.close, () => content);
     }
     if (again.length > 0) parked.unshift(...again);
     if (parked.length === 0) break;
@@ -315,9 +355,70 @@ async function drainParked(
   return out;
 }
 
+async function withinDeadline(work: Promise<unknown>, ms: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      work,
+      new Promise<void>((resolve) => {
+        timer = setTimeout(resolve, ms);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** What each parked boundary's last attempt threw, for `settleStep` to wait on. */
 function flightsOf(parked: readonly Continuation[]): NotReadyError[] {
   return parked.map((record) => record.parkedOn);
+}
+
+/**
+ * A parked boundary failed on a resume, after the error boundary around it
+ * had written its markup. That error boundary's fallback replaces all of it,
+ * which is what it would have shown had the failure come while it was still
+ * building. With no error boundary around it the render fails, as it does when
+ * the shell throws.
+ */
+function failLate(page: string, record: Buffered, error: unknown): string {
+  // An outer failure already took this boundary off the page.
+  if (!page.includes(record.open)) return page;
+  const catcher = record.catcher;
+  if (catcher === null || catcher.open === null || catcher.close === null) throw error;
+  return replaceBetween(page, catcher.open, catcher.close, () => {
+    try {
+      return catcher.fallback(thrownBy(error));
+    } catch (fallbackError) {
+      // A fallback that is not ready yet has nothing to show, the rule
+      // `loadingBoundary` applies to its own.
+      if (fallbackError instanceof NotReadyError) return "";
+      throw fallbackError;
+    }
+  });
+}
+
+/**
+ * The keys whose reads failed, added to what settled, as the rejections they
+ * are. Only a failure is added: a flight still open when the render ended was
+ * abandoned, and the client fetches that one itself.
+ */
+async function withFailures(
+  data: Record<string, unknown>,
+  flights: Record<string, Promise<unknown>>,
+): Promise<Record<string, unknown>> {
+  let out = data;
+  for (const [key, flight] of Object.entries(flights)) {
+    if (Object.hasOwn(data, key)) continue;
+    const failure = await flight.then(
+      () => null,
+      (error: unknown) => ({ error }),
+    );
+    if (failure === null) continue;
+    if (out === data) out = { ...data };
+    out[key] = handledRejection(failure.error);
+  }
+  return out;
 }
 
 /**
@@ -332,19 +433,18 @@ function flightsOf(parked: readonly Continuation[]): NotReadyError[] {
  * reproduce, and the close marker names its boundary, so no depth is counted
  * and no other range's close can be taken for this one's.
  */
-function replaceParked(
+function replaceBetween(
   page: string,
-  record: Buffered,
-  write: (fallback: string) => string,
+  open: string,
+  close: string,
+  write: (inner: string) => string,
 ): string {
-  const start = page.indexOf(record.open);
+  const start = page.indexOf(open);
   if (start === -1) return page;
-  const inner = start + record.open.length;
-  const end = page.indexOf(record.close, inner);
+  const inner = start + open.length;
+  const end = page.indexOf(close, inner);
   if (end === -1) return page;
-  return (
-    page.slice(0, start) + write(page.slice(inner, end)) + page.slice(end + record.close.length)
-  );
+  return page.slice(0, start) + write(page.slice(inner, end)) + page.slice(end + close.length);
 }
 
 /**
@@ -500,6 +600,8 @@ interface Buffered extends Continuation {
   hydrate: boolean;
   open: string;
   close: string;
+  /** The error boundary that stood around it, for a failure on a later resume. */
+  catcher: LateCatcher | null;
 }
 
 /** A boundary parked by a stream, with where on the page it stands. */
@@ -559,79 +661,6 @@ const BOUNDARY_TIMEOUT = 5_000;
  * backstop rather than inheriting the per-boundary one.
  */
 const STREAM_GRACE = 1_000;
-
-/**
- * The client half of a swap: replace the range between `<!--[b:n-->` and its
- * matching `<!--]-->` with the template that just arrived.
- *
- * It reads the boundary comments the string backend wrote, which is what those
- * bytes are paid for. Nested ranges are why the scan counts
- * depth rather than stopping at the first close: a fallback may itself contain a
- * range, and its `<!--]-->` is not this boundary's.
- *
- * Three constraints, and each of them is a property of the SOURCE rather than of
- * the behaviour, because this function is shipped by `toString()`:
- *
- * - it closes over NOTHING. Every name it uses is a global or a local, so the
- *   text below runs on a page that has none of this module.
- * - it contains no `<`. Script data is raw text — the tokenizer decodes nothing
- *   inside it, so there is no entity to escape a `<` with, and a `<` there is
- *   the first byte of the sequence that can leave the element early. Hence the
- *   countdown loop rather than `i < dead.length`.
- * - it is the FUNCTION the tests drive. A snippet written as a string literal
- *   beside a test that paraphrases it is two implementations, and the one that
- *   ships is the one nothing runs.
- */
-export function swapDeferredRange(n: number, wrapped?: boolean): void {
-  const t = document.querySelector<HTMLTemplateElement>(`template[data-barq="${n}"]`);
-  if (!t) return;
-  const w = document.createTreeWalker(document.body, 128);
-  let c: Node | null;
-  let open: Comment | null = null;
-  while ((c = w.nextNode())) {
-    if ((c as Comment).data === `[b:${n}`) {
-      open = c as Comment;
-      break;
-    }
-  }
-  if (open === null) return;
-  let depth = 0;
-  let node: Node | null = open.nextSibling;
-  const dead: Node[] = [];
-  while (node) {
-    if (node.nodeType === 8) {
-      const data = (node as Comment).data;
-      if (data.charAt(0) === "[") depth++;
-      else if (data === "]") {
-        if (depth === 0) break;
-        depth--;
-      }
-    }
-    dead.push(node);
-    node = node.nextSibling;
-  }
-  for (let i = dead.length; i--;) dead[i].parentNode?.removeChild(dead[i]);
-  // A payload for foreign content arrives inside one element of that
-  // namespace, which is what made the parser read it as such. The element is
-  // the stream's and not the page's, so only what it holds goes in.
-  const wrap = wrapped ? t.content.firstChild : null;
-  if (wrap) {
-    while (wrap.firstChild) t.content.insertBefore(wrap.firstChild, wrap);
-    t.content.removeChild(wrap);
-  }
-  open.parentNode?.insertBefore(t.content, node);
-  // Back to the PLAIN open comment, not `[0`. Once the content is in, this
-  // range is indistinguishable from one the shell settled, and it has to read
-  // that way to both readers: `loadingBoundary` claims a settled range and
-  // parks a `b:` one, and `reconcileKey` compares whatever key is here against
-  // the client's own — `[0` announced a branch key of "0" that no client would
-  // ever match.
-  open.data = "[";
-  t.parentNode?.removeChild(t);
-}
-
-/** The same function, as the bytes a page gets. Inlined once per stream. */
-const SWAP_SNIPPET = `window.__BARQ_SWAP__=${swapDeferredRange.toString()};`;
 
 /**
  * The namespace a deferred boundary stands in. A `<template>` is parsed as
@@ -867,6 +896,9 @@ export function renderToStream(
       parked.push({ id, resume, at: Date.now(), parkedOn, namespace: "html" });
       return deferredRange(id, fallback);
     },
+    guard(_catcher, markup): string {
+      return markup;
+    },
   };
 
   // One resolve, called from every path that stops the render: the consumer
@@ -937,7 +969,6 @@ export function renderToStream(
     if (!any) return "";
     const header = seededHeader ? "" : `${seeds.header};`;
     seededHeader = true;
-    const keys = Object.keys(fresh);
     // A loader may return a value with a promise still inside it — deferred
     // data. `crossSerialize` refuses one outright, so a payload that carries one
     // goes through the streaming encoder and its resolutions are enqueued as
@@ -956,7 +987,6 @@ export function renderToStream(
           );
         })()
       : seeds.encode(fresh);
-    void keys;
     return (
       `<script${nonceAttr(options?.nonce)}>${header}` +
       adapted(
@@ -1097,7 +1127,190 @@ export function renderToStream(
     options?.onAllReady?.();
   };
 
+  // BACK-PRESSURE. A slow reader holds the render rather than the render
+  // queueing the page in memory for it: after each chunk the work waits until
+  // the consumer has room, and resumes no boundary in the meantime. The tail
+  // that settles promised keys is small and is never held.
+  let wake: (() => void) | null = null;
+  const full = (target: ReadableStreamDefaultController<Uint8Array>): boolean =>
+    !ended && target.desiredSize !== null && target.desiredSize <= 0;
+  // Raced with `stopped`, so an abort or the deadline ends a paused render
+  // without waiting for a reader that may never come back.
+  const room = async (target: ReadableStreamDefaultController<Uint8Array>): Promise<void> => {
+    while (full(target)) {
+      await Promise.race([
+        new Promise<void>((resolve) => {
+          wake = resolve;
+        }),
+        stopped,
+      ]);
+    }
+  };
+  const send = async (
+    target: ReadableStreamDefaultController<Uint8Array>,
+    text: string,
+  ): Promise<void> => {
+    // A consumer that left has closed the stream, and enqueueing throws.
+    if (consumerCancelled) return;
+    target.enqueue(encoder.encode(text));
+    await room(target);
+  };
+
+  const run = async (controller: ReadableStreamDefaultController<Uint8Array>): Promise<void> => {
+    try {
+      controller.enqueue(encoder.encode(shell));
+      // The status is settled from here: these bytes are gone and nothing
+      // after them can change the response line. React draws the same line
+      // with `onShellReady`.
+      options?.onShellReady?.();
+      await room(controller);
+      // Pre-hydration input capture, on the STREAMED path too.
+      //
+      // `hydrationScriptFor` installs it for `renderPage`, and nothing
+      // installed it here — so the DEFAULT page (`createPageHandler` streams
+      // unless told otherwise) dropped every click and keystroke made before
+      // hydration, so claim-based replay was unreachable on the path most
+      // pages take. Counted in the emitted bytes:
+      // 1 occurrence on a non-streamed page, 0 on a streamed one.
+      //
+      // Right after the shell, which is the earliest a stream can manage —
+      // the shell is one synchronous render and there is no byte before it to
+      // hang a listener from.
+      await send(
+        controller,
+        `<script${nonceAttr(options?.nonce)}>${EVENT_CAPTURE_SNIPPET}</script>`,
+      );
+      // Whatever the shell already resolved. Without this a streamed page
+      // seeded nothing at all and the client refetched every value the server
+      // had just awaited.
+      const shellSeed = seedScript();
+      if (shellSeed !== "") await send(controller, shellSeed);
+      if (parked.length > 0) {
+        await send(controller, `<script${nonceAttr(options?.nonce)}>${SWAP_SNIPPET}</script>`);
+      }
+      // One round per settled promise, not one round per session. `settle`
+      // here would hold every boundary until the slowest one in the session
+      // resolved, which is not streaming — it is the shell followed by
+      // everything at once. A resumed boundary may park boundaries of its
+      // own, so the queue is drained rather than iterated once.
+      // `ended` is set by `end()` — the deadline timer and the caller's
+      // `AbortSignal` — and this loop awaits, so it flips BETWEEN rounds and
+      // never inside one. The rule cannot see that; the alternative it is
+      // warning about is exactly the unbounded loop this condition bounds.
+      // oxlint-disable-next-line no-unmodified-loop-condition
+      while (parked.length > 0 && !ended) {
+        const round = parked.splice(0, parked.length);
+        const again: Streamed[] = [];
+        const swaps: string[] = [];
+        for (const record of round) {
+          if (ended) {
+            again.push(record);
+            continue;
+          }
+          const before = parked.length;
+          const restore = setAsyncSession(session);
+          const outerSink = setStreamSink(sink);
+          let markup: string | null = null;
+          try {
+            markup = record.resume();
+          } catch (error) {
+            if (error instanceof NotReadyError) {
+              // Still unready, so it goes back on the queue. Dropping it here
+              // is what left a boundary showing its fallback for good once the
+              // batch barrier stopped guaranteeing readiness.
+              record.parkedOn = error;
+              // Past its own deadline it is abandoned rather than requeued, and
+              // the fallback the shell already flushed stands.
+              if (Date.now() - record.at < deadline) again.push(record);
+            } else {
+              // ONE boundary failed, and that is all that failed. It keeps the
+              // fallback the shell flushed and the client re-runs it on
+              // hydration, where its own error boundary reports it; every
+              // other boundary on the page is still owed its content. React
+              // errors the boundary rather than the response for the same
+              // reason.
+              report(thrownBy(error));
+            }
+          } finally {
+            setStreamSink(outerSink);
+            setAsyncSession(restore);
+          }
+          if (markup === null) continue;
+          placeParked(markup, record.namespace, parked.slice(before));
+          const [wrapOpen, wrapClose] = FOREIGN_WRAP[record.namespace];
+          const wrapped = record.namespace === "html" ? "" : ",true";
+          swaps.push(
+            `<template data-barq="${record.id}">${wrapOpen}${markup}${wrapClose}</template>` +
+              `<script${nonceAttr(options?.nonce)}>window.__BARQ_SWAP__(${record.id}${wrapped})</script>`,
+          );
+        }
+        // Boundaries parked BY this round are already in `parked`; the ones
+        // that merely stayed unready go in front of them.
+        if (again.length > 0) parked.unshift(...again);
+        // Nothing these boundaries are waiting on is still in the air: they
+        // keep the fallback the shell flushed. Recovery is the point.
+        //
+        // The race is what bounds this loop. `settleStep` alone waits on a
+        // promise that a caller is free never to settle, and a resumed
+        // boundary may park boundaries of its own, so neither the queue nor
+        // any single await is bounded without it.
+        //
+        // Asked BEFORE anything waits for the reader. A flight that lands while
+        // the render is paused is still one these boundaries were waiting on,
+        // and asked afterwards it reads as nothing in the air.
+        const step =
+          parked.length === 0
+            ? null
+            : Promise.race([settleStep(session, flightsOf(parked)), stopped]);
+        for (const swap of swaps) await send(controller, swap);
+        const roundSeed = seedScript();
+        if (roundSeed !== "") await send(controller, roundSeed);
+        // Anything a deferred value resolved into since the last round.
+        flushLater(controller);
+        if (step === null || (await step) !== true) break;
+      }
+    } catch (error) {
+      // NEVER `controller.error` here, and that is the whole policy. Anything
+      // thrown in this function is POST-SHELL by construction — the shell is
+      // rendered before the stream exists, so a shell failure propagates out
+      // of `renderToStream` and the caller can still answer with a 500.
+      //
+      // Tearing the body now hands the client a truncated document with no
+      // error UI and no way to recover, when the bytes it already has are a
+      // VALID page showing fallbacks.
+      report(error);
+    } finally {
+      // The tail runs however the loop ended. What it owes does not depend on
+      // why: a client holding a promise for a key is waiting on this stream to
+      // settle it or to say it never will.
+      try {
+        await finish(controller);
+      } catch (error) {
+        report(error);
+      } finally {
+        if (!consumerCancelled) {
+          try {
+            controller.close();
+          } catch {
+            // Already closed, or errored by the consumer; nothing to answer to.
+          }
+        }
+        letGo();
+      }
+    }
+  };
+
   return new ReadableStream<Uint8Array>({
+    // Returns at once: the stream calls `pull` only after `start` has settled,
+    // and `pull` is what lets a paused render go on.
+    start(controller): void {
+      void run(controller);
+    },
+    pull(): void {
+      const resume = wake;
+      wake = null;
+      resume?.();
+    },
     // A consumer that goes away stops the work. Without this the render runs to
     // completion against a socket nobody is reading — which on AWS Lambda is
     // billed for the full function duration, because a streamed response is not
@@ -1105,144 +1318,6 @@ export function renderToStream(
     cancel(): void {
       consumerCancelled = true;
       end();
-    },
-    async start(controller): Promise<void> {
-      try {
-        controller.enqueue(encoder.encode(shell));
-        // The status is settled from here: these bytes are gone and nothing
-        // after them can change the response line. React draws the same line
-        // with `onShellReady`.
-        options?.onShellReady?.();
-        // Pre-hydration input capture, on the STREAMED path too.
-        //
-        // `hydrationScriptFor` installs it for `renderPage`, and nothing
-        // installed it here — so the DEFAULT page (`createPageHandler` streams
-        // unless told otherwise) dropped every click and keystroke made before
-        // hydration, so claim-based replay was unreachable on the path most
-        // pages take. Counted in the emitted bytes:
-        // 1 occurrence on a non-streamed page, 0 on a streamed one.
-        //
-        // Right after the shell, which is the earliest a stream can manage —
-        // the shell is one synchronous render and there is no byte before it to
-        // hang a listener from.
-        controller.enqueue(
-          encoder.encode(`<script${nonceAttr(options?.nonce)}>${EVENT_CAPTURE_SNIPPET}</script>`),
-        );
-        // Whatever the shell already resolved. Without this a streamed page
-        // seeded nothing at all and the client refetched every value the server
-        // had just awaited.
-        const shellSeed = seedScript();
-        if (shellSeed !== "") controller.enqueue(encoder.encode(shellSeed));
-        if (parked.length > 0) {
-          controller.enqueue(
-            encoder.encode(`<script${nonceAttr(options?.nonce)}>${SWAP_SNIPPET}</script>`),
-          );
-        }
-        // One round per settled promise, not one round per session. `settle`
-        // here would hold every boundary until the slowest one in the session
-        // resolved, which is not streaming — it is the shell followed by
-        // everything at once. A resumed boundary may park boundaries of its
-        // own, so the queue is drained rather than iterated once.
-        // `ended` is set by `end()` — the deadline timer and the caller's
-        // `AbortSignal` — and this loop awaits, so it flips BETWEEN rounds and
-        // never inside one. The rule cannot see that; the alternative it is
-        // warning about is exactly the unbounded loop this condition bounds.
-        // oxlint-disable-next-line no-unmodified-loop-condition
-        while (parked.length > 0 && !ended) {
-          const round = parked.splice(0, parked.length);
-          const again: Streamed[] = [];
-          for (const record of round) {
-            if (ended) {
-              again.push(record);
-              continue;
-            }
-            const before = parked.length;
-            const restore = setAsyncSession(session);
-            const outerSink = setStreamSink(sink);
-            let markup: string | null = null;
-            try {
-              markup = record.resume();
-            } catch (error) {
-              if (error instanceof NotReadyError) {
-                // Still unready, so it goes back on the queue. Dropping it here
-                // is what left a boundary showing its fallback for good once the
-                // batch barrier stopped guaranteeing readiness.
-                record.parkedOn = error;
-                // Past its own deadline it is abandoned rather than requeued, and
-                // the fallback the shell already flushed stands.
-                if (Date.now() - record.at < deadline) again.push(record);
-              } else {
-                // ONE boundary failed, and that is all that failed. It keeps the
-                // fallback the shell flushed and the client re-runs it on
-                // hydration, where its own error boundary reports it; every
-                // other boundary on the page is still owed its content. React
-                // errors the boundary rather than the response for the same
-                // reason.
-                report(thrownBy(error));
-              }
-            } finally {
-              setStreamSink(outerSink);
-              setAsyncSession(restore);
-            }
-            if (markup === null) continue;
-            placeParked(markup, record.namespace, parked.slice(before));
-            const [wrapOpen, wrapClose] = FOREIGN_WRAP[record.namespace];
-            const wrapped = record.namespace === "html" ? "" : ",true";
-            controller.enqueue(
-              encoder.encode(
-                `<template data-barq="${record.id}">${wrapOpen}${markup}${wrapClose}</template>` +
-                  `<script${nonceAttr(options?.nonce)}>window.__BARQ_SWAP__(${record.id}${wrapped})</script>`,
-              ),
-            );
-          }
-          const roundSeed = seedScript();
-          if (roundSeed !== "") controller.enqueue(encoder.encode(roundSeed));
-          // Anything a deferred value resolved into since the last round.
-          flushLater(controller);
-          // Boundaries parked BY this round are already in `parked`; the ones
-          // that merely stayed unready go in front of them.
-          if (again.length > 0) parked.unshift(...again);
-          if (parked.length === 0) break;
-          // Nothing these boundaries are waiting on is still in the air: they
-          // keep the fallback the shell flushed. Recovery is the point.
-          //
-          // The race is what bounds this loop. `settleStep` alone waits on a
-          // promise that a caller is free never to settle, and a resumed
-          // boundary may park boundaries of its own, so neither the queue nor
-          // any single await is bounded without it.
-          if ((await Promise.race([settleStep(session, flightsOf(parked)), stopped])) !== true) {
-            break;
-          }
-        }
-      } catch (error) {
-        // NEVER `controller.error` here, and that is the whole policy. Anything
-        // thrown in this function is POST-SHELL by construction — the shell is
-        // rendered before the stream exists, so a shell failure propagates out
-        // of `renderToStream` and the caller can still answer with a 500.
-        //
-        // Tearing the body now hands the client a truncated document with no
-        // error UI and no way to recover, when the bytes it already has are a
-        // VALID page showing fallbacks.
-        report(error);
-      } finally {
-        // The tail runs however the loop ended. What it owes does not depend on
-        // why: a client holding a promise for a key is waiting on this stream to
-        // settle it or to say it never will.
-        try {
-          await finish(controller);
-        } catch (error) {
-          report(error);
-        } finally {
-          if (!consumerCancelled) {
-            try {
-              controller.close();
-            } catch {
-              // Already closed, or errored by the consumer; nothing to answer to.
-            }
-          }
-          letGo();
-        }
-      }
     },
   });
 }

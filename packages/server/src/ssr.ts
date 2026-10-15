@@ -788,10 +788,36 @@ export interface StreamSink {
    * inside the shell would have written. Without this the sink's mere presence
    * added comments to `renderToString` output.
    */
-  defer(resume: () => string, fallback: string, flags: number, parkedOn: NotReadyError): string;
+  defer(
+    resume: () => string,
+    fallback: string,
+    flags: number,
+    parkedOn: NotReadyError,
+    catcher: LateCatcher | null,
+  ): string;
+  /**
+   * The markup of an error boundary that a parked boundary below it may still
+   * fail, written so the sink can find it again. A stream answers with the
+   * markup unchanged: its bytes are gone by the time a resume fails, and the
+   * client rebuilds a failed boundary instead.
+   */
+  guard(catcher: LateCatcher, markup: string): string;
+}
+
+/**
+ * The error boundary a parked boundary stands in, for a failure that arrives
+ * after that error boundary has already written its markup. `open` and `close`
+ * are set by the sink's `guard` once something below it has parked.
+ */
+export interface LateCatcher {
+  parked: boolean;
+  open: string | null;
+  close: string | null;
+  fallback: (error: unknown) => string;
 }
 
 let SINK: StreamSink | null = null;
+let CATCHER: LateCatcher | null = null;
 
 /** Install a sink for the duration of one render. Returns the previous one. */
 export function setStreamSink(sink: StreamSink | null): StreamSink | null {
@@ -824,7 +850,12 @@ function invokeBlock(body: unknown, args: readonly unknown[]): unknown {
   if (typeof body !== "function") return body;
   // The caller has already entered the scope this body belongs to; it reads
   // its owner from the ambient like every other reactive primitive.
-  return (body as (...rest: readonly unknown[]) => unknown)(...args);
+  const call = body as (...rest: readonly unknown[]) => unknown;
+  // Spelled out per arity: the spread call was 10% of a 100-row `For` page.
+  if (args.length === 0) return call();
+  if (args.length === 1) return call(args[0]);
+  if (args.length === 2) return call(args[0], args[1]);
+  return call(...args);
 }
 
 /**
@@ -968,10 +999,7 @@ export function boundary(
   const given = getOwner();
   refuseASite(parent, anchor, "boundary");
   if (on !== undefined) cellSlot(on, "Loading.on");
-  if (kind === "error") {
-    const inner = errorBoundary(given, fallback, body, flags);
-    return (flags & HYDRATE) === 0 ? inner : html(range(inner.t, flags));
-  }
+  if (kind === "error") return html(errorBoundary(given, fallback, body, flags));
   const loaded = loadingBoundary(given, fallback, body, flags);
   // A boundary that did not settle has already written its own range —
   // `<!--[b:N-->` for one the stream will swap, `<!--[f:-->` for one nothing
@@ -988,7 +1016,7 @@ function errorBoundary(
   fallback: Block<unknown> | null | undefined,
   body: Block<unknown>,
   flags: number,
-): SsrHtml {
+): string {
   // One frame, so what a boundary holds is two plain variables rather than
   // anything reactive: nothing can read the error before this function returns.
   let failed = false;
@@ -1010,10 +1038,43 @@ function errorBoundary(
     });
     return invokeBlock(body, NO_ARGS);
   };
+  // The FALLBACK's range says so, `f:` as a loading boundary's does, because a
+  // client claiming it as the content's would claim the wrong markup: the
+  // client builds the content aside and its fallback takes these nodes.
+  const showFallback = (): string => {
+    let shown = "";
+    if (fallback !== null && fallback !== undefined) {
+      const error = (): Error => asError(caught);
+      shown = activate(given, fallback, [error, reset], flags, "branch");
+    }
+    return (flags & HYDRATE) === 0 ? shown : parkedRange(shown);
+  };
 
+  // A loading boundary below this one can park and fail on a later resume,
+  // after these bytes are written. The sink is handed what it needs to put
+  // this boundary's fallback in their place.
+  const sink = SINK;
+  const catcher: LateCatcher | null =
+    sink === null
+      ? null
+      : {
+          parked: false,
+          open: null,
+          close: null,
+          fallback: (error) => {
+            failed = true;
+            caught = error;
+            return showFallback();
+          },
+        };
+  const outer = CATCHER;
+  CATCHER = catcher;
   try {
-    const inner = activate(given, arm, NO_ARGS, flags, "branch");
-    if (!failed) return html(inner);
+    const built = activate(given, arm, NO_ARGS, flags, "branch");
+    if (!failed) {
+      const inner = (flags & HYDRATE) === 0 ? built : range(built, flags);
+      return catcher?.parked ? sink!.guard(catcher, inner) : inner;
+    }
   } catch (error) {
     // E2.3: a `NotReadyError` belongs to the nearest loading boundary and is
     // never captured here.
@@ -1022,10 +1083,10 @@ function errorBoundary(
     // A read of a failed memo throws the engine's wrapper around what the
     // application threw, and the fallback is handed the application's.
     caught = thrownBy(error);
+  } finally {
+    CATCHER = outer;
   }
-  if (fallback === null || fallback === undefined) return html("");
-  const error = (): Error => asError(caught);
-  return html(activate(given, fallback, [error, reset], flags, "branch"));
+  return showFallback();
 }
 
 function loadingBoundary(
@@ -1045,7 +1106,18 @@ function loadingBoundary(
   // nothing recorded under it and fetch again, for ever. So the content keeps
   // the position its first build took.
   const numbering: { id: string | undefined } = { id: undefined };
-  const build = (): string => buildUnder(childScope(own, "branch", numbering), body, NO_ARGS);
+  // A resume runs outside the error boundary that stood around this one, so
+  // a boundary the resume parks is told which one that was.
+  const catcher = CATCHER;
+  const build = (): string => {
+    const outer = CATCHER;
+    CATCHER = catcher;
+    try {
+      return buildUnder(childScope(own, "branch", numbering), body, NO_ARGS);
+    } finally {
+      CATCHER = outer;
+    }
+  };
   // A read of a value that has not arrived throws, and a string render has no
   // effect that could be pending without one: the throw is the whole signal.
   let parkedOn: NotReadyError;
@@ -1089,7 +1161,8 @@ function loadingBoundary(
       parked: true,
     };
   }
-  return { markup: SINK.defer(build, String(shown), flags, parkedOn), parked: true };
+  if (catcher !== null) catcher.parked = true;
+  return { markup: SINK.defer(build, String(shown), flags, parkedOn, catcher), parked: true };
 }
 
 /**
@@ -1482,11 +1555,11 @@ export function reveal(order: unknown, collapsed: unknown, block: unknown): SsrH
 }
 
 /**
- * `dynamic` — the string half. The branch that swaps the component is the
+ * `resolveDynamic` — the string half. The branch that swaps the component is the
  * compiler's, so what is left here is the one question the value answers: a tag
  * name is serialised, anything else is invoked.
  */
-export function dynamic(component: unknown, props: Record<string, unknown>): unknown {
+export function resolveDynamic(component: unknown, props: Record<string, unknown>): unknown {
   const resolved = untrack(() => readValue(component, "Dynamic.component"));
   if (resolved === null || resolved === undefined || resolved === false) return null;
   if (typeof resolved !== "string") return invokeBlock(resolved, [props]);

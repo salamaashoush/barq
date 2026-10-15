@@ -1,23 +1,24 @@
 import { defineConfig } from "tsdown";
 
+import { outExtensions, wireText } from "./wire-text.config.ts";
+
 export default defineConfig([
+  wireText,
   {
     entry: ["./src/codec.ts"],
     format: ["esm"],
-    // `exports` names `.js`/`.d.ts`; tsdown 0.22 defaults to `.mjs`/`.d.mts`.
-    outExtensions: () => ({ js: ".js", dts: ".d.ts" }),
+    outExtensions,
     dts: true,
-    clean: true,
-    external: ["seroval"],
+    clean: false,
+    deps: { neverBundle: ["seroval", /^#/] },
   },
   {
     entry: ["./src/index.ts"],
     format: ["esm"],
-    // `exports` names `.js`/`.d.ts`; tsdown 0.22 defaults to `.mjs`/`.d.mts`.
-    outExtensions: () => ({ js: ".js", dts: ".d.ts" }),
+    outExtensions,
     dts: true,
     clean: false,
-    external: ["csstype", "seroval", "@barqjs/core", "@barqjs/core/internal"],
+    deps: { neverBundle: ["csstype", "seroval", "@barqjs/core", "@barqjs/core/internal", /^#/] },
     esbuildOptions: {
       jsx: "automatic",
       jsxImportSource: "@barqjs/core",

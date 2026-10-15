@@ -126,9 +126,13 @@ impl RegionKind {
     /// and no compile-time predicate can see that coming — whether a promise is
     /// ready is a run-time fact. So [`WHOLE`] is refused for it: the client
     /// would read "no comments here" and claim a child list that has two.
+    ///
+    /// An error boundary can too. One that caught writes `<!--[f:-->` around
+    /// its fallback so the client does not claim those nodes as the content's,
+    /// and whether the body throws is as much a run-time fact.
     #[inline]
     pub fn may_write_its_own_range(self) -> bool {
-        matches!(self, RegionKind::Loading)
+        matches!(self, RegionKind::Loading | RegionKind::Error)
     }
 }
 
@@ -237,14 +241,17 @@ mod tests {
     }
 
     /// A loading boundary can flush `<!--[b:N-->` at run time when a stream sink
-    /// is installed, and no compile-time predicate can see that coming. So it
-    /// never takes `WHOLE`: the client would read "no comments here" and claim a
-    /// child list that has two.
+    /// is installed, and an error boundary that caught writes `<!--[f:-->`, and
+    /// no compile-time predicate can see either coming. So neither takes
+    /// `WHOLE`: the client would read "no comments here" and claim a child list
+    /// that has two.
     #[test]
-    fn a_streaming_boundary_never_takes_the_undelimited_form() {
-        assert!(RegionKind::Loading.may_write_its_own_range());
-        assert_eq!(RegionKind::shipped(RegionKind::Loading, HYDRATE | WHOLE) & WHOLE, 0);
-        for kind in [RegionKind::Branch, RegionKind::Each, RegionKind::Error, RegionKind::Portal] {
+    fn a_boundary_never_takes_the_undelimited_form() {
+        for kind in [RegionKind::Loading, RegionKind::Error] {
+            assert!(kind.may_write_its_own_range());
+            assert_eq!(RegionKind::shipped(kind, HYDRATE | WHOLE) & WHOLE, 0);
+        }
+        for kind in [RegionKind::Branch, RegionKind::Each, RegionKind::Portal] {
             assert!(!kind.may_write_its_own_range());
             assert_eq!(RegionKind::shipped(kind, HYDRATE | WHOLE) & WHOLE, WHOLE);
         }

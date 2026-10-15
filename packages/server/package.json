@@ -24,6 +24,18 @@
   ],
   "type": "module",
   "main": "./dist/index.js",
+  "imports": {
+    "#serializer": {
+      "types": "./src/serializer.ts",
+      "bun": "./src/serializer.ts",
+      "default": "./dist/serializer.js"
+    },
+    "#swap": {
+      "types": "./src/swap.ts",
+      "bun": "./src/swap.ts",
+      "default": "./dist/swap.js"
+    }
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -47,14 +59,14 @@
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "seroval": "^1.6.2"
+    "seroval": "^1.6.9"
   },
   "devDependencies": {
     "@barqjs/core": "workspace:*",
-    "@biomejs/biome": "^2.5.9",
-    "@happy-dom/global-registrator": "^20.11.6",
-    "@types/bun": "^1.4.0",
-    "reactive-framework-test-suite": "^0.0.2",
+    "@biomejs/biome": "^2.5.15",
+    "@happy-dom/global-registrator": "^21.0.1",
+    "@types/bun": "^1.4.3",
+    "reactive-framework-test-suite": "^0.1.0",
     "typescript": "^7.0.2"
   },
   "peerDependencies": {

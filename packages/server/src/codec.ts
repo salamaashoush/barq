@@ -22,7 +22,7 @@ import {
   getCrossReferenceHeader,
   serialize,
   toJSON,
-} from "seroval";
+} from "#serializer";
 
 /**
  * `RegExp`: seroval escapes `<` at the STRING level, but emits a regular

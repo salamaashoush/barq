@@ -298,28 +298,6 @@ export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
   // strips `<html>`, `<head>` and `<body>` out of a `<template>`, so the whole
   // document frame can only be emitted as `element()` and every one of those
   // positions used to build cold.
-  // ── a boundary that parks, and a boundary that recovers ────────────────
-  "flow-prop-eta-boundary": {
-    kinds: [],
-    recovered: false,
-    reuse: 94,
-    shape: null,
-    why: "a settled Loading boundary claims in place since M13; what the remaining 6% is, is the eta-forwarded prop's own position",
-  },
-  "control-flow-error-boundary": {
-    kinds: [],
-    recovered: false,
-    reuse: 33,
-    shape: null,
-    why: "the body throws on the client exactly as it did on the server, so the claim is spent by the attempt that failed and the fallback is built cold — E3's `try` and the claim are the same activation",
-  },
-  "control-flow-errored-loading": {
-    kinds: [],
-    recovered: false,
-    reuse: 67,
-    shape: null,
-    why: "M13. The loading boundary claims its settled range in place rather than parking it, so the structure mismatch it used to report is gone and reuse doubled — 33% → 67%. What is left is the error fallback, built cold because a body that threw on both sides has no server nodes worth claiming",
-  },
 
   // ── raw text, where the tokenizer eats a newline nobody can see ────────
   //

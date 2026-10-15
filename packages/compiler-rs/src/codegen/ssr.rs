@@ -20,9 +20,9 @@
 
 use oxc::allocator::{Box as ArenaBox, Vec as ArenaVec};
 use oxc::ast::ast::{
-    Argument, Expression, IdentifierName, JSXAttributeItem, JSXAttributeValue, JSXChild,
-    JSXElement, JSXExpression, JSXFragment, ObjectProperty, ObjectPropertyKind, PropertyKey,
-    PropertyKind, SpreadElement, StringLiteral, TemplateElement, TemplateElementValue,
+    Argument, BinaryOperator, Expression, IdentifierName, JSXAttributeItem, JSXAttributeValue,
+    JSXChild, JSXElement, JSXExpression, JSXFragment, ObjectProperty, ObjectPropertyKind,
+    PropertyKey, PropertyKind, SpreadElement, StringLiteral, TemplateElement, TemplateElementValue,
     TemplateLiteral,
 };
 use oxc::span::{GetSpan, Span};
@@ -802,8 +802,55 @@ fn attr_row<'a>(
         }
         return;
     }
+    if lean_attribute(key)
+        && unit.exprs.entry_mut(value).src.expression().is_some_and(|it| proves_string(ctx, it))
+    {
+        // A value that is a string on every evaluation is never omitted, so
+        // the name and the quotes are bytes like any other and only the value
+        // is left to the runtime.
+        chunks.text(" ");
+        chunks.text(key);
+        chunks.text("=\"");
+        let value = take(ctx, unit, value, span);
+        let callee = ctx.helper(Helper::EscAttr, span);
+        chunks.hole(ctx.call(callee, vec![Argument::from(value)], span));
+        chunks.text("\"");
+        return;
+    }
     let call = attr_call(ctx, unit, key, value, tag, span);
     chunks.hole(call);
+}
+
+/// Whether `expression` evaluates to a string every time, whatever its parts
+/// hold. Syntactic and deliberately narrow: a template, a string literal, a `+`
+/// with a string on either side, a conditional whose arms both are, and the
+/// global `String(…)`. A tagged template is not one, since its tag returns what
+/// it likes.
+fn proves_string(ctx: &Emit<'_, '_>, expression: &Expression<'_>) -> bool {
+    match expression {
+        Expression::TemplateLiteral(_) | Expression::StringLiteral(_) => true,
+        Expression::ParenthesizedExpression(inner) => proves_string(ctx, &inner.expression),
+        Expression::BinaryExpression(binary) => {
+            binary.operator == BinaryOperator::Addition
+                && (proves_string(ctx, &binary.left) || proves_string(ctx, &binary.right))
+        }
+        Expression::ConditionalExpression(conditional) => {
+            proves_string(ctx, &conditional.consequent)
+                && proves_string(ctx, &conditional.alternate)
+        }
+        Expression::CallExpression(call) => {
+            let Expression::Identifier(callee) = &call.callee else { return false };
+            // An unresolved reference is the global. A reference with no id was
+            // built by the compiler and is not known to be anything.
+            callee.name == "String"
+                && call.arguments.len() <= 1
+                && !call.optional
+                && callee.reference_id.get().is_some_and(|reference| {
+                    ctx.module.scoping.get_reference(reference).symbol_id().is_none()
+                })
+        }
+        _ => false,
+    }
 }
 
 /// `dom.ts::styleToString`, at compile time, for the object it can be computed
@@ -1560,6 +1607,35 @@ mod tests {
         let spread = ssr("export const V = () => <p {...props} />;\n").code;
         assert!(spread.contains("_$spreadAttrs({ ...props }, \"p\")"), "{spread}");
         assert!(!spread.contains("_$attrLit"), "{spread}");
+    }
+
+    /// A value that is a string on every evaluation cannot omit its attribute,
+    /// so the name and the quotes go into the template and only the value is
+    /// escaped at run time. Anything that might be nullish, boolean or a
+    /// function keeps `attrLit`, which decides those.
+    #[test]
+    fn a_proven_string_writes_its_attribute_name_into_the_template() {
+        let code =
+            ssr("export const V = (p) => <a href={`/u/${p.id()}`} data-id={String(p.id())} \
+             title={\"#\" + p.n()} data-k={p.on() ? \"yes\" : `no`} />;\n")
+            .code;
+        assert!(code.contains("<a href=\"${_$escAttr(`/u/${p.id()}`)}\""), "{code}");
+        assert!(code.contains(" data-id=\"${_$escAttr(String(p.id()))}\""), "{code}");
+        assert!(code.contains(" title=\"${_$escAttr(\"#\" + p.n())}\""), "{code}");
+        assert!(code.contains(" data-k=\"${_$escAttr(p.on() ? \"yes\" : `no`)}\""), "{code}");
+        assert!(!code.contains("_$attrLit"), "{code}");
+
+        let kept = ssr("const String = (x) => x;\n\
+             export const V = (p) => <a data-a={String(p.a())} data-b={tag`x`} \
+             data-c={p.c() ?? \"\"} data-d={p.d() ? \"x\" : null} data-e={p.e() + 1} />;\n")
+        .code;
+        for name in ["data-a", "data-b", "data-c", "data-d", "data-e"] {
+            assert!(kept.contains(&format!("_$attrLit(\"{name}\"")), "{name}: {kept}");
+        }
+
+        // A name `attr` decides about keeps `attr` whatever the value.
+        let dirty = ssr("export const V = (p) => <input value={`${p.v()}`} />;\n").code;
+        assert!(dirty.contains("_$attr(\"value\""), "{dirty}");
     }
 
     /// The ten constructs the flow pass lowers reach the SAME primitives on
