@@ -1,0 +1,27 @@
+{
+  "$schema": "https://github.com/salamaashoush/barq/schema/registry-item.json",
+  "name": "login-01",
+  "type": "registry:block",
+  "title": "Login 01",
+  "description": "A simple login form.",
+  "dependencies": [
+    "@barqjs/css"
+  ],
+  "registryDependencies": [
+    "button",
+    "card",
+    "field",
+    "input"
+  ],
+  "files": [
+    {
+      "path": "blocks/login-01.tsx",
+      "type": "registry:block",
+      "content": "/**\n * shadcn's `login-01`, ported from\n * `apps/v4/registry/new-york-v4/blocks/login-01/`.\n */\n\nimport { css } from \"@barqjs/css\";\nimport { Button } from \"../ui/button.tsx\";\nimport { Card, CardContent, CardDescription, CardHeader, CardTitle } from \"../ui/card.tsx\";\nimport { Field, FieldDescription, FieldGroup, FieldLabel } from \"../ui/field.tsx\";\nimport { Input } from \"../ui/input.tsx\";\n\nconst page = css`\n  display: flex;\n  min-height: 100%;\n  width: 100%;\n  align-items: center;\n  justify-content: center;\n  padding: 1.5rem;\n\n  @media (width >= 48rem) {\n    padding: 2.5rem;\n  }\n`;\n\nconst holder = css`\n  width: 100%;\n  max-width: 24rem;\n`;\n\nconst stack = css`\n  display: flex;\n  flex-direction: column;\n  gap: 1.5rem;\n`;\n\nconst labelRow = css`\n  display: flex;\n  align-items: center;\n`;\n\nconst forgot = css`\n  margin-left: auto;\n  display: inline-block;\n  font-size: 0.875rem;\n  text-underline-offset: 4px;\n  color: inherit;\n\n  &:hover {\n    text-decoration-line: underline;\n  }\n`;\n\nconst centred = css`\n  text-align: center;\n`;\n\nexport function Login01() {\n  return (\n    <div class={page} data-slot=\"login-01\">\n      <div class={holder}>\n        <div class={stack}>\n          <Card>\n            <CardHeader>\n              <CardTitle>Login to your account</CardTitle>\n              <CardDescription>Enter your email below to login to your account</CardDescription>\n            </CardHeader>\n            <CardContent>\n              <form>\n                <FieldGroup>\n                  <Field>\n                    <FieldLabel for=\"email\">Email</FieldLabel>\n                    <Input id=\"email\" type=\"email\" placeholder=\"m@example.com\" required />\n                  </Field>\n                  <Field>\n                    <div class={labelRow}>\n                      <FieldLabel for=\"password\">Password</FieldLabel>\n                      <a href=\"#\" class={forgot}>\n                        Forgot your password?\n                      </a>\n                    </div>\n                    <Input id=\"password\" type=\"password\" required />\n                  </Field>\n                  <Field>\n                    <Button type=\"submit\">Login</Button>\n                    <Button variant=\"outline\" type=\"button\">\n                      Login with Google\n                    </Button>\n                    <FieldDescription class={centred}>\n                      Don&apos;t have an account? <a href=\"#\">Sign up</a>\n                    </FieldDescription>\n                  </Field>\n                </FieldGroup>\n              </form>\n            </CardContent>\n          </Card>\n        </div>\n      </div>\n    </div>\n  );\n}\n"
+    }
+  ],
+  "categories": [
+    "authentication",
+    "login"
+  ]
+}

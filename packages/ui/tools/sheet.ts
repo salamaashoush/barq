@@ -30,9 +30,18 @@ export function declarations(nodes: readonly CssNode[], out: string[] = []): str
  * against `color,box-shadow`, `0.95` against `.95`, and a space between two
  * `var()` calls that the transcriber does not emit. Comparing the text without
  * this reports two thousand differences and no bugs.
+ *
+ * Tailwind also simplifies a spacing multiple for a physical side and not for
+ * a logical one: `right-0` is `0px` and `end-0` is `calc(var(--spacing) * 0)`,
+ * `right-1` is `var(--spacing)` and `end-1` is `calc(var(--spacing) * 1)`. A
+ * component writes the simplified value either way.
  */
 export function canonical(text: string): string {
-  return text.replace(/\s+/g, "").replace(/([:,(])0\./g, "$1.");
+  return text
+    .replace(/\s+/g, "")
+    .replace(/([:,(])0\./g, "$1.")
+    .replaceAll("calc(var(--spacing)*0)", "0px")
+    .replaceAll("calc(var(--spacing)*1)", "var(--spacing)");
 }
 
 /** `borderTopWidth` -> `border-top-width`, and a custom property untouched. */
@@ -137,6 +146,24 @@ function sharedGroups(): Map<string, Set<string>> {
 }
 
 /**
+ * Whether a call's text names `local` as a value.
+ *
+ * Not as a member (`shared.icon`), not as part of a longer name, and not as an
+ * object key. A key and the middle of a conditional are both followed by a
+ * colon; what tells them apart is that a key follows `{` or `,`.
+ */
+function namesAsArgument(call: string, local: string): boolean {
+  const word = new RegExp(`(?<![\\w$.-])${local.replace(/\$/g, "\\$")}(?![\\w$-])`, "g");
+  for (const found of call.matchAll(word)) {
+    const before = call.slice(0, found.index);
+    const after = call.slice((found.index ?? 0) + local.length);
+    const isKey = /^\s*:/.test(after) && /[{,]\s*$/.test(before);
+    if (!isKey) return true;
+  }
+  return false;
+}
+
+/**
  * The components, as a declaration set per `ui(…)` call.
  *
  * Per CALL and not per sheet, because a declaration as ordinary as
@@ -148,7 +175,10 @@ function sharedGroups(): Map<string, Set<string>> {
  * The call is read rather than evaluated. A literal's keys are properties or
  * conditions, and a condition's value is a block, so a flat scan for
  * `key: "value"` finds every declaration at every depth and no condition; a
- * `shared.x` argument brings that group's declarations with it.
+ * `shared.x` argument brings that group's declarations with it, and so does a
+ * class this module built with an earlier call: `ui(navigation, { … })` IS
+ * `navigation`'s declarations and its own, and a spec describing the element
+ * asks for both.
  */
 export function byCall(): Map<string, Set<string>> {
   const out = new Map<string, Set<string>>();
@@ -171,7 +201,10 @@ export function byCall(): Map<string, Set<string>> {
       if (local !== undefined && declared !== undefined) aliases.set(declared, local);
     }
 
-    for (const start of source.matchAll(/\bui\(/g)) {
+    // In source order, so a class is known by the time a later call names it.
+    const locals = new Map<string, Set<string>>();
+
+    for (const start of source.matchAll(/(?:\bconst\s+([A-Za-z_$][\w$]*)\s*=\s*)?\bui\(/g)) {
       const from = (start.index ?? 0) + start[0].length - 1;
       let unclosed = 0;
       let to = from;
@@ -181,6 +214,11 @@ export function byCall(): Map<string, Set<string>> {
       }
       const call = source.slice(from, to + 1);
       const held = declarationsIn(call);
+      const bare = call.replace(/"(?:[^"\\]|\\.)*"/g, '""');
+      for (const [local, own] of locals) {
+        if (!namesAsArgument(bare, local)) continue;
+        for (const declaration of own) held.add(declaration);
+      }
       for (const [name, own] of groups) {
         const [namespace, group] = name.split(".");
         const spellings = [name];
@@ -191,6 +229,7 @@ export function byCall(): Map<string, Set<string>> {
           continue;
         for (const declaration of own) held.add(declaration);
       }
+      if (start[1] !== undefined) locals.set(start[1], held);
       if (held.size > 0) out.set(`${file}:${String(start.index)}`, held);
     }
   }

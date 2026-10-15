@@ -43,8 +43,8 @@ const control = ui(
     borderColor: "var(--input)",
     backgroundColor: "transparent",
     paddingBlock: "var(--spacing)",
-    paddingRight: "calc(var(--spacing) * 8)",
-    paddingLeft: "calc(var(--spacing) * 2.5)",
+    paddingInlineEnd: "calc(var(--spacing) * 8)",
+    paddingInlineStart: "calc(var(--spacing) * 2.5)",
     fontSize: "var(--text-sm)",
     lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
     transitionProperty:
@@ -82,7 +82,7 @@ const icon = ui(box.noSelect, {
   pointerEvents: "none",
   position: "absolute",
   top: "calc(1 / 2 * 100%)",
-  right: "calc(var(--spacing) * 2.5)",
+  insetInlineEnd: "calc(var(--spacing) * 2.5)",
   width: "calc(var(--spacing) * 4)",
   height: "calc(var(--spacing) * 4)",
   "--ui-translate-y": "calc(calc(1 / 2 * 100%) * -1)",
@@ -99,7 +99,7 @@ const option = ui({
 
 export type NativeSelectSize = "default" | "sm";
 
-export interface NativeSelectProps extends UiProps {
+export interface NativeSelectProps extends Omit<UiProps, "ref"> {
   name?: string;
   value?: string;
   defaultValue?: string;
@@ -161,10 +161,23 @@ export interface NativeSelectOptionProps extends UiProps {
   value?: string;
   disabled?: boolean;
   selected?: boolean;
+  /** What the platform's picker shows in place of the option's text. */
+  label?: string;
 }
 
+// `selected` and `label` are named on the element rather than left to the
+// filter: neither is a form control's attribute in general, so the allow-list
+// that passes `value` and `disabled` drops both.
 export function NativeSelectOption(props: Incoming<NativeSelectOptionProps>) {
-  return <option {...controlProps("native-select-option", option, props)}>{props.children}</option>;
+  return (
+    <option
+      {...controlProps("native-select-option", option, props)}
+      selected={props.selected?.()}
+      label={props.label?.()}
+    >
+      {props.children}
+    </option>
+  );
 }
 
 export interface NativeSelectOptGroupProps extends UiProps {
@@ -174,6 +187,12 @@ export interface NativeSelectOptGroupProps extends UiProps {
 
 export function NativeSelectOptGroup(props: Incoming<NativeSelectOptGroupProps>) {
   return (
-    <optgroup {...uiProps("native-select-optgroup", option, props)}>{props.children}</optgroup>
+    <optgroup
+      {...uiProps("native-select-optgroup", option, props)}
+      label={props.label?.()}
+      disabled={props.disabled?.()}
+    >
+      {props.children}
+    </optgroup>
   );
 }

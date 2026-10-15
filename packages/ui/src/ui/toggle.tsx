@@ -1,5 +1,6 @@
 import {
   ToggleButton as AriaToggleButton,
+  toggleState,
   type ToggleButtonComponentProps,
 } from "@barqjs/aria/button";
 import type { Incoming } from "@barqjs/core";
@@ -10,6 +11,7 @@ import { box } from "../lib/shared-box.ts";
 import { icon } from "../lib/shared-icon.ts";
 import { ring } from "../lib/shared-ring.ts";
 import { ringSlot } from "../lib/shared-ring-slot.ts";
+import { omit } from "../lib/slot.ts";
 import { text } from "../lib/shared-text.ts";
 
 const ui = layer("barq.ui");
@@ -80,10 +82,10 @@ export const toggleVariants = variants({
         minWidth: "calc(var(--spacing) * 8)",
         paddingInline: "calc(var(--spacing) * 2.5)",
         ':has([data-icon="inline-end"])': {
-          paddingRight: "calc(var(--spacing) * 2)",
+          paddingInlineEnd: "calc(var(--spacing) * 2)",
         },
         ':has([data-icon="inline-start"])': {
-          paddingLeft: "calc(var(--spacing) * 2)",
+          paddingInlineStart: "calc(var(--spacing) * 2)",
         },
       }),
       sm: ui({
@@ -93,10 +95,10 @@ export const toggleVariants = variants({
         paddingInline: "calc(var(--spacing) * 2.5)",
         fontSize: "0.8rem",
         ':has([data-icon="inline-end"])': {
-          paddingRight: "calc(var(--spacing) * 1.5)",
+          paddingInlineEnd: "calc(var(--spacing) * 1.5)",
         },
         ':has([data-icon="inline-start"])': {
-          paddingLeft: "calc(var(--spacing) * 1.5)",
+          paddingInlineStart: "calc(var(--spacing) * 1.5)",
         },
         "& svg:not([class*='size-'])": {
           width: "calc(var(--spacing) * 3.5)",
@@ -108,10 +110,10 @@ export const toggleVariants = variants({
         minWidth: "calc(var(--spacing) * 9)",
         paddingInline: "calc(var(--spacing) * 2.5)",
         ':has([data-icon="inline-end"])': {
-          paddingRight: "calc(var(--spacing) * 2)",
+          paddingInlineEnd: "calc(var(--spacing) * 2)",
         },
         ':has([data-icon="inline-start"])': {
-          paddingLeft: "calc(var(--spacing) * 2)",
+          paddingInlineStart: "calc(var(--spacing) * 2)",
         },
       }),
     },
@@ -122,7 +124,20 @@ export const toggleVariants = variants({
 export interface ToggleProps extends ToggleButtonComponentProps {
   variant?: ToggleVariant;
   size?: ToggleSize;
+  /** The same as `isSelected`, under the name shadcn's `Toggle` uses. */
+  pressed?: boolean;
+  /** The same as `defaultSelected`. */
+  defaultPressed?: boolean;
+  /** Called beside `onChange`, with the same argument. */
+  onPressedChange?: (pressed: boolean) => void;
+  /** The same as `isDisabled`. */
+  disabled?: boolean;
+  "aria-invalid"?: boolean;
+  "data-orientation"?: "horizontal" | "vertical";
+  "data-spacing"?: string;
 }
+
+const ALIASES = ["pressed", "defaultPressed", "onPressedChange", "disabled", "variant", "size"];
 
 /**
  * ```tsx
@@ -130,15 +145,31 @@ export interface ToggleProps extends ToggleButtonComponentProps {
  * ```
  *
  * `aria-pressed`, not a class: the pressed state is announced, and
- * `data-selected` is what the CSS reads.
+ * `data-selected` is what the CSS reads. `data-state` says the same thing as
+ * `on` or `off`, for a rule written against shadcn's markup.
  */
 export function Toggle(props: Incoming<ToggleProps>) {
+  // Held here and handed down controlled, so the attribute below and the
+  // button's own `aria-pressed` read one value.
+  const state = toggleState({
+    isSelected: () => props.pressed?.() ?? props.isSelected?.(),
+    defaultSelected: () => props.defaultPressed?.() ?? props.defaultSelected?.(),
+    onChange(next) {
+      props.onChange?.()?.(next);
+      props.onPressedChange?.()?.(next);
+    },
+  });
+
   return (
     <AriaToggleButton
-      {...props}
+      {...omit(props, ALIASES)}
+      isSelected={state.isSelected()}
+      onChange={(next: boolean) => state.setSelected(next)}
+      isDisabled={props.isDisabled?.() ?? props.disabled?.()}
       data-slot={props["data-slot"]?.() ?? "toggle"}
       data-variant={props.variant?.() ?? "default"}
       data-size={props.size?.() ?? "default"}
+      data-state={state.isSelected() ? "on" : "off"}
       class={ui(
         toggleVariants({ variant: props.variant?.(), size: props.size?.() }),
         props.class?.(),

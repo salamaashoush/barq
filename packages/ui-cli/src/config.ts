@@ -41,6 +41,18 @@ export function writeConfig(root: string, config: Config): void {
   const ordered = {
     $schema: config.$schema ?? SCHEMA_URL,
     registry: config.registry,
+    ...(Object.keys(config.registries).length === 0
+      ? {}
+      : {
+          registries: Object.fromEntries(
+            Object.entries(config.registries)
+              .toSorted(([a], [b]) => a.localeCompare(b))
+              .map(([scope, endpoint]) => [
+                scope,
+                Object.keys(endpoint.headers).length === 0 ? endpoint.url : endpoint,
+              ]),
+          ),
+        }),
     paths: config.paths,
     theme: config.theme,
     reset: config.reset,

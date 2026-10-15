@@ -1,0 +1,26 @@
+{
+  "$schema": "https://github.com/salamaashoush/barq/schema/registry-item.json",
+  "name": "textarea",
+  "type": "registry:ui",
+  "title": "Textarea",
+  "dependencies": [
+    "@barqjs/core",
+    "@barqjs/css",
+    "@barqjs/primitives"
+  ],
+  "registryDependencies": [
+    "input",
+    "layers",
+    "shared-box",
+    "shared-ring",
+    "shared-when",
+    "slot"
+  ],
+  "files": [
+    {
+      "path": "ui/textarea.tsx",
+      "type": "registry:ui",
+      "content": "import type { Incoming } from \"@barqjs/core\";\nimport { layer } from \"@barqjs/css\";\nimport { mergeRefs, type RefTarget } from \"@barqjs/primitives/refs\";\n\nimport \"../theme/layers.ts\";\nimport { box } from \"../lib/shared-box.ts\";\nimport { ring } from \"../lib/shared-ring.ts\";\nimport { when } from \"../lib/shared-when.ts\";\nimport { controlProps } from \"../lib/slot.ts\";\nimport type { InputProps } from \"./input.tsx\";\n\nconst ui = layer(\"barq.ui\");\n\nconst textarea = ui(\n  box.border,\n  box.transition,\n  box.outline,\n  ring.focus,\n  ring.invalid,\n  ring.invalidRing,\n  when.darkInput,\n  ring.invalidDark,\n  ring.invalidBorderDark,\n  {\n    display: \"flex\",\n    fieldSizing: \"content\",\n    minHeight: \"calc(var(--spacing) * 16)\",\n    width: \"100%\",\n    borderRadius: \"var(--radius)\",\n    borderColor: \"var(--input)\",\n    backgroundColor: \"transparent\",\n    paddingInline: \"calc(var(--spacing) * 2.5)\",\n    paddingBlock: \"calc(var(--spacing) * 2)\",\n    fontSize: \"var(--text-base)\",\n    lineHeight: \"var(--ui-leading, var(--text-base--line-height))\",\n    transitionProperty:\n      \"color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to\",\n    \"::placeholder\": {\n      color: \"var(--muted-foreground)\",\n    },\n    \":disabled\": {\n      cursor: \"not-allowed\",\n      backgroundColor: \"var(--input)\",\n      opacity: \"50%\",\n      \"@supports (color: color-mix(in lab, red, red))\": {\n        backgroundColor: \"color-mix(in oklab, var(--input) 50%, transparent)\",\n      },\n    },\n    \"@media (width >= 48rem)\": {\n      \"&\": {\n        fontSize: \"var(--text-sm)\",\n        lineHeight: \"var(--ui-leading, var(--text-sm--line-height))\",\n      },\n    },\n    \":is(.dark *):disabled\": {\n      backgroundColor: \"var(--input)\",\n      \"@supports (color: color-mix(in lab, red, red))\": {\n        backgroundColor: \"color-mix(in oklab, var(--input) 80%, transparent)\",\n      },\n    },\n  },\n);\n\nexport interface TextareaProps extends Omit<InputProps, \"type\" | \"ref\"> {\n  rows?: number;\n  cols?: number;\n  wrap?: \"hard\" | \"soft\" | \"off\";\n  ref?: RefTarget<HTMLTextAreaElement>;\n}\n\n/**\n * `field-sizing: content`, so it grows with what is typed and needs no\n * resize observer and no shadow element to measure against.\n */\nexport function Textarea(props: Incoming<TextareaProps>) {\n  return <textarea {...controlProps(\"textarea\", textarea, props)} ref={mergeRefs(props.ref?.())} />;\n}\n"
+    }
+  ]
+}

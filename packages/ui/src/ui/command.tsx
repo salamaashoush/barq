@@ -1,4 +1,15 @@
 import { comboBox, comboBoxState, type ComboBoxState, type FilterFn } from "@barqjs/aria/combobox";
+import {
+  Command as WrittenCommand,
+  CommandEmpty as WrittenEmpty,
+  CommandGroup as WrittenGroup,
+  CommandInput as WrittenInput,
+  CommandItem as WrittenItem,
+  CommandList as WrittenList,
+  CommandLoading as WrittenLoading,
+  CommandSeparator as WrittenSeparator,
+  type CommandFilter,
+} from "@barqjs/aria/command";
 import { layer } from "@barqjs/css";
 import {
   listBox,
@@ -12,11 +23,12 @@ import {
 import type { ItemAccessors, Key, Node } from "@barqjs/aria/collections";
 import { fromProps, mergeProps } from "@barqjs/aria/utils";
 import {
-  context,
+  createContext,
   For,
   getContext,
   getOwner,
   install,
+  provide,
   Show,
   type Child,
   type Incoming,
@@ -31,7 +43,7 @@ import { icon } from "../lib/shared-icon.ts";
 import { when } from "../lib/shared-when.ts";
 import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
-import { uiProps } from "../lib/slot.ts";
+import { omit, uiProps } from "../lib/slot.ts";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "./dialog.tsx";
 import { srOnly } from "./sr-only.ts";
 
@@ -196,11 +208,16 @@ const item = ui(
     ":is(&[data-focused] > *):is(svg)": {
       color: "var(--foreground)",
     },
+    // An item the search has ruled out is `hidden`, and `display: flex` above
+    // would otherwise draw it anyway.
+    "[hidden]": {
+      display: "none",
+    },
   },
 );
 
 const shortcut = ui({
-  marginLeft: "auto",
+  marginInlineStart: "auto",
   fontSize: "var(--text-xs)",
   lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
   "--ui-tracking": "var(--tracking-widest)",
@@ -226,7 +243,7 @@ interface CommandValue<T> {
   baseId: () => string;
 }
 
-const CommandContext = context<CommandValue<unknown> | null>(null);
+const CommandContext = createContext<CommandValue<unknown> | null>(null);
 
 function use(): CommandValue<unknown> {
   const value = getContext(CommandContext);
@@ -236,11 +253,48 @@ function use(): CommandValue<unknown> {
   return value;
 }
 
-export interface CommandProps<T> extends UiProps, ItemAccessors<T> {
-  /** Everything the palette can run, before the typed text narrows it. */
-  items: Iterable<T>;
-  /** How one entry renders. Return a `<CommandItem>`. */
-  children: (item: T) => Child;
+/**
+ * Which `<Command>` a part is inside: one given `items`, or one written out.
+ *
+ * `<CommandItem>` and `<CommandGroup>` serve both, and the nearest palette is
+ * the one that decides, so one written inside the other still gets its own.
+ */
+const WrittenContext = createContext<boolean>(false);
+
+function Mode(props: Incoming<{ isWritten: boolean; children?: Child }>) {
+  return provide(
+    WrittenContext,
+    () => props.isWritten(),
+    () => props.children as unknown,
+  );
+}
+
+function isWritten(): boolean {
+  return getContext(WrittenContext);
+}
+
+export interface CommandProps<T> extends Omit<UiProps, "children">, ItemAccessors<T> {
+  /**
+   * Everything the palette can run, before the typed text narrows it.
+   *
+   * Leave it out and the palette is WRITTEN: a `<CommandInput>` and a
+   * `<CommandList>` of `<CommandItem>`s as children, which is shadcn's form.
+   */
+  items?: Iterable<T>;
+  /** With `items`, how one entry renders. Without, the palette's parts. */
+  children?: ((item: T) => Child) | Child;
+  /** Names the input and the list of a written palette, visually hidden. */
+  label?: string;
+  /** For a written palette: how well an item matches, 0 hiding it. */
+  filter?: CommandFilter;
+  /** For a written palette: turn off to filter the items yourself. @default true */
+  shouldFilter?: boolean;
+  /** For a written palette: wrap from the last item to the first. @default false */
+  loop?: boolean;
+  /** For a written palette: leave the highlight to the keyboard. @default false */
+  disablePointerSelection?: boolean;
+  /** For a written palette: Ctrl+J/N and Ctrl+K/P move the highlight. @default true */
+  vimBindings?: boolean;
   /** Rendered instead of the list when the text matches nothing. */
   empty?: Child;
   /**
@@ -254,6 +308,10 @@ export interface CommandProps<T> extends UiProps, ItemAccessors<T> {
   /** The list's own slot, for the same reason. */
   listSlot?: string;
   placeholder?: string;
+  /**
+   * With `items`, the typed text. Written, the highlighted item's value, which
+   * is what `cmdk` means by it; the text is `<CommandInput>`'s own `value`.
+   */
   value?: string;
   defaultValue?: string;
   disabledKeys?: Iterable<Key>;
@@ -283,8 +341,34 @@ export interface CommandProps<T> extends UiProps, ItemAccessors<T> {
  *
  * The input keeps the focus and the list is driven by `aria-activedescendant`,
  * which is what lets you type and arrow at the same time.
+ *
+ * Without `items` it is shadcn's own form, with `cmdk`'s ranking:
+ *
+ * ```tsx
+ * <Command label="Commands">
+ *   <CommandInput placeholder="Type a command or search..." />
+ *   <CommandList>
+ *     <CommandEmpty>No results found.</CommandEmpty>
+ *     <CommandGroup heading="Settings">
+ *       <CommandItem onSelect={openProfile}>Profile</CommandItem>
+ *     </CommandGroup>
+ *   </CommandList>
+ * </Command>
+ * ```
  */
 export function Command<T>(props: Incoming<CommandProps<T>>) {
+  if (props.items === undefined) {
+    return (
+      <WrittenCommand
+        {...props}
+        data-slot={props["data-slot"]?.() ?? "command"}
+        class={ui(root, props.class?.(), props.className?.())}
+      >
+        <Mode isWritten>{props.children}</Mode>
+      </WrittenCommand>
+    );
+  }
+
   const inputRef = makeRef<HTMLInputElement>();
   const listRef = makeRef<HTMLUListElement>();
   const options = fromProps(props as unknown as Incoming<Record<string, unknown>>);
@@ -334,24 +418,26 @@ export function Command<T>(props: Incoming<CommandProps<T>>) {
 
   return (
     <div {...uiProps("command", root, props)}>
-      <CommandInput placeholder={props.placeholder?.()} />
-      <Show
-        when={isEmpty()}
-        fallback={
-          <CommandList aria-label={props["aria-label"]?.()} listSlot={props.listSlot?.()}>
-            <For each={() => [...state.collection()]}>
-              {(node: Node<T>) => {
-                provideItemNode(node);
-                return render(node.value);
-              }}
-            </For>
-          </CommandList>
-        }
-      >
-        <div data-slot={props.emptySlot?.() ?? "command-empty"} class={empty}>
-          {props.empty?.() ?? "No results found."}
-        </div>
-      </Show>
+      <Mode isWritten={false}>
+        <ItemsInput placeholder={props.placeholder?.()} />
+        <Show
+          when={isEmpty()}
+          fallback={
+            <ItemsList aria-label={props["aria-label"]?.()} listSlot={props.listSlot?.()}>
+              <For each={() => [...state.collection()]}>
+                {(node: Node<T>) => {
+                  provideItemNode(node);
+                  return render(node.value);
+                }}
+              </For>
+            </ItemsList>
+          }
+        >
+          <div data-slot={props.emptySlot?.() ?? "command-empty"} class={empty}>
+            {props.empty?.() ?? "No results found."}
+          </div>
+        </Show>
+      </Mode>
     </div>
   );
 }
@@ -360,8 +446,8 @@ interface InputProps {
   placeholder?: string;
 }
 
-/** The search box. Rendered by `<Command>`; it is not placed by hand. */
-function CommandInput(props: Incoming<InputProps>) {
+/** The search box of a palette given `items`, which renders it itself. */
+function ItemsInput(props: Incoming<InputProps>) {
   const value = use();
   const elementProps = mergeProps(value.inputProps(), {
     "data-slot": "command-input",
@@ -370,10 +456,79 @@ function CommandInput(props: Incoming<InputProps>) {
   });
 
   return (
-    <div data-slot="command-input-wrapper" class={inputWrapper}>
+    <div data-slot="command-input-wrapper" cmdk-input-wrapper="" class={inputWrapper}>
       <Search data-slot="command-input-icon" class={inputIcon} aria-hidden="true" />
       <input {...elementProps} ref={value.inputRef.set} />
     </div>
+  );
+}
+
+export interface CommandInputProps extends UiProps {
+  placeholder?: string;
+  /** The search text, when you own it. */
+  value?: string;
+  disabled?: boolean;
+  autoFocus?: boolean;
+  onValueChange?: (search: string) => void;
+}
+
+/** The search box of a written palette. One given `items` renders its own. */
+export function CommandInput(props: Incoming<CommandInputProps>) {
+  return (
+    <div data-slot="command-input-wrapper" cmdk-input-wrapper="" class={inputWrapper}>
+      <Search data-slot="command-input-icon" class={inputIcon} aria-hidden="true" />
+      <WrittenInput
+        {...props}
+        data-slot={props["data-slot"]?.() ?? "command-input"}
+        class={ui(input, props.class?.(), props.className?.())}
+      />
+    </div>
+  );
+}
+
+/** The listbox of a written palette, holding its groups and items. */
+export function CommandList(props: Incoming<UiProps>) {
+  return (
+    <WrittenList
+      {...props}
+      data-slot={props["data-slot"]?.() ?? "command-list"}
+      class={ui(list, props.class?.(), props.className?.())}
+    >
+      {props.children}
+    </WrittenList>
+  );
+}
+
+/** What a written palette shows while the search matches nothing. */
+export function CommandEmpty(props: Incoming<UiProps>) {
+  return (
+    <WrittenEmpty
+      {...props}
+      data-slot={props["data-slot"]?.() ?? "command-empty"}
+      class={ui(empty, props.class?.(), props.className?.())}
+    >
+      {props.children}
+    </WrittenEmpty>
+  );
+}
+
+export interface CommandLoadingProps extends UiProps {
+  /** How far along, from 0 to 100. */
+  progress?: number;
+  /** @default "Loading..." */
+  label?: string;
+}
+
+/** A row to show, by your own condition, while a written palette's items load. */
+export function CommandLoading(props: Incoming<CommandLoadingProps>) {
+  return (
+    <WrittenLoading
+      {...props}
+      data-slot={props["data-slot"]?.() ?? "command-loading"}
+      class={ui(empty, props.class?.(), props.className?.())}
+    >
+      {props.children}
+    </WrittenLoading>
   );
 }
 
@@ -383,8 +538,8 @@ interface ListProps {
   children?: Child;
 }
 
-/** The listbox. Rendered by `<Command>`; it is not placed by hand. */
-function CommandList(props: Incoming<ListProps>) {
+/** The listbox of a palette given `items`, which renders it itself. */
+function ItemsList(props: Incoming<ListProps>) {
   const value = use();
   const options = value.listBoxProps();
 
@@ -423,6 +578,8 @@ function CommandList(props: Incoming<ListProps>) {
 export interface CommandGroupProps extends UiProps {
   /** Names the group to a reader and draws the heading. */
   heading?: string;
+  /** In a written palette: draw the group whatever the search says. */
+  forceMount?: boolean;
 }
 
 /**
@@ -433,6 +590,19 @@ export interface CommandGroupProps extends UiProps {
  * and a `role="group"` of its own options.
  */
 export function CommandGroup(props: Incoming<CommandGroupProps>) {
+  if (isWritten()) {
+    return (
+      <WrittenGroup
+        {...props}
+        headingSlot="command-group-label"
+        data-slot={props["data-slot"]?.() ?? "command-group"}
+        class={ui(group, props.class?.(), props.className?.())}
+      >
+        {props.children}
+      </WrittenGroup>
+    );
+  }
+
   const { itemProps, headingProps, groupProps } = listBoxSection({
     heading: () => props.heading?.(),
     "aria-label": () => props["aria-label"]?.(),
@@ -458,12 +628,44 @@ export function CommandGroup(props: Incoming<CommandGroupProps>) {
 
 export interface CommandItemProps extends UiProps {
   isDisabled?: boolean;
+  /** shadcn's name for `isDisabled`. */
+  disabled?: boolean;
+  /**
+   * In a written palette, what the item is searched and reported by.
+   * @default its own text
+   */
+  value?: string;
+  /** In a written palette, more words to find it by, which are not shown. */
+  keywords?: string[];
+  /** In a written palette: draw it whether or not it matches. */
+  forceMount?: boolean;
+  /**
+   * In a written palette, what choosing the item does. One given `items`
+   * reports the key to the palette's own `onAction` instead.
+   */
+  onSelect?: (value: string) => void;
 }
 
 export function CommandItem(props: Incoming<CommandItemProps>) {
+  const isDisabled = (): boolean | undefined => props.isDisabled?.() ?? props.disabled?.();
+
+  if (isWritten()) {
+    return (
+      <WrittenItem
+        {...props}
+        disabled={isDisabled()}
+        data-slot={props["data-slot"]?.() ?? "command-item"}
+        class={ui(item, props.class?.(), props.className?.())}
+      >
+        {props.children}
+      </WrittenItem>
+    );
+  }
+
   return (
     <Option
       {...props}
+      isDisabled={isDisabled()}
       data-slot={props["data-slot"]?.() ?? "command-item"}
       class={ui(item, props.class?.(), props.className?.())}
     >
@@ -476,40 +678,85 @@ export function CommandShortcut(props: Incoming<UiProps>) {
   return <span {...uiProps("command-shortcut", shortcut, props)}>{props.children}</span>;
 }
 
-export function CommandSeparator(props: Incoming<UiProps>) {
+export interface CommandSeparatorProps extends UiProps {
+  /** In a written palette: stay through a search, where it divides nothing. */
+  alwaysRender?: boolean;
+}
+
+export function CommandSeparator(props: Incoming<CommandSeparatorProps>) {
+  if (isWritten()) {
+    return (
+      <WrittenSeparator
+        {...props}
+        data-slot={props["data-slot"]?.() ?? "command-separator"}
+        class={ui(separator, props.class?.(), props.className?.())}
+      />
+    );
+  }
   return <hr {...uiProps("command-separator", separator, props)} />;
 }
 
 export interface CommandDialogProps<T> extends CommandProps<T> {
   isOpen?: boolean;
+  /** shadcn's name for `isOpen`. */
+  open?: boolean;
   defaultOpen?: boolean;
   /** Named to a screen reader, drawn nowhere. @default "Command palette" */
   title?: string;
   description?: string;
+  /** The ✕ in the dialog's corner. @default false */
+  showCloseButton?: boolean;
   onOpenChange?: (isOpen: boolean) => void;
 }
+
+/** What `<CommandDialog>` reads itself, and so does not hand to the palette. */
+const DIALOG_PROPS = [
+  "isOpen",
+  "open",
+  "defaultOpen",
+  "title",
+  "description",
+  "showCloseButton",
+  "onOpenChange",
+  "class",
+  "className",
+];
 
 /**
  * The palette, in a dialog.
  *
+ * ```tsx
+ * <CommandDialog isOpen={open()} onOpenChange={setOpen} title="Search">
+ *   <CommandInput placeholder="Type a command or search..." />
+ *   <CommandList>
+ *     <CommandItem onSelect={openProfile}>Profile</CommandItem>
+ *   </CommandList>
+ * </CommandDialog>
+ * ```
+ *
  * The title and description are real and screen-reader only, because a dialog
  * with no accessible name is a dialog a screen reader announces as nothing.
+ * `class` styles the dialog's content, as upstream's does; everything else is
+ * the palette's own.
  */
 export function CommandDialog<T>(props: Incoming<CommandDialogProps<T>>) {
   return (
     <Dialog
-      isOpen={props.isOpen?.()}
+      isOpen={props.isOpen?.() ?? props.open?.()}
       defaultOpen={props.defaultOpen?.()}
       onOpenChange={props.onOpenChange?.()}
     >
-      <DialogContent class={dialogContent} showCloseButton={false}>
+      <DialogContent
+        class={ui(dialogContent, props.class?.(), props.className?.())}
+        showCloseButton={props.showCloseButton?.() === true}
+      >
         <DialogHeader class={srOnly}>
           <DialogTitle>{props.title?.() ?? "Command palette"}</DialogTitle>
           <DialogDescription>
             {props.description?.() ?? "Search for a command to run."}
           </DialogDescription>
         </DialogHeader>
-        <Command {...props} />
+        <Command {...omit(props, DIALOG_PROPS)} />
       </DialogContent>
     </Dialog>
   );

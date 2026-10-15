@@ -88,10 +88,10 @@ const root = ui(box.border, box.transition, box.outline, when.darkInput, "group/
     paddingBottom: "calc(var(--spacing) * 3)",
   },
   ':has(> [data-align="inline-end"]) > input': {
-    paddingRight: "calc(var(--spacing) * 1.5)",
+    paddingInlineEnd: "calc(var(--spacing) * 1.5)",
   },
   ':has(> [data-align="inline-start"]) > input': {
-    paddingLeft: "calc(var(--spacing) * 1.5)",
+    paddingInlineStart: "calc(var(--spacing) * 1.5)",
   },
 });
 
@@ -126,23 +126,23 @@ const addon = ui(text.sm, text.medium, box.noSelect, {
   // that much and the control's text still starts where it would.
   '[data-align="inline-start"]': {
     order: "-9999",
-    paddingLeft: "calc(var(--spacing) * 2)",
+    paddingInlineStart: "calc(var(--spacing) * 2)",
   },
   '[data-align="inline-start"]:has(> button)': {
-    marginLeft: "-0.3rem",
+    marginInlineStart: "-0.3rem",
   },
   '[data-align="inline-start"]:has(> kbd)': {
-    marginLeft: "-0.15rem",
+    marginInlineStart: "-0.15rem",
   },
   '[data-align="inline-end"]': {
     order: "9999",
-    paddingRight: "calc(var(--spacing) * 2)",
+    paddingInlineEnd: "calc(var(--spacing) * 2)",
   },
   '[data-align="inline-end"]:has(> button)': {
-    marginRight: "-0.3rem",
+    marginInlineEnd: "-0.3rem",
   },
   '[data-align="inline-end"]:has(> kbd)': {
-    marginRight: "-0.15rem",
+    marginInlineEnd: "-0.15rem",
   },
   '[data-align="block-start"]': {
     order: "-9999",

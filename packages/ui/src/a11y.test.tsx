@@ -20,11 +20,54 @@
  * `PORTING.md` step 8 is where they are.
  */
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { ariaViolations, render } from "@barqjs/testing";
+import { flush } from "@barqjs/core";
+import { ariaViolations, render, role } from "@barqjs/testing";
+
+import { Calendar } from "./ui/calendar.tsx";
+import {
+  Carousel,
+  CarouselContent,
+  CarouselItem,
+  CarouselNext,
+  CarouselPrevious,
+} from "./ui/carousel.tsx";
+import { DatePicker, DateRangePicker } from "./ui/date-picker.tsx";
+import { DirectionProvider } from "./ui/direction.tsx";
+import { InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot } from "./ui/input-otp.tsx";
+import {
+  Questionnaire,
+  QuestionnaireActions,
+  QuestionnaireChoice,
+  QuestionnaireChoices,
+  QuestionnaireDescription,
+  QuestionnaireError,
+  QuestionnaireItem,
+  QuestionnaireNext,
+  QuestionnairePrevious,
+  QuestionnaireProgress,
+  QuestionnaireSubmit,
+  QuestionnaireTitle,
+} from "./ui/questionnaire.tsx";
+import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./ui/resizable.tsx";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupLabel,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+} from "./ui/sidebar.tsx";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "./ui/tabs.tsx";
+import { Toaster as Sonner, toast as sonner } from "./ui/sonner.tsx";
+import { Toaster, toast } from "./ui/toast.tsx";
 
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "./ui/accordion.tsx";
 import { Alert, AlertDescription, AlertTitle } from "./ui/alert.tsx";
@@ -61,6 +104,16 @@ import {
 } from "./ui/card.tsx";
 import { Checkbox } from "./ui/checkbox.tsx";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible.tsx";
+import {
+  Command,
+  CommandEmpty,
+  CommandGroup,
+  CommandInput,
+  CommandItem,
+  CommandList,
+  CommandSeparator,
+  CommandShortcut,
+} from "./ui/command.tsx";
 import { Empty, EmptyDescription, EmptyHeader, EmptyMedia, EmptyTitle } from "./ui/empty.tsx";
 import {
   Field,
@@ -97,7 +150,7 @@ import {
 } from "./ui/pagination.tsx";
 import { Progress } from "./ui/progress.tsx";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group.tsx";
-import { ScrollArea } from "./ui/scroll-area.tsx";
+import { ScrollArea, ScrollBar } from "./ui/scroll-area.tsx";
 import { Separator } from "./ui/separator.tsx";
 import { Skeleton } from "./ui/skeleton.tsx";
 import { Slider } from "./ui/slider.tsx";
@@ -220,6 +273,28 @@ function CheckboxExample() {
       <Checkbox id="terms" />
       <Label for="terms">Accept the terms</Label>
     </>
+  );
+}
+
+function CommandExample() {
+  return (
+    <Command label="Commands">
+      <CommandInput placeholder="Type a command or search..." />
+      <CommandList>
+        <CommandEmpty>No results found.</CommandEmpty>
+        <CommandGroup heading="Suggestions">
+          <CommandItem>Calendar</CommandItem>
+          <CommandItem disabled>Calculator</CommandItem>
+        </CommandGroup>
+        <CommandSeparator />
+        <CommandGroup heading="Settings">
+          <CommandItem>
+            Profile
+            <CommandShortcut>⌘P</CommandShortcut>
+          </CommandItem>
+        </CommandGroup>
+      </CommandList>
+    </Command>
   );
 }
 
@@ -484,6 +559,164 @@ function AccordionExample() {
  * nothing to provide on — the slider and the accordion both threw
  * "This must be rendered inside a …" from their own context read.
  */
+function CalendarExample() {
+  return (
+    <Calendar
+      aria-label="Departure"
+      mode="multiple"
+      numberOfMonths={2}
+      captionLayout="dropdown"
+      showWeekNumber
+    />
+  );
+}
+
+function CarouselExample() {
+  return (
+    <Carousel aria-label="Featured">
+      <CarouselContent>
+        <CarouselItem>One</CarouselItem>
+        <CarouselItem>Two</CarouselItem>
+      </CarouselContent>
+      <CarouselPrevious />
+      <CarouselNext />
+    </Carousel>
+  );
+}
+
+function DatePickerExample() {
+  return (
+    <div>
+      <DatePicker aria-label="Date of birth" />
+      <DateRangePicker aria-label="Stay" />
+    </div>
+  );
+}
+
+function DirectionExample() {
+  return (
+    <DirectionProvider dir="rtl">
+      <Tabs defaultValue="account">
+        <TabsList aria-label="Settings">
+          <TabsTrigger value="account">Account</TabsTrigger>
+          <TabsTrigger value="password">Password</TabsTrigger>
+        </TabsList>
+        <TabsContent value="account">Account settings</TabsContent>
+        <TabsContent value="password">Password settings</TabsContent>
+      </Tabs>
+    </DirectionProvider>
+  );
+}
+
+function InputOtpExample() {
+  return (
+    <InputOTP maxLength={6} aria-label="Verification code">
+      <InputOTPGroup>
+        <InputOTPSlot index={0} />
+        <InputOTPSlot index={1} />
+        <InputOTPSlot index={2} />
+      </InputOTPGroup>
+      <InputOTPSeparator />
+      <InputOTPGroup>
+        <InputOTPSlot index={3} />
+        <InputOTPSlot index={4} />
+        <InputOTPSlot index={5} />
+      </InputOTPGroup>
+    </InputOTP>
+  );
+}
+
+function QuestionnaireExample() {
+  return (
+    <Questionnaire aria-label="Plan">
+      <QuestionnaireProgress />
+      <QuestionnaireItem name="plan" required>
+        <QuestionnaireTitle>Choose a plan</QuestionnaireTitle>
+        <QuestionnaireDescription>You can change it later.</QuestionnaireDescription>
+        <QuestionnaireChoices>
+          <QuestionnaireChoice value="plus">
+            <span>Plus</span>
+          </QuestionnaireChoice>
+          <QuestionnaireChoice value="pro">
+            <span>Pro</span>
+          </QuestionnaireChoice>
+        </QuestionnaireChoices>
+        <QuestionnaireError />
+      </QuestionnaireItem>
+      <QuestionnaireItem name="seats" multiple>
+        <QuestionnaireTitle>Who needs a seat?</QuestionnaireTitle>
+        <QuestionnaireChoices>
+          <QuestionnaireChoice value="design">
+            <span>Design</span>
+          </QuestionnaireChoice>
+          <QuestionnaireChoice value="engineering">
+            <span>Engineering</span>
+          </QuestionnaireChoice>
+        </QuestionnaireChoices>
+        <QuestionnaireError />
+      </QuestionnaireItem>
+      <QuestionnaireActions>
+        <QuestionnairePrevious />
+        <QuestionnaireNext />
+        <QuestionnaireSubmit />
+      </QuestionnaireActions>
+    </Questionnaire>
+  );
+}
+
+function ResizableExample() {
+  return (
+    <ResizablePanelGroup orientation="horizontal">
+      <ResizablePanel id="files" defaultSize={30} collapsible>
+        Files
+      </ResizablePanel>
+      <ResizableHandle withHandle aria-label="Resize files" />
+      <ResizablePanel id="editor">Editor</ResizablePanel>
+    </ResizablePanelGroup>
+  );
+}
+
+function ScrollBarExample() {
+  return (
+    <ScrollArea aria-label="Releases">
+      <div>v1.2.0</div>
+      <ScrollBar orientation="horizontal" />
+    </ScrollArea>
+  );
+}
+
+function SidebarExample() {
+  return (
+    <SidebarProvider>
+      <Sidebar collapsible="icon">
+        <SidebarContent>
+          <SidebarGroup>
+            <SidebarGroupLabel>Platform</SidebarGroupLabel>
+            <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton tooltip="Inbox" isActive>
+                  Inbox
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+            </SidebarMenu>
+          </SidebarGroup>
+        </SidebarContent>
+      </Sidebar>
+      <SidebarInset>
+        <SidebarTrigger />
+      </SidebarInset>
+    </SidebarProvider>
+  );
+}
+
+function ToastExample() {
+  return <Toaster />;
+}
+
+function SonnerExample() {
+  return <Sonner />;
+}
+
 const EXAMPLES: readonly { name: string; component: Ui }[] = [
   { name: "Alert", component: AlertExample },
   { name: "AspectRatio", component: AspectRatioExample },
@@ -497,6 +730,7 @@ const EXAMPLES: readonly { name: string; component: Ui }[] = [
   { name: "Card", component: CardExample },
   { name: "Checkbox", component: CheckboxExample },
   { name: "Collapsible", component: CollapsibleExample },
+  { name: "Command", component: CommandExample },
   { name: "Empty", component: EmptyExample },
   { name: "Field", component: FieldExample },
   { name: "Input", component: InputExample },
@@ -520,6 +754,17 @@ const EXAMPLES: readonly { name: string; component: Ui }[] = [
   { name: "Toggle", component: ToggleExample },
   { name: "ToggleGroup", component: ToggleGroupExample },
   { name: "Accordion", component: AccordionExample },
+  { name: "Calendar", component: CalendarExample },
+  { name: "Carousel", component: CarouselExample },
+  { name: "DatePicker", component: DatePickerExample },
+  { name: "Direction", component: DirectionExample },
+  { name: "InputOTP", component: InputOtpExample },
+  { name: "Questionnaire", component: QuestionnaireExample },
+  { name: "Resizable", component: ResizableExample },
+  { name: "ScrollBar", component: ScrollBarExample },
+  { name: "Sidebar", component: SidebarExample },
+  { name: "Toast", component: ToastExample },
+  { name: "Sonner", component: SonnerExample },
 ];
 
 describe("every component, as the docs render it", () => {
@@ -532,6 +777,64 @@ describe("every component, as the docs render it", () => {
       expect(found).toEqual([]);
     });
   }
+});
+
+/**
+ * A toaster with nothing in it is two attributes on an empty element. What a
+ * screen reader meets is the toast: its name, its buttons, the list it sits in.
+ * Checked from `document.body`, because one of the two draws through a portal.
+ */
+describe("toasts, raised the way the docs raise them", () => {
+  const violations = (): string[] =>
+    ariaViolations(document.body).map((entry) => `[${entry.rule}] ${entry.message} ${entry.html}`);
+
+  afterEach(() => {
+    sonner.clear();
+    toast.close();
+    flush();
+  });
+
+  test("Sonner, with every kind and both buttons", () => {
+    render(() => <Sonner />);
+    sonner("Event has been created", {
+      description: "Sunday, December 3 at 9:00 AM",
+      action: { label: "Undo", onClick: () => {} },
+      cancel: { label: "Keep", onClick: () => {} },
+    });
+    sonner.success("Saved");
+    sonner.error("Could not save", { priority: "high" });
+    flush();
+
+    expect(document.querySelectorAll('[data-slot="toast"]').length).toBe(3);
+    const region = document.querySelector('[data-slot="toaster"]') as HTMLElement;
+    expect(region.tagName).toBe("SECTION");
+    expect(role(region)).toBe("region");
+    expect(violations()).toEqual([]);
+  });
+
+  test("Sonner, with a loading toast and a custom one", () => {
+    render(() => <Sonner closeButton={false} />);
+    sonner.loading("Uploading");
+    sonner.custom(() => <p>Three files left</p>);
+    flush();
+
+    expect(document.querySelectorAll('[data-slot="toast"]').length).toBe(2);
+    expect(violations()).toEqual([]);
+  });
+
+  test("Toast, with a title, a description and an action", () => {
+    render(() => <Toaster />);
+    toast.add({
+      title: "Event created",
+      description: "Sunday, December 3 at 9:00 AM",
+      actionProps: { children: "Undo", onClick: () => {} },
+    });
+    toast.add({ title: "Could not save", type: "error", priority: "high" });
+    flush();
+
+    expect(document.querySelectorAll('[data-slot="toast"]').length).toBe(2);
+    expect(violations()).toEqual([]);
+  });
 });
 
 /**

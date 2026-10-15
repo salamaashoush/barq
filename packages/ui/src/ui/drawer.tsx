@@ -1,9 +1,31 @@
-import { Dialog as AriaDialog, Heading, Modal, useDialogDescription } from "@barqjs/aria/dialog";
-import { canDragFrom, drawerDrag, type DrawerDirection } from "@barqjs/aria/drawer";
 import {
-  context,
+  Dialog as AriaDialog,
+  Heading,
+  Modal,
+  PortalProvider,
+  useDialogDescription,
+} from "@barqjs/aria/dialog";
+import {
+  canDragFrom,
+  drawerBackground,
+  drawerDrag,
+  drawerKeyboard,
+  nestedDrawerTransform,
+  type DrawerDirection,
+  type DrawerDrag,
+  type DrawerSnapPoint,
+} from "@barqjs/aria/drawer";
+import { portalContainer, usePortalTarget } from "@barqjs/aria/overlays";
+import { exitDuration } from "@barqjs/aria/presence";
+import { provideTriggerSlot } from "@barqjs/aria/utils";
+import {
+  createContext,
+  createTrackedEffect,
   getContext,
   getOwner,
+  onCleanup,
+  onSettled,
+  Portal,
   provide,
   Show,
   type Child,
@@ -15,10 +37,21 @@ import "../theme/layers.ts";
 import { text } from "../lib/shared-text.ts";
 import { overlayFamily, type OverlayRootProps } from "../lib/overlay.tsx";
 import type { UiProps } from "../lib/props.ts";
-import { uiProps } from "../lib/slot.ts";
+import { handedOn, named, uiProps } from "../lib/slot.ts";
 import { Button, type ButtonProps } from "./button.tsx";
 
 const ui = layer("barq.ui");
+
+/** Where a drawer that is not modal sits: over the page and out of its way. */
+const passThrough = ui({
+  position: "fixed",
+  inset: "0px",
+  zIndex: "50",
+  pointerEvents: "none",
+  "& > *": {
+    pointerEvents: "auto",
+  },
+});
 
 const overlay = ui({
   position: "fixed",
@@ -45,6 +78,22 @@ const overlay = ui({
       "exit var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
     "--ui-animation-fill-mode": "forwards",
     "--ui-exit-opacity": firstThatWorks("0", "calc(0/100)"),
+  },
+  // How dim the page is while a pull or a snap point says "not fully". A
+  // custom property scaling the colour rather than `opacity`, because this
+  // element CONTAINS the drawer and opacity would fade the drawer with it.
+  "[data-fading]": {
+    backgroundColor:
+      "color-mix(in srgb, #000 calc(10% * var(--drawer-overlay-opacity, 1)), transparent)",
+    "@supports (color: color-mix(in lab, red, red))": {
+      backgroundColor:
+        "color-mix(in oklab, var(--color-black) calc(10% * var(--drawer-overlay-opacity, 1)), transparent)",
+    },
+    "@supports (backdrop-filter: var(--tw))": {
+      "&": {
+        "--ui-backdrop-blur": "blur(calc(var(--blur-xs) * var(--drawer-overlay-opacity, 1)))",
+      },
+    },
   },
 });
 
@@ -177,7 +226,7 @@ const header = ui({
   "@media (width >= 48rem)": {
     "&": {
       gap: "calc(var(--spacing) * 0.5)",
-      textAlign: "left",
+      textAlign: "start",
     },
   },
 });
@@ -188,7 +237,7 @@ const headerCentered = ui({
 });
 
 const headerAligned = ui({
-  textAlign: "left",
+  textAlign: "start",
 });
 
 const footer = ui({
@@ -218,17 +267,140 @@ const family = overlayFamily("Drawer");
 
 interface DrawerValue {
   direction: () => DrawerDirection;
+  snapPoints: () => readonly DrawerSnapPoint[] | undefined;
+  activeSnapPoint: () => DrawerSnapPoint | null | undefined;
+  setActiveSnapPoint: (point: DrawerSnapPoint | null) => void;
+  fadeFromIndex: () => number | undefined;
+  snapToSequentialPoint: () => boolean;
+  dismissible: () => boolean;
+  handleOnly: () => boolean;
+  closeThreshold: () => number | undefined;
+  shouldScaleBackground: () => boolean;
+  setBackgroundColorOnScale: () => boolean;
+  modal: () => boolean;
+  autoFocus: () => boolean;
+  fixed: () => boolean;
+  repositionInputs: () => boolean;
+  container: () => Element | null;
+  onAnimationEnd: (open: boolean) => void;
+  onDrag: (event: PointerEvent, progress: number) => void;
+  onRelease: (event: PointerEvent, open: boolean) => void;
+  onClose: () => void;
+  /** The drawer this one was opened from inside of. */
+  parent: DrawerSurface | null;
 }
 
-const DrawerContext = context<DrawerValue | null>(null);
+const DEFAULTS: DrawerValue = {
+  direction: () => "bottom",
+  snapPoints: () => undefined,
+  activeSnapPoint: () => undefined,
+  setActiveSnapPoint: () => {},
+  fadeFromIndex: () => undefined,
+  snapToSequentialPoint: () => false,
+  dismissible: () => true,
+  handleOnly: () => false,
+  closeThreshold: () => undefined,
+  shouldScaleBackground: () => false,
+  setBackgroundColorOnScale: () => true,
+  modal: () => true,
+  autoFocus: () => true,
+  fixed: () => false,
+  repositionInputs: () => true,
+  container: () => null,
+  onAnimationEnd: () => {},
+  onDrag: () => {},
+  onRelease: () => {},
+  onClose: () => {},
+  parent: null,
+};
+
+const DrawerContext = createContext<DrawerValue | null>(null);
 
 function useDrawer(): DrawerValue {
-  return getContext(DrawerContext) ?? { direction: () => "bottom" };
+  return getContext(DrawerContext) ?? DEFAULTS;
 }
+
+/** What an open drawer offers the parts inside it, a nested drawer included. */
+interface DrawerSurface {
+  readonly drag: DrawerDrag;
+  /** The handle was pressed, unless that press was the end of a drag. */
+  press(): void;
+  /** A drawer opened from inside this one has opened or closed. */
+  nestedOpen(open: boolean): void;
+  /** That drawer is `progress` of the way to closed under a pointer. */
+  nestedDrag(progress: number): void;
+}
+
+const DrawerSurfaceContext = createContext<DrawerSurface | null>(null);
 
 export interface DrawerProps extends OverlayRootProps {
   /** Which edge it comes from. @default "bottom" */
   direction?: DrawerDirection;
+  /** The same as `isOpen`, under the name shadcn's drawer uses. */
+  open?: boolean;
+  /**
+   * Whether anything but the caller can close it. @default true
+   *
+   * `false` refuses Escape, a press outside, a drag and `<DrawerClose>` alike,
+   * so pair it with `open` and close it from your own handler.
+   */
+  dismissible?: boolean;
+  /** Only the handle starts a drag, and the rest of the drawer is left to its content. */
+  handleOnly?: boolean;
+  /**
+   * Where the drawer may rest, smallest first: a fraction of the viewport, or
+   * pixels as `"148px"`.
+   */
+  snapPoints?: readonly DrawerSnapPoint[];
+  /** The snap point it rests at. Leave it out and the drawer keeps its own. */
+  activeSnapPoint?: DrawerSnapPoint | null;
+  setActiveSnapPoint?: (point: DrawerSnapPoint | null) => void;
+  /** The snap point from which the page behind is dimmed. @default the last */
+  fadeFromIndex?: number;
+  /** A throw moves one snap point at a time rather than to the end. */
+  snapToSequentialPoint?: boolean;
+  /** How much of the drawer a pull has to take away to close it. @default 0.25 */
+  closeThreshold?: number;
+  /**
+   * Scale the page down behind the drawer.
+   *
+   * The page is the element carrying `data-drawer-wrapper` (or Vaul's
+   * `data-vaul-drawer-wrapper`), which the application puts around its content.
+   */
+  shouldScaleBackground?: boolean;
+  /** Paint the body black behind the scaled page. @default true */
+  setBackgroundColorOnScale?: boolean;
+  /** Set to `false` for a drawer inside another that should not push it back. */
+  nested?: boolean;
+  /**
+   * `false` leaves the page behind usable: no overlay, Tab may leave, a press
+   * outside does not close it, and nothing behind is hidden from a screen
+   * reader. @default true
+   */
+  modal?: boolean;
+  /**
+   * Move focus into the drawer when it opens. @default true
+   *
+   * Vaul's default is `false`; a dialog that opens and leaves focus behind is
+   * one a keyboard user has to go looking for.
+   */
+  autoFocus?: boolean;
+  /** With a keyboard on screen, shorten the drawer rather than lift it. */
+  fixed?: boolean;
+  /** Keep a bottom drawer clear of an on-screen keyboard. @default true */
+  repositionInputs?: boolean;
+  /** Draw the drawer in this element rather than the body. */
+  container?: Element | null;
+  /** Leave the body's own style alone: the scaled page has no black behind it. */
+  noBodyStyles?: boolean;
+  /** Opening or closing has finished animating, with whether it is open. */
+  onAnimationEnd?: (open: boolean) => void;
+  /** Every pointer move of a drag, with how much of the drawer is off screen. */
+  onDrag?: (event: PointerEvent, progress: number) => void;
+  /** The end of a drag, with whether the drawer stayed open. */
+  onRelease?: (event: PointerEvent, open: boolean) => void;
+  /** It closed, however that happened. */
+  onClose?: () => void;
 }
 
 /**
@@ -247,11 +419,20 @@ export interface DrawerProps extends OverlayRootProps {
  *   </DrawerContent>
  * </Drawer>
  * ```
+ *
+ * A `<Drawer>` written inside a `<DrawerContent>` is nested: the one beneath
+ * steps back while it is open and follows its drag.
  */
 export function Drawer(props: Incoming<DrawerProps>) {
   return (
-    <family.Root {...props}>
-      <DrawerProvider direction={props.direction}>{props.children}</DrawerProvider>
+    <family.Root {...props} isOpen={props.isOpen?.() ?? props.open?.()}>
+      <DrawerProvider {...props}>
+        <Show when={props.container?.() !== undefined} fallback={props.children}>
+          <PortalProvider getContainer={() => props.container?.() ?? null}>
+            {props.children}
+          </PortalProvider>
+        </Show>
+      </DrawerProvider>
     </family.Root>
   );
 }
@@ -261,21 +442,143 @@ export function Drawer(props: Incoming<DrawerProps>) {
  * the only place the scope exists. Inlined in `Drawer` the callback would run
  * where its siblings read and the direction would be the default everywhere.
  */
-function DrawerProvider(
-  props: Incoming<{ direction?: DrawerDirection | undefined; children?: Child }>,
-) {
+function DrawerProvider(props: Incoming<DrawerProps>) {
   const owner = getOwner();
-  const value: DrawerValue = { direction: () => props.direction?.() ?? "bottom" };
+  const surface = getContext(DrawerSurfaceContext) ?? null;
+  const value: DrawerValue = {
+    direction: () => props.direction?.() ?? "bottom",
+    snapPoints: () => props.snapPoints?.(),
+    activeSnapPoint: () => props.activeSnapPoint?.(),
+    setActiveSnapPoint: (point) => props.setActiveSnapPoint?.()?.(point),
+    fadeFromIndex: () => props.fadeFromIndex?.(),
+    snapToSequentialPoint: () => props.snapToSequentialPoint?.() === true,
+    dismissible: () => props.dismissible?.() !== false,
+    handleOnly: () => props.handleOnly?.() === true,
+    closeThreshold: () => props.closeThreshold?.(),
+    shouldScaleBackground: () => props.shouldScaleBackground?.() === true,
+    setBackgroundColorOnScale: () =>
+      props.setBackgroundColorOnScale?.() !== false && props.noBodyStyles?.() !== true,
+    modal: () => props.modal?.() !== false,
+    autoFocus: () => props.autoFocus?.() !== false,
+    fixed: () => props.fixed?.() === true,
+    repositionInputs: () => props.repositionInputs?.() !== false,
+    container: () => props.container?.() ?? null,
+    onAnimationEnd: (open) => props.onAnimationEnd?.()?.(open),
+    onDrag: (event, progress) => props.onDrag?.()?.(event, progress),
+    onRelease: (event, open) => props.onRelease?.()?.(event, open),
+    onClose: () => props.onClose?.()?.(),
+    parent: props.nested?.() === false ? null : surface,
+  };
   if (owner === null) return <>{props.children}</>;
   return provide(
     DrawerContext,
     () => value,
     () => props.children,
-  ) as never;
+  );
 }
 
+const TriggerScope = createContext<true | null>(null);
+
 export function DrawerTrigger(props: Incoming<{ children?: Child }>) {
-  return <family.Trigger {...props} />;
+  return (
+    <family.Trigger>
+      <DrawerTriggerSlot>{props.children}</DrawerTriggerSlot>
+    </family.Trigger>
+  );
+}
+
+/**
+ * Names the control `drawer-trigger`, as upstream's `asChild` does.
+ *
+ * Inside a `provide`, because that is the only scope of its own a component
+ * has: installed on the ambient owner the name would land beside the control
+ * rather than above it.
+ */
+function DrawerTriggerSlot(props: Incoming<{ children?: Child }>) {
+  return provide(
+    TriggerScope,
+    () => true as const,
+    () => {
+      provideTriggerSlot({ props: { "data-slot": "drawer-trigger" } });
+      return props.children;
+    },
+  );
+}
+
+/**
+ * Renders its children outside the tree while the drawer is open.
+ *
+ * `<DrawerContent>` already does this for itself. This is for a surface that is
+ * not `<DrawerContent>`: something drawn over the page that the drawer's state
+ * opens, with `<DrawerOverlay>` behind it.
+ */
+export function DrawerPortal(props: Incoming<{ children?: Child }>) {
+  const { state } = family.use();
+  const target = usePortalTarget();
+
+  return (
+    <Show when={state.isOpen()}>
+      <Portal mount={portalContainer(target)}>{props.children}</Portal>
+    </Show>
+  );
+}
+
+/**
+ * The dimmed page behind a surface of your own.
+ *
+ * `<DrawerContent>` draws one already, named the same, so this is only for use
+ * inside `<DrawerPortal>`. It is decoration to a screen reader and a way out to
+ * a pointer: pressing it closes the drawer unless the drawer says it cannot be
+ * dismissed.
+ */
+export function DrawerOverlay(props: Incoming<UiProps>) {
+  const { state } = family.use();
+  const drawer = useDrawer();
+
+  return (
+    <div
+      {...uiProps("drawer-overlay", overlay, props)}
+      aria-hidden="true"
+      data-state={() => (state.isOpen() ? "open" : "closed")}
+      onClick={(event: MouseEvent) => {
+        props.onClick?.()?.(event);
+        if (drawer.dismissible()) state.close();
+      }}
+    />
+  );
+}
+
+export interface DrawerHandleProps extends UiProps {
+  /** Pressing it does nothing of its own: no next snap point, no closing. */
+  preventCycle?: boolean;
+}
+
+/**
+ * The grip.
+ *
+ * `<DrawerContent>` draws one on a bottom drawer; this is the same part for
+ * anywhere else. Dragging it drags the drawer, which matters under
+ * `handleOnly`, where it is the only thing that does. Pressing it goes to the
+ * next snap point and closes the drawer after the last, or straight away when
+ * there are none.
+ *
+ * It is hidden from assistive technology: the drawer is a dialog with Escape
+ * and a close button, and a grip adds nothing to that but a nameless stop.
+ */
+export function DrawerHandle(props: Incoming<DrawerHandleProps>) {
+  const surface = getContext(DrawerSurfaceContext) ?? null;
+
+  return (
+    <div
+      {...uiProps("drawer-handle", handle, props)}
+      aria-hidden="true"
+      onClick={(event: MouseEvent) => {
+        props.onClick?.()?.(event);
+        if (props.preventCycle?.() === true) return;
+        surface?.press();
+      }}
+    />
+  );
 }
 
 export interface DrawerContentProps extends UiProps {
@@ -294,67 +597,145 @@ function isControl(target: EventTarget | null): boolean {
   return target.closest("input, textarea, select, [contenteditable], [role='slider']") !== null;
 }
 
+function isHandle(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest('[data-slot="drawer-handle"]') !== null;
+}
+
 export function DrawerContent(props: Incoming<DrawerContentProps>) {
   const { state } = family.use();
   const drawer = useDrawer();
   const direction = (): DrawerDirection => props.direction?.() ?? drawer.direction();
+  const vertical = (): boolean => direction() === "top" || direction() === "bottom";
+  const snaps = (): boolean => (drawer.snapPoints()?.length ?? 0) > 0;
+
+  let element: HTMLElement | null = null;
+  let underlay: HTMLElement | null = null;
+  const section: { current: HTMLElement | null } = { current: null };
+  let extent = 0;
+  let pointer: PointerEvent | null = null;
+  let draggedTo = 0;
+  let nestedIsOpen = false;
+  let announced = false;
+  let stopKeyboard: () => void = () => {};
+  let entered: ReturnType<typeof setTimeout> | undefined;
+
+  const background = drawerBackground({
+    direction,
+    setBackgroundColor: () => drawer.setBackgroundColorOnScale(),
+  });
 
   const drag = drawerDrag({
     direction,
+    threshold: () => drawer.closeThreshold(),
+    dismissible: () => drawer.dismissible(),
+    snapPoints: () => drawer.snapPoints(),
+    activeSnapPoint: () => drawer.activeSnapPoint(),
+    onSnapPointChange: (point) => drawer.setActiveSnapPoint(point),
+    fadeFromIndex: () => drawer.fadeFromIndex(),
+    snapToSequentialPoint: () => drawer.snapToSequentialPoint(),
+    onDrag: (progress) => {
+      if (pointer !== null) drawer.onDrag(pointer, progress);
+    },
+    onRelease: (open) => {
+      if (pointer !== null) drawer.onRelease(pointer, open);
+    },
     onClose: () => state.close(),
   });
 
-  let element: HTMLElement | null = null;
+  /** How much of the drawer the pointer has taken away, which is what the page and a parent follow. */
+  const pulled = (): number => (extent > 0 ? Math.min(1, Math.max(0, drag.offset()) / extent) : 0);
+
+  const fade = (): void => {
+    if (underlay === null) return;
+    if (snaps() || drag.offset() !== 0) {
+      underlay.setAttribute("data-fading", "");
+      underlay.style.setProperty("--drawer-overlay-opacity", String(drag.overlayOpacity()));
+    } else {
+      underlay.removeAttribute("data-fading");
+      underlay.style.removeProperty("--drawer-overlay-opacity");
+    }
+  };
 
   const place = (): void => {
     if (element === null) return;
-    const moved = drag.offset();
-    const axis = direction() === "top" || direction() === "bottom" ? "Y" : "X";
+    if (nestedIsOpen) return;
+    const moved = drag.position();
+    const axis = vertical() ? "Y" : "X";
     const sign = direction() === "bottom" || direction() === "right" ? 1 : -1;
-    element.style.transform = `translate${axis}(${String(moved * sign)}px)`;
+    element.style.transform = moved === 0 ? "" : `translate${axis}(${String(moved * sign)}px)`;
+    fade();
+  };
+
+  const measure = (): void => {
+    if (element === null) return;
+    const rect = element.getBoundingClientRect();
+    extent = vertical() ? rect.height : rect.width;
+    drag.measure(extent);
   };
 
   const release = (): void => {
     if (element === null) return;
-    // The inline transform goes so the rule's own transition carries it back,
-    // and the exit keyframes override it anyway when the drag closed it.
-    element.style.transform = "";
+    // The duration goes so the rule's own transition carries it to where it
+    // rests, and the exit keyframes override it anyway when the drag closed it.
     element.style.transitionDuration = "";
     element.removeAttribute("data-dragging");
-  };
-
-  const onMove = (event: PointerEvent): void => {
-    drag.move({ x: event.clientX, y: event.clientY });
     place();
   };
 
-  const onUp = (): void => {
+  const unlisten = (): void => {
     window.removeEventListener("pointermove", onMove);
     window.removeEventListener("pointerup", onUp);
     window.removeEventListener("pointercancel", onCancel);
-    drag.end();
+  };
+
+  const onMove = (event: PointerEvent): void => {
+    pointer = event;
+    drag.move({ x: event.clientX, y: event.clientY });
+    draggedTo = Math.max(draggedTo, Math.abs(drag.offset()));
+    place();
+    if (drawer.shouldScaleBackground()) background.drag(pulled());
+    drawer.parent?.nestedDrag(pulled());
+  };
+
+  const onUp = (event: PointerEvent): void => {
+    unlisten();
+    pointer = event;
+    const closed = drag.end();
     release();
+    if (!closed) settle();
+    pointer = null;
   };
 
   const onCancel = (): void => {
-    window.removeEventListener("pointermove", onMove);
-    window.removeEventListener("pointerup", onUp);
-    window.removeEventListener("pointercancel", onCancel);
+    unlisten();
+    pointer = null;
     drag.cancel();
     release();
+    settle();
+  };
+
+  /** The page and a parent drawer go back to how an open drawer leaves them. */
+  const settle = (): void => {
+    if (drawer.shouldScaleBackground()) background.settle();
+    drawer.parent?.nestedDrag(0);
   };
 
   const onPointerDown = (event: PointerEvent): void => {
+    props.onPointerDown?.()?.(event);
+    draggedTo = 0;
     if (event.button !== 0 || isControl(event.target)) return;
+    if (drawer.handleOnly() && !isHandle(event.target)) return;
+    if (!drawer.dismissible() && !snaps()) return;
     const target = event.currentTarget;
     if (!(target instanceof HTMLElement)) return;
     if (!canDragFrom(event.target instanceof Element ? event.target : null, target, direction()))
       return;
 
     element = target;
+    pointer = event;
     const rect = target.getBoundingClientRect();
-    const vertical = direction() === "top" || direction() === "bottom";
-    drag.start({ x: event.clientX, y: event.clientY }, vertical ? rect.height : rect.width);
+    extent = vertical() ? rect.height : rect.width;
+    drag.start({ x: event.clientX, y: event.clientY }, extent);
     target.setAttribute("data-dragging", "");
     // The rule's transition is what carries the snap BACK; during the drag it
     // would make the drawer lag a third of a second behind the finger.
@@ -369,26 +750,170 @@ export function DrawerContent(props: Incoming<DrawerContentProps>) {
     window.addEventListener("pointercancel", onCancel);
   };
 
+  const announce = (open: boolean): void => {
+    if (announced === open) return;
+    announced = open;
+    if (drawer.shouldScaleBackground()) {
+      if (open) background.open();
+      else background.close();
+    }
+    drawer.parent?.nestedOpen(open);
+    if (!open) drawer.onClose();
+  };
+
+  const mounted = (): void => {
+    const found = section.current?.parentElement ?? null;
+    if (found === null) return;
+    element = found;
+    underlay = found.parentElement;
+    underlay?.setAttribute("data-state", "open");
+    measure();
+    place();
+    announce(true);
+    window.addEventListener("resize", onResize);
+    // Vaul leaves a drawer that is not modal where it is.
+    if (drawer.modal() && drawer.repositionInputs()) {
+      stopKeyboard = drawerKeyboard(found, { fixed: () => drawer.fixed() });
+    }
+    const settled = found;
+    entered = setTimeout(() => {
+      entered = undefined;
+      if (element === settled) drawer.onAnimationEnd(true);
+    }, exitDuration(found));
+  };
+
+  const unmounted = (): void => {
+    unlisten();
+    window.removeEventListener("resize", onResize);
+    stopKeyboard();
+    stopKeyboard = () => {};
+    clearTimeout(entered);
+    entered = undefined;
+    // Unmounted once the exit has finished drawing, which is the end of closing.
+    drawer.onAnimationEnd(false);
+    announce(false);
+    element = null;
+    underlay = null;
+    nestedIsOpen = false;
+  };
+
+  const onResize = (): void => {
+    measure();
+    place();
+  };
+
+  // Where it rests is the caller's to move as well as the pointer's: a
+  // controlled snap point, or a new list of them, lands here.
+  createTrackedEffect(() => {
+    drag.rest();
+    drag.overlayOpacity();
+    if (!drag.isDragging()) place();
+    return undefined;
+  });
+
+  // On the way OUT, not once it has gone: the page scales back and a parent
+  // comes forward while this one is still sliding away.
+  createTrackedEffect(() => {
+    if (state.isOpen()) return undefined;
+    underlay?.setAttribute("data-state", "closed");
+    announce(false);
+    return undefined;
+  });
+
+  const surface: DrawerSurface = {
+    drag,
+    press: () => {
+      // A drag that ends over the handle is followed by a click on it.
+      if (draggedTo > 2) return;
+      drag.cycle();
+    },
+    nestedOpen: (open) => {
+      nestedIsOpen = open;
+      if (element === null) return;
+      if (open) {
+        element.setAttribute("data-nested-drawer-open", "");
+        element.style.transform = nestedDrawerTransform(direction(), window.innerWidth, 0);
+      } else {
+        element.removeAttribute("data-nested-drawer-open");
+        element.style.transitionDuration = "";
+        place();
+      }
+    },
+    nestedDrag: (progress) => {
+      if (element === null || !nestedIsOpen) return;
+      // No transition while it follows a pointer, and the rule's own again
+      // once the pointer lets go.
+      element.style.transitionDuration = progress > 0 ? "0s" : "";
+      element.style.transform = nestedDrawerTransform(direction(), window.innerWidth, progress);
+    },
+  };
+
+  const request = (open: boolean): void => {
+    if (!open && !drawer.dismissible()) return;
+    state.setOpen(open);
+  };
+
   return (
     <Modal
       isOpen={state.isOpen()}
-      onOpenChange={state.setOpen}
-      isDismissable={props.isDismissable?.() !== false}
-      isKeyboardDismissDisabled={props.isKeyboardDismissDisabled?.() === true}
-      underlayClass={overlay}
-      underlaySlot="drawer-overlay"
+      onOpenChange={request}
+      isDismissable={props.isDismissable?.() !== false && drawer.dismissible()}
+      isKeyboardDismissDisabled={
+        props.isKeyboardDismissDisabled?.() === true || !drawer.dismissible()
+      }
+      isNonModal={!drawer.modal()}
+      autoFocus={drawer.autoFocus()}
+      underlayClass={drawer.modal() ? overlay : passThrough}
+      underlaySlot={drawer.modal() ? "drawer-overlay" : undefined}
+      data-vaul-custom-container={drawer.container() === null ? "false" : "true"}
+      {...handedOn(props)}
       class={ui(content, props.class?.(), props.className?.())}
       data-slot={props["data-slot"]?.() ?? "drawer-content"}
+      dir={props.dir?.()}
+      title={props.title?.()}
       data-direction={direction()}
+      data-vaul-drawer-direction={direction()}
+      data-state={state.isOpen() ? "open" : "closed"}
       onPointerDown={onPointerDown}
     >
-      <AriaDialog class={contents}>
-        <Show when={props.showHandle?.() !== false && direction() === "bottom"}>
-          <div data-slot="drawer-handle" class={handle} aria-hidden="true" />
-        </Show>
-        {props.children}
+      <AriaDialog {...named(props)} class={contents} ref={section}>
+        <DrawerSurfaceProvider value={surface} onMount={mounted} onUnmount={unmounted}>
+          <Show when={props.showHandle?.() !== false && direction() === "bottom"}>
+            <DrawerHandle />
+          </Show>
+          {props.children}
+        </DrawerSurfaceProvider>
       </AriaDialog>
     </Modal>
+  );
+}
+
+/**
+ * The surface's context, and the two moments the drawer's element exists
+ * between.
+ *
+ * `onSettled` rather than the dialog's `ref`: a ref fires before its element
+ * is in the document, and what the drawer needs is the element's PARENT, which
+ * is the one that moves.
+ */
+function DrawerSurfaceProvider(
+  props: Incoming<{
+    value: DrawerSurface;
+    onMount: () => void;
+    onUnmount: () => void;
+    children?: Child;
+  }>,
+) {
+  onSettled(() => {
+    props.onMount()();
+  });
+  onCleanup(() => {
+    props.onUnmount()();
+  });
+  return provide(
+    DrawerSurfaceContext,
+    () => props.value(),
+    () => props.children,
   );
 }
 
@@ -444,8 +969,13 @@ export function DrawerDescription(props: Incoming<UiProps>) {
 
 export interface DrawerCloseProps extends ButtonProps {}
 
+/**
+ * Closes the drawer, unless the drawer was told it cannot be dismissed, in
+ * which case `onPress` is where the caller closes it.
+ */
 export function DrawerClose(props: Incoming<DrawerCloseProps>) {
   const { state } = family.use();
+  const drawer = useDrawer();
   return (
     <Button
       {...props}
@@ -453,7 +983,7 @@ export function DrawerClose(props: Incoming<DrawerCloseProps>) {
       variant={props.variant?.() ?? "outline"}
       onPress={(event) => {
         props.onPress?.()?.(event);
-        state.close();
+        if (drawer.dismissible()) state.close();
       }}
     />
   );

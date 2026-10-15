@@ -1,13 +1,32 @@
-import { Section, type OptionComponentProps } from "@barqjs/aria/listbox";
+import type { Key } from "@barqjs/aria/collections";
+import {
+  Section,
+  useItemNode,
+  useListBox,
+  useSectionHeading,
+  type OptionComponentProps,
+} from "@barqjs/aria/listbox";
+import { placementFor, type Align, type Placement, type Side } from "@barqjs/aria/overlays";
 import {
   Option,
   Select as AriaSelect,
-  SelectValue,
+  SelectContent as AriaSelectContent,
+  SelectItemText,
+  SelectRoot,
+  SelectScrollButton,
+  SelectTrigger as AriaSelectTrigger,
+  SelectValue as AriaSelectValue,
+  SelectViewport,
   type SelectComponentProps,
+  type SelectPosition,
+  type SelectTriggerComponentProps,
+  type SelectValueComponentProps,
 } from "@barqjs/aria/select";
 import type { Child, Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 import { Check } from "@barqjs/lucide/icons/check";
+import { ChevronDown } from "@barqjs/lucide/icons/chevron-down";
+import { ChevronUp } from "@barqjs/lucide/icons/chevron-up";
 
 import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
@@ -46,8 +65,8 @@ const trigger = ui(
     borderColor: "var(--input)",
     backgroundColor: "transparent",
     paddingBlock: "calc(var(--spacing) * 2)",
-    paddingRight: "calc(var(--spacing) * 2)",
-    paddingLeft: "calc(var(--spacing) * 2.5)",
+    paddingInlineEnd: "calc(var(--spacing) * 2)",
+    paddingInlineStart: "calc(var(--spacing) * 2.5)",
     whiteSpace: "nowrap",
     transitionProperty:
       "color, background-color, border-color, outline-color, text-decoration-color, fill, stroke, --ui-gradient-from, --ui-gradient-via, --ui-gradient-to",
@@ -174,8 +193,8 @@ const item = ui(
     gap: "calc(var(--spacing) * 1.5)",
     borderRadius: "calc(var(--radius) * 0.8)",
     paddingBlock: "var(--spacing)",
-    paddingRight: "calc(var(--spacing) * 8)",
-    paddingLeft: "calc(var(--spacing) * 1.5)",
+    paddingInlineEnd: "calc(var(--spacing) * 8)",
+    paddingInlineStart: "calc(var(--spacing) * 1.5)",
     ':is(&:not([data-variant="destructive"])[data-focused] *)': {
       color: "var(--accent-foreground)",
     },
@@ -191,7 +210,7 @@ const item = ui(
 
 const indicator = ui({
   position: "absolute",
-  right: "calc(var(--spacing) * 2)",
+  insetInlineEnd: "calc(var(--spacing) * 2)",
   display: "flex",
   width: "calc(var(--spacing) * 3.5)",
   height: "calc(var(--spacing) * 3.5)",
@@ -249,14 +268,113 @@ const chevron = ui({
   },
 });
 
+/**
+ * The box a written select's list opens in.
+ *
+ * The same box as `list`, laid out as a column: the scroll buttons sit above
+ * and below a viewport that does the scrolling, so the box itself clips.
+ */
+const content = ui(list, {
+  display: "flex",
+  flexDirection: "column",
+  overflowY: "hidden",
+});
+
+/**
+ * The scroller. Its scrollbar is hidden because the arrows at either end say
+ * the same thing, and both at once is two indicators for one fact.
+ */
+const viewport = ui({
+  margin: "0px",
+  minHeight: "0px",
+  flexGrow: "1",
+  flexShrink: "1",
+  flexBasis: "0%",
+  listStyleType: "none",
+  padding: "0px",
+  overflowX: "hidden",
+  overflowY: "auto",
+  scrollbarWidth: "none",
+  "::-webkit-scrollbar": {
+    display: "none",
+  },
+  '[data-position="popper"]': {
+    width: "100%",
+    minWidth: "var(--barq-trigger-width)",
+  },
+});
+
+const scrollButton = ui(icon.plain, icon.sized, {
+  zIndex: "10",
+  display: "flex",
+  flexShrink: "0",
+  cursor: "default",
+  alignItems: "center",
+  justifyContent: "center",
+  backgroundColor: "var(--popover)",
+  paddingBlock: "var(--spacing)",
+});
+
+const triggerIcon = ui({
+  width: "calc(var(--spacing) * 4)",
+  height: "calc(var(--spacing) * 4)",
+  flexShrink: "0",
+  opacity: "50%",
+  color: "var(--muted-foreground)",
+});
+
+const value = ui({
+  textAlign: "start",
+});
+
 export type SelectSize = "default" | "sm";
 
-export interface SelectProps<T> extends SelectComponentProps<T> {
-  /** @default "default" */
+export interface SelectProps<T> extends Omit<SelectComponentProps<T>, "items" | "children"> {
+  /**
+   * The values to choose between, for a select built from data. Leave it out
+   * and the select is written as parts instead.
+   */
+  items?: Iterable<T>;
+  /** How one value renders, with `items`; the trigger and the content, without. */
+  children?: ((item: T) => Child) | Child;
+  /** The trigger's size, with `items`. A written select sizes its own `<SelectTrigger>`. @default "default" */
   size?: SelectSize;
+  /** The chosen option's `value`. */
+  value?: string;
+  defaultValue?: string;
+  onValueChange?: (value: string) => void;
+  open?: boolean;
+  disabled?: boolean;
+  required?: boolean;
+  /** The reading direction, when it is not the page's. */
+  dir?: "ltr" | "rtl";
+}
+
+function hasItems<T>(
+  props: Incoming<SelectProps<T>>,
+): props is Incoming<SelectProps<T> & SelectComponentProps<T>> {
+  return props.items !== undefined;
 }
 
 /**
+ * Written as parts, which is how shadcn's reads:
+ *
+ * ```tsx
+ * <Select defaultValue="apple" onValueChange={(fruit) => chosen.set(fruit)}>
+ *   <SelectTrigger aria-label="Fruit"><SelectValue placeholder="Pick one" /></SelectTrigger>
+ *   <SelectContent>
+ *     <SelectGroup>
+ *       <SelectLabel>Fruit</SelectLabel>
+ *       <SelectItem value="apple">Apple</SelectItem>
+ *       <SelectItem value="banana">Banana</SelectItem>
+ *     </SelectGroup>
+ *   </SelectContent>
+ * </Select>
+ * ```
+ *
+ * Or built from data, where `@barqjs/aria` makes the trigger, the popover and
+ * the list from the same `items`:
+ *
  * ```tsx
  * <Select items={fruits} placeholder="Pick one" aria-label="Fruit"
  *         onSelectionChange={(key) => chosen.set(key)}>
@@ -264,47 +382,201 @@ export interface SelectProps<T> extends SelectComponentProps<T> {
  * </Select>
  * ```
  *
- * One component, not five. shadcn's `<SelectTrigger>` / `<SelectContent>` /
- * `<SelectValue>` exist because Radix needs the tree written out;
- * `@barqjs/aria` builds the trigger, the popover and the list from the same
- * `items`, and renders a real `<select>` beside them when you give it a `name`
- * so the value reaches a form post.
+ * Which one it is follows from `items` alone. Either way a real `<select>` is
+ * rendered beside it when you give it a `name`, so the value reaches a form
+ * post, and the written one takes `value`, `open`, `disabled` and `required`
+ * under shadcn's names as well as this package's.
  */
 export function Select<T>(props: Incoming<SelectProps<T>>) {
+  if (hasItems(props)) {
+    return (
+      <AriaSelect
+        {...props}
+        selectedKey={props.selectedKey?.() ?? props.value?.()}
+        defaultSelectedKey={props.defaultSelectedKey?.() ?? props.defaultValue?.()}
+        isOpen={props.isOpen?.() ?? props.open?.()}
+        isDisabled={props.isDisabled?.() ?? props.disabled?.()}
+        isRequired={props.isRequired?.() ?? props.required?.()}
+        onSelectionChange={(key) => chose(props, key)}
+        data-slot={props["data-slot"]?.() ?? "select-trigger"}
+        data-size={props.size?.() ?? "default"}
+        class={ui(trigger, chevron, props.class?.(), props.className?.())}
+        listClass={list}
+        listSlot="select-content"
+      />
+    );
+  }
+
   return (
-    <AriaSelect
+    <SelectRoot
+      selectedKey={props.selectedKey?.() ?? props.value?.()}
+      defaultSelectedKey={props.defaultSelectedKey?.() ?? props.defaultValue?.()}
+      isOpen={props.isOpen?.() ?? props.open?.()}
+      defaultOpen={props.defaultOpen?.()}
+      isDisabled={props.isDisabled?.() ?? props.disabled?.()}
+      isRequired={props.isRequired?.() ?? props.required?.()}
+      name={props.name?.()}
+      form={props.form?.()}
+      autoComplete={props.autoComplete?.()}
+      dir={props.dir?.()}
+      onSelectionChange={(key) => chose(props, key)}
+      onOpenChange={props.onOpenChange?.()}
+    >
+      {props.children}
+    </SelectRoot>
+  );
+}
+
+function chose<T>(props: Incoming<SelectProps<T>>, key: Key | null): void {
+  props.onSelectionChange?.()?.(key);
+  if (key !== null) props.onValueChange?.()?.(String(key));
+}
+
+export interface SelectTriggerProps extends SelectTriggerComponentProps {
+  /** @default "default" */
+  size?: SelectSize;
+  disabled?: boolean;
+}
+
+/**
+ * The control that shows the value and opens the list, for a written select.
+ *
+ * This IS the button, as shadcn's is, so it takes the `id` a `<label for>`
+ * points at; a combobox is named by its label, and one with neither that nor
+ * an `aria-label` has no name at all.
+ */
+export function SelectTrigger(props: Incoming<SelectTriggerProps>) {
+  return (
+    <AriaSelectTrigger
       {...props}
+      isDisabled={props.isDisabled?.() ?? props.disabled?.()}
       data-slot={props["data-slot"]?.() ?? "select-trigger"}
       data-size={props.size?.() ?? "default"}
-      class={ui(trigger, chevron, props.class?.(), props.className?.())}
-      listClass={list}
-      listSlot="select-content"
+      class={ui(trigger, props.class?.(), props.className?.())}
+    >
+      {props.children}
+      <ChevronDown data-slot="select-icon" class={triggerIcon} aria-hidden="true" />
+    </AriaSelectTrigger>
+  );
+}
+
+export interface SelectValueProps extends SelectValueComponentProps {}
+
+/** What is chosen, or the placeholder. Inside a `<SelectTrigger>`. */
+export function SelectValue(props: Incoming<SelectValueProps>) {
+  return (
+    <AriaSelectValue
+      {...props}
+      data-slot={props["data-slot"]?.() ?? "select-value"}
+      class={ui(value, props.class?.(), props.className?.())}
     />
   );
 }
 
-export interface SelectItemProps extends OptionComponentProps {}
+export interface SelectContentProps extends UiProps {
+  /**
+   * `"item-aligned"` lays the list over the trigger with the chosen option on
+   * top of it, and falls back to `"popper"` where that would leave the
+   * viewport; `"popper"` hangs it off the trigger.
+   *
+   * @default "item-aligned"
+   */
+  position?: SelectPosition;
+  /** @default "bottom" */
+  side?: Side;
+  /** @default "center" */
+  align?: Align;
+  /** Distance from the trigger, on top of the gap the list always keeps. @default 0 */
+  sideOffset?: number;
+  alignOffset?: number;
+  /** This package's name for a side and an alignment at once. Wins over both. */
+  placement?: Placement;
+  /** This package's name for the whole distance from the trigger. Wins over `sideOffset`. */
+  offset?: number;
+}
 
-/** One option. The tick appears from `data-selected`; nothing re-renders. */
+/** The gap shadcn draws between a popper list and its trigger, in pixels. */
+const POPPER_GAP = 4;
+
+/**
+ * The list a written select opens: the scroll buttons and the viewport the
+ * options are in.
+ */
+export function SelectContent(props: Incoming<SelectContentProps>) {
+  const position = (): SelectPosition => props.position?.() ?? "item-aligned";
+
+  return (
+    <AriaSelectContent
+      {...props}
+      data-slot={props["data-slot"]?.() ?? "select-content"}
+      class={ui(content, props.class?.(), props.className?.())}
+      position={position()}
+      placement={
+        props.placement?.() ?? placementFor(props.side?.() ?? "bottom", props.align?.() ?? "center")
+      }
+      offset={props.offset?.() ?? (props.sideOffset?.() ?? 0) + POPPER_GAP}
+      crossOffset={props.alignOffset?.()}
+    >
+      <SelectScrollUpButton />
+      <SelectViewport class={viewport} data-slot="select-viewport" data-position={position()}>
+        {props.children}
+      </SelectViewport>
+      <SelectScrollDownButton />
+    </AriaSelectContent>
+  );
+}
+
+export interface SelectItemProps extends OptionComponentProps {
+  /** shadcn's name for `isDisabled`, for an item written as a child. */
+  disabled?: boolean;
+}
+
+/**
+ * One option. The tick appears from `data-selected`; nothing re-renders.
+ *
+ * Written as a child it carries its own `value`. Its children are what the
+ * trigger shows once it is chosen, so an icon beside the text goes there too.
+ */
 export function SelectItem(props: Incoming<SelectItemProps>) {
+  const listbox = useListBox();
+  const key = listbox.staticItems === undefined ? useItemNode().key : props.value?.();
+  const isChecked = (): boolean =>
+    key !== undefined && listbox.state.selectionManager().isSelected(key);
+  const isHighlighted = (): boolean =>
+    key !== undefined && listbox.state.selectionManager().focusedKey === key;
+  const isDisabled = (): boolean => (props.isDisabled?.() ?? props.disabled?.()) === true;
+
   return (
     <Option
       {...props}
+      isDisabled={isDisabled()}
       data-slot={props["data-slot"]?.() ?? "select-item"}
+      data-state={isChecked() ? "checked" : "unchecked"}
+      data-highlighted={isHighlighted() ? "" : undefined}
       class={ui(item, props.class?.(), props.className?.())}
     >
       <span data-slot="select-item-indicator" class={indicator}>
         <Check />
       </span>
-      {props.children}
+      <SelectItemText data-slot="select-item-text">{props.children}</SelectItemText>
     </Option>
   );
 }
 
-/** A heading over a run of options. */
+/**
+ * A heading over a run of options.
+ *
+ * Inside a written `<SelectGroup>` it is what names the group, which is why
+ * the group needs no `title` there.
+ */
 export function SelectLabel(props: Incoming<UiProps>) {
+  const headingId = useSectionHeading();
   return (
-    <li {...uiProps("select-label", label, props)} role="presentation">
+    <li
+      {...uiProps("select-label", label, props)}
+      id={props.id?.() ?? headingId?.()}
+      role="presentation"
+    >
       {props.children}
     </li>
   );
@@ -314,20 +586,52 @@ export function SelectSeparator(props: Incoming<UiProps>) {
   return <li {...uiProps("select-separator", separator, props)} role="separator" />;
 }
 
+/** The arrow at the top of a written select's list, there while it can scroll up. */
+export function SelectScrollUpButton(props: Incoming<UiProps>) {
+  return (
+    <SelectScrollButton
+      {...props}
+      direction="up"
+      data-slot={props["data-slot"]?.() ?? "select-scroll-up-button"}
+      class={ui(scrollButton, props.class?.(), props.className?.())}
+    >
+      <ChevronUp />
+    </SelectScrollButton>
+  );
+}
+
+/** The arrow at the bottom, there while it can scroll down. */
+export function SelectScrollDownButton(props: Incoming<UiProps>) {
+  return (
+    <SelectScrollButton
+      {...props}
+      direction="down"
+      data-slot={props["data-slot"]?.() ?? "select-scroll-down-button"}
+      class={ui(scrollButton, props.class?.(), props.className?.())}
+    >
+      <ChevronDown />
+    </SelectScrollButton>
+  );
+}
+
 const group = ui({
   scrollMarginBlock: "var(--spacing)",
   padding: "var(--spacing)",
 });
 
 export interface SelectGroupProps extends Omit<UiProps, "title"> {
-  /** The heading over the run. */
+  /**
+   * The heading over the run, for a group rendered from data. A written group
+   * takes a `<SelectLabel>` as its first child instead.
+   */
   title?: Child;
 }
 
 /**
  * A run of options under a heading.
  *
- * Rendered from the item callback like an option is: give the select
+ * Written, it holds its `<SelectLabel>` and its `<SelectItem>`s. Rendered from
+ * data it comes out of the item callback like an option does: give the select
  * `getChildren` and each group arrives there as its own value.
  *
  * ```tsx
@@ -340,15 +644,16 @@ export interface SelectGroupProps extends Omit<UiProps, "title"> {
  * ```
  */
 export function SelectGroup(props: Incoming<SelectGroupProps>) {
+  // A group named by a `<SelectLabel>` child has no title of its own, and the
+  // element that would have held one must not be drawn as a heading.
+  const isTitled = props.title !== undefined;
   return (
     <Section
       {...props}
       data-slot={props["data-slot"]?.() ?? "select-group"}
-      titleSlot="select-label"
-      titleClass={label}
+      titleSlot={isTitled ? "select-label" : "select-group-title"}
+      titleClass={isTitled ? label : undefined}
       class={ui(group, props.class?.(), props.className?.())}
     />
   );
 }
-
-export { SelectValue };

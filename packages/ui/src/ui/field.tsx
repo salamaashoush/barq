@@ -1,4 +1,12 @@
-import { For, Show, type Incoming } from "@barqjs/core";
+import {
+  For,
+  Show,
+  createContext,
+  getContext,
+  provide,
+  type Child,
+  type Incoming,
+} from "@barqjs/core";
 import { firstThatWorks, layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
@@ -181,7 +189,7 @@ const fieldTitle = ui(text.medium, {
 });
 
 const fieldDescription = ui({
-  textAlign: "left",
+  textAlign: "start",
   fontSize: "var(--text-sm)",
   lineHeight: firstThatWorks(
     "var(--leading-normal)",
@@ -244,7 +252,7 @@ const fieldError = ui(text.sm, {
 });
 
 const errorList = ui({
-  marginLeft: "calc(var(--spacing) * 4)",
+  marginInlineStart: "calc(var(--spacing) * 4)",
   display: "flex",
   listStyleType: "disc",
   flexDirection: "column",
@@ -312,7 +320,42 @@ export interface FieldProps extends UiProps {
   isDisabled?: boolean;
 }
 
+const FieldInvalid = createContext<() => boolean>(() => false);
+
+/**
+ * Whether the `<Field>` around the caller is invalid, for a control whose
+ * `aria-invalid` it should set when nothing more specific does.
+ */
+export function useFieldInvalid(): () => boolean {
+  return getContext(FieldInvalid) ?? (() => false);
+}
+
+/** Upstream marks a field with `data-invalid`, and `false` there means valid. */
+function marked(value: unknown): boolean {
+  return value !== undefined && value !== null && value !== false && value !== "false";
+}
+
 export function Field(props: Incoming<FieldProps>) {
+  const isInvalid = (): boolean =>
+    props.isInvalid?.() === true ||
+    marked((props as { "data-invalid"?: () => unknown })["data-invalid"]?.());
+  return (
+    <FieldProvider state={{ isInvalid }}>
+      <FieldElement {...props} isInvalid={isInvalid()} />
+    </FieldProvider>
+  );
+}
+
+function FieldProvider(props: Incoming<{ state: { isInvalid: () => boolean }; children?: Child }>) {
+  const state = props.state();
+  return provide(
+    FieldInvalid,
+    () => state.isInvalid,
+    () => props.children,
+  );
+}
+
+function FieldElement(props: Incoming<FieldProps>) {
   const className = (): string => fieldVariants({ orientation: props.orientation?.() });
   return (
     <div

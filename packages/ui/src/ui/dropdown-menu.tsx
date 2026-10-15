@@ -1,18 +1,23 @@
+import { PortalProvider } from "@barqjs/aria/dialog";
 import {
   Menu,
   MenuItem,
+  MenuRadioGroup,
   MenuSection,
   MenuTrigger,
   SubmenuTrigger,
+  useMenuGroupHeading,
   useMenuTrigger,
   type MenuComponentProps,
   type MenuItemComponentProps,
+  type MenuRadioGroupComponentProps,
   type MenuSectionComponentProps,
+  type MenuSelectEvent,
   type MenuTriggerComponentProps,
   type SubmenuTriggerComponentProps,
 } from "@barqjs/aria/menu";
-import { provideTriggerSlot } from "@barqjs/aria/utils";
-import { context, getOwner, provide, type Child, type Incoming } from "@barqjs/core";
+import { placementFor, type Align, type Placement, type Side } from "@barqjs/aria/overlays";
+import type { Child, Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 import { Check } from "@barqjs/lucide/icons/check";
 import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
@@ -25,6 +30,7 @@ import { when } from "../lib/shared-when.ts";
 import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
+import { TriggerPart, type TriggerPartProps } from "../lib/trigger.tsx";
 
 const ui = layer("barq.ui");
 
@@ -207,7 +213,7 @@ const item = ui(
       color: "var(--accent-foreground)",
     },
     "[data-inset]": {
-      paddingLeft: "calc(var(--spacing) * 7)",
+      paddingInlineStart: "calc(var(--spacing) * 7)",
     },
     '[data-variant="destructive"]': {
       color: "var(--destructive)",
@@ -236,7 +242,7 @@ const item = ui(
   },
 );
 
-/** A checkbox or radio row: the mark is on the RIGHT, so the text starts flush. */
+/** A checkbox or radio row: the mark is at the END, so the text starts flush. */
 const checkItem = ui(
   text.sm,
   box.outline,
@@ -254,23 +260,23 @@ const checkItem = ui(
     gap: "calc(var(--spacing) * 1.5)",
     borderRadius: "calc(var(--radius) * 0.8)",
     paddingBlock: "var(--spacing)",
-    paddingRight: "calc(var(--spacing) * 8)",
-    paddingLeft: "calc(var(--spacing) * 1.5)",
+    paddingInlineEnd: "calc(var(--spacing) * 8)",
+    paddingInlineStart: "calc(var(--spacing) * 1.5)",
     ":is(&[data-focused] *)": {
       color: "var(--accent-foreground)",
     },
     "[data-inset]": {
-      paddingLeft: "calc(var(--spacing) * 7)",
+      paddingInlineStart: "calc(var(--spacing) * 7)",
     },
-    // A menubar keeps its ticks on the LEFT, which is where a desktop menu has
-    // always put them and what upstream still writes for this one menu.
+    // A menubar keeps its ticks at the START, which is where a desktop menu
+    // has always put them and what upstream still writes for this one menu.
     '[data-slot="menubar-checkbox-item"]': {
-      paddingRight: "calc(var(--spacing) * 1.5)",
-      paddingLeft: "calc(var(--spacing) * 7)",
+      paddingInlineEnd: "calc(var(--spacing) * 1.5)",
+      paddingInlineStart: "calc(var(--spacing) * 7)",
     },
     '[data-slot="menubar-radio-item"]': {
-      paddingRight: "calc(var(--spacing) * 1.5)",
-      paddingLeft: "calc(var(--spacing) * 7)",
+      paddingInlineEnd: "calc(var(--spacing) * 1.5)",
+      paddingInlineStart: "calc(var(--spacing) * 7)",
     },
   },
 );
@@ -278,14 +284,14 @@ const checkItem = ui(
 const indicator = ui({
   pointerEvents: "none",
   position: "absolute",
-  right: "calc(var(--spacing) * 2)",
+  insetInlineEnd: "calc(var(--spacing) * 2)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  // With the menubar's rows, which put the tick on the left.
+  // With the menubar's rows, which put the tick at the start.
   '[data-slot="menubar-checkbox-item-indicator"], &[data-slot="menubar-radio-item-indicator"]': {
-    right: "auto",
-    left: "calc(var(--spacing) * 2)",
+    insetInlineEnd: "auto",
+    insetInlineStart: "calc(var(--spacing) * 2)",
   },
   "& > svg": {
     display: "none",
@@ -300,14 +306,14 @@ const indicator = ui({
 const radioIndicator = ui({
   pointerEvents: "none",
   position: "absolute",
-  right: "calc(var(--spacing) * 2)",
+  insetInlineEnd: "calc(var(--spacing) * 2)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
-  // With the menubar's rows, which put the tick on the left.
+  // With the menubar's rows, which put the tick at the start.
   '[data-slot="menubar-checkbox-item-indicator"], &[data-slot="menubar-radio-item-indicator"]': {
-    right: "auto",
-    left: "calc(var(--spacing) * 2)",
+    insetInlineEnd: "auto",
+    insetInlineStart: "calc(var(--spacing) * 2)",
   },
   "& > svg": {
     display: "none",
@@ -327,7 +333,7 @@ const label = ui(text.medium, {
   lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
   color: "var(--muted-foreground)",
   "[data-inset]": {
-    paddingLeft: "calc(var(--spacing) * 7)",
+    paddingInlineStart: "calc(var(--spacing) * 7)",
   },
 });
 
@@ -341,7 +347,7 @@ const separator = ui({
 });
 
 const shortcut = ui({
-  marginLeft: "auto",
+  marginInlineStart: "auto",
   fontSize: "var(--text-xs)",
   lineHeight: "var(--ui-leading, var(--text-xs--line-height))",
   "--ui-tracking": "var(--tracking-widest)",
@@ -373,9 +379,9 @@ const subTrigger = ui(
       color: "var(--accent-foreground)",
     },
     "[data-inset]": {
-      paddingLeft: "calc(var(--spacing) * 7)",
+      paddingInlineStart: "calc(var(--spacing) * 7)",
     },
-    "[data-open]": {
+    '[data-state="open"]': {
       backgroundColor: "var(--accent)",
       color: "var(--accent-foreground)",
     },
@@ -383,9 +389,14 @@ const subTrigger = ui(
 );
 
 const subChevron = ui({
-  marginLeft: "auto",
+  marginInlineStart: "auto",
   width: "calc(var(--spacing) * 4)",
   height: "calc(var(--spacing) * 4)",
+  // The submenu opens towards the end of the line, and so the arrow points
+  // there too.
+  ":dir(rtl)": {
+    rotate: "180deg",
+  },
 });
 
 const group = ui({
@@ -402,7 +413,10 @@ const groupLabel = ui(text.medium, {
   color: "var(--muted-foreground)",
 });
 
-export interface DropdownMenuProps extends MenuTriggerComponentProps {}
+export interface DropdownMenuProps extends MenuTriggerComponentProps {
+  /** Upstream's name for `isOpen`. */
+  open?: boolean;
+}
 
 /**
  * ```tsx
@@ -418,13 +432,51 @@ export interface DropdownMenuProps extends MenuTriggerComponentProps {}
  * collection model. An item with `children` is a SECTION, so a submenu's items
  * go under a different key — `submenu`, by convention.
  *
+ * Or they are written, the way shadcn writes them, and every part sits where
+ * it is put:
+ *
+ * ```tsx
+ * <DropdownMenuContent align="end">
+ *   <DropdownMenuLabel>My account</DropdownMenuLabel>
+ *   <DropdownMenuSeparator />
+ *   <DropdownMenuGroup>
+ *     <DropdownMenuItem onSelect={() => open("profile")}>Profile</DropdownMenuItem>
+ *     <DropdownMenuItem href="/billing">Billing</DropdownMenuItem>
+ *   </DropdownMenuGroup>
+ *   <DropdownMenuCheckboxItem checked={bar()} onCheckedChange={setBar}>
+ *     Status bar
+ *   </DropdownMenuCheckboxItem>
+ * </DropdownMenuContent>
+ * ```
+ *
  * Typeahead, roving focus, Home/End, the arrow keys and the submenu's own
  * safe-triangle pointer tracking all come from `@barqjs/aria` and are not
  * reimplemented here.
  */
 export function DropdownMenu(props: Incoming<DropdownMenuProps>) {
-  return <MenuTrigger {...props} />;
+  return <MenuTrigger {...props} isOpen={props.isOpen?.() ?? props.open?.()} />;
 }
+
+export interface DropdownMenuPortalProps {
+  /** Where the menu is rendered instead of the body. */
+  container?: Element | null;
+  children?: Child;
+}
+
+/**
+ * The menu is portalled already, so this is only for naming somewhere other
+ * than the body to portal it to.
+ */
+export function DropdownMenuPortal(props: Incoming<DropdownMenuPortalProps>) {
+  if (props.container === undefined) return <>{props.children}</>;
+  return (
+    <PortalProvider getContainer={() => props.container?.() ?? null}>
+      {props.children}
+    </PortalProvider>
+  );
+}
+
+export interface DropdownMenuTriggerProps extends TriggerPartProps {}
 
 /**
  * Hands the trigger's props to whatever control is inside it.
@@ -432,34 +484,60 @@ export function DropdownMenu(props: Incoming<DropdownMenuProps>) {
  * `@barqjs/aria` has a `<MenuButton>` for this, and it renders a bare
  * `<button>`; the button here has to be YOURS, with its own variant and size.
  * The slot is how `aria-haspopup`, `aria-expanded` and the keyboard handling
- * reach it without an element in between.
+ * reach it without an element in between. Any other element takes them through
+ * `render`, and a component of your own through `useTrigger()`.
  */
-export function DropdownMenuTrigger(props: Incoming<{ children?: Child }>) {
+export function DropdownMenuTrigger(props: Incoming<DropdownMenuTriggerProps>) {
   const trigger = useMenuTrigger();
   if (trigger === null) throw new Error("A DropdownMenuTrigger must be inside a DropdownMenu.");
 
-  return provide(
-    Slotted,
-    () => true,
-    () => {
-      provideTriggerSlot({
-        props: trigger.menuTriggerProps,
-        ref: trigger.triggerRef.set,
-      });
-      return props.children;
-    },
-  ) as never;
+  return (
+    <TriggerPart
+      slot={{ props: trigger.menuTriggerProps, ref: trigger.triggerRef.set }}
+      render={props.render?.()}
+      name="dropdown-menu-trigger"
+    >
+      {props.children}
+    </TriggerPart>
+  );
 }
 
-/** Nothing reads it. `provide` is what creates the scope the slot is installed in. */
-const Slotted = context<boolean>(false);
+/** Where a menu sits against its trigger, in upstream's words. */
+export interface MenuPositionProps {
+  /** Which edge of the trigger the menu hangs off. Reads `placement` first. */
+  side?: Side;
+  /** Where along that edge it sits. @default "center", once `side` or `align` is given */
+  align?: Align;
+  /** Distance from the trigger. Reads `offset` first. */
+  sideOffset?: number;
+  /** Distance along the trigger's edge. Reads `crossOffset` first. */
+  alignOffset?: number;
+}
 
-export interface DropdownMenuContentProps<T> extends MenuComponentProps<T> {}
+/** The `placement` a menu was asked for in either vocabulary, or nothing if it was not asked. */
+export function menuPlacement(
+  props: Incoming<MenuPositionProps & { placement?: Placement }>,
+  side: Side = "bottom",
+): Placement | undefined {
+  const given = props.placement?.();
+  if (given !== undefined) return given;
+  if (props.side?.() === undefined && props.align?.() === undefined) return undefined;
+  return placementFor(props.side?.() ?? side, props.align?.() ?? "center");
+}
+
+export interface DropdownMenuContentProps<T> extends MenuComponentProps<T>, MenuPositionProps {
+  /** Upstream's name for `shouldFocusWrap`, which here is on unless turned off. */
+  loop?: boolean;
+}
 
 export function DropdownMenuContent<T>(props: Incoming<DropdownMenuContentProps<T>>) {
   return (
     <Menu
       {...props}
+      shouldFocusWrap={props.shouldFocusWrap?.() ?? props.loop?.()}
+      placement={menuPlacement(props)}
+      offset={props.offset?.() ?? props.sideOffset?.()}
+      crossOffset={props.crossOffset?.() ?? props.alignOffset?.()}
       data-slot={props["data-slot"]?.() ?? "dropdown-menu-content"}
       class={ui(content, props.class?.(), props.className?.())}
     />
@@ -472,12 +550,20 @@ export interface DropdownMenuItemProps extends MenuItemComponentProps {
   variant?: DropdownMenuItemVariant;
   /** Indent past the space a tick would occupy, so a mixed menu lines up. */
   inset?: boolean;
+  /** Upstream's name for `isDisabled`. */
+  disabled?: boolean;
 }
 
+/**
+ * Written as a child it takes `onSelect`, `disabled` and `href`; rendered from
+ * data it reads its item. With an `href` it is a real link that is still a
+ * menu item, which is what upstream reaches with `asChild` around an `<a>`.
+ */
 export function DropdownMenuItem(props: Incoming<DropdownMenuItemProps>) {
   return (
     <MenuItem
       {...props}
+      isDisabled={disabled(props)}
       data-slot={props["data-slot"]?.() ?? "dropdown-menu-item"}
       data-variant={props.variant?.() ?? "default"}
       data-inset={props.inset?.() === true ? "" : undefined}
@@ -486,7 +572,19 @@ export function DropdownMenuItem(props: Incoming<DropdownMenuItemProps>) {
   );
 }
 
+/** `isDisabled` under either of its names, and absent when neither was written. */
+function disabled(
+  props: Incoming<{ isDisabled?: boolean; disabled?: boolean }>,
+): boolean | undefined {
+  return props.isDisabled?.() ?? props.disabled?.();
+}
+
 export interface DropdownMenuCheckboxItemProps extends MenuItemComponentProps {
+  /** Whether a written item is ticked. Leave it out and the item keeps its own tick. */
+  checked?: boolean;
+  defaultChecked?: boolean;
+  onCheckedChange?: (checked: boolean) => void;
+  disabled?: boolean;
   /**
    * The tick's own slot.
    *
@@ -501,14 +599,24 @@ export interface DropdownMenuCheckboxItemProps extends MenuItemComponentProps {
 /**
  * An item with a tick.
  *
- * Whether it is ticked is the menu's SELECTION, so the content around it needs
- * `selectionMode="multiple"`. The tick is shown by CSS off `data-selected`
- * rather than by a conditional, so toggling one writes one attribute.
+ * Rendered from data, whether it is ticked is the menu's SELECTION, so the
+ * content around it needs `selectionMode="multiple"`. Written as a child it
+ * holds its own tick, or shows the `checked` it is given. The tick is shown by
+ * CSS off `data-selected` rather than by a conditional, so toggling one writes
+ * one attribute.
  */
 export function DropdownMenuCheckboxItem(props: Incoming<DropdownMenuCheckboxItemProps>) {
   return (
     <MenuItem
       {...props}
+      type="checkbox"
+      isSelected={props.isSelected?.() ?? props.checked?.()}
+      defaultSelected={props.defaultSelected?.() ?? props.defaultChecked?.()}
+      onChange={(checked: boolean) => {
+        props.onChange?.()?.(checked);
+        props.onCheckedChange?.()?.(checked);
+      }}
+      isDisabled={disabled(props)}
       data-slot={props["data-slot"]?.() ?? "dropdown-menu-checkbox-item"}
       class={ui(checkItem, props.class?.(), props.className?.())}
     >
@@ -520,16 +628,37 @@ export function DropdownMenuCheckboxItem(props: Incoming<DropdownMenuCheckboxIte
   );
 }
 
+export interface DropdownMenuRadioGroupProps extends MenuRadioGroupComponentProps {}
+
+/**
+ * The radio items written inside it, of which the one whose `value` is the
+ * group's is on.
+ */
+export function DropdownMenuRadioGroup(props: Incoming<DropdownMenuRadioGroupProps>) {
+  return (
+    <MenuRadioGroup
+      {...props}
+      data-slot={props["data-slot"]?.() ?? "dropdown-menu-radio-group"}
+      class={ui(group, props.class?.(), props.className?.())}
+    />
+  );
+}
+
 export interface DropdownMenuRadioItemProps extends MenuItemComponentProps {
+  disabled?: boolean;
   /** See {@link DropdownMenuCheckboxItemProps.indicatorSlot}. */
   indicatorSlot?: string;
 }
 
-/** As above, with `selectionMode="single"`. */
+/**
+ * Rendered from data, as above with `selectionMode="single"`. Written as a
+ * child, it goes inside a {@link DropdownMenuRadioGroup} and carries a `value`.
+ */
 export function DropdownMenuRadioItem(props: Incoming<DropdownMenuRadioItemProps>) {
   return (
     <MenuItem
       {...props}
+      isDisabled={disabled(props)}
       data-slot={props["data-slot"]?.() ?? "dropdown-menu-radio-item"}
       class={ui(checkItem, props.class?.(), props.className?.())}
     >
@@ -548,10 +677,13 @@ export interface DropdownMenuLabelProps extends UiProps {
   inset?: boolean;
 }
 
+/** Inside a group it is what names the group to a screen reader. */
 export function DropdownMenuLabel(props: Incoming<DropdownMenuLabelProps>) {
+  const heading = useMenuGroupHeading();
   return (
     <li
       {...uiProps("dropdown-menu-label", label, props)}
+      id={props.id?.() ?? heading?.()}
       role="presentation"
       data-inset={props.inset?.() === true ? "" : undefined}
     >
@@ -571,7 +703,10 @@ export function DropdownMenuShortcut(props: Incoming<UiProps>) {
 
 export interface DropdownMenuGroupProps<T> extends MenuSectionComponentProps<T> {}
 
-/** A section of the collection: an item whose own `children` are its items. */
+/**
+ * A section of the collection: an item whose own `children` are its items. In
+ * a written menu, a `role="group"` around the items written inside it.
+ */
 export function DropdownMenuGroup<T>(props: Incoming<DropdownMenuGroupProps<T>>) {
   return (
     <MenuSection
@@ -595,33 +730,53 @@ export interface DropdownMenuSubProps extends SubmenuTriggerComponentProps {}
  * ```
  */
 export function DropdownMenuSub(props: Incoming<DropdownMenuSubProps>) {
-  return <SubmenuTrigger {...props} />;
+  return (
+    <SubmenuTrigger {...props} shouldCloseAllOnEscape={props.shouldCloseAllOnEscape?.() ?? true} />
+  );
 }
 
 export interface DropdownMenuSubTriggerProps extends MenuItemComponentProps {
   inset?: boolean;
+  disabled?: boolean;
+  "data-slot"?: string;
 }
 
 export function DropdownMenuSubTrigger(props: Incoming<DropdownMenuSubTriggerProps>) {
   return (
     <MenuItem
       {...props}
+      isDisabled={disabled(props)}
       data-slot={props["data-slot"]?.() ?? "dropdown-menu-sub-trigger"}
       data-inset={props.inset?.() === true ? "" : undefined}
       class={ui(subTrigger, props.class?.(), props.className?.())}
     >
       {props.children}
-      <ChevronRight data-slot="dropdown-menu-sub-chevron" class={subChevron} />
+      <ChevronRight
+        // Named after the row it is in, so a menu that renames the row does not
+        // leave a dropdown's name on the arrow inside it.
+        data-slot={(props["data-slot"]?.() ?? "dropdown-menu-sub-trigger").replace(
+          /-trigger$/,
+          "-chevron",
+        )}
+        class={subChevron}
+      />
     </MenuItem>
   );
 }
 
-export interface DropdownMenuSubContentProps<T> extends MenuComponentProps<T> {}
+export interface DropdownMenuSubContentProps<T> extends MenuComponentProps<T>, MenuPositionProps {
+  /** See {@link DropdownMenuContentProps.loop}. */
+  loop?: boolean;
+}
 
 export function DropdownMenuSubContent<T>(props: Incoming<DropdownMenuSubContentProps<T>>) {
   return (
     <Menu
       {...props}
+      shouldFocusWrap={props.shouldFocusWrap?.() ?? props.loop?.()}
+      placement={menuPlacement(props, "inline-end")}
+      offset={props.offset?.() ?? props.sideOffset?.()}
+      crossOffset={props.crossOffset?.() ?? props.alignOffset?.()}
       data-slot={props["data-slot"]?.() ?? "dropdown-menu-sub-content"}
       class={ui(subContent, props.class?.(), props.className?.())}
     />
@@ -632,3 +787,5 @@ export function DropdownMenuSubContent<T>(props: Incoming<DropdownMenuSubContent
 export function DropdownMenuGroupLabel(props: Incoming<UiProps>) {
   return <span {...uiProps("dropdown-menu-group-label", groupLabel, props)}>{props.children}</span>;
 }
+
+export type DropdownMenuSelectEvent = MenuSelectEvent;

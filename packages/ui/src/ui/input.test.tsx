@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { render, screen } from "@barqjs/testing";
+import { render, screen, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
 
@@ -28,5 +28,37 @@ describe("Input density", () => {
     // `size` on an <input> means "how many characters wide", and forwarding the
     // variant would set it to a number nobody asked for.
     expect(screen.getByLabelText("Z").hasAttribute("size")).toBe(false);
+  });
+});
+
+describe("Input, as a native input", () => {
+  test("what an input takes reaches the element", async () => {
+    const seen: string[] = [];
+    render(() => (
+      <Input
+        aria-label="Code"
+        enterKeyHint="done"
+        autoCapitalize="characters"
+        spellCheck={false}
+        aria-required="true"
+        onKeyUp={(event) => seen.push(`up:${event.key}`)}
+        onPaste={() => seen.push("paste")}
+      />
+    ));
+    const field = screen.getByLabelText("Code") as HTMLInputElement;
+    expect(field.getAttribute("enterkeyhint")).toBe("done");
+    expect(field.getAttribute("autocapitalize")).toBe("characters");
+    expect(field.getAttribute("spellcheck")).toBe("false");
+    expect(field.getAttribute("aria-required")).toBe("true");
+
+    user.focus(field);
+    user.key("a");
+    field.dispatchEvent(new Event("paste", { bubbles: true }));
+    expect(seen).toEqual(["up:a", "paste"]);
+  });
+
+  test("a checkbox input can be checked from the prop", () => {
+    render(() => <Input type="checkbox" aria-label="Agree" checked />);
+    expect(screen.getByLabelText<HTMLInputElement>("Agree").checked).toBe(true);
   });
 });

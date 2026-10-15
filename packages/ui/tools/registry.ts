@@ -25,16 +25,35 @@
  * that owns the file. `../lib/slot.ts` is `slot`; `./button.tsx` is `button`.
  * The CLI walks them, so `add dialog` brings `button`, `slot`, `props` and the
  * theme without being told.
+ *
+ * ## Blocks and charts
+ *
+ * They are written in the site, against this package's barrel and inside the
+ * site's preview. Neither exists in a project that owns its components, so the
+ * registry's copy differs from the site's file in exactly two ways, both done
+ * here: an `import { … } from "@barqjs/ui"` becomes one import per file the
+ * names come from, which is what makes `add dashboard-01` bring `card`,
+ * `sidebar` and the rest; and `@container preview` becomes `@media`, because
+ * the preview is the site's stand-in for a viewport and a project has the real
+ * one.
  */
 
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 
+import { CATALOG } from "../../site/src/blocks/catalog.ts";
 import { THEMES } from "../src/theme/themes.ts";
 
 const root = resolve(import.meta.dir, "..");
+const site = resolve(root, "../site/src");
 
-export type ItemType = "registry:ui" | "registry:lib" | "registry:theme";
+export type ItemType =
+  | "registry:ui"
+  | "registry:lib"
+  | "registry:hook"
+  | "registry:theme"
+  | "registry:block"
+  | "registry:component";
 
 export interface RegistryFile {
   /** Where it goes, relative to the target directory the CLI resolves. */
@@ -52,6 +71,7 @@ export interface RegistryItem {
   readonly dependencies: readonly string[];
   readonly registryDependencies: readonly string[];
   readonly files: readonly RegistryFile[];
+  readonly categories?: readonly string[];
 }
 
 const SCHEMA = "https://github.com/salamaashoush/barq/schema/registry-item.json";
@@ -132,10 +152,173 @@ function sourcesIn(directory: string, type: ItemType): Source[] {
     }));
 }
 
+const BARREL = "@barqjs/ui";
+
+/**
+ * Which file each of the barrel's names comes from, read off the barrel.
+ *
+ * `src/index.ts` is generated as one `export { … } from "./ui/card.tsx"` per
+ * module, so it already is the table.
+ */
+function barrelExports(): Map<string, string> {
+  const out = new Map<string, string>();
+  const barrel = readFileSync(join(root, "src/index.ts"), "utf8");
+  for (const match of barrel.matchAll(/export\s*\{([^}]*)\}\s*from\s*["']\.\/([^"']+)["']/g)) {
+    for (const name of (match[1] ?? "").split(",")) {
+      const bare = name.trim().replace(/^type\s+/, "");
+      if (bare !== "") out.set(bare, match[2] as string);
+    }
+  }
+  return out;
+}
+
+/** One import, wrapped the way the formatter would once it passes a hundred columns. */
+function importLine(names: readonly string[], specifier: string): string {
+  const flat = `import { ${names.join(", ")} } from "${specifier}";`;
+  return flat.length <= 100
+    ? flat
+    : `import {\n${names.map((name) => `  ${name},`).join("\n")}\n} from "${specifier}";`;
+}
+
+/**
+ * A site module as the registry carries it.
+ *
+ * `path` is where the file sits in the registry and `shared` is where each
+ * site file it may import sits there, so every specifier that leaves the file
+ * is rewritten against the tree a project receives.
+ */
+function portable(
+  source: string,
+  path: string,
+  from: string,
+  shared: ReadonlyMap<string, string>,
+  exports: ReadonlyMap<string, string>,
+  carried: ReadonlySet<string>,
+): string {
+  const here = dirname(path);
+  const toward = (target: string): string => {
+    const specifier = relative(here, target).replaceAll("\\", "/");
+    return specifier.startsWith(".") ? specifier : `./${specifier}`;
+  };
+
+  const unbarrelled = source.replaceAll(
+    new RegExp(`import\\s*\\{([^}]*)\\}\\s*from\\s*["']${BARREL}["'];?`, "g"),
+    (_whole, clause: string) => {
+      const byFile = new Map<string, string[]>();
+      for (const written of clause.split(",")) {
+        const name = written.trim();
+        if (name === "") continue;
+        const exported = name.replace(/^type\s+/, "").split(/\s+as\s+/)[0] as string;
+        const file = exports.get(exported);
+        if (file === undefined) {
+          throw new Error(`${from} imports ${exported} from ${BARREL}, which does not export it`);
+        }
+        if (!carried.has(file)) {
+          throw new Error(
+            `${from} imports ${exported}, which lives in ${file}: a file the registry does not carry`,
+          );
+        }
+        byFile.set(file, [...(byFile.get(file) ?? []), name]);
+      }
+      return [...byFile]
+        .toSorted(([a], [b]) => a.localeCompare(b))
+        .map(([file, names]) => importLine(names, toward(file)))
+        .join("\n");
+    },
+  );
+
+  const relinked = unbarrelled.replaceAll(
+    /(from\s*|import\s*)(["'])(\.[^"']*)\2/g,
+    (whole, lead: string, quote: string, specifier: string) => {
+      const inSite = relative(site, resolve(dirname(from), specifier)).replaceAll("\\", "/");
+      const target = shared.get(inSite);
+      return target === undefined ? whole : `${lead}${quote}${toward(target)}${quote}`;
+    },
+  );
+
+  return relinked.replaceAll("@container preview (", "@media (");
+}
+
+interface SiteSource extends Source {
+  /** The file in the site, absolute. */
+  readonly from: string;
+  readonly title?: string;
+  readonly description?: string;
+  readonly categories: readonly string[];
+  /** The item's own type, where it is not its file's. */
+  readonly itemType?: ItemType;
+}
+
+/**
+ * A `SiteSource` is a `Source` with more on it, so a list of both infers as a
+ * list of `Source` and the site's half is lost to the type. Asked by name.
+ */
+function isSiteSource(source: Source | SiteSource): source is SiteSource {
+  return "from" in source;
+}
+
+/**
+ * The site's blocks and charts, and the site modules they share.
+ *
+ * A block is the file its catalog entry names. A chart item is one of the
+ * site's chart modules, which is a whole family of charts, because that is the
+ * unit they are written in: `chart-area` is every area chart. What several of
+ * them import from elsewhere in the site travels as a `lib` item of its own,
+ * found by following the imports rather than listed.
+ */
+function siteSources(): SiteSource[] {
+  const blocks: SiteSource[] = CATALOG.map((block) => ({
+    name: block.name,
+    type: "registry:block",
+    path: `blocks/${block.name}.tsx`,
+    from: join(site, "blocks", `${block.name}.tsx`),
+    title: block.title,
+    description: block.description,
+    categories: block.categories,
+  }));
+
+  const charts: SiteSource[] = readdirSync(join(site, "charts"))
+    // `index.tsx` is the site's own page over the charts, with its router.
+    .filter((entry) => /\.tsx?$/.test(entry) && !entry.includes(".test.") && entry !== "index.tsx")
+    .toSorted()
+    .map((entry) => {
+      const base = entry.replace(/\.tsx?$/, "");
+      return {
+        name: `chart-${base}`,
+        type: "registry:component",
+        itemType: "registry:block",
+        path: `charts/${entry}`,
+        from: join(site, "charts", entry),
+        categories: ["charts"],
+      };
+    });
+
+  const own = new Set([...blocks, ...charts].map((source) => source.from));
+  const libs = new Map<string, SiteSource>();
+  for (const source of [...blocks, ...charts]) {
+    for (const specifier of specifiersIn(readFileSync(source.from, "utf8"))) {
+      if (!specifier.startsWith(".")) continue;
+      const from = resolve(dirname(source.from), specifier);
+      if (own.has(from) || libs.has(from)) continue;
+      const entry = from.split("/").at(-1) as string;
+      libs.set(from, {
+        name: entry.replace(/\.tsx?$/, ""),
+        type: "registry:lib",
+        path: `lib/${entry}`,
+        from,
+        categories: [],
+      });
+    }
+  }
+
+  return [...libs.values(), ...blocks, ...charts];
+}
+
 function main(): void {
   const sources = [
     ...sourcesIn("theme", "registry:theme"),
     ...sourcesIn("lib", "registry:lib"),
+    ...sourcesIn("hooks", "registry:hook"),
     ...sourcesIn("ui", "registry:ui"),
   ];
 
@@ -150,8 +333,37 @@ function main(): void {
   const owner = new Map<string, string>();
   for (const source of items) owner.set(source.path, source.name);
 
-  const built: RegistryItem[] = items.map((source) => {
-    const content = readFileSync(join(root, "src", source.path), "utf8");
+  const fromSite = siteSources();
+  const exports = barrelExports();
+  const carried = new Set(owner.keys());
+  const shared = new Map<string, string>();
+  for (const source of fromSite) {
+    if (owner.has(source.path)) {
+      throw new Error(`${source.from} and src/${source.path} would be the same registry file`);
+    }
+    owner.set(source.path, source.name);
+    shared.set(relative(site, source.from).replaceAll("\\", "/"), source.path);
+  }
+  const names = new Set<string>();
+  for (const name of owner.values()) {
+    if (names.has(name)) throw new Error(`two registry items are named "${name}"`);
+    names.add(name);
+  }
+
+  const every: readonly (Source | SiteSource)[] = [...items, ...fromSite];
+  const built: RegistryItem[] = every.map((source) => {
+    const described = isSiteSource(source) ? source : undefined;
+    const content =
+      described === undefined
+        ? readFileSync(join(root, "src", source.path), "utf8")
+        : portable(
+            readFileSync(described.from, "utf8"),
+            described.path,
+            described.from,
+            shared,
+            exports,
+            carried,
+          );
     const dependencies = new Set<string>();
     const registryDependencies = new Set<string>();
 
@@ -167,16 +379,18 @@ function main(): void {
       if (name !== undefined && name !== source.name) registryDependencies.add(name);
     }
 
-    const description = descriptionOf(content);
+    const description = described?.description ?? descriptionOf(content);
+    const categories = described?.categories ?? [];
     return {
       $schema: SCHEMA,
       name: source.name,
-      type: source.type,
-      title: titleOf(source.name),
+      type: described?.itemType ?? source.type,
+      title: described?.title ?? titleOf(source.name),
       ...(description === undefined ? {} : { description }),
       dependencies: [...dependencies].toSorted(),
       registryDependencies: [...registryDependencies].toSorted(),
       files: [{ path: source.path, type: source.type, content }],
+      ...(categories.length === 0 ? {} : { categories }),
     };
   });
 
@@ -203,6 +417,7 @@ function main(): void {
           dependencies: item.dependencies,
           registryDependencies: item.registryDependencies,
           files: item.files.map((file) => file.path),
+          ...(item.categories === undefined ? {} : { categories: item.categories }),
         })),
       },
       null,

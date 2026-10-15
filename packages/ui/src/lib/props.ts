@@ -10,6 +10,20 @@
 
 import type { Child } from "@barqjs/core";
 
+/**
+ * A `ref` for whichever element a component renders, as a callback.
+ *
+ * The parameter is left unchecked for variance, which a method signature is
+ * and a property is not: a part hands this on to the element it builds, a
+ * `<div>` here and an `<li>` there, and a callback written for either is the
+ * right one to hand it. A component that renders one known element declares
+ * `RefTarget` of that element instead, and takes a `{ current }` box as well.
+ */
+export type UiRef =
+  | { on(element: HTMLElement | null): void | (() => void) }["on"]
+  | null
+  | undefined;
+
 export interface UiProps {
   /** Composed with the component's own classes; yours wins, because this package's rules are layered. */
   class?: string;
@@ -30,6 +44,8 @@ export interface UiProps {
   /** Overrides the component's own slot name. Every element carries one; this renames it. */
   "data-slot"?: string;
   "data-testid"?: string;
+  /** The element the component renders. */
+  ref?: UiRef;
   onClick?: (event: MouseEvent) => void;
   onPointerDown?: (event: PointerEvent) => void;
   onPointerUp?: (event: PointerEvent) => void;

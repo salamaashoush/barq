@@ -1,7 +1,9 @@
 import { describe, expect, test } from "bun:test";
 import { render, screen } from "@barqjs/testing";
 
-import { NativeSelect, NativeSelectOption } from "./native-select.tsx";
+import { rulesFor } from "../test-rules.ts";
+
+import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "./native-select.tsx";
 
 const wrapperOf = (): HTMLElement =>
   screen.getByTestId("host").querySelector<HTMLElement>('[data-slot="native-select-wrapper"]')!;
@@ -79,5 +81,119 @@ describe("NativeSelect", () => {
     ));
 
     expect(wrapperOf().querySelector('[data-slot="native-select-icon"]')).not.toBe(null);
+  });
+
+  test("size is the design system's, and never the platform's row count", () => {
+    // `size` on a `<select>` means how many rows to show, and passing "sm"
+    // through would turn the control into a listbox.
+    render(() => (
+      <div data-testid="host">
+        <NativeSelect size="sm">
+          <NativeSelectOption value="a">A</NativeSelectOption>
+        </NativeSelect>
+      </div>
+    ));
+
+    expect(selectOf().getAttribute("data-size")).toBe("sm");
+    expect(selectOf().hasAttribute("size")).toBe(false);
+    expect(rulesFor(selectOf().className)).toContain('[data-size="sm"]');
+  });
+
+  test("the default size says so, so a rule can select on it", () => {
+    render(() => (
+      <div data-testid="host">
+        <NativeSelect>
+          <NativeSelectOption value="a">A</NativeSelectOption>
+        </NativeSelect>
+      </div>
+    ));
+    expect(selectOf().getAttribute("data-size")).toBe("default");
+  });
+
+  test("an option group is a real optgroup with its label, and each part has its slot", () => {
+    render(() => (
+      <div data-testid="host">
+        <NativeSelect>
+          <NativeSelectOptGroup label="Engineering">
+            <NativeSelectOption value="frontend">Frontend</NativeSelectOption>
+            <NativeSelectOption value="backend" disabled>
+              Backend
+            </NativeSelectOption>
+          </NativeSelectOptGroup>
+        </NativeSelect>
+      </div>
+    ));
+
+    const group = selectOf().querySelector("optgroup");
+    expect(group?.getAttribute("label")).toBe("Engineering");
+    expect(group?.getAttribute("data-slot")).toBe("native-select-optgroup");
+    expect(selectOf().getAttribute("data-slot")).toBe("native-select");
+    const options = [...selectOf().options];
+    expect(options.map((option) => option.getAttribute("data-slot"))).toEqual([
+      "native-select-option",
+      "native-select-option",
+    ]);
+    expect(options[1]?.disabled).toBe(true);
+  });
+
+  test("a group can be disabled as a whole", () => {
+    render(() => (
+      <div data-testid="host">
+        <NativeSelect>
+          <NativeSelectOptGroup label="Archived" disabled>
+            <NativeSelectOption value="old">Old</NativeSelectOption>
+          </NativeSelectOptGroup>
+        </NativeSelect>
+      </div>
+    ));
+
+    expect(selectOf().querySelector("optgroup")?.disabled).toBe(true);
+  });
+
+  test("an option can be the one selected to begin with, and can carry a label", () => {
+    render(() => (
+      <div data-testid="host">
+        <NativeSelect>
+          <NativeSelectOption value="a">A</NativeSelectOption>
+          <NativeSelectOption value="b" selected label="Bee">
+            B
+          </NativeSelectOption>
+        </NativeSelect>
+      </div>
+    ));
+
+    expect(selectOf().value).toBe("b");
+    expect(selectOf().options[1]?.getAttribute("label")).toBe("Bee");
+  });
+
+  test("a disabled control is disabled, and the wrapper's own rule dims it", () => {
+    render(() => (
+      <div data-testid="host">
+        <NativeSelect disabled>
+          <NativeSelectOption value="a">A</NativeSelectOption>
+        </NativeSelect>
+      </div>
+    ));
+
+    expect(selectOf().disabled).toBe(true);
+    expect(rulesFor(wrapperOf().className)).toContain("select:disabled");
+  });
+
+  test("the rules name inline edges, so a right-to-left page mirrors the chevron", () => {
+    render(() => (
+      <div data-testid="host">
+        <NativeSelect>
+          <NativeSelectOption value="a">A</NativeSelectOption>
+        </NativeSelect>
+      </div>
+    ));
+
+    const control = rulesFor(selectOf().className);
+    expect(control).toContain("padding-inline-end:");
+    expect(control).not.toContain("padding-right:");
+    const chevron = wrapperOf().querySelector('[data-slot="native-select-icon"]');
+    const rules = rulesFor(chevron?.getAttribute("class") ?? "");
+    expect(rules).toContain("inset-inline-end:");
+    expect(rules).not.toContain("right:");
   });
 });

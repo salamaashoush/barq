@@ -1,4 +1,4 @@
 {
-  "dialog-close": "absolute top-4 right-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 is-focus-visible:ring-2 is-focus-visible:ring-ring is-focus-visible:ring-offset-2 is-disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
+  "dialog-close": "absolute top-4 end-4 rounded-xs opacity-70 ring-offset-background transition-opacity hover:opacity-100 is-focus-visible:ring-2 is-focus-visible:ring-ring is-focus-visible:ring-offset-2 is-disabled:pointer-events-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg:not([class*='size-'])]:size-4",
   "sr-only": "sr-only"
 }

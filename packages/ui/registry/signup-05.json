@@ -1,0 +1,28 @@
+{
+  "$schema": "https://github.com/salamaashoush/barq/schema/registry-item.json",
+  "name": "signup-05",
+  "type": "registry:block",
+  "title": "Signup 05",
+  "description": "A simple signup form with social providers.",
+  "dependencies": [
+    "@barqjs/css",
+    "@barqjs/lucide"
+  ],
+  "registryDependencies": [
+    "button",
+    "field",
+    "input",
+    "sr-only"
+  ],
+  "files": [
+    {
+      "path": "blocks/signup-05.tsx",
+      "type": "registry:block",
+      "content": "/**\n * shadcn's `signup-05`, ported from\n * `apps/v4/registry/new-york-v4/blocks/signup-05/`.\n */\n\nimport { css } from \"@barqjs/css\";\nimport { GalleryVerticalEnd } from \"@barqjs/lucide/icons/gallery-vertical-end\";\nimport { Button } from \"../ui/button.tsx\";\nimport { Field, FieldDescription, FieldGroup, FieldLabel, FieldSeparator } from \"../ui/field.tsx\";\nimport { Input } from \"../ui/input.tsx\";\nimport { srOnly } from \"../ui/sr-only.ts\";\n\nconst page = css`\n  display: flex;\n  min-height: 100%;\n  flex-direction: column;\n  align-items: center;\n  justify-content: center;\n  gap: 1.5rem;\n  background: var(--background);\n  padding: 1.5rem;\n\n  @media (width >= 48rem) {\n    padding: 2.5rem;\n  }\n`;\n\nconst holder = css`\n  width: 100%;\n  max-width: 24rem;\n`;\n\nconst stack = css`\n  display: flex;\n  flex-direction: column;\n  gap: 1.5rem;\n`;\n\nconst heading = css`\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 0.5rem;\n  text-align: center;\n`;\n\nconst brand = css`\n  display: flex;\n  flex-direction: column;\n  align-items: center;\n  gap: 0.5rem;\n  font-weight: 500;\n  color: inherit;\n`;\n\nconst brandMark = css`\n  display: flex;\n  width: 2rem;\n  height: 2rem;\n  align-items: center;\n  justify-content: center;\n  border-radius: var(--radius-md);\n`;\n\nconst brandIcon = css`\n  width: 1.5rem;\n  height: 1.5rem;\n`;\n\nconst title = css`\n  font-size: 1.25rem;\n  font-weight: 700;\n  margin: 0;\n`;\n\nconst providers = css`\n  display: grid;\n  gap: 1rem;\n\n  @media (width >= 40rem) {\n    grid-template-columns: repeat(2, minmax(0, 1fr));\n  }\n`;\n\nconst legal = css`\n  padding-inline: 1.5rem;\n  text-align: center;\n`;\n\nconst APPLE =\n  \"M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701\";\n\nconst GOOGLE =\n  \"M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z\";\n\nexport function Signup05() {\n  return (\n    <div class={page} data-slot=\"signup-05\">\n      <div class={holder}>\n        <div class={stack}>\n          <form>\n            <FieldGroup>\n              <div class={heading}>\n                <a href=\"#\" class={brand}>\n                  <div class={brandMark}>\n                    <GalleryVerticalEnd class={brandIcon} />\n                  </div>\n                  <span class={srOnly}>Acme Inc.</span>\n                </a>\n                <h1 class={title}>Welcome to Acme Inc.</h1>\n                <FieldDescription>\n                  Already have an account? <a href=\"#\">Sign in</a>\n                </FieldDescription>\n              </div>\n              <Field>\n                <FieldLabel for=\"email\">Email</FieldLabel>\n                <Input id=\"email\" type=\"email\" placeholder=\"m@example.com\" required />\n              </Field>\n              <Field>\n                <Button type=\"submit\">Create Account</Button>\n              </Field>\n              <FieldSeparator>Or</FieldSeparator>\n              <Field class={providers}>\n                <Button variant=\"outline\" type=\"button\">\n                  <svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" aria-hidden=\"true\">\n                    <path d={APPLE} fill=\"currentColor\" />\n                  </svg>\n                  Continue with Apple\n                </Button>\n                <Button variant=\"outline\" type=\"button\">\n                  <svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 24 24\" aria-hidden=\"true\">\n                    <path d={GOOGLE} fill=\"currentColor\" />\n                  </svg>\n                  Continue with Google\n                </Button>\n              </Field>\n            </FieldGroup>\n          </form>\n          <FieldDescription class={legal}>\n            By clicking continue, you agree to our <a href=\"#\">Terms of Service</a> and{\" \"}\n            <a href=\"#\">Privacy Policy</a>.\n          </FieldDescription>\n        </div>\n      </div>\n    </div>\n  );\n}\n"
+    }
+  ],
+  "categories": [
+    "authentication",
+    "signup"
+  ]
+}

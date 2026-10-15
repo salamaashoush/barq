@@ -1,0 +1,10 @@
+{
+  "toast-viewport": "pointer-events-none fixed inset-x-4 bottom-4 z-50 mx-auto w-auto max-w-sm outline-none sm:end-4 sm:start-auto sm:mx-0 sm:w-full",
+  "toast": "pointer-events-auto absolute end-0 bottom-0 z-[calc(1000-var(--toast-index))] w-full origin-bottom border bg-popover text-popover-foreground shadow-lg will-change-transform outline-none select-none focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50 [--gap:0.75rem] [--peek:0.75rem] h-(--height) after:absolute after:top-full after:start-0 after:h-[calc(var(--gap)+1px)] after:w-full after:content-[''] data-expanded:h-(--toast-height) data-limited:opacity-0",
+  "toast-content": "flex h-full items-center gap-3 overflow-hidden p-4 transition-opacity duration-250 ease-[cubic-bezier(0.22,1,0.36,1)] data-behind:opacity-0",
+  "toast-title": "text-sm font-medium",
+  "toast-description": "text-sm text-muted-foreground",
+  "toast-action": "shrink-0",
+  "toast-close": "relative shrink-0 text-muted-foreground after:absolute after:-inset-2 after:content-[''] hover:text-foreground",
+  "toast-icon": "shrink-0 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4"
+}

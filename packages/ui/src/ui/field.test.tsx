@@ -174,3 +174,22 @@ describe("FieldContent and FieldTitle", () => {
     expect(slot("field-content")).toBeTruthy();
   });
 });
+
+describe("Field in a right-to-left page", () => {
+  test("the description and the error list start where the text starts", () => {
+    render(() => (
+      <Field>
+        <FieldDescription>Shown on your profile.</FieldDescription>
+        <FieldError errors={[{ message: "Too short" }, { message: "No spaces" }]} />
+      </Field>
+    ));
+
+    const description = rulesFor(slot("field-description").className);
+    expect(description).toContain("text-align: start");
+    expect(description).not.toContain("text-align: left");
+
+    const list = rulesFor((slot("field-error").querySelector("ul") as HTMLElement).className);
+    expect(list).toContain("margin-inline-start: calc(var(--spacing) * 4)");
+    expect(list).not.toContain("margin-left");
+  });
+});

@@ -16,7 +16,7 @@
  * one of them. Anything cleverer would be a compiler.
  */
 
-import { readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dir, "..");
@@ -60,6 +60,7 @@ function declarationsIn(source: string): { values: string[]; types: string[] } {
 }
 
 function modulesIn(directory: string, prefix: string): Module[] {
+  if (!existsSync(join(root, "src", directory))) return [];
   return readdirSync(join(root, "src", directory))
     .filter((entry) => /\.tsx?$/.test(entry) && !entry.includes(".test."))
     .toSorted()
@@ -72,6 +73,42 @@ function modulesIn(directory: string, prefix: string): Module[] {
       };
     })
     .filter((module_) => module_.values.length > 0 || module_.types.length > 0);
+}
+
+/**
+ * Modules that give a name up to another when both declare it.
+ *
+ * shadcn ships `sonner` and `toast` as alternatives, each exporting a `toast`
+ * and a `Toaster`, and a project picks one. A barrel holds both, so the newer
+ * one keeps those names on its own entry point, `@barqjs/ui/toast`. Any other
+ * collision is a mistake and stops the run.
+ */
+const YIELDS: Readonly<Record<string, string>> = { toast: "sonner" };
+
+function withoutCollisions(modules: readonly Module[]): Module[] {
+  const owner = new Map<string, string>();
+  for (const module_ of modules) {
+    if (YIELDS[module_.name] !== undefined) continue;
+    for (const name of [...module_.values, ...module_.types]) {
+      const first = owner.get(name);
+      if (first !== undefined) {
+        throw new Error(`"${name}" is exported by both ${first} and ${module_.name}`);
+      }
+      owner.set(name, module_.name);
+    }
+  }
+
+  return modules.map((module_) => {
+    const winner = YIELDS[module_.name];
+    if (winner === undefined) return module_;
+    const free = (name: string): boolean => {
+      const first = owner.get(name);
+      if (first === undefined) return true;
+      if (first === winner) return false;
+      throw new Error(`"${name}" is exported by both ${first} and ${module_.name}`);
+    };
+    return { ...module_, values: module_.values.filter(free), types: module_.types.filter(free) };
+  });
 }
 
 function block(module_: Module): string {
@@ -105,6 +142,7 @@ import "./theme/base.ts";
 function main(): void {
   const ui = modulesIn("ui", "ui/");
   const lib = modulesIn("lib", "lib/");
+  const hooks = modulesIn("hooks", "hooks/");
   const theme: Module[] = [
     {
       name: "theme",
@@ -115,7 +153,7 @@ function main(): void {
 
   writeFileSync(
     join(root, "src/index.ts"),
-    [HEADER, ...[...lib, ...theme, ...ui].map(block), ""].join("\n"),
+    [HEADER, ...withoutCollisions([...lib, ...hooks, ...theme, ...ui]).map(block), ""].join("\n"),
   );
 
   const packagePath = join(root, "package.json");
@@ -148,7 +186,7 @@ function main(): void {
     "./theme": entry("./src/theme/index.ts"),
     "./theme/reset": entry("./src/theme/reset.ts"),
     ...Object.fromEntries(
-      [...lib, ...ui].map((module_) => [
+      [...lib, ...hooks, ...ui].map((module_) => [
         `./${module_.name}`,
         entry(`./src/${module_.file.slice(2)}`),
       ]),
@@ -178,7 +216,7 @@ function main(): void {
           // a bundler then drops the scale every component's CSS reads.
           "theme/base.ts",
           "theme/layers.ts",
-          ...[...lib, ...ui].map((module_) => module_.file.slice(2)),
+          ...[...lib, ...hooks, ...ui].map((module_) => module_.file.slice(2)),
         ],
         null,
         2,
@@ -188,7 +226,7 @@ function main(): void {
   );
 
   process.stdout.write(
-    `${ui.length} components, ${lib.length} library modules -> src/index.ts, exports, src/entries.ts\n`,
+    `${ui.length} components, ${lib.length} library modules, ${hooks.length} hooks -> src/index.ts, exports, src/entries.ts\n`,
   );
 }
 

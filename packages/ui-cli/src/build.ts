@@ -5,6 +5,10 @@
  * its npm dependencies, its relative imports are the items it needs — so a
  * registry of your own works the same way and can depend on this one's items by
  * name.
+ *
+ * The directory a file is in says what it is: `lib`, `theme`, `hooks`,
+ * `blocks`, `components` and `examples` are each their own type, and anything
+ * else is a `ui` component.
  */
 
 import { mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -54,45 +58,75 @@ function sourcesIn(directory: string, prefix = ""): string[] {
   return out;
 }
 
+const DIRECTORIES: Readonly<Record<string, ItemType>> = {
+  lib: "registry:lib",
+  theme: "registry:theme",
+  hooks: "registry:hook",
+  blocks: "registry:block",
+  components: "registry:component",
+  examples: "registry:example",
+};
+
 function typeOf(path: string): ItemType {
-  const first = path.includes("/") ? path.split("/")[0] : "";
-  if (first === "lib") return "registry:lib";
-  if (first === "theme") return "registry:theme";
-  return "registry:ui";
+  const first = path.includes("/") ? (path.split("/")[0] ?? "") : "";
+  return DIRECTORIES[first] ?? "registry:ui";
+}
+
+/**
+ * The item a file belongs to.
+ *
+ * A file is an item of its own, named for the file. A DIRECTORY under `blocks`
+ * is one item with everything in it, because that is what a block is: a page
+ * and the components only that page uses.
+ */
+function ownerOf(path: string): string {
+  const parts = path.split("/");
+  if (parts[0] === "blocks" && parts.length > 2) return parts[1] as string;
+  return (parts.at(-1) ?? path).replace(/\.tsx?$/, "");
 }
 
 export function buildRegistry(from: string, to: string): number {
   const paths = sourcesIn(from);
   const owner = new Map<string, string>();
-  for (const path of paths)
-    owner.set(path, (path.split("/").at(-1) ?? path).replace(/\.tsx?$/, ""));
+  for (const path of paths) owner.set(path, ownerOf(path));
 
-  const items: RegistryItem[] = paths.map((path) => {
-    const content = readFileSync(join(from, path), "utf8");
+  const grouped = new Map<string, string[]>();
+  for (const path of paths) {
     const name = owner.get(path) as string;
+    grouped.set(name, [...(grouped.get(name) ?? []), path]);
+  }
+
+  const items: RegistryItem[] = [...grouped].map(([name, own]) => {
     const dependencies = new Set<string>();
     const registryDependencies = new Set<string>();
+    const files = own.map((path) => {
+      const content = readFileSync(join(from, path), "utf8");
 
-    for (const specifier of specifiersIn(content)) {
-      if (!specifier.startsWith(".")) {
-        dependencies.add(packageOf(specifier));
-        continue;
+      for (const specifier of specifiersIn(content)) {
+        if (!specifier.startsWith(".")) {
+          dependencies.add(packageOf(specifier));
+          continue;
+        }
+        const resolved = relative(from, resolve(join(from, dirname(path)), specifier)).replaceAll(
+          "\\",
+          "/",
+        );
+        const found = owner.get(resolved);
+        if (found !== undefined && found !== name) registryDependencies.add(found);
       }
-      const resolved = relative(from, resolve(join(from, dirname(path)), specifier)).replaceAll(
-        "\\",
-        "/",
-      );
-      const found = owner.get(resolved);
-      if (found !== undefined && found !== name) registryDependencies.add(found);
-    }
+
+      return { path, type: typeOf(path), content };
+    });
 
     return {
       name,
-      type: typeOf(path),
+      type: typeOf(own[0] as string),
       title: titleOf(name),
       dependencies: [...dependencies].toSorted(),
+      devDependencies: [],
       registryDependencies: [...registryDependencies].toSorted(),
-      files: [{ path, type: typeOf(path), content }],
+      files,
+      categories: [],
     };
   });
 

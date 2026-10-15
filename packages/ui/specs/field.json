@@ -4,7 +4,7 @@
   "field-group": "group/field-group @container/field-group flex w-full flex-col gap-5 data-[slot=checkbox-group]:gap-3 *:data-[slot=field-group]:gap-4",
   "field-content": "group/field-content flex flex-1 flex-col gap-0.5 leading-snug",
   "field-label": "flex w-fit items-center gap-2 text-sm font-medium group-data-[disabled=true]/field:opacity-50",
-  "field-description": "text-left text-sm leading-normal font-normal text-muted-foreground group-has-data-horizontal/field:text-balance [[data-variant=legend]+&]:-mt-1.5 last:mt-0 nth-last-2:-mt-1 [&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-primary",
+  "field-description": "text-start text-sm leading-normal font-normal text-muted-foreground group-has-data-horizontal/field:text-balance [[data-variant=legend]+&]:-mt-1.5 last:mt-0 nth-last-2:-mt-1 [&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-primary",
   "field-separator": "relative -my-2 h-5 text-sm group-data-[variant=outline]/field-group:-mb-2",
   "field-separator-content": "relative mx-auto block w-fit bg-background px-2 text-muted-foreground",
   "field-error": "text-sm font-normal text-destructive",

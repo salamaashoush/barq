@@ -1,9 +1,17 @@
 import {
-  context,
+  OTP_BADGE_SPACE,
+  otpField,
+  type OtpPasswordManagerStrategy,
+  type OtpSlot,
+} from "@barqjs/aria/otp";
+import { mergeProps, type DOMProps } from "@barqjs/aria/utils";
+import {
+  createContext,
+  createMemo,
   getContext,
-  getOwner,
+  onCleanup,
+  onSettled,
   provide,
-  signal,
   type Child,
   type Incoming,
 } from "@barqjs/core";
@@ -12,10 +20,16 @@ import { Minus } from "@barqjs/lucide/icons/minus";
 import { ref as makeRef } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
-import { controlProps, uiProps } from "../lib/slot.ts";
+import { controlProps, omit, uiProps } from "../lib/slot.ts";
 import { text } from "../lib/shared-text.ts";
 
 import type { UiProps } from "../lib/props.ts";
+
+export {
+  REGEXP_ONLY_CHARS,
+  REGEXP_ONLY_DIGITS,
+  REGEXP_ONLY_DIGITS_AND_CHARS,
+} from "@barqjs/aria/otp";
 
 const ui = layer("barq.ui");
 
@@ -31,21 +45,55 @@ const container = ui({
 /**
  * The real control, over the whole container and invisible.
  *
- * `opacity: 0` rather than `visibility: hidden` or a 1px box off-screen: it has
- * to stay hittable, because a tap on a slot is a tap on THIS, and a control the
- * page has hidden takes no focus and raises no keyboard on a phone.
+ * Invisible by COLOUR, with its text, caret, selection and autofill paint all
+ * transparent, and not by `opacity: 0`, `visibility: hidden` or a 1px box
+ * off-screen. It has to stay hittable, because a tap on a slot is a tap on
+ * THIS; and it has to stay a field as far as a password manager and the
+ * platform's own code autofill are concerned, both of which skip one they
+ * judge hidden and judge that by its opacity.
+ *
+ * The font is as tall as the row (`--root-height` is measured), so the
+ * platform's own caret handles and magnifier sit over the boxes, and so iOS
+ * does not zoom the page on focus as it does for any field under 16px.
  */
 const control = ui({
   position: "absolute",
   inset: "0px",
   width: "100%",
   height: "100%",
-  opacity: "0",
   cursor: "text",
+  color: "transparent",
+  caretColor: "transparent",
+  backgroundColor: "transparent",
+  borderWidth: "0px",
+  outlineStyle: "none",
+  boxShadow: "none",
+  lineHeight: "1",
   letterSpacing: "-0.5em",
+  fontSize: "var(--root-height, 2rem)",
   fontFamily: "monospace",
+  fontVariantNumeric: "tabular-nums",
   "&:disabled": {
     cursor: "not-allowed",
+  },
+  "&::selection": {
+    backgroundColor: "transparent",
+    color: "transparent",
+  },
+  "&::placeholder": {
+    color: "transparent",
+  },
+  "&:autofill": {
+    backgroundColor: "transparent",
+    borderColor: "transparent",
+    boxShadow: "none",
+    "-webkit-text-fill-color": "transparent",
+  },
+  "&:-webkit-autofill": {
+    backgroundColor: "transparent",
+    borderColor: "transparent",
+    boxShadow: "none",
+    "-webkit-text-fill-color": "transparent",
   },
 });
 
@@ -66,7 +114,7 @@ const drawn = ui({ pointerEvents: "none" });
 
 const group = ui({ display: "flex", alignItems: "center" });
 
-const slot = ui(text.sm, {
+const slotBox = ui(text.sm, {
   position: "relative",
   display: "flex",
   height: "calc(var(--spacing) * 8)",
@@ -75,8 +123,8 @@ const slot = ui(text.sm, {
   justifyContent: "center",
   borderBlockStyle: "var(--ui-border-style)",
   borderBlockWidth: "1px",
-  borderRightStyle: "var(--ui-border-style)",
-  borderRightWidth: "1px",
+  borderInlineEndStyle: "var(--ui-border-style)",
+  borderInlineEndWidth: "1px",
   borderColor: "var(--input)",
   "--ui-shadow": "0 1px 2px 0 var(--ui-shadow-color, rgb(0 0 0 / 0.05))",
   boxShadow:
@@ -87,14 +135,14 @@ const slot = ui(text.sm, {
   "--ui-outline-style": "none",
   outlineStyle: "none",
   "&:first-child": {
-    borderTopLeftRadius: "var(--radius)",
-    borderBottomLeftRadius: "var(--radius)",
-    borderLeftStyle: "var(--ui-border-style)",
-    borderLeftWidth: "1px",
+    borderStartStartRadius: "var(--radius)",
+    borderEndStartRadius: "var(--radius)",
+    borderInlineStartStyle: "var(--ui-border-style)",
+    borderInlineStartWidth: "1px",
   },
   "&:last-child": {
-    borderTopRightRadius: "var(--radius)",
-    borderBottomRightRadius: "var(--radius)",
+    borderStartEndRadius: "var(--radius)",
+    borderEndEndRadius: "var(--radius)",
   },
   '&[aria-invalid="true"]': {
     borderColor: "var(--destructive)",
@@ -150,17 +198,23 @@ const caret = ui({
   transitionDuration: "1000ms",
 });
 
+const separator = ui({
+  display: "flex",
+  alignItems: "center",
+  "& svg:not([class*='size-'])": {
+    width: "calc(var(--spacing) * 4)",
+    height: "calc(var(--spacing) * 4)",
+  },
+});
+
 interface OtpValue {
-  readonly value: () => string;
-  readonly length: () => number;
-  readonly isDisabled: () => boolean;
+  readonly slot: (index: number) => OtpSlot;
   readonly isInvalid: () => boolean;
-  /** Which slots the caret or the selection is over. */
-  readonly activeRange: () => readonly [number, number];
-  readonly focused: () => boolean;
 }
 
-const OtpContext = context<OtpValue | null>(null);
+const EMPTY: OtpSlot = { char: null, placeholderChar: null, isActive: false, hasFakeCaret: false };
+
+const OtpContext = createContext<OtpValue | null>(null);
 
 function useOtp(): OtpValue {
   const value = getContext(OtpContext);
@@ -175,16 +229,53 @@ export interface InputOTPProps extends UiProps {
   maxLength?: number;
   value?: string;
   defaultValue?: string;
-  /** What a character may be. @default /[^0-9]/g strips everything else */
-  pattern?: RegExp;
+  /**
+   * What the value may be, in one of two forms.
+   *
+   * A STRING is the `pattern` attribute, as shadcn's takes it: a test of the
+   * whole value, and a change that fails it is refused. `REGEXP_ONLY_DIGITS`,
+   * `REGEXP_ONLY_CHARS` and `REGEXP_ONLY_DIGITS_AND_CHARS` are these.
+   *
+   * A REGEXP is the characters to remove, so `/[^a-f0-9]/g` keeps hex digits
+   * out of whatever was typed or pasted.
+   *
+   * Without one, a numeric keyboard keeps digits and any other keyboard keeps
+   * everything.
+   */
+  pattern?: RegExp | string;
+  /** Which keyboard a phone raises. @default "numeric" */
+  inputMode?: "numeric" | "text" | "decimal" | "tel" | "search" | "email" | "url" | "none";
+  /** Where the platform draws its own caret and selection handles. @default "left" */
+  textAlign?: "left" | "center" | "right";
+  /** For the row the boxes are in. `class` goes to that row and to the control. */
+  containerClassName?: string;
+  containerClass?: string;
+  /** Applied to pasted text before it is judged, for a code copied as `12-34-56`. */
+  pasteTransformer?: (pasted: string) => string;
+  /**
+   * Move a password manager's badge out beside the boxes by widening the
+   * control under it. @default "increase-width"
+   */
+  pushPasswordManagerStrategy?: OtpPasswordManagerStrategy;
+  placeholder?: string;
   isDisabled?: boolean;
+  /** The same as `isDisabled`, under the attribute's name. */
+  disabled?: boolean;
   isInvalid?: boolean;
+  "aria-invalid"?: boolean | "true" | "false";
   name?: string;
+  /** @default "one-time-code" */
+  autoComplete?: string;
   autoFocus?: boolean;
+  required?: boolean;
+  form?: string;
   onChange?: (value: string) => void;
-  /** Called once the last slot is filled. */
+  /** Called when the last slot is filled. */
   onComplete?: (value: string) => void;
 }
+
+/** What `controlProps` must not turn into an attribute or a DOM listener. */
+const OWN = ["value", "defaultValue", "pattern", "onChange", "style"] as const;
 
 /**
  * ```tsx
@@ -208,87 +299,119 @@ export interface InputOTPProps extends UiProps {
  * not decoration: an input per character breaks paste (each takes one
  * character), breaks `autocomplete="one-time-code"` (the platform fills one
  * field), and gives a screen reader six unlabelled boxes instead of one field.
- * The engine is written here rather than taken, because `input-otp` is React:
- * hooks and a context, with no part that survives leaving it.
+ * The engine is `otpField` in `@barqjs/aria` rather than that package, because
+ * `input-otp` is React: hooks and a context, with no part that survives leaving
+ * it.
+ *
+ * Name the field: `aria-label`, or a `<Label>` pointing at its `id`. Both reach
+ * the real control, which is the only thing a screen reader meets.
  */
 export function InputOTP(props: Incoming<InputOTPProps>) {
   const inputRef = makeRef<HTMLInputElement>();
-  const inner = signal("");
-  const focused = signal(false);
-  // The caret, tracked as a range so a selection lights every slot it covers.
-  const range = signal<readonly [number, number]>([0, 0]);
+  const rootRef = makeRef<HTMLDivElement>();
 
   const length = (): number => props.maxLength?.() ?? 6;
-  const value = (): string => props.value?.() ?? inner();
+  const inputMode = (): NonNullable<InputOTPProps["inputMode"]> => props.inputMode?.() ?? "numeric";
+  const isDisabled = (): boolean => props.isDisabled?.() === true || props.disabled?.() === true;
+  const isInvalid = (): boolean => {
+    const attribute = props["aria-invalid"]?.();
+    return props.isInvalid?.() === true || attribute === true || attribute === "true";
+  };
 
-  const clean = (raw: string): string => {
-    const pattern = props.pattern?.() ?? /[^0-9]/g;
+  const strip = (raw: string): string => {
+    const pattern = props.pattern?.();
     // `lastIndex` is state on a global regex, so a fresh one per call: reusing
     // the caller's would skip characters on every other keystroke.
-    return raw.replace(new RegExp(pattern.source, pattern.flags), "").slice(0, length());
+    if (pattern instanceof RegExp)
+      return raw.replace(new RegExp(pattern.source, pattern.flags), "");
+    if (pattern === undefined && inputMode() === "numeric") return raw.replace(/[^0-9]/g, "");
+    return raw;
   };
 
-  const track = (element: HTMLInputElement): void => {
-    const start = element.selectionStart ?? 0;
-    const end = element.selectionEnd ?? start;
-    range.set([start, end]);
+  const test = (): string | undefined => {
+    const pattern = props.pattern?.();
+    return typeof pattern === "string" ? pattern : undefined;
   };
 
-  const write = (raw: string, element: HTMLInputElement): void => {
-    const next = clean(raw);
-    if (next !== element.value) element.value = next;
-    if (props.value?.() === undefined) inner.set(next);
-    props.onChange?.()?.(next);
-    if (next.length === length()) props.onComplete?.()?.(next);
-    track(element);
-  };
+  const otp = otpField(
+    {
+      maxLength: length,
+      value: () => props.value?.(),
+      defaultValue: () => props.defaultValue?.(),
+      onChange: (next) => props.onChange?.()?.(next),
+      onComplete: (next) => props.onComplete?.()?.(next),
+      pattern: test,
+      sanitize: strip,
+      pasteTransformer: () => props.pasteTransformer?.(),
+      placeholder: () => props.placeholder?.(),
+      pushPasswordManagerStrategy: () => props.pushPasswordManagerStrategy?.(),
+    },
+    inputRef,
+    rootRef,
+  );
 
+  const slots = createMemo(() => otp.slots());
   const shared: OtpValue = {
-    value,
-    length,
-    isDisabled: () => props.isDisabled?.() === true,
-    isInvalid: () => props.isInvalid?.() === true,
-    activeRange: range,
-    focused,
+    slot: (index) => slots()[index] ?? EMPTY,
+    isInvalid,
   };
+
+  let observer: ResizeObserver | undefined;
+  onSettled(() => {
+    const element = rootRef();
+    if (element === null || typeof ResizeObserver === "undefined") return;
+    observer = new ResizeObserver(() => {
+      element.style.setProperty("--root-height", `${String(element.clientHeight)}px`);
+    });
+    observer.observe(element);
+  });
+  onCleanup(() => observer?.disconnect());
+
+  const controlStyle = (): Record<string, string> => {
+    const style: Record<string, string> = { "text-align": props.textAlign?.() ?? "left" };
+    if (otp.willPushPasswordManagerBadge()) {
+      style.width = `calc(100% + ${OTP_BADGE_SPACE})`;
+      style["clip-path"] = `inset(0 ${OTP_BADGE_SPACE} 0 0)`;
+    }
+    return style;
+  };
+
+  const containerProps: DOMProps = {
+    class: () =>
+      ui(
+        container,
+        props.class?.(),
+        props.className?.(),
+        props.containerClass?.(),
+        props.containerClassName?.(),
+      ),
+    hidden: () => props.hidden?.(),
+    "data-disabled": () => (isDisabled() ? "true" : undefined),
+  };
+  if (props.style !== undefined) containerProps.style = () => props.style?.();
+
+  const controlAttributes = mergeProps(
+    controlProps("input-otp", control, omit(props, OWN)),
+    otp.inputProps,
+    { style: controlStyle },
+  );
 
   return (
-    <div {...uiProps("input-otp-container", container, props)}>
-      <div class={root}>
+    <div data-slot="input-otp-container" data-input-otp-container {...containerProps}>
+      <div class={root} ref={rootRef.set}>
         <input
-          {...controlProps("input-otp", control, props)}
+          {...controlAttributes}
           ref={inputRef.set}
           type="text"
-          inputMode="numeric"
-          autocomplete="one-time-code"
+          data-input-otp
+          inputMode={inputMode()}
+          pattern={test()}
+          autocomplete={props.autoComplete?.() ?? "one-time-code"}
+          spellcheck={false}
           maxLength={length()}
-          value={value()}
-          disabled={props.isDisabled?.()}
-          name={props.name?.()}
-          autoFocus={props.autoFocus?.()}
-          aria-invalid={props.isInvalid?.() === true ? "true" : undefined}
-          onInput={(event: Event) =>
-            write((event.target as HTMLInputElement).value, event.target as HTMLInputElement)
-          }
-          onFocus={(event: FocusEvent) => {
-            focused.set(true);
-            const element = event.target as HTMLInputElement;
-            // The caret goes to the END on focus, which is where the next
-            // character lands. Without this a click on the third slot of an
-            // empty field would type there and leave two holes behind it.
-            const at = element.value.length;
-            element.setSelectionRange(at, at);
-            track(element);
-          }}
-          onBlur={() => focused.set(false)}
-          onKeyUp={(event: KeyboardEvent) => track(event.target as HTMLInputElement)}
-          onClick={(event: MouseEvent) => {
-            const element = event.target as HTMLInputElement;
-            const at = element.value.length;
-            element.setSelectionRange(at, at);
-            track(element);
-          }}
-          onSelect={(event: Event) => track(event.target as HTMLInputElement)}
+          value={otp.value()}
+          disabled={isDisabled()}
+          aria-invalid={isInvalid() ? "true" : undefined}
         />
         <div class={ui(group, drawn)} aria-hidden="true">
           <Provider value={shared}>{props.children}</Provider>
@@ -311,7 +434,7 @@ function Provider(props: Incoming<{ value: OtpValue; children?: Child }>) {
     OtpContext,
     () => props.value(),
     () => props.children,
-  ) as never;
+  );
 }
 
 export function InputOTPGroup(props: Incoming<UiProps>) {
@@ -331,29 +454,16 @@ export interface InputOTPSlotProps extends UiProps {
  */
 export function InputOTPSlot(props: Incoming<InputOTPSlotProps>) {
   const otp = useOtp();
-
-  const at = (): number => props.index();
-  const char = (): string => otp.value().charAt(at());
-
-  const isActive = (): boolean => {
-    if (!otp.focused()) return false;
-    const [start, end] = otp.activeRange();
-    // A caret rather than a selection: the slot it sits before is the active
-    // one, and at the very end it is the last slot rather than one past it.
-    if (start === end) return at() === Math.min(start, otp.length() - 1);
-    return at() >= start && at() < end;
-  };
-
-  const hasCaret = (): boolean => isActive() && char() === "";
+  const slot = (): OtpSlot => otp.slot(props.index());
 
   return (
     <div
-      {...uiProps("input-otp-slot", slot, props)}
-      data-active={() => (isActive() ? "true" : "false")}
+      {...uiProps("input-otp-slot", slotBox, props)}
+      data-active={() => (slot().isActive ? "true" : "false")}
       aria-invalid={() => (otp.isInvalid() ? "true" : undefined)}
     >
-      {char()}
-      {hasCaret() ? (
+      {slot().char ?? ""}
+      {slot().hasFakeCaret ? (
         <div data-slot="input-otp-caret" class={caretWrapper}>
           <div data-slot="input-otp-caret-line" class={caret} />
         </div>
@@ -364,7 +474,7 @@ export function InputOTPSlot(props: Incoming<InputOTPSlotProps>) {
 
 export function InputOTPSeparator(props: Incoming<UiProps>) {
   return (
-    <div {...uiProps("input-otp-separator", "", props)} role="separator">
+    <div {...uiProps("input-otp-separator", separator, props)} role="separator">
       <Minus />
     </div>
   );

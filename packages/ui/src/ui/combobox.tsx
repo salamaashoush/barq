@@ -1,10 +1,44 @@
 import type { Key } from "@barqjs/aria/collections";
 import { Section } from "@barqjs/aria/listbox";
-import type { FilterFn } from "@barqjs/aria/combobox";
-import { For, getOwner, isBlock, Show, signal, type Child, type Incoming } from "@barqjs/core";
-import { layer } from "@barqjs/css";
+import {
+  ComboboxChip as AriaComboboxChip,
+  ComboboxChipRemove as AriaComboboxChipRemove,
+  ComboboxChips as AriaComboboxChips,
+  ComboboxClear as AriaComboboxClear,
+  ComboboxCollection as AriaComboboxCollection,
+  ComboboxEmpty as AriaComboboxEmpty,
+  ComboboxGroup as AriaComboboxGroup,
+  ComboboxGroupLabel as AriaComboboxGroupLabel,
+  ComboboxInput as AriaComboboxInput,
+  ComboboxItem as AriaComboboxItem,
+  ComboboxList as AriaComboboxList,
+  ComboboxPopup as AriaComboboxPopup,
+  ComboboxRoot as AriaComboboxRoot,
+  ComboboxTrigger as AriaComboboxTrigger,
+  ComboboxValue as AriaComboboxValue,
+  useComboboxChip,
+  useComboboxItem,
+  useComboboxRoot,
+  type ComboboxAnchor,
+  type ComboboxRootProps,
+  type ComboboxValueProps,
+  type FilterFn,
+} from "@barqjs/aria/combobox";
+import type { Align, Side } from "@barqjs/aria/overlays";
+import {
+  For,
+  isBlock,
+  Show,
+  createSignal,
+  type Child,
+  type Incoming,
+  type JSXElement,
+} from "@barqjs/core";
+import { firstThatWorks, layer } from "@barqjs/css";
+import type { RefTarget } from "@barqjs/primitives/refs";
 
 import { Check } from "@barqjs/lucide/icons/check";
+import { ChevronDown } from "@barqjs/lucide/icons/chevron-down";
 import { ChevronsUpDown } from "@barqjs/lucide/icons/chevrons-up-down";
 import { X } from "@barqjs/lucide/icons/x";
 
@@ -15,8 +49,9 @@ import { when } from "../lib/shared-when.ts";
 import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
-import { Button } from "./button.tsx";
+import { Button, type ButtonProps } from "./button.tsx";
 import { Command, CommandItem } from "./command.tsx";
+import { InputGroup, InputGroupAddon, InputGroupButton } from "./input-group.tsx";
 import { Popover, PopoverContent, PopoverTrigger } from "./popover.tsx";
 import { srOnly } from "./sr-only.ts";
 
@@ -83,15 +118,21 @@ const item = ui(
     gap: "calc(var(--spacing) * 2)",
     borderRadius: "calc(var(--radius) * 0.6)",
     paddingBlock: "calc(var(--spacing) * 1.5)",
-    paddingRight: "calc(var(--spacing) * 8)",
-    paddingLeft: "calc(var(--spacing) * 2)",
+    paddingInlineEnd: "calc(var(--spacing) * 8)",
+    paddingInlineStart: "calc(var(--spacing) * 2)",
+    // Upstream's name for the highlight, beside `data-focused`, which is what
+    // `@barqjs/aria` calls the same thing.
+    "[data-highlighted]": {
+      backgroundColor: "var(--accent)",
+      color: "var(--accent-foreground)",
+    },
   },
 );
 
 const indicator = ui({
   pointerEvents: "none",
   position: "absolute",
-  right: "calc(var(--spacing) * 2)",
+  insetInlineEnd: "calc(var(--spacing) * 2)",
   display: "flex",
   width: "calc(var(--spacing) * 4)",
   height: "calc(var(--spacing) * 4)",
@@ -191,12 +232,18 @@ const chip = ui(text.medium, {
     opacity: "50%",
   },
   '&:has([data-slot="combobox-chip-remove"])': {
-    paddingRight: "0px",
+    paddingInlineEnd: "0px",
+  },
+  // The chip the arrows are on, which is the one Backspace takes off.
+  "[data-highlighted]": {
+    outlineStyle: "solid",
+    outlineWidth: "2px",
+    outlineColor: "var(--ring)",
   },
 });
 
 const chipRemove = ui({
-  marginLeft: "calc(var(--spacing) * -1)",
+  marginInlineStart: "calc(var(--spacing) * -1)",
   opacity: "50%",
   "@media (hover: hover)": {
     ":hover": { opacity: "100%" },
@@ -241,6 +288,19 @@ const chipsTrigger = ui({
  * option looks like.
  */
 export function ComboboxLabel(props: Incoming<Omit<UiProps, "title"> & { title?: Child }>) {
+  // Written inside a `<ComboboxGroup>` it has no `title`: it IS the heading,
+  // and the group around it is somebody else's element.
+  if (props.title === undefined) {
+    const { title: _title, ...rest } = props;
+    return (
+      <AriaComboboxGroupLabel
+        {...rest}
+        data-slot={props["data-slot"]?.() ?? "combobox-label"}
+        class={ui(groupLabel, props.class?.(), props.className?.())}
+      />
+    );
+  }
+
   return (
     <Section
       {...props}
@@ -315,13 +375,13 @@ export interface ComboboxProps<T> extends UiProps {
  * a text box glued to it. The chosen value is shown on the trigger and ticked
  * in the list.
  */
-export function Combobox<T>(props: Incoming<ComboboxProps<T>>) {
-  const inner = signal<Key | null>(props.defaultValue?.() ?? null);
+function ComboboxPicker<T>(props: Incoming<ComboboxProps<T>>) {
+  const [inner, setInner] = createSignal<Key | null>(props.defaultValue?.() ?? null);
   const chosen = (): Key | null => props.value?.() ?? inner();
-  const innerMany = signal<readonly Key[]>(props.defaultValues?.() ?? []);
+  const [innerMany, setInnerMany] = createSignal<readonly Key[]>(props.defaultValues?.() ?? []);
   const many = (): readonly Key[] => props.values?.() ?? innerMany();
   const multiple = (): boolean => props.multiple?.() === true;
-  const open = signal(false);
+  const [open, setOpen] = createSignal(false);
 
   const keyOf = (entry: T): Key => (entry as { id: Key }).id;
   const textOf = (entry: T): string => props.label?.()?.(entry) ?? String(keyOf(entry));
@@ -339,7 +399,7 @@ export function Combobox<T>(props: Incoming<ComboboxProps<T>>) {
   };
 
   const setMany = (next: readonly Key[]): void => {
-    if (props.values?.() === undefined) innerMany.set(next);
+    if (props.values?.() === undefined) setInnerMany(next);
     props.onValuesChange?.()?.(next);
   };
 
@@ -366,7 +426,7 @@ export function Combobox<T>(props: Incoming<ComboboxProps<T>>) {
   const label = (entry: T): Child => (render === undefined ? textOf(entry) : render(entry));
 
   return (
-    <Popover isOpen={open()} onOpenChange={(next: boolean) => open.set(next)}>
+    <Popover isOpen={open()} onOpenChange={(next: boolean) => setOpen(next)}>
       <Show when={multiple()}>
         <div data-slot="combobox-chips" class={ui(chips, props.class?.(), props.className?.())}>
           <For each={many}>
@@ -446,9 +506,9 @@ export function Combobox<T>(props: Incoming<ComboboxProps<T>>) {
             // Once, before the write: reading `chosen()` again afterwards sees
             // the value just set and reports every choice as a clear.
             const next = key === chosen() ? null : key;
-            inner.set(next);
+            setInner(next);
             props.onChange?.()?.(next);
-            open.set(false);
+            setOpen(false);
           }}
         >
           {(entry: T) =>
@@ -472,4 +532,546 @@ export function Combobox<T>(props: Incoming<ComboboxProps<T>>) {
       </PopoverContent>
     </Popover>
   );
+}
+
+/**
+ * The panel's own look, for a combobox written as parts.
+ *
+ * The one-component form borrows it from `<PopoverContent>`; here the panel is
+ * `@barqjs/aria`'s element and has to carry it itself. The slide reads
+ * `data-side`, which is the side the panel ENDED UP on after any flip.
+ */
+const panel = ui(box.shadow, box.outline, box.forcedColors, when.closing, {
+  transformOrigin: "var(--barq-transform-origin)",
+  animation:
+    "enter var(--ui-animation-duration, var(--ui-duration, 0.15s)) var(--ui-ease, ease) var(--ui-animation-delay, 0s) var(--ui-animation-iteration-count, 1) var(--ui-animation-direction, normal) var(--ui-animation-fill-mode, none)",
+  borderRadius: "calc(var(--radius) * 0.8)",
+  backgroundColor: "var(--popover)",
+  color: "var(--popover-foreground)",
+  "--ui-shadow":
+    "0 4px 6px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 2px 4px -2px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
+  "--ui-ring-shadow":
+    "var(--ui-ring-inset,) 0 0 0 calc(1px + var(--ui-ring-offset-width)) var(--ui-ring-color, currentcolor)",
+  "--ui-ring-color": "var(--foreground)",
+  "@supports (color: color-mix(in lab, red, red))": {
+    "--ui-ring-color": "color-mix(in oklab, var(--foreground) 10%, transparent)",
+  },
+  "--ui-duration": "100ms",
+  transitionDuration: "100ms",
+  "--ui-enter-opacity": firstThatWorks("0", "calc(0/100)"),
+  "--ui-enter-scale": firstThatWorks("0.95", "calc(95*1%)"),
+  '[data-side="bottom"]': {
+    "--ui-enter-translate-y": "calc(2*var(--spacing)*-1)",
+  },
+  '[data-side="left"]': {
+    "--ui-enter-translate-x": "calc(2*var(--spacing))",
+  },
+  '[data-side="right"]': {
+    "--ui-enter-translate-x": "calc(2*var(--spacing)*-1)",
+  },
+  '[data-side="top"]': {
+    "--ui-enter-translate-y": "calc(2*var(--spacing))",
+  },
+});
+
+const list = ui({
+  margin: "0px",
+  listStyleType: "none",
+  maxHeight:
+    "min(calc(calc(var(--spacing) * 96) - calc(var(--spacing) * 9)), calc(var(--barq-available-height) - calc(var(--spacing) * 9)))",
+  scrollPaddingBlock: "var(--spacing)",
+  overflowY: "auto",
+  overscrollBehavior: "contain",
+  padding: "var(--spacing)",
+  "[data-empty]": {
+    padding: "0px",
+  },
+});
+
+/**
+ * Two elements, because a `<li>` cannot hold another: the outer one is this
+ * class and the inner `<ul>` is the group, which lays nothing out.
+ */
+const group = ui({
+  "& > ul": {
+    margin: "0px",
+    listStyleType: "none",
+    padding: "0px",
+  },
+  // Every option in it has been filtered away, and a heading over nothing is
+  // noise.
+  "[data-empty]": {
+    display: "none",
+  },
+});
+
+const empty = ui(text.sm, {
+  display: "none",
+  width: "100%",
+  justifyContent: "center",
+  paddingBlock: "calc(var(--spacing) * 2)",
+  textAlign: "center",
+  color: "var(--muted-foreground)",
+  ":is(:where(.group\\/combobox-content)[data-empty] *)": {
+    display: "flex",
+  },
+});
+
+/** The field inside the input group: the group draws the border and the ring. */
+const control = ui(box.outline, {
+  flex: "1",
+  minWidth: "0px",
+  height: "100%",
+  borderStyle: "var(--ui-border-style)",
+  borderWidth: "0px",
+  borderRadius: "0",
+  backgroundColor: "transparent",
+  paddingInline: "calc(var(--spacing) * 2.5)",
+  paddingBlock: "var(--spacing)",
+  fontSize: "var(--text-base)",
+  lineHeight: "var(--ui-leading, var(--text-base--line-height))",
+  "::placeholder": {
+    color: "var(--muted-foreground)",
+  },
+  ":disabled": {
+    pointerEvents: "none",
+    cursor: "not-allowed",
+  },
+  "@media (width >= 48rem)": {
+    "&": {
+      fontSize: "var(--text-sm)",
+      lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
+    },
+  },
+});
+
+const inputGroup = ui({
+  width: "auto",
+});
+
+const chipsInput = ui(box.outline, {
+  minWidth: "calc(var(--spacing) * 16)",
+  flex: "1",
+  borderStyle: "none",
+  backgroundColor: "transparent",
+  padding: "0px",
+  "::placeholder": {
+    color: "var(--muted-foreground)",
+  },
+});
+
+const partTrigger = ui(icon.sized, {
+  justifyContent: "space-between",
+  "--ui-font-weight": "var(--font-weight-normal)",
+  fontWeight: "var(--font-weight-normal)",
+});
+
+/**
+ * The toggle beside the input. A clear button takes its place rather than
+ * sitting next to it, and it does not darken while the list it opened is up.
+ */
+const inputTrigger = ui(icon.sized, {
+  '[data-slot="input-group"]:has([data-slot="combobox-clear"]) &': {
+    display: "none",
+  },
+  "[data-pressed]": {
+    backgroundColor: "transparent",
+  },
+  '[data-state="open"]': {
+    backgroundColor: "transparent",
+  },
+});
+
+const triggerIcon = ui({
+  pointerEvents: "none",
+  width: "calc(var(--spacing) * 4)",
+  height: "calc(var(--spacing) * 4)",
+  color: "var(--muted-foreground)",
+});
+
+/**
+ * Whether these children are parts rather than a callback.
+ *
+ * Children arrive as a Block either way. Written parts take nothing; a
+ * callback that renders one item takes the item.
+ */
+function isWritten(children: unknown): boolean {
+  return typeof children === "function" && isBlock(children) && children.length === 0;
+}
+
+/**
+ * ```tsx
+ * <Combobox items={frameworks} onValueChange={pick}>
+ *   <ComboboxInput placeholder="Select a framework" />
+ *   <ComboboxContent>
+ *     <ComboboxEmpty>No frameworks found.</ComboboxEmpty>
+ *     <ComboboxList>
+ *       {(item) => <ComboboxItem value={item}>{item}</ComboboxItem>}
+ *     </ComboboxList>
+ *   </ComboboxContent>
+ * </Combobox>
+ * ```
+ *
+ * Two shapes under one name. Given parts as children it is the root they find
+ * one another through, and renders nothing itself. Given `items` and a callback
+ * (or nothing) it is the whole control: a button that opens a searchable list,
+ * which is what this component was before the parts existed.
+ */
+export function Combobox<T>(props: Incoming<ComboboxProps<T>>): JSXElement;
+export function Combobox<V>(props: Incoming<ComboboxRootProps<V>>): JSXElement;
+export function Combobox(
+  props: Incoming<ComboboxProps<unknown>> | Incoming<ComboboxRootProps<unknown>>,
+): JSXElement {
+  if (isWritten(props.children)) {
+    return <AriaComboboxRoot {...props} />;
+  }
+  return <ComboboxPicker {...(props as Incoming<ComboboxProps<unknown>>)} />;
+}
+
+/** What is chosen: its label, or whatever a callback makes of it. */
+export function ComboboxValue(props: Incoming<ComboboxValueProps>) {
+  return <AriaComboboxValue {...props} />;
+}
+
+export interface ComboboxTriggerProps extends ButtonProps {}
+
+/**
+ * The button that opens the list.
+ *
+ * shadcn writes `<ComboboxTrigger render={<Button variant="outline" />}>`. This
+ * IS the button and takes the same `variant` and `size`, so nothing is cloned.
+ */
+export function ComboboxTrigger(props: Incoming<ComboboxTriggerProps>) {
+  return (
+    <AriaComboboxTrigger>
+      <Button
+        {...props}
+        data-slot={props["data-slot"]?.() ?? "combobox-trigger"}
+        variant={props.variant?.() ?? "outline"}
+        class={ui(partTrigger, props.class?.(), props.className?.())}
+      >
+        {props.children}
+        <ChevronDown data-slot="combobox-trigger-icon" class={triggerIcon} aria-hidden="true" />
+      </Button>
+    </AriaComboboxTrigger>
+  );
+}
+
+export interface ComboboxClearProps extends Omit<ButtonProps, "size"> {
+  /** What the button says to a screen reader. @default "Clear" */
+  clearLabel?: string;
+  "data-slot"?: string;
+}
+
+/** Empties the value and the text. There only while there is something to empty. */
+export function ComboboxClear(props: Incoming<ComboboxClearProps>) {
+  return (
+    <AriaComboboxClear>
+      <InputGroupButton
+        {...props}
+        data-slot={props["data-slot"]?.() ?? "combobox-clear"}
+        variant={props.variant?.() ?? "ghost"}
+        size="icon-xs"
+      >
+        <X aria-hidden="true" />
+        <span class={srOnly}>{props.clearLabel?.() ?? "Clear"}</span>
+      </InputGroupButton>
+    </AriaComboboxClear>
+  );
+}
+
+export interface ComboboxInputProps extends Omit<UiProps, "ref"> {
+  placeholder?: string;
+  disabled?: boolean;
+  required?: boolean;
+  /** The toggle at the end of the field. @default true */
+  showTrigger?: boolean;
+  /** A button that empties the field, in the toggle's place. @default false */
+  showClear?: boolean;
+  /** What the toggle says to a screen reader. @default "Show suggestions" */
+  triggerLabel?: string;
+  /** What the clear button says to a screen reader. @default "Clear" */
+  clearLabel?: string;
+  "aria-invalid"?: boolean | "true" | "false";
+  ref?: RefTarget<HTMLInputElement>;
+  onKeyDown?: (event: KeyboardEvent) => void;
+}
+
+/**
+ * The field, in an input group with its toggle.
+ *
+ * `class` styles the group, which is the box a caller sees; the labelling and
+ * everything else goes on the input, which is the control. Addons written as
+ * children land in the same group.
+ */
+export function ComboboxInput(props: Incoming<ComboboxInputProps>) {
+  return (
+    <InputGroup
+      class={ui(inputGroup, props.class?.(), props.className?.())}
+      style={props.style?.()}
+      isDisabled={props.disabled?.()}
+    >
+      <AriaComboboxInput
+        id={props.id?.()}
+        placeholder={props.placeholder?.()}
+        disabled={props.disabled?.()}
+        required={props.required?.()}
+        aria-label={props["aria-label"]?.()}
+        aria-labelledby={props["aria-labelledby"]?.()}
+        aria-describedby={props["aria-describedby"]?.()}
+        aria-invalid={props["aria-invalid"]?.()}
+        data-testid={props["data-testid"]?.()}
+        data-slot={props["data-slot"]?.() ?? "input-group-control"}
+        class={control}
+        ref={props.ref?.()}
+        onKeyDown={props.onKeyDown?.()}
+      />
+      <InputGroupAddon align="inline-end">
+        <Show when={props.showTrigger?.() !== false}>
+          <AriaComboboxTrigger>
+            <InputGroupButton
+              size="icon-xs"
+              variant="ghost"
+              data-slot="combobox-trigger"
+              class={inputTrigger}
+            >
+              <ChevronDown
+                data-slot="combobox-trigger-icon"
+                class={triggerIcon}
+                aria-hidden="true"
+              />
+              <span class={srOnly}>{props.triggerLabel?.() ?? "Show suggestions"}</span>
+            </InputGroupButton>
+          </AriaComboboxTrigger>
+        </Show>
+        <Show when={props.showClear?.() === true}>
+          <ComboboxClear clearLabel={props.clearLabel?.()} />
+        </Show>
+      </InputGroupAddon>
+      {props.children}
+    </InputGroup>
+  );
+}
+
+export interface ComboboxContentProps extends UiProps {
+  /** @default "bottom" */
+  side?: Side;
+  /** @default "start" */
+  align?: Align;
+  /** @default 6 */
+  sideOffset?: number;
+  /** @default 0 */
+  alignOffset?: number;
+  /** What to place against. @default the chips box, the input, or the trigger */
+  anchor?: ComboboxAnchor;
+}
+
+/** The panel the list is in: portalled, placed, and as wide as what it hangs off. */
+export function ComboboxContent(props: Incoming<ComboboxContentProps>) {
+  const root = useComboboxRoot();
+  const hasChips = (): boolean => {
+    const anchor = props.anchor?.();
+    return (anchor !== undefined && anchor !== null) || root.hasChips();
+  };
+
+  return (
+    <AriaComboboxPopup
+      {...props}
+      data-slot={props["data-slot"]?.() ?? "combobox-content"}
+      data-chips={hasChips() ? "true" : "false"}
+      class={ui(content, panel, props.class?.(), props.className?.())}
+    />
+  );
+}
+
+export interface ComboboxListProps<T> extends UiProps {
+  /** A callback building an item from each of the root's `items`, or the items themselves. */
+  children?: Child | ((item: T, index: number) => Child);
+}
+
+export function ComboboxList<T>(props: Incoming<ComboboxListProps<T>>) {
+  return (
+    <AriaComboboxList
+      {...props}
+      data-slot={props["data-slot"]?.() ?? "combobox-list"}
+      class={ui(list, props.class?.(), props.className?.())}
+    />
+  );
+}
+
+/** The tick, there only on what is chosen. */
+function ComboboxItemIndicator() {
+  const option = useComboboxItem();
+  return (
+    <Show when={option.isSelected()}>
+      <span data-slot="combobox-item-indicator" class={indicator}>
+        <Check />
+      </span>
+    </Show>
+  );
+}
+
+export interface ComboboxItemProps extends UiProps {
+  /** The item this option stands for, handed back by `onValueChange`. */
+  value: unknown;
+  disabled?: boolean;
+  /** What the filter and the field read. @default the item's label, or this option's text */
+  textValue?: string;
+}
+
+export function ComboboxItem(props: Incoming<ComboboxItemProps>) {
+  return (
+    <AriaComboboxItem
+      {...props}
+      data-slot={props["data-slot"]?.() ?? "combobox-item"}
+      class={ui(item, props.class?.(), props.className?.())}
+    >
+      {props.children}
+      <ComboboxItemIndicator />
+    </AriaComboboxItem>
+  );
+}
+
+export interface ComboboxGroupProps extends UiProps {
+  /** The items a `<ComboboxCollection>` inside renders. */
+  items?: readonly unknown[];
+}
+
+/** A run of items under a `<ComboboxLabel>`. */
+export function ComboboxGroup(props: Incoming<ComboboxGroupProps>) {
+  return (
+    <AriaComboboxGroup
+      {...props}
+      data-slot={props["data-slot"]?.() ?? "combobox-group"}
+      class={ui(group, props.class?.(), props.className?.())}
+    />
+  );
+}
+
+export interface ComboboxCollectionProps<T> {
+  /** How one of the enclosing group's items renders. */
+  children: (item: T, index: number) => Child;
+}
+
+/** The enclosing group's own items, each through the callback. */
+export function ComboboxCollection<T>(props: Incoming<ComboboxCollectionProps<T>>) {
+  return <AriaComboboxCollection {...props} />;
+}
+
+/**
+ * What the panel says when nothing matches.
+ *
+ * Always in the panel and shown by it: the panel knows it is empty, and a rule
+ * reading that costs one attribute where a conditional would rebuild the row.
+ */
+export function ComboboxEmpty(props: Incoming<UiProps>) {
+  return (
+    <AriaComboboxEmpty
+      {...props}
+      data-slot={props["data-slot"]?.() ?? "combobox-empty"}
+      class={ui(empty, props.class?.(), props.className?.())}
+    />
+  );
+}
+
+export interface ComboboxChipsProps extends Omit<UiProps, "ref"> {
+  ref?: RefTarget<HTMLDivElement>;
+}
+
+/**
+ * The box the chips and their input sit in.
+ *
+ * ```tsx
+ * <ComboboxChips>
+ *   <ComboboxValue>
+ *     {(values) => (
+ *       <>
+ *         <For each={values}>{(value) => <ComboboxChip>{value}</ComboboxChip>}</For>
+ *         <ComboboxChipsInput />
+ *       </>
+ *     )}
+ *   </ComboboxValue>
+ * </ComboboxChips>
+ * ```
+ */
+export function ComboboxChips(props: Incoming<ComboboxChipsProps>) {
+  return (
+    <AriaComboboxChips
+      {...props}
+      data-slot={props["data-slot"]?.() ?? "combobox-chips"}
+      class={ui(chips, props.class?.(), props.className?.())}
+    />
+  );
+}
+
+function ComboboxChipRemove(props: Incoming<{ label: string }>) {
+  const held = useComboboxChip();
+  return (
+    <AriaComboboxChipRemove>
+      <Button variant="ghost" size="icon-xs" data-slot="combobox-chip-remove" class={chipRemove}>
+        <X aria-hidden="true" />
+        {/* Named after the chip: "Remove" three times over is three buttons a
+            screen reader cannot tell apart. */}
+        <span class={srOnly}>{`${props.label()} ${held.label()}`}</span>
+      </Button>
+    </AriaComboboxChipRemove>
+  );
+}
+
+export interface ComboboxChipProps extends UiProps {
+  /** @default true */
+  showRemove?: boolean;
+  /** @default "Remove" */
+  removeLabel?: string;
+}
+
+/** One chosen value. Which one is its place among the chips. */
+export function ComboboxChip(props: Incoming<ComboboxChipProps>) {
+  return (
+    <AriaComboboxChip
+      {...props}
+      data-slot={props["data-slot"]?.() ?? "combobox-chip"}
+      class={ui(chip, props.class?.(), props.className?.())}
+    >
+      {props.children}
+      <Show when={props.showRemove?.() !== false}>
+        <ComboboxChipRemove label={props.removeLabel?.() ?? "Remove"} />
+      </Show>
+    </AriaComboboxChip>
+  );
+}
+
+export interface ComboboxChipsInputProps extends Omit<UiProps, "ref"> {
+  placeholder?: string;
+  disabled?: boolean;
+  "aria-invalid"?: boolean | "true" | "false";
+  ref?: RefTarget<HTMLInputElement>;
+  onKeyDown?: (event: KeyboardEvent) => void;
+}
+
+/** The field at the end of the chips, bare: the box around it is the field's look. */
+export function ComboboxChipsInput(props: Incoming<ComboboxChipsInputProps>) {
+  return (
+    <AriaComboboxInput
+      {...props}
+      data-slot={props["data-slot"]?.() ?? "combobox-chip-input"}
+      class={ui(chipsInput, props.class?.(), props.className?.())}
+    />
+  );
+}
+
+/**
+ * A place to put the chips box, for a `<ComboboxContent anchor>` to read.
+ *
+ * ```tsx
+ * const anchor = useComboboxAnchor();
+ * <ComboboxChips ref={anchor}>…</ComboboxChips>
+ * <ComboboxContent anchor={anchor}>…</ComboboxContent>
+ * ```
+ *
+ * The content already hangs off the chips box when there is one, so this is
+ * for anchoring to something else.
+ */
+export function useComboboxAnchor(): { current: HTMLDivElement | null } {
+  return { current: null };
 }

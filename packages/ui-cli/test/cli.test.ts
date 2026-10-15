@@ -13,10 +13,12 @@
  */
 
 import {
+  chmodSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
+  realpathSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -56,18 +58,32 @@ interface Result {
   readonly out: string;
 }
 
-async function barq(cwd: string, ...args: string[]): Promise<Result> {
+async function spawn(
+  cwd: string,
+  args: readonly string[],
+  env: Record<string, string> = {},
+): Promise<Result> {
   const child = Bun.spawn(["bun", "run", cli, ...args, "--cwd", cwd], {
     stdout: "pipe",
     stderr: "pipe",
     stdin: "ignore",
-    env: { ...process.env, NO_COLOR: "1" },
+    env: { ...process.env, NO_COLOR: "1", ...env },
   });
   const [out, err] = await Promise.all([
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
   ]);
   return { code: await child.exited, out: out + err };
+}
+
+/**
+ * `--no-install` on every command: the project is a temporary directory with
+ * no lockfile and no network, and what a command WRITES is what these assert.
+ * The install itself has its own tests, against a package manager that only
+ * records what it was asked for.
+ */
+async function barq(cwd: string, ...args: string[]): Promise<Result> {
+  return await spawn(cwd, [...args, "--no-install"]);
 }
 
 function file(root: string, path: string): string {
@@ -84,7 +100,18 @@ describe.if(ready)("barq-ui", () => {
   test("help says what the commands are, and needs no project", async () => {
     const result = await barq(root, "--help");
     expect(result.code).toBe(0);
-    for (const command of ["init", "add", "diff", "sync", "list", "theme", "build"]) {
+    for (const command of [
+      "init",
+      "add",
+      "diff",
+      "sync",
+      "list",
+      "search",
+      "view",
+      "info",
+      "theme",
+      "build",
+    ]) {
       expect(result.out).toContain(command);
     }
   });
@@ -383,6 +410,60 @@ describe.if(ready)("barq-ui", () => {
     expect(item.registryDependencies).toContain("badge");
   });
 
+  test("build makes one item of a block's directory, and types a file by where it is", async () => {
+    await barq(root, "init", "--yes");
+    await barq(root, "add", "badge");
+    const components = join(root, "src/components");
+    mkdirSync(join(components, "blocks/pricing/components"), { recursive: true });
+    mkdirSync(join(components, "hooks"), { recursive: true });
+    writeFileSync(
+      join(components, "blocks/pricing/page.tsx"),
+      'import { Tier } from "./components/tier.tsx";\nexport const Pricing = Tier;\n',
+    );
+    writeFileSync(
+      join(components, "blocks/pricing/components/tier.tsx"),
+      'import { Badge } from "../../../ui/badge.tsx";\nimport { useTier } from "../../../hooks/use-tier.ts";\nexport const Tier = [Badge, useTier];\n',
+    );
+    writeFileSync(join(components, "hooks/use-tier.ts"), "export const useTier = 1;\n");
+
+    const result = await barq(root, "build", "src/components");
+    expect(result.code).toBe(0);
+
+    const pricing = JSON.parse(file(root, "registry/pricing.json")) as {
+      type: string;
+      registryDependencies: string[];
+      files: { path: string; type: string }[];
+    };
+    expect(pricing.type).toBe("registry:block");
+    expect(pricing.files.map((each) => each.path)).toEqual([
+      "blocks/pricing/components/tier.tsx",
+      "blocks/pricing/page.tsx",
+    ]);
+    // Its own two files import each other, and that is not a dependency.
+    expect(pricing.registryDependencies).toEqual(["badge", "use-tier"]);
+
+    const hook = JSON.parse(file(root, "registry/use-tier.json")) as { type: string };
+    expect(hook.type).toBe("registry:hook");
+  });
+
+  test("what build wrote can be added from where it was written", async () => {
+    await barq(root, "init", "--yes");
+    mkdirSync(join(root, "kit/hooks"), { recursive: true });
+    writeFileSync(join(root, "kit/hooks/use-tier.ts"), "export const useTier = 1;\n");
+    await barq(root, "build", "kit");
+
+    const path = join(root, "components.json");
+    const config = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+    writeFileSync(
+      path,
+      JSON.stringify({ ...config, registries: { "@kit": "./registry/{name}.json" } }),
+    );
+
+    const result = await barq(root, "add", "@kit/use-tier");
+    expect(result.code).toBe(0);
+    expect(file(root, "src/hooks/use-tier.ts")).toBe("export const useTier = 1;\n");
+  });
+
   test("an unknown component names itself", async () => {
     await barq(root, "init", "--yes");
     const result = await barq(root, "add", "nonesuch");
@@ -394,5 +475,615 @@ describe.if(ready)("barq-ui", () => {
     const result = await barq(root, "frobnicate");
     expect(result.code).toBe(1);
     expect(result.out).toContain("frobnicate");
+  });
+
+  test("add brings a block, with the components it is built from", async () => {
+    await barq(root, "init", "--yes");
+    const result = await barq(root, "add", "login-01");
+    expect(result.code).toBe(0);
+
+    for (const path of [
+      "src/components/blocks/login-01.tsx",
+      "src/components/ui/card.tsx",
+      "src/components/ui/field.tsx",
+      "src/components/ui/input.tsx",
+      "src/components/ui/button.tsx",
+    ]) {
+      expect(existsSync(join(root, path)), `${path} was not written`).toBe(true);
+    }
+
+    const block = file(root, "src/components/blocks/login-01.tsx");
+    // The site writes a block against the package's barrel. A project that owns
+    // its components has no barrel, so each name comes from the file it is in.
+    expect(block).not.toContain('"@barqjs/ui"');
+    expect(block).toContain('from "../ui/card.tsx"');
+    expect(block).toContain('from "../ui/field.tsx"');
+    // And the preview the site measures against is the viewport here.
+    expect(block).not.toContain("@container preview");
+    expect(block).toContain("@media (width >= 48rem)");
+
+    const config = JSON.parse(file(root, "components.json")) as {
+      items: Record<string, Record<string, string>>;
+    };
+    expect(Object.keys(config.items["login-01"] ?? {})).toEqual(["blocks/login-01.tsx"]);
+  });
+
+  test("a block's imports follow the components to wherever they were put", async () => {
+    await barq(root, "init", "--yes", "--path", "app/widgets/ui");
+    await barq(root, "add", "sidebar-07");
+    const block = file(root, "app/widgets/blocks/sidebar-07.tsx");
+    expect(block).toContain('from "../ui/sidebar.tsx"');
+    expect(block).toContain('from "../lib/layout.ts"');
+    expect(existsSync(join(root, "app/widgets/lib/layout.ts"))).toBe(true);
+    expect(existsSync(join(root, "app/widgets/ui/sidebar.tsx"))).toBe(true);
+  });
+
+  test("add brings a family of charts, and what they share", async () => {
+    await barq(root, "init", "--yes");
+    const result = await barq(root, "add", "chart-area");
+    expect(result.code).toBe(0);
+
+    for (const path of [
+      "src/components/charts/area.tsx",
+      "src/components/charts/shared.tsx",
+      "src/components/ui/chart.tsx",
+      "src/components/ui/card.tsx",
+    ]) {
+      expect(existsSync(join(root, path)), `${path} was not written`).toBe(true);
+    }
+    const area = file(root, "src/components/charts/area.tsx");
+    expect(area).toContain('from "./shared.tsx"');
+    expect(area).toContain('from "../ui/chart.tsx"');
+    expect(result.out).toContain("@tanstack/charts");
+  });
+
+  test("every block and every chart the registry lists can be added", async () => {
+    await barq(root, "init", "--yes");
+    const listed = JSON.parse(file(ui, "registry/index.json")) as {
+      items: { name: string; type: string; files: string[] }[];
+    };
+    const blocks = listed.items.filter((item) => item.type === "registry:block");
+    expect(blocks.length).toBeGreaterThanOrEqual(27);
+
+    const result = await barq(root, "add", ...blocks.map((item) => item.name));
+    expect(result.code).toBe(0);
+    for (const item of blocks) {
+      for (const path of item.files) {
+        expect(existsSync(join(root, "src/components", path)), `${path} was not written`).toBe(
+          true,
+        );
+      }
+    }
+  });
+
+  test("--dry-run says what would be written and writes none of it", async () => {
+    await barq(root, "init", "--yes");
+    const before = file(root, "components.json");
+
+    const result = await barq(root, "add", "dialog", "--dry-run");
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("Nothing was written");
+    expect(result.out).toContain("+ src/components/ui/dialog.tsx");
+    expect(result.out).toContain("+ src/components/ui/button.tsx");
+    expect(result.out).toContain("@barqjs/aria");
+
+    expect(existsSync(join(root, "src/components/ui/dialog.tsx"))).toBe(false);
+    expect(existsSync(join(root, "src/components/ui/button.tsx"))).toBe(false);
+    expect(file(root, "components.json")).toBe(before);
+  });
+
+  test("--diff shows what add would change in a file, and changes nothing", async () => {
+    await barq(root, "init", "--yes");
+    await barq(root, "add", "badge");
+    const path = join(root, "src/components/ui/badge.tsx");
+    const edited = `${readFileSync(path, "utf8")}\n// mine\n`;
+    writeFileSync(path, edited);
+
+    const result = await barq(root, "add", "badge", "--diff");
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("src/components/ui/badge.tsx");
+    expect(result.out).toContain("- // mine");
+    expect(readFileSync(path, "utf8")).toBe(edited);
+
+    const same = await barq(root, "add", "kbd", "--diff=nonesuch.tsx");
+    expect(same.out).toContain("Nothing would change");
+  });
+
+  test("--diff marks a file the project does not have yet as new", async () => {
+    await barq(root, "init", "--yes");
+    const result = await barq(root, "add", "kbd", "--diff=kbd.tsx");
+    expect(result.out).toContain("src/components/ui/kbd.tsx (new)");
+    expect(result.out).toContain("+ ");
+    expect(existsSync(join(root, "src/components/ui/kbd.tsx"))).toBe(false);
+  });
+
+  test("--view prints the file as it would be written, and only the one asked for", async () => {
+    await barq(root, "init", "--yes");
+    const result = await barq(root, "add", "dialog", "--view=dialog.tsx");
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("src/components/ui/dialog.tsx");
+    expect(result.out).toContain('from "./button.tsx"');
+    expect(result.out).not.toContain("src/components/ui/button.tsx");
+    expect(existsSync(join(root, "src/components/ui/dialog.tsx"))).toBe(false);
+  });
+
+  test("--all adds every ui component, and no block", async () => {
+    await barq(root, "init", "--yes");
+    const result = await barq(root, "add", "--all");
+    expect(result.code).toBe(0);
+
+    const listed = JSON.parse(file(ui, "registry/index.json")) as {
+      items: { name: string; type: string; files: string[] }[];
+    };
+    for (const item of listed.items.filter((each) => each.type === "registry:ui")) {
+      const name = (item.files[0] ?? "").split("/").at(-1) ?? "";
+      expect(existsSync(join(root, "src/components/ui", name)), `${name} was not written`).toBe(
+        true,
+      );
+    }
+    expect(existsSync(join(root, "src/components/blocks"))).toBe(false);
+  });
+
+  test("view prints an item as the registry serves it, before there is a project", async () => {
+    const result = await barq(root, "view", "badge");
+    expect(result.code).toBe(0);
+    const items = JSON.parse(result.out) as {
+      name: string;
+      type: string;
+      files: { path: string; content: string }[];
+    }[];
+    expect(items).toHaveLength(1);
+    expect(items[0]?.name).toBe("badge");
+    expect(items[0]?.type).toBe("registry:ui");
+    expect(items[0]?.files[0]?.content).toContain("badgeVariants");
+    expect(existsSync(join(root, "components.json"))).toBe(false);
+  });
+
+  test("view of something the registry does not have names it", async () => {
+    const result = await barq(root, "view", "nonesuch");
+    expect(result.code).toBe(1);
+    expect(result.out).toContain("nonesuch");
+  });
+
+  test("search finds by name, by description and by category", async () => {
+    const byName = await barq(root, "search", "sidebar");
+    expect(byName.code).toBe(0);
+    expect(byName.out).toContain("sidebar-07");
+    expect(byName.out).toMatch(/^\s+sidebar\s+ui/m);
+    expect(byName.out).not.toContain("login-01");
+
+    const byCategory = await barq(root, "search", "authentication");
+    expect(byCategory.out).toContain("login-01");
+    expect(byCategory.out).toContain("signup-05");
+    expect(byCategory.out).not.toContain("sidebar-07");
+
+    const both = await barq(root, "search", "sidebar", "calendar");
+    expect(both.out).toContain("sidebar-12");
+    expect(both.out).not.toContain("sidebar-07");
+  });
+
+  test("search --json is the same answer as data", async () => {
+    const result = await barq(root, "search", "charts", "--json");
+    const found = JSON.parse(result.out) as {
+      items: { name: string; type: string; categories: string[] }[];
+      errors: string[];
+    };
+    expect(found.errors).toEqual([]);
+    expect(found.items.map((item) => item.name)).toContain("chart-area");
+    const area = found.items.find((item) => item.name === "chart-area");
+    expect(area?.type).toBe("registry:block");
+    expect(area?.categories).toEqual(["charts"]);
+  });
+
+  test("search with nothing to find says so", async () => {
+    const result = await barq(root, "search", "zzzznothing");
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("Nothing matches");
+  });
+
+  test("info says what the project is set up with", async () => {
+    writeFileSync(join(root, "pnpm-lock.yaml"), "");
+    await barq(root, "init", "--yes", "--theme", "zinc");
+    await barq(root, "add", "badge");
+
+    const result = await barq(root, "info", "--json");
+    expect(result.code).toBe(0);
+    const facts = JSON.parse(result.out) as {
+      root: string;
+      config: string;
+      registry: string;
+      paths: Record<string, string>;
+      theme: { base: string };
+      packageManager: string;
+      items: string[];
+    };
+    expect(facts.config.endsWith("components.json")).toBe(true);
+    expect(facts.registry).toBe("node_modules");
+    expect(facts.paths["components"]).toBe("src/components");
+    expect(facts.paths["hooks"]).toBe("src/hooks");
+    expect(facts.theme.base).toBe("zinc");
+    expect(facts.packageManager).toBe("pnpm");
+    expect(facts.items).toContain("badge");
+
+    const read = await barq(root, "info");
+    expect(read.out).toContain("pnpm");
+    expect(read.out).toContain("zinc");
+  });
+
+  test("info before init says there is no config rather than failing", async () => {
+    const result = await barq(root, "info");
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("barq-ui init");
+  });
+});
+
+/**
+ * A package manager that records what it was asked for and installs nothing.
+ *
+ * On `PATH` ahead of the real one, so the command the CLI runs is the command
+ * the test reads, and no network is involved in finding out.
+ */
+function recorder(root: string, name: string): { env: Record<string, string>; log: string } {
+  const bin = join(root, ".bin");
+  const log = join(root, "install.log");
+  mkdirSync(bin, { recursive: true });
+  writeFileSync(join(bin, name), `#!/bin/sh\necho "$PWD $@" >> "${log}"\n`);
+  chmodSync(join(bin, name), 0o755);
+  return { env: { PATH: `${bin}:${process.env["PATH"] ?? ""}` }, log };
+}
+
+describe.if(ready)("installing what an item needs", () => {
+  let root = "";
+
+  beforeEach(() => {
+    root = project();
+  });
+
+  test("add runs the project's own package manager, in the project", async () => {
+    writeFileSync(join(root, "pnpm-lock.yaml"), "");
+    const pnpm = recorder(root, "pnpm");
+    await barq(root, "init", "--yes");
+
+    const result = await spawn(root, ["add", "dialog"], pnpm.env);
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("Installing what they need");
+
+    const ran = readFileSync(pnpm.log, "utf8").trim().split("\n");
+    expect(ran).toHaveLength(1);
+    expect(ran[0]).toContain(" add ");
+    expect(ran[0]).toContain("@barqjs/aria");
+    expect(ran[0]).toContain("@barqjs/css");
+    expect(realpathSync((ran[0] ?? "").split(" ")[0] ?? "")).toBe(realpathSync(root));
+  });
+
+  test("--no-install names the command and runs nothing", async () => {
+    writeFileSync(join(root, "yarn.lock"), "");
+    const yarn = recorder(root, "yarn");
+    await barq(root, "init", "--yes");
+
+    const result = await spawn(root, ["add", "dialog", "--no-install"], yarn.env);
+    expect(result.out).toContain("Install what they need");
+    expect(result.out).toMatch(/yarn add .*@barqjs\/aria/);
+    expect(existsSync(yarn.log)).toBe(false);
+  });
+
+  test("nothing is installed when the project already has it all", async () => {
+    writeFileSync(join(root, "bun.lock"), "");
+    writeFileSync(
+      join(root, "package.json"),
+      JSON.stringify({
+        name: "probe",
+        private: true,
+        type: "module",
+        dependencies: {
+          "@barqjs/core": "*",
+          "@barqjs/css": "*",
+          "@barqjs/aria": "*",
+          "@barqjs/primitives": "*",
+        },
+      }),
+    );
+    const bun = recorder(root, "bun-recorded");
+    await barq(root, "init", "--yes");
+    const result = await spawn(root, ["add", "kbd"], bun.env);
+    expect(result.code).toBe(0);
+    expect(result.out).not.toContain("Installing");
+    expect(existsSync(bun.log)).toBe(false);
+  });
+
+  test("a package manager that fails is an error, after the files are written", async () => {
+    writeFileSync(join(root, "pnpm-lock.yaml"), "");
+    const bin = join(root, ".bin");
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, "pnpm"), "#!/bin/sh\nexit 3\n");
+    chmodSync(join(bin, "pnpm"), 0o755);
+    await barq(root, "init", "--yes");
+
+    const result = await spawn(root, ["add", "dialog"], {
+      PATH: `${bin}:${process.env["PATH"] ?? ""}`,
+    });
+    expect(result.code).toBe(1);
+    expect(result.out).toContain("exited with 3");
+    expect(existsSync(join(root, "src/components/ui/dialog.tsx"))).toBe(true);
+  });
+
+  test("a dry run installs nothing either", async () => {
+    writeFileSync(join(root, "pnpm-lock.yaml"), "");
+    const pnpm = recorder(root, "pnpm");
+    await barq(root, "init", "--yes");
+
+    const result = await spawn(root, ["add", "dialog", "--dry-run"], pnpm.env);
+    expect(result.out).toContain("Would install");
+    expect(result.out).toMatch(/pnpm add .*@barqjs\/aria/);
+    expect(existsSync(pnpm.log)).toBe(false);
+  });
+});
+
+describe.if(ready)("a registry of one's own, by its scope", () => {
+  let root = "";
+
+  beforeEach(() => {
+    root = project();
+  });
+
+  function serve(directory: string, items: Record<string, unknown>): void {
+    mkdirSync(join(root, directory), { recursive: true });
+    for (const [name, item] of Object.entries(items)) {
+      writeFileSync(join(root, directory, `${name}.json`), JSON.stringify(item));
+    }
+  }
+
+  function register(registries: Record<string, unknown>): void {
+    const path = join(root, "components.json");
+    const config = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
+    writeFileSync(path, JSON.stringify({ ...config, registries }, null, 2));
+  }
+
+  const WIDGET = {
+    name: "widget",
+    type: "registry:block",
+    title: "Widget",
+    description: "A panel with a meter in it.",
+    categories: ["panels"],
+    dependencies: ["d3-shape"],
+    devDependencies: ["@types/d3-shape"],
+    registryDependencies: ["badge", "@acme/use-meter"],
+    cssVars: { light: { meter: "oklch(0.7 0.2 150)" }, dark: { meter: "oklch(0.5 0.2 150)" } },
+    css: { "@keyframes meter-fill": { from: { width: "0" } } },
+    files: [
+      {
+        path: "blocks/widget/widget.tsx",
+        type: "registry:block",
+        content:
+          'import { Badge } from "../../ui/badge.tsx";\nimport { useMeter } from "../../hooks/use-meter.ts";\nimport { Meter } from "./components/meter.tsx";\nexport const Widget = [Badge, useMeter, Meter];\n',
+      },
+      {
+        path: "blocks/widget/components/meter.tsx",
+        type: "registry:component",
+        content: "export const Meter = 1;\n",
+      },
+      {
+        path: "blocks/widget/page.tsx",
+        type: "registry:page",
+        target: "src/routes/widget.tsx",
+        content: 'import { Widget } from "./widget.tsx";\nexport default Widget;\n',
+      },
+      {
+        path: "blocks/widget/env",
+        type: "registry:file",
+        target: "~/.env.example",
+        content: "API_TOKEN=\n",
+      },
+    ],
+  };
+
+  const USE_METER = {
+    name: "use-meter",
+    type: "registry:hook",
+    files: [
+      {
+        path: "hooks/use-meter.ts",
+        type: "registry:hook",
+        content: "export const useMeter = 1;\n",
+      },
+    ],
+  };
+
+  test("@scope/name comes from the registry that scope names, with what it needs", async () => {
+    await barq(root, "init", "--yes");
+    serve("acme", { widget: WIDGET, "use-meter": USE_METER });
+    register({ "@acme": "./acme/{name}.json" });
+
+    const result = await barq(root, "add", "@acme/widget");
+    expect(result.code).toBe(0);
+
+    for (const path of [
+      "src/components/blocks/widget/widget.tsx",
+      "src/components/blocks/widget/components/meter.tsx",
+      "src/routes/widget.tsx",
+      ".env.example",
+      "src/hooks/use-meter.ts",
+      "src/components/ui/badge.tsx",
+    ]) {
+      expect(existsSync(join(root, path)), `${path} was not written`).toBe(true);
+    }
+
+    const widget = file(root, "src/components/blocks/widget/widget.tsx");
+    expect(widget).toContain('from "../../ui/badge.tsx"');
+    expect(widget).toContain('from "../../../hooks/use-meter.ts"');
+    expect(widget).toContain('from "./components/meter.tsx"');
+    // The page went where its target said, so its import follows the block.
+    expect(file(root, "src/routes/widget.tsx")).toContain(
+      'from "../components/blocks/widget/widget.tsx"',
+    );
+
+    const config = JSON.parse(file(root, "components.json")) as {
+      registries: Record<string, string>;
+      items: Record<string, Record<string, string>>;
+    };
+    expect(config.registries["@acme"]).toBe("./acme/{name}.json");
+    // Under its whole address: a `widget` of the project's own registry would
+    // otherwise be the same record.
+    expect(Object.keys(config.items["@acme/widget"] ?? {}).toSorted()).toEqual([
+      "blocks/widget/components/meter.tsx",
+      "blocks/widget/env",
+      "blocks/widget/page.tsx",
+      "blocks/widget/widget.tsx",
+    ]);
+    expect(config.items["@acme/use-meter"]).toBeDefined();
+    expect(config.items["badge"]).toBeDefined();
+  });
+
+  test("its tokens and rules are written into the theme, and kept when the theme changes", async () => {
+    await barq(root, "init", "--yes");
+    serve("acme", { widget: WIDGET, "use-meter": USE_METER });
+    register({ "@acme": "./acme/{name}.json" });
+    await barq(root, "add", "@acme/widget");
+
+    const theme = file(root, "src/components/theme/theme.ts");
+    expect(theme).toContain("--meter: oklch(0.7 0.2 150);");
+    expect(theme).toContain("--meter: oklch(0.5 0.2 150);");
+    expect(theme).toContain("@keyframes meter-fill");
+    expect(theme).toContain("--primary: oklch(0.205 0 0)");
+
+    await barq(root, "theme", "blue");
+    const changed = file(root, "src/components/theme/theme.ts");
+    expect(changed).toContain("Neutral with Blue");
+    expect(changed).toContain("--meter: oklch(0.7 0.2 150);");
+  });
+
+  test("a theme the project has edited is left alone, and said to be", async () => {
+    await barq(root, "init", "--yes");
+    serve("acme", { widget: WIDGET, "use-meter": USE_METER });
+    register({ "@acme": "./acme/{name}.json" });
+    const path = join(root, "src/components/theme/theme.ts");
+    const edited = `${readFileSync(path, "utf8")}\n// mine\n`;
+    writeFileSync(path, edited);
+
+    const result = await barq(root, "add", "@acme/widget");
+    expect(result.out).toContain("left alone");
+    expect(readFileSync(path, "utf8")).toBe(edited);
+
+    await barq(root, "add", "@acme/widget", "--overwrite");
+    expect(readFileSync(path, "utf8")).toContain("--meter:");
+  });
+
+  test("what it needs to build is installed as a development dependency", async () => {
+    await barq(root, "init", "--yes");
+    serve("acme", { widget: WIDGET, "use-meter": USE_METER });
+    register({ "@acme": "./acme/{name}.json" });
+    writeFileSync(join(root, "pnpm-lock.yaml"), "");
+
+    const printed = await barq(root, "add", "@acme/widget");
+    expect(printed.out).toMatch(/pnpm add .*d3-shape/);
+    expect(printed.out).toContain("pnpm add -D @types/d3-shape");
+  });
+
+  test("view and search reach it too", async () => {
+    await barq(root, "init", "--yes");
+    serve("acme", {
+      widget: WIDGET,
+      index: {
+        name: "acme",
+        items: [
+          {
+            name: "widget",
+            type: "registry:block",
+            description: WIDGET.description,
+            categories: WIDGET.categories,
+          },
+        ],
+      },
+    });
+    register({ "@acme": "./acme/{name}.json" });
+
+    const viewed = await barq(root, "view", "@acme/widget");
+    const items = JSON.parse(viewed.out) as { name: string; categories: string[] }[];
+    expect(items[0]?.name).toBe("@acme/widget");
+    expect(items[0]?.categories).toEqual(["panels"]);
+
+    const found = await barq(root, "search", "meter");
+    expect(found.out).toContain("@acme/widget");
+  });
+
+  test("a registry that is down does not hide what the others have", async () => {
+    await barq(root, "init", "--yes");
+    register({ "@gone": "./gone/{name}.json" });
+    const result = await barq(root, "search", "badge");
+    expect(result.code).toBe(0);
+    expect(result.out).toContain("badge");
+    expect(result.out).toContain("@gone");
+  });
+
+  test("a scope components.json does not name says which ones it does", async () => {
+    await barq(root, "init", "--yes");
+    register({ "@acme": "./acme/{name}.json" });
+    const result = await barq(root, "add", "@other/widget");
+    expect(result.code).toBe(1);
+    expect(result.out).toContain('no registry named "@other"');
+    expect(result.out).toContain("@acme");
+  });
+
+  test("a target that leaves the project is refused, and nothing is written", async () => {
+    await barq(root, "init", "--yes");
+    serve("acme", {
+      escape: {
+        name: "escape",
+        type: "registry:file",
+        files: [
+          { path: "ok.ts", type: "registry:lib", content: "export {};\n" },
+          { path: "x", type: "registry:file", target: "../outside.txt", content: "x" },
+        ],
+      },
+    });
+    register({ "@acme": "./acme/{name}.json" });
+
+    const result = await barq(root, "add", "@acme/escape");
+    expect(result.code).toBe(1);
+    expect(result.out).toContain("outside the project");
+    expect(existsSync(join(root, "../outside.txt"))).toBe(false);
+    expect(existsSync(join(root, "src/components/lib/ok.ts"))).toBe(false);
+  });
+
+  test("a registry over HTTP is sent the headers its entry names, from the environment", async () => {
+    await barq(root, "init", "--yes");
+    const seen: (string | null)[] = [];
+    const server = Bun.serve({
+      port: 0,
+      fetch(request) {
+        seen.push(request.headers.get("authorization"));
+        const name = new URL(request.url).pathname.replace(/^\/r\//, "").replace(/\.json$/, "");
+        return name === "use-meter"
+          ? Response.json(USE_METER)
+          : new Response("no", { status: 404 });
+      },
+    });
+    try {
+      register({
+        "@private": {
+          url: `http://localhost:${String(server.port)}/r/{name}.json`,
+          headers: { Authorization: "Bearer ${API_TOKEN}" },
+        },
+      });
+
+      // The token is the environment's and nowhere else, so without it the
+      // request is not made at all rather than made unauthenticated.
+      const unset = await barq(root, "add", "@private/use-meter");
+      expect(unset.code).toBe(1);
+      expect(unset.out).toContain("API_TOKEN");
+      expect(seen).toEqual([]);
+
+      const env = { API_TOKEN: "s3cret" };
+      const result = await spawn(root, ["add", "@private/use-meter", "--no-install"], env);
+      expect(result.code).toBe(0);
+      expect(seen).toEqual(["Bearer s3cret"]);
+      expect(existsSync(join(root, "src/hooks/use-meter.ts"))).toBe(true);
+
+      const missing = await spawn(root, ["add", "@private/nonesuch", "--no-install"], env);
+      expect(missing.code).toBe(1);
+      expect(missing.out).toContain("404");
+    } finally {
+      await server.stop(true);
+    }
   });
 });

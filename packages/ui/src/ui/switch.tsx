@@ -1,10 +1,11 @@
-import { Switch as AriaSwitch, type SwitchComponentProps } from "@barqjs/aria/switch";
+import { Switch as AriaSwitch, useSwitch, type SwitchComponentProps } from "@barqjs/aria/switch";
 import type { Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
 import { ringSlot } from "../lib/shared-ring-slot.ts";
+import { omit } from "../lib/slot.ts";
 import { when } from "../lib/shared-when.ts";
 
 const ui = layer("barq.ui");
@@ -84,6 +85,11 @@ const thumb = ui(box.shadow, box.transition, {
     "--ui-translate-x": "calc(100% - 2px)",
     translate: "var(--ui-translate-x) var(--ui-translate-y)",
   },
+  // The track is an inline flex row, so the thumb already rests at the right
+  // when the text runs that way and has to travel left to switch on.
+  "[data-selected] &:dir(rtl)": {
+    "--ui-translate-x": "calc((100% - 2px) * -1)",
+  },
   "[data-selected] &:is(.dark *)": {
     backgroundColor: "var(--primary-foreground)",
   },
@@ -102,7 +108,19 @@ export type SwitchSize = "default" | "sm";
 export interface SwitchProps extends SwitchComponentProps {
   size?: SwitchSize;
   children?: never;
+  /** shadcn's spelling of `isSelected`. */
+  checked?: boolean;
+  /** shadcn's spelling of `defaultSelected`. */
+  defaultChecked?: boolean;
+  /** shadcn's spelling of `onChange`. */
+  onCheckedChange?: (checked: boolean) => void;
+  /** shadcn's spelling of `isDisabled`. */
+  disabled?: boolean;
+  /** shadcn's spelling of `isRequired`. */
+  required?: boolean;
 }
+
+const UPSTREAM = ["checked", "defaultChecked", "onCheckedChange", "disabled", "required"] as const;
 
 /**
  * ```tsx
@@ -113,16 +131,50 @@ export interface SwitchProps extends SwitchComponentProps {
  * The thumb's position is a rule keyed off the track's `data-selected`, not a
  * class the component swaps: `[data-selected] &` moves it, so the transition
  * runs off one attribute changing.
+ *
+ * The track is a `<span>`, not a `<label>`: it holds a thumb and no text, and a
+ * label may not contain another, so it has to be able to sit inside the
+ * `<label>` or `<FieldLabel>` that names it.
+ *
+ * ```tsx
+ * <FieldLabel>
+ *   <Field orientation="horizontal">
+ *     <FieldTitle>Wi-Fi</FieldTitle>
+ *     <Switch />
+ *   </Field>
+ * </FieldLabel>
+ * ```
  */
 export function Switch(props: Incoming<SwitchProps>) {
   return (
     <AriaSwitch
-      {...props}
+      {...omit(props, UPSTREAM)}
+      elementType="span"
       data-slot={props["data-slot"]?.() ?? "switch"}
       data-size={props.size?.() ?? "default"}
       class={ui(track, props.class?.(), props.className?.())}
+      isSelected={props.isSelected?.() ?? props.checked?.()}
+      defaultSelected={props.defaultSelected?.() ?? props.defaultChecked?.()}
+      isDisabled={props.isDisabled?.() ?? props.disabled?.()}
+      isRequired={props.isRequired?.() ?? props.required?.()}
+      onChange={(checked: boolean) => {
+        props.onChange?.()?.(checked);
+        props.onCheckedChange?.()?.(checked);
+      }}
     >
-      <span data-slot="switch-thumb" class={thumb} />
+      <SwitchThumb />
     </AriaSwitch>
+  );
+}
+
+function SwitchThumb() {
+  const control = useSwitch();
+  return (
+    <span
+      data-slot="switch-thumb"
+      class={thumb}
+      data-state={() => (control.isSelected() ? "checked" : "unchecked")}
+      data-disabled={() => (control.isDisabled() ? "" : undefined)}
+    />
   );
 }

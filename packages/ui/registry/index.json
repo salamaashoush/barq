@@ -80,7 +80,9 @@
         "@barqjs/core",
         "@barqjs/primitives"
       ],
-      "registryDependencies": [],
+      "registryDependencies": [
+        "trigger"
+      ],
       "files": [
         "lib/overlay.tsx"
       ]
@@ -181,7 +183,8 @@
       "description": "The props a component puts on its element.",
       "dependencies": [
         "@barqjs/aria",
-        "@barqjs/core"
+        "@barqjs/core",
+        "@barqjs/primitives"
       ],
       "registryDependencies": [
         "atoms",
@@ -189,6 +192,21 @@
       ],
       "files": [
         "lib/slot.ts"
+      ]
+    },
+    {
+      "name": "trigger",
+      "type": "registry:lib",
+      "title": "Trigger",
+      "description": "How a trigger part reaches the control it is a trigger FOR.",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/core",
+        "@barqjs/primitives"
+      ],
+      "registryDependencies": [],
+      "files": [
+        "lib/trigger.tsx"
       ]
     },
     {
@@ -202,6 +220,19 @@
       "registryDependencies": [],
       "files": [
         "lib/utils.ts"
+      ]
+    },
+    {
+      "name": "use-mobile",
+      "type": "registry:hook",
+      "title": "Use Mobile",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/primitives"
+      ],
+      "registryDependencies": [],
+      "files": [
+        "hooks/use-mobile.ts"
       ]
     },
     {
@@ -244,7 +275,8 @@
         "shared-box",
         "shared-text",
         "shared-when",
-        "slot"
+        "slot",
+        "trigger"
       ],
       "files": [
         "ui/alert-dialog.tsx"
@@ -441,7 +473,8 @@
         "button",
         "layers",
         "shared-box",
-        "shared-text"
+        "shared-text",
+        "slot"
       ],
       "files": [
         "ui/calendar.tsx"
@@ -471,6 +504,7 @@
       "type": "registry:ui",
       "title": "Carousel",
       "dependencies": [
+        "@barqjs/aria",
         "@barqjs/core",
         "@barqjs/css",
         "@barqjs/lucide",
@@ -520,7 +554,8 @@
         "layers",
         "shared-box",
         "shared-ring-slot",
-        "shared-when"
+        "shared-when",
+        "slot"
       ],
       "files": [
         "ui/checkbox.tsx"
@@ -541,6 +576,7 @@
         "shared-box",
         "shared-when",
         "slot",
+        "trigger",
         "utils"
       ],
       "files": [
@@ -555,11 +591,13 @@
         "@barqjs/aria",
         "@barqjs/core",
         "@barqjs/css",
-        "@barqjs/lucide"
+        "@barqjs/lucide",
+        "@barqjs/primitives"
       ],
       "registryDependencies": [
         "button",
         "command",
+        "input-group",
         "layers",
         "popover",
         "props",
@@ -630,9 +668,11 @@
       "registryDependencies": [
         "button",
         "calendar",
+        "input-group",
         "layers",
         "popover",
         "props",
+        "select",
         "slot"
       ],
       "files": [
@@ -659,10 +699,24 @@
         "shared-text",
         "shared-when",
         "slot",
-        "sr-only"
+        "sr-only",
+        "trigger"
       ],
       "files": [
         "ui/dialog.tsx"
+      ]
+    },
+    {
+      "name": "direction",
+      "type": "registry:ui",
+      "title": "Direction",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/core"
+      ],
+      "registryDependencies": [],
+      "files": [
+        "ui/direction.tsx"
       ]
     },
     {
@@ -703,7 +757,8 @@
         "shared-icon",
         "shared-text",
         "shared-when",
-        "slot"
+        "slot",
+        "trigger"
       ],
       "files": [
         "ui/dropdown-menu.tsx"
@@ -763,7 +818,9 @@
         "props",
         "shared-box",
         "shared-text",
-        "shared-when"
+        "shared-when",
+        "slot",
+        "trigger"
       ],
       "files": [
         "ui/hover-card.tsx"
@@ -797,6 +854,7 @@
       "type": "registry:ui",
       "title": "Input Otp",
       "dependencies": [
+        "@barqjs/aria",
         "@barqjs/core",
         "@barqjs/css",
         "@barqjs/lucide",
@@ -827,7 +885,8 @@
         "shared-box",
         "shared-ring",
         "shared-when",
-        "slot"
+        "slot",
+        "textarea"
       ],
       "files": [
         "ui/input.tsx"
@@ -920,7 +979,8 @@
       "dependencies": [
         "@barqjs/aria",
         "@barqjs/core",
-        "@barqjs/css"
+        "@barqjs/css",
+        "@barqjs/primitives"
       ],
       "registryDependencies": [
         "button",
@@ -930,7 +990,8 @@
         "shared-box",
         "shared-text",
         "shared-when",
-        "slot"
+        "slot",
+        "trigger"
       ],
       "files": [
         "ui/menubar.tsx"
@@ -944,7 +1005,8 @@
         "@barqjs/aria",
         "@barqjs/core",
         "@barqjs/css",
-        "@barqjs/lucide"
+        "@barqjs/lucide",
+        "@barqjs/primitives"
       ],
       "registryDependencies": [
         "button",
@@ -1044,7 +1106,8 @@
       "dependencies": [
         "@barqjs/aria",
         "@barqjs/core",
-        "@barqjs/css"
+        "@barqjs/css",
+        "@barqjs/primitives"
       ],
       "registryDependencies": [
         "layers",
@@ -1053,7 +1116,8 @@
         "shared-box",
         "shared-text",
         "shared-when",
-        "slot"
+        "slot",
+        "trigger"
       ],
       "files": [
         "ui/popover.tsx"
@@ -1071,10 +1135,32 @@
       "registryDependencies": [
         "layers",
         "props",
-        "shared-box"
+        "shared-box",
+        "shared-text",
+        "slot"
       ],
       "files": [
         "ui/progress.tsx"
+      ]
+    },
+    {
+      "name": "questionnaire",
+      "type": "registry:ui",
+      "title": "Questionnaire",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "button",
+        "layers",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/questionnaire.tsx"
       ]
     },
     {
@@ -1087,10 +1173,12 @@
         "@barqjs/css"
       ],
       "registryDependencies": [
+        "field",
         "layers",
         "shared-box",
         "shared-ring-slot",
-        "shared-when"
+        "shared-when",
+        "slot"
       ],
       "files": [
         "ui/radio-group.tsx"
@@ -1101,6 +1189,7 @@
       "type": "registry:ui",
       "title": "Resizable",
       "dependencies": [
+        "@barqjs/aria",
         "@barqjs/core",
         "@barqjs/css",
         "@barqjs/lucide",
@@ -1120,8 +1209,10 @@
       "type": "registry:ui",
       "title": "Scroll Area",
       "dependencies": [
+        "@barqjs/aria",
         "@barqjs/core",
-        "@barqjs/css"
+        "@barqjs/css",
+        "@barqjs/primitives"
       ],
       "registryDependencies": [
         "layers",
@@ -1130,6 +1221,21 @@
       ],
       "files": [
         "ui/scroll-area.tsx"
+      ]
+    },
+    {
+      "name": "scroll-fade",
+      "type": "registry:ui",
+      "title": "Scroll Fade",
+      "description": "A scroller whose edges fade where there is more to scroll to.",
+      "dependencies": [
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers"
+      ],
+      "files": [
+        "ui/scroll-fade.ts"
       ]
     },
     {
@@ -1191,10 +1297,26 @@
         "shared-icon",
         "shared-text",
         "slot",
-        "sr-only"
+        "sr-only",
+        "trigger"
       ],
       "files": [
         "ui/sheet.tsx"
+      ]
+    },
+    {
+      "name": "shimmer",
+      "type": "registry:ui",
+      "title": "Shimmer",
+      "description": "Text with a highlight sweeping across it, for work that is still running.",
+      "dependencies": [
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "layers"
+      ],
+      "files": [
+        "ui/shimmer.ts"
       ]
     },
     {
@@ -1202,9 +1324,11 @@
       "type": "registry:ui",
       "title": "Sidebar",
       "dependencies": [
+        "@barqjs/aria",
         "@barqjs/core",
         "@barqjs/css",
-        "@barqjs/lucide"
+        "@barqjs/lucide",
+        "@barqjs/primitives"
       ],
       "registryDependencies": [
         "button",
@@ -1215,7 +1339,9 @@
         "sheet",
         "skeleton",
         "slot",
-        "sr-only"
+        "sr-only",
+        "tooltip",
+        "use-mobile"
       ],
       "files": [
         "ui/sidebar.tsx"
@@ -1250,7 +1376,8 @@
       "registryDependencies": [
         "layers",
         "shared-box",
-        "shared-when"
+        "shared-when",
+        "slot"
       ],
       "files": [
         "ui/slider.tsx"
@@ -1264,7 +1391,8 @@
         "@barqjs/aria",
         "@barqjs/core",
         "@barqjs/css",
-        "@barqjs/lucide"
+        "@barqjs/lucide",
+        "@barqjs/primitives"
       ],
       "registryDependencies": [
         "button",
@@ -1287,7 +1415,8 @@
         "@barqjs/lucide"
       ],
       "registryDependencies": [
-        "layers"
+        "layers",
+        "slot"
       ],
       "files": [
         "ui/spinner.tsx"
@@ -1321,7 +1450,8 @@
         "layers",
         "shared-box",
         "shared-ring-slot",
-        "shared-when"
+        "shared-when",
+        "slot"
       ],
       "files": [
         "ui/switch.tsx"
@@ -1367,12 +1497,56 @@
       ]
     },
     {
+      "name": "textarea",
+      "type": "registry:ui",
+      "title": "Textarea",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/primitives"
+      ],
+      "registryDependencies": [
+        "input",
+        "layers",
+        "shared-box",
+        "shared-ring",
+        "shared-when",
+        "slot"
+      ],
+      "files": [
+        "ui/textarea.tsx"
+      ]
+    },
+    {
+      "name": "toast",
+      "type": "registry:ui",
+      "title": "Toast",
+      "dependencies": [
+        "@barqjs/aria",
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide",
+        "@barqjs/primitives"
+      ],
+      "registryDependencies": [
+        "button",
+        "layers",
+        "props",
+        "slot"
+      ],
+      "files": [
+        "ui/toast.tsx"
+      ]
+    },
+    {
       "name": "toggle-group",
       "type": "registry:ui",
       "title": "Toggle Group",
       "dependencies": [
+        "@barqjs/aria",
         "@barqjs/core",
-        "@barqjs/css"
+        "@barqjs/css",
+        "@barqjs/primitives"
       ],
       "registryDependencies": [
         "layers",
@@ -1399,7 +1573,8 @@
         "shared-icon",
         "shared-ring",
         "shared-ring-slot",
-        "shared-text"
+        "shared-text",
+        "slot"
       ],
       "files": [
         "ui/toggle.tsx"
@@ -1418,10 +1593,866 @@
       "registryDependencies": [
         "layers",
         "props",
-        "shared-when"
+        "shared-when",
+        "trigger"
       ],
       "files": [
         "ui/tooltip.tsx"
+      ]
+    },
+    {
+      "name": "layout",
+      "type": "registry:lib",
+      "title": "Layout",
+      "description": "The classes more than one part of the create page wears.",
+      "dependencies": [
+        "@barqjs/css"
+      ],
+      "registryDependencies": [],
+      "files": [
+        "lib/layout.ts"
+      ]
+    },
+    {
+      "name": "dashboard-01",
+      "type": "registry:block",
+      "title": "Dashboard 01",
+      "description": "A dashboard with a sidebar, charts and a data table.",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "avatar",
+        "badge",
+        "button",
+        "card",
+        "chart",
+        "checkbox",
+        "dropdown-menu",
+        "layout",
+        "select",
+        "separator",
+        "sidebar",
+        "table",
+        "tabs",
+        "toggle-group"
+      ],
+      "files": [
+        "blocks/dashboard-01.tsx"
+      ],
+      "categories": [
+        "dashboard"
+      ]
+    },
+    {
+      "name": "sidebar-01",
+      "type": "registry:block",
+      "title": "Sidebar 01",
+      "description": "A simple sidebar with navigation grouped by section.",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "breadcrumb",
+        "dropdown-menu",
+        "label",
+        "layout",
+        "separator",
+        "sidebar",
+        "sr-only"
+      ],
+      "files": [
+        "blocks/sidebar-01.tsx"
+      ],
+      "categories": [
+        "sidebar",
+        "dashboard"
+      ]
+    },
+    {
+      "name": "sidebar-02",
+      "type": "registry:block",
+      "title": "Sidebar 02",
+      "description": "A sidebar with collapsible sections.",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "breadcrumb",
+        "collapsible",
+        "dropdown-menu",
+        "label",
+        "layout",
+        "separator",
+        "sidebar",
+        "sr-only"
+      ],
+      "files": [
+        "blocks/sidebar-02.tsx"
+      ],
+      "categories": [
+        "sidebar",
+        "dashboard"
+      ]
+    },
+    {
+      "name": "sidebar-03",
+      "type": "registry:block",
+      "title": "Sidebar 03",
+      "description": "A sidebar with submenus.",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "breadcrumb",
+        "layout",
+        "separator",
+        "sidebar"
+      ],
+      "files": [
+        "blocks/sidebar-03.tsx"
+      ],
+      "categories": [
+        "sidebar",
+        "dashboard"
+      ]
+    },
+    {
+      "name": "sidebar-04",
+      "type": "registry:block",
+      "title": "Sidebar 04",
+      "description": "A floating sidebar with submenus.",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "breadcrumb",
+        "layout",
+        "separator",
+        "sidebar"
+      ],
+      "files": [
+        "blocks/sidebar-04.tsx"
+      ],
+      "categories": [
+        "sidebar",
+        "dashboard"
+      ]
+    },
+    {
+      "name": "sidebar-05",
+      "type": "registry:block",
+      "title": "Sidebar 05",
+      "description": "A sidebar with collapsible submenus.",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "breadcrumb",
+        "collapsible",
+        "label",
+        "layout",
+        "separator",
+        "sidebar",
+        "sr-only"
+      ],
+      "files": [
+        "blocks/sidebar-05.tsx"
+      ],
+      "categories": [
+        "sidebar",
+        "dashboard"
+      ]
+    },
+    {
+      "name": "sidebar-06",
+      "type": "registry:block",
+      "title": "Sidebar 06",
+      "description": "A sidebar with submenus as dropdowns.",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "breadcrumb",
+        "button",
+        "card",
+        "dropdown-menu",
+        "layout",
+        "separator",
+        "sidebar"
+      ],
+      "files": [
+        "blocks/sidebar-06.tsx"
+      ],
+      "categories": [
+        "sidebar",
+        "dashboard"
+      ]
+    },
+    {
+      "name": "sidebar-07",
+      "type": "registry:block",
+      "title": "Sidebar 07",
+      "description": "A sidebar that collapses to icons, with a team switcher.",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "breadcrumb",
+        "collapsible",
+        "dropdown-menu",
+        "layout",
+        "separator",
+        "sidebar"
+      ],
+      "files": [
+        "blocks/sidebar-07.tsx"
+      ],
+      "categories": [
+        "sidebar"
+      ]
+    },
+    {
+      "name": "sidebar-08",
+      "type": "registry:block",
+      "title": "Sidebar 08",
+      "description": "An inset sidebar with secondary navigation.",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "avatar",
+        "breadcrumb",
+        "collapsible",
+        "dropdown-menu",
+        "layout",
+        "separator",
+        "sidebar",
+        "sr-only"
+      ],
+      "files": [
+        "blocks/sidebar-08.tsx"
+      ],
+      "categories": [
+        "sidebar",
+        "dashboard"
+      ]
+    },
+    {
+      "name": "sidebar-09",
+      "type": "registry:block",
+      "title": "Sidebar 09",
+      "description": "Collapsible nested sidebars.",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "avatar",
+        "breadcrumb",
+        "dropdown-menu",
+        "label",
+        "layout",
+        "separator",
+        "sidebar",
+        "switch"
+      ],
+      "files": [
+        "blocks/sidebar-09.tsx"
+      ],
+      "categories": [
+        "sidebar",
+        "dashboard"
+      ]
+    },
+    {
+      "name": "sidebar-10",
+      "type": "registry:block",
+      "title": "Sidebar 10",
+      "description": "A sidebar in a popover.",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "breadcrumb",
+        "button",
+        "collapsible",
+        "dropdown-menu",
+        "layout",
+        "popover",
+        "separator",
+        "sidebar"
+      ],
+      "files": [
+        "blocks/sidebar-10.tsx"
+      ],
+      "categories": [
+        "sidebar",
+        "dashboard"
+      ]
+    },
+    {
+      "name": "sidebar-11",
+      "type": "registry:block",
+      "title": "Sidebar 11",
+      "description": "A sidebar with a collapsible file tree.",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "breadcrumb",
+        "collapsible",
+        "layout",
+        "separator",
+        "sidebar"
+      ],
+      "files": [
+        "blocks/sidebar-11.tsx"
+      ],
+      "categories": [
+        "sidebar",
+        "dashboard"
+      ]
+    },
+    {
+      "name": "sidebar-12",
+      "type": "registry:block",
+      "title": "Sidebar 12",
+      "description": "A sidebar with a calendar.",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "avatar",
+        "breadcrumb",
+        "calendar",
+        "collapsible",
+        "dropdown-menu",
+        "layout",
+        "separator",
+        "sidebar"
+      ],
+      "files": [
+        "blocks/sidebar-12.tsx"
+      ],
+      "categories": [
+        "sidebar",
+        "dashboard"
+      ]
+    },
+    {
+      "name": "sidebar-13",
+      "type": "registry:block",
+      "title": "Sidebar 13",
+      "description": "A sidebar in a dialog.",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "breadcrumb",
+        "button",
+        "dialog",
+        "layout",
+        "sidebar",
+        "sr-only",
+        "utils"
+      ],
+      "files": [
+        "blocks/sidebar-13.tsx"
+      ],
+      "categories": [
+        "sidebar",
+        "dashboard"
+      ]
+    },
+    {
+      "name": "sidebar-14",
+      "type": "registry:block",
+      "title": "Sidebar 14",
+      "description": "A sidebar on the right.",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "breadcrumb",
+        "layout",
+        "sidebar"
+      ],
+      "files": [
+        "blocks/sidebar-14.tsx"
+      ],
+      "categories": [
+        "sidebar",
+        "dashboard"
+      ]
+    },
+    {
+      "name": "sidebar-15",
+      "type": "registry:block",
+      "title": "Sidebar 15",
+      "description": "A left and right sidebar.",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "avatar",
+        "breadcrumb",
+        "calendar",
+        "collapsible",
+        "dropdown-menu",
+        "layout",
+        "separator",
+        "sidebar",
+        "sr-only"
+      ],
+      "files": [
+        "blocks/sidebar-15.tsx"
+      ],
+      "categories": [
+        "sidebar",
+        "dashboard"
+      ]
+    },
+    {
+      "name": "sidebar-16",
+      "type": "registry:block",
+      "title": "Sidebar 16",
+      "description": "A sidebar with a sticky site header.",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "avatar",
+        "breadcrumb",
+        "button",
+        "collapsible",
+        "dropdown-menu",
+        "label",
+        "layout",
+        "separator",
+        "sidebar",
+        "sr-only",
+        "utils"
+      ],
+      "files": [
+        "blocks/sidebar-16.tsx"
+      ],
+      "categories": [
+        "sidebar",
+        "dashboard"
+      ]
+    },
+    {
+      "name": "login-01",
+      "type": "registry:block",
+      "title": "Login 01",
+      "description": "A simple login form.",
+      "dependencies": [
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "button",
+        "card",
+        "field",
+        "input"
+      ],
+      "files": [
+        "blocks/login-01.tsx"
+      ],
+      "categories": [
+        "authentication",
+        "login"
+      ]
+    },
+    {
+      "name": "login-02",
+      "type": "registry:block",
+      "title": "Login 02",
+      "description": "A two column login page with a cover image.",
+      "dependencies": [
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "button",
+        "field",
+        "input"
+      ],
+      "files": [
+        "blocks/login-02.tsx"
+      ],
+      "categories": [
+        "authentication",
+        "login"
+      ]
+    },
+    {
+      "name": "login-03",
+      "type": "registry:block",
+      "title": "Login 03",
+      "description": "A login page with a muted background color.",
+      "dependencies": [
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "button",
+        "card",
+        "field",
+        "input"
+      ],
+      "files": [
+        "blocks/login-03.tsx"
+      ],
+      "categories": [
+        "authentication",
+        "login"
+      ]
+    },
+    {
+      "name": "login-04",
+      "type": "registry:block",
+      "title": "Login 04",
+      "description": "A login page with an image and a separated provider row.",
+      "dependencies": [
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "button",
+        "card",
+        "field",
+        "input"
+      ],
+      "files": [
+        "blocks/login-04.tsx"
+      ],
+      "categories": [
+        "authentication",
+        "login"
+      ]
+    },
+    {
+      "name": "login-05",
+      "type": "registry:block",
+      "title": "Login 05",
+      "description": "A simple email-only login page.",
+      "dependencies": [
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "button",
+        "field",
+        "input",
+        "sr-only"
+      ],
+      "files": [
+        "blocks/login-05.tsx"
+      ],
+      "categories": [
+        "authentication",
+        "login"
+      ]
+    },
+    {
+      "name": "signup-01",
+      "type": "registry:block",
+      "title": "Signup 01",
+      "description": "A simple signup form.",
+      "dependencies": [
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "button",
+        "card",
+        "field",
+        "input"
+      ],
+      "files": [
+        "blocks/signup-01.tsx"
+      ],
+      "categories": [
+        "authentication",
+        "signup"
+      ]
+    },
+    {
+      "name": "signup-02",
+      "type": "registry:block",
+      "title": "Signup 02",
+      "description": "A two column signup page with a cover image.",
+      "dependencies": [
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "button",
+        "field",
+        "input"
+      ],
+      "files": [
+        "blocks/signup-02.tsx"
+      ],
+      "categories": [
+        "authentication",
+        "signup"
+      ]
+    },
+    {
+      "name": "signup-03",
+      "type": "registry:block",
+      "title": "Signup 03",
+      "description": "A signup page with a muted background color.",
+      "dependencies": [
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "button",
+        "card",
+        "field",
+        "input"
+      ],
+      "files": [
+        "blocks/signup-03.tsx"
+      ],
+      "categories": [
+        "authentication",
+        "signup"
+      ]
+    },
+    {
+      "name": "signup-04",
+      "type": "registry:block",
+      "title": "Signup 04",
+      "description": "A signup page with form and image.",
+      "dependencies": [
+        "@barqjs/css"
+      ],
+      "registryDependencies": [
+        "button",
+        "card",
+        "field",
+        "input",
+        "sr-only"
+      ],
+      "files": [
+        "blocks/signup-04.tsx"
+      ],
+      "categories": [
+        "authentication",
+        "signup"
+      ]
+    },
+    {
+      "name": "signup-05",
+      "type": "registry:block",
+      "title": "Signup 05",
+      "description": "A simple signup form with social providers.",
+      "dependencies": [
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "button",
+        "field",
+        "input",
+        "sr-only"
+      ],
+      "files": [
+        "blocks/signup-05.tsx"
+      ],
+      "categories": [
+        "authentication",
+        "signup"
+      ]
+    },
+    {
+      "name": "chart-area",
+      "type": "registry:block",
+      "title": "Chart Area",
+      "dependencies": [
+        "@barqjs/core",
+        "@tanstack/charts",
+        "d3-shape"
+      ],
+      "registryDependencies": [
+        "chart",
+        "chart-shared"
+      ],
+      "files": [
+        "charts/area.tsx"
+      ],
+      "categories": [
+        "charts"
+      ]
+    },
+    {
+      "name": "chart-bar",
+      "type": "registry:block",
+      "title": "Chart Bar",
+      "dependencies": [
+        "@barqjs/core",
+        "@tanstack/charts"
+      ],
+      "registryDependencies": [
+        "chart",
+        "chart-shared"
+      ],
+      "files": [
+        "charts/bar.tsx"
+      ],
+      "categories": [
+        "charts"
+      ]
+    },
+    {
+      "name": "chart-line",
+      "type": "registry:block",
+      "title": "Chart Line",
+      "dependencies": [
+        "@barqjs/core",
+        "@tanstack/charts",
+        "d3-shape"
+      ],
+      "registryDependencies": [
+        "chart",
+        "chart-shared"
+      ],
+      "files": [
+        "charts/line.tsx"
+      ],
+      "categories": [
+        "charts"
+      ]
+    },
+    {
+      "name": "chart-pie",
+      "type": "registry:block",
+      "title": "Chart Pie",
+      "dependencies": [
+        "@barqjs/core",
+        "@tanstack/charts"
+      ],
+      "registryDependencies": [
+        "chart",
+        "chart-shared"
+      ],
+      "files": [
+        "charts/pie.tsx"
+      ],
+      "categories": [
+        "charts"
+      ]
+    },
+    {
+      "name": "chart-radar",
+      "type": "registry:block",
+      "title": "Chart Radar",
+      "dependencies": [
+        "@barqjs/core",
+        "@tanstack/charts",
+        "d3-shape"
+      ],
+      "registryDependencies": [
+        "chart",
+        "chart-shared"
+      ],
+      "files": [
+        "charts/radar.tsx"
+      ],
+      "categories": [
+        "charts"
+      ]
+    },
+    {
+      "name": "chart-radial",
+      "type": "registry:block",
+      "title": "Chart Radial",
+      "dependencies": [
+        "@barqjs/core",
+        "@tanstack/charts"
+      ],
+      "registryDependencies": [
+        "chart",
+        "chart-shared"
+      ],
+      "files": [
+        "charts/radial.tsx"
+      ],
+      "categories": [
+        "charts"
+      ]
+    },
+    {
+      "name": "chart-shared",
+      "type": "registry:block",
+      "title": "Chart Shared",
+      "dependencies": [
+        "@barqjs/core",
+        "@barqjs/css",
+        "@barqjs/lucide"
+      ],
+      "registryDependencies": [
+        "card",
+        "chart"
+      ],
+      "files": [
+        "charts/shared.tsx"
+      ],
+      "categories": [
+        "charts"
+      ]
+    },
+    {
+      "name": "chart-tooltip",
+      "type": "registry:block",
+      "title": "Chart Tooltip",
+      "dependencies": [
+        "@barqjs/core",
+        "@tanstack/charts"
+      ],
+      "registryDependencies": [
+        "chart",
+        "chart-shared"
+      ],
+      "files": [
+        "charts/tooltip.tsx"
+      ],
+      "categories": [
+        "charts"
       ]
     }
   ]

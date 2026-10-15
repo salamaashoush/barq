@@ -107,3 +107,77 @@ describe("buttonVariants", () => {
     );
   });
 });
+
+describe("Button, as upstream writes it", () => {
+  test("disabled is accepted as the element's own word for it", async () => {
+    const presses: string[] = [];
+    render(() => (
+      <Button disabled onPress={() => presses.push("pressed")}>
+        Save
+      </Button>
+    ));
+    const button = screen.getByRole("button") as HTMLButtonElement;
+    expect(button.disabled).toBe(true);
+    expect(button.hasAttribute("data-disabled")).toBe(true);
+    await user.click(button);
+    expect(presses).toEqual([]);
+  });
+
+  test("with an href it is a link wearing the button's classes", async () => {
+    const presses: string[] = [];
+    render(() => (
+      <Button
+        href="https://example.com/pricing"
+        target="_blank"
+        rel="noreferrer"
+        variant="outline"
+        size="sm"
+        onPress={() => presses.push("pressed")}
+      >
+        Pricing
+      </Button>
+    ));
+    const link = screen.getByRole("link", { name: "Pricing" }) as HTMLAnchorElement;
+    expect(link.tagName).toBe("A");
+    expect(link.getAttribute("href")).toBe("https://example.com/pricing");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noreferrer");
+    expect(link.getAttribute("data-slot")).toBe("button");
+    expect(link.getAttribute("data-variant")).toBe("outline");
+    expect(link.getAttribute("data-size")).toBe("sm");
+    for (const className of buttonVariants({ variant: "outline", size: "sm" }).split(" ")) {
+      expect(link.className.split(" ")).toContain(className);
+    }
+    expect(screen.queryByRole("button")).toBeNull();
+    for (const leaked of ["variant", "size", "type", "disabled"]) {
+      expect(link.hasAttribute(leaked)).toBe(false);
+    }
+
+    link.addEventListener("click", (event) => event.preventDefault());
+    await user.click(link);
+    expect(presses).toEqual(["pressed"]);
+  });
+
+  test("a disabled link says so and is not followed", () => {
+    render(() => (
+      <Button href="https://example.com/pricing" disabled>
+        Pricing
+      </Button>
+    ));
+    const link = document.querySelector('[data-slot="button"]') as HTMLElement;
+    expect(link.getAttribute("aria-disabled")).toBe("true");
+    expect(link.hasAttribute("data-disabled")).toBe(true);
+  });
+});
+
+describe("Button in a right-to-left page", () => {
+  test("an icon takes the padding in on the side it is actually on", () => {
+    for (const size of ["default", "xs", "sm", "lg"] as const) {
+      const rules = rulesFor(buttonVariants({ size }));
+      expect(rules).toContain('[data-icon="inline-end"]){padding-inline-end:');
+      expect(rules).toContain('[data-icon="inline-start"]){padding-inline-start:');
+      expect(rules).not.toContain("padding-right");
+      expect(rules).not.toContain("padding-left");
+    }
+  });
+});

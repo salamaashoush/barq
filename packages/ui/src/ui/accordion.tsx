@@ -1,8 +1,10 @@
+import type { Key } from "@barqjs/aria/collections";
 import {
   DisclosureButton,
   DisclosureGroup,
   DisclosureGroupItem,
   DisclosurePanel,
+  useDisclosure,
   type DisclosureButtonComponentProps,
   type DisclosureGroupComponentProps,
   type DisclosurePanelComponentProps,
@@ -18,7 +20,7 @@ import { ringSlot } from "../lib/shared-ring-slot.ts";
 import { when } from "../lib/shared-when.ts";
 import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
-import { uiProps } from "../lib/slot.ts";
+import { omit, uiProps } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
@@ -27,6 +29,10 @@ const item = ui({
     borderBottomStyle: "var(--ui-border-style)",
     borderBottomWidth: "1px",
   },
+});
+
+const header = ui({
+  display: "flex",
 });
 
 const trigger = ui(
@@ -51,7 +57,7 @@ const trigger = ui(
     borderColor: "transparent",
     backgroundColor: "transparent",
     paddingBlock: "calc(var(--spacing) * 2.5)",
-    textAlign: "left",
+    textAlign: "start",
     transitionProperty: "all",
     "@media (hover: hover)": {
       ":hover": {
@@ -68,7 +74,7 @@ const trigger = ui(
     // The chevron is a DESCENDANT rule upstream, so its size and colour belong
     // to the trigger rather than to the icon's own class.
     ':is(& *)[data-slot="accordion-trigger-icon"]': {
-      marginLeft: "auto",
+      marginInlineStart: "auto",
       width: "calc(var(--spacing) * 4)",
       height: "calc(var(--spacing) * 4)",
       color: "var(--muted-foreground)",
@@ -132,11 +138,40 @@ const panel = ui({
   },
 });
 
-export interface AccordionProps<T> extends DisclosureGroupComponentProps<T> {}
+export interface AccordionProps<T> extends DisclosureGroupComponentProps<T> {
+  /**
+   * shadcn's spelling of `allowsMultiple`. Giving it at all also takes
+   * shadcn's default for `collapsible`, which is `false`.
+   */
+  type?: "single" | "multiple";
+  /** With `type="single"`, whether the open section may be shut. @default false */
+  collapsible?: boolean;
+  /** The open section's `value`, or every open one's with `type="multiple"`. */
+  value?: string | string[];
+  defaultValue?: string | string[];
+  /** A string with `type="single"` (empty when nothing is open), an array otherwise. */
+  onValueChange?: (value: string | string[]) => void;
+  disabled?: boolean;
+}
+
+const UPSTREAM = [
+  "type",
+  "collapsible",
+  "value",
+  "defaultValue",
+  "onValueChange",
+  "disabled",
+] as const;
+
+function keysOf(value: string | string[] | undefined): Key[] | undefined {
+  if (value === undefined) return undefined;
+  if (Array.isArray(value)) return value;
+  return value === "" ? [] : [value];
+}
 
 /**
  * ```tsx
- * <Accordion items={faqs} allowsMultipleExpanded>
+ * <Accordion items={faqs} allowsMultiple>
  *   {(faq) => (
  *     <AccordionItem>
  *       <AccordionTrigger>{faq.question}</AccordionTrigger>
@@ -145,13 +180,49 @@ export interface AccordionProps<T> extends DisclosureGroupComponentProps<T> {}
  *   )}
  * </Accordion>
  * ```
+ *
+ * Or written out the way shadcn's is, each section naming itself:
+ *
+ * ```tsx
+ * <Accordion type="single" collapsible defaultValue="shipping">
+ *   <AccordionItem value="shipping">
+ *     <AccordionTrigger>Shipping</AccordionTrigger>
+ *     <AccordionContent>Two days</AccordionContent>
+ *   </AccordionItem>
+ * </Accordion>
+ * ```
  */
 export function Accordion<T>(props: Incoming<AccordionProps<T>>) {
-  return <DisclosureGroup {...props} data-slot="accordion" />;
+  const multiple = (): boolean => props.allowsMultiple?.() ?? props.type?.() === "multiple";
+  const report = (keys: Set<Key>): void => {
+    props.onExpandedChange?.()?.(keys);
+    const values = [...keys].map(String);
+    props.onValueChange?.()?.(multiple() ? values : (values[0] ?? ""));
+  };
+
+  return (
+    <DisclosureGroup
+      {...omit(props, UPSTREAM)}
+      data-slot="accordion"
+      allowsMultiple={multiple()}
+      isCollapsible={
+        props.isCollapsible?.() ??
+        (props.type === undefined ? undefined : (props.collapsible?.() ?? false))
+      }
+      isDisabled={props.isDisabled?.() ?? props.disabled?.()}
+      expandedKeys={props.expandedKeys?.() ?? keysOf(props.value?.())}
+      defaultExpandedKeys={props.defaultExpandedKeys?.() ?? keysOf(props.defaultValue?.())}
+      onExpandedChange={report}
+    />
+  );
 }
 
 export interface AccordionItemProps extends UiProps {
   isDisabled?: boolean;
+  /** shadcn's spelling of `isDisabled`. */
+  disabled?: boolean;
+  /** What this section answers to in the accordion's `value`. Not read when it was built from `items`. */
+  value?: string;
 }
 
 /**
@@ -164,8 +235,29 @@ export interface AccordionItemProps extends UiProps {
  */
 export function AccordionItem(props: Incoming<AccordionItemProps>) {
   return (
-    <div {...uiProps("accordion-item", item, props)}>
-      <DisclosureGroupItem isDisabled={props.isDisabled?.()}>{props.children}</DisclosureGroupItem>
+    <DisclosureGroupItem
+      id={props.value?.()}
+      isDisabled={props.isDisabled?.() ?? props.disabled?.()}
+    >
+      <AccordionSection {...props}>{props.children}</AccordionSection>
+    </DisclosureGroupItem>
+  );
+}
+
+/**
+ * The element, INSIDE the provider rather than around it, so it can say whether
+ * its own section is open. Around it, the state is one scope too far down.
+ */
+function AccordionSection(props: Incoming<AccordionItemProps>) {
+  const section = useDisclosure();
+  return (
+    <div
+      {...uiProps("accordion-item", item, props)}
+      data-state={() => (section.state.isExpanded() ? "open" : "closed")}
+      data-orientation={() => section.group?.orientation()}
+      data-disabled={() => (section.isDisabled() ? "" : undefined)}
+    >
+      {props.children}
     </div>
   );
 }
@@ -174,16 +266,25 @@ export interface AccordionTriggerProps extends DisclosureButtonComponentProps {}
 
 /** The header row. The chevron swaps on `data-expanded`, which the button writes. */
 export function AccordionTrigger(props: Incoming<AccordionTriggerProps>) {
+  const section = useDisclosure();
   return (
-    <DisclosureButton
-      {...props}
-      data-slot={props["data-slot"]?.() ?? "accordion-trigger"}
-      class={ui(trigger, props.class?.(), props.className?.())}
+    <h3
+      data-slot="accordion-header"
+      class={header}
+      data-state={() => (section.state.isExpanded() ? "open" : "closed")}
+      data-orientation={() => section.group?.orientation()}
+      data-disabled={() => (section.isDisabled() ? "" : undefined)}
     >
-      {props.children}
-      <ChevronDown data-slot="accordion-trigger-icon" class={chevronDown} />
-      <ChevronUp data-slot="accordion-trigger-icon" class={chevronUp} />
-    </DisclosureButton>
+      <DisclosureButton
+        {...props}
+        data-slot={props["data-slot"]?.() ?? "accordion-trigger"}
+        class={ui(trigger, props.class?.(), props.className?.())}
+      >
+        {props.children}
+        <ChevronDown data-slot="accordion-trigger-icon" class={chevronDown} />
+        <ChevronUp data-slot="accordion-trigger-icon" class={chevronUp} />
+      </DisclosureButton>
+    </h3>
   );
 }
 

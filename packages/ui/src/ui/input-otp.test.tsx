@@ -1,10 +1,19 @@
 import { describe, expect, test } from "bun:test";
-import { flush, signal } from "@barqjs/core";
-import { render, user } from "@barqjs/testing";
+import { flush, createSignal } from "@barqjs/core";
+import { cleanup, render, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
 
-import { InputOTP, InputOTPGroup, InputOTPSeparator, InputOTPSlot } from "./input-otp.tsx";
+import {
+  InputOTP,
+  InputOTPGroup,
+  InputOTPSeparator,
+  InputOTPSlot,
+  REGEXP_ONLY_CHARS,
+  REGEXP_ONLY_DIGITS,
+  REGEXP_ONLY_DIGITS_AND_CHARS,
+  type InputOTPProps,
+} from "./input-otp.tsx";
 
 function Six(props: {
   value?: string;
@@ -121,10 +130,10 @@ describe("InputOTP", () => {
   });
 
   test("a controlled value is the one drawn", () => {
-    const value = signal("12");
+    const [value, setValue] = createSignal("12");
     render(() => <Six value={value()} />);
     expect(shown()).toBe("12");
-    value.set("1234");
+    setValue("1234");
     flush();
     expect(shown()).toBe("1234");
   });
@@ -230,5 +239,267 @@ describe("InputOTP", () => {
 
   test("a slot outside an InputOTP says what is wrong", () => {
     expect(() => render(() => <InputOTPSlot index={0} />)).toThrow("inside an <InputOTP>");
+  });
+});
+
+function Four(props: InputOTPProps) {
+  return (
+    <InputOTP
+      maxLength={4}
+      id={props.id}
+      class={props.class}
+      containerClassName={props.containerClassName}
+      inputMode={props.inputMode}
+      pattern={props.pattern}
+      pasteTransformer={props.pasteTransformer}
+      textAlign={props.textAlign}
+      placeholder={props.placeholder}
+      disabled={props.disabled}
+      aria-invalid={props["aria-invalid"]}
+      aria-label={props["aria-label"]}
+      pushPasswordManagerStrategy={props.pushPasswordManagerStrategy}
+      onChange={props.onChange}
+      onComplete={props.onComplete}
+    >
+      <InputOTPGroup>
+        <InputOTPSlot index={0} />
+        <InputOTPSlot index={1} />
+      </InputOTPGroup>
+      <InputOTPSeparator />
+      <InputOTPGroup>
+        <InputOTPSlot index={2} />
+        <InputOTPSlot index={3} />
+      </InputOTPGroup>
+    </InputOTP>
+  );
+}
+
+const box = (): HTMLElement =>
+  document.querySelector('[data-slot="input-otp-container"]') as HTMLElement;
+
+function enter(value: string): void {
+  const input = field();
+  input.value = value;
+  input.dispatchEvent(new Event("input", { bubbles: true }));
+  flush();
+}
+
+function paste(text: string): Event {
+  const event = new Event("paste", { bubbles: true, cancelable: true });
+  Object.defineProperty(event, "clipboardData", { value: { getData: () => text } });
+  field().dispatchEvent(event);
+  flush();
+  return event;
+}
+
+describe("InputOTP keyboard and pattern", () => {
+  test("the keyboard is numeric unless the caller says otherwise", () => {
+    render(() => <Four />);
+    expect(field().getAttribute("inputmode")).toBe("numeric");
+  });
+
+  test("inputMode reaches the control, and a text keyboard takes letters", () => {
+    render(() => <Four inputMode="text" />);
+    expect(field().getAttribute("inputmode")).toBe("text");
+    field().focus();
+    enter("ab1");
+    expect(shown()).toBe("ab1");
+  });
+
+  test("the three patterns are exported, and are what an input's pattern attribute takes", () => {
+    expect(REGEXP_ONLY_DIGITS).toBe("^\\d+$");
+    expect(REGEXP_ONLY_CHARS).toBe("^[a-zA-Z]+$");
+    expect(REGEXP_ONLY_DIGITS_AND_CHARS).toBe("^[a-zA-Z0-9]+$");
+    render(() => <Four pattern={REGEXP_ONLY_DIGITS_AND_CHARS} />);
+    expect(field().getAttribute("pattern")).toBe("^[a-zA-Z0-9]+$");
+  });
+
+  test("a string pattern judges the whole value and refuses a change that fails it", () => {
+    const seen: string[] = [];
+    render(() => <Four pattern={REGEXP_ONLY_DIGITS_AND_CHARS} onChange={(v) => seen.push(v)} />);
+    field().focus();
+    enter("a1");
+    expect(shown()).toBe("a1");
+    enter("a1-");
+    expect(shown()).toBe("a1");
+    expect(field().value).toBe("a1");
+    expect(seen).toEqual(["a1"]);
+  });
+
+  test("a RegExp pattern is still the characters to drop", () => {
+    render(() => <Four pattern={/[^a-z]/g} />);
+    field().focus();
+    enter("a1b2");
+    expect(shown()).toBe("ab");
+  });
+});
+
+describe("InputOTP paste and completion", () => {
+  test("pasteTransformer cleans a code copied with its separators", () => {
+    const done: string[] = [];
+    render(() => (
+      <Four
+        pattern={REGEXP_ONLY_DIGITS}
+        pasteTransformer={(text) => text.replaceAll("-", "")}
+        onComplete={(v) => done.push(v)}
+      />
+    ));
+    field().focus();
+    const event = paste("12-34");
+    expect(event.defaultPrevented).toBe(true);
+    expect(shown()).toBe("1234");
+    expect(done).toEqual(["1234"]);
+  });
+
+  test("onComplete may write state of the caller's own", () => {
+    // It is called from an effect, which is the one place the strict build
+    // could have refused a handler that writes.
+    const [code, setCode] = createSignal("");
+    render(() => <Four onComplete={setCode} />);
+    field().focus();
+    enter("1234");
+    flush();
+    expect(code()).toBe("1234");
+  });
+
+  test("onComplete fires once when the field fills, not on every edit of a full one", () => {
+    const done: string[] = [];
+    render(() => <Four onComplete={(v) => done.push(v)} />);
+    field().focus();
+    enter("1234");
+    enter("1235");
+    expect(done).toEqual(["1234"]);
+  });
+});
+
+describe("InputOTP selection", () => {
+  test("a click on a filled box selects its character, so typing replaces it", () => {
+    render(() => <Four />);
+    const input = field();
+    input.focus();
+    enter("123");
+    input.setSelectionRange(1, 1);
+    input.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    flush();
+    expect(input.selectionStart).toBe(1);
+    expect(input.selectionEnd).toBe(2);
+    expect(slots()[1]?.getAttribute("data-active")).toBe("true");
+    expect(slots()[3]?.getAttribute("data-active")).toBe("false");
+  });
+
+  test("focusing a full field selects its last character", () => {
+    render(() => <Four />);
+    const input = field();
+    input.focus();
+    enter("1234");
+    input.blur();
+    flush();
+    input.focus();
+    flush();
+    expect(input.selectionStart).toBe(3);
+    expect(input.selectionEnd).toBe(4);
+    expect(slots()[3]?.getAttribute("data-active")).toBe("true");
+  });
+});
+
+describe("InputOTP parts and attributes", () => {
+  test("containerClassName styles the row, and the id names the control alone", () => {
+    render(() => <Four id="code" containerClassName="row" class="control" />);
+    expect(box().classList.contains("row")).toBe(true);
+    expect(field().classList.contains("row")).toBe(false);
+    expect(field().classList.contains("control")).toBe(true);
+    expect(document.querySelectorAll("#code")).toHaveLength(1);
+    expect(field().id).toBe("code");
+  });
+
+  test("upstream's markers are on the container and the control", () => {
+    render(() => <Four />);
+    expect(box().hasAttribute("data-input-otp-container")).toBe(true);
+    expect(field().hasAttribute("data-input-otp")).toBe(true);
+  });
+
+  test("disabled and aria-invalid are accepted under their HTML names", () => {
+    render(() => <Four disabled aria-invalid />);
+    flush();
+    expect(field().disabled).toBe(true);
+    expect(box().getAttribute("data-disabled")).toBe("true");
+    expect(field().getAttribute("aria-invalid")).toBe("true");
+    expect(slots()[0]?.getAttribute("aria-invalid")).toBe("true");
+  });
+
+  test("the field is one labelled text input a screen reader meets once", () => {
+    render(() => <Four aria-label="Verification code" />);
+    const input = field();
+    expect(input.getAttribute("aria-label")).toBe("Verification code");
+    expect(box().hasAttribute("aria-label")).toBe(false);
+    expect(input.getAttribute("autocomplete")).toBe("one-time-code");
+    expect(input.getAttribute("spellcheck")).toBe("false");
+  });
+
+  test("textAlign is the control's, for where the platform puts its own caret", () => {
+    render(() => <Four textAlign="center" />);
+    expect(field().style.textAlign).toBe("center");
+    cleanup();
+    render(() => <Four />);
+    expect(field().style.textAlign).toBe("left");
+  });
+
+  test("the placeholder reaches the control", () => {
+    render(() => <Four placeholder="0000" />);
+    expect(field().getAttribute("placeholder")).toBe("0000");
+  });
+
+  test("the separator lays its icon out, and the boxes round their outer corners in either direction", () => {
+    render(() => <Four />);
+    const separator = document.querySelector('[data-slot="input-otp-separator"]');
+    expect(rulesFor([...(separator?.classList ?? [])].join(" "))).toContain("display: flex");
+    const rules = rulesFor([...(slots()[0]?.classList ?? [])].join(" "));
+    expect(rules).toContain("border-inline-end-width: 1px");
+    expect(rules).toContain("border-start-start-radius");
+    // The colour is the same on all four sides, so only the width and the
+    // radii have a side to get wrong.
+    expect(rules).not.toContain("border-right-width");
+    expect(rules).not.toContain("border-left-width");
+    expect(rules).not.toContain("border-top-left-radius");
+  });
+});
+
+describe("InputOTP and password managers", () => {
+  test("the control is invisible by colour, because a manager skips a field with no opacity", () => {
+    render(() => <Four />);
+    const rules = rulesFor([...field().classList].join(" "));
+    expect(rules).toContain("color: transparent");
+    expect(rules).toContain("caret-color: transparent");
+    expect(rules).not.toContain("opacity: 0");
+  });
+
+  test("a manager's badge is moved out beside the boxes", async () => {
+    render(() => <Four />);
+    const input = field();
+    expect(input.style.width).toBe("");
+    const badge = document.createElement("div");
+    badge.setAttribute("data-lastpass-icon-root", "");
+    document.body.append(badge);
+    input.focus();
+    flush();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    flush();
+    expect(input.style.width).toBe("calc(100% + 40px)");
+    expect(input.style.clipPath).toBe("inset(0 40px 0 0)");
+    badge.remove();
+  });
+
+  test("pushPasswordManagerStrategy none leaves the control its own width", async () => {
+    render(() => <Four pushPasswordManagerStrategy="none" />);
+    const input = field();
+    const badge = document.createElement("div");
+    badge.setAttribute("data-lastpass-icon-root", "");
+    document.body.append(badge);
+    input.focus();
+    flush();
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    flush();
+    expect(input.style.width).toBe("");
+    badge.remove();
   });
 });

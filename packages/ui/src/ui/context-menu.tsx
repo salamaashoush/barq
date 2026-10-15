@@ -3,7 +3,6 @@ import {
   ContextMenuTrigger as AriaContextMenuTrigger,
   type ContextMenuComponentProps,
   type ContextMenuTriggerComponentProps,
-  type MenuComponentProps,
 } from "@barqjs/aria/menu";
 import type { Incoming } from "@barqjs/core";
 
@@ -16,6 +15,8 @@ import {
   DropdownMenuGroupLabel,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuPortal,
+  DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
@@ -23,15 +24,22 @@ import {
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   type DropdownMenuCheckboxItemProps,
+  type DropdownMenuContentProps,
   type DropdownMenuGroupProps,
   type DropdownMenuItemProps,
   type DropdownMenuLabelProps,
+  type DropdownMenuPortalProps,
+  type DropdownMenuRadioGroupProps,
   type DropdownMenuRadioItemProps,
+  type DropdownMenuSubContentProps,
   type DropdownMenuSubProps,
   type DropdownMenuSubTriggerProps,
 } from "./dropdown-menu.tsx";
 
-export interface ContextMenuProps extends ContextMenuComponentProps {}
+export interface ContextMenuProps extends ContextMenuComponentProps {
+  /** Upstream's name for `isOpen`. */
+  open?: boolean;
+}
 
 /**
  * ```tsx
@@ -44,14 +52,21 @@ export interface ContextMenuProps extends ContextMenuComponentProps {}
  * ```
  *
  * Everything inside is `<DropdownMenu>`'s: the same collection, the same
- * keyboard, the same CSS. What differs is where the menu goes, which is the
- * point the pointer was at rather than the edge of a button.
+ * keyboard, the same CSS, and the same choice between items rendered from data
+ * and items written as children. What differs is where the menu goes, which is
+ * the point the pointer was at rather than the edge of a button.
  *
  * Give the content an `aria-label`. The trigger is a region rather than a
  * control, so there is no short name to inherit.
  */
 export function ContextMenu(props: Incoming<ContextMenuProps>) {
-  return <AriaContextMenu {...props} />;
+  return <AriaContextMenu {...props} isOpen={props.isOpen?.() ?? props.open?.()} />;
+}
+
+export interface ContextMenuPortalProps extends DropdownMenuPortalProps {}
+
+export function ContextMenuPortal(props: Incoming<ContextMenuPortalProps>) {
+  return <DropdownMenuPortal {...props} />;
 }
 
 export interface ContextMenuTriggerProps extends ContextMenuTriggerComponentProps {}
@@ -66,7 +81,7 @@ export function ContextMenuTrigger(props: Incoming<ContextMenuTriggerProps>) {
   );
 }
 
-export interface ContextMenuContentProps<T> extends MenuComponentProps<T> {}
+export interface ContextMenuContentProps<T> extends DropdownMenuContentProps<T> {}
 
 export function ContextMenuContent<T>(props: Incoming<ContextMenuContentProps<T>>) {
   return <DropdownMenuContent {...props} data-slot="context-menu-content" />;
@@ -88,6 +103,12 @@ export function ContextMenuCheckboxItem(props: Incoming<ContextMenuCheckboxItemP
       indicatorSlot="context-menu-item-indicator"
     />
   );
+}
+
+export interface ContextMenuRadioGroupProps extends DropdownMenuRadioGroupProps {}
+
+export function ContextMenuRadioGroup(props: Incoming<ContextMenuRadioGroupProps>) {
+  return <DropdownMenuRadioGroup {...props} data-slot="context-menu-radio-group" />;
 }
 
 export interface ContextMenuRadioItemProps extends DropdownMenuRadioItemProps {}
@@ -139,7 +160,7 @@ export function ContextMenuSubTrigger(props: Incoming<ContextMenuSubTriggerProps
   return <DropdownMenuSubTrigger {...props} data-slot="context-menu-sub-trigger" />;
 }
 
-export interface ContextMenuSubContentProps<T> extends MenuComponentProps<T> {}
+export interface ContextMenuSubContentProps<T> extends DropdownMenuSubContentProps<T> {}
 
 export function ContextMenuSubContent<T>(props: Incoming<ContextMenuSubContentProps<T>>) {
   return <DropdownMenuSubContent {...props} data-slot="context-menu-sub-content" />;

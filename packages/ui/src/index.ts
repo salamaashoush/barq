@@ -21,18 +21,37 @@ export {
   overlayFamily,
   type OverlayFamily,
   type OverlayKind,
+  OverlayPortal,
+  type OverlayPortalProps,
   type OverlayRootProps,
   type OverlayValue,
+  registerUnderlay,
 } from "./lib/overlay.tsx";
-export { type UiProps } from "./lib/props.ts";
+export { type UiProps, type UiRef } from "./lib/props.ts";
 export { box } from "./lib/shared-box.ts";
 export { icon } from "./lib/shared-icon.ts";
 export { ringSlot } from "./lib/shared-ring-slot.ts";
 export { ring } from "./lib/shared-ring.ts";
 export { text } from "./lib/shared-text.ts";
 export { when } from "./lib/shared-when.ts";
-export { controlProps, omit, uiProps } from "./lib/slot.ts";
+export {
+  controlProps,
+  handedOn,
+  named,
+  omit,
+  partRender,
+  type PartRender,
+  type RenderPart,
+  uiProps,
+} from "./lib/slot.ts";
+export {
+  TriggerPart,
+  type TriggerPartProps,
+  type TriggerRender,
+  useTrigger,
+} from "./lib/trigger.tsx";
 export { cn } from "./lib/utils.ts";
+export { useIsMobile } from "./hooks/use-mobile.ts";
 export {
   ACCENT_THEMES,
   BASE_THEMES,
@@ -70,6 +89,9 @@ export {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogMedia,
+  AlertDialogOverlay,
+  AlertDialogPortal,
+  type AlertDialogPortalProps,
   type AlertDialogProps,
   type AlertDialogSize,
   AlertDialogTitle,
@@ -110,6 +132,7 @@ export {
   Avatar,
   AvatarBadge,
   AvatarFallback,
+  type AvatarFallbackProps,
   AvatarGroup,
   AvatarGroupCount,
   AvatarImage,
@@ -133,6 +156,7 @@ export {
   Bubble,
   type BubbleAlign,
   BubbleContent,
+  type BubbleContentProps,
   BubbleGroup,
   type BubbleProps,
   BubbleReactions,
@@ -160,9 +184,17 @@ export {
 } from "./ui/button.tsx";
 export {
   Calendar,
+  type CalendarCaptionLayout,
   CalendarDay,
+  CalendarDayButton,
+  type CalendarDayButtonProps,
+  type CalendarDayModifiers,
   type CalendarDayProps,
+  type CalendarFormatters,
+  type CalendarMode,
   type CalendarProps,
+  MultipleCalendar,
+  type MultipleCalendarProps,
   RangeCalendar,
   type RangeCalendarProps,
 } from "./ui/calendar.tsx";
@@ -185,25 +217,43 @@ export {
   CarouselContent,
   CarouselItem,
   CarouselNext,
+  type CarouselOptions,
   type CarouselOrientation,
+  type CarouselPlugin,
   CarouselPrevious,
   type CarouselProps,
+  type CarouselValue,
+  useCarousel,
 } from "./ui/carousel.tsx";
 export {
   AXIS_FONT_SIZE,
   Chart,
   ChartBars,
   type ChartConfig,
+  type ChartConfigEntry,
+  type ChartConfigRecord,
   ChartContainer,
   type ChartContainerProps,
   type ChartDefinition,
   chartHover,
   ChartLegend,
+  ChartLegendContent,
+  type ChartLegendContentProps,
+  type ChartLegendProps,
   ChartLines,
+  type ChartOrigin,
+  type ChartPayloadItem,
   type ChartPlotProps,
   type ChartProps,
   type ChartSeries,
+  ChartStyle,
+  type ChartStyleProps,
+  type ChartTheme,
+  ChartTooltip,
   ChartTooltipContent,
+  type ChartTooltipContentProps,
+  type ChartTooltipIndicator,
+  type ChartTooltipPopupProps,
   type ChartTooltipProps,
 } from "./ui/chart.tsx";
 export { Checkbox, type CheckboxProps } from "./ui/checkbox.tsx";
@@ -215,17 +265,54 @@ export {
   CollapsibleTrigger,
   type CollapsibleTriggerProps,
 } from "./ui/collapsible.tsx";
-export { Combobox, ComboboxLabel, type ComboboxProps, ComboboxSeparator } from "./ui/combobox.tsx";
+export {
+  Combobox,
+  ComboboxChip,
+  type ComboboxChipProps,
+  ComboboxChips,
+  ComboboxChipsInput,
+  type ComboboxChipsInputProps,
+  type ComboboxChipsProps,
+  ComboboxClear,
+  type ComboboxClearProps,
+  ComboboxCollection,
+  type ComboboxCollectionProps,
+  ComboboxContent,
+  type ComboboxContentProps,
+  ComboboxEmpty,
+  ComboboxGroup,
+  type ComboboxGroupProps,
+  ComboboxInput,
+  type ComboboxInputProps,
+  ComboboxItem,
+  type ComboboxItemProps,
+  ComboboxLabel,
+  ComboboxList,
+  type ComboboxListProps,
+  type ComboboxProps,
+  ComboboxSeparator,
+  ComboboxTrigger,
+  type ComboboxTriggerProps,
+  ComboboxValue,
+  useComboboxAnchor,
+} from "./ui/combobox.tsx";
 export {
   Command,
   CommandDialog,
   type CommandDialogProps,
+  CommandEmpty,
   CommandGroup,
   type CommandGroupProps,
+  CommandInput,
+  type CommandInputProps,
   CommandItem,
   type CommandItemProps,
+  CommandList,
+  CommandLoading,
+  type CommandLoadingProps,
   type CommandProps,
   CommandSeparator,
+  type CommandSeparatorProps,
   CommandShortcut,
 } from "./ui/command.tsx";
 export {
@@ -241,7 +328,11 @@ export {
   type ContextMenuItemProps,
   ContextMenuLabel,
   type ContextMenuLabelProps,
+  ContextMenuPortal,
+  type ContextMenuPortalProps,
   type ContextMenuProps,
+  ContextMenuRadioGroup,
+  type ContextMenuRadioGroupProps,
   ContextMenuRadioItem,
   type ContextMenuRadioItemProps,
   ContextMenuSeparator,
@@ -257,7 +348,10 @@ export {
 } from "./ui/context-menu.tsx";
 export {
   DatePicker,
+  DatePickerInput,
+  type DatePickerInputProps,
   type DatePickerProps,
+  type DatePreset,
   DateRangePicker,
   type DateRangePickerProps,
 } from "./ui/date-picker.tsx";
@@ -269,11 +363,21 @@ export {
   type DialogContentProps,
   DialogDescription,
   DialogFooter,
+  type DialogFooterProps,
   DialogHeader,
+  DialogOverlay,
+  DialogPortal,
+  type DialogPortalProps,
   type DialogProps,
   DialogTitle,
   DialogTrigger,
 } from "./ui/dialog.tsx";
+export {
+  type Direction,
+  DirectionProvider,
+  type DirectionProviderProps,
+  useDirection,
+} from "./ui/direction.tsx";
 export {
   Drawer,
   DrawerClose,
@@ -282,8 +386,12 @@ export {
   type DrawerContentProps,
   DrawerDescription,
   DrawerFooter,
+  DrawerHandle,
+  type DrawerHandleProps,
   DrawerHeader,
   type DrawerHeaderProps,
+  DrawerOverlay,
+  DrawerPortal,
   type DrawerProps,
   DrawerTitle,
   DrawerTrigger,
@@ -302,9 +410,14 @@ export {
   type DropdownMenuItemVariant,
   DropdownMenuLabel,
   type DropdownMenuLabelProps,
+  DropdownMenuPortal,
+  type DropdownMenuPortalProps,
   type DropdownMenuProps,
+  DropdownMenuRadioGroup,
+  type DropdownMenuRadioGroupProps,
   DropdownMenuRadioItem,
   type DropdownMenuRadioItemProps,
+  type DropdownMenuSelectEvent,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuSub,
@@ -314,6 +427,9 @@ export {
   DropdownMenuSubTrigger,
   type DropdownMenuSubTriggerProps,
   DropdownMenuTrigger,
+  type DropdownMenuTriggerProps,
+  menuPlacement,
+  type MenuPositionProps,
 } from "./ui/dropdown-menu.tsx";
 export {
   Empty,
@@ -346,6 +462,7 @@ export {
   FieldSet,
   FieldTitle,
   fieldVariants,
+  useFieldInvalid,
 } from "./ui/field.tsx";
 export {
   HoverCard,
@@ -377,8 +494,11 @@ export {
   InputOTPSeparator,
   InputOTPSlot,
   type InputOTPSlotProps,
+  REGEXP_ONLY_CHARS,
+  REGEXP_ONLY_DIGITS,
+  REGEXP_ONLY_DIGITS_AND_CHARS,
 } from "./ui/input-otp.tsx";
-export { Input, type InputProps, Textarea, type TextareaProps } from "./ui/input.tsx";
+export { Input, type InputProps, type InputSize } from "./ui/input.tsx";
 export {
   Item,
   ItemActions,
@@ -424,7 +544,11 @@ export {
   type MenubarLabelProps,
   MenubarMenu,
   type MenubarMenuProps,
+  MenubarPortal,
+  type MenubarPortalProps,
   type MenubarProps,
+  MenubarRadioGroup,
+  type MenubarRadioGroupProps,
   MenubarRadioItem,
   type MenubarRadioItemProps,
   MenubarSeparator,
@@ -442,10 +566,19 @@ export {
   MessageScroller,
   MessageScrollerButton,
   type MessageScrollerButtonProps,
+  type MessageScrollerCommands,
   MessageScrollerContent,
+  type MessageScrollerContentProps,
   MessageScrollerItem,
+  type MessageScrollerItemProps,
   type MessageScrollerProps,
+  MessageScrollerProvider,
+  type MessageScrollerProviderProps,
   MessageScrollerViewport,
+  type MessageScrollerViewportProps,
+  useMessageScroller,
+  useMessageScrollerScrollable,
+  useMessageScrollerVisibility,
 } from "./ui/message-scroller.tsx";
 export {
   Message,
@@ -477,6 +610,8 @@ export {
   NavigationMenuList,
   type NavigationMenuProps,
   NavigationMenuTrigger,
+  type NavigationMenuTriggerProps,
+  navigationMenuTriggerStyle,
   NavigationMenuViewport,
 } from "./ui/navigation-menu.tsx";
 export {
@@ -492,6 +627,7 @@ export {
 } from "./ui/pagination.tsx";
 export {
   Popover,
+  PopoverAnchor,
   PopoverContent,
   type PopoverContentProps,
   PopoverDescription,
@@ -500,7 +636,47 @@ export {
   PopoverTitle,
   PopoverTrigger,
 } from "./ui/popover.tsx";
-export { Progress, type ProgressProps } from "./ui/progress.tsx";
+export {
+  Progress,
+  ProgressIndicator,
+  ProgressLabel,
+  type ProgressProps,
+  ProgressTrack,
+  ProgressValue,
+  type ProgressValueProps,
+} from "./ui/progress.tsx";
+export {
+  Questionnaire,
+  QuestionnaireActions,
+  QuestionnaireChoice,
+  type QuestionnaireChoiceDefinition,
+  QuestionnaireChoiceDescription,
+  type QuestionnaireChoiceProps,
+  QuestionnaireChoices,
+  type QuestionnaireChoicesProps,
+  QuestionnaireDescription,
+  type QuestionnaireDescriptionProps,
+  QuestionnaireError,
+  type QuestionnaireErrorProps,
+  QuestionnaireInput,
+  type QuestionnaireInputProps,
+  type QuestionnaireInputType,
+  QuestionnaireItem,
+  type QuestionnaireItemDefinition,
+  type QuestionnaireItemProps,
+  type QuestionnaireItemStatus,
+  type QuestionnaireNavigationProps,
+  QuestionnaireNext,
+  QuestionnairePrevious,
+  QuestionnaireProgress,
+  type QuestionnaireProgressProps,
+  type QuestionnaireProps,
+  type QuestionnaireShortcutMode,
+  QuestionnaireSkip,
+  QuestionnaireSubmit,
+  QuestionnaireTitle,
+  type QuestionnaireTitleProps,
+} from "./ui/questionnaire.tsx";
 export {
   RadioGroup,
   RadioGroupItem,
@@ -508,26 +684,58 @@ export {
   type RadioGroupProps,
 } from "./ui/radio-group.tsx";
 export {
+  type ResizableGroupHandle,
   ResizableHandle,
   type ResizableHandleProps,
+  type ResizableLayout,
   ResizablePanel,
   ResizablePanelGroup,
   type ResizablePanelGroupProps,
+  type ResizablePanelHandle,
   type ResizablePanelProps,
+  type ResizablePanelSize,
+  type ResizableSize,
+  type ResizableStorage,
   type ResizeDirection,
 } from "./ui/resizable.tsx";
-export { ScrollArea, type ScrollAreaProps } from "./ui/scroll-area.tsx";
+export {
+  ScrollArea,
+  type ScrollAreaProps,
+  ScrollBar,
+  type ScrollBarProps,
+} from "./ui/scroll-area.tsx";
+export {
+  scrollFade,
+  scrollFadeB,
+  scrollFadeE,
+  scrollFadeL,
+  scrollFadeNone,
+  type ScrollFadeOptions,
+  scrollFadeR,
+  scrollFadeS,
+  scrollFadeStyle,
+  scrollFadeT,
+  scrollFadeX,
+  scrollFadeY,
+} from "./ui/scroll-fade.ts";
 export {
   Select,
+  SelectContent,
+  type SelectContentProps,
   SelectGroup,
   type SelectGroupProps,
   SelectItem,
   type SelectItemProps,
   SelectLabel,
   type SelectProps,
+  SelectScrollDownButton,
+  SelectScrollUpButton,
   SelectSeparator,
   type SelectSize,
+  SelectTrigger,
+  type SelectTriggerProps,
   SelectValue,
+  type SelectValueProps,
 } from "./ui/select.tsx";
 export { Separator, type SeparatorProps } from "./ui/separator.tsx";
 export {
@@ -539,11 +747,22 @@ export {
   SheetDescription,
   SheetFooter,
   SheetHeader,
+  SheetOverlay,
+  SheetPortal,
+  type SheetPortalProps,
   type SheetProps,
   type SheetSide,
   SheetTitle,
   SheetTrigger,
 } from "./ui/sheet.tsx";
+export {
+  shimmer,
+  shimmerNone,
+  shimmerOnce,
+  type ShimmerOptions,
+  shimmerReverse,
+  shimmerStyle,
+} from "./ui/shimmer.ts";
 export {
   Sidebar,
   type SidebarCollapsible,
@@ -553,12 +772,14 @@ export {
   SidebarGroupAction,
   SidebarGroupContent,
   SidebarGroupLabel,
+  sidebarGroupLabelVariants,
   SidebarHeader,
   SidebarInput,
   SidebarInset,
   SidebarMenu,
   SidebarMenuAction,
   type SidebarMenuActionProps,
+  sidebarMenuActionVariants,
   SidebarMenuBadge,
   SidebarMenuButton,
   type SidebarMenuButtonProps,
@@ -584,7 +805,22 @@ export {
 } from "./ui/sidebar.tsx";
 export { Skeleton } from "./ui/skeleton.tsx";
 export { Slider, type SliderProps } from "./ui/slider.tsx";
-export { toast, type ToastApi, Toaster, type ToasterProps } from "./ui/sonner.tsx";
+export {
+  type ExternalToast,
+  toast,
+  type ToastApi,
+  type ToastButtonOptions,
+  Toaster,
+  type ToasterIcons,
+  type ToasterOffset,
+  type ToasterPosition,
+  type ToasterProps,
+  type ToasterSwipeDirection,
+  type ToasterTheme,
+  type ToasterToastOptions,
+  type ToastPromiseMessage,
+  type ToastPromiseOptions,
+} from "./ui/sonner.tsx";
 export { Spinner, type SpinnerProps } from "./ui/spinner.tsx";
 export { srOnly } from "./ui/sr-only.ts";
 export { Switch, type SwitchProps, type SwitchSize } from "./ui/switch.tsx";
@@ -613,10 +849,31 @@ export {
   TabsTrigger,
   type TabsTriggerProps,
 } from "./ui/tabs.tsx";
+export { Textarea, type TextareaProps } from "./ui/textarea.tsx";
+export {
+  createToastManager,
+  Toast,
+  ToastAction,
+  type ToastActionProps,
+  ToastClose,
+  ToastContent,
+  ToastDescription,
+  type ToastManager,
+  type ToastManagerOptions,
+  type ToastObject,
+  ToastPortal,
+  type ToastProps,
+  ToastProvider,
+  type ToastProviderProps,
+  ToastTitle,
+  ToastViewport,
+  useToastManager,
+} from "./ui/toast.tsx";
 export {
   ToggleGroup,
   ToggleGroupItem,
   type ToggleGroupItemProps,
+  type ToggleGroupOrientation,
   type ToggleGroupProps,
   type ToggleGroupType,
 } from "./ui/toggle-group.tsx";
@@ -632,4 +889,7 @@ export {
   TooltipContent,
   type TooltipContentProps,
   type TooltipProps,
+  TooltipProvider,
+  type TooltipProviderProps,
+  TooltipTrigger,
 } from "./ui/tooltip.tsx";

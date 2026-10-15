@@ -191,13 +191,17 @@ describe("Menubar", () => {
   test("it is a menubar of triggers", () => {
     render(() => <Fixture />);
     expect(screen.getByRole("menubar")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "File" })).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Edit" })).toBeTruthy();
+    expect(screen.getByRole("menuitem", { name: "File" }).getAttribute("aria-haspopup")).toBe(
+      "true",
+    );
+    expect(screen.getByRole("menuitem", { name: "Edit" }).getAttribute("aria-haspopup")).toBe(
+      "true",
+    );
   });
 
   test("a trigger opens its own menu", async () => {
     render(() => <Fixture />);
-    await user.click(screen.getByRole("button", { name: "File" }));
+    await user.click(screen.getByRole("menuitem", { name: "File" }));
     await settle();
     expect(screen.getByRole("menu", { name: "File" })).toBeTruthy();
     expect(slot("menubar-content")).toBeTruthy();
@@ -205,17 +209,17 @@ describe("Menubar", () => {
 
   test("the arrows move between the menus, which is what makes it a menubar", async () => {
     render(() => <Fixture />);
-    const file = screen.getByRole("button", { name: "File" });
+    const file = screen.getByRole("menuitem", { name: "File" });
     file.focus();
     await user.keyboard("{ArrowRight}");
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Edit" }));
+    expect(document.activeElement).toBe(screen.getByRole("menuitem", { name: "Edit" }));
     await user.keyboard("{ArrowRight}");
     expect(document.activeElement).toBe(file);
   });
 
   test("the items are the dropdown's, under the menubar's own names", async () => {
     render(() => <Fixture />);
-    await user.click(screen.getByRole("button", { name: "File" }));
+    await user.click(screen.getByRole("menuitem", { name: "File" }));
     await settle();
     expect(slot("menubar-item")).toBeTruthy();
     expect(document.querySelector('[data-slot="dropdown-menu-item"]')).toBeNull();

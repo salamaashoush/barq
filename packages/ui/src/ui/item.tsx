@@ -236,7 +236,7 @@ const description = ui({
   display: "-webkit-box",
   "-webkit-box-orient": "vertical",
   "-webkit-line-clamp": "2",
-  textAlign: "left",
+  textAlign: "start",
   fontSize: "var(--text-sm)",
   lineHeight: firstThatWorks(
     "var(--leading-normal)",
@@ -303,6 +303,8 @@ export interface ItemProps extends UiProps {
   size?: ItemSize;
   /** Turns the row into a link. The hover tint only applies to an `<a>`. */
   href?: string;
+  target?: string;
+  rel?: string;
 }
 
 /**
@@ -336,7 +338,7 @@ export function Item(props: Incoming<ItemProps>) {
 
   return (
     <Show when={props.href?.() !== undefined} fallback={<div {...common()}>{props.children}</div>}>
-      <a {...common()} href={props.href?.()}>
+      <a {...common()} href={props.href?.()} target={props.target?.()} rel={props.rel?.()}>
         {props.children}
       </a>
     </Show>

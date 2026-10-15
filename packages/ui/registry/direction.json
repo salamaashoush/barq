@@ -1,0 +1,18 @@
+{
+  "$schema": "https://github.com/salamaashoush/barq/schema/registry-item.json",
+  "name": "direction",
+  "type": "registry:ui",
+  "title": "Direction",
+  "dependencies": [
+    "@barqjs/aria",
+    "@barqjs/core"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "ui/direction.tsx",
+      "type": "registry:ui",
+      "content": "import {\n  provideDirection,\n  useDirection as useScopeDirection,\n  type ReadingDirection,\n} from \"@barqjs/aria/i18n\";\nimport { access, type MaybeAccessor } from \"@barqjs/aria/utils\";\nimport type { Accessor, Child, Incoming } from \"@barqjs/core\";\n\nexport type Direction = ReadingDirection;\n\nexport interface DirectionProviderProps {\n  dir?: Direction;\n  /** The same as `dir`, and the one that wins when both are given. */\n  direction?: Direction;\n  children?: Child;\n}\n\n/**\n * Which way everything under it runs.\n *\n * ```tsx\n * <DirectionProvider dir=\"rtl\">\n *   <App />\n * </DirectionProvider>\n * ```\n *\n * It renders no element, so it does not write `dir` anywhere: put that on\n * `<html>` or on a wrapper you own, which is what makes the browser lay the\n * text and every logical property out that way. This is the half CSS cannot\n * reach, the arrow keys, the side a submenu opens on and the end a slider\n * starts from.\n */\nexport function DirectionProvider(props: Incoming<DirectionProviderProps>) {\n  const inherited = useScopeDirection();\n  provideDirection(() => props.direction?.() ?? props.dir?.() ?? inherited());\n\n  return <>{props.children}</>;\n}\n\n/**\n * The direction in scope, or the component's own when it was given one.\n *\n * ```tsx\n * const direction = useDirection(props.dir);\n * const back = () => (direction() === \"rtl\" ? \"ArrowRight\" : \"ArrowLeft\");\n * ```\n */\nexport function useDirection(local?: MaybeAccessor<Direction | undefined>): Accessor<Direction> {\n  const scoped = useScopeDirection();\n  return () => access(local) ?? scoped();\n}\n"
+    }
+  ]
+}

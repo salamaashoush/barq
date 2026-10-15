@@ -1,5 +1,5 @@
 import { Dialog as AriaDialog, Heading, Modal, useDialogDescription } from "@barqjs/aria/dialog";
-import { Show, type Child, type Incoming } from "@barqjs/core";
+import { Show, type Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 import { X } from "@barqjs/lucide/icons/x";
 
@@ -7,9 +7,16 @@ import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
 import { icon } from "../lib/shared-icon.ts";
 import { text } from "../lib/shared-text.ts";
-import { overlayFamily, type OverlayRootProps } from "../lib/overlay.tsx";
+import {
+  overlayFamily,
+  OverlayPortal,
+  registerUnderlay,
+  type OverlayPortalProps,
+  type OverlayRootProps,
+} from "../lib/overlay.tsx";
 import type { UiProps } from "../lib/props.ts";
-import { uiProps } from "../lib/slot.ts";
+import type { TriggerPartProps } from "../lib/trigger.tsx";
+import { handedOn, named, uiProps } from "../lib/slot.ts";
 import { Button, type ButtonProps } from "./button.tsx";
 import { srOnly } from "./sr-only.ts";
 
@@ -73,7 +80,7 @@ const description = ui(text.sm, {
 const close = ui(box.transition, icon.plain, icon.sized, {
   position: "absolute",
   top: "calc(var(--spacing) * 4)",
-  right: "calc(var(--spacing) * 4)",
+  insetInlineEnd: "calc(var(--spacing) * 4)",
   borderRadius: "var(--radius-xs)",
   opacity: "70%",
   "--ui-ring-offset-color": "var(--background)",
@@ -225,8 +232,21 @@ export function Sheet(props: Incoming<SheetProps>) {
   return <family.Root {...props} />;
 }
 
-export function SheetTrigger(props: Incoming<{ children?: Child }>) {
+export function SheetTrigger(props: Incoming<TriggerPartProps>) {
   return <family.Trigger {...props} />;
+}
+
+export interface SheetPortalProps extends OverlayPortalProps {}
+
+/** Names the container the sheet inside is rendered into. See `<DialogPortal>`. */
+export function SheetPortal(props: Incoming<SheetPortalProps>) {
+  return <OverlayPortal {...props} />;
+}
+
+/** What the element behind the sheet looks like and carries. See `<DialogOverlay>`. */
+export function SheetOverlay(props: Incoming<UiProps>) {
+  registerUnderlay(family.use(), uiProps("sheet-overlay", overlay, props));
+  return <></>;
 }
 
 export interface SheetContentProps extends UiProps {
@@ -242,7 +262,7 @@ export interface SheetContentProps extends UiProps {
 }
 
 export function SheetContent(props: Incoming<SheetContentProps>) {
-  const { state } = family.use();
+  const { state, underlay } = family.use();
 
   return (
     <Modal
@@ -250,13 +270,15 @@ export function SheetContent(props: Incoming<SheetContentProps>) {
       onOpenChange={state.setOpen}
       isDismissable={props.isDismissable?.() !== false}
       isKeyboardDismissDisabled={props.isKeyboardDismissDisabled?.() === true}
-      underlayClass={overlay}
+      underlayClass={underlay() === null ? overlay : undefined}
       underlaySlot="sheet-overlay"
+      underlayProps={underlay() ?? undefined}
+      {...handedOn(props)}
       class={ui(content, props.class?.(), props.className?.())}
       data-slot={props["data-slot"]?.() ?? "sheet-content"}
       data-side={props.side?.() ?? "right"}
     >
-      <AriaDialog class={contents}>
+      <AriaDialog {...named(props)} class={contents}>
         {props.children}
         <Show when={props.showCloseButton?.() !== false}>
           <button type="button" data-slot="sheet-close" class={close} onClick={() => state.close()}>

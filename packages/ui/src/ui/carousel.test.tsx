@@ -1,12 +1,16 @@
 import { afterEach, describe, expect, test } from "bun:test";
+import { provideDirection } from "@barqjs/aria/i18n";
+import { Show, createSignal, flush, type Child } from "@barqjs/core";
 import { cleanup, render, tick, user } from "@barqjs/testing";
 
+import { rulesFor } from "../test-rules.ts";
 import {
   Carousel,
   CarouselContent,
   CarouselItem,
   CarouselNext,
   CarouselPrevious,
+  useCarousel,
   type CarouselApi,
 } from "./carousel.tsx";
 
@@ -91,6 +95,29 @@ describe("Carousel", () => {
     expect(seen).toHaveLength(1);
     expect(typeof seen[0]?.scrollNext).toBe("function");
     expect(seen[0]?.slideNodes()).toHaveLength(3);
+  });
+
+  test("a track that arrives after the carousel has settled is built too", async () => {
+    const seen: CarouselApi[] = [];
+    const [shown, setShown] = createSignal(false);
+    render(() => (
+      <Carousel setApi={(api) => seen.push(api)}>
+        <Show when={shown()}>
+          <CarouselContent>
+            <CarouselItem>One</CarouselItem>
+            <CarouselItem>Two</CarouselItem>
+          </CarouselContent>
+        </Show>
+      </Carousel>
+    ));
+    await tick();
+    expect(seen).toHaveLength(0);
+
+    setShown(true);
+    flush();
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.slideNodes()).toHaveLength(2);
   });
 
   test("the arrow keys move it, and only the ones for its axis", async () => {
@@ -188,5 +215,173 @@ describe("Carousel", () => {
 
   test("a piece outside a carousel says what is wrong", () => {
     expect(() => render(() => <CarouselItem>loose</CarouselItem>)).toThrow("inside a <Carousel>");
+  });
+});
+
+describe("useCarousel", () => {
+  test("a part of the caller's own reads what the built-in ones read", async () => {
+    function Count() {
+      const carousel = useCarousel();
+      return (
+        <button
+          type="button"
+          data-testid="count"
+          data-orientation={carousel.orientation()}
+          disabled={!carousel.canScrollNext()}
+          onClick={() => carousel.scrollNext()}
+        >
+          {() => String(carousel.api()?.slideNodes().length ?? 0)}
+        </button>
+      );
+    }
+    const seen: CarouselApi[] = [];
+    render(() => (
+      <Carousel orientation="vertical" setApi={(api) => seen.push(api)}>
+        <CarouselContent>
+          <CarouselItem>One</CarouselItem>
+          <CarouselItem>Two</CarouselItem>
+        </CarouselContent>
+        <Count />
+      </Carousel>
+    ));
+    await tick();
+    flush();
+    const own = document.querySelector('[data-testid="count"]') as HTMLButtonElement;
+    expect(own.getAttribute("data-orientation")).toBe("vertical");
+    expect(own.textContent).toBe("2");
+    // happy-dom measures nothing, so there is one snap and nowhere to go.
+    expect(own.disabled).toBe(true);
+  });
+
+  test("it hands over the options the carousel was given", () => {
+    let loop: boolean | undefined;
+    function Probe() {
+      loop = useCarousel().opts()?.loop;
+      return <div />;
+    }
+    render(() => (
+      <Carousel opts={{ loop: true }}>
+        <Probe />
+      </Carousel>
+    ));
+    expect(loop).toBe(true);
+  });
+
+  test("outside a carousel it says what is wrong", () => {
+    function Loose() {
+      useCarousel();
+      return <div />;
+    }
+    expect(() => render(() => <Loose />)).toThrow("inside a <Carousel>");
+  });
+});
+
+describe("Carousel, right to left", () => {
+  function Rtl(props: { children?: Child }) {
+    provideDirection("rtl");
+    return <div dir="rtl">{props.children}</div>;
+  }
+
+  function spied(api: CarouselApi): { prev: number; next: number } {
+    const calls = { prev: 0, next: 0 };
+    Object.defineProperty(api, "scrollPrev", { value: () => calls.prev++ });
+    Object.defineProperty(api, "scrollNext", { value: () => calls.next++ });
+    return calls;
+  }
+
+  test("the engine is told, so a drag and the snap order both mirror", async () => {
+    const seen: CarouselApi[] = [];
+    render(() => (
+      <Rtl>
+        <Three setApi={(api) => seen.push(api)} />
+      </Rtl>
+    ));
+    await tick();
+    expect(seen[0]?.internalEngine().options.direction).toBe("rtl");
+  });
+
+  test("left to right is what it is told otherwise", async () => {
+    const seen: CarouselApi[] = [];
+    render(() => <Three setApi={(api) => seen.push(api)} />);
+    await tick();
+    expect(seen[0]?.internalEngine().options.direction).toBe("ltr");
+  });
+
+  test("a direction in the options is the caller's and wins", async () => {
+    const seen: CarouselApi[] = [];
+    render(() => (
+      <Rtl>
+        <Carousel opts={{ direction: "ltr" }} setApi={(api) => seen.push(api)}>
+          <CarouselContent>
+            <CarouselItem>One</CarouselItem>
+          </CarouselContent>
+        </Carousel>
+      </Rtl>
+    ));
+    await tick();
+    expect(seen[0]?.internalEngine().options.direction).toBe("ltr");
+  });
+
+  test("the arrow keys follow what is on screen: right is back", async () => {
+    const seen: CarouselApi[] = [];
+    render(() => (
+      <Rtl>
+        <Three setApi={(api) => seen.push(api)} />
+      </Rtl>
+    ));
+    await tick();
+    const calls = spied(seen[0] as CarouselApi);
+    const region = at("carousel") as HTMLElement;
+
+    user.keyDown("ArrowRight", { target: region });
+    expect(calls).toEqual({ prev: 1, next: 0 });
+    user.keyDown("ArrowLeft", { target: region });
+    expect(calls).toEqual({ prev: 1, next: 1 });
+  });
+
+  test("left to right, left is back", async () => {
+    const seen: CarouselApi[] = [];
+    render(() => <Three setApi={(api) => seen.push(api)} />);
+    await tick();
+    const calls = spied(seen[0] as CarouselApi);
+    const region = at("carousel") as HTMLElement;
+
+    user.keyDown("ArrowLeft", { target: region });
+    expect(calls).toEqual({ prev: 1, next: 0 });
+    user.keyDown("ArrowRight", { target: region });
+    expect(calls).toEqual({ prev: 1, next: 1 });
+  });
+
+  test("a vertical carousel does not care which way the text runs", async () => {
+    const seen: CarouselApi[] = [];
+    render(() => (
+      <Rtl>
+        <Three orientation="vertical" setApi={(api) => seen.push(api)} />
+      </Rtl>
+    ));
+    await tick();
+    const calls = spied(seen[0] as CarouselApi);
+    const region = at("carousel") as HTMLElement;
+    user.keyDown("ArrowUp", { target: region });
+    user.keyDown("ArrowDown", { target: region });
+    expect(calls).toEqual({ prev: 1, next: 1 });
+  });
+
+  test("the gutter and the arrows are placed by the start and the end", () => {
+    render(() => <Three />);
+    const rules = (slot: string): string => rulesFor(at(slot)?.className ?? "");
+    expect(rules("carousel-content")).toContain("margin-inline-start:");
+    expect(rules("carousel-item")).toContain("padding-inline-start:");
+    expect(rules("carousel-previous")).toContain("inset-inline-start:");
+    expect(rules("carousel-next")).toContain("inset-inline-end:");
+    for (const slot of ["carousel-content", "carousel-item"]) {
+      expect(rules(slot), slot).not.toContain("-left");
+    }
+  });
+
+  test("the arrow glyphs turn round with the text", () => {
+    render(() => <Three />);
+    const rules = rulesFor(at("carousel-previous")?.className ?? "");
+    expect(rules).toMatch(/dir\(rtl\)[^}]*> svg\{rotate: 180deg\}/);
   });
 });

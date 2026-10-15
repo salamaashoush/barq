@@ -96,6 +96,18 @@ describe("Item", () => {
     expect(rulesFor(base)).toContain("a.");
   });
 
+  test("a link says where it opens", () => {
+    render(() => (
+      <Item href="https://example.com/docs" target="_blank" rel="noopener noreferrer">
+        Documentation
+      </Item>
+    ));
+    const link = screen.getByRole("link", { name: "Documentation" });
+    expect(link.getAttribute("data-slot")).toBe("item");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
   test("without an href it is a div", () => {
     render(() => <Item>a</Item>);
     expect(slot("item").tagName).toBe("DIV");
@@ -140,9 +152,7 @@ describe("Item", () => {
 
 describe("Item density", () => {
   test("every size is its own size", () => {
-    const classes = (["default", "sm", "xs", "2xs"] as const).map((size) =>
-      itemVariants({ size }),
-    );
+    const classes = (["default", "sm", "xs", "2xs"] as const).map((size) => itemVariants({ size }));
     // `sm` was a copy of `default`, so asking for a smaller row gave the same
     // row and the caller had to reach for a class of their own.
     expect(new Set(classes).size).toBe(4);
@@ -169,9 +179,7 @@ describe("Item density", () => {
   test("the densest size takes the text and the media down with it", () => {
     // A row is only as short as what is in it: a 12 px title and a 20 px icon
     // are what make the list a list rather than a stack of cards.
-    expect(rulesFor(itemMediaVariants({ variant: "icon" }))).toContain(
-      "calc(var(--spacing) * 5)",
-    );
+    expect(rulesFor(itemMediaVariants({ variant: "icon" }))).toContain("calc(var(--spacing) * 5)");
   });
 });
 
@@ -180,5 +188,20 @@ describe("ItemMedia density", () => {
     const rules = rulesFor(itemMediaVariants({ variant: "icon" }));
     expect(rules).toContain('[data-size="xs"]');
     expect(rules).toContain("calc(var(--spacing) * 6)");
+  });
+});
+
+describe("Item in a right-to-left page", () => {
+  test("the description starts where the text starts", () => {
+    render(() => (
+      <Item>
+        <ItemContent>
+          <ItemDescription>Uploaded two days ago.</ItemDescription>
+        </ItemContent>
+      </Item>
+    ));
+    const rules = rulesFor(slot("item-description").className);
+    expect(rules).toContain("text-align: start");
+    expect(rules).not.toContain("text-align: left");
   });
 });

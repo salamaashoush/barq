@@ -3,7 +3,7 @@
   "item-separator": "my-2",
   "item-content": "flex flex-1 flex-col gap-1 group-data-[size=xs]/item:gap-0 [&+[data-slot=item-content]]:flex-none",
   "item-title": "line-clamp-1 flex w-fit items-center gap-2 text-sm leading-snug font-medium underline-offset-4",
-  "item-description": "line-clamp-2 text-left text-sm leading-normal font-normal text-muted-foreground group-data-[size=xs]/item:text-xs [&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-primary",
+  "item-description": "line-clamp-2 text-start text-sm leading-normal font-normal text-muted-foreground group-data-[size=xs]/item:text-xs [&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-primary",
   "item-actions": "flex items-center gap-2",
   "item-header": "flex basis-full items-center justify-between gap-2",
   "item-footer": "flex basis-full items-center justify-between gap-2",

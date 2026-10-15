@@ -1,4 +1,7 @@
 {
   "progress": "relative flex h-1 w-full items-center overflow-x-hidden rounded-full bg-muted",
-  "progress-indicator": "size-full flex-1 bg-primary transition-all"
+  "progress-indicator": "size-full flex-1 bg-primary transition-all",
+  "progress-track": "relative flex h-1 w-full items-center overflow-x-hidden rounded-full bg-muted",
+  "progress-label": "text-sm font-medium",
+  "progress-value": "ms-auto text-sm text-muted-foreground tabular-nums"
 }

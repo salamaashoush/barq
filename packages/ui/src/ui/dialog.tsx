@@ -1,5 +1,5 @@
 import { Dialog as AriaDialog, Heading, Modal, useDialogDescription } from "@barqjs/aria/dialog";
-import { Show, type Child, type Incoming } from "@barqjs/core";
+import { Show, type Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 import { X } from "@barqjs/lucide/icons/x";
 
@@ -10,9 +10,16 @@ import { box } from "../lib/shared-box.ts";
 import { icon } from "../lib/shared-icon.ts";
 import { when } from "../lib/shared-when.ts";
 import { text } from "../lib/shared-text.ts";
-import { overlayFamily, type OverlayRootProps } from "../lib/overlay.tsx";
+import {
+  overlayFamily,
+  OverlayPortal,
+  registerUnderlay,
+  type OverlayPortalProps,
+  type OverlayRootProps,
+} from "../lib/overlay.tsx";
 import type { UiProps } from "../lib/props.ts";
-import { uiProps } from "../lib/slot.ts";
+import type { TriggerPartProps } from "../lib/trigger.tsx";
+import { handedOn, named, uiProps } from "../lib/slot.ts";
 import { srOnly } from "./sr-only.ts";
 
 const ui = layer("barq.ui");
@@ -100,8 +107,8 @@ const footer = ui({
   display: "flex",
   flexDirection: "column-reverse",
   gap: "calc(var(--spacing) * 2)",
-  borderBottomRightRadius: "calc(var(--radius) * 1.4)",
-  borderBottomLeftRadius: "calc(var(--radius) * 1.4)",
+  borderEndEndRadius: "calc(var(--radius) * 1.4)",
+  borderEndStartRadius: "calc(var(--radius) * 1.4)",
   borderTopStyle: "var(--ui-border-style)",
   borderTopWidth: "1px",
   backgroundColor: "var(--muted)",
@@ -139,7 +146,7 @@ const description = ui(text.sm, {
 const close = ui(box.transition, icon.plain, icon.sized, {
   position: "absolute",
   top: "calc(var(--spacing) * 4)",
-  right: "calc(var(--spacing) * 4)",
+  insetInlineEnd: "calc(var(--spacing) * 4)",
   borderRadius: "var(--radius-xs)",
   opacity: "70%",
   "--ui-ring-offset-color": "var(--background)",
@@ -194,8 +201,39 @@ export function Dialog(props: Incoming<DialogProps>) {
   return <family.Root {...props} />;
 }
 
-export function DialogTrigger(props: Incoming<{ children?: Child }>) {
+export function DialogTrigger(props: Incoming<TriggerPartProps>) {
   return <family.Trigger {...props} />;
+}
+
+export interface DialogPortalProps extends OverlayPortalProps {}
+
+/**
+ * Names the container the dialog inside is rendered into.
+ *
+ * `<DialogContent>` portals itself, so this is only for sending it somewhere
+ * other than the body: a shadow root, a fullscreen element. There is no
+ * `forceMount`, because a closed dialog is not in the document at all.
+ */
+export function DialogPortal(props: Incoming<DialogPortalProps>) {
+  return <OverlayPortal {...props} />;
+}
+
+/**
+ * What the element behind the dialog looks like and carries.
+ *
+ * ```tsx
+ * <Dialog>
+ *   <DialogOverlay class={frosted} />
+ *   <DialogContent>…</DialogContent>
+ * </Dialog>
+ * ```
+ *
+ * It renders nothing itself: the modal draws that element with its content, so
+ * the two enter and leave together, and what this was given lands there.
+ */
+export function DialogOverlay(props: Incoming<UiProps>) {
+  registerUnderlay(family.use(), uiProps("dialog-overlay", overlay, props));
+  return <></>;
 }
 
 export interface DialogContentProps extends UiProps {
@@ -210,7 +248,7 @@ export interface DialogContentProps extends UiProps {
 }
 
 export function DialogContent(props: Incoming<DialogContentProps>) {
-  const { state } = family.use();
+  const { state, underlay } = family.use();
 
   return (
     <Modal
@@ -218,12 +256,14 @@ export function DialogContent(props: Incoming<DialogContentProps>) {
       onOpenChange={state.setOpen}
       isDismissable={props.isDismissable?.() !== false}
       isKeyboardDismissDisabled={props.isKeyboardDismissDisabled?.() === true}
-      underlayClass={overlay}
+      underlayClass={underlay() === null ? overlay : undefined}
       underlaySlot="dialog-overlay"
+      underlayProps={underlay() ?? undefined}
+      {...handedOn(props)}
       class={ui(content, props.class?.(), props.className?.())}
       data-slot={props["data-slot"]?.() ?? "dialog-content"}
     >
-      <AriaDialog role={props.role?.() ?? "dialog"} class={contents}>
+      <AriaDialog {...named(props)} role={props.role?.() ?? "dialog"} class={contents}>
         {props.children}
         <Show when={props.showCloseButton?.() !== false}>
           <CornerClose label={props.closeLabel?.() ?? "Close"} />
@@ -246,8 +286,22 @@ export function DialogHeader(props: Incoming<UiProps>) {
   return <div {...uiProps("dialog-header", header, props)}>{props.children}</div>;
 }
 
-export function DialogFooter(props: Incoming<UiProps>) {
-  return <div {...uiProps("dialog-footer", footer, props)}>{props.children}</div>;
+export interface DialogFooterProps extends UiProps {
+  /** A `<DialogClose>` after the footer's own buttons. @default false */
+  showCloseButton?: boolean;
+  /** What that button says. @default "Close" */
+  closeLabel?: string;
+}
+
+export function DialogFooter(props: Incoming<DialogFooterProps>) {
+  return (
+    <div {...uiProps("dialog-footer", footer, props)}>
+      {props.children}
+      <Show when={props.showCloseButton?.() === true}>
+        <DialogClose>{props.closeLabel?.() ?? "Close"}</DialogClose>
+      </Show>
+    </div>
+  );
 }
 
 /** The dialog's accessible name. Every dialog needs one. */

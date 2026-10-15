@@ -112,7 +112,16 @@ export function PaginationLink(props: Incoming<PaginationLinkProps>) {
 export interface PaginationEdgeProps extends Omit<PaginationLinkProps, "size"> {
   /** The word beside the chevron. Hidden on a narrow screen. */
   label?: string;
+  /** shadcn's spelling of `label`. */
+  text?: string;
 }
+
+/** A chevron means "towards the start" or "towards the end", which right to left is the other way. */
+const mirrored = ui({
+  ":dir(rtl)": {
+    rotate: "180deg",
+  },
+});
 
 export function PaginationPrevious(props: Incoming<PaginationEdgeProps>) {
   return (
@@ -122,8 +131,8 @@ export function PaginationPrevious(props: Incoming<PaginationEdgeProps>) {
       aria-label={props["aria-label"]?.() ?? "Go to previous page"}
       class={ui(edge, props.class?.())}
     >
-      <ChevronLeft />
-      <span class={wide}>{() => props.label?.() ?? "Previous"}</span>
+      <ChevronLeft data-icon="inline-start" class={mirrored} />
+      <span class={wide}>{() => props.label?.() ?? props.text?.() ?? "Previous"}</span>
     </PaginationLink>
   );
 }
@@ -136,8 +145,8 @@ export function PaginationNext(props: Incoming<PaginationEdgeProps>) {
       aria-label={props["aria-label"]?.() ?? "Go to next page"}
       class={ui(edge, props.class?.())}
     >
-      <span class={wide}>{() => props.label?.() ?? "Next"}</span>
-      <ChevronRight />
+      <span class={wide}>{() => props.label?.() ?? props.text?.() ?? "Next"}</span>
+      <ChevronRight data-icon="inline-end" class={mirrored} />
     </PaginationLink>
   );
 }

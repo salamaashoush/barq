@@ -166,6 +166,15 @@ const ALLOWED: Record<string, string> = {
     "`transition-[…]` and `duration-200` set the SAME property, and an atom " +
     "is one declaration: the literal wins and the `var()` form it replaces " +
     "cannot also be present",
+  "progress:progress-value:font-variant-numeric":
+    "`tabular-nums` composes five numeric features through `--ui-*` variables " +
+    "so that two of them can be set by two classes. The value sets one and " +
+    "nothing else sets another, so it is written as the literal it computes to",
+  "progress:progress-value:--ui-numeric-spacing": "as above",
+  "toast:toast-content:transition-duration":
+    "as above: `transition-opacity` and `duration-250` set the same property",
+  "toast:toast-content:transition-timing-function":
+    "as above, for `transition-opacity` and the `ease-[…]` beside it",
 };
 
 /** The literal whose declarations cover most of what the spec asks for. */

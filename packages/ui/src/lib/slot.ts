@@ -30,6 +30,7 @@ import {
   type DOMProps,
 } from "@barqjs/aria/utils";
 import type { Incoming } from "@barqjs/core";
+import { mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 
 import { ui } from "./atoms.ts";
 
@@ -60,6 +61,7 @@ const EXTRA = new Set([
   "aria-haspopup",
   "aria-disabled",
   "aria-live",
+  "aria-busy",
 ]);
 
 /**
@@ -123,10 +125,20 @@ const CONTROL = new Set([
   "onSelect",
 ]);
 
+/**
+ * A component's props as `uiProps` reads them.
+ *
+ * The `ref` is whatever the component declares for its own element: the
+ * callback every part takes, or the `RefTarget` of a component that renders
+ * one known element. Both are handed to that element and neither is read.
+ * `children` is the component's to place, in whatever shape it takes them.
+ */
+type Given = Incoming<Omit<UiProps, "ref" | "children">> & { ref?: () => unknown };
+
 function build(
   slot: string,
   className: string | (() => string),
-  props: Incoming<UiProps>,
+  props: Given,
   propNames: ReadonlySet<string>,
 ): DOMProps {
   const own = typeof className === "function" ? className : () => className;
@@ -137,6 +149,10 @@ function build(
   // of the order they were passed. `ui` merges by property; a class that is
   // not an atom passes through and still wins, because it is unlayered.
   const { class: _, ...presentation } = styleProps(props);
+  // Only when one was given, so an element with a `ref` of its own written
+  // after the spread is not handed a second, empty one to merge with.
+  const forwarded: DOMProps =
+    props.ref === undefined ? {} : { ref: mergeRefs(props.ref() as RefTarget<Element>) };
 
   return mergeProps(
     { class: () => ui(own(), props.class?.(), props.className?.()) },
@@ -146,15 +162,57 @@ function build(
     { "data-slot": slot },
     filterDOMProps(fromProps(props), { global: true, labelable: true, propNames }),
     presentation,
+    forwarded,
   );
 }
 
-export function uiProps(
-  slot: string,
-  className: string | (() => string),
-  props: Incoming<UiProps>,
-): DOMProps {
+export function uiProps(slot: string, className: string | (() => string), props: Given): DOMProps {
   return build(slot, className, props, EXTRA);
+}
+
+/**
+ * What a part hands on when ANOTHER component builds its element.
+ *
+ * `uiProps` is for an element the part writes itself. A part drawn by a
+ * component from `@barqjs/aria` (a sheet by `<Modal>`) passes its class and its
+ * slot by name, and whatever else the caller wrote has to be passed as well or
+ * it is dropped without a word: `style`, `id`, the `ref` and every `data-*`.
+ *
+ * The values are the Cells they arrived as, so spreading the result onto a
+ * component is the same as having written each prop. `data-slot` is left out,
+ * because the part names its own.
+ */
+export function handedOn(props: object): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const source = props as Record<string, unknown>;
+  for (const key in source) {
+    if (!Object.hasOwn(source, key)) continue;
+    const kept =
+      key === "style" ||
+      key === "id" ||
+      key === "ref" ||
+      (key.startsWith("data-") && key !== "data-slot");
+    if (kept) out[key] = source[key];
+  }
+  return out;
+}
+
+const NAMING = ["aria-label", "aria-labelledby", "aria-describedby"] as const;
+
+/**
+ * The caller's name and description, for the element that has the ROLE.
+ *
+ * Where a part's box and its role are two elements (a dialog's panel and the
+ * `role="dialog"` inside it), `aria-*` belongs on the second: a description on
+ * the panel describes a `<div>`.
+ */
+export function named(props: object): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  const source = props as Record<string, unknown>;
+  for (const key of NAMING) {
+    if (Object.hasOwn(source, key)) out[key] = source[key];
+  }
+  return out;
 }
 
 /**
@@ -176,7 +234,10 @@ export function omit<T extends object>(props: T, names: readonly string[]): T {
 export function controlProps(
   slot: string,
   className: string | (() => string),
-  props: Incoming<UiProps>,
+  props: Given,
 ): DOMProps {
   return build(slot, className, props, CONTROL);
 }
+
+// Defined in aria, whose questionnaire parts draw their own elements and take a `render` too.
+export { partRender, type PartRender, type RenderPart } from "@barqjs/aria/utils";

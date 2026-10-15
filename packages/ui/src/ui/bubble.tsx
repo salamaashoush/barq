@@ -1,10 +1,10 @@
-import type { Incoming } from "@barqjs/core";
+import { Show, type Incoming, type JSXElement } from "@barqjs/core";
 import { layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
-import { uiProps } from "../lib/slot.ts";
+import { partRender, uiProps, type RenderPart } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
@@ -275,9 +275,36 @@ export function Bubble(props: Incoming<BubbleProps>) {
   );
 }
 
-/** The painted part. A `<button>` here is a bubble you can press. */
-export function BubbleContent(props: Incoming<UiProps>) {
-  return <div {...uiProps("bubble-content", content, props)}>{props.children}</div>;
+export interface BubbleContentProps extends UiProps {
+  /** Turns the painted part into a link. */
+  href?: string;
+  target?: string;
+  rel?: string;
+  /** Another element in its place: a `<button>` makes a bubble you can press. */
+  render?: RenderPart;
+}
+
+/** The painted part. */
+export function BubbleContent(props: Incoming<BubbleContentProps>) {
+  const render = props.render?.();
+  if (render !== undefined) {
+    return render(partRender(uiProps("bubble-content", content, props))) as JSXElement;
+  }
+  return (
+    <Show
+      when={props.href?.() !== undefined}
+      fallback={<div {...uiProps("bubble-content", content, props)}>{props.children}</div>}
+    >
+      <a
+        {...uiProps("bubble-content", content, props)}
+        href={props.href?.()}
+        target={props.target?.()}
+        rel={props.rel?.()}
+      >
+        {props.children}
+      </a>
+    </Show>
+  );
 }
 
 export interface BubbleReactionsProps extends UiProps {

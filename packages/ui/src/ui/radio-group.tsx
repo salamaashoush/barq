@@ -1,6 +1,8 @@
+import { provideDirection, useDirection } from "@barqjs/aria/i18n";
 import {
   Radio as AriaRadio,
   RadioGroup as AriaRadioGroup,
+  useRadio,
   type RadioComponentProps,
   type RadioGroupComponentProps,
 } from "@barqjs/aria/radio";
@@ -10,6 +12,8 @@ import { layer } from "@barqjs/css";
 import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
 import { ringSlot } from "../lib/shared-ring-slot.ts";
+import { omit } from "../lib/slot.ts";
+import { useFieldInvalid } from "./field.tsx";
 import { when } from "../lib/shared-when.ts";
 
 const ui = layer("barq.ui");
@@ -104,7 +108,20 @@ const dot = ui({
   },
 });
 
-export interface RadioGroupProps extends RadioGroupComponentProps {}
+export interface RadioGroupProps extends RadioGroupComponentProps {
+  /** shadcn's spelling of `onChange`. */
+  onValueChange?: (value: string) => void;
+  /** shadcn's spelling of `isDisabled`. */
+  disabled?: boolean;
+  /** shadcn's spelling of `isRequired`. */
+  required?: boolean;
+  /** Which way left and right run in a horizontal group. Defaults to the direction in scope. */
+  dir?: "ltr" | "rtl";
+  /** shadcn's spelling of `isInvalid`. Inside an invalid `<Field>` the group is invalid by default. */
+  "aria-invalid"?: boolean | "true" | "false";
+}
+
+const GROUP_UPSTREAM = ["onValueChange", "disabled", "required", "aria-invalid"] as const;
 
 /**
  * ```tsx
@@ -120,8 +137,26 @@ export interface RadioGroupProps extends RadioGroupComponentProps {}
  * or not.
  */
 export function RadioGroup(props: Incoming<RadioGroupProps>) {
+  const inherited = useDirection();
+  if (props.dir !== undefined) provideDirection(() => props.dir?.() ?? inherited());
+  const inField = useFieldInvalid();
+  const invalid = (): boolean => {
+    const given = props.isInvalid?.() ?? props["aria-invalid"]?.();
+    return given === undefined ? inField() : given === true || given === "true";
+  };
+
   return (
-    <AriaRadioGroup {...props} data-slot="radio-group">
+    <AriaRadioGroup
+      {...omit(props, GROUP_UPSTREAM)}
+      data-slot="radio-group"
+      isDisabled={props.isDisabled?.() ?? props.disabled?.()}
+      isRequired={props.isRequired?.() ?? props.required?.()}
+      isInvalid={invalid()}
+      onChange={(value: string) => {
+        props.onChange?.()?.(value);
+        props.onValueChange?.()?.(value);
+      }}
+    >
       <div data-slot="radio-group-items" class={ui(items, props.class?.(), props.className?.())}>
         {props.children}
       </div>
@@ -131,18 +166,36 @@ export function RadioGroup(props: Incoming<RadioGroupProps>) {
 
 export interface RadioGroupItemProps extends RadioComponentProps {
   children?: never;
+  /** shadcn's spelling of `isDisabled`. */
+  disabled?: boolean;
 }
 
 export function RadioGroupItem(props: Incoming<RadioGroupItemProps>) {
   return (
     <AriaRadio
-      {...props}
+      {...omit(props, ["disabled"])}
+      // Written around text it is the label it used to be; on its own it is
+      // the bare control, for the `<Label>` or `<Field>` that names it.
+      elementType={props.children === undefined ? "span" : "label"}
       data-slot={props["data-slot"]?.() ?? "radio-group-item"}
       class={ui(circle, props.class?.(), props.className?.())}
+      isDisabled={props.isDisabled?.() ?? props.disabled?.()}
     >
-      <span data-slot="radio-group-indicator" class={indicator}>
-        <span data-slot="radio-group-dot" class={dot} />
-      </span>
+      <RadioGroupIndicator />
     </AriaRadio>
+  );
+}
+
+function RadioGroupIndicator() {
+  const item = useRadio();
+  return (
+    <span
+      data-slot="radio-group-indicator"
+      class={indicator}
+      data-state={() => (item.isSelected() ? "checked" : "unchecked")}
+      data-disabled={() => (item.isDisabled() ? "" : undefined)}
+    >
+      <span data-slot="radio-group-dot" class={dot} />
+    </span>
   );
 }

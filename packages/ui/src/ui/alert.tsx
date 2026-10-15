@@ -22,11 +22,11 @@ export const alertVariants = variants({
     borderRadius: "var(--radius)",
     paddingInline: "calc(var(--spacing) * 2.5)",
     paddingBlock: "calc(var(--spacing) * 2)",
-    textAlign: "left",
+    textAlign: "start",
     // The action sits over the text, so the text stops short of it.
     ':has([data-slot="alert-action"])': {
       position: "relative",
-      paddingRight: "calc(var(--spacing) * 18)",
+      paddingInlineEnd: "calc(var(--spacing) * 18)",
     },
     ":has( > svg)": {
       gridTemplateColumns: "auto 1fr",
@@ -110,7 +110,7 @@ const description = ui(text.sm, {
 const action = ui({
   position: "absolute",
   top: "calc(var(--spacing) * 2)",
-  right: "calc(var(--spacing) * 2)",
+  insetInlineEnd: "calc(var(--spacing) * 2)",
 });
 
 export interface AlertProps extends UiProps {

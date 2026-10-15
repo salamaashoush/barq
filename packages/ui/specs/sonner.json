@@ -1,10 +1,11 @@
 {
-  "toaster": "fixed z-[100] flex flex-col gap-2 p-4 bottom-0 right-0 w-full sm:w-96 max-w-full pointer-events-none",
-  "toast": "pointer-events-auto flex w-full items-start gap-2 rounded-lg border bg-popover p-4 text-sm text-popover-foreground shadow-lg",
-  "toast-icon": "size-4 shrink-0 mt-0.5",
+  "toaster-list": "pointer-events-none fixed z-[100] box-border w-(--width) p-0 list-none outline-none",
+  "toast": "pointer-events-auto absolute inset-x-0 z-(--z-index) box-border touch-none outline-none flex items-start gap-2 border bg-(--normal-bg) p-4 text-sm text-(--normal-text) shadow-lg",
+  "toast-icon": "flex size-4 shrink-0 mt-0.5 items-center justify-center",
   "toast-body": "flex min-w-0 flex-1 flex-col gap-1",
   "toast-title": "font-medium leading-none",
   "toast-description": "text-sm text-muted-foreground",
-  "toast-action": "ml-auto shrink-0",
-  "toast-close": "ml-auto shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/toast:opacity-100"
+  "toast-action": "ms-auto shrink-0",
+  "toast-cancel": "ms-auto shrink-0",
+  "toast-close": "shrink-0 rounded-md p-1 text-muted-foreground opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 group-hover/toast:opacity-100"
 }

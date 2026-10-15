@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { render } from "@barqjs/testing";
+import { render, screen, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
 import {
@@ -231,5 +231,51 @@ describe("Attachment", () => {
     expect(rules).toContain("overflow-x: auto");
     expect(rules).toContain("scroll-snap-align: start");
     expect(rules).toContain("scrollbar-width: none");
+  });
+});
+
+describe("BubbleContent, as something to press or follow", () => {
+  test("render makes it the caller's button, painted and aligned as a bubble's content", async () => {
+    let pressed = 0;
+    const { container } = render(() => (
+      <Bubble variant="tinted" align="end">
+        <BubbleContent
+          class="mine"
+          render={(part) => (
+            <button {...part.props} ref={part.ref} type="button" onClick={() => pressed++}>
+              I forgot my password
+            </button>
+          )}
+        />
+      </Bubble>
+    ));
+
+    const control = screen.getByRole("button", { name: "I forgot my password" });
+    expect(container.querySelector('[data-slot="bubble-content"]')).toBe(control);
+    expect(control.classList.contains("mine")).toBe(true);
+    expect(rulesFor(control.className)).toContain('[data-slot="bubble"][data-align="end"]');
+    expect(container.querySelector('div[data-slot="bubble-content"]')).toBeNull();
+
+    await user.click(control);
+    expect(pressed).toBe(1);
+    control.focus();
+    await user.keyboard("{Enter}");
+    expect(pressed).toBe(2);
+  });
+
+  test("an href makes it a link, with where it opens", () => {
+    const { container } = render(() => (
+      <Bubble>
+        <BubbleContent href="https://example.com/help" target="_blank" rel="noreferrer">
+          Read the guide
+        </BubbleContent>
+      </Bubble>
+    ));
+
+    const link = screen.getByRole("link", { name: "Read the guide" });
+    expect(container.querySelector('[data-slot="bubble-content"]')).toBe(link);
+    expect(link.getAttribute("href")).toBe("https://example.com/help");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noreferrer");
   });
 });

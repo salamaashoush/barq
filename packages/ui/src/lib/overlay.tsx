@@ -18,22 +18,74 @@ import {
   overlayTriggerState,
   type OverlayTriggerState,
 } from "@barqjs/aria/overlays";
-import { fromProps, provideTriggerSlot } from "@barqjs/aria/utils";
+import { PortalProvider } from "@barqjs/aria/dialog";
+import { fromProps, type DOMProps } from "@barqjs/aria/utils";
 import {
-  context,
+  createContext,
+  createSignal,
   getContext,
   getOwner,
+  onCleanup,
   provide,
+  type Accessor,
   type Child,
   type Incoming,
   type JSXElement,
 } from "@barqjs/core";
 import { ref as makeRef } from "@barqjs/primitives/refs";
 
+import { TriggerPart, type TriggerPartProps } from "./trigger.tsx";
+
 export interface OverlayValue {
   state: OverlayTriggerState;
   /** The control the overlay is anchored to and returns focus to. */
   triggerRef: ReturnType<typeof makeRef<HTMLElement>>;
+  /**
+   * An element to place the overlay against instead of the trigger: a
+   * popover's `<PopoverAnchor>`. Focus still returns to the trigger.
+   */
+  anchorRef: ReturnType<typeof makeRef<HTMLElement>>;
+  /**
+   * What the family's `*Overlay` part was given, for the content to put on the
+   * element behind it. `null` until one is rendered.
+   */
+  underlay: Accessor<DOMProps | null>;
+  setUnderlay: (props: DOMProps | null) => void;
+}
+
+/**
+ * Hand the family's content what its `*Overlay` part was given.
+ *
+ * shadcn's `<DialogOverlay>` is an element the caller places. Here the modal
+ * draws the element behind its content itself, because the two have to enter
+ * and leave together, so the part is a REQUEST: it renders nothing, and what it
+ * was given lands on the element the modal draws.
+ */
+export function registerUnderlay(value: OverlayValue, props: DOMProps): void {
+  value.setUnderlay(props);
+  onCleanup(() => value.setUnderlay(null));
+}
+
+export interface OverlayPortalProps {
+  children?: Child;
+  /** Where the overlay inside is rendered. @default the portal target in scope, then the body */
+  container?: Element | null;
+}
+
+/**
+ * A family's `*Portal` part.
+ *
+ * Every overlay here portals itself, so the part has one job left: naming a
+ * container other than the body. Without one it changes nothing, and in
+ * particular does not undo a container set further up.
+ */
+export function OverlayPortal(props: Incoming<OverlayPortalProps>) {
+  if (props.container === undefined) return <>{props.children}</>;
+  return (
+    <PortalProvider getContainer={() => props.container?.() ?? null}>
+      {props.children}
+    </PortalProvider>
+  );
 }
 
 export interface OverlayRootProps {
@@ -45,19 +97,16 @@ export interface OverlayRootProps {
 
 export interface OverlayFamily {
   Root: (props: Incoming<OverlayRootProps>) => JSXElement;
-  Trigger: (props: Incoming<{ children?: Child }>) => JSXElement;
+  Trigger: (props: Incoming<TriggerPartProps>) => JSXElement;
   use: () => OverlayValue;
 }
 
 export type OverlayKind = "dialog" | "menu" | "listbox" | "tree" | "grid";
 
 export function overlayFamily(name: string, kind: OverlayKind = "dialog"): OverlayFamily {
-  const Context = context<OverlayValue | null>(null);
-  // A second context, holding the same value, for the trigger's own `provide`.
-  // Providing `Context` again would be providing what is already there, and the
-  // scope the trigger slot has to be installed in is the one that `provide`
-  // creates.
-  const TriggerContext = context<OverlayValue | null>(null);
+  const Context = createContext<OverlayValue | null>(null);
+  // `AlertDialog` is `alert-dialog`, which is what its parts' slots start with.
+  const slotName = name.replace(/(?<=[a-z])(?=[A-Z])/g, "-").toLowerCase();
 
   const use = (): OverlayValue => {
     const value = getContext(Context);
@@ -69,7 +118,14 @@ export function overlayFamily(name: string, kind: OverlayKind = "dialog"): Overl
 
   function Root(props: Incoming<OverlayRootProps>) {
     const state = overlayTriggerState(fromProps(props));
-    const value: OverlayValue = { state, triggerRef: makeRef<HTMLElement>() };
+    const [underlay, setUnderlay] = createSignal<DOMProps | null>(null, { ownedWrite: true });
+    const value: OverlayValue = {
+      state,
+      triggerRef: makeRef<HTMLElement>(),
+      anchorRef: makeRef<HTMLElement>(),
+      underlay,
+      setUnderlay: (next) => setUnderlay(() => next),
+    };
 
     const owner = getOwner();
     // `provide`, not `install`: a component gets no scope of its own, so
@@ -80,28 +136,28 @@ export function overlayFamily(name: string, kind: OverlayKind = "dialog"): Overl
       Context,
       () => value,
       () => props.children as unknown,
-    ) as never;
+    );
   }
 
-  function Trigger(props: Incoming<{ children?: Child }>) {
+  function Trigger(props: Incoming<TriggerPartProps>) {
     const value = use();
     const { triggerProps } = overlayTrigger({ type: kind }, value.state);
 
-    // The slot is installed INSIDE the `provide` callback, which is the only
-    // place a scope of its own exists. Installed on the ambient owner it would
-    // land beside the trigger rather than above it, and the control would
-    // never see it.
-    return provide(
-      TriggerContext,
-      () => value,
-      () => {
-        provideTriggerSlot({
-          props: triggerProps,
+    return (
+      <TriggerPart
+        slot={{
+          props: {
+            ...triggerProps,
+            "data-state": () => (value.state.isOpen() ? "open" : "closed"),
+          },
           ref: value.triggerRef.set,
-        });
-        return props.children;
-      },
-    ) as never;
+        }}
+        render={props.render?.()}
+        name={`${slotName}-trigger`}
+      >
+        {props.children}
+      </TriggerPart>
+    );
   }
 
   return { Root, Trigger, use };

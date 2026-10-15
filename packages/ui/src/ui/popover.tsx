@@ -1,6 +1,6 @@
 import { Popover as AriaPopover, type PopoverComponentProps } from "@barqjs/aria/dialog";
-import type { Placement } from "@barqjs/aria/overlays";
-import type { Child, Incoming } from "@barqjs/core";
+import { placementFor, type Align, type Placement, type Side } from "@barqjs/aria/overlays";
+import type { Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
@@ -10,6 +10,8 @@ import { text } from "../lib/shared-text.ts";
 import { overlayFamily, type OverlayRootProps } from "../lib/overlay.tsx";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
+import type { TriggerPartProps } from "../lib/trigger.tsx";
+import { mergeRefs } from "@barqjs/primitives/refs";
 
 const ui = layer("barq.ui");
 
@@ -102,8 +104,30 @@ export function Popover(props: Incoming<PopoverProps>) {
   return <family.Root {...props} />;
 }
 
-export function PopoverTrigger(props: Incoming<{ children?: Child }>) {
+export function PopoverTrigger(props: Incoming<TriggerPartProps>) {
   return <family.Trigger {...props} />;
+}
+
+/**
+ * An element to place the popover against instead of its trigger.
+ *
+ * ```tsx
+ * <Popover>
+ *   <PopoverAnchor><InputGroup>…<PopoverTrigger>…</PopoverTrigger></InputGroup></PopoverAnchor>
+ *   <PopoverContent align="start">…</PopoverContent>
+ * </Popover>
+ * ```
+ *
+ * A button at the end of a field opens a popover that should line up with the
+ * FIELD. Focus still goes back to the trigger, which is what was pressed.
+ */
+export function PopoverAnchor(props: Incoming<UiProps>) {
+  const { anchorRef } = family.use();
+  return (
+    <div {...uiProps("popover-anchor", "", props)} ref={mergeRefs(anchorRef.set, props.ref?.())}>
+      {props.children}
+    </div>
+  );
 }
 
 export interface PopoverContentProps
@@ -113,7 +137,15 @@ export interface PopoverContentProps
       PopoverComponentProps,
       "offset" | "crossOffset" | "shouldFlip" | "containerPadding" | "isModal" | "isNested"
     > {
-  /** @default "bottom" */
+  /** Which edge of the trigger it sits on. @default "bottom" */
+  side?: Side;
+  /** Where along that edge. @default "center" */
+  align?: Align;
+  /** Distance from the trigger. @default 8 */
+  sideOffset?: number;
+  /** Distance along the edge, from where `align` put it. @default 0 */
+  alignOffset?: number;
+  /** The same position as one word, which wins over `side` and `align`. */
   placement?: Placement;
   /** @default true */
   isDismissable?: boolean;
@@ -121,15 +153,20 @@ export interface PopoverContentProps
 }
 
 export function PopoverContent(props: Incoming<PopoverContentProps>) {
-  const { state, triggerRef } = family.use();
+  const { state, triggerRef, anchorRef } = family.use();
+  const target = (): HTMLElement | null => anchorRef() ?? triggerRef();
 
   return (
     <AriaPopover
       {...props}
-      triggerRef={triggerRef}
+      triggerRef={target}
       isOpen={state.isOpen()}
       onOpenChange={state.setOpen}
-      placement={props.placement?.() ?? "bottom"}
+      placement={
+        props.placement?.() ?? placementFor(props.side?.() ?? "bottom", props.align?.() ?? "center")
+      }
+      offset={props.offset?.() ?? props.sideOffset?.()}
+      crossOffset={props.crossOffset?.() ?? props.alignOffset?.()}
       data-slot={props["data-slot"]?.() ?? "popover-content"}
       // Focusable, so the focus scope has somewhere to put focus when the
       // popover holds nothing focusable of its own. Without it focus stays on

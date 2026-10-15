@@ -1,17 +1,20 @@
+import { provideDirection, useDirection } from "@barqjs/aria/i18n";
 import {
   Slider as AriaSlider,
   SliderOutput,
   SliderThumb,
   SliderTrack,
+  runsBackwards,
   useSlider,
   type SliderComponentProps,
   type SliderContextValue,
 } from "@barqjs/aria/slider";
-import type { Incoming } from "@barqjs/core";
+import type { Accessor, Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
+import { omit } from "../lib/slot.ts";
 import { when } from "../lib/shared-when.ts";
 
 const ui = layer("barq.ui");
@@ -167,7 +170,24 @@ const place = ui({
   },
 });
 
-export interface SliderProps extends SliderComponentProps {}
+export interface SliderProps extends SliderComponentProps {
+  /** shadcn's spelling of `minValue`. */
+  min?: number;
+  /** shadcn's spelling of `maxValue`. */
+  max?: number;
+  /** shadcn's spelling of `onChange`. */
+  onValueChange?: (value: number[]) => void;
+  /** shadcn's spelling of `onChangeEnd`. */
+  onValueCommit?: (value: number[]) => void;
+  /** shadcn's spelling of `isDisabled`. */
+  disabled?: boolean;
+  /** shadcn's spelling of `isInverted`. */
+  inverted?: boolean;
+  /** Which end is the minimum, for this slider alone. Defaults to the direction in scope. */
+  dir?: "ltr" | "rtl";
+}
+
+const UPSTREAM = ["min", "max", "onValueChange", "onValueCommit", "disabled", "inverted"] as const;
 
 /**
  * ```tsx
@@ -180,11 +200,28 @@ export interface SliderProps extends SliderComponentProps {}
  * the keyboard, the form and a screen reader all talk to the platform.
  */
 export function Slider(props: Incoming<SliderProps>) {
+  const inherited = useDirection();
+  // Declared for the subtree rather than read here, so the pointer and the
+  // arrow keys in `@barqjs/aria` mirror with the drawing.
+  if (props.dir !== undefined) provideDirection(() => props.dir?.() ?? inherited());
+
   return (
     <AriaSlider
-      {...props}
+      {...omit(props, UPSTREAM)}
       data-slot={props["data-slot"]?.() ?? "slider"}
       class={ui(root, props.class?.(), props.className?.())}
+      minValue={props.minValue?.() ?? props.min?.()}
+      maxValue={props.maxValue?.() ?? props.max?.()}
+      isDisabled={props.isDisabled?.() ?? props.disabled?.()}
+      isInverted={props.isInverted?.() ?? props.inverted?.()}
+      onChange={(value: number[]) => {
+        props.onChange?.()?.(value);
+        props.onValueChange?.()?.(value);
+      }}
+      onChangeEnd={(value: number[]) => {
+        props.onChangeEnd?.()?.(value);
+        props.onValueCommit?.()?.(value);
+      }}
     >
       <SliderOutput data-slot="slider-output" class={output} />
       <Fill />
@@ -195,14 +232,16 @@ export function Slider(props: Incoming<SliderProps>) {
 /** The track and its thumbs, reading the state the enclosing slider provides. */
 function Fill() {
   const group = useSlider();
+  const direction = useDirection();
+  const mirrored = (): boolean => isMirrored(group, direction);
 
   const bounds = (): Record<string, string> => {
     const percents = group.state.values().map((_, index) => group.state.getThumbPercent(index));
     const start = percents.length > 1 ? Math.min(...percents) : 0;
     const end = percents.length > 1 ? Math.max(...percents) : (percents[0] ?? 0);
     return {
-      "--barq-slider-start": percent(start),
-      "--barq-slider-end": percent(end),
+      "--barq-slider-start": percent(mirrored() ? 1 - end : start),
+      "--barq-slider-end": percent(mirrored() ? 1 - start : end),
     };
   };
 
@@ -212,12 +251,33 @@ function Fill() {
         <SliderThumb
           index={index}
           data-slot="slider-thumb"
+          data-orientation={orientationOf(group)}
           class={ui(thumb, place)}
-          style={at(group, index)}
+          style={at(group, index, mirrored)}
         />
       )}
     </SliderTrack>
   );
+}
+
+function orientationOf(group: SliderContextValue): "horizontal" | "vertical" {
+  return group.state.orientation();
+}
+
+/**
+ * Whether the minimum is drawn at the far end of the rules below.
+ *
+ * Those rules are PHYSICAL on purpose: `left`, `bottom`, `to right`. The
+ * pointer arithmetic in `@barqjs/aria` is physical too (a press is measured
+ * from the track's left edge) and takes its direction from the scope, not from
+ * the element's computed `direction`. Logical properties would follow the
+ * computed one, and the two disagree whenever a direction is declared for the
+ * widgets without a `dir` attribute above them, leaving a thumb drawn at one
+ * end and dragged from the other. Mirroring the numbers keeps one source.
+ */
+function isMirrored(group: SliderContextValue, direction: Accessor<"ltr" | "rtl">): boolean {
+  const backwards = runsBackwards(group.state, direction() === "rtl");
+  return group.state.orientation() === "vertical" ? !backwards : backwards;
 }
 
 /**
@@ -231,8 +291,13 @@ function Fill() {
  * and the consumer's effect re-reads it. The track's own `style={bounds()}` is
  * the same shape for the same reason.
  */
-function at(group: SliderContextValue, index: number): Record<string, string> {
-  return { "--barq-slider-thumb": percent(group.state.getThumbPercent(index)) };
+function at(
+  group: SliderContextValue,
+  index: number,
+  mirrored: Accessor<boolean>,
+): Record<string, string> {
+  const along = group.state.getThumbPercent(index);
+  return { "--barq-slider-thumb": percent(mirrored() ? 1 - along : along) };
 }
 
 /** Two decimal places, because a third of a track is otherwise seventeen digits. */

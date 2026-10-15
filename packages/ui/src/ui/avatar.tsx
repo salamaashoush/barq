@@ -1,4 +1,4 @@
-import { Show, signal, type Incoming } from "@barqjs/core";
+import { Show, createSignal, onCleanup, type Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
@@ -69,7 +69,7 @@ const fallback = ui(text.sm, {
 
 const badge = ui(box.shadow, box.noSelect, {
   position: "absolute",
-  right: "0px",
+  insetInlineEnd: "0px",
   bottom: "0px",
   zIndex: "10",
   display: "inline-flex",
@@ -132,6 +132,14 @@ export function Avatar(props: Incoming<AvatarProps>) {
 export interface AvatarImageProps extends UiProps {
   src?: string;
   alt?: string;
+  srcSet?: string;
+  sizes?: string;
+  width?: number | string;
+  height?: number | string;
+  loading?: "eager" | "lazy";
+  decoding?: "sync" | "async" | "auto";
+  crossOrigin?: "anonymous" | "use-credentials" | "";
+  referrerPolicy?: ReferrerPolicy;
   /** Called when the image cannot be loaded, after the fallback has taken over. */
   onLoadingStatusChange?: (status: "loading" | "loaded" | "error") => void;
 }
@@ -144,7 +152,7 @@ export interface AvatarImageProps extends UiProps {
  * with the document instead of one frame after hydration.
  */
 export function AvatarImage(props: Incoming<AvatarImageProps>) {
-  const failed = signal(false);
+  const [failed, setFailed] = createSignal(false);
 
   return (
     <Show when={!failed()}>
@@ -152,8 +160,16 @@ export function AvatarImage(props: Incoming<AvatarImageProps>) {
         {...uiProps("avatar-image", image, props)}
         src={props.src?.()}
         alt={props.alt?.() ?? ""}
+        srcset={props.srcSet?.()}
+        sizes={props.sizes?.()}
+        width={props.width?.()}
+        height={props.height?.()}
+        loading={props.loading?.()}
+        decoding={props.decoding?.()}
+        crossOrigin={props.crossOrigin?.()}
+        referrerPolicy={props.referrerPolicy?.()}
         onError={() => {
-          failed.set(true);
+          setFailed(true);
           props.onLoadingStatusChange?.()?.("error");
         }}
         onLoad={() => props.onLoadingStatusChange?.()?.("loaded")}
@@ -162,9 +178,25 @@ export function AvatarImage(props: Incoming<AvatarImageProps>) {
   );
 }
 
+export interface AvatarFallbackProps extends UiProps {
+  /** Hold the fallback back this long, so a photo that loads quickly never flashes initials first. */
+  delayMs?: number;
+}
+
 /** Initials, or whatever stands in for a photo that is not there. */
-export function AvatarFallback(props: Incoming<UiProps>) {
-  return <span {...uiProps("avatar-fallback", fallback, props)}>{props.children}</span>;
+export function AvatarFallback(props: Incoming<AvatarFallbackProps>) {
+  const delay = props.delayMs?.();
+  const [ready, setReady] = createSignal(delay === undefined);
+  if (delay !== undefined && typeof window !== "undefined") {
+    const timer = setTimeout(() => setReady(true), delay);
+    onCleanup(() => clearTimeout(timer));
+  }
+
+  return (
+    <Show when={ready()}>
+      <span {...uiProps("avatar-fallback", fallback, props)}>{props.children}</span>
+    </Show>
+  );
 }
 
 /** A dot in the corner: presence, a count, a tick. */

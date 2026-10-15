@@ -1,5 +1,6 @@
 import { Button as AriaButton, type ButtonComponentProps } from "@barqjs/aria/button";
-import type { Incoming } from "@barqjs/core";
+import { Link as AriaLink } from "@barqjs/aria/link";
+import { Show, type Incoming } from "@barqjs/core";
 import { layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
@@ -68,6 +69,12 @@ export const buttonVariants = variants({
         translate: "var(--ui-translate-x) var(--ui-translate-y)",
       },
       ":disabled": {
+        pointerEvents: "none",
+        opacity: "50%",
+      },
+      // An `<a>` has no `:disabled`, so a button that is a link dims by the
+      // state it announces.
+      '[aria-disabled="true"]': {
         pointerEvents: "none",
         opacity: "50%",
       },
@@ -223,10 +230,10 @@ export const buttonVariants = variants({
         gap: "calc(var(--spacing) * 1.5)",
         paddingInline: "calc(var(--spacing) * 2.5)",
         ':has([data-icon="inline-end"])': {
-          paddingRight: "calc(var(--spacing) * 2)",
+          paddingInlineEnd: "calc(var(--spacing) * 2)",
         },
         ':has([data-icon="inline-start"])': {
-          paddingLeft: "calc(var(--spacing) * 2)",
+          paddingInlineStart: "calc(var(--spacing) * 2)",
         },
       }),
       xs: ui({
@@ -240,10 +247,10 @@ export const buttonVariants = variants({
           borderRadius: "var(--radius)",
         },
         ':has([data-icon="inline-end"])': {
-          paddingRight: "calc(var(--spacing) * 1.5)",
+          paddingInlineEnd: "calc(var(--spacing) * 1.5)",
         },
         ':has([data-icon="inline-start"])': {
-          paddingLeft: "calc(var(--spacing) * 1.5)",
+          paddingInlineStart: "calc(var(--spacing) * 1.5)",
         },
         "& svg:not([class*='size-'])": {
           width: "calc(var(--spacing) * 3)",
@@ -260,10 +267,10 @@ export const buttonVariants = variants({
           borderRadius: "var(--radius)",
         },
         ':has([data-icon="inline-end"])': {
-          paddingRight: "calc(var(--spacing) * 1.5)",
+          paddingInlineEnd: "calc(var(--spacing) * 1.5)",
         },
         ':has([data-icon="inline-start"])': {
-          paddingLeft: "calc(var(--spacing) * 1.5)",
+          paddingInlineStart: "calc(var(--spacing) * 1.5)",
         },
         "& svg:not([class*='size-'])": {
           width: "calc(var(--spacing) * 3.5)",
@@ -275,10 +282,10 @@ export const buttonVariants = variants({
         gap: "calc(var(--spacing) * 1.5)",
         paddingInline: "calc(var(--spacing) * 2.5)",
         ':has([data-icon="inline-end"])': {
-          paddingRight: "calc(var(--spacing) * 2)",
+          paddingInlineEnd: "calc(var(--spacing) * 2)",
         },
         ':has([data-icon="inline-start"])': {
-          paddingLeft: "calc(var(--spacing) * 2)",
+          paddingInlineStart: "calc(var(--spacing) * 2)",
         },
       }),
       icon: ui({
@@ -317,6 +324,17 @@ export const buttonVariants = variants({
 export interface ButtonProps extends ButtonComponentProps {
   variant?: ButtonVariant;
   size?: ButtonSize;
+  /** The element's own word for `isDisabled`, which is the one upstream's callers write. */
+  disabled?: boolean;
+  /**
+   * Renders an `<a>` wearing the button's classes, pressed the same way.
+   *
+   * What upstream's `asChild` around an `<a>` is for. `ref` is typed for a
+   * `<button>` and is not handed the anchor.
+   */
+  href?: string;
+  target?: string;
+  rel?: string;
   /** Renames the slot, for a wrapper that is a button and answers to another name. */
   "data-slot"?: string;
 }
@@ -330,17 +348,37 @@ export interface ButtonProps extends ButtonComponentProps {
  * when the pointer leaves, and does not wait for a click on touch.
  */
 export function Button(props: Incoming<ButtonProps>) {
+  const className = (): string =>
+    ui(
+      buttonVariants({ variant: props.variant?.(), size: props.size?.() }),
+      props.class?.(),
+      props.className?.(),
+    );
+  const isDisabled = (): boolean | undefined => props.isDisabled?.() ?? props.disabled?.();
+  const { ref: _, ...link } = props;
+
   return (
-    <AriaButton
-      {...props}
-      data-slot={props["data-slot"]?.() ?? "button"}
-      data-variant={props.variant?.() ?? "default"}
-      data-size={props.size?.() ?? "default"}
-      class={ui(
-        buttonVariants({ variant: props.variant?.(), size: props.size?.() }),
-        props.class?.(),
-        props.className?.(),
-      )}
-    />
+    <Show
+      when={props.href?.() !== undefined}
+      fallback={
+        <AriaButton
+          {...props}
+          isDisabled={isDisabled()}
+          data-slot={props["data-slot"]?.() ?? "button"}
+          data-variant={props.variant?.() ?? "default"}
+          data-size={props.size?.() ?? "default"}
+          class={className()}
+        />
+      }
+    >
+      <AriaLink
+        {...link}
+        isDisabled={isDisabled()}
+        data-slot={props["data-slot"]?.() ?? "button"}
+        data-variant={props.variant?.() ?? "default"}
+        data-size={props.size?.() ?? "default"}
+        class={className()}
+      />
+    </Show>
   );
 }

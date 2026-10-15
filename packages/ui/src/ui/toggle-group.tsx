@@ -1,10 +1,17 @@
-import { context, getContext, install, getOwner, signal, type Incoming } from "@barqjs/core";
+import {
+  toggleGroup,
+  toggleGroupItem,
+  toggleGroupState,
+  type ToggleGroupState,
+} from "@barqjs/aria/togglegroup";
+import { createContext, getContext, provide, type Child, type Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
+import { mergeRefs, ref as makeRef } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
 import type { UiProps } from "../lib/props.ts";
-import { uiProps } from "../lib/slot.ts";
-import { Toggle, type ToggleSize, type ToggleVariant } from "./toggle.tsx";
+import { omit, uiProps } from "../lib/slot.ts";
+import { Toggle, type ToggleProps, type ToggleSize, type ToggleVariant } from "./toggle.tsx";
 
 const ui = layer("barq.ui");
 
@@ -26,22 +33,22 @@ const group = ui("group/toggle-group", {
   },
 });
 
-const item = ui({
+const item_ = ui({
   flexShrink: "0",
   ':is(:where(.group\\/toggle-group)[data-spacing="0"] *)': {
     borderRadius: "0",
     paddingInline: "calc(var(--spacing) * 2)",
   },
   ':is(:where(.group\\/toggle-group)[data-spacing="0"] *):has([data-icon="inline-end"])': {
-    paddingRight: "calc(var(--spacing) * 1.5)",
+    paddingInlineEnd: "calc(var(--spacing) * 1.5)",
   },
   ':is(:where(.group\\/toggle-group)[data-spacing="0"] *):has([data-icon="inline-start"])': {
-    paddingLeft: "calc(var(--spacing) * 1.5)",
+    paddingInlineStart: "calc(var(--spacing) * 1.5)",
   },
   ':is(:where(.group\\/toggle-group):where([data-orientation="horizontal"]) *)[data-spacing="0"]:first-child':
     {
-      borderTopLeftRadius: "var(--radius)",
-      borderBottomLeftRadius: "var(--radius)",
+      borderStartStartRadius: "var(--radius)",
+      borderEndStartRadius: "var(--radius)",
     },
   ':is(:where(.group\\/toggle-group):where([data-orientation="vertical"]) *)[data-spacing="0"]:first-child':
     {
@@ -50,8 +57,8 @@ const item = ui({
     },
   ':is(:where(.group\\/toggle-group):where([data-orientation="horizontal"]) *)[data-spacing="0"]:last-child':
     {
-      borderTopRightRadius: "var(--radius)",
-      borderBottomRightRadius: "var(--radius)",
+      borderStartEndRadius: "var(--radius)",
+      borderEndEndRadius: "var(--radius)",
     },
   ':is(:where(.group\\/toggle-group):where([data-orientation="vertical"]) *)[data-spacing="0"]:last-child':
     {
@@ -60,8 +67,10 @@ const item = ui({
     },
   ':is(:where(.group\\/toggle-group):where([data-orientation="horizontal"]) *)[data-spacing="0"][data-variant="outline"]':
     {
+      // The style is the same on all four sides, so naming the left one is
+      // right in either direction; the WIDTH is what follows the reading order.
       borderLeftStyle: "var(--ui-border-style)",
-      borderLeftWidth: "0px",
+      borderInlineStartWidth: "0px",
     },
   ':is(:where(.group\\/toggle-group):where([data-orientation="vertical"]) *)[data-spacing="0"][data-variant="outline"]':
     {
@@ -70,8 +79,8 @@ const item = ui({
     },
   ':is(:where(.group\\/toggle-group):where([data-orientation="horizontal"]) *)[data-spacing="0"][data-variant="outline"]:first-child':
     {
-      borderLeftStyle: "var(--ui-border-style)",
-      borderLeftWidth: "1px",
+      borderInlineStartStyle: "var(--ui-border-style)",
+      borderInlineStartWidth: "1px",
     },
   ':is(:where(.group\\/toggle-group):where([data-orientation="vertical"]) *)[data-spacing="0"][data-variant="outline"]:first-child':
     {
@@ -87,32 +96,56 @@ const item = ui({
 });
 
 interface GroupValue {
+  readonly state: ToggleGroupState;
   readonly variant: () => ToggleVariant | undefined;
   readonly size: () => ToggleSize | undefined;
   readonly spacing: () => number;
-  readonly isSelected: (value: string) => boolean;
-  readonly toggle: (value: string) => void;
+  readonly orientation: () => ToggleGroupOrientation;
 }
 
-const GroupContext = context<GroupValue | null>(null);
+const GroupContext = createContext<GroupValue | null>(null);
 
 export type ToggleGroupType = "single" | "multiple";
+export type ToggleGroupOrientation = "horizontal" | "vertical";
 
 export interface ToggleGroupProps extends UiProps {
   /** `single` keeps one pressed, `multiple` any number. @default "single" */
   type?: ToggleGroupType;
-  value?: readonly string[];
-  defaultValue?: readonly string[];
+  /** A list, or for a `single` group the one value as a string. */
+  value?: string | readonly string[];
+  defaultValue?: string | readonly string[];
   /** @default "default" */
   variant?: ToggleVariant;
   /** @default "default" */
   size?: ToggleSize;
   /** Spacing units between items. `0` welds them into one control. @default 0 */
   spacing?: number;
-  /** @default "horizontal" */
-  orientation?: "horizontal" | "vertical";
+  /**
+   * The layout, and which arrows move focus. Unset, it is laid out as a row
+   * and all four arrows move.
+   *
+   * @default "horizontal"
+   */
+  orientation?: ToggleGroupOrientation;
+  /** Disables every item. */
+  disabled?: boolean;
+  /** The same as `disabled`. */
+  isDisabled?: boolean;
+  /** One tab stop for the group, with the arrows moving inside it. @default true */
+  rovingFocus?: boolean;
+  /** Whether the arrows go round from the last item to the first. @default true */
+  loop?: boolean;
+  /** Always the list, whatever `type` is. */
   onChange?: (value: string[]) => void;
+  /** The one value for a `single` group (empty when nothing is pressed), the list for `multiple`. */
+  onValueChange?: (value: string | string[]) => void;
 }
+
+const listOf = (value: string | readonly string[] | undefined): readonly string[] | undefined => {
+  if (value === undefined) return undefined;
+  if (typeof value === "string") return value === "" ? [] : [value];
+  return value;
+};
 
 /**
  * ```tsx
@@ -124,78 +157,125 @@ export interface ToggleGroupProps extends UiProps {
  *
  * At `spacing={0}` the items share their borders and only the ends are
  * rounded, which is what makes a row of toggles read as one control.
+ *
+ * Tab enters it once and the arrows, Home and End move among the items; see
+ * `@barqjs/aria/togglegroup` for which item Tab lands on.
  */
 export function ToggleGroup(props: Incoming<ToggleGroupProps>) {
-  const inner = signal<readonly string[]>(props.defaultValue?.() ?? []);
-  const value = (): readonly string[] => props.value?.() ?? inner();
+  const type = (): ToggleGroupType => props.type?.() ?? "single";
+  const state = toggleGroupState({
+    selectionMode: type,
+    selectedKeys: () => listOf(props.value?.()),
+    defaultSelectedKeys: () => listOf(props.defaultValue?.()),
+    isDisabled: () => (props.disabled?.() ?? props.isDisabled?.()) === true,
+    rovingFocus: () => props.rovingFocus?.(),
+    onSelectionChange(keys) {
+      props.onChange?.()?.(keys);
+      props.onValueChange?.()?.(type() === "multiple" ? keys : (keys[0] ?? ""));
+    },
+  });
+  const orientation = (): ToggleGroupOrientation => props.orientation?.() ?? "horizontal";
+  const groupRef = makeRef<HTMLDivElement>();
+  const { groupProps } = toggleGroup(
+    {
+      ref: groupRef,
+      orientation: () => props.orientation?.(),
+      direction: () => {
+        const dir = props.dir?.();
+        return dir === "auto" ? undefined : dir;
+      },
+      loop: () => props.loop?.(),
+    },
+    state,
+  );
 
-  const toggle = (key: string): void => {
-    const held = value();
-    const next =
-      props.type?.() === "multiple"
-        ? held.includes(key)
-          ? held.filter((entry) => entry !== key)
-          : [...held, key]
-        : held.includes(key)
-          ? []
-          : [key];
-    inner.set(next);
-    props.onChange?.()?.([...next]);
+  const value: GroupValue = {
+    state,
+    variant: () => props.variant?.(),
+    size: () => props.size?.(),
+    spacing: () => props.spacing?.() ?? 0,
+    orientation,
   };
-
-  const owner = getOwner();
-  if (owner !== null) {
-    install(owner, GroupContext, () => ({
-      variant: () => props.variant?.(),
-      size: () => props.size?.(),
-      spacing: () => props.spacing?.() ?? 0,
-      isSelected: (key: string) => value().includes(key),
-      toggle,
-    }));
-  }
 
   const className = (): string => ui(group, props.class?.(), props.className?.());
   return (
     <div
-      {...uiProps("toggle-group", className, props)}
+      {...groupProps}
+      {...uiProps("toggle-group", className, omit(props, ["dir"]))}
+      ref={mergeRefs(groupRef.set, props.ref?.())}
       role={props.role?.() ?? "group"}
       data-variant={props.variant?.() ?? "default"}
       data-size={props.size?.() ?? "default"}
       data-spacing={String(props.spacing?.() ?? 0)}
-      data-orientation={props.orientation?.() ?? "horizontal"}
+      data-orientation={orientation()}
+      data-disabled={() => (state.isDisabled() ? "" : undefined)}
       style={{ ...props.style?.(), "--gap": String(props.spacing?.() ?? 0) }}
     >
-      {props.children}
+      <GroupProvider value={value}>{props.children}</GroupProvider>
     </div>
   );
 }
 
-export interface ToggleGroupItemProps extends UiProps {
+/**
+ * Its own component, because a `provide` callback that BUILDS the children is
+ * the only place the scope exists.
+ */
+function GroupProvider(props: Incoming<{ value: GroupValue; children?: Child }>) {
+  return provide(
+    GroupContext,
+    () => props.value(),
+    () => props.children,
+  );
+}
+
+export interface ToggleGroupItemProps extends Omit<
+  ToggleProps,
+  "value" | "isSelected" | "defaultSelected" | "pressed" | "defaultPressed"
+> {
   /** What this item contributes to the group's value. */
   value: string;
-  isDisabled?: boolean;
 }
+
+const OWN = ["value", "variant", "size", "disabled", "isDisabled", "onChange", "ref"];
 
 export function ToggleGroupItem(props: Incoming<ToggleGroupItemProps>) {
   const held = getContext(GroupContext);
   if (held === null || held === undefined) {
     throw new Error("A ToggleGroupItem has to be inside a ToggleGroup.");
   }
+  const domRef = makeRef<HTMLButtonElement>();
+  const item = toggleGroupItem(
+    {
+      value: () => props.value(),
+      isDisabled: () => (props.disabled?.() ?? props.isDisabled?.()) === true,
+      ref: domRef,
+    },
+    held.state,
+  );
+  const forward = mergeRefs<HTMLButtonElement>(domRef.set, props.ref?.());
 
   // `variant` and `size` rather than the attributes they produce: `<Toggle>`
   // writes both itself, from the props it was given, and applies the classes
   // that go with them.
   return (
     <Toggle
-      isSelected={held.isSelected(props.value())}
-      onChange={() => held.toggle(props.value())}
-      isDisabled={props.isDisabled?.()}
-      aria-label={props["aria-label"]?.()}
-      variant={held.variant()}
-      size={held.size()}
+      {...omit(props, OWN)}
+      ref={(element: unknown) => {
+        if (element instanceof HTMLButtonElement) forward(element);
+      }}
+      isSelected={item.isSelected()}
+      onChange={(next: boolean) => {
+        item.onChange(next);
+        props.onChange?.()?.(next);
+      }}
+      isDisabled={item.isDisabled()}
+      excludeFromTabOrder={item.excludeFromTabOrder()}
+      variant={held.variant() ?? props.variant?.()}
+      size={held.size() ?? props.size?.()}
       data-slot="toggle-group-item"
       data-spacing={String(held.spacing())}
-      class={ui(item, props.class?.(), props.className?.())}
+      data-orientation={held.orientation()}
+      class={ui(item_, props.class?.(), props.className?.())}
     >
       {props.children}
     </Toggle>

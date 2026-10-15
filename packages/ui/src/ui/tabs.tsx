@@ -7,8 +7,14 @@ import {
   type TabListComponentProps,
   type TabPanelComponentProps,
   type TabsComponentProps,
+  useValueTabs,
+  ValueTab as AriaValueTab,
+  ValueTabList as AriaValueTabList,
+  ValueTabPanel as AriaValueTabPanel,
+  ValueTabs as AriaValueTabs,
+  type ValueTabsComponentProps,
 } from "@barqjs/aria/tabs";
-import type { Incoming } from "@barqjs/core";
+import type { Child, Incoming } from "@barqjs/core";
 import { layer, variants } from "@barqjs/css";
 
 import "../theme/layers.ts";
@@ -56,10 +62,10 @@ const trigger = ui(
       color: "color-mix(in oklab, var(--foreground) 60%, transparent)",
     },
     ':has([data-icon="inline-end"])': {
-      paddingRight: "var(--spacing)",
+      paddingInlineEnd: "var(--spacing)",
     },
     ':has([data-icon="inline-start"])': {
-      paddingLeft: "var(--spacing)",
+      paddingInlineStart: "var(--spacing)",
     },
     "::after": {
       content: "var(--ui-content)",
@@ -143,7 +149,7 @@ const trigger = ui(
     '[data-slot="tabs"][data-orientation="vertical"] &::after': {
       content: "var(--ui-content)",
       insetBlock: "0px",
-      right: "calc(var(--spacing) * -1)",
+      insetInlineEnd: "calc(var(--spacing) * -1)",
       width: "calc(var(--spacing) * 0.5)",
     },
   },
@@ -189,9 +195,22 @@ export const tabsListVariants = variants({
   defaults: { variant: "default" },
 });
 
-export interface TabsProps<T> extends TabsComponentProps<T> {}
+type ValueTabsOptions = Pick<
+  ValueTabsComponentProps,
+  "value" | "defaultValue" | "onValueChange" | "activationMode"
+>;
+
+export interface TabsProps<T> extends Omit<TabsComponentProps<T>, "items">, ValueTabsOptions {
+  /** The tabs as data. Leave it out and write the triggers and panels with a `value` each. */
+  items?: Iterable<T>;
+}
 
 /**
+ * Two ways to say what the tabs are, and one look.
+ *
+ * As data, which is `@barqjs/aria`'s model and the one to use when the tabs
+ * come from somewhere:
+ *
  * ```tsx
  * <Tabs items={sections} defaultSelectedKey="overview">
  *   <TabsList aria-label="Sections">{(s) => <TabsTrigger>{s.name}</TabsTrigger>}</TabsList>
@@ -199,61 +218,142 @@ export interface TabsProps<T> extends TabsComponentProps<T> {}
  * </Tabs>
  * ```
  *
- * The collection is `items` plus a render function, which is `@barqjs/aria`'s
- * model rather than shadcn's `<TabsTrigger value="…">`. A framework whose
- * children are lazy Blocks cannot render them once to find out what they
- * declare, so there is nothing to be gained by pretending otherwise.
- *
  * One `<TabsContent>`, not one per tab: only the selected panel is ever on the
  * page.
+ *
+ * Or written out, which is shadcn's and reads better for a fixed handful:
+ *
+ * ```tsx
+ * <Tabs defaultValue="account">
+ *   <TabsList aria-label="Settings">
+ *     <TabsTrigger value="account">Account</TabsTrigger>
+ *     <TabsTrigger value="password">Password</TabsTrigger>
+ *   </TabsList>
+ *   <TabsContent value="account">…</TabsContent>
+ *   <TabsContent value="password">…</TabsContent>
+ * </Tabs>
+ * ```
+ *
+ * `items` decides which, once, and every part below follows the root it finds
+ * itself in.
  */
 export function Tabs<T>(props: Incoming<TabsProps<T>>) {
-  return (
+  const items = props.items;
+  const { items: _, ...written } = props;
+
+  return items === undefined ? (
+    <AriaValueTabs
+      {...written}
+      data-slot={props["data-slot"]?.() ?? "tabs"}
+      class={ui(root, props.class?.(), props.className?.())}
+    />
+  ) : (
     <AriaTabs
       {...props}
+      items={items() ?? []}
       data-slot={props["data-slot"]?.() ?? "tabs"}
       class={ui(root, props.class?.(), props.className?.())}
     />
   );
 }
 
-export interface TabsListProps<T> extends TabListComponentProps<T> {
+export interface TabsListProps<T> extends Omit<TabListComponentProps<T>, "children"> {
   variant?: TabsListVariant;
+  /** How one tab renders, under `items`. Otherwise the triggers themselves. */
+  children?: ((item: T) => Child) | Child;
+  /** Whether the arrows wrap round the ends, for tabs written out. @default true */
+  loop?: boolean;
 }
 
 export function TabsList<T>(props: Incoming<TabsListProps<T>>) {
+  const className = (): string =>
+    ui(tabsListVariants({ variant: props.variant?.() }), props.class?.(), props.className?.());
+
+  if (useValueTabs() !== null) {
+    return (
+      <AriaValueTabList
+        {...props}
+        data-slot={props["data-slot"]?.() ?? "tabs-list"}
+        data-variant={props.variant?.() ?? "default"}
+        class={className()}
+      />
+    );
+  }
+
+  const children = props.children;
+  if (children === undefined) {
+    throw new Error("A <TabsList> under `items` takes a function of the item.");
+  }
+  const collection = { ...props, children };
+
   return (
     <AriaTabList
-      {...props}
+      {...collection}
       data-slot={props["data-slot"]?.() ?? "tabs-list"}
       data-variant={props.variant?.() ?? "default"}
-      class={ui(
-        tabsListVariants({ variant: props.variant?.() }),
-        props.class?.(),
-        props.className?.(),
-      )}
+      class={className()}
     />
   );
 }
 
-export interface TabsTriggerProps extends TabComponentProps {}
+export interface TabsTriggerProps extends TabComponentProps {
+  /** Which panel this opens, for tabs written out. Under `items` the tab is the item. */
+  value?: string;
+  isDisabled?: boolean;
+  /** The element's own word for `isDisabled`, which is the one upstream's callers write. */
+  disabled?: boolean;
+}
 
 export function TabsTrigger(props: Incoming<TabsTriggerProps>) {
-  return (
+  const value = props.value;
+
+  return value === undefined ? (
     <AriaTab
       {...props}
+      data-slot={props["data-slot"]?.() ?? "tabs-trigger"}
+      class={ui(trigger, props.class?.(), props.className?.())}
+    />
+  ) : (
+    <AriaValueTab
+      {...props}
+      value={value() ?? ""}
+      isDisabled={props.isDisabled?.() ?? props.disabled?.()}
       data-slot={props["data-slot"]?.() ?? "tabs-trigger"}
       class={ui(trigger, props.class?.(), props.className?.())}
     />
   );
 }
 
-export interface TabsContentProps<T> extends TabPanelComponentProps<T> {}
+export interface TabsContentProps<T> extends Omit<TabPanelComponentProps<T>, "children"> {
+  /** Which trigger opens this, for tabs written out. */
+  value?: string;
+  /** Keep the panel in the document, hidden, while another shows. Written-out tabs only. */
+  forceMount?: boolean;
+  children?: ((item: T) => Child) | Child;
+}
 
 export function TabsContent<T>(props: Incoming<TabsContentProps<T>>) {
+  const value = props.value;
+  if (value !== undefined) {
+    return (
+      <AriaValueTabPanel
+        {...props}
+        value={value() ?? ""}
+        data-slot={props["data-slot"]?.() ?? "tabs-content"}
+        class={ui(content, props.class?.(), props.className?.())}
+      />
+    );
+  }
+
+  const children = props.children;
+  if (children === undefined) {
+    throw new Error("A <TabsContent> under `items` takes a function of the item.");
+  }
+  const collection = { ...props, children };
+
   return (
     <AriaTabPanel
-      {...props}
+      {...collection}
       data-slot={props["data-slot"]?.() ?? "tabs-content"}
       class={ui(content, props.class?.(), props.className?.())}
     />

@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { For, Show, flush, signal } from "@barqjs/core";
+import { For, Show, flush, createSignal } from "@barqjs/core";
 import { Item, ItemGroup, ItemTitle } from "./ui/item.tsx";
 import { ScrollArea } from "./ui/scroll-area.tsx";
 import { cleanup, render } from "@barqjs/testing";
@@ -17,7 +17,7 @@ const rows = (...ids: string[]): Row[] => ids.map((id) => ({ id }));
 
 describe("a keyed list that loses two rows and gains one", () => {
   test("plain elements", () => {
-    const list = signal<Row[]>(rows("a", "b", "c", "d", "e"));
+    const [list, setList] = createSignal<Row[]>(rows("a", "b", "c", "d", "e"));
     const { container } = render(() => (
       <ul>
         <For each={() => list()} keyed={(row: Row) => row.id}>
@@ -28,14 +28,14 @@ describe("a keyed list that loses two rows and gains one", () => {
     expect(order(container)).toBe("a,b,c,d,e");
 
     // b and c go into g, where c was.
-    list.set(rows("a", "g", "d", "e"));
+    setList(rows("a", "g", "d", "e"));
     flush();
     expect(order(container)).toBe("a,g,d,e");
     cleanup();
   });
 
   test("rows that are components", () => {
-    const list = signal<Row[]>(rows("a", "b", "c", "d", "e"));
+    const [list, setList] = createSignal<Row[]>(rows("a", "b", "c", "d", "e"));
     const { container } = render(() => (
       <ItemGroup>
         <For each={() => list()} keyed={(row: Row) => row.id}>
@@ -49,14 +49,14 @@ describe("a keyed list that loses two rows and gains one", () => {
     ));
     expect(order(container)).toBe("a,b,c,d,e");
 
-    list.set(rows("a", "g", "d", "e"));
+    setList(rows("a", "g", "d", "e"));
     flush();
     expect(order(container)).toBe("a,g,d,e");
     cleanup();
   });
 
   test("inside a Show, inside a ScrollArea, which is how the panel has it", () => {
-    const list = signal<Row[]>(rows("a", "b", "c", "d", "e"));
+    const [list, setList] = createSignal<Row[]>(rows("a", "b", "c", "d", "e"));
     const { container } = render(() => (
       <ScrollArea orientation="vertical">
         <Show when={() => list().length > 0} fallback={<p>none</p>}>
@@ -74,7 +74,7 @@ describe("a keyed list that loses two rows and gains one", () => {
     ));
     expect(order(container)).toBe("a,b,c,d,e");
 
-    list.set(rows("a", "g", "d", "e"));
+    setList(rows("a", "g", "d", "e"));
     flush();
     expect(order(container)).toBe("a,g,d,e");
     cleanup();
@@ -84,7 +84,7 @@ describe("a keyed list that loses two rows and gains one", () => {
     // The document's own order, and the panel shows it reversed: this is the
     // shape a grouping makes, two rows out of the middle and one in.
     const ids = Array.from({ length: 25 }, (_, index) => `n${index}`);
-    const list = signal<Row[]>(rows(...[...ids].reverse()));
+    const [list, setList] = createSignal<Row[]>(rows(...ids.toReversed()));
 
     const { container } = render(() => (
       <ScrollArea orientation="vertical">
@@ -105,7 +105,7 @@ describe("a keyed list that loses two rows and gains one", () => {
 
     // n23 and n22 become a group, inserted where n22 was.
     const grouped = [...ids.slice(0, 22), "group", "n24"];
-    list.set(rows(...[...grouped].reverse()));
+    setList(rows(...grouped.toReversed()));
     flush();
 
     expect(order(container).split(",").slice(0, 3).join(",")).toBe("n24,group,n21");

@@ -1,14 +1,21 @@
 import { Dialog as AriaDialog, Heading, Modal, useDialogDescription } from "@barqjs/aria/dialog";
-import type { Child, Incoming } from "@barqjs/core";
+import type { Incoming } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
 import { when } from "../lib/shared-when.ts";
 import { text } from "../lib/shared-text.ts";
-import { overlayFamily, type OverlayRootProps } from "../lib/overlay.tsx";
+import {
+  overlayFamily,
+  OverlayPortal,
+  registerUnderlay,
+  type OverlayPortalProps,
+  type OverlayRootProps,
+} from "../lib/overlay.tsx";
 import type { UiProps } from "../lib/props.ts";
-import { uiProps } from "../lib/slot.ts";
+import type { TriggerPartProps } from "../lib/trigger.tsx";
+import { handedOn, named, uiProps } from "../lib/slot.ts";
 import { Button, type ButtonProps } from "./button.tsx";
 
 const ui = layer("barq.ui");
@@ -56,7 +63,7 @@ const header = ui({
   "@media (width >= 40rem)": {
     '[data-slot="alert-dialog-content"][data-size="default"] &': {
       placeItems: "start",
-      textAlign: "left",
+      textAlign: "start",
     },
     '[data-slot="alert-dialog-content"][data-size="default"] &:has([data-slot="alert-dialog-media"])':
       {
@@ -73,8 +80,8 @@ const footer = ui({
   display: "flex",
   flexDirection: "column-reverse",
   gap: "calc(var(--spacing) * 2)",
-  borderBottomRightRadius: "calc(var(--radius) * 1.4)",
-  borderBottomLeftRadius: "calc(var(--radius) * 1.4)",
+  borderEndEndRadius: "calc(var(--radius) * 1.4)",
+  borderEndStartRadius: "calc(var(--radius) * 1.4)",
   borderTopStyle: "var(--ui-border-style)",
   borderTopWidth: "1px",
   backgroundColor: "var(--muted)",
@@ -219,8 +226,21 @@ export function AlertDialog(props: Incoming<AlertDialogProps>) {
   return <family.Root {...props} />;
 }
 
-export function AlertDialogTrigger(props: Incoming<{ children?: Child }>) {
+export function AlertDialogTrigger(props: Incoming<TriggerPartProps>) {
   return <family.Trigger {...props} />;
+}
+
+export interface AlertDialogPortalProps extends OverlayPortalProps {}
+
+/** Names the container the alert dialog inside is rendered into. See `<DialogPortal>`. */
+export function AlertDialogPortal(props: Incoming<AlertDialogPortalProps>) {
+  return <OverlayPortal {...props} />;
+}
+
+/** What the element behind the alert dialog looks like and carries. See `<DialogOverlay>`. */
+export function AlertDialogOverlay(props: Incoming<UiProps>) {
+  registerUnderlay(family.use(), uiProps("alert-dialog-overlay", overlay, props));
+  return <></>;
 }
 
 export interface AlertDialogContentProps extends UiProps {
@@ -229,7 +249,7 @@ export interface AlertDialogContentProps extends UiProps {
 }
 
 export function AlertDialogContent(props: Incoming<AlertDialogContentProps>) {
-  const { state } = family.use();
+  const { state, underlay } = family.use();
 
   return (
     <Modal
@@ -239,13 +259,15 @@ export function AlertDialogContent(props: Incoming<AlertDialogContentProps>) {
       // dialog. Escape still closes it: Radix prevents only the outside
       // interaction, and the APG asks for Escape on every dialog, alert or not.
       isDismissable={false}
-      underlayClass={overlay}
+      underlayClass={underlay() === null ? overlay : undefined}
       underlaySlot="alert-dialog-overlay"
+      underlayProps={underlay() ?? undefined}
+      {...handedOn(props)}
       class={ui(content, props.class?.(), props.className?.())}
       data-slot={props["data-slot"]?.() ?? "alert-dialog-content"}
       data-size={props.size?.() ?? "default"}
     >
-      <AriaDialog role="alertdialog" class={contents}>
+      <AriaDialog {...named(props)} role="alertdialog" class={contents}>
         {props.children}
       </AriaDialog>
     </Modal>

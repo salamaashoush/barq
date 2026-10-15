@@ -11,7 +11,7 @@
  * registry's own theme data and the file is the project's to edit afterwards.
  */
 
-import type { ThemeChoice } from "./schema.ts";
+import type { CssRules, CssVars, ThemeChoice } from "./schema.ts";
 
 export interface ThemeTokens {
   readonly [token: string]: string;
@@ -37,6 +37,70 @@ function declarations(tokens: ThemeTokens, radius: string | undefined, indent: s
   return Object.entries(all)
     .map(([token, value]) => `${indent}--${token}: ${value};`)
     .join("\n");
+}
+
+/**
+ * Rules as CSS text, nested the way the object is.
+ *
+ * A string is a declaration's value and an object is a rule, so
+ * `{ "@keyframes spin": { to: { rotate: "360deg" } } }` is written as it reads.
+ */
+function rules(css: CssRules, indent: string): string {
+  return Object.entries(css)
+    .map(([key, value]) =>
+      typeof value === "string"
+        ? `${indent}${key}: ${value};`
+        : `${indent}${key} {\n${rules(value, `${indent}  `)}\n${indent}}`,
+    )
+    .join("\n");
+}
+
+/**
+ * What one more item's `cssVars` and `css` make of what the project has.
+ *
+ * Later wins, token by token and rule by rule, which is the cascade's own
+ * answer and the one a person adding a second item over a first expects.
+ */
+export function withItemCss(
+  choice: ThemeChoice,
+  added: { readonly cssVars?: CssVars; readonly css?: CssRules },
+): ThemeChoice {
+  // Upstream writes a token with or without its dashes; the theme module adds
+  // them, so one spelling is kept.
+  const bare = (tokens: Readonly<Record<string, string>> | undefined): Record<string, string> =>
+    Object.fromEntries(
+      Object.entries(tokens ?? {}).map(([token, value]) => [token.replace(/^--/, ""), value]),
+    );
+  const vars = added.cssVars;
+  const merged: CssVars = {
+    theme: { ...choice.cssVars?.theme, ...bare(vars?.theme) },
+    light: { ...choice.cssVars?.light, ...bare(vars?.light) },
+    dark: { ...choice.cssVars?.dark, ...bare(vars?.dark) },
+  };
+  const some = (tokens: Readonly<Record<string, string>> | undefined): boolean =>
+    tokens !== undefined && Object.keys(tokens).length > 0;
+  const kept: CssVars = {
+    ...(some(merged.theme) ? { theme: merged.theme } : {}),
+    ...(some(merged.light) ? { light: merged.light } : {}),
+    ...(some(merged.dark) ? { dark: merged.dark } : {}),
+  };
+  const css = mergeRules(choice.css ?? {}, added.css ?? {});
+
+  return {
+    ...choice,
+    ...(Object.keys(kept).length > 0 ? { cssVars: kept } : {}),
+    ...(Object.keys(css).length > 0 ? { css } : {}),
+  };
+}
+
+function mergeRules(base: CssRules, over: CssRules): CssRules {
+  const out: Record<string, string | CssRules> = { ...base };
+  for (const [key, value] of Object.entries(over)) {
+    const had = out[key];
+    out[key] =
+      typeof value === "string" || typeof had !== "object" ? value : mergeRules(had, value);
+  }
+  return out;
 }
 
 export interface ThemeModuleOptions {
@@ -120,9 +184,16 @@ export function themeModule(
 ): string {
   const { base, accent, title } = resolveTheme(choice, themes);
 
-  const light = { ...base.light, ...accent?.light };
-  const dark = { ...base.dark, ...accent?.dark };
+  const light = {
+    ...base.light,
+    ...accent?.light,
+    ...choice.cssVars?.theme,
+    ...choice.cssVars?.light,
+  };
+  const dark = { ...base.dark, ...accent?.dark, ...choice.cssVars?.dark };
   const darkSelector = choice.dark ?? ".dark";
+  const extra =
+    choice.css === undefined ? "" : `\n@layer barq.theme {\n${rules(choice.css, "  ")}\n}`;
 
   const darkRule =
     darkSelector === "media"
@@ -150,7 +221,7 @@ globalCss\`
 ${declarations(light, choice.radius, "    ")}
   }
 ${darkRule}
-}
+}${extra}
 \`;
 `;
 }

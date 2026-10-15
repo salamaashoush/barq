@@ -1,11 +1,12 @@
+import { useDirection } from "@barqjs/aria/i18n";
 import {
-  context,
+  createContext,
+  createEffect,
   getContext,
-  getOwner,
   onCleanup,
-  onMount,
+  onSettled,
   provide,
-  signal,
+  createSignal,
   type Accessor,
   type Child,
   type Incoming,
@@ -37,12 +38,12 @@ const viewport = ui({
 
 const content = ui({
   display: "flex",
-  marginLeft: "calc(var(--spacing) * -4)",
+  marginInlineStart: "calc(var(--spacing) * -4)",
 });
 
 const contentVertical = ui({
   marginTop: "calc(var(--spacing) * -4)",
-  marginLeft: "0px",
+  marginInlineStart: "0px",
   flexDirection: "column",
 });
 
@@ -51,12 +52,12 @@ const item = ui({
   flexShrink: "0",
   flexGrow: "0",
   flexBasis: "100%",
-  paddingLeft: "calc(var(--spacing) * 4)",
+  paddingInlineStart: "calc(var(--spacing) * 4)",
 });
 
 const itemVertical = ui({
   paddingTop: "calc(var(--spacing) * 4)",
-  paddingLeft: "0px",
+  paddingInlineStart: "0px",
 });
 
 const button = ui({
@@ -69,41 +70,62 @@ const button = ui({
   borderRadius: "calc(infinity * 1px)",
 });
 
+/**
+ * The arrow points the way the slides go, so it turns round with the text.
+ * Only on the horizontal axis: a vertical button is already rotated as a whole.
+ *
+ * Written out in both horizontal buttons rather than spread from one object:
+ * the compiler folds a style object it can read whole, and the two copies are
+ * one atom in the stylesheet either way.
+ */
 const previousHorizontal = ui({
   top: "calc(1 / 2 * 100%)",
-  left: "calc(var(--spacing) * -12)",
+  insetInlineStart: "calc(var(--spacing) * -12)",
   "--ui-translate-y": "calc(calc(1 / 2 * 100%) * -1)",
   translate: "var(--ui-translate-x) var(--ui-translate-y)",
+  ':where(:dir(rtl), [dir="rtl"], [dir="rtl"] *) > svg': {
+    rotate: "180deg",
+  },
 });
 
+/**
+ * Centred by stretching to both edges and letting the margins share what is
+ * left, which is the same in either direction. Half the width and a translate
+ * back needs the sign of the translate flipped right to left.
+ */
 const previousVertical = ui({
   top: "calc(var(--spacing) * -12)",
-  left: "calc(1 / 2 * 100%)",
-  "--ui-translate-x": "calc(calc(1 / 2 * 100%) * -1)",
-  translate: "var(--ui-translate-x) var(--ui-translate-y)",
+  insetInline: "0px",
+  marginInline: "auto",
   rotate: "90deg",
 });
 
 const nextHorizontal = ui({
   top: "calc(1 / 2 * 100%)",
-  right: "calc(var(--spacing) * -12)",
+  insetInlineEnd: "calc(var(--spacing) * -12)",
   "--ui-translate-y": "calc(calc(1 / 2 * 100%) * -1)",
   translate: "var(--ui-translate-x) var(--ui-translate-y)",
+  ':where(:dir(rtl), [dir="rtl"], [dir="rtl"] *) > svg': {
+    rotate: "180deg",
+  },
 });
 
 const nextVertical = ui({
   bottom: "calc(var(--spacing) * -12)",
-  left: "calc(1 / 2 * 100%)",
-  "--ui-translate-x": "calc(calc(1 / 2 * 100%) * -1)",
-  translate: "var(--ui-translate-x) var(--ui-translate-y)",
+  insetInline: "0px",
+  marginInline: "auto",
   rotate: "90deg",
 });
 
 export type CarouselOrientation = "horizontal" | "vertical";
 export type CarouselApi = EmblaCarouselType;
 
-interface CarouselValue {
+export type CarouselOptions = Omit<EmblaOptionsType, "axis">;
+export type CarouselPlugin = EmblaPluginType[];
+
+export interface CarouselValue {
   readonly orientation: Accessor<CarouselOrientation>;
+  readonly opts: Accessor<CarouselOptions | undefined>;
   readonly api: Accessor<CarouselApi | null>;
   readonly canScrollPrev: Accessor<boolean>;
   readonly canScrollNext: Accessor<boolean>;
@@ -112,9 +134,19 @@ interface CarouselValue {
   readonly attach: (element: HTMLElement | null) => void;
 }
 
-const CarouselContext = context<CarouselValue | null>(null);
+const CarouselContext = createContext<CarouselValue | null>(null);
 
-function useCarousel(): CarouselValue {
+/**
+ * The carousel a part is inside, for a part of your own.
+ *
+ * ```tsx
+ * function Dots() {
+ *   const carousel = useCarousel();
+ *   return <span>{() => carousel.api()?.selectedScrollSnap()}</span>;
+ * }
+ * ```
+ */
+export function useCarousel(): CarouselValue {
   const value = getContext(CarouselContext);
   if (value === null || value === undefined) {
     throw new Error("This must be rendered inside a <Carousel>.");
@@ -125,9 +157,12 @@ function useCarousel(): CarouselValue {
 export interface CarouselProps extends UiProps {
   /** @default "horizontal" */
   orientation?: CarouselOrientation;
-  /** Passed to embla. `axis` comes from `orientation` and is not read here. */
-  opts?: Omit<EmblaOptionsType, "axis">;
-  plugins?: EmblaPluginType[];
+  /**
+   * Passed to embla. `axis` comes from `orientation` and is not read here;
+   * `direction` comes from the reading direction in scope unless given.
+   */
+  opts?: CarouselOptions;
+  plugins?: CarouselPlugin;
   /** Handed the carousel once it exists, for driving it from outside. */
   setApi?: (api: CarouselApi) => void;
 }
@@ -153,9 +188,18 @@ export interface CarouselProps extends UiProps {
  */
 export function Carousel(props: Incoming<CarouselProps>) {
   const orientation = (): CarouselOrientation => props.orientation?.() ?? "horizontal";
-  const api = signal<CarouselApi | null>(null);
-  const canScrollPrev = signal(false);
-  const canScrollNext = signal(false);
+  const direction = useDirection();
+  const options = (): EmblaOptionsType => ({
+    direction: direction(),
+    ...props.opts?.(),
+    axis: orientation() === "horizontal" ? "x" : "y",
+  });
+  // `ownedWrite`: a track that arrives after the first build rebuilds from its
+  // own `ref`, which is called while that component is still being built.
+  const attached = { ownedWrite: true } as const;
+  const [api, writeApi] = createSignal<CarouselApi | null>(null, attached);
+  const [canScrollPrev, setCanScrollPrev] = createSignal(false, attached);
+  const [canScrollNext, setCanScrollNext] = createSignal(false, attached);
   let instance: CarouselApi | null = null;
   let node: HTMLElement | null = null;
   let mounted = false;
@@ -166,7 +210,7 @@ export function Carousel(props: Incoming<CarouselProps>) {
   const build = (): void => {
     instance?.destroy();
     instance = null;
-    api.set(null);
+    writeApi(null);
     if (node === null) return;
 
     /**
@@ -176,7 +220,7 @@ export function Carousel(props: Incoming<CarouselProps>) {
      * `ownerWindow(el)` is `el.ownerDocument.defaultView`, and a node still in
      * the fragment it was built from belongs to a document that has none — so
      * embla's first `getComputedStyle` reads `null.getComputedStyle` and the
-     * whole init throws. `onMount` does not promise a connected node: it
+     * whole init throws. `onSettled` does not promise a connected node: it
      * promises the reactive work has settled, which is a different moment, and
      * a component placed by `<Dynamic />` reaches the first before the second.
      * Measured on the site's own carousel page as
@@ -199,14 +243,10 @@ export function Carousel(props: Incoming<CarouselProps>) {
     }
     retried = false;
 
-    const made = EmblaCarousel(
-      node,
-      { ...props.opts?.(), axis: orientation() === "horizontal" ? "x" : "y" },
-      props.plugins?.(),
-    );
+    const made = EmblaCarousel(node, options(), props.plugins?.());
     const update = (): void => {
-      canScrollPrev.set(made.canScrollPrev());
-      canScrollNext.set(made.canScrollNext());
+      setCanScrollPrev(made.canScrollPrev());
+      setCanScrollNext(made.canScrollNext());
     };
     // `reInit` too: a slide added or a container resized changes both answers,
     // and a `next` button that stays disabled after the second slide arrives
@@ -215,7 +255,7 @@ export function Carousel(props: Incoming<CarouselProps>) {
     update();
 
     instance = made;
-    api.set(made);
+    writeApi(made);
     props.setApi?.()?.(made);
   };
 
@@ -225,7 +265,7 @@ export function Carousel(props: Incoming<CarouselProps>) {
    * A ref fires when its own element connects, which is BEFORE the track's
    * children exist. Building there gave embla an empty container, so
    * `slideNodes()` was empty, `canScrollNext()` was false and the carousel
-   * could not leave the first slide. `onMount` runs once the tree has settled;
+   * could not leave the first slide. `onSettled` runs once the tree has settled;
    * a `<CarouselContent>` that arrives later builds straight away.
    */
   const attach = (element: HTMLElement | null): void => {
@@ -234,10 +274,19 @@ export function Carousel(props: Incoming<CarouselProps>) {
     if (mounted) build();
   };
 
-  onMount(() => {
+  onSettled(() => {
     mounted = true;
     build();
   });
+
+  // The axis and the direction are read when the engine is built, so a page
+  // that switches language has to tell the one that is already running.
+  createEffect(
+    () => [orientation(), direction()] as const,
+    () => {
+      if (mounted) instance?.reInit(options());
+    },
+  );
 
   // The instance holds listeners on the window and a resize observer, so a
   // route that leaves without this keeps measuring a container that is gone.
@@ -248,6 +297,7 @@ export function Carousel(props: Incoming<CarouselProps>) {
 
   const value: CarouselValue = {
     orientation,
+    opts: () => props.opts?.(),
     api,
     canScrollPrev,
     canScrollNext,
@@ -263,8 +313,13 @@ export function Carousel(props: Incoming<CarouselProps>) {
       aria-roledescription="carousel"
       data-orientation={orientation()}
       onKeyDown={(event: KeyboardEvent) => {
-        const back = orientation() === "horizontal" ? "ArrowLeft" : "ArrowUp";
-        const on = orientation() === "horizontal" ? "ArrowRight" : "ArrowDown";
+        // The key that points at where the previous slide is, which right to
+        // left is the other one.
+        const mirrors = orientation() === "horizontal" && options().direction === "rtl";
+        const left = mirrors ? "ArrowRight" : "ArrowLeft";
+        const right = mirrors ? "ArrowLeft" : "ArrowRight";
+        const back = orientation() === "horizontal" ? left : "ArrowUp";
+        const on = orientation() === "horizontal" ? right : "ArrowDown";
         if (event.key !== back && event.key !== on) return;
         // Only once it holds focus, or a carousel beside a text field would
         // eat the caret keys.
@@ -287,7 +342,7 @@ function CarouselProvider(props: Incoming<{ value: CarouselValue; children?: Chi
     CarouselContext,
     () => props.value(),
     () => props.children,
-  ) as never;
+  );
 }
 
 /**

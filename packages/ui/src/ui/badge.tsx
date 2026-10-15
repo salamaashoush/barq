@@ -49,10 +49,10 @@ export const badgeVariants = variants({
       // An icon on one side takes the padding in on that side, so the badge
       // does not sit lopsided around it.
       ':has([data-icon="inline-end"])': {
-        paddingRight: "calc(var(--spacing) * 1.5)",
+        paddingInlineEnd: "calc(var(--spacing) * 1.5)",
       },
       ':has([data-icon="inline-start"])': {
-        paddingLeft: "calc(var(--spacing) * 1.5)",
+        paddingInlineStart: "calc(var(--spacing) * 1.5)",
       },
       "& > svg": {
         pointerEvents: "none",

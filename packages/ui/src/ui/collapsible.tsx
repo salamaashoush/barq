@@ -2,16 +2,19 @@ import {
   Disclosure,
   DisclosureButton,
   DisclosurePanel,
+  useDisclosure,
   type DisclosureButtonComponentProps,
   type DisclosureComponentProps,
   type DisclosurePanelComponentProps,
 } from "@barqjs/aria/disclosure";
-import type { Incoming } from "@barqjs/core";
+import { mergeProps } from "@barqjs/aria/utils";
+import type { Incoming, JSXElement } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
-import { uiProps } from "../lib/slot.ts";
+import { partRender, uiProps, type RenderPart } from "../lib/slot.ts";
+import { TriggerPart, type TriggerPartProps } from "../lib/trigger.tsx";
 import { cn } from "../lib/utils.ts";
 import type { UiProps } from "../lib/props.ts";
 import { when } from "../lib/shared-when.ts";
@@ -49,7 +52,22 @@ const panel = ui({
   },
 });
 
-export interface CollapsibleProps extends DisclosureComponentProps, UiProps {}
+export interface CollapsibleProps extends DisclosureComponentProps, UiProps {
+  /** shadcn's spelling of `isExpanded`. */
+  open?: boolean;
+  /** shadcn's spelling of `defaultExpanded`. */
+  defaultOpen?: boolean;
+  /** shadcn's spelling of `onExpandedChange`. */
+  onOpenChange?: (open: boolean) => void;
+  /** shadcn's spelling of `isDisabled`. */
+  disabled?: boolean;
+  /**
+   * Another element as the collapsible, as upstream's `asChild` makes a
+   * `SidebarMenuItem` one. It is handed the class, the state and the ref, and
+   * keeps its own slot name.
+   */
+  render?: RenderPart;
+}
 
 /**
  * ```tsx
@@ -68,28 +86,96 @@ export interface CollapsibleProps extends DisclosureComponentProps, UiProps {}
  */
 export function Collapsible(props: Incoming<CollapsibleProps>) {
   return (
-    <div {...uiProps("collapsible", "", props)}>
-      <Disclosure
-        isExpanded={props.isExpanded?.()}
-        defaultExpanded={props.defaultExpanded?.()}
-        isDisabled={props.isDisabled?.()}
-        onExpandedChange={props.onExpandedChange?.()}
-      >
-        {props.children}
-      </Disclosure>
+    <Disclosure
+      isExpanded={props.isExpanded?.() ?? props.open?.()}
+      defaultExpanded={props.defaultExpanded?.() ?? props.defaultOpen?.()}
+      isDisabled={props.isDisabled?.() ?? props.disabled?.()}
+      onExpandedChange={(open: boolean) => {
+        props.onExpandedChange?.()?.(open);
+        props.onOpenChange?.()?.(open);
+      }}
+    >
+      <CollapsibleRoot {...props}>{props.children}</CollapsibleRoot>
+    </Disclosure>
+  );
+}
+
+/**
+ * The element, INSIDE the provider rather than around it, so it can say whether
+ * it is open. Around it, the state is one scope too far down.
+ */
+function CollapsibleRoot(props: Incoming<CollapsibleProps>) {
+  const disclosure = useDisclosure();
+  const render = props.render?.();
+  if (render !== undefined) {
+    const { "data-slot": _, ...own } = uiProps("collapsible", "", props);
+    return render(
+      partRender(
+        mergeProps(own, {
+          "data-state": () => (disclosure.state.isExpanded() ? "open" : "closed"),
+          "data-disabled": () => (disclosure.isDisabled() ? "" : undefined),
+        }),
+      ),
+    ) as JSXElement;
+  }
+  return (
+    <div
+      {...uiProps("collapsible", "", props)}
+      data-state={() => (disclosure.state.isExpanded() ? "open" : "closed")}
+      data-disabled={() => (disclosure.isDisabled() ? "" : undefined)}
+    >
+      {props.children}
     </div>
   );
 }
 
-export interface CollapsibleTriggerProps extends DisclosureButtonComponentProps {}
+export interface CollapsibleTriggerProps extends DisclosureButtonComponentProps {
+  /**
+   * The control written inside is the trigger, and no button is rendered
+   * around it: a `<Button>`, a `<SidebarGroupLabel>`, anything that takes the
+   * trigger slot.
+   */
+  asChild?: boolean;
+  /** Any other element, built from the props and the ref it is handed. */
+  render?: TriggerPartProps["render"];
+}
 
+/**
+ * ```tsx
+ * <CollapsibleTrigger asChild>
+ *   <SidebarGroupLabel>Help</SidebarGroupLabel>
+ * </CollapsibleTrigger>
+ * ```
+ */
 export function CollapsibleTrigger(props: Incoming<CollapsibleTriggerProps>) {
+  if (props.asChild?.() === true || props.render?.() !== undefined) {
+    return (
+      <CollapsibleTriggerSlot render={props.render?.()}>{props.children}</CollapsibleTriggerSlot>
+    );
+  }
   return (
     <DisclosureButton
       {...props}
       data-slot={props["data-slot"]?.() ?? "collapsible-trigger"}
       class={ui(trigger, props.class?.(), props.className?.())}
     />
+  );
+}
+
+function CollapsibleTriggerSlot(props: Incoming<TriggerPartProps>) {
+  const disclosure = useDisclosure();
+  return (
+    <TriggerPart
+      slot={{
+        props: mergeProps(disclosure.buttonProps, {
+          "data-state": () => (disclosure.state.isExpanded() ? "open" : "closed"),
+        }),
+      }}
+      render={props.render?.()}
+      name="collapsible-trigger"
+    >
+      {props.children}
+    </TriggerPart>
   );
 }
 

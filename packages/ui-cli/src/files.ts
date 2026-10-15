@@ -14,30 +14,83 @@
 
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 
 import type { Config, ItemType, RegistryFile } from "./schema.ts";
 
-/** Where a file of this type goes, as an absolute directory. */
+/**
+ * Where a file of this type goes, as an absolute directory.
+ *
+ * `page` and `file` have none of their own and answer with the project root,
+ * which is what their `target` is relative to.
+ */
 export function directoryFor(config: Config, cwd: string, type: ItemType): string {
   const paths = config.paths;
-  const chosen =
-    type === "registry:ui" ? paths.ui : type === "registry:lib" ? paths.lib : paths.theme;
-  return resolve(cwd, chosen);
+  const chosen: Record<ItemType, string> = {
+    "registry:ui": paths.ui,
+    "registry:lib": paths.lib,
+    "registry:theme": paths.theme,
+    "registry:hook": paths.hooks,
+    "registry:block": paths.components,
+    "registry:component": paths.components,
+    "registry:example": paths.components,
+    "registry:page": ".",
+    "registry:file": ".",
+  };
+  return resolve(cwd, chosen[type]);
 }
 
-/** The absolute path a registry file is written to. */
+/** The three whose registry path is a tree to keep rather than a name to file. */
+const NESTED = new Set<ItemType>(["registry:block", "registry:component", "registry:example"]);
+
+/**
+ * The absolute path a registry file is written to.
+ *
+ * A registry is someone else's data, and a `target` or a path that climbs out
+ * of the project would let `add` write anywhere the user can. So the answer is
+ * checked against the root before anything is written to it.
+ */
 export function targetOf(config: Config, cwd: string, file: RegistryFile): string {
+  const root = resolve(cwd);
   const name = file.path.split("/").at(-1) ?? file.path;
-  return join(directoryFor(config, cwd, file.type), name);
+  const absolute =
+    file.target !== undefined
+      ? resolve(root, file.target.replace(/^~\//, ""))
+      : NESTED.has(file.type)
+        ? join(directoryFor(config, cwd, file.type), file.path.replace(/^components\//, ""))
+        : join(directoryFor(config, cwd, file.type), name);
+
+  const inside = relative(root, absolute);
+  if (inside.startsWith("..") || isAbsolute(inside)) {
+    throw new Error(`${file.path} would be written to ${absolute}, which is outside the project`);
+  }
+  return absolute;
 }
 
-/** `ui/button.tsx` -> `registry:ui`, so a relative import can be resolved. */
+/** The directory a registry path starts with, as the type it stands for. */
 function typeOfPath(path: string): ItemType {
   const directory = path.split("/")[0];
   if (directory === "lib") return "registry:lib";
   if (directory === "theme") return "registry:theme";
+  if (directory === "hooks") return "registry:hook";
+  if (directory === "blocks") return "registry:block";
+  if (directory === "components") return "registry:component";
   return "registry:ui";
+}
+
+/**
+ * Registry path to the file that has it, for everything being written at once.
+ *
+ * A relative import names another registry file, and where THAT one lands is
+ * decided by its own type and `target`. Only the file itself knows those, so
+ * the files travelling together are looked up before the path is guessed at.
+ */
+export type Placed = ReadonlyMap<string, RegistryFile>;
+
+export function placed(items: readonly { readonly files: readonly RegistryFile[] }[]): Placed {
+  const out = new Map<string, RegistryFile>();
+  for (const item of items) for (const file of item.files) out.set(file.path, file);
+  return out;
 }
 
 const SPECIFIER = /(from\s*|import\s*)(["'])(\.[^"']*)\2/g;
@@ -50,19 +103,25 @@ const SPECIFIER = /(from\s*|import\s*)(["'])(\.[^"']*)\2/g;
  * so does what it writes. A project whose bundler wants extensionless imports
  * is the one case this does not serve, and it is the rarer one now.
  */
-export function rewrite(config: Config, cwd: string, file: RegistryFile): string {
+export function rewrite(
+  config: Config,
+  cwd: string,
+  file: RegistryFile,
+  together: Placed = new Map(),
+): string {
   const here = dirname(targetOf(config, cwd, file));
 
   return file.content.replaceAll(
     SPECIFIER,
-    (whole, lead: string, quote: string, specifier: string) => {
+    (_whole, lead: string, quote: string, specifier: string) => {
       // Resolve against the file's position IN THE REGISTRY, which is what the
       // specifier was written against.
       const inRegistry = join(dirname(file.path), specifier).replaceAll("\\", "/");
-      const name = inRegistry.split("/").at(-1);
-      if (name === undefined) return whole;
-
-      const there = join(directoryFor(config, cwd, typeOfPath(inRegistry)), name);
+      const there = targetOf(
+        config,
+        cwd,
+        together.get(inRegistry) ?? { path: inRegistry, type: typeOfPath(inRegistry), content: "" },
+      );
       let next = relative(here, there).replaceAll("\\", "/");
       if (!next.startsWith(".")) next = `./${next}`;
       return `${lead}${quote}${next}${quote}`;

@@ -1,10 +1,29 @@
 import { describe, expect, test } from "bun:test";
-import { flush, type Incoming } from "@barqjs/core";
-import { render, screen, user } from "@barqjs/testing";
+import { flush, For, type Incoming } from "@barqjs/core";
+import { expectNoAriaViolations, render, screen, tick, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
 
-import { Combobox, ComboboxLabel, ComboboxSeparator } from "./combobox.tsx";
+import {
+  Combobox,
+  ComboboxChip,
+  ComboboxChips,
+  ComboboxChipsInput,
+  ComboboxClear,
+  ComboboxCollection,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxGroup,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxLabel,
+  ComboboxList,
+  ComboboxSeparator,
+  ComboboxTrigger,
+  ComboboxValue,
+  useComboboxAnchor,
+} from "./combobox.tsx";
+import { InputGroupAddon } from "./input-group.tsx";
 
 const FRAMEWORKS = [
   { id: "barq", name: "Barq" },
@@ -326,5 +345,494 @@ describe("a Combobox with grouped options", () => {
     const rule = slot("combobox-separator");
     expect(rule?.getAttribute("role")).toBe("separator");
     expect(rulesFor(rule?.className ?? "")).toContain("height: 1px");
+  });
+});
+
+/**
+ * The combobox written as parts, which is how upstream writes it: an input in
+ * an input group, a content panel, a list, and an item per choice.
+ */
+const NAMES = ["Next.js", "SvelteKit", "Nuxt.js", "Remix", "Astro"];
+
+async function opened(): Promise<void> {
+  flush();
+  await tick();
+  flush();
+}
+
+function field(): HTMLInputElement {
+  return screen.getByRole("combobox") as HTMLInputElement;
+}
+
+interface PartsProps {
+  defaultValue?: string;
+  showTrigger?: boolean;
+  showClear?: boolean;
+  side?: "top" | "bottom";
+  align?: "start" | "center" | "end";
+  onValueChange?: (value: string | null) => void;
+}
+
+function Parts(props: Incoming<PartsProps>) {
+  return (
+    <Combobox
+      items={NAMES}
+      defaultValue={props.defaultValue?.()}
+      onValueChange={(value) => props.onValueChange?.()?.(value as string | null)}
+    >
+      <ComboboxInput
+        aria-label="Framework"
+        placeholder="Select a framework"
+        showTrigger={props.showTrigger?.()}
+        showClear={props.showClear?.()}
+      />
+      <ComboboxContent side={props.side?.()} align={props.align?.()}>
+        <ComboboxEmpty>No items found.</ComboboxEmpty>
+        <ComboboxList>
+          {(item: string) => <ComboboxItem value={item}>{item}</ComboboxItem>}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
+  );
+}
+
+describe("a Combobox written as parts", () => {
+  test("the input is a combobox inside an input group, with a toggle beside it", () => {
+    render(() => <Parts />);
+    const input = field();
+    expect(input.getAttribute("data-slot")).toBe("input-group-control");
+    expect(input.getAttribute("placeholder")).toBe("Select a framework");
+    expect(input.closest('[data-slot="input-group"]')).not.toBeNull();
+
+    const toggle = slot("combobox-trigger") as HTMLElement;
+    expect(toggle.tagName.toLowerCase()).toBe("button");
+    expect(toggle.getAttribute("aria-haspopup")).toBe("listbox");
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    expect(toggle.textContent).toContain("Show suggestions");
+    expect(slot("combobox-trigger-icon")).not.toBeNull();
+    expect(slot("combobox-content")).toBeNull();
+  });
+
+  test("the toggle opens a named list of the items, each in its slot", async () => {
+    render(() => <Parts />);
+    await user.click(slot("combobox-trigger") as HTMLElement);
+    await opened();
+
+    const list = screen.getByRole("listbox");
+    expect(list.getAttribute("data-slot")).toBe("combobox-list");
+    expect(list.getAttribute("aria-label")).toBe("Framework");
+    expect(list.closest('[data-slot="combobox-content"]')).not.toBeNull();
+    const options = screen.getAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual(NAMES);
+    expect(options.every((option) => option.getAttribute("data-slot") === "combobox-item")).toBe(
+      true,
+    );
+    expect(document.activeElement).toBe(field());
+  });
+
+  test("typing narrows the list, and the arrows and Enter choose from it", async () => {
+    const chosen: (string | null)[] = [];
+    render(() => <Parts onValueChange={(value) => chosen.push(value)} />);
+    field().focus();
+    await user.type(field(), "s");
+    await opened();
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "Next.js",
+      "SvelteKit",
+      "Nuxt.js",
+      "Astro",
+    ]);
+
+    await user.keyboard("{ArrowDown}{ArrowDown}");
+    const active = document.getElementById(field().getAttribute("aria-activedescendant") ?? "");
+    expect(active?.textContent).toBe("SvelteKit");
+    expect(active?.hasAttribute("data-highlighted")).toBe(true);
+    expect(rulesFor(active?.className ?? "")).toContain("[data-highlighted]");
+
+    await user.keyboard("{Enter}");
+    await opened();
+    expect(chosen).toEqual(["SvelteKit"]);
+    expect(field().value).toBe("SvelteKit");
+    expect(slot("combobox-content")).toBeNull();
+  });
+
+  test("the chosen item is ticked, and says so in both vocabularies", async () => {
+    render(() => <Parts defaultValue="Remix" />);
+    await user.click(slot("combobox-trigger") as HTMLElement);
+    await opened();
+
+    const ticks = [...document.querySelectorAll('[data-slot="combobox-item-indicator"]')];
+    expect(ticks).toHaveLength(1);
+    const chosen = ticks[0]?.closest('[data-slot="combobox-item"]');
+    expect(chosen?.textContent).toBe("Remix");
+    expect(chosen?.getAttribute("aria-selected")).toBe("true");
+    expect(chosen?.getAttribute("data-state")).toBe("checked");
+    expect(chosen?.hasAttribute("data-selected")).toBe(true);
+  });
+
+  test("the empty state is shown by the content, not by a conditional", async () => {
+    render(() => <Parts />);
+    field().focus();
+    await user.type(field(), "zzz");
+    await opened();
+
+    const empty = slot("combobox-empty") as HTMLElement;
+    expect(empty.textContent).toBe("No items found.");
+    expect(empty.getAttribute("role")).toBe("status");
+    expect(slot("combobox-content")?.hasAttribute("data-empty")).toBe(true);
+    const rules = rulesFor(empty.className);
+    expect(rules).toContain("display: none");
+    expect(rules).toContain("group\\/combobox-content");
+  });
+
+  test("the content says where it is, and the rules read it", async () => {
+    render(() => <Parts align="end" />);
+    await user.click(slot("combobox-trigger") as HTMLElement);
+    await opened();
+
+    const content = slot("combobox-content") as HTMLElement;
+    expect(content.getAttribute("data-state")).toBe("open");
+    expect(content.getAttribute("data-side")).toBe("bottom");
+    expect(content.getAttribute("data-align")).toBe("end");
+    expect(content.getAttribute("data-chips")).toBe("false");
+    const rules = rulesFor(content.className);
+    expect(rules).toContain('[data-side="bottom"]');
+    expect(rules).toContain("width: var(--barq-trigger-width");
+  });
+
+  test("showClear adds a clear button once there is a value, and hides the toggle behind it", async () => {
+    const chosen: (string | null)[] = [];
+    render(() => (
+      <Parts showClear defaultValue="Astro" onValueChange={(value) => chosen.push(value)} />
+    ));
+    const clear = slot("combobox-clear") as HTMLElement;
+    expect(clear.tagName.toLowerCase()).toBe("button");
+    expect(clear.textContent).toContain("Clear");
+    expect(rulesFor(slot("combobox-trigger")?.className ?? "")).toContain(
+      ':has([data-slot="combobox-clear"])',
+    );
+
+    await user.click(clear);
+    await opened();
+    expect(chosen).toEqual([null]);
+    expect(field().value).toBe("");
+    expect(slot("combobox-clear")).toBeNull();
+    expect(document.activeElement).toBe(field());
+  });
+
+  test("has no ARIA violations, closed, open and empty", async () => {
+    const { container } = render(() => <Parts showClear defaultValue="Astro" />);
+    expectNoAriaViolations(container);
+
+    await user.click(slot("combobox-trigger") as HTMLElement);
+    await opened();
+    expectNoAriaViolations(document.body);
+
+    await user.type(field(), "zzz");
+    await opened();
+    expectNoAriaViolations(document.body);
+  });
+
+  test("showTrigger can turn the toggle off", () => {
+    render(() => <Parts showTrigger={false} />);
+    expect(slot("combobox-trigger")).toBeNull();
+    expect(slot("combobox-clear")).toBeNull();
+  });
+
+  test("an addon written inside the input lands in its group", () => {
+    render(() => (
+      <Combobox items={NAMES}>
+        <ComboboxInput aria-label="Framework">
+          <InputGroupAddon>
+            <span data-testid="globe">g</span>
+          </InputGroupAddon>
+        </ComboboxInput>
+      </Combobox>
+    ));
+    expect(screen.getByTestId("globe").closest('[data-slot="input-group"]')).toBe(
+      field().closest('[data-slot="input-group"]'),
+    );
+  });
+
+  test("the rules are written against the inline edges, so a right-to-left page mirrors", async () => {
+    render(() => <Parts defaultValue="Remix" />);
+    await user.click(slot("combobox-trigger") as HTMLElement);
+    await opened();
+
+    const item = rulesFor(slot("combobox-item")?.className ?? "");
+    expect(item).toContain("padding-inline-end");
+    expect(item).not.toContain("padding-right");
+    expect(item).not.toContain("padding-left");
+    const mark = rulesFor(slot("combobox-item-indicator")?.className ?? "");
+    expect(mark).toContain("inset-inline-end");
+    expect(mark).not.toContain("right:");
+  });
+});
+
+describe("a Combobox whose trigger is a button", () => {
+  const COUNTRIES = [
+    { code: "eg", label: "Egypt" },
+    { code: "jp", label: "Japan" },
+  ];
+
+  function Picker() {
+    return (
+      <Combobox
+        items={COUNTRIES}
+        defaultValue={COUNTRIES[0]}
+        itemToStringValue={(country: (typeof COUNTRIES)[number]) => country.code}
+      >
+        <ComboboxTrigger aria-label="Country">
+          <ComboboxValue placeholder="Pick a country" />
+        </ComboboxTrigger>
+        <ComboboxContent>
+          <ComboboxInput showTrigger={false} aria-label="Search" placeholder="Search" />
+          <ComboboxList>
+            {(country: (typeof COUNTRIES)[number]) => (
+              <ComboboxItem value={country}>{country.label}</ComboboxItem>
+            )}
+          </ComboboxList>
+        </ComboboxContent>
+      </Combobox>
+    );
+  }
+
+  test("the trigger is the button itself and shows what is chosen", () => {
+    render(() => <Picker />);
+    const trigger = slot("combobox-trigger") as HTMLElement;
+    expect(trigger.tagName.toLowerCase()).toBe("button");
+    expect(trigger.getAttribute("data-variant")).toBe("outline");
+    expect(trigger.textContent).toContain("Egypt");
+    expect(trigger.getAttribute("data-state")).toBe("closed");
+    expect(screen.queryByRole("combobox")).toBeNull();
+  });
+
+  test("the search input is inside the content, and takes the keyboard when it opens", async () => {
+    render(() => <Picker />);
+    await user.click(slot("combobox-trigger") as HTMLElement);
+    await opened();
+
+    expect(field().closest('[data-slot="combobox-content"]')).not.toBeNull();
+    expect(document.activeElement).toBe(field());
+    expect(slot("combobox-trigger")?.getAttribute("data-state")).toBe("open");
+
+    await user.type(field(), "ja");
+    await opened();
+    await user.keyboard("{ArrowDown}{Enter}");
+    await opened();
+    expect(slot("combobox-content")).toBeNull();
+    expect(slot("combobox-trigger")?.textContent).toContain("Japan");
+  });
+});
+
+describe("a Combobox of chips", () => {
+  function Chips(props: Incoming<{ onValueChange?: (value: string[]) => void }>) {
+    const anchor = useComboboxAnchor();
+    return (
+      <Combobox
+        multiple
+        items={NAMES}
+        defaultValue={["Remix", "Astro"]}
+        onValueChange={(value) => props.onValueChange?.()?.(value as string[])}
+      >
+        <ComboboxChips ref={anchor} aria-label="Chosen frameworks">
+          <ComboboxValue>
+            {(values: string[]) => (
+              <>
+                <For each={values}>{(value: string) => <ComboboxChip>{value}</ComboboxChip>}</For>
+                <ComboboxChipsInput aria-label="Frameworks" />
+              </>
+            )}
+          </ComboboxValue>
+        </ComboboxChips>
+        <ComboboxContent anchor={anchor}>
+          <ComboboxEmpty>No items found.</ComboboxEmpty>
+          <ComboboxList>
+            {(item: string) => <ComboboxItem value={item}>{item}</ComboboxItem>}
+          </ComboboxList>
+        </ComboboxContent>
+      </Combobox>
+    );
+  }
+
+  function chipNames(): string[] {
+    return [...document.querySelectorAll('[data-slot="combobox-chip"]')].map(
+      (chip) => chip.firstChild?.textContent ?? "",
+    );
+  }
+
+  test("each value is a chip with a named remove button, beside the input", async () => {
+    render(() => <Chips />);
+    await opened();
+
+    expect(slot("combobox-chips")?.tagName.toLowerCase()).toBe("div");
+    expect(chipNames()).toEqual(["Remix", "Astro"]);
+    expect(field().getAttribute("data-slot")).toBe("combobox-chip-input");
+    const removes = [...document.querySelectorAll('[data-slot="combobox-chip-remove"]')];
+    expect(removes.map((remove) => remove.textContent)).toEqual(["Remove Remix", "Remove Astro"]);
+    expect(removes.every((remove) => remove.getAttribute("tabindex") === "-1")).toBe(true);
+  });
+
+  test("a remove button takes its own chip off", async () => {
+    const seen: string[][] = [];
+    render(() => <Chips onValueChange={(value) => seen.push(value)} />);
+    await opened();
+
+    await user.click(screen.getByRole("button", { name: "Remove Remix" }));
+    await opened();
+    expect(seen).toEqual([["Astro"]]);
+    expect(chipNames()).toEqual(["Astro"]);
+  });
+
+  test("Backspace in the empty input takes the last chip off", async () => {
+    const seen: string[][] = [];
+    render(() => <Chips onValueChange={(value) => seen.push(value)} />);
+    await opened();
+    field().focus();
+
+    await user.keyboard("{Backspace}");
+    await opened();
+    expect(seen).toEqual([["Remix"]]);
+  });
+
+  test("choosing adds a chip, and the list stays open under the chips box", async () => {
+    const seen: string[][] = [];
+    render(() => <Chips onValueChange={(value) => seen.push(value)} />);
+    field().focus();
+    await user.type(field(), "sv");
+    await opened();
+
+    const content = slot("combobox-content") as HTMLElement;
+    expect(content.getAttribute("data-chips")).toBe("true");
+    await user.click(screen.getByRole("option", { name: "SvelteKit" }));
+    await opened();
+    expect(seen).toEqual([["Remix", "Astro", "SvelteKit"]]);
+    expect(chipNames()).toEqual(["Remix", "Astro", "SvelteKit"]);
+    expect(slot("combobox-content")).not.toBeNull();
+    expect(field().value).toBe("");
+  });
+
+  test("has no ARIA violations, with chips and an open list", async () => {
+    render(() => <Chips />);
+    field().focus();
+    await user.keyboard("{ArrowDown}");
+    await opened();
+    expectNoAriaViolations(document.body);
+  });
+
+  test("the anchor holds the chips box, which is what the content hangs off", async () => {
+    const anchor = useComboboxAnchor();
+    render(() => (
+      <Combobox multiple items={NAMES}>
+        <ComboboxChips ref={anchor}>
+          <ComboboxChipsInput aria-label="Frameworks" />
+        </ComboboxChips>
+      </Combobox>
+    ));
+    await opened();
+    expect(anchor.current).toBe(slot("combobox-chips") as HTMLDivElement);
+  });
+
+  test("a chip can go without its remove button", async () => {
+    render(() => (
+      <Combobox multiple items={NAMES} defaultValue={["Remix"]}>
+        <ComboboxChips>
+          <ComboboxValue>
+            {(values: string[]) => (
+              <>
+                <For each={values}>
+                  {(value: string) => <ComboboxChip showRemove={false}>{value}</ComboboxChip>}
+                </For>
+                <ComboboxChipsInput aria-label="Frameworks" />
+              </>
+            )}
+          </ComboboxValue>
+        </ComboboxChips>
+      </Combobox>
+    ));
+    await opened();
+    expect(slot("combobox-chip")).not.toBeNull();
+    expect(slot("combobox-chip-remove")).toBeNull();
+  });
+
+  test("the chip's rules are written against the inline edges", async () => {
+    render(() => <Chips />);
+    await opened();
+    const chip = rulesFor(slot("combobox-chip")?.className ?? "");
+    expect(chip).toContain("padding-inline-end");
+    expect(chip).not.toContain("padding-right");
+    const remove = rulesFor(slot("combobox-chip-remove")?.className ?? "");
+    expect(remove).toContain("margin-inline-start");
+    expect(remove).not.toContain("margin-left");
+  });
+});
+
+describe("a Combobox written as parts, in groups", () => {
+  const ZONES = [
+    { value: "Americas", items: ["New York", "Chicago"] },
+    { value: "Asia", items: ["Tokyo"] },
+  ];
+
+  function Zones() {
+    return (
+      <Combobox items={ZONES}>
+        <ComboboxInput aria-label="Timezone" showClear />
+        <ComboboxContent>
+          <ComboboxList>
+            {(group: (typeof ZONES)[number], index: number) => (
+              <ComboboxGroup items={group.items}>
+                <ComboboxLabel>{group.value}</ComboboxLabel>
+                <ComboboxCollection>
+                  {(item: string) => <ComboboxItem value={item}>{item}</ComboboxItem>}
+                </ComboboxCollection>
+                {index < ZONES.length - 1 ? <ComboboxSeparator /> : null}
+              </ComboboxGroup>
+            )}
+          </ComboboxList>
+        </ComboboxContent>
+      </Combobox>
+    );
+  }
+
+  test("a group is named by its label, and the separator sits between the two", async () => {
+    render(() => <Zones />);
+    field().focus();
+    await user.keyboard("{ArrowDown}");
+    await opened();
+
+    const groups = screen.getAllByRole("group").filter((group) => group.tagName === "UL");
+    expect(groups).toHaveLength(2);
+    expect(
+      groups.map(
+        (group) =>
+          document.getElementById(group.getAttribute("aria-labelledby") ?? "")?.textContent,
+      ),
+    ).toEqual(["Americas", "Asia"]);
+    expect(document.querySelectorAll('[data-slot="combobox-group"]')).toHaveLength(2);
+    expect(document.querySelectorAll('[data-slot="combobox-label"]')).toHaveLength(2);
+    expect(document.querySelectorAll('[data-slot="combobox-separator"]')).toHaveLength(1);
+    expect(screen.getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "New York",
+      "Chicago",
+      "Tokyo",
+    ]);
+  });
+
+  test("grouped, it has no ARIA violations", async () => {
+    render(() => <Zones />);
+    field().focus();
+    await user.keyboard("{ArrowDown}");
+    await opened();
+    expectNoAriaViolations(document.body);
+  });
+
+  test("the clear button can also be written on its own", () => {
+    render(() => (
+      <Combobox items={NAMES} defaultValue="Astro">
+        <ComboboxInput aria-label="Framework" showTrigger={false} />
+        <ComboboxClear clearLabel="Reset" />
+      </Combobox>
+    ));
+    expect(slot("combobox-clear")?.textContent).toContain("Reset");
   });
 });

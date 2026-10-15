@@ -38,8 +38,11 @@ describe("ButtonGroup", () => {
     expect(slot("button-group").getAttribute("data-orientation")).toBe("horizontal");
 
     const rules = rulesFor(slot("button-group").className);
-    expect(rules).toContain("> :not(:first-child){border-top-left-radius: 0");
-    expect(rules).toContain("border-left-width: 0px");
+    expect(rules).toContain("> :not(:first-child){border-start-start-radius: 0");
+    expect(rules).toContain("border-inline-start-width: 0px");
+    // The join is on the inline sides, so it turns round with the text: no
+    // rule here names a left or a right.
+    expect(rules).not.toMatch(/border-(top|bottom)-(left|right)-radius|border-(left|right)-/);
   });
 
   test("vertical squares the top and bottom instead", () => {

@@ -98,10 +98,20 @@
       "barq": "./src/lib/slot.ts",
       "bun": "./src/lib/slot.ts"
     },
+    "./trigger": {
+      "types": "./src/lib/trigger.tsx",
+      "barq": "./src/lib/trigger.tsx",
+      "bun": "./src/lib/trigger.tsx"
+    },
     "./utils": {
       "types": "./src/lib/utils.ts",
       "barq": "./src/lib/utils.ts",
       "bun": "./src/lib/utils.ts"
+    },
+    "./use-mobile": {
+      "types": "./src/hooks/use-mobile.ts",
+      "barq": "./src/hooks/use-mobile.ts",
+      "bun": "./src/hooks/use-mobile.ts"
     },
     "./accordion": {
       "types": "./src/ui/accordion.tsx",
@@ -213,6 +223,11 @@
       "barq": "./src/ui/dialog.tsx",
       "bun": "./src/ui/dialog.tsx"
     },
+    "./direction": {
+      "types": "./src/ui/direction.tsx",
+      "barq": "./src/ui/direction.tsx",
+      "bun": "./src/ui/direction.tsx"
+    },
     "./drawer": {
       "types": "./src/ui/drawer.tsx",
       "barq": "./src/ui/drawer.tsx",
@@ -313,6 +328,11 @@
       "barq": "./src/ui/progress.tsx",
       "bun": "./src/ui/progress.tsx"
     },
+    "./questionnaire": {
+      "types": "./src/ui/questionnaire.tsx",
+      "barq": "./src/ui/questionnaire.tsx",
+      "bun": "./src/ui/questionnaire.tsx"
+    },
     "./radio-group": {
       "types": "./src/ui/radio-group.tsx",
       "barq": "./src/ui/radio-group.tsx",
@@ -328,6 +348,11 @@
       "barq": "./src/ui/scroll-area.tsx",
       "bun": "./src/ui/scroll-area.tsx"
     },
+    "./scroll-fade": {
+      "types": "./src/ui/scroll-fade.ts",
+      "barq": "./src/ui/scroll-fade.ts",
+      "bun": "./src/ui/scroll-fade.ts"
+    },
     "./select": {
       "types": "./src/ui/select.tsx",
       "barq": "./src/ui/select.tsx",
@@ -342,6 +367,11 @@
       "types": "./src/ui/sheet.tsx",
       "barq": "./src/ui/sheet.tsx",
       "bun": "./src/ui/sheet.tsx"
+    },
+    "./shimmer": {
+      "types": "./src/ui/shimmer.ts",
+      "barq": "./src/ui/shimmer.ts",
+      "bun": "./src/ui/shimmer.ts"
     },
     "./sidebar": {
       "types": "./src/ui/sidebar.tsx",
@@ -388,6 +418,16 @@
       "barq": "./src/ui/tabs.tsx",
       "bun": "./src/ui/tabs.tsx"
     },
+    "./textarea": {
+      "types": "./src/ui/textarea.tsx",
+      "barq": "./src/ui/textarea.tsx",
+      "bun": "./src/ui/textarea.tsx"
+    },
+    "./toast": {
+      "types": "./src/ui/toast.tsx",
+      "barq": "./src/ui/toast.tsx",
+      "bun": "./src/ui/toast.tsx"
+    },
     "./toggle-group": {
       "types": "./src/ui/toggle-group.tsx",
       "barq": "./src/ui/toggle-group.tsx",
@@ -407,12 +447,12 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "bun test",
+    "test": "bun test && bun test --conditions=development",
     "test:coverage": "bun test --coverage",
     "exports": "bun run tools/exports.ts",
     "registry": "bun run tools/registry.ts",
-    "verify": "bun --preload ./src/test-setup.ts tools/verify.ts",
-    "audit": "bun --preload ./src/test-setup.ts tools/audit.ts",
+    "verify": "bun --preload ./src/compile-setup.ts tools/verify.ts",
+    "audit": "bun --preload ./src/compile-setup.ts tools/audit.ts",
     "prepublishOnly": "bun run registry",
     "styles": "bun run tools/styles.ts"
   },

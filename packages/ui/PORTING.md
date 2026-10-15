@@ -34,8 +34,10 @@ Read upstream's component top to bottom first. Three questions decide the shape.
 `drawer` wraps `vaul`, `resizable` wraps `react-resizable-panels`. Each wrapper
 is React; the question is whether the ENGINE underneath is. Embla's core is
 framework-agnostic, so `Carousel` takes the dependency. Vaul is React hooks over
-Radix, so `Drawer`'s drag is written in `@barqjs/aria`. **Say which in the commit
-message, before starting one.**
+Radix, so `Drawer`'s drag is written in `@barqjs/aria`, and
+`react-resizable-panels` is React throughout, so the splitter is
+`@barqjs/aria/splitter`. **Say which in the commit message, before starting
+one.**
 
 **Does the behaviour belong in `@barqjs/aria`?** Anything with state, timing or
 a keyboard model does: `toastQueue`, `navigationMenuState`, `drawerDrag`,
@@ -110,8 +112,51 @@ decorative and most of them exist because something broke.
 - **A marker class stays a literal.** `ui(root, "group/attachment")` — upstream's
   styles compile to `.group\/attachment:has(…) .cn-x`, so the group part has to
   be the class it expects.
+- **A trigger part renders no element.** shadcn's `asChild` clones a child and
+  there is nothing to clone here, so every `*Trigger` returns `TriggerPart` from
+  `lib/trigger.tsx` and reaches its control one of two ways. A control from this
+  package written inside it takes the props itself, through the trigger slot.
+  Anything else is handed them: `render={(trigger) => <button {...trigger.props}
+  ref={trigger.ref} />}` for a plain element, `useTrigger()` inside a component
+  of your own. A `*Close` part IS a `Button`, and an item given `href` renders
+  the `<a>` itself.
+- **Upstream's state attributes sit beside barq's.** `data-state`, `data-side`,
+  `data-align`, `data-disabled` and `data-highlighted` are written wherever
+  upstream has them, so a selector copied from shadcn matches, and `data-open`,
+  `data-closed`, `data-selected`, `data-focused` and `data-placement` stay.
+  Inside a popover `popoverStateProps()` from `@barqjs/aria/dialog` gives the
+  three positional ones to the element the design system names, because the
+  popover's own element is the positioner.
+- **`side`/`align`/`sideOffset`/`alignOffset` and `placement`/`offset` are the
+  same position.** `placementFor(side, align)` in `@barqjs/aria/overlays` turns
+  one into the other; a part accepts both and `placement` wins.
+- **Logical properties, not left and right.** `paddingInlineStart`,
+  `insetInlineEnd`, `marginInlineStart: "auto"`, `borderEndEndRadius`. Upstream's
+  class lists are physical (`pl-7`, `right-2`), so a spec entry is written with
+  the logical utility the component ships (`ps-7`, `end-2`) and `verify` checks
+  that. A physical side stays physical only where the side IS physical: a
+  sheet on the left, an arrow under a tooltip.
+- **What the caller writes reaches the element.** `uiProps` hands on `class`,
+  `style`, `id`, `data-*`, the labelling `aria-*` and the `ref`. An element
+  with a `ref` of its own merges the caller's in (`mergeRefs(own,
+  props.ref?.())`), because a `ref` written after the spread replaces the one
+  in it. A part drawn by another component spreads `handedOn(props)` onto it,
+  and `named(props)` onto the element that has the role.
+  `src/forwarding.test.tsx` holds a row per part.
+- **A collection part works written or from data.** `<Select items={…}>` is
+  built by `@barqjs/aria` from the values; `<Select>` with `<SelectItem>`
+  children registers each item as it renders, through
+  `@barqjs/aria/static-collection`. The same component serves both, decided by
+  whether `items` was given, and the same holds for `Combobox`, `Command` and
+  the three menus. Written, an item says what it is (`value`, `disabled`,
+  `textValue`, `onSelect`); a label or a separator is not an item and may sit
+  anywhere between them.
 
-Four traps, each of which cost a session:
+Five traps, each of which cost a session:
+
+- **A provider goes OUTSIDE its element.** A provider handed `{props.children}`
+  and a `<Show>` builds the `<Show>` first, and hydration then claims the wrong
+  node.
 
 - **A `provide` callback that BUILDS its children needs a component of its own.**
   Inlined, the callback runs where its SIBLINGS read and the context is missing.
@@ -281,23 +326,125 @@ slot PROP: `underlaySlot` on `<Modal>`, `listSlot` on `<Select>`,
 `indicatorSlot` on the dropdown's checkbox item. Without one, the only way to
 reach it is a global rule that every instance on the page would share.
 
+Two rules for anything that opens:
+
+- **Read an overlay's open state through `followOpen`**, never in a tracked
+  effect's own first run. An overlay opened from `onSettled` (a welcome
+  popover, a dialog restored from the URL) is written in the same pass that
+  first run falls in, and the effect then holds the value from before the write
+  and is never woken. `followOpen(read, apply)` in `@barqjs/aria/overlays` puts
+  the read in the compute half, which the graph keeps consistent.
+- **Opening on the server does nothing.** The overlay stack, the outside-press
+  listeners, the scroll lock and the positioner are all skipped under
+  `isServer`, so a component may open an overlay from `onSettled` without a
+  guard of its own. `ssr.test.ts` renders an open popover and an open dialog in
+  a process with no DOM to keep it that way.
+
 ## What is deliberately not the same as upstream
 
 Recorded so nobody re-opens them:
 
-- **The scroll area is the native scroller** with `scrollbar-color` on it, not
-  Radix's two `<div>`s and a resize observer. `scrollbar-color` did not exist
-  when that component was written. The cost is stated in the component: a native
-  scrollbar cannot overlay content or fade out.
-- **The select has no scroll arrows.** Radix needs them because its popper does
-  not scroll; this list is a real scroller with `overflow-y: auto`, and a fake
-  arrow over a native scrollbar is worse than the scrollbar.
-- **`Select` and `Combobox` are one component, not five.** Radix needs the tree
-  written out; `@barqjs/aria` builds the trigger, the popover and the list from
-  the same `items`.
+- **The scroll area is the native scroller by default**, with `scrollbar-color`
+  on it. Rendering a `<ScrollBar>` inside switches that area to Radix's
+  arrangement: the viewport scrolls, the native bars are hidden, and the drawn
+  bar is `@barqjs/aria/scroller`'s `scrollbar()`. Upstream adds a vertical
+  `<ScrollBar>` for you; here it is written out, because an area without one
+  keeps the native scroller.
+- **The select has scroll arrows when it is written as parts.** `SelectContent`
+  hides the viewport's scrollbar and shows `SelectScrollUpButton` and
+  `SelectScrollDownButton` while it can scroll; a `Select` given `items` keeps
+  the native scroller. `role="listbox"` is on the viewport rather than the
+  content, so the arrows are outside the listbox.
+- **`Select` is both.** With `items` it is one component built by
+  `@barqjs/aria`; without, it is shadcn's parts, whose options register from a
+  copy built off the document while the list is closed, which is how the
+  trigger shows the chosen item's text before the list has ever opened.
+  `position="item-aligned"` falls back to popper placement where the list would
+  leave the viewport; Radix shrinks and scrolls it instead.
+- **`Combobox` is both.** Given parts as children it is the root of upstream's
+  composable API (`ComboboxInput`, `ComboboxContent`, `ComboboxList`,
+  `ComboboxItem`, chips); given `items` and a callback it is still the
+  one-component picker. Trigger, clear and chip-remove parts ARE buttons rather
+  than taking `render`. Written items are filtered for you, where Base UI leaves
+  that to the caller, and a written item's label is its rendered text, so a
+  `defaultValue` reads as its raw value until the list first opens unless
+  `itemToStringLabel` or object items say otherwise.
+- **`Command` takes its parts as children when given no `items`**; the `items`
+  form stays. It ranks with CSS `order` rather than re-appending nodes as cmdk
+  does, because the renderer tracks its own nodes; it keeps a non-matching item
+  mounted and `hidden`, because an item's value defaults to its text; and it
+  restores the written order when the search is cleared. cmdk's source is not in
+  the pinned checkout, so the scorer is written to its documented behaviour.
+- **Menus take their items as data or as written children.** Space on a written
+  checkbox or radio item toggles and leaves the menu open, as the ARIA pattern
+  has it; a press or Enter closes, as Radix does. An item with `href` is a real
+  anchor inside a presentational `<li>`, followed through the router. `loop` is
+  on by default.
+- **`*Overlay` is a request, not an element.** The modal draws the underlay, so
+  `<DialogOverlay class="…" />` renders nothing and what it is given lands on
+  the underlay. The same holds for the alert dialog and the sheet.
+- **`TooltipProvider` is optional.** Inside one, a tooltip opens after the
+  provider's `delayDuration` (0 by default, as upstream) and at once within
+  `skipDelayDuration` of the last one closing; outside one it waits 1500ms. A
+  close delay stands in for Radix's pointer grace area, and no part takes
+  `forceMount`.
+- **The navigation menu's ArrowDown opens a closed trigger and goes into its
+  panel**, where Radix moves along the bar. A press closes only what a press
+  opened, the close delay is 300ms rather than 150, and Tab order is corrected
+  in a key handler rather than with a hidden focus proxy. `NavigationMenu.Sub`
+  is not here, because shadcn does not export it.
+- **Overlay roots take `isOpen`, not `open`**, like every other component built
+  on `@barqjs/aria`. The menus, `Select`, `Combobox` and `CommandDialog` also
+  accept upstream's `open`.
 - **`DatePicker` is a composition**, because upstream ships no `date-picker.tsx`
-  and documents a `<Popover>` around a `<Calendar>`.
+  and documents a `<Popover>` around a `<Calendar>`. `DateRangePicker`,
+  `DatePickerInput` and `presets` are upstream's documented variants.
+- **`Calendar` takes `CalendarDate`s and `{ start, end }`**, not `Date`s and
+  `{ from, to }`. A range is anchored: the first press starts one and the second
+  finishes it, so a press inside a finished range starts again.
+  `buttonVariant` is the arrows', as upstream's is, and `dayButtonVariant` is
+  the days'. Dropdown captions are native selects. `date.ts` models the
+  Gregorian calendar only, so there is no non-Gregorian month grid.
 - **`Form` is `Field`.** No react-hook-form, so no `<Form>`.
+- **Nothing is cloned, so `asChild` is not a general prop.** `Button`, `Badge`
+  and `Item` take `href`; a part that has to be another component's trigger
+  takes the trigger slot, which is how `SidebarMenuButton`, `SidebarMenuAction`
+  and `SidebarGroupLabel` open a menu. `CollapsibleTrigger` is the one part
+  that renders a button of its own by default, so it is the one that takes
+  `asChild` (the control inside takes the slot) and `render`. `Collapsible`,
+  `BreadcrumbLink` and `BubbleContent` take `render` for upstream's `asChild`:
+  the caller builds the element from the props and the ref it is handed.
+- **`Tabs` and `Accordion` take `items` or written-out parts**, and `items`
+  decides. Written-out tabs always have a selection: with no `value` the first
+  enabled tab is selected, where Radix selects none.
+- **`Toaster` from `sonner` draws only the newest `visibleToasts`**; older ones
+  stay queued and return when there is room. Its close button is on by default
+  and its `left` and `right` positions are inline start and end. `sonner` and
+  `toast` both export `toast` and `Toaster`: the barrel carries sonner's, and
+  the other pair is `@barqjs/ui/toast`.
+- **`DrawerContent` owns its portal and overlay.** `DrawerPortal` and
+  `DrawerOverlay` are for a surface that is not `DrawerContent`. A snap point
+  is clamped to the drawer's own size.
+- **`InputOTP`'s `pattern` has two meanings.** A string is upstream's
+  whole-value test; a RegExp is the characters to remove. With neither and a
+  numeric keyboard, anything that is not a digit is dropped.
+- **A `ResizablePanel` size is a percentage**, `minSize` defaults to 10 and an
+  arrow key moves 1. Enter on the handle collapses a collapsible panel and
+  restores the size it had.
+- **A `ToggleGroup` item is an `aria-pressed` button in both modes**, where
+  Radix makes a single group's items radios. Inside a `Toolbar` the group gives
+  up its own roving focus.
+- **The slider has no `slider-range` element**: the fill is drawn by the track.
+  Its CSS stays physical with mirrored numbers, to match the pointer maths in
+  `@barqjs/aria`. `Separator`'s `decorative` defaults to false.
+- **Horizontal arrow keys follow the writing direction** in the carousel and
+  the questionnaire, where upstream's do not flip.
+- **Typography is not a component.** Upstream ships none; its page is examples.
+- **`scroll-fade` and `shimmer` are classes plus a style helper**
+  (`scrollFadeStyle()`, `shimmerStyle()`), not parametric utilities.
+- **`DirectionProvider` renders no element.** It declares the direction every
+  widget reads through `useLocale()`; putting `dir` on an element is the
+  caller's.
 
 ## What is still open
 
@@ -310,3 +457,18 @@ Recorded so nobody re-opens them:
   that does to an `npm install`.
 - `Disclosure` and `DisclosureGroupItem` in `@barqjs/aria` render no element, so
   a `class` handed to them vanishes. That cost the accordion its dividers.
+- The overlays, menus, select, combobox, command and navigation menu ported in
+  parts were driven through `@barqjs/testing` only. Nothing in step 8 was done
+  for them: exit animations, the navigation viewport's size, the indicator's
+  position, item-aligned select placement and where focus lands while a closing
+  menu is still animating are all unmeasured in a browser.
+- The libraries shadcn wraps are unpacked under `~/Workspace/vendor/npm/`, one
+  directory each, and are read from there. `InputOTP` writes no `<noscript>`
+  fallback, which a component that needs script to type into has no use for.
+  The drawer's `autoFocus` defaults to true where vaul's is false. The Base UI
+  toast announces a high priority toast through `aria-live="assertive"` on the
+  toast, where upstream hides the toast and writes a `role="alert"` copy: hidden,
+  a toast with buttons in it is focusable content a screen reader cannot see.
+- `ScrollBar`'s layout, the drawer's snap points and background scale, the
+  splitter's drag and the multi-month calendar were driven through
+  `@barqjs/testing` only. Nothing in step 8 was done for them.

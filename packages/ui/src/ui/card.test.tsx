@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { render, screen } from "@barqjs/testing";
 
+import { rulesFor } from "../test-rules.ts";
+
 import {
   Card,
   CardAction,
@@ -153,5 +155,25 @@ describe("Card", () => {
   test("a prop that is not a DOM attribute does not become one", () => {
     render(() => <CardHeader bordered>a</CardHeader>);
     expect(slot("card-header").hasAttribute("bordered")).toBe(false);
+  });
+});
+
+describe("Card corners", () => {
+  test("the header and the footer round the corners by logical name", () => {
+    render(() => (
+      <Card>
+        <CardHeader>a</CardHeader>
+        <CardFooter>b</CardFooter>
+      </Card>
+    ));
+    const header = rulesFor(slot("card-header").className);
+    expect(header).toContain("border-start-start-radius: calc(var(--radius) * 1.4)");
+    expect(header).toContain("border-start-end-radius: calc(var(--radius) * 1.4)");
+    expect(header).not.toContain("border-top-left-radius");
+
+    const footer = rulesFor(slot("card-footer").className);
+    expect(footer).toContain("border-end-start-radius: calc(var(--radius) * 1.4)");
+    expect(footer).toContain("border-end-end-radius: calc(var(--radius) * 1.4)");
+    expect(footer).not.toContain("border-bottom-left-radius");
   });
 });

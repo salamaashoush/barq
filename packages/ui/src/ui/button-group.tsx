@@ -26,8 +26,8 @@ export const buttonGroupVariants = variants({
       zIndex: "10",
     },
     ':has(> select[aria-hidden="true"]:last-child) > [data-slot="select-trigger"]:last-of-type': {
-      borderTopRightRadius: "var(--radius)",
-      borderBottomRightRadius: "var(--radius)",
+      borderStartEndRadius: "var(--radius)",
+      borderEndEndRadius: "var(--radius)",
     },
     '& > [data-slot="select-trigger"]:not([class*="w-"])': {
       width: "fit-content",
@@ -40,21 +40,21 @@ export const buttonGroupVariants = variants({
     orientation: {
       horizontal: ui({
         "& > :not(:first-child)": {
-          borderTopLeftRadius: "0",
-          borderBottomLeftRadius: "0",
-          borderLeftStyle: "var(--ui-border-style)",
-          borderLeftWidth: "0px",
+          borderStartStartRadius: "0",
+          borderEndStartRadius: "0",
+          borderInlineStartStyle: "var(--ui-border-style)",
+          borderInlineStartWidth: "0px",
         },
         "& > :not(:last-child)": {
-          borderTopRightRadius: "0",
-          borderBottomRightRadius: "0",
+          borderStartEndRadius: "0",
+          borderEndEndRadius: "0",
         },
         // The LAST slotted child, which is not always `:last-child`: a select
         // renders a hidden native `<select>` after its trigger, and the trigger
         // is what has to keep the group's outer corner.
         "& > [data-slot]:not(:has(~ [data-slot]))": {
-          borderTopRightRadius: "var(--radius) !important",
-          borderBottomRightRadius: "var(--radius) !important",
+          borderStartEndRadius: "var(--radius) !important",
+          borderEndEndRadius: "var(--radius) !important",
         },
       }),
       vertical: ui({

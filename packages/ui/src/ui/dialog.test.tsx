@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { flush } from "@barqjs/core";
+import { createSignal, flush, onSettled } from "@barqjs/core";
 import { render, screen, tick, user } from "@barqjs/testing";
 
 import { rulesFor } from "../test-rules.ts";
@@ -11,6 +11,8 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
+  DialogOverlay,
+  DialogPortal,
   DialogTitle,
   DialogTrigger,
 } from "./dialog.tsx";
@@ -157,5 +159,230 @@ describe("Dialog", () => {
     await user.click(screen.getByRole("button", { name: "Open" }));
     await settle();
     expect(screen.getByRole("alertdialog")).toBeTruthy();
+  });
+});
+
+describe("the parts shadcn exports beside the content", () => {
+  test("every element says whether it is open, in upstream's words too", async () => {
+    render(() => <Fixture />);
+    const trigger = screen.getByRole("button", { name: "Delete" });
+    expect(trigger.getAttribute("data-state")).toBe("closed");
+
+    await user.click(trigger);
+    await settle();
+
+    expect(trigger.getAttribute("data-state")).toBe("open");
+    expect(document.querySelector('[data-slot="dialog-content"]')?.getAttribute("data-state")).toBe(
+      "open",
+    );
+    expect(document.querySelector('[data-slot="dialog-overlay"]')?.getAttribute("data-state")).toBe(
+      "open",
+    );
+  });
+
+  test("the trigger keeps the slot of the control it is", () => {
+    // Radix's `asChild` merges the child's props last, so a `<Button>` inside a
+    // trigger is still `data-slot="button"`, which is what a style selects on.
+    render(() => <Fixture />);
+    expect(screen.getByRole("button", { name: "Delete" }).getAttribute("data-slot")).toBe("button");
+  });
+
+  test("DialogOverlay styles the element behind the dialog, which the modal draws", async () => {
+    render(() => (
+      <Dialog>
+        <DialogTrigger>
+          <Button>Open</Button>
+        </DialogTrigger>
+        <DialogPortal>
+          <DialogOverlay class="frosted" data-tone="dark" />
+          <DialogContent>
+            <DialogTitle>Plain</DialogTitle>
+          </DialogContent>
+        </DialogPortal>
+      </Dialog>
+    ));
+    // The part is a request, not an element: nothing is drawn while closed.
+    expect(document.querySelector('[data-slot="dialog-overlay"]')).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    await settle();
+
+    const overlays = document.querySelectorAll('[data-slot="dialog-overlay"]');
+    expect(overlays).toHaveLength(1);
+    const underlay = overlays[0] as HTMLElement;
+    expect(underlay.hasAttribute("data-barq-underlay")).toBe(true);
+    expect(underlay.classList.contains("frosted")).toBe(true);
+    expect(underlay.getAttribute("data-tone")).toBe("dark");
+    // The component's own look is still there under the caller's.
+    expect(rulesFor(underlay.className)).toContain("position: fixed");
+  });
+
+  test("DialogPortal sends the dialog to a container of the caller's", async () => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    render(() => (
+      <Dialog>
+        <DialogTrigger>
+          <Button>Open</Button>
+        </DialogTrigger>
+        <DialogPortal container={container}>
+          <DialogContent>
+            <DialogTitle>Inside</DialogTitle>
+          </DialogContent>
+        </DialogPortal>
+      </Dialog>
+    ));
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    await settle();
+
+    expect(container.contains(screen.getByRole("dialog"))).toBe(true);
+    await user.keyboard("{Escape}");
+    await settle();
+    container.remove();
+  });
+
+  test("the footer can carry its own close button", async () => {
+    render(() => (
+      <Dialog>
+        <DialogTrigger>
+          <Button>Open</Button>
+        </DialogTrigger>
+        <DialogContent showCloseButton={false}>
+          <DialogTitle>Share</DialogTitle>
+          <DialogFooter showCloseButton>
+            <Button>Copy</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    ));
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    await settle();
+
+    const footer = document.querySelector('[data-slot="dialog-footer"]') as HTMLElement;
+    const close = screen.getByRole("button", { name: "Close" });
+    expect(footer.contains(close)).toBe(true);
+    // After the caller's own buttons, as upstream writes it.
+    expect(footer.lastElementChild).toBe(close);
+    expect(close.getAttribute("data-slot")).toBe("dialog-close");
+    expect(close.getAttribute("data-variant")).toBe("outline");
+
+    await user.click(close);
+    await settle();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  test("a footer says nothing about closing unless asked", async () => {
+    render(() => <Fixture />);
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    await settle();
+    const footer = document.querySelector('[data-slot="dialog-footer"]') as HTMLElement;
+    expect(footer.querySelectorAll("button")).toHaveLength(1);
+  });
+
+  test("the corner button and the footer sit on logical edges", async () => {
+    render(() => <Fixture />);
+    await user.click(screen.getByRole("button", { name: "Delete" }));
+    await settle();
+
+    const corner = screen.getByRole("button", { name: "Close" });
+    const cornerRules = rulesFor(corner.className);
+    expect(cornerRules).toContain("inset-inline-end:");
+    expect(cornerRules).not.toContain("right:");
+
+    const footer = document.querySelector('[data-slot="dialog-footer"]') as HTMLElement;
+    const footerRules = rulesFor(footer.className);
+    expect(footerRules).toContain("border-end-end-radius:");
+    expect(footerRules).toContain("border-end-start-radius:");
+    expect(footerRules).not.toContain("border-bottom-right-radius:");
+  });
+});
+
+describe("a trigger that is not a control from this package", () => {
+  function Plain() {
+    return (
+      <Dialog>
+        <DialogTrigger
+          render={(trigger) => (
+            <button {...trigger.props} ref={trigger.ref} class="link">
+              Delete
+            </button>
+          )}
+        />
+        <DialogContent>
+          <DialogTitle>Delete the project?</DialogTitle>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  test("a plain button given the trigger's props says what a Button would", () => {
+    render(() => <Plain />);
+    const trigger = screen.getByRole("button", { name: "Delete" });
+    expect(trigger.getAttribute("type")).toBe("button");
+    expect(trigger.getAttribute("aria-expanded")).toBe("false");
+    expect(trigger.getAttribute("data-state")).toBe("closed");
+    expect(trigger.className).toBe("link");
+  });
+
+  test("pressing it opens the dialog, and it says so", async () => {
+    render(() => <Plain />);
+    const trigger = screen.getByRole("button", { name: "Delete" });
+    await user.click(trigger);
+    await settle();
+
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(trigger.getAttribute("data-state")).toBe("open");
+    expect(trigger.getAttribute("aria-controls")).not.toBeNull();
+  });
+
+  test("the keyboard opens it too, and closing gives it focus back", async () => {
+    render(() => <Plain />);
+    const trigger = screen.getByRole("button", { name: "Delete" });
+    trigger.focus();
+    await user.keyboard("{Enter}");
+    await settle();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+
+    await user.keyboard("{Escape}");
+    await settle();
+    await frame();
+    await frame();
+    expect(document.activeElement === trigger).toBe(true);
+  });
+});
+
+function frame(): Promise<void> {
+  return new Promise((resolve) => requestAnimationFrame(() => resolve()));
+}
+
+describe("a controlled dialog", () => {
+  test("opened as soon as the page settles is open", async () => {
+    function Restored() {
+      const [open, setOpen] = createSignal(false);
+      onSettled(() => {
+        setOpen(true);
+      });
+      return (
+        <Dialog isOpen={open()} onOpenChange={setOpen}>
+          <DialogTrigger>
+            <Button>Open</Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogTitle>Restored</DialogTitle>
+          </DialogContent>
+        </Dialog>
+      );
+    }
+
+    render(() => <Restored />);
+    await settle();
+    await settle();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+
+    // And it is a real one: Escape reaches it and the owner hears about it.
+    await user.keyboard("{Escape}");
+    await settle();
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 });

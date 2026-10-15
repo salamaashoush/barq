@@ -44,12 +44,12 @@ const card = ui(
       paddingBottom: "0px",
     },
     ":is(& > *):is(img:first-child)": {
-      borderTopLeftRadius: "calc(var(--radius) * 1.4)",
-      borderTopRightRadius: "calc(var(--radius) * 1.4)",
+      borderStartStartRadius: "calc(var(--radius) * 1.4)",
+      borderStartEndRadius: "calc(var(--radius) * 1.4)",
     },
     ":is(& > *):is(img:last-child)": {
-      borderBottomRightRadius: "calc(var(--radius) * 1.4)",
-      borderBottomLeftRadius: "calc(var(--radius) * 1.4)",
+      borderEndEndRadius: "calc(var(--radius) * 1.4)",
+      borderEndStartRadius: "calc(var(--radius) * 1.4)",
     },
   },
 );
@@ -61,8 +61,8 @@ const header = ui("group/card-header", {
   gridAutoRows: "min-content",
   alignItems: "flex-start",
   gap: "var(--spacing)",
-  borderTopLeftRadius: "calc(var(--radius) * 1.4)",
-  borderTopRightRadius: "calc(var(--radius) * 1.4)",
+  borderStartStartRadius: "calc(var(--radius) * 1.4)",
+  borderStartEndRadius: "calc(var(--radius) * 1.4)",
   paddingInline: "var(--card-spacing)",
   ':has([data-slot="card-action"])': {
     gridTemplateColumns: "1fr auto",
@@ -112,8 +112,8 @@ const content = ui({
 const footer = ui({
   display: "flex",
   alignItems: "center",
-  borderBottomRightRadius: "calc(var(--radius) * 1.4)",
-  borderBottomLeftRadius: "calc(var(--radius) * 1.4)",
+  borderEndEndRadius: "calc(var(--radius) * 1.4)",
+  borderEndStartRadius: "calc(var(--radius) * 1.4)",
   borderTopStyle: "var(--ui-border-style)",
   borderTopWidth: "1px",
   backgroundColor: "var(--muted)",

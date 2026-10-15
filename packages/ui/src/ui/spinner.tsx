@@ -4,6 +4,7 @@ import { layer } from "@barqjs/css";
 import { LoaderCircle } from "@barqjs/lucide/icons/loader-circle";
 
 import "../theme/layers.ts";
+import { handedOn } from "../lib/slot.ts";
 
 const ui = layer("barq.ui");
 
@@ -20,6 +21,13 @@ export interface SpinnerProps {
   id?: string;
   /** What a screen reader says while it turns. @default "Loading" */
   label?: string;
+  /** shadcn's spelling of `label`. */
+  "aria-label"?: string;
+  /** For a spinner beside text that already says what is happening. */
+  "aria-hidden"?: boolean | "true" | "false";
+  /** @default "status" */
+  role?: string;
+  "data-slot"?: string;
   "data-testid"?: string;
 }
 
@@ -34,12 +42,11 @@ export interface SpinnerProps {
 export function Spinner(props: Incoming<SpinnerProps>) {
   return (
     <LoaderCircle
-      role="status"
-      aria-label={props.label?.() ?? "Loading"}
-      data-slot="spinner"
-      data-testid={props["data-testid"]?.()}
-      id={props.id?.()}
-      style={props.style?.()}
+      {...handedOn(props)}
+      role={props.role?.() ?? "status"}
+      aria-label={props.label?.() ?? props["aria-label"]?.() ?? "Loading"}
+      aria-hidden={props["aria-hidden"]?.()}
+      data-slot={props["data-slot"]?.() ?? "spinner"}
       class={ui(spinner, props.class?.(), props.className?.())}
     />
   );

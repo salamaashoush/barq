@@ -1,4 +1,4 @@
-import type { Child, Incoming } from "@barqjs/core";
+import type { Child, Incoming, JSXElement } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 
 import { ChevronRight } from "@barqjs/lucide/icons/chevron-right";
@@ -8,7 +8,7 @@ import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
 import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
-import { uiProps } from "../lib/slot.ts";
+import { partRender, uiProps, type RenderPart } from "../lib/slot.ts";
 import { srOnly } from "./sr-only.ts";
 
 const ui = layer("barq.ui");
@@ -53,6 +53,10 @@ const separator = ui({
   "& > svg": {
     width: "calc(var(--spacing) * 3.5)",
     height: "calc(var(--spacing) * 3.5)",
+  },
+  // The chevron points along the trail, which right to left runs the other way.
+  "& > svg:dir(rtl)": {
+    rotate: "180deg",
   },
 });
 
@@ -105,9 +109,15 @@ export interface BreadcrumbLinkProps extends UiProps {
   href?: string;
   target?: string;
   rel?: string;
+  /** Another element in the link's place, such as a router's link. */
+  render?: RenderPart;
 }
 
 export function BreadcrumbLink(props: Incoming<BreadcrumbLinkProps>) {
+  const render = props.render?.();
+  if (render !== undefined) {
+    return render(partRender(uiProps("breadcrumb-link", link, props))) as JSXElement;
+  }
   return (
     <a
       {...uiProps("breadcrumb-link", link, props)}

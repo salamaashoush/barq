@@ -1,16 +1,24 @@
 import {
-  context,
-  effect,
+  createContext,
   getContext,
-  getOwner,
+  onCleanup,
+  Portal,
   provide,
   Show,
-  signal,
+  createSignal,
   type Child,
   type Incoming,
 } from "@barqjs/core";
 import type { Key } from "@barqjs/aria/collections";
-import { navigationMenuState, type NavigationMenuState } from "@barqjs/aria/navigation";
+import {
+  navigationMenu,
+  navigationMenuState,
+  type NavigationMenuItemResult,
+  type NavigationMenuResult,
+  type NavigationMenuState,
+} from "@barqjs/aria/navigation";
+import { presence } from "@barqjs/aria/presence";
+import { mergeProps } from "@barqjs/aria/utils";
 import { firstThatWorks, layer } from "@barqjs/css";
 import { ChevronDown } from "@barqjs/lucide/icons/chevron-down";
 import { ref as makeRef } from "@barqjs/primitives/refs";
@@ -19,6 +27,7 @@ import "../theme/layers.ts";
 import { uiProps } from "../lib/slot.ts";
 
 import type { UiProps } from "../lib/props.ts";
+import { mergeRefs } from "@barqjs/primitives/refs";
 
 const ui = layer("barq.ui");
 
@@ -104,10 +113,28 @@ const trigger = ui({
   },
 });
 
+/**
+ * The trigger's classes, without the trigger.
+ *
+ * For a top-level link that has to sit in the bar looking like the triggers
+ * beside it:
+ *
+ * ```tsx
+ * <NavigationMenuLink href="/docs" class={navigationMenuTriggerStyle()}>Docs</NavigationMenuLink>
+ * ```
+ */
+export function navigationMenuTriggerStyle(): string {
+  return triggerStyle;
+}
+
+// `group` is a marker, not a utility: the chevron turns over through
+// `.group[data-state="open"]`, so a link dressed as a trigger carries it too.
+const triggerStyle = ui(trigger, "group");
+
 const triggerIcon = ui({
   position: "relative",
   top: "1px",
-  marginLeft: "var(--spacing)",
+  marginInlineStart: "var(--spacing)",
   width: "calc(var(--spacing) * 3)",
   height: "calc(var(--spacing) * 3)",
   transitionProperty:
@@ -125,7 +152,7 @@ const triggerIcon = ui({
 
 const content = ui({
   top: "0px",
-  left: "0px",
+  insetInlineStart: "0px",
   width: "100%",
   padding: "var(--spacing)",
   // The easing upstream names for the slide, which is a long ease-out: the
@@ -175,6 +202,21 @@ const content = ui({
     "--ui-exit-opacity": firstThatWorks("0", "calc(0/100)"),
     "--ui-exit-scale": firstThatWorks(".95", "calc(95*1%)"),
   },
+  // `data-closed` is written the instant the panel starts to leave, and how
+  // long it stays is measured in that same tick, before `data-state` and
+  // `data-motion` have caught up. So the exit is declared here as well, or the
+  // measurement finds nothing to wait for and the panel is gone at once.
+  "[data-closed]": {
+    animation:
+      "exit var(--ui-animation-duration,var(--ui-duration,.15s))var(--ui-ease,ease)var(--ui-animation-delay,0s)var(--ui-animation-iteration-count,1)var(--ui-animation-direction,normal)var(--ui-animation-fill-mode,none)",
+    "--ui-animation-fill-mode": "forwards",
+    "--ui-exit-opacity": "0",
+  },
+  '[data-slot="navigation-menu"][data-viewport="false"] &[data-closed]': {
+    "--ui-exit-scale": firstThatWorks(".95", "calc(95*1%)"),
+  },
+  // `start` and `end` are the bar's own ends, so the distance a panel slides
+  // changes sign with the direction of the text.
   '[data-motion="from-end"]': {
     "--ui-enter-translate-x": "calc(52*var(--spacing))",
   },
@@ -186,6 +228,18 @@ const content = ui({
   },
   '[data-motion="to-start"]': {
     "--ui-exit-translate-x": "calc(52*var(--spacing)*-1)",
+  },
+  ':dir(rtl)[data-motion="from-end"]': {
+    "--ui-enter-translate-x": "calc(52*var(--spacing)*-1)",
+  },
+  ':dir(rtl)[data-motion="from-start"]': {
+    "--ui-enter-translate-x": "calc(52*var(--spacing))",
+  },
+  ':dir(rtl)[data-motion="to-end"]': {
+    "--ui-exit-translate-x": "calc(52*var(--spacing)*-1)",
+  },
+  ':dir(rtl)[data-motion="to-start"]': {
+    "--ui-exit-translate-x": "calc(52*var(--spacing))",
   },
   '[data-motion^="from-"]': {
     animation:
@@ -209,7 +263,7 @@ const content = ui({
 const viewportWrapper = ui({
   position: "absolute",
   top: "100%",
-  left: "0px",
+  insetInlineStart: "0px",
   isolation: "isolate",
   zIndex: "50",
   display: "flex",
@@ -244,6 +298,14 @@ const viewport = ui({
     },
   },
   '[data-state="closed"]': {
+    animation:
+      "exit var(--ui-animation-duration,var(--ui-duration,.15s))var(--ui-ease,ease)var(--ui-animation-delay,0s)var(--ui-animation-iteration-count,1)var(--ui-animation-direction,normal)var(--ui-animation-fill-mode,none)",
+    "--ui-animation-fill-mode": "forwards",
+    "--ui-exit-scale": firstThatWorks(".9", "calc(90*1%)"),
+  },
+  // What the exit is measured by: `data-closed` lands a tick before
+  // `data-state` does, and the viewport is hidden once this has played.
+  "[data-closed]": {
     animation:
       "exit var(--ui-animation-duration,var(--ui-duration,.15s))var(--ui-ease,ease)var(--ui-animation-delay,0s)var(--ui-animation-iteration-count,1)var(--ui-animation-direction,normal)var(--ui-animation-fill-mode,none)",
     "--ui-animation-fill-mode": "forwards",
@@ -341,7 +403,7 @@ const indicatorArrow = ui({
   height: "calc(var(--spacing) * 2)",
   width: "calc(var(--spacing) * 2)",
   rotate: "45deg",
-  borderTopLeftRadius: "calc(var(--radius) * 0.6)",
+  borderStartStartRadius: "calc(var(--radius) * 0.6)",
   backgroundColor: "var(--border)",
   "--ui-shadow":
     "0 4px 6px -1px var(--ui-shadow-color, rgb(0 0 0 / 0.1)), 0 2px 4px -2px var(--ui-shadow-color, rgb(0 0 0 / 0.1))",
@@ -351,23 +413,15 @@ const indicatorArrow = ui({
 
 interface MenuValue {
   readonly state: NavigationMenuState;
-  /** Every item, in the order they were declared: the direction is measured from it. */
-  readonly order: () => Key[];
-  readonly register: (key: Key) => void;
+  readonly menu: NavigationMenuResult;
   readonly hasViewport: () => boolean;
-  /** Where the open panel's content is measured to, for the viewport to grow into. */
-  readonly measured: () => { width: number; height: number } | null;
-  readonly measure: (box: { width: number; height: number } | null) => void;
-  /**
-   * Whether what is open was opened by the POINTER arriving rather than by a
-   * press, which decides what the press that follows means.
-   */
-  readonly viaHover: () => boolean;
-  readonly setViaHover: (value: boolean) => void;
+  /** Whether a `<NavigationMenuViewport>` was written out, so the root adds none. */
+  readonly isViewportWritten: () => boolean;
+  readonly writeViewport: (written: boolean) => void;
 }
 
-const MenuContext = context<MenuValue | null>(null);
-const ItemContext = context<Key | null>(null);
+const MenuContext = createContext<MenuValue | null>(null);
+const ItemContext = createContext<NavigationMenuItemResult | null>(null);
 
 function useMenu(): MenuValue {
   const value = getContext(MenuContext);
@@ -377,7 +431,7 @@ function useMenu(): MenuValue {
   return value;
 }
 
-function useItem(): Key {
+function useItem(): NavigationMenuItemResult {
   const value = getContext(ItemContext);
   if (value === null || value === undefined) {
     throw new Error("This must be rendered inside a <NavigationMenuItem>.");
@@ -390,9 +444,16 @@ export interface NavigationMenuProps extends UiProps {
   defaultValue?: Key | null;
   /**
    * Draw one shared panel that grows to whatever is open, rather than a panel
-   * per item. @default true
+   * per item. The root renders the `<NavigationMenuViewport>` itself unless
+   * one is written out. @default true
    */
   viewport?: boolean;
+  /** How long the pointer rests on a trigger before the first panel opens. @default 200 */
+  delayDuration?: number;
+  /** How long after closing the next panel opens with no wait. @default 300 */
+  skipDelayDuration?: number;
+  /** @default "horizontal" */
+  orientation?: "horizontal" | "vertical";
   onValueChange?: (value: Key | null) => void;
 }
 
@@ -400,7 +461,7 @@ export interface NavigationMenuProps extends UiProps {
  * ```tsx
  * <NavigationMenu>
  *   <NavigationMenuList>
- *     <NavigationMenuItem value="products">
+ *     <NavigationMenuItem>
  *       <NavigationMenuTrigger>Products</NavigationMenuTrigger>
  *       <NavigationMenuContent>…</NavigationMenuContent>
  *     </NavigationMenuItem>
@@ -414,42 +475,55 @@ export interface NavigationMenuProps extends UiProps {
  * trigger rather than closing and reopening. `@barqjs/aria`'s
  * `navigationMenuState` holds that, including which side a panel arrived from,
  * because the animation is the only thing separating this from a row of
- * popovers.
+ * popovers; `navigationMenu` beside it is the keyboard and the pointer.
  */
 export function NavigationMenu(props: Incoming<NavigationMenuProps>) {
-  const order = signal<Key[]>([]);
-  const measured = signal<{ width: number; height: number } | null>(null);
-  const hovered = signal(false);
+  const navRef = makeRef<HTMLElement>();
+  // `ownedWrite`: a viewport says it was written from its own component body.
+  const [written, setWritten] = createSignal(false, { ownedWrite: true });
 
   const state = navigationMenuState({
     value: () => props.value?.(),
     defaultValue: () => props.defaultValue?.(),
+    delay: () => props.delayDuration?.(),
+    skipDelay: () => props.skipDelayDuration?.(),
     onValueChange: (next) => props.onValueChange?.()?.(next),
   });
 
+  const menu = navigationMenu(
+    {
+      ref: navRef,
+      orientation: () => props.orientation?.(),
+      direction: () => {
+        const dir = props.dir?.();
+        return dir === "ltr" || dir === "rtl" ? dir : undefined;
+      },
+      "aria-label": () => props["aria-label"]?.(),
+      "aria-labelledby": () => props["aria-labelledby"]?.(),
+    },
+    state,
+  );
+
   const value: MenuValue = {
     state,
-    order,
-    register(key) {
-      // Declaration order, and it has to be stable: the motion direction is an
-      // index comparison, so a list that reorders itself would animate the
-      // wrong way. An item registers once and stays where it was.
-      if (!order().includes(key)) order.update((prev) => [...prev, key]);
-    },
+    menu,
     hasViewport: () => props.viewport?.() ?? true,
-    measured,
-    measure: (box) => measured.set(box),
-    viaHover: hovered,
-    setViaHover: (next) => hovered.set(next),
+    isViewportWritten: written,
+    writeViewport: setWritten,
   };
 
   return (
     <nav
-      {...uiProps("navigation-menu", ui(root, "group/navigation-menu"), props)}
+      {...mergeProps(
+        uiProps("navigation-menu", ui(root, "group/navigation-menu"), props),
+        menu.rootProps,
+      )}
+      ref={mergeRefs(navRef.set, props.ref?.())}
       data-viewport={() => String(value.hasViewport())}
-      onMouseLeave={() => state.closeSoon()}
     >
-      <MenuProvider value={value}>{props.children}</MenuProvider>
+      <MenuProvider value={value}>
+        <MenuBody>{props.children}</MenuBody>
+      </MenuProvider>
     </nav>
   );
 }
@@ -466,109 +540,109 @@ function MenuProvider(props: Incoming<{ value: MenuValue; children?: Child }>) {
     MenuContext,
     () => props.value(),
     () => props.children,
-  ) as never;
+  );
+}
+
+/** The children, and the viewport shadcn's root adds after them. */
+function MenuBody(props: Incoming<{ children?: Child }>) {
+  const value = useMenu();
+  return (
+    <>
+      {props.children}
+      <Show when={value.hasViewport() && !value.isViewportWritten()}>
+        <Viewport />
+      </Show>
+    </>
+  );
 }
 
 export function NavigationMenuList(props: Incoming<UiProps>) {
-  return <ul {...uiProps("navigation-menu-list", ui(list, "group"), props)}>{props.children}</ul>;
+  const { menu } = useMenu();
+  return (
+    <ul {...mergeProps(uiProps("navigation-menu-list", ui(list, "group"), props), menu.listProps)}>
+      {props.children}
+    </ul>
+  );
 }
 
 export interface NavigationMenuItemProps extends UiProps {
-  /** What identifies this item to the shared state. */
-  value: Key;
+  /** What identifies this item to the shared state. Generated when left out. */
+  value?: Key;
 }
 
 export function NavigationMenuItem(props: Incoming<NavigationMenuItemProps>) {
-  const menu = useMenu();
-  menu.register(props.value());
+  const { menu } = useMenu();
+  const entry = menu.item({ key: props.value?.() });
 
   return (
-    <li
-      {...uiProps("navigation-menu-item", item, props)}
-      onMouseEnter={() => {
-        // Only when entering DID the opening. Entering an item that is already
-        // open changes nothing, so marking it hover-opened would make the press
-        // that follows a no-op forever.
-        if (menu.state.value() !== props.value()) menu.setViaHover(true);
-        menu.state.openSoon(props.value());
-      }}
-    >
-      <ItemProvider value={props.value()}>{props.children}</ItemProvider>
+    <li {...uiProps("navigation-menu-item", item, props)}>
+      <ItemProvider value={entry}>{props.children}</ItemProvider>
     </li>
   );
 }
 
-function ItemProvider(props: Incoming<{ value: Key; children?: Child }>) {
+function ItemProvider(props: Incoming<{ value: NavigationMenuItemResult; children?: Child }>) {
   return provide(
     ItemContext,
     () => props.value(),
     () => props.children,
-  ) as never;
+  );
 }
 
-export function NavigationMenuTrigger(props: Incoming<UiProps>) {
-  const menu = useMenu();
-  const key = useItem();
-  const open = (): boolean => menu.state.value() === key;
+export interface NavigationMenuTriggerProps extends UiProps {
+  disabled?: boolean;
+}
+
+/**
+ * The button that opens an item's panel.
+ *
+ * A press does not simply TOGGLE, and a browser is what said so. Reaching a
+ * trigger with a mouse means entering it first, which opens the panel on hover,
+ * so a toggle found it already open and shut it again: the panel flashed and
+ * the trigger appeared dead. `@barqjs/aria` therefore closes on a press only
+ * what a press opened.
+ */
+export function NavigationMenuTrigger(props: Incoming<NavigationMenuTriggerProps>) {
+  const value = useMenu();
+  const entry = useItem();
 
   return (
-    <button
-      {...uiProps("navigation-menu-trigger", ui(trigger, "group"), props)}
-      type="button"
-      aria-expanded={() => (open() ? "true" : "false")}
-      data-state={() => (open() ? "open" : "closed")}
-      // A press does not TOGGLE, and a browser is what said so. Reaching a
-      // trigger with a mouse means entering it first, which opens the panel on
-      // hover — so a toggle found it already open and shut it again: the panel
-      // flashed and the trigger appeared dead. Focusing it had the same effect
-      // for the same reason, which is why nothing opens on focus either.
-      //
-      // So a press closes only what a press opened. `viaHover` is that
-      // distinction, and it is cleared here so the SECOND press does close it.
-      onClick={() => {
-        if (open() && !menu.viaHover()) {
-          menu.state.close();
-          return;
-        }
-        menu.setViaHover(false);
-        menu.state.open(key);
-      }}
-    >
-      {props.children}
-      <ChevronDown class={triggerIcon} aria-hidden="true" />
-    </button>
+    <>
+      <button
+        {...mergeProps(
+          uiProps("navigation-menu-trigger", navigationMenuTriggerStyle(), props),
+          entry.triggerProps({ isDisabled: () => props.disabled?.() }),
+        )}
+        type="button"
+        ref={mergeRefs(entry.triggerRef, props.ref?.())}
+      >
+        {props.children}
+        <ChevronDown class={triggerIcon} aria-hidden="true" />
+      </button>
+      {/* The panel is drawn in the viewport, after the whole list. This puts
+          it back after its trigger for a screen reader's reading order. */}
+      <Show when={entry.isOpen() && value.hasViewport()}>
+        <span aria-owns={entry.contentId()} />
+      </Show>
+    </>
   );
 }
 
 /**
  * One item's panel.
  *
- * Rendered only while it is the open one, so the DOM holds one panel rather
- * than one per item. `data-motion` says which side it arrived from or is
- * leaving towards, which is what the slide animation reads; with nothing to
- * compare against the attribute is absent rather than invented.
+ * In the document only while it is the open one or on its way out, so the DOM
+ * holds one panel rather than one per item. `data-motion` says which side it
+ * arrived from or is leaving towards, which is what the slide animation reads;
+ * with nothing to compare against the attribute is absent rather than invented.
+ *
+ * With a viewport it is drawn INSIDE the viewport, which is what sizes to it
+ * and clips its slide; without one it stays under its own item.
  */
 export function NavigationMenuContent(props: Incoming<UiProps>) {
-  const menu = useMenu();
-  const key = useItem();
-  const box = makeRef<HTMLDivElement>();
-  const open = (): boolean => menu.state.value() === key;
-
-  // The viewport grows to whatever is open, so the panel has to say how big it
-  // is. `offsetWidth`, not `getBoundingClientRect`: every panel enters with a
-  // scale animation, and a transformed box reports what it is PAINTED at.
-  effect(() => {
-    if (!open() || !menu.hasViewport()) return undefined;
-    const element = box();
-    if (element === null || element === undefined) return undefined;
-    const report = (): void =>
-      menu.measure({ width: element.offsetWidth, height: element.offsetHeight });
-    report();
-    if (typeof ResizeObserver === "undefined") return undefined;
-    const observer = new ResizeObserver(report);
-    observer.observe(element);
-    return () => observer.disconnect();
-  });
+  const value = useMenu();
+  const entry = useItem();
+  const gate = presence({ isOpen: entry.isOpen, ref: entry.content });
 
   // `<Show>`, not a bare ternary. A conditional at a component's ROOT is
   // evaluated once and returned as an array of one, so the panel would render
@@ -576,17 +650,35 @@ export function NavigationMenuContent(props: Incoming<UiProps>) {
   // trigger flipped and no panel ever appeared. `<Show>` is the primitive for a
   // reactive conditional and lowers to a branch the runtime re-runs.
   return (
-    <Show when={open()}>
-      <div
-        {...uiProps("navigation-menu-content", content, props)}
-        ref={box.set}
-        data-state="open"
-        data-motion={() => menu.state.motion(key, menu.order()) ?? undefined}
-        onMouseEnter={() => menu.state.keep()}
+    <Show when={gate.isPresent()}>
+      <Show
+        when={value.hasViewport()}
+        fallback={<Panel of={props} entry={entry} isExiting={gate.isExiting()} />}
       >
-        {props.children}
-      </div>
+        <Show when={value.menu.viewport() !== null}>
+          <Portal mount={value.menu.viewport()}>
+            <Panel of={props} entry={entry} isExiting={gate.isExiting()} />
+          </Portal>
+        </Show>
+      </Show>
     </Show>
+  );
+}
+
+function Panel(
+  props: Incoming<{ of: Incoming<UiProps>; entry: NavigationMenuItemResult; isExiting: boolean }>,
+) {
+  const own = props.of();
+  const entry = props.entry();
+
+  return (
+    <div
+      {...mergeProps(uiProps("navigation-menu-content", content, own), entry.contentProps)}
+      ref={mergeRefs(entry.contentRef, own.ref?.())}
+      data-closed={props.isExiting() ? "" : undefined}
+    >
+      {own.children}
+    </div>
   );
 }
 
@@ -597,32 +689,26 @@ export function NavigationMenuContent(props: Incoming<UiProps>) {
  * one panel that resizes reads as a single surface moving, where a panel per
  * item reads as popovers appearing. The size arrives as two custom properties,
  * so the animation is the stylesheet's decision rather than this component's.
+ *
+ * `<NavigationMenu>` renders one itself. Write it out only to give it a class
+ * or to put it somewhere else in the bar.
  */
 export function NavigationMenuViewport(props: Incoming<UiProps>) {
-  const menu = useMenu();
-  const open = (): boolean => menu.state.value() !== null;
+  const value = useMenu();
+  value.writeViewport(true);
+  onCleanup(() => value.writeViewport(false));
+
+  return <Viewport {...props} />;
+}
+
+function Viewport(props: Incoming<UiProps>) {
+  const { menu } = useMenu();
 
   return (
     <div class={viewportWrapper} data-slot="navigation-menu-viewport-wrapper">
       <div
-        {...uiProps("navigation-menu-viewport", viewport, props)}
-        data-state={() => (open() ? "open" : "closed")}
-        // The measured box arrives as custom properties, so how the viewport
-        // grows into it is the stylesheet's decision rather than this
-        // component's. `Object.fromEntries` because a `--*` key and a plain one
-        // in the same literal do not share a type.
-        style={() => {
-          const box = menu.measured();
-          const entries: [string, string][] =
-            box === null
-              ? []
-              : [
-                  ["--barq-viewport-width", `${String(box.width)}px`],
-                  ["--barq-viewport-height", `${String(box.height)}px`],
-                  ["height", "var(--barq-viewport-height)"],
-                ];
-          return Object.fromEntries(entries);
-        }}
+        {...mergeProps(uiProps("navigation-menu-viewport", viewport, props), menu.viewportProps)}
+        ref={mergeRefs(menu.viewportRef, props.ref?.())}
       >
         {props.children}
       </div>
@@ -632,15 +718,44 @@ export function NavigationMenuViewport(props: Incoming<UiProps>) {
 
 export interface NavigationMenuLinkProps extends UiProps {
   href?: string;
+  target?: string;
+  rel?: string;
+  /** The link is the current page. */
+  active?: boolean;
+  /** The same as {@link NavigationMenuLinkProps.active}; either name works. */
   isActive?: boolean;
+  /**
+   * Called when the link is chosen, before the menu closes. Call
+   * `preventDefault()` on the event to keep the menu open.
+   */
+  onSelect?: (event: Event) => void;
 }
 
+/**
+ * A link in the bar or in a panel. It IS the `<a>`: shadcn's examples write
+ * `<NavigationMenuLink asChild><Link href="…" /></NavigationMenuLink>` to get
+ * one, and here `href` does that with no element to clone.
+ */
 export function NavigationMenuLink(props: Incoming<NavigationMenuLinkProps>) {
+  const value = getContext(MenuContext) ?? null;
+  const isActive = (): boolean => (props.active?.() ?? props.isActive?.()) === true;
+  const behaviour =
+    value === null
+      ? {
+          "data-active": () => (isActive() ? "true" : undefined),
+          "aria-current": () => (isActive() ? "page" : undefined),
+        }
+      : value.menu.linkProps({
+          isActive,
+          onSelect: (event) => props.onSelect?.()?.(event),
+        });
+
   return (
     <a
-      {...uiProps("navigation-menu-link", link, props)}
+      {...mergeProps(uiProps("navigation-menu-link", link, props), behaviour)}
       href={props.href?.()}
-      data-active={() => (props.isActive?.() === true ? "true" : undefined)}
+      target={props.target?.()}
+      rel={props.rel?.()}
     >
       {props.children}
     </a>
@@ -649,11 +764,10 @@ export function NavigationMenuLink(props: Incoming<NavigationMenuLinkProps>) {
 
 /** The little arrow that points at whichever trigger is open. */
 export function NavigationMenuIndicator(props: Incoming<UiProps>) {
-  const menu = useMenu();
+  const { menu } = useMenu();
   return (
     <div
-      {...uiProps("navigation-menu-indicator", indicator, props)}
-      data-state={() => (menu.state.value() === null ? "hidden" : "visible")}
+      {...mergeProps(uiProps("navigation-menu-indicator", indicator, props), menu.indicatorProps)}
     >
       <div class={indicatorArrow} data-slot="navigation-menu-indicator-arrow" />
     </div>

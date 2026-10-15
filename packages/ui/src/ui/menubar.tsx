@@ -1,10 +1,15 @@
+import { useMenuGroupHeading } from "@barqjs/aria/menu";
 import {
-  MenuTrigger,
-  type MenuComponentProps,
-  type MenuTriggerComponentProps,
-} from "@barqjs/aria/menu";
-import type { Incoming } from "@barqjs/core";
+  Menubar as AriaMenubar,
+  MenubarMenu as AriaMenubarMenu,
+  menubarTrigger,
+  type MenubarComponentProps,
+  type MenubarMenuComponentProps,
+} from "@barqjs/aria/menubar";
+import { filterDOMProps, fromProps, mergeProps } from "@barqjs/aria/utils";
+import type { Child, Incoming, JSXElement } from "@barqjs/core";
 import { layer } from "@barqjs/css";
+import { mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 
 import "../theme/layers.ts";
 import { box } from "../lib/shared-box.ts";
@@ -12,25 +17,31 @@ import { when } from "../lib/shared-when.ts";
 import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
 import { uiProps } from "../lib/slot.ts";
-import { Button, type ButtonProps } from "./button.tsx";
+import type { TriggerRender } from "../lib/trigger.tsx";
+import { buttonVariants, type ButtonProps } from "./button.tsx";
 import {
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuGroupLabel,
   DropdownMenuItem,
+  DropdownMenuPortal,
+  DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuShortcut,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
   type DropdownMenuCheckboxItemProps,
+  type DropdownMenuContentProps,
   type DropdownMenuGroupProps,
   type DropdownMenuItemProps,
   type DropdownMenuLabelProps,
+  type DropdownMenuPortalProps,
+  type DropdownMenuRadioGroupProps,
   type DropdownMenuRadioItemProps,
+  type DropdownMenuSubContentProps,
   type DropdownMenuSubProps,
   type DropdownMenuSubTriggerProps,
 } from "./dropdown-menu.tsx";
@@ -69,10 +80,10 @@ const trigger = ui(
         backgroundColor: "var(--muted)",
       },
     },
-    // `aria-expanded` as well as the attribute the menu writes: a trigger keeps
-    // its fill while its menu is open, and that is the state a screen reader
-    // is told about too.
-    "[data-expanded], &[data-open]": {
+    // `aria-expanded` as well as the attributes the menu writes: a trigger
+    // keeps its fill while its menu is open, and that is the state a screen
+    // reader is told about too.
+    '[data-expanded], &[data-open], &[data-state="open"]': {
       backgroundColor: "var(--muted)",
     },
     '[aria-expanded="true"]': {
@@ -83,7 +94,7 @@ const trigger = ui(
 
 /**
  * A menubar's label is the body colour at `text-sm`, not the dropdown's muted
- * `text-xs`, and its ticks sit on the LEFT where a dropdown's are on the right.
+ * `text-xs`, and its ticks sit at the START where a dropdown's are at the end.
  */
 const label = ui(text.medium, {
   paddingInline: "calc(var(--spacing) * 1.5)",
@@ -91,11 +102,11 @@ const label = ui(text.medium, {
   fontSize: "var(--text-sm)",
   lineHeight: "var(--ui-leading, var(--text-sm--line-height))",
   "[data-inset]": {
-    paddingLeft: "calc(var(--spacing) * 7)",
+    paddingInlineStart: "calc(var(--spacing) * 7)",
   },
 });
 
-export interface MenubarProps extends UiProps {}
+export interface MenubarProps extends MenubarComponentProps {}
 
 /**
  * ```tsx
@@ -109,59 +120,97 @@ export interface MenubarProps extends UiProps {}
  * </Menubar>
  * ```
  *
- * The left and right arrows move between the menus, which is what makes a row
- * of dropdowns a menubar rather than a row of dropdowns. Everything inside one
- * is `<DropdownMenu>`'s: the same collection, the same keyboard, the same CSS.
+ * The row is ONE widget, which is what makes it a menubar rather than a row
+ * of dropdowns: a single Tab stop, the horizontal arrows and a typed letter
+ * moving between the triggers, and, once a menu is open, the arrows and the
+ * pointer carrying it from one menu to the next. That is `@barqjs/aria`'s
+ * `Menubar`. Everything inside a menu is `<DropdownMenu>`'s: the same
+ * collection, the same keyboard, the same CSS, and the same choice between
+ * items rendered from data and items written as children.
+ *
+ * `value` is the open menu's `value`, and `""` when none is.
  */
 export function Menubar(props: Incoming<MenubarProps>) {
-  const move = (event: KeyboardEvent): void => {
-    if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
-    const container = event.currentTarget as HTMLElement;
-    const triggers = [...container.querySelectorAll<HTMLElement>('[data-slot="menubar-trigger"]')];
-    const at = triggers.indexOf(document.activeElement as HTMLElement);
-    if (at < 0) return;
-    event.preventDefault();
-    const step = event.key === "ArrowRight" ? 1 : -1;
-    triggers[(at + step + triggers.length) % triggers.length]?.focus();
-  };
-
   return (
-    <div {...uiProps("menubar", bar, props)} role={props.role?.() ?? "menubar"} onKeyDown={move}>
-      {props.children}
-    </div>
+    <AriaMenubar
+      {...props}
+      data-slot={props["data-slot"]?.() ?? "menubar"}
+      class={ui(bar, props.class?.(), props.className?.())}
+    />
   );
 }
 
-export interface MenubarMenuProps extends MenuTriggerComponentProps {}
+export interface MenubarMenuProps extends MenubarMenuComponentProps {}
 
-/** One menu in the bar. Holds its own open state, like a `<DropdownMenu>`. */
+/**
+ * One menu in the bar. Which menu is open is the bar's `value`; `isOpen`,
+ * `defaultOpen` and `onOpenChange` are for a caller that cares about this one.
+ */
 export function MenubarMenu(props: Incoming<MenubarMenuProps>) {
-  return <MenuTrigger {...props} />;
+  return <AriaMenubarMenu {...props} />;
 }
 
-export interface MenubarTriggerProps extends Omit<ButtonProps, "variant" | "size"> {}
+export interface MenubarPortalProps extends DropdownMenuPortalProps {}
 
+export function MenubarPortal(props: Incoming<MenubarPortalProps>) {
+  return <DropdownMenuPortal {...props} />;
+}
+
+export interface MenubarTriggerProps extends Omit<
+  ButtonProps,
+  "variant" | "size" | "href" | "target" | "rel"
+> {
+  role?: string;
+  ref?: RefTarget<HTMLButtonElement>;
+  /** Any other element as the trigger, built from the props and the ref it is handed. */
+  render?: (trigger: TriggerRender) => Child;
+}
+
+/**
+ * The button in the bar. It IS the button, as upstream's is, and takes
+ * `render` for the caller who wants another element in its place.
+ *
+ * Its role is `menuitem`, the ARIA menubar pattern's and Radix's: the bar is a
+ * `menubar`, and what sits in one is an item that happens to open a menu. A
+ * `role` given by the caller wins.
+ */
 export function MenubarTrigger(props: Incoming<MenubarTriggerProps>) {
+  const options = fromProps(props);
+  const { triggerProps, ref } = menubarTrigger({
+    ...options,
+    isDisabled: () => props.isDisabled?.() ?? props.disabled?.(),
+  });
+  const { role: patternRole, ...behaviour } = triggerProps;
+
+  const elementProps = mergeProps(behaviour, filterDOMProps(options, { global: true }), {
+    role: () => props.role?.() ?? patternRole,
+    "aria-label": () => props["aria-label"]?.(),
+    "data-slot": () => props["data-slot"]?.() ?? "menubar-trigger",
+    "data-variant": "ghost",
+    "data-size": "default",
+    class: () =>
+      ui(buttonVariants({ variant: "ghost" }), trigger, props.class?.(), props.className?.()),
+    style: () => props.style?.(),
+  });
+
+  const render = props.render?.();
+  if (render !== undefined) return render({ props: elementProps, ref }) as JSXElement;
+
   return (
-    <DropdownMenuTrigger>
-      <Button
-        {...props}
-        variant="ghost"
-        data-slot="menubar-trigger"
-        class={ui(trigger, props.class?.(), props.className?.())}
-      >
-        {props.children}
-      </Button>
-    </DropdownMenuTrigger>
+    <button {...elementProps} ref={mergeRefs(ref, props.ref?.())}>
+      {props.children}
+    </button>
   );
 }
 
-export interface MenubarContentProps<T> extends MenuComponentProps<T> {}
+export interface MenubarContentProps<T> extends DropdownMenuContentProps<T> {}
 
+/** Aligned to the start of its trigger and pulled 4px back past it, as upstream's is. */
 export function MenubarContent<T>(props: Incoming<MenubarContentProps<T>>) {
   return (
     <DropdownMenuContent
       {...props}
+      alignOffset={props.alignOffset?.() ?? -4}
       data-slot="menubar-content"
       class={ui(props.class?.(), props.className?.())}
     />
@@ -186,6 +235,12 @@ export function MenubarCheckboxItem(props: Incoming<MenubarCheckboxItemProps>) {
   );
 }
 
+export interface MenubarRadioGroupProps extends DropdownMenuRadioGroupProps {}
+
+export function MenubarRadioGroup(props: Incoming<MenubarRadioGroupProps>) {
+  return <DropdownMenuRadioGroup {...props} data-slot="menubar-radio-group" />;
+}
+
 export interface MenubarRadioItemProps extends DropdownMenuRadioItemProps {}
 
 export function MenubarRadioItem(props: Incoming<MenubarRadioItemProps>) {
@@ -202,9 +257,11 @@ export interface MenubarLabelProps extends DropdownMenuLabelProps {}
 
 /** Its own element, because a menubar's label is body-coloured `text-sm`. */
 export function MenubarLabel(props: Incoming<MenubarLabelProps>) {
+  const heading = useMenuGroupHeading();
   return (
     <li
       {...uiProps("menubar-label", label, props)}
+      id={props.id?.() ?? heading?.()}
       role="presentation"
       data-inset={props.inset?.() === true ? "" : undefined}
     >
@@ -243,7 +300,7 @@ export function MenubarSubTrigger(props: Incoming<MenubarSubTriggerProps>) {
   return <DropdownMenuSubTrigger {...props} data-slot="menubar-sub-trigger" />;
 }
 
-export interface MenubarSubContentProps<T> extends MenuComponentProps<T> {}
+export interface MenubarSubContentProps<T> extends DropdownMenuSubContentProps<T> {}
 
 export function MenubarSubContent<T>(props: Incoming<MenubarSubContentProps<T>>) {
   return <DropdownMenuSubContent {...props} data-slot="menubar-sub-content" />;

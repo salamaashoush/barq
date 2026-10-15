@@ -1,7 +1,10 @@
 {
-  "date-picker-trigger": "w-[240px] justify-start text-left font-normal",
+  "date-picker-trigger": "w-[240px] justify-start text-start font-normal",
   "date-picker-trigger-empty": "text-muted-foreground",
   "date-picker-content": "w-auto p-0",
   "date-range-picker": "grid gap-2",
-  "date-range-picker-trigger": "w-[300px] justify-start text-left font-normal"
+  "date-range-picker-trigger": "w-[300px] justify-start text-start font-normal",
+  "date-picker-content-presets": "flex w-auto flex-col gap-2 p-2",
+  "date-picker-calendar": "rounded-md border",
+  "date-picker-content-input": "w-auto overflow-hidden p-0"
 }

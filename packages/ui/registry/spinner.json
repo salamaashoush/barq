@@ -9,13 +9,14 @@
     "@barqjs/lucide"
   ],
   "registryDependencies": [
-    "layers"
+    "layers",
+    "slot"
   ],
   "files": [
     {
       "path": "ui/spinner.tsx",
       "type": "registry:ui",
-      "content": "import type { Incoming } from \"@barqjs/core\";\nimport { layer } from \"@barqjs/css\";\n\nimport { LoaderCircle } from \"@barqjs/lucide/icons/loader-circle\";\n\nimport \"../theme/layers.ts\";\n\nconst ui = layer(\"barq.ui\");\n\nconst spinner = ui({\n  width: \"calc(var(--spacing) * 4)\",\n  height: \"calc(var(--spacing) * 4)\",\n  animation: \"var(--animate-spin)\",\n});\n\nexport interface SpinnerProps {\n  class?: string;\n  className?: string;\n  style?: Record<string, string | number | undefined>;\n  id?: string;\n  /** What a screen reader says while it turns. @default \"Loading\" */\n  label?: string;\n  \"data-testid\"?: string;\n}\n\n/**\n * ```tsx\n * <Button isDisabled><Spinner /> Saving</Button>\n * ```\n *\n * `role=\"status\"` with a name, so the wait is announced once rather than being\n * a silent turning circle.\n */\nexport function Spinner(props: Incoming<SpinnerProps>) {\n  return (\n    <LoaderCircle\n      role=\"status\"\n      aria-label={props.label?.() ?? \"Loading\"}\n      data-slot=\"spinner\"\n      data-testid={props[\"data-testid\"]?.()}\n      id={props.id?.()}\n      style={props.style?.()}\n      class={ui(spinner, props.class?.(), props.className?.())}\n    />\n  );\n}\n"
+      "content": "import type { Incoming } from \"@barqjs/core\";\nimport { layer } from \"@barqjs/css\";\n\nimport { LoaderCircle } from \"@barqjs/lucide/icons/loader-circle\";\n\nimport \"../theme/layers.ts\";\nimport { handedOn } from \"../lib/slot.ts\";\n\nconst ui = layer(\"barq.ui\");\n\nconst spinner = ui({\n  width: \"calc(var(--spacing) * 4)\",\n  height: \"calc(var(--spacing) * 4)\",\n  animation: \"var(--animate-spin)\",\n});\n\nexport interface SpinnerProps {\n  class?: string;\n  className?: string;\n  style?: Record<string, string | number | undefined>;\n  id?: string;\n  /** What a screen reader says while it turns. @default \"Loading\" */\n  label?: string;\n  /** shadcn's spelling of `label`. */\n  \"aria-label\"?: string;\n  /** For a spinner beside text that already says what is happening. */\n  \"aria-hidden\"?: boolean | \"true\" | \"false\";\n  /** @default \"status\" */\n  role?: string;\n  \"data-slot\"?: string;\n  \"data-testid\"?: string;\n}\n\n/**\n * ```tsx\n * <Button isDisabled><Spinner /> Saving</Button>\n * ```\n *\n * `role=\"status\"` with a name, so the wait is announced once rather than being\n * a silent turning circle.\n */\nexport function Spinner(props: Incoming<SpinnerProps>) {\n  return (\n    <LoaderCircle\n      {...handedOn(props)}\n      role={props.role?.() ?? \"status\"}\n      aria-label={props.label?.() ?? props[\"aria-label\"]?.() ?? \"Loading\"}\n      aria-hidden={props[\"aria-hidden\"]?.()}\n      data-slot={props[\"data-slot\"]?.() ?? \"spinner\"}\n      class={ui(spinner, props.class?.(), props.className?.())}\n    />\n  );\n}\n"
     }
   ]
 }

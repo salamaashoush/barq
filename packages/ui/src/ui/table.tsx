@@ -76,17 +76,20 @@ const row = ui(box.transition, {
   "[data-selected]": {
     backgroundColor: "var(--muted)",
   },
+  '[data-state="selected"]': {
+    backgroundColor: "var(--muted)",
+  },
 });
 
 const head = ui(text.medium, {
   height: "calc(var(--spacing) * 10)",
   paddingInline: "calc(var(--spacing) * 2)",
-  textAlign: "left",
+  textAlign: "start",
   verticalAlign: "middle",
   whiteSpace: "nowrap",
   color: "var(--foreground)",
   ':has([role="checkbox"])': {
-    paddingRight: "0px",
+    paddingInlineEnd: "0px",
   },
 });
 
@@ -95,7 +98,7 @@ const cell = ui({
   verticalAlign: "middle",
   whiteSpace: "nowrap",
   ':has([role="checkbox"])': {
-    paddingRight: "0px",
+    paddingInlineEnd: "0px",
   },
 });
 
@@ -135,6 +138,8 @@ export function TableFooter(props: Incoming<UiProps>) {
 export interface TableRowProps extends UiProps {
   /** Marks the row as chosen. The CSS reads `data-selected`. */
   isSelected?: boolean;
+  /** `"selected"` tints the row too, which is how upstream's data tables say it. */
+  "data-state"?: string;
 }
 
 export function TableRow(props: Incoming<TableRowProps>) {
@@ -142,6 +147,9 @@ export function TableRow(props: Incoming<TableRowProps>) {
     <tr
       {...uiProps("table-row", row, props)}
       data-selected={props.isSelected?.() === true ? "" : undefined}
+      data-state={
+        props["data-state"]?.() ?? (props.isSelected?.() === true ? "selected" : undefined)
+      }
       aria-selected={props.isSelected?.() === true ? true : undefined}
     >
       {props.children}

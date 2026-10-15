@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { directoryFor, hashOf, rewrite, targetOf } from "../src/files.ts";
+import { directoryFor, hashOf, placed, rewrite, targetOf } from "../src/files.ts";
 import { parseConfig, type RegistryFile } from "../src/schema.ts";
 
 const config = parseConfig({
@@ -33,7 +33,101 @@ describe("where a file goes", () => {
   });
 });
 
+describe("where the newer types go", () => {
+  const typed = (path: string, type: RegistryFile["type"], target?: string): RegistryFile => ({
+    path,
+    type,
+    content: "",
+    ...(target === undefined ? {} : { target }),
+  });
+
+  test("a hook has a directory of its own", () => {
+    expect(directoryFor(config, root, "registry:hook")).toBe("/project/hooks");
+    expect(targetOf(config, root, typed("hooks/use-mobile.ts", "registry:hook"))).toBe(
+      "/project/hooks/use-mobile.ts",
+    );
+  });
+
+  test("a block keeps the tree it was written as, under components", () => {
+    expect(targetOf(config, root, typed("blocks/login-01.tsx", "registry:block"))).toBe(
+      "/project/app/blocks/login-01.tsx",
+    );
+    expect(
+      targetOf(config, root, typed("blocks/dashboard-01/components/chart.tsx", "registry:block")),
+    ).toBe("/project/app/blocks/dashboard-01/components/chart.tsx");
+  });
+
+  test("a component under `components/` is not nested in a second one", () => {
+    expect(targetOf(config, root, typed("components/charts/area.tsx", "registry:component"))).toBe(
+      "/project/app/charts/area.tsx",
+    );
+    expect(targetOf(config, root, typed("charts/area.tsx", "registry:component"))).toBe(
+      "/project/app/charts/area.tsx",
+    );
+  });
+
+  test("a target is from the project root, whatever the type", () => {
+    expect(
+      targetOf(config, root, typed("login/page.tsx", "registry:page", "src/routes/login.tsx")),
+    ).toBe("/project/src/routes/login.tsx");
+    expect(targetOf(config, root, typed("env", "registry:file", "~/.env.example"))).toBe(
+      "/project/.env.example",
+    );
+    expect(targetOf(config, root, typed("ui/button.tsx", "registry:ui", "lib/b.tsx"))).toBe(
+      "/project/lib/b.tsx",
+    );
+  });
+
+  test("nothing a registry says can write outside the project", () => {
+    expect(() => targetOf(config, root, typed("x", "registry:file", "../../etc/profile"))).toThrow(
+      /outside the project/,
+    );
+    expect(() => targetOf(config, root, typed("x", "registry:file", "/etc/profile"))).toThrow(
+      /outside the project/,
+    );
+    expect(() => targetOf(config, root, typed("blocks/../../../x.tsx", "registry:block"))).toThrow(
+      /outside the project/,
+    );
+  });
+});
+
 describe("rewriting imports", () => {
+  test("a block reaches the ui it was written against, wherever ui was put", () => {
+    const block: RegistryFile = {
+      path: "blocks/login-01.tsx",
+      type: "registry:block",
+      content: 'import { Card } from "../ui/card.tsx";\nimport { fill } from "../lib/layout.ts";',
+    };
+    expect(rewrite(config, root, block)).toBe(
+      'import { Card } from "../ui/card.tsx";\nimport { fill } from "../lib/layout.ts";',
+    );
+
+    const apart = parseConfig({
+      paths: { ui: "src/ui", lib: "src/shared", theme: "src/theme", components: "src/features" },
+    });
+    expect(rewrite(apart, root, block)).toBe(
+      'import { Card } from "../../ui/card.tsx";\nimport { fill } from "../../shared/layout.ts";',
+    );
+  });
+
+  test("a file travelling with it is found where its own type and target put it", () => {
+    const page: RegistryFile = {
+      path: "blocks/login/page.tsx",
+      type: "registry:page",
+      target: "src/routes/login.tsx",
+      content: 'import { LoginForm } from "./components/login-form.tsx";',
+    };
+    const form: RegistryFile = {
+      path: "blocks/login/components/login-form.tsx",
+      type: "registry:component",
+      content: "",
+    };
+    const together = placed([{ files: [page, form] }]);
+    expect(rewrite(config, root, page, together)).toBe(
+      'import { LoginForm } from "../../app/blocks/login/components/login-form.tsx";',
+    );
+  });
+
   test("a sibling stays a sibling", () => {
     const out = rewrite(
       config,

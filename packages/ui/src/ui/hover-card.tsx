@@ -1,19 +1,22 @@
 import { Popover as AriaPopover } from "@barqjs/aria/dialog";
-import { hover } from "@barqjs/aria/interactions";
+import { hover, isFocusVisible } from "@barqjs/aria/interactions";
 import {
   overlayTriggerState,
+  placementFor,
+  type Align,
   type OverlayTriggerState,
   type Placement,
+  type Side,
 } from "@barqjs/aria/overlays";
-import { fromProps, provideTriggerSlot } from "@barqjs/aria/utils";
+import { fromProps, mergeProps } from "@barqjs/aria/utils";
 import {
-  context,
+  createContext,
   getContext,
-  getOwner,
   onCleanup,
   provide,
   type Child,
   type Incoming,
+  type JSXElement,
 } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 import { ref as makeRef } from "@barqjs/primitives/refs";
@@ -23,6 +26,8 @@ import { box } from "../lib/shared-box.ts";
 import { when } from "../lib/shared-when.ts";
 import { text } from "../lib/shared-text.ts";
 import type { UiProps } from "../lib/props.ts";
+import { handedOn, named } from "../lib/slot.ts";
+import { TriggerPart, type TriggerPartProps } from "../lib/trigger.tsx";
 
 const ui = layer("barq.ui");
 
@@ -86,7 +91,7 @@ interface HoverCardValue {
   leave: () => void;
 }
 
-const HoverCardContext = context<HoverCardValue | null>(null);
+const HoverCardContext = createContext<HoverCardValue | null>(null);
 
 function use(): HoverCardValue {
   const value = getContext(HoverCardContext);
@@ -117,8 +122,9 @@ export interface HoverCardProps {
  *
  * A hover card is not a tooltip: it holds content worth reading, so the pointer
  * can travel into it without it closing, and it does not describe its trigger.
- * Nothing here opens on focus, because there is nothing in it a keyboard user
- * could not reach another way.
+ * Keyboard focus on the trigger opens it as resting the pointer does, and
+ * leaves focus where it is: the card is somewhere to read, and whatever it
+ * links to has to be reachable another way.
  */
 export function HoverCard(props: Incoming<HoverCardProps>) {
   const state = overlayTriggerState(fromProps(props));
@@ -146,29 +152,62 @@ export function HoverCard(props: Incoming<HoverCardProps>) {
     HoverCardContext,
     () => value,
     () => props.children as unknown,
-  ) as never;
+  );
 }
 
-export function HoverCardTrigger(props: Incoming<{ children?: Child }>) {
+/**
+ * The link or control the card belongs to.
+ *
+ * What it hands over, through the slot or through `render`, is the hover and
+ * focus handlers and `data-state`, and nothing about being a button: a hover
+ * card's trigger is usually a link, and stays one.
+ */
+export function HoverCardTrigger(props: Incoming<TriggerPartProps>) {
   const value = use();
   const { hoverProps } = hover({
     onHoverStart: () => value.enter(),
     onHoverEnd: () => value.leave(),
   });
-
-  return provide(
-    HoverCardContext,
-    () => value,
-    () => {
-      provideTriggerSlot({ props: hoverProps, ref: value.triggerRef.set });
-      return props.children;
+  const triggerProps = mergeProps(hoverProps, {
+    "data-state": () => (value.state.isOpen() ? "open" : "closed"),
+    // Only focus the keyboard brought. Focus a press left behind is on
+    // something the pointer is already over, and that is the hover's to open.
+    onFocus: () => {
+      if (isFocusVisible()) value.enter();
     },
-  ) as never;
+    onBlur: () => value.leave(),
+  });
+
+  const render = props.render?.();
+  if (render !== undefined) {
+    return render({
+      props: mergeProps({ "data-slot": "hover-card-trigger" }, triggerProps),
+      ref: (element) => value.triggerRef.set(element as HTMLElement | null),
+    }) as JSXElement;
+  }
+
+  return (
+    <TriggerPart slot={{ props: triggerProps, ref: value.triggerRef.set }}>
+      {props.children}
+    </TriggerPart>
+  );
 }
 
 export interface HoverCardContentProps extends UiProps {
-  /** @default "bottom" */
+  /** Which edge of the trigger it sits on. @default "bottom" */
+  side?: Side;
+  /** Where along that edge. @default "center" */
+  align?: Align;
+  /** Distance from the trigger. @default 8 */
+  sideOffset?: number;
+  /** Distance along the edge, from where `align` put it. @default 0 */
+  alignOffset?: number;
+  /** The same position as one word, which wins over `side` and `align`. */
   placement?: Placement;
+  /** Wins over `sideOffset`. */
+  offset?: number;
+  /** Wins over `alignOffset`. */
+  crossOffset?: number;
 }
 
 export function HoverCardContent(props: Incoming<HoverCardContentProps>) {
@@ -187,13 +226,23 @@ export function HoverCardContent(props: Incoming<HoverCardContentProps>) {
 
   return (
     <AriaPopover
+      {...handedOn(props)}
+      {...named(props)}
       onPointerEnter={(event: PointerEvent) => enter?.(event)}
       onPointerLeave={(event: PointerEvent) => leave?.(event)}
       triggerRef={value.triggerRef}
       isOpen={value.state.isOpen()}
       onOpenChange={value.state.setOpen}
-      placement={props.placement?.() ?? "bottom"}
+      placement={
+        props.placement?.() ?? placementFor(props.side?.() ?? "bottom", props.align?.() ?? "center")
+      }
+      offset={props.offset?.() ?? props.sideOffset?.()}
+      crossOffset={props.crossOffset?.() ?? props.alignOffset?.()}
       isDismissable
+      // Opened by a pointer at rest or by focus arriving on the trigger, and in
+      // both cases the user is somewhere else: a focus scope would pull focus
+      // into the card and the blur that follows would close it.
+      shouldContainFocus={false}
       data-slot={props["data-slot"]?.() ?? "hover-card-content"}
       class={ui(content, props.class?.(), props.className?.())}
     >

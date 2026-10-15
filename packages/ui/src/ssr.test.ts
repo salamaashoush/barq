@@ -23,6 +23,9 @@ import { fileURLToPath } from "node:url";
 
 import { cssRegistration } from "@barqjs/compiler/vite";
 import { collectCss } from "@barqjs/css";
+
+import { ENTRIES } from "./entries.ts";
+import { FIXTURES } from "./ssr-fixtures.ts";
 const require_ = createRequire(import.meta.url);
 const native = require_("@barqjs/compiler-rs") as {
   transform(code: string, options?: Record<string, unknown>): { code: string; css?: string };
@@ -61,6 +64,9 @@ const ssrPlugin = {
 };
 
 const root = fileURLToPath(new URL("./index.ts", import.meta.url));
+// `toast` gives its `Toaster` up to `sonner` in the barrel, so the fixture
+// reaches it the way an application does: by its own entry point.
+const toastEntry = fileURLToPath(new URL("./ui/toast.tsx", import.meta.url));
 // Inside the package rather than the system temp directory: the built module
 // imports `@barqjs/server`, and resolution walks up from where the file IS.
 const workspace = mkdtempSync(
@@ -73,7 +79,7 @@ let probes = 0;
 
 async function server(source: string): Promise<{ page: () => string }> {
   const entry = join(workspace, `probe${probes++}.tsx`);
-  writeFileSync(entry, source.replaceAll("<root>", root));
+  writeFileSync(entry, source.replaceAll("<root>", root).replaceAll("<toast>", toastEntry));
 
   const result = await Bun.build({
     entrypoints: [entry],
@@ -97,6 +103,53 @@ async function server(source: string): Promise<{ page: () => string }> {
  */
 function html(mod: { page: () => string }): string {
   return mod.page();
+}
+
+/**
+ * The same page in a process that has no DOM at all.
+ *
+ * `server()` imports the built module HERE, where happy-dom has already given
+ * the process a `document`, so `isServer` is false and anything reaching for
+ * `window` finds one. A real server has neither, and the effects a render
+ * schedules run after the markup is returned, which is why the child waits
+ * before it reports.
+ */
+async function serverProcess(
+  source: string,
+): Promise<{ code: number; html: string; errors: string }> {
+  const entry = join(workspace, `process${probes++}.tsx`);
+  writeFileSync(entry, source.replaceAll("<root>", root).replaceAll("<toast>", toastEntry));
+
+  const result = await Bun.build({
+    entrypoints: [entry],
+    target: "bun",
+    format: "esm",
+    plugins: [ssrPlugin],
+    external: ["@barqjs/core", "@barqjs/css", "@barqjs/server"],
+  });
+  if (!result.success) throw new AggregateError(result.logs, "the page did not build");
+
+  const built = join(workspace, `process-built${probes}.mjs`);
+  writeFileSync(built, await (result.outputs[0] as { text(): Promise<string> }).text());
+  const runner = join(workspace, `process-run${probes}.mjs`);
+  writeFileSync(
+    runner,
+    [
+      `import { page } from ${JSON.stringify(built)};`,
+      "const html = page();",
+      "await new Promise((resolve) => setTimeout(resolve, 30));",
+      "process.stdout.write(html);",
+      "",
+    ].join("\n"),
+  );
+
+  const child = Bun.spawn(["bun", runner], { cwd: workspace, stdout: "pipe", stderr: "pipe" });
+  const [code, out, errors] = await Promise.all([
+    child.exited,
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+  ]);
+  return { code, html: out, errors };
 }
 
 describe("the server", () => {
@@ -299,6 +352,63 @@ describe("the server", () => {
     expect(markup).not.toContain('data-slot="popover-content"');
   });
 
+  test("an overlay that is OPEN on the server touches no DOM and takes nothing down", async () => {
+    // Open from the first render, and opened from `onSettled`, which runs on
+    // the server too: a welcome popover is written exactly that way. There is
+    // no `document` to portal into, listen on or measure, so the answer is the
+    // trigger and no overlay, from a process that exits cleanly.
+    const result = await serverProcess(`
+      import { createSignal, onSettled } from "@barqjs/core";
+      import { renderToString } from "@barqjs/server";
+      import {
+        AlertDialog, AlertDialogContent, AlertDialogTitle, AlertDialogTrigger,
+        Button,
+        Dialog, DialogContent, DialogTitle, DialogTrigger,
+        HoverCard, HoverCardContent, HoverCardTrigger,
+        Popover, PopoverContent, PopoverTrigger,
+        Sheet, SheetContent, SheetTitle, SheetTrigger,
+        Tooltip, TooltipContent,
+      } from "<root>";
+
+      export function page() {
+        return renderToString(() => <Page />);
+      }
+
+      function Welcome() {
+        const [open, setOpen] = createSignal(false);
+        onSettled(() => {
+          setOpen(true);
+        });
+        return (
+          <Popover isOpen={open()} onOpenChange={setOpen}>
+            <PopoverTrigger><Button>Welcome</Button></PopoverTrigger>
+            <PopoverContent>Body</PopoverContent>
+          </Popover>
+        );
+      }
+
+      function Page() {
+        return (
+          <div>
+            <Welcome />
+            <Popover isOpen><PopoverTrigger><Button>Size</Button></PopoverTrigger><PopoverContent isModal>Body</PopoverContent></Popover>
+            <Dialog isOpen><DialogTrigger><Button>Open</Button></DialogTrigger><DialogContent><DialogTitle>T</DialogTitle></DialogContent></Dialog>
+            <AlertDialog isOpen><AlertDialogTrigger><Button>Delete</Button></AlertDialogTrigger><AlertDialogContent><AlertDialogTitle>T</AlertDialogTitle></AlertDialogContent></AlertDialog>
+            <Sheet isOpen><SheetTrigger><Button>Filters</Button></SheetTrigger><SheetContent><SheetTitle>T</SheetTitle></SheetContent></Sheet>
+            <HoverCard isOpen><HoverCardTrigger><Button>@salama</Button></HoverCardTrigger><HoverCardContent>Body</HoverCardContent></HoverCard>
+            <Tooltip isOpen><Button>Help</Button><TooltipContent>Body</TooltipContent></Tooltip>
+          </div>
+        );
+      }
+    `);
+
+    expect(result.errors).toBe("");
+    expect(result.code).toBe(0);
+    expect(result.html).toContain("Welcome");
+    expect(result.html).toContain("Filters");
+    expect(result.html).toContain('aria-expanded="true"');
+  });
+
   test("the composed ones render too, including the ones that measure on the client", async () => {
     const mod = await server(`
       import { renderToString } from "@barqjs/server";
@@ -353,6 +463,127 @@ describe("the server", () => {
     }
   });
 
+  test("the parts added beside the first set render on the server too", async () => {
+    const source = `
+      import { renderToString } from "@barqjs/server";
+      import {
+        Calendar, DateRangePicker, DirectionProvider,
+        Questionnaire, QuestionnaireActions, QuestionnaireChoice, QuestionnaireChoices,
+        QuestionnaireItem, QuestionnaireNext, QuestionnaireProgress, QuestionnaireTitle,
+        ResizableHandle, ResizablePanel, ResizablePanelGroup,
+        ScrollArea, ScrollBar, Tabs, TabsContent, TabsList, TabsTrigger, Textarea,
+        ToggleGroup, ToggleGroupItem, useIsMobile,
+      } from "<root>";
+      import { Toaster } from "<toast>";
+
+      export function page() {
+        return renderToString(() => <Page />);
+      }
+
+      function Page() {
+        const isMobile = useIsMobile();
+        return (
+          <DirectionProvider dir="rtl">
+            <div data-mobile={String(isMobile())}>
+              <Calendar aria-label="Departure" mode="multiple" numberOfMonths={2} captionLayout="dropdown" showWeekNumber />
+              <DateRangePicker aria-label="Stay" />
+              <Questionnaire aria-label="Plan">
+                <QuestionnaireProgress />
+                <QuestionnaireItem name="plan">
+                  <QuestionnaireTitle>Choose a plan</QuestionnaireTitle>
+                  <QuestionnaireChoices>
+                    <QuestionnaireChoice value="plus"><span>Plus</span></QuestionnaireChoice>
+                  </QuestionnaireChoices>
+                </QuestionnaireItem>
+                <QuestionnaireActions><QuestionnaireNext /></QuestionnaireActions>
+              </Questionnaire>
+              <ResizablePanelGroup orientation="vertical" autoSaveId="layout">
+                <ResizablePanel collapsible defaultSize={30}>a</ResizablePanel>
+                <ResizableHandle withHandle />
+                <ResizablePanel>b</ResizablePanel>
+              </ResizablePanelGroup>
+              <ScrollArea aria-label="Log"><div>Line 1</div><ScrollBar orientation="horizontal" /></ScrollArea>
+              <Tabs defaultValue="account">
+                <TabsList aria-label="Settings">
+                  <TabsTrigger value="account">Account</TabsTrigger>
+                  <TabsTrigger value="password">Password</TabsTrigger>
+                </TabsList>
+                <TabsContent value="account">Account settings</TabsContent>
+                <TabsContent value="password">Password settings</TabsContent>
+              </Tabs>
+              <Textarea aria-label="Notes" />
+              <ToggleGroup type="single" aria-label="Alignment">
+                <ToggleGroupItem value="start">Start</ToggleGroupItem>
+                <ToggleGroupItem value="end">End</ToggleGroupItem>
+              </ToggleGroup>
+              <Toaster />
+            </div>
+          </DirectionProvider>
+        );
+      }
+    `;
+
+    const bare = await serverProcess(source);
+    expect(bare.errors).toBe("");
+    expect(bare.code).toBe(0);
+
+    const markup = html(await server(source));
+    expect(bare.html).toContain('data-slot="questionnaire"');
+    for (const slot of [
+      "calendar",
+      "date-range-picker-trigger",
+      "questionnaire",
+      "questionnaire-choice",
+      "resizable-panel-group",
+      "resizable-handle",
+      "scroll-area-scrollbar",
+      "tabs-trigger",
+      "tabs-content",
+      "textarea",
+      "toggle-group-item",
+    ]) {
+      expect(markup, `${slot} is not in the server markup`).toContain(`data-slot="${slot}"`);
+    }
+    expect(markup).toContain('data-mobile="false"');
+    expect(markup).toContain('data-orientation="vertical"');
+    expect(markup).toContain('role="tab"');
+    expect(markup).toContain('role="separator"');
+    // The viewport lives in a portal, which a server has nowhere to put: the
+    // toaster has to render without one rather than reach for `document.body`.
+    expect(markup).not.toContain('data-slot="toast-viewport"');
+  });
+
+  test("a toaster with toasts already raised renders in a process with no DOM", async () => {
+    // An empty toaster is one element. With a toast up it builds a row, and a
+    // row is where the swipe, the timers and the measuring are set up: the
+    // part that reaches for a document if anything does.
+    const source = `
+      import { renderToString } from "@barqjs/server";
+      import { Toaster as Sonner, toast as sonner } from "<root>";
+      import { Toaster, toast } from "<toast>";
+
+      export function page() {
+        sonner.success("Saved", {
+          description: "Three files",
+          action: { label: "Undo", onClick: () => {} },
+        });
+        sonner.loading("Uploading");
+        toast.add({ title: "Event created", description: "Sunday at 9:00", type: "success" });
+        return renderToString(() => (
+          <div>
+            <Sonner richColors position="top-center" />
+            <Toaster />
+          </div>
+        ));
+      }
+    `;
+
+    const bare = await serverProcess(source);
+    expect(bare.errors).toBe("");
+    expect(bare.code).toBe(0);
+    expect(bare.html).toContain('data-slot="toaster"');
+  });
+
   test("the classes in the markup are classes the stylesheet defines", async () => {
     // Server markup with no stylesheet behind it is an unstyled first paint,
     // which is the whole reason to render on a server at all.
@@ -381,5 +612,345 @@ describe("the server", () => {
       );
     }
     expect(classes.filter((name) => !name.startsWith("a-"))).toEqual(["group/button"]);
+  });
+
+  test("a command palette written as children renders its whole list, roles and all", async () => {
+    // Its items register themselves as they render and are scored against the
+    // search, both of which lean on effects and refs a server never runs: the
+    // markup has to be the full, unfiltered list regardless.
+    const command = fileURLToPath(new URL("./ui/command.tsx", import.meta.url));
+    const mod = await server(`
+      import { renderToString } from "@barqjs/server";
+      import {
+        Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+        CommandSeparator, CommandShortcut,
+      } from "${command}";
+
+      export function page() {
+        return renderToString(() => <Page />);
+      }
+
+      function Page() {
+        return (
+          <Command label="Commands">
+            <CommandInput placeholder="Type a command" />
+            <CommandList>
+              <CommandEmpty>No results found.</CommandEmpty>
+              <CommandGroup heading="Settings">
+                <CommandItem>Profile<CommandShortcut>P</CommandShortcut></CommandItem>
+                <CommandItem disabled>Billing</CommandItem>
+              </CommandGroup>
+              <CommandSeparator />
+              <CommandItem value="sign-out">Sign out</CommandItem>
+            </CommandList>
+          </Command>
+        );
+      }
+    `);
+
+    const markup = html(mod);
+    for (const slot of [
+      "command",
+      "command-input-wrapper",
+      "command-input",
+      "command-list",
+      "command-group",
+      "command-item",
+      "command-separator",
+      "command-shortcut",
+    ]) {
+      expect(markup, `${slot} is not in the server markup`).toContain(`data-slot="${slot}"`);
+    }
+    expect(markup).toContain('role="combobox"');
+    expect(markup).toContain('role="listbox"');
+    expect(markup.match(/role="option"/g)).toHaveLength(3);
+    expect(markup).toContain('aria-disabled="true"');
+    expect(markup).not.toContain('data-slot="command-empty"');
+    expect(markup).not.toMatch(/ hidden[=\s>]/);
+  });
+
+  test("a select written as parts renders its trigger and none of its list, with no DOM", async () => {
+    // While closed it builds its options into an element that is never put in
+    // the document, so they register for the trigger's text. A server has no
+    // document to make that element from, and must not go looking for one.
+    const select = fileURLToPath(new URL("./ui/select.tsx", import.meta.url));
+    const result = await serverProcess(`
+      import { renderToString } from "@barqjs/server";
+      import {
+        Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue,
+      } from "${select}";
+
+      export function page() {
+        return renderToString(() => <Page />);
+      }
+
+      function Page() {
+        return (
+          <Select defaultValue="apple" name="fruit">
+            <SelectTrigger aria-label="Fruit"><SelectValue placeholder="Pick one" /></SelectTrigger>
+            <SelectContent>
+              <SelectGroup>
+                <SelectLabel>Fruits</SelectLabel>
+                <SelectItem value="apple">Apple</SelectItem>
+                <SelectItem value="banana">Banana</SelectItem>
+              </SelectGroup>
+            </SelectContent>
+          </Select>
+        );
+      }
+    `);
+
+    expect(result.errors).toBe("");
+    expect(result.code).toBe(0);
+    expect(result.html).toContain('data-slot="select-trigger"');
+    expect(result.html).toContain('role="combobox"');
+    expect(result.html).toContain('aria-haspopup="listbox"');
+    expect(result.html).toContain('aria-expanded="false"');
+    expect(result.html).toContain('data-slot="select-value"');
+    expect(result.html).not.toContain('data-slot="select-content"');
+    expect(result.html).not.toContain('role="option"');
+  });
+
+  test("a combobox written as parts renders its field and its chips, and no list, with no DOM", async () => {
+    // The list is portalled and exists only while open, and the chips find
+    // their values by where they rendered. Neither may reach for a document.
+    const combobox = fileURLToPath(new URL("./ui/combobox.tsx", import.meta.url));
+    const result = await serverProcess(`
+      import { For } from "@barqjs/core";
+      import { renderToString } from "@barqjs/server";
+      import {
+        Combobox, ComboboxChip, ComboboxChips, ComboboxChipsInput, ComboboxContent,
+        ComboboxEmpty, ComboboxInput, ComboboxItem, ComboboxList, ComboboxValue,
+      } from "${combobox}";
+
+      const NAMES = ["Remix", "Astro"];
+
+      export function page() {
+        return renderToString(() => <Page />);
+      }
+
+      function Page() {
+        return (
+          <>
+            <Combobox items={NAMES} defaultValue="Astro" name="framework">
+              <ComboboxInput aria-label="Framework" showClear />
+              <ComboboxContent>
+                <ComboboxEmpty>No items found.</ComboboxEmpty>
+                <ComboboxList>{(item) => <ComboboxItem value={item}>{item}</ComboboxItem>}</ComboboxList>
+              </ComboboxContent>
+            </Combobox>
+            <Combobox multiple items={NAMES} defaultValue={["Remix"]}>
+              <ComboboxChips>
+                <ComboboxValue>
+                  {(values) => (
+                    <>
+                      <For each={values}>{(value) => <ComboboxChip>{value}</ComboboxChip>}</For>
+                      <ComboboxChipsInput aria-label="Frameworks" />
+                    </>
+                  )}
+                </ComboboxValue>
+              </ComboboxChips>
+            </Combobox>
+          </>
+        );
+      }
+    `);
+
+    expect(result.errors).toBe("");
+    expect(result.code).toBe(0);
+    for (const slot of [
+      "input-group",
+      "input-group-control",
+      "combobox-trigger",
+      "combobox-clear",
+      "combobox-chips",
+      "combobox-chip",
+      "combobox-chip-remove",
+      "combobox-chip-input",
+    ]) {
+      expect(result.html, `${slot} is not in the server markup`).toContain(`data-slot="${slot}"`);
+    }
+    expect(result.html.match(/role="combobox"/g)).toHaveLength(2);
+    expect(result.html).toContain('aria-expanded="false"');
+    expect(result.html).toContain('aria-autocomplete="list"');
+    expect(result.html).toContain('value="Astro"');
+    expect(result.html).toContain('name="framework"');
+    expect(result.html).not.toContain('data-slot="combobox-content"');
+    expect(result.html).not.toContain('role="option"');
+  });
+
+  test("a menubar written as parts renders its bar and triggers, and no menu, with no DOM", async () => {
+    // The bar orders its triggers by where they are in the document and puts
+    // focus back on one in a frame. A server has neither, and a closed bar
+    // must ask for neither.
+    const menubar = fileURLToPath(new URL("./ui/menubar.tsx", import.meta.url));
+    const result = await serverProcess(`
+      import { renderToString } from "@barqjs/server";
+      import {
+        Menubar, MenubarCheckboxItem, MenubarContent, MenubarItem, MenubarMenu, MenubarRadioGroup,
+        MenubarRadioItem, MenubarSub, MenubarSubContent, MenubarSubTrigger, MenubarTrigger,
+      } from "${menubar}";
+
+      export function page() {
+        return renderToString(() => <Page />);
+      }
+
+      function Page() {
+        return (
+          <Menubar aria-label="Application">
+            <MenubarMenu>
+              <MenubarTrigger role="menuitem">File</MenubarTrigger>
+              <MenubarContent>
+                <MenubarItem>New tab</MenubarItem>
+                <MenubarSub>
+                  <MenubarSubTrigger>Share</MenubarSubTrigger>
+                  <MenubarSubContent><MenubarItem>Email link</MenubarItem></MenubarSubContent>
+                </MenubarSub>
+              </MenubarContent>
+            </MenubarMenu>
+            <MenubarMenu>
+              <MenubarTrigger role="menuitem">View</MenubarTrigger>
+              <MenubarContent>
+                <MenubarCheckboxItem checked>Full URLs</MenubarCheckboxItem>
+                <MenubarRadioGroup value="salama">
+                  <MenubarRadioItem value="salama">Salama</MenubarRadioItem>
+                </MenubarRadioGroup>
+              </MenubarContent>
+            </MenubarMenu>
+          </Menubar>
+        );
+      }
+    `);
+
+    expect(result.errors).toBe("");
+    expect(result.code).toBe(0);
+    expect(result.html).toContain('role="menubar"');
+    expect(result.html).toContain('data-slot="menubar"');
+    expect(result.html).toContain('data-slot="menubar-trigger"');
+    expect(result.html).toContain('role="menuitem"');
+    expect(result.html).toContain('aria-expanded="false"');
+    expect(result.html).toContain('data-state="closed"');
+    // One Tab stop, in the markup: the first trigger and no other.
+    expect(result.html.match(/tabindex="0"/gi)).toHaveLength(1);
+    expect(result.html).not.toContain('data-slot="menubar-content"');
+    expect(result.html).not.toContain('role="menu"');
+  });
+});
+
+/** What a module draws: an exported function with a capital. */
+async function componentsOf(entry: string): Promise<string[]> {
+  const mod = (await import(`./${entry}`)) as Record<string, unknown>;
+  return Object.keys(mod)
+    .filter((name) => /^[A-Z]/.test(name) && typeof mod[name] === "function")
+    .toSorted();
+}
+
+const sources = fileURLToPath(new URL("./", import.meta.url));
+// The barrel re-exports the rest, so its components are theirs. The themes draw
+// nothing, and importing one here would register its rules for every suite
+// that runs after this one: the reset's test asks that nothing has.
+const MODULES = await Promise.all(
+  ENTRIES.filter((entry) => entry !== "index.ts" && !entry.startsWith("theme/")).map(
+    async (entry) => [entry, await componentsOf(entry)] as const,
+  ),
+);
+const DRAWN = MODULES.filter(([, components]) => components.length > 0);
+
+interface Rendered {
+  code: number;
+  errors: string;
+  pages: Record<string, { html?: string; error?: string }>;
+}
+
+/**
+ * Every page in ONE process, each under its own `try`, so a module that
+ * cannot render says so by name and the rest still report.
+ */
+async function renderEveryPage(): Promise<Rendered> {
+  const pages: string[] = [];
+  const lines = [`import { resetErrorHalt } from "@barqjs/core";`];
+  for (const entry of ENTRIES) lines.push(`import ${JSON.stringify(join(sources, entry))};`);
+
+  for (const [entry, components] of DRAWN) {
+    const fixture = FIXTURES[entry];
+    if (fixture === undefined) continue;
+    const file = join(workspace, `page${String(pages.length)}.tsx`);
+    writeFileSync(
+      file,
+      [
+        `import { renderToString } from "@barqjs/server";`,
+        `import { ${components.join(", ")} } from ${JSON.stringify(join(sources, entry))};`,
+        fixture.imports ?? "",
+        fixture.declare ?? "",
+        "export function render() {",
+        fixture.before ?? "",
+        `  return renderToString(() => (<div>${fixture.jsx}</div>));`,
+        "}",
+        "",
+      ]
+        .join("\n")
+        .replaceAll("<ui>", join(sources, "ui")),
+    );
+    lines.push(`import { render as page${String(pages.length)} } from ${JSON.stringify(file)};`);
+    pages.push(`  ${JSON.stringify(entry)}: page${String(pages.length)},`);
+  }
+
+  const result = await serverProcess(
+    [
+      ...lines,
+      `const PAGES: Record<string, () => string> = {`,
+      ...pages,
+      "};",
+      "export function page() {",
+      "  const out: Record<string, { html?: string; error?: string }> = {};",
+      "  for (const name of Object.keys(PAGES)) {",
+      "    try {",
+      "      out[name] = { html: PAGES[name]!() };",
+      "    } catch (error) {",
+      "      resetErrorHalt();",
+      "      out[name] = { error: error instanceof Error ? (error.stack ?? error.message) : String(error) };",
+      "    }",
+      "  }",
+      "  return JSON.stringify(out);",
+      "}",
+      "",
+    ].join("\n"),
+  );
+  return {
+    code: result.code,
+    errors: result.errors,
+    pages: result.html === "" ? {} : (JSON.parse(result.html) as Rendered["pages"]),
+  };
+}
+
+describe("every exported component, in a process with no DOM", () => {
+  let rendering: Promise<Rendered> | undefined;
+  const rendered = (): Promise<Rendered> => (rendering ??= renderEveryPage());
+
+  test("every module that draws something has a page, and no page is left over", () => {
+    expect(DRAWN.map(([entry]) => entry).filter((entry) => FIXTURES[entry] === undefined)).toEqual(
+      [],
+    );
+    const drawn = new Set(DRAWN.map(([entry]) => entry));
+    expect(Object.keys(FIXTURES).filter((entry) => !drawn.has(entry))).toEqual([]);
+  });
+
+  test("every module loads, and nothing a render scheduled reaches for a DOM afterwards", async () => {
+    const result = await rendered();
+    expect(result.errors).toBe("");
+    expect(result.code).toBe(0);
+  });
+
+  test.each(DRAWN)("%s", async (entry, components) => {
+    const fixture = FIXTURES[entry];
+    const written = `${fixture?.declare ?? ""}${fixture?.jsx ?? ""}`;
+    expect(
+      components.filter((name) => !new RegExp(`<${name}[\\s/>]`).test(written)),
+      `${entry} exports components its page does not render`,
+    ).toEqual([]);
+
+    const page = (await rendered()).pages[entry];
+    expect(page?.error).toBeUndefined();
+    expect(page?.html).toStartWith("<div>");
   });
 });

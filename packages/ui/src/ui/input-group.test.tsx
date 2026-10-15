@@ -174,3 +174,40 @@ describe("InputGroup", () => {
     );
   });
 });
+
+describe("InputGroup in a right-to-left page", () => {
+  test("the addon and the control's padding follow the edge the addon is on", () => {
+    render(() => (
+      <InputGroup>
+        <InputGroupAddon>@</InputGroupAddon>
+        <InputGroupInput aria-label="Handle" />
+        <InputGroupAddon align="inline-end">.com</InputGroupAddon>
+      </InputGroup>
+    ));
+
+    const group = rulesFor(slot("input-group").className);
+    expect(group).toContain(
+      ':has(> [data-align="inline-start"]) > input{padding-inline-start: calc(var(--spacing) * 1.5)',
+    );
+    expect(group).toContain(
+      ':has(> [data-align="inline-end"]) > input{padding-inline-end: calc(var(--spacing) * 1.5)',
+    );
+    expect(group).not.toContain("padding-left");
+    expect(group).not.toContain("padding-right");
+
+    const addon = rulesFor(slot("input-group-addon").className);
+    expect(addon).toContain(
+      '[data-align="inline-start"]{padding-inline-start: calc(var(--spacing) * 2)',
+    );
+    expect(addon).toContain(
+      '[data-align="inline-end"]{padding-inline-end: calc(var(--spacing) * 2)',
+    );
+    expect(addon).toContain(
+      '[data-align="inline-start"]:has(> button){margin-inline-start: -0.3rem',
+    );
+    expect(addon).toContain('[data-align="inline-end"]:has(> kbd){margin-inline-end: -0.15rem');
+    for (const physical of ["padding-left", "padding-right", "margin-left", "margin-right"]) {
+      expect(addon).not.toContain(physical);
+    }
+  });
+});

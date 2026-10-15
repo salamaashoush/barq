@@ -23,12 +23,25 @@ import { join, resolve } from "node:path";
 import { stdout } from "node:process";
 
 import { applyItems, missingDependencies, type WrittenFile } from "./add.ts";
-import { CONFIG_FILE, requireConfig, SCHEMA_URL, writeConfig } from "./config.ts";
-import { hashOf, read, rewrite, targetOf } from "./files.ts";
-import { installCommand, installedPackages } from "./project.ts";
-import { localRegistry, localStyles, resolveItems, sourceFor, type Source } from "./registry.ts";
-import { DEFAULT_PATHS, parseConfig, type Config, type RegistryItem } from "./schema.ts";
-import { resolveTheme, themeModule, type ThemeDefinition } from "./theme.ts";
+import { CONFIG_FILE, findRoot, requireConfig, SCHEMA_URL, writeConfig } from "./config.ts";
+import { hashOf, placed, read, rewrite, targetOf, write } from "./files.ts";
+import { install, installCommand, installedPackages, packageManager } from "./project.ts";
+import {
+  localRegistry,
+  localStyles,
+  registriesFor,
+  resolveItems,
+  sourceFor,
+  type Registries,
+} from "./registry.ts";
+import {
+  DEFAULT_PATHS,
+  parseConfig,
+  type Config,
+  type RegistryIndexEntry,
+  type RegistryItem,
+} from "./schema.ts";
+import { resolveTheme, themeModule, withItemCss, type ThemeDefinition } from "./theme.ts";
 import { unified } from "./diff.ts";
 import { ask, bold, cyan, dim, green, paint, red, say, yellow, type Option } from "./tty.ts";
 
@@ -36,18 +49,30 @@ const HELP = `\
 Usage: barq-ui <command> [options]
 
   init                 set up ${CONFIG_FILE}, the theme and the base styles
-  add <name...>        add components, with whatever they need
+  add <name...>        add components and blocks, with whatever they need
   diff [name...]       what the registry has that your copy does not
   sync [name...]       take the registry's version, keeping your edits
   list                 what the registry offers
+  search <query>       find items by name, description or category
+  view <name...>       print items as the registry serves them
+  info                 what this project is set up with
   theme <name>         change the colour theme
   style <name>         change the component style
   build <dir>          turn a directory of components into a registry
+
+A name is an item in the project's registry, or @scope/name for one of the
+registries ${CONFIG_FILE} lists.
 
 Options:
   -c, --cwd <dir>      where the project is. Defaults to here
       --overwrite      replace a file you have edited
       --yes            take every default without asking
+      --no-install     print the install command instead of running it
+      --all            add: every ui component the registry has
+      --dry-run        add: say what would be written, and write nothing
+      --diff[=<file>]  add: show what would change, and write nothing
+      --view[=<file>]  add: show what would be written, and write nothing
+      --json           search, info: print JSON
       --path <dir>     init: where components go
       --registry <url> init: a registry URL containing {name}
       --style <name>   init: the component style (vega, nova, lyra, …)
@@ -74,6 +99,13 @@ interface Args {
   readonly radius?: string;
   readonly dark?: string;
   readonly help: boolean;
+  readonly install: boolean;
+  readonly all: boolean;
+  readonly dryRun: boolean;
+  /** `true` is every file; a string is the files whose path ends with it. */
+  readonly diff?: string | true;
+  readonly view?: string | true;
+  readonly json: boolean;
 }
 
 function parse(argv: readonly string[]): Args {
@@ -91,6 +123,12 @@ function parse(argv: readonly string[]): Args {
   let radius: string | undefined;
   let dark: string | undefined;
   let help = false;
+  let install_ = true;
+  let all = false;
+  let dryRun = false;
+  let diff: string | true | undefined;
+  let viewing: string | true | undefined;
+  let json = false;
 
   const value = (index: number, flag: string): string => {
     const next = argv[index];
@@ -104,6 +142,16 @@ function parse(argv: readonly string[]): Args {
     else if (arg === "--overwrite") overwrite = true;
     else if (arg === "-y" || arg === "--yes") yes = true;
     else if (arg === "--no-reset") reset = false;
+    else if (arg === "--no-install") install_ = false;
+    else if (arg === "-a" || arg === "--all") all = true;
+    else if (arg === "--dry-run") dryRun = true;
+    else if (arg === "--json") json = true;
+    else if (arg === "--diff") diff = true;
+    else if (arg === "--view") viewing = true;
+    // Only with `=`. A bare `--diff button` cannot say whether `button` is the
+    // file to show or the component to add.
+    else if (arg.startsWith("--diff=")) diff = arg.slice("--diff=".length);
+    else if (arg.startsWith("--view=")) viewing = arg.slice("--view=".length);
     else if (arg === "-c" || arg === "--cwd") cwd = value(++index, arg);
     else if (arg === "--path") path = value(++index, arg);
     else if (arg === "--registry") registry = value(++index, arg);
@@ -142,6 +190,12 @@ function parse(argv: readonly string[]): Args {
     radius,
     dark,
     help,
+    install: install_,
+    all,
+    dryRun,
+    diff,
+    view: viewing,
+    json,
   };
 }
 
@@ -177,13 +231,26 @@ function report(files: readonly WrittenFile[]): void {
   }
 }
 
-function announce(root: string, items: readonly RegistryItem[], packages: readonly string[]): void {
-  if (packages.length === 0) return;
+/**
+ * The packages the items import that the project does not have: installed, or
+ * with `--no-install` named so a person can.
+ */
+function settle(root: string, items: readonly RegistryItem[], installing: boolean): void {
+  const installed = installedPackages(root);
+  const runtime = missingDependencies(items, installed);
+  const development = missingDependencies(items, installed, "devDependencies");
+  if (runtime.length === 0 && development.length === 0) return;
+
   say();
-  say(bold("Install what they need:"));
-  say(`  ${installCommand(packages)}`);
-  void root;
-  void items;
+  if (!installing) {
+    say(bold("Install what they need:"));
+    if (runtime.length > 0) say(`  ${installCommand(root, runtime)}`);
+    if (development.length > 0) say(`  ${installCommand(root, development, { dev: true })}`);
+    return;
+  }
+  say(bold("Installing what they need:"));
+  if (runtime.length > 0) install(root, runtime);
+  if (development.length > 0) install(root, development, { dev: true });
 }
 
 // ---------------------------------------------------------------------------
@@ -354,23 +421,17 @@ async function init(args: Args): Promise<void> {
       );
     }
 
-    const source = sourceFor(config, root);
     const wanted = ["base", "layers", ...(config.reset ? ["reset"] : []), "utils"];
-    const items = await resolveItems(source, wanted);
+    const items = await resolveItems(registriesFor(config, root), wanted);
     const applied = applyItems(config, root, items);
 
     // The chosen theme, as source. Written last so it can name the files above.
-    const themeFile = targetOf(config, root, {
-      path: "theme/theme.ts",
-      type: "registry:theme",
-      content: "",
-    });
+    const themeFile = themeTarget(config, root);
     const module_ = themeModule(config.theme, table, {
       reset: config.reset,
       base: "./base.ts",
       resetPath: "./reset.ts",
     });
-    const { write } = await import("./files.ts");
     write(themeFile, module_);
     const styleFile = style === undefined ? undefined : writeStyle(root, config, style, args.cwd);
 
@@ -378,7 +439,7 @@ async function init(args: Args): Promise<void> {
       ...applied.config,
       items: {
         ...applied.config.items,
-        theme: { "theme/theme.ts": hashOf(module_) },
+        theme: { [THEME_KEY]: hashOf(module_) },
       },
     };
     writeConfig(root, next);
@@ -392,6 +453,7 @@ async function init(args: Args): Promise<void> {
         absolute: themeFile,
         outcome: "written",
         hash: hashOf(module_),
+        incoming: module_,
       },
     ]);
     say();
@@ -404,8 +466,7 @@ async function init(args: Args): Promise<void> {
       say(`  <html class="style-${style}">`);
     }
 
-    const missing = missingDependencies(items, installedPackages(root));
-    announce(root, items, missing);
+    settle(root, items, args.install);
     say();
     say(`Then: ${cyan("barq-ui add button card")}`);
   } finally {
@@ -413,39 +474,189 @@ async function init(args: Args): Promise<void> {
   }
 }
 
-async function add(args: Args): Promise<void> {
-  if (args.rest.length === 0) throw new Error("which component? `barq-ui list` shows them all");
-  const { root, config } = requireConfig(args.cwd);
-  const source = sourceFor(config, root);
-  const items = await resolveItems(source, args.rest);
+const THEME_KEY = "theme/theme.ts";
 
-  const applied = applyItems(config, root, items, { overwrite: args.overwrite });
-  writeConfig(root, applied.config);
-  report(applied.files);
-  announce(root, items, missingDependencies(items, installedPackages(root)));
+function themeTarget(config: Config, root: string): string {
+  return targetOf(config, root, { path: THEME_KEY, type: "registry:theme", content: "" });
+}
+
+/**
+ * What the items' `cssVars` and `css` make of the theme, written the way a
+ * component is: replaced when the project has not touched `theme.ts`, kept when
+ * it has.
+ *
+ * The choice is recorded either way. A kept file is the project's to merge,
+ * and the next `barq-ui theme` writes the tokens with the colours it picks.
+ */
+async function extendTheme(
+  config: Config,
+  root: string,
+  items: readonly RegistryItem[],
+  options: { overwrite: boolean; dryRun: boolean },
+): Promise<{ config: Config; file?: WrittenFile }> {
+  if (!items.some((item) => item.cssVars !== undefined || item.css !== undefined)) {
+    return { config };
+  }
+  const theme = items.reduce(withItemCss, config.theme);
+
+  const incoming = themeModule(theme, await themes(root), {
+    reset: config.reset,
+    base: "./base.ts",
+    resetPath: "./reset.ts",
+  });
+  const absolute = themeTarget(config, root);
+  const existing = read(absolute);
+  const common = { item: "theme", path: absolute.slice(root.length + 1), absolute, incoming };
+  const recorded = config.items["theme"]?.[THEME_KEY];
+
+  if (existing !== undefined && existing !== incoming) {
+    if (!options.overwrite && hashOf(existing) !== recorded) {
+      return {
+        config: { ...config, theme },
+        file: { ...common, outcome: "kept", hash: hashOf(existing), existing },
+      };
+    }
+  }
+  if (!options.dryRun && existing !== incoming) write(absolute, incoming);
+  return {
+    config: {
+      ...config,
+      theme,
+      items: { ...config.items, theme: { [THEME_KEY]: hashOf(incoming) } },
+    },
+    file: {
+      ...common,
+      outcome:
+        existing === undefined ? "written" : existing === incoming ? "unchanged" : "replaced",
+      hash: hashOf(incoming),
+      ...(existing === undefined ? {} : { existing }),
+    },
+  };
+}
+
+/** The files a `--diff=` or `--view=` asked about: all of them, or the ones named. */
+function asked(files: readonly WrittenFile[], which: string | true): WrittenFile[] {
+  return which === true ? [...files] : files.filter((file) => file.path.endsWith(which));
+}
+
+/**
+ * What `add` would do, shown rather than done.
+ *
+ * `--diff` and `--view` are the same preview read two ways: what would change
+ * in a file the project has, and what a file would be.
+ */
+function preview(
+  root: string,
+  args: Args,
+  items: readonly RegistryItem[],
+  files: readonly WrittenFile[],
+): void {
+  if (args.view !== undefined) {
+    for (const file of asked(files, args.view)) {
+      say();
+      say(bold(file.path));
+      say(file.incoming);
+    }
+    return;
+  }
+
+  if (args.diff !== undefined) {
+    const changed = asked(files, args.diff).filter((file) => file.outcome !== "unchanged");
+    if (changed.length === 0) {
+      say(dim("Nothing would change."));
+      return;
+    }
+    for (const file of changed) {
+      say();
+      say(`${bold(file.path)}${file.existing === undefined ? dim(" (new)") : ""}`);
+      say(
+        paint(
+          file.existing === undefined
+            ? file.incoming
+                .split("\n")
+                .map((line) => `+ ${line}`)
+                .join("\n")
+            : unified(file.existing, file.incoming),
+        ),
+      );
+    }
+    return;
+  }
+
+  say(bold("Dry run. Nothing was written."));
+  report(files);
+  const installed = installedPackages(root);
+  const runtime = missingDependencies(items, installed);
+  const development = missingDependencies(items, installed, "devDependencies");
+  if (runtime.length > 0 || development.length > 0) {
+    say();
+    say(bold("Would install:"));
+    if (runtime.length > 0) say(`  ${installCommand(root, runtime)}`);
+    if (development.length > 0) say(`  ${installCommand(root, development, { dev: true })}`);
+  }
+}
+
+async function add(args: Args): Promise<void> {
+  const { root, config } = requireConfig(args.cwd);
+  const names = args.all
+    ? (await sourceFor(config, root).index()).items
+        .filter((item) => item.type === "registry:ui")
+        .map((item) => item.name)
+    : args.rest;
+  if (names.length === 0) throw new Error("which component? `barq-ui list` shows them all");
+
+  const items = await resolveItems(registriesFor(config, root), names);
+  const dryRun = args.dryRun || args.diff !== undefined || args.view !== undefined;
+
+  const applied = applyItems(config, root, items, { overwrite: args.overwrite, dryRun });
+  const themed = await extendTheme(applied.config, root, items, {
+    overwrite: args.overwrite,
+    dryRun,
+  });
+  const files = [...applied.files, ...(themed.file === undefined ? [] : [themed.file])];
+
+  if (dryRun) {
+    preview(root, args, items, files);
+    return;
+  }
+  writeConfig(root, themed.config);
+  report(files);
+  settle(root, items, args.install);
+}
+
+interface Difference {
+  readonly item: string;
+  /** The file's path in the registry, which is what its hash is recorded under. */
+  readonly key: string;
+  readonly path: string;
+  readonly absolute: string;
+  readonly diff: string;
+  readonly theirs: string;
 }
 
 /** What each item's files look like now, against what the registry has. */
 async function compare(
   config: Config,
   root: string,
-  source: Source,
+  registries: Registries,
   names: readonly string[],
-): Promise<{ item: string; path: string; absolute: string; diff: string; theirs: string }[]> {
+): Promise<Difference[]> {
   const wanted = names.length > 0 ? names : Object.keys(config.items).filter((n) => n !== "theme");
-  const items = await resolveItems(source, wanted);
-  const out: { item: string; path: string; absolute: string; diff: string; theirs: string }[] = [];
+  const items = await resolveItems(registries, wanted);
+  const together = placed(items);
+  const out: Difference[] = [];
 
   for (const item of items) {
     for (const file of item.files) {
       const absolute = targetOf(config, root, file);
       const mine = read(absolute);
       if (mine === undefined) continue;
-      const theirs = rewrite(config, root, file);
+      const theirs = rewrite(config, root, file, together);
       const diff = unified(mine, theirs);
       if (diff === "") continue;
       out.push({
         item: item.name,
+        key: file.path,
         path: absolute.slice(root.length + 1),
         absolute,
         diff,
@@ -458,7 +669,7 @@ async function compare(
 
 async function showDiff(args: Args): Promise<void> {
   const { root, config } = requireConfig(args.cwd);
-  const changes = await compare(config, root, sourceFor(config, root), args.rest);
+  const changes = await compare(config, root, registriesFor(config, root), args.rest);
 
   if (changes.length === 0) {
     say(dim("Nothing has changed."));
@@ -475,8 +686,7 @@ async function showDiff(args: Args): Promise<void> {
 
 async function sync(args: Args): Promise<void> {
   const { root, config } = requireConfig(args.cwd);
-  const source = sourceFor(config, root);
-  const changes = await compare(config, root, source, args.rest);
+  const changes = await compare(config, root, registriesFor(config, root), args.rest);
 
   if (changes.length === 0) {
     say(dim("Nothing to sync."));
@@ -484,14 +694,13 @@ async function sync(args: Args): Promise<void> {
   }
 
   const prompt = ask(!args.yes);
-  const { write } = await import("./files.ts");
   const items = { ...config.items };
   let taken = 0;
 
   try {
     for (const change of changes) {
       const mine = read(change.absolute) ?? "";
-      const recorded = items[change.item]?.[fileKey(change.path, config, root)];
+      const recorded = items[change.item]?.[change.key];
       const untouched = recorded !== undefined && hashOf(mine) === recorded;
 
       if (!untouched && !args.overwrite) {
@@ -504,8 +713,7 @@ async function sync(args: Args): Promise<void> {
 
       write(change.absolute, change.theirs);
       taken++;
-      const key = fileKey(change.path, config, root);
-      items[change.item] = { ...items[change.item], [key]: hashOf(change.theirs) };
+      items[change.item] = { ...items[change.item], [change.key]: hashOf(change.theirs) };
     }
   } finally {
     prompt.close();
@@ -517,23 +725,6 @@ async function sync(args: Args): Promise<void> {
     taken === 0
       ? dim("Nothing was replaced.")
       : `${green("Synced")} ${String(taken)} file${taken === 1 ? "" : "s"}.`,
-  );
-}
-
-/**
- * The key a file is recorded under: its path IN THE REGISTRY, not in the
- * project, so moving `paths.ui` does not lose the record.
- */
-function fileKey(projectPath: string, config: Config, root: string): string {
-  const name = projectPath.split("/").at(-1) ?? projectPath;
-  const under = (directory: string, kind: string): string | undefined =>
-    projectPath.startsWith(`${directory}/`) ? `${kind}/${name}` : undefined;
-  void root;
-  return (
-    under(config.paths.ui, "ui") ??
-    under(config.paths.lib, "lib") ??
-    under(config.paths.theme, "theme") ??
-    `ui/${name}`
   );
 }
 
@@ -569,6 +760,146 @@ function requireConfigOrCwd(cwd: string): { root: string; config: Config } {
   }
 }
 
+/** `view` works before `init` too: reading an item needs a registry, not a project. */
+async function view(args: Args): Promise<void> {
+  if (args.rest.length === 0) throw new Error("which item? `barq-ui list` shows them all");
+  const { root, config } = requireConfigOrCwd(args.cwd);
+  const registries = registriesFor(config, root);
+
+  const items: RegistryItem[] = [];
+  for (const address of args.rest) {
+    const { source, name } = registries.locate(address);
+    items.push({ ...(await source.item(name)), name: address });
+  }
+  say(JSON.stringify(items, null, 2));
+}
+
+interface Found {
+  /** What `add` takes: the name, with its scope when it has one. */
+  readonly name: string;
+  readonly type: string;
+  readonly title: string;
+  readonly description?: string;
+  readonly categories: readonly string[];
+  readonly registry: string;
+}
+
+/** Every word of the query, somewhere in what the entry says about itself. */
+function matches(entry: RegistryIndexEntry, words: readonly string[]): boolean {
+  const haystack = [entry.name, entry.title, entry.description ?? "", ...entry.categories]
+    .join(" ")
+    .toLowerCase();
+  return words.every((word) => haystack.includes(word));
+}
+
+async function search(args: Args): Promise<void> {
+  const words = args.rest.map((word) => word.toLowerCase());
+  if (words.length === 0) throw new Error("search for what? `barq-ui search sidebar`");
+  const { root, config } = requireConfigOrCwd(args.cwd);
+  const registries = registriesFor(config, root);
+
+  const found: Found[] = [];
+  const unreachable: string[] = [];
+  for (const scope of [undefined, ...registries.scopes]) {
+    try {
+      const source = registries.source(scope);
+      for (const entry of (await source.index()).items) {
+        if (!matches(entry, words)) continue;
+        found.push({
+          name: scope === undefined ? entry.name : `${scope}/${entry.name}`,
+          type: entry.type,
+          title: entry.title,
+          ...(entry.description === undefined ? {} : { description: entry.description }),
+          categories: entry.categories,
+          registry: source.describe,
+        });
+      }
+    } catch (error) {
+      // One registry that is down should not hide what the others have.
+      unreachable.push(
+        `${scope ?? "the registry"}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+  }
+
+  if (args.json) {
+    say(JSON.stringify({ items: found, errors: unreachable }, null, 2));
+    return;
+  }
+  for (const line of unreachable) say(yellow(line));
+  if (found.length === 0) {
+    say(dim(`Nothing matches "${args.rest.join(" ")}".`));
+    return;
+  }
+  const width = Math.max(...found.map((item) => item.name.length)) + 2;
+  for (const item of found) {
+    say(
+      `  ${item.name.padEnd(width)}${dim(item.type.replace("registry:", "").padEnd(11))}${dim(item.description?.slice(0, 60) ?? "")}`,
+    );
+  }
+  say();
+  say(
+    dim(
+      `${String(found.length)} item${found.length === 1 ? "" : "s"}. \`barq-ui add <name>\` takes one.`,
+    ),
+  );
+}
+
+async function info(args: Args): Promise<void> {
+  const root = findRoot(args.cwd);
+  const { config } = requireConfigOrCwd(args.cwd);
+  const project = root ?? args.cwd;
+  const added = Object.keys(config.items)
+    .filter((name) => name !== "theme")
+    .toSorted();
+  const facts = {
+    root: project,
+    config: root === undefined ? null : join(root, CONFIG_FILE),
+    registry: config.registry,
+    registries: Object.fromEntries(
+      Object.entries(config.registries).map(([scope, endpoint]) => [scope, endpoint.url]),
+    ),
+    paths: config.paths,
+    theme: config.theme,
+    packageManager: packageManager(project),
+    packages: [...installedPackages(project)]
+      .filter((name) => name.startsWith("@barqjs/"))
+      .toSorted(),
+    items: added,
+  };
+
+  if (args.json) {
+    say(JSON.stringify(facts, null, 2));
+    return;
+  }
+
+  const row = (label: string, value: string): void => say(`  ${label.padEnd(17)}${value}`);
+  say(bold("Project"));
+  row("root", facts.root);
+  row("config", facts.config ?? dim(`none. \`barq-ui init\` writes ${CONFIG_FILE}`));
+  row("package manager", facts.packageManager);
+  row("barq packages", facts.packages.length === 0 ? dim("none") : facts.packages.join(", "));
+  say();
+  say(bold("Registries"));
+  row("(default)", facts.registry);
+  for (const [scope, url] of Object.entries(facts.registries)) row(scope, url);
+  say();
+  say(bold("Paths"));
+  for (const kind of ["ui", "lib", "theme", "components", "hooks"] as const) {
+    row(kind, config.paths[kind]);
+  }
+  say();
+  say(bold("Theme"));
+  row("base", config.theme.base);
+  if (config.theme.accent !== undefined) row("accent", config.theme.accent);
+  if (config.theme.style !== undefined) row("style", config.theme.style);
+  if (config.theme.radius !== undefined) row("radius", config.theme.radius);
+  say();
+  say(bold(`Added (${String(added.length)})`));
+  say(added.length === 0 ? dim("  nothing yet") : `  ${added.join(", ")}`);
+  await Promise.resolve();
+}
+
 async function chooseTheme(args: Args): Promise<void> {
   const name = args.rest[0];
   if (name === undefined) throw new Error("which theme? `barq-ui list` shows the components");
@@ -592,18 +923,13 @@ async function chooseTheme(args: Args): Promise<void> {
     base: "./base.ts",
     resetPath: "./reset.ts",
   });
-  const path = targetOf(config, root, {
-    path: "theme/theme.ts",
-    type: "registry:theme",
-    content: "",
-  });
-  const { write } = await import("./files.ts");
+  const path = themeTarget(config, root);
   write(path, module_);
 
   writeConfig(root, {
     ...config,
     theme: next,
-    items: { ...config.items, theme: { "theme/theme.ts": hashOf(module_) } },
+    items: { ...config.items, theme: { [THEME_KEY]: hashOf(module_) } },
   });
   say(`${green("Theme")} ${bold(chosen.title)} written to ${path.slice(root.length + 1)}.`);
 }
@@ -662,6 +988,12 @@ async function main(): Promise<void> {
       return await sync(args);
     case "list":
       return await list(args);
+    case "search":
+      return await search(args);
+    case "view":
+      return await view(args);
+    case "info":
+      return await info(args);
     case "theme":
       return await chooseTheme(args);
     case "build":

@@ -1,0 +1,18 @@
+{
+  "$schema": "https://github.com/salamaashoush/barq/schema/registry-item.json",
+  "name": "layout",
+  "type": "registry:lib",
+  "title": "Layout",
+  "description": "The classes more than one part of the create page wears.",
+  "dependencies": [
+    "@barqjs/css"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "lib/layout.ts",
+      "type": "registry:lib",
+      "content": "/**\n * The classes more than one part of the create page wears.\n *\n * A module of its own rather than exports from `customizer.tsx`, because the\n * footer's five controls each live in their own file — as they do upstream —\n * and importing a class from the thing that renders them would make a cycle out\n * of what is only a shared look.\n */\n\nimport { layer } from \"@barqjs/css\";\n\nconst ui = layer(\"barq.ui\");\n\n/**\n * Every footer button: transparent, tight, and not animated.\n *\n * `transition-none` is upstream's and it is deliberate: five buttons in a\n * column all crossfading their background when the theme changes reads as the\n * page lagging, where an instant change reads as the page having changed.\n */\nexport const footerButton = ui({\n  touchAction: \"manipulation\",\n  backgroundColor: \"transparent\",\n  paddingInline: \"calc(var(--spacing) * 2)\",\n  paddingBlock: \"0px\",\n  fontSize: \"var(--text-sm)\",\n  lineHeight: \"var(--ui-leading, var(--text-sm--line-height))\",\n  transitionProperty: \"none\",\n  userSelect: \"none\",\n  \"@media (hover: hover)\": {\n    \"&:hover\": { backgroundColor: \"var(--muted)\" },\n  },\n});\n\n/**\n * The three that share the row on a narrow screen.\n *\n * Capped rather than equal: on a phone the row is Copy / Open / Shuffle /\n * Search / Reset, and letting the copy button take the space it wants pushes\n * the rest off the edge.\n */\nexport const narrowFooterButton = ui({\n  maxWidth: \"calc(var(--spacing) * 20)\",\n  minWidth: \"0px\",\n  flex: \"1\",\n  \"@media (width >= 40rem)\": { maxWidth: \"none\" },\n  \"@media (width >= 48rem)\": { flex: \"none\" },\n});\n\n/** The one that keeps the rest of the row: the command it shows is the long one. */\nexport const growingFooterButton = ui({\n  minWidth: \"0px\",\n  flex: \"1\",\n  \"@media (width >= 48rem)\": { flex: \"none\" },\n});\n\n/** A label that gives up rather than pushing its button wider. */\nexport const truncated = ui({\n  display: \"block\",\n  minWidth: \"0px\",\n  overflow: \"hidden\",\n  textOverflow: \"ellipsis\",\n  whiteSpace: \"nowrap\",\n});\n\n/**\n * A full-page block, filling the preview rather than the window.\n *\n * shadcn's page-level blocks are `min-h-svh`, and inside their `<iframe>` that\n * IS the preview: the frame's viewport is its box. Rendered in place, `svh`\n * still means the window, so a sidebar came out 951px tall in a 921px preview\n * and its footer sat 30px below the fold.\n *\n * A viewport UNIT is the one thing containment cannot redirect — `contain:\n * layout` fixes where a fixed element resolves, and a container query fixes\n * what a media query measures, but `svh` is a length and always means the\n * window. So the block is told its height instead.\n */\nexport const blockFillsPreview = ui({\n  minHeight: \"100%\",\n  height: \"100%\",\n});\n"
+    }
+  ]
+}

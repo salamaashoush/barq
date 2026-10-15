@@ -7,13 +7,49 @@
  * name the field a person has to fix.
  */
 
-export type ItemType = "registry:ui" | "registry:lib" | "registry:theme";
+/**
+ * What an item, or one file of it, IS, which decides where it is written.
+ *
+ * `ui`, `lib`, `theme` and `hook` each have a directory of their own in
+ * `components.json`. `block`, `component` and `example` keep their path under
+ * the components directory, so a block made of several files lands as the
+ * tree it was written as. `page` and `file` belong to the application rather
+ * than to its components, so each names its own `target`.
+ */
+export type ItemType =
+  | "registry:ui"
+  | "registry:lib"
+  | "registry:theme"
+  | "registry:block"
+  | "registry:component"
+  | "registry:hook"
+  | "registry:page"
+  | "registry:file"
+  | "registry:example";
 
 export interface RegistryFile {
   /** Where it goes, relative to the directory its type resolves to. */
   readonly path: string;
   readonly type: ItemType;
   readonly content: string;
+  /** Where it goes instead, relative to the project root. */
+  readonly target?: string;
+}
+
+/** Custom properties an item adds to the project's theme, by mode. */
+export interface CssVars {
+  /** Declared once on `:root`, whatever the mode. */
+  readonly theme?: Readonly<Record<string, string>>;
+  readonly light?: Readonly<Record<string, string>>;
+  readonly dark?: Readonly<Record<string, string>>;
+}
+
+/**
+ * Rules an item adds to the project's theme: a selector or an at-rule, and
+ * under it either declarations or more of the same.
+ */
+export interface CssRules {
+  readonly [selector: string]: string | CssRules;
 }
 
 export interface RegistryItem {
@@ -23,9 +59,19 @@ export interface RegistryItem {
   readonly description?: string;
   /** npm packages to install. */
   readonly dependencies: readonly string[];
-  /** Other items to add first. */
+  /** npm packages the project needs only to build or test. */
+  readonly devDependencies: readonly string[];
+  /**
+   * Other items to add first: a bare name from the project's own registry, or
+   * `@scope/name` from one of its `registries`.
+   */
   readonly registryDependencies: readonly string[];
   readonly files: readonly RegistryFile[];
+  readonly categories: readonly string[];
+  /** Whatever the registry wants to say about the item. The CLI carries it and reads none of it. */
+  readonly meta?: Readonly<Record<string, unknown>>;
+  readonly cssVars?: CssVars;
+  readonly css?: CssRules;
 }
 
 export interface RegistryIndexEntry {
@@ -36,6 +82,7 @@ export interface RegistryIndexEntry {
   readonly dependencies: readonly string[];
   readonly registryDependencies: readonly string[];
   readonly files: readonly string[];
+  readonly categories: readonly string[];
 }
 
 export interface RegistryIndex {
@@ -59,12 +106,35 @@ export interface ThemeChoice {
   readonly radius?: string;
   /** How dark mode is asked for: a selector, or `"media"`. */
   readonly dark?: string;
+  /**
+   * What added items declared over the chosen theme.
+   *
+   * Recorded rather than only written, because `theme.ts` is regenerated when
+   * the theme changes and would otherwise lose every token an item brought.
+   */
+  readonly cssVars?: CssVars;
+  readonly css?: CssRules;
 }
 
 export interface Paths {
   readonly ui: string;
   readonly lib: string;
   readonly theme: string;
+  /** Blocks, components and examples, each under the path its registry gave it. */
+  readonly components: string;
+  readonly hooks: string;
+}
+
+/**
+ * A registry other than the project's own, reached as `@scope/name`.
+ *
+ * `${NAME}` in the URL or in a header is read from the environment, so a token
+ * is never written into a file that is committed.
+ */
+export interface RegistryEndpoint {
+  /** A URL, or a path from the project root, with `{name}` in it. */
+  readonly url: string;
+  readonly headers: Readonly<Record<string, string>>;
 }
 
 export interface Config {
@@ -77,6 +147,8 @@ export interface Config {
    * offline machine both want.
    */
   readonly registry: string;
+  /** More registries, by the `@scope` their items are addressed with. */
+  readonly registries: Readonly<Record<string, RegistryEndpoint>>;
   readonly paths: Paths;
   readonly theme: ThemeChoice;
   /** Whether `init` wrote the reset. Recorded so `sync` knows what to keep. */
@@ -92,7 +164,20 @@ export interface Config {
   readonly items: Record<string, Record<string, string>>;
 }
 
-const TYPES = new Set<string>(["registry:ui", "registry:lib", "registry:theme"]);
+const TYPES = new Set<string>([
+  "registry:ui",
+  "registry:lib",
+  "registry:theme",
+  "registry:block",
+  "registry:component",
+  "registry:hook",
+  "registry:page",
+  "registry:file",
+  "registry:example",
+]);
+
+/** The two that are not components, so no directory in `paths` is theirs. */
+const NEEDS_TARGET = new Set<string>(["registry:page", "registry:file"]);
 
 function fail(message: string): never {
   throw new Error(message);
@@ -121,6 +206,32 @@ function itemType(value: unknown, where: string): ItemType {
   return name as ItemType;
 }
 
+function texts(value: unknown, where: string): string[] {
+  return list(value ?? [], where).map((one, index) => text(one, `${where}[${String(index)}]`));
+}
+
+function strings(value: unknown, where: string): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(record(value, where)).map(([key, one]) => [key, text(one, `${where}.${key}`)]),
+  );
+}
+
+function cssVars(value: unknown, where: string): CssVars {
+  const entry = record(value, where);
+  const mode = (name: "theme" | "light" | "dark"): Partial<CssVars> =>
+    entry[name] === undefined ? {} : { [name]: strings(entry[name], `${where}.${name}`) };
+  return { ...mode("theme"), ...mode("light"), ...mode("dark") };
+}
+
+function cssRules(value: unknown, where: string): CssRules {
+  return Object.fromEntries(
+    Object.entries(record(value, where)).map(([key, one]) => [
+      key,
+      typeof one === "string" ? one : cssRules(one, `${where}.${key}`),
+    ]),
+  );
+}
+
 export function parseItem(value: unknown, where = "the item"): RegistryItem {
   const entry = record(value, where);
   const name = text(entry["name"], `${where}.name`);
@@ -129,21 +240,29 @@ export function parseItem(value: unknown, where = "the item"): RegistryItem {
     type: itemType(entry["type"], `${where}.type`),
     title: typeof entry["title"] === "string" ? entry["title"] : name,
     ...(typeof entry["description"] === "string" ? { description: entry["description"] } : {}),
-    dependencies: list(entry["dependencies"] ?? [], `${where}.dependencies`).map((one, index) =>
-      text(one, `${where}.dependencies[${String(index)}]`),
-    ),
-    registryDependencies: list(
-      entry["registryDependencies"] ?? [],
-      `${where}.registryDependencies`,
-    ).map((one, index) => text(one, `${where}.registryDependencies[${String(index)}]`)),
+    dependencies: texts(entry["dependencies"], `${where}.dependencies`),
+    devDependencies: texts(entry["devDependencies"], `${where}.devDependencies`),
+    registryDependencies: texts(entry["registryDependencies"], `${where}.registryDependencies`),
     files: list(entry["files"] ?? [], `${where}.files`).map((one, index) => {
-      const file = record(one, `${where}.files[${String(index)}]`);
+      const at = `${where}.files[${String(index)}]`;
+      const file = record(one, at);
+      const type = itemType(file["type"], `${at}.type`);
+      if (NEEDS_TARGET.has(type) && file["target"] === undefined) {
+        fail(`${at}.target is required for ${type}, which has no directory of its own`);
+      }
       return {
-        path: text(file["path"], `${where}.files[${String(index)}].path`),
-        type: itemType(file["type"], `${where}.files[${String(index)}].type`),
-        content: text(file["content"], `${where}.files[${String(index)}].content`),
+        path: text(file["path"], `${at}.path`),
+        type,
+        content: text(file["content"], `${at}.content`),
+        ...(file["target"] === undefined ? {} : { target: text(file["target"], `${at}.target`) }),
       };
     }),
+    categories: texts(entry["categories"], `${where}.categories`),
+    ...(entry["meta"] === undefined ? {} : { meta: record(entry["meta"], `${where}.meta`) }),
+    ...(entry["cssVars"] === undefined
+      ? {}
+      : { cssVars: cssVars(entry["cssVars"], `${where}.cssVars`) }),
+    ...(entry["css"] === undefined ? {} : { css: cssRules(entry["css"], `${where}.css`) }),
   };
 }
 
@@ -169,6 +288,7 @@ export function parseIndex(value: unknown): RegistryIndex {
         files: list(item["files"] ?? [], "files").map((one_, at) =>
           text(one_, `items[${String(index)}].files[${String(at)}]`),
         ),
+        categories: texts(item["categories"], `items[${String(index)}].categories`),
       };
     }),
   };
@@ -178,21 +298,65 @@ export const DEFAULT_PATHS: Paths = {
   ui: "src/components/ui",
   lib: "src/components/lib",
   theme: "src/components/theme",
+  components: "src/components",
+  hooks: "src/hooks",
 };
+
+/**
+ * Where components go when only `ui` was chosen: the directory `ui` is in.
+ *
+ * `init` asks one question, and a project whose `ui` is `app/widgets/ui` wants
+ * its blocks in `app/widgets/blocks`, not in a `src` it does not have.
+ */
+function componentsBeside(ui: string): string {
+  const at = ui.lastIndexOf("/");
+  return ui.endsWith("/ui") && at > 0 ? ui.slice(0, at) : ui;
+}
+
+function hooksBeside(components: string): string {
+  const at = components.lastIndexOf("/");
+  return at > 0 ? `${components.slice(0, at)}/hooks` : "hooks";
+}
+
+function endpoint(value: unknown, where: string): RegistryEndpoint {
+  const entry = typeof value === "string" ? { url: value } : record(value, where);
+  const url = text(entry["url"], `${where}.url`);
+  if (!url.includes("{name}")) fail(`${where} must contain {name}, which is where the item goes`);
+  return { url, headers: strings(entry["headers"] ?? {}, `${where}.headers`) };
+}
+
+function registries(value: unknown): Record<string, RegistryEndpoint> {
+  return Object.fromEntries(
+    Object.entries(record(value, "components.json.registries")).map(([scope, one]) => {
+      if (!/^@[\w-]+$/.test(scope)) {
+        fail(`components.json.registries: "${scope}" must be a scope, like @acme`);
+      }
+      return [scope, endpoint(one, `components.json.registries.${scope}`)];
+    }),
+  );
+}
 
 export function parseConfig(value: unknown): Config {
   const entry = record(value, "components.json");
   const paths = record(entry["paths"] ?? {}, "components.json.paths");
   const theme = record(entry["theme"] ?? {}, "components.json.theme");
   const items = record(entry["items"] ?? {}, "components.json.items");
+  const ui = text(paths["ui"] ?? DEFAULT_PATHS.ui, "components.json.paths.ui");
+  const components = text(
+    paths["components"] ?? componentsBeside(ui),
+    "components.json.paths.components",
+  );
 
   return {
     ...(typeof entry["$schema"] === "string" ? { $schema: entry["$schema"] } : {}),
     registry: text(entry["registry"] ?? "node_modules", "components.json.registry"),
+    registries: registries(entry["registries"] ?? {}),
     paths: {
-      ui: text(paths["ui"] ?? DEFAULT_PATHS.ui, "components.json.paths.ui"),
+      ui,
       lib: text(paths["lib"] ?? DEFAULT_PATHS.lib, "components.json.paths.lib"),
       theme: text(paths["theme"] ?? DEFAULT_PATHS.theme, "components.json.paths.theme"),
+      components,
+      hooks: text(paths["hooks"] ?? hooksBeside(components), "components.json.paths.hooks"),
     },
     theme: {
       ...(typeof theme["style"] === "string" ? { style: theme["style"] } : {}),
@@ -200,6 +364,12 @@ export function parseConfig(value: unknown): Config {
       ...(typeof theme["accent"] === "string" ? { accent: theme["accent"] } : {}),
       ...(typeof theme["radius"] === "string" ? { radius: theme["radius"] } : {}),
       ...(typeof theme["dark"] === "string" ? { dark: theme["dark"] } : {}),
+      ...(theme["cssVars"] === undefined
+        ? {}
+        : { cssVars: cssVars(theme["cssVars"], "components.json.theme.cssVars") }),
+      ...(theme["css"] === undefined
+        ? {}
+        : { css: cssRules(theme["css"], "components.json.theme.css") }),
     },
     reset: entry["reset"] !== false,
     items: Object.fromEntries(

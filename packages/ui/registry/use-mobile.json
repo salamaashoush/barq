@@ -1,0 +1,18 @@
+{
+  "$schema": "https://github.com/salamaashoush/barq/schema/registry-item.json",
+  "name": "use-mobile",
+  "type": "registry:hook",
+  "title": "Use Mobile",
+  "dependencies": [
+    "@barqjs/core",
+    "@barqjs/primitives"
+  ],
+  "registryDependencies": [],
+  "files": [
+    {
+      "path": "hooks/use-mobile.ts",
+      "type": "registry:hook",
+      "content": "import type { Accessor } from \"@barqjs/core\";\nimport { mediaQuery } from \"@barqjs/primitives/media\";\n\nconst MOBILE_BREAKPOINT = 768;\n\n/**\n * Whether the viewport is narrower than shadcn's mobile breakpoint.\n *\n * ```tsx\n * const isMobile = useIsMobile();\n * <Show when={isMobile()} fallback={<Columns />}><Stack /></Show>\n * ```\n *\n * The media query list rather than a resize listener: the browser already\n * knows when the answer changes, and every caller shares one list. On the\n * server it reads `false`, which is the desktop layout upstream also renders\n * first.\n */\nexport function useIsMobile(): Accessor<boolean> {\n  return mediaQuery(`(max-width: ${String(MOBILE_BREAKPOINT - 1)}px)`);\n}\n"
+    }
+  ]
+}
