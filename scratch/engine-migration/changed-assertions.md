@@ -641,3 +641,73 @@ deleted with it.
   `oracle.test.ts.snap` rendered DOM of `class-empty-string`, `class-list-prop` and
   `class-with-live-siblings` (same tokens, list order), `modes.test.ts.snap` digests of the
   23 edited fixtures.
+
+## Delegated events owned by the render root
+
+`render` and `hydrate` listen on their container and stop when the root is disposed, as
+Solid 2.0's do; `clearDelegatedEvents` is gone. A handler on an element no root rendered no
+longer runs, so tests that dispatched on loose elements under `document.body` now render
+into a root first. No expectation about what a handler does changed.
+
+- `core/src/delegate-events.test.ts`: the container is a render root in `beforeEach`.
+  "installs a document listener…" counts the container's listener instead of the
+  document's. The two `clearDelegatedEvents` cases are restated as "a handler is dead once
+  its root is disposed, and lives again under a new root" and "a disposed root's container
+  is listened to again by the next root". The non-bubbling warning case delegates `blur`
+  instead of `focus`, because the warning is once per type per process and the
+  `DELEGATED_EVENT_DOES_NOT_BUBBLE` docs example already warns for `focus` in the same run;
+  the call that reset that set was `clearDelegatedEvents`. The trailing
+  `clearDelegatedEvents(["click"])` calls are dropped.
+- `core/src/dom.test.ts`, `rendering.test.ts`, `dom-optimizations.test.ts`,
+  `spread-order.test.ts`: the shared container or host is a render root
+  (`render(() => null, container)` in `beforeEach`, disposed in `afterEach`).
+  `dom-optimizations` "event handlers swap" appends to that container instead of
+  `document.body`.
+- `core/src/diagnostic-docs.test.ts`: examples import a runtime whose `render` records the
+  roots an example mounts itself, and the runner disposes them. A docs example rendered into
+  `document.body` and was never disposed, which left the body a live root for every later
+  test file.
+- `compiler-rs/fixtures/semantics/sem-props-block-in-cell-slot.tsx`: `dispatched` renders a
+  root into its host before binding, so the "delegated handler value" slot is dispatched.
+- `compiler-rs/test/harness.ts`, `ownership.ts`, `session.ts`, `semantics.ts`,
+  `browser-differential.ts`: `clearDelegatedEvents` calls removed; each render's disposer is
+  called instead. What the clear protected (a module that dropped its own
+  `delegateEvents([...])` could free-ride on another's) is now asserted on the emitted code:
+  `assertDeclaresItsDelegatedTypes` refuses to load a module that writes a `__bq_<type>`
+  expando without declaring the type.
+- `compiler-rs/test/leaks.ts`, `leaks.test.ts`: delegated listeners are no longer exempt from
+  B4. "delegation is not counted as a leak, and is not counted as nothing either" is restated
+  as "a root's delegated listeners are seen, and leave with the root": the probe still sees
+  them and none is outstanding after disposal. `session.ts` marks a listener delegated when
+  it is on the render container rather than on `document`.
+- `compiler-rs/test/leak-known-failures.ts` reach pin: listeners 32 to 328, each session's
+  root registering one listener per declared type and removing it.
+
+## `<Dynamic>` replaced by the `dynamic` factory
+
+- `compiler-rs/test/hydration-grammar.test.ts`: the `Dynamic` and `Dynamic component` leaves
+  render `dynamic(() => tag())` and `dynamic(() => (on() ? Wrap : Pass))` components declared
+  with the helpers; `READS` maps them to the signals their sources read, so every case is
+  still toggled through each value.
+- `compiler-rs/fixtures/dynamic.tsx`, `l4/c7-dynamic.tsx`: rewritten onto the factory.
+  `dynamic`'s `emits` are `dynamic(() => tag())` and `Tagged({` instead of `branch(` and the
+  helper name, because the call site is now an ordinary component call and the branch is
+  built at run time.
+- `compiler-rs/test/async-key-hydration.test.ts` "Dynamic, then a sibling",
+  `component-spread.test.ts` `Tag`, `core/src/control-flow-parity.test.ts`,
+  `server/src/dynamic-tag.test.ts`, `core/src/jsx-types/flow.types.tsx`: the same cases
+  through the factory. The parity test gains a component, null and teardown case; the server
+  test compares the factory's output, range included, where it compared `ssrDynamic`'s.
+- `compiler-rs/src/codegen/ssr.rs`: the refused-construct and import-removal tests use a
+  `Switch` with unreadable arms where they used `<Dynamic {...p}>`; `Dynamic` leaves the
+  no-deopt name list. `compile.rs` and `passes/shape.rs` O7 tests use a `dynamic` component
+  with a live prop. `ir/symbols.rs` asserts nine constructs.
+- `compiler-rs/test/optimality.test.ts`, `optimisation.test.ts`: `Dynamic` and
+  `resolveDynamic` leave the lowered-construct and primitive lists; `ssr.test.ts` holds the
+  corpus to exercising `dynamic` where it held it to `Dynamic`.
+- `compiler-rs/test/ownership-census.ts`: `dynamic` lists `Tagged` as opaque.
+  `ownership-known-failures.ts` effects 275 to 276, the factory's instance memo.
+- Snapshots: `roundtrip.test.ts.snap` "emitted code snapshots dynamic" (the fixture's new
+  emission); `modes.test.ts.snap` digests of `corpus/dynamic`, `l4/c7-dynamic`,
+  `semantics/sem-props-block-in-cell-slot` and `semantics/sem-err-handler-throw`, whose
+  sources changed (the last only in a comment).
