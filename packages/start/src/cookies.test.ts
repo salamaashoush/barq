@@ -161,3 +161,12 @@ describe("deleting", () => {
     expect(line).toContain("Domain=example.com");
   });
 });
+
+describe("Partitioned", () => {
+  test("without Secure is refused, since a browser drops the cookie whole", () => {
+    expect(() => serializeCookie("n", "v", { partitioned: true })).toThrow(/Partitioned/);
+    expect(serializeCookie("n", "v", { partitioned: true, secure: true })).toBe(
+      "n=v; Secure; Partitioned",
+    );
+  });
+});

@@ -22,7 +22,7 @@
  */
 
 import { mkdir, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { dirname, isAbsolute, join, relative, sep } from "node:path";
 
 import { PRERENDER_HEADER, type ServerEntryModule } from "./protocol.ts";
 
@@ -36,11 +36,44 @@ export interface PrerenderRun {
   readonly concurrency: number;
   readonly subfolderIndex: boolean;
   readonly base: string;
+  /** Whether a path is prerendered at all. Asked with the normalised path. */
+  readonly filter?: (path: string) => boolean;
+  /**
+   * How many more times a page is asked for after its request throws or answers
+   * 5xx. Default 0.
+   *
+   * A 4xx is an answer, not a failure to answer: asking again gets it again.
+   */
+  readonly retryCount?: number;
+  /** Milliseconds to wait before each retry. Default 0. */
+  readonly retryDelay?: number;
+  /**
+   * Write a sitemap of what was prerendered.
+   *
+   * `host` is the origin the site is deployed at, which the build cannot know.
+   * `outputPath` is relative to `outDir` and defaults to `sitemap.xml`.
+   */
+  readonly sitemap?: PrerenderSitemap;
   readonly log?: (message: string) => void;
+}
+
+export interface PrerenderSitemap {
+  readonly host: string;
+  readonly outputPath?: string;
 }
 
 export interface PrerenderResult {
   readonly pages: PrerenderedPage[];
+  /** The sitemap's file, when one was asked for and a page belongs in it. */
+  readonly sitemap?: string;
+  /**
+   * The copy of the `/404` page at `<outDir>/404.html`, the name a static host
+   * serves for a path it has no file for.
+   *
+   * Absent when the page's own file is that one already. It has no entry in
+   * `pages`: it is a second name for a page that is listed there.
+   */
+  readonly notFoundFile?: string;
 }
 
 /** One prerendered page, as the build records it. */
@@ -62,6 +95,13 @@ export interface PrerenderedPage {
   readonly headers: Record<string, string>;
 }
 
+function isHtml(response: Response): boolean {
+  return (response.headers.get("content-type") ?? "").includes("text/html");
+}
+
+/** The origin every prerender request is made against. It never leaves the build. */
+const ORIGIN = "http://prerender.localhost";
+
 /**
  * A path, as the dedup key sees it.
  *
@@ -72,13 +112,29 @@ export interface PrerenderedPage {
  * a URL nothing has seen, and the crawl never terminates. `/x` against `/x/` as
  * two keys is a second open bug there. A query string has no effect on a statically
  * exported page anyway, which is the note SvelteKit's crawler carries.
+ *
+ * THROUGH `new URL`, because the key is also what gets requested and what names
+ * the file. An `href` is whatever an author typed, and `/../../about` typed into
+ * a page is `/about` to every browser that follows it: resolved here, it is one
+ * key and one file, where the raw text is a second key and a path that climbs
+ * out of the output directory.
  */
 function normalize(path: string): string | null {
   if (path.startsWith("//") || /^[a-z][a-z0-9+.-]*:/i.test(path)) return null;
   const [withoutHash = ""] = path.split("#");
   const [clean = ""] = withoutHash.split("?");
   if (clean === "") return null;
-  const trimmed = clean.length > 1 ? clean.replace(/\/+$/, "") : clean;
+  let resolved: string;
+  try {
+    const url = new URL(clean, ORIGIN);
+    if (url.origin !== ORIGIN) return null;
+    resolved = url.pathname;
+    // Asked now so that a path which names no file is never queued.
+    decodeURI(resolved);
+  } catch {
+    return null;
+  }
+  const trimmed = resolved.length > 1 ? resolved.replace(/\/+$/, "") : resolved;
   return trimmed === "" ? "/" : trimmed;
 }
 
@@ -92,12 +148,63 @@ function linksIn(html: string): string[] {
   return out;
 }
 
-/** `/about` -> `dist/client/about/index.html`, or `about.html`. */
+/**
+ * `/about` -> `dist/client/about/index.html`, or `about.html`.
+ *
+ * CONTAINMENT IS ASSERTED rather than assumed. {@link normalize} resolves dot
+ * segments, but the name on disk is the DECODED path, and decoding can produce
+ * a separator the URL never had: `..%5C` is one ordinary segment to a URL and a
+ * step upward to a Windows path.
+ */
 function fileFor(path: string, outDir: string, subfolderIndex: boolean): string {
   const clean = path.replace(/^\/+/, "");
-  if (clean === "") return join(outDir, "index.html");
-  if (clean.endsWith(".html")) return join(outDir, clean);
-  return subfolderIndex ? join(outDir, clean, "index.html") : join(outDir, `${clean}.html`);
+  let file: string;
+  if (clean === "") file = join(outDir, "index.html");
+  else if (clean.endsWith(".html")) file = join(outDir, clean);
+  else file = subfolderIndex ? join(outDir, clean, "index.html") : join(outDir, `${clean}.html`);
+  return contained(path, file, outDir);
+}
+
+function contained(what: string, file: string, outDir: string): string {
+  const inside = relative(outDir, file);
+  if (inside === ".." || inside.startsWith(`..${sep}`) || isAbsolute(inside)) {
+    throw new Error(
+      `The file for ${what} would be written outside the output directory, to \`${file}\`, so it was refused. ` +
+        "Use a path or an `outputPath` that stays inside the output directory, without `..` segments.",
+    );
+  }
+  return file;
+}
+
+/** The path every static host looks a missing page up under. */
+const NOT_FOUND_PATH = "/404";
+
+/** A count or a delay as given, or 0 for anything that is not a positive number. */
+function whole(value: number | undefined): number {
+  return value !== undefined && Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0;
+}
+
+function escapeXml(text: string): string {
+  return text
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&apos;");
+}
+
+/**
+ * `<loc>` alone. A `<lastmod>` stamped with the build date, which is what the
+ * nearest prior art writes, tells a crawler every page changed on every deploy.
+ */
+function sitemapXml(locations: readonly string[]): string {
+  const urls = locations.map((loc) => `  <url>\n    <loc>${escapeXml(loc)}</loc>\n  </url>\n`);
+  return (
+    '<?xml version="1.0" encoding="UTF-8"?>\n' +
+    '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n' +
+    urls.join("") +
+    "</urlset>\n"
+  );
 }
 
 /**
@@ -113,9 +220,8 @@ export async function prerender(run: PrerenderRun): Promise<PrerenderResult> {
   const build = run.entry.default?.createFetch;
   if (typeof build !== "function") {
     throw new Error(
-      "[barq-start] prerendering needs the server entry to default-export `createFetch(extra)` — " +
-        "`stream: false` is a different renderer from a buffered stream, and a handler built " +
-        "with streaming on bakes its placeholders and swap scripts into the static file",
+      "[barq-start] The `prerender` option is set, but the server entry's default export has no `createFetch`, so no page can be rendered to a static file. " +
+        "Use `export default createStartHandler()` from `@barqjs/router/server` in the server entry.",
     );
   }
 
@@ -133,15 +239,36 @@ export async function prerender(run: PrerenderRun): Promise<PrerenderResult> {
     nonce: undefined,
   });
 
+  // Asked before anything is rendered: a path that cannot be written is known
+  // from the configuration alone, and the whole site is a long wait to find out.
+  const sitemap =
+    run.sitemap === undefined
+      ? undefined
+      : {
+          host: run.sitemap.host.replace(/\/+$/, ""),
+          file: contained(
+            "the sitemap",
+            join(run.outDir, run.sitemap.outputPath ?? "sitemap.xml"),
+            run.outDir,
+          ),
+        };
+  const retries = whole(run.retryCount);
+  const retryDelay = whole(run.retryDelay);
+
   const seen = new Set<string>();
   const queue: string[] = [];
   const pages: PrerenderedPage[] = [];
   const failures: string[] = [];
+  // The URL paths, where `pages` holds the decoded names: a `<loc>` is a URL.
+  const listed: string[] = [];
+  let notFoundFile: string | undefined;
 
   const enqueue = (path: string): void => {
     const key = normalize(path);
     if (key === null || seen.has(key)) return;
     seen.add(key);
+    // After `seen`, so a path linked from every page is asked about once.
+    if (run.filter?.(key) === false) return;
     queue.push(key);
   };
 
@@ -152,14 +279,34 @@ export async function prerender(run: PrerenderRun): Promise<PrerenderResult> {
     enqueue(route);
   }
 
+  const ask = async (path: string): Promise<{ response: Response; html: string }> => {
+    for (let attempt = 0; ; attempt += 1) {
+      const last = attempt >= retries;
+      try {
+        const response = await fetchPage(new Request(`${ORIGIN}${path}`));
+        const html = await response.text();
+        if (response.status < 500 || last) return { response, html };
+        run.log?.(`${path} answered ${response.status}, asking again`);
+      } catch (reason) {
+        if (last) throw reason;
+        run.log?.(`${path} threw, asking again`);
+      }
+      if (retryDelay > 0) await new Promise((resolve) => setTimeout(resolve, retryDelay));
+    }
+  };
+
   const one = async (path: string): Promise<void> => {
-    const response = await fetchPage(new Request(`http://prerender.localhost${path}`));
-    const html = await response.text();
-    if (response.status >= 400) {
+    const { response, html } = await ask(path);
+    const crawledOnly = !named.has(path);
+    // A page the build NAMED and the application answers 404 for is the
+    // application's not-found page, asked for on purpose: it is written, with
+    // the status it was rendered as, for `static.ts` to serve. Anything else at
+    // 400 or above is a link to nowhere or a server that failed.
+    const notFoundPage = response.status === 404 && !crawledOnly && isHtml(response);
+    if (response.status >= 400 && !notFoundPage) {
       failures.push(`${path} answered ${response.status}`);
       return;
     }
-    const crawledOnly = !named.has(path);
     const declined = response.headers.get(PRERENDER_HEADER) === "0";
     if (crawledOnly && declined) {
       // Rendered to find its links, not to be written. A route that has not said
@@ -167,19 +314,31 @@ export async function prerender(run: PrerenderRun): Promise<PrerenderResult> {
       if (run.crawl) followLinks(html);
       return;
     }
-    const file = fileFor(path, run.outDir, run.subfolderIndex);
+    // The NAME, where `path` is the URL: `/caf%C3%A9` is `café/index.html` on
+    // disk and `/café` in the manifest, which is how `static.ts` looks it up.
+    const name = decodeURI(path);
+    const file = fileFor(name, run.outDir, run.subfolderIndex);
     await mkdir(dirname(file), { recursive: true });
     // Written as each page finishes rather than accumulated: holding ~300
     // data-heavy pages to the end is a 2 GB heap, which SvelteKit shipped.
     await writeFile(file, html, "utf8");
     pages.push({
-      path,
+      path: name,
       file,
       status: response.status,
       headers: Object.fromEntries(response.headers),
     });
     run.log?.(`${path} -> ${file}`);
-    if (run.crawl) followLinks(html);
+    if (path === NOT_FOUND_PATH) {
+      const root = join(run.outDir, "404.html");
+      if (root !== file) {
+        await writeFile(root, html, "utf8");
+        notFoundFile = root;
+      }
+    } else if (response.ok) {
+      listed.push(path);
+    }
+    if (run.crawl && !notFoundPage) followLinks(html);
   };
 
   const followLinks = (html: string): void => {
@@ -190,21 +349,100 @@ export async function prerender(run: PrerenderRun): Promise<PrerenderResult> {
     }
   };
 
-  while (queue.length > 0) {
-    const batch = queue.splice(0, Math.max(1, run.concurrency));
-    const settled = await Promise.allSettled(batch.map(one));
-    for (const [index, outcome] of settled.entries()) {
-      if (outcome.status === "rejected") {
-        const reason = outcome.reason as { message?: string };
-        failures.push(`${batch[index]}: ${reason?.message ?? String(outcome.reason)}`);
+  // A POOL, not batches: a slot is refilled the moment its page finishes, so
+  // one slow page costs its own time rather than its whole batch's. The queue
+  // grows while it drains, since a crawled page adds what it links to.
+  const slots = Math.max(1, run.concurrency);
+  let next = 0;
+  let active = 0;
+  await new Promise<void>((drained) => {
+    const fill = (): void => {
+      while (active < slots) {
+        const path = queue[next];
+        if (path === undefined) break;
+        next += 1;
+        active += 1;
+        one(path)
+          .catch((reason: unknown) => {
+            const message = (reason as { message?: string } | null)?.message ?? String(reason);
+            failures.push(`${path}: ${message}`);
+          })
+          .finally(() => {
+            active -= 1;
+            fill();
+          });
       }
-    }
-  }
+      if (active === 0) drained();
+    };
+    fill();
+  });
 
   if (failures.length > 0) {
     throw new Error(
-      `[barq-start] ${failures.length} page(s) failed to prerender:\n  ` + failures.join("\n  "),
+      `[barq-start] ${failures.length} page(s) failed to prerender, so the build stopped before shipping a broken page:\n  ` +
+        failures.join("\n  "),
     );
   }
-  return { pages };
+
+  if (sitemap === undefined || listed.length === 0) return { pages, notFoundFile };
+  const base = run.base.replace(/\/+$/, "");
+  await mkdir(dirname(sitemap.file), { recursive: true });
+  await writeFile(
+    sitemap.file,
+    sitemapXml(listed.toSorted().map((path) => `${sitemap.host}${base}${path}`)),
+    "utf8",
+  );
+  return { pages, sitemap: sitemap.file, notFoundFile };
+}
+
+/** What {@link prerenderShell} is asked for. */
+export interface ShellRun {
+  readonly entry: ServerEntryModule;
+  readonly outDir: string;
+  /** The path the shell is rendered at. `/` when omitted. */
+  readonly maskPath?: string;
+  /** Where it is written, relative to `outDir`. `_shell.html` when omitted. */
+  readonly outputPath?: string;
+}
+
+/**
+ * Write the SPA shell: the root route's document, with nothing under it
+ * rendered, for a server or a static host to answer every page path with.
+ *
+ * TanStack's SPA mode. The file is one request to the same handler, built with
+ * `shell: true`, so the shell is the application's own root route rather than a
+ * second document to keep in step with it.
+ */
+export async function prerenderShell(run: ShellRun): Promise<string> {
+  const build = run.entry.default?.createFetch;
+  if (typeof build !== "function") {
+    throw new Error(
+      "[barq-start] SPA mode is on, but the server entry's default export has no `createFetch`, so the shell document cannot be rendered. " +
+        "Use `export default createStartHandler()` from `@barqjs/router/server` in the server entry.",
+    );
+  }
+  const file = contained(
+    "the SPA shell",
+    join(run.outDir, (run.outputPath ?? "_shell.html").replace(/^\/+/, "")),
+    run.outDir,
+  );
+  const fetchShell = build({
+    stream: false,
+    pages: true,
+    shell: true,
+    refuseRequest:
+      "[barq] `getRequest()` and the other request helpers are not available while the SPA shell is rendered: the shell is built once and served for every path, so there is no request to read. " +
+      "Read the request in a loader or a server function instead.",
+    nonce: undefined,
+  });
+  const response = await fetchShell(new Request(`${ORIGIN}${run.maskPath ?? "/"}`));
+  if (response.status >= 400 || !isHtml(response)) {
+    throw new Error(
+      `[barq-start] Rendering the SPA shell at \`${run.maskPath ?? "/"}\` answered ${response.status}${isHtml(response) ? "" : " without an HTML body"}, so no shell was written. ` +
+        "The root route's `shellComponent` has to render for that path: check the server output above for the error it threw.",
+    );
+  }
+  await mkdir(dirname(file), { recursive: true });
+  await writeFile(file, await response.text(), "utf8");
+  return file;
 }

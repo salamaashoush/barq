@@ -7,6 +7,11 @@
     "moduleResolution": "bundler",
     "allowImportingTsExtensions": true,
     "noEmit": true,
+    // The declaration build runs the compiler with `rootDir` set to this
+    // package. A source file from outside it (another package's `src`, reached
+    // by an import) is an error there and is still emitted, beside that source.
+    // Stopping on the error is what keeps a build from writing into a sibling.
+    "noEmitOnError": true,
     "strict": true,
     "skipLibCheck": true,
     "types": ["bun"],

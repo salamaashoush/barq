@@ -24,7 +24,7 @@
  * cookie, so a client that keeps replaying an expired token gets nothing.
  */
 
-import { getCookie, getRequest, setCookie } from "./context.ts";
+import { getCookie, getRequest, openSessions, replaceCookie } from "./context.ts";
 import type { CookieOptions } from "./cookies.ts";
 
 /** What a session holds. An application narrows it with the type argument. */
@@ -105,7 +105,17 @@ const DEFAULT_MAX_AGE = 60 * 60 * 24 * 7;
 /** Below this a password is not a key, whatever the KDF does with it. */
 const MINIMUM_PASSWORD = 32;
 /** Recognises our own envelope, and refuses another version rather than guessing. */
-const VERSION = "b1";
+const VERSION = "b2";
+/**
+ * The envelope that authenticates no cookie name. Opened, never written.
+ *
+ * Refusing it would sign every visitor out on the deploy that stopped sealing
+ * it, and the price of not doing that is stated: a `b1` value opens under ANY
+ * cookie name sharing the password until its sealed timestamp passes `maxAge`.
+ */
+const NAMELESS_VERSION = "b1";
+/** Leads the additional data, so another layout of it is never read as this one. */
+const NAME_BINDING = 2;
 const IV_BYTES = 12;
 const SALT_BYTES = 16;
 /** Domain separation for the KDF — see `deriveKey`. */
@@ -125,6 +135,16 @@ interface Sealed {
   readonly id: string;
   readonly createdAt: number;
   readonly data: SessionData;
+}
+
+/**
+ * A session as one request holds it: what the cookie said, then every `update`
+ * and `clear` since.
+ */
+export interface OpenSession {
+  current: Sealed;
+  /** Settles when the write in flight has, whichever way it went. */
+  writing: Promise<unknown>;
 }
 
 function base64url(bytes: Uint8Array): string {
@@ -184,12 +204,58 @@ async function deriveKey(password: string, salt: Uint8Array<ArrayBuffer>): Promi
   );
 }
 
+/**
+ * Keys this process has derived AND seen authenticate, by password, then salt.
+ *
+ * A signed-in visitor sends one cookie on every request, so its salt and its
+ * key repeat. WebCrypto answers on another thread, and measured on this machine
+ * the derivation is 42 us of the 73 us an unseal costs; held, a repeat visit
+ * pays for the decryption alone.
+ *
+ * Only a key that OPENED something is kept, or one this process sealed with. A
+ * caller sending garbage cookies therefore adds nothing here and evicts no one,
+ * which is what would otherwise make a cache of attacker-chosen salts a way to
+ * push real visitors out of it.
+ */
+const DERIVED = new Map<string, Map<string, CryptoKey>>();
+/** Per password. The oldest goes first, and a key that is used is the newest. */
+const DERIVED_KEYS = 1000;
+
+function keep(password: string, salt: string, key: CryptoKey): void {
+  let keys = DERIVED.get(password);
+  if (keys === undefined) {
+    keys = new Map();
+    DERIVED.set(password, keys);
+  }
+  keys.delete(salt);
+  keys.set(salt, key);
+  if (keys.size <= DERIVED_KEYS) return;
+  const oldest = keys.keys().next().value;
+  if (oldest !== undefined) keys.delete(oldest);
+}
+
+/**
+ * What the tag covers beside the ciphertext: the cookie the session was sealed
+ * FOR.
+ *
+ * One password commonly seals more than one cookie, and a tag that covers the
+ * payload alone makes the value issued as `barq-session` a valid
+ * `barq-session-admin` for anyone who renames it.
+ */
+function nameBinding(config: SessionConfig): Uint8Array<ArrayBuffer> {
+  const name = new TextEncoder().encode(config.name ?? DEFAULT_NAME);
+  const binding = new Uint8Array(name.length + 1);
+  binding[0] = NAME_BINDING;
+  binding.set(name, 1);
+  return binding;
+}
+
 function assertPassword(password: string): void {
   if (password.length < MINIMUM_PASSWORD) {
     throw new TypeError(
-      `[barq] a session password must be at least ${MINIMUM_PASSWORD} characters; this one is ` +
-        `${password.length}. It is a key, not a passphrase — generate one with ` +
-        "`crypto.randomUUID()` twice, and keep it in the environment.",
+      `[barq] A session \`password\` must be at least ${MINIMUM_PASSWORD} characters, and this one is ${password.length}. ` +
+        "It is the key that encrypts the cookie, so a short one can be guessed. " +
+        "Generate one with `crypto.randomUUID() + crypto.randomUUID()` and read it from an environment variable.",
     );
   }
 }
@@ -201,17 +267,24 @@ export async function sealSession(config: SessionConfig, session: Sealed): Promi
   const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
   const key = await deriveKey(config.password, salt);
   const plaintext = new TextEncoder().encode(JSON.stringify(session));
+  const salted = base64url(salt);
   const sealed = new Uint8Array(
-    await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, plaintext),
+    await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv, additionalData: nameBinding(config) },
+      key,
+      plaintext,
+    ),
   );
-  const value = [VERSION, base64url(salt), base64url(iv), base64url(sealed)].join(".");
-  if (value.length > MAX_COOKIE_BYTES) {
+  const value = [VERSION, salted, base64url(iv), base64url(sealed)].join(".");
+  // Name and value together, which is the sum a browser measures.
+  const size = (config.name ?? DEFAULT_NAME).length + value.length;
+  if (size > MAX_COOKIE_BYTES) {
     throw new RangeError(
-      `[barq] this session seals to ${value.length} bytes and a browser drops any cookie over ` +
-        `${MAX_COOKIE_BYTES} — silently, which reads as a user who is not signed in. Keep an id ` +
-        "in the session and the rest in a store.",
+      `[barq] This session is ${size} bytes once encrypted, counting the cookie name, and a browser drops any cookie over ${MAX_COOKIE_BYTES} bytes without an error. ` +
+        "The user would appear signed out. Keep only an id in the session and the rest in a store on the server.",
     );
   }
+  keep(config.password, salted, key);
   return value;
 }
 
@@ -227,14 +300,21 @@ export async function sealSession(config: SessionConfig, session: Sealed): Promi
 export async function unsealSession(config: SessionConfig, sealed: string): Promise<Sealed | null> {
   assertPassword(config.password);
   const parts = sealed.split(".");
-  if (parts.length !== 4 || parts[0] !== VERSION) return null;
+  if (parts.length !== 4) return null;
+  const bound = parts[0] === VERSION;
+  if (!bound && parts[0] !== NAMELESS_VERSION) return null;
   try {
-    const key = await deriveKey(config.password, fromBase64url(parts[1]));
+    const key =
+      DERIVED.get(config.password)?.get(parts[1]) ??
+      (await deriveKey(config.password, fromBase64url(parts[1])));
     const plaintext = await crypto.subtle.decrypt(
-      { name: "AES-GCM", iv: fromBase64url(parts[2]) },
+      bound
+        ? { name: "AES-GCM", iv: fromBase64url(parts[2]), additionalData: nameBinding(config) }
+        : { name: "AES-GCM", iv: fromBase64url(parts[2]) },
       key,
       fromBase64url(parts[3]),
     );
+    keep(config.password, parts[1], key);
     const session = JSON.parse(new TextDecoder().decode(plaintext)) as Sealed;
     if (typeof session.id !== "string" || typeof session.createdAt !== "number") return null;
     // The cookie's own expiry is a REQUEST the client is free to ignore. The
@@ -289,37 +369,59 @@ export async function useSession<T extends SessionData = SessionData>(
   // rather than surfacing as an empty session.
   getRequest();
 
-  const existing = getCookie(name);
-  const opened = existing === undefined ? null : await unsealSession(config, existing);
-  const current: Sealed = opened ?? {
-    id: crypto.randomUUID(),
-    createdAt: Date.now(),
-    data: {},
+  // OPENED ONCE PER REQUEST AND NAME. The cookie on the request is what the
+  // browser held before this request wrote anything, so a second reader that
+  // unsealed it again would not see the first one's `update`, and would seal its
+  // own change over it. Every manager for a name works on the one record.
+  const sessions = openSessions();
+  let opening = sessions.get(name);
+  if (opening === undefined) {
+    opening = open(config, getCookie(name));
+    sessions.set(name, opening);
+  }
+  const session = await opening;
+
+  // ONE WRITE AT A TIME. A write reads the record, seals across an `await` and
+  // then stores what it sealed, so two that overlapped would both start from the
+  // same record and the later cookie would drop the earlier change.
+  const write = (change: (current: Sealed) => Promise<Sealed>): Promise<SessionManager<T>> => {
+    const written = session.writing.then(async () => {
+      session.current = await change(session.current);
+      return manage();
+    });
+    session.writing = written.catch(() => undefined);
+    return written;
   };
 
-  const manage = (session: Sealed): SessionManager<T> => ({
-    id: session.id,
-    createdAt: session.createdAt,
-    data: session.data as Partial<T>,
-    async update(patch) {
-      const next = typeof patch === "function" ? patch(session.data as Partial<T>) : patch;
-      const merged: Sealed = {
-        ...session,
-        data: { ...session.data, ...next },
-      };
-      setCookie(name, await sealSession(config, merged), cookieOptions(config));
-      return manage(merged);
-    },
-    async clear() {
-      const empty: Sealed = { id: crypto.randomUUID(), createdAt: Date.now(), data: {} };
-      // EXPIRED, not re-sealed empty: an empty session cookie is still a cookie
-      // the browser sends, and the user asked for it to be gone.
-      setCookie(name, "", { ...cookieOptions(config), maxAge: 0, expires: new Date(0) });
-      return manage(empty);
-    },
+  const manage = (): SessionManager<T> => ({
+    id: session.current.id,
+    createdAt: session.current.createdAt,
+    data: session.current.data as Partial<T>,
+    update: (patch) =>
+      write(async (current) => {
+        const next = typeof patch === "function" ? patch(current.data as Partial<T>) : patch;
+        const merged: Sealed = { ...current, data: { ...current.data, ...next } };
+        replaceCookie(name, await sealSession(config, merged), cookieOptions(config));
+        return merged;
+      }),
+    clear: () =>
+      write(async () => {
+        // EXPIRED, not re-sealed empty: an empty session cookie is still a cookie
+        // the browser sends, and the user asked for it to be gone.
+        replaceCookie(name, "", { ...cookieOptions(config), maxAge: 0, expires: new Date(0) });
+        return { id: crypto.randomUUID(), createdAt: Date.now(), data: {} };
+      }),
   });
 
-  return manage(current);
+  return manage();
+}
+
+async function open(config: SessionConfig, cookie: string | undefined): Promise<OpenSession> {
+  const opened = cookie === undefined ? null : await unsealSession(config, cookie);
+  return {
+    current: opened ?? { id: crypto.randomUUID(), createdAt: Date.now(), data: {} },
+    writing: Promise.resolve(),
+  };
 }
 
 /** The session's data, for code that only reads. */

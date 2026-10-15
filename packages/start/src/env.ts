@@ -41,35 +41,29 @@ export interface IsomorphicBuilder<
  * would make every call site test the environment again.
  */
 export function createIsomorphicFn(): IsomorphicBuilder {
-  return build(() => undefined as never);
+  return build(() => undefined as never, false);
 }
 
+/**
+ * `served` is whether THIS chain has declared a server half. It travels with
+ * the chain: kept in one place for the module, the first isomorphic function
+ * anywhere set it for good, and every `.client(b)` written after that answered
+ * `undefined` where it is documented to answer `b`.
+ */
 function build<Args extends readonly unknown[], Out>(
   current: (...args: Args) => Out,
+  served: boolean,
 ): IsomorphicBuilder<Args, Out> {
   // The SERVER half wins if both are declared, because nothing uncompiled runs
   // anywhere else. Theirs keeps the server implementation for the same reason
   // and says so.
   const chain = Object.assign(current, {
-    server: (fn: (...args: never[]) => unknown) => build(fn as never),
-    client: (fn: (...args: never[]) => unknown) =>
-      // Only when nothing has claimed it: `.server(a).client(b)` uncompiled is
-      // `a`, and `.client(b)` alone is `b`.
-      claimed ? chain : build(fn as never),
+    server: (fn: (...args: never[]) => unknown) => build(fn as never, true),
+    // `.server(a).client(b)` uncompiled is `a`, and `.client(b)` alone is `b`.
+    client: (fn: (...args: never[]) => unknown) => (served ? chain : build(fn as never, false)),
   }) as unknown as IsomorphicBuilder<Args, Out>;
-  claimed = true;
   return chain;
 }
-
-/**
- * Whether a `.server(...)` has been seen on the chain being built.
- *
- * A module-level flag is safe here for the reason a request-scoped one would
- * not be: a builder chain is one synchronous expression, evaluated at module
- * load, and there is no await anywhere in it for a second chain to interleave
- * through.
- */
-let claimed = false;
 
 /**
  * A function the CLIENT bundle does not get a body for.

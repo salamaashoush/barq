@@ -46,13 +46,14 @@ export interface BarqServeOptions extends Omit<ServerOptions, "fetch">, HandlerO
    * The document to answer a page request with, for a deployment that renders
    * its pages in the browser.
    *
-   * A path to the built `index.html`. Consulted only after everything else has
-   * declined — the assets, the server functions and the route handlers all run
-   * first — so `/api/health` still answers JSON and `/_barq/fn/<id>` is still
-   * reserved. Nothing else can do this job: the asset middleware answers what
-   * the build WROTE, and an SPA's routes are exactly the paths it did not.
+   * A path to the built `index.html`, or a `file:` URL of it. Consulted only
+   * after everything else has declined — the assets, the server functions and
+   * the route handlers all run first — so `/api/health` still answers JSON and
+   * `/_barq/fn/<id>` is still reserved. Nothing else can do this job: the asset
+   * middleware answers what the build WROTE, and an SPA's routes are exactly the
+   * paths it did not.
    */
-  spa?: string;
+  spa?: string | URL;
 }
 
 /**
@@ -68,6 +69,23 @@ export function createFetchHandler(
 ): (request: Request) => Promise<Response> {
   const page = options.fetch ?? (() => new Response("not found", { status: 404 }));
   const document = options.spa;
+  // Read once and held, per handler: two in one process have two documents.
+  let body: Promise<string> | undefined;
+  const spaDocument = async (path: string | URL, missing: Response): Promise<Response> => {
+    // `node:fs` is imported here rather than at module scope, for the reason
+    // `static.ts` gives: this module resolves on workerd too, where there is none.
+    body ??= import("node:fs/promises").then((fs) => fs.readFile(path, "utf8"));
+    try {
+      return new Response(await body, {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    } catch {
+      // The 404 the handler already produced, rather than a 500 about a file the
+      // caller never asked for.
+      body = undefined;
+      return missing;
+    }
+  };
   return async (request: Request): Promise<Response> => {
     const answered = await handleServerFn(request, options);
     if (answered !== null) return answered;
@@ -83,24 +101,16 @@ export function createFetchHandler(
 }
 
 /**
- * The built `index.html`, read once and held.
+ * What a caller is told when something threw: that it failed, and nothing else.
  *
- * `node:fs` is imported inside rather than at module scope, for the reason
- * `static.ts` gives: this module resolves on workerd too, where there is none.
+ * Installed because a runtime's own answer is not that. Bun outside
+ * `NODE_ENV=production` answers with the message, the stack and the source
+ * around the throw, and a message can name a table, a column or a path. The
+ * error goes to the log, where the operator is.
  */
-let spaBody: Promise<string> | undefined;
-async function spaDocument(path: string, missing: Response): Promise<Response> {
-  spaBody ??= import("node:fs/promises").then((fs) => fs.readFile(path, "utf8"));
-  try {
-    return new Response(await spaBody, {
-      headers: { "content-type": "text/html; charset=utf-8" },
-    });
-  } catch {
-    // The 404 the handler already produced, rather than a 500 about a file the
-    // caller never asked for.
-    spaBody = undefined;
-    return missing;
-  }
+function failed(error: unknown): Response {
+  console.error(error);
+  return new Response("internal server error", { status: 500 });
 }
 
 /**
@@ -117,6 +127,8 @@ export function serveBarq(options: BarqServeOptions = {}): Server {
   const {
     fetch: _page,
     allowedOrigins: _origins,
+    maxBodySize: _body,
+    maxFormSize: _form,
     reachable: _reachable,
     static: assets,
     spa: _spa,
@@ -132,5 +144,10 @@ export function serveBarq(options: BarqServeOptions = {}): Server {
       ? middleware
       : [assetMiddleware(assets === true ? {} : assets), ...(middleware ?? [])];
 
-  return serve({ ...rest, middleware: chain, fetch: createFetchHandler(options) });
+  return serve({
+    ...rest,
+    error: rest.error ?? failed,
+    middleware: chain,
+    fetch: createFetchHandler(options),
+  });
 }

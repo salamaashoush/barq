@@ -27,6 +27,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
 
 import { type CookieOptions, deleteCookieLine, parseCookies, serializeCookie } from "./cookies.ts";
+import type { OpenSession } from "./session.ts";
 
 /**
  * Headers and a status a handler asked for, merged into whatever is returned.
@@ -62,6 +63,40 @@ export interface RequestContext {
    * which request is current — two in flight at once cannot take each other's.
    */
   css?: Map<string, string>;
+  /**
+   * Reads every rule registered after THIS request's head sheet was serialised.
+   *
+   * What the page is owed once it has a head, in place of {@link css}: a rule
+   * ANOTHER request registered after this one's head is one this render can
+   * still use, as a class a module already holds, and it registers nothing
+   * when it does. So the line is the head and not who registered what.
+   */
+  lateCss?: () => string;
+  /**
+   * What a server function's chain asked to send back, held for the request
+   * handler to put on the response.
+   *
+   * Here and not in a module-level variable for the reason this file opens
+   * with: two requests whose handlers settle in the same tick would each read
+   * whichever chain wrote last, and that is one caller's `sendContext` on
+   * another caller's response.
+   */
+  sendContext?: Record<string, unknown>;
+  /**
+   * The sessions this request has opened, by cookie name.
+   *
+   * The request's cookie is what the browser HAD. A second `useSession` that
+   * read it again would start from before the first one's `update`, and its own
+   * `update` would then seal a session without that change over the top of it.
+   */
+  sessions?: Map<string, Promise<OpenSession>>;
+  /**
+   * What the request middleware chain contributed with `next({ context })`.
+   *
+   * A server function's own chain starts from it, and a route handler is
+   * handed it, so a global middleware that resolved a session says so once.
+   */
+  middlewareContext?: Record<string, unknown>;
   /**
    * Why this request must not be read, when it must not be.
    *
@@ -103,9 +138,9 @@ function enterable(): AsyncLocalStorage<RequestContext> {
   if (storage !== undefined) return storage;
   if (typeof AsyncLocalStorage !== "function") {
     throw new Error(
-      "[barq] a request context cannot be entered here: `node:async_hooks` has no " +
-        "implementation in this environment. `withRequest` is server-only — it runs inside " +
-        "`handleServerFn`, a route handler or the prerenderer, never in a browser bundle.",
+      "[barq] `withRequest` was called where `AsyncLocalStorage` from `node:async_hooks` does not exist, so the request cannot be made available to the code it runs. " +
+        "It works only on the server. If this is the browser, server-only code reached the browser bundle: " +
+        "move it behind a server function.",
     );
   }
   storage = new AsyncLocalStorage<RequestContext>();
@@ -133,13 +168,18 @@ export function createResponseDraft(): ResponseDraft {
  */
 export function collectRequestCss(): string {
   const store = storage?.getStore();
+  if (store?.lateCss !== undefined) return store.lateCss();
   return store?.css === undefined ? "" : [...store.css.values()].join("");
 }
 
-export function installCssSink(
-  setSink: (fn: (key: string, rules: string) => boolean) => void,
-): void {
-  setSink((key, rules) => {
+/** `@barqjs/css`'s `CssSink`, restated so this package does not import that one. */
+interface CssSink {
+  (key: string, rules: string): boolean;
+  head?(late: () => string): void;
+}
+
+export function installCssSink(setSink: (sink: CssSink) => void): void {
+  const sink: CssSink = (key, rules) => {
     const store = storage?.getStore();
     // Outside a request there is nothing to attribute the rule to — module
     // scope, which every request needs — so it goes to the package's own sheet.
@@ -147,7 +187,14 @@ export function installCssSink(
     store.css ??= new Map();
     store.css.set(key, rules);
     return true;
-  });
+  };
+  // The FIRST read of the whole sheet in a request is its `<head>`; a later
+  // one is somebody else's and must not move the line.
+  sink.head = (late) => {
+    const store = storage?.getStore();
+    if (store !== undefined) store.lateCss ??= late;
+  };
+  setSink(sink);
 }
 
 export function withRequest<T>(
@@ -196,9 +243,8 @@ function context(): RequestContext {
   const found = storage?.getStore();
   if (found === undefined) {
     throw new Error(
-      "[barq] this is only available inside a request — a server function, a route handler, " +
-        "a loader or a `beforeLoad`. Outside one there is no request to read and no response " +
-        "to write to.",
+      "[barq] A request helper such as `getRequest()`, `getCookie()` or `setResponseHeader()` was called outside a request, so there is no request to read and no response to write to. " +
+        "These helpers are only available inside a request: call them from a server function, a route handler, a loader or a `beforeLoad`.",
     );
   }
   if (found.refuse !== undefined) throw new Error(found.refuse);
@@ -215,6 +261,46 @@ function context(): RequestContext {
  */
 export function peekResponseDraft(): ResponseDraft | undefined {
   return storage?.getStore()?.response;
+}
+
+/**
+ * Leave a chain's `sendContext` for whoever builds this request's response.
+ *
+ * Outside a request there is no response to carry it, so it is dropped: that is
+ * a server function called in-process, whose caller is handed the result alone.
+ */
+export function offerSendContext(sendContext: Record<string, unknown>): void {
+  const found = storage?.getStore();
+  if (found !== undefined) found.sendContext = sendContext;
+}
+
+/** Take the pending `sendContext`, leaving nothing behind for the next call. */
+export function takeSendContext(): Record<string, unknown> {
+  const found = storage?.getStore();
+  const taken = found?.sendContext ?? {};
+  if (found !== undefined) found.sendContext = undefined;
+  return taken;
+}
+
+/**
+ * What this request's middleware chain has contributed, or an empty record
+ * outside a request. TanStack's name.
+ */
+export function getGlobalStartContext(): Record<string, unknown> {
+  return storage?.getStore()?.middlewareContext ?? {};
+}
+
+/** Record what the request middleware chain is contributing, for the rest of the request. */
+export function setRequestMiddlewareContext(context: Record<string, unknown>): void {
+  const found = storage?.getStore();
+  if (found !== undefined) found.middlewareContext = context;
+}
+
+/** The sessions this request has opened. See {@link RequestContext.sessions}. */
+export function openSessions(): Map<string, Promise<OpenSession>> {
+  const found = context();
+  found.sessions ??= new Map();
+  return found.sessions;
 }
 
 // ---------------------------------------------------------------------------
@@ -235,6 +321,34 @@ export function getRequestUrl(): URL {
 }
 
 /**
+ * How far `X-Forwarded-For` is believed.
+ *
+ * `true` takes the LEFTMOST entry, and is safe only when the edge proxy
+ * OVERWRITES the header. A proxy that appends, which is what most do, leaves
+ * whatever the client sent at the front: `X-Forwarded-For: 203.0.113.9` on the
+ * request arrives as `203.0.113.9, <real address>`, and the leftmost entry is
+ * the one the caller typed.
+ *
+ * `{ trustedProxies: n }` counts from the RIGHT instead: the entry the nth
+ * proxy in front of this process wrote, which is the address that proxy saw.
+ * Entries to its left were there before any trusted hop touched the header, so
+ * a forged prefix is never read. A header with fewer than `n` entries did not
+ * come through that chain and is ignored whole.
+ */
+export type ForwardedForTrust = boolean | { readonly trustedProxies: number };
+
+/** Refuse a hop count that names no entry, where the option is written. */
+export function assertForwardedForTrust(trust: ForwardedForTrust | undefined): void {
+  if (typeof trust !== "object") return;
+  if (!Number.isInteger(trust.trustedProxies) || trust.trustedProxies < 1) {
+    throw new RangeError(
+      `[barq] \`trustedProxies\` must be a positive integer, and it is ${trust.trustedProxies}. ` +
+        "Set it to the number of proxies you run in front of this server: each one appends one entry to `X-Forwarded-For`, and the client address is counted back from the end.",
+    );
+  }
+}
+
+/**
  * The client's address, or `undefined`.
  *
  * `xForwardedFor` IS OFF BY DEFAULT and that is the whole design of this
@@ -245,16 +359,20 @@ export function getRequestUrl(): URL {
  * this process cannot discover. So it is opt-in, and the opt-in is per call.
  *
  * The LEFTMOST entry is taken when it is trusted, since that is the original
- * client; every entry to its right was appended by a hop.
+ * client; every entry to its right was appended by a hop. {@link
+ * ForwardedForTrust} says when that is forgeable and what to pass instead.
  */
 export function getRequestIP(
-  options: { readonly xForwardedFor?: boolean } = {},
+  options: { readonly xForwardedFor?: ForwardedForTrust } = {},
 ): string | undefined {
   const request = getRequest();
-  if (options.xForwardedFor === true) {
-    const forwarded = request.headers.get("x-forwarded-for");
-    const first = forwarded?.split(",")[0]?.trim();
-    if (first !== undefined && first !== "") return first;
+  const trust = options.xForwardedFor;
+  if (trust !== undefined && trust !== false) {
+    assertForwardedForTrust(trust);
+    const entries = request.headers.get("x-forwarded-for")?.split(",") ?? [];
+    const entry = trust === true ? entries[0] : entries[entries.length - trust.trustedProxies];
+    const address = entry?.trim();
+    if (address !== undefined && address !== "") return address;
   }
   // What a runtime attaches when it knows. `srvx` and Bun both use this name.
   const direct = (request as { ip?: string }).ip;
@@ -313,6 +431,16 @@ export function setResponseHeader(name: string, value: string | readonly string[
   for (const one of value) headers.append(name, one);
 }
 
+/**
+ * Add a value to a response header, keeping the ones already there.
+ *
+ * For a header that is a list: `Vary`, `Link`, `Cache-Control` built up by more
+ * than one caller. `setResponseHeader` replaces.
+ */
+export function appendResponseHeader(name: string, value: string): void {
+  context().response.headers.append(name, value);
+}
+
 export function setResponseHeaders(headers: Record<string, string>): void {
   for (const [name, value] of Object.entries(headers)) setResponseHeader(name, value);
 }
@@ -347,7 +475,9 @@ export function getResponseStatus(): number {
 export function setResponseStatus(status: number, statusText?: string): void {
   const draft = context().response;
   if (!Number.isInteger(status) || status < 200 || status > 599) {
-    throw new RangeError(`[barq] ${status} is not an HTTP status code`);
+    throw new RangeError(
+      `[barq] \`setResponseStatus(${status})\` was given a value that is not an HTTP response status. Pass an integer from 200 to 599, such as \`setResponseStatus(404)\`.`,
+    );
   }
   draft.status = status;
   if (statusText !== undefined) draft.statusText = statusText;
@@ -383,7 +513,40 @@ export function getCookie(name: string): string | undefined {
  * request is the caller's business — the last one wins in the browser, as ever.
  */
 export function setCookie(name: string, value: string, options?: CookieOptions): void {
-  context().response.headers.append("set-cookie", serializeCookie(name, value, options));
+  context().response.headers.append("set-cookie", serializeCookie(name, value, rooted(options)));
+}
+
+/**
+ * Set a cookie in place of any line this request already drafted for its name.
+ *
+ * For a cookie one request may write more than once and of which only the last
+ * line means anything, which is a session: each of its lines runs to 4 KB, and
+ * a proxy that buffers response headers in 4 or 8 KB answers 502 to two of
+ * them. `setCookie` appends, which is right for everything else.
+ */
+export function replaceCookie(name: string, value: string, options?: CookieOptions): void {
+  const headers = context().response.headers;
+  // Serialized before anything is removed, so a cookie that is refused leaves
+  // the draft as it was.
+  const line = serializeCookie(name, value, rooted(options));
+  const prefix = `${name}=`;
+  const kept = headers.getSetCookie().filter((other) => !other.startsWith(prefix));
+  headers.delete("set-cookie");
+  for (const other of kept) headers.append("set-cookie", other);
+  headers.append("set-cookie", line);
+}
+
+/**
+ * The options, with `path: "/"` where the caller chose none.
+ *
+ * A browser gives a cookie that names no `Path` the directory of the URL that
+ * set it (RFC 6265 §5.1.4). For a server function that is `/_barq/fn`, so the
+ * cookie would come back on other server functions and on no page at all.
+ * `serializeCookie` stays literal; the default belongs where the URL is known
+ * to be the wrong scope.
+ */
+function rooted(options: CookieOptions | undefined): CookieOptions {
+  return options?.path === undefined ? { ...options, path: "/" } : options;
 }
 
 /**
@@ -391,10 +554,11 @@ export function setCookie(name: string, value: string, options?: CookieOptions):
  *
  * `path` and `domain` MUST match the ones it was set with, or the browser
  * deletes nothing and keeps the original — silently. They are options here for
- * exactly that reason rather than as decoration.
+ * exactly that reason rather than as decoration. With no `path` it names `/`,
+ * which is what `setCookie` gave a cookie that was set with none.
  */
 export function deleteCookie(name: string, options?: CookieOptions): void {
-  context().response.headers.append("set-cookie", deleteCookieLine(name, options));
+  context().response.headers.append("set-cookie", deleteCookieLine(name, rooted(options)));
 }
 
 // ---------------------------------------------------------------------------
@@ -416,7 +580,11 @@ export function deleteCookie(name: string, options?: CookieOptions): void {
  */
 export function applyResponseDraft(response: Response, draft: ResponseDraft | undefined): Response {
   if (draft === undefined) return response;
-  const cookies = draft.headers.getSetCookie();
+  // A request middleware wraps a handler that has already folded this draft
+  // into what it returned, and may have drafted more since. Each cookie line
+  // goes onto a response once, however many times the draft is folded in.
+  const sent = APPLIED.get(response) ?? new Set<string>();
+  const cookies = draft.headers.getSetCookie().filter((line) => !sent.has(line));
   const others = [...draft.headers].filter(([name]) => name !== "set-cookie");
   if (cookies.length === 0 && others.length === 0 && draft.status === undefined) {
     return response;
@@ -438,6 +606,8 @@ export function applyResponseDraft(response: Response, draft: ResponseDraft | un
       if (!response.headers.has(name)) response.headers.set(name, value);
     }
     for (const cookie of cookies) response.headers.append("set-cookie", cookie);
+    for (const cookie of cookies) sent.add(cookie);
+    APPLIED.set(response, sent);
     return response;
   } catch {
     // Immutable. Fall through.
@@ -448,12 +618,18 @@ export function applyResponseDraft(response: Response, draft: ResponseDraft | un
     if (!headers.has(name)) headers.set(name, value);
   }
   for (const cookie of cookies) headers.append("set-cookie", cookie);
-  return new Response(response.body, {
+  const rebuilt = new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
     headers,
   });
+  for (const cookie of cookies) sent.add(cookie);
+  APPLIED.set(rebuilt, sent);
+  return rebuilt;
 }
+
+/** The cookie lines each response has already been given from a draft. */
+const APPLIED = new WeakMap<Response, Set<string>>();
 
 /**
  * The status and text a framework-built response should carry.

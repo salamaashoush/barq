@@ -43,11 +43,31 @@ export interface AssetManifest {
   readonly pages: Readonly<Record<string, PrerenderedAsset>>;
   /** Every other servable path, as request paths. */
   readonly files: readonly string[];
+  /**
+   * The members of `files` whose NAME changes when their bytes do.
+   *
+   * The build knows and a directory listing cannot say: a chunk it emitted is
+   * `app-8f1c2a.js`, and `robots.txt` copied out of `public/` sits beside it
+   * under a name the next deploy reuses. Only the first may be cached without
+   * asking again.
+   */
+  readonly hashed?: readonly string[];
+  /**
+   * What every request path here starts with and no file on disk does: Vite's
+   * `base`, without its trailing slash. Absent for a site served from `/`.
+   */
+  readonly base?: string;
 }
 
 export interface StaticOptions {
-  /** The client output directory. Default `dist/client`. */
-  readonly dir?: string;
+  /**
+   * The client output directory. Default `dist/client`.
+   *
+   * A `file:` URL is read as one, which is how an entry names a directory beside
+   * itself: `new URL("../client", import.meta.url)`. Its `.pathname` is not a
+   * path, since a space in it is still `%20`.
+   */
+  readonly dir?: string | URL;
   /**
    * The manifest. Read from `<dir>/barq-assets.json` when omitted.
    *
@@ -55,11 +75,43 @@ export interface StaticOptions {
    * at deploy time, and how a test avoids writing files.
    */
   readonly manifest?: AssetManifest;
-  /** Seconds. Applied to hashed assets; a prerendered page never gets it. */
+  /**
+   * Seconds a hashed asset may be reused without asking. One year when the
+   * manifest says which names are hashed, which a build's does.
+   *
+   * A file under a stable name is answered with a validator and no lifetime, so
+   * a browser asks again and is told 304. A prerendered page keeps the
+   * `cache-control` it was rendered with and is never given this one.
+   *
+   * A manifest that does not carry `hashed` cannot tell the two apart, so the
+   * lifetime applies to every file it lists and there is none by default.
+   */
   readonly maxAge?: number;
-  /** Adds `immutable` beside `maxAge`. Only meaningful for hashed filenames. */
+  /**
+   * Adds `immutable` beside `maxAge`. On when the manifest says which names
+   * are hashed, since for those it is true by construction.
+   */
   readonly immutable?: boolean;
 }
+
+/** A hashed name never changes its bytes, so a year is the conventional forever. */
+const HASHED_MAX_AGE = 60 * 60 * 24 * 365;
+
+/**
+ * Headers that describe the bytes on the wire rather than the page.
+ *
+ * `srvx/static` computes them for the response it actually sends: compressed
+ * or not, whole or a 304. The ones a page was RENDERED with describe an
+ * uncompressed body in a build's memory.
+ */
+const REPRESENTATION = new Set([
+  "accept-ranges",
+  "content-encoding",
+  "content-length",
+  "content-range",
+  "etag",
+  "last-modified",
+]);
 
 /**
  * Just enough of `URL` to find the path.
@@ -96,16 +148,32 @@ export function assetMiddleware(options: StaticOptions = {}): ServerMiddleware {
     next: () => Response | Promise<Response>,
   ): Response | Promise<Response> => {
     if (loaded === null) return next();
-    const { pathname } = new loaded.url(request.url);
+    // A file is a file to GET and HEAD alone. A prerendered path may also be a
+    // route with a `POST` handler: the page is its GET, and every other method
+    // is the application's to answer.
+    if (request.method !== "GET" && request.method !== "HEAD") return next();
+
+    // The manifest holds NAMES, as the build read them off the disk, and a
+    // request holds a URL: `release notes.txt` arrives as `release%20notes.txt`.
+    // `decodeURI` because it is what `srvx/static` opens the file by, so the two
+    // cannot disagree about which name a path means.
+    let { pathname } = new loaded.url(request.url);
+    if (pathname.includes("%")) {
+      try {
+        pathname = decodeURI(pathname);
+      } catch {
+        return next();
+      }
+    }
 
     const page = loaded.manifest.pages[pathname];
-    if (page !== undefined) return loaded.servePage(page);
+    if (page !== undefined) return loaded.servePage(page, request);
 
     // The miss, which is every SSR request: one `Set.has` and out, with no
     // syscall behind it. This is the whole point of the manifest.
     if (!loaded.files.has(pathname)) return next();
 
-    return loaded.serveFile(request, next);
+    return loaded.serveFile(pathname, request, next);
   };
 
   return (request, next) => {
@@ -121,19 +189,42 @@ interface Ready {
   readonly manifest: AssetManifest;
   readonly files: ReadonlySet<string>;
   readonly url: PathOnly;
-  readonly servePage: (page: PrerenderedAsset) => Promise<Response>;
-  readonly serveFile: ServerMiddleware;
+  readonly servePage: (page: PrerenderedAsset, request: ServerRequest) => Promise<Response>;
+  readonly serveFile: (
+    pathname: string,
+    request: ServerRequest,
+    next: () => Response | Promise<Response>,
+  ) => Response | Promise<Response>;
+}
+
+/**
+ * The request `srvx/static` would have been sent for this FILE.
+ *
+ * It finds a file by the request's path, and two things here are found by the
+ * manifest instead: a page, whose path is `/about` and whose file is
+ * `about/index.html`, and anything under a `base`, which is in every request
+ * path and in no file name. `encodeURI` because `decodeURI` is what it opens
+ * the file by.
+ */
+function requestFor(file: string, request: ServerRequest): ServerRequest {
+  return new Request(`http://asset/${encodeURI(file)}`, {
+    method: request.method,
+    headers: request.headers,
+  });
 }
 
 async function load(options: StaticOptions): Promise<Ready | null> {
-  const dir = options.dir ?? "dist/client";
-  const [{ readFile }, { staticMiddleware }, { FastURL }] = await Promise.all([
-    import("node:fs/promises"),
-    import("srvx/static"),
-    import("srvx"),
-  ]);
+  const [{ readFile }, { staticMiddleware }, { FastURL }, path, { fileURLToPath }] =
+    await Promise.all([
+      import("node:fs/promises"),
+      import("srvx/static"),
+      import("srvx"),
+      import("node:path"),
+      import("node:url"),
+    ]);
 
-  const path = await import("node:path");
+  const dir =
+    options.dir instanceof URL ? fileURLToPath(options.dir) : (options.dir ?? "dist/client");
 
   let manifest = options.manifest;
   if (manifest === undefined) {
@@ -149,11 +240,27 @@ async function load(options: StaticOptions): Promise<Ready | null> {
     }
   }
 
-  const serveFile = staticMiddleware({
-    dir,
-    maxAge: options.maxAge,
-    immutable: options.immutable,
-  });
+  const hashed = manifest.hashed === undefined ? null : new Set(manifest.hashed);
+  const revalidated = staticMiddleware({ dir });
+  const lifetime = hashed === null ? options.maxAge : (options.maxAge ?? HASHED_MAX_AGE);
+  const longLived =
+    lifetime === undefined
+      ? revalidated
+      : staticMiddleware({
+          dir,
+          maxAge: lifetime,
+          immutable: options.immutable ?? hashed !== null,
+        });
+  const prefix = manifest.base ?? "";
+
+  /** The page's bytes with nothing negotiated, for what `srvx/static` will not answer. */
+  const whole = async (page: PrerenderedAsset): Promise<Response> => {
+    const body = await readFile(path.join(dir, page.file));
+    const headers = new Headers(page.headers);
+    if (!headers.has("content-type")) headers.set("content-type", "text/html; charset=utf-8");
+    return new Response(body, { status: page.status, headers });
+  };
+  const declined = (): Response => new Response(null, { status: 404 });
 
   return {
     manifest,
@@ -162,16 +269,36 @@ async function load(options: StaticOptions): Promise<Ready | null> {
     /**
      * A prerendered page, with the STATUS and HEADERS it was rendered as.
      *
-     * Read directly rather than through `staticMiddleware`, which has no way to
-     * answer anything but 200 — and a prerendered 404 served as 200 is the bug
-     * this metadata exists to fix.
+     * A 200 goes through `staticMiddleware` under its file's name, so it gets
+     * the validator, the 304 and the encoding a hashed chunk gets. Anything
+     * else is read directly: `staticMiddleware` has no way to answer but 200,
+     * and a conditional request must not turn a 404 page into a 304.
      */
-    servePage: async (page) => {
-      const body = await readFile(path.join(dir, page.file));
-      const headers = new Headers(page.headers);
-      if (!headers.has("content-type")) headers.set("content-type", "text/html; charset=utf-8");
-      return new Response(body, { status: page.status, headers });
+    servePage: async (page, request) => {
+      if (page.status !== 200) return whole(page);
+      let found = true;
+      const served = await revalidated(requestFor(page.file, request), () => {
+        found = false;
+        return declined();
+      });
+      if (!found) return whole(page);
+      for (const name in page.headers) {
+        const value = page.headers[name];
+        if (value === undefined) continue;
+        const key = name.toLowerCase();
+        if (REPRESENTATION.has(key)) continue;
+        // Both are right: the page varies on what it said, and the bytes on
+        // the encoding that was negotiated for them.
+        if (key === "vary") served.headers.append(key, value);
+        else served.headers.set(key, value);
+      }
+      return served;
     },
-    serveFile,
+    serveFile: (pathname, request, next) => {
+      const serve = hashed === null || hashed.has(pathname) ? longLived : revalidated;
+      return prefix === ""
+        ? serve(request, next)
+        : serve(requestFor(pathname.slice(prefix.length + 1), request), next);
+    },
   };
 }

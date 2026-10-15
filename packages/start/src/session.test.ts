@@ -6,7 +6,7 @@
  * rather than as an error, an exception, or somebody else's session.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 
 import {
   type SessionConfig,
@@ -14,9 +14,15 @@ import {
   getSession,
   sealSession,
   unsealSession,
+  updateSession,
   useSession,
 } from "./session.ts";
-import { applyResponseDraft, createResponseDraft, withRequest } from "./context.ts";
+import {
+  applyResponseDraft,
+  createResponseDraft,
+  setCookie as setOtherCookie,
+  withRequest,
+} from "./context.ts";
 import { parseCookies } from "./cookies.ts";
 
 const PASSWORD = "0123456789abcdef0123456789abcdef";
@@ -80,7 +86,7 @@ describe("a session round-trips through the cookie", () => {
     expect(value).not.toContain("ada@example.com");
     expect(value).not.toContain("email");
     // Our envelope, and it says which version it is so a later one can refuse.
-    expect(value.startsWith("b1.")).toBe(true);
+    expect(value.startsWith("b2.")).toBe(true);
   });
 
   test("`update` MERGES, and the functional form sees the current data", async () => {
@@ -146,6 +152,83 @@ describe("a session round-trips through the cookie", () => {
       asRequestCookie(first.setCookie[0] ?? ""),
     );
     expect(cleared.value.after).not.toBe(cleared.value.before);
+  });
+});
+
+/**
+ * The request's cookie is what the browser held BEFORE this request wrote
+ * anything, so a session opened from it twice is two copies, and whichever
+ * seals last drops what the other changed.
+ */
+describe("one request, more than one reader", () => {
+  /** What a browser holds after the response: the last line for a name wins. */
+  const stored = (lines: string[]): string | undefined => {
+    let value: string | undefined;
+    for (const line of lines) {
+      const found = parseCookies(asRequestCookie(line))["barq-session"];
+      if (found !== undefined) value = found;
+    }
+    return value;
+  };
+
+  type Visit = { userId: number; seenAt: number };
+
+  test("two updates both survive in the cookie the browser keeps", async () => {
+    const { setCookie } = await inRequest(async () => {
+      // A handler signs the user in; a middleware unwinding after it stamps the
+      // visit. Each reaches for the session on its own.
+      await updateSession<Visit>(CONFIG, { userId: 7 });
+      await updateSession<Visit>(CONFIG, { seenAt: 1 });
+    });
+
+    const sealed = stored(setCookie);
+    expect(sealed).toBeDefined();
+    expect((await unsealSession(CONFIG, sealed as string))?.data).toEqual({ userId: 7, seenAt: 1 });
+  });
+
+  test("two updates that overlap do too", async () => {
+    const { setCookie } = await inRequest(async () => {
+      await Promise.all([
+        updateSession<Visit>(CONFIG, { userId: 7 }),
+        updateSession<Visit>(CONFIG, { seenAt: 1 }),
+      ]);
+    });
+
+    const sealed = stored(setCookie);
+    expect((await unsealSession(CONFIG, sealed as string))?.data).toEqual({ userId: 7, seenAt: 1 });
+  });
+
+  test("a read after an update sees the update", async () => {
+    const { value } = await inRequest(async () => {
+      await (await useSession<Visit>(CONFIG)).update({ userId: 7 });
+      return (await getSession<Visit>(CONFIG)).data;
+    });
+
+    expect(value).toEqual({ userId: 7 });
+  });
+
+  test("a visitor with no cookie is one session however often it is opened", async () => {
+    const { value } = await inRequest(async () => {
+      const [first, second] = await Promise.all([useSession(CONFIG), useSession(CONFIG)]);
+      return first.id === second.id;
+    });
+
+    expect(value).toBe(true);
+  });
+
+  test("an update that cannot be sealed leaves the session as it was", async () => {
+    const { value } = await inRequest(async () => {
+      await updateSession<{ userId: number; blob: string }>(CONFIG, { userId: 7 });
+      const refused = await updateSession<{ userId: number; blob: string }>(CONFIG, {
+        blob: "x".repeat(8_000),
+      }).then(
+        () => false,
+        (error: unknown) => error instanceof RangeError,
+      );
+      return { refused, data: (await getSession(CONFIG)).data };
+    });
+
+    expect(value).toEqual({ refused: true, data: { userId: 7 } });
   });
 });
 
@@ -236,6 +319,132 @@ describe("a cookie that will not open is a visitor who is not signed in", () => 
       "barq-session=b1.forged.forged.forged",
     );
     expect(value).toEqual({});
+  });
+});
+
+/**
+ * Two cookies under one password are two sessions only if the seal says which
+ * is which. Without the name in it, the value an application issued as
+ * `barq-session` is a valid `barq-session-admin` to anyone who renames it.
+ */
+describe("the cookie's name is part of the seal", () => {
+  const session = { id: "abc", createdAt: Date.now(), data: { userId: 7 } };
+
+  test("a cookie sealed under one name does not open under another", async () => {
+    const sealed = await sealSession({ ...CONFIG, name: "a" }, session);
+    expect(sealed.startsWith("b2.")).toBe(true);
+    expect(await unsealSession({ ...CONFIG, name: "b" }, sealed)).toBeNull();
+    // The default name is a name like any other.
+    expect(await unsealSession(CONFIG, sealed)).toBeNull();
+  });
+
+  test("it opens under its own name", async () => {
+    const sealed = await sealSession({ ...CONFIG, name: "a" }, session);
+    expect((await unsealSession({ ...CONFIG, name: "a" }, sealed))?.data).toEqual({ userId: 7 });
+  });
+
+  test("a request carrying it under another name is a visitor who is not signed in", async () => {
+    const sealed = await sealSession({ ...CONFIG, name: "a" }, session);
+    const { value } = await inRequest(
+      async () => (await useSession<{ userId: number }>({ ...CONFIG, name: "b" })).data,
+      `b=${sealed}`,
+    );
+    expect(value).toEqual({});
+  });
+});
+
+/**
+ * `b1` is the envelope that carries no name. One already in a browser opens
+ * until it expires, so a deploy signs nobody out, and leaves as `b2` the first
+ * time the session is written.
+ */
+describe("a b1 cookie", () => {
+  const encode = (bytes: Uint8Array): string =>
+    btoa(String.fromCharCode(...bytes))
+      .replaceAll("+", "-")
+      .replaceAll("/", "_")
+      .replaceAll("=", "");
+
+  const sealLegacy = async (session: {
+    id: string;
+    createdAt: number;
+    data: Record<string, unknown>;
+  }): Promise<string> => {
+    const encoder = new TextEncoder();
+    const salt = crypto.getRandomValues(new Uint8Array(16));
+    const iv = crypto.getRandomValues(new Uint8Array(12));
+    const material = await crypto.subtle.importKey("raw", encoder.encode(PASSWORD), "HKDF", false, [
+      "deriveKey",
+    ]);
+    const key = await crypto.subtle.deriveKey(
+      { name: "HKDF", salt, info: encoder.encode("barq.session.v1"), hash: "SHA-256" },
+      material,
+      { name: "AES-GCM", length: 256 },
+      false,
+      ["encrypt"],
+    );
+    const sealed = new Uint8Array(
+      await crypto.subtle.encrypt(
+        { name: "AES-GCM", iv },
+        key,
+        encoder.encode(JSON.stringify(session)),
+      ),
+    );
+    return ["b1", encode(salt), encode(iv), encode(sealed)].join(".");
+  };
+
+  const signedIn = (): Promise<string> =>
+    sealLegacy({ id: "salama", createdAt: Date.now(), data: { userId: 7 } });
+
+  test("still opens", async () => {
+    const legacy = await signedIn();
+    expect(await unsealSession(CONFIG, legacy)).toMatchObject({
+      id: "salama",
+      data: { userId: 7 },
+    });
+  });
+
+  test("is re-sealed as b2 when the session is written, and that one opens", async () => {
+    const config: SessionConfig = { ...CONFIG, name: "account" };
+    const { setCookie } = await inRequest(
+      async () => {
+        await (await useSession<{ userId: number; seenAt: number }>(config)).update({ seenAt: 1 });
+      },
+      `account=${await signedIn()}`,
+    );
+
+    expect(setCookie).toHaveLength(1);
+    const issued = parseCookies(asRequestCookie(setCookie[0] ?? "")).account ?? "";
+    expect(issued.startsWith("b2.")).toBe(true);
+    expect(await unsealSession(config, issued)).toMatchObject({
+      id: "salama",
+      data: { userId: 7, seenAt: 1 },
+    });
+    expect(await unsealSession(CONFIG, issued)).toBeNull();
+  });
+
+  test("is not re-issued by a request that only reads it", async () => {
+    const { value, setCookie } = await inRequest(
+      async () => (await useSession<{ userId: number }>(CONFIG)).data,
+      `barq-session=${await signedIn()}`,
+    );
+    expect(value).toEqual({ userId: 7 });
+    expect(setCookie).toEqual([]);
+  });
+
+  test("expires on the sealed timestamp like any other", async () => {
+    const stale = await sealLegacy({ id: "salama", createdAt: Date.now() - 61_000, data: {} });
+    expect(await unsealSession({ ...CONFIG, maxAge: 60 }, stale)).toBeNull();
+  });
+
+  test("the version label is not a way from one envelope to the other", async () => {
+    const [, ...legacy] = (await signedIn()).split(".");
+    expect(await unsealSession(CONFIG, ["b2", ...legacy].join("."))).toBeNull();
+
+    const [, ...bound] = (
+      await sealSession(CONFIG, { id: "salama", createdAt: Date.now(), data: { userId: 7 } })
+    ).split(".");
+    expect(await unsealSession(CONFIG, ["b1", ...bound].join("."))).toBeNull();
   });
 });
 
@@ -365,5 +574,115 @@ describe("session fixation", () => {
     expect((await unsealSession(CONFIG, issued))?.data).toEqual({ userId: 7 });
     // …and the one the attacker still holds does not.
     expect((await unsealSession(CONFIG, attackerHeld))?.data).toEqual({});
+  });
+});
+
+describe("the size a browser counts", () => {
+  /**
+   * The limit is on the NAME and the value together (RFC 6265bis §5.6: "If the
+   * sum of the lengths of the name string and the value string is more than
+   * 4096 octets, abort these steps and ignore the cookie entirely").
+   */
+  test("includes the cookie's name, so a long one leaves less room", async () => {
+    const session = { id: "a", createdAt: 1, data: { blob: "x".repeat(2_950) } };
+    const value = await sealSession(CONFIG, session);
+    expect(value.length).toBeLessThanOrEqual(4096);
+
+    const name = "n".repeat(4097 - value.length);
+    await expect(sealSession({ ...CONFIG, name }, session)).rejects.toThrow(
+      /a browser drops any cookie over 4096/,
+    );
+  });
+});
+
+/**
+ * A signed-in visitor sends the same cookie on every request, and deriving its
+ * key is more than half of what opening it costs.
+ */
+describe("a key already derived is not derived again", () => {
+  const counting = async (body: () => Promise<void>): Promise<number> => {
+    const derive = spyOn(crypto.subtle, "deriveKey");
+    try {
+      await body();
+      return derive.mock.calls.length;
+    } finally {
+      derive.mockRestore();
+    }
+  };
+  const fresh = (): Promise<string> =>
+    sealSession(CONFIG, { id: crypto.randomUUID(), createdAt: Date.now(), data: { userId: 7 } });
+
+  test("the cookie this server just sealed opens without a derivation", async () => {
+    const sealed = await fresh();
+    const derivations = await counting(async () => {
+      expect((await unsealSession(CONFIG, sealed))?.data).toEqual({ userId: 7 });
+      expect((await unsealSession(CONFIG, sealed))?.data).toEqual({ userId: 7 });
+    });
+    expect(derivations).toBe(0);
+  });
+
+  test("another password is another key, whatever the salt", async () => {
+    const sealed = await fresh();
+    const other = { ...CONFIG, password: "fedcba9876543210fedcba9876543210" };
+    const derivations = await counting(async () => {
+      expect(await unsealSession(other, sealed)).toBeNull();
+      expect(await unsealSession(other, sealed)).toBeNull();
+    });
+    // Derived each time, and never kept: it opened nothing.
+    expect(derivations).toBe(2);
+  });
+
+  test("a cookie that does not open leaves nothing behind for the next one", async () => {
+    const sealed = await fresh();
+    const [version, , iv, body] = sealed.split(".");
+    const forged = [version, "AAAAAAAAAAAAAAAAAAAAAA", iv, body].join(".");
+    const derivations = await counting(async () => {
+      expect(await unsealSession(CONFIG, forged)).toBeNull();
+      expect(await unsealSession(CONFIG, forged)).toBeNull();
+    });
+    expect(derivations).toBe(2);
+  });
+
+  test("an expired session still does not open from a key that is held", async () => {
+    const old = await sealSession(CONFIG, { id: "a", createdAt: Date.now() - 120_000, data: {} });
+    expect(await unsealSession({ ...CONFIG, maxAge: 60 }, old)).toBeNull();
+  });
+});
+
+describe("one request writes one session cookie", () => {
+  test("a second update replaces the first one's line rather than adding to it", async () => {
+    const { setCookie } = await inRequest(async () => {
+      await updateSession(CONFIG, { userId: 7 });
+      await updateSession(CONFIG, { seenAt: 1 });
+    });
+
+    expect(setCookie).toHaveLength(1);
+    const sealed = parseCookies(asRequestCookie(setCookie[0] ?? ""))["barq-session"] ?? "";
+    expect((await unsealSession(CONFIG, sealed))?.data).toEqual({ userId: 7, seenAt: 1 });
+  });
+
+  test("a clear after an update leaves only the line that expires it", async () => {
+    const { setCookie } = await inRequest(async () => {
+      await updateSession(CONFIG, { userId: 7 });
+      await clearSession(CONFIG);
+    });
+
+    expect(setCookie).toHaveLength(1);
+    expect(setCookie[0]).toContain("Max-Age=0");
+  });
+
+  test("another cookie the request set is left where it was", async () => {
+    const { setCookie } = await inRequest(async () => {
+      await updateSession(CONFIG, { userId: 7 });
+      setOtherCookie("theme", "dark");
+      await updateSession({ ...CONFIG, name: "barq-session-admin" }, { role: "admin" });
+      await updateSession(CONFIG, { seenAt: 1 });
+    });
+
+    expect(setCookie.map((line) => line.split("=")[0])).toEqual([
+      "theme",
+      "barq-session-admin",
+      "barq-session",
+    ]);
   });
 });

@@ -42,6 +42,44 @@ export interface StandardSchema<In = unknown, Out = In> {
 export type Validator<T> = StandardSchema<unknown, T> | "unchecked";
 
 /**
+ * What `.validator()` and `.inputValidator()` accept: a Standard Schema, a
+ * function that returns the validated value or throws, or an object with a
+ * `parse` that does. TanStack's three, probed in that order, since a zod schema
+ * is both the first and the third and the first reports issues without
+ * throwing.
+ */
+export type ValidatorInput<T> =
+  | Validator<T>
+  | ((input: unknown) => T | Promise<T>)
+  | { readonly parse: (input: unknown) => T | Promise<T> };
+
+/** Any accepted validator, as the one shape the runner applies. */
+export function toValidator<T>(input: ValidatorInput<T>): Validator<T> {
+  if (input === "unchecked") return input;
+  if (typeof input === "function") return checkedBy(input);
+  if ("~standard" in input) return input;
+  return checkedBy((raw) => input.parse(raw));
+}
+
+function checkedBy<T>(check: (input: unknown) => T | Promise<T>): StandardSchema<unknown, T> {
+  return {
+    "~standard": {
+      version: 1,
+      vendor: "barq",
+      validate: async (value) => {
+        try {
+          return { value: await check(value) };
+        } catch (error) {
+          // A refusal that is an answer of its own stays one.
+          if (error instanceof Response) throw error;
+          return { issues: [{ message: error instanceof Error ? error.message : String(error) }] };
+        }
+      },
+    },
+  };
+}
+
+/**
  * The caller's input was not acceptable — a 400 rather than a 500, whichever way
  * it failed. One base so the handler cannot answer one of them correctly and
  * turn the other into a server error, which is exactly what shipped first here.
@@ -51,7 +89,10 @@ export class InputError extends Error {}
 export class ValidationError extends InputError {
   readonly issues: ReadonlyArray<unknown>;
   constructor(issues: ReadonlyArray<unknown>) {
-    super("server function input failed validation");
+    super(
+      "The `data` passed to this server function failed validation against its `.validator(schema)`, so the handler did not run. " +
+        "Read `error.issues` for what failed.",
+    );
     this.name = "ValidationError";
     this.issues = issues;
   }
@@ -61,8 +102,8 @@ export class ValidationError extends InputError {
 export class UncheckedInputError extends InputError {
   constructor() {
     super(
-      "this server function takes no validated input; declare .validator(schema) to accept arguments, " +
-        "or .validator('unchecked') to accept them unvalidated",
+      "This server function was called with `data`, but it declares no validator, so the call was refused. " +
+        'Add `.validator(schema)` to validate the input, or `.validator("unchecked")` to accept it as it arrives.',
     );
     this.name = "UncheckedInputError";
   }
@@ -106,6 +147,15 @@ export type MiddlewareNext = (options?: {
    * holding one is a value the client cannot be given.
    */
   readonly sendContext?: Record<string, unknown>;
+  /**
+   * Request headers for the fetch, from a CLIENT half: an `Authorization` a
+   * middleware holds the token for, a trace id.
+   *
+   * A later step's value for a name replaces an earlier one's, and the call's
+   * own `headers` replace both. A server half has no request to add to, so
+   * there it does nothing; its response headers are `setResponseHeader`'s.
+   */
+  readonly headers?: HeadersInit;
 }) => Promise<unknown>;
 
 /**
@@ -129,13 +179,52 @@ export interface MiddlewareContext {
   readonly data: unknown;
   /** What the middlewares outside this one contributed. */
   readonly context: Record<string, unknown>;
+  /**
+   * What the client halves sent with `next({ sendContext })`, as it came off
+   * the wire.
+   *
+   * UNTRUSTED, and kept apart from `context` for that reason: a caller writes
+   * the request body by hand as readily as the stub does, so this is input to
+   * check and never a fact to act on. Everything read from `context` was put
+   * there by a server step; a value from here joins it only when a server half
+   * passes it on with `next({ context })`.
+   *
+   * Empty in a client half, and for a call made in-process.
+   */
+  readonly clientContext: Record<string, unknown>;
   readonly signal: AbortSignal;
+  /**
+   * The request, when this middleware is running for one: as a request
+   * middleware, global or on a route. Absent around a server function's own
+   * chain, where `getRequest()` is the way to it.
+   */
+  readonly request?: Request;
+  /** The request's path, with any base stripped. Present with `request`. */
+  readonly pathname?: string;
+  /** What the request is for. Present with `request`. */
+  readonly handlerType?: "router" | "serverFn";
 }
 
 export type MiddlewareFn = (context: MiddlewareContext) => unknown;
 
+/** What a request middleware is handed: the request is always there. */
+export interface RequestMiddlewareContext extends MiddlewareContext {
+  readonly request: Request;
+  readonly pathname: string;
+  readonly handlerType: "router" | "serverFn";
+}
+
+export type RequestMiddlewareFn = (context: RequestMiddlewareContext) => unknown;
+
 /** What a built middleware carries, and what the runner reads off it. */
 export interface MiddlewareOptions {
+  /**
+   * TanStack's two kinds. `"request"` runs for a server request and is handed
+   * it; `"function"` runs around a server function and may have a client half.
+   * One builder makes both and the runner asks only where a middleware was
+   * listed, so the kind decides the TYPES of what `.server` is handed.
+   */
+  readonly type?: "request" | "function";
   readonly middleware?: readonly Middleware[];
   readonly validator?: Validator<unknown>;
   readonly server?: MiddlewareFn;
@@ -159,19 +248,24 @@ export type BuiltMiddleware = Middleware & {
   /** Middlewares that run BEFORE this one, flattened into the chain that uses it. */
   middleware(chain: readonly Middleware[]): BuiltMiddleware;
   /** Validates and narrows the input every step after this one is handed. */
-  validator(schema: Validator<unknown>): BuiltMiddleware;
+  validator(schema: ValidatorInput<unknown>): BuiltMiddleware;
+  /** TanStack's name for `validator`. */
+  inputValidator(schema: ValidatorInput<unknown>): BuiltMiddleware;
   /** The half that runs on the server, where the handler is. */
   server(fn: MiddlewareFn): BuiltMiddleware;
   /**
    * The half that runs in the BROWSER, around the fetch.
    *
    * `next({ sendContext })` from here is what travels to the server half as
-   * `context`. The compiler carries this into the client stub and leaves the
+   * `clientContext`. The compiler carries this into the client stub and leaves the
    * server half behind, so a middleware may hold both without either reaching
    * the wrong bundle.
    */
   client(fn: MiddlewareFn): BuiltMiddleware;
 };
+
+/** Frozen, because every call that was sent nothing is handed this one object. */
+const NOTHING_SENT: Record<string, unknown> = Object.freeze({});
 
 /** Whether a middleware was built by {@link createMiddleware}. */
 export function isBuiltMiddleware(value: Middleware): value is BuiltMiddleware {
@@ -193,7 +287,17 @@ export function isBuiltMiddleware(value: Middleware): value is BuiltMiddleware {
  * branches — which TanStack's does — would make two middlewares built from one
  * base overwrite each other. Neither is a risk worth carrying for an allocation.
  */
-export function createMiddleware(options: MiddlewareOptions = {}): BuiltMiddleware {
+export function createMiddleware(
+  options: MiddlewareOptions & { readonly type: "request" },
+): RequestMiddleware;
+export function createMiddleware(options?: MiddlewareOptions): BuiltMiddleware;
+export function createMiddleware(
+  options: MiddlewareOptions = {},
+): BuiltMiddleware | RequestMiddleware {
+  return built(options);
+}
+
+function built(options: MiddlewareOptions): BuiltMiddleware {
   // The callable body is the SERVER half, because that is where a middleware in
   // a chain is invoked from. A middleware with no server half still has to be
   // callable — it may exist only to validate, or only to run on the client — and
@@ -205,19 +309,84 @@ export function createMiddleware(options: MiddlewareOptions = {}): BuiltMiddlewa
           next,
           data: undefined,
           context: {},
+          clientContext: NOTHING_SENT,
           signal: new AbortController().signal,
         });
 
-  const extend = (more: MiddlewareOptions): BuiltMiddleware =>
-    createMiddleware({ ...options, ...more });
+  const extend = (more: MiddlewareOptions): BuiltMiddleware => built({ ...options, ...more });
+
+  const validated = (schema: ValidatorInput<unknown>): BuiltMiddleware =>
+    extend({ validator: toValidator(schema) });
 
   return Object.assign(run, {
     options,
     middleware: (chain: readonly Middleware[]) => extend({ middleware: chain }),
-    validator: (schema: Validator<unknown>) => extend({ validator: schema }),
+    validator: validated,
+    inputValidator: validated,
     server: (fn: MiddlewareFn) => extend({ server: fn }),
     client: (fn: MiddlewareFn) => extend({ client: fn }),
   });
+}
+
+/**
+ * A middleware built with `type: "request"`: a chain of its own and a server
+ * body that is always handed the request. It is a {@link BuiltMiddleware}
+ * underneath, so it goes wherever a `Middleware` does.
+ */
+export type RequestMiddleware = Middleware & {
+  readonly options: MiddlewareOptions;
+  middleware(chain: readonly Middleware[]): RequestMiddleware;
+  server(fn: RequestMiddlewareFn): RequestMiddleware;
+};
+
+/** Where a request middleware chain is running. */
+export interface RequestMiddlewareStart {
+  readonly request: Request;
+  readonly pathname: string;
+  readonly handlerType: "router" | "serverFn";
+  /** What the chain has produced so far; mutated as it unwinds inward. */
+  readonly context: Record<string, unknown>;
+}
+
+/**
+ * Run a chain of request middleware around `run`.
+ *
+ * `next()` resolves to whatever is inside: the response, or `undefined` from a
+ * route handler that declined. A middleware answers with what it returns, so
+ * one that returns `next()` passes the answer through and one that returns a
+ * `Response` of its own replaces it.
+ */
+export async function runRequestMiddleware<T>(
+  chain: readonly Middleware[],
+  start: RequestMiddlewareStart,
+  run: () => Promise<T>,
+): Promise<T> {
+  if (chain.length === 0) return run();
+  const flattened = flattenMiddleware(chain);
+  // By position, for the reason `runMiddleware` gives: a second `next()`
+  // re-enters the steps below it instead of skipping them.
+  const dispatch = async (position: number): Promise<unknown> => {
+    const middleware = flattened[position];
+    if (middleware === undefined) return run();
+    const next: MiddlewareNext = async (step) => {
+      if (step?.context !== undefined) Object.assign(start.context, step.context);
+      return dispatch(position + 1);
+    };
+    if (!isBuiltMiddleware(middleware)) return middleware(next);
+    const body = middleware.options.server;
+    if (body === undefined) return next();
+    return body({
+      next,
+      data: undefined,
+      context: start.context,
+      clientContext: NOTHING_SENT,
+      signal: start.request.signal,
+      request: start.request,
+      pathname: start.pathname,
+      handlerType: start.handlerType,
+    });
+  };
+  return (await dispatch(0)) as T;
 }
 
 /**
@@ -238,7 +407,8 @@ export function flattenMiddleware(chain: readonly Middleware[], depth = 0): read
   // The cap is TanStack's and the number is theirs.
   if (depth > 100) {
     throw new RangeError(
-      "[barq] middleware nesting is more than 100 deep; a chain probably contains itself",
+      "[barq] A middleware chain nests more than 100 levels deep, which almost always means a middleware's own `middleware` list reaches the middleware itself. " +
+        "Remove the cycle.",
     );
   }
   const out: Middleware[] = [];
@@ -286,19 +456,33 @@ export async function runMiddleware(
     readonly signal: AbortSignal;
     /** What the chain has produced so far; mutated as the chain unwinds inward. */
     readonly context: Record<string, unknown>;
+    /** What the client halves sent, on the server. Never merged into `context`. */
+    readonly clientContext?: Record<string, unknown>;
     /** What travels back to the caller. */
     readonly sendContext: Record<string, unknown>;
+    /** Where a client half's `next({ headers })` collects. Absent on the server. */
+    readonly headers?: Headers;
     /** The innermost work: the handler on the server, the fetch on the client. */
     readonly run: (data: unknown) => Promise<unknown>;
   },
 ): Promise<unknown> {
-  let data = start.data;
-  let index = 0;
-  const next: MiddlewareNext = async (step) => {
-    if (step?.context !== undefined) Object.assign(start.context, step.context);
-    if (step?.sendContext !== undefined) Object.assign(start.sendContext, step.sendContext);
-    const middleware = chain[index++];
-    if (middleware === undefined) return start.run(data);
+  // BY POSITION, never by a counter the whole chain shares. A middleware may
+  // call `next` twice (a retry, a fallback), and a shared counter has already
+  // moved past every step below it by then, so the second call would land on
+  // the handler with the guards in between skipped. Each step's `next` names the
+  // step after it, so a repeat re-enters the same guards.
+  const dispatch = async (position: number, received: unknown): Promise<unknown> => {
+    const middleware = chain[position];
+    if (middleware === undefined) return start.run(received);
+    let data = received;
+    const next: MiddlewareNext = async (step) => {
+      if (step?.context !== undefined) Object.assign(start.context, step.context);
+      if (step?.sendContext !== undefined) Object.assign(start.sendContext, step.sendContext);
+      if (step?.headers !== undefined && start.headers !== undefined) {
+        for (const [name, value] of new Headers(step.headers)) start.headers.set(name, value);
+      }
+      return dispatch(position + 1, data);
+    };
     if (!isBuiltMiddleware(middleware)) {
       // A BARE CLOSURE IS A SERVER MIDDLEWARE, always. It takes `next` and runs
       // where the handler is; there is no half to choose and nothing about it
@@ -314,7 +498,13 @@ export async function runMiddleware(
     if (half === "server") data = await applyValidator(middleware.options.validator, data);
     const body = middleware.options[half];
     if (body === undefined) return next();
-    return body({ next, data, context: start.context, signal: start.signal });
+    return body({
+      next,
+      data,
+      context: start.context,
+      clientContext: start.clientContext ?? NOTHING_SENT,
+      signal: start.signal,
+    });
   };
-  return next();
+  return dispatch(0, start.data);
 }

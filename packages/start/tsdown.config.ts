@@ -27,6 +27,7 @@ export default defineConfig({
     "@barqjs/server/codec",
     "@barqjs/compiler",
     "srvx",
+    "srvx/body-limit",
     "srvx/node",
     "vite",
     "node:async_hooks",

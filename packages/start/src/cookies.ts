@@ -12,6 +12,7 @@
  *
  *  - `SameSite=None` REQUIRES `Secure`. Chrome 80 made this a hard drop
  *    (RFC 6265bis §5.4.7); without it the cookie is not stored at all.
+ *  - `Partitioned` REQUIRES `Secure` (CHIPS), and is rejected without it.
  *  - `__Host-` requires `Secure`, `Path=/`, and NO `Domain` (RFC 6265bis
  *    §4.1.3). `__Secure-` requires `Secure`.
  *  - `Max-Age` must be an INTEGER. A fractional one is ignored, which silently
@@ -115,7 +116,9 @@ function decode(value: string): string {
  */
 export function serializeCookie(name: string, value: string, options: CookieOptions = {}): string {
   if (name === "" || ILLEGAL_NAME.test(name)) {
-    throw new TypeError(`[barq] ${JSON.stringify(name)} is not a valid cookie name`);
+    throw new TypeError(
+      `[barq] ${JSON.stringify(name)} is not a valid cookie name, and a browser would drop the cookie. A name made of letters, digits, \`-\` and \`_\`, such as \`"session_id"\`, is always valid.`,
+    );
   }
 
   const secure = options.secure ?? false;
@@ -123,29 +126,35 @@ export function serializeCookie(name: string, value: string, options: CookieOpti
 
   if (options.sameSite === "none" && !secure) {
     throw new TypeError(
-      `[barq] cookie "${name}" sets SameSite=None without Secure, and every modern browser ` +
-        "drops it silently (RFC 6265bis §5.4.7). Add `secure: true`, or use SameSite=Lax.",
+      `[barq] The cookie "${name}" sets \`sameSite: "none"\` without \`secure: true\`, and browsers drop a SameSite=None cookie that is not Secure (RFC 6265bis §5.4.7). ` +
+        'Add `secure: true`, or use `sameSite: "lax"`.',
+    );
+  }
+  if (options.partitioned === true && !secure) {
+    throw new TypeError(
+      `[barq] The cookie "${name}" sets \`partitioned: true\` without \`secure: true\`, and a browser rejects a Partitioned cookie that is not Secure. ` +
+        "Add `secure: true`.",
     );
   }
   if (name.startsWith("__Host-")) {
     if (!secure || path !== "/" || options.domain !== undefined) {
       throw new TypeError(
-        `[barq] cookie "${name}" uses the __Host- prefix, which requires \`secure: true\`, ` +
-          '`path: "/"` and no `domain` (RFC 6265bis §4.1.3). A browser rejects it otherwise.',
+        `[barq] The cookie "${name}" uses the \`__Host-\` prefix without the options the prefix requires, so a browser would reject it (RFC 6265bis §4.1.3). ` +
+          'Set `secure: true` and `path: "/"`, and leave `domain` unset.',
       );
     }
   } else if (name.startsWith("__Secure-") && !secure) {
     throw new TypeError(
-      `[barq] cookie "${name}" uses the __Secure- prefix, which requires \`secure: true\` ` +
-        "(RFC 6265bis §4.1.3). A browser rejects it otherwise.",
+      `[barq] The cookie "${name}" uses the \`__Secure-\` prefix without \`secure: true\`, so a browser would reject it (RFC 6265bis §4.1.3). ` +
+        "Add `secure: true`.",
     );
   }
 
   const encoded = (options.encode ?? encodeURIComponent)(value);
   if (ILLEGAL_VALUE.test(encoded)) {
     throw new TypeError(
-      `[barq] the value for cookie "${name}" holds a character a cookie cannot carry. ` +
-        "Leave `encode` at its default, which percent-encodes it.",
+      `[barq] The value of the cookie "${name}" holds a character a cookie cannot carry after the custom \`encode\` ran, such as \`;\`, a space or a control character. ` +
+        "A browser would cut the value short. Leave `encode` at its default, which percent-encodes it.",
     );
   }
 
@@ -154,8 +163,8 @@ export function serializeCookie(name: string, value: string, options: CookieOpti
   if (options.maxAge !== undefined) {
     if (!Number.isInteger(options.maxAge)) {
       throw new TypeError(
-        `[barq] cookie "${name}" has a non-integer maxAge (${options.maxAge}); a browser ` +
-          "ignores the attribute entirely rather than rounding it.",
+        `[barq] The cookie "${name}" has a non-integer maxAge (${options.maxAge}). A browser ignores a fractional \`Max-Age\` instead of rounding it, so the cookie would last only for the session. ` +
+          "Pass whole seconds, such as `maxAge: 3600`.",
       );
     }
     parts.push(`Max-Age=${options.maxAge}`);
@@ -170,7 +179,9 @@ export function serializeCookie(name: string, value: string, options: CookieOpti
   }
   if (options.expires !== undefined) {
     if (Number.isNaN(options.expires.getTime())) {
-      throw new TypeError(`[barq] cookie "${name}" has an invalid \`expires\` date`);
+      throw new TypeError(
+        `[barq] The cookie "${name}" has an \`expires\` that is an invalid \`Date\`, so no expiry could be written. Pass a valid date, such as \`new Date(Date.now() + 86_400_000)\`.`,
+      );
     }
     // IMF-fixdate, the only format RFC 6265 §5.1.1 requires a browser to parse
     // and the only one `toUTCString` produces.
@@ -188,8 +199,8 @@ export function serializeCookie(name: string, value: string, options: CookieOpti
 function assertAttribute(cookie: string, attribute: string, value: string): void {
   if (ILLEGAL_ATTRIBUTE.test(value)) {
     throw new TypeError(
-      `[barq] cookie "${cookie}" has a \`${attribute}\` holding a character that would ` +
-        "terminate the attribute list",
+      `[barq] The cookie "${cookie}" has a \`${attribute}\` holding a character such as \`;\` that would terminate the attribute and let the rest be read as further cookie attributes. ` +
+        `Pass a plain ${attribute}, and never build it from user input without validating it.`,
     );
   }
 }

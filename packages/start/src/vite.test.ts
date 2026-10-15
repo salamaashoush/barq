@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { transform } from "@barqjs/compiler-rs";
@@ -11,6 +12,7 @@ import {
   ROUTER_ENTRY_ID,
   SERVER_ENTRY_ID,
   SERVE_ENTRY_ID,
+  START_ENTRY_ID,
   barqStart,
 } from "./vite.ts";
 
@@ -293,7 +295,8 @@ describe("the entries an application does not write", () => {
     // `../client`, because this file is `<out>/server/serve.js`. Getting the
     // number of `..` wrong 404s every asset while every page still renders,
     // which is why `test/build.test.ts` fetches an asset for real.
-    expect(code).toContain('static: { dir: new URL("../client", import.meta.url).pathname');
+    expect(code).toContain('static: { dir: new URL("../client", import.meta.url) }');
+    expect(code).not.toContain(".pathname");
     // Never the build machine's absolute path: its layout is not the
     // deployment's, the same mistake the prerender manifest made.
     expect(code).not.toContain(ROOT);
@@ -480,5 +483,63 @@ describe("`target` pins the srvx adapter at BUILD time", () => {
     const expected = process.versions.bun === undefined ? "srvx/node" : "srvx/bun";
     expect(await resolveSrvx({}, "ssr")).toBe(expected);
     expect(await resolveSrvx({ server: { target: "auto" } }, "ssr")).toBe(expected);
+  });
+});
+
+describe("the project's start entry", () => {
+  const entriesAt = (
+    root: string,
+  ): { resolveId: (id: string) => string | null; load: (id: string) => string | null } => {
+    const plugins = barqStart() as unknown as (Loose & { name: string })[];
+    for (const plugin of plugins) plugin.configResolved?.({ root, mode: "development" });
+    return plugins.find((one) => one.name === "barq-start:entries") as never;
+  };
+
+  test("a project's own `src/start.ts` is what the framework imports", () => {
+    const root = mkdtempSync(join(tmpdir(), "barq-start-entry-"));
+    mkdirSync(join(root, "src"));
+    writeFileSync(join(root, "src", "start.ts"), "export const startInstance = undefined;\n");
+    expect(entriesAt(root).resolveId(START_ENTRY_ID)).toBe(join(root, "src", "start.ts"));
+    rmSync(root, { recursive: true, force: true });
+  });
+
+  test("without one it is an empty module a URL can name", () => {
+    const plugin = entriesAt(ROOT);
+    const resolved = plugin.resolveId(START_ENTRY_ID) as string;
+    expect(resolved.startsWith("\0")).toBe(true);
+    expect(resolved).not.toContain("#");
+    expect(plugin.load(resolved)).toContain("export const startInstance = undefined");
+  });
+});
+
+describe("SPA mode", () => {
+  const generated = (id: string, options: Parameters<typeof barqStart>[0]): string => {
+    const plugins = barqStart(options) as unknown as (Loose & { name: string })[];
+    for (const plugin of plugins) plugin.configResolved?.({ root: ROOT, mode: "development" });
+    const found = plugins.find((one) => one.name === "barq-start:entries") as unknown as {
+      resolveId: (id: string) => string | null;
+      load: (id: string) => string | null;
+    };
+    return found.load(found.resolveId(id) as string) ?? "";
+  };
+
+  test("the deployed handler renders no pages and falls back to the shell the build wrote", () => {
+    const options = { spa: { enabled: true } };
+    expect(generated(SERVER_ENTRY_ID, options)).toContain("pages: false");
+    expect(generated(SERVE_ENTRY_ID, options)).toContain(
+      'spa: new URL("../client/_shell.html", import.meta.url)',
+    );
+  });
+
+  test("the shell's file follows `prerender.outputPath`", () => {
+    const code = generated(SERVE_ENTRY_ID, {
+      spa: { enabled: true, prerender: { outputPath: "/app/shell.html" } },
+    });
+    expect(code).toContain('spa: new URL("../client/app/shell.html", import.meta.url)');
+  });
+
+  test("without it the handler renders pages and nothing falls back", () => {
+    expect(generated(SERVER_ENTRY_ID, {})).not.toContain("pages: false");
+    expect(generated(SERVE_ENTRY_ID, {})).not.toContain("spa:");
   });
 });

@@ -23,7 +23,7 @@
  * the edge's problem and always was.
  */
 
-import { getRequestIP } from "./context.ts";
+import { type ForwardedForTrust, assertForwardedForTrust, getRequestIP } from "./context.ts";
 import type { Middleware } from "./index.ts";
 
 /** One key's usage, as the store hands it back. */
@@ -79,25 +79,40 @@ export interface RateLimitOptions {
  * header. It is here because "no store at all" would push everyone to write this
  * same map badly, not because it is the one to reach for.
  *
- * Expired entries are dropped on read rather than on a timer: a timer keeps the
- * process alive on Node and has to be unref'd, and a sweep over a map that is
- * only ever read is work nobody asked for. The cost is that a key never asked
- * about again holds its entry until the map is dropped, which is bounded by the
- * key space and not by traffic.
+ * Expired entries are swept by a `hit` rather than on a timer: a timer keeps
+ * the process alive on Node and has to be unref'd. A key is one caller and most
+ * callers are never seen again (a scan, a client rotating through an IPv6
+ * prefix), so an entry dropped only when its own key came back would stay for
+ * the life of the process and the map would grow with every address ever seen.
+ *
+ * The sweep runs at most once per the longest window in use, so an entry that
+ * has expired is gone by the second sweep after it was made, and the map holds
+ * what the last two such windows saw rather than everything since boot.
  */
 export function memoryStore(): RateLimitStore {
   const windows = new Map<string, { count: number; resetAt: number }>();
+  let longest = 0;
+  let sweepAt = 0;
   return {
     hit(key, windowMs) {
       const now = Date.now();
+      if (windowMs > longest) longest = windowMs;
+      if (now >= sweepAt) {
+        for (const [seen, window] of windows) {
+          if (window.resetAt <= now) windows.delete(seen);
+        }
+        sweepAt = now + longest;
+      }
       const found = windows.get(key);
       if (found === undefined || found.resetAt <= now) {
-        const fresh = { count: 1, resetAt: now + windowMs };
-        windows.set(key, fresh);
-        return fresh;
+        const resetAt = now + windowMs;
+        windows.set(key, { count: 1, resetAt });
+        return { count: 1, resetAt };
       }
       found.count += 1;
-      return found;
+      // A COPY, because the record goes on counting. A caller reads this after
+      // an `await`, and by then the hits that arrived behind it have landed.
+      return { count: found.count, resetAt: found.resetAt };
     },
   };
 }
@@ -110,11 +125,19 @@ export function memoryStore(): RateLimitStore {
  * where no proxy overwrites it lets any caller pick their own bucket and the
  * limit stops existing. See `getRequestIP`.
  *
+ * `true` reads the LEFTMOST entry, which is the client only when the edge proxy
+ * overwrites the header. Behind a proxy that appends, pass
+ * `{ trustedProxies: n }` for the `n` proxies you run: it reads the entry the
+ * outermost of them wrote and ignores anything a caller put in front of it.
+ *
  * A request with no address at all keys as `"unknown"`, which pools every such
  * caller into one bucket — strict rather than exempt, because the alternative is
  * a bucket an attacker can opt into by arranging to have no address.
  */
-export function byIP(options: { readonly xForwardedFor?: boolean } = {}): () => string {
+export function byIP(options: { readonly xForwardedFor?: ForwardedForTrust } = {}): () => string {
+  // Here and not on the first request: `rateLimit` fails OPEN when its key
+  // throws, so a bad hop count found per call would switch the limit off.
+  assertForwardedForTrust(options.xForwardedFor);
   return () => getRequestIP(options) ?? "unknown";
 }
 
@@ -147,10 +170,14 @@ function tooMany(info: RateLimitCount & { limit: number }): Response {
 export function rateLimit(options: RateLimitOptions): Middleware {
   const { limit, windowMs, key, store, onLimit = tooMany } = options;
   if (!Number.isInteger(limit) || limit < 1) {
-    throw new RangeError(`[barq] a rate limit must be a positive integer; got ${limit}`);
+    throw new RangeError(
+      `[barq] \`rateLimit({ limit })\` must be a positive integer, and it is ${limit}. Pass how many requests one key may make per window, such as \`limit: 10\`.`,
+    );
   }
   if (!Number.isFinite(windowMs) || windowMs <= 0) {
-    throw new RangeError(`[barq] a rate-limit window must be positive; got ${windowMs}`);
+    throw new RangeError(
+      `[barq] \`rateLimit({ windowMs })\` must be a positive number of milliseconds, and it is ${windowMs}. Pass the window length, such as \`windowMs: 60_000\`.`,
+    );
   }
 
   return async (next) => {
@@ -163,7 +190,10 @@ export function rateLimit(options: RateLimitOptions): Middleware {
     } catch (error) {
       // FAIL OPEN. A limiter that refuses everything when its store is down has
       // become the outage it exists to prevent.
-      console.error("[barq] rate-limit store failed; letting the request through", error);
+      console.error(
+        "[barq] The rate-limit `store` or `key` threw, so this request was let through without being counted. The error:",
+        error,
+      );
       return next();
     }
     if (info.count > limit) throw onLimit({ ...info, limit });

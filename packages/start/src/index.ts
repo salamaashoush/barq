@@ -13,8 +13,10 @@
  */
 
 export {
+  type ForwardedForTrust,
   type RequestContext,
   type ResponseDraft,
+  appendResponseHeader,
   applyResponseDraft,
   clearResponseHeaders,
   collectRequestCss,
@@ -23,6 +25,7 @@ export {
   draftedStatus,
   getCookie,
   getCookies,
+  getGlobalStartContext,
   getRequest,
   getRequestHeader,
   getRequestHeaders,
@@ -40,7 +43,9 @@ export {
   setResponseHeader,
   setResponseHeaders,
   installCssSink,
+  setRequestMiddlewareContext,
   setResponseStatus,
+  takeSendContext,
   withRequest,
 } from "./context.ts";
 
@@ -91,16 +96,20 @@ export {
  * from "@barqjs/start"` the only thing an application writes.
  */
 export {
+  type AnyServerFn,
   type RpcControl,
   type ServerFn,
   type ServerFnArgs,
+  type ServerFnCallOptions,
   type ServerFnMeta,
+  type Streamed,
   DATA_SUFFIX,
   NOT_FOUND,
   REDIRECT,
   RPC_CONTEXT,
   RPC_CONTROL,
   RPC_PREFIX,
+  RPC_STREAM,
   RpcNotFound,
   RpcRedirect,
   SERVER_FN,
@@ -109,16 +118,37 @@ export {
   isServerFn,
 } from "./client.ts";
 
-import { SERVER_FN, type ServerFn, type ServerFnMeta, dataOf } from "./client.ts";
+import {
+  type AnyServerFn,
+  SERVER_FN,
+  type ServerFn,
+  type ServerFnMeta,
+  type Streamed,
+  callOptionsOf,
+  dataOf,
+  urlOf,
+} from "./client.ts";
+import { getGlobalStartContext, offerSendContext, peekRequest } from "./context.ts";
 import {
   type Middleware,
   type Validator,
+  type ValidatorInput,
   UncheckedInputError,
   ValidationError,
   flattenMiddleware,
   isBuiltMiddleware,
   runMiddleware,
+  toValidator,
 } from "./middleware.ts";
+import { startOptions } from "./start-instance.ts";
+
+export {
+  type StartInstance,
+  type StartOptions,
+  clearStart,
+  createStart,
+  startOptions,
+} from "./start-instance.ts";
 
 /**
  * Middleware and the validator surface it composes, re-exported so an
@@ -139,8 +169,13 @@ export {
   type MiddlewareFn,
   type MiddlewareNext,
   type MiddlewareOptions,
+  type RequestMiddleware,
+  type RequestMiddlewareContext,
+  type RequestMiddlewareFn,
+  type RequestMiddlewareStart,
   type StandardSchema,
   type Validator,
+  type ValidatorInput,
   InputError,
   UncheckedInputError,
   ValidationError,
@@ -149,6 +184,8 @@ export {
   flattenMiddleware,
   isBuiltMiddleware,
   runMiddleware,
+  runRequestMiddleware,
+  toValidator,
 } from "./middleware.ts";
 
 export async function checkInput<In>(
@@ -198,6 +235,8 @@ interface Built<In, Out> {
   handler: (context: HandlerContext<In>) => Out | Promise<Out>;
 }
 
+type Staged = Omit<Built<unknown, unknown>, "handler">;
+
 /**
  * The three-state discriminator, which is SvelteKit's idea and the best value
  * in the survey: no validator means any argument is a 400, and opening the
@@ -206,8 +245,17 @@ interface Built<In, Out> {
 
 export interface ServerFnBuilder<In, Out> {
   middleware(chain: readonly Middleware[]): ServerFnBuilder<In, Out>;
-  validator<T>(schema: Validator<T>): ServerFnBuilder<T, Out>;
-  handler<R>(fn: (context: HandlerContext<In>) => R | Promise<R>): ServerFn<In, Awaited<R>>;
+  /**
+   * Open the input channel: a Standard Schema, a function that returns the
+   * validated value or throws, an object with a `parse`, or `"unchecked"`.
+   * What it produces is the type of `data` in the handler.
+   */
+  validator<T>(schema: ValidatorInput<T>): ServerFnBuilder<T, Out>;
+  /** TanStack's name for `validator`. */
+  inputValidator<T>(schema: ValidatorInput<T>): ServerFnBuilder<T, Out>;
+  handler<R>(
+    fn: (context: HandlerContext<In>) => R | Promise<R>,
+  ): ServerFn<In, Streamed<Awaited<R>>>;
 }
 
 /**
@@ -235,32 +283,20 @@ export function createServerFn(options: ServerFnOptions = {}): ServerFnBuilder<u
   // no type to fail and the reason is worth saying out loud.
   if (options.method !== undefined && options.method !== "POST") {
     throw new TypeError(
-      `[barq] createServerFn({ method: ${JSON.stringify(options.method)} }) — a server function ` +
-        "answers POST only. A mutation reachable by navigation is a link that mutates. Fetch " +
-        "read-only data from a route `loader` instead.",
+      `[barq] \`createServerFn({ method: ${JSON.stringify(options.method)} })\` is not supported: a server function answers POST only, so that a link or a prefetch can never trigger one. ` +
+        "Remove `method`, and fetch read-only data from a route `loader` instead.",
     );
   }
-  const built: Built<unknown, unknown> = {
-    validator: null,
-    middleware: [],
-    handler: () => undefined,
-  };
-
-  const builder: ServerFnBuilder<unknown, unknown> = {
-    middleware(chain) {
-      built.middleware = chain;
-      return builder;
-    },
-    validator(schema) {
-      built.validator = schema;
-      return builder as never;
-    },
-    handler(fn) {
-      built.handler = fn;
-      return serverRpc({ id: "" }, built) as never;
-    },
-  };
-  return builder as never;
+  // A NEW BUILDER PER STEP, as `createMiddleware` is: one that mutated a shared
+  // record would let a base kept in a variable and finished twice hand the first
+  // function the second one's handler, validator and chain.
+  const step = (staged: Staged): ServerFnBuilder<unknown, unknown> => ({
+    middleware: (chain) => step({ ...staged, middleware: chain }),
+    validator: (schema) => step({ ...staged, validator: toValidator(schema) }) as never,
+    inputValidator: (schema) => step({ ...staged, validator: toValidator(schema) }) as never,
+    handler: (fn) => serverRpc({ id: "" }, { ...staged, handler: fn }) as never,
+  });
+  return step({ validator: null, middleware: [] }) as never;
 }
 
 /**
@@ -268,12 +304,29 @@ export function createServerFn(options: ServerFnOptions = {}): ServerFnBuilder<u
  * with the real handler and the id it assigned.
  */
 export function serverRpc<In, Out>(meta: ServerFnMeta, built: Built<In, Out>): ServerFn<In, Out> {
-  const chain = flattenMiddleware(built.middleware);
-  // Asked ONCE, at build of the function rather than per call: the chain is
-  // fixed and this decides whether a bare argument is refused.
-  const chainValidates = chain.some(
-    (step) => isBuiltMiddleware(step) && step.options.validator !== undefined,
-  );
+  // The application's global function middleware runs ahead of the function's
+  // own, and is read when it is first needed: `src/start.ts` may be evaluated
+  // after the module that declares this function. Flattening drops a step the
+  // function lists again, so a guard named in both places runs once.
+  let composed: {
+    readonly from: readonly Middleware[] | undefined;
+    readonly chain: readonly Middleware[];
+    /** Whether a bare argument has somewhere to be validated before the handler. */
+    readonly validates: boolean;
+  } | null = null;
+  const composition = (): NonNullable<typeof composed> => {
+    const global = startOptions().functionMiddleware;
+    if (composed !== null && composed.from === global) return composed;
+    const chain = flattenMiddleware([...(global ?? []), ...built.middleware]);
+    composed = {
+      from: global,
+      chain,
+      validates: chain.some(
+        (step) => isBuiltMiddleware(step) && step.options.validator !== undefined,
+      ),
+    };
+    return composed;
+  };
 
   const call = async (
     options?: unknown,
@@ -285,19 +338,26 @@ export function serverRpc<In, Out>(meta: ServerFnMeta, built: Built<In, Out>): S
      * writing `fn({ data, context })` in application code. The request handler
      * is the only caller that passes it.
      *
-     * Seeded UNDER the chain's own output: the server's middlewares run after
-     * this and overwrite anything the wire claimed, so a client cannot forge
-     * the `session` a server middleware sets. TanStack orders it the same way.
+     * Handed to the chain BESIDE `context` and never merged into it. Merging it
+     * under would let it survive wherever no server step set the same key on
+     * this request, and a middleware that names the user only for a signed-in
+     * caller would leave `context.user` to whoever is not signed in.
      */
     clientContext?: Record<string, unknown>,
   ): Promise<Out> => {
     const input = dataOf(options);
+    const { chain, validates: chainValidates } = composition();
     // What the chain contributed, merged as it unwinds inward. One object the
     // chain mutates rather than one per step: `next({ context })` is additive
-    // by definition, and a handler wants the union of everything above it.
-    const context: Record<string, unknown> = { ...clientContext };
+    // by definition, and a handler wants the union of everything above it. It
+    // starts from what the request's own middleware already said.
+    const context: Record<string, unknown> = { ...getGlobalStartContext() };
     const sendContext: Record<string, unknown> = {};
-    const controller = new AbortController();
+    // The call's own when it named one, which only an in-process caller can.
+    // Otherwise the request's, so a caller that goes away stops the work it
+    // asked for; with neither there is nothing to abort it.
+    const signal =
+      callOptionsOf(options)?.signal ?? peekRequest()?.signal ?? new AbortController().signal;
 
     // Middleware runs BEFORE the function's own validation. An unauthenticated
     // caller should be refused without the server parsing its payload first,
@@ -306,43 +366,28 @@ export function serverRpc<In, Out>(meta: ServerFnMeta, built: Built<In, Out>): S
     // validator is the exception and has to be: its body is handed `data`.
     const result = (await runMiddleware(chain, "server", {
       data: input,
-      signal: controller.signal,
+      signal,
       context,
+      clientContext,
       sendContext,
       run: async (data) =>
         built.handler({
           data: await checkInput(built, data, chainValidates),
           context,
-          signal: controller.signal,
+          signal,
         }),
     })) as Out;
 
-    lastSendContext = sendContext;
-    return result;
+    offerSendContext(sendContext);
+    // A `ReadableStream` is handed on as the async iterable every caller is
+    // told to expect, so one in process reads what one in a browser does.
+    return (result instanceof ReadableStream ? valuesOf(result) : result) as Out;
   };
 
-  return Object.assign(call, { [SERVER_FN]: true as const, meta, built });
-}
-
-/**
- * What the last call's chain asked to send back, for the request handler to put
- * on the response.
- *
- * A MODULE-LEVEL HANDOFF and it is safe here, unlike the ambient request
- * context: `serverRpc`'s `call` sets this synchronously with respect to its own
- * return, and `handleServerFn` reads it in the statement after awaiting that
- * call. No other await sits between the two, so a second request cannot
- * interleave. Returning it would have been cleaner and is not available: the
- * call's return type is the handler's, and a server function invoked
- * IN-PROCESS by a loader must see that type and nothing wrapped around it.
- */
-let lastSendContext: Record<string, unknown> = {};
-
-/** Take the pending `sendContext`, leaving nothing behind for the next call. */
-export function takeSendContext(): Record<string, unknown> {
-  const taken = lastSendContext;
-  lastSendContext = {};
-  return taken;
+  const fn = Object.assign(call, { [SERVER_FN]: true as const, meta, built, url: "" });
+  // Read when asked: the id is stamped when the function is mounted.
+  Object.defineProperty(fn, "url", { enumerable: true, get: () => urlOf(meta.id) });
+  return fn;
 }
 
 /**
@@ -357,7 +402,21 @@ export function takeSendContext(): Record<string, unknown> {
  *
  * Empty for a client stub, which carries no chain because it carries no handler.
  */
-export function middlewareOf(fn: ServerFn<unknown, unknown>): readonly Middleware[] {
+export function middlewareOf(fn: AnyServerFn): readonly Middleware[] {
   const built = (fn as unknown as { built?: Built<unknown, unknown> }).built;
   return built?.middleware ?? [];
+}
+
+/** A stream's values, releasing it when the reader leaves early. */
+async function* valuesOf(stream: ReadableStream<unknown>): AsyncIterableIterator<unknown> {
+  const reader = stream.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) return;
+      yield value;
+    }
+  } finally {
+    void reader.cancel().catch(() => {});
+  }
 }

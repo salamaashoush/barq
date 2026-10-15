@@ -21,6 +21,7 @@ import {
   setResponseHeader,
   setResponseStatus,
   isServerFn,
+  middlewareOf,
   serverRpc,
 } from "./index.ts";
 import { decodeWire, encodeWire } from "@barqjs/server/codec";
@@ -30,6 +31,7 @@ import {
   crossOriginRefused,
   handleServerFn,
   mount,
+  mountOnDemand,
   mounted,
   originAllowed,
   unmountAll,
@@ -599,12 +601,30 @@ describe("the call convention", () => {
     // The uncompiled builder has no id of its own — the compiler assigns one —
     // so mounting is where the two meet, exactly as `mount` documents.
     const fn = createServerFn().handler(() => "ran");
-    mount("nullary", fn as never);
+    mount("nullary", fn);
     const response = await handleServerFn(post("nullary", undefined));
     expect(decodeWire<string>(await response?.json())).toBe("ran");
     // …and in-process, which is the spelling an application writes. The bare
     // convention forced `fn(undefined)` on every one of these.
     expect(await fn()).toBe("ran");
+  });
+
+  test("a function with a typed input mounts as it is, and so does its chain", async () => {
+    const audit: Middleware = async (next) => next();
+    const greet = createServerFn()
+      .middleware([audit])
+      .validator((input: unknown) => String(input))
+      .handler(({ data }) => `hello ${data}`);
+    mount("greet", greet);
+    expect(middlewareOf(greet)).toEqual([audit]);
+    const response = await handleServerFn(post("greet", "salama"));
+    expect(decodeWire<string>(await response?.json())).toBe("hello salama");
+
+    const plain = async (): Promise<string> => "not a server function";
+    // @ts-expect-error a plain function has no endpoint to mount
+    expect(() => mount("plain", plain)).toThrow(TypeError);
+    // @ts-expect-error nor a chain to read
+    expect(middlewareOf(plain)).toEqual([]);
   });
 
   test("`data` is what the handler is handed, and `context` is what the chain built", async () => {
@@ -721,7 +741,7 @@ describe("the ambient response", () => {
       ),
     );
     const response = await call("two");
-    expect(response?.headers.getSetCookie()).toEqual(["a=1", "b=2"]);
+    expect(response?.headers.getSetCookie()).toEqual(["a=1; Path=/", "b=2; Path=/"]);
   });
 
   test("a RETURNED Response works on the data channel, and used to crash", async () => {
@@ -763,7 +783,7 @@ describe("the ambient response", () => {
     expect(response?.headers.get("x-who")).toBe("returned");
     // …except for cookies, where dropping either is a bug neither can see.
     expect(response?.headers.getSetCookie().toSorted()).toEqual([
-      "from-helper=1",
+      "from-helper=1; Path=/",
       "from-response=1",
     ]);
   });
@@ -784,7 +804,7 @@ describe("the ambient response", () => {
     );
     const response = await call("rotates");
     expect(response?.status).toBe(401);
-    expect(response?.headers.get("set-cookie")).toBe("sid=rotated");
+    expect(response?.headers.get("set-cookie")).toBe("sid=rotated; Path=/");
   });
 
   /**
@@ -1171,7 +1191,7 @@ describe("createMiddleware", () => {
       const options: { middleware: Middleware[] } = { middleware: [] };
       const loop = createMiddleware(options);
       options.middleware.push(loop);
-      expect(() => flattenMiddleware([loop])).toThrow(/more than 100 deep/);
+      expect(() => flattenMiddleware([loop])).toThrow(/nests more than 100 levels deep/);
     });
   });
 
@@ -1311,6 +1331,16 @@ describe("env-only functions, uncompiled", () => {
     expect((createIsomorphicFn() as () => unknown)()).toBeUndefined();
   });
 
+  test("a client half alone is what runs, however many chains came before it", () => {
+    createIsomorphicFn().server(() => "server");
+    const alone = createIsomorphicFn().client(() => "client");
+    expect((alone as () => string)()).toBe("client");
+    const reversed = createIsomorphicFn()
+      .client(() => "client")
+      .server(() => "server");
+    expect((reversed as () => string)()).toBe("server");
+  });
+
   /**
    * The two env-only wrappers are IDENTITY uncompiled. The refusal is the
    * compiler's — it replaces the call with a throwing stub in the wrong build —
@@ -1322,5 +1352,49 @@ describe("env-only functions, uncompiled", () => {
     const measure = createClientOnlyFn(() => "c");
     expect(secret()).toBe("s");
     expect(measure()).toBe("c");
+  });
+});
+
+/**
+ * Where the mounted functions are kept, and when they get there.
+ *
+ * A build compiles this module into its server bundle, and the bundle mounts
+ * its manifest when it first renders a page. Both are true of every deployed
+ * application, and each used to be a 404 for a function that exists.
+ */
+describe("the registry a call is answered from", () => {
+  test("a second copy of the module answers for what the first one mounted", async () => {
+    const fn = createServerFn().handler(async () => "from the bundle");
+    fn.meta.id = "src/data/report.ts#load";
+    mountOf(fn);
+
+    // A query makes it a second evaluation of the same file, which is what a
+    // bundle's own copy is to the host that imports the package beside it.
+    const second: string = "./server.ts?host";
+    const copy = (await import(second)) as typeof import("./server.ts");
+    expect(copy.handleServerFn).not.toBe(handleServerFn);
+    const response = await copy.handleServerFn(post(fn.meta.id, undefined));
+    expect(response?.status).toBe(200);
+  });
+
+  test("a call that arrives before any page mounts the manifest and is answered", async () => {
+    const fn = createServerFn().handler(async () => "after a cold start");
+    fn.meta.id = "src/data/report.ts#cold";
+    let mounts = 0;
+    mountOnDemand(async () => {
+      mounts++;
+      mountOf(fn);
+    });
+
+    expect(mounted()).toEqual([]);
+    const response = await handleServerFn(post(fn.meta.id, undefined));
+    expect(response?.status).toBe(200);
+    expect(mounts).toBe(1);
+  });
+
+  test("an id the manifest does not hold is still a 404 once it has been mounted", async () => {
+    mountOnDemand(async () => {});
+    const response = await handleServerFn(post("src/data/report.ts#absent", undefined));
+    expect(response?.status).toBe(404);
   });
 });

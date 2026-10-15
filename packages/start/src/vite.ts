@@ -27,7 +27,13 @@ import { NodeRequest, sendNodeResponse } from "srvx/node";
 import { type Plugin, type ViteDevServer, isRunnableDevEnvironment } from "vite";
 
 import { RPC_PREFIX } from "./index.ts";
-import { type PrerenderedPage, type ServerEntryModule, prerender } from "./prerender.ts";
+import {
+  type PrerenderSitemap,
+  type PrerenderedPage,
+  type ServerEntryModule,
+  prerender,
+  prerenderShell,
+} from "./prerender.ts";
 import { PRERENDER_HEADER } from "./protocol.ts";
 import { ASSET_MANIFEST_FILE, type AssetManifest } from "./static.ts";
 
@@ -127,12 +133,28 @@ export const ROUTER_ENTRY_ID = "#barq-router-entry";
 const RESOLVED_ROUTER_ENTRY_ID = "\0barq-router-entry";
 
 function findRouterEntry(root: string, srcDir: string): string | null {
+  return findSource(root, srcDir, "router");
+}
+
+function findSource(root: string, srcDir: string, name: string): string | null {
   for (const extension of ENTRY_EXTENSIONS) {
-    const file = join(root, srcDir, `router${extension}`);
+    const file = join(root, srcDir, `${name}${extension}`);
     if (existsSync(file)) return file;
   }
   return null;
 }
+
+/**
+ * The project's `src/start.ts`, as a specifier the FRAMEWORK can import.
+ *
+ * Importing it is what registers the application's `createStart`: its global
+ * request and function middleware. An alias to a real file, like the router
+ * entry, and an empty module for a project that has not written one.
+ */
+export const START_ENTRY_ID = "#barq-start-entry";
+
+/** Without the `#`, for the reason {@link RESOLVED_ROUTER_ENTRY_ID} gives. */
+const RESOLVED_START_ENTRY_ID = "\0barq-start-entry";
 
 /**
  * Index what the build put on disk, so serving it costs no `stat`.
@@ -155,6 +177,8 @@ async function writeAssetManifest(
   clientOut: string,
   pages: readonly PrerenderedPage[],
   base: string,
+  /** Output-relative names the client build emitted under a hash. */
+  emitted: ReadonlySet<string>,
 ): Promise<void> {
   const prefix = base.endsWith("/") ? base.slice(0, -1) : base;
   // RELATIVE to the output directory, in the manifest too. `file` arrives
@@ -165,6 +189,7 @@ async function writeAssetManifest(
   const written = new Set(pages.map(fileOf));
 
   const files: string[] = [];
+  const hashed: string[] = [];
   const walk = async (dir: string, at: string): Promise<void> => {
     for (const item of await readdir(dir, { withFileTypes: true })) {
       const child = join(dir, item.name);
@@ -176,7 +201,10 @@ async function writeAssetManifest(
       // A prerendered page is indexed under its REQUEST path below, with the
       // status it was rendered as. Listing the file here too would let
       // `/about/index.html` be fetched directly and answer 200 regardless.
-      if (!written.has(relative(clientOut, child).replaceAll("\\", "/"))) files.push(url);
+      const name = relative(clientOut, child).replaceAll("\\", "/");
+      if (written.has(name)) continue;
+      files.push(url);
+      if (emitted.has(name)) hashed.push(url);
     }
   };
   await walk(clientOut, "");
@@ -201,6 +229,9 @@ async function writeAssetManifest(
   const manifest: AssetManifest = {
     pages: entries,
     files: files.map((file) => `${prefix}${file}`).toSorted(),
+    hashed: hashed.map((file) => `${prefix}${file}`).toSorted(),
+    // What `static.ts` takes back off a request path to find the file.
+    ...(prefix === "" ? {} : { base: prefix }),
   };
   await writeFile(join(clientOut, ASSET_MANIFEST_FILE), `${JSON.stringify(manifest, null, 2)}\n`);
 }
@@ -339,7 +370,7 @@ function defaultServerEntry(pages: boolean): string {
  * So: `server.js` is importable and serves nothing, `serve.js` runs and exports
  * nothing.
  */
-function defaultServeEntry(server: BarqServerOptions | undefined, spa: boolean): string {
+function defaultServeEntry(server: BarqServerOptions | undefined, spa: string | null): string {
   const assets = server?.static ?? true;
   const options: string[] = [`fetch: handler.fetch`];
   if (assets !== false) {
@@ -356,20 +387,34 @@ function defaultServeEntry(server: BarqServerOptions | undefined, spa: boolean):
     // build is `<out>/client`. `./client` resolved to `<out>/server/client` and
     // every asset 404'd while every page still rendered, which is why the gate
     // below fetches an asset rather than a page.
-    options.push(`static: { dir: new URL("../client", import.meta.url).pathname${tuning} }`);
+    //
+    // The URL itself, never its `.pathname`: that is still percent-encoded, so
+    // under `/srv/acme site/` it names a directory `acme%20site` that is not
+    // there, and on Windows it is not a path at all. `static.ts` turns the URL
+    // into one where it opens the directory.
+    options.push(`static: { dir: new URL("../client", import.meta.url)${tuning} }`);
   }
   // The SPA fallback, resolved the same way and for the same reason. Only for a
-  // project that renders no pages here AND wrote its own `index.html`: with
+  // project that renders no pages here: one that wrote its own `index.html`,
+  // or one in SPA mode, whose document is the shell the build rendered. With
   // pages on, the handler IS the answer for a path the build did not write, and
   // a document here would shadow its 404.
-  if (spa) {
-    options.push(`spa: new URL("../client/index.html", import.meta.url).pathname`);
+  if (spa !== null) {
+    options.push(`spa: new URL(${JSON.stringify(`../client/${spa}`)}, import.meta.url)`);
   }
   // `PORT` first because every host sets it, and a configured port is the
   // fallback rather than the override.
   const port = server?.port ?? 3000;
   options.push(`port: Number(process.env.PORT ?? ${port})`);
   if (server?.hostname !== undefined) options.push(`hostname: ${JSON.stringify(server.hostname)}`);
+  if (server?.maxBodySize !== undefined) options.push(`maxBodySize: ${server.maxBodySize}`);
+  if (server?.maxFormSize !== undefined) options.push(`maxFormSize: ${server.maxFormSize}`);
+  if (server?.trustProxy !== undefined) {
+    options.push(`trustProxy: ${JSON.stringify(server.trustProxy)}`);
+  }
+  if (server?.allowedOrigins !== undefined) {
+    options.push(`allowedOrigins: ${JSON.stringify(server.allowedOrigins)}`);
+  }
 
   return [
     `import { serveBarq } from "@barqjs/start/serve";`,
@@ -412,12 +457,34 @@ export interface PrerenderOptions {
   /** How many pages at once. */
   readonly concurrency?: number;
   /**
+   * Whether a path is prerendered at all, named or crawled.
+   *
+   * A path it refuses is never requested, so nothing is written for it and
+   * nothing it links to is found through it: `(path) => !path.startsWith("/admin")`
+   * keeps a crawl out of a section that needs a request to render.
+   */
+  readonly filter?: (path: string) => boolean;
+  /**
    * `/about` -> `about/index.html` rather than `about.html`.
    *
    * On by default: a directory index is what every static host serves for a
    * clean URL without configuration.
    */
   readonly subfolderIndex?: boolean;
+  /**
+   * How many more times a page that threw or answered 5xx is asked for before
+   * it fails the build, and how long to wait between attempts, in milliseconds.
+   * TanStack's names. Neither is on by default.
+   */
+  readonly retryCount?: number;
+  readonly retryDelay?: number;
+  /**
+   * Write a `sitemap.xml` naming every page that was written with a 2xx.
+   *
+   * `host` is the origin the site is served from, which a build cannot know.
+   * `outputPath` is relative to the client output, `sitemap.xml` when omitted.
+   */
+  readonly sitemap?: PrerenderSitemap;
   /**
    * Told what was written, with each page's response HEADERS.
    *
@@ -621,12 +688,49 @@ export interface BarqServerOptions {
   readonly port?: number;
   readonly hostname?: string;
   /**
+   * The largest body a server function may be sent, in bytes, and the largest
+   * form. 1 MiB each when omitted; `HandlerOptions` in `server.ts` says what
+   * each one guards.
+   *
+   * The dev server reads them from here as well, so an upload that fits the
+   * deployed cap is not refused while it is being written.
+   */
+  readonly maxBodySize?: number;
+  readonly maxFormSize?: number;
+  /**
+   * Whether the proxy in front is believed about who is calling, which is
+   * srvx's `trustProxy` passed through: `true`, `"loopback"`, or the addresses
+   * of the proxies you run.
+   *
+   * It is what makes a server function callable behind a proxy that terminates
+   * TLS. This process sees `http://` there, the browser's `Origin` says
+   * `https://`, and the origin check refuses the two as different sites. With
+   * the proxy trusted, its `X-Forwarded-Proto` and `X-Forwarded-Host` correct
+   * the URL and its `X-Forwarded-For` corrects the address `byIP()` reads.
+   *
+   * Off when omitted, since those are headers any caller can send to a server
+   * that is not behind one.
+   */
+  readonly trustProxy?: boolean | "loopback" | readonly string[];
+  /**
+   * Origins the deployed server lets call a server function, beyond its own.
+   *
+   * Apart from the top-level `allowedOrigins`, which is the dev server's: an
+   * origin worth allowing while developing (`http://localhost:5173`) is rarely
+   * one to allow in production.
+   */
+  readonly allowedOrigins?: readonly string[];
+  /**
    * Serve `dist/client` in front of the page handler.
    *
    * On by default, because a build that emits a client directory and a server
    * that refuses to serve it is not a deployment. `false` is for the case where
    * a CDN is in front, which is also the case where the 0.419 us
    * `assetMiddleware` saves stops mattering.
+   *
+   * What the build emitted under `build.assetsDir` is answered as immutable
+   * for a year, since Vite hashes those names. `maxAge` and `immutable` change
+   * that for a build whose output names carry no hash.
    */
   readonly static?: boolean | { readonly maxAge?: number; readonly immutable?: boolean };
 }
@@ -655,6 +759,36 @@ export interface BarqStartOptions {
   routeTree?: string;
   /** Write static HTML for some paths after the build. */
   prerender?: PrerenderOptions;
+  /**
+   * SPA mode: the pages are rendered in the browser, from one shell.
+   *
+   * The build renders the root route once, with nothing under it, and writes
+   * that document to `prerender.outputPath` (`/_shell.html`). The server then
+   * renders no pages: a navigation that nothing else answers gets the shell,
+   * and server functions and route handlers answer as they always do. TanStack's
+   * option and its names.
+   */
+  spa?: {
+    readonly enabled?: boolean;
+    /** The path the shell is rendered at. `/` when omitted. */
+    readonly maskPath?: string;
+    readonly prerender?: { readonly outputPath?: string };
+  };
+  /**
+   * Fail the build when code from a `.server.` file is in a browser chunk, or
+   * code from a `.client.` file is in the server bundle. On by default.
+   *
+   * The file name is the declaration: `db.server.ts` holds what must not leave
+   * the server, and `chart.client.ts` what cannot run there. TanStack's
+   * convention, checked on what the bundler RENDERED rather than on what was
+   * imported, so an import the compiler emptied or the bundler shook out is
+   * not a violation. A `.server.` module that declares server functions is
+   * exempt in the browser, where its exports are `clientRpc` stubs.
+   *
+   * A build check only: a dev server has no bundle to read. `node_modules` is
+   * never checked.
+   */
+  importProtection?: boolean;
   /** `dist/client` and `dist/server` under it. */
   outputDirectory?: string;
   /**
@@ -744,6 +878,8 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
   const srcDirectory = options.srcDirectory ?? "src";
   const outputDirectory = options.outputDirectory ?? "dist";
   const serving = options.pages ?? true;
+  const spaMode = options.spa?.enabled === true;
+  const shellFile = (options.spa?.prerender?.outputPath ?? "/_shell.html").replace(/^\/+/, "");
 
   // Populated by the CLIENT build's `generateBundle` and read by the server
   // environment's `load`. Those are different plugin INSTANCES unless the
@@ -753,6 +889,15 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
   // `sharedDuringBuild: true` on every plugin here is what makes this one map.
   let clientAssets: ClientAssets = { scripts: [], css: [] };
   let serverFile = "server.js";
+  /**
+   * What the client build emitted under `build.assetsDir`, by output name.
+   *
+   * Those are the names Vite hashes, and the only files in the output a server
+   * may tell a browser to keep without asking. Taken from the bundle rather
+   * than from the directory because `public/assets/logo.png` is copied to the
+   * same place under a name that carries no hash at all.
+   */
+  const hashedAssets = new Set<string>();
 
   /**
    * `<project-relative module>#<export>`, byte for byte what the compiler put
@@ -844,6 +989,9 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       if (id === ROUTER_ENTRY_ID) {
         return findRouterEntry(root, srcDirectory) ?? RESOLVED_ROUTER_ENTRY_ID;
       }
+      if (id === START_ENTRY_ID) {
+        return findSource(root, srcDirectory, "start") ?? RESOLVED_START_ENTRY_ID;
+      }
       return id === CLIENT_ASSETS_ID ? RESOLVED_CLIENT_ASSETS_ID : null;
     },
     load(id) {
@@ -855,11 +1003,15 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
         "/",
       );
       if (id === RESOLVED_CLIENT_ENTRY_ID) return defaultClientEntry();
-      if (id === RESOLVED_SERVER_ENTRY_ID) return defaultServerEntry(serving);
+      // In SPA mode the built handler renders no page: the shell is a file,
+      // and the twin the build and the dev server ask for one turns pages on.
+      if (id === RESOLVED_SERVER_ENTRY_ID) return defaultServerEntry(serving && !spaMode);
       if (id === RESOLVED_SERVE_ENTRY_ID) {
-        return defaultServeEntry(options.server, !serving && hasIndexHtml(root));
+        const document = spaMode ? shellFile : !serving && hasIndexHtml(root) ? "index.html" : null;
+        return defaultServeEntry(options.server, document);
       }
       if (id === RESOLVED_ROUTER_ENTRY_ID) return defaultRouterEntry(treeImport);
+      if (id === RESOLVED_START_ENTRY_ID) return "export const startInstance = undefined;\n";
       if (id !== RESOLVED_CLIENT_ASSETS_ID) return null;
       // In dev the entry is a module Vite serves; there are no chunks and no
       // CSS files, because the browser's own module graph does that work.
@@ -888,6 +1040,12 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
         return;
       }
       if (environment !== ENVIRONMENTS.client) return;
+      const assetsDir =
+        (this as { environment?: { config?: { build?: { assetsDir?: string } } } }).environment
+          ?.config?.build?.assetsDir ?? "assets";
+      for (const file of Object.keys(bundle)) {
+        if (file.startsWith(`${assetsDir}/`)) hashedAssets.add(file);
+      }
       for (const chunk of Object.values(bundle)) {
         if (chunk.type !== "chunk" || !chunk.isEntry || chunk.name !== "index") continue;
         const css = [...(chunk.viteMetadata?.importedCss ?? [])];
@@ -949,11 +1107,10 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       const late = [...found.keys()].filter((file) => !(mounted as Set<string>).has(file));
       if (late.length === 0) return;
       context.error(
-        "[barq-start] these modules declare server functions but were discovered after the " +
-          "manifest was generated, so nothing would mount them and every call to them would " +
-          `404:\n  ${late.join("\n  ")}\n` +
-          "Import them from client code — which is what a server function is for — or from a " +
-          "module the client entry reaches, so the client build finds them first.",
+        "[barq-start] These modules declare server functions, but only server code imports them, " +
+          "so the build did not register them and every call to them would answer 404:\n" +
+          `  ${late.join("\n  ")}\n` +
+          "Import each one from a module the browser entry reaches, such as the component that calls it.",
       );
     },
   };
@@ -1045,88 +1202,103 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       const ssr = builder.environments[ENVIRONMENTS.server];
       if (client === undefined || ssr === undefined) {
         throw new Error(
-          `[barq-start] expected a \`${ENVIRONMENTS.client}\` and an \`${ENVIRONMENTS.server}\` environment`,
+          `[barq-start] The Vite config has no \`${ENVIRONMENTS.client}\` or no \`${ENVIRONMENTS.server}\` environment, so there is nothing to build. ` +
+            "`barqStart()` declares both: check that another plugin or `environments` in the config does not remove one.",
         );
       }
       if (!client.isBuilt) await builder.build(client);
       if (!ssr.isBuilt) await builder.build(ssr);
 
       const wanted = options.prerender;
-      if (wanted === undefined && options.verify === undefined) return;
+      const verify = options.verify;
 
-      /**
-       * IN-PROCESS, against the bundle that was just written.
-       *
-       * TanStack spawns `vite.preview()` and fetches over a socket, which costs
-       * them a config re-resolved from disk that loses how the parent was
-       * launched, and a server filename reconstructed from the input. What it
-       * does NOT cost them, and what this inherits exactly, is that a
-       * platform-targeted bundle cannot be imported into Node at all. That is a
-       * limit of importing a server build, not of the
-       * transport, and it is stated rather than papered over: a project
-       * targeting a non-Node runtime prerenders on that runtime or not at all.
-       */
       // RESOLVED against the root: `build.outDir` may be relative, and joining a
       // relative one lands next to the process's cwd rather than the project's.
       const outDirOf = (environment: { config: { root: string; build: { outDir: string } } }) =>
         resolve(environment.config.root, environment.config.build.outDir);
-      const file = join(outDirOf(ssr), serverFile);
-      const entry = (await import(pathToFileURL(file).href)) as ServerEntryModule;
-
-      // The chain check, BEFORE anything is written. A build that is going to
-      // fail should not leave half a site on disk first.
-      const verify = options.verify;
-      if (verify !== undefined) {
-        const check = entry.default?.verifyChains;
-        const reachability = verify.reachability();
-        if (typeof check !== "function") {
-          throw new TypeError(
-            "[barq-start] `verify` needs the server entry to default-export " +
-              "`verifyChains` — `export default createStartHandler()` from " +
-              "`@barqjs/router/server` provides it. The check runs inside the built bundle " +
-              "because that is where the route middleware and the mounted registry both are.",
-          );
-        }
-        if (reachability === undefined) {
-          throw new TypeError(
-            "[barq-start] `verify.reachability()` answered nothing, so no route reaches any " +
-              "server function as far as this build can tell. Wire " +
-              "`barqRouter({ onReachability })` to the same variable — without it the check " +
-              "would pass by knowing nothing.",
-          );
-        }
-        const report = await check(reachability);
-        if (report !== "") {
-          if ((verify.onViolation ?? "error") === "warn") {
-            builder.config.logger.warn(`[barq-start] ${report}`);
-          } else {
-            throw new Error(`[barq-start] ${report}`);
-          }
-        }
-      }
-
       const clientOut = outDirOf(client);
       let pages: readonly PrerenderedPage[] = [];
-      if (wanted !== undefined) {
-        const result = await prerender({
-          entry,
-          outDir: clientOut,
-          routes: wanted.routes ?? [],
-          crawl: wanted.crawl ?? true,
-          concurrency: wanted.concurrency ?? 4,
-          subfolderIndex: wanted.subfolderIndex ?? true,
-          base,
-          log: (message) => builder.config.logger.info(`[barq] prerender ${message}`),
-        });
-        pages = result.pages;
-        wanted.onPages?.(pages);
+
+      // The entry is imported only for something to ask it. A build with
+      // neither option has nothing to ask, and still has a directory to index.
+      if (wanted !== undefined || verify !== undefined || spaMode) {
+        /**
+         * IN-PROCESS, against the bundle that was just written.
+         *
+         * TanStack spawns `vite.preview()` and fetches over a socket, which costs
+         * them a config re-resolved from disk that loses how the parent was
+         * launched, and a server filename reconstructed from the input. What it
+         * does NOT cost them, and what this inherits exactly, is that a
+         * platform-targeted bundle cannot be imported into Node at all. That is a
+         * limit of importing a server build, not of the
+         * transport, and it is stated rather than papered over: a project
+         * targeting a non-Node runtime prerenders on that runtime or not at all.
+         */
+        const file = join(outDirOf(ssr), serverFile);
+        const entry = (await import(pathToFileURL(file).href)) as ServerEntryModule;
+
+        // The chain check, BEFORE anything is written. A build that is going to
+        // fail should not leave half a site on disk first.
+        if (verify !== undefined) {
+          const check = entry.default?.verifyChains;
+          const reachability = verify.reachability();
+          if (typeof check !== "function") {
+            throw new TypeError(
+              "[barq-start] The `verify` option is set, but the server entry's default export has no `verifyChains`, so the middleware check cannot run. " +
+                "Use `export default createStartHandler()` from `@barqjs/router/server` in the server entry.",
+            );
+          }
+          if (reachability === undefined) {
+            throw new TypeError(
+              "[barq-start] `verify.reachability()` answered nothing, so the build cannot tell which server functions each route reaches and the check would pass without checking anything. " +
+                "Store what `barqRouter({ onReachability })` reports in a variable and return that variable from `verify.reachability`.",
+            );
+          }
+          const report = await check(reachability);
+          if (report !== "") {
+            if ((verify.onViolation ?? "error") === "warn") {
+              builder.config.logger.warn(`[barq-start] ${report}`);
+            } else {
+              throw new Error(`[barq-start] ${report}`);
+            }
+          }
+        }
+
+        if (wanted !== undefined) {
+          const result = await prerender({
+            entry,
+            outDir: clientOut,
+            routes: wanted.routes ?? [],
+            crawl: wanted.crawl ?? true,
+            concurrency: wanted.concurrency ?? 4,
+            filter: wanted.filter,
+            subfolderIndex: wanted.subfolderIndex ?? true,
+            retryCount: wanted.retryCount,
+            retryDelay: wanted.retryDelay,
+            sitemap: wanted.sitemap,
+            base,
+            log: (message) => builder.config.logger.info(`[barq] prerender ${message}`),
+          });
+          pages = result.pages;
+          wanted.onPages?.(pages);
+        }
+
+        if (spaMode) {
+          const shell = await prerenderShell({
+            entry,
+            outDir: clientOut,
+            maskPath: options.spa?.maskPath,
+            outputPath: shellFile,
+          });
+          builder.config.logger.info(`[barq] spa shell -> ${shell}`);
+        }
       }
 
       // LAST, and unconditionally: the manifest indexes what is on disk, so it
       // is written after the prerenderer has finished putting things there, and
       // a project with no prerender still has chunks and `public/` files to
       // serve. Skipped only when there is no client output at all.
-      if (existsSync(clientOut)) await writeAssetManifest(clientOut, pages, base);
+      if (existsSync(clientOut)) await writeAssetManifest(clientOut, pages, base, hashedAssets);
     },
 
     configResolved(config) {
@@ -1139,8 +1311,8 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       const environment = viteServer.environments[ENVIRONMENTS.server];
       if (!isRunnableDevEnvironment(environment)) {
         throw new Error(
-          `[barq-start] the \`${ENVIRONMENTS.server}\` environment is not runnable, so server ` +
-            "functions cannot be answered in dev",
+          `[barq-start] The \`${ENVIRONMENTS.server}\` environment cannot run modules in this dev server, so pages cannot be rendered and server functions cannot be answered. ` +
+            "Leave that environment's `dev.createEnvironment` at Vite's default, which is runnable.",
         );
       }
 
@@ -1174,11 +1346,15 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       // HTML document a client would then try to parse as a value.
       viteServer.middlewares.use((req, res, next) => {
         const path = pathOf(req);
-        req.url = path;
         if (!path.startsWith(RPC_PREFIX)) {
           next();
           return;
         }
+        // Only once the request is OURS. `baseMiddleware` runs after this hook
+        // and answers anything outside the base itself, so a stripped url left
+        // on a request passed along is one it redirects back into the base, or
+        // 404s: every page and every one of Vite's own modules.
+        req.url = path;
         void (async () => {
           try {
             // Through the module runner, so a server function edited on disk is
@@ -1187,8 +1363,15 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
               "@barqjs/start/server",
             )) as typeof import("./server.ts");
             await environment.runner.import(MANIFEST_ID);
+            // What registers the application's global middleware. A call can
+            // arrive before any page has imported it.
+            await environment.runner.import(START_ENTRY_ID);
 
-            const response = await start.handleServerFn(new NodeRequest({ req, res }), options);
+            const response = await start.handleServerFn(new NodeRequest({ req, res }), {
+              allowedOrigins: options.allowedOrigins,
+              maxBodySize: options.server?.maxBodySize,
+              maxFormSize: options.server?.maxFormSize,
+            });
             if (response === null) {
               next();
               return;
@@ -1244,12 +1427,15 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
           typeof entry.default?.createFetch === "function"
             ? entry.default.createFetch({
                 transformShell: (shell: string, url: URL) => transformShell(viteServer, shell, url),
+                // SPA mode in dev is what it is deployed as: every page path
+                // answered with the shell, rendered here on request.
+                ...(spaMode ? { pages: true, shell: true } : {}),
               })
             : entry.default?.fetch;
         if (typeof fetchPage !== "function") {
           throw new Error(
-            `[barq-start] ${SERVER_ENTRY_ID} must default-export \`createStartHandler()\` ` +
-              "or `{ fetch(request): Response }`",
+            `[barq-start] The server entry \`${SERVER_ENTRY_ID}\` has no usable default export, so no page can be answered. ` +
+              "Default-export `createStartHandler()` from `@barqjs/router/server`, or an object with `fetch(request)` that returns a `Response`.",
           );
         }
         built = { from: entry, fetch: fetchPage };
@@ -1303,7 +1489,83 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
     entries,
     manifest,
     dev,
+    ...((options.importProtection ?? true)
+      ? [
+          importProtection(
+            (file) => found.has(file),
+            () => root,
+          ),
+        ]
+      : []),
   ];
+}
+
+/** `db.server.ts`, `db.server.tsx`, `db.server.mjs`: the side is the last word before the extension. */
+const SIDE_MARKED = { server: /\.server\.[cm]?[jt]sx?$/, client: /\.client\.[cm]?[jt]sx?$/ };
+
+/**
+ * Refuse a bundle that holds code from the other side's files.
+ *
+ * `generateBundle` and not `resolveId`, which is where a deny-list is usually
+ * put and where it is wrong twice over. An import is resolved whether or not
+ * anything of the module survives: a route that names `db.server.ts` only
+ * inside a `createServerOnlyFn` body has that body removed by the compiler and
+ * the import shaken out by the bundler, and refusing it at resolve time would
+ * refuse the pattern the convention exists for. And what matters is not who
+ * imported the file but whether its code is in the output, which only the
+ * rendered chunk can say.
+ */
+function importProtection(
+  isServerFnModule: (file: string) => boolean,
+  rootOf: () => string,
+): Plugin {
+  return {
+    name: "barq-start:import-protection",
+    sharedDuringBuild: true,
+    generateBundle(_output, bundle) {
+      const context = this as unknown as {
+        environment?: { name?: string };
+        getModuleInfo: (id: string) => { importers: readonly string[] } | null;
+        error: (message: string) => never;
+      };
+      const environment = context.environment?.name;
+      const inBrowser = environment === ENVIRONMENTS.client;
+      if (!inBrowser && environment !== ENVIRONMENTS.server) return;
+      const foreign = inBrowser ? SIDE_MARKED.server : SIDE_MARKED.client;
+      const root = rootOf();
+      const shown = (id: string): string =>
+        relative(root, id.split("?")[0] ?? id).replaceAll("\\", "/");
+
+      const leaked = new Map<string, readonly string[]>();
+      for (const chunk of Object.values(bundle)) {
+        if (chunk.type !== "chunk") continue;
+        for (const [id, module] of Object.entries(chunk.modules)) {
+          const file = id.split("?")[0] ?? id;
+          if (module.renderedLength === 0 || !foreign.test(file)) continue;
+          if (file.includes("/node_modules/")) continue;
+          if (inBrowser && isServerFnModule(file)) continue;
+          leaked.set(file, context.getModuleInfo(id)?.importers ?? []);
+        }
+      }
+      if (leaked.size === 0) return;
+
+      const lines = [...leaked].map(
+        ([file, importers]) =>
+          `  ${shown(file)}` + importers.map((from) => `\n    imported by ${shown(from)}`).join(""),
+      );
+      context.error(
+        inBrowser
+          ? "[barq-start] Code from a `.server.` module is in the browser bundle, where anyone can read it:\n" +
+              `${lines.join("\n")}\n` +
+              "Call it from a server function, or inside `createServerOnlyFn(() => ...)`, so the browser build drops it. " +
+              "`barqStart({ importProtection: false })` turns this check off."
+          : "[barq-start] Code from a `.client.` module is in the server bundle, where it cannot run:\n" +
+              `${lines.join("\n")}\n` +
+              "Call it inside `createClientOnlyFn(() => ...)`, or only from code that runs in the browser. " +
+              "`barqStart({ importProtection: false })` turns this check off.",
+      );
+    },
+  };
 }
 
 function manifestModule(
@@ -1335,9 +1597,9 @@ function manifestModule(
       const previous = claimed.get(id);
       if (previous !== undefined && previous !== file) {
         throw new Error(
-          `[barq-start] two modules claim the server-function id ${id}:\n  ${previous}\n  ${file}\n` +
-            "An id is the module's root-relative path plus the export name, so this means two " +
-            "paths normalise to one — a symlink, or a case-insensitive filesystem.",
+          `[barq-start] Two modules give a server function the same id \`${id}\`, so calls to one would run the other:\n  ${previous}\n  ${file}\n` +
+            "The id is the module's path from the project root plus the export name, so both paths resolve to one file: " +
+            "look for a symlink, or two imports that differ only in letter case.",
         );
       }
       claimed.set(id, file);

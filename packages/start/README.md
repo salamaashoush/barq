@@ -20,6 +20,11 @@ export const createPost = createServerFn()
   .handler(async ({ data, context, signal }) => db.posts.insert(data));
 ```
 
+`.inputValidator` is the same method under TanStack's name. Both take a Standard
+Schema, a function that returns the validated value or throws, or an object with
+a `parse`; what it produces is the type of `data`. A function handed a form
+receives the `FormData` itself.
+
 Call it like a function. It is an HTTP endpoint:
 
 ```tsx
@@ -40,6 +45,47 @@ takes anything.
 refusal that says why: a mutation reachable by navigation is a link that mutates,
 and it has shipped that way elsewhere as a one-click CSRF carrying `SameSite=Lax`
 cookies.
+
+A call takes three options beside `data`:
+
+```ts
+const controller = new AbortController();
+await createPost({
+  data: { title: "Hello" },
+  signal: controller.signal, // cancels the fetch; the handler's `signal` follows the request
+  headers: { "x-trace": id }, // wins over a client middleware's `next({ headers })`
+  fetch: tracedFetch, // in place of the global one
+});
+```
+
+A failed call rejects with `ServerFnError`. It carries the `status`, and the
+`response` itself, so a refusal a middleware wrote
+(`throw new Response("sign in first", { status: 401 })`) can be read by the
+caller. A handler's own error is answered with one fixed line and nothing else.
+
+`throw redirect({ to, params, search, hash, replace, reloadDocument, href })`
+and `throw notFound({ data, routeId })` from a handler reach the caller with
+everything they said, and their `headers` leave on the response. `useServerFn`
+from `@barqjs/router` navigates on the redirect. A redirect whose `params` or
+`search` is a function cannot cross and arrives as its resolved target alone.
+
+`fn.url` is the address `<form action={fn}>` posts to.
+
+### Streaming
+
+A handler that returns an async generator, or a `ReadableStream` of values,
+answers over time. The caller reads an async iterable of the same values:
+
+```ts
+export const ticks = createServerFn().handler(async function* () {
+  for (const row of await rows()) yield { row, at: new Date() };
+});
+
+for await (const { row, at } of await ticks()) render(row, at);
+```
+
+Leaving the loop early stops the generator. A failure after the first value ends
+the iterable with a `ServerFnError`.
 
 ### With JavaScript off
 
@@ -115,6 +161,11 @@ a module variable: two requests are in flight at once on any real server, and a
 module variable hands one request's session to another — which has shipped
 elsewhere as cross-user data disclosure.
 
+`setCookie` and `deleteCookie` default to `path: "/"`. A browser would otherwise
+scope the cookie to `/_barq/fn`, the directory of the URL that set it, and no
+page would receive it. `appendResponseHeader` adds to a list header such as
+`Vary`, where `setResponseHeader` replaces.
+
 `setResponseHeader` and `setCookie` write to a DRAFT, because the response is
 built after the handler returns and a streamed response is handed back before
 its body exists. The draft rides an error out too, so a middleware that rotated
@@ -145,6 +196,12 @@ session.
 The expiry is enforced on UNSEAL as well as on the cookie, because a cookie's
 own expiry is a request the client is free to ignore.
 
+The cookie's NAME is under the seal. Two sessions sharing a password (`name:
+"barq-session-admin"` beside the default) are two sessions: a value issued under
+one name does not open under the other. Envelopes start `b2.`; a `b1.` cookie
+from an older release opens until it expires, under any name, and is sealed as
+`b2` the next time the session is updated.
+
 The password is a KEY: anyone holding it can mint a session for any user.
 Rotating it logs everyone out, which is the intended way to do that.
 
@@ -173,7 +230,45 @@ Neither `key` nor `store` has a default, and that is the point:
   balancer, where three instances permit three times the limit.
 
 `byIP()` does not trust `X-Forwarded-For` unless you ask, because a caller who
-can set that header picks their own bucket.
+can set that header picks their own bucket. There are two ways to ask:
+
+- `byIP({ xForwardedFor: true })` reads the leftmost entry. That is the client
+  only when your edge proxy OVERWRITES the header. Behind one that appends, the
+  leftmost entry is whatever the caller sent.
+- `byIP({ xForwardedFor: { trustedProxies: 1 } })` counts from the right: the
+  entry the nth proxy you run wrote. A forged prefix is never read, and a
+  header with fewer entries than proxies is ignored.
+
+### Global middleware
+
+`src/start.ts` declares what runs for the whole application:
+
+```ts
+import { createMiddleware, createStart } from "@barqjs/start";
+
+const logging = createMiddleware({ type: "request" }).server(
+  async ({ next, request, pathname }) => {
+    const started = performance.now();
+    const response = await next({ context: { requestId: crypto.randomUUID() } });
+    log(request.method, pathname, performance.now() - started);
+    return response;
+  },
+);
+
+export const startInstance = createStart(() => ({
+  requestMiddleware: [logging], // every page, route handler and server function
+  functionMiddleware: [requireSession], // every server function, ahead of its own chain
+}));
+```
+
+The order is global request, global function, then the function's own. What a
+request middleware passes to `next({ context })` starts every server function's
+`context`, reaches a route handler's, and is `getGlobalStartContext()` anywhere
+in the request. A `{ type: "function" }` middleware may have a `.client()` half,
+which runs in the browser around every call.
+
+A global request middleware runs after a call has passed the method, origin and
+id checks, and before its body is read, so a forged request reaches none of it.
 
 ## The build and the server
 
@@ -205,6 +300,59 @@ build` imports to prerender.
 then server functions, then the page handler. The static lookup costs 0.33 µs
 per request against the 0.75 µs a `statSync` costs, and a prerendered page keeps
 the status it was rendered as.
+
+Prerendering takes three more options:
+
+```ts
+barqStart({
+  prerender: {
+    routes: ["/", "/404"],
+    retryCount: 2, // ask again after a throw or a 5xx; a 4xx is an answer
+    retryDelay: 500, // ms between attempts
+    sitemap: { host: "https://example.com" }, // outputPath defaults to sitemap.xml
+  },
+});
+```
+
+The sitemap lists every page written with a 2xx, sorted. A page prerendered at
+`/404` is left out of it and is also written to `404.html` at the root, the name
+a static host serves for a path it has no file for.
+
+SPA mode renders the pages in the browser from one shell:
+
+```ts
+barqStart({ spa: { enabled: true, maskPath: "/", prerender: { outputPath: "/_shell.html" } } });
+```
+
+The build renders the root route once, with nothing under it, and writes that
+document. The server then renders no pages: a navigation nothing else answers
+gets the shell, and server functions and route handlers answer as before.
+
+Under `static`, a name the build hashed (everything it emitted under
+`build.assetsDir`) is answered `max-age=31536000, immutable`. A file with a
+stable name, and every prerendered page, gets an `ETag` and a 304 instead.
+
+Behind a proxy that terminates TLS, tell the generated server so, or the origin
+check sees `http://` where the browser said `https://` and refuses every server
+function:
+
+```ts
+barqStart({
+  server: {
+    trustProxy: "loopback", // or true, or the proxy addresses
+    allowedOrigins: ["https://admin.example.com"], // beyond the server's own
+  },
+});
+```
+
+### Server-only and client-only files
+
+`db.server.ts` is for what must not leave the server, `chart.client.ts` for what
+cannot run there. `vite build` fails when code from a `.server.` file is in a
+browser chunk or code from a `.client.` file is in the server bundle, naming the
+file and what imported it. It reads the rendered bundle, so a `.server.` import
+used only inside `createServerOnlyFn`, or a module whose exports are server
+functions, is not a violation. `importProtection: false` turns it off.
 
 Deployment goes through [srvx](https://github.com/h3js/srvx), so Node, Bun, Deno
 and Cloudflare take the same entry.
