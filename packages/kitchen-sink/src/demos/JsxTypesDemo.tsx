@@ -16,7 +16,7 @@ import {
   type RefCallback,
   Show,
   type VoidProps,
-  signal,
+  createSignal,
 } from "@barqjs/core";
 import { atoms, css } from "@barqjs/css";
 import { Button, DemoCard, DemoSection, Log } from "./shared";
@@ -128,14 +128,14 @@ export function JsxTypesDemo() {
 // ============================================================================
 
 function ReactiveAttributesDemo() {
-  const text = signal("Hello");
-  const disabled = signal(false);
-  const hidden = signal(false);
-  const className = signal("default");
-  const logs = signal<string[]>([]);
+  const [text, setText] = createSignal("Hello");
+  const [disabled, setDisabled] = createSignal(false);
+  const [hidden, setHidden] = createSignal(false);
+  const [className, setClassName] = createSignal("default");
+  const [logs, setLogs] = createSignal<string[]>([]);
 
   const addLog = (msg: string) => {
-    logs.update((prev) => [...prev.slice(-4), `${new Date().toLocaleTimeString()}: ${msg}`]);
+    setLogs((prev) => [...prev.slice(-4), `${new Date().toLocaleTimeString()}: ${msg}`]);
   };
 
   return (
@@ -146,7 +146,7 @@ function ReactiveAttributesDemo() {
           value={text()}
           onInput={(e: Event) => {
             const value = (e.target as HTMLInputElement).value;
-            text.set(value);
+            setText(value);
             addLog(`Input changed to "${value}"`);
           }}
           class={inputStyle}
@@ -165,7 +165,7 @@ function ReactiveAttributesDemo() {
           {() => (disabled() ? "Disabled" : "Click Me")}
         </button>
 
-        <Button onClick={() => disabled.update((d) => !d)}>Toggle Disabled</Button>
+        <Button onClick={() => setDisabled((d) => !d)}>Toggle Disabled</Button>
       </div>
 
       <div class={rowStyle}>
@@ -174,7 +174,7 @@ function ReactiveAttributesDemo() {
           This box can be hidden
         </div>
 
-        <Button onClick={() => hidden.update((h) => !h)}>
+        <Button onClick={() => setHidden((h) => !h)}>
           Toggle Hidden ({() => (hidden() ? "show" : "hide")})
         </Button>
       </div>
@@ -192,13 +192,13 @@ function ReactiveAttributesDemo() {
         </div>
 
         <div class={buttonRowStyle}>
-          <Button variant="secondary" onClick={() => className.set("default")}>
+          <Button variant="secondary" onClick={() => setClassName("default")}>
             Default
           </Button>
-          <Button variant="secondary" onClick={() => className.set("active")}>
+          <Button variant="secondary" onClick={() => setClassName("active")}>
             Active
           </Button>
-          <Button variant="danger" onClick={() => className.set("error")}>
+          <Button variant="danger" onClick={() => setClassName("error")}>
             Error
           </Button>
         </div>
@@ -216,11 +216,11 @@ function ReactiveAttributesDemo() {
 // ============================================================================
 
 function EventHandlersDemo() {
-  const logs = signal<string[]>([]);
-  const coords = signal({ x: 0, y: 0 });
+  const [logs, setLogs] = createSignal<string[]>([]);
+  const [coords, setCoords] = createSignal({ x: 0, y: 0 });
 
   const addLog = (msg: string) => {
-    logs.update((prev) => [...prev.slice(-4), msg]);
+    setLogs((prev) => [...prev.slice(-4), msg]);
   };
 
   return (
@@ -273,7 +273,7 @@ function EventHandlersDemo() {
       {/* Mouse position tracking */}
       <div
         onMouseMove={(e) => {
-          coords.set({ x: e.clientX, y: e.clientY });
+          setCoords({ x: e.clientX, y: e.clientY });
         }}
         class={trackingAreaStyle}
       >
@@ -296,29 +296,33 @@ function EventHandlersDemo() {
 // ============================================================================
 
 function RefTypesDemo() {
-  const logs = signal<string[]>([]);
+  // A ref callback runs while its component is still being built, and a signal
+  // written from one says so with `ownedWrite`.
+  const [logs, setLogs] = createSignal<string[]>([], { ownedWrite: true });
 
   // Test different ref patterns. The `{current}` box is gone with `useRef`:
   // a ref is either a writable binding (B3, an assignment) or a callback.
   let refVariable: HTMLInputElement | null = null;
-  const refSignal = signal<HTMLInputElement | null>(null);
+  const [refSignal, setRefSignal] = createSignal<HTMLInputElement | null>(null, {
+    ownedWrite: true,
+  });
 
   const refCallback: RefCallback<HTMLInputElement> = (el) => {
-    logs.update((prev) => [...prev, "RefCallback invoked"]);
+    setLogs((prev) => [...prev, "RefCallback invoked"]);
   };
 
   const focusRef = () => {
     const el = refSignal();
     if (el) {
       el.focus();
-      logs.update((prev) => [...prev, "Focused via signal ref"]);
+      setLogs((prev) => [...prev, "Focused via signal ref"]);
     }
   };
 
   const focusVariable = () => {
     if (refVariable) {
       refVariable.focus();
-      logs.update((prev) => [...prev, "Focused via variable ref"]);
+      setLogs((prev) => [...prev, "Focused via variable ref"]);
     }
   };
 
@@ -326,7 +330,7 @@ function RefTypesDemo() {
     <DemoCard title="Ref Types">
       <div class={rowStyle}>
         <label>Signal ref:</label>
-        <input type="text" ref={refSignal.set} class={inputStyle} placeholder="Signal ref" />
+        <input type="text" ref={setRefSignal} class={inputStyle} placeholder="Signal ref" />
         <Button onClick={focusRef}>Focus</Button>
       </div>
 
@@ -351,7 +355,7 @@ function RefTypesDemo() {
       {/* Ref via component prop */}
       <div class={rowStyle}>
         <label>Component prop:</label>
-        <RefInput inputRef={refSignal.set} />
+        <RefInput inputRef={setRefSignal} />
       </div>
 
       <Log logs={logs()} />
@@ -368,7 +372,7 @@ function RefTypesDemo() {
 // ============================================================================
 
 function HelperTypesDemo() {
-  const count = signal(0);
+  const [count, setCount] = createSignal(0);
 
   return (
     <DemoCard title="Helper Types">
@@ -395,7 +399,7 @@ function HelperTypesDemo() {
 
       {/* Accessor and FunctionMaybe */}
       <div class={rowStyle}>
-        <Button onClick={() => count.update((c) => c + 1)}>Increment</Button>
+        <Button onClick={() => setCount((c) => c + 1)}>Increment</Button>
         <ReactiveDisplay value="Static string" count={count} />
       </div>
 
@@ -415,8 +419,8 @@ function HelperTypesDemo() {
 // ============================================================================
 
 function StyleAttributesDemo() {
-  const size = signal(100);
-  const color = signal("#3b82f6");
+  const [size, setSize] = createSignal(100);
+  const [color, setColor] = createSignal("#3b82f6");
 
   return (
     <DemoCard title="Style Attributes">
@@ -447,7 +451,7 @@ function StyleAttributesDemo() {
           min="50"
           max="200"
           value={size()}
-          onInput={(e: Event) => size.set(Number.parseInt((e.target as HTMLInputElement).value))}
+          onInput={(e: Event) => setSize(Number.parseInt((e.target as HTMLInputElement).value))}
         />
       </div>
 
@@ -456,7 +460,7 @@ function StyleAttributesDemo() {
         <input
           type="color"
           value={color()}
-          onInput={(e: Event) => color.set((e.target as HTMLInputElement).value)}
+          onInput={(e: Event) => setColor((e.target as HTMLInputElement).value)}
         />
       </div>
 
@@ -472,8 +476,8 @@ function StyleAttributesDemo() {
 // ============================================================================
 
 function AriaAndDataDemo() {
-  const expanded = signal(false);
-  const progress = signal(50);
+  const [expanded, setExpanded] = createSignal(false);
+  const [progress, setProgress] = createSignal(50);
 
   return (
     <DemoCard title="ARIA & Data Attributes">
@@ -483,7 +487,7 @@ function AriaAndDataDemo() {
           aria-expanded={expanded}
           aria-controls="expandable-content"
           aria-label="Toggle content visibility"
-          onClick={() => expanded.update((e) => !e)}
+          onClick={() => setExpanded((e) => !e)}
           class={buttonStyle}
         >
           {() => (expanded() ? "Collapse" : "Expand")} (aria-expanded)
@@ -518,9 +522,7 @@ function AriaAndDataDemo() {
           min="0"
           max="100"
           value={progress()}
-          onInput={(e: Event) =>
-            progress.set(Number.parseInt((e.target as HTMLInputElement).value))
-          }
+          onInput={(e: Event) => setProgress(Number.parseInt((e.target as HTMLInputElement).value))}
         />
       </div>
 

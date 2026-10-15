@@ -35,7 +35,7 @@ interface ShapeCase {
   solidUses: string[];
 }
 
-const SIGNAL_PRELUDE_BARQ = `import { signal } from "@barqjs/core";\nconst s = signal(0);\n`;
+const SIGNAL_PRELUDE_BARQ = `import { createSignal } from "@barqjs/core";\nconst [s] = createSignal(0);\n`;
 const SIGNAL_PRELUDE_SOLID = `import { createSignal } from "solid-js";\nconst [s] = createSignal(0);\n`;
 
 const cases: ShapeCase[] = [
@@ -209,7 +209,7 @@ const LIVENESS: LivenessProbe[] = [
 ];
 
 interface Live {
-  s: { set(v: number): void };
+  setS: (v: number) => void;
   C: () => HTMLElement;
 }
 
@@ -225,14 +225,14 @@ if (solidWeb.isServer) {
   const surprises: string[] = [];
   for (const probe of LIVENESS) {
     const source =
-      `import { signal } from "@barqjs/core";\n` +
-      `export const s = signal(1);\n` +
+      `import { createSignal } from "@barqjs/core";\n` +
+      `export const [s, setS] = createSignal(1);\n` +
       `export const C = () => ${probe.jsx};\n`;
     const mod = await loadModule<Live>(compileBarq(source, "liveness.tsx", false), "liveness");
     const el = mod.C();
     core.flush();
     const before = probe.read(el);
-    mod.s.set(7);
+    mod.setS(7);
     core.flush();
     const after = probe.read(el);
     const observed = before === after ? "static by design" : "live";

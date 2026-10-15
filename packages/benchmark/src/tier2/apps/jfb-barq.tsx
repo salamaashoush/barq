@@ -18,7 +18,7 @@
  * 2. barq's `For` is identity-keyed by default, which
  *     is what "keyed" means here, so no `keyed` prop is written.
  */
-import { For, batch, render, signal } from "@barqjs/core"
+import { type Accessor, type Setter, For, flush, render, createSignal } from "@barqjs/core"
 
 const adjectives = ["pretty", "large", "big", "small", "tall", "short", "long", "handsome", "plain", "quaint", "clean", "elegant", "easy", "angry", "crazy", "helpful", "mushy", "odd", "unsightly", "adorable", "important", "inexpensive", "cheap", "expensive", "fancy"] // prettier-ignore
 const colors = ["red", "yellow", "blue", "green", "pink", "brown", "purple", "brown", "white", "black", "orange"] // prettier-ignore
@@ -30,44 +30,45 @@ let nextId = 1
 
 interface Row {
   id: number
-  label: { (): string; set(v: string): void; update(fn: (p: string) => string): void }
+  label: Accessor<string>
+  setLabel: Setter<string>
 }
 
 function buildData(count: number): Row[] {
   const data = new Array<Row>(count)
   for (let i = 0; i < count; i++) {
-    const label = signal(
+    const [label, setLabel] = createSignal(
       `${adjectives[random(adjectives.length)]} ${colors[random(colors.length)]} ${nouns[random(nouns.length)]}`,
     )
-    data[i] = { id: nextId++, label }
+    data[i] = { id: nextId++, label, setLabel }
   }
   return data
 }
 
-const data = signal<Row[]>([])
-const selected = signal<number | null>(null)
+const [data, setData] = createSignal<Row[]>([])
+const [selected, setSelected] = createSignal<number | null>(null)
 
-const run = () => data.set(buildData(1_000))
-const runLots = () => data.set(buildData(10_000))
-const add = () => data.update((prev) => [...prev, ...buildData(1_000)])
+const run = () => setData(buildData(1_000))
+const runLots = () => setData(buildData(10_000))
+const add = () => setData((prev) => [...prev, ...buildData(1_000)])
 const update = () =>
-  batch(() => {
+  flush(() => {
     const d = data()
-    for (let i = 0, len = d.length; i < len; i += 10) d[i].label.update((l) => `${l} !!!`)
+    for (let i = 0, len = d.length; i < len; i += 10) d[i].setLabel((l) => `${l} !!!`)
   })
-const clear = () => data.set([])
+const clear = () => setData([])
 const swapRows = () => {
   const list = data().slice()
   if (list.length > 998) {
     const item = list[1]
     list[1] = list[998]
     list[998] = item
-    data.set(list)
+    setData(list)
   }
 }
 const remove = (id: number) => {
   const d = data()
-  data.set(d.toSpliced(d.findIndex((row) => row.id === id), 1))
+  setData(d.toSpliced(d.findIndex((row) => row.id === id), 1))
 }
 
 function App() {
@@ -131,7 +132,7 @@ function App() {
               <tr class={() => (selected() === row.id ? "danger" : "")}>
                 <td class="col-md-1">{row.id}</td>
                 <td class="col-md-4">
-                  <a onClick={() => selected.set(row.id)}>{() => row.label()}</a>
+                  <a onClick={() => setSelected(row.id)}>{() => row.label()}</a>
                 </td>
                 <td class="col-md-1">
                   <a onClick={() => remove(row.id)}>

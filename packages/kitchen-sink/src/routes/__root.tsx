@@ -7,8 +7,8 @@
  */
 
 import { type Child, For } from "@barqjs/core";
-import { QueryClient } from "@tanstack/query-core";
 import { QueryClientProvider } from "@barqjs/query";
+import { useRouterQueryClient } from "@barqjs/query/router";
 // The ISOMORPHIC entry, not `/server`: this module is the ROOT ROUTE and ships
 // to the browser like every other route module. `@barqjs/router/server` reaches
 // `node:async_hooks`, and importing it here made Vite externalise that for the
@@ -24,10 +24,11 @@ import {
 
 import { css, globalCss } from "@barqjs/css";
 
-// The global rules and the query client live HERE, not in an entry. A root
-// route's component wraps every route on BOTH backends, where an entry wraps
-// only the one it is the entry for — which is TanStack's arrangement too: their
-// providers go in `__root.tsx` and their entries carry nothing but the boot.
+// The global rules and the query client's provider live HERE, not in an entry.
+// A root route's component wraps every route on BOTH backends, where an entry
+// wraps only the one it is the entry for — which is TanStack's arrangement too:
+// their providers go in `__root.tsx` and their entries carry nothing but the
+// boot. The client itself is made in `src/router.ts`, one for each request.
 //
 // A plain top-level call, where it used to be a `baseStyles()` function the
 // document called: the ordering it existed to control was goober's, and the
@@ -47,10 +48,6 @@ globalCss`
   button { cursor: pointer; font-family: inherit; }
   input, select, textarea { font-family: inherit; }
 `;
-
-const queryClient = new QueryClient({
-  defaultOptions: { queries: { staleTime: 5000, retry: 1 } },
-});
 
 /**
  * The DOCUMENT, and only a root route may declare one.
@@ -93,7 +90,7 @@ export const sections = [
   { id: "signals", label: "Signals & State" },
   { id: "components", label: "Components" },
   { id: "store", label: "Store" },
-  { id: "async", label: "Async & Resources" },
+  { id: "async", label: "Async & Boundaries" },
   { id: "css", label: "CSS-in-JS" },
   { id: "hooks", label: "Utility Hooks" },
   { id: "query", label: "TanStack Query" },
@@ -119,6 +116,7 @@ globalCss`
 
 function Layout() {
   const location = useLocation();
+  const queryClient = useRouterQueryClient();
   const title = () => {
     const path = location().pathname;
     if (path === "/") return "Signals & State";

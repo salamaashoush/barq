@@ -4,7 +4,7 @@
  * dynamic, props, firstThatWorks, and the application's own token helpers
  */
 
-import { type Incoming, signal } from "@barqjs/core";
+import { type Incoming, createSignal } from "@barqjs/core";
 import {
   atoms,
   create,
@@ -124,7 +124,7 @@ function StyledDemo() {
 
 // Keyframe animations
 function KeyframeDemo() {
-  const animating = signal(false);
+  const [animating, setAnimating] = createSignal(false);
 
   const pulse = keyframes`
     0%, 100% {
@@ -169,7 +169,7 @@ function KeyframeDemo() {
 
   return (
     <DemoCard title="keyframe - Animations">
-      <Button onClick={() => animating.update((a) => !a)}>
+      <Button onClick={() => setAnimating((a) => !a)}>
         {() => (animating() ? "Stop" : "Start")} Animations
       </Button>
 
@@ -208,9 +208,9 @@ function KeyframeDemo() {
 
 // atoms: composing classes
 function ClsxDemo() {
-  const active = signal(false);
-  const disabled = signal(false);
-  const size = signal<"sm" | "md" | "lg">("md");
+  const [active, setActive] = createSignal(false);
+  const [disabled, setDisabled] = createSignal(false);
+  const [size, setSize] = createSignal<"sm" | "md" | "lg">("md");
 
   const baseClass = css`
     padding: 12px 24px;
@@ -250,11 +250,11 @@ function ClsxDemo() {
   return (
     <DemoCard title="atoms - class composition">
       <div class={buttonRowStyle}>
-        <Button onClick={() => active.update((a) => !a)}>Toggle Active</Button>
-        <Button onClick={() => disabled.update((d) => !d)}>Toggle Disabled</Button>
-        <Button onClick={() => size.set("sm")}>Small</Button>
-        <Button onClick={() => size.set("md")}>Medium</Button>
-        <Button onClick={() => size.set("lg")}>Large</Button>
+        <Button onClick={() => setActive((a) => !a)}>Toggle Active</Button>
+        <Button onClick={() => setDisabled((d) => !d)}>Toggle Disabled</Button>
+        <Button onClick={() => setSize("sm")}>Small</Button>
+        <Button onClick={() => setSize("md")}>Medium</Button>
+        <Button onClick={() => setSize("lg")}>Large</Button>
       </div>
 
       <div class={computedClass} style={{ background: active() ? undefined : "#475569" }}>
@@ -272,8 +272,8 @@ function ClsxDemo() {
 
 // variants (CVA-like)
 function VariantsDemo() {
-  const intent = signal<"primary" | "secondary" | "danger">("primary");
-  const size = signal<"sm" | "md" | "lg">("md");
+  const [intent, setIntent] = createSignal<"primary" | "secondary" | "danger">("primary");
+  const [size, setSize] = createSignal<"sm" | "md" | "lg">("md");
 
   const button = variants({
     base: css`
@@ -335,7 +335,7 @@ function VariantsDemo() {
           class={selectStyle}
           value={intent()}
           onChange={(e: Event) =>
-            intent.set(
+            setIntent(
               (e.target as HTMLSelectElement).value as typeof intent extends () => infer T
                 ? T
                 : never,
@@ -351,7 +351,7 @@ function VariantsDemo() {
           class={selectStyle}
           value={size()}
           onChange={(e: Event) =>
-            size.set(
+            setSize(
               (e.target as HTMLSelectElement).value as typeof size extends () => infer T
                 ? T
                 : never,
@@ -421,7 +421,7 @@ function ThemeDemo() {
  * away, and the only thing that moves is one property on one element.
  */
 function CssVarDemo() {
-  const hue = signal(220);
+  const [hue, setHue] = createSignal(220);
 
   return (
     <DemoCard title="a reactive custom property">
@@ -430,7 +430,7 @@ function CssVarDemo() {
         min="0"
         max="360"
         value={hue()}
-        onInput={(e: Event) => hue.set(Number((e.target as HTMLInputElement).value))}
+        onInput={(e: Event) => setHue(Number((e.target as HTMLInputElement).value))}
         class={rangeStyle}
       />
       <p>Hue: {hue}</p>
@@ -543,7 +543,7 @@ const conditioned = atoms({
 });
 
 function AtomsDemo() {
-  const loud = signal(false);
+  const [loud, setLoud] = createSignal(false);
 
   return (
     <DemoCard title="atoms & create - merged by property">
@@ -564,7 +564,7 @@ function AtomsDemo() {
           A media query with a pseudo-class inside it
         </p>
       </div>
-      <Button onClick={() => loud.update((on) => !on)}>Toggle variant</Button>
+      <Button onClick={() => setLoud((on) => !on)}>Toggle variant</Button>
       <p class={noteStyle}>
         Compiled: every class above is a string literal in the bundle, and the CSS is a build asset.
       </p>
@@ -612,7 +612,7 @@ function TokensDemo() {
 const tint = dynamic((colour: string) => ({ backgroundColor: colour }));
 
 function DynamicDemo() {
-  const hot = signal(false);
+  const [hot, setHot] = createSignal(false);
 
   return (
     <DemoCard title="dynamic - a value only known at run time">
@@ -622,7 +622,7 @@ function DynamicDemo() {
       >
         One custom property changes; no new CSS is produced
       </p>
-      <Button onClick={() => hot.update((on) => !on)} data-testid="toggle">
+      <Button onClick={() => setHot((on) => !on)} data-testid="toggle">
         Toggle colour
       </Button>
     </DemoCard>

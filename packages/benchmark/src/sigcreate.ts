@@ -1,5 +1,5 @@
-import { signal } from "@barqjs/core";
-import { createSignal } from "@solidjs/signals";
+import { createSignal } from "@barqjs/core";
+import { createSignal as solidCreateSignal } from "@solidjs/signals";
 function bench(name: string, fn: () => unknown): void {
   for (let i = 0; i < 50000; i++) fn();
   Bun.gc(true);
@@ -12,6 +12,6 @@ function bench(name: string, fn: () => unknown): void {
   }
   console.log(`${name.padEnd(40)}${best.toFixed(1).padStart(7)} ns`);
 }
-bench("barq signal(0)", () => signal(0));
-bench("solid2 createSignal(0)", () => createSignal(0));
-bench("barq signal(0) w/ options", () => signal(0, { name: "x" }));
+bench("barq signal(0)", () => createSignal(0));
+bench("solid2 createSignal(0)", () => solidCreateSignal(0));
+bench("barq signal(0) w/ options", () => createSignal(0, { name: "x" }));

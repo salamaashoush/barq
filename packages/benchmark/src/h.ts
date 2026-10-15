@@ -3,7 +3,7 @@
  *
  * `createElement` is gone: there is one calling convention and no un-compiled
  * authoring path, so the runtime no longer carries a second implementation of
- * component invocation. What survives is `element(scope, tag, props)` — the
+ * component invocation. What survives is `element(tag, props)` — the
  * build-by-name path a template cannot express — and it does the same work the
  * old builder did, through the same `spread` and `insert` entry points a
  * compiled element goes through.
@@ -24,10 +24,9 @@ import {
   type Block,
   type Cell,
   type Child,
-  type Scope,
   block,
   branch,
-  root,
+  createRoot,
   each,
   element,
   getOwner,
@@ -42,12 +41,12 @@ export function h(tag: string, props: Props, ...children: Child[]): Node {
     if (children.length > 0) {
       record.children = children.length === 1 ? children[0] : children;
     }
-    return element(getOwner(), tag, record);
+    return element(tag, record);
   };
   // Every prop write is scope-owned (B4/O4.5), so a builder called outside any
   // owner needs one. `createElement` reached for `getOwner()` and threw the
   // same way; opening a root here is what keeps a bench a bench.
-  return getOwner() === null ? root(build) : build();
+  return getOwner() === null ? createRoot(build) : build();
 }
 
 /** `Show`, as the `branch` it always reached. */
@@ -60,20 +59,10 @@ export function Show(
     fallback === undefined ? null : (block(fallback) as Block<unknown>),
     block(body) as Block<unknown>,
   ];
-  return branch(getOwner() as Scope | null, null, null, () => (when() ? 1 : 0), bodies);
+  return branch(null, null, () => (when() ? 1 : 0), bodies);
 }
 
 /** `For`, as the `each` it always reached. Identity-keyed, which is the default. */
-export function For<T>(
-  source: Cell<readonly T[]>,
-  row: (scope: Scope | null, item: Cell<T>) => Child,
-): Node | null {
-  return each(
-    getOwner() as Scope | null,
-    null,
-    null,
-    source,
-    null,
-    block(row) as unknown as Block<unknown, never[]>,
-  );
+export function For<T>(source: Cell<readonly T[]>, row: (item: T) => Child): Node | null {
+  return each(null, null, source, null, block(row));
 }

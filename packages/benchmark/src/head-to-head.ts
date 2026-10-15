@@ -4,11 +4,11 @@
  * Run: bun run src/head-to-head.ts
  */
 import {
-  computed as bComputed,
-  scope as bScope,
-  effect as bEffect,
+  createMemo as bComputed,
+  createRoot as bScope,
+  createTrackedEffect as bEffect,
   flush as bFlush,
-  signal as bSignal,
+  createSignal as bSignal,
 } from "@barqjs/core";
 import {
   createEffect as sEffect,
@@ -41,10 +41,10 @@ add(
   "create: root + signal + memo + dispose",
   () => {
     bScope((dispose) => {
-      const s = bSignal(0);
+      const [s] = bSignal(0);
       bComputed(() => s() * 2);
       dispose();
-    }, true);
+    });
   },
   () => {
     sRoot((dispose) => {
@@ -59,13 +59,13 @@ add(
   "create: root + signal + effect + flush + dispose",
   () => {
     bScope((dispose) => {
-      const s = bSignal(0);
+      const [s] = bSignal(0);
       bEffect(() => {
         s();
       });
       bFlush();
       dispose();
-    }, true);
+    });
   },
   () => {
     sRoot((dispose) => {
@@ -83,14 +83,14 @@ add(
 // ------------------------------------------------------- steady-state write
 
 {
-  const s = bSignal(0);
+  const [, setS] = bScope(() => bSignal(0));
   let i = 0;
   const [g, set] = sRoot(() => sSignal(0));
   let j = 0;
   add(
     "write: no subscribers (x100)",
     () => {
-      for (let k = 0; k < 100; k++) s.set(++i);
+      for (let k = 0; k < 100; k++) setS(++i);
     },
     () => {
       for (let k = 0; k < 100; k++) set(++j);
@@ -101,9 +101,12 @@ add(
 }
 
 {
-  const s = bSignal(0);
-  bEffect(() => {
-    s();
+  const [, setS] = bScope(() => {
+    const sig = bSignal(0);
+    bEffect(() => {
+      sig[0]();
+    });
+    return sig;
   });
   bFlush();
   let i = 0;
@@ -122,7 +125,7 @@ add(
   add(
     "steady: 1 write + flush, 1 effect",
     () => {
-      s.set(++i);
+      setS(++i);
       bFlush();
     },
     () => {
@@ -133,9 +136,12 @@ add(
 }
 
 {
-  const s = bSignal(0);
-  bEffect(() => {
-    s();
+  const [, setS] = bScope(() => {
+    const sig = bSignal(0);
+    bEffect(() => {
+      sig[0]();
+    });
+    return sig;
   });
   bFlush();
   let i = 0;
@@ -154,7 +160,7 @@ add(
   add(
     "steady: 100 writes + 1 flush, 1 effect",
     () => {
-      for (let k = 0; k < 100; k++) s.set(++i);
+      for (let k = 0; k < 100; k++) setS(++i);
       bFlush();
     },
     () => {
@@ -167,14 +173,17 @@ add(
 
 {
   // 5-deep chain, effect at the end
-  const s = bSignal(0);
-  let c: () => number = () => s();
-  for (let d = 0; d < 5; d++) {
-    const prev = c;
-    c = bComputed(() => prev() + 1);
-  }
-  bEffect(() => {
-    c();
+  const [, setS] = bScope(() => {
+    const sig = bSignal(0);
+    let c: () => number = () => sig[0]();
+    for (let d = 0; d < 5; d++) {
+      const prev = c;
+      c = bComputed(() => prev() + 1);
+    }
+    bEffect(() => {
+      c();
+    });
+    return sig;
   });
   bFlush();
   let i = 0;
@@ -198,7 +207,7 @@ add(
   add(
     "steady: chain(5) write + flush",
     () => {
-      s.set(++i);
+      setS(++i);
       bFlush();
     },
     () => {
@@ -210,12 +219,15 @@ add(
 
 {
   // diamond
-  const s = bSignal(0);
-  const a = bComputed(() => s() + 1);
-  const b = bComputed(() => s() + 2);
-  const d = bComputed(() => a() + b());
-  bEffect(() => {
-    d();
+  const [, setS] = bScope(() => {
+    const sig = bSignal(0);
+    const a = bComputed(() => sig[0]() + 1);
+    const b = bComputed(() => sig[0]() + 2);
+    const d = bComputed(() => a() + b());
+    bEffect(() => {
+      d();
+    });
+    return sig;
   });
   bFlush();
   let i = 0;
@@ -237,7 +249,7 @@ add(
   add(
     "steady: diamond write + flush",
     () => {
-      s.set(++i);
+      setS(++i);
       bFlush();
     },
     () => {
@@ -249,14 +261,17 @@ add(
 
 {
   // wide: 10 signals -> 1 memo -> effect
-  const sigs = Array.from({ length: 10 }, (_, i) => bSignal(i));
-  const sum = bComputed(() => {
-    let t = 0;
-    for (let k = 0; k < 10; k++) t += sigs[k]();
-    return t;
-  });
-  bEffect(() => {
-    sum();
+  const sigs = bScope(() => {
+    const arr = Array.from({ length: 10 }, (_, k) => bSignal(k));
+    const sum = bComputed(() => {
+      let t = 0;
+      for (let k = 0; k < 10; k++) t += arr[k][0]();
+      return t;
+    });
+    bEffect(() => {
+      sum();
+    });
+    return arr;
   });
   bFlush();
   let i = 0;
@@ -280,7 +295,7 @@ add(
   add(
     "steady: wide(10) write all + flush",
     () => {
-      for (let k = 0; k < 10; k++) sigs[k].set(++i);
+      for (let k = 0; k < 10; k++) sigs[k][1](++i);
       bFlush();
     },
     () => {
@@ -292,8 +307,10 @@ add(
 
 {
   // untracked read of settled memo
-  const s = bSignal(1);
-  const c = bComputed(() => s() * 2);
+  const c = bScope(() => {
+    const sig = bSignal(1);
+    return bComputed(() => sig[0]() * 2);
+  });
   c();
   const sc = sRoot(() => {
     const sig = sSignal(1);
@@ -318,10 +335,10 @@ add(
     "dispose: root with 50 memos",
     () => {
       bScope((dispose) => {
-        const s = bSignal(0);
+        const [s] = bSignal(0);
         for (let k = 0; k < 50; k++) bComputed(() => s() + k);
         dispose();
-      }, true);
+      });
     },
     () => {
       sRoot((dispose) => {
@@ -338,14 +355,17 @@ add(
   // chain(500). The other cases bottom out at depth 5, which is why M7b's F1 —
   // propagation quadratic in graph depth — was invisible to every one of them
   // while cellx2500 lost 186.6x. This row cannot be green while that is true.
-  const s = bSignal(0);
-  let c: () => number = () => s();
-  for (let d = 0; d < 500; d++) {
-    const prev = c;
-    c = bComputed(() => prev() + 1);
-  }
-  bEffect(() => {
-    c();
+  const [, setS] = bScope(() => {
+    const sig = bSignal(0);
+    let c: () => number = () => sig[0]();
+    for (let d = 0; d < 500; d++) {
+      const prev = c;
+      c = bComputed(() => prev() + 1);
+    }
+    bEffect(() => {
+      c();
+    });
+    return sig;
   });
   bFlush();
   let i = 0;
@@ -369,7 +389,7 @@ add(
   add(
     "steady: chain(500) write + flush",
     () => {
-      s.set(++i);
+      setS(++i);
       bFlush();
     },
     () => {

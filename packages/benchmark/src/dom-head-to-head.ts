@@ -46,6 +46,19 @@ function container(): HTMLElement {
   return el;
 }
 
+const barqRoots: (() => void)[] = [];
+
+function owned<T>(build: () => T): T {
+  return barq.createRoot((dispose) => {
+    barqRoots.push(dispose);
+    return build();
+  });
+}
+
+function disposeBarqRoots(): void {
+  for (const dispose of barqRoots.splice(0)) dispose();
+}
+
 // ---------------------------------------------------------------- cases
 
 type Case = {
@@ -82,11 +95,15 @@ const cases: Case[] = [];
     barq: () => {
       const tmpl = barq.template(`<div><span></span></div>`);
       return () => {
-        const root = tmpl() as HTMLElement;
-        const span = root.firstChild as HTMLElement;
-        const s = barq.signal(0);
-        barq.insert(null, span, () => s());
+        const dispose = barq.createRoot((d) => {
+          const root = tmpl() as HTMLElement;
+          const span = root.firstChild as HTMLElement;
+          const [s] = barq.createSignal(0);
+          barq.insert(span, () => s());
+          return d;
+        });
         barq.flush();
+        dispose();
       };
     },
     solid: () => {
@@ -114,12 +131,12 @@ const cases: Case[] = [];
       const root = tmpl() as HTMLElement;
       container().appendChild(root);
       const span = root.firstChild as HTMLElement;
-      const s = barq.signal(0);
-      barq.insert(null, span, () => s());
+      const [s, setS] = barq.createSignal(0);
+      owned(() => barq.insert(span, () => s()));
       barq.flush();
       let i = 0;
       return () => {
-        s.set(++i);
+        setS(++i);
         barq.flush();
       };
     },
@@ -153,16 +170,20 @@ const cases: Case[] = [];
     barq: () => {
       const tmpl = barq.template(`<tr><td></td><td></td></tr>`);
       return () => {
-        const parent = document.createElement("tbody");
-        for (const row of rows) {
-          const tr = tmpl() as HTMLElement;
-          const c1 = tr.firstChild as HTMLElement;
-          const c2 = c1.nextSibling as HTMLElement;
-          c1.textContent = String(row.id);
-          barq.insert(null, c2, () => row.label);
-          parent.appendChild(tr);
-        }
+        const dispose = barq.createRoot((d) => {
+          const parent = document.createElement("tbody");
+          for (const row of rows) {
+            const tr = tmpl() as HTMLElement;
+            const c1 = tr.firstChild as HTMLElement;
+            const c2 = c1.nextSibling as HTMLElement;
+            c1.textContent = String(row.id);
+            barq.insert(c2, () => row.label);
+            parent.appendChild(tr);
+          }
+          return d;
+        });
         barq.flush();
+        dispose();
       };
     },
     solid: () => {
@@ -192,20 +213,22 @@ const cases: Case[] = [];
     n: 2000,
     barq: () => {
       const parent = container();
-      const data = barq.signal(makeRows(200));
-      const view = barq.mapArray(data, (row: Row) => {
-        const el = document.createElement("div");
-        el.textContent = row.label;
-        return el;
+      const [data, setData] = barq.createSignal(makeRows(200));
+      owned(() => {
+        const view = barq.mapArray(data, (row: Row) => {
+          const el = document.createElement("div");
+          el.textContent = row.label;
+          return el;
+        });
+        barq.insert(parent, () => view());
       });
-      barq.insert(null, parent, () => view());
       barq.flush();
       return () => {
-        const list = data.peek().slice();
+        const list = barq.untrack(data).slice();
         const t = list[1];
         list[1] = list[198];
         list[198] = t;
-        data.set(list);
+        setData(list);
         barq.flush();
       };
     },
@@ -244,16 +267,18 @@ const cases: Case[] = [];
     n: 2000,
     barq: () => {
       const parent = container();
-      const data = barq.signal(makeRows(100));
-      const view = barq.mapArray(data, (row: Row) => {
-        const el = document.createElement("div");
-        el.textContent = row.label;
-        return el;
+      const [data, setData] = barq.createSignal(makeRows(100));
+      owned(() => {
+        const view = barq.mapArray(data, (row: Row) => {
+          const el = document.createElement("div");
+          el.textContent = row.label;
+          return el;
+        });
+        barq.insert(parent, () => view());
       });
-      barq.insert(null, parent, () => view());
       barq.flush();
       return () => {
-        data.set(makeRows(100));
+        setData(makeRows(100));
         barq.flush();
       };
     },
@@ -287,12 +312,12 @@ const cases: Case[] = [];
     barq: () => {
       const el = document.createElement("div");
       container().appendChild(el);
-      const s = barq.signal(0);
-      barq.setProp(null, el, "class", () => (s() % 2 ? "a" : "b"));
+      const [s, setS] = barq.createSignal(0);
+      owned(() => barq.setProp(el, "class", () => (s() % 2 ? "a" : "b")));
       barq.flush();
       let i = 0;
       return () => {
-        s.set(++i);
+        setS(++i);
         barq.flush();
       };
     },
@@ -340,6 +365,7 @@ function timePair(c: Case): [number, number] {
     if (rb < bestB) bestB = rb;
     if (rs < bestS) bestS = rs;
   }
+  disposeBarqRoots();
   return [bestB, bestS];
 }
 
@@ -365,10 +391,10 @@ function timePair(c: Case): [number, number] {
   const broot = bt() as HTMLElement;
   document.body.appendChild(broot);
   const bspan = broot.firstChild as HTMLElement;
-  const bs = barq.signal(0);
-  barq.insert(null, bspan, () => bs());
+  const [bs, setBs] = barq.createSignal(0);
+  owned(() => barq.insert(bspan, () => bs()));
   barq.flush();
-  bs.set(42);
+  setBs(42);
   barq.flush();
   if (bspan.textContent !== "42") {
     throw new Error(`barq harness is not reactive (got ${bspan.textContent})`);
@@ -379,14 +405,15 @@ function timePair(c: Case): [number, number] {
   // see dom-emitted-shape.ts), so a class write that silently never lands would
   // hand this file a free win on "prop: class update".
   const bcls = document.createElement("div");
-  const cs = barq.signal(0);
-  barq.setProp(null, bcls, "class", () => (cs() % 2 ? "a" : "b"));
+  const [cs, setCs] = barq.createSignal(0);
+  owned(() => barq.setProp(bcls, "class", () => (cs() % 2 ? "a" : "b")));
   barq.flush();
-  cs.set(1);
+  setCs(1);
   barq.flush();
   if (bcls.getAttribute("class") !== "a") {
     throw new Error(`barq class channel is not reactive (got ${bcls.getAttribute("class")})`);
   }
+  disposeBarqRoots();
   const scls = document.createElement("div");
   let sclsSet!: (v: number) => void;
   solidCore.createRoot(() => {
@@ -429,10 +456,11 @@ console.log("\nDOM nodes produced for one dynamic text hole (<span>{x}</span>):"
   const tmpl = barq.template(`<div><span></span></div>`);
   const root = tmpl() as HTMLElement;
   const span = root.firstChild as HTMLElement;
-  const s = barq.signal("hi");
-  barq.insert(null, span, () => s());
+  const [s] = barq.createSignal("hi");
+  owned(() => barq.insert(span, () => s()));
   barq.flush();
   console.log(`  barq : ${span.childNodes.length}  ->  ${span.innerHTML}`);
+  disposeBarqRoots();
 }
 {
   const tmpl = solid.template(`<div><span></span></div>`);

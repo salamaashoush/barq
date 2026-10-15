@@ -42,7 +42,7 @@ const emitted = transform(PAGE, {
   serverSource: SERVER_SRC,
   moduleSource: CORE_SRC,
 });
-const mod = await loadModule<{ default: (s: null, p: unknown) => unknown }>(emitted.code, "denominator-page");
+const mod = await loadModule<{ default: (p: unknown) => unknown }>(emitted.code, "denominator-page");
 
 const rows = Array.from({ length: 20 }, (_, i) => ({ id: i, name: `row ${i}` }));
 const props = { title: "denominator", rows };
@@ -66,7 +66,7 @@ function time(iterations: number, body: () => void): number[] {
 }
 
 const compiled = time(200, () => {
-  renderToString(() => mod.default(null, props) as never);
+  renderToString(() => mod.default(props) as never);
 });
 const envelope = time(200, () => {
   renderToString(bare as never);

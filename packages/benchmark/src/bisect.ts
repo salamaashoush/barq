@@ -2,17 +2,10 @@ import * as CUR from "../../core/src/signals.ts";
 import * as NOGEN from "../.bench-baseline/signals-nogen.ts";
 import * as NOHEAP from "../.bench-baseline/signals-noheap.ts";
 import * as ORIG from "../.bench-baseline/signals-baseline.ts";
-type M = typeof CUR;
+type Legacy = typeof ORIG;
 const order = (process.argv[2] ?? "abcd").split("");
-const all: Record<string, [string, M]> = {
-  a: ["original", ORIG as unknown as M],
-  b: ["current", CUR],
-  c: ["current -gen", NOGEN as unknown as M],
-  d: ["current -heap", NOHEAP as unknown as M],
-};
-const mods: [string, M][] = order.map((k) => all[k]);
-const make = (m: M) => () => {
-  m.scope((dispose) => {
+const legacy = (m: Legacy) => () => {
+  m.createScope((dispose) => {
     const s = m.signal(0);
     m.effect(() => {
       s();
@@ -21,7 +14,23 @@ const make = (m: M) => () => {
     dispose();
   }, true);
 };
-const fns = mods.map(([n, m]) => [n, make(m)] as const);
+const current = () => {
+  CUR.createRoot((dispose) => {
+    const [s] = CUR.createSignal(0);
+    CUR.createTrackedEffect(() => {
+      s();
+    });
+    CUR.flush();
+    dispose();
+  });
+};
+const all: Record<string, [string, () => void]> = {
+  a: ["original", legacy(ORIG)],
+  b: ["current", current],
+  c: ["current -gen", legacy(NOGEN as unknown as Legacy)],
+  d: ["current -heap", legacy(NOHEAP as unknown as Legacy)],
+};
+const fns = order.map((k) => all[k]);
 for (const [, f] of fns) for (let i = 0; i < 5000; i++) f();
 Bun.gc(true);
 const best = new Map<string, number>();

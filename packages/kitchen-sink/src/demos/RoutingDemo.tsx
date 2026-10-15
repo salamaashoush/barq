@@ -6,7 +6,7 @@
  * This demo drives a `memoryHistory`, so its navigation is isolated from the page.
  */
 
-import { For, Show, signal } from "@barqjs/core";
+import { For, Show, createSignal } from "@barqjs/core";
 import { atoms, css } from "@barqjs/css";
 import type { Cell } from "@barqjs/core";
 import {
@@ -80,18 +80,18 @@ const adminGuard: Guard = async () => {
 
 // Dashboard Layout - wraps all dashboard routes
 export function DashboardLayout(props: RouteProps) {
-  const authState = signal(true);
-  const roleState = signal("admin");
+  const [authState, setAuthState] = createSignal(true);
+  const [roleState, setRoleState] = createSignal("admin");
 
   // Sync local state with module-level state
   const toggleAuth = () => {
     isAuthenticated = !isAuthenticated;
-    authState.set(isAuthenticated);
+    setAuthState(isAuthenticated);
   };
 
   const toggleRole = () => {
     userRole = userRole === "admin" ? "user" : "admin";
-    roleState.set(userRole);
+    setRoleState(userRole);
   };
 
   return (

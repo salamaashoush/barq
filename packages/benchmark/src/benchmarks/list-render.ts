@@ -7,11 +7,11 @@ import type { BenchmarkResult } from "../types.ts";
 import { benchmark, generateItems, shuffle } from "../utils.ts";
 
 // Barq imports
-import { signal, render as barqRender } from "@barqjs/core";
+import { createSignal, render as barqRender } from "@barqjs/core";
 import { For, h } from "../h.ts";
 
 // SolidJS imports
-import { For as SolidFor, createSignal } from "solid-js";
+import { For as SolidFor, createSignal as solidCreateSignal } from "solid-js";
 import { render as solidRender } from "solid-js/web";
 
 export async function runListRenderBenchmarks(): Promise<BenchmarkResult[]> {
@@ -27,9 +27,9 @@ export async function runListRenderBenchmarks(): Promise<BenchmarkResult[]> {
       "render 100 items",
       () => {
         const container = document.createElement("div");
-        const items = signal(items100);
-        const el = For(items as unknown as () => readonly { id: number; name: string }[], (_scope, item: () => { id: number; name: string }) =>
-          h("div", { class: "item", "data-id": String(item().id) }, item().name),
+        const [items] = createSignal(items100);
+        const el = For(items as unknown as () => readonly { id: number; name: string }[], (item: { id: number; name: string }) =>
+          h("div", { class: "item", "data-id": String(item.id) }, item.name),
         );
         barqRender(el, container);
       },
@@ -44,7 +44,7 @@ export async function runListRenderBenchmarks(): Promise<BenchmarkResult[]> {
       "render 100 items",
       () => {
         const container = document.createElement("div");
-        const [items] = createSignal(items100);
+        const [items] = solidCreateSignal(items100);
         const dispose = solidRender(
           () =>
             SolidFor({
@@ -75,9 +75,9 @@ export async function runListRenderBenchmarks(): Promise<BenchmarkResult[]> {
       "render 1000 items",
       () => {
         const container = document.createElement("div");
-        const items = signal(items1000);
-        const el = For(items as unknown as () => readonly { id: number; name: string }[], (_scope, item: () => { id: number; name: string }) =>
-          h("div", { class: "item", "data-id": String(item().id) }, item().name),
+        const [items] = createSignal(items1000);
+        const el = For(items as unknown as () => readonly { id: number; name: string }[], (item: { id: number; name: string }) =>
+          h("div", { class: "item", "data-id": String(item.id) }, item.name),
         );
         barqRender(el, container);
       },
@@ -92,7 +92,7 @@ export async function runListRenderBenchmarks(): Promise<BenchmarkResult[]> {
       "render 1000 items",
       () => {
         const container = document.createElement("div");
-        const [items] = createSignal(items1000);
+        const [items] = solidCreateSignal(items1000);
         const dispose = solidRender(
           () =>
             SolidFor({

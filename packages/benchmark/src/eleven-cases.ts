@@ -26,11 +26,11 @@ import {
 } from "@solidjs/signals";
 
 export interface BarqApi {
-  signal: <T>(v: T) => { (): T; set: (n: T) => void };
-  computed: <T>(fn: () => T) => () => T;
-  effect: (fn: () => unknown) => unknown;
+  createSignal: <T>(v: T) => [() => T, (n: T) => void];
+  createMemo: <T>(fn: () => T) => () => T;
+  createTrackedEffect: (fn: () => void) => void;
   flush: () => void;
-  scope: <T>(fn: (dispose: () => void) => T, detached?: boolean) => T;
+  createRoot: <T>(fn: (dispose: () => void) => T) => T;
 }
 
 export interface Case {
@@ -64,108 +64,137 @@ export function barqCases(B: BarqApi): Case[] {
   // on a module namespace object is an exotic lookup, and leaving it in the
   // loop taxes the barq side by 2-3x on the allocation-heavy rows while the
   // solid side reads a plain module binding.
-  const { signal, computed, effect, flush, scope } = B;
+  const { createSignal, createMemo, createTrackedEffect, flush, createRoot } = B;
   const makes: (() => () => void)[] = [
     () => () => {
-      signal(0);
+      createSignal(0);
     },
 
     () => () => {
-      scope((dispose) => {
-        const s = signal(0);
-        computed(() => s() * 2);
+      createRoot((dispose) => {
+        const [s] = createSignal(0);
+        createMemo(() => s() * 2);
         dispose();
-      }, true);
-    },
-
-    () => () => {
-      scope((dispose) => {
-        const s = signal(0);
-        effect(() => s());
-        flush();
-        dispose();
-      }, true);
-    },
-
-    () => {
-      const s = signal(0);
-      let i = 0;
-      return () => {
-        for (let k = 0; k < 100; k++) s.set(++i);
-      };
-    },
-
-    () => {
-      const s = signal(0);
-      effect(() => s());
-      flush();
-      let i = 0;
-      return () => {
-        s.set(++i);
-        flush();
-      };
-    },
-
-    () => {
-      const s = signal(0);
-      effect(() => s());
-      flush();
-      let i = 0;
-      return () => {
-        for (let k = 0; k < 100; k++) s.set(++i);
-        flush();
-      };
-    },
-
-    () => {
-      const s = signal(0);
-      let c: () => number = () => s();
-      for (let d = 0; d < 5; d++) {
-        const prev = c;
-        c = computed(() => prev() + 1);
-      }
-      effect(() => c());
-      flush();
-      let i = 0;
-      return () => {
-        s.set(++i);
-        flush();
-      };
-    },
-
-    () => {
-      const s = signal(0);
-      const a = computed(() => s() + 1);
-      const b = computed(() => s() + 2);
-      const d = computed(() => a() + b());
-      effect(() => d());
-      flush();
-      let i = 0;
-      return () => {
-        s.set(++i);
-        flush();
-      };
-    },
-
-    () => {
-      const sigs = Array.from({ length: 10 }, (_, i) => signal(i));
-      const sum = computed(() => {
-        let t = 0;
-        for (let k = 0; k < 10; k++) t += sigs[k]();
-        return t;
       });
-      effect(() => sum());
+    },
+
+    () => () => {
+      createRoot((dispose) => {
+        const [s] = createSignal(0);
+        createTrackedEffect(() => {
+          s();
+        });
+        flush();
+        dispose();
+      });
+    },
+
+    () => {
+      const [, set] = createRoot(() => createSignal(0));
+      let i = 0;
+      return () => {
+        for (let k = 0; k < 100; k++) set(++i);
+      };
+    },
+
+    () => {
+      const [, set] = createRoot(() => {
+        const sig = createSignal(0);
+        createTrackedEffect(() => {
+          sig[0]();
+        });
+        return sig;
+      });
       flush();
       let i = 0;
       return () => {
-        for (let k = 0; k < 10; k++) sigs[k].set(++i);
+        set(++i);
         flush();
       };
     },
 
     () => {
-      const s = signal(1);
-      const c = computed(() => s() * 2);
+      const [, set] = createRoot(() => {
+        const sig = createSignal(0);
+        createTrackedEffect(() => {
+          sig[0]();
+        });
+        return sig;
+      });
+      flush();
+      let i = 0;
+      return () => {
+        for (let k = 0; k < 100; k++) set(++i);
+        flush();
+      };
+    },
+
+    () => {
+      const [, set] = createRoot(() => {
+        const sig = createSignal(0);
+        let c: () => number = () => sig[0]();
+        for (let d = 0; d < 5; d++) {
+          const prev = c;
+          c = createMemo(() => prev() + 1);
+        }
+        createTrackedEffect(() => {
+          c();
+        });
+        return sig;
+      });
+      flush();
+      let i = 0;
+      return () => {
+        set(++i);
+        flush();
+      };
+    },
+
+    () => {
+      const [, set] = createRoot(() => {
+        const sig = createSignal(0);
+        const a = createMemo(() => sig[0]() + 1);
+        const b = createMemo(() => sig[0]() + 2);
+        const d = createMemo(() => a() + b());
+        createTrackedEffect(() => {
+          d();
+        });
+        return sig;
+      });
+      flush();
+      let i = 0;
+      return () => {
+        set(++i);
+        flush();
+      };
+    },
+
+    () => {
+      const sigs = createRoot(() => {
+        const arr = Array.from({ length: 10 }, (_, k) => createSignal(k));
+        const sum = createMemo(() => {
+          let t = 0;
+          for (let k = 0; k < 10; k++) t += arr[k][0]();
+          return t;
+        });
+        createTrackedEffect(() => {
+          sum();
+        });
+        return arr;
+      });
+      flush();
+      let i = 0;
+      return () => {
+        for (let k = 0; k < 10; k++) sigs[k][1](++i);
+        flush();
+      };
+    },
+
+    () => {
+      const c = createRoot(() => {
+        const sig = createSignal(1);
+        return createMemo(() => sig[0]() * 2);
+      });
       c();
       return () => {
         for (let k = 0; k < 100; k++) c();
@@ -173,25 +202,30 @@ export function barqCases(B: BarqApi): Case[] {
     },
 
     () => () => {
-      scope((dispose) => {
-        const s = signal(0);
-        for (let k = 0; k < 50; k++) computed(() => s() + k);
+      createRoot((dispose) => {
+        const [s] = createSignal(0);
+        for (let k = 0; k < 50; k++) createMemo(() => s() + k);
         dispose();
-      }, true);
+      });
     },
 
     () => {
-      const s = signal(0);
-      let c: () => number = () => s();
-      for (let d = 0; d < 500; d++) {
-        const prev = c;
-        c = computed(() => prev() + 1);
-      }
-      effect(() => c());
+      const [, set] = createRoot(() => {
+        const sig = createSignal(0);
+        let c: () => number = () => sig[0]();
+        for (let d = 0; d < 500; d++) {
+          const prev = c;
+          c = createMemo(() => prev() + 1);
+        }
+        createTrackedEffect(() => {
+          c();
+        });
+        return sig;
+      });
       flush();
       let i = 0;
       return () => {
-        s.set(++i);
+        set(++i);
         flush();
       };
     },

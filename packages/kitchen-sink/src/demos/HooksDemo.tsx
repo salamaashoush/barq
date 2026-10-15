@@ -1,12 +1,22 @@
 /**
  * Primitives Demo
  *
- * Tests `@barqjs/primitives` directly: resource fetching, debounced/throttled
+ * Tests `@barqjs/primitives` directly: async memo fetching, debounced/throttled
  * values, previous, persisted storage, media queries, viewport size,
  * intersection, click-outside, shortcuts, the document title and timers.
  */
 
-import { Show, resource, signal } from "@barqjs/core";
+import {
+  Errored,
+  Loading,
+  Show,
+  action,
+  affects,
+  createMemo,
+  createSignal,
+  isPending,
+  refresh,
+} from "@barqjs/core";
 import {
   clickOutside,
   debounced,
@@ -14,6 +24,7 @@ import {
   mediaQuery,
   persisted,
   previous,
+  ref,
   shortcut,
   throttled,
   timeout,
@@ -41,47 +52,47 @@ export function HooksDemo() {
   );
 }
 
-// resource
+// an async createMemo
 function FetchDemo() {
-  const users = resource(
-    () => "/api/users",
-    async (url: string): Promise<{ id: number; name: string; email: string }[]> => {
-      const response = await fetch(url);
-      if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      return await response.json();
-    },
-  );
+  const users = createMemo(async (): Promise<{ id: number; name: string; email: string }[]> => {
+    const response = await fetch("/api/users");
+    if (!response.ok) throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    return await response.json();
+  });
+
+  // A bare refresh() is a quiet re-ask. Declared inside an action, `affects`
+  // marks the memo pending until the answer the refresh asked for lands.
+  const reload = action(function* () {
+    affects(users);
+    refresh(users);
+  });
 
   return (
-    <DemoCard title="resource — data fetching">
-      <Show when={() => users.loading()}>
-        <div class={loadingStyle}>Loading...</div>
-      </Show>
+    <DemoCard title="createMemo — data fetching">
+      <Errored
+        fallback={(err: () => Error) => <div class={errorStyle}>Error: {() => err().message}</div>}
+      >
+        <Loading fallback={<div class={loadingStyle}>Loading...</div>}>
+          <ul class={{ [listStyle]: true, [staleStyle]: true, stale: isPending(users) }}>
+            {() =>
+              users().map((user) => (
+                <li class={listItemStyle}>
+                  {user.name} - {user.email}
+                </li>
+              ))
+            }
+          </ul>
+        </Loading>
+      </Errored>
 
-      <Show when={() => users.error()}>
-        <div class={errorStyle}>Error: {() => users.error()?.message}</div>
-      </Show>
-
-      <Show when={() => !users.loading() && users()}>
-        <ul class={listStyle}>
-          {() =>
-            users()?.map((user) => (
-              <li class={listItemStyle}>
-                {user.name} - {user.email}
-              </li>
-            ))
-          }
-        </ul>
-      </Show>
-
-      <Button onClick={() => users.refetch()}>Refetch</Button>
+      <Button onClick={() => void reload()}>Refetch</Button>
     </DemoCard>
   );
 }
 
 // debounced and throttled
 function DebounceThrottleDemo() {
-  const value = signal("");
+  const [value, setValue] = createSignal("");
   const settled = debounced(value, 500);
   const paced = throttled(value, 500);
 
@@ -90,7 +101,7 @@ function DebounceThrottleDemo() {
       <input
         type="text"
         value={value()}
-        onInput={(e: Event) => value.set((e.target as HTMLInputElement).value)}
+        onInput={(e: Event) => setValue((e.target as HTMLInputElement).value)}
         placeholder="Type something..."
         class={inputStyle}
       />
@@ -115,7 +126,7 @@ function DebounceThrottleDemo() {
 
 // previous
 function PreviousDemo() {
-  const count = signal(0);
+  const [count, setCount] = createSignal(0);
   const before = previous(count);
 
   return (
@@ -128,9 +139,9 @@ function PreviousDemo() {
       </p>
 
       <div class={buttonRowStyle}>
-        <Button onClick={() => count.update((c) => c + 1)}>Increment</Button>
-        <Button onClick={() => count.update((c) => c - 1)}>Decrement</Button>
-        <Button onClick={() => count.set(Math.floor(Math.random() * 100))}>Random</Button>
+        <Button onClick={() => setCount((c) => c + 1)}>Increment</Button>
+        <Button onClick={() => setCount((c) => c - 1)}>Decrement</Button>
+        <Button onClick={() => setCount(Math.floor(Math.random() * 100))}>Random</Button>
       </div>
     </DemoCard>
   );
@@ -138,18 +149,17 @@ function PreviousDemo() {
 
 // plain signals
 function ToggleCounterDemo() {
-  // No primitive for these, and none is wanted: a toggle is `update((v) => !v)`
+  // No primitive for these, and none is wanted: a toggle is `setIsOn((v) => !v)`
   // and a counter is a signal, so a wrapper would only hide what it costs.
-  const isOn = signal(false);
-  const toggle = () => isOn.update((v) => !v);
-  const setIsOn = (next: boolean) => isOn.set(next);
-  const count = signal(0);
+  const [isOn, setIsOn] = createSignal(false);
+  const toggle = () => setIsOn((v) => !v);
+  const [count, setCount] = createSignal(0);
   const counter = {
     count,
-    increment: () => count.update((n) => n + 1),
-    decrement: () => count.update((n) => n - 1),
-    reset: () => count.set(0),
-    set: (next: number) => count.set(next),
+    increment: () => setCount((n) => n + 1),
+    decrement: () => setCount((n) => n - 1),
+    reset: () => setCount(0),
+    set: (next: number) => setCount(next),
   };
 
   return (
@@ -183,12 +193,8 @@ function ToggleCounterDemo() {
 
 // persisted
 function LocalStorageDemo() {
-  const nameValue = persisted("demo-name", "");
-  const name = nameValue;
-  const setName = (next: string) => nameValue.set(next);
-  const themeValue = persisted<"light" | "dark">("demo-theme", "dark");
-  const theme = themeValue;
-  const setTheme = (next: "light" | "dark") => themeValue.set(next);
+  const [name, setName] = persisted("demo-name", "");
+  const [theme, setTheme] = persisted<"light" | "dark">("demo-theme", "dark");
 
   return (
     <DemoCard title="persisted — storage, and other tabs">
@@ -275,10 +281,10 @@ function WindowSizeDemo() {
 
 // visible
 function IntersectionDemo() {
-  // The hooks take an ACCESSOR, so a signal is the ref: the element arrives
+  // The hooks take an ACCESSOR, and `ref()` is one: the element arrives
   // through the ref channel and every reader is live from that moment.
-  const ref = signal<HTMLDivElement | null>(null);
-  const isVisible = visible(ref, { threshold: 0.5 });
+  const box = ref<HTMLDivElement>();
+  const isVisible = visible(box, { threshold: 0.5 });
 
   return (
     <DemoCard title="visible — a shared IntersectionObserver">
@@ -291,7 +297,7 @@ function IntersectionDemo() {
           <p>Scroll down to see the box...</p>
           <div style={{ height: "200px" }} />
           <div
-            ref={ref.set}
+            ref={box.set}
             class={targetBoxStyle}
             style={{ background: isVisible() ? "#22c55e" : "#ef4444" }}
           >
@@ -306,14 +312,14 @@ function IntersectionDemo() {
 
 // clickOutside
 function ClickOutsideDemo() {
-  const ref = signal<HTMLDivElement | null>(null);
-  const isOpen = signal(false);
-  const clickCount = signal(0);
+  const dropdown = ref<HTMLDivElement>();
+  const [isOpen, setIsOpen] = createSignal(false);
+  const [clickCount, setClickCount] = createSignal(0);
 
-  clickOutside(ref, () => {
+  clickOutside(dropdown, () => {
     if (isOpen()) {
-      isOpen.set(false);
-      clickCount.update((c) => c + 1);
+      setIsOpen(false);
+      setClickCount((c) => c + 1);
     }
   });
 
@@ -323,8 +329,12 @@ function ClickOutsideDemo() {
         Outside clicks detected: <strong>{clickCount}</strong>
       </p>
 
-      <div ref={ref} class={dropdownStyle} style={{ background: isOpen() ? "#3b82f6" : "#475569" }}>
-        <Button onClick={() => isOpen.update((o) => !o)}>
+      <div
+        ref={dropdown.set}
+        class={dropdownStyle}
+        style={{ background: isOpen() ? "#3b82f6" : "#475569" }}
+      >
+        <Button onClick={() => setIsOpen((o) => !o)}>
           {() => (isOpen() ? "Close" : "Open")} Dropdown
         </Button>
 
@@ -340,10 +350,10 @@ function ClickOutsideDemo() {
 
 // shortcut
 function KeyboardDemo() {
-  const logs = signal<string[]>([]);
+  const [logs, setLogs] = createSignal<string[]>([]);
 
   const addLog = (msg: string) => {
-    logs.update((l) => [...l.slice(-4), msg]);
+    setLogs((l) => [...l.slice(-4), msg]);
   };
 
   shortcut("escape", () => addLog("Escape pressed"), { whileTyping: true });
@@ -372,18 +382,18 @@ function KeyboardDemo() {
 
 // interval and timeout
 function TimerDemo() {
-  const count = signal(0);
-  const intervalActive = signal(false);
-  const message = signal("");
+  const [count, setCount] = createSignal(0);
+  const [intervalActive, setIntervalActive] = createSignal(false);
+  const [message, setMessage] = createSignal("");
 
   interval(
-    () => count.update((c) => c + 1),
+    () => setCount((c) => c + 1),
     () => (intervalActive() ? 1000 : null),
   );
 
-  const showTimeout = signal(false);
+  const [showTimeout, setShowTimeout] = createSignal(false);
   timeout(
-    () => message.set("Timeout fired!"),
+    () => setMessage("Timeout fired!"),
     () => (showTimeout() ? 2000 : null),
   );
 
@@ -394,7 +404,7 @@ function TimerDemo() {
           <p>
             Interval count: <strong>{count}</strong>
           </p>
-          <Button onClick={() => intervalActive.update((a) => !a)}>
+          <Button onClick={() => setIntervalActive((a) => !a)}>
             {() => (intervalActive() ? "Stop" : "Start")} Interval
           </Button>
         </div>
@@ -405,8 +415,8 @@ function TimerDemo() {
           </p>
           <Button
             onClick={() => {
-              message.set("");
-              showTimeout.set(true);
+              setMessage("");
+              setShowTimeout(true);
             }}
           >
             Start 2s Timeout
@@ -435,6 +445,12 @@ const errorStyle = css`
 const listStyle = css`
   list-style: none;
   margin: 0 0 12px 0;
+`;
+
+const staleStyle = css`
+  &.stale {
+    opacity: 0.55;
+  }
 `;
 
 const listItemStyle = css`

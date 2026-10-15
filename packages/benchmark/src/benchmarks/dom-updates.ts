@@ -7,11 +7,11 @@ import type { BenchmarkResult } from "../types.ts";
 import { benchmark } from "../utils.ts";
 
 // Barq imports
-import { signal, render as barqRender } from "@barqjs/core";
+import { createSignal, flush, render as barqRender } from "@barqjs/core";
 import { h } from "../h.ts";
 
 // SolidJS imports
-import { createSignal } from "solid-js";
+import { createSignal as solidCreateSignal } from "solid-js";
 import { render as solidRender } from "solid-js/web";
 
 export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
@@ -25,12 +25,13 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
       "text update 1000x",
       () => {
         const container = document.createElement("div");
-        const count = signal(0);
+        const [count, writeCount] = createSignal(0);
         const el = h("div", null, count);
         barqRender(el, container);
 
         for (let i = 0; i < 1000; i++) {
-          count.set(i);
+          writeCount(i);
+          flush();
         }
       },
       { iterations: 200 },
@@ -47,7 +48,7 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
         let setCount: ((v: number) => void) | undefined;
 
         const dispose = solidRender(() => {
-          const [count, _setCount] = createSignal(0);
+          const [count, _setCount] = solidCreateSignal(0);
           setCount = _setCount;
           const div = document.createElement("div");
           // SolidJS would use a text node with effect
@@ -71,12 +72,13 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
       "class update 1000x",
       () => {
         const container = document.createElement("div");
-        const active = signal(false);
+        const [active, writeActive] = createSignal(false);
         const el = h("div", { class: () => (active() ? "active" : "inactive") });
         barqRender(el, container);
 
         for (let i = 0; i < 1000; i++) {
-          active.set(i % 2 === 0);
+          writeActive(i % 2 === 0);
+          flush();
         }
       },
       { iterations: 200 },
@@ -93,7 +95,7 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
         let setActive: ((v: boolean) => void) | undefined;
 
         const dispose = solidRender(() => {
-          const [active, _setActive] = createSignal(false);
+          const [active, _setActive] = solidCreateSignal(false);
           setActive = _setActive;
           const div = document.createElement("div");
           // Manual class binding
@@ -117,7 +119,7 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
       "style update 1000x",
       () => {
         const container = document.createElement("div");
-        const width = signal(0);
+        const [width, writeWidth] = createSignal(0);
         const el = h("div", {
           style: {
             width: () => `${width()}px`,
@@ -128,7 +130,8 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
         barqRender(el, container);
 
         for (let i = 0; i < 1000; i++) {
-          width.set(i % 500);
+          writeWidth(i % 500);
+          flush();
         }
       },
       { iterations: 200 },
@@ -145,7 +148,7 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
         let setWidth: ((v: number) => void) | undefined;
 
         const dispose = solidRender(() => {
-          const [width, _setWidth] = createSignal(0);
+          const [width, _setWidth] = solidCreateSignal(0);
           setWidth = _setWidth;
           const div = document.createElement("div");
           div.style.height = "100px";
@@ -171,7 +174,7 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
       "multi-attr update 500x",
       () => {
         const container = document.createElement("div");
-        const state = signal({ x: 0, y: 0, scale: 1 });
+        const [state, writeState] = createSignal({ x: 0, y: 0, scale: 1 });
         const el = h("div", {
           "data-x": () => String(state().x),
           "data-y": () => String(state().y),
@@ -182,7 +185,8 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
         barqRender(el, container);
 
         for (let i = 0; i < 500; i++) {
-          state.set({ x: i, y: i * 2, scale: 1 + i * 0.01 });
+          writeState({ x: i, y: i * 2, scale: 1 + i * 0.01 });
+          flush();
         }
       },
       { iterations: 200 },
@@ -199,7 +203,7 @@ export async function runDOMUpdateBenchmarks(): Promise<BenchmarkResult[]> {
         let setState: ((v: { x: number; y: number; scale: number }) => void) | undefined;
 
         const dispose = solidRender(() => {
-          const [state, _setState] = createSignal({ x: 0, y: 0, scale: 1 });
+          const [state, _setState] = solidCreateSignal({ x: 0, y: 0, scale: 1 });
           setState = _setState;
           const div = document.createElement("div");
           // Manual bindings

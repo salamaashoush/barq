@@ -1,12 +1,12 @@
-import { signal } from "@barqjs/core";
+import { createSignal } from "@barqjs/core";
 import { createFileRoute } from "@barqjs/router";
 
 function Home() {
-  const count = signal(0);
+  const [count, setCount] = createSignal(0);
   return (
     <section>
       <h1>barq</h1>
-      <button type="button" onClick={() => count.update((n) => n + 1)}>
+      <button type="button" onClick={() => setCount((n) => n + 1)}>
         clicked {count} times
       </button>
     </section>

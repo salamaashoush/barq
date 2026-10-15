@@ -96,8 +96,7 @@ function rows(n: number): Row[] {
 const DATA = rows(100);
 
 interface Compiled {
-  // A compiled component takes its SCOPE first; a Solid one takes props alone.
-  default: (scope?: unknown, props?: unknown) => unknown;
+  default: (props?: unknown) => unknown;
 }
 
 const barqRows = await loadModule<Compiled>(
@@ -130,13 +129,13 @@ const solidStatic = await loadModule<Compiled>(
 function barqUncompiledPage(): unknown {
   const scope = barqCore.getOwner();
   const build = (): unknown =>
-    barqCore.element(barqCore.getOwner(), "div", {
+    barqCore.element("div", {
       class: "page",
       children: [
-        barqCore.element(barqCore.getOwner(), "h1", { children: "Title" }),
-        barqCore.element(barqCore.getOwner(), "ul", {
+        barqCore.element("h1", { children: "Title" }),
+        barqCore.element("ul", {
           children: DATA.map((row) =>
-            barqCore.element(barqCore.getOwner(), "li", {
+            barqCore.element("li", {
               class: "row",
               "data-id": String(row.id),
               children: row.label,
@@ -145,7 +144,7 @@ function barqUncompiledPage(): unknown {
         }),
       ],
     });
-  return scope === null ? barqCore.root(build) : build();
+  return scope === null ? barqCore.createRoot(build) : build();
 }
 
 // ---------------------------------------------------------------- what each emits
@@ -168,9 +167,7 @@ const keep = (html: string): void => {
   sink += html.length;
 };
 
-// C1: barq components take the scope first. A module-level mount is the
-// root, which the compiler spells `null`.
-const barqHtml = chunk(barqRows.default(null, { rows: DATA }));
+const barqHtml = chunk(barqRows.default({ rows: DATA }));
 const solidHtml = chunk(solidRows.default({ rows: DATA }));
 const uncompiledHtml = barqServer.renderToString(() => barqUncompiledPage() as never);
 
@@ -238,7 +235,7 @@ report(
       {
         name: "barq compiled",
         setup: () => () => {
-          keep(barqServer.renderToString(() => barqRows.default(null, { rows: DATA }) as never));
+          keep(barqServer.renderToString(() => barqRows.default({ rows: DATA }) as never));
         },
       },
       {
@@ -272,7 +269,7 @@ console.log(
 );
 {
   const withFlowHtml = barqServer.renderToString(
-    () => barqRowsWithFlow.default(null, { rows: DATA }) as never,
+    () => barqRowsWithFlow.default({ rows: DATA }) as never,
   );
   if (withFlowHtml !== barqHtml) {
     throw new Error(
@@ -289,14 +286,14 @@ report(
       {
         name: "barq, plain module",
         setup: () => () => {
-          keep(barqServer.renderToString(() => barqRows.default(null, { rows: DATA }) as never));
+          keep(barqServer.renderToString(() => barqRows.default({ rows: DATA }) as never));
         },
       },
       {
         name: "barq, module mentions Portal",
         setup: () => () => {
           keep(
-            barqServer.renderToString(() => barqRowsWithFlow.default(null, { rows: DATA }) as never),
+            barqServer.renderToString(() => barqRowsWithFlow.default({ rows: DATA }) as never),
           );
         },
       },
@@ -313,7 +310,7 @@ report(
       {
         name: "barq compiled",
         setup: () => () => {
-          keep(chunk(barqRows.default(null, { rows: DATA })));
+          keep(chunk(barqRows.default({ rows: DATA })));
         },
       },
       {
@@ -339,7 +336,7 @@ report(
       {
         name: "barq compiled",
         setup: () => () => {
-          keep(chunk(barqStatic.default(null)));
+          keep(chunk(barqStatic.default()));
         },
       },
       {

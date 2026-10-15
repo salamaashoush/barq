@@ -19,7 +19,7 @@
  * Tier 1 and PROVISIONAL until it has one.
  */
 
-import { computed, runWithOwner } from "@barqjs/core";
+import { createMemo, createRoot } from "@barqjs/core";
 
 import { legacyCache, legacyLoaderKey } from "./legacy-loader-cache.ts";
 import { SUMMARY_HEADER, summarize, summaryLine } from "./stats.ts";
@@ -53,7 +53,7 @@ legacy.dataFor(ROUTE_ID, PARAMS);
 // Map lookup plus a settled cell read. Modelled here rather than imported so the
 // benchmark measures the SHAPE and does not drag a whole router, a history and a
 // matcher into the loop.
-const settledCell = runWithOwner(null, () => computed(() => "value"));
+const settledCell = createRoot(() => createMemo(() => "value"));
 // One read, so the memo is warm exactly as it is after the first render.
 settledCell();
 

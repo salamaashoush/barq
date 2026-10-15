@@ -10,9 +10,10 @@ import {
   type Child,
   type Component,
   render,
-  effect,
-  computed,
-  signal,
+  createTrackedEffect,
+  createMemo,
+  createSignal,
+  flush,
 } from "@barqjs/core";
 import { For, Show, h } from "../h.ts";
 
@@ -120,11 +121,12 @@ export async function runBarqDOMBenchmarks(): Promise<BenchmarkResult[]> {
       "reactive text (1000 updates)",
       () => {
         const container = document.createElement("div");
-        const count = signal(0);
+        const [count, setCount] = createSignal(0);
         const el = h("div", null, count);
         render(el, container);
         for (let i = 0; i < 1000; i++) {
-          count.set(i);
+          setCount(i);
+          flush();
         }
       },
       { iterations: 100 },
@@ -139,11 +141,12 @@ export async function runBarqDOMBenchmarks(): Promise<BenchmarkResult[]> {
       "reactive class (1000 updates)",
       () => {
         const container = document.createElement("div");
-        const active = signal(false);
+        const [active, setActive] = createSignal(false);
         const el = h("div", { class: () => (active() ? "active" : "inactive") });
         render(el, container);
         for (let i = 0; i < 1000; i++) {
-          active.set(i % 2 === 0);
+          setActive(i % 2 === 0);
+          flush();
         }
       },
       { iterations: 100 },
@@ -158,7 +161,7 @@ export async function runBarqDOMBenchmarks(): Promise<BenchmarkResult[]> {
       "reactive style (1000 updates)",
       () => {
         const container = document.createElement("div");
-        const width = signal(0);
+        const [width, setWidth] = createSignal(0);
         const el = h("div", {
           style: {
             width: () => `${width()}px`,
@@ -167,7 +170,8 @@ export async function runBarqDOMBenchmarks(): Promise<BenchmarkResult[]> {
         });
         render(el, container);
         for (let i = 0; i < 1000; i++) {
-          width.set(i);
+          setWidth(i);
+          flush();
         }
       },
       { iterations: 100 },
@@ -182,11 +186,12 @@ export async function runBarqDOMBenchmarks(): Promise<BenchmarkResult[]> {
       "Show toggle (100 times)",
       () => {
         const container = document.createElement("div");
-        const visible = signal(true);
+        const [visible, setVisible] = createSignal(true);
         const el = Show(visible, () => h("div", { class: "content" }, "Visible"));
         render(el, container);
         for (let i = 0; i < 100; i++) {
-          visible.set(i % 2 === 0);
+          setVisible(i % 2 === 0);
+          flush();
         }
       },
       { iterations: 200 },
@@ -201,7 +206,7 @@ export async function runBarqDOMBenchmarks(): Promise<BenchmarkResult[]> {
       "Show with fallback (100 times)",
       () => {
         const container = document.createElement("div");
-        const visible = signal(true);
+        const [visible, setVisible] = createSignal(true);
         const el = Show(
           visible,
           () => h("div", null, "Loaded!"),
@@ -209,7 +214,8 @@ export async function runBarqDOMBenchmarks(): Promise<BenchmarkResult[]> {
         );
         render(el, container);
         for (let i = 0; i < 100; i++) {
-          visible.set(i % 2 === 0);
+          setVisible(i % 2 === 0);
+          flush();
         }
       },
       { iterations: 200 },
@@ -225,9 +231,9 @@ export async function runBarqDOMBenchmarks(): Promise<BenchmarkResult[]> {
       "For render (100 items)",
       () => {
         const container = document.createElement("div");
-        const items = signal(items100);
-        const el = For(items, (_scope, item: () => Item) =>
-          h("div", { "data-id": String(item().id) }, item().name),
+        const [items] = createSignal(items100);
+        const el = For(items, (item: Item) =>
+          h("div", { "data-id": String(item.id) }, item.name),
         );
         render(el, container);
       },
@@ -243,9 +249,9 @@ export async function runBarqDOMBenchmarks(): Promise<BenchmarkResult[]> {
       "For render (1000 items)",
       () => {
         const container = document.createElement("div");
-        const items = signal(items1000);
-        const el = For(items, (_scope, item: () => Item) =>
-          h("div", { "data-id": String(item().id) }, item().name),
+        const [items] = createSignal(items1000);
+        const el = For(items, (item: Item) =>
+          h("div", { "data-id": String(item.id) }, item.name),
         );
         render(el, container);
       },
@@ -254,9 +260,9 @@ export async function runBarqDOMBenchmarks(): Promise<BenchmarkResult[]> {
   );
 
   // Component render
-  // C1: a component takes its scope first and its props as Cells. The benchmark
+  // C1: a component takes its props as Cells and nothing else. The benchmark
   // calls it the way compiled code calls it, because there is no other way.
-  function Card(_scope: unknown, props: { title: () => string; children: () => Child }): Node {
+  function Card(props: { title: () => string; children: () => Child }): Node {
     return h(
       "div",
       { class: "card" },
@@ -274,7 +280,7 @@ export async function runBarqDOMBenchmarks(): Promise<BenchmarkResult[]> {
         const container = document.createElement("div");
         const cards = [];
         for (let i = 0; i < 100; i++) {
-          cards.push(Card(null, { title: () => `Card ${i}`, children: () => `Content ${i}` }));
+          cards.push(Card({ title: () => `Card ${i}`, children: () => `Content ${i}` }));
         }
         const el = h("div", null, ...cards);
         render(el, container);

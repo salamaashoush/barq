@@ -1,25 +1,26 @@
 /**
  * Signals & State Demo
- * Tests: signal, computed, effect, batch, untrack, scope, onCleanup, onMount, Context
+ * Tests: createSignal, derived values, createEffect, flush, untrack, createRoot, onCleanup,
+ * onSettled, Context
  *
  * NOTE: This file uses clean syntax that the compiler transforms:
  * - Signal reads: `count` instead of `count()`
  * - JSX expressions: `{count + 1}` instead of `{() => count() + 1}`
  * - Control flow: `when={visible}` instead of `when={() => visible()}`
- * - Auto-computed: `const doubled = count * 2` instead of `computed(() => count() * 2)`
+ * - Auto-computed: `const doubled = count * 2` instead of `createMemo(() => count() * 2)`
  */
 
 import {
   Show,
-  batch,
-  context,
-  scope,
+  createContext,
+  createEffect,
+  createRoot,
+  createSignal,
+  flush,
   onCleanup,
-  onMount,
+  onSettled,
   untrack,
   useContext,
-  effect,
-  signal,
 } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { Button, DemoCard, DemoSection, Log } from "./shared";
@@ -30,24 +31,24 @@ export function SignalsDemo() {
       <CounterDemo />
       <MemoDemo />
       <EffectDemo />
-      <BatchDemo />
+      <FlushDemo />
       <UntrackDemo />
-      <ScopeDemo />
+      <RootDemo />
       <RefDemo />
       <OnCleanupDemo />
-      <OnMountDemo />
+      <OnSettledDemo />
       <ContextDemo />
     </DemoSection>
   );
 }
 
-// Counter with signal
+// Counter with createSignal
 function CounterDemo() {
-  const count = signal(0);
-  const step = signal(1);
+  const [count, setCount] = createSignal(0);
+  const [step, setStep] = createSignal(1);
 
   return (
-    <DemoCard title="signal - Counter">
+    <DemoCard title="createSignal - Counter">
       <p>
         Count: <strong>{count}</strong>
       </p>
@@ -55,30 +56,30 @@ function CounterDemo() {
         Step: <strong>{step}</strong>
       </p>
       <div class={buttonRowStyle}>
-        <Button onClick={() => count.update((c) => c - step())}>-{step}</Button>
-        <Button onClick={() => count.update((c) => c + step())}>+{step}</Button>
-        <Button onClick={() => count.set(0)}>Reset</Button>
+        <Button onClick={() => setCount((c) => c - step())}>-{step}</Button>
+        <Button onClick={() => setCount((c) => c + step())}>+{step}</Button>
+        <Button onClick={() => setCount(0)}>Reset</Button>
       </div>
       <div class={buttonRowStyle}>
-        <Button onClick={() => step.set(1)}>Step 1</Button>
-        <Button onClick={() => step.set(5)}>Step 5</Button>
-        <Button onClick={() => step.set(10)}>Step 10</Button>
+        <Button onClick={() => setStep(1)}>Step 1</Button>
+        <Button onClick={() => setStep(5)}>Step 5</Button>
+        <Button onClick={() => setStep(10)}>Step 10</Button>
       </div>
     </DemoCard>
   );
 }
 
-// Derived values with auto-computed (compiler transforms to computed)
+// Derived values, written as plain functions over the signals they read
 function MemoDemo() {
-  const firstName = signal("John");
-  const lastName = signal("Doe");
+  const [firstName, setFirstName] = createSignal("John");
+  const [lastName, setLastName] = createSignal("Doe");
 
   // Implicit reads were rejected: an accessor in a template literal stringifies
   // to its own source text, and BARQ001 says so at the exact position.
   const fullName = () => `${firstName()} ${lastName()}`;
 
   // Expensive computation (simulated)
-  const items = signal([1, 2, 3, 4, 5]);
+  const [items, setItems] = createSignal([1, 2, 3, 4, 5]);
   // Auto-computed values - need to call items() for method access
   const sum = () => items().reduce((a: number, b: number) => a + b, 0);
   const doubled = () => items().map((x: number) => x * 2);
@@ -89,14 +90,14 @@ function MemoDemo() {
         <input
           type="text"
           value={firstName}
-          onInput={(e: Event) => firstName.set((e.target as HTMLInputElement).value)}
+          onInput={(e: Event) => setFirstName((e.target as HTMLInputElement).value)}
           placeholder="First name"
           class={inputStyle}
         />
         <input
           type="text"
           value={lastName}
-          onInput={(e: Event) => lastName.set((e.target as HTMLInputElement).value)}
+          onInput={(e: Event) => setLastName((e.target as HTMLInputElement).value)}
           placeholder="Last name"
           class={inputStyle}
         />
@@ -112,34 +113,34 @@ function MemoDemo() {
         Sum: <strong>{sum}</strong>
       </p>
       <p>Doubled: {doubled().join(", ")}</p>
-      <Button onClick={() => items.update((arr) => [...arr, arr.length + 1])}>Add Item</Button>
+      <Button onClick={() => setItems((arr) => [...arr, arr.length + 1])}>Add Item</Button>
     </DemoCard>
   );
 }
 
-// Side effects with effect
+// Side effects with createEffect
 function EffectDemo() {
-  const count = signal(0);
-  const logs = signal<string[]>([]);
+  const [count, setCount] = createSignal(0);
+  const [logs, setLogs] = createSignal<string[]>([]);
 
   const addLog = (msg: string) => {
-    logs.update((l) => [...l.slice(-4), `${new Date().toLocaleTimeString()}: ${msg}`]);
+    setLogs((l) => [...l.slice(-4), `${new Date().toLocaleTimeString()}: ${msg}`]);
   };
 
-  // Effect that runs on count change - still need count() in effects
-  effect(() => {
-    addLog(`Count changed to ${count()}`);
+  // The first function reads count; the second runs with what it returned
+  createEffect(count, (value) => {
+    addLog(`Count changed to ${value}`);
   });
 
   // Effect with cleanup
-  const intervalActive = signal(false);
+  const [intervalActive, setIntervalActive] = createSignal(false);
 
-  effect(() => {
-    if (!intervalActive()) return;
+  createEffect(intervalActive, (active) => {
+    if (!active) return;
 
     addLog("Interval started");
     const id = setInterval(() => {
-      count.update((c) => c + 1);
+      setCount((c) => c + 1);
     }, 1000);
 
     return () => {
@@ -149,13 +150,13 @@ function EffectDemo() {
   });
 
   return (
-    <DemoCard title="effect - Side Effects">
+    <DemoCard title="createEffect - Side Effects">
       <p>
         Count: <strong>{count}</strong>
       </p>
       <div class={buttonRowStyle}>
-        <Button onClick={() => count.update((c) => c + 1)}>Increment</Button>
-        <Button onClick={() => intervalActive.update((a) => !a)}>
+        <Button onClick={() => setCount((c) => c + 1)}>Increment</Button>
+        <Button onClick={() => setIntervalActive((a) => !a)}>
           {intervalActive() ? "Stop" : "Start"} Interval
         </Button>
       </div>
@@ -164,52 +165,56 @@ function EffectDemo() {
   );
 }
 
-// Batched updates
-function BatchDemo() {
-  const a = signal(0);
-  const b = signal(0);
-  const renderCount = signal(0);
+// Staged writes and flush
+function FlushDemo() {
+  const [a, setA] = createSignal(0);
+  const [b, setB] = createSignal(0);
+  const [effectRuns, setEffectRuns] = createSignal(0);
 
-  // Track renders
-  effect(() => {
-    renderCount.update((c) => c + 1);
-  });
+  // Count the effect's runs
+  createEffect(
+    () => [a(), b()],
+    () => {
+      setEffectRuns((c) => c + 1);
+    },
+  );
 
-  const unbatchedUpdate = () => {
-    a.update((x) => x + 1);
-    b.update((x) => x + 1);
+  const stagedUpdate = () => {
+    setA((x) => x + 1);
+    setB((x) => x + 1);
   };
 
-  const batchedUpdate = () => {
-    batch(() => {
-      a.update((x) => x + 1);
-      b.update((x) => x + 1);
-    });
+  const flushedUpdate = () => {
+    setA((x) => x + 1);
+    flush();
+    setB((x) => x + 1);
+    flush();
   };
 
   return (
-    <DemoCard title="batch - Batched Updates">
+    <DemoCard title="flush - Batched Updates">
       <p>
         A: <strong>{a}</strong>, B: <strong>{b}</strong>
       </p>
       <p>
-        Effect runs: <strong>{renderCount}</strong>
+        Effect runs: <strong>{effectRuns}</strong>
       </p>
       <div class={buttonRowStyle}>
-        <Button onClick={unbatchedUpdate}>Unbatched +1</Button>
-        <Button onClick={batchedUpdate}>Batched +1</Button>
+        <Button onClick={stagedUpdate}>Both writes, one flush +1</Button>
+        <Button onClick={flushedUpdate}>flush() between writes +1</Button>
         <Button
           onClick={() => {
-            a.set(0);
-            b.set(0);
-            renderCount.set(0);
+            setA(0);
+            setB(0);
+            setEffectRuns(0);
           }}
         >
           Reset
         </Button>
       </div>
       <p class={noteStyle}>
-        Batched updates trigger effects once, unbatched may trigger multiple times.
+        Writes are staged and applied together, so two writes run the effect once. A flush() between
+        them applies each on its own and the effect runs twice.
       </p>
     </DemoCard>
   );
@@ -217,17 +222,22 @@ function BatchDemo() {
 
 // Untracked reads
 function UntrackDemo() {
-  const tracked = signal(0);
-  const untrackedVal = signal(0);
-  const effectRuns = signal(0);
+  const [tracked, setTracked] = createSignal(0);
+  const [untrackedVal, setUntrackedVal] = createSignal(0);
+  const [effectRuns, setEffectRuns] = createSignal(0);
 
-  effect(() => {
-    // This effect depends on tracked, but reads untracked without dependency
-    const t = tracked();
-    const u = untrack(() => untrackedVal());
-    console.log(`Effect: tracked=${t}, untracked=${u}`);
-    effectRuns.update((c) => c + 1);
-  });
+  createEffect(
+    () => {
+      // This effect depends on tracked, but reads untracked without dependency
+      const t = tracked();
+      const u = untrack(() => untrackedVal());
+      return [t, u] as const;
+    },
+    ([t, u]) => {
+      console.log(`Effect: tracked=${t}, untracked=${u}`);
+      setEffectRuns((c) => c + 1);
+    },
+  );
 
   return (
     <DemoCard title="untrack - Dependency Control">
@@ -241,10 +251,10 @@ function UntrackDemo() {
         Effect runs: <strong>{effectRuns}</strong>
       </p>
       <div class={buttonRowStyle}>
-        <Button onClick={() => tracked.update((t) => t + 1)}>
+        <Button onClick={() => setTracked((t) => t + 1)}>
           Increment Tracked (triggers effect)
         </Button>
-        <Button onClick={() => untrackedVal.update((u) => u + 1)}>
+        <Button onClick={() => setUntrackedVal((u) => u + 1)}>
           Increment Untracked (no effect trigger)
         </Button>
       </div>
@@ -253,58 +263,56 @@ function UntrackDemo() {
 }
 
 // Effect scope management
-function ScopeDemo() {
-  const scopeActive = signal(false);
-  const logs = signal<string[]>([]);
+function RootDemo() {
+  const [scopeActive, setScopeActive] = createSignal(false);
+  const [logs, setLogs] = createSignal<string[]>([]);
   let disposeScope: (() => void) | null = null;
 
   // Use untrack to prevent addLog from creating signal dependencies
   const addLog = (msg: string) => {
     untrack(() => {
-      logs.update((l) => [...l.slice(-4), msg]);
+      setLogs((l) => [...l.slice(-4), msg]);
     });
   };
 
   const startScope = () => {
     if (disposeScope) return;
 
-    disposeScope = scope(() => {
-      addLog("Scope created");
+    disposeScope = createRoot((dispose) => {
+      const [counter, setCounter] = createSignal(0);
 
-      const counter = signal(0);
-
-      effect(() => {
-        // Read counter value, then log without tracking
-        const value = counter();
+      createEffect(counter, (value) => {
         addLog(`Scoped effect: counter = ${value}`);
         return () => addLog("Scoped effect cleanup");
       });
 
       // Simulate some work
       const interval = setInterval(() => {
-        counter.update((c) => c + 1);
+        setCounter((c) => c + 1);
       }, 1000);
 
-      // Return cleanup
-      return () => {
+      onCleanup(() => {
         clearInterval(interval);
         addLog("Scope disposed");
-      };
+      });
+
+      return dispose;
     });
 
-    scopeActive.set(true);
+    addLog("Scope created");
+    setScopeActive(true);
   };
 
   const stopScope = () => {
     if (disposeScope) {
       disposeScope();
       disposeScope = null;
-      scopeActive.set(false);
+      setScopeActive(false);
     }
   };
 
   return (
-    <DemoCard title="scope - Effect Isolation">
+    <DemoCard title="createRoot - Effect Isolation">
       <p>
         Scope active: <strong>{scopeActive() ? "Yes" : "No"}</strong>
       </p>
@@ -327,7 +335,7 @@ function RefDemo() {
   // B3: a writable binding IS the ref. `ref={inputRef}` compiles to an
   // assignment, so there is no `{current}` box and nothing to unwrap.
   let inputRef: HTMLInputElement | undefined;
-  const value = signal("");
+  const [value, setValue] = createSignal("");
 
   const focusInput = () => {
     inputRef?.focus();
@@ -343,7 +351,7 @@ function RefDemo() {
         ref={inputRef}
         type="text"
         value={value}
-        onInput={(e: Event) => value.set((e.target as HTMLInputElement).value)}
+        onInput={(e: Event) => setValue((e.target as HTMLInputElement).value)}
         placeholder="Type something..."
         class={inputStyle}
       />
@@ -358,21 +366,28 @@ function RefDemo() {
 
 // onCleanup demo - cleanup when effect re-runs
 function OnCleanupDemo() {
-  const count = signal(0);
-  const logs = signal<string[]>([]);
+  const [count, setCount] = createSignal(0);
+  const [logs, setLogs] = createSignal<string[]>([]);
 
   const addLog = (msg: string) => {
-    logs.update((l) => [...l.slice(-4), msg]);
+    setLogs((l) => [...l.slice(-4), msg]);
   };
 
-  effect(() => {
-    addLog(`Effect started for count=${count()}`);
+  createEffect(
+    () => {
+      const value = count();
 
-    // Register cleanup - runs when effect re-runs or is disposed
-    onCleanup(() => {
-      addLog(`Cleanup for count=${count()}`);
-    });
-  });
+      // Register cleanup - runs when effect re-runs or is disposed
+      onCleanup(() => {
+        addLog(`Cleanup for count=${value}`);
+      });
+
+      return value;
+    },
+    (value) => {
+      addLog(`Effect started for count=${value}`);
+    },
+  );
 
   return (
     <DemoCard title="onCleanup - Effect Cleanup">
@@ -380,8 +395,8 @@ function OnCleanupDemo() {
         Count: <strong>{count}</strong>
       </p>
       <div class={buttonRowStyle}>
-        <Button onClick={() => count.update((c) => c + 1)}>Increment</Button>
-        <Button onClick={() => count.set(0)}>Reset</Button>
+        <Button onClick={() => setCount((c) => c + 1)}>Increment</Button>
+        <Button onClick={() => setCount(0)}>Reset</Button>
       </div>
       <Log logs={logs()} />
       <p class={noteStyle}>onCleanup runs before effect re-runs and when disposed.</p>
@@ -389,22 +404,22 @@ function OnCleanupDemo() {
   );
 }
 
-// onMount demo - runs once after component mounts
-function OnMountDemo() {
-  const logs = signal<string[]>([]);
-  const showChild = signal(false);
+// onSettled demo - runs once after component mounts
+function OnSettledDemo() {
+  const [logs, setLogs] = createSignal<string[]>([]);
+  const [showChild, setShowChild] = createSignal(false);
 
   const addLog = (msg: string) => {
-    logs.update((l) => [...l.slice(-4), msg]);
+    setLogs((l) => [...l.slice(-4), msg]);
   };
 
   // This runs once when component mounts
-  onMount(() => {
+  onSettled(() => {
     addLog("Parent component mounted");
   });
 
   function ChildComponent() {
-    onMount(() => {
+    onSettled(() => {
       addLog("Child component mounted");
     });
 
@@ -412,10 +427,10 @@ function OnMountDemo() {
   }
 
   return (
-    <DemoCard title="onMount - After First Render">
-      <p>onMount runs once after the component renders.</p>
+    <DemoCard title="onSettled - After First Render">
+      <p>onSettled runs once after the component renders.</p>
       <div class={buttonRowStyle}>
-        <Button onClick={() => showChild.update((s) => !s)}>
+        <Button onClick={() => setShowChild((s) => !s)}>
           {showChild() ? "Hide" : "Show"} Child
         </Button>
       </div>
@@ -428,12 +443,12 @@ function OnMountDemo() {
 }
 
 // Context demo
-const ThemeContext = context<"light" | "dark">("light");
-const UserContext = context<{ name: string; role: string }>();
+const ThemeContext = createContext<"light" | "dark">("light");
+const UserContext = createContext<{ name: string; role: string }>();
 
 function ContextDemo() {
-  const theme = signal<"light" | "dark">("dark");
-  const user = signal({ name: "Alice", role: "Admin" });
+  const [theme, setTheme] = createSignal<"light" | "dark">("dark");
+  const [user] = createSignal({ name: "Alice", role: "Admin" });
 
   return (
     <DemoCard title="Context - Dependency Injection">
@@ -441,7 +456,7 @@ function ContextDemo() {
         Current theme setting: <strong>{theme}</strong>
       </p>
       <div class={buttonRowStyle}>
-        <Button onClick={() => theme.update((t) => (t === "light" ? "dark" : "light"))}>
+        <Button onClick={() => setTheme((t) => (t === "light" ? "dark" : "light"))}>
           Toggle Theme
         </Button>
       </div>
@@ -467,7 +482,7 @@ const consumerStyle = css`
 `;
 
 function ContextConsumer() {
-  // getContext returns a getter for reactive access
+  // useContext returns a getter for reactive access
   const theme = useContext(ThemeContext);
   const user = useContext(UserContext);
 

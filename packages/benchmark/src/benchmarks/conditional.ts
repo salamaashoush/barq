@@ -7,11 +7,11 @@ import type { BenchmarkResult } from "../types.ts";
 import { benchmark } from "../utils.ts";
 
 // Barq imports
-import { signal, render as barqRender } from "@barqjs/core";
+import { createSignal, flush, render as barqRender } from "@barqjs/core";
 import { Show, h } from "../h.ts";
 
 // SolidJS imports
-import { Show as SolidShow, createSignal } from "solid-js";
+import { Show as SolidShow, createSignal as solidCreateSignal } from "solid-js";
 import { render as solidRender } from "solid-js/web";
 
 export async function runConditionalBenchmarks(): Promise<BenchmarkResult[]> {
@@ -25,12 +25,13 @@ export async function runConditionalBenchmarks(): Promise<BenchmarkResult[]> {
       "toggle show/hide 100x",
       () => {
         const container = document.createElement("div");
-        const visible = signal(true);
+        const [visible, writeVisible] = createSignal(true);
         const el = Show(visible, () => h("div", { class: "content" }, "Hello World"));
         barqRender(el, container);
 
         for (let i = 0; i < 100; i++) {
-          visible.set(i % 2 === 0);
+          writeVisible(i % 2 === 0);
+          flush();
         }
       },
       { iterations: 500 },
@@ -47,7 +48,7 @@ export async function runConditionalBenchmarks(): Promise<BenchmarkResult[]> {
         let setVisible: ((v: boolean) => void) | undefined;
 
         const dispose = solidRender(() => {
-          const [visible, _setVisible] = createSignal(true);
+          const [visible, _setVisible] = solidCreateSignal(true);
           setVisible = _setVisible;
           return SolidShow({
             when: visible(),
@@ -77,7 +78,7 @@ export async function runConditionalBenchmarks(): Promise<BenchmarkResult[]> {
       "show/fallback toggle 100x",
       () => {
         const container = document.createElement("div");
-        const visible = signal(true);
+        const [visible, writeVisible] = createSignal(true);
         const el = Show(
           visible,
           () => h("div", { class: "content" }, "Loaded!"),
@@ -86,7 +87,8 @@ export async function runConditionalBenchmarks(): Promise<BenchmarkResult[]> {
         barqRender(el, container);
 
         for (let i = 0; i < 100; i++) {
-          visible.set(i % 2 === 0);
+          writeVisible(i % 2 === 0);
+          flush();
         }
       },
       { iterations: 500 },
@@ -103,7 +105,7 @@ export async function runConditionalBenchmarks(): Promise<BenchmarkResult[]> {
         let setVisible: ((v: boolean) => void) | undefined;
 
         const dispose = solidRender(() => {
-          const [visible, _setVisible] = createSignal(true);
+          const [visible, _setVisible] = solidCreateSignal(true);
           setVisible = _setVisible;
           return SolidShow({
             when: visible(),
@@ -139,7 +141,7 @@ export async function runConditionalBenchmarks(): Promise<BenchmarkResult[]> {
       "switch 5 tabs 100x",
       () => {
         const container = document.createElement("div");
-        const tab = signal(0);
+        const [tab, writeTab] = createSignal(0);
         const el = h(
           "div",
           null,
@@ -167,7 +169,8 @@ export async function runConditionalBenchmarks(): Promise<BenchmarkResult[]> {
         barqRender(el, container);
 
         for (let i = 0; i < 100; i++) {
-          tab.set(i % 5);
+          writeTab(i % 5);
+          flush();
         }
       },
       { iterations: 200 },
@@ -184,7 +187,7 @@ export async function runConditionalBenchmarks(): Promise<BenchmarkResult[]> {
         let setTab: ((v: number) => void) | undefined;
 
         const dispose = solidRender(() => {
-          const [tab, _setTab] = createSignal(0);
+          const [tab, _setTab] = solidCreateSignal(0);
           setTab = _setTab;
 
           const div = document.createElement("div");

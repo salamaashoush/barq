@@ -47,17 +47,19 @@
 import {
   block,
   cell,
-  scope,
-  enter,
-  exit,
+  childScope,
+  createRoot,
+  createSignal,
+  dispose as disposeScope,
   flush,
   insert,
   mapArray,
   props,
+  runWithOwner,
   setProp,
-  signal,
   template,
   type Scope,
+  untrack,
 } from "@barqjs/core"
 
 const HTML =
@@ -82,19 +84,13 @@ function host(): HTMLElement {
   return el
 }
 
-/**
- * The one place the row's DOM is described. Every shape ends up calling this.
- *
- * `setProp` and `insert` take the owning scope FIRST — that is the calling
- * convention this file is about, and passing `null` is the legal "no owner
- * here" case rather than an omission.
- */
+/** The one place the row's DOM is described. Every shape ends up calling this. */
 function fill(node: Element, label: string, tone: string, tail: unknown): void {
   const heading = node.firstChild as Element
   const body = heading.nextSibling as Element
   heading.textContent = label
-  setProp(null, body, "class", `body ${tone}`)
-  if (tail !== undefined) insert(null, node, tail as never, null)
+  setProp(body, "class", `body ${tone}`)
+  if (tail !== undefined) insert(node, tail as never, null)
 }
 
 // ---------------------------------------------------------------- A
@@ -206,19 +202,17 @@ function mountD(parent: HTMLElement, data: readonly Row[], scope: Scope): void {
 function mountD2(parent: HTMLElement, data: readonly Row[], scope: Scope): void {
   for (const row of data) {
     // PARENTED, so the row scope pays the parent-link push a real per-position
-    // Scope pays. `enter(null)` allocated an orphan and skipped it.
-    const instance = enter(scope)
-    try {
+    // Scope pays. `childScope(null)` allocates an orphan and skips it.
+    const instance = childScope(scope)
+    runWithOwner(instance, () =>
       RowD(
         instance,
         props([{ label: cell(row.label), tone: cell(row.tone) }]) as Record<string, unknown>,
         null,
         parent,
         null,
-      )
-    } finally {
-      exit(instance)
-    }
+      ),
+    )
   }
 }
 
@@ -233,7 +227,7 @@ function mountE(parent: HTMLElement, data: readonly Row[]): void {
     const heading = node.firstChild as Element
     const body = heading.nextSibling as Element
     heading.textContent = row.label
-    setProp(null, body, "class", `body ${row.tone}`)
+    setProp(body, "class", `body ${row.tone}`)
     parent.insertBefore(node, null)
   }
 }
@@ -248,7 +242,7 @@ function mountE(parent: HTMLElement, data: readonly Row[]): void {
 // can bound the TOTAL cost and cannot adjudicate the ratio.
 //
 // These arms can. They keep every part of the convention real — `props`, `cell`,
-// `block`'s owner save-and-restore, `enter`/`exit`, the component frames — and
+// `block`'s owner save-and-restore, `childScope`/`runWithOwner`, the component frames — and
 // replace only the node with a plain object, which is exactly the substitution
 // the original made. What comes out is the same quantity its 9.328/11.537 µs
 // are, measured by V8 instead of by Bun over happy-dom's stubs.
@@ -330,17 +324,15 @@ function stubD(parent: StubNode, data: readonly Row[], scope: Scope): void {
 
 function stubD2(parent: StubNode, data: readonly Row[], scope: Scope): void {
   for (const row of data) {
-    const instance = enter(scope)
-    try {
+    const instance = childScope(scope)
+    runWithOwner(instance, () =>
       StubRowD(
         instance,
         props([{ label: cell(row.label), tone: cell(row.tone) }]) as Record<string, unknown>,
         null,
         parent,
-      )
-    } finally {
-      exit(instance)
-    }
+      ),
+    )
   }
 }
 
@@ -480,13 +472,13 @@ function channelCases(n: number): Record<string, () => void> {
   // are here beside the bare ones and the dispatcher is read off the pairs.
   return {
     "setProp id": () => {
-      for (let i = 0; i < n; i++) setProp(null, el, "id", `x${tick++}`)
+      for (let i = 0; i < n; i++) setProp(el, "id", `x${tick++}`)
     },
     "setAttribute id": () => {
       for (let i = 0; i < n; i++) el.setAttribute("id", `x${tick++}`)
     },
     "setProp value": () => {
-      for (let i = 0; i < n; i++) setProp(null, input, "value", `v${tick++}`)
+      for (let i = 0; i < n; i++) setProp(input, "value", `v${tick++}`)
     },
     "input.value =": () => {
       for (let i = 0; i < n; i++) input.value = `v${tick++}`
@@ -503,7 +495,7 @@ function channelCases(n: number): Record<string, () => void> {
       }
     },
     "setProp class": () => {
-      for (let i = 0; i < n; i++) setProp(null, el, "class", classes[tick++ & 1])
+      for (let i = 0; i < n; i++) setProp(el, "class", classes[tick++ & 1])
     },
     "el.className =": () => {
       for (let i = 0; i < n; i++) el.className = classes[tick++ & 1]
@@ -533,7 +525,7 @@ function channelCases(n: number): Record<string, () => void> {
     // accumulation shows up as this row going quadratic while the two-token row
     // beside it does not move.
     "setProp class fresh": () => {
-      for (let i = 0; i < n; i++) setProp(null, el, "class", `c${tick++}`)
+      for (let i = 0; i < n; i++) setProp(el, "class", `c${tick++}`)
     },
     "el.className = fresh": () => {
       for (let i = 0; i < n; i++) el.className = `c${tick++}`
@@ -580,10 +572,10 @@ interface KeyingArm {
 }
 
 function keyingArm(mode: "default" | "byFn" | "false", n: number): KeyingArm {
-  const source = signal(keyRows(n))
+  const [source, setSource] = createSignal(keyRows(n))
   let built = 0
   const out: KeyingArm = { builtOnReplace: 0, builtOnReorder: 0, replaceMs: 0, reorderMs: 0 }
-  const dispose = scope((d: () => void) => {
+  const [list, dispose] = createRoot((d: () => void) => {
     const make = (): unknown => {
       built++
       return {}
@@ -594,30 +586,30 @@ function keyingArm(mode: "default" | "byFn" | "false", n: number): KeyingArm {
         : mode === "byFn"
           ? mapArray(() => source(), make, { keyed: (item: KeyRow) => item.id })
           : mapArray(() => source(), make, { keyed: false })
-    list()
-    built = 0
-
-    // Same objects, new order: every mode should move rows rather than build.
-    const reordered = source.peek().slice().reverse()
-    let start = performance.now()
-    source.set(reordered)
-    flush()
-    list()
-    out.reorderMs = performance.now() - start
-    out.builtOnReorder = built
-    built = 0
-
-    // Fresh objects, same ids and same positions: the default keys by IDENTITY,
-    // so every row is a new key and every row is rebuilt.
-    const replaced = source.peek().map((row) => ({ id: row.id, label: row.label }))
-    start = performance.now()
-    source.set(replaced)
-    flush()
-    list()
-    out.replaceMs = performance.now() - start
-    out.builtOnReplace = built
-    return d
+    return [list, d] as const
   })
+  list()
+  built = 0
+
+  // Same objects, new order: every mode should move rows rather than build.
+  const reordered = untrack(source).slice().reverse()
+  let start = performance.now()
+  setSource(reordered)
+  flush()
+  list()
+  out.reorderMs = performance.now() - start
+  out.builtOnReorder = built
+  built = 0
+
+  // Fresh objects, same ids and same positions: the default keys by IDENTITY,
+  // so every row is a new key and every row is rebuilt.
+  const replaced = untrack(source).map((row) => ({ id: row.id, label: row.label }))
+  start = performance.now()
+  setSource(replaced)
+  flush()
+  list()
+  out.replaceMs = performance.now() - start
+  out.builtOnReplace = built
   dispose()
   return out
 }
@@ -649,7 +641,7 @@ function agree(): string | null {
     mountA(parent, rows(3))
     const html = parent.innerHTML
     parent.remove()
-    scope.dispose()
+    disposeScope(scope)
     return html
   })()
   for (const [name, mount] of Object.entries(MOUNTS)) {
@@ -658,7 +650,7 @@ function agree(): string | null {
     mount(parent, rows(3), scope)
     const html = parent.innerHTML
     parent.remove()
-    scope.dispose()
+    disposeScope(scope)
     if (html !== reference) {
       return `shape ${name} builds different DOM:\n  ${html}\n  ${reference}`
     }
@@ -668,14 +660,12 @@ function agree(): string | null {
 
 /**
  * A live, detached owner — what a component's caller actually has, and what
- * the D arms have to be handed for the convention to happen at all. Opened and
- * closed immediately so it is an ARGUMENT rather than the ambient owner: that
- * is the whole distinction the D shapes exist to price.
+ * the D arms have to be handed for the convention to happen at all. Never made
+ * current, so it is an ARGUMENT rather than the ambient owner: that is the
+ * whole distinction the D shapes exist to price.
  */
 function rootScope(): Scope {
-  const scope = enter(null)
-  exit(scope)
-  return scope
+  return childScope(null)
 }
 
 interface Timing {
@@ -708,7 +698,7 @@ function once(mount: Mount, data: readonly Row[]): Timing {
   void document.body.offsetHeight
   const end = performance.now()
   parent.remove()
-  scope.dispose()
+  disposeScope(scope)
   return { js: mid - start, total: end - start }
 }
 
@@ -808,7 +798,7 @@ const stubTrial = (trial: number): { trial: number; timings: Record<string, numb
       const start = performance.now()
       STUB_MOUNTS[name](parent, DATA, scope)
       out[name] = performance.now() - start
-      scope.dispose()
+      disposeScope(scope)
     }
     return { trial, timings: out }
   } catch (error) {

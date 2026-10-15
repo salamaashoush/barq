@@ -2,7 +2,7 @@
  * Shared components for demos
  */
 
-import { type Child, For, type Incoming } from "@barqjs/core";
+import { type Child, For, type Incoming, type JSX } from "@barqjs/core";
 import { atoms, css } from "@barqjs/css";
 
 // Demo section container
@@ -50,7 +50,7 @@ export function Button(
         );
       }}
       onClick={props.onClick?.()}
-      disabled={isDisabled()}
+      disabled={isDisabled}
     >
       {props.children}
     </button>
@@ -67,12 +67,15 @@ export function Log(props: Incoming<{ logs: string[] }>) {
 }
 
 // Input component
+/** The values an `<input>` takes for `type`, read off the element's own attribute. */
+type InputType = Extract<NonNullable<JSX.IntrinsicElements["input"]["type"]>, string>;
+
 export function Input(
   props: Incoming<{
     value: string;
     onInput: (value: string) => void;
     placeholder?: string;
-    type?: string;
+    type?: InputType;
   }>,
 ) {
   return (

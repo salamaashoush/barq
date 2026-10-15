@@ -7,10 +7,16 @@ import type { BenchmarkResult } from "../types.ts";
 import { benchmark } from "../utils.ts";
 
 // Barq imports - use raw signals for fair comparison
-import { signal, computed, effect, batch, scope } from "@barqjs/core";
+import { createSignal, createMemo, createTrackedEffect, flush, createRoot } from "@barqjs/core";
 
 // SolidJS imports
-import { createEffect, createMemo, createRoot as root, createSignal, batch as solidBatch } from "solid-js";
+import {
+  createEffect,
+  createMemo as solidCreateMemo,
+  createRoot as root,
+  createSignal as solidCreateSignal,
+  batch as solidBatch,
+} from "solid-js";
 
 export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
   const results: BenchmarkResult[] = [];
@@ -18,14 +24,14 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
   // Signal creation
   results.push(
     await benchmark("signals", "barq", "create signal", () => {
-      signal(0);
+      createSignal(0);
     }),
   );
 
   results.push(
     await benchmark("signals", "solid", "create signal", () => {
       root(() => {
-        createSignal(0);
+        solidCreateSignal(0);
       });
     }),
   );
@@ -37,10 +43,10 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
       "barq",
       "1000 signal updates (batched)",
       () => {
-        const count = signal(0);
-        batch(() => {
+        const [count, writeCount] = createSignal(0);
+        flush(() => {
           for (let i = 0; i < 1000; i++) {
-            count.set(i);
+            writeCount(i);
           }
         });
       },
@@ -55,7 +61,7 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
       "1000 signal updates (batched)",
       () => {
         root((dispose) => {
-          const [count, setCount] = createSignal(0);
+          const [count, setCount] = solidCreateSignal(0);
           solidBatch(() => {
             for (let i = 0; i < 1000; i++) {
               setCount(i);
@@ -71,18 +77,18 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
   // Computed/Memo creation
   results.push(
     await benchmark("signals", "barq", "create computed", () => {
-      scope(() => {
-        const count = signal(0);
-        computed(() => count() * 2);
-      }, true);
+      createRoot(() => {
+        const [count] = createSignal(0);
+        createMemo(() => count() * 2);
+      });
     }),
   );
 
   results.push(
     await benchmark("signals", "solid", "create computed", () => {
       root((dispose) => {
-        const [count] = createSignal(0);
-        createMemo(() => count() * 2);
+        const [count] = solidCreateSignal(0);
+        solidCreateMemo(() => count() * 2);
         dispose();
       });
     }),
@@ -95,20 +101,22 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
       "barq",
       "effect with 100 updates (batched)",
       () => {
-        scope((dispose) => {
+        const [writeCount, dispose] = createRoot((dispose) => {
           let effectRuns = 0;
-          const count = signal(0);
-          effect(() => {
+          const [count, writeCount] = createSignal(0);
+          createTrackedEffect(() => {
             const _ = count();
             effectRuns++;
           });
-          batch(() => {
-            for (let i = 0; i < 100; i++) {
-              count.set(i);
-            }
-          });
-          dispose();
-        }, true);
+          return [writeCount, dispose] as const;
+        });
+        flush();
+        flush(() => {
+          for (let i = 0; i < 100; i++) {
+            writeCount(i);
+          }
+        });
+        dispose();
       },
       { iterations: 500 },
     ),
@@ -122,7 +130,7 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
       () => {
         root((dispose) => {
           let effectRuns = 0;
-          const [count, setCount] = createSignal(0);
+          const [count, setCount] = solidCreateSignal(0);
           createEffect(() => {
             const _ = count();
             effectRuns++;
@@ -146,22 +154,22 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
       "barq",
       "computed chain (5 deep)",
       () => {
-        scope((dispose) => {
-          const a = signal(1);
-          const b = computed(() => a() * 2);
-          const c = computed(() => b() + 1);
-          const d = computed(() => c() * 3);
-          const e = computed(() => d() - 2);
-          const f = computed(() => e() + a());
-
-          batch(() => {
-            for (let i = 0; i < 100; i++) {
-              a.set(i);
-            }
-          });
-          f(); // read final value
-          dispose();
-        }, true);
+        const [writeA, f, dispose] = createRoot((dispose) => {
+          const [a, writeA] = createSignal(1);
+          const b = createMemo(() => a() * 2);
+          const c = createMemo(() => b() + 1);
+          const d = createMemo(() => c() * 3);
+          const e = createMemo(() => d() - 2);
+          const f = createMemo(() => e() + a());
+          return [writeA, f, dispose] as const;
+        });
+        flush(() => {
+          for (let i = 0; i < 100; i++) {
+            writeA(i);
+          }
+        });
+        f(); // read final value
+        dispose();
       },
       { iterations: 500 },
     ),
@@ -174,12 +182,12 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
       "computed chain (5 deep)",
       () => {
         root((dispose) => {
-          const [a, setA] = createSignal(1);
-          const b = createMemo(() => a() * 2);
-          const c = createMemo(() => b() + 1);
-          const d = createMemo(() => c() * 3);
-          const e = createMemo(() => d() - 2);
-          const f = createMemo(() => e() + a());
+          const [a, setA] = solidCreateSignal(1);
+          const b = solidCreateMemo(() => a() * 2);
+          const c = solidCreateMemo(() => b() + 1);
+          const d = solidCreateMemo(() => c() * 3);
+          const e = solidCreateMemo(() => d() - 2);
+          const f = solidCreateMemo(() => e() + a());
 
           solidBatch(() => {
             for (let i = 0; i < 100; i++) {
@@ -201,18 +209,18 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
       "barq",
       "wide deps (10 signals)",
       () => {
-        scope((dispose) => {
-          const signals = Array.from({ length: 10 }, (_, i) => signal(i));
-          const sum = computed(() => signals.reduce((acc, s) => acc + s(), 0));
-
-          batch(() => {
-            for (let i = 0; i < 100; i++) {
-              signals[i % 10].set(i);
-            }
-          });
-          sum();
-          dispose();
-        }, true);
+        const [signals, sum, dispose] = createRoot((dispose) => {
+          const signals = Array.from({ length: 10 }, (_, i) => createSignal(i));
+          const sum = createMemo(() => signals.reduce((acc, [s]) => acc + s(), 0));
+          return [signals, sum, dispose] as const;
+        });
+        flush(() => {
+          for (let i = 0; i < 100; i++) {
+            signals[i % 10][1](i);
+          }
+        });
+        sum();
+        dispose();
       },
       { iterations: 500 },
     ),
@@ -225,8 +233,8 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
       "wide deps (10 signals)",
       () => {
         root((dispose) => {
-          const signals = Array.from({ length: 10 }, (_, i) => createSignal(i));
-          const sum = createMemo(() => signals.reduce((acc, [s]) => acc + s(), 0));
+          const signals = Array.from({ length: 10 }, (_, i) => solidCreateSignal(i));
+          const sum = solidCreateMemo(() => signals.reduce((acc, [s]) => acc + s(), 0));
 
           solidBatch(() => {
             for (let i = 0; i < 100; i++) {
@@ -248,20 +256,20 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
       "barq",
       "diamond pattern (100 updates)",
       () => {
-        scope((dispose) => {
-          const x = signal(1);
-          const a = computed(() => x() * 2);
-          const b = computed(() => x() * 3);
-          const c = computed(() => a() + b());
-
-          batch(() => {
-            for (let i = 0; i < 100; i++) {
-              x.set(i);
-            }
-          });
-          c();
-          dispose();
-        }, true);
+        const [writeX, c, dispose] = createRoot((dispose) => {
+          const [x, writeX] = createSignal(1);
+          const a = createMemo(() => x() * 2);
+          const b = createMemo(() => x() * 3);
+          const c = createMemo(() => a() + b());
+          return [writeX, c, dispose] as const;
+        });
+        flush(() => {
+          for (let i = 0; i < 100; i++) {
+            writeX(i);
+          }
+        });
+        c();
+        dispose();
       },
       { iterations: 500 },
     ),
@@ -274,10 +282,10 @@ export async function runSignalBenchmarks(): Promise<BenchmarkResult[]> {
       "diamond pattern (100 updates)",
       () => {
         root((dispose) => {
-          const [x, setX] = createSignal(1);
-          const a = createMemo(() => x() * 2);
-          const b = createMemo(() => x() * 3);
-          const c = createMemo(() => a() + b());
+          const [x, setX] = solidCreateSignal(1);
+          const a = solidCreateMemo(() => x() * 2);
+          const b = solidCreateMemo(() => x() * 3);
+          const c = solidCreateMemo(() => a() + b());
 
           solidBatch(() => {
             for (let i = 0; i < 100; i++) {

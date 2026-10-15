@@ -8,10 +8,11 @@ import { benchmark, generateItems } from "./utils.ts";
 
 // Barq imports
 import {
-  scope,
-  effect,
-  computed,
-  signal,
+  createRoot,
+  createTrackedEffect,
+  createMemo,
+  createSignal,
+  flush,
   render as barqRender,
 } from "@barqjs/core";
 import { For, Show, h } from "./h.ts";
@@ -21,9 +22,9 @@ import {
   For as SolidFor,
   Show as SolidShow,
   createEffect,
-  createMemo,
+  createMemo as solidCreateMemo,
   createRoot as root,
-  createSignal,
+  createSignal as solidCreateSignal,
 } from "solid-js";
 import { render as solidRender, template } from "solid-js/web";
 
@@ -49,13 +50,13 @@ const suites: BenchmarkSuite[] = [
       {
         operation: "create signal",
         barq: () => {
-          scope(() => {
-            signal(0);
+          createRoot(() => {
+            createSignal(0);
           });
         },
         solid: () => {
           root(() => {
-            createSignal(0);
+            solidCreateSignal(0);
           });
         },
       },
@@ -63,17 +64,19 @@ const suites: BenchmarkSuite[] = [
         operation: "1000 signal updates",
         iterations: 500,
         barq: () => {
-          scope((dispose) => {
-            const count = signal(0);
-            for (let i = 0; i < 1000; i++) {
-              count.set(i);
-            }
-            dispose();
+          const [writeCount, dispose] = createRoot((dispose) => {
+            const [count, writeCount] = createSignal(0);
+            return [writeCount, dispose] as const;
           });
+          for (let i = 0; i < 1000; i++) {
+            writeCount(i);
+          }
+          flush();
+          dispose();
         },
         solid: () => {
           root((dispose) => {
-            const [count, setCount] = createSignal(0);
+            const [count, setCount] = solidCreateSignal(0);
             for (let i = 0; i < 1000; i++) {
               setCount(i);
             }
@@ -85,16 +88,16 @@ const suites: BenchmarkSuite[] = [
       {
         operation: "create computed",
         barq: () => {
-          scope((dispose) => {
-            const count = signal(0);
-            computed(() => count() * 2);
+          createRoot((dispose) => {
+            const [count] = createSignal(0);
+            createMemo(() => count() * 2);
             dispose();
           });
         },
         solid: () => {
           root((dispose) => {
-            const [count] = createSignal(0);
-            createMemo(() => count() * 2);
+            const [count] = solidCreateSignal(0);
+            solidCreateMemo(() => count() * 2);
             dispose();
           });
         },
@@ -103,23 +106,26 @@ const suites: BenchmarkSuite[] = [
         operation: "effect with 100 updates",
         iterations: 500,
         barq: () => {
-          scope((dispose) => {
+          const [writeCount, dispose] = createRoot((dispose) => {
             let effectRuns = 0;
-            const count = signal(0);
-            effect(() => {
+            const [count, writeCount] = createSignal(0);
+            createTrackedEffect(() => {
               const _ = count();
               effectRuns++;
             });
-            for (let i = 0; i < 100; i++) {
-              count.set(i);
-            }
-            dispose();
+            return [writeCount, dispose] as const;
           });
+          flush();
+          for (let i = 0; i < 100; i++) {
+            writeCount(i);
+            flush();
+          }
+          dispose();
         },
         solid: () => {
           root((dispose) => {
             let effectRuns = 0;
-            const [count, setCount] = createSignal(0);
+            const [count, setCount] = solidCreateSignal(0);
             createEffect(() => {
               const _ = count();
               effectRuns++;
@@ -135,29 +141,30 @@ const suites: BenchmarkSuite[] = [
         operation: "computed chain (5 deep)",
         iterations: 500,
         barq: () => {
-          scope((dispose) => {
-            const a = signal(1);
-            const b = computed(() => a() * 2);
-            const c = computed(() => b() + 1);
-            const d = computed(() => c() * 3);
-            const e = computed(() => d() - 2);
-            const f = computed(() => e() + a());
-
-            for (let i = 0; i < 100; i++) {
-              a.set(i);
-              f();
-            }
-            dispose();
-          });
-        },
-        solid: () => {
-          root((dispose) => {
-            const [a, setA] = createSignal(1);
+          const [writeA, f, dispose] = createRoot((dispose) => {
+            const [a, writeA] = createSignal(1);
             const b = createMemo(() => a() * 2);
             const c = createMemo(() => b() + 1);
             const d = createMemo(() => c() * 3);
             const e = createMemo(() => d() - 2);
             const f = createMemo(() => e() + a());
+            return [writeA, f, dispose] as const;
+          });
+          for (let i = 0; i < 100; i++) {
+            writeA(i);
+            flush();
+            f();
+          }
+          dispose();
+        },
+        solid: () => {
+          root((dispose) => {
+            const [a, setA] = solidCreateSignal(1);
+            const b = solidCreateMemo(() => a() * 2);
+            const c = solidCreateMemo(() => b() + 1);
+            const d = solidCreateMemo(() => c() * 3);
+            const e = solidCreateMemo(() => d() - 2);
+            const f = solidCreateMemo(() => e() + a());
 
             for (let i = 0; i < 100; i++) {
               setA(i);
@@ -171,21 +178,22 @@ const suites: BenchmarkSuite[] = [
         operation: "wide deps (10 signals)",
         iterations: 500,
         barq: () => {
-          scope((dispose) => {
-            const signals = Array.from({ length: 10 }, (_, i) => signal(i));
-            const sum = computed(() => signals.reduce((acc, s) => acc + s(), 0));
-
-            for (let i = 0; i < 100; i++) {
-              signals[i % 10]!.set(i);
-              sum();
-            }
-            dispose();
+          const [signals, sum, dispose] = createRoot((dispose) => {
+            const signals = Array.from({ length: 10 }, (_, i) => createSignal(i));
+            const sum = createMemo(() => signals.reduce((acc, [s]) => acc + s(), 0));
+            return [signals, sum, dispose] as const;
           });
+          for (let i = 0; i < 100; i++) {
+            signals[i % 10]![1](i);
+            flush();
+            sum();
+          }
+          dispose();
         },
         solid: () => {
           root((dispose) => {
-            const signals = Array.from({ length: 10 }, (_, i) => createSignal(i));
-            const sum = createMemo(() => signals.reduce((acc, [s]) => acc + s(), 0));
+            const signals = Array.from({ length: 10 }, (_, i) => solidCreateSignal(i));
+            const sum = solidCreateMemo(() => signals.reduce((acc, [s]) => acc + s(), 0));
 
             for (let i = 0; i < 100; i++) {
               signals[i % 10][1](i);
@@ -275,10 +283,10 @@ const suites: BenchmarkSuite[] = [
         operation: "render 100 items",
         iterations: 500,
         barq: () => {
-          scope((dispose) => {
+          createRoot((dispose) => {
             const container = document.createElement("div");
-            const el = For(() => items100, (_scope, item: () => { id: number; name: string }) =>
-                h("div", { class: "item", "data-id": String(item().id) }, item().name),
+            const el = For(() => items100, (item: { id: number; name: string }) =>
+                h("div", { class: "item", "data-id": String(item.id) }, item.name),
               );
             barqRender(el, container);
             dispose();
@@ -307,10 +315,10 @@ const suites: BenchmarkSuite[] = [
         operation: "render 1000 items",
         iterations: 100,
         barq: () => {
-          scope((dispose) => {
+          createRoot((dispose) => {
             const container = document.createElement("div");
-            const el = For(() => items1000, (_scope, item: () => { id: number; name: string }) =>
-                h("div", { class: "item", "data-id": String(item().id) }, item().name),
+            const el = For(() => items1000, (item: { id: number; name: string }) =>
+                h("div", { class: "item", "data-id": String(item.id) }, item.name),
               );
             barqRender(el, container);
             dispose();
@@ -339,10 +347,10 @@ const suites: BenchmarkSuite[] = [
         operation: "render 10000 items",
         iterations: 20,
         barq: () => {
-          scope((dispose) => {
+          createRoot((dispose) => {
             const container = document.createElement("div");
-            const el = For(() => items10000, (_scope, item: () => { id: number; name: string }) =>
-                h("div", { class: "item", "data-id": String(item().id) }, item().name),
+            const el = For(() => items10000, (item: { id: number; name: string }) =>
+                h("div", { class: "item", "data-id": String(item.id) }, item.name),
               );
             barqRender(el, container);
             dispose();
@@ -376,24 +384,25 @@ const suites: BenchmarkSuite[] = [
         operation: "toggle show/hide 100x",
         iterations: 500,
         barq: () => {
-          scope((dispose) => {
+          const [writeVisible, dispose] = createRoot((dispose) => {
             const container = document.createElement("div");
-            const visible = signal(true);
+            const [visible, writeVisible] = createSignal(true);
             const el = Show(visible, () => h("div", { class: "content" }, "Hello World"));
             barqRender(el, container);
-
-            for (let i = 0; i < 100; i++) {
-              visible.set(i % 2 === 0);
-            }
-            dispose();
+            return [writeVisible, dispose] as const;
           });
+          for (let i = 0; i < 100; i++) {
+            writeVisible(i % 2 === 0);
+            flush();
+          }
+          dispose();
         },
         solid: () => {
           const container = document.createElement("div");
           let setVisible: ((v: boolean) => void) | undefined;
 
           const dispose = solidRender(() => {
-            const [visible, _setVisible] = createSignal(true);
+            const [visible, _setVisible] = solidCreateSignal(true);
             setVisible = _setVisible;
             return SolidShow({
               get when() {
@@ -418,28 +427,29 @@ const suites: BenchmarkSuite[] = [
         operation: "show/fallback toggle 100x",
         iterations: 500,
         barq: () => {
-          scope((dispose) => {
+          const [writeVisible, dispose] = createRoot((dispose) => {
             const container = document.createElement("div");
-            const visible = signal(true);
+            const [visible, writeVisible] = createSignal(true);
             const el = Show(
               visible,
               () => h("div", { class: "content" }, "Loaded!"),
               () => h("div", { class: "fallback" }, "Loading..."),
             );
             barqRender(el, container);
-
-            for (let i = 0; i < 100; i++) {
-              visible.set(i % 2 === 0);
-            }
-            dispose();
+            return [writeVisible, dispose] as const;
           });
+          for (let i = 0; i < 100; i++) {
+            writeVisible(i % 2 === 0);
+            flush();
+          }
+          dispose();
         },
         solid: () => {
           const container = document.createElement("div");
           let setVisible: ((v: boolean) => void) | undefined;
 
           const dispose = solidRender(() => {
-            const [visible, _setVisible] = createSignal(true);
+            const [visible, _setVisible] = solidCreateSignal(true);
             setVisible = _setVisible;
             return SolidShow({
               get when() {
@@ -475,24 +485,25 @@ const suites: BenchmarkSuite[] = [
         operation: "text update 1000x",
         iterations: 200,
         barq: () => {
-          scope((dispose) => {
+          const [writeCount, dispose] = createRoot((dispose) => {
             const container = document.createElement("div");
-            const count = signal(0);
+            const [count, writeCount] = createSignal(0);
             const el = h("div", null, count);
             barqRender(el, container);
-
-            for (let i = 0; i < 1000; i++) {
-              count.set(i);
-            }
-            dispose();
+            return [writeCount, dispose] as const;
           });
+          for (let i = 0; i < 1000; i++) {
+            writeCount(i);
+            flush();
+          }
+          dispose();
         },
         solid: () => {
           const container = document.createElement("div");
           let setCount: ((v: number) => void) | undefined;
 
           const dispose = solidRender(() => {
-            const [count, _setCount] = createSignal(0);
+            const [count, _setCount] = solidCreateSignal(0);
             setCount = _setCount;
             const div = document.createElement("div");
             createEffect(() => {
@@ -511,26 +522,27 @@ const suites: BenchmarkSuite[] = [
         operation: "class update 1000x",
         iterations: 200,
         barq: () => {
-          scope((dispose) => {
+          const [writeActive, dispose] = createRoot((dispose) => {
             const container = document.createElement("div");
-            const active = signal(false);
+            const [active, writeActive] = createSignal(false);
             const el = h("div", {
               class: () => (active() ? "active" : "inactive"),
             });
             barqRender(el, container);
-
-            for (let i = 0; i < 1000; i++) {
-              active.set(i % 2 === 0);
-            }
-            dispose();
+            return [writeActive, dispose] as const;
           });
+          for (let i = 0; i < 1000; i++) {
+            writeActive(i % 2 === 0);
+            flush();
+          }
+          dispose();
         },
         solid: () => {
           const container = document.createElement("div");
           let setActive: ((v: boolean) => void) | undefined;
 
           const dispose = solidRender(() => {
-            const [active, _setActive] = createSignal(false);
+            const [active, _setActive] = solidCreateSignal(false);
             setActive = _setActive;
             const div = document.createElement("div");
             createEffect(() => {
@@ -549,9 +561,9 @@ const suites: BenchmarkSuite[] = [
         operation: "style update 1000x",
         iterations: 200,
         barq: () => {
-          scope((dispose) => {
+          const [writeWidth, dispose] = createRoot((dispose) => {
             const container = document.createElement("div");
-            const width = signal(0);
+            const [width, writeWidth] = createSignal(0);
             const el = h("div", {
               style: {
                 width: () => `${width()}px`,
@@ -560,19 +572,20 @@ const suites: BenchmarkSuite[] = [
               },
             });
             barqRender(el, container);
-
-            for (let i = 0; i < 1000; i++) {
-              width.set(i % 500);
-            }
-            dispose();
+            return [writeWidth, dispose] as const;
           });
+          for (let i = 0; i < 1000; i++) {
+            writeWidth(i % 500);
+            flush();
+          }
+          dispose();
         },
         solid: () => {
           const container = document.createElement("div");
           let setWidth: ((v: number) => void) | undefined;
 
           const dispose = solidRender(() => {
-            const [width, _setWidth] = createSignal(0);
+            const [width, _setWidth] = solidCreateSignal(0);
             setWidth = _setWidth;
             const div = document.createElement("div");
             div.style.height = "100px";
@@ -593,9 +606,9 @@ const suites: BenchmarkSuite[] = [
         operation: "multi-attr update 500x",
         iterations: 200,
         barq: () => {
-          scope((dispose) => {
+          const [writeState, dispose] = createRoot((dispose) => {
             const container = document.createElement("div");
-            const state = signal({ x: 0, y: 0, scale: 1 });
+            const [state, writeState] = createSignal({ x: 0, y: 0, scale: 1 });
             const el = h("div", {
               "data-x": () => String(state().x),
               "data-y": () => String(state().y),
@@ -605,19 +618,20 @@ const suites: BenchmarkSuite[] = [
               },
             });
             barqRender(el, container);
-
-            for (let i = 0; i < 500; i++) {
-              state.set({ x: i, y: i * 2, scale: 1 + i * 0.01 });
-            }
-            dispose();
+            return [writeState, dispose] as const;
           });
+          for (let i = 0; i < 500; i++) {
+            writeState({ x: i, y: i * 2, scale: 1 + i * 0.01 });
+            flush();
+          }
+          dispose();
         },
         solid: () => {
           const container = document.createElement("div");
           let setState: ((v: { x: number | undefined; y: number; scale: number }) => void) | undefined;
 
           const dispose = solidRender(() => {
-            const [state, _setState] = createSignal({ x: 0, y: 0, scale: 1 });
+            const [state, _setState] = solidCreateSignal({ x: 0, y: 0, scale: 1 });
             setState = _setState;
             const div = document.createElement("div");
             createEffect(() => {

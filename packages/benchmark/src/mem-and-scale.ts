@@ -3,12 +3,12 @@
  * Run: bun run src/mem-and-scale.ts
  */
 import {
-  computed as bComputed,
-  scope as bScope,
-  effect as bEffect,
+  createMemo as bComputed,
+  createRoot as bScope,
+  createTrackedEffect as bEffect,
   flush as bFlush,
-  signal as bSignal,
-  store as bStore,
+  createSignal as bSignal,
+  createStore as bStore,
 } from "@barqjs/core";
 import {
   createEffect as sEffect,
@@ -38,10 +38,12 @@ function mem(name: string, make: (i: number) => unknown): void {
 console.log("== retained size per node ==");
 mem("barq signal", () => bSignal(0));
 mem("solid2 createSignal", () => sSignal(0));
-mem("barq computed", () => {
-  const s = bSignal(0);
-  return bComputed(() => s() + 1);
-});
+mem("barq computed", () =>
+  bScope(() => {
+    const [s] = bSignal(0);
+    return bComputed(() => s() + 1);
+  }),
+);
 mem("solid2 createMemo", () =>
   sRoot(() => {
     const [s] = sSignal(0);
@@ -81,16 +83,18 @@ console.log(
 {
   // 1000 signals -> 1000 memos -> 100 effects each reading 10 memos
   const W = 1000;
-  const bSigs = Array.from({ length: W }, (_, i) => bSignal(i));
-  const bMemos = bSigs.map((s) => bComputed(() => s() * 2));
-  for (let e = 0; e < 100; e++) {
-    const slice = bMemos.slice(e * 10, e * 10 + 10);
-    bEffect(() => {
-      let t = 0;
-      for (const m of slice) t += m();
-      return t;
-    });
-  }
+  const bSigs = bScope(() => {
+    const sigs = Array.from({ length: W }, (_, i) => bSignal(i));
+    const memos = sigs.map(([s]) => bComputed(() => s() * 2));
+    for (let e = 0; e < 100; e++) {
+      const slice = memos.slice(e * 10, e * 10 + 10);
+      bEffect(() => {
+        let t = 0;
+        for (const m of slice) t += m();
+      });
+    }
+    return sigs;
+  });
   bFlush();
 
   const sSigs = sRoot(() => {
@@ -115,7 +119,7 @@ console.log(
   time(
     "graph1k: write 10 signals + flush",
     () => {
-      for (let k = 0; k < 10; k++) bSigs[k * 97].set(++i);
+      for (let k = 0; k < 10; k++) bSigs[k * 97][1](++i);
       bFlush();
     },
     () => {
@@ -128,7 +132,7 @@ console.log(
   time(
     "graph1k: write all 1000 + flush",
     () => {
-      for (let k = 0; k < 1000; k++) bSigs[k].set(++i);
+      for (let k = 0; k < 1000; k++) bSigs[k][1](++i);
       bFlush();
     },
     () => {
@@ -144,8 +148,13 @@ console.log(
   `${"case".padEnd(42)}${"barq µs".padStart(10)}${"solid2 µs".padStart(11)}${"ratio".padStart(9)}`,
 );
 {
-  const [bs, bset] = bStore({ a: { b: { c: 0 } }, list: [] as number[] });
-  bEffect(() => bs.a.b.c);
+  const [, bset] = bScope(() => {
+    const store = bStore({ a: { b: { c: 0 } }, list: [] as number[] });
+    bEffect(() => {
+      store[0].a.b.c;
+    });
+    return store;
+  });
   bFlush();
   const [ss, sset] = sRoot(() => sStore({ a: { b: { c: 0 } }, list: [] as number[] }));
   sEffect(
@@ -157,7 +166,9 @@ console.log(
   time(
     "store: deep write + flush",
     () => {
-      bset("a", "b", "c", ++i);
+      bset((s) => {
+        s.a.b.c = ++i;
+      });
       bFlush();
     },
     () => {

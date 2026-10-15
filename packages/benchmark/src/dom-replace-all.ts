@@ -54,6 +54,19 @@ function container(): HTMLElement {
   return el;
 }
 
+const barqRoots: (() => void)[] = [];
+
+function owned<T>(build: () => T): T {
+  return barq.createRoot((dispose) => {
+    barqRoots.push(dispose);
+    return build();
+  });
+}
+
+function disposeBarqRoots(): void {
+  for (const dispose of barqRoots.splice(0)) dispose();
+}
+
 const N = 100;
 const TRIALS = 61;
 const ITERATIONS = 200;
@@ -94,16 +107,18 @@ investigations.push({
   what: "makeRows inside the iteration, mapArray -> 100 fresh <div>, full insert",
   barq: () => {
     const parent = container();
-    const data = barq.signal(makeRows(N));
-    const view = barq.mapArray(data, (row: Row) => {
-      const el = document.createElement("div");
-      el.textContent = row.label;
-      return el;
+    const [data, setData] = barq.createSignal(makeRows(N));
+    owned(() => {
+      const view = barq.mapArray(data, (row: Row) => {
+        const el = document.createElement("div");
+        el.textContent = row.label;
+        return el;
+      });
+      barq.insert(parent, () => view());
     });
-    barq.insert(null, parent, () => view());
     barq.flush();
     return () => {
-      data.set(makeRows(N));
+      setData(makeRows(N));
       barq.flush();
     };
   },
@@ -141,17 +156,19 @@ investigations.push({
     what: "same, but the Row[] comes from a rotating pool — no allocation in the loop",
     barq: () => {
       const parent = container();
-      const data = barq.signal(pool[0]);
-      const view = barq.mapArray(data, (row: Row) => {
-        const el = document.createElement("div");
-        el.textContent = row.label;
-        return el;
+      const [data, setData] = barq.createSignal(pool[0]);
+      owned(() => {
+        const view = barq.mapArray(data, (row: Row) => {
+          const el = document.createElement("div");
+          el.textContent = row.label;
+          return el;
+        });
+        barq.insert(parent, () => view());
       });
-      barq.insert(null, parent, () => view());
       barq.flush();
       let i = 0;
       return () => {
-        data.set(pool[++i % POOL]);
+        setData(pool[++i % POOL]);
         barq.flush();
       };
     },
@@ -190,18 +207,18 @@ investigations.push({
     name: "C: reconciler only",
     what: "mapArray over 100 fresh keys, mapper returns a plain object — zero DOM",
     barq: () => {
-      const data = barq.signal(pool[0]);
-      const view = barq.mapArray(data, (row: Row) => ({ label: row.label }));
+      const [data, setData] = barq.createSignal(pool[0]);
       let out: unknown;
-      barq.root(() => {
-        barq.renderEffect(() => {
-          out = view();
+      owned(() => {
+        const view = barq.mapArray(data, (row: Row) => ({ label: row.label }));
+        barq.createRenderEffect(view, (rows) => {
+          out = rows;
         });
       });
       barq.flush();
       let i = 0;
       return () => {
-        data.set(pool[++i % POOL]);
+        setData(pool[++i % POOL]);
         barq.flush();
         sink += (out as unknown[]).length;
       };
@@ -247,12 +264,12 @@ investigations.push({
     what: "insert() swaps 100 pre-built nodes for 100 others — no mapArray, no scopes",
     barq: () => {
       const parent = container();
-      const which = barq.signal(0);
-      barq.insert(null, parent, () => nodePool[which() % POOL]);
+      const [which, setWhich] = barq.createSignal(0);
+      owned(() => barq.insert(parent, () => nodePool[which() % POOL]));
       barq.flush();
       let i = 0;
       return () => {
-        which.set(++i);
+        setWhich(++i);
         barq.flush();
       };
     },
@@ -361,6 +378,7 @@ for (const inv of investigations) {
     trials: TRIALS,
     iterations: inv.iterations ?? ITERATIONS,
   });
+  disposeBarqRoots();
   console.log(`\n${inv.name}`);
   console.log(`  ${inv.what}`);
   console.log(SUMMARY_HEADER);

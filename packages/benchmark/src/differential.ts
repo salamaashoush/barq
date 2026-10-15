@@ -18,14 +18,16 @@ type Api = {
 
 const barq: Api = {
   signal: (v, opts) => {
-    const s = B.signal(v, opts as never);
-    return [s, s.set];
+    const [g, s] = B.createSignal(v as never, opts as never);
+    return [g, s as (v: never) => void] as never;
   },
-  memo: (fn, opts) => B.computed(fn as never, opts as never) as never,
+  memo: (fn, opts) => B.createMemo(fn as never, opts as never) as never,
   effect: (fn) => {
-    B.effect(fn);
+    B.createTrackedEffect(() => {
+      fn();
+    });
   },
-  root: (fn) => B.scope(fn, true),
+  root: (fn) => B.createRoot(fn),
   flush: () => B.flush(),
   cleanup: (fn) => {
     B.onCleanup(fn);

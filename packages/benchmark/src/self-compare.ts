@@ -6,146 +6,273 @@
 import * as NEW from "../../core/src/signals.ts";
 import * as OLD from "../.bench-baseline/signals-baseline.ts";
 
-type Mod = typeof NEW;
-
-type Case = { name: string; make: (m: Mod) => () => void; n?: number };
+type Case = { name: string; before: () => () => void; after: () => () => void; n?: number };
 
 const cases: Case[] = [
   {
     name: "create: signal",
-    make: (m) => () => {
-      m.signal(0);
+    before: () => () => {
+      OLD.signal(0);
+    },
+    after: () => () => {
+      NEW.createSignal(0);
     },
   },
   {
     name: "create: scope + signal + effect + dispose",
-    make: (m) => () => {
-      m.scope((dispose) => {
-        const s = m.signal(0);
-        m.effect(() => {
+    before: () => () => {
+      OLD.createScope((dispose) => {
+        const s = OLD.signal(0);
+        OLD.effect(() => {
           s();
         });
-        m.flush();
+        OLD.flush();
         dispose();
       }, true);
+    },
+    after: () => () => {
+      NEW.createRoot((dispose) => {
+        const [s] = NEW.createSignal(0);
+        NEW.createTrackedEffect(() => {
+          s();
+        });
+        NEW.flush();
+        dispose();
+      });
     },
   },
   {
     name: "write: no subscribers (x100)",
     n: 5000,
-    make: (m) => {
-      const s = m.signal(0);
+    before: () => {
+      const s = OLD.signal(0);
       let i = 0;
       return () => {
         for (let k = 0; k < 100; k++) s.set(++i);
       };
     },
+    after: () => {
+      const [, set] = NEW.createSignal(0);
+      let i = 0;
+      return () => {
+        for (let k = 0; k < 100; k++) set(++i);
+        NEW.flush();
+      };
+    },
   },
   {
     name: "steady: 1 write + flush, 1 effect",
-    make: (m) => {
-      const s = m.signal(0);
-      m.effect(() => {
+    before: () => {
+      const s = OLD.signal(0);
+      OLD.effect(() => {
         s();
       });
-      m.flush();
+      OLD.flush();
       let i = 0;
       return () => {
         s.set(++i);
-        m.flush();
+        OLD.flush();
+      };
+    },
+    after: () => {
+      const [, set] = NEW.createRoot(() => {
+        const sig = NEW.createSignal(0);
+        NEW.createTrackedEffect(() => {
+          sig[0]();
+        });
+        return sig;
+      });
+      NEW.flush();
+      let i = 0;
+      return () => {
+        set(++i);
+        NEW.flush();
       };
     },
   },
   {
     name: "steady: chain(5) write + flush",
-    make: (m) => {
-      const s = m.signal(0);
+    before: () => {
+      const s = OLD.signal(0);
       let c: () => number = () => s();
       for (let d = 0; d < 5; d++) {
         const prev = c;
-        c = m.computed(() => prev() + 1);
+        c = OLD.computed(() => prev() + 1);
       }
-      m.effect(() => {
+      OLD.effect(() => {
         c();
       });
-      m.flush();
+      OLD.flush();
       let i = 0;
       return () => {
         s.set(++i);
-        m.flush();
+        OLD.flush();
+      };
+    },
+    after: () => {
+      const [, set] = NEW.createRoot(() => {
+        const sig = NEW.createSignal(0);
+        let c: () => number = () => sig[0]();
+        for (let d = 0; d < 5; d++) {
+          const prev = c;
+          c = NEW.createMemo(() => prev() + 1);
+        }
+        NEW.createTrackedEffect(() => {
+          c();
+        });
+        return sig;
+      });
+      NEW.flush();
+      let i = 0;
+      return () => {
+        set(++i);
+        NEW.flush();
       };
     },
   },
   {
     name: "steady: deep tree (height 40) 1 effect",
-    make: (m) => {
-      const s = m.signal(0);
+    before: () => {
+      const s = OLD.signal(0);
       let c: () => number = () => s();
       for (let d = 0; d < 40; d++) {
         const prev = c;
-        c = m.computed(() => prev() + 1);
+        c = OLD.computed(() => prev() + 1);
       }
-      m.effect(() => {
+      OLD.effect(() => {
         c();
       });
-      m.flush();
+      OLD.flush();
       let i = 0;
       return () => {
         s.set(++i);
-        m.flush();
+        OLD.flush();
+      };
+    },
+    after: () => {
+      const [, set] = NEW.createRoot(() => {
+        const sig = NEW.createSignal(0);
+        let c: () => number = () => sig[0]();
+        for (let d = 0; d < 40; d++) {
+          const prev = c;
+          c = NEW.createMemo(() => prev() + 1);
+        }
+        NEW.createTrackedEffect(() => {
+          c();
+        });
+        return sig;
+      });
+      NEW.flush();
+      let i = 0;
+      return () => {
+        set(++i);
+        NEW.flush();
       };
     },
   },
   {
     name: "steady: 100 effects at height 40",
     n: 2000,
-    make: (m) => {
-      const s = m.signal(0);
+    before: () => {
+      const s = OLD.signal(0);
       let c: () => number = () => s();
       for (let d = 0; d < 40; d++) {
         const prev = c;
-        c = m.computed(() => prev() + 1);
+        c = OLD.computed(() => prev() + 1);
       }
       const last = c;
       for (let e = 0; e < 100; e++) {
-        m.effect(() => {
+        OLD.effect(() => {
           last();
         });
       }
-      m.flush();
+      OLD.flush();
       let i = 0;
       return () => {
         s.set(++i);
-        m.flush();
+        OLD.flush();
+      };
+    },
+    after: () => {
+      const [, set] = NEW.createRoot(() => {
+        const sig = NEW.createSignal(0);
+        let c: () => number = () => sig[0]();
+        for (let d = 0; d < 40; d++) {
+          const prev = c;
+          c = NEW.createMemo(() => prev() + 1);
+        }
+        const last = c;
+        for (let e = 0; e < 100; e++) {
+          NEW.createTrackedEffect(() => {
+            last();
+          });
+        }
+        return sig;
+      });
+      NEW.flush();
+      let i = 0;
+      return () => {
+        set(++i);
+        NEW.flush();
       };
     },
   },
   {
     name: "steady: wide(10) write all + flush",
-    make: (m) => {
-      const sigs = Array.from({ length: 10 }, (_, i) => m.signal(i));
-      const sum = m.computed(() => {
+    before: () => {
+      const sigs = Array.from({ length: 10 }, (_, i) => OLD.signal(i));
+      const sum = OLD.computed(() => {
         let t = 0;
         for (let k = 0; k < 10; k++) t += sigs[k]();
         return t;
       });
-      m.effect(() => {
+      OLD.effect(() => {
         sum();
       });
-      m.flush();
+      OLD.flush();
       let i = 0;
       return () => {
         for (let k = 0; k < 10; k++) sigs[k].set(++i);
-        m.flush();
+        OLD.flush();
+      };
+    },
+    after: () => {
+      const sigs = NEW.createRoot(() => {
+        const arr = Array.from({ length: 10 }, (_, k) => NEW.createSignal(k));
+        const sum = NEW.createMemo(() => {
+          let t = 0;
+          for (let k = 0; k < 10; k++) t += arr[k][0]();
+          return t;
+        });
+        NEW.createTrackedEffect(() => {
+          sum();
+        });
+        return arr;
+      });
+      NEW.flush();
+      let i = 0;
+      return () => {
+        for (let k = 0; k < 10; k++) sigs[k][1](++i);
+        NEW.flush();
       };
     },
   },
   {
     name: "read: settled computed (x100)",
     n: 5000,
-    make: (m) => {
-      const s = m.signal(1);
-      const c = m.computed(() => s() * 2);
+    before: () => {
+      const s = OLD.signal(1);
+      const c = OLD.computed(() => s() * 2);
+      c();
+      return () => {
+        for (let k = 0; k < 100; k++) c();
+      };
+    },
+    after: () => {
+      const c = NEW.createRoot(() => {
+        const sig = NEW.createSignal(1);
+        return NEW.createMemo(() => sig[0]() * 2);
+      });
       c();
       return () => {
         for (let k = 0; k < 100; k++) c();
@@ -161,8 +288,8 @@ console.log("-".repeat(77));
 
 for (const c of cases) {
   const n = c.n ?? 20000;
-  const oldFn = c.make(OLD as unknown as Mod);
-  const newFn = c.make(NEW);
+  const oldFn = c.before();
+  const newFn = c.after();
   const warm = Math.min(n, 3000);
   for (let i = 0; i < warm; i++) oldFn();
   for (let i = 0; i < warm; i++) newFn();

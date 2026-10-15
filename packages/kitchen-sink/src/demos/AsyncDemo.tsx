@@ -1,9 +1,10 @@
 /**
- * Async & Resources Demo
- * Tests: resource, Loading, Errored
+ * Async Demo
+ * Tests: async createMemo, Loading, Errored, Reveal, isPending, latest,
+ * refresh, affects, createOptimistic, action
  *
- * NOTE: resource returns accessors that need explicit () calls.
- * The compiler handles JSX expressions but resource methods need manual calls.
+ * NOTE: an async memo is read like any other accessor, with an explicit ().
+ * The read throws until the first answer lands, and `<Loading>` catches it.
  */
 
 import {
@@ -13,12 +14,13 @@ import {
   Reveal,
   Show,
   action,
-  commit,
+  affects,
+  createMemo,
+  createOptimistic,
+  createSignal,
   isPending,
   latest,
-  optimistic,
-  resource,
-  signal,
+  refresh,
   type Incoming,
 } from "@barqjs/core";
 import { css } from "@barqjs/css";
@@ -34,13 +36,13 @@ interface User {
 export function AsyncDemo() {
   return (
     <DemoSection>
-      <ResourceDemo />
-      <ResourceWithSourceDemo />
+      <AsyncMemoDemo />
+      <ReactiveSourceDemo />
       <LoadingBoundaryDemo />
       <LoadingValueDemo />
       <OptimisticLaneDemo />
       <RevealOrderDemo />
-      <ErrorResourceDemo />
+      <ErrorHandlingDemo />
       <RefetchDemo />
     </DemoSection>
   );
@@ -49,7 +51,7 @@ export function AsyncDemo() {
 /**
  * A8 — commit #0. The skeleton is the VALUE, not a boundary's fallback.
  *
- * During the FIRST fetch this resource reads as settled: `loading()` is false,
+ * During the FIRST fetch this memo reads as settled: `isPending` is false,
  * nothing suspends, and the `<Loading>` above it never shows its fallback. The
  * placeholder carries its own provenance (`skeleton: true`) rather than
  * impersonating a real record. Once the first answer lands the loading value
@@ -59,10 +61,9 @@ export function AsyncDemo() {
 type Row = { name: string; skeleton?: boolean };
 
 function LoadingValueDemo() {
-  const generation = signal(0);
+  const [generation, setGeneration] = createSignal(0);
 
-  const row = resource<Row>(
-    () => generation(),
+  const row = createMemo<Row>(
     async () => {
       const res = await fetch(`/api/staggered?name=record&delay=1200&run=${generation()}`);
       return (await res.json()) as Row;
@@ -73,7 +74,7 @@ function LoadingValueDemo() {
   return (
     <DemoCard title="loadingValue - commit #0">
       <div class={controlsStyle}>
-        <Button onClick={() => generation.update((n) => n + 1)}>Refetch</Button>
+        <Button onClick={() => setGeneration((n) => n + 1)}>Refetch</Button>
       </div>
 
       <div class={resultBoxStyle}>
@@ -99,27 +100,30 @@ function LoadingValueDemo() {
 
 /**
  * A5's lane, in the shape the reference's own docs use:
- * `class={{ stale: isPending(value) }}` beside a `latest()` read.
+ * `class={{ stale: isPending(value) }}` beside the value the guess covers.
  *
- * Both are LIVE bindings, and both used to be applied once at construction:
- * `isPending` and `latest` call their argument, so the tracked read happens
- * inside the callee and the classifier could not see it (A5 (f)).
+ * `isPending` calls its argument, so the tracked read happens inside the callee
+ * and the binding is live all the same (A5 (f)).
  */
 function OptimisticLaneDemo() {
-  const title = optimistic("Untitled");
+  const [saved, setSaved] = createSignal("Untitled");
+  const [title, setTitle] = createOptimistic(() => saved());
 
   const rename = action(function* (next: string) {
-    title.set(next); // the guess, in the override buffer
-    const saved = (yield fetch(`/api/staggered?name=${next}&delay=1200`).then((r) => r.json())) as {
+    affects(saved); // the title reads as pending until the action settles
+    setTitle(next); // the guess, shown at once
+    const answer = (yield fetch(`/api/staggered?name=${next}&delay=1200`).then((r) =>
+      r.json(),
+    )) as {
       name: string;
     };
-    // The answer, written UNDERNEATH the override. Without `commit` this is a
-    // lane write and reverts when the lane retires (A5 (e)).
-    commit(() => title.set(`${saved.name} (saved)`));
+    // The answer, written to the signal the guess covers. It is held with the
+    // action and lands when the action settles, as the guess is dropped.
+    setSaved(`${answer.name} (saved)`);
   });
 
   return (
-    <DemoCard title="optimistic + action - lanes and the read surface">
+    <DemoCard title="createOptimistic + action - the guess and what it covers">
       <div class={controlsStyle}>
         <Button onClick={() => void rename(`Draft ${Math.floor(Math.random() * 90) + 10}`)}>
           Rename
@@ -131,14 +135,14 @@ function OptimisticLaneDemo() {
           {() => title()}
         </h4>
         <p class={noteStyle}>
-          authoritative: <code data-testid="lane-latest">{() => latest(() => title())}</code>
+          authoritative: <code data-testid="lane-latest">{() => saved()}</code>
         </p>
       </div>
 
       <p class={noteStyle}>
-        While the action is in flight the heading shows the guess and is marked stale; `latest()`
-        reads through the override to the value that is really committed. When the lane retires the
-        override drops onto a value that is already correct — nothing is rolled back.
+        While the action is in flight the heading shows the guess and is marked stale; the signal
+        underneath still holds the value that is really committed. When the action settles the guess
+        is dropped onto a value that is already correct — nothing is rolled back.
       </p>
     </DemoCard>
   );
@@ -147,7 +151,8 @@ function OptimisticLaneDemo() {
 /**
  * A nested `<Reveal>` group (A6). The inner group is ONE slot of the outer, so
  * `posts` cannot appear before `header` under `sequential` however fast it
- * lands — and under `together` the whole page arrives at once.
+ * lands — and under `together` nothing shows until `header` and the group's
+ * first slot are both ready.
  *
  * The delays are deliberately in the wrong order: `posts` is the fastest and is
  * registered second, which is the only arrangement under which the three orders
@@ -157,19 +162,19 @@ function OptimisticLaneDemo() {
 type RevealOrder = "sequential" | "together" | "natural";
 
 function RevealOrderDemo() {
-  const run = signal(0);
-  const order = signal<RevealOrder>("sequential");
+  const [run, setRun] = createSignal(0);
+  const [order, setOrder] = createSignal<RevealOrder>("sequential");
 
   return (
     <DemoCard title="Reveal - nested ordering">
       <div class={controlsStyle}>
-        <Button onClick={() => run.update((n) => n + 1)}>Load</Button>
+        <Button onClick={() => setRun((n) => n + 1)}>Load</Button>
         <For each={() => ["sequential", "together", "natural"] as RevealOrder[]}>
           {(mode: RevealOrder) => (
             <Button
               onClick={() => {
-                order.set(mode);
-                run.update((n) => n + 1);
+                setOrder(mode);
+                setRun((n) => n + 1);
               }}
             >
               {mode}
@@ -213,18 +218,15 @@ function RevealOrderDemo() {
 }
 
 function Slot(props: Incoming<{ name: string; delay: number; run: number }>) {
-  const data = resource(
-    () => `${props.name()}:${props.run()}`,
-    async () => {
-      // `run` is in the URL as well as in the source key: without it the second
-      // press replays Chrome's HTTP cache and every slot settles in the same
-      // microtask, which reads exactly like a group that reveals all at once.
-      const res = await fetch(
-        `/api/staggered?name=${props.name()}&delay=${props.delay()}&run=${props.run()}`,
-      );
-      return res.json() as Promise<{ name: string; at: number }>;
-    },
-  );
+  // `run` is in the URL: without it the second press replays Chrome's HTTP
+  // cache and every slot settles in the same microtask, which reads exactly
+  // like a group that reveals all at once.
+  const data = createMemo(async () => {
+    const res = await fetch(
+      `/api/staggered?name=${props.name()}&delay=${props.delay()}&run=${props.run()}`,
+    );
+    return (await res.json()) as { name: string; at: number };
+  });
 
   return (
     <Loading
@@ -241,220 +243,215 @@ function Slot(props: Incoming<{ name: string; delay: number; run: number }>) {
   );
 }
 
-// Basic resource
-function ResourceDemo() {
-  const users = resource(
-    () => "users",
-    async () => {
-      const res = await fetch("/api/users");
-      if (!res.ok) throw new Error("Failed to fetch users");
-      return res.json() as Promise<User[]>;
-    },
-  );
+// An async memo under the two boundaries
+function AsyncMemoDemo() {
+  const users = createMemo(async () => {
+    const res = await fetch("/api/users");
+    if (!res.ok) throw new Error("Failed to fetch users");
+    return (await res.json()) as User[];
+  });
+
+  // A bare refresh() is a quiet re-ask. Declared inside an action, `affects`
+  // marks the memo pending until the answer the refresh asked for lands.
+  const reload = action(function* () {
+    affects(users);
+    refresh(users);
+  });
 
   return (
-    <DemoCard title="resource - Basic">
-      <Show when={users.loading()}>
-        <div class={loadingStyle}>Loading users...</div>
-      </Show>
+    <DemoCard title="createMemo - Async">
+      <Errored
+        fallback={(err: () => Error) => <div class={errorStyle}>Error: {() => err().message}</div>}
+      >
+        <Loading fallback={<div class={loadingStyle}>Loading users...</div>}>
+          <ul class={{ [listStyle]: true, [staleClass]: true, stale: isPending(users) }}>
+            <For each={users}>
+              {(user: User) => (
+                <li class={listItemStyle}>
+                  <strong>{user.name}</strong>
+                  <span>{user.email}</span>
+                </li>
+              )}
+            </For>
+          </ul>
+        </Loading>
+      </Errored>
 
-      <Show when={users.error()}>
-        <div class={errorStyle}>Error: {users.error()?.message}</div>
-      </Show>
-
-      <Show when={!users.loading() && !users.error() && users()}>
-        <ul class={listStyle}>
-          {users()?.map((user) => (
-            <li class={listItemStyle}>
-              <strong>{user.name}</strong>
-              <span>{user.email}</span>
-            </li>
-          ))}
-        </ul>
-      </Show>
-
-      <Button onClick={() => users.refetch()}>Refetch</Button>
+      <Button onClick={() => void reload()}>Refetch</Button>
     </DemoCard>
   );
 }
 
-// resource with reactive source
-function ResourceWithSourceDemo() {
-  const userId = signal(1);
+// An async memo that reads a signal
+function ReactiveSourceDemo() {
+  const [userId, setUserId] = createSignal(1);
 
-  const user = resource(
-    () => userId(),
-    async (id) => {
-      const res = await fetch(`/api/users/${id}`);
-      if (!res.ok) throw new Error("Failed to fetch user");
-      return res.json() as Promise<User>;
-    },
-  );
+  const user = createMemo(async () => {
+    const res = await fetch(`/api/users/${userId()}`);
+    if (!res.ok) throw new Error("Failed to fetch user");
+    return (await res.json()) as User;
+  });
 
   return (
-    <DemoCard title="resource - Reactive Source">
+    <DemoCard title="createMemo - Reactive Source">
       <div class={buttonRowStyle}>
-        <Button onClick={() => userId.set(1)}>User 1</Button>
-        <Button onClick={() => userId.set(2)}>User 2</Button>
-        <Button onClick={() => userId.set(3)}>User 3</Button>
+        <Button onClick={() => setUserId(1)}>User 1</Button>
+        <Button onClick={() => setUserId(2)}>User 2</Button>
+        <Button onClick={() => setUserId(3)}>User 3</Button>
       </div>
 
       <p>
-        Selected user ID: <strong>{userId}</strong>
+        Selected user ID: <strong>{() => latest(userId)}</strong>
       </p>
 
       <div class={resultBoxStyle}>
-        <Show when={user.loading()}>
-          <div class={loadingStyle}>Loading user {userId}...</div>
-        </Show>
-
-        <Show when={!user.loading() && user()}>
-          <div>
+        <Loading fallback={<div class={loadingStyle}>Loading user {() => latest(userId)}...</div>}>
+          <div class={{ [staleClass]: true, stale: isPending(user) }}>
             <p>
-              <strong>Name:</strong> {user()?.name}
+              <strong>Name:</strong> {() => user().name}
             </p>
             <p>
-              <strong>Email:</strong> {user()?.email}
+              <strong>Email:</strong> {() => user().email}
             </p>
             <p>
-              <strong>Bio:</strong> {user()?.bio || "No bio"}
+              <strong>Bio:</strong> {() => user().bio || "No bio"}
             </p>
           </div>
-        </Show>
+        </Loading>
       </div>
 
-      <p class={noteStyle}>Resource automatically refetches when source signal changes.</p>
+      <p class={noteStyle}>
+        The memo refetches when the signal it reads changes. The previous user stays on screen,
+        marked stale by `isPending(user)`, and `latest(userId)` shows the selection that is still in
+        flight.
+      </p>
     </DemoCard>
   );
 }
 
 // Loading + Errored, the two boundaries Solid 2.0 ships
 function LoadingBoundaryDemo() {
-  const fetchId = signal(0);
+  const [fetchId, setFetchId] = createSignal(0);
 
-  const slowData = resource(
-    () => fetchId(),
-    async () => {
-      if (fetchId() === 0) return null;
-      const res = await fetch("/api/slow");
-      return res.json();
-    },
-  );
+  const slowData = createMemo<{ message: string } | null>(() => {
+    if (fetchId() === 0) return null;
+    return fetch("/api/slow").then((res) => res.json());
+  });
 
   return (
-    <DemoCard title="Loading + Errored - Resource State Rendering">
-      <Button onClick={() => fetchId.update((id) => id + 1)}>Fetch Slow Data</Button>
+    <DemoCard title="Loading + Errored - Async State Rendering">
+      <Button onClick={() => setFetchId((id) => id + 1)}>Fetch Slow Data</Button>
 
       <div class={resultBoxStyle}>
-        <Loading fallback={<div class={loadingStyle}>Waiting for slow response...</div>}>
-          <Errored
-            fallback={(err: () => Error) => (
-              <div class={errorStyle}>Error: {() => err().message}</div>
-            )}
+        <Show when={fetchId} fallback={<p>Click button to fetch</p>}>
+          <Loading
+            on={fetchId}
+            fallback={<div class={loadingStyle}>Waiting for slow response...</div>}
           >
-            <Show when={() => slowData() !== null} fallback={<p>Click button to fetch</p>}>
+            <Errored
+              fallback={(err: () => Error) => (
+                <div class={errorStyle}>Error: {() => err().message}</div>
+              )}
+            >
               <div class={successStyle}>Response: {() => JSON.stringify(slowData())}</div>
-            </Show>
-          </Errored>
-        </Loading>
+            </Errored>
+          </Loading>
+        </Show>
       </div>
 
       <p class={noteStyle}>
-        Reading a resource throws before it settles and throws the error after it fails, so the two
-        boundaries ARE the three states.
+        Reading an async memo throws before it settles and throws the error after it fails, so the
+        two boundaries ARE the three states. `on` re-arms the fallback for each new fetch; without
+        it the settled content stays up while the next answer is in flight.
       </p>
     </DemoCard>
   );
 }
 
 // Error handling
-function ErrorResourceDemo() {
-  const shouldFetch = signal(false);
+function ErrorHandlingDemo() {
+  const [shouldFetch, setShouldFetch] = createSignal(false);
 
-  const errorData = resource(
-    () => shouldFetch(),
-    async (doFetch) => {
-      if (!doFetch) return null;
-      const res = await globalThis.fetch("/api/error");
+  const errorData = createMemo<unknown>(() => {
+    if (!shouldFetch()) return null;
+    return fetch("/api/error").then((res) => {
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       return res.json();
-    },
-  );
+    });
+  });
 
   return (
-    <DemoCard title="Resource Error Handling">
-      <Button onClick={() => shouldFetch.set(true)}>Fetch (will fail)</Button>
+    <DemoCard title="Errored - Async Error Handling">
+      <Button onClick={() => setShouldFetch(true)}>Fetch (will fail)</Button>
 
       <div class={resultBoxStyle}>
-        <Show when={errorData.loading()}>
-          <div class={loadingStyle}>Fetching...</div>
-        </Show>
-
-        <Show when={errorData.error()}>
-          <div class={errorStyle}>
-            <strong>Error caught:</strong>
-            <p>{errorData.error()?.message}</p>
-            <Button onClick={() => errorData.refetch()}>Retry</Button>
-          </div>
-        </Show>
-
-        <Show when={() => !shouldFetch() && !errorData.loading() && !errorData.error()}>
-          <p>Click button to trigger an error</p>
-        </Show>
-      </div>
-
-      <p class={noteStyle}>Resources expose error state for graceful error handling.</p>
-    </DemoCard>
-  );
-}
-
-// Manual refetch and mutate
-function RefetchDemo() {
-  const counter = signal(0);
-
-  const data = resource(
-    () => null,
-    async () => {
-      const res = await fetch("/api/users");
-      return res.json() as Promise<User[]>;
-    },
-  );
-
-  const handleMutate = () => {
-    // Optimistically update the data
-    data.mutate([{ id: 999, name: "Optimistic User", email: "optimistic@example.com" }]);
-    counter.update((c) => c + 1);
-  };
-
-  return (
-    <DemoCard title="Refetch & Mutate">
-      <p>
-        Mutation count: <strong>{counter}</strong>
-      </p>
-
-      <div class={buttonRowStyle}>
-        <Button onClick={() => data.refetch()}>Refetch</Button>
-        <Button onClick={handleMutate}>Optimistic Update</Button>
-      </div>
-
-      <div class={resultBoxStyle}>
-        <Show when={data.loading()}>
-          <div class={loadingStyle}>Loading...</div>
-        </Show>
-
-        <Show when={!data.loading() && data()}>
-          <ul class={compactListStyle}>
-            {data()
-              ?.slice(0, 3)
-              .map((user) => (
-                <li>{user.name}</li>
-              ))}
-          </ul>
+        <Show when={shouldFetch} fallback={<p>Click button to trigger an error</p>}>
+          <Loading fallback={<div class={loadingStyle}>Fetching...</div>}>
+            <Errored
+              fallback={(err: () => Error, reset: () => void) => (
+                <div class={errorStyle}>
+                  <strong>Error caught:</strong>
+                  <p>{() => err().message}</p>
+                  <Button onClick={reset}>Retry</Button>
+                </div>
+              )}
+            >
+              <div class={successStyle}>Response: {() => JSON.stringify(errorData())}</div>
+            </Errored>
+          </Loading>
         </Show>
       </div>
 
       <p class={noteStyle}>
-        mutate() updates data without refetching (useful for optimistic updates).
+        A rejected async memo throws at its read. `Errored` catches it and hands the fallback the
+        error and a `reset` that asks again.
+      </p>
+    </DemoCard>
+  );
+}
+
+// Manual refetch and a local write
+function RefetchDemo() {
+  const [counter, setCounter] = createSignal(0);
+
+  const [data, setData] = createSignal(async () => {
+    const res = await fetch("/api/users");
+    return (await res.json()) as User[];
+  });
+
+  const handleWrite = () => {
+    setData([{ id: 999, name: "Local User", email: "local@example.com" }]);
+    setCounter((c) => c + 1);
+  };
+
+  const reload = action(function* () {
+    affects(data);
+    refresh(data);
+  });
+
+  return (
+    <DemoCard title="refresh & a writable memo">
+      <p>
+        Write count: <strong>{counter}</strong>
+      </p>
+
+      <div class={buttonRowStyle}>
+        <Button onClick={() => void reload()}>Refetch</Button>
+        <Button onClick={handleWrite}>Write Locally</Button>
+      </div>
+
+      <div class={resultBoxStyle}>
+        <Loading fallback={<div class={loadingStyle}>Loading...</div>}>
+          <ul class={{ [compactListStyle]: true, [staleClass]: true, stale: isPending(data) }}>
+            <For each={() => data().slice(0, 3)}>{(user: User) => <li>{user.name}</li>}</For>
+          </ul>
+        </Loading>
+      </div>
+
+      <p class={noteStyle}>
+        `createSignal(fn)` is a memo with a setter: a write replaces the fetched value without
+        asking again. `refresh` asks again, and `affects` marks the list stale until the answer
+        lands.
       </p>
     </DemoCard>
   );

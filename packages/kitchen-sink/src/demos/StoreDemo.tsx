@@ -1,12 +1,20 @@
 /**
  * Store Demo
- * Tests: store, produce, reconcile
+ * Tests: createStore, the setter's draft, reconcile, snapshot
  *
  * NOTE: This file uses clean syntax that the compiler transforms.
  * Store access like `state.count` is automatically wrapped.
  */
 
-import { For, Show, produce, reconcile, unwrap, effect, signal, store } from "@barqjs/core";
+import {
+  For,
+  Show,
+  createEffect,
+  createSignal,
+  createStore,
+  reconcile,
+  snapshot,
+} from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { Button, DemoCard, DemoSection } from "./shared";
 
@@ -31,7 +39,7 @@ export function StoreDemo() {
       <BasicStoreDemo />
       <NestedStoreDemo />
       <TodoStoreDemo />
-      <ProduceDemo />
+      <DraftSetterDemo />
       <ReconcileDemo />
     </DemoSection>
   );
@@ -39,7 +47,7 @@ export function StoreDemo() {
 
 // Basic store usage
 function BasicStoreDemo() {
-  const [state, setState] = store({
+  const [state, setState] = createStore({
     count: 0,
     message: "Hello",
   });
@@ -54,9 +62,33 @@ function BasicStoreDemo() {
       </p>
 
       <div class={buttonRowStyle}>
-        <Button onClick={() => setState("count", (c) => c + 1)}>Increment</Button>
-        <Button onClick={() => setState("count", 0)}>Reset</Button>
-        <Button onClick={() => setState("message", "Updated!")}>Update Message</Button>
+        <Button
+          onClick={() =>
+            setState((s) => {
+              s.count += 1;
+            })
+          }
+        >
+          Increment
+        </Button>
+        <Button
+          onClick={() =>
+            setState((s) => {
+              s.count = 0;
+            })
+          }
+        >
+          Reset
+        </Button>
+        <Button
+          onClick={() =>
+            setState((s) => {
+              s.message = "Updated!";
+            })
+          }
+        >
+          Update Message
+        </Button>
       </div>
 
       <p class={noteStyle}>
@@ -68,7 +100,7 @@ function BasicStoreDemo() {
 
 // Nested store paths
 function NestedStoreDemo() {
-  const [user, setUser] = store<User>({
+  const [user, setUser] = createStore<User>({
     name: "John Doe",
     email: "john@example.com",
     preferences: {
@@ -78,20 +110,24 @@ function NestedStoreDemo() {
   });
 
   // Signal to hold the raw JSON snapshot
-  const rawJson = signal("");
+  const [rawJson, setRawJson] = createSignal("");
 
-  // Effect tracks store changes, then stores unwrapped raw value
-  effect(() => {
-    // Access through proxy to track changes
-    user.name;
-    user.email;
-    user.preferences.theme;
-    user.preferences.notifications;
+  // The compute tracks the store and takes the raw value; the apply stores it
+  createEffect(
+    () => {
+      // Access through proxy to track changes
+      user.name;
+      user.email;
+      user.preferences.theme;
+      user.preferences.notifications;
 
-    // Get raw object and store as JSON
-    const raw = unwrap(user);
-    rawJson.set(JSON.stringify(raw, null, 2));
-  });
+      // Get raw object as JSON
+      return JSON.stringify(snapshot(user), null, 2);
+    },
+    (json) => {
+      setRawJson(json);
+    },
+  );
 
   return (
     <DemoCard title="Nested Store Paths">
@@ -101,7 +137,12 @@ function NestedStoreDemo() {
           <input
             type="text"
             value={user.name}
-            onInput={(e: Event) => setUser("name", (e.target as HTMLInputElement).value)}
+            onInput={(e: Event) => {
+              const value = (e.target as HTMLInputElement).value;
+              setUser((u) => {
+                u.name = value;
+              });
+            }}
             class={inputStyle}
           />
         </label>
@@ -113,7 +154,12 @@ function NestedStoreDemo() {
           <input
             type="text"
             value={user.email}
-            onInput={(e: Event) => setUser("email", (e.target as HTMLInputElement).value)}
+            onInput={(e: Event) => {
+              const value = (e.target as HTMLInputElement).value;
+              setUser((u) => {
+                u.email = value;
+              });
+            }}
             class={inputStyle}
           />
         </label>
@@ -124,13 +170,12 @@ function NestedStoreDemo() {
           Theme:
           <select
             value={user.preferences.theme}
-            onChange={(e: Event) =>
-              setUser(
-                "preferences",
-                "theme",
-                (e.target as HTMLSelectElement).value as "light" | "dark",
-              )
-            }
+            onChange={(e: Event) => {
+              const value = (e.target as HTMLSelectElement).value as "light" | "dark";
+              setUser((u) => {
+                u.preferences.theme = value;
+              });
+            }}
             class={selectStyle}
           >
             <option value="light">Light</option>
@@ -144,19 +189,23 @@ function NestedStoreDemo() {
           <input
             type="checkbox"
             checked={user.preferences.notifications}
-            onChange={() => setUser("preferences", "notifications", (prev: boolean) => !prev)}
+            onChange={() =>
+              setUser((u) => {
+                u.preferences.notifications = !u.preferences.notifications;
+              })
+            }
           />
           Enable Notifications
         </label>
       </div>
 
       <pre class={previewStyle}>
-        {/* Rendered from signal updated by effect with unwrap() */}
+        {/* Rendered from signal updated by effect with snapshot() */}
         {rawJson}
       </pre>
 
       <p class={noteStyle}>
-        Effect tracks store → <code>unwrap()</code> gets raw object → updates signal for display.
+        Effect tracks store → <code>snapshot()</code> gets raw object → updates signal for display.
       </p>
     </DemoCard>
   );
@@ -164,35 +213,39 @@ function NestedStoreDemo() {
 
 // Todo list with store
 function TodoStoreDemo() {
-  const [state, setState] = store({
+  const [state, setState] = createStore({
     todos: [] as Todo[],
     filter: "all" as "all" | "active" | "completed",
     nextId: 1,
   });
 
-  const [inputValue, setInputValue] = store({ text: "" });
+  const [inputValue, setInputValue] = createStore({ text: "" });
 
   const addTodo = () => {
     const text = inputValue.text.trim();
     if (!text) return;
 
-    // Read nextId BEFORE the setState callback to get current value
-    const id = state.nextId;
-    setState("todos", (todos) => [...todos, { id, text, completed: false }]);
-    setState("nextId", id + 1);
-    setInputValue("text", "");
+    setState((s) => {
+      s.todos.push({ id: s.nextId, text, completed: false });
+      s.nextId += 1;
+    });
+    setInputValue((s) => {
+      s.text = "";
+    });
   };
 
   const toggleTodo = (id: number) => {
-    // Find index and use path-based setter for cleaner code
-    const index = state.todos.findIndex((t) => t.id === id);
-    if (index !== -1) {
-      setState("todos", index, "completed", (prev: boolean) => !prev);
-    }
+    setState((s) => {
+      const todo = s.todos.find((t) => t.id === id);
+      if (todo) todo.completed = !todo.completed;
+    });
   };
 
   const removeTodo = (id: number) => {
-    setState("todos", (todos) => todos.filter((todo) => todo.id !== id));
+    setState((s) => {
+      const index = s.todos.findIndex((todo) => todo.id === id);
+      if (index !== -1) s.todos.splice(index, 1);
+    });
   };
 
   const filteredTodos = () => {
@@ -213,7 +266,12 @@ function TodoStoreDemo() {
         <input
           type="text"
           value={inputValue.text}
-          onInput={(e: Event) => setInputValue("text", (e.target as HTMLInputElement).value)}
+          onInput={(e: Event) => {
+            const value = (e.target as HTMLInputElement).value;
+            setInputValue((s) => {
+              s.text = value;
+            });
+          }}
           onKeyDown={(e: KeyboardEvent) => e.key === "Enter" && addTodo()}
           placeholder="Add a todo..."
           class={inputStyle}
@@ -224,19 +282,31 @@ function TodoStoreDemo() {
       <div class={filterRowStyle}>
         <Button
           variant={state.filter === "all" ? "primary" : "secondary"}
-          onClick={() => setState("filter", "all")}
+          onClick={() =>
+            setState((s) => {
+              s.filter = "all";
+            })
+          }
         >
           All
         </Button>
         <Button
           variant={state.filter === "active" ? "primary" : "secondary"}
-          onClick={() => setState("filter", "active")}
+          onClick={() =>
+            setState((s) => {
+              s.filter = "active";
+            })
+          }
         >
           Active
         </Button>
         <Button
           variant={state.filter === "completed" ? "primary" : "secondary"}
-          onClick={() => setState("filter", "completed")}
+          onClick={() =>
+            setState((s) => {
+              s.filter = "completed";
+            })
+          }
         >
           Completed
         </Button>
@@ -250,10 +320,10 @@ function TodoStoreDemo() {
           <For each={filteredTodos}>
             {(todo: Todo) => (
               <li class={todoItemStyle}>
-                <label class={todo.completed ? completedStyle : ""}>
+                <label class={() => (todo.completed ? completedStyle : "")}>
                   <input
                     type="checkbox"
-                    checked={todo.completed}
+                    checked={() => todo.completed}
                     onChange={() => toggleTodo(todo.id)}
                   />
                   {todo.text}
@@ -270,9 +340,9 @@ function TodoStoreDemo() {
   );
 }
 
-// produce for immutable updates
-function ProduceDemo() {
-  const [state, setState] = store({
+// The setter's draft: mutable-style updates
+function DraftSetterDemo() {
+  const [state, setState] = createStore({
     users: [
       { id: 1, name: "Alice", score: 100 },
       { id: 2, name: "Bob", score: 85 },
@@ -281,32 +351,26 @@ function ProduceDemo() {
   });
 
   const incrementScore = (id: number) => {
-    setState(
-      "users",
-      produce((users) => {
-        const user = users.find((u) => u.id === id);
-        if (user) user.score += 10;
-      }),
-    );
+    setState((s) => {
+      const user = s.users.find((u) => u.id === id);
+      if (user) user.score += 10;
+    });
   };
 
   const sortByScore = () => {
-    setState(
-      "users",
-      produce((users) => {
-        users.sort((a, b) => b.score - a.score);
-      }),
-    );
+    setState((s) => {
+      s.users.sort((a, b) => b.score - a.score);
+    });
   };
 
   return (
-    <DemoCard title="produce - Immutable Updates">
+    <DemoCard title="Draft Setter - Mutable-Style Updates">
       <ul class={userListStyle}>
         <For each={state.users}>
           {(user: { id: number; name: string; score: number }) => (
             <li class={userItemStyle}>
               <span>
-                {user.name}: <strong>{user.score}</strong> points
+                {user.name}: <strong>{() => user.score}</strong> points
               </span>
               <Button onClick={() => incrementScore(user.id)}>+10</Button>
             </li>
@@ -316,14 +380,16 @@ function ProduceDemo() {
 
       <Button onClick={sortByScore}>Sort by Score</Button>
 
-      <p class={noteStyle}>produce() allows mutable-style syntax with immutable updates.</p>
+      <p class={noteStyle}>
+        The setter hands its callback a draft: mutate it in place and only what changed notifies.
+      </p>
     </DemoCard>
   );
 }
 
 // reconcile for efficient diffing
 function ReconcileDemo() {
-  const [state, setState] = store({
+  const [state, setState] = createStore({
     items: [
       { id: 1, value: "A" },
       { id: 2, value: "B" },
@@ -339,12 +405,16 @@ function ReconcileDemo() {
       { id: 4, value: "D (new)" },
     ];
 
-    setState("items", reconcile(newItems, { key: "id" }));
+    setState((s) => {
+      reconcile(newItems, "id")(s.items);
+    });
   };
 
   const shuffleItems = () => {
     const shuffled = [...state.items].sort(() => Math.random() - 0.5);
-    setState("items", reconcile(shuffled, { key: "id" }));
+    setState((s) => {
+      reconcile(shuffled, "id")(s.items);
+    });
   };
 
   return (
@@ -353,7 +423,7 @@ function ReconcileDemo() {
         <For each={state.items}>
           {(item: { id: number; value: string }) => (
             <li class={userItemStyle}>
-              ID: {item.id}, Value: <strong>{item.value}</strong>
+              ID: {item.id}, Value: <strong>{() => item.value}</strong>
             </li>
           )}
         </For>
