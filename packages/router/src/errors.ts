@@ -10,6 +10,8 @@
  * Nothing here touches a `Request`, a `Response` or the DOM.
  */
 
+import { errorOwnerPath, isDev } from "@barqjs/core";
+
 import { interpolate } from "./path.ts";
 import { type Route, ROOT_ROUTE_ID } from "./route.ts";
 import type { NavigateOptionsFor } from "./register.ts";
@@ -326,8 +328,12 @@ export function errorFallbackFor(
     // render as an empty `<div id="app">` with no clue why. A route that has
     // not said what to do with an error still deserves to have the error said
     // out loud once.
-    if (!missing) reportUnhandled(chain[depth]?.id ?? `depth ${depth}`, thrown);
-    return null;
+    if (missing) return null;
+    const route = chain[depth]?.id ?? `depth ${depth}`;
+    reportUnhandled(route, thrown);
+    // In development the region says what happened instead of standing empty.
+    // Text, so the server's string and the browser's node are the same thing.
+    return isDev ? unhandledText(route, thrown) : null;
   };
 }
 
@@ -373,6 +379,21 @@ export interface ErrorFallbacks {
   readonly errorComponent?: unknown;
   readonly notFoundComponent?: unknown;
   readonly onCatch?: (error: Error) => void;
+}
+
+/**
+ * What a development build shows where a route with no `errorComponent` failed:
+ * the route, the error and the component it was thrown in.
+ */
+export function unhandledText(route: string, error: Error): string {
+  const path = errorOwnerPath(error);
+  return (
+    `The route ${JSON.stringify(route)} threw ${error.name}: ${error.message}` +
+    (path === undefined ? "" : ` (in ${path.join(" › ")})`) +
+    ". No route up the chain declares an `errorComponent`, so this text stands in for one in " +
+    "development; a production build renders nothing here. Add `errorComponent` to the route, " +
+    "or to the root route to cover every page."
+  );
 }
 
 /**

@@ -14,6 +14,7 @@
  * the failure that matters here.
  */
 
+import { isDev } from "@barqjs/core";
 import { describe, expect, test } from "bun:test";
 
 import {
@@ -139,6 +140,28 @@ describe("onCatch", () => {
       fullPath: `/r${at}`,
       definition,
     })) as never as Parameters<typeof errorFallbackFor>[0];
+
+  test("with no errorComponent anywhere, development shows the error and production nothing", () => {
+    const logged = console.error;
+    console.error = () => {};
+    try {
+      const fallback = errorFallbackFor(chainOf({}, {}), 1, () => ({}));
+      const shown = fallback(
+        () => new TypeError("salama's profile has no avatar"),
+        () => {},
+      );
+      expect(shown).toBe(
+        isDev
+          ? 'The route "/r1" threw TypeError: salama\'s profile has no avatar. No route up the ' +
+              "chain declares an `errorComponent`, so this text stands in for one in development; a " +
+              "production build renders nothing here. Add `errorComponent` to the route, or to the " +
+              "root route to cover every page."
+          : null,
+      );
+    } finally {
+      console.error = logged;
+    }
+  });
 
   test("every route from the failing depth outward is told, once", () => {
     const seen: string[] = [];
