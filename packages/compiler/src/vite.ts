@@ -5,12 +5,20 @@ import { dirname, join, resolve } from "node:path";
 
 import { frameAround, overlayModule, type OverlayFrame } from "./overlay.ts";
 import {
+  SERVER_DIAGNOSTICS_CLEAR,
+  SERVER_DIAGNOSTICS_EVENT,
+  clearServerDiagnostics,
+  replayServerDiagnostics,
+} from "./server-diagnostics.ts";
+import {
   type Plugin,
   type TransformResult,
   type ViteDevServer,
   defaultClientConditions,
   defaultServerConditions,
 } from "vite";
+
+export { reportServerDiagnostic, type ServerReport } from "./server-diagnostics.ts";
 
 const NATIVE_PACKAGE = "@barqjs/compiler-rs";
 
@@ -205,8 +213,10 @@ export interface BarqCompilerOptions {
 
   /**
    * Development mode: compile-time diagnostics about runtime behaviour
-   * (BARQ004, BARQ006, BARQ007) plus the dev-mode template labels. Derived from
-   * Vite's own mode when left unset.
+   * (BARQ004, BARQ010), the dev-mode template labels, the source location
+   * written beside each hydratable template, and component calls named for the
+   * owner path a runtime finding prints. Derived from Vite's own mode when left
+   * unset.
    */
   dev?: boolean;
 
@@ -821,7 +831,12 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       server = devServer;
       // A page that connects after the transforms have already run would
       // otherwise see nothing until the next edit.
-      devServer.hot.on("barq:diagnostics:ready", () => publish());
+      devServer.hot.on("barq:diagnostics:ready", () => {
+        publish();
+        replayServerDiagnostics(devServer);
+      });
+      devServer.hot.on(SERVER_DIAGNOSTICS_CLEAR, () => clearServerDiagnostics(devServer));
+      devServer.watcher.on("change", () => clearServerDiagnostics(devServer));
     },
 
     resolveId(id) {
@@ -835,7 +850,13 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
     load(id) {
       if (id === RESOLVED_CLIENT_ID) {
         return overlayModule(
-          { event: DIAGNOSTICS_EVENT, ready: "barq:diagnostics:ready", root },
+          {
+            event: DIAGNOSTICS_EVENT,
+            ready: "barq:diagnostics:ready",
+            server: SERVER_DIAGNOSTICS_EVENT,
+            clear: SERVER_DIAGNOSTICS_CLEAR,
+            root,
+          },
           compilerOptions.moduleSource ?? "@barqjs/core",
         );
       }

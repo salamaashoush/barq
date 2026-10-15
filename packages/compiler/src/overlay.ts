@@ -34,25 +34,58 @@ export interface OverlayPayload {
   diagnostics: OverlayDiagnostic[];
 }
 
+/** A place in a file, as a frame of a server stack or the JSX a finding is about. */
+export interface OverlayLocation {
+  file: string;
+  line: number;
+  column: number;
+  name?: string;
+  /** A frame in a dependency rather than in the project, shown dimmed. */
+  library: boolean;
+}
+
+/**
+ * Something the SERVER reported while serving a page or a call: an error a
+ * stream contained, a server function that failed, a header written too late.
+ * The dev server has already mapped its stack to source and cut the frame.
+ */
+export interface OverlayServerEntry {
+  code?: string;
+  severity: "note" | "warning" | "error";
+  message: string;
+  docs?: string;
+  ownerPath?: string[];
+  at?: OverlayLocation;
+  frame?: OverlayFrame;
+  stack?: OverlayLocation[];
+}
+
 interface OverlayHot {
-  on(event: string, listener: (data: OverlayPayload) => void): void;
+  on(event: string, listener: (data: never) => void): void;
   send(event: string): void;
 }
 
+/** A finding on the runtime's channel: the engine's and barq's, one shape. */
+export interface OverlayRuntimeEvent {
+  code: string;
+  severity: "info" | "warn" | "error";
+  message: string;
+  docs?: string;
+  ownerPath?: string[];
+  data?: Record<string, unknown>;
+}
+
 interface RuntimeChannel {
-  subscribe(
-    listener: (event: {
-      code: string;
-      severity: "warning" | "error";
-      message: string;
-      docs?: string;
-    }) => void,
-  ): () => void;
+  subscribe(listener: (event: OverlayRuntimeEvent) => void): () => void;
 }
 
 export interface OverlayConfig {
   event: string;
   ready: string;
+  /** What the server reported, one entry per message. */
+  server: string;
+  /** Sent when the developer clears the runtime entries, so the server forgets them too. */
+  clear: string;
   /** The project root, so a module URL can be turned back into a file. */
   root: string;
 }
@@ -76,11 +109,12 @@ export function mountOverlay(
   }
   interface Entry {
     key: string;
-    origin: "compile" | "runtime";
+    origin: "compile" | "runtime" | "server";
     severity: Severity;
     code?: string;
     message: string;
     docs?: string;
+    ownerPath?: string[];
     at?: Location;
     endLine?: number;
     endColumn?: number;
@@ -90,6 +124,11 @@ export function mountOverlay(
   }
 
   const RANK: Record<Severity, number> = { note: 0, warning: 1, error: 2 };
+  const LEVEL: Record<OverlayRuntimeEvent["severity"], Severity> = {
+    info: "note",
+    warn: "warning",
+    error: "error",
+  };
   const NOUN: Record<Severity, string> = { note: "note", warning: "warning", error: "error" };
   const STORE = "barq:overlay:filter";
 
@@ -163,6 +202,8 @@ a.code:hover { color: var(--fg); text-decoration: underline; }
 .where { color: var(--dim); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; border-radius: 4px; }
 .where:hover { color: var(--fg); text-decoration: underline; }
 .message { white-space: pre-wrap; overflow-wrap: anywhere; font-weight: 500; }
+.owners { margin-top: 4px; color: var(--dim); font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; }
+.origin { color: var(--dim); font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
 .message code { font: 12px ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--soft);
   border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; }
 .frame { margin: 10px 0 0; padding: 8px 0; background: var(--soft); border: 1px solid var(--line);
@@ -264,8 +305,10 @@ a.code:hover { color: var(--fg); text-decoration: underline; }
 
   const describe = (entry: Entry): string => {
     const head = [entry.code, entry.severity].filter(Boolean).join(" ");
+    const owners = entry.ownerPath ? `\nin ${entry.ownerPath.join(" › ")}` : "";
     const where = entry.at ? `\n${entry.at.file}:${entry.at.line}:${entry.at.column}` : "";
-    return `${head}: ${entry.message}${where}`;
+    const docs = entry.docs ? `\n${entry.docs}` : "";
+    return `${head}: ${entry.message}${owners}${where}${docs}`;
   };
 
   const entryNode = (entry: Entry): HTMLElement => {
@@ -273,6 +316,7 @@ a.code:hover { color: var(--fg); text-decoration: underline; }
     node.style.setProperty("--tone", `var(--${entry.severity})`);
     const meta = make("div", "meta");
     meta.append(make("span", "kind", entry.severity));
+    if (entry.origin === "server") meta.append(make("span", "origin", "server"));
     if (entry.code !== undefined) {
       if (entry.docs !== undefined) {
         const link = make("a", "code", entry.code);
@@ -297,6 +341,9 @@ a.code:hover { color: var(--fg); text-decoration: underline; }
     });
     meta.append(copy);
     node.append(meta, prose(entry.message));
+    if (entry.ownerPath !== undefined && entry.ownerPath.length > 0) {
+      node.append(make("div", "owners", `in ${entry.ownerPath.join(" › ")}`));
+    }
     const frame = frameOf(entry);
     if (frame !== null) node.append(frame);
     // One frame is the location already shown above it.
@@ -368,6 +415,7 @@ a.code:hover { color: var(--fg); text-decoration: underline; }
       clear.type = "button";
       clear.addEventListener("click", () => {
         thrown = [];
+        hot?.send(config.clear);
         render();
       });
       head.append(clear);
@@ -506,22 +554,48 @@ a.code:hover { color: var(--fg); text-decoration: underline; }
 
   const FRAME = /^\s*(?:at\s+)?(?:(.*?)\s*[(@])?((?:https?|file):\/\/.+?):(\d+):(\d+)\)?\s*$/;
 
+  /** `file:line:column`, the form a development compile writes beside a template. */
+  const place = (text: unknown): Location | undefined => {
+    if (typeof text !== "string") return undefined;
+    const match = /^(.*):(\d+):(\d+)$/.exec(text);
+    if (match === null) return undefined;
+    const file = match[1] ?? "";
+    return {
+      file,
+      line: Number(match[2]),
+      column: Number(match[3]),
+      library: file.includes("/node_modules/") || !file.startsWith(config.root),
+    };
+  };
+
   const report = (
     severity: Severity,
     code: string | undefined,
     error: unknown,
     docs?: string,
+    ownerPath?: string[],
+    at?: Location,
   ): void => {
     const failure = error instanceof Error ? error : undefined;
     const message = failure ? `${failure.name}: ${failure.message}` : String(error);
-    const key = `runtime:${code ?? ""}:${message}`;
+    const key = `runtime:${code ?? ""}:${message}:${ownerPath?.join(">") ?? ""}`;
     const known = thrown.find((entry) => entry.key === key);
     if (known !== undefined) {
       known.count++;
       render();
       return;
     }
-    const entry: Entry = { key, origin: "runtime", severity, code, message, docs, count: 1 };
+    const entry: Entry = {
+      key,
+      origin: "runtime",
+      severity,
+      code,
+      message,
+      docs,
+      ownerPath,
+      at,
+      count: 1,
+    };
     thrown.push(entry);
     settle();
     const frames = (failure?.stack ?? "")
@@ -566,10 +640,29 @@ a.code:hover { color: var(--fg); text-decoration: underline; }
   });
 
   const unsubscribe = runtime?.subscribe((event) => {
-    report(event.severity, event.code, event.message, event.docs);
+    report(
+      LEVEL[event.severity] ?? "warning",
+      event.code,
+      event.message,
+      event.docs,
+      event.ownerPath,
+      place(event.data?.template),
+    );
   });
 
-  hot?.on(config.event, (data) => {
+  hot?.on(config.server, (data: OverlayServerEntry) => {
+    const key = `server:${data.code ?? ""}:${data.message}`;
+    const known = thrown.find((entry) => entry.key === key);
+    if (known !== undefined) {
+      known.count++;
+      render();
+      return;
+    }
+    thrown.push({ key, origin: "server", ...data, count: 1 });
+    settle();
+  });
+
+  hot?.on(config.event, (data: OverlayPayload) => {
     threshold = data.overlay === true ? 0 : data.overlay === "warning" ? 1 : 2;
     compiled = data.diagnostics.map((item) => ({
       key: `compile:${item.file}:${item.line}:${item.column}:${item.code ?? ""}`,

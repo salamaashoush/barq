@@ -6,15 +6,28 @@
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
 import {
   frameAround,
   mountOverlay,
   overlayModule,
   type OverlayDiagnostic,
   type OverlayPayload,
+  type OverlayRuntimeEvent,
+  type OverlayServerEntry,
 } from "./overlay.ts";
+import { serverEntry, stackFrames } from "./server-diagnostics.ts";
 
-const CONFIG = { event: "barq:diagnostics", ready: "barq:diagnostics:ready", root: "/app" };
+const CONFIG = {
+  event: "barq:diagnostics",
+  ready: "barq:diagnostics:ready",
+  server: "barq:server-diagnostics",
+  clear: "barq:server-diagnostics:clear",
+  root: "/app",
+};
 
 beforeAll(() => {
   GlobalRegistrator.register();
@@ -26,12 +39,8 @@ afterAll(async () => {
 
 interface Mounted {
   send(payload: Partial<OverlayPayload>): void;
-  emit(event: {
-    code: string;
-    severity: "warning" | "error";
-    message: string;
-    docs?: string;
-  }): void;
+  serve(entry: OverlayServerEntry): void;
+  emit(event: OverlayRuntimeEvent): void;
   sent: string[];
   root: ShadowRoot;
   pill(): HTMLButtonElement;
@@ -49,20 +58,13 @@ afterEach(() => {
 });
 
 function mount(): Mounted {
-  let deliver: ((data: OverlayPayload) => void) | undefined;
-  let report:
-    | ((event: {
-        code: string;
-        severity: "warning" | "error";
-        message: string;
-        docs?: string;
-      }) => void)
-    | undefined;
+  const listeners = new Map<string, (data: never) => void>();
+  let report: ((event: OverlayRuntimeEvent) => void) | undefined;
   const sent: string[] = [];
   const overlay = mountOverlay(
     {
-      on: (_event, listener) => {
-        deliver = listener;
+      on: (event, listener) => {
+        listeners.set(event, listener);
       },
       send: (event) => sent.push(event),
     },
@@ -79,7 +81,14 @@ function mount(): Mounted {
   const root = overlay.element.shadowRoot!;
   const panel = (): HTMLElement => root.querySelector(".panel")!;
   mounted = {
-    send: (payload) => deliver?.({ overlay: "error", diagnostics: [], ...payload }),
+    send: (payload) =>
+      (listeners.get(CONFIG.event) as ((data: OverlayPayload) => void) | undefined)?.({
+        overlay: "error",
+        diagnostics: [],
+        ...payload,
+      }),
+    serve: (entry) =>
+      (listeners.get(CONFIG.server) as ((data: OverlayServerEntry) => void) | undefined)?.(entry),
     emit: (event) => report?.(event),
     sent,
     root,
@@ -222,7 +231,7 @@ describe("what the page reports while it runs", () => {
     const overlay = mount();
     const event = {
       code: "FUNCTION_AS_ATTRIBUTE",
-      severity: "warning" as const,
+      severity: "warn" as const,
       message: "title got a function",
     };
     overlay.emit(event);
@@ -241,11 +250,11 @@ describe("what the page reports while it runs", () => {
       "https://github.com/salamaashoush/barq/blob/main/packages/core/docs/diagnostics/FUNCTION_AS_ATTRIBUTE.md";
     overlay.emit({
       code: "FUNCTION_AS_ATTRIBUTE",
-      severity: "warning",
+      severity: "warn",
       message: "The `title` attribute on `<p>` was given a function",
       docs,
     });
-    overlay.emit({ code: "NO_PAGE", severity: "warning", message: "a diagnostic with no page" });
+    overlay.emit({ code: "NO_PAGE", severity: "warn", message: "a diagnostic with no page" });
     overlay.pill().click();
     const [linked, plain] = overlay.entries();
     const link = linked?.querySelector<HTMLAnchorElement>("a.code");
@@ -279,6 +288,109 @@ describe("what the page reports while it runs", () => {
     );
     clear?.click();
     expect(document.getElementById("barq-diagnostics")).toBeNull();
+  });
+});
+
+describe("where a runtime finding happened", () => {
+  test("the component path is shown under the message and copied with it", () => {
+    const overlay = mount();
+    overlay.emit({
+      code: "STRICT_READ_UNTRACKED",
+      severity: "warn",
+      message: "[STRICT_READ_UNTRACKED] Reactive value read directly in a component body",
+      ownerPath: ["<App>", "<TodoRow>"],
+      docs: "https://example.com/guide#strict_read_untracked",
+    });
+    overlay.pill().click();
+    const [entry] = overlay.entries();
+    expect(entry?.querySelector(".owners")?.textContent).toBe("in <App> › <TodoRow>");
+  });
+
+  test("a hydration mismatch links the JSX it was hydrating", () => {
+    const overlay = mount();
+    overlay.emit({
+      code: "HYDRATION_MISMATCH",
+      severity: "warn",
+      message: "Hydration mismatch (structure)",
+      data: { kind: "structure", template: "/app/src/greeting.tsx:3:49" },
+      ownerPath: ["<Page>", "<Greeting>"],
+    });
+    overlay.pill().click();
+    expect(overlay.entries()[0]?.querySelector(".where")?.textContent).toBe(
+      "src/greeting.tsx:3:49",
+    );
+  });
+});
+
+describe("what the server reports", () => {
+  const entry = (over: Partial<OverlayServerEntry> = {}): OverlayServerEntry => ({
+    code: "SERVER_FUNCTION_FAILED",
+    severity: "error",
+    message: "TypeError: Cannot read properties of undefined (reading 'id')",
+    docs: "https://example.com/SERVER_FUNCTION_FAILED.md",
+    at: { file: "/app/src/todos.ts", line: 7, column: 21, library: false },
+    frame: { first: 6, lines: ["export const add = () => {", "  return input.id;", "};"] },
+    stack: [
+      { file: "/app/src/todos.ts", line: 7, column: 21, name: "add", library: false },
+      { file: "/app/node_modules/x/index.js", line: 1, column: 1, library: true },
+    ],
+    ...over,
+  });
+
+  test("opens the overlay as a server entry, with its frame and its stack", () => {
+    const overlay = mount();
+    overlay.serve(entry());
+    expect(overlay.open()).toBe(true);
+    const [shown] = overlay.entries();
+    expect(shown?.querySelector(".origin")?.textContent).toBe("server");
+    expect(shown?.querySelector(".message")?.textContent).toBe(
+      "TypeError: Cannot read properties of undefined (reading 'id')",
+    );
+    expect(shown?.querySelector(".where")?.textContent).toBe("src/todos.ts:7:21");
+    expect(shown?.querySelectorAll(".stack li")).toHaveLength(2);
+    expect(shown?.querySelector(".stack .library")).not.toBeNull();
+  });
+
+  test("the same report again is counted, and Clear tells the server to forget it", () => {
+    const overlay = mount();
+    overlay.serve(entry());
+    overlay.serve(entry());
+    expect(overlay.entries()[0]?.querySelector(".times")?.textContent).toBe("×2");
+    const clear = [...overlay.root.querySelectorAll<HTMLElement>(".tool")].find(
+      (button) => button.textContent === "Clear runtime",
+    );
+    clear?.click();
+    expect(overlay.sent).toContain(CONFIG.clear);
+    expect(document.getElementById("barq-diagnostics")).toBeNull();
+  });
+
+  test("the dev server reads a Node stack into frames and cuts the first project frame", () => {
+    const root = mkdtempSync(join(tmpdir(), "barq-server-entry-"));
+    try {
+      const file = join(root, "src.ts");
+      writeFileSync(
+        file,
+        ["const a = 1;", "export function load() {", "  throw boom;", "}"].join("\n"),
+      );
+      const error = new Error("salama was not found");
+      error.stack =
+        "Error: salama was not found\n" +
+        "    at runInRequest (/opt/node_modules/@barqjs/start/src/context.ts:10:3)\n" +
+        `    at load (${file}:3:3)\n` +
+        `    at file://${file}:2:1`;
+      expect(stackFrames(error.stack, root).map((frame) => [frame.name, frame.library])).toEqual([
+        ["runInRequest", true],
+        ["load", false],
+        [undefined, false],
+      ]);
+      const shown = serverEntry({ error, code: "SSR_RENDER_ERROR_CONTAINED" }, root);
+      expect(shown.message).toBe("Error: salama was not found");
+      expect(shown.severity).toBe("error");
+      expect(shown.at).toEqual({ file, line: 3, column: 3, name: "load", library: false });
+      expect(shown.frame?.lines).toContain("  throw boom;");
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

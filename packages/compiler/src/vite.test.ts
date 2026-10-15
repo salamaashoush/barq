@@ -17,6 +17,7 @@ import {
   resetNativeCompilerCache,
   type BarqDiagnostic,
   type BarqOptimisation,
+  reportServerDiagnostic,
 } from "./vite.ts";
 
 const SOURCE = `export const V = () => <div class="c">{n}</div>;\n`;
@@ -376,6 +377,7 @@ describe("barqVitePlugin", () => {
           send: (payload: { event?: string; data?: unknown }) => sent.push(payload),
           on: () => {},
         },
+        watcher: { on: () => {} },
       });
 
       await run(plugin, COERCED, "/a/app.tsx");
@@ -394,6 +396,40 @@ describe("barqVitePlugin", () => {
       await run(plugin, `export const V = () => <p>ok</p>;\n`, "/a/app.tsx");
       const cleared = sent.at(-1) as { data: { diagnostics: unknown[] } };
       expect(cleared.data.diagnostics).toEqual([]);
+    });
+
+    test("what the server reported reaches the next page to connect, until a file changes", () => {
+      const sent: { event?: string; data?: unknown }[] = [];
+      const hot = new Map<string, () => void>();
+      const watcher = new Map<string, () => void>();
+      const server = {
+        hot: {
+          send: (payload: { event?: string; data?: unknown }) => sent.push(payload),
+          on: (event: string, listener: () => void) => hot.set(event, listener),
+        },
+        watcher: { on: (event: string, listener: () => void) => watcher.set(event, listener) },
+        config: { root: "/a" },
+      };
+      const plugin = dev();
+      const configureServer = plugin.configureServer as unknown as (server: unknown) => void;
+      configureServer.call(plugin, server);
+
+      reportServerDiagnostic(server, {
+        code: "SSR_RENDER_ERROR_CONTAINED",
+        severity: "error",
+        message: "salama's profile failed to load",
+      });
+      const served = (): unknown[] =>
+        sent.filter((payload) => payload.event === "barq:server-diagnostics").map((p) => p.data);
+      expect(served()).toHaveLength(1);
+
+      hot.get("barq:diagnostics:ready")?.();
+      expect(served()).toHaveLength(2);
+      expect(served()[1]).toMatchObject({ message: "salama's profile failed to load" });
+
+      watcher.get("change")?.();
+      hot.get("barq:diagnostics:ready")?.();
+      expect(served()).toHaveLength(2);
     });
 
     test("the structured diagnostic survives the napi boundary intact", async () => {
