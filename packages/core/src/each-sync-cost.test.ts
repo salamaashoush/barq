@@ -147,3 +147,50 @@ test("any sequence of edits leaves the rows in the list's order", () => {
     expect(shown()).toBe(names.map((name) => `${name} ${name}'`).join(" "));
   }
 });
+
+/** How many `Map`s `body` constructs: the index a reorder builds is one. */
+function mapsBuiltDuring(body: () => void): number {
+  const Original = globalThis.Map;
+  let built = 0;
+  globalThis.Map = class extends Original<unknown, unknown> {
+    constructor(entries?: Iterable<readonly [unknown, unknown]> | null) {
+      super(entries);
+      built++;
+    }
+  };
+  try {
+    body();
+  } finally {
+    globalThis.Map = Original;
+  }
+  return built;
+}
+
+test("swapping two rows moves those two and indexes none of the rows between", () => {
+  const names = Array.from({ length: 12 }, (_, i) => `r${i}`);
+  const set = mounted(names);
+  const swapped = [...names];
+  [swapped[1], swapped[10]] = [swapped[10], swapped[1]];
+  const reordered = [...swapped];
+  [reordered[4], reordered[2]] = [reordered[2], reordered[4]];
+  reordered.splice(6, 0, reordered.splice(3, 1)[0]);
+
+  // The engine's keyed map indexes the list on any reorder; the count below
+  // is what the DOM sync adds on top of it, read against a reorder that is not
+  // a swap of the ends and so still needs the sync's own index.
+  const forSwap = mapsBuiltDuring(() => set(swapped));
+  expect(shown()).toBe(swapped.join(" "));
+  expect(moved.toSorted()).toEqual(["r1", "r10"]);
+
+  const forReorder = mapsBuiltDuring(() => set(reordered));
+  expect(shown()).toBe(reordered.join(" "));
+  expect(forSwap).toBe(forReorder - 1);
+});
+
+test("a swap of adjacent rows of two nodes keeps each pair in order", () => {
+  const set = mounted(["a", "b", "c", "d"], true);
+  set(["a", "c", "b", "d"]);
+  expect(shown()).toBe("a a' c c' b b' d d'");
+  set(["d", "c", "b", "a"]);
+  expect(shown()).toBe("d d' c c' b b' a a'");
+});

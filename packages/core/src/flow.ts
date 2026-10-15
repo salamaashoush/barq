@@ -1202,6 +1202,25 @@ function syncRows(site: Site, rows: () => Row[], beforeFirst: () => void): void 
       was--;
       now--;
     }
+    // The two ends of what is left traded places: two moves, and the rows
+    // between them are shared again. Without this a swap of two rows is a map
+    // and a longest increasing subsequence over every row in between.
+    while (
+      was - head > 1 &&
+      now - head > 1 &&
+      current[head] === next[now - 1] &&
+      next[head] === current[was - 1] &&
+      swapEnds(host, current[head], current[was - 1])
+    ) {
+      head++;
+      was--;
+      now--;
+      while (head < was && head < now && current[head] === next[head]) head++;
+      while (was > head && now > head && current[was - 1] === next[now - 1]) {
+        was--;
+        now--;
+      }
+    }
     const leaving = head === 0 && was === current.length ? current : current.slice(head, was);
     const arriving = head === 0 && now === next.length ? next : next.slice(head, now);
 
@@ -1237,6 +1256,21 @@ function syncRows(site: Site, rows: () => Row[], beforeFirst: () => void): void 
     removeNodes(standingRows(current));
     current = [];
   });
+}
+
+/**
+ * Put `high` where `low` stands and `low` where `high` stood. `false`, with
+ * nothing moved, when either row has no node to stand anywhere.
+ */
+function swapEnds(parent: Node, low: Row, high: Row): boolean {
+  const lowNodes = isNodes(low) ? standingRow(low) : [low];
+  const highNodes = isNodes(high) ? standingRow(high) : [high];
+  if (lowNodes.length === 0 || highNodes.length === 0) return false;
+  const afterHigh = highNodes[highNodes.length - 1].nextSibling;
+  const lowFirst = lowNodes[0];
+  for (let i = 0; i < highNodes.length; i++) parent.insertBefore(highNodes[i], lowFirst);
+  for (let i = 0; i < lowNodes.length; i++) parent.insertBefore(lowNodes[i], afterHigh);
+  return true;
 }
 
 function syncNodeOrder(parent: Node, anchor: Node | null, previous: Row[], next: Row[]): void {
