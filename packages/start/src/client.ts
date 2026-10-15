@@ -22,10 +22,17 @@
  */
 
 import { decodeWire, encodeWire } from "@barqjs/server/codec";
-import { type Middleware, flattenMiddleware, runMiddleware } from "./middleware.ts";
+import {
+  type Middleware,
+  NOT_FOUND,
+  REDIRECT,
+  flattenMiddleware,
+  runMiddleware,
+} from "./middleware.ts";
 import { startOptions } from "./start-instance.ts";
 
 export { STATIC_PREFIX, staticFunctionMiddleware, staticUrl } from "./static-fn.ts";
+export { NOT_FOUND, REDIRECT } from "./middleware.ts";
 
 export const SERVER_FN = Symbol.for("barq.server-fn");
 
@@ -45,21 +52,6 @@ export const RPC_PREFIX = "/_barq/fn/";
  * them, so the form posts, returns 200, and nothing happens.
  */
 export const DATA_SUFFIX = ".data";
-
-/**
- * The two brands a thrown redirect and a thrown `notFound()` carry.
- *
- * DECLARED TWICE ON PURPOSE. The classes live in `@barqjs/router`, which this
- * package must not import: the dependency runs router -> start and start is an
- * OPTIONAL peer of it, so an import here would be a cycle and would break the
- * router for anyone using it without server functions. `Symbol.for` is the
- * global registry, so both declarations name the same symbol with no edge
- * between the packages — `SERVER_FN` above already works this way. The other
- * declaration is `REDIRECT` / `NOT_FOUND` in `packages/router/src/errors.ts`,
- * and `server.test.ts` checks the two agree.
- */
-export const REDIRECT = Symbol.for("barq.redirect");
-export const NOT_FOUND = Symbol.for("barq.not-found");
 
 /**
  * How the data channel says "the answer is an instruction, not a value".
@@ -311,6 +303,10 @@ export type ServerFn<In, Out, Method extends ServerFnMethod = "POST"> = ((
 ) => Promise<Out>) & {
   readonly [SERVER_FN]: true;
   readonly meta: ServerFnMeta;
+  /** TanStack's name for `meta`: the id this function is mounted at. */
+  readonly serverFnMeta: ServerFnMeta;
+  /** The method this function answers. */
+  readonly method: ServerFnMethod;
   /**
    * Where a form posts to reach this function: what `<form action={fn}>`
    * writes. Empty for a function that is not mounted, which has no endpoint.
@@ -440,7 +436,7 @@ export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
       headers = merged;
     }
     const endpoint = RPC_PREFIX + encodeURIComponent(id) + DATA_SUFFIX;
-    const response = await (asked?.fetch ?? chainFetch ?? fetch)(
+    const response = await (asked?.fetch ?? chainFetch ?? startOptions().serverFns?.fetch ?? fetch)(
       method === "GET"
         ? `${endpoint}?${PAYLOAD_PARAM}=${encodeURIComponent(payload ?? "")}`
         : endpoint,
@@ -497,6 +493,7 @@ export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
     return (await runMiddleware(flattened, "client", {
       data: input,
       meta: { id },
+      method,
       signal: asked?.signal ?? new AbortController().signal,
       context,
       sendContext,
@@ -506,9 +503,12 @@ export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
     })) as Out;
   };
 
+  const meta: ServerFnMeta = method === "GET" ? { id, method } : { id };
   return Object.assign(call, {
     [SERVER_FN]: true as const,
-    meta: method === "GET" ? { id, method } : { id },
+    meta,
+    serverFnMeta: meta,
+    method,
     url: urlOf(id),
   });
 }

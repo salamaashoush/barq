@@ -20,8 +20,8 @@ export const createPost = createServerFn()
   .handler(async ({ data, context, signal }) => db.posts.insert(data));
 ```
 
-`.inputValidator` is the same method under TanStack's name. Both take a Standard
-Schema, a function that returns the validated value or throws, or an object with
+`.validator` is TanStack's name for it, and `.inputValidator`, the name their
+release candidates used, is the same method. Both take a Standard Schema, a function that returns the validated value or throws, or an object with
 a `parse`. The caller passes the schema's INPUT and the handler is handed its
 OUTPUT, so a schema that turns an ISO string into a `Date` is called with a
 string. A function validator's parameter type is what the caller passes:
@@ -65,9 +65,11 @@ export const listNotes = createServerFn({ method: "GET" })
   });
 ```
 
-The call is the same; the stub sends a `GET` with the payload in `?payload=`.
-`method` must be the literal `"GET"`, since the compiler reads it to write the
-stub.
+The call is the same; the stub sends a `GET` with the payload in `?payload=`,
+so one input is one URL. `method` must be the literal `"GET"`, since the
+compiler reads it to write the stub. Nothing is cached unless the handler says
+so: an answer carries no `cache-control` and no `Vary` of its own, which is
+TanStack's behaviour too.
 
 A link still cannot reach one. A mutation reachable by navigation is a one-click
 CSRF carrying `SameSite=Lax` cookies, and it has shipped that way elsewhere. So
@@ -102,7 +104,16 @@ everything they said, and their `headers` leave on the response. `useServerFn`
 from `@barqjs/router` navigates on the redirect. A redirect whose `params` or
 `search` is a function cannot cross and arrives as its resolved target alone.
 
-`fn.url` is the address `<form action={fn}>` posts to.
+`fn.url` is the address `<form action={fn}>` posts to, `fn.method` the method it
+answers, and `fn.serverFnMeta.id` (also `fn.meta.id`) the id it is mounted at.
+A handler is handed the same two beside `data`, `context` and `signal`:
+
+```ts
+createServerFn().handler(({ method, serverFnMeta }) => `${method} ${serverFnMeta.id}`);
+```
+
+`json(payload, init)` builds a JSON `Response`, for a handler that answers with
+one.
 
 ### What crosses the wire
 
@@ -143,8 +154,8 @@ prerendered whole works from a host that serves files and nothing else.
 Import it from `@barqjs/start/client`, the subpath the client stub already
 imports from: a chain naming anything from another package is not carried into
 the browser. List it last, since the key is the input as it sees it. Only the
-result is stored: a `sendContext` is not, and a `Response` or a stream is never
-written. Two calls whose keys collide stop the build.
+result is stored: a `sendContext` is not, and a `Response`, a stream or a result
+of `undefined` is never written. Two calls whose keys collide stop the build.
 
 ### Streaming
 
@@ -208,6 +219,15 @@ none of its own, the handler's and the caller's. A client half's `next()` takes
 over a middleware's, and a later middleware's over an earlier one's. What a
 client half sends arrives on the server as `clientContext`, untyped on purpose:
 it is whatever the caller chose to send.
+
+A middleware ends in `return next(...)`, answers with a result of its own (a
+`Response` included), or throws. Returning `undefined` is neither: without
+`next()` the call would have no answer, and after it the handler's result would
+be lost. Either way the call fails with an error naming the middleware (its
+function's name when it has one), its place in the chain and the server
+function, as TanStack's does. A returned `redirect()` or `notFound()` is thrown
+as the answer it describes. A middleware's halves are also handed `method` and
+`serverFnMeta`.
 
 Middleware runs BEFORE validation, deliberately: an unauthenticated caller
 should be refused without the server parsing its payload, and a rejection that
@@ -350,8 +370,15 @@ const logging = createMiddleware({ type: "request" }).server(
 export const startInstance = createStart(() => ({
   requestMiddleware: [logging], // every page, route handler and server function
   functionMiddleware: [requireSession], // every server function, ahead of its own chain
+  serializationAdapters: [money], // a type only the application knows, both ways
+  serverFns: { fetch: tracedFetch }, // every call, unless a middleware or the call names one
 }));
 ```
+
+`createSerializationAdapter({ key, test, toSerializable, fromSerializable })`
+makes an adapter. The ones named here are installed the first time the options
+are read, which the server does before it answers anything and the browser
+before it reads the page's seed.
 
 The order is global request, global function, then the function's own. What a
 request middleware passes to `next({ context })` starts every server function's

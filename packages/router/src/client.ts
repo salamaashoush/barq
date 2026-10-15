@@ -16,7 +16,7 @@
  */
 
 import { hydrate } from "@barqjs/core";
-import { type SerializationAdapter, registerSerializationAdapters } from "@barqjs/server/codec";
+import { type AnySerializationAdapter, registerSerializationAdapters } from "@barqjs/server/codec";
 
 import { Document, RouterProvider, resolveHeadFor } from "./components.ts";
 import { browserHistory } from "./history.ts";
@@ -74,7 +74,7 @@ export interface StartClientOptions {
  * whose server had adapters registered, and an application with none never
  * emitted the bootstrap at all.
  */
-function installSerializationAdapters(adapters: readonly SerializationAdapter[]): void {
+function installSerializationAdapters(adapters: readonly AnySerializationAdapter[]): void {
   if (adapters.length > 0) registerSerializationAdapters(adapters);
   const holder = globalThis as unknown as {
     __BARQ_ADAPTERS__?: Map<string, (value: never) => unknown>;
@@ -97,7 +97,7 @@ export async function startClient(options: StartClientOptions = {}): Promise<Rou
   // browser bundle.
   // The project's `src/start.ts` first: importing it registers the global
   // middleware whose client halves run around every server-function call.
-  if (options.routeTree === undefined) await import("#barq-start-entry");
+  const start = options.routeTree === undefined ? await import("#barq-start-entry") : undefined;
   const entry =
     options.routeTree === undefined
       ? await import("#barq-router-entry")
@@ -129,7 +129,10 @@ export async function startClient(options: StartClientOptions = {}): Promise<Rou
   // ran while this module was still being fetched, so it queued its assignment
   // rather than making it — see `ADAPTER_BOOTSTRAP`. Registering here and
   // draining is what turns the queue into `__BARQ_DATA__`.
-  installSerializationAdapters(state.config.serializationAdapters ?? []);
+  installSerializationAdapters([
+    ...(state.config.serializationAdapters ?? []),
+    ...(start?.startInstance?.getOptions().serializationAdapters ?? []),
+  ]);
 
   // Before `start`, which is what runs the first loaders: one that asks an
   // integration for data has to find what the server already fetched.

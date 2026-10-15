@@ -103,6 +103,9 @@ export function staticUrl(id: string, input: unknown): string {
 
 /** Whether an answer can be written to a file and read back as the same value. */
 function cacheable(answer: unknown): boolean {
+  // A client half answering `undefined` without calling `next()` is refused as
+  // a middleware that forgot to, so a result of nothing goes to the server.
+  if (answer === undefined) return false;
   if (answer instanceof Response || answer instanceof ReadableStream) return false;
   return !(
     typeof answer === "object" &&
@@ -147,7 +150,7 @@ export const staticFunctionMiddleware = /* @__PURE__ */ createMiddleware({ type:
       return next();
     }
     const found = await readStatic(serverFnMeta.id, data);
-    return found === MISSING ? next() : found;
+    return found === MISSING || found === undefined ? next() : found;
   })
   .server(async ({ next, data, serverFnMeta }) => {
     const answer: unknown = await next();

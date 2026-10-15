@@ -15,6 +15,8 @@
  * the browser around every call.
  */
 
+import { type AnySerializationAdapter, registerSerializationAdapters } from "@barqjs/server/codec";
+
 import type { ChainContribution, Empty, Middleware } from "./middleware.ts";
 
 export interface StartOptions {
@@ -22,6 +24,20 @@ export interface StartOptions {
   readonly requestMiddleware?: readonly Middleware[];
   /** Runs for every server function, ahead of the function's own chain. */
   readonly functionMiddleware?: readonly Middleware[];
+  /**
+   * How a type only the application knows crosses the wire, in a server
+   * function's input and result and in the page's seed. Installed when the
+   * options are first read, which both sides do before they encode anything.
+   */
+  readonly serializationAdapters?: readonly AnySerializationAdapter[];
+  readonly serverFns?: {
+    /**
+     * The `fetch` every call goes out through, in place of the global one. A
+     * client middleware's `next({ fetch })` and the call's own `fetch` win
+     * over it.
+     */
+    readonly fetch?: typeof fetch;
+  };
 }
 
 export interface StartInstance<Options extends StartOptions = StartOptions> {
@@ -98,7 +114,17 @@ export function createStart<const Options extends StartOptions>(
   options: () => Options,
 ): StartInstance<Options> {
   let resolved: Options | undefined;
-  const instance: StartInstance<Options> = { getOptions: () => (resolved ??= options()) };
+  const instance: StartInstance<Options> = {
+    getOptions: () => {
+      if (resolved === undefined) {
+        resolved = options();
+        if (resolved.serializationAdapters !== undefined) {
+          registerSerializationAdapters(resolved.serializationAdapters);
+        }
+      }
+      return resolved;
+    },
+  };
   REGISTERED.instance = instance;
   return instance;
 }

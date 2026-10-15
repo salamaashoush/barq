@@ -475,6 +475,8 @@ export interface MiddlewareContext<Data = unknown, Context extends object = Empt
    * request middleware, and the id is empty for a function that is not mounted.
    */
   readonly serverFnMeta?: { readonly id: string };
+  /** The method the server function answers. Absent for a request middleware. */
+  readonly method?: "GET" | "POST";
 }
 
 /**
@@ -596,6 +598,71 @@ export type BuiltMiddleware<State extends MiddlewareState = MiddlewareState> = M
       ) => Result,
     ): BuiltMiddleware<WithClient<State, Result>>;
   };
+
+/**
+ * The two brands a thrown redirect and a thrown `notFound()` carry.
+ *
+ * DECLARED TWICE ON PURPOSE. The classes live in `@barqjs/router`, which this
+ * package must not import: the dependency runs router -> start and start is an
+ * OPTIONAL peer of it, so an import here would be a cycle and would break the
+ * router for anyone using it without server functions. `Symbol.for` is the
+ * global registry, so both declarations name the same symbol with no edge
+ * between the packages — `SERVER_FN` in `client.ts` already works this way. The other
+ * declaration is `REDIRECT` / `NOT_FOUND` in `packages/router/src/errors.ts`,
+ * and `server.test.ts` checks the two agree.
+ */
+export const REDIRECT = Symbol.for("barq.redirect");
+export const NOT_FOUND = Symbol.for("barq.not-found");
+
+/**
+ * What a middleware handed back, held to TanStack's rule: it ends in
+ * `return next(...)`, answers with a result of its own, or throws.
+ *
+ * `undefined` is the one answer that cannot be a decision. Returned without
+ * `next()` having been called, the step neither ran the rest of the chain nor
+ * said what to answer with; returned after a `next()` that resolved to
+ * something, it is the `return` the body forgot, and the result the handler
+ * produced would be lost without a word. Either way the call would resolve to
+ * nothing, so it fails here, naming the step. A thrown or returned redirect
+ * or `notFound()` is an answer, so a returned one is thrown as one.
+ */
+function answerOf(returned: unknown, answers: readonly unknown[], step: () => string): unknown {
+  if (isControl(returned)) throw returned;
+  if (returned !== undefined || answers.includes(undefined)) return returned;
+  throw new Error(
+    answers.length === 0
+      ? `[barq] ${step()} returned without calling \`next()\`, so the call has no answer. ` +
+          "A middleware ends in `return next(...)`, returns a result of its own, or throws (a `Response` to refuse)."
+      : `[barq] ${step()} called \`next()\` and returned \`undefined\` in place of its result, so the result was lost. ` +
+          "Return what `next()` resolved to: `return next(...)`.",
+  );
+}
+
+function isControl(value: unknown): boolean {
+  if (typeof value !== "object" || value === null) return false;
+  const branded = value as Record<symbol, unknown>;
+  return branded[REDIRECT] === true || branded[NOT_FOUND] === true;
+}
+
+/**
+ * Which step a refusal is about, for a person reading the error: its name when
+ * the closure or the half has one, its place in the chain, and the function.
+ */
+function describeStep(
+  kind: string,
+  named: readonly ((...args: never[]) => unknown)[],
+  position: number,
+  length: number,
+  around: string,
+): string {
+  const name = named
+    .map((fn) => fn.name)
+    .find((candidate) => candidate !== "" && candidate !== "run");
+  const place = `${position + 1} of ${length}`;
+  return name === undefined
+    ? `The ${kind} middleware ${place} ${around}`
+    : `The ${kind} middleware \`${name}\` (${place}) ${around}`;
+}
 
 /** Frozen, because every call that was sent nothing is handed this one object. */
 const NOTHING_SENT: Record<string, unknown> = Object.freeze({});
@@ -750,23 +817,36 @@ export async function runRequestMiddleware<T>(
   const dispatch = async (position: number): Promise<unknown> => {
     const middleware = flattened[position];
     if (middleware === undefined) return run();
+    const answers: unknown[] = [];
     const next = nextOf(async (step) => {
       if (step?.context !== undefined) Object.assign(start.context, step.context);
-      return dispatch(position + 1);
+      const answer = await dispatch(position + 1);
+      answers.push(answer);
+      return answer;
     });
-    if (!isBuiltMiddleware(middleware)) return middleware(next);
-    const body = middleware.options.server;
-    if (body === undefined) return next();
-    return body({
-      next,
-      data: undefined,
-      context: start.context,
-      clientContext: NOTHING_SENT,
-      signal: start.request.signal,
-      request: start.request,
-      pathname: start.pathname,
-      handlerType: start.handlerType,
-    });
+    const body = isBuiltMiddleware(middleware) ? middleware.options.server : undefined;
+    if (isBuiltMiddleware(middleware) && body === undefined) return next();
+    const returned = await (body === undefined
+      ? middleware(next)
+      : body({
+          next,
+          data: undefined,
+          context: start.context,
+          clientContext: NOTHING_SENT,
+          signal: start.request.signal,
+          request: start.request,
+          pathname: start.pathname,
+          handlerType: start.handlerType,
+        }));
+    return answerOf(returned, answers, () =>
+      describeStep(
+        "request",
+        body === undefined ? [middleware] : [body],
+        position,
+        flattened.length,
+        `on ${start.request.method} ${start.pathname}`,
+      ),
+    );
   };
   return (await dispatch(0)) as T;
 }
@@ -848,6 +928,8 @@ export async function runMiddleware(
     readonly fetch?: { current: typeof fetch | undefined };
     /** The function the chain is running around. */
     readonly meta?: { readonly id: string };
+    /** The method that function answers. */
+    readonly method?: "GET" | "POST";
     /** The innermost work: the handler on the server, the fetch on the client. */
     readonly run: (data: unknown) => Promise<unknown>;
   },
@@ -861,6 +943,7 @@ export async function runMiddleware(
     const middleware = chain[position];
     if (middleware === undefined) return start.run(received);
     let data = received;
+    const answers: unknown[] = [];
     const next = nextOf(async (step) => {
       if (step?.context !== undefined) Object.assign(start.context, step.context);
       if (step?.sendContext !== undefined) Object.assign(start.sendContext, step.sendContext);
@@ -868,8 +951,18 @@ export async function runMiddleware(
         for (const [name, value] of new Headers(step.headers)) start.headers.set(name, value);
       }
       if (step?.fetch !== undefined && start.fetch !== undefined) start.fetch.current = step.fetch;
-      return dispatch(position + 1, data);
+      const answer = await dispatch(position + 1, data);
+      answers.push(answer);
+      return answer;
     });
+    const step = (named: (...args: never[]) => unknown): string =>
+      describeStep(
+        half,
+        [named],
+        position,
+        chain.length,
+        `around the server function ${JSON.stringify(start.meta?.id ?? "")}`,
+      );
     if (!isBuiltMiddleware(middleware)) {
       // A BARE CLOSURE IS A SERVER MIDDLEWARE, always. It takes `next` and runs
       // where the handler is; there is no half to choose and nothing about it
@@ -877,7 +970,8 @@ export async function runMiddleware(
       // application opens a sealed cookie. Calling one on the client would run
       // a session check in the page, so the client half skips it and only a
       // middleware that declared `.client(…)` runs there.
-      return half === "server" ? middleware(next) : next();
+      if (half !== "server") return next();
+      return answerOf(await middleware(next), answers, () => step(middleware));
     }
     // VALIDATION FIRST, so the body of this middleware sees what its own
     // validator produced and so does everything under it. TanStack applies them
@@ -885,14 +979,16 @@ export async function runMiddleware(
     if (half === "server") data = await applyValidator(middleware.options.validator, data);
     const body = middleware.options[half];
     if (body === undefined) return next();
-    return body({
+    const returned = await body({
       next,
       data,
       context: start.context,
       clientContext: start.clientContext ?? NOTHING_SENT,
       signal: start.signal,
       serverFnMeta: start.meta,
+      method: start.method,
     });
+    return answerOf(returned, answers, () => step(body));
   };
   return dispatch(0, start.data);
 }

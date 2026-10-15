@@ -247,6 +247,17 @@ export {
   toValidator,
 } from "./middleware.ts";
 
+export {
+  type AnySerializationAdapter,
+  type SerializationAdapter,
+  createSerializationAdapter,
+} from "@barqjs/server/codec";
+
+/** TanStack's `json`: a JSON `Response`, which a handler returns as its answer. */
+export function json(payload: unknown, init?: ResponseInit): Response {
+  return Response.json(payload, init);
+}
+
 export async function checkInput(
   built: { readonly validator: Validator<unknown> | null },
   raw: unknown,
@@ -284,6 +295,10 @@ export interface HandlerContext<In, Context extends object = Empty> {
   readonly data: In;
   readonly context: OpenContext<Context>;
   readonly signal: AbortSignal;
+  /** The method this function answers. */
+  readonly method: ServerFnMethod;
+  /** Which function is running, by the id it is mounted at. Empty when it is not mounted. */
+  readonly serverFnMeta: { readonly id: string };
 }
 
 interface Built<Data, Out, Context extends object = Empty> {
@@ -601,9 +616,11 @@ export function serverRpc<
     // and a rejection that depended on the payload being well-formed would be
     // one an attacker could skip by sending a malformed one. A MIDDLEWARE's own
     // validator is the exception and has to be: its body is handed `data`.
+    const method = meta.method ?? "POST";
     const result = await runMiddleware(chain, "server", {
       data: input,
       meta,
+      method,
       signal,
       context,
       clientContext,
@@ -615,6 +632,8 @@ export function serverRpc<
           data: (await checkInput(built, data, chainValidates)) as Data,
           context: context as OpenContext<Context>,
           signal,
+          method,
+          serverFnMeta: { id: meta.id },
         }),
     });
 
@@ -624,7 +643,14 @@ export function serverRpc<
     return (result instanceof ReadableStream ? valuesOf(result) : result) as Streamed<Awaited<Out>>;
   };
 
-  const fn = Object.assign(call, { [SERVER_FN]: true as const, meta, built, url: "" });
+  const fn = Object.assign(call, {
+    [SERVER_FN]: true as const,
+    meta,
+    serverFnMeta: meta,
+    method: meta.method ?? "POST",
+    built,
+    url: "",
+  });
   // Read when asked: the id is stamped when the function is mounted.
   Object.defineProperty(fn, "url", { enumerable: true, get: () => urlOf(meta.id) });
   return fn;
