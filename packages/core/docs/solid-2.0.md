@@ -77,8 +77,8 @@ compiler, before anything runs, with a code, a span and a docs page
 
 Destructured props are not on this list. A destructured name holds the prop's function,
 which stays live, so it is a mistake only where the name is used as a value.
-[BARQ005](../../compiler-rs/docs/BARQ005.md) reports a destructured parameter list, and
-BARQ001 to BARQ003 report a prop's function used as a value.
+[BARQ005](../../compiler-rs/docs/BARQ005.md) reports a destructured name used as a value,
+and BARQ001 to BARQ003 report `props.name` used the same way.
 
 ## Not yet in barq
 

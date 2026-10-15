@@ -545,15 +545,15 @@ mod tests {
         }
     }
 
-    /// D3. Scoped to the parameter list exactly as `solid/no-destructure` is —
-    /// that rule has zero false-positive issues in its tracker.
+    /// D3. A destructured prop is a Cell, which is correct wherever a function
+    /// is, so the rule reports a misuse of one and never the pattern itself.
     #[test]
     fn d3_fires_on_a_destructured_parameter_list_and_only_there() {
         let allocator = Allocator::new();
         let fires = [
-            "function Chip({ text }) { return <b>{text}</b>; }\nconst v = <Chip/>;\n",
-            "const Chip = ({ text }) => <b>{text}</b>;\nexport { Chip };\n",
-            "export default function Page({ title }) { return <h1>{title}</h1>; }\n",
+            "function Chip({ text }) { return <b>{`#${text}`}</b>; }\nconst v = <Chip/>;\n",
+            "const Chip = ({ text }) => <b>{text.length}</b>;\nexport { Chip };\n",
+            "export default function Page({ title }) { return <h1>{title + \"!\"}</h1>; }\n",
         ];
         for source in fires {
             let source = allocator.alloc_str(source);
@@ -566,19 +566,111 @@ mod tests {
             "function Chip(props) { return <b>{props.text}</b>; }\nconst v = <Chip/>;\n",
             // a `<For>` row callback is one destructured parameter and JSX-returning
             "import { For } from \"@barqjs/core\";\n\
-             const v = <For each={[]}>{({ text }) => <b>{text}</b>}</For>;\n",
+             const v = <For each={[]}>{({ text }) => <b>{`${text}`}</b>}</For>;\n",
             // no evidence it is a component: never tagged, never exported
-            "function chip({ text }) { return <b>{text}</b>; }\n",
+            "function chip({ text }) { return <b>{`${text}`}</b>; }\n",
             // arity is not one, so it is a different shape
-            "function Chip({ text }, extra) { return <b>{text}</b>; }\nconst v = <Chip/>;\n",
+            "function Chip({ text }, extra) { return <b>{`${text}`}</b>; }\nconst v = <Chip/>;\n",
             // returns no JSX
-            "export function useThing({ text }) { return text; }\n",
+            "export function useThing({ text }) { return `${text}`; }\n",
         ];
         for source in silent {
             let source = allocator.alloc_str(source);
             let module = module_with(&allocator, source, &diagnosing());
             assert_eq!(codes_of(&module), Vec::<&str>::new(), "{source}");
         }
+    }
+
+    /// Each case reports once, at the misuse, which `at` names.
+    #[test]
+    fn d3_reports_a_destructured_prop_where_it_is_misused() {
+        let allocator = Allocator::new();
+        let fires = [
+            ("export function Chip({ text: label }) { return <b>{label * 2}</b>; }", "label"),
+            ("export function Chip({ n }) { return <b>{-n}</b>; }", "n"),
+            ("export function Chip({ items }) { return <b>{items.length}</b>; }", "items"),
+            (
+                "export function Chip({ tone = \"warm\" }) { return <b data-tone={tone()} />; }",
+                "tone()",
+            ),
+            ("export function Chip({ tone = \"warm\" }) { return <b>{tone?.()}</b>; }", "tone?.()"),
+            ("export function Chip({ open = false }) { return <b>{open()}</b>; }", "open()"),
+            ("export function Chip({ tone = \"warm\" }) { return <b>{`t-${tone}`}</b>; }", "tone"),
+            ("export function Chip({ size = 2 }) { return <b>{size.toFixed(1)}</b>; }", "size"),
+            ("export function Card({ user: { name } }) { return <b>{name}</b>; }", "{ name }"),
+            ("export function Card({ items: [first] }) { return <b>{first}</b>; }", "[first]"),
+            ("export function Card({ user: { name } = {} }) { return <b>{name}</b>; }", "{ name }"),
+        ];
+        for (source, at) in fires {
+            let source = allocator.alloc_str(source);
+            let module = module_with(&allocator, source, &diagnosing());
+            assert_eq!(codes_of(&module), vec!["BARQ005"], "{source}");
+            let span = module.env.diagnostics[0].span;
+            assert_eq!(&source[span.start as usize..span.end as usize], at, "{source}");
+        }
+
+        let silent = [
+            // a function is what JSX takes, in a child and in an attribute
+            "export function Chip({ text }) { return <b title={text}>{text}</b>; }",
+            // handed on, or called first
+            "export function Chip({ text }) { return <b>{format(text)}</b>; }",
+            "export function Chip({ text }) { return <b>{`${text()}`}</b>; }",
+            // truthiness asks whether the prop was passed, as it does for `props.x`
+            "export function Chip({ text }) { return <b>{text ? \"y\" : \"n\"}</b>; }",
+            "export function Chip({ text }) { if (!text) return null; return <b>{text}</b>; }",
+            // what a Cell is legitimately asked for, and identity
+            "export function Chip({ text }) { return <b>{text.call(null)}</b>; }",
+            "export function Chip({ a, b }) { return <b>{a === b ? 1 : 2}</b>; }",
+            // a defaulted name in JSX renders correctly either way
+            "export function Chip({ tone = \"warm\" }) { return <b data-tone={tone}>{tone}</b>; }",
+            // a `null` default is safe to call optionally, or behind a test
+            "export function Chip({ onClose = null }) { return <b onClick={() => onClose?.()} />; }",
+            "export function Chip({ onClose = null }) { return <b onClick={() => onClose && onClose()} />; }",
+            // code that already tells the two kinds apart
+            "export function Chip({ tone = \"warm\" }) {\n\
+               const t = typeof tone === \"function\" ? tone() : tone;\n\
+               return <b>{`${t}`}</b>;\n}",
+            // a default that is a function, or whose value is unknown
+            "export function Chip({ format = (v) => v }) { return <b>{format(1)}</b>; }",
+            "export function Chip({ tone = DEFAULT }) { return <b>{tone() + 1}</b>; }",
+            // reassigned, or shadowed
+            "export function Chip({ text }) { text = text(); return <b>{`${text}`}</b>; }",
+            "export function Chip({ text }) { const f = (text) => `${text}`; return <b>{f(1)}</b>; }",
+            // the rest object holds Cells and is spread whole
+            "export function Chip({ text, ...rest }) { return <b {...rest}>{text}</b>; }",
+        ];
+        for source in silent {
+            let source = allocator.alloc_str(source);
+            let module = module_with(&allocator, source, &diagnosing());
+            assert_eq!(codes_of(&module), Vec::<&str>::new(), "{source}");
+        }
+    }
+
+    #[test]
+    fn d3_words_each_misuse_for_what_goes_wrong() {
+        let allocator = Allocator::new();
+        let message = |source: &str| {
+            let source = allocator.alloc_str(source);
+            let module = module_with(&allocator, source, &diagnosing());
+            module.env.diagnostics[0].message.to_string()
+        };
+        let value = message("export function Chip({ text }) { return <b>{`${text}`}</b>; }");
+        assert!(value.contains("Call it: `text()`"), "{value}");
+        let member = message("export function Chip({ text }) { return <b>{text.length}</b>; }");
+        assert!(member.contains("`text().length`"), "{member}");
+        let passed =
+            message("export function Chip({ tone = \"warm\" }) { return <b>{`${tone}`}</b>; }");
+        assert!(passed.contains("wrong whenever the prop is passed"), "{passed}");
+        assert!(passed.contains("`props.tone?.() ?? \"warm\"`"), "{passed}");
+        let missing =
+            message("export function Chip({ tone: t = \"warm\" }) { return <b>{t()}</b>; }");
+        assert!(missing.contains("when the prop is missing this call throws"), "{missing}");
+        assert!(missing.contains("`props.tone?.() ?? \"warm\"`"), "{missing}");
+        let object = message("export function Card({ user: { name } }) { return <b>{name}</b>; }");
+        assert!(object.contains("`user` arrives as a Cell"), "{object}");
+        assert!(object.contains("`user()`"), "{object}");
+        let array = message("export function Card({ items: [first] }) { return <b>{first}</b>; }");
+        assert!(array.contains("not iterable"), "{array}");
     }
 
     /// The rules are off unless asked for, so a production compile pays for no

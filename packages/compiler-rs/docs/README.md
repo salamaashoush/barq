@@ -10,7 +10,7 @@ exists and how to silence it.
 | [BARQ002](BARQ002.md) | warning | An accessor is used as a condition, which is always true |
 | [BARQ003](BARQ003.md) | warning | A property is read from an accessor instead of from its value |
 | [BARQ004](BARQ004.md) | note | `<For>` rows may show stale fields when `each` holds store objects |
-| [BARQ005](BARQ005.md) | warning | Props are destructured in the parameter list, so each name is a function |
+| [BARQ005](BARQ005.md) | warning | A destructured prop is used as a value, or called where it may not be a function |
 | [BARQ008](BARQ008.md) | warning | A `barq-ignore-next-line` comment silences nothing on the next line |
 | [BARQ009](BARQ009.md) | warning | A `barq-ignore-next-line` comment is malformed and silences nothing |
 | [BARQ010](BARQ010.md) | warning | JSX is passed to a prop the component reads as a value, which throws |

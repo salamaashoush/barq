@@ -1,33 +1,49 @@
-# BARQ005: Props are destructured in the parameter list, so each name is a function
+# BARQ005: A destructured prop is used as a value, or called where it may not be a function
 
 **Level:** warning · [all codes](README.md)
 
 ## Message
 
-> This component takes its props apart in the parameter list, so each name is the prop's
-> Cell (a function you call), not its value. Using one as a value prints the function's
-> source text or gives `NaN`, and a default such as `{ text = "x" }` is a plain value
-> only when the prop is missing. Take one `props` parameter and call each prop where it
-> is used, for example `props.text()`, or separate some with `splitProps(props,
-> ["text"])`.
+> `text` comes from destructuring the props, so it is the prop's Cell, a function you call,
+> and here the function itself is used as the value. In a string it prints its own source
+> text and in arithmetic it gives `NaN`. Call it: `text()`.
+
+The rule reports at the misuse, and the message names what goes wrong there:
+
+- A destructured name used as a value: in a template literal, with an arithmetic,
+  concatenating or relational operator, with unary `-`, `+` or `~`, or with a property read
+  from it (`text.length`). These are the positions where `props.text` gets
+  [BARQ001](BARQ001.md) or [BARQ003](BARQ003.md).
+- A name with a default that is a literal and not a function, `{ tone = "warm" }`, used as
+  a value: it is the default when the prop is missing and a function when it is passed, so
+  the use is wrong whenever the prop is passed.
+- The same name called, `tone()`: it throws when the prop is missing, because the default
+  is not a function.
+- A pattern under a prop's key, `{ user: { name } }` or `{ items: [first] }`: it takes the
+  prop's function apart, which is wrong whether the prop is passed or not.
 
 ## Failing example
 
 ```tsx
-export function Chip({ text, tone }) {
-  return <span data-tone={tone}>{text}</span>;
+export function Chip({ text }) {
+  return <span>{`#${text}`}</span>;
 }
 ```
 
 ## Fixed example
 
 ```tsx
-export function Chip(props) {
-  return <span data-tone={props.tone()}>{props.text()}</span>;
+export function Chip({ text }) {
+  return <span>{`#${text()}`}</span>;
 }
 ```
 
-To pass the remaining props on, separate the ones the component reads with `splitProps`. For a default, read an optional prop with `?.()`:
+Writing a destructured name where a function is accepted is correct and is not reported:
+`{text}` as a JSX child or attribute, `text` passed to another function, `text()` anywhere.
+A truthiness test such as `text ? … : …` asks whether the prop was passed, as it does for
+`props.text`, and is not reported either.
+
+To pass the remaining props on, separate the ones the component reads with `splitProps`:
 
 ```tsx
 import { splitProps } from "@barqjs/core";
@@ -41,21 +57,32 @@ export function Chip(props) {
 ## Why this rule exists
 
 A component receives each prop as a Cell: a function it calls to read the current value.
-Destructuring copies those functions into local names, so `text` is a function wherever
-the code expects a string. It works where a function is accepted, such as `{text}` in
-JSX, and gives the function's source text or `NaN` everywhere a value is needed. The
-checks for `props.name` ([BARQ001](BARQ001.md), [BARQ003](BARQ003.md)) cannot follow the
-copies, so nothing else reports those mistakes.
+Destructuring copies those functions into local names, so `text` is a function. That is
+what JSX wants, and it gives the function's source text or `NaN` everywhere a value is
+needed. The checks for `props.name` ([BARQ001](BARQ001.md), [BARQ003](BARQ003.md)) cannot
+follow the copies, so this rule reports the same positions for a destructured name.
 
-A default in the pattern, `{ tone = "warm" }`, makes it worse: the name is the string
-`"warm"` when the prop is missing and a function when it is passed.
+A default in the pattern, `{ tone = "warm" }`, gives the name two kinds: the string
+`"warm"` when the prop is missing and a function when it is passed. Calling it fails in the
+first case and using it as a value fails in the second. Read such a prop with its default
+where it is used instead:
+
+```tsx
+export function Chip({ tone }) {
+  return <span data-tone={tone?.() ?? "warm"} />;
+}
+```
+
+A default that is itself a function, or a name the rule cannot see the value of, is not
+reported, and neither is a name the component tests with `typeof` or reassigns.
 
 ## Silencing one line
 
 ```tsx
-// barq-ignore-next-line BARQ005 (every name here is called before it is used)
-export function Chip({ text, tone }) {
-  return <span data-tone={tone()}>{text()}</span>;
+export function Chip({ text }) {
+  // barq-ignore-next-line BARQ005 (the debug panel shows the source text)
+  const label = `${text}`;
+  return <span>{label}</span>;
 }
 ```
 

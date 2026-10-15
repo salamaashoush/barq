@@ -484,3 +484,22 @@ Assertions restated, each because the behaviour it pinned was the defect:
   create an effect inside an effect, which that build refuses with
   `PRIMITIVE_IN_FORBIDDEN_SCOPE`. They join the strict list beside #43 and its peers. The
   production build passes all eight.
+
+## BARQ005 reports a destructured prop at its misuse
+
+Every prop arrives as a Cell, so a name destructured from the parameter list is a live
+function and `{text}` in JSX is correct. The rule used to fire on the pattern itself; it now
+fires on a name used as a value, a non-function literal default that is called or used as a
+value, and a pattern nested under a prop's key.
+
+- `compiler-rs/src/analysis/mod.rs` `d3_fires_on_a_destructured_parameter_list_and_only_there`:
+  the three `fires` sources wrote the names only in JSX, which is now silent. Each keeps its
+  shape (a tagged function, an exported arrow, a default export) and gains a misuse: a
+  template literal, a `.length` read and a `+`. The `silent` sources gained a misuse too, so
+  they still prove the row-callback, no-evidence, arity and no-JSX bounds rather than
+  passing for lack of one.
+- `compiler-rs/test/diagnostics.test.ts` "every advertised code is reachable": the BARQ005
+  source `({ text }) => <p>{text}</p>` is correct code, so it became `` <p>{`#${text}`}</p> ``.
+- The same file, "fires on exactly two fixtures in the corpus": `props-destructured-param:BARQ005`
+  is gone, because the fixture uses its destructured names only in JSX. The title and the
+  comment above it now say one fixture.

@@ -92,7 +92,7 @@ codes! {
     Barq002 = "BARQ002", Warning, "An accessor is used as a condition, which is always true";
     Barq003 = "BARQ003", Warning, "A property is read from an accessor instead of from its value";
     Barq004 = "BARQ004", Note, "`<For>` rows may show stale fields when `each` holds store objects";
-    Barq005 = "BARQ005", Warning, "Props are destructured in the parameter list, so each name is a function";
+    Barq005 = "BARQ005", Warning, "A destructured prop is used as a value, or called where it may not be a function";
     Barq008 = "BARQ008", Warning, "A `barq-ignore-next-line` comment silences nothing on the next line";
     Barq009 = "BARQ009", Warning, "A `barq-ignore-next-line` comment is malformed and silences nothing";
     Barq010 = "BARQ010", Warning, "JSX is passed to a prop the component reads as a value, which throws";

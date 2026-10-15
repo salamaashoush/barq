@@ -240,7 +240,7 @@ describe("the diagnostic engine", () => {
         `import { For, useStore } from "@barqjs/core";\n` +
         `const [state] = useStore({ rows: [] });\n` +
         "export const V = () => <For each={state.rows}>{(row) => <li>{row.name}</li>}</For>;\n",
-      BARQ005: "export const V = ({ text }) => <p>{text}</p>;\n",
+      BARQ005: "export const V = ({ text }) => <p>{`#${text}`}</p>;\n",
       BARQ008:
         "// barq-ignore-next-line BARQ001 (nothing reports this here)\n" +
         "export const V = () => <p>ok</p>;\n",
@@ -321,28 +321,22 @@ describe("the diagnostic engine", () => {
   });
 
   /**
-   * Precision, measured against the whole corpus rather than asserted. Two hits
-   * in 117 fixtures, and both are known:
-   *
-   * - `diagnostic-accessor-coercion` is the positive fixture, added for this.
-   * - `props-destructured-param` is the false-positive class BARQ005 documents
-   *   and accepts — `solid/no-destructure` accepts the same one and has zero
-   *   false-positive issues in its tracker.
+   * Precision, measured against the whole corpus rather than asserted. One hit,
+   * and it is known: `diagnostic-accessor-coercion` is the positive fixture,
+   * added for this. `props-destructured-param` writes its destructured names
+   * only where a function is correct, so BARQ005 is silent there.
    *
    * D1 fires on ZERO of the 116 fixtures that predate it, and on zero of the 71
    * real `.ts`/`.tsx` files in this repo's own packages beyond the four genuine
    * bugs recorded in `docs/BARQ001.md`'s own measurement.
    */
-  it("fires on exactly two fixtures in the corpus, and both are documented", () => {
+  it("fires on exactly one fixture in the corpus, and it is documented", () => {
     const hits: string[] = [];
     for (const name of listFixtures()) {
       const raw = compileFixtureRaw(name, { dev: true }) as unknown as Raw;
       for (const diagnostic of raw.diagnostics) hits.push(`${name}:${diagnostic.code}`);
     }
-    expect(hits).toEqual([
-      "diagnostic-accessor-coercion:BARQ001",
-      "props-destructured-param:BARQ005",
-    ]);
+    expect(hits).toEqual(["diagnostic-accessor-coercion:BARQ001"]);
   });
 
   /**
