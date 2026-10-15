@@ -28,6 +28,10 @@ export default defineConfig({
   resolve: {
     alias: [
       { find: /^@barqjs\/ui$/, replacement: from("../ui/src/index.ts") },
+      // The barrel carries sonner's `toast` and `Toaster`; the other pair has
+      // this path of its own, and it is a component file rather than a
+      // directory under `src`.
+      { find: /^@barqjs\/ui\/toast$/, replacement: from("../ui/src/ui/toast.tsx") },
       { find: /^@barqjs\/ui\/(.*)$/, replacement: `${from("../ui/src")}/$1` },
       { find: /^@barqjs\/router$/, replacement: from("../router/dist/index.js") },
       { find: /^@barqjs\/router\/server$/, replacement: from("../router/dist/server.js") },

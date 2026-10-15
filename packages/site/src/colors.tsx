@@ -1,4 +1,4 @@
-import { For, signal, type Incoming } from "@barqjs/core";
+import { For, createSignal, type Incoming } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { Check } from "@barqjs/lucide/icons/check";
 import { Clipboard } from "@barqjs/lucide/icons/clipboard";
@@ -164,7 +164,7 @@ function resolved(property: string): string {
 const TOKENS = Object.keys(tokens).filter((token) => token !== "radius");
 
 function Swatch(props: Incoming<{ token: string; value: string; ink: string }>) {
-  const copied = signal(false);
+  const [copied, setCopied] = createSignal(false);
   const property = (): string => propertyOf(props.token());
 
   return (
@@ -175,8 +175,8 @@ function Swatch(props: Incoming<{ token: string; value: string; ink: string }>) 
       aria-label={() => `Copy ${property()}`}
       onClick={() => {
         void navigator.clipboard?.writeText(property());
-        copied.set(true);
-        setTimeout(() => copied.set(false), 1200);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1200);
       }}
     >
       {() => (copied() ? <Check /> : <Clipboard />)}

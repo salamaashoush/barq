@@ -7,18 +7,19 @@
  * and a breadcrumb header over three placeholders. It is the block that asks
  * about the sidebar's DEPTH — submenus, a rotating chevron, a menu action that
  * only appears on hover — where `dashboard-01` asks about its width.
- *
- * THE TRIGGER IS NOT `asChild`, and that is this package rather than a
- * shortcut. Upstream writes `<Collapsible asChild><SidebarMenuItem>` and
- * `<CollapsibleTrigger asChild><SidebarMenuButton>`, cloning each child to
- * attach the disclosure's props; there is no element to clone here, so the
- * open state is a signal the button toggles and the panel reads. Same markup,
- * same behaviour, one less indirection — and `<SidebarMenuButton>` stays the
- * real component rather than a class list copied onto a disclosure button.
  */
 
-import { For, signal, type Incoming } from "@barqjs/core";
+import { For, createSignal, type Incoming } from "@barqjs/core";
 import { css } from "@barqjs/css";
+import { BadgeCheck } from "@barqjs/lucide/icons/badge-check";
+import { Bell } from "@barqjs/lucide/icons/bell";
+import { CreditCard } from "@barqjs/lucide/icons/credit-card";
+import { Folder } from "@barqjs/lucide/icons/folder";
+import { Forward } from "@barqjs/lucide/icons/forward";
+import { LogOut } from "@barqjs/lucide/icons/log-out";
+import { Plus } from "@barqjs/lucide/icons/plus";
+import { Sparkles } from "@barqjs/lucide/icons/sparkles";
+import { Trash2 } from "@barqjs/lucide/icons/trash-2";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -28,9 +29,14 @@ import {
   BreadcrumbSeparator,
   Collapsible,
   CollapsibleContent,
+  CollapsibleTrigger,
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuTrigger,
   Separator,
   Sidebar,
@@ -117,7 +123,7 @@ const chevron = css`
   transition-property: rotate;
   transition-duration: 200ms;
 
-  &[data-open="true"] {
+  [data-state="open"] > & {
     rotate: 90deg;
   }
 `;
@@ -163,10 +169,43 @@ const trailing = css`
   height: 1rem;
 `;
 
+const quiet = css`
+  color: var(--muted-foreground);
+`;
+
+const teamsLabel = css`
+  font-size: 0.75rem;
+  color: var(--muted-foreground);
+`;
+
+const teamMenu = css`
+  min-width: 14rem;
+  border-radius: var(--radius-lg);
+`;
+
+const projectMenu = css`
+  width: 12rem;
+  border-radius: var(--radius-lg);
+`;
+
+const userLabel = css`
+  padding: 0;
+  font-weight: 400;
+`;
+
+const userCard = css`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.25rem;
+  text-align: left;
+  font-size: 0.875rem;
+`;
+
 const TEAMS = [
-  { id: "acme", name: "Acme Inc", plan: "Enterprise" },
-  { id: "corp", name: "Acme Corp.", plan: "Startup" },
-  { id: "evil", name: "Evil Corp.", plan: "Free" },
+  { id: "acme", name: "Acme Inc", plan: "Enterprise", shortcut: "\u23181" },
+  { id: "corp", name: "Acme Corp.", plan: "Startup", shortcut: "\u23182" },
+  { id: "evil", name: "Evil Corp.", plan: "Free", shortcut: "\u23183" },
 ];
 
 interface NavItem {
@@ -229,60 +268,43 @@ const PROJECTS = [
   { id: "travel", name: "Travel", icon: MapIcon },
 ];
 
-const PROJECT_ACTIONS = [
-  { id: "view", name: "View Project" },
-  { id: "share", name: "Share Project" },
-  { id: "delete", name: "Delete Project" },
-];
-
-const USER_ACTIONS = [
-  { id: "upgrade", name: "Upgrade to Pro" },
-  { id: "account", name: "Account" },
-  { id: "billing", name: "Billing" },
-  { id: "notifications", name: "Notifications" },
-  { id: "logout", name: "Log out" },
-];
-
-/**
- * One collapsible row, with its own open state.
- *
- * A component rather than a closure in the loop, because the signal has to
- * belong to the row: one held outside would be shared by all four and opening
- * Models would open Settings with it.
- */
 function NavRow(props: Incoming<{ item: NavItem }>) {
   const item = props.item();
-  const open = signal(item.open === true);
   const Icon = item.icon;
 
   return (
-    <SidebarMenuItem>
-      <SidebarMenuButton onClick={() => open.update((prev) => !prev)} aria-expanded={open()}>
-        <Icon />
-        <span>{item.name}</span>
-        <ChevronRight class={chevron} data-open={open() ? "true" : "false"} />
-      </SidebarMenuButton>
-      <Collapsible isExpanded={open()}>
-        <CollapsibleContent>
-          <SidebarMenuSub>
-            <For each={() => item.items}>
-              {(sub: { id: string; name: string }) => (
-                <SidebarMenuSubItem>
-                  <SidebarMenuSubButton href="#">
-                    <span>{sub.name}</span>
-                  </SidebarMenuSubButton>
-                </SidebarMenuSubItem>
-              )}
-            </For>
-          </SidebarMenuSub>
-        </CollapsibleContent>
-      </Collapsible>
-    </SidebarMenuItem>
+    <Collapsible
+      defaultOpen={item.open === true}
+      render={(root) => (
+        <SidebarMenuItem {...root.props} ref={root.ref}>
+          <CollapsibleTrigger asChild>
+            <SidebarMenuButton tooltip={item.name}>
+              <Icon />
+              <span>{item.name}</span>
+              <ChevronRight class={chevron} />
+            </SidebarMenuButton>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <SidebarMenuSub>
+              <For each={() => item.items}>
+                {(sub: { id: string; name: string }) => (
+                  <SidebarMenuSubItem>
+                    <SidebarMenuSubButton href="#">
+                      <span>{sub.name}</span>
+                    </SidebarMenuSubButton>
+                  </SidebarMenuSubItem>
+                )}
+              </For>
+            </SidebarMenuSub>
+          </CollapsibleContent>
+        </SidebarMenuItem>
+      )}
+    />
   );
 }
 
 export function Sidebar07() {
-  const team = signal(TEAMS[0]!);
+  const [team, setTeam] = createSignal(TEAMS[0]!);
 
   return (
     <SidebarProvider class={blockFillsPreview}>
@@ -303,17 +325,21 @@ export function Sidebar07() {
                     <ChevronsUpDown class={trailing} />
                   </SidebarMenuButton>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent
-                  items={TEAMS}
-                  aria-label="Teams"
-                  onAction={(key: string | number) => {
-                    const found = TEAMS.find((each) => each.id === String(key));
-                    if (found !== undefined) team.set(found);
-                  }}
-                >
-                  {(entry: (typeof TEAMS)[number]) => (
-                    <DropdownMenuItem>{entry.name}</DropdownMenuItem>
-                  )}
+                <DropdownMenuContent aria-label="Teams" align="start" class={teamMenu}>
+                  <DropdownMenuLabel class={teamsLabel}>Teams</DropdownMenuLabel>
+                  <For each={() => TEAMS}>
+                    {(entry: (typeof TEAMS)[number]) => (
+                      <DropdownMenuItem onSelect={() => setTeam(entry)}>
+                        {entry.name}
+                        <DropdownMenuShortcut>{entry.shortcut}</DropdownMenuShortcut>
+                      </DropdownMenuItem>
+                    )}
+                  </For>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem>
+                    <Plus />
+                    <span class={quiet}>Add team</span>
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </SidebarMenuItem>
@@ -344,14 +370,20 @@ export function Sidebar07() {
                           <Ellipsis />
                         </SidebarMenuAction>
                       </DropdownMenuTrigger>
-                      <DropdownMenuContent items={PROJECT_ACTIONS} aria-label="Project actions">
-                        {(action: (typeof PROJECT_ACTIONS)[number]) => (
-                          <DropdownMenuItem
-                            variant={action.id === "delete" ? "destructive" : "default"}
-                          >
-                            {action.name}
-                          </DropdownMenuItem>
-                        )}
+                      <DropdownMenuContent aria-label="Project actions" class={projectMenu}>
+                        <DropdownMenuItem>
+                          <Folder class={quiet} />
+                          <span>View Project</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuItem>
+                          <Forward class={quiet} />
+                          <span>Share Project</span>
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem variant="destructive">
+                          <Trash2 />
+                          <span>Delete Project</span>
+                        </DropdownMenuItem>
                       </DropdownMenuContent>
                     </DropdownMenu>
                   </SidebarMenuItem>
@@ -381,10 +413,43 @@ export function Sidebar07() {
                     <ChevronsUpDown class={trailing} />
                   </SidebarMenuButton>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent items={USER_ACTIONS} aria-label="Account">
-                  {(action: (typeof USER_ACTIONS)[number]) => (
-                    <DropdownMenuItem>{action.name}</DropdownMenuItem>
-                  )}
+                <DropdownMenuContent aria-label="Account" class={teamMenu}>
+                  <DropdownMenuLabel class={userLabel}>
+                    <div class={userCard}>
+                      <div class={teamMark}>SA</div>
+                      <span class={stack}>
+                        <strong>sashoush</strong>
+                        <span>me@example.com</span>
+                      </span>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem>
+                      <Sparkles />
+                      Upgrade to Pro
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuGroup>
+                    <DropdownMenuItem>
+                      <BadgeCheck />
+                      Account
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      <CreditCard />
+                      Billing
+                    </DropdownMenuItem>
+                    <DropdownMenuItem>
+                      <Bell />
+                      Notifications
+                    </DropdownMenuItem>
+                  </DropdownMenuGroup>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem>
+                    <LogOut />
+                    Log out
+                  </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
             </SidebarMenuItem>

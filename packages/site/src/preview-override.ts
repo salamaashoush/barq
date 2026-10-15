@@ -20,7 +20,7 @@
  * re-apply and re-render for no change at all.
  */
 
-import { signal, type Accessor } from "@barqjs/core";
+import { createSignal, type Accessor } from "@barqjs/core";
 
 /**
  * How long the pointer must settle before a preview applies.
@@ -47,7 +47,7 @@ function same<T extends object>(a: Partial<T> | null, b: Partial<T> | null): boo
 }
 
 export function previewOverride<T extends object>(): PreviewOverride<T> {
-  const value = signal<Partial<T> | null>(null);
+  const [value, setValue] = createSignal<Partial<T> | null>(null);
   let timer: ReturnType<typeof setTimeout> | undefined;
 
   const cancel = (): void => {
@@ -61,12 +61,12 @@ export function previewOverride<T extends object>(): PreviewOverride<T> {
       cancel();
       timer = setTimeout(() => {
         timer = undefined;
-        if (!same(value(), next)) value.set(next);
+        setValue((prev) => (same(prev, next) ? prev : next));
       }, SETTLE_MS);
     },
     clear() {
       cancel();
-      if (value() !== null) value.set(null);
+      setValue(null);
     },
   };
 }

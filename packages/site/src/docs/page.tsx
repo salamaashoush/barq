@@ -12,7 +12,7 @@ import { css } from "@barqjs/css";
 import { ArrowLeft } from "@barqjs/lucide/icons/arrow-left";
 import { ArrowRight } from "@barqjs/lucide/icons/arrow-right";
 import { Link, useParams } from "@barqjs/router";
-import { Button, Empty } from "@barqjs/ui";
+import { Button, Empty, Toaster } from "@barqjs/ui";
 
 import { anchor, DocsPage, slugOf, type DocsSection, type RailEntry } from "../docs.tsx";
 import { CodeBlock, CommandTabs } from "./code.tsx";
@@ -115,6 +115,7 @@ function DemoSection(props: Incoming<{ demo: Demo }>) {
         code={props.demo().code}
         align={props.demo().align}
         size={props.demo().size}
+        rtl={props.demo().rtl}
       >
         <Dynamic component={props.demo().component} />
       </ComponentPreview>
@@ -138,7 +139,7 @@ function railFor(slug: string): readonly RailEntry[] {
  */
 function sectionsFor(entry: ComponentDoc): readonly DocsSection[] {
   return [
-    { id: "installation", label: "Installation" },
+    ...(addName(entry) === undefined ? [] : [{ id: "installation", label: "Installation" }]),
     { id: "usage", label: "Usage" },
     ...entry.demos
       .filter((demo) => demo.title !== undefined)
@@ -199,16 +200,23 @@ function Found(props: Incoming<{ entry: ComponentDoc }>) {
               code={() => hero()?.code ?? ""}
               align={() => hero()?.align}
               size={() => hero()?.size}
+              rtl={() => hero()?.rtl}
             >
               <Dynamic component={() => hero()?.component} />
             </ComponentPreview>
           )
         }
 
-        <h2 class={anchor} id="installation">
-          Installation
-        </h2>
-        <CommandTabs command={() => `barq-ui add ${addName(entry())}`} />
+        {() =>
+          addName(entry()) === undefined ? null : (
+            <>
+              <h2 class={anchor} id="installation">
+                Installation
+              </h2>
+              <CommandTabs command={() => `barq-ui add ${addName(entry()) ?? ""}`} />
+            </>
+          )
+        }
 
         <h2 class={anchor} id="usage">
           Usage
@@ -240,6 +248,7 @@ function Found(props: Incoming<{ entry: ComponentDoc }>) {
           )
         }
       </div>
+      <Toaster />
     </DocsPage>
   );
 }

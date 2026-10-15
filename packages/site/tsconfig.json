@@ -17,6 +17,7 @@
     "noUncheckedIndexedAccess": true,
     "paths": {
       "@barqjs/ui": ["../ui/src/index.ts"],
+      "@barqjs/ui/toast": ["../ui/src/ui/toast.tsx"],
       "@barqjs/ui/*": ["../ui/src/*"]
     }
   },

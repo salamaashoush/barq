@@ -2,6 +2,7 @@ import { For, type Child, type Incoming } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { Link } from "@barqjs/router";
 
+import { GUIDES, type GuideMeta } from "./docs/guides/registry-data.ts";
 import { wrapper } from "./site.tsx";
 
 /**
@@ -308,6 +309,8 @@ export function DocsPage(
     sections: readonly DocsSection[];
     /** The left rail: every component, as links. */
     rail?: readonly RailEntry[];
+    /** The guide being read, which the rail's first group marks. */
+    guide?: string;
     /** Beside the title — upstream's previous/next pair. */
     actions?: Child;
     children?: Child;
@@ -316,8 +319,24 @@ export function DocsPage(
   return (
     <div class={wrapper}>
       <div class={shell}>
-        <aside class={rail} aria-label="Components">
+        <aside class={rail} aria-label="Documentation">
           <div class={railScroll}>
+            {GUIDES.length === 0 ? null : (
+              <div class={railGroup}>
+                <span class={railTitle}>Get Started</span>
+                <For each={() => GUIDES}>
+                  {(entry: GuideMeta) => (
+                    <Link
+                      class={railLink}
+                      to={`/docs/${entry.slug}`}
+                      aria-current={() => props.guide?.() === entry.slug}
+                    >
+                      {entry.title}
+                    </Link>
+                  )}
+                </For>
+              </div>
+            )}
             <div class={railGroup}>
               <span class={railTitle}>Components</span>
               <For each={() => props.rail?.() ?? []}>

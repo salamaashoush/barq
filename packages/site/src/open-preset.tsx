@@ -12,7 +12,7 @@
  * cannot work should say so before you press the button, not after.
  */
 
-import { signal, type Incoming } from "@barqjs/core";
+import { createSignal, type Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 import {
   Button,
@@ -63,8 +63,8 @@ export function parsePreset(input: string): Params | null {
 }
 
 export function OpenPreset(props: Incoming<{ design: Design; class?: string }>) {
-  const open = signal(false);
-  const input = signal("");
+  const [open, setOpen] = createSignal(false);
+  const [input, setInput] = createSignal("");
 
   const parsed = (): Params | null => parsePreset(input());
   const invalid = (): boolean => input().trim() !== "" && parsed() === null;
@@ -73,16 +73,16 @@ export function OpenPreset(props: Incoming<{ design: Design; class?: string }>) 
     const next = parsed();
     if (next === null) return;
     props.design().set(next);
-    input.set("");
-    open.set(false);
+    setInput("");
+    setOpen(false);
   };
 
   return (
     <Dialog
       isOpen={open()}
       onOpenChange={(next: boolean) => {
-        open.set(next);
-        if (!next) input.set("");
+        setOpen(next);
+        if (!next) setInput("");
       }}
     >
       <DialogTrigger>
@@ -103,7 +103,7 @@ export function OpenPreset(props: Incoming<{ design: Design; class?: string }>) 
               placeholder="?style=nova&baseColor=stone&theme=blue"
               value={input()}
               aria-invalid={invalid()}
-              onInput={(event: Event) => input.set((event.currentTarget as HTMLInputElement).value)}
+              onInput={(event: Event) => setInput((event.currentTarget as HTMLInputElement).value)}
               onKeyDown={(event: KeyboardEvent) => {
                 if (event.key === "Enter") submit();
               }}

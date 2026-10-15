@@ -15,11 +15,11 @@
  * where upstream puts it.
  */
 
-import { signal, type Child, type Incoming } from "@barqjs/core";
+import { Show, createSignal, type Child, type Incoming } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { Check } from "@barqjs/lucide/icons/check";
 import { Copy } from "@barqjs/lucide/icons/copy";
-import { Button } from "@barqjs/ui";
+import { Button, DirectionProvider, Toggle } from "@barqjs/ui";
 
 import { CodeTokens } from "./code.tsx";
 import { highlighted } from "./highlight.ts";
@@ -90,6 +90,19 @@ const preview = css`
   }
 `;
 
+/**
+ * Outside the element that takes `dir`, so pressing it does not move it to the
+ * other corner of the card.
+ */
+const direction = css`
+  position: absolute;
+  top: calc(var(--spacing) * 2);
+  right: calc(var(--spacing) * 2);
+  z-index: 10;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+`;
+
 const codePanel = css`
   position: relative;
   overflow: hidden;
@@ -153,31 +166,51 @@ export interface PreviewProps {
   align?: "center" | "start" | "end";
   /** `auto` for a demo that will not fit 288px — a sidebar, a long form. */
   size?: "fixed" | "auto";
+  /** The example names its own direction, so the card offers no toggle. */
+  rtl?: boolean;
 }
 
 export function ComponentPreview(props: Incoming<PreviewProps>) {
-  const open = signal(false);
-  const copied = signal(false);
+  const [open, setOpen] = createSignal(false);
+  const [copied, setCopied] = createSignal(false);
+  const [rtl, setRtl] = createSignal(false);
+  const dir = (): "ltr" | "rtl" | undefined =>
+    props.rtl?.() === true ? undefined : rtl() ? "rtl" : "ltr";
 
   const onCopy = (): void => {
     const source = props.code?.() ?? "";
     if (source === "") return;
     void navigator.clipboard?.writeText(source).then(() => {
-      copied.set(true);
-      setTimeout(() => copied.set(false), 2000);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
     });
   };
 
   return (
     <div class={`${card} ${codeSurface}`} data-slot="component-preview" data-not-typeset>
-      <div
-        class={preview}
-        data-slot="preview"
-        data-align={() => props.align?.() ?? "center"}
-        data-size={() => props.size?.() ?? "fixed"}
-      >
-        {props.children}
-      </div>
+      <Show when={props.rtl?.() !== true}>
+        <Toggle
+          class={direction}
+          size="sm"
+          variant="outline"
+          aria-label="Right to left"
+          pressed={rtl()}
+          onPressedChange={(next: boolean) => setRtl(next)}
+        >
+          RTL
+        </Toggle>
+      </Show>
+      <DirectionProvider dir={dir()}>
+        <div
+          class={preview}
+          data-slot="preview"
+          dir={dir()}
+          data-align={() => props.align?.() ?? "center"}
+          data-size={() => props.size?.() ?? "fixed"}
+        >
+          {props.children}
+        </div>
+      </DirectionProvider>
       {props.code === undefined ? null : (
         <div class={codePanel} data-slot="code">
           <Button
@@ -187,7 +220,9 @@ export function ComponentPreview(props: Incoming<PreviewProps>) {
             aria-label="Copy the code"
             onClick={onCopy}
           >
-            {() => (copied() ? <Check /> : <Copy />)}
+            <Show when={copied()} fallback={<Copy />}>
+              <Check />
+            </Show>
           </Button>
           <pre class={() => `${pre} ${highlighted} ${open() ? "" : collapsed}`}>
             <code>
@@ -197,7 +232,7 @@ export function ComponentPreview(props: Incoming<PreviewProps>) {
           {() =>
             open() ? null : (
               <div class={veil}>
-                <Button size="sm" variant="outline" onClick={() => open.set(true)}>
+                <Button size="sm" variant="outline" onClick={() => setOpen(true)}>
                   View Code
                 </Button>
               </div>

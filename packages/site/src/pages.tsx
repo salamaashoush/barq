@@ -60,8 +60,21 @@ export function BlocksIndex() {
   );
 }
 
+/*
+ * The viewport a block is written for, standing in for the window the way the
+ * create page's preview does. A block asks `@container preview` where upstream
+ * asks the window, fills its parent where upstream fills `svh`, and fixes its
+ * sidebar to whatever contains it. So this is that container, with a height of
+ * its own, a scroll of its own, and layout containment: without the last a
+ * fixed sidebar resolves against the window and its header sits under the
+ * site's.
+ */
 const full = css`
-  min-height: calc(100dvh - 3.5rem);
+  height: calc(100dvh - 3.5rem);
+  overflow-y: auto;
+  contain: layout;
+  container-type: inline-size;
+  container-name: preview;
 `;
 
 /**

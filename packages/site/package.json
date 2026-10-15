@@ -8,17 +8,20 @@
     "build": "vite build",
     "preview": "bun dist/server/serve.js",
     "typecheck": "tsc --noEmit",
+    "test": "bun test",
     "theme": "bun run tools/emit-theme.ts"
   },
   "dependencies": {
     "@barqjs/aria": "workspace:*",
     "@barqjs/core": "workspace:*",
     "@barqjs/css": "workspace:*",
+    "@barqjs/form": "workspace:*",
     "@barqjs/lucide": "workspace:*",
     "@barqjs/primitives": "workspace:*",
     "@barqjs/router": "workspace:*",
     "@barqjs/server": "workspace:*",
     "@barqjs/start": "workspace:*",
+    "@barqjs/table": "workspace:*",
     "@barqjs/ui": "workspace:*",
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource-variable/geist-mono": "^5.3.0",
@@ -27,6 +30,10 @@
   },
   "devDependencies": {
     "@barqjs/compiler": "workspace:*",
+    "@barqjs/compiler-rs": "workspace:*",
+    "@barqjs/testing": "workspace:*",
+    "@happy-dom/global-registrator": "^20.11.6",
+    "@types/bun": "^1.4.0",
     "@types/d3-shape": "^3.2.0",
     "vite": "^8.2.2"
   }

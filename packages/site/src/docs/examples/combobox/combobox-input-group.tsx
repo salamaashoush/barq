@@ -1,0 +1,79 @@
+import { css } from "@barqjs/css";
+import { Globe } from "@barqjs/lucide/icons/globe";
+import {
+  Combobox,
+  ComboboxCollection,
+  ComboboxContent,
+  ComboboxEmpty,
+  ComboboxGroup,
+  ComboboxInput,
+  ComboboxItem,
+  ComboboxLabel,
+  ComboboxList,
+  InputGroupAddon,
+} from "@barqjs/ui";
+
+const timezones = [
+  {
+    value: "Americas",
+    items: [
+      "(GMT-5) New York",
+      "(GMT-8) Los Angeles",
+      "(GMT-6) Chicago",
+      "(GMT-5) Toronto",
+      "(GMT-8) Vancouver",
+      "(GMT-3) São Paulo",
+    ],
+  },
+  {
+    value: "Europe",
+    items: [
+      "(GMT+0) London",
+      "(GMT+1) Paris",
+      "(GMT+1) Berlin",
+      "(GMT+1) Rome",
+      "(GMT+1) Madrid",
+      "(GMT+1) Amsterdam",
+    ],
+  },
+  {
+    value: "Asia/Pacific",
+    items: [
+      "(GMT+9) Tokyo",
+      "(GMT+8) Shanghai",
+      "(GMT+8) Singapore",
+      "(GMT+4) Dubai",
+      "(GMT+11) Sydney",
+      "(GMT+9) Seoul",
+    ],
+  },
+] as const;
+
+const content = css`
+  width: calc(var(--spacing) * 60);
+`;
+
+export default function ComboboxInputGroup() {
+  return (
+    <Combobox items={timezones}>
+      <ComboboxInput aria-label="Timezone" placeholder="Select a timezone">
+        <InputGroupAddon>
+          <Globe />
+        </InputGroupAddon>
+      </ComboboxInput>
+      <ComboboxContent alignOffset={-28} class={content}>
+        <ComboboxEmpty>No timezones found.</ComboboxEmpty>
+        <ComboboxList>
+          {(group: (typeof timezones)[number]) => (
+            <ComboboxGroup items={group.items}>
+              <ComboboxLabel>{group.value}</ComboboxLabel>
+              <ComboboxCollection>
+                {(item: string) => <ComboboxItem value={item}>{item}</ComboboxItem>}
+              </ComboboxCollection>
+            </ComboboxGroup>
+          )}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
+  );
+}

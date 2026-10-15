@@ -11,7 +11,7 @@
  * `<CommandTabs>` is their `<CodeTabs>` over the four package managers.
  */
 
-import { For, signal, type Incoming } from "@barqjs/core";
+import { For, createSignal, type Incoming, Show } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { Check } from "@barqjs/lucide/icons/check";
 import { Copy } from "@barqjs/lucide/icons/copy";
@@ -70,13 +70,13 @@ const title = css`
 `;
 
 function useCopy(): { copied: () => boolean; onCopy: (value: string) => void } {
-  const copied = signal(false);
+  const [copied, setCopied] = createSignal(false);
   return {
     copied,
     onCopy: (value: string) => {
       void navigator.clipboard?.writeText(value).then(() => {
-        copied.set(true);
-        setTimeout(() => copied.set(false), 2000);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
       });
     },
   };
@@ -94,7 +94,9 @@ export function CodeBlock(props: Incoming<{ code: string; title?: string }>) {
         aria-label="Copy the code"
         onClick={() => onCopy(props.code())}
       >
-        {() => (copied() ? <Check /> : <Copy />)}
+        <Show when={copied()} fallback={<Copy />}>
+          <Check />
+        </Show>
       </Button>
       <pre class={() => `${body} ${highlighted}`}>
         <code>
@@ -118,15 +120,17 @@ export function CodeTokens(props: Incoming<{ code: string }>) {
 /**
  * A token per span, coloured by kind.
  *
- * `plain` gets no element at all: it is most of a snippet, and a span around
- * every run of whitespace triples the markup for nothing.
+ * `plain` is a span too, without the attribute. It is most of a snippet and
+ * an element around every run of whitespace is markup that colours nothing,
+ * but a row that is bare text gives the hydration walk no node to claim, and
+ * every row the server wrote after it is reported as unclaimed.
  */
 function Highlighted(props: Incoming<{ tokens: readonly Token[] }>) {
   return (
     <For each={() => props.tokens()}>
-      {(token: Token) =>
-        token.kind === "plain" ? token.text : <span data-token={token.kind}>{token.text}</span>
-      }
+      {(token: Token) => (
+        <span data-token={token.kind === "plain" ? undefined : token.kind}>{token.text}</span>
+      )}
     </For>
   );
 }
@@ -169,7 +173,7 @@ const MANAGERS = [
  * writes these components into a project.
  */
 export function CommandTabs(props: Incoming<{ command: string }>) {
-  const picked = signal<string>("pnpm");
+  const [picked, setPicked] = createSignal<string>("pnpm");
   const line = (): string => {
     const manager = MANAGERS.find((entry) => entry.id === picked()) ?? MANAGERS[0];
     return `${manager.run} ${props.command()}`;
@@ -186,7 +190,7 @@ export function CommandTabs(props: Incoming<{ command: string }>) {
               role="tab"
               class={tab}
               aria-selected={() => picked() === manager.id}
-              onClick={() => picked.set(manager.id)}
+              onClick={() => setPicked(manager.id)}
             >
               {manager.id}
             </button>
@@ -200,7 +204,9 @@ export function CommandTabs(props: Incoming<{ command: string }>) {
         aria-label="Copy the command"
         onClick={() => onCopy(line())}
       >
-        {() => (copied() ? <Check /> : <Copy />)}
+        <Show when={copied()} fallback={<Copy />}>
+          <Check />
+        </Show>
       </Button>
       <pre class={() => `${body} ${highlighted}`}>
         <code>

@@ -13,7 +13,7 @@
  * configurator, and a configurator you cannot get the result out of is a toy.
  */
 
-import { signal, type Incoming } from "@barqjs/core";
+import { createSignal, type Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 import {
   Button,
@@ -63,21 +63,21 @@ const PANES: readonly Pane[] = [
 ];
 
 export function ProjectForm(props: Incoming<{ design: Design }>) {
-  const open = signal(false);
-  const showing = signal("command");
-  const took = signal(false);
+  const [open, setOpen] = createSignal(false);
+  const [showing, setShowing] = createSignal("command");
+  const [took, setTook] = createSignal(false);
 
   const paneOf = (id: string): Pane => PANES.find((pane) => pane.id === id) ?? PANES[0]!;
   const text = (): string => paneOf(showing()).text(props.design().params());
 
   const copy = (): void => {
     void navigator.clipboard.writeText(text());
-    took.set(true);
-    setTimeout(() => took.set(false), 2000);
+    setTook(true);
+    setTimeout(() => setTook(false), 2000);
   };
 
   return (
-    <Dialog isOpen={open()} onOpenChange={(next: boolean) => open.set(next)}>
+    <Dialog isOpen={open()} onOpenChange={(next: boolean) => setOpen(next)}>
       <DialogTrigger>
         <Button data-slot="get-code">Get Code</Button>
       </DialogTrigger>
@@ -91,7 +91,7 @@ export function ProjectForm(props: Incoming<{ design: Design }>) {
         <Tabs
           items={PANES}
           selectedKey={showing()}
-          onSelectionChange={(key: string | number) => showing.set(String(key))}
+          onSelectionChange={(key: string | number) => setShowing(String(key))}
         >
           <TabsList aria-label="How to take this away">
             {(pane: Pane) => <TabsTrigger>{pane.name}</TabsTrigger>}

@@ -20,7 +20,7 @@
  * between shadcn's three component bases, and there is one here.
  */
 
-import { signal, type Incoming } from "@barqjs/core";
+import { createSignal, type Incoming } from "@barqjs/core";
 import { layer } from "@barqjs/css";
 import {
   Button,
@@ -30,6 +30,8 @@ import {
   CardHeader,
   FieldGroup,
   FieldSeparator,
+  Label,
+  Switch,
 } from "@barqjs/ui";
 
 import { ActionMenu } from "./action-menu.tsx";
@@ -120,6 +122,15 @@ const columnOnly = ui({
   "@media (width >= 48rem)": { display: "block" },
 });
 
+const direction = ui({
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "calc(var(--spacing) * 2)",
+  paddingInline: "calc(var(--spacing) * 2)",
+  fontSize: "var(--text-xs)",
+});
+
 const foot = ui({
   display: "flex",
   minWidth: "0px",
@@ -162,8 +173,8 @@ function radiusIsFixed(style: string): boolean {
 }
 
 export function Customizer(props: Incoming<{ design: Design }>) {
-  const searching = signal(false);
-  const resetting = signal(false);
+  const [searching, setSearching] = createSignal(false);
+  const [resetting, setResetting] = createSignal(false);
   const now = (): Params => props.design().params();
   const set = (next: Partial<Params>): void => props.design().set(next);
   const preview = (next: Partial<Params>): void => props.design().preview(next);
@@ -182,6 +193,7 @@ export function Customizer(props: Incoming<{ design: Design }>) {
   };
 
   const toggleDark = (): void => set({ dark: !now().dark });
+  const toggleRtl = (): void => set({ rtl: !now().rtl });
 
   /**
    * What the heading glyph is set in.
@@ -202,8 +214,9 @@ export function Customizer(props: Incoming<{ design: Design }>) {
           design={props.design()}
           onShuffle={shuffle}
           onToggleDark={toggleDark}
-          onSearch={() => searching.set(true)}
-          onReset={() => resetting.set(true)}
+          onToggleRtl={toggleRtl}
+          onSearch={() => setSearching(true)}
+          onReset={() => setResetting(true)}
         />
       </CardHeader>
 
@@ -288,6 +301,17 @@ export function Customizer(props: Incoming<{ design: Design }>) {
             onPreview={(value: string) => preview({ radius: value })}
             clearPreview={clear}
           />
+
+          <FieldSeparator class={columnOnly} />
+
+          <Label class={direction} data-slot="direction">
+            <span>RTL</span>
+            <Switch
+              size="sm"
+              checked={now().rtl}
+              onCheckedChange={(next: boolean) => set({ rtl: next })}
+            />
+          </Label>
         </FieldGroup>
       </CardContent>
 
@@ -308,12 +332,12 @@ export function Customizer(props: Incoming<{ design: Design }>) {
         <ActionMenu
           design={props.design()}
           isOpen={searching()}
-          onOpenChange={(next: boolean) => searching.set(next)}
+          onOpenChange={(next: boolean) => setSearching(next)}
         />
         <ResetDialog
           design={props.design()}
           isOpen={resetting()}
-          onOpenChange={(next: boolean) => resetting.set(next)}
+          onOpenChange={(next: boolean) => setResetting(next)}
         />
       </CardFooter>
 
@@ -332,12 +356,12 @@ export function Customizer(props: Incoming<{ design: Design }>) {
  * itself: it is longer, and it is the thing you were going to run anyway.
  */
 function CopyPreset(props: Incoming<{ design: Design }>) {
-  const took = signal(false);
+  const [took, setTook] = createSignal(false);
 
   const copy = (): void => {
     void navigator.clipboard.writeText(commandFor(props.design().params()));
-    took.set(true);
-    setTimeout(() => took.set(false), 2000);
+    setTook(true);
+    setTimeout(() => setTook(false), 2000);
   };
 
   return (

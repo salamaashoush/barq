@@ -10,12 +10,73 @@
  * opinion about what the component is.
  */
 
-import * as basics from "./demos/basics.tsx";
-import * as chat from "./demos/chat.tsx";
-import * as data from "./demos/data.tsx";
-import * as forms from "./demos/forms.tsx";
-import * as navigation from "./demos/navigation.tsx";
-import * as overlays from "./demos/overlays.tsx";
+import { demos as accordionDemos } from "./examples/accordion/index.ts";
+import { demos as alertDemos } from "./examples/alert/index.ts";
+import { demos as alertDialogDemos } from "./examples/alert-dialog/index.ts";
+import { demos as aspectRatioDemos } from "./examples/aspect-ratio/index.ts";
+import { demos as attachmentDemos } from "./examples/attachment/index.ts";
+import { demos as avatarDemos } from "./examples/avatar/index.ts";
+import { demos as badgeDemos } from "./examples/badge/index.ts";
+import { demos as breadcrumbDemos } from "./examples/breadcrumb/index.ts";
+import { demos as bubbleDemos } from "./examples/bubble/index.ts";
+import { demos as buttonDemos } from "./examples/button/index.ts";
+import { demos as buttonGroupDemos } from "./examples/button-group/index.ts";
+import { demos as calendarDemos } from "./examples/calendar/index.ts";
+import { demos as checkboxDemos } from "./examples/checkbox/index.ts";
+import { doc as dataTableDoc } from "./examples/data-table/index.ts";
+import { demos as dialogDemos } from "./examples/dialog/index.ts";
+import { demos as dropdownMenuDemos } from "./examples/dropdown-menu/index.ts";
+import { demos as emptyDemos } from "./examples/empty/index.ts";
+import { demos as fieldDemos } from "./examples/field/index.ts";
+import { demos as inputDemos } from "./examples/input/index.ts";
+import { demos as itemDemos } from "./examples/item/index.ts";
+import { demos as labelDemos } from "./examples/label/index.ts";
+import { demos as markerDemos } from "./examples/marker/index.ts";
+import { demos as radioGroupDemos } from "./examples/radio-group/index.ts";
+import { demos as scrollAreaDemos } from "./examples/scroll-area/index.ts";
+import { doc as scrollFadeDoc } from "./examples/scroll-fade/index.ts";
+import { demos as selectDemos } from "./examples/select/index.ts";
+import { demos as separatorDemos } from "./examples/separator/index.ts";
+import { doc as shimmerDoc } from "./examples/shimmer/index.ts";
+import { demos as skeletonDemos } from "./examples/skeleton/index.ts";
+import { demos as sliderDemos } from "./examples/slider/index.ts";
+import { demos as switchDemos } from "./examples/switch/index.ts";
+import { demos as tableDemos } from "./examples/table/index.ts";
+import { demos as tabsDemos } from "./examples/tabs/index.ts";
+import { demos as textareaDemos } from "./examples/textarea/index.ts";
+import { demos as toggleDemos } from "./examples/toggle/index.ts";
+import { demos as cardDemos } from "./examples/card/index.ts";
+import { doc as directionDoc } from "./examples/direction/index.ts";
+import { doc as toastDoc } from "./examples/toast/index.ts";
+import { doc as typographyDoc } from "./examples/typography/index.ts";
+import { doc as questionnaireDoc } from "./examples/questionnaire/index.ts";
+import { demos as collapsibleDemos } from "./examples/collapsible/index.ts";
+import { demos as kbdDemos } from "./examples/kbd/index.ts";
+import { demos as paginationDemos } from "./examples/pagination/index.ts";
+import { demos as progressDemos } from "./examples/progress/index.ts";
+import { demos as spinnerDemos } from "./examples/spinner/index.ts";
+import { demos as inputGroupDemos } from "./examples/input-group/index.ts";
+import { demos as comboboxDemos } from "./examples/combobox/index.ts";
+import { demos as contextMenuDemos } from "./examples/context-menu/index.ts";
+import { demos as inputOtpDemos } from "./examples/input-otp/index.ts";
+import { demos as carouselDemos } from "./examples/carousel/index.ts";
+import { demos as chartDemos } from "./examples/chart/index.ts";
+import { demos as commandDemos } from "./examples/command/index.ts";
+import { demos as datePickerDemos } from "./examples/date-picker/index.ts";
+import { demos as drawerDemos } from "./examples/drawer/index.ts";
+import { demos as hoverCardDemos } from "./examples/hover-card/index.ts";
+import { demos as tooltipDemos } from "./examples/tooltip/index.ts";
+import { demos as popoverDemos } from "./examples/popover/index.ts";
+import { demos as sheetDemos } from "./examples/sheet/index.ts";
+import { demos as menubarDemos } from "./examples/menubar/index.ts";
+import { demos as nativeSelectDemos } from "./examples/native-select/index.ts";
+import { demos as toggleGroupDemos } from "./examples/toggle-group/index.ts";
+import { demos as resizableDemos } from "./examples/resizable/index.ts";
+import { demos as navigationMenuDemos } from "./examples/navigation-menu/index.ts";
+import { demos as sonnerDemos } from "./examples/sonner/index.ts";
+import { demos as messageDemos } from "./examples/message/index.ts";
+import { demos as sidebarDemos } from "./examples/sidebar/index.ts";
+import { demos as messageScrollerDemos } from "./examples/message-scroller/index.ts";
 import type { ComponentDoc } from "./registry.ts";
 
 const importLine = (names: string, from: string): string =>
@@ -39,22 +100,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  )}",
       "</Accordion>",
     ].join("\n"),
-    demos: [
-      {
-        align: "start",
-        code: [
-          "<Accordion items={faqs}>",
-          "  {(faq) => (",
-          "    <AccordionItem>",
-          "      <AccordionTrigger>{faq.q}</AccordionTrigger>",
-          "      <AccordionContent>{faq.a}</AccordionContent>",
-          "    </AccordionItem>",
-          "  )}",
-          "</Accordion>",
-        ].join("\n"),
-        component: navigation.AccordionDemo,
-      },
-    ],
+    demos: accordionDemos,
   },
   {
     slug: "alert",
@@ -69,40 +115,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  <AlertDescription>Your trial ends in three days.</AlertDescription>",
       "</Alert>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          "<Alert>",
-          "  <TriangleAlert />",
-          "  <AlertTitle>Heads up</AlertTitle>",
-          "  <AlertDescription>Your trial ends in three days.</AlertDescription>",
-          "</Alert>",
-        ].join("\n"),
-        component: basics.AlertDemo,
-      },
-      {
-        title: "Destructive",
-        code: [
-          '<Alert variant="destructive">',
-          "  <CircleAlert />",
-          "  <AlertTitle>Payment failed</AlertTitle>",
-          "  <AlertDescription>The card was declined.</AlertDescription>",
-          "</Alert>",
-        ].join("\n"),
-        component: basics.AlertDestructive,
-      },
-      {
-        title: "Title only",
-        note: "The description is optional, and without it the title is the whole alert.",
-        code: [
-          "<Alert>",
-          "  <BadgeCheck />",
-          "  <AlertTitle>Everything is up to date.</AlertTitle>",
-          "</Alert>",
-        ].join("\n"),
-        component: basics.AlertTitleOnly,
-      },
-    ],
+    demos: alertDemos,
   },
   {
     slug: "alert-dialog",
@@ -122,28 +135,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  <AlertDialogContent>\u2026</AlertDialogContent>",
       "</AlertDialog>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          "<AlertDialog>",
-          "  <AlertDialogTrigger>",
-          '    <Button variant="destructive">Delete everything</Button>',
-          "  </AlertDialogTrigger>",
-          "  <AlertDialogContent>",
-          "    <AlertDialogHeader>",
-          "      <AlertDialogTitle>Are you sure?</AlertDialogTitle>",
-          "      <AlertDialogDescription>This deletes everything.</AlertDialogDescription>",
-          "    </AlertDialogHeader>",
-          "    <AlertDialogFooter>",
-          "      <AlertDialogCancel>Cancel</AlertDialogCancel>",
-          '      <AlertDialogAction variant="destructive">Delete</AlertDialogAction>',
-          "    </AlertDialogFooter>",
-          "  </AlertDialogContent>",
-          "</AlertDialog>",
-        ].join("\n"),
-        component: overlays.AlertDialogDemo,
-      },
-    ],
+    demos: alertDialogDemos,
   },
   {
     slug: "aspect-ratio",
@@ -156,12 +148,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       '  <img src={src} alt="" />',
       "</AspectRatio>",
     ].join("\n"),
-    demos: [
-      {
-        code: ["<AspectRatio ratio={16 / 9}>", "  <div>16 / 9</div>", "</AspectRatio>"].join("\n"),
-        component: basics.AspectRatioDemo,
-      },
-    ],
+    demos: aspectRatioDemos,
   },
   {
     slug: "attachment",
@@ -184,23 +171,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  </Attachment>",
       "</AttachmentGroup>",
     ].join("\n"),
-    demos: [
-      {
-        align: "start",
-        code: [
-          "<Attachment>",
-          "  <AttachmentMedia><FileText /></AttachmentMedia>",
-          "  <AttachmentContent>",
-          "    <AttachmentTitle>report.pdf</AttachmentTitle>",
-          "    <AttachmentDescription>2.4 MB</AttachmentDescription>",
-          "  </AttachmentContent>",
-          "</Attachment>",
-          "",
-          '<Attachment state="error">\u2026</Attachment>',
-        ].join("\n"),
-        component: chat.AttachmentDemo,
-      },
-    ],
+    demos: attachmentDemos,
   },
   {
     slug: "avatar",
@@ -214,58 +185,14 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  <AvatarFallback>SA</AvatarFallback>",
       "</Avatar>",
     ].join("\n"),
-    demos: [
-      {
-        code: ["<Avatar>", "  <AvatarFallback>SA</AvatarFallback>", "</Avatar>"].join("\n"),
-        component: basics.AvatarDemo,
-      },
-      {
-        title: "Group",
-        note: "An overlapping row, with a count for the ones it does not show.",
-        code: [
-          "<AvatarGroup>",
-          "  <Avatar>",
-          "    <AvatarFallback>SA</AvatarFallback>",
-          "  </Avatar>",
-          "  <AvatarGroupCount>+4</AvatarGroupCount>",
-          "</AvatarGroup>",
-        ].join("\n"),
-        component: basics.AvatarGroupDemo,
-      },
-    ],
+    demos: avatarDemos,
   },
   {
     slug: "badge",
     title: "Badge",
     description: "Displays a badge or a component that looks like a badge.",
     usage: [importLine("Badge", "badge"), "", "<Badge>Badge</Badge>"].join("\n"),
-    demos: [
-      { code: "<Badge>Badge</Badge>", component: basics.BadgeDemo },
-      {
-        title: "Variants",
-        code: [
-          "<Badge>Default</Badge>",
-          '<Badge variant="secondary">Secondary</Badge>',
-          '<Badge variant="destructive">Destructive</Badge>',
-          '<Badge variant="outline">Outline</Badge>',
-          '<Badge variant="ghost">Ghost</Badge>',
-        ].join("\n"),
-        component: basics.BadgeVariants,
-      },
-      {
-        title: "With icon",
-        code: ['<Badge variant="secondary">', "  <BadgeCheck />", "  Verified", "</Badge>"].join(
-          "\n",
-        ),
-        component: basics.BadgeWithIcon,
-      },
-      {
-        title: "Link",
-        note: "`href` renders an `<a>`, so the badge is the link rather than sitting inside one.",
-        code: '<Badge variant="link" href="/changelog">Read the changelog</Badge>',
-        component: basics.BadgeLink,
-      },
-    ],
+    demos: badgeDemos,
   },
   {
     slug: "breadcrumb",
@@ -285,20 +212,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  </BreadcrumbList>",
       "</Breadcrumb>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          "<Breadcrumb>",
-          "  <BreadcrumbList>",
-          '    <BreadcrumbItem><BreadcrumbLink href="/">Home</BreadcrumbLink></BreadcrumbItem>',
-          "    <BreadcrumbSeparator />",
-          "    <BreadcrumbItem><BreadcrumbPage>Invoices</BreadcrumbPage></BreadcrumbItem>",
-          "  </BreadcrumbList>",
-          "</Breadcrumb>",
-        ].join("\n"),
-        component: navigation.BreadcrumbDemo,
-      },
-    ],
+    demos: breadcrumbDemos,
   },
   {
     slug: "bubble",
@@ -312,19 +226,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  <BubbleContent>Just now, yes.</BubbleContent>",
       "</Bubble>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          '<Bubble align="start" variant="muted">',
-          "  <BubbleContent>Did the build go out?</BubbleContent>",
-          "</Bubble>",
-          '<Bubble align="end">',
-          "  <BubbleContent>Just now, yes.</BubbleContent>",
-          "</Bubble>",
-        ].join("\n"),
-        component: chat.BubbleDemo,
-      },
-    ],
+    demos: bubbleDemos,
   },
   {
     slug: "button",
@@ -335,54 +237,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "",
       '<Button variant="outline" onPress={() => save()}>Save</Button>',
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          '<Button variant="outline">Button</Button>',
-          '<Button variant="outline" size="icon" aria-label="Submit">',
-          "  <ArrowUp />",
-          "</Button>",
-        ].join("\n"),
-        component: basics.ButtonDemo,
-      },
-      {
-        title: "Variants",
-        code: [
-          "<Button>Default</Button>",
-          '<Button variant="secondary">Secondary</Button>',
-          '<Button variant="destructive">Destructive</Button>',
-          '<Button variant="outline">Outline</Button>',
-          '<Button variant="ghost">Ghost</Button>',
-          '<Button variant="link">Link</Button>',
-        ].join("\n"),
-        component: basics.ButtonVariants,
-      },
-      {
-        title: "Size",
-        code: [
-          '<Button size="xs">Extra small</Button>',
-          '<Button size="sm">Small</Button>',
-          "<Button>Default</Button>",
-          '<Button size="lg">Large</Button>',
-        ].join("\n"),
-        component: basics.ButtonSizes,
-      },
-      {
-        title: "Icon",
-        code: ['<Button size="icon-sm" aria-label="Bold">', "  <Bold />", "</Button>"].join("\n"),
-        component: basics.ButtonIcon,
-      },
-      {
-        title: "With icon",
-        code: ['<Button variant="outline">', "  <Mail />", "  Email", "</Button>"].join("\n"),
-        component: basics.ButtonWithIcon,
-      },
-      {
-        title: "Loading",
-        code: ["<Button isDisabled>", "  <Spinner />", "  Saving", "</Button>"].join("\n"),
-        component: basics.ButtonLoading,
-      },
-    ],
+    demos: buttonDemos,
   },
   {
     slug: "button-group",
@@ -396,30 +251,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       '  <Button variant="outline">Paste</Button>',
       "</ButtonGroup>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          "<ButtonGroup>",
-          '  <Button variant="outline">Copy</Button>',
-          '  <Button variant="outline">Paste</Button>',
-          "  <ButtonGroupSeparator />",
-          '  <Button variant="outline">Delete</Button>',
-          "</ButtonGroup>",
-        ].join("\n"),
-        component: basics.ButtonGroupDemo,
-      },
-      {
-        title: "With text",
-        note: "A prefix that is part of the control rather than a label beside it.",
-        code: [
-          "<ButtonGroup>",
-          "  <ButtonGroupText>https://</ButtonGroupText>",
-          '  <Button variant="outline">example.com</Button>',
-          "</ButtonGroup>",
-        ].join("\n"),
-        component: basics.ButtonGroupText_,
-      },
-    ],
+    demos: buttonGroupDemos,
   },
   {
     slug: "calendar",
@@ -430,20 +262,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "",
       '<Calendar aria-label="Departure" />',
     ].join("\n"),
-    demos: [
-      {
-        size: "auto",
-        code: '<Calendar aria-label="Departure" />',
-        component: data.CalendarDemo,
-      },
-      {
-        title: "Range",
-        note: "A second month and a selection that spans them, from the same component family.",
-        size: "auto",
-        code: '<RangeCalendar aria-label="Stay" />',
-        component: data.RangeCalendarDemo,
-      },
-    ],
+    demos: calendarDemos,
   },
   {
     slug: "card",
@@ -462,44 +281,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  <CardContent>Twelve invoices.</CardContent>",
       "</Card>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          "<Card>",
-          "  <CardHeader>",
-          "    <CardTitle>Invoices</CardTitle>",
-          "    <CardDescription>Everything billed this year.</CardDescription>",
-          "    <CardAction>",
-          '      <Button size="sm" variant="outline">New</Button>',
-          "    </CardAction>",
-          "  </CardHeader>",
-          "  <CardContent>Twelve invoices, four of them unpaid.</CardContent>",
-          "  <CardFooter>",
-          '    <Button size="sm">Export</Button>',
-          "  </CardFooter>",
-          "</Card>",
-        ].join("\n"),
-        component: basics.CardDemo,
-      },
-      {
-        title: "Bordered",
-        note: "`bordered` puts a rule under the header and over the footer.",
-        code: [
-          "<Card>",
-          "  <CardHeader bordered>",
-          "    <CardTitle>Usage</CardTitle>",
-          "  </CardHeader>",
-          "  <CardContent>",
-          '    <Progress value={62} label="Requests" />',
-          "  </CardContent>",
-          "  <CardFooter>",
-          '    <Button size="sm" variant="outline">Upgrade</Button>',
-          "  </CardFooter>",
-          "</Card>",
-        ].join("\n"),
-        component: basics.CardBordered,
-      },
-    ],
+    demos: cardDemos,
   },
   {
     slug: "carousel",
@@ -519,26 +301,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  <CarouselNext />",
       "</Carousel>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          "<Carousel>",
-          "  <CarouselContent>",
-          "    <For each={items}>",
-          "      {(each) => (",
-          "        <CarouselItem>",
-          "          <Card><CardContent>{each}</CardContent></Card>",
-          "        </CarouselItem>",
-          "      )}",
-          "    </For>",
-          "  </CarouselContent>",
-          "  <CarouselPrevious />",
-          "  <CarouselNext />",
-          "</Carousel>",
-        ].join("\n"),
-        component: navigation.CarouselDemo,
-      },
-    ],
+    demos: carouselDemos,
   },
   {
     slug: "chart",
@@ -555,43 +318,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  <ChartLegend />",
       "</ChartContainer>",
     ].join("\n"),
-    demos: [
-      {
-        size: "auto",
-        code: [
-          "<ChartContainer config={config}>",
-          '  <ChartBars data={data} x="month" aria-label="Revenue by month" />',
-          "  <ChartLegend />",
-          "</ChartContainer>",
-        ].join("\n"),
-        component: data.ChartBarsDemo,
-      },
-      {
-        title: "Lines and area",
-        size: "auto",
-        code: [
-          "<ChartContainer config={config}>",
-          '  <ChartLines data={data} x="month" area aria-label="Sessions by month" />',
-          "  <ChartLegend />",
-          "</ChartContainer>",
-        ].join("\n"),
-        component: data.ChartLinesDemo,
-      },
-      {
-        title: "Tooltip",
-        note: "The tooltip is a component of its own, so a chart can place one anywhere.",
-        code: [
-          "<ChartTooltipContent",
-          '  label="March"',
-          "  items={[",
-          '    { key: "desktop", label: "Desktop", value: "1,204" },',
-          '    { key: "mobile", label: "Mobile", value: "832" },',
-          "  ]}",
-          "/>",
-        ].join("\n"),
-        component: data.ChartTooltipDemo,
-      },
-    ],
+    demos: chartDemos,
   },
   {
     slug: "checkbox",
@@ -603,22 +330,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       '<Checkbox id="terms" />',
       '<Label for="terms">Accept the terms</Label>',
     ].join("\n"),
-    demos: [
-      {
-        code: ['<Checkbox id="terms" />', '<Label for="terms">Accept the terms</Label>'].join("\n"),
-        component: forms.CheckboxDemo,
-      },
-      {
-        title: "States",
-        note: "Indeterminate is a third state, not a styled second one: it is what a parent box shows when some of its children are checked.",
-        code: [
-          "<Checkbox defaultSelected />",
-          "<Checkbox isIndeterminate />",
-          "<Checkbox isDisabled />",
-        ].join("\n"),
-        component: forms.CheckboxStates,
-      },
-    ],
+    demos: checkboxDemos,
   },
   {
     slug: "collapsible",
@@ -632,17 +344,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  <CollapsibleContent>Hidden until asked for.</CollapsibleContent>",
       "</Collapsible>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          "<Collapsible>",
-          "  <CollapsibleTrigger>Show details</CollapsibleTrigger>",
-          "  <CollapsibleContent>Hidden until asked for.</CollapsibleContent>",
-          "</Collapsible>",
-        ].join("\n"),
-        component: navigation.CollapsibleDemo,
-      },
-    ],
+    demos: collapsibleDemos,
   },
   {
     slug: "combobox",
@@ -658,36 +360,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  label={(entry) => entry.name}",
       "/>",
     ].join("\n"),
-    demos: [
-      {
-        align: "start",
-        code: [
-          "<Combobox",
-          "  items={fruits}",
-          '  placeholder="Select a fruit"',
-          '  searchPlaceholder="Search fruit"',
-          '  aria-label="Fruit"',
-          "  label={(entry) => entry.name}",
-          "/>",
-        ].join("\n"),
-        component: forms.ComboboxDemo,
-      },
-      {
-        title: "Multiple",
-        note: "One component, not five: the trigger, the popover and the list are built from the same items.",
-        align: "start",
-        code: [
-          "<Combobox",
-          "  multiple",
-          "  items={fruits}",
-          '  placeholder="Pick a few"',
-          '  aria-label="Fruits"',
-          "  label={(entry) => entry.name}",
-          "/>",
-        ].join("\n"),
-        component: forms.ComboboxMultiple,
-      },
-    ],
+    demos: comboboxDemos,
   },
   {
     slug: "command",
@@ -705,22 +378,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  )}",
       "</Command>",
     ].join("\n"),
-    demos: [
-      {
-        align: "start",
-        code: [
-          '<Command items={palette} placeholder="Type a command or search" aria-label="Commands">',
-          "  {(entry) => (",
-          "    <CommandItem>",
-          "      {entry.name}",
-          "      <CommandShortcut>{entry.keys}</CommandShortcut>",
-          "    </CommandItem>",
-          "  )}",
-          "</Command>",
-        ].join("\n"),
-        component: overlays.CommandDemo,
-      },
-    ],
+    demos: commandDemos,
   },
   {
     slug: "context-menu",
@@ -739,25 +397,9 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  </ContextMenuContent>",
       "</ContextMenu>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          "<ContextMenu>",
-          "  <ContextMenuTrigger>Right-click anywhere in here</ContextMenuTrigger>",
-          '  <ContextMenuContent items={actions} aria-label="Actions">',
-          "    {(action) => (",
-          '      <ContextMenuItem variant={action.id === "delete" ? "destructive" : "default"}>',
-          "        {action.name}",
-          "        <ContextMenuShortcut>\u2318R</ContextMenuShortcut>",
-          "      </ContextMenuItem>",
-          "    )}",
-          "  </ContextMenuContent>",
-          "</ContextMenu>",
-        ].join("\n"),
-        component: overlays.ContextMenuDemo,
-      },
-    ],
+    demos: contextMenuDemos,
   },
+  dataTableDoc,
   {
     slug: "date-picker",
     title: "Date Picker",
@@ -768,29 +410,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "<DatePicker />",
       "<DateRangePicker />",
     ].join("\n"),
-    demos: [
-      {
-        align: "start",
-        code: [
-          "<DatePicker />",
-          "<DatePicker defaultValue={new CalendarDate(2022, 1, 20)} />",
-        ].join("\n"),
-        component: data.DatePickerDemo,
-      },
-      {
-        title: "Range",
-        align: "start",
-        code: [
-          "<DateRangePicker",
-          "  defaultValue={{",
-          "    start: new CalendarDate(2022, 1, 20),",
-          "    end: new CalendarDate(2022, 2, 9),",
-          "  }}",
-          "/>",
-        ].join("\n"),
-        component: data.DateRangePickerDemo,
-      },
-    ],
+    demos: datePickerDemos,
   },
   {
     slug: "dialog",
@@ -814,29 +434,9 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  </DialogContent>",
       "</Dialog>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          "<Dialog>",
-          "  <DialogTrigger>",
-          '    <Button variant="outline">Open the dialog</Button>',
-          "  </DialogTrigger>",
-          "  <DialogContent>",
-          "    <DialogHeader>",
-          "      <DialogTitle>Delete the project?</DialogTitle>",
-          "      <DialogDescription>This cannot be undone.</DialogDescription>",
-          "    </DialogHeader>",
-          "    <DialogFooter>",
-          "      <DialogClose>Cancel</DialogClose>",
-          '      <Button variant="destructive">Delete</Button>',
-          "    </DialogFooter>",
-          "  </DialogContent>",
-          "</Dialog>",
-        ].join("\n"),
-        component: overlays.DialogDemo,
-      },
-    ],
+    demos: dialogDemos,
   },
+  directionDoc,
   {
     slug: "drawer",
     title: "Drawer",
@@ -854,28 +454,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  <DrawerContent>\u2026</DrawerContent>",
       "</Drawer>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          "<Drawer>",
-          "  <DrawerTrigger>",
-          '    <Button variant="outline">Open the drawer</Button>',
-          "  </DrawerTrigger>",
-          "  <DrawerContent>",
-          "    <DrawerHeader>",
-          "      <DrawerTitle>Move goal</DrawerTitle>",
-          "      <DrawerDescription>Set your daily activity goal.</DrawerDescription>",
-          "    </DrawerHeader>",
-          "    <DrawerFooter>",
-          "      <Button>Submit</Button>",
-          "      <DrawerClose>Cancel</DrawerClose>",
-          "    </DrawerFooter>",
-          "  </DrawerContent>",
-          "</Drawer>",
-        ].join("\n"),
-        component: overlays.DrawerDemo,
-      },
-    ],
+    demos: drawerDemos,
   },
   {
     slug: "dropdown-menu",
@@ -897,25 +476,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  </DropdownMenuContent>",
       "</DropdownMenu>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          "<DropdownMenu>",
-          "  <DropdownMenuTrigger>",
-          '    <Button variant="outline">Open the menu</Button>',
-          "  </DropdownMenuTrigger>",
-          '  <DropdownMenuContent items={actions} aria-label="Actions">',
-          "    {(action) => (",
-          '      <DropdownMenuItem variant={action.id === "delete" ? "destructive" : "default"}>',
-          "        {action.name}",
-          "      </DropdownMenuItem>",
-          "    )}",
-          "  </DropdownMenuContent>",
-          "</DropdownMenu>",
-        ].join("\n"),
-        component: overlays.DropdownMenuDemo,
-      },
-    ],
+    demos: dropdownMenuDemos,
   },
   {
     slug: "empty",
@@ -934,23 +495,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  </EmptyHeader>",
       "</Empty>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          "<Empty>",
-          "  <EmptyHeader>",
-          '    <EmptyMedia variant="icon"><Inbox /></EmptyMedia>',
-          "    <EmptyTitle>No invoices yet</EmptyTitle>",
-          "    <EmptyDescription>They appear here once you send one.</EmptyDescription>",
-          "  </EmptyHeader>",
-          "  <EmptyContent>",
-          '    <Button size="sm">New invoice</Button>',
-          "  </EmptyContent>",
-          "</Empty>",
-        ].join("\n"),
-        component: data.EmptyDemo,
-      },
-    ],
+    demos: emptyDemos,
   },
   {
     slug: "field",
@@ -969,48 +514,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  <FieldDescription>Where the parcel goes.</FieldDescription>",
       "</Field>",
     ].join("\n"),
-    demos: [
-      {
-        align: "start",
-        size: "auto",
-        code: [
-          "<FieldSet>",
-          "  <FieldLegend>Delivery</FieldLegend>",
-          "  <FieldGroup>",
-          "    <Field>",
-          '      <FieldLabel for="street">Street</FieldLabel>',
-          '      <Input id="street" placeholder="12 Rue de Rivoli" />',
-          "      <FieldDescription>Where the parcel goes.</FieldDescription>",
-          "    </Field>",
-          '    <Field orientation="horizontal">',
-          '      <Checkbox id="receipts" />',
-          "      <FieldContent>",
-          "        <FieldTitle>Send receipts</FieldTitle>",
-          "        <FieldDescription>One email per payment.</FieldDescription>",
-          "      </FieldContent>",
-          "    </Field>",
-          "  </FieldGroup>",
-          "</FieldSet>",
-        ].join("\n"),
-        component: forms.FieldDemo,
-      },
-      {
-        title: "Invalid and disabled",
-        note: "`Field` is what this package has instead of a `Form`: there is no react-hook-form, so validity is an attribute the field reads.",
-        align: "start",
-        size: "auto",
-        code: [
-          "<Field isInvalid>",
-          '  <FieldLabel for="card">Card</FieldLabel>',
-          '  <Input id="card" aria-invalid="true" />',
-          '  <FieldError errors={[{ message: "That card was declined." }]} />',
-          "</Field>",
-          "<FieldSeparator>or</FieldSeparator>",
-          "<Field isDisabled>\u2026</Field>",
-        ].join("\n"),
-        component: forms.FieldStates,
-      },
-    ],
+    demos: fieldDemos,
   },
   {
     slug: "hover-card",
@@ -1026,22 +530,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  <HoverCardContent>\u2026</HoverCardContent>",
       "</HoverCard>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          "<HoverCard openDelay={200} closeDelay={200}>",
-          "  <HoverCardTrigger>",
-          '    <Button variant="link">@barq</Button>',
-          "  </HoverCardTrigger>",
-          "  <HoverCardContent>",
-          "    <strong>@barq</strong>",
-          "    <span>Reactive without a virtual DOM.</span>",
-          "  </HoverCardContent>",
-          "</HoverCard>",
-        ].join("\n"),
-        component: overlays.HoverCardDemo,
-      },
-    ],
+    demos: hoverCardDemos,
   },
   {
     slug: "input",
@@ -1053,31 +542,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "",
       '<Input type="email" placeholder="you@example.com" />',
     ].join("\n"),
-    demos: [
-      {
-        code: '<Input type="email" placeholder="you@example.com" />',
-        component: forms.InputDemo,
-      },
-      {
-        title: "With a label",
-        code: [
-          '<Label for="email">Email</Label>',
-          '<Input id="email" type="email" placeholder="you@example.com" />',
-        ].join("\n"),
-        component: forms.InputWithLabel,
-      },
-      {
-        title: "States",
-        align: "start",
-        code: [
-          '<Input placeholder="Default" />',
-          '<Input placeholder="Disabled" disabled />',
-          '<Input aria-invalid="true" value="not-an-email" />',
-          '<Input value="sk-live-2f9a" readOnly />',
-        ].join("\n"),
-        component: forms.InputStates,
-      },
-    ],
+    demos: inputDemos,
   },
   {
     slug: "input-group",
@@ -1094,35 +559,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       '  <InputGroupInput placeholder="Search invoices" />',
       "</InputGroup>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          "<InputGroup>",
-          "  <InputGroupAddon>",
-          "    <Search />",
-          "  </InputGroupAddon>",
-          '  <InputGroupInput aria-label="Search" placeholder="Search invoices" />',
-          "</InputGroup>",
-        ].join("\n"),
-        component: forms.InputGroupDemo,
-      },
-      {
-        title: "Addons",
-        note: "An addon is part of the control, so the focus ring and the invalid state wrap the whole group.",
-        align: "start",
-        size: "auto",
-        code: [
-          "<InputGroup>",
-          "  <InputGroupAddon><AtSign /></InputGroupAddon>",
-          '  <InputGroupInput placeholder="you" />',
-          '  <InputGroupAddon align="inline-end">',
-          "    <InputGroupText>@example.com</InputGroupText>",
-          "  </InputGroupAddon>",
-          "</InputGroup>",
-        ].join("\n"),
-        component: forms.InputGroupAddons,
-      },
-    ],
+    demos: inputGroupDemos,
   },
   {
     slug: "input-otp",
@@ -1137,26 +574,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  </InputOTPGroup>",
       "</InputOTP>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          "<InputOTP maxLength={6}>",
-          "  <InputOTPGroup>",
-          "    <InputOTPSlot index={0} />",
-          "    <InputOTPSlot index={1} />",
-          "    <InputOTPSlot index={2} />",
-          "  </InputOTPGroup>",
-          "  <InputOTPSeparator />",
-          "  <InputOTPGroup>",
-          "    <InputOTPSlot index={3} />",
-          "    <InputOTPSlot index={4} />",
-          "    <InputOTPSlot index={5} />",
-          "  </InputOTPGroup>",
-          "</InputOTP>",
-        ].join("\n"),
-        component: forms.InputOTPDemo,
-      },
-    ],
+    demos: inputOtpDemos,
   },
   {
     slug: "item",
@@ -1176,33 +594,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  </ItemContent>",
       "</Item>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          '<Item variant="outline">',
-          '  <ItemMedia variant="icon"><FileText /></ItemMedia>',
-          "  <ItemContent>",
-          "    <ItemTitle>Q3 report</ItemTitle>",
-          "    <ItemDescription>Uploaded two days ago, 2.4 MB.</ItemDescription>",
-          "  </ItemContent>",
-          "  <ItemActions>",
-          '    <Button size="sm" variant="outline">Open</Button>',
-          "  </ItemActions>",
-          "</Item>",
-        ].join("\n"),
-        component: data.ItemDemo,
-      },
-      {
-        title: "Variants",
-        note: "`href` makes the whole row the link, which is what an item in a list of things usually wants.",
-        code: [
-          '<Item size="sm" href="/reports/q2">\u2026</Item>',
-          "<ItemSeparator />",
-          '<Item variant="muted">\u2026</Item>',
-        ].join("\n"),
-        component: data.ItemVariants,
-      },
-    ],
+    demos: itemDemos,
   },
   {
     slug: "kbd",
@@ -1216,12 +608,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  <Kbd>K</Kbd>",
       "</KbdGroup>",
     ].join("\n"),
-    demos: [
-      {
-        code: ["<KbdGroup>", "  <Kbd>⌘</Kbd>", "  <Kbd>K</Kbd>", "</KbdGroup>"].join("\n"),
-        component: basics.KbdDemo,
-      },
-    ],
+    demos: kbdDemos,
   },
   {
     slug: "label",
@@ -1233,12 +620,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       '<Label for="email">Email</Label>',
       '<Input id="email" />',
     ].join("\n"),
-    demos: [
-      {
-        code: '<Label for="terms">Accept the terms and conditions</Label>',
-        component: basics.LabelDemo,
-      },
-    ],
+    demos: labelDemos,
   },
   {
     slug: "marker",
@@ -1252,19 +634,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  <MarkerContent>Yesterday</MarkerContent>",
       "</Marker>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          '<Marker variant="separator">',
-          "  <MarkerContent>Yesterday</MarkerContent>",
-          "</Marker>",
-          "<Marker>",
-          "  <MarkerContent>Mira joined the conversation</MarkerContent>",
-          "</Marker>",
-        ].join("\n"),
-        component: data.MarkerDemo,
-      },
-    ],
+    demos: markerDemos,
   },
   {
     slug: "menubar",
@@ -1283,22 +653,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  </MenubarMenu>",
       "</Menubar>",
     ].join("\n"),
-    demos: [
-      {
-        align: "start",
-        code: [
-          "<Menubar>",
-          "  <MenubarMenu>",
-          "    <MenubarTrigger>File</MenubarTrigger>",
-          '    <MenubarContent items={actions} aria-label="File">',
-          "      {(action) => <MenubarItem>{action.name}</MenubarItem>}",
-          "    </MenubarContent>",
-          "  </MenubarMenu>",
-          "</Menubar>",
-        ].join("\n"),
-        component: overlays.MenubarDemo,
-      },
-    ],
+    demos: menubarDemos,
   },
   {
     slug: "message",
@@ -1317,23 +672,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  </MessageContent>",
       "</Message>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          '<Message align="start">',
-          "  <MessageAvatar>MK</MessageAvatar>",
-          "  <MessageContent>",
-          "    <MessageHeader>Mira</MessageHeader>",
-          '    <Bubble align="start" variant="muted">',
-          "      <BubbleContent>Any regressions in the report?</BubbleContent>",
-          "    </Bubble>",
-          "    <MessageFooter>09:43</MessageFooter>",
-          "  </MessageContent>",
-          "</Message>",
-        ].join("\n"),
-        component: chat.MessageDemo,
-      },
-    ],
+    demos: messageDemos,
   },
   {
     slug: "message-scroller",
@@ -1355,29 +694,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  <MessageScrollerButton />",
       "</MessageScroller>",
     ].join("\n"),
-    demos: [
-      {
-        note: "Scroll it up and the button appears; it anchors to the newest turn until you leave the bottom.",
-        size: "auto",
-        code: [
-          "<MessageScroller>",
-          "  <MessageScrollerViewport>",
-          "    <MessageScrollerContent>",
-          "      <For each={turns}>",
-          "        {(turn) => (",
-          "          <MessageScrollerItem>",
-          '            <Message align={turn.mine ? "end" : "start"}>\u2026</Message>',
-          "          </MessageScrollerItem>",
-          "        )}",
-          "      </For>",
-          "    </MessageScrollerContent>",
-          "  </MessageScrollerViewport>",
-          "  <MessageScrollerButton />",
-          "</MessageScroller>",
-        ].join("\n"),
-        component: chat.MessageScrollerDemo,
-      },
-    ],
+    demos: messageScrollerDemos,
   },
   {
     slug: "native-select",
@@ -1390,19 +707,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  <NativeSelectOption>United Kingdom</NativeSelectOption>",
       "</NativeSelect>",
     ].join("\n"),
-    demos: [
-      {
-        note: "The platform's own listbox, which is what a phone should open. `Select` is the one with a popover.",
-        code: [
-          '<NativeSelect aria-label="Country">',
-          "  <option>United Kingdom</option>",
-          "  <option>Egypt</option>",
-          "  <option>Germany</option>",
-          "</NativeSelect>",
-        ].join("\n"),
-        component: forms.NativeSelectDemo,
-      },
-    ],
+    demos: nativeSelectDemos,
   },
   {
     slug: "navigation-menu",
@@ -1425,27 +730,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  <NavigationMenuViewport />",
       "</NavigationMenu>",
     ].join("\n"),
-    demos: [
-      {
-        align: "start",
-        code: [
-          "<NavigationMenu>",
-          "  <NavigationMenuList>",
-          '    <NavigationMenuItem value="products">',
-          "      <NavigationMenuTrigger>Products</NavigationMenuTrigger>",
-          "      <NavigationMenuContent>",
-          '        <NavigationMenuLink href="/analytics" isActive>Analytics</NavigationMenuLink>',
-          '        <NavigationMenuLink href="/reporting">Reporting</NavigationMenuLink>',
-          "      </NavigationMenuContent>",
-          "    </NavigationMenuItem>",
-          "  </NavigationMenuList>",
-          "  <NavigationMenuIndicator />",
-          "  <NavigationMenuViewport />",
-          "</NavigationMenu>",
-        ].join("\n"),
-        component: navigation.NavigationMenuDemo,
-      },
-    ],
+    demos: navigationMenuDemos,
   },
   {
     slug: "pagination",
@@ -1464,21 +749,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  </PaginationContent>",
       "</Pagination>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          "<Pagination>",
-          "  <PaginationContent>",
-          '    <PaginationItem><PaginationPrevious href="#" /></PaginationItem>',
-          '    <PaginationItem><PaginationLink href="#" isActive>1</PaginationLink></PaginationItem>',
-          '    <PaginationItem><PaginationLink href="#">2</PaginationLink></PaginationItem>',
-          '    <PaginationItem><PaginationNext href="#" /></PaginationItem>',
-          "  </PaginationContent>",
-          "</Pagination>",
-        ].join("\n"),
-        component: navigation.PaginationDemo,
-      },
-    ],
+    demos: paginationDemos,
   },
   {
     slug: "popover",
@@ -1494,23 +765,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  <PopoverContent>\u2026</PopoverContent>",
       "</Popover>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          "<Popover>",
-          "  <PopoverTrigger>",
-          '    <Button variant="outline">Open the popover</Button>',
-          "  </PopoverTrigger>",
-          "  <PopoverContent>",
-          "    <PopoverHeader>",
-          "      <PopoverTitle>Dimensions</PopoverTitle>",
-          "    </PopoverHeader>",
-          "  </PopoverContent>",
-          "</Popover>",
-        ].join("\n"),
-        component: overlays.PopoverDemo,
-      },
-    ],
+    demos: popoverDemos,
   },
   {
     slug: "progress",
@@ -1520,13 +775,9 @@ export const COMPONENTS: readonly ComponentDoc[] = [
     usage: [importLine("Progress", "progress"), "", '<Progress value={62} label="Upload" />'].join(
       "\n",
     ),
-    demos: [
-      {
-        code: '<Progress value={62} label="Upload" />',
-        component: basics.ProgressDemo,
-      },
-    ],
+    demos: progressDemos,
   },
+  questionnaireDoc,
   {
     slug: "radio-group",
     title: "Radio Group",
@@ -1540,20 +791,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       '  <Label for="s">Small</Label>',
       "</RadioGroup>",
     ].join("\n"),
-    demos: [
-      {
-        align: "start",
-        code: [
-          '<RadioGroup label="Size" defaultValue="m">',
-          '  <RadioGroupItem value="s" id="size-s" />',
-          '  <Label for="size-s">Small</Label>',
-          '  <RadioGroupItem value="m" id="size-m" />',
-          '  <Label for="size-m">Medium</Label>',
-          "</RadioGroup>",
-        ].join("\n"),
-        component: forms.RadioGroupDemo,
-      },
-    ],
+    demos: radioGroupDemos,
   },
   {
     slug: "resizable",
@@ -1568,25 +806,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  <ResizablePanel defaultSize={70}>Editor</ResizablePanel>",
       "</ResizablePanelGroup>",
     ].join("\n"),
-    demos: [
-      {
-        note: "Drag a handle, or focus one and use the arrow keys.",
-        code: [
-          '<ResizablePanelGroup direction="horizontal">',
-          "  <ResizablePanel defaultSize={30}>Sidebar</ResizablePanel>",
-          "  <ResizableHandle withHandle />",
-          "  <ResizablePanel defaultSize={70}>",
-          '    <ResizablePanelGroup direction="vertical">',
-          "      <ResizablePanel defaultSize={60}>Editor</ResizablePanel>",
-          "      <ResizableHandle withHandle />",
-          "      <ResizablePanel defaultSize={40}>Console</ResizablePanel>",
-          "    </ResizablePanelGroup>",
-          "  </ResizablePanel>",
-          "</ResizablePanelGroup>",
-        ].join("\n"),
-        component: navigation.ResizableDemo,
-      },
-    ],
+    demos: resizableDemos,
   },
   {
     slug: "scroll-area",
@@ -1599,18 +819,9 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  \u2026",
       "</ScrollArea>",
     ].join("\n"),
-    demos: [
-      {
-        note: "The NATIVE scroller with `scrollbar-color` on it, not two divs and a resize observer. The cost is stated in the component: a native scrollbar cannot overlay content or fade out.",
-        code: [
-          '<ScrollArea aria-label="Log" style={{ height: "12rem", width: "18rem" }}>',
-          "  <For each={lines}>{(line) => <div>{line}</div>}</For>",
-          "</ScrollArea>",
-        ].join("\n"),
-        component: navigation.ScrollAreaDemo,
-      },
-    ],
+    demos: scrollAreaDemos,
   },
+  scrollFadeDoc,
   {
     slug: "select",
     title: "Select",
@@ -1623,35 +834,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  {(fruit) => <SelectItem>{fruit.name}</SelectItem>}",
       "</Select>",
     ].join("\n"),
-    demos: [
-      {
-        align: "start",
-        code: [
-          '<Select items={fruits} aria-label="Fruit" placeholder="Pick one">',
-          "  {(fruit) => <SelectItem>{fruit.name}</SelectItem>}",
-          "</Select>",
-        ].join("\n"),
-        component: forms.SelectDemo,
-      },
-      {
-        title: "Grouped",
-        note: "`getChildren` is what makes one items list a tree, so a group and a leaf come from the same source.",
-        align: "start",
-        code: [
-          "<Select",
-          "  items={produce}",
-          "  getChildren={(group) => group.options}",
-          ">",
-          "  {(value) =>",
-          "    value.options === undefined",
-          "      ? <SelectItem>{value.name}</SelectItem>",
-          "      : <SelectGroup title={value.name} />",
-          "  }",
-          "</Select>",
-        ].join("\n"),
-        component: forms.SelectGrouped,
-      },
-    ],
+    demos: selectDemos,
   },
   {
     slug: "separator",
@@ -1663,12 +846,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "<Separator />",
       '<Separator orientation="vertical" />',
     ].join("\n"),
-    demos: [
-      {
-        code: ["<Separator />", '<Separator orientation="vertical" />'].join("\n"),
-        component: basics.SeparatorDemo,
-      },
-    ],
+    demos: separatorDemos,
   },
   {
     slug: "sheet",
@@ -1685,24 +863,9 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  <SheetContent>\u2026</SheetContent>",
       "</Sheet>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          "<Sheet>",
-          "  <SheetTrigger>",
-          '    <Button variant="outline">Open the sheet</Button>',
-          "  </SheetTrigger>",
-          "  <SheetContent>",
-          "    <SheetHeader>",
-          "      <SheetTitle>Filters</SheetTitle>",
-          "    </SheetHeader>",
-          "  </SheetContent>",
-          "</Sheet>",
-        ].join("\n"),
-        component: overlays.SheetDemo,
-      },
-    ],
+    demos: sheetDemos,
   },
+  shimmerDoc,
   {
     slug: "sidebar",
     title: "Sidebar",
@@ -1721,38 +884,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  <SidebarInset>\u2026</SidebarInset>",
       "</SidebarProvider>",
     ].join("\n"),
-    demos: [
-      {
-        note: "Toggle it with the trigger, or press Ctrl+B.",
-        size: "auto",
-        code: [
-          "<SidebarProvider>",
-          '  <Sidebar collapsible="icon">',
-          "    <SidebarHeader>\u2026</SidebarHeader>",
-          "    <SidebarContent>",
-          "      <SidebarGroup>",
-          "        <SidebarGroupLabel>Platform</SidebarGroupLabel>",
-          "        <SidebarMenu>",
-          "          <SidebarMenuItem>",
-          "            <SidebarMenuButton isActive>",
-          "              <Inbox />",
-          "              <span>Inbox</span>",
-          "            </SidebarMenuButton>",
-          "            <SidebarMenuBadge>12</SidebarMenuBadge>",
-          "          </SidebarMenuItem>",
-          "        </SidebarMenu>",
-          "      </SidebarGroup>",
-          "    </SidebarContent>",
-          "    <SidebarRail />",
-          "  </Sidebar>",
-          "  <SidebarInset>",
-          "    <SidebarTrigger />",
-          "  </SidebarInset>",
-          "</SidebarProvider>",
-        ].join("\n"),
-        component: navigation.SidebarDemo,
-      },
-    ],
+    demos: sidebarDemos,
   },
   {
     slug: "skeleton",
@@ -1763,15 +895,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "",
       '<Skeleton style={{ width: "12rem", height: "1rem" }} />',
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          '<Skeleton style={{ width: "3rem", height: "3rem", "border-radius": "9999px" }} />',
-          '<Skeleton style={{ width: "12rem", height: "1rem" }} />',
-        ].join("\n"),
-        component: basics.SkeletonDemo,
-      },
-    ],
+    demos: skeletonDemos,
   },
   {
     slug: "slider",
@@ -1782,18 +906,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "",
       '<Slider aria-label="Volume" defaultValue={30} />',
     ].join("\n"),
-    demos: [
-      {
-        code: '<Slider aria-label="Volume" defaultValue={30} />',
-        component: forms.SliderDemo,
-      },
-      {
-        title: "Range",
-        note: "An array of values is a range, and every thumb is focusable on its own.",
-        code: '<Slider aria-label="Price" defaultValue={[20, 60]} />',
-        component: forms.SliderRange,
-      },
-    ],
+    demos: sliderDemos,
   },
   {
     slug: "sonner",
@@ -1806,49 +919,14 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "",
       'toast.success("Everything worked");',
     ].join("\n"),
-    demos: [
-      {
-        note: "One `<Toaster />` per application, and it is where every toast lands.",
-        code: [
-          "<Toaster />",
-          "",
-          'toast("Saved");',
-          'toast.success("Everything worked");',
-          'toast.error("That did not work", { description: "Try again in a bit" });',
-        ].join("\n"),
-        component: overlays.SonnerDemo,
-      },
-      {
-        title: "Action and promise",
-        code: [
-          'toast("Deleted three files", {',
-          '  action: { label: "Undo", onAction: () => toast.success("Restored") },',
-          "});",
-          "",
-          'toast.promise(save(), { loading: "Saving", success: "Saved", error: "Failed" });',
-        ].join("\n"),
-        component: overlays.SonnerAction,
-      },
-    ],
+    demos: sonnerDemos,
   },
   {
     slug: "spinner",
     title: "Spinner",
     description: "An indicator that can be used to show a loading state.",
     usage: [importLine("Spinner", "spinner"), "", "<Spinner />"].join("\n"),
-    demos: [
-      {
-        code: [
-          "<Spinner />",
-          "",
-          "<Button isDisabled>",
-          "  <Spinner />",
-          "  Please wait",
-          "</Button>",
-        ].join("\n"),
-        component: basics.SpinnerDemo,
-      },
-    ],
+    demos: spinnerDemos,
   },
   {
     slug: "switch",
@@ -1860,20 +938,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       '<Switch id="wifi" defaultSelected />',
       '<Label for="wifi">Wi-Fi</Label>',
     ].join("\n"),
-    demos: [
-      {
-        code: ['<Switch id="wifi" defaultSelected />', '<Label for="wifi">Wi-Fi</Label>'].join(
-          "\n",
-        ),
-        component: forms.SwitchDemo,
-      },
-      {
-        title: "Disabled",
-        align: "start",
-        code: "<Switch isDisabled />",
-        component: forms.SwitchDisabled,
-      },
-    ],
+    demos: switchDemos,
   },
   {
     slug: "table",
@@ -1891,31 +956,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  </TableBody>",
       "</Table>",
     ].join("\n"),
-    demos: [
-      {
-        align: "start",
-        code: [
-          "<Table>",
-          "  <TableHeader>",
-          "    <TableRow>",
-          "      <TableHead>Invoice</TableHead>",
-          "      <TableHead>Status</TableHead>",
-          "      <TableHead>Amount</TableHead>",
-          "    </TableRow>",
-          "  </TableHeader>",
-          "  <TableBody>",
-          "    <TableRow>",
-          "      <TableCell>INV001</TableCell>",
-          '      <TableCell><Badge variant="secondary">Paid</Badge></TableCell>',
-          "      <TableCell>250.00</TableCell>",
-          "    </TableRow>",
-          "    <TableRow isSelected>\u2026</TableRow>",
-          "  </TableBody>",
-          "</Table>",
-        ].join("\n"),
-        component: data.TableDemo,
-      },
-    ],
+    demos: tableDemos,
   },
   {
     slug: "tabs",
@@ -1932,20 +973,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  <TabsContent>{(section) => <p>{section.body}</p>}</TabsContent>",
       "</Tabs>",
     ].join("\n"),
-    demos: [
-      {
-        align: "start",
-        code: [
-          "<Tabs items={sections}>",
-          '  <TabsList aria-label="Sections">',
-          "    {(section) => <TabsTrigger>{section.name}</TabsTrigger>}",
-          "  </TabsList>",
-          "  <TabsContent>{(section) => <p>{section.body}</p>}</TabsContent>",
-          "</Tabs>",
-        ].join("\n"),
-        component: navigation.TabsDemo,
-      },
-    ],
+    demos: tabsDemos,
   },
   {
     slug: "textarea",
@@ -1957,22 +985,9 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "",
       '<Textarea placeholder="Tell us what happened" />',
     ].join("\n"),
-    demos: [
-      {
-        code: '<Textarea placeholder="Tell us what happened" />',
-        component: forms.TextareaDemo,
-      },
-      {
-        title: "With a label",
-        align: "start",
-        code: [
-          '<Label for="notes">Notes</Label>',
-          '<Textarea id="notes" placeholder="Tell us what happened" />',
-        ].join("\n"),
-        component: forms.TextareaWithLabel,
-      },
-    ],
+    demos: textareaDemos,
   },
+  toastDoc,
   {
     slug: "toggle",
     title: "Toggle",
@@ -1984,19 +999,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  <Bold />",
       "</Toggle>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          '<Toggle aria-label="Bold">',
-          "  <Bold />",
-          "</Toggle>",
-          '<Toggle variant="outline" aria-label="Italic">',
-          "  <Italic />",
-          "</Toggle>",
-        ].join("\n"),
-        component: forms.ToggleDemo,
-      },
-    ],
+    demos: toggleDemos,
   },
   {
     slug: "toggle-group",
@@ -2009,29 +1012,7 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       '  <ToggleGroupItem value="bold" aria-label="Bold"><Bold /></ToggleGroupItem>',
       "</ToggleGroup>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          '<ToggleGroup type="multiple" variant="outline" aria-label="Format">',
-          '  <ToggleGroupItem value="bold" aria-label="Bold"><Bold /></ToggleGroupItem>',
-          '  <ToggleGroupItem value="italic" aria-label="Italic"><Italic /></ToggleGroupItem>',
-          '  <ToggleGroupItem value="underline" aria-label="Underline"><Underline /></ToggleGroupItem>',
-          "</ToggleGroup>",
-        ].join("\n"),
-        component: forms.ToggleGroupDemo,
-      },
-      {
-        title: "Spaced",
-        note: "`spacing` separates the buttons instead of joining them, and each one keeps its own corners.",
-        code: [
-          '<ToggleGroup spacing={2} aria-label="Align">',
-          '  <ToggleGroupItem value="left">L</ToggleGroupItem>',
-          '  <ToggleGroupItem value="centre">C</ToggleGroupItem>',
-          "</ToggleGroup>",
-        ].join("\n"),
-        component: forms.ToggleGroupSpaced,
-      },
-    ],
+    demos: toggleGroupDemos,
   },
   {
     slug: "tooltip",
@@ -2046,18 +1027,9 @@ export const COMPONENTS: readonly ComponentDoc[] = [
       "  <TooltipContent>Saves to the server</TooltipContent>",
       "</Tooltip>",
     ].join("\n"),
-    demos: [
-      {
-        code: [
-          "<Tooltip delay={200}>",
-          '  <Button variant="outline">Hover me</Button>',
-          "  <TooltipContent>Saves to the server</TooltipContent>",
-          "</Tooltip>",
-        ].join("\n"),
-        component: overlays.TooltipDemo,
-      },
-    ],
+    demos: tooltipDemos,
   },
+  typographyDoc,
 ];
 
 export function docNamed(slug: string): ComponentDoc | undefined {

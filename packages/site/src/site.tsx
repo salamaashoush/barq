@@ -1,4 +1,4 @@
-import { For, signal, type Child, type Incoming } from "@barqjs/core";
+import { For, createSignal, type Child, type Incoming } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { ArrowRight } from "@barqjs/lucide/icons/arrow-right";
 import { Menu } from "@barqjs/lucide/icons/menu";
@@ -21,13 +21,14 @@ import { installSite } from "./params.ts";
  * The site around the pages, which is shadcn's own.
  *
  * `siteConfig.navItems` upstream, minus the entries this has nothing behind:
- * no changelog, no directory, no typeset. What is left is a real address per
+ * no changelog, no directory, no typeset. `Docs` opens the first guide. What is left is a real address per
  * thing rather than a switcher flipping a signal — `/blocks/dashboard-01` is a
  * page somebody can open, bookmark and send, and the design parameters ride
  * along in the search string on every one of them.
  */
 export const NAV = [
   { to: "/", label: "Home" },
+  { to: "/docs/installation", label: "Docs" },
   { to: "/docs/components", label: "Components" },
   { to: "/blocks", label: "Blocks" },
   { to: "/charts/area", label: "Charts" },
@@ -329,11 +330,11 @@ export function MainNav() {
  * to stop shipping.
  */
 export function MobileNav() {
-  const open = signal(false);
+  const [open, setOpen] = createSignal(false);
   const here = useLocation();
 
   return (
-    <Sheet isOpen={open()} onOpenChange={(next: boolean) => open.set(next)}>
+    <Sheet isOpen={open()} onOpenChange={(next: boolean) => setOpen(next)}>
       <SheetTrigger>
         <Button variant="ghost" size="icon" class={mobileOnly} aria-label="Open the menu">
           <Menu size={18} />
@@ -348,7 +349,7 @@ export function MobileNav() {
                 to={item.to}
                 class={sheetLink}
                 aria-current={() => (isHere(here().pathname, item.to) ? "page" : undefined)}
-                onClick={() => open.set(false)}
+                onClick={() => setOpen(false)}
               >
                 {item.label}
               </Link>

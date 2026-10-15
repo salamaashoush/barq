@@ -8,7 +8,7 @@
  * binds them, so the menu is documentation of something rather than decoration.
  */
 
-import { signal, type Incoming } from "@barqjs/core";
+import type { Incoming } from "@barqjs/core";
 import type { Key } from "@barqjs/aria/collections";
 import { layer } from "@barqjs/css";
 import {
@@ -69,7 +69,7 @@ const shortcut = ui({
 interface Entry {
   readonly id: string;
   readonly name: string;
-  readonly keys: string;
+  readonly keys?: string;
   /** A rule above this entry, which is how upstream groups them. */
   readonly first?: boolean;
 }
@@ -78,6 +78,7 @@ export interface MainMenuProps {
   design: Design;
   onShuffle: () => void;
   onToggleDark: () => void;
+  onToggleRtl: () => void;
   onSearch: () => void;
   onReset: () => void;
 }
@@ -85,22 +86,23 @@ export interface MainMenuProps {
 export function MainMenu(props: Incoming<MainMenuProps>) {
   // `navigator.platform` is only readable in a browser, and the menu renders
   // once — so the symbol is decided at first paint rather than per render.
-  const mac = signal(false);
-  if (typeof navigator !== "undefined") {
-    mac.set(/Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent));
-  }
+  const mac =
+    typeof navigator !== "undefined" &&
+    /Mac|iPhone|iPad|iPod/.test(navigator.platform || navigator.userAgent);
 
   const entries = (): Entry[] => [
-    { id: "search", name: "Search…", keys: mac() ? "⌘K" : "Ctrl+K" },
+    { id: "search", name: "Search…", keys: mac ? "⌘K" : "Ctrl+K" },
     { id: "shuffle", name: "Shuffle", keys: "R" },
     { id: "dark", name: "Light/Dark", keys: "D" },
-    { id: "copy", name: "Copy CSS", keys: mac() ? "⌘C" : "Ctrl+C" },
+    { id: "rtl", name: "LTR/RTL" },
+    { id: "copy", name: "Copy CSS", keys: mac ? "⌘C" : "Ctrl+C" },
     { id: "reset", name: "Reset", keys: "⇧R", first: true },
   ];
 
   const run = (key: Key): void => {
     if (key === "shuffle") props.onShuffle()();
     else if (key === "dark") props.onToggleDark()();
+    else if (key === "rtl") props.onToggleRtl()();
     else if (key === "search") props.onSearch()();
     else if (key === "reset") props.onReset()();
     else if (key === "copy") {
@@ -135,7 +137,9 @@ export function MainMenu(props: Incoming<MainMenuProps>) {
             ) : null}
             <DropdownMenuItem data-slot="picker-item" class={radioItemClass}>
               {entry.name}
-              <DropdownMenuShortcut class={shortcut}>{entry.keys}</DropdownMenuShortcut>
+              {entry.keys === undefined ? null : (
+                <DropdownMenuShortcut class={shortcut}>{entry.keys}</DropdownMenuShortcut>
+              )}
             </DropdownMenuItem>
           </>
         )}

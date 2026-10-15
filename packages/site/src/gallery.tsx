@@ -9,7 +9,7 @@
 import "@fontsource-variable/geist/index.css";
 import "@fontsource-variable/geist-mono/index.css";
 
-import { For, signal, type Child, type Incoming } from "@barqjs/core";
+import { For, createSignal, type Child, type Incoming } from "@barqjs/core";
 import { css, globalCss, layer } from "@barqjs/css";
 
 const ui = layer("barq.ui");
@@ -80,6 +80,7 @@ import {
   CommandItem,
   CommandShortcut,
   Dialog,
+  DirectionProvider,
   DialogClose,
   DialogContent,
   DialogDescription,
@@ -349,6 +350,19 @@ const designer = ui({
   },
 });
 
+/** `sr-only`: the page is a tool with no visible title, and a page still has one heading. */
+const createTitle = css`
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border-width: 0;
+`;
+
 const page = css`
   display: grid;
   gap: 2.5rem;
@@ -582,7 +596,7 @@ const FRUITS = [
 ];
 
 export function Gallery() {
-  const progress = signal(62);
+  const [progress] = createSignal(62);
 
   return (
     <main class={page} id="gallery">
@@ -1649,6 +1663,7 @@ export function Designer() {
 
   return (
     <div class={createRoot} data-slot="create">
+      <h1 class={createTitle}>New Project</h1>
       {/* The preview FIRST and the customizer second, with `flex-row-reverse`
           above: the reading order is the preview, the tab order is the
           controls, and the controls land on the left where shadcn puts them. */}
@@ -1656,29 +1671,32 @@ export function Designer() {
         <div
           class={panel}
           data-slot="preview"
+          dir={system.params().rtl ? "rtl" : "ltr"}
           ref={(node: HTMLDivElement) => {
             preview.set(node);
             system.wear(node);
           }}
         >
-          <PreviewPortal target={() => preview() ?? null}>
-            {/* Upstream's two layers, kept: a backdrop under the content and
+          <PreviewPortal target={preview() ?? null}>
+            <DirectionProvider dir={system.params().rtl ? "rtl" : "ltr"}>
+              {/* Upstream's two layers, kept: a backdrop under the content and
                 the content above it. Their iframe brings its own document
                 background, so the backdrop is what shows in the letterboxing
                 around it — and it is what stops a light theme in a dark page
                 reading as a hole rather than a surface. */}
-            <div class={previewInner}>
-              <div class={previewBackdrop} aria-hidden="true" />
-              <div class={scroller}>
-                {/* INSIDE the scroller, because the scroller is what contains
+              <div class={previewInner}>
+                <div class={previewBackdrop} aria-hidden="true" />
+                <div class={scroller}>
+                  {/* INSIDE the scroller, because the scroller is what contains
                     layout: a toaster is `position: fixed`, and one rendered
                     beside it fell back to the window and sat 24px past the
                     preview's right edge. It also belongs to the previewed
                     application rather than to the page showing it. */}
-                <Toaster />
-                {() => (system.item() === "preview" ? <Gallery /> : <Showcase />)}
+                  <Toaster />
+                  {() => (system.item() === "preview" ? <Gallery /> : <Showcase />)}
+                </div>
               </div>
-            </div>
+            </DirectionProvider>
           </PreviewPortal>
           <div class={ui("dark", switcher)} data-slot="preview-switcher">
             <For each={() => VIEWS}>
@@ -1711,8 +1729,8 @@ export function Designer() {
  * overlays — without it a dialog opened inside the preview portals to the body,
  * outside the scoped theme, and paints in the page's colours.
  */
-function PreviewPortal(props: Incoming<{ target: () => Element | null; children?: Child }>) {
-  providePortalTarget(() => props.target()());
+function PreviewPortal(props: Incoming<{ target: Element | null; children?: Child }>) {
+  providePortalTarget(() => props.target());
   return <>{props.children}</>;
 }
 

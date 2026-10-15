@@ -17,7 +17,7 @@
  * these are lucide, which is this package's one icon set by decision.
  */
 
-import { For, signal, type Incoming } from "@barqjs/core";
+import { For, createSignal, type Incoming } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import {
   Avatar,
@@ -37,6 +37,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
   Select,
   SelectItem,
@@ -441,13 +442,6 @@ const ROWS = [
   },
 ];
 
-const ROW_ACTIONS = [
-  { id: "edit", name: "Edit" },
-  { id: "copy", name: "Make a copy" },
-  { id: "favorite", name: "Favorite" },
-  { id: "delete", name: "Delete" },
-];
-
 function NavGroup(props: Incoming<{ label?: string; items: typeof NAV_MAIN }>) {
   return (
     <SidebarGroup>
@@ -473,8 +467,8 @@ function NavGroup(props: Incoming<{ label?: string; items: typeof NAV_MAIN }>) {
 }
 
 export function Dashboard01() {
-  const range = signal("90d");
-  const page = signal(1);
+  const [range, setRange] = createSignal("90d");
+  const [page, setPage] = createSignal(1);
 
   const shown = (): typeof VISITORS => {
     const keep = range() === "7d" ? 3 : range() === "30d" ? 6 : VISITORS.length;
@@ -582,7 +576,7 @@ export function Dashboard01() {
                       value={[range()]}
                       onChange={(value: string[]) => {
                         const first = value[0];
-                        if (first !== undefined) range.set(first);
+                        if (first !== undefined) setRange(first);
                       }}
                       aria-label="Time range"
                     >
@@ -664,19 +658,14 @@ export function Dashboard01() {
                                         <EllipsisVertical />
                                       </Button>
                                     </DropdownMenuTrigger>
-                                    <DropdownMenuContent
-                                      items={ROW_ACTIONS}
-                                      aria-label="Row actions"
-                                    >
-                                      {(action: (typeof ROW_ACTIONS)[number]) => (
-                                        <DropdownMenuItem
-                                          variant={
-                                            action.id === "delete" ? "destructive" : "default"
-                                          }
-                                        >
-                                          {action.name}
-                                        </DropdownMenuItem>
-                                      )}
+                                    <DropdownMenuContent aria-label="Row actions" align="end">
+                                      <DropdownMenuItem>Edit</DropdownMenuItem>
+                                      <DropdownMenuItem>Make a copy</DropdownMenuItem>
+                                      <DropdownMenuItem>Favorite</DropdownMenuItem>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem variant="destructive">
+                                        Delete
+                                      </DropdownMenuItem>
                                     </DropdownMenuContent>
                                   </DropdownMenu>
                                 </TableCell>
@@ -712,7 +701,7 @@ export function Dashboard01() {
                   size="icon"
                   aria-label="Previous page"
                   isDisabled={page() === 1}
-                  onPress={() => page.update((n) => Math.max(1, n - 1))}
+                  onPress={() => setPage((n) => Math.max(1, n - 1))}
                 >
                   <ChevronLeft />
                 </Button>
@@ -721,7 +710,7 @@ export function Dashboard01() {
                   size="icon"
                   aria-label="Next page"
                   isDisabled={page() === 5}
-                  onPress={() => page.update((n) => Math.min(5, n + 1))}
+                  onPress={() => setPage((n) => Math.min(5, n + 1))}
                 >
                   <ChevronRight />
                 </Button>

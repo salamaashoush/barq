@@ -21,7 +21,7 @@
  * fixed theme of their own, which is what the iframe was buying.
  */
 
-import { effect, signal, type Accessor } from "@barqjs/core";
+import { createEffect, createSignal, type Accessor } from "@barqjs/core";
 import { useLocation } from "@barqjs/router";
 import { installTheme, type ThemeSelection } from "@barqjs/ui";
 
@@ -48,6 +48,8 @@ export interface Params {
   readonly fontHeading: string;
   readonly mono: string;
   readonly dark: boolean;
+  /** The preview's direction. The page around it stays left to right. */
+  readonly rtl: boolean;
   /**
    * Which composition the preview shows, by upstream's registry name.
    *
@@ -85,6 +87,7 @@ export const DEFAULTS: Params = {
   fontHeading: "inherit",
   mono: "geist-mono",
   dark: false,
+  rtl: false,
   item: "preview-02",
 };
 
@@ -142,6 +145,7 @@ export function read(search: string): Params {
     fontHeading: oneOf(HEADING_FONTS, query.get("fontHeading"), DEFAULTS.fontHeading),
     mono: oneOf(MONO, query.get("mono"), DEFAULTS.mono),
     dark: query.get("dark") === "1",
+    rtl: query.get("rtl") === "1",
     item: query.get("item") ?? DEFAULTS.item,
   };
 }
@@ -164,6 +168,7 @@ export function write(params: Params): string {
     if (params[key] !== DEFAULTS[key]) query.set(key, params[key]);
   }
   if (params.dark) query.set("dark", "1");
+  if (params.rtl) query.set("rtl", "1");
   if (params.item !== DEFAULTS.item) query.set("item", params.item);
   const text = query.toString();
   return text === "" ? "" : `?${text}`;
@@ -327,10 +332,9 @@ export function wearStyleOn(element: HTMLElement | null, name: string, still: ()
  */
 export function installSite(): { params: Accessor<Params>; set(next: Partial<Params>): void } {
   const here = useLocation();
-  const current = signal<Params>(read(here().search));
+  const [current, setCurrent] = createSignal<Params>(read(here().search));
 
-  const apply = (): void => {
-    const now = current();
+  const apply = (now: Params): void => {
     if (typeof document === "undefined") return;
     const root = document.documentElement;
     root.classList.toggle("dark", now.dark);
@@ -354,29 +358,33 @@ export function installSite(): { params: Accessor<Params>; set(next: Partial<Par
   // so it is a rule ABOUT an element rather than the document's own theme, and
   // registering it during render is what puts it in the inlined sheet.
   installTheme({ base: "neutral", scope: DEMO_SCOPE });
-  effect(apply);
+  createEffect(current, apply);
 
   // The router owns the URL, so its location is what the theme follows. A
   // `popstate` listener would miss a `<Link>` — that is a `pushState` — and a
   // click listener guessing at a microtask would race the router's own write.
-  effect(() => {
-    const next = read(here().search);
-    if (write(next) !== write(current())) current.set(next);
-  });
+  createEffect(
+    () => read(here().search),
+    (next) => {
+      setCurrent((prev) => (write(next) === write(prev) ? prev : next));
+    },
+  );
 
   return {
     params: current,
     set(next) {
-      current.update((prev) => ({ ...prev, ...next }));
+      const now = setCurrent((prev) => ({ ...prev, ...next }));
       if (typeof history !== "undefined") {
-        history.replaceState(null, "", `${location.pathname}${write(current())}`);
+        history.replaceState(null, "", `${location.pathname}${write(now)}`);
       }
     },
   };
 }
 
 export function design(): Design {
-  const committed = signal<Params>(read(typeof location === "undefined" ? "" : location.search));
+  const [committed, setCommitted] = createSignal<Params>(
+    read(typeof location === "undefined" ? "" : location.search),
+  );
   const hovered = previewOverride<Params>();
   const previewed = (): Params => ({ ...committed(), ...hovered.value() });
 
@@ -385,9 +393,11 @@ export function design(): Design {
   const wearStyle = (name: string): void =>
     wearStyleOn(host, name, () => previewed().style === name);
 
-  const apply = (): void => {
-    const now = previewed();
+  const themePreview = (now: Params): void =>
     installTheme({ ...selectionOf(now), scope: PREVIEW_SCOPE });
+
+  const apply = (now: Params): void => {
+    themePreview(now);
     // BOTH, and they are different claims. The preview wears the theme being
     // configured; the page around it wears the fixed one and only follows the
     // light/dark switch. Pinning the chrome to light left the body white behind
@@ -408,16 +418,21 @@ export function design(): Design {
   // the preview's selector matches the preview, so they never contend.
   installTheme(CHROME);
 
+  // During render as well as from the effect: an effect's apply runs after the
+  // render and a server render never reaches it, so this registration is what
+  // puts the preview's theme in the inlined sheet.
+  themePreview(previewed());
+
   // An EFFECT rather than a call at each of the four places that change
   // something. The override is debounced, so its signal lands a beat after the
   // pointer settles and a caller that applied eagerly would read the value it
   // had before. Reading `previewed()` here is what makes both halves — the
   // committed choice and the hovered one — reach the page the same way.
-  effect(apply);
+  createEffect(previewed, apply);
 
-  const writeUrl = (): void => {
+  const writeUrl = (now: Params): void => {
     if (typeof history === "undefined") return;
-    history.replaceState(null, "", `${location.pathname}${write(committed())}`);
+    history.replaceState(null, "", `${location.pathname}${write(now)}`);
   };
 
   // Back and Forward are real here — the router owns the path and every block
@@ -426,7 +441,7 @@ export function design(): Design {
   // the theme it started with whatever the URL said.
   if (typeof window !== "undefined") {
     window.addEventListener("popstate", () => {
-      committed.set(read(location.search));
+      setCommitted(read(location.search));
     });
   }
 
@@ -434,9 +449,9 @@ export function design(): Design {
     params: committed,
     previewed,
     set(next) {
-      committed.update((prev) => ({ ...prev, ...next }));
+      const now = setCommitted((prev) => ({ ...prev, ...next }));
       hovered.clear();
-      writeUrl();
+      writeUrl(now);
     },
     preview(next) {
       hovered.set(next);
@@ -446,17 +461,16 @@ export function design(): Design {
     },
     item: () => committed().item,
     setItem(next) {
-      committed.update((prev) => ({ ...prev, item: next }));
-      writeUrl();
+      writeUrl(setCommitted((prev) => ({ ...prev, item: next })));
     },
     reset() {
-      committed.set(DEFAULTS);
+      setCommitted(DEFAULTS);
       hovered.clear();
       if (typeof history !== "undefined") history.replaceState(null, "", location.pathname);
     },
     wear(element) {
       host = element;
-      apply();
+      apply(previewed());
     },
   };
 }
