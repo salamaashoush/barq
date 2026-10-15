@@ -203,9 +203,9 @@ export default function StreamErroredInsideBoundary() {
 
   /**
    * An error boundary AROUND a loading boundary whose read fails after the
-   * shell. A stream has sent the error boundary's markup by then, so the
-   * loading fallback stands and the client rebuilds the failed content; a
-   * buffered page is still being assembled and shows the error fallback.
+   * shell. The stream has sent the error boundary's markup by then, so its
+   * fallback is swapped in over the whole range, as a buffered page writes it
+   * in place, and the client claims it as the fallback.
    */
   "stream-errored-around-boundary": `
 import { Errored, Loading, createMemo } from "@barqjs/core"
@@ -220,6 +220,53 @@ export default function StreamErroredAroundBoundary() {
         </Loading>
       </Errored>
       <p class="after">after</p>
+    </div>
+  )
+}
+`,
+
+  /**
+   * Two error boundaries around a read that fails after the shell. The
+   * nearest one shows its fallback, and the outer one keeps its content.
+   */
+  "stream-errored-nested": `
+import { Errored, Loading, createMemo } from "@barqjs/core"
+export default function StreamErroredNested() {
+  const bad = createMemo(() => new Promise((_, reject) => setTimeout(() => reject(new Error("late boom")), 0)))
+  return (
+    <div>
+      <Errored fallback={(error) => <em class="outer">outer: {error().message}</em>}>
+        <p class="kept">kept</p>
+        <Errored fallback={(error) => <em class="inner">inner: {error().message}</em>}>
+          <Loading fallback={<span class="skel">skel</span>}>
+            <b class="content">{() => bad()}</b>
+          </Loading>
+        </Errored>
+      </Errored>
+    </div>
+  )
+}
+`,
+
+  /**
+   * Under one error boundary, a boundary that settles and is swapped in, then
+   * a sibling that fails. The fallback replaces both.
+   */
+  "stream-errored-siblings": `
+import { Errored, Loading, createMemo } from "@barqjs/core"
+export default function StreamErroredSiblings() {
+  const good = createMemo(() => new Promise((r) => setTimeout(() => r("GOOD"), 0)))
+  const bad = createMemo(() => new Promise((_, reject) => setTimeout(() => reject(new Error("late boom")), 5)))
+  return (
+    <div>
+      <Errored fallback={(error) => <em class="err">failed: {error().message}</em>}>
+        <Loading fallback={<span class="skel">skel-one</span>}>
+          <b class="good">{() => good()}</b>
+        </Loading>
+        <Loading fallback={<span class="skel">skel-two</span>}>
+          <b class="bad">{() => bad()}</b>
+        </Loading>
+      </Errored>
     </div>
   )
 }

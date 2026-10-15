@@ -2,6 +2,10 @@
  * The client half of a swap: replace the range between `<!--[b:n-->` and its
  * matching `<!--]-->` with the template that just arrived.
  *
+ * `failed` is an error boundary's late failure instead: the range is its
+ * content, `<!--[e:n-->`, and the template is its fallback in a range of its
+ * own, so the comments go with what they held.
+ *
  * It reads the boundary comments the string backend wrote, which is what those
  * bytes are paid for. Nested ranges are why the scan counts
  * depth rather than stopping at the first close: a fallback may itself contain a
@@ -20,14 +24,15 @@
  *   beside a test that paraphrases it is two implementations, and the one that
  *   ships is the one nothing runs.
  */
-export function swapDeferredRange(n: number, wrapped?: boolean): void {
+export function swapDeferredRange(n: number, wrapped?: boolean, failed?: boolean): void {
   const t = document.querySelector<HTMLTemplateElement>(`template[data-barq="${n}"]`);
   if (!t) return;
   const w = document.createTreeWalker(document.body, 128);
+  const mark = (failed ? "[e:" : "[b:") + n;
   let c: Node | null;
   let open: Comment | null = null;
   while ((c = w.nextNode())) {
-    if ((c as Comment).data === `[b:${n}`) {
+    if ((c as Comment).data === mark) {
       open = c as Comment;
       break;
     }
@@ -58,6 +63,12 @@ export function swapDeferredRange(n: number, wrapped?: boolean): void {
     t.content.removeChild(wrap);
   }
   open.parentNode?.insertBefore(t.content, node);
+  t.parentNode?.removeChild(t);
+  if (failed) {
+    open.parentNode?.removeChild(open);
+    node?.parentNode?.removeChild(node);
+    return;
+  }
   // Back to the PLAIN open comment, not `[0`. Once the content is in, this
   // range is indistinguishable from one the shell settled, and it has to read
   // that way to both readers: `loadingBoundary` claims a settled range and
@@ -65,7 +76,6 @@ export function swapDeferredRange(n: number, wrapped?: boolean): void {
   // the client's own — `[0` announced a branch key of "0" that no client would
   // ever match.
   open.data = "[";
-  t.parentNode?.removeChild(t);
 }
 
 /** The same function, as the bytes a page gets. Inlined once per stream. */

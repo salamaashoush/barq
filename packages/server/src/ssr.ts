@@ -796,12 +796,12 @@ export interface StreamSink {
     catcher: LateCatcher | null,
   ): string;
   /**
-   * The markup of an error boundary that a parked boundary below it may still
-   * fail, written so the sink can find it again. A stream answers with the
-   * markup unchanged: its bytes are gone by the time a resume fails, and the
-   * client rebuilds a failed boundary instead.
+   * The content of an error boundary that a parked boundary below it may still
+   * fail, written so the sink can find it again: a buffered render by markers
+   * it strips once the page is done, a stream by a range of its own that the
+   * failure's swap replaces.
    */
-  guard(catcher: LateCatcher, markup: string): string;
+  guard(catcher: LateCatcher, built: string, flags: number): string;
 }
 
 /**
@@ -813,7 +813,25 @@ export interface LateCatcher {
   parked: boolean;
   open: string | null;
   close: string | null;
+  /** The error boundary this one was built inside, whose failure takes this one with it. */
+  readonly outer: LateCatcher | null;
   fallback: (error: unknown) => string;
+}
+
+/** An error boundary's content as the page writes it when nothing below it failed. */
+export function contentRange(built: string, flags: number): string {
+  return (flags & HYDRATE) === 0 ? built : range(built, flags);
+}
+
+/**
+ * The same content in a range a stream can find again, `<!--[e:N-->`, which
+ * the client claims as content until a swap replaces the whole range with the
+ * fallback. `null` where the client claims the position without a range, so
+ * one written there would be read as content.
+ */
+export function guardedRange(id: number, built: string, flags: number): string | null {
+  if ((flags & HYDRATE) !== 0 && (flags & WHOLE) !== 0) return null;
+  return `${OPEN}e:${id}-->${built}${CLOSE}`;
 }
 
 let SINK: StreamSink | null = null;
@@ -1061,6 +1079,7 @@ function errorBoundary(
           parked: false,
           open: null,
           close: null,
+          outer: CATCHER,
           fallback: (error) => {
             failed = true;
             caught = error;
@@ -1072,8 +1091,7 @@ function errorBoundary(
   try {
     const built = activate(given, arm, NO_ARGS, flags, "branch");
     if (!failed) {
-      const inner = (flags & HYDRATE) === 0 ? built : range(built, flags);
-      return catcher?.parked ? sink!.guard(catcher, inner) : inner;
+      return catcher?.parked ? sink!.guard(catcher, built, flags) : contentRange(built, flags);
     }
   } catch (error) {
     // E2.3: a `NotReadyError` belongs to the nearest loading boundary and is

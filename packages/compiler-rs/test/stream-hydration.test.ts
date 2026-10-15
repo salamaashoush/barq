@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { fixtureSource, listFixtures } from "./harness.ts";
+import { type FixtureModule, fixtureSource, listFixtures } from "./harness.ts";
 import {
   HYDRATION_KNOWN,
   census,
@@ -269,8 +269,7 @@ describe("L5-S the streaming mechanism itself", () => {
   for (const name of Object.keys(STREAM_SOURCES)) {
     // The dehydrated fixture never settles by design, so it has its own row
     // below rather than the swap-and-converge one.
-    if (name === "stream-dehydrated-boundary" || name === "stream-errored-around-boundary")
-      continue;
+    if (name === "stream-dehydrated-boundary") continue;
     test(`${name} defers, swaps, converges and hydrates`, async () => {
       const result = (await STREAMED).get(name) as StreamResult;
 
@@ -360,34 +359,77 @@ describe("L5-S the streaming mechanism itself", () => {
   }, 60_000);
 
   /**
-   * A failure after the shell, outside the boundary that failed. The stream has
-   * sent the error boundary's markup already, so nothing is swapped: the loading
-   * fallback stands and the client rebuilds the content, which fails from the
-   * seed and shows the error fallback. The buffered page shows that fallback
-   * itself, and the client claims it rather than building it again.
+   * A failure after the shell, outside the boundary that failed. The stream
+   * swaps the error boundary's fallback in over everything it held, and the
+   * client claims those nodes as the fallback: the error it was handed is the
+   * one the read failed with, and its `reset` builds the content again.
    */
-  test("a failure the stream cannot place is left to the client, and a buffered page places it", async () => {
-    const result = (await STREAMED).get("stream-errored-around-boundary") as StreamResult;
+  test("a failure after the shell streams the error fallback, and the client claims and resets it", async () => {
+    const source = `
+import { Errored, Loading, createMemo, createSignal } from "@barqjs/core"
+export const [healthy, setHealthy] = createSignal(false)
+export default function StreamErroredReset() {
+  const read = createMemo(() => {
+    const ok = healthy()
+    return new Promise((resolve, reject) =>
+      setTimeout(() => (ok ? resolve("RECOVERED") : reject(new Error("late boom"))), 0),
+    )
+  })
+  return (
+    <div>
+      <Errored
+        fallback={(error, reset) => (
+          <button class="err" onClick={reset}>
+            {error() instanceof Error ? error().message : "not an Error"}
+          </button>
+        )}
+      >
+        <Loading fallback={<span class="skel">skel</span>}>
+          <b class="content">{() => read()}</b>
+        </Loading>
+      </Errored>
+    </div>
+  )
+}
+`;
+    const compiled = await compileText(source, "stream-errored-reset", true, false);
+    const core = await import("@barqjs/core");
+    const container = host("");
+    const assembled = await assemble(compiled.ssr, container);
+    const streamed = container.querySelector(".err");
 
-    expect({ swaps: result.swaps, templates: result.templates }).toEqual({
-      swaps: 0,
-      templates: 0,
+    expect({ swaps: assembled.swaps, templates: assembled.templates }).toEqual({
+      swaps: 1,
+      templates: 1,
     });
-    expect(result.streamedShape).toContain("skel");
-    expect(result.bufferedShape).toContain("failed: late boom");
-    expect(result.bufferedShape).not.toContain("skel");
-    expect({ recovered: result.recovered, mismatches: result.mismatches }).toEqual({
+    expect(shape(container)).toBe('<div><button class="err">late boom</button></div>');
+
+    core.resetChildIds();
+    const dispose = core.hydrate(compiled.dom.default as never, container);
+    const report = core.hydrate.report;
+
+    expect({ recovered: report.recovered, mismatches: report.mismatches }).toEqual({
       recovered: false,
       mismatches: [],
     });
-    expect<string | null>(result.hydratedShape).toBe(result.bufferedShape);
+    expect(container.querySelector(".err")).toBe(streamed);
+
+    const dom = compiled.dom as FixtureModule & Record<string, unknown>;
+    (dom.setHealthy as (value: boolean) => void)(true);
+    core.flush();
+    (streamed as HTMLElement).click();
+    core.flush();
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    core.flush();
+    expect(shape(container)).toBe('<div><b class="content">RECOVERED</b></div>');
+
+    dispose();
+    container.remove();
   }, 60_000);
 
   test("each boundary is delivered exactly once: one template, one swap", async () => {
     for (const [name, result] of await STREAMED) {
-      if (name === "stream-dehydrated-boundary" || name === "stream-errored-around-boundary") {
-        continue;
-      }
+      if (name === "stream-dehydrated-boundary") continue;
       // A template with no swap is content that never reaches the page; a swap
       // with no template is a snippet looking for a payload that never arrived.
       expect({ name, templates: result.templates, swaps: result.swaps }).toEqual({

@@ -503,3 +503,22 @@ value, and a pattern nested under a prop's key.
 - The same file, "fires on exactly two fixtures in the corpus": `props-destructured-param:BARQ005`
   is gone, because the fixture uses its destructured names only in JSX. The title and the
   comment above it now say one fixture.
+
+## A stream places an error boundary's fallback for a failure after the shell
+
+- `server/src/late-failure.test.ts` "a stream keeps the loading fallback it sent and reports
+  the failure": asserted the shell `<main><!--[--><!--[b:0-->…` and no `<template>`, which was
+  the stream leaving the skeleton on the page until client script rebuilt the boundary. The
+  stream now writes the error boundary's content as `<!--[e:1-->` and swaps its fallback in
+  over the whole range, so the case is restated as "places the error boundary's fallback
+  over everything it held": the shell is `<main><!--[e:1--><!--[b:0-->…`, the fallback
+  arrives in `<template data-barq="1">` with `__BARQ_SWAP__(1,false,true)`, and the failure
+  is still reported. The old no-template assertion survives where it still holds, in "keeps
+  the loading fallback when no error boundary stands around it".
+- `compiler-rs/test/stream-hydration.test.ts` "a failure the stream cannot place is left to
+  the client, and a buffered page places it": asserted `swaps: 0`, `templates: 0` and a
+  streamed page still showing `skel`. `stream-errored-around-boundary` now streams one swap
+  and converges on the buffered page, so it joins the generic "defers, swaps, converges and
+  hydrates" rows (and the one-template-one-swap row) instead of being skipped by them, and
+  the case is restated as "a failure after the shell streams the error fallback, and the
+  client claims and resets it".

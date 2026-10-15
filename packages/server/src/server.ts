@@ -39,7 +39,9 @@ import {
   type LateCatcher,
   type SsrHtml,
   type StreamSink,
+  contentRange,
   esc,
+  guardedRange,
   escapeAttribute,
   setStreamSink,
 } from "./ssr.ts";
@@ -188,13 +190,13 @@ export async function renderPage(
       });
       return open + fallback + close;
     },
-    guard(catcher, content): string {
+    guard(catcher, built, flags): string {
       const id = nextId++;
       stamp ??= crypto.randomUUID();
       catcher.open = `<!--[e:${id}:${stamp}-->`;
       catcher.close = `<!--]e:${id}:${stamp}-->`;
       catchers.push(catcher);
-      return catcher.open + content + catcher.close;
+      return catcher.open + contentRange(built, flags) + catcher.close;
     },
   };
 
@@ -607,6 +609,16 @@ interface Buffered extends Continuation {
 /** A boundary parked by a stream, with where on the page it stands. */
 interface Streamed extends Continuation {
   namespace: Namespace;
+  /** The error boundary that stood around it, for a failure on a later resume. */
+  catcher: LateCatcher | null;
+}
+
+/** An error boundary a stream wrote in a range of its own, `<!--[e:id-->`. */
+interface Guarded {
+  id: number;
+  namespace: Namespace;
+  /** Its fallback has replaced the range, and everything that stood in it. */
+  failed: boolean;
 }
 
 /**
@@ -677,7 +689,7 @@ const FOREIGN_WRAP: Record<Namespace, readonly [open: string, close: string]> = 
 };
 
 /**
- * Record where each boundary that `markup` parked stands.
+ * Record where each boundary that `markup` parked or guarded stands.
  *
  * Nothing tells a boundary its namespace when it is called: the string backend
  * builds children before their parent's bytes exist, and the compiler passes
@@ -685,7 +697,11 @@ const FOREIGN_WRAP: Record<Namespace, readonly [open: string, close: string]> = 
  * and it is complete by the time anything is streamed, so this is asked once
  * per piece of markup that parked something.
  */
-function placeParked(markup: string, outer: Namespace, fresh: readonly Streamed[]): void {
+function placeParked(
+  markup: string,
+  outer: Namespace,
+  fresh: readonly { readonly id: number; namespace: Namespace }[],
+): void {
   if (fresh.length === 0) return;
   const found = namespacesOf(markup, outer);
   for (const record of fresh) record.namespace = found.get(record.id) ?? outer;
@@ -730,7 +746,8 @@ function isSpace(code: number): boolean {
 }
 
 /**
- * The namespace at every `<!--[b:N-->` in `markup`, which starts in `outer`.
+ * The namespace at every `<!--[b:N-->` and `<!--[e:N-->` in `markup`, which
+ * starts in `outer`.
  *
  * A TOKENIZER, and it has to be one. An attribute value leaves `<` and `>`
  * raw, so a search for `<svg` or for the comment itself would be answered by a
@@ -758,7 +775,9 @@ function namespacesOf(markup: string, outer: Namespace): Map<number, Namespace> 
       if (markup.startsWith("--", at + 1)) {
         const end = markup.indexOf("-->", at + 3);
         const stop = end === -1 ? length : end;
-        if (markup.startsWith("[b:", at + 3)) found.set(Number(markup.slice(at + 6, stop)), ns);
+        if (markup.startsWith("[b:", at + 3) || markup.startsWith("[e:", at + 3)) {
+          found.set(Number(markup.slice(at + 6, stop)), ns);
+        }
         at = stop + 3;
       } else if (ns !== "html" && markup.startsWith("[CDATA[", at + 1)) {
         const end = markup.indexOf("]]>", at + 8);
@@ -889,16 +908,34 @@ export function renderToStream(
   const session = options?.session ?? Symbol("stream-session");
   const encoder = new TextEncoder();
   const parked: Streamed[] = [];
+  const guarded = new Map<LateCatcher, Guarded>();
+  // In order, so a round places only what it guarded itself.
+  const guards: Guarded[] = [];
   let next = 0;
   const sink: StreamSink = {
-    defer(resume, fallback, _flags, parkedOn): string {
+    defer(resume, fallback, _flags, parkedOn, catcher): string {
       const id = next++;
-      parked.push({ id, resume, at: Date.now(), parkedOn, namespace: "html" });
+      parked.push({ id, resume, at: Date.now(), parkedOn, namespace: "html", catcher });
       return deferredRange(id, fallback);
     },
-    guard(_catcher, markup): string {
-      return markup;
+    guard(catcher, built, flags): string {
+      const id = next;
+      const written = guardedRange(id, built, flags);
+      if (written === null) return contentRange(built, flags);
+      next++;
+      const guard: Guarded = { id, namespace: "html", failed: false };
+      guarded.set(catcher, guard);
+      guards.push(guard);
+      return written;
     },
+  };
+  // Whether a failure has taken this error boundary, or one it stands in, off
+  // the page: what was parked under it has nowhere left to go.
+  const gone = (catcher: LateCatcher | null): boolean => {
+    for (let at = catcher; at !== null; at = at.outer) {
+      if (guarded.get(at)?.failed === true) return true;
+    }
+    return false;
   };
 
   // One resolve, called from every path that stops the render: the consumer
@@ -1073,9 +1110,40 @@ export function renderToStream(
   } finally {
     setStreamSink(previousSink);
   }
-  placeParked(shell, "html", parked);
+  placeParked(shell, "html", [...parked, ...guards]);
 
   const report = options?.onError ?? defaultStreamError;
+
+  /**
+   * The swap that puts an error boundary's fallback where its content stood,
+   * for a boundary below it that failed after the shell. `null` when there is
+   * nothing to place: no error boundary the stream wrote stands around it, and
+   * the client rebuilds it instead, where its error boundary reports it.
+   */
+  const placeFailure = (record: Streamed, error: unknown): string | null => {
+    const catcher = record.catcher;
+    const guard = catcher === null ? undefined : guarded.get(catcher);
+    if (catcher === null || guard === undefined) return null;
+    const before = parked.length;
+    const guardedBefore = guards.length;
+    let shown: string;
+    try {
+      shown = catcher.fallback(thrownBy(error));
+    } catch (fallbackError) {
+      // A fallback that is not ready yet has nothing to show, the rule
+      // `loadingBoundary` applies to its own.
+      if (!(fallbackError instanceof NotReadyError)) throw fallbackError;
+      shown = "";
+    }
+    guard.failed = true;
+    placeParked(shown, guard.namespace, [...parked.slice(before), ...guards.slice(guardedBefore)]);
+    const [wrapOpen, wrapClose] = FOREIGN_WRAP[guard.namespace];
+    const wrapped = guard.namespace === "html" ? "false" : "true";
+    return (
+      `<template data-barq="${guard.id}">${wrapOpen}${shown}${wrapClose}</template>` +
+      `<script${nonceAttr(options?.nonce)}>window.__BARQ_SWAP__(${guard.id},${wrapped},true)</script>`
+    );
+  };
 
   const flushLater = (target: ReadableStreamDefaultController<Uint8Array>): void => {
     if (later.length === 0 || consumerCancelled) return;
@@ -1207,7 +1275,9 @@ export function renderToStream(
             again.push(record);
             continue;
           }
+          if (gone(record.catcher)) continue;
           const before = parked.length;
+          const guardedBefore = guards.length;
           const restore = setAsyncSession(session);
           const outerSink = setStreamSink(sink);
           let markup: string | null = null;
@@ -1223,20 +1293,26 @@ export function renderToStream(
               // the fallback the shell already flushed stands.
               if (Date.now() - record.at < deadline) again.push(record);
             } else {
-              // ONE boundary failed, and that is all that failed. It keeps the
-              // fallback the shell flushed and the client re-runs it on
-              // hydration, where its own error boundary reports it; every
-              // other boundary on the page is still owed its content. React
-              // errors the boundary rather than the response for the same
-              // reason.
+              // ONE boundary failed, and that is all that failed: every other
+              // boundary on the page is still owed its content. React errors
+              // the boundary rather than the response for the same reason. The
+              // error boundary around it shows its fallback in place of all it
+              // held, as it would have had the failure come during the shell;
+              // with none the stream wrote, the boundary keeps the fallback the
+              // shell flushed and the client rebuilds it.
               report(thrownBy(error));
+              const failed = placeFailure(record, error);
+              if (failed !== null) swaps.push(failed);
             }
           } finally {
             setStreamSink(outerSink);
             setAsyncSession(restore);
           }
           if (markup === null) continue;
-          placeParked(markup, record.namespace, parked.slice(before));
+          placeParked(markup, record.namespace, [
+            ...parked.slice(before),
+            ...guards.slice(guardedBefore),
+          ]);
           const [wrapOpen, wrapClose] = FOREIGN_WRAP[record.namespace];
           const wrapped = record.namespace === "html" ? "" : ",true";
           swaps.push(
