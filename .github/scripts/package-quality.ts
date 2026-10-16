@@ -280,14 +280,32 @@ interface AttwProblem {
  */
 function typesProblems(tarball: string, packed: Manifest): string[] {
   const ignored = packed.type === "module" ? ["node10", "node16-cjs"] : [];
-  const attw = run([join(root, "node_modules/.bin/attw"), tarball, "--format", "json"]);
+  // attw calls `process.exit` as soon as it has written a report with
+  // problems, and Node writes to a pipe asynchronously, so a large report
+  // read from a pipe loses its tail. Writes to a file are synchronous.
+  const reportDir = mkdtempSync(join(tmpdir(), "barq-attw-"));
+  const reportPath = join(reportDir, "report.json");
+  let report: string;
+  let stderr: string;
+  try {
+    const attw = Bun.spawnSync({
+      cmd: [join(root, "node_modules/.bin/attw"), tarball, "--format", "json"],
+      cwd: root,
+      stdout: Bun.file(reportPath),
+      stderr: "pipe",
+    });
+    report = existsSync(reportPath) ? readFileSync(reportPath, "utf8") : "";
+    stderr = attw.stderr.toString();
+  } finally {
+    rmSync(reportDir, { recursive: true, force: true });
+  }
   let problems: AttwProblem[];
   try {
     ({
       analysis: { problems },
-    } = JSON.parse(attw.out) as { analysis: { problems: AttwProblem[] } });
+    } = JSON.parse(report) as { analysis: { problems: AttwProblem[] } });
   } catch {
-    return [`attw did not report: ${attw.out}`];
+    return [`attw did not report: ${stderr || report.slice(0, 2000)}`];
   }
   return problems
     .filter((problem) => {
