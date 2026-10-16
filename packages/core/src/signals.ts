@@ -44,6 +44,7 @@ import {
   type Observe,
 } from "@solidjs/signals";
 import { abandonClaim, hydrating, mismatchIn } from "./hydration.ts";
+import { sharedSourcesOf } from "./shared-sources.ts";
 import type { OwnershipSink, ScopeKind } from "./trace.ts";
 
 export {
@@ -1762,7 +1763,16 @@ function asyncAware<T>(
         if (keys === undefined) liveKeys.set(session, (keys = new Set()));
         keys.add(key);
       }
-      return followStream(result, session, key, node, holdsShell);
+      // A live connection's render reads its sources through the
+      // connection's seats, where the render before it left them.
+      const shared = sharedSourcesOf(declaredIn);
+      return followStream(
+        shared === undefined ? result : shared.seat(result),
+        session,
+        key,
+        node,
+        holdsShell,
+      );
     }
     return result;
   };
@@ -1860,26 +1870,30 @@ function followStream<T>(
   return {
     [Symbol.asyncIterator](): AsyncIterator<T> {
       const inner = source[Symbol.asyncIterator]();
+      const landed = (step: IteratorResult<T>): IteratorResult<T> => {
+        if (
+          !step.done &&
+          key !== undefined &&
+          records !== null &&
+          hydrationData.get(session) === records
+        ) {
+          records.set(key, step.value);
+        }
+        firstAnswered(step.value);
+        return step;
+      };
       return {
-        next: () =>
-          Promise.resolve(inner.next()).then(
-            (step) => {
-              if (
-                !step.done &&
-                key !== undefined &&
-                records !== null &&
-                hydrationData.get(session) === records
-              ) {
-                records.set(key, step.value);
-              }
-              firstAnswered(step.value);
-              return step;
-            },
-            (error: unknown) => {
-              firstAnswered(undefined);
-              throw error;
-            },
-          ),
+        next: () => {
+          const pulled = inner.next();
+          // A step that has already settled stays one: the engine reads a bare
+          // result in the turn it is pulled, and a promise around it would cost
+          // the read a suspension for a value that is here.
+          if (!isThenable(pulled)) return landed(pulled) as unknown as Promise<IteratorResult<T>>;
+          return Promise.resolve(pulled).then(landed, (error: unknown) => {
+            firstAnswered(undefined);
+            throw error;
+          });
+        },
         return: (value?: unknown) => {
           firstAnswered(undefined);
           return inner.return !== undefined

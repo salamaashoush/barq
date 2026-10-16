@@ -47,6 +47,7 @@ import {
 import {
   type AnyServerFn,
   DATA_SUFFIX,
+  LIVE_SUFFIX,
   type InputError,
   isInputError,
   RPC_PREFIX,
@@ -65,6 +66,7 @@ import {
   serverFrame,
 } from "./frames-server.ts";
 import { FRAMES_HEADER, installFrames, isFrame } from "./frames.ts";
+import { liveResponse } from "./live-server.ts";
 
 installFrames(serverFrame as never);
 
@@ -330,10 +332,19 @@ export async function handleServerFn(
   // The URL decides the shape, so a form and an RPC call cannot be confused for
   // one another by a header either of them can set.
   const path = url.pathname.slice(RPC_PREFIX.length);
-  const isData = path.endsWith(DATA_SUFFIX);
+  // The live address answers what the data address does, framed as events for
+  // as long as the answer stands. Only `live`'s loop calls it.
+  const isLive = path.endsWith(LIVE_SUFFIX);
+  const isData = isLive || path.endsWith(DATA_SUFFIX);
   let id: string;
   try {
-    id = decodeURIComponent(isData ? path.slice(0, -DATA_SUFFIX.length) : path);
+    id = decodeURIComponent(
+      isLive
+        ? path.slice(0, -LIVE_SUFFIX.length)
+        : isData
+          ? path.slice(0, -DATA_SUFFIX.length)
+          : path,
+    );
   } catch {
     // Not percent-encoding at all, so it names nothing.
     return new Response("bad request", { status: 400 });
@@ -414,6 +425,10 @@ export async function handleServerFn(
             clientContext,
           ));
       const sendContext = takeSendContext();
+      if (isLive) {
+        if (result instanceof Response) return applyResponseDraft(result, draft);
+        return applyResponseDraft(liveResponse(result, request), draft);
+      }
       // A RETURNED RESPONSE IS HONOURED ON BOTH CHANNELS, and it did not used to
       // be: the value channel handed it to `encodeWire`, which answered
       // `Seroval Error (step: 1)` and a 500 with nothing in it. So a function that
@@ -462,7 +477,7 @@ export async function handleServerFn(
               if (asked === undefined || options?.reachable?.(frame.id) === false) return undefined;
               try {
                 return await (asked as (o: unknown) => Promise<unknown>)({
-                  data: decodeWire(frame.args),
+                  data: frame.args === undefined ? undefined : decodeWire(frame.args),
                 });
               } catch (error) {
                 console.error(

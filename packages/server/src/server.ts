@@ -263,9 +263,13 @@ export interface RenderedFrame {
  */
 export async function renderFrame(
   fn: RootRender,
-  options: { renderId?: string; manifest?: AssetManifest; timeout?: number } = {},
+  options: { renderId?: string; manifest?: AssetManifest; timeout?: number; session?: symbol } = {},
 ): Promise<RenderedFrame> {
-  const job = startRender(fn, { renderId: options.renderId, manifest: options.manifest }, false);
+  const job = startRender(
+    fn,
+    { renderId: options.renderId, manifest: options.manifest, session: options.session },
+    false,
+  );
   const page = await settledPage(job, options.timeout ?? BOUNDARY_TIMEOUT, null, () => {});
   return { html: page.html, head: [...job.head.tags.values()] };
 }

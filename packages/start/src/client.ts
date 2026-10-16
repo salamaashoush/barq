@@ -22,7 +22,14 @@
  */
 
 import { decodeWire, encodeWire } from "@barqjs/server/codec";
+import {
+  type FailedAnswer,
+  type ServerFnIssue,
+  type ServerFnThrown,
+  ServerFnError,
+} from "./fn-error.ts";
 import { applyFlight, applyFrameResponse, mountedFramesHeader } from "./frames-client.ts";
+import { LIVE_CALL, type LiveRequest, registerStub } from "./stubs.ts";
 import { FRAMES_HEADER, RPC_FLIGHT, RPC_FRAME } from "./frames.ts";
 import {
   type Middleware,
@@ -35,7 +42,10 @@ import { startOptions } from "./start-instance.ts";
 
 export { STATIC_PREFIX, staticFunctionMiddleware, staticUrl } from "./static-fn.ts";
 export { NOT_FOUND, REDIRECT } from "./middleware.ts";
+export { ServerFnError, type ServerFnIssue, type ServerFnThrown } from "./fn-error.ts";
+export { LIVE_CALL, type LiveRequest, clientStub } from "./stubs.ts";
 export { type FrameComponent, applyFrameResponse, frameAdapter } from "./frames-client.ts";
+export { type LiveIterable, type LiveStatus, live } from "./live-client.ts";
 export { FRAME_APPLIED_EVENT, type Slot, isFrame } from "./frames.ts";
 
 export const SERVER_FN: unique symbol = Symbol.for("barq.server-fn");
@@ -56,6 +66,13 @@ export const RPC_PREFIX = "/_barq/fn/";
  * them, so the form posts, returns 200, and nothing happens.
  */
 export const DATA_SUFFIX = ".data";
+
+/**
+ * `/_barq/fn/<id>.live` is the live address: the data address's answer, framed
+ * as server-sent events for as long as it stands. Its own URL, because a cache
+ * keys on the URL and not on a header nothing tells it to vary by.
+ */
+export const LIVE_SUFFIX = ".live";
 
 /**
  * How the data channel says "the answer is an instruction, not a value".
@@ -98,32 +115,11 @@ export type RpcStreamLine =
   | { readonly c: unknown }
   | { readonly e: 1; readonly t?: ServerFnThrown };
 
-/** What a handler threw, as a development server tells its caller. */
-export interface ServerFnThrown {
-  readonly name: string;
-  readonly message: string;
-  /** Mapped to the source files by the development server. */
-  readonly stack?: string;
-}
-
-/** One thing wrong with a call's input, and the path to the field it is about. */
-export interface ServerFnIssue {
-  readonly message: string;
-  readonly path?: readonly (string | number)[];
-}
-
 /** The body of a 400 for refused input. */
 export interface ServerFnInputAnswer {
   readonly error: "invalid input";
   readonly message: string;
   readonly issues: readonly ServerFnIssue[];
-}
-
-/** What a failed call's JSON body may carry. */
-interface FailedAnswer {
-  readonly message?: string;
-  readonly issues?: readonly ServerFnIssue[];
-  readonly thrown?: ServerFnThrown;
 }
 
 /**
@@ -222,77 +218,6 @@ export class RpcNotFound extends Error {
     this.data = data;
     this.routeId = routeId;
   }
-}
-
-/**
- * A server function answered with a failure.
- *
- * THE MESSAGE IS NOT THE HANDLER'S, and that is deliberate rather than
- * unfinished. `server.ts` refuses to put a handler's error text on the wire
- * because it can name a table, a column or a filesystem path, and none of that
- * is the caller's business — TanStack serialises the whole error object to the
- * client instead. What a caller legitimately needs is the STATUS, so it is here
- * as a field rather than something to parse back out of a string.
- */
-export class ServerFnError extends Error {
-  readonly status: number;
-  /**
-   * What was wrong with the input, for a 400 the validator refused: one entry
-   * per issue, with the path to the field it is about. Sent in every build,
-   * because it describes the caller's own input.
-   */
-  readonly issues?: readonly ServerFnIssue[];
-  /**
-   * What the handler threw: its name, message and source-mapped stack. Only a
-   * development server sends it; in production this is `undefined`, so handle
-   * a failure by its `status` rather than by this.
-   */
-  readonly thrown?: ServerFnThrown;
-  /**
-   * The answer itself, unread.
-   *
-   * The server's own refusals land here: a 400 for input, a 403 for an origin,
-   * a 404, a 405, a 413. A `Response` a middleware or a handler THREW is not
-   * wrapped at all; the call rejects with it. A handler's own failure has
-   * nothing here worth reading: the server answers those with one fixed line,
-   * for the reason above.
-   */
-  readonly response?: Response;
-  constructor(id: string, status: number, response?: Response, answer?: FailedAnswer) {
-    super(failureMessage(id, status, answer));
-    this.name = "ServerFnError";
-    this.status = status;
-    this.response = response;
-    if (answer?.issues !== undefined) this.issues = answer.issues;
-    if (answer?.thrown !== undefined) this.thrown = answer.thrown;
-  }
-}
-
-function failureMessage(id: string, status: number, answer: FailedAnswer | undefined): string {
-  const issues = answer?.issues;
-  if (issues !== undefined && issues.length > 0) {
-    const listed = issues
-      .map((issue) =>
-        issue.path === undefined ? issue.message : `\`${issue.path.join(".")}\`: ${issue.message}`,
-      )
-      .join("; ");
-    return (
-      `The server function \`${id}\` refused its input (${status}): ${listed}. ` +
-      "`error.issues` holds each issue with the path to its field."
-    );
-  }
-  const thrown = answer?.thrown;
-  if (thrown !== undefined) {
-    return (
-      `The server function \`${id}\` threw \`${thrown.name}: ${thrown.message}\` and answered ${status}. ` +
-      "The server's stack is in `error.thrown.stack` and in the development overlay. A production " +
-      "server sends only the status, so handle a failure by `error.status`."
-    );
-  }
-  return (
-    `The server function \`${id}\` answered ${status}. A handler's own error text is never sent to the browser, so read it in the server's log. ` +
-    "`error.response` holds the server's answer."
-  );
 }
 
 /** The JSON a failed call answered with, read from a copy so `error.response` stays unread. */
@@ -484,6 +409,8 @@ export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
     chainHeaders?: Headers,
     /** What the client halves passed to `next({ fetch })`, the last one winning. */
     chainFetch?: typeof fetch,
+    /** A call at the live address, whose answer is handed back whole for `live`'s loop to read. */
+    live?: LiveRequest,
   ): Promise<Out> => {
     // FormData goes as FormData. Routing it through the value codec would hand
     // the handler a plain OBJECT here and a real `FormData` on the no-JS path —
@@ -517,7 +444,7 @@ export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
     let headers: HeadersInit | undefined = method === "GET" ? CALLER : form ? undefined : JSON_BODY;
     // A mutation names the frames the page has mounted, so its answer can
     // carry the ones it changed.
-    const mountedFrames = method === "POST" ? mountedFramesHeader() : null;
+    const mountedFrames = method === "POST" && live === undefined ? mountedFramesHeader() : null;
     if (mountedFrames !== null) {
       const withFrames = new Headers(headers);
       withFrames.set(FRAMES_HEADER, mountedFrames);
@@ -536,7 +463,13 @@ export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
       if (method === "GET") merged.set(RPC_CALLER, "1");
       headers = merged;
     }
-    const endpoint = RPC_PREFIX + encodeURIComponent(id) + DATA_SUFFIX;
+    if (live !== undefined) {
+      const withPosition = new Headers(headers);
+      if (live.lastEventId !== null) withPosition.set("last-event-id", live.lastEventId);
+      headers = withPosition;
+    }
+    const endpoint =
+      RPC_PREFIX + encodeURIComponent(id) + (live === undefined ? DATA_SUFFIX : LIVE_SUFFIX);
     const response = await (asked?.fetch ?? chainFetch ?? startOptions().serverFns?.fetch ?? fetch)(
       method === "GET"
         ? `${endpoint}?${PAYLOAD_PARAM}=${encodeURIComponent(payload ?? "")}`
@@ -544,7 +477,7 @@ export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
       {
         method,
         headers,
-        signal: asked?.signal,
+        signal: live?.signal ?? asked?.signal,
         body: method === "GET" ? undefined : form ? input : payload,
         credentials: "same-origin",
         // `manual` so a handler that answers with its OWN 3xx — a real
@@ -562,6 +495,7 @@ export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
     // headers, so nothing below can recognise it. It is still the handler's
     // answer, and the status check would report it as a failure with no status.
     if (response.type === "opaqueredirect") return response as Out;
+    if (live !== undefined) return response as Out;
     const control = response.headers.get(RPC_CONTROL);
     // Before the status check: a response the handler returned is its answer
     // whatever status it chose.
@@ -589,14 +523,15 @@ export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
     return envelope.result as Out;
   };
 
-  const call = async (options?: unknown): Promise<Out> => {
+  const call = async (options?: unknown, live?: LiveRequest): Promise<Out> => {
     const input = dataOf(options);
     // NO CHAIN, NO RUNNER. Every application without a client middleware takes
     // this line, and it is the line the compiler emitted before any of this
     // existed — one fetch, no closures built, no objects allocated.
     const asked = callOptionsOf(options);
     const flattened = composition();
-    if (flattened.length === 0) return send(input, EMPTY_CONTEXT, undefined, asked);
+    if (flattened.length === 0)
+      return send(input, EMPTY_CONTEXT, undefined, asked, undefined, undefined, live);
 
     const context: Record<string, unknown> = {};
     const sendContext: Record<string, unknown> = {};
@@ -611,19 +546,23 @@ export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
       sendContext,
       headers,
       fetch: chosen,
-      run: (data) => send(data, sendContext, context, asked, headers, chosen.current),
+      run: (data) => send(data, sendContext, context, asked, headers, chosen.current, live),
     })) as Out;
   };
 
   const meta: ServerFnMeta = method === "GET" ? { id, method } : { id };
-  return Object.assign(call, {
+  const stub = Object.assign((options?: unknown) => call(options), {
     [SERVER_FN]: true as const,
     [SERVER_FN_CHAIN]: chain,
+    [LIVE_CALL]: (options: unknown, live: LiveRequest): Promise<Response> =>
+      call(options, live) as Promise<Response>,
     meta,
     serverFnMeta: meta,
     method,
     url: urlOf(id),
   });
+  registerStub(id, stub);
+  return stub;
 }
 
 /**

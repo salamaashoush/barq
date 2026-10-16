@@ -21,6 +21,7 @@ import {
   insert,
   isHydrating,
   onCleanup,
+  onHydrationEnd,
   runWithOwner,
   untrack,
   useHead,
@@ -28,6 +29,8 @@ import {
 import { type Range, withRange, withoutClaim } from "@barqjs/core/internal";
 import { type AnySerializationAdapter, decodeWire } from "@barqjs/server/codec";
 
+import { ServerFnError } from "./fn-error.ts";
+import { LIVE_CALL, type LiveRequest, type Stub, clientStub } from "./stubs.ts";
 import {
   FRAME,
   FRAME_APPLIED_EVENT,
@@ -82,9 +85,41 @@ interface FrameState {
   readonly head: () => readonly HeadTag[];
   readonly setHead: (head: readonly HeadTag[]) => void;
   readonly component: FrameComponent;
+  /** The live connection the page opened for a frame it was served, while one is open. */
+  connection: { readonly stop: () => void } | null;
 }
 
 const FRAMES = new Map<string, FrameState>();
+
+/**
+ * Keep a frame the page was served through `live` current: the connection a
+ * `live` call in the browser would have opened, through the same stub and so
+ * its client middleware, opened once the page has been claimed and closed
+ * when the last place the frame is mounted goes.
+ */
+function connect(state: FrameState): void {
+  if (state.connection !== null || state.payload?.live !== true) return;
+  const stub = clientStub(state.ref.id) as Parameters<typeof liveIterable>[0] | undefined;
+  if (stub === undefined) return;
+  const options = {
+    data: state.payload.args === undefined ? undefined : decodeWire(state.payload.args),
+  };
+  const iterator = liveIterable(stub, options)[Symbol.asyncIterator]();
+  const connection = { stop: (): void => void iterator.return?.() };
+  state.connection = connection;
+  void (async () => {
+    try {
+      for (;;) if ((await iterator.next()).done === true) return;
+    } catch (error) {
+      console.error(
+        `[barq] The live frame of ${JSON.stringify(state.ref.id)} could not stay connected, so it shows what it last received. The error:`,
+        error,
+      );
+    } finally {
+      if (state.connection === connection) state.connection = null;
+    }
+  })();
+}
 
 function stateFor(ref: FrameRef): FrameState {
   const known = FRAMES.get(ref.address);
@@ -98,6 +133,7 @@ function stateFor(ref: FrameRef): FrameState {
     head,
     setHead,
     component: null as never,
+    connection: null,
   };
   const component = (props: Record<string, unknown>): Node => mount(state, props);
   (state as { component: FrameComponent }).component = Object.assign(component, { [FRAME]: ref });
@@ -309,9 +345,11 @@ function mount(state: FrameState, props: Record<string, unknown>): Node {
   placed.claiming = false;
   state.mounts.add(placed);
   useHead(() => state.head());
+  if (adopted) onHydrationEnd(() => connect(state));
   onCleanup(() => {
     state.mounts.delete(placed);
     for (const occurrence of placed.occurrences.values()) occurrence.dispose();
+    if (state.mounts.size === 0) state.connection?.stop();
   });
   return host;
 }
@@ -541,6 +579,13 @@ export async function applyFrameResponse(response: Response): Promise<FrameCompo
   return applyFrameMarkup(template.content.firstElementChild);
 }
 
+/** A frame's markup as text, a live event's, applied as a frame answer is. */
+export function applyFrameText(markup: string): Promise<FrameComponent> {
+  const template = document.createElement("template");
+  template.innerHTML = markup;
+  return applyFrameMarkup(template.content.firstElementChild);
+}
+
 /** One frame's markup, applied to every place its address is mounted. */
 async function applyFrameMarkup(host: Element | null): Promise<FrameComponent> {
   const address = host?.getAttribute("data-frame") ?? null;
@@ -578,7 +623,7 @@ async function applyFrameMarkup(host: Element | null): Promise<FrameComponent> {
 export function mountedFramesHeader(): string | null {
   const out: { id: string; args: unknown }[] = [];
   for (const state of FRAMES.values()) {
-    if (state.mounts.size === 0 || state.payload?.args === undefined) continue;
+    if (state.mounts.size === 0 || state.payload === null) continue;
     out.push({ id: state.ref.id, args: state.payload.args });
     if (out.length === FRAMES_BUDGET) break;
   }
@@ -613,4 +658,172 @@ export async function applyFlight(response: Response): Promise<unknown> {
 /** Forget every frame, for a test that renders more than one page. */
 export function resetFrames(): void {
   FRAMES.clear();
+}
+
+// ── live ──────────────────────────────────────────────────────────────────
+//
+// `live`'s loop, here because a frame the page was served through `live`
+// connects through it as well as a `live` call does.
+
+/** What the loop says about its connection. */
+export type LiveStatus = "connected" | "reconnecting" | "closed";
+
+export interface LiveIterable<T> extends AsyncIterable<T> {
+  /** Told `"connected"` per connection, `"reconnecting"` with the error per death, `"closed"` at the end. */
+  onstatus?: (status: LiveStatus, error?: unknown) => void;
+}
+
+interface ServerEvent {
+  readonly event: string;
+  readonly id: string | null;
+  readonly data: string;
+}
+
+/** The events of a `text/event-stream` body, as the spec frames them. */
+async function* eventsOf(body: ReadableStream<Uint8Array>): AsyncGenerator<ServerEvent> {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  let pending = "";
+  let event = "message";
+  let id: string | null = null;
+  let data: string[] = [];
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      pending += done ? decoder.decode() : decoder.decode(value, { stream: true });
+      let end = pending.search(/\r\n|\r|\n/);
+      while (end !== -1) {
+        const line = pending.slice(0, end);
+        pending = pending.slice(end + (pending.startsWith("\r\n", end) ? 2 : 1));
+        if (line === "") {
+          if (data.length > 0 || event !== "message") yield { event, id, data: data.join("\n") };
+          event = "message";
+          data = [];
+        } else if (!line.startsWith(":")) {
+          const colon = line.indexOf(":");
+          const field = colon === -1 ? line : line.slice(0, colon);
+          const text = colon === -1 ? "" : line.slice(colon + 1).replace(/^ /, "");
+          if (field === "data") data.push(text);
+          else if (field === "event") event = text;
+          else if (field === "id") id = text;
+        }
+        end = pending.search(/\r\n|\r|\n/);
+      }
+      if (done) return;
+    }
+  } finally {
+    void reader.cancel().catch(() => {});
+  }
+}
+
+/** Statuses that say "ask again" even though they refuse this time. */
+const RETRY = new Set([408, 425, 429]);
+
+/** How long to wait before the next connection, the nth failure in a row. */
+function pause(failures: number, signal: AbortSignal): Promise<void> {
+  const ms = Math.min(30_000, 250 * 2 ** failures);
+  return new Promise<void>((resolve) => {
+    const timer = setTimeout(done, ms);
+    function done(): void {
+      clearTimeout(timer);
+      globalThis.removeEventListener?.("online", done);
+      signal.removeEventListener("abort", done);
+      resolve();
+    }
+    globalThis.addEventListener?.("online", done, { once: true });
+    signal.addEventListener("abort", done, { once: true });
+  });
+}
+
+export type LiveStub = Stub & {
+  readonly [LIVE_CALL]: (options: unknown, live: LiveRequest) => Promise<Response>;
+};
+
+/** The reconnecting iteration of one live call. */
+export function liveIterable(stub: LiveStub, options: unknown): LiveIterable<unknown> {
+  const iterable: LiveIterable<unknown> = {
+    [Symbol.asyncIterator]: (): AsyncIterator<unknown> => {
+      const controller = new AbortController();
+      const running = loop(stub, options, iterable, controller);
+      return {
+        next: () => running.next(),
+        // The connection is ended here, not when the generator gets round to
+        // it: one waiting on a body that sends nothing would never get there.
+        return: (value?: unknown) => {
+          controller.abort();
+          return running.return(value);
+        },
+      };
+    },
+  };
+  return iterable;
+}
+
+async function* loop(
+  stub: LiveStub,
+  options: unknown,
+  told: LiveIterable<unknown>,
+  controller: AbortController,
+): AsyncGenerator {
+  let lastEventId: string | null = null;
+  let failures = 0;
+  let connected = false;
+  try {
+    for (;;) {
+      let response: Response;
+      try {
+        response = await stub[LIVE_CALL](options, { lastEventId, signal: controller.signal });
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        if (!connected) throw error;
+        told.onstatus?.("reconnecting", error);
+        await pause(failures++, controller.signal);
+        continue;
+      }
+      if (!response.ok || response.body === null) {
+        const retries = RETRY.has(response.status) || response.headers.has("retry-after");
+        const error = new ServerFnError(stub.meta.id, response.status, response);
+        if (!connected || (!retries && response.status >= 400 && response.status < 500))
+          throw error;
+        told.onstatus?.("reconnecting", error);
+        await pause(failures++, controller.signal);
+        continue;
+      }
+      connected = true;
+      failures = 0;
+      told.onstatus?.("connected");
+      let yielded: unknown = undefined;
+      let complete = false;
+      let died: unknown = new Error(
+        `[barq] The live connection of ${JSON.stringify(stub.meta.id)} ended before it was complete.`,
+      );
+      try {
+        for await (const event of eventsOf(response.body)) {
+          if (event.event === "complete") {
+            complete = true;
+            break;
+          }
+          if (event.id !== null) lastEventId = event.id;
+          const data = JSON.parse(event.data) as unknown;
+          if (event.event === "frame") {
+            const component = await applyFrameText(data as string);
+            if (component !== yielded) {
+              yielded = component;
+              yield component;
+            }
+            continue;
+          }
+          yield decodeWire(data);
+        }
+      } catch (error) {
+        died = error;
+      }
+      if (complete || controller.signal.aborted) return;
+      told.onstatus?.("reconnecting", died);
+      await pause(failures++, controller.signal);
+    }
+  } finally {
+    controller.abort();
+    told.onstatus?.("closed");
+  }
 }

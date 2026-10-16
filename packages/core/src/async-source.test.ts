@@ -296,9 +296,8 @@ describe("A7: an async iterable", () => {
         },
       }));
 
-      expect(read(node)).toBe("PENDING");
-      await tick();
-      flush();
+      // Settled in the turn it is read, as the engine reads a bare result.
+      expect(read(node)).toBe(2);
       await tick();
       flush();
       expect(read(node)).toBe(2);

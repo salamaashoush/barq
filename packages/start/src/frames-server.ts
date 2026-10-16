@@ -10,8 +10,8 @@
  */
 
 import type { HeadTag } from "@barqjs/core";
-import { block, untrack } from "@barqjs/core";
-import { setHeadSink } from "@barqjs/core/internal";
+import { block, childScope, getOwner, runWithOwner, untrack } from "@barqjs/core";
+import { setHeadSink, setHydratable } from "@barqjs/core/internal";
 import { esc, html, renderFrame } from "@barqjs/server";
 import {
   encodeWire,
@@ -45,7 +45,13 @@ type ServerComponent = (props: Record<string, unknown>) => unknown;
 /** What a server function returns in place of its handler's component. */
 export interface ServerFrame {
   (props: Record<string, unknown>): unknown;
-  readonly [FRAME]: FrameRef & { readonly args: unknown; readonly component: ServerComponent };
+  readonly [FRAME]: FrameRef & {
+    readonly args: unknown;
+    readonly component: ServerComponent;
+    readonly markup: (options: { readonly session?: symbol }) => Promise<string>;
+    /** Called through `live`: the page keeps it current over a connection. */
+    live?: boolean;
+  };
 }
 
 /**
@@ -72,11 +78,20 @@ function registerFrameAdapter(): void {
 /** The server function's component result, as a frame. */
 export function serverFrame(id: string, data: unknown, component: ServerComponent): ServerFrame {
   registerFrameAdapter();
-  const args = encodeWire(data ?? null);
-  const address = frameAddress(id, args);
+  // What the call was given, absent when it was given nothing: a function with
+  // no validator refuses a `data` it did not declare, `null` included.
+  const args = data === undefined ? undefined : encodeWire(data);
+  const address = frameAddress(id, encodeWire(data ?? null));
+  const state: ServerFrame[typeof FRAME] = {
+    id,
+    address,
+    args,
+    component,
+    markup: (options) => renderMarkup(state, options),
+  };
   const render = (props: Record<string, unknown>): unknown =>
-    documentFrame(address, args, component, props);
-  return Object.assign(render, { [FRAME]: { id, address, args, component } });
+    documentFrame(address, args, component, props, state.live === true);
+  return Object.assign(render, { [FRAME]: state });
 }
 
 /** A value read from a slot argument: a Cell is called, anything else is the value. */
@@ -139,13 +154,17 @@ class Slots {
   ): string {
     if (this.fills === null) return "";
     const given = this.fills[name];
-    if (name === "children") return esc(given);
+    // The page's own content, which the browser claims, under a scope that
+    // hydrates again inside the server component's.
+    const scope = childScope(getOwner(), "branch");
+    setHydratable(scope, true);
+    if (name === "children") return runWithOwner(scope, () => esc(given));
     const fill = valueOf(given);
     if (typeof fill !== "function") return "";
     const props: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(values)) props[key] = (): unknown => value;
     if (region !== undefined) props.children = block(() => html(regionMarkup(String(at), region)));
-    return esc((fill as ServerComponent)(props));
+    return runWithOwner(scope, () => esc((fill as ServerComponent)(props)));
   }
 
   /**
@@ -188,6 +207,7 @@ function documentFrame(
   args: unknown,
   component: ServerComponent,
   fills: Record<string, unknown>,
+  live: boolean,
 ): unknown {
   const slots = new Slots(fills);
   const head: HeadTag[] = [];
@@ -199,13 +219,23 @@ function documentFrame(
     },
     module: (url) => outer?.module?.(url),
   });
+  // Nothing the server component itself reads reaches the page's seed: the
+  // browser never runs it, so a value seeded for it is one nothing claims.
+  const scope = childScope(getOwner(), "branch");
+  setHydratable(scope, false);
   let region: string;
   try {
-    region = esc(component(slots.props));
+    region = runWithOwner(scope, () => esc(component(slots.props)));
   } finally {
     setHeadSink(outer);
   }
-  const payload: FramePayload = { v: FRAME_VERSION, args, slots: slots.final(region, true), head };
+  const payload: FramePayload = {
+    v: FRAME_VERSION,
+    args,
+    ...(live ? { live: true } : {}),
+    slots: slots.final(region, true),
+    head,
+  };
   return html(frameOpen(address, payload) + region + FRAME_CLOSE);
 }
 
@@ -223,12 +253,29 @@ export async function frameResponse(frame: ServerFrame): Promise<Response> {
   return answer;
 }
 
-/** A frame's markup over the wire: the region rendered on its own, its slots empty. */
-export async function frameMarkup(frame: ServerFrame): Promise<string> {
-  const { address, args, component } = frame[FRAME];
+/**
+ * A frame's markup over the wire: the region rendered on its own, its slots
+ * empty. Rendered by the frame itself, so by the copy of this module that made
+ * it: a host serving a built server through its own `serveBarq` answers the
+ * call from another copy, whose renderer is not the one the component was
+ * compiled against.
+ */
+export function frameMarkup(
+  frame: ServerFrame,
+  options: { readonly session?: symbol } = {},
+): Promise<string> {
+  return frame[FRAME].markup(options);
+}
+
+async function renderMarkup(
+  frame: ServerFrame[typeof FRAME],
+  options: { readonly session?: symbol },
+): Promise<string> {
+  const { address, args, component } = frame;
   const slots = new Slots(null);
   const rendered = await renderFrame(() => component(slots.props) as never, {
     renderId: `f${address.slice(address.lastIndexOf("#") + 1)}-`,
+    session: options.session,
   });
   const head = [...rendered.head];
   const css = collectRequestCss();
@@ -236,6 +283,7 @@ export async function frameMarkup(frame: ServerFrame): Promise<string> {
   const payload: FramePayload = {
     v: FRAME_VERSION,
     args,
+    ...(frame.live === true ? { live: true } : {}),
     slots: slots.final(rendered.html, false),
     head,
   };

@@ -40,6 +40,8 @@ export { headKey, reportModule, setHeadSink } from "./head.ts";
 
 export { type Range, withRange, withoutClaim } from "./hydration.ts";
 
+export { SharedSources, shareSources, unshareSources } from "./shared-sources.ts";
+
 export {
   COMPOSED_BODY_FRAMING,
   commitEventResponse,

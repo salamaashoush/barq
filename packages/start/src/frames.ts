@@ -144,6 +144,8 @@ export interface FramePayload {
    * the page could have sent itself.
    */
   readonly args?: unknown;
+  /** Called through `live`: the page connects and keeps the region current. */
+  readonly live?: boolean;
   readonly slots: readonly SlotRecord[];
   /** What the region declared for the head, and the assets it needs. */
   readonly head: readonly HeadTag[];

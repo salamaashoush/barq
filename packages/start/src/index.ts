@@ -108,6 +108,7 @@ export {
   type ServerFnMethod,
   type Streamed,
   DATA_SUFFIX,
+  LIVE_SUFFIX,
   NOT_FOUND,
   PAYLOAD_PARAM,
   REDIRECT,
@@ -129,6 +130,7 @@ export {
 export type { ServerFnInputAnswer, ServerFnIssue, ServerFnThrown } from "./client.ts";
 export { type ServerTiming, serverTiming } from "./timing.ts";
 export { FRAME_APPLIED_EVENT, type Slot, isFrame } from "./frames.ts";
+export { type LiveIterable, type LiveStatus, live } from "./live-client.ts";
 
 import {
   type AnyServerFn,

@@ -1022,3 +1022,14 @@ Each now orders what it waits on; no expectation's subject changed, and what mov
   stayed": the drag ran on `Date.now`, so a start and an end either side of a millisecond made a
   100 px move a flick at 100 px/ms, and the drawer closed. It now takes the `now` option the other
   drag tests use, with a second between start and release. Expectations unchanged.
+
+## A settled stream step stays settled through barq's follow
+
+- `core/src/async-source.test.ts` "a producer handing back a bare IteratorResult is assimilated,
+  not crashed on": the first read was `"PENDING"` and is `2`. The engine takes a bare
+  `IteratorResult` as a step that has already settled and reads it in the same turn, which the
+  engine alone does here (measured: `2`). barq's `followStream` wrapped every step in a promise, so
+  a followed memo read pending for a value that was there. It now hands a bare step on as one,
+  which a live frame's render needs to read its shared sources where they stand. The test's claim,
+  assimilated rather than crashed on, is unchanged.
+
