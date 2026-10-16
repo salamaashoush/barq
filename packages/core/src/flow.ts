@@ -32,6 +32,7 @@ import {
   openCursor,
   probeRange,
   claimRange,
+  holdHydration,
   hydrating,
   rangeKey,
   releaseRange,
@@ -68,6 +69,7 @@ import {
   runWithOwner,
   getOwner,
   mapArray,
+  setHydratable,
   OWNERSHIP,
   repeat,
   jsxAsValue,
@@ -1492,6 +1494,9 @@ function guarded(
       return true;
     };
   }
+  // `onHydrationEnd` waits for the content the stream still owes.
+  const releaseHold = owed !== null && owed.data.startsWith("[b:") ? holdHydration() : null;
+  if (releaseHold !== null) onCleanup(releaseHold);
   let content: Instance = NOTHING;
   let standIn: Instance = NOTHING;
   // Not the application's error, and this is not the thing that recovers from
@@ -1688,6 +1693,7 @@ function guarded(
   renderEffect(view, (showing: unknown) => {
     dropStandIn();
     if (showing === CONTENT) {
+      releaseHold?.();
       // The server's fallback is DEAD once content shows, and it has to go or
       // it stands beside the content. This is the nested case: an outer
       // boundary owns the `[f:` range, a boundary INSIDE it absorbs the
@@ -1759,13 +1765,26 @@ export function island(
     if (claim !== null && rangeKey(claim) === ISLAND_KEY) {
       // Nothing is built and nothing is walked. The server's nodes stay exactly
       // where they are, which is the whole of what an island buys.
+      //
+      // The scope is still opened: the server's island took a position among
+      // its siblings, and without this one every async value after it would be
+      // looked up one position early.
+      setHydratable(childScope(getOwner(), "branch"), false);
       return claim.nodes.length > 0 ? claim.nodes[0] : null;
     }
     // Not an island on the wire — a client-only render, or a position the server
     // wrote differently. Give the claim back and build cold.
     if (claim !== null) releaseRange(claim);
   }
-  const instance = attempt(getOwner(), site, block, EMPTY_ARGS, flags, "branch", null);
+  const unhydratable = (...args: readonly unknown[]): unknown => {
+    setHydratable(getOwner()!, false);
+    return typeof block === "function"
+      ? (block as (...rest: readonly unknown[]) => unknown)(...args)
+      : block;
+  };
+  // Never without a scope: the scope is what carries the mark.
+  const scoped = flags & ~NO_SCOPE;
+  const instance = attempt(getOwner(), site, unhydratable, EMPTY_ARGS, scoped, "branch", null);
   return instance.nodes.length > 0 ? instance.nodes[0] : null;
 }
 

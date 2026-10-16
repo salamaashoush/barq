@@ -740,12 +740,22 @@ export function pin<A extends unknown[], R>(
 // reuses its module graph across requests would otherwise hand out r1, r2, …
 // while every fresh client page starts again at r0, and the seeded data would
 // land under keys nobody looks up.
-const rootCounts = new Map<symbol | null, number>();
+//
+// And per `renderId` within an epoch, because the prefix is what a second root
+// on the page is matched by. A client that hydrates two regions of one page
+// the server rendered under two prefixes has to number each from where the
+// server did, whatever else it mounted first.
+const rootCounts = new Map<symbol | null, Map<string, number>>();
 
-function nextRootId(): string {
-  const next = rootCounts.get(activeAsyncSession) ?? 0;
-  rootCounts.set(activeAsyncSession, next + 1);
-  return `r${next.toString(36)}`;
+function nextRootId(renderId: string): string {
+  let counts = rootCounts.get(activeAsyncSession);
+  if (counts === undefined) {
+    counts = new Map<string, number>();
+    rootCounts.set(activeAsyncSession, counts);
+  }
+  const next = counts.get(renderId) ?? 0;
+  counts.set(renderId, next + 1);
+  return `${renderId}r${next.toString(36)}`;
 }
 
 /**
@@ -765,7 +775,7 @@ export function resetChildIds(session?: symbol): void {
  */
 export function rootScope(owner: Scope | null = null, renderId = ""): Scope {
   scopesAllocated++;
-  const id = renderId + nextRootId();
+  const id = nextRootId(renderId);
   const root = runWithOwner(owner, () => createOwner({ id }));
   engineSetContext(NUMBERING, numberingAt(id), root);
   if (activeAsyncSession !== null) {
@@ -1340,10 +1350,14 @@ function openPendingSeed(session: symbol, key: string): PendingSeed {
 export function pendingSeedsOf(session?: symbol): Record<string, Promise<unknown>> {
   const bucket = pendingSeeds.get(session ?? null);
   if (bucket === undefined) return {};
+  const kept = unhydrated.get(session ?? null);
   const out: Record<string, Promise<unknown>> = {};
-  for (const [key, seed] of bucket) out[key] = seed.promise;
+  for (const [key, seed] of bucket) if (kept?.has(key) !== true) out[key] = seed.promise;
   return out;
 }
+
+/** The keys each session declared under `<NoHydration>`, which never reach the page. */
+const unhydrated = new Map<symbol | null, Set<string>>();
 
 /**
  * Give up on every key this session never sent, so no client read waits for a
@@ -1406,6 +1420,61 @@ function declaringSession(owner: Owner | null): symbol | null {
   return activeAsyncSession;
 }
 
+/**
+ * Set on the scope a `<NoHydration>` opens, and cleared on the one a nested
+ * `<Hydration>` opens in a server render.
+ */
+const NO_HYDRATE = engineCreateContext<boolean>(false);
+
+/** Mark whether what is declared under `scope` reaches a hydrating client. */
+export function setHydratable(scope: Scope, hydratable: boolean): void {
+  engineSetContext(NO_HYDRATE, !hydratable, scope);
+}
+
+function underNoHydration(owner: Owner): boolean {
+  return engineGetContext(NO_HYDRATE, owner);
+}
+
+/**
+ * Solid 2.0's `isHydratable`: whether the calling owner sits where hydration
+ * applies, so a value keyed to this position reaches a hydrating client.
+ * `false` under `<NoHydration>`, `true` again under a nested `<Hydration>` in
+ * a server render, and `false` with no owner. On the server the owner must also
+ * belong to a render in progress. On the client `<Hydration>` is a passthrough,
+ * so inside a `<NoHydration>` zone this stays `false` even under one.
+ *
+ * barq decides this itself for its own async values. A library that carries
+ * values of its own from the server reads it to make the same decision.
+ */
+export function isHydratable(): boolean {
+  const owner = getOwner();
+  if (owner === null || underNoHydration(owner)) return false;
+  const carried = engineGetContext(RENDER_SESSION, owner);
+  if (carried !== null) return hydrationData.has(carried);
+  // No render above it: the client's answer where there is a document, and
+  // the server's outside a render where there is none. Asked at the call, not
+  // read from `#env`, whose answer is fixed before a test registers its DOM.
+  return typeof document !== "undefined";
+}
+
+/**
+ * The scope a server render's `<Hydration>` opens under a `<NoHydration>`, or
+ * `null` where `<Hydration>` passes its children through: on the client, and
+ * outside a `<NoHydration>`.
+ *
+ * Numbered as a root of its own under `renderId`, because the client claims
+ * this markup with a root of its own: `hydrate(fn, container, { renderId })`
+ * over the element that holds it, which is numbered the same way.
+ */
+export function hydrationScope(owner: Scope | null, renderId: string): Scope | null {
+  if (owner === null || !underNoHydration(owner)) return null;
+  if (declaringSession(owner) === null) return null;
+  const scope = childScope(owner);
+  engineSetContext(NUMBERING, numberingAt(nextRootId(renderId)), scope);
+  setHydratable(scope, true);
+  return scope;
+}
+
 /** Client: the payload a server render's seed script assigned, if present */
 function getSeed(key: string): { found: boolean; value?: unknown } {
   const store = (globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__;
@@ -1441,6 +1510,14 @@ function asyncAware<T>(
   const key =
     explicitKey ??
     (position === undefined ? undefined : name === undefined ? position : `${position}~${name}`);
+  // Under `<NoHydration>` nothing claims the value. The key still serves the
+  // render's own resumes, which find the flight a parked body started by it,
+  // and is kept off the page.
+  if (key !== undefined && declaredIn !== null && owner !== null && underNoHydration(owner)) {
+    let keys = unhydrated.get(declaredIn);
+    if (keys === undefined) unhydrated.set(declaredIn, (keys = new Set()));
+    keys.add(key);
+  }
   let first = true;
 
   const run = (prev: T | undefined, session: symbol | null): ReturnType<typeof fn> => {
@@ -1756,16 +1833,16 @@ function landing(promise: PromiseLike<unknown>): PromiseLike<void> {
  */
 export function getHydrationData(session?: symbol): Record<string, unknown> {
   const result: Record<string, unknown> = {};
+  const emit = (from: symbol | null, bucket: Map<string, unknown>): void => {
+    const kept = unhydrated.get(from);
+    for (const [key, value] of bucket) if (kept?.has(key) !== true) result[key] = value;
+  };
   if (session !== undefined) {
     const bucket = hydrationData.get(session);
-    if (bucket) {
-      for (const [key, value] of bucket) result[key] = value;
-    }
+    if (bucket) emit(session, bucket);
     return result;
   }
-  for (const [, bucket] of hydrationData) {
-    for (const [key, value] of bucket) result[key] = value;
-  }
+  for (const [from, bucket] of hydrationData) emit(from, bucket);
   return result;
 }
 
@@ -1782,9 +1859,12 @@ export function clearHydrationData(session?: symbol): void {
     for (const [promise, from] of inFlight) {
       if (from === session) inFlight.delete(promise);
     }
+    unhydrated.delete(session);
+    unhydrated.delete(null);
   } else {
     hydrationData.clear();
     inFlight.clear();
+    unhydrated.clear();
   }
   resetChildIds(session);
 }

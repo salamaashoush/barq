@@ -25,6 +25,7 @@ export {
   attrLit,
   boundary,
   branch,
+  clientOnly,
   cls,
   content,
   dynamic,

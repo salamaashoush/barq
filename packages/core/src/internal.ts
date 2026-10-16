@@ -29,11 +29,12 @@ export {
   pendingSeedsOf,
   serverRendering,
   setAsyncSession,
+  setHydratable,
   settleStep,
   thrownBy,
   unclaimedSeeds,
 } from "./signals.ts";
 
-export { headKey, setHeadSink } from "./head.ts";
+export { headKey, reportModule, setHeadSink } from "./head.ts";
 
 export { isObject } from "./type-utils.ts";

@@ -44,12 +44,12 @@ export async function chunksOf(mod: FixtureModule): Promise<string[]> {
 }
 
 /** The inline scripts of one chunk, in document order. */
-function scriptsOf(chunk: string): string[] {
+export function scriptsOf(chunk: string): string[] {
   return [...chunk.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)].map((m) => m[1] ?? "");
 }
 
 /** The same chunk with its scripts removed, so appending it does not re-add them. */
-function withoutScripts(chunk: string): string {
+export function withoutScripts(chunk: string): string {
   return chunk.replace(/<script\b[^>]*>[\s\S]*?<\/script>/g, "");
 }
 

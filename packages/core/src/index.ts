@@ -125,6 +125,7 @@ export {
   effectAllocations,
   resetChildIds,
   createUniqueId,
+  isHydratable,
 } from "./signals.ts";
 export type {
   Context,
@@ -301,6 +302,7 @@ export {
   Reveal,
   Errored,
   NoHydration,
+  Hydration,
   Portal,
 } from "./components.ts";
 export { children } from "./components.ts";
@@ -309,6 +311,9 @@ export { children } from "./components.ts";
 // a router because every mechanism it rides is private to `signals.ts` and
 // `flow.ts`.
 export { lazy, lazyModule } from "./components.ts";
+// Solid 2.0's `clientOnly`, from `@solidjs/web`. The server backend calls the
+// string half in `@barqjs/server` instead, which never starts the import.
+export { clientOnly } from "./components.ts";
 // Solid 2.0's factory for a component chosen at run time, from `@solidjs/web`.
 export { dynamic } from "./components.ts";
 export type {
@@ -334,6 +339,7 @@ export type {
   DynamicTag,
   LazyComponent,
   LazyModule,
+  ClientOnlyComponent,
 } from "./components.ts";
 
 // JSX — the TYPES stay whole; `jsx`/`jsxs`/`jsxDEV` are gone. Bun's JSX

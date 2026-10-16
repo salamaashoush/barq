@@ -204,6 +204,8 @@ export interface Cursor {
 
 interface Session {
   container: Node;
+  /** A streamed boundary's own claim, after the root pass has ended. */
+  late?: boolean;
   /** Whether the served markup carries range comments at all. */
   marked: boolean;
   stack: Cursor[];
@@ -403,6 +405,7 @@ export function claimLate<T>(
   if (walk === null || SESSION !== null) return { value: work(), abandoned: null };
   const session: Session = {
     container,
+    late: true,
     marked: true,
     stack: [],
     mismatches: [],
@@ -418,6 +421,7 @@ export function claimLate<T>(
   } finally {
     SESSION = null;
     holeTaken = null;
+    drainHydrationEnd();
   }
 }
 
@@ -491,33 +495,61 @@ function hasRanges(root: Node): boolean {
 
 let afterHydration: (() => void)[] | null = null;
 
+/** Streamed boundaries the root pass claimed a fallback for, still owed their content. */
+let pendingBoundaries = 0;
+
 /**
- * Run `callback` once the hydration in progress is over, or on the next
- * microtask when none is.
+ * Solid 2.0's `onHydrationEnd`: run `callback` once the hydration phase is
+ * over, which is the root pass of `hydrate` and every streamed boundary it
+ * claimed a fallback for, each resumed or gone. On the next microtask when no
+ * hydration is in progress, on the server included.
  *
  * A microtask later in both cases. `hydrate` is synchronous to its end, and
  * what follows the claim there is the recovery render and the flush: a callback
  * run from `endHydration` itself would see the tree before either.
+ *
+ * For test tooling and markers. What a component renders must not branch on
+ * it: read `isHydrating()` where a value has to match the server.
  */
 export function onHydrationEnd(callback: () => void): void {
-  if (SESSION === null) {
+  if (SESSION === null && pendingBoundaries === 0) {
     queueMicrotask(callback);
     return;
   }
   (afterHydration ??= []).push(callback);
 }
 
+/**
+ * Hold the end of hydration open for a streamed boundary whose content has not
+ * arrived. Answers the release, which is idempotent, or `null` when the phase
+ * is not open: nothing is claiming, or a late claim runs after it has ended.
+ */
+export function holdHydration(): (() => void) | null {
+  if (SESSION === null || (SESSION.late === true && pendingBoundaries === 0)) return null;
+  pendingBoundaries++;
+  let held = true;
+  return () => {
+    if (!held) return;
+    held = false;
+    pendingBoundaries--;
+    drainHydrationEnd();
+  };
+}
+
+function drainHydrationEnd(): void {
+  if (SESSION !== null || pendingBoundaries !== 0 || afterHydration === null) return;
+  const callbacks = afterHydration;
+  afterHydration = null;
+  queueMicrotask(() => {
+    for (const callback of callbacks) callback();
+  });
+}
+
 export function endHydration(): HydrationReport {
   const session = SESSION;
   SESSION = null;
   holeTaken = null;
-  if (afterHydration !== null) {
-    const callbacks = afterHydration;
-    afterHydration = null;
-    queueMicrotask(() => {
-      for (const callback of callbacks) callback();
-    });
-  }
+  drainHydrationEnd();
   if (session === null) return { mismatches: [], claimed: 0, ranges: 0, built: 0 };
   return {
     mismatches: session.mismatches,

@@ -27,6 +27,7 @@ import {
   NotReadyError,
   Scope,
   ScopeMissingError,
+  block,
   childScope,
   classToString,
   getOwner,
@@ -46,6 +47,8 @@ import {
   isObject,
   keyMode,
   provideOn,
+  reportModule,
+  setHydratable,
   styleToString,
   thrownBy,
 } from "@barqjs/core/internal";
@@ -1428,7 +1431,7 @@ export function ssrIsland(props: { children: unknown }): SsrHtml {
 export function island(
   parent: Node | null,
   anchor: Node | null,
-  block: Block<unknown>,
+  body: Block<unknown>,
   flags = 0,
 ): SsrHtml {
   // The insertion pair is the SHARED_ABI tax and it is worth paying: one name,
@@ -1436,8 +1439,37 @@ export function island(
   // line for both backends. A string has no insertion pair to honour.
   refuseASite(parent, anchor, "island");
   void flags;
-  const inner = activate(getOwner(), block, NO_ARGS, 0, "branch");
+  // Opened whatever the body: the client's island takes this position among
+  // its siblings even when it builds nothing.
+  const scope = childScope(getOwner(), "branch");
+  setHydratable(scope, false);
+  const inner = body === null || body === undefined ? "" : buildUnder(scope, body, NO_ARGS);
   return html(`${OPEN}i:-->${inner}${CLOSE}`);
+}
+
+/**
+ * The server half of `@barqjs/core`'s `clientOnly`, under the same name, which
+ * the compiler's server backend calls in its place. The import is never
+ * started: what is rendered is `props.fallback`, in the first arm of the
+ * two-armed region the client builds, so the client's first render claims it.
+ *
+ * `moduleUrl` is the bundler's. The module's chunks and stylesheets become
+ * preload links, so the browser fetches it with the page rather than once the
+ * client has started.
+ */
+export function clientOnly(
+  _fn: () => Promise<unknown>,
+  _options?: { lazy?: boolean; export?: string },
+  moduleUrl?: string,
+): (props: { fallback?: unknown }) => SsrHtml {
+  return (props) => {
+    if (moduleUrl !== undefined) reportModule(moduleUrl);
+    const fallback = block((): unknown => {
+      const slot = props.fallback;
+      return typeof slot === "function" ? (slot as () => unknown)() : slot;
+    });
+    return branch(null, null, () => 0, [fallback, null], HYDRATE);
+  };
 }
 
 export function ssrPortal(props: { mount?: unknown; children: unknown }): SsrHtml {
@@ -1553,14 +1585,14 @@ const VOID_TAGS = new Set([
  * string render has one frame and nothing to order; a stream does, so every
  * boundary that parks below this one is told which group it is in.
  */
-export function reveal(order: unknown, collapsed: unknown, block: unknown): SsrHtml {
+export function reveal(order: unknown, collapsed: unknown, body: unknown): SsrHtml {
   const given = readValue(order, "Reveal.order");
   readValue(collapsed, "Reveal.collapsed");
   const scope = childScope(getOwner(), "provide");
   const outer = REVEAL;
   REVEAL = { order: typeof given === "string" ? given : "sequential" };
   try {
-    return runWithOwner(scope, () => html(esc(invokeBlock(block, NO_ARGS))));
+    return runWithOwner(scope, () => html(esc(invokeBlock(body, NO_ARGS))));
   } finally {
     REVEAL = outer;
   }

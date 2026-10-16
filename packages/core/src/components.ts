@@ -65,17 +65,29 @@
  * implementation of it rather than three.
  */
 
-import type { Accessor, AsDeclared, CallSite, StrictAccessor, StrictChild } from "./config.ts";
+import type {
+  Accessor,
+  AsDeclared,
+  CallSite,
+  Incoming,
+  StrictAccessor,
+  StrictChild,
+} from "./config.ts";
 import type { ArrayElement, Child, JSXElement } from "./dom.ts";
 import { reportModule } from "./head.ts";
+import { hydrating, onHydrationEnd } from "./hydration.ts";
+import { omit } from "./props.ts";
 import { resolveDynamic } from "./dom.ts";
 import { COUNT, HYDRATE, boundary, branch, each, island, portal, reveal } from "./flow.ts";
 import type { ComponentProps, JSX } from "./jsx-runtime.ts";
 import type { Block, Cell } from "./scope.ts";
 import {
   NotReadyError,
+  block,
   createMemo,
+  createSignal,
   getOwner,
+  hydrationScope,
   internalMemo,
   createRoot,
   isBlock,
@@ -513,6 +525,109 @@ export function Errored(props: ErroredProps): JSXElement {
 export function NoHydration(props: { children: unknown }): JSXElement {
   return island(null, null, props.children as Block<unknown>);
 }
+
+/**
+ * Solid 2.0's `<Hydration>`: hydration again, inside a `<NoHydration>` zone.
+ *
+ * In a server render under `<NoHydration>` the children are rendered as a root
+ * of their own, numbered under `id`, and their async values reach the page
+ * again. The client claims that markup with a root of its own, by calling
+ * `hydrate(fn, container, { renderId: id })` over the element holding it.
+ * Everywhere else, the client included, the children pass through: a client
+ * `<NoHydration>` builds nothing while hydrating, so there is nothing here to
+ * re-enter.
+ */
+export function Hydration(props: { id?: string; children?: unknown }): JSXElement {
+  const id = readValue(props.id, "Hydration.id") as string | undefined;
+  const scope = hydrationScope(getOwner(), id ?? "");
+  if (scope === null) return props.children as JSXElement;
+  return runWithOwner(scope, () => settled(props.children)) as JSXElement;
+}
+
+/**
+ * Run a Block to the value it renders, under the current owner. The string
+ * backend calls a function it is handed under whatever owner is current when
+ * it gets to it, which is past the scope a Block has to be built in.
+ */
+function settled(value: unknown): unknown {
+  if (typeof value === "function")
+    return settled((value as (owner: unknown) => unknown)(getOwner()));
+  if (Array.isArray(value)) return value.map(settled);
+  return value;
+}
+
+/**
+ * Solid 2.0's `clientOnly`: a dynamically imported component that renders only
+ * in the browser. The server renders `props.fallback` and never starts the
+ * import. The client shows the fallback until the import has resolved and
+ * hydration has ended, then swaps the component in.
+ *
+ * The import starts when `clientOnly` is called. `{ lazy: true }` defers it to
+ * the first render, and `{ export: "Name" }` takes a named export instead of
+ * `default`. `moduleUrl` is the bundler's, which the server half turns into
+ * preload links for the module.
+ *
+ * The swap is a two-armed region, the fallback in the first arm. The server
+ * writes that region with the first arm chosen, so the client's first render,
+ * which has to agree with it, claims the fallback the server wrote.
+ *
+ * @example
+ * ```tsx
+ * const Chart = clientOnly(() => import("./Chart.tsx"));
+ * // <Chart fallback={<div>Loading chart</div>} data={data()} />
+ * ```
+ */
+export function clientOnly<M extends Record<string, unknown>, K extends keyof M & string>(
+  fn: () => Promise<M>,
+  options: { lazy?: boolean; export: K },
+  moduleUrl?: string,
+): ClientOnlyComponent<M[K]>;
+export function clientOnly<T extends (props: never) => unknown>(
+  fn: () => Promise<{ default: T }>,
+  options?: { lazy?: boolean; export?: string },
+  moduleUrl?: string,
+): ClientOnlyComponent<T>;
+export function clientOnly(
+  fn: () => Promise<Record<string, unknown>>,
+  options: { lazy?: boolean; export?: string } = {},
+  _moduleUrl?: string,
+): ClientOnlyComponent<(props: Record<string, unknown>) => JSXElement> {
+  type Loaded = (props: unknown) => JSXElement;
+  // One module for every instance, so a second instance neither imports again
+  // nor waits on an import of its own.
+  const [loaded, setLoaded] = createSignal<Loaded | undefined>(undefined);
+  const load = (): void => {
+    void fn().then((module) => {
+      const picked = module[options.export ?? "default"] as Loaded;
+      setLoaded(() => picked);
+    });
+  };
+  let started = options.lazy !== true;
+  if (started) load();
+  return (props) => {
+    if (!started) {
+      started = true;
+      load();
+    }
+    const rest = omit(props, "fallback");
+    const ready = untrack(loaded);
+    if (ready !== undefined && !hydrating()) return untrack(() => ready(rest));
+    const [mounted, setMounted] = createSignal(!hydrating());
+    if (!untrack(mounted)) onHydrationEnd(() => setMounted(true));
+    return branch(
+      null,
+      null,
+      () => (loaded() !== undefined && mounted() ? 1 : 0),
+      [block(() => callSlot(props.fallback)), block(() => untrack(loaded)!(rest))],
+      HYDRATE,
+    );
+  };
+}
+
+/** What `clientOnly` returns: `T`'s props, and the `fallback` shown until it mounts. */
+export type ClientOnlyComponent<T> = (
+  props: (T extends (props: infer P) => unknown ? P : never) & Incoming<{ fallback?: JSX.Element }>,
+) => JSXElement;
 
 export function Portal(props: PortalProps): JSXElement {
   return portal(
