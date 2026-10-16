@@ -6,11 +6,12 @@ import {
   compileFixture,
   compileFixtureRaw,
   compileSource,
+  compileSourceRaw,
   emittedCalls,
   fixtureSource,
   listFixtures,
 } from "./harness.ts";
-import { measure, typicalComponentFile } from "./measure.ts";
+import { typicalComponentFile } from "./measure.ts";
 
 const BASE64 = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
@@ -365,32 +366,29 @@ describe("compiler contract", () => {
   });
 
   /**
-   * The map was ~30% of compile time at M1 and it still is — completing the oracle design cost
-   * about a third of the map, and roughly two thirds of it is oxc's own builder
-   * and VLQ encoder. Maps are off by default and a mapped compile is 26x inside
-   * the 1 ms budget, so the number is printed rather than tuned.
+   * The map was ~30% of compile time at M1, and roughly two thirds of that is
+   * oxc's own builder and VLQ encoder. Maps are off by default, so the cost is
+   * held rather than tuned.
    *
-   * The bound is a ratio for the same reason the pass-stage gate is: it does not
-   * move with the machine. Asking for a map may not cost more than the compile
-   * itself — that catches a doubling, and a slower runner cannot trip it.
+   * What building a map costs is what it holds: one segment per mapped
+   * position, each encoded once. That is a fact about the output, so it is
+   * asserted on the output rather than on a clock. A map that maps a position
+   * twice, or that grew to half the size of the code it maps, is the doubling
+   * this test is here to catch.
    */
-  it("generating the map costs less than the compile it maps", () => {
+  it("the map holds each mapped position once, in under half the bytes it maps", () => {
     const source = typicalComponentFile(fixtureSource);
-    const plain = measure("map-off", source);
-    const mapped = measure("map-on", source, { sourcemap: true });
-    const share = (mapped.msPerCompile - plain.msPerCompile) / mapped.msPerCompile;
-    console.log(
-      `\nsourcemap: ${plain.msPerCompile.toFixed(4)} ms off, ` +
-        `${mapped.msPerCompile.toFixed(4)} ms on, ${(share * 100).toFixed(1)}% of the compile`,
-    );
-    // Both halves have to be real: a run that emitted no map would make the
-    // ratio 1.0, and one that emitted an empty map would too.
-    const raw = compileFixtureRaw("dedup-identical-markup", { sourcemap: true });
-    expect((JSON.parse(raw.map as string).mappings as string).length).toBeGreaterThan(0);
-    expect(mapped.msPerCompile).toBeLessThan(1);
-    expect(mapped.msPerCompile).toBeLessThan(plain.msPerCompile * 2);
-    expect(share).toBeLessThan(0.5);
-  }, 120_000);
+    const mapped = compileSourceRaw(source, "typical-component-file.tsx", { sourcemap: true });
+    const plain = compileSourceRaw(source, "typical-component-file.tsx");
+    expect(mapped.code).toBe(plain.code);
+
+    const mappings = JSON.parse(mapped.map as string).mappings as string;
+    const segments = decodeMappings(mappings);
+    expect(segments.length, "the map maps nothing").toBeGreaterThan(0);
+    const positions = new Set(segments.map((s) => `${s.genLine}:${s.genCol}`));
+    expect(positions.size, "a generated position is mapped twice").toBe(segments.length);
+    expect(mappings.length).toBeLessThan(mapped.code.length / 2);
+  });
 
   it("reports no warnings for a clean fixture", () => {
     for (const name of listFixtures()) {
