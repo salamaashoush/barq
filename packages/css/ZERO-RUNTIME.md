@@ -9,6 +9,11 @@ Every number here was taken on the gallery, which is all forty-six components of
 `@barqjs/ui` on one page, built through Vite 8 with `barq()` from `@barqjs/vite` and
 lightningcss minification. `bunx vite build --config gallery/vite.config.ts`.
 
+This is a measurement log. Every lever below has since either landed or been
+rejected with its number, so a sentence describing a gap describes the code as
+it was measured. Where the code has moved on, the section says so in a line
+starting "Since then".
+
 ## What ships today
 
 |           | raw       | gzip      | brotli   |
@@ -83,6 +88,11 @@ atomsIn("barq.ui", { borderWidth: W }); // W is a template literal, not a string
 createTheme(theme, { brand: "#60a5fa" }); // never compiled at all
 ```
 
+Since then, none of these is silent. The unreadable value and the spread
+report BARQ017, and the other five compile: a layer named by a `const`, a
+computed key, a `const` declared below its use, a template literal and a local
+`createTheme`.
+
 `createTheme` is worth calling out separately: it is not in `Tag::of`, so it is
 not compiled in any case, including the local one the README implies works.
 
@@ -132,7 +142,9 @@ object reaches the runtime, not that none does.
 
 On its own the flag removes nothing from a bundle: it makes the fact
 checkable, and dropping the 4.34 KB is a second switch on top of it that nothing
-here has built yet. That is the honest order of the two, and the first is worth
+here has built yet. Since then, that switch still does not exist; what did land
+is compiling a fully readable `props` call to `mergeStyles`, which leaves the
+object walk out of a bundle that never calls it. That is the honest order of the two, and the first is worth
 having without the second.
 
 ### 2. Global tier order, and why it is not a cascade layer
@@ -183,7 +195,11 @@ the stylesheet, the class is on the element, and only a browser resolves the
 cascade.
 
 `collectCss` has always sorted globally, so **dev was already right and only the
-production bundle was not**. `orderCss` is that same sort, exported from the
+production bundle was not**. Since then, that turned out to hold only for atoms
+the runtime registered: a compiled module's sheet arrived in dev as one blob.
+The registry now splits each blob into rules and orders them the way
+`orderCss` does, and `compiler-rs/test/css-parity.test.ts` checks the two
+agree. `orderCss` is that same sort, exported from the
 compiler crate that owns `tier_of` and applied in the Vite plugin's
 `generateBundle`. `generateBundle` and not `transform`, because the ordering is a
 fact about the whole asset and `transform` is per file — which is the property
@@ -264,10 +280,11 @@ What does not fold:
 - **A `const` used above its declaration.** The fold reads a table the same walk
   is filling, so this cannot be fixed without a second pass, and it should not
   be: BARQ015 already documents the same rule for `css` blocks. BARQ017 makes it
-  visible, which is what was missing.
+  visible, which is what was missing. Since then, all three fold: a module-level
+  `const` is read wherever in the file it is declared.
 
 And one addition the item did not name. **`createTheme` over a local token set
-is statically readable and is not compiled.** The compiler already holds the
+is statically readable and is not compiled.** Since then, it is. The compiler already holds the
 `defineVars` result in `groups`, so the property name is in hand and the class
 and its rule can both be computed. That removes `createTheme`, `hash` and
 `register` from any bundle whose themes are local.
@@ -366,7 +383,8 @@ side-effect import and survives.
 gallery without it: 485 elements, 579 computed properties and the box, five
 resting scenarios and 28 overlay frames. **Zero differences.**
 
-Under `bun test` there is no integration, so those calls fall back to the
+Under `bun test` nothing resolves imports (`@barqjs/testing`'s preload
+compiles each `.tsx` file on its own), so those calls fall back to the
 runtime, which computes the same class names. Nothing diverges; only the CSS
 arrives through `<style id="barq-css">` rather than an asset, which is already
 true of every block in dev.

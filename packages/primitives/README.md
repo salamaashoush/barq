@@ -3,22 +3,28 @@
 The reactive primitives an application needs and a framework should not ship:
 scheduling, events, observers, browser APIs, reactive collections and motion.
 
+If you come from Solid, this covers the ground of Solid Primitives
+(`@solid-primitives/*`) in one package. The names drop the `create` prefix
+(`windowSize` for `createWindowSize`, `mediaQuery` for `createMediaQuery`), and
+the signatures are this package's own rather than a port, so read them below.
+
+## Install
+
 ```bash
 bun add @barqjs/primitives
 ```
 
-One package, twenty-seven modules, nothing running at import time. Ask for one
-primitive and you pay for one primitive:
+`@barqjs/core` is a peer dependency. One package, twenty-seven modules, nothing
+running at import time. Ask for one primitive and you pay for one primitive.
+Bundled from `dist` with `Bun.build`, minified, `@barqjs/core` left external:
 
-| what you import             | minified | gzipped |
-| --------------------------- | -------- | ------- |
-| `debounce`                  | 649 B    | 367 B   |
-| `mediaQuery`                | 1.2 kB   | 660 B   |
-| `windowSize` and `visible`  | 2.7 kB   | 1.2 kB  |
-| every export in the package | 30 kB    | 10.5 kB |
+- `debounce`: 652 B, 363 B gzipped
+- `mediaQuery`: 1.4 kB, 728 B gzipped
+- `windowSize` and `visible`: 2.8 kB, 1.3 kB gzipped
+- every export in the package: 30.6 kB, 10.9 kB gzipped
 
-Measured by `src/tree-shaking.test.ts`, which bundles those imports and fails if
-anything else survives.
+`src/tree-shaking.test.ts` bundles single imports and fails if a name from
+another module survives.
 
 ## Two rules the whole package follows
 
@@ -29,9 +35,9 @@ because a component body runs once:
 ```tsx
 import { on, windowSize } from "@barqjs/primitives";
 
-function Sidebar() {
+function Sidebar(props: { onClose: () => void }) {
   const { width } = windowSize();
-  on(document, "keydown", (e) => e.key === "Escape" && close());
+  on(document, "keydown", (e) => e.key === "Escape" && props.onClose());
 
   return <aside class={width() < 600 ? "narrow" : "wide"} />;
 }
@@ -228,18 +234,20 @@ const data = await raceTimeout(fetch(url, { signal: abortOnCleanup() }), 5000);
 ## Refs
 
 ```tsx
-import { mergeRefs, onElement, ref } from "@barqjs/primitives";
+import { elementSize, ref } from "@barqjs/primitives";
 
 const box = ref<HTMLDivElement>(); // a ref that is also a signal
 const size = elementSize(box); // …so an effect sees the element land
 <div ref={box.set} />;
 ```
 
-A `{ current }` box is not reactive — it is filled while the JSX around it is
+A `{ current }` box is not reactive. It is filled while the JSX around it is
 built, after the code holding it has run, so an effect reading it sees `null`
 forever. `ref()` is a signal instead. `mergeRefs` is for forwarding: one `ref`
 prop feeding several consumers, keeping the `{ current }` form and running the
-cleanup a callback returned.
+cleanup a callback returned. `onElement(box, (el) => teardown)` runs with the
+element whenever one lands, and runs the teardown when it goes, which is the
+hook for a chart, a map or an editor that wants a node.
 
 ## State machines
 
@@ -296,7 +304,7 @@ feed.send("hello"); // buffered if it is not open yet, flushed on connect
 ```
 
 Reconnects with exponential backoff on an unclean close and never on a clean
-one — `close()` and code 1000 mean "I am done", and retrying through that is
+one: `close()` and code 1000 mean "I am done", and retrying through that is
 how a logout loop starts. The retry budget counts consecutive failures, so a
 socket that drops once an hour keeps its full budget each time. A reactive URL
 reconnects to the new one.
@@ -310,58 +318,53 @@ signal, `interval` and `timeout` with reactive delays, `raf` and `fps`,
 `documentTitle`, `devicePixelRatio`, `languages`, `fullscreen`, `geolocation`,
 and `shared` and `sharedKeyed` for building your own shared source.
 
-Every module is also its own entry point: `@barqjs/primitives/media` and a
+## Every module
+
+Each module is also its own entry point: `@barqjs/primitives/media` and a
 tree-shaken import from the root cost the same. `src/dist-entries.test.ts`
 checks that the two are still one module, because two copies of the registry
 would mean two listeners.
 
-## Every module
-
-Each is also its own entry point — `@barqjs/primitives/media` and a tree-shaken
-import from the root cost the same.
-
-| module        | what is in it                                                                                                         |
-| ------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `scheduled`   | `debounce` `throttle` `scheduleIdle` `leading` `leadingAndTrailing` `scheduled`                                       |
-| `derived`     | `debounced` `throttled` `deferred` `previous` `whenever` `every` `some` `not` `selector`                              |
-| `event`       | `on` `once` `onMap` `eventSignal`                                                                                     |
-| `observers`   | `resizeObserver` `intersectionObserver` `mutationObserver`                                                            |
-| `element`     | `elementSize` `bounds` `visible` `windowSize`                                                                         |
-| `scroll`      | `windowScroll` `scrollPosition`                                                                                       |
-| `mouse`       | `mousePosition` `mouseInElement`                                                                                      |
-| `keyboard`    | `keysDown` `isKeyDown` `shortcut` `parseCombo`                                                                        |
-| `focus`       | `activeElement` `focused` `focusWithin` `clickOutside`                                                                |
-| `media`       | `mediaQuery` `breakpoints` `prefersDark` `prefersReducedMotion` `coarsePointer`                                       |
-| `storage`     | `persisted` `persistedSession` `clearPersisted` `peekPersisted`                                                       |
-| `browser`     | `online` `pageVisible` `userIdle` `permission` `devicePixelRatio` `languages` `documentTitle`                         |
-| `clipboard`   | `clipboard` `writeClipboard` `readClipboard`                                                                          |
-| `fullscreen`  | `fullscreen` `fullscreenElement`                                                                                      |
-| `geolocation` | `geolocation`                                                                                                         |
-| `refs`        | `ref` `mergeRefs` `onElement`                                                                                         |
-| `collections` | `ReactiveMap` `ReactiveSet`                                                                                           |
-| `virtual`     | `virtual`                                                                                                             |
-| `machine`     | `machine`                                                                                                             |
-| `history`     | `history`                                                                                                             |
-| `animation`   | `tween` `spring` `easing` `cubicBezier`                                                                               |
-| `websocket`   | `websocket`                                                                                                           |
-| `timer`       | `timeout` `interval` `now` `elapsed`                                                                                  |
-| `raf`         | `raf` `fps`                                                                                                           |
-| `promise`     | `until` `raceTimeout` `sleep` `abortOnCleanup`                                                                        |
-| `bus`         | `emitter` `bus` `trigger`                                                                                             |
-| `utils`       | `access` `asAccessor` `asArray` `chain` `clamp` `arrayEquals` `microtask` `owned` `tryCleanup` `shared` `sharedKeyed` |
+- `scheduled`: `debounce`, `throttle`, `scheduleIdle`, `leading`, `leadingAndTrailing`, `scheduled`.
+- `derived`: `debounced`, `throttled`, `deferred`, `previous`, `whenever`, `every`, `some`, `not`, `selector`.
+- `event`: `on`, `once`, `onMap`, `eventSignal`.
+- `observers`: `resizeObserver`, `intersectionObserver`, `mutationObserver`.
+- `element`: `elementSize`, `bounds`, `visible`, `windowSize`.
+- `scroll`: `windowScroll`, `scrollPosition`.
+- `mouse`: `mousePosition`, `mouseInElement`.
+- `keyboard`: `keysDown`, `isKeyDown`, `shortcut`, `parseCombo`.
+- `focus`: `activeElement`, `focused`, `focusWithin`, `clickOutside`.
+- `media`: `mediaQuery`, `breakpoints`, `prefersDark`, `prefersReducedMotion`, `coarsePointer`.
+- `storage`: `persisted`, `persistedSession`, `clearPersisted`, `peekPersisted`.
+- `browser`: `online`, `pageVisible`, `userIdle`, `permission`, `devicePixelRatio`, `languages`, `documentTitle`.
+- `clipboard`: `clipboard`, `writeClipboard`, `readClipboard`.
+- `fullscreen`: `fullscreen`, `fullscreenElement`.
+- `geolocation`: `geolocation`.
+- `refs`: `ref`, `mergeRefs`, `onElement`.
+- `collections`: `ReactiveMap`, `ReactiveSet`.
+- `virtual`: `virtual`.
+- `machine`: `machine`.
+- `history`: `history`.
+- `animation`: `tween`, `spring`, `easing`, `cubicBezier`.
+- `websocket`: `websocket`.
+- `timer`: `timeout`, `interval`, `now`, `elapsed`.
+- `raf`: `raf`, `fps`.
+- `promise`: `until`, `raceTimeout`, `TimeoutError`, `sleep`, `abortOnCleanup`.
+- `bus`: `emitter`, `bus`, `trigger`.
+- `utils`: `noop`, `trueFn`, `falseFn`, `access`, `asAccessor`, `asArray`, `chain`, `clamp`, `arrayEquals`, `microtask`, `owned`, `tryCleanup`, `shared`, `sharedKeyed`.
 
 ## On the server
 
 Nothing here needs a DOM to import. The browser primitives read a neutral
-value — `windowSize` is zero, `mediaQuery` is `false`, `online` and
-`pageVisible` are `true` — and subscribe to nothing, so a string render is not
+value (`windowSize` is zero, `mediaQuery` is `false`, `online` and
+`pageVisible` are `true`) and subscribe to nothing, so a string render is not
 left holding a timer or an animation frame. Read them again after hydration if
 a first paint has to differ.
 
 Two deliberate exceptions. `leading` and `leadingAndTrailing` run their first
 call, because the leading edge is a moment a string render has and the end of
 the window is not; and `sleep`, `until` and `raceTimeout` work normally,
-because waiting is not a DOM concern. `timeout` and `interval` are inert —
+because waiting is not a DOM concern. `timeout` and `interval` are inert:
 use `sleep` where the point is the waiting rather than the scheduling.
 
 `src/server.test.ts` measures all of this in a process that never had a DOM,

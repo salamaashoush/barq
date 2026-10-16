@@ -4,7 +4,28 @@ Nested CSS and atomic styles, written beside the component and compiled to a
 stylesheet at build time. `css` returns a class name; the call does not survive
 the build.
 
+## Install
+
+```bash
+bun add @barqjs/css
+bun add -d @barqjs/vite
+```
+
+The compiler in `barq()` from `@barqjs/vite` is what folds the calls. Without
+it every call still works, evaluated in the browser by this package's runtime.
+
+```ts
+// vite.config.ts
+import barq from "@barqjs/vite";
+import { defineConfig } from "vite";
+
+export default defineConfig({ plugins: [barq()] });
+```
+
+## A block
+
 ```tsx
+import type { ParentProps } from "@barqjs/core";
 import { css } from "@barqjs/css";
 
 const card = css`
@@ -21,7 +42,7 @@ const card = css`
   }
 `;
 
-export function Card(props: { children?: unknown }) {
+export function Card(props: ParentProps) {
   return <div class={card}>{props.children}</div>;
 }
 ```
@@ -32,8 +53,11 @@ JSX is lowered, so `class={card}` is already a literal when the compiler folds
 the template, and the element carries no class channel and no `renderEffect`:
 
 ```js
-const _tmpl$1 = _$template(`<div class="b1n4k2p0"></div>`);
+const _tmpl$1 = /* @__PURE__ */ _$template(`<div class="b1n4k2p0"></div>`);
 ```
+
+A dev build names the class after its binding instead, `card_1n4k2p0`, so
+devtools shows where a rule came from.
 
 Resolution is by symbol, so a local function named `css` is not this `css`, and
 `import { css as style }` still is.
@@ -70,7 +94,7 @@ Concatenating classes composes blocks, and which one wins is then decided by the
 order they were written in the stylesheet, not the order they were passed. That
 is the bug every design system hits at scale: a variant that loses to its own
 base because the bundler ordered the rules that way. It is why there is no
-`clsx` here — one way to compose, and it answers the question.
+`clsx` here: one way to compose, and it answers the question.
 
 An atom is one property, so the question is answerable without the cascade:
 
@@ -115,6 +139,27 @@ atoms(base, { color: props.colour }); // an absent prop leaves the base alone
 ```
 
 Arrays are arguments like any other, so `atoms([base, active() && loud])` works.
+
+### Named conditions
+
+The same breakpoint written in two places is two spellings, and one spelled
+`min-width:768px` is a second condition with its own hash and its own place in
+the cascade. `defineConditions` names each once:
+
+```ts
+import { atoms, defineConditions } from "@barqjs/css";
+
+export const when = defineConditions({
+  md: "@media (min-width: 768px)",
+  dark: "[data-theme=dark] &",
+});
+
+atoms({ padding: { default: 4, [when.md]: 8 }, [when.dark]: { color: "white" } });
+```
+
+The object comes back as it went in, so a computed key is the condition's own
+text and folds like a literal one, in this module or through an import. A value
+that is not a condition throws at once rather than being read as a property.
 
 `firstThatWorks` emits the declaration repeated, best last, which is CSS's own
 fallback mechanism written the right way round:
@@ -205,8 +250,8 @@ because it is that call: the compiler read `layer("barq.ui")` in **this** module
 so the layer is still a literal at the call site. `ui.layer` is the name, if you
 need it.
 
-`variants` is deliberately not on it. It writes no CSS — it composes classes
-that already carry the layer they were declared in — so there is nothing to
+`variants` is deliberately not on it. It writes no CSS (it composes classes
+that already carry the layer they were declared in), so there is nothing to
 bind.
 
 An arrow function of your own does not fold, which is the difference:
@@ -227,24 +272,17 @@ under an at-rule, since `@media` adds none. The atom's **tier** decides that one
 and a tier is an ORDER: a production build runs `orderCss` over the concatenated
 asset, rule by rule.
 
-**In dev the sort is per MODULE, not per rule, and that is a real difference.**
-`registerCss` files a compiled module's whole stylesheet under one key with one
-tier, so `collectCss`'s stable sort can only order the blobs. Within a blob the
-order is whatever the module wrote, and across blobs it is import order. Two
-modules writing the same atom therefore emit it twice, and a later module's copy
-of `width: 100%` sits after an earlier module's `@media (…) { width: 24rem }`
-and beats it. Measured on `@barqjs/ui`'s gallery: a toast region 384px wide in
-the build and full-width in dev, from one source. lightningcss deduplicates the
-pair in a build, which is why `orderCss` has one of each to order.
-
-Closing it means sorting rule by rule at run time, which is a second
-implementation of what the compiler crate's `tier_of` already decides. That is
-the one thing `crates/barq-css`'s parity test exists to prevent, so it is a
-decision rather than an oversight. Composing a group from another module used to invert such a pair,
-because that module's rules were registered first — measured on `@barqjs/ui`'s
-gallery, a calendar laid out in a column at 1280px because
-`@media (width >= 48rem) { flex-direction: row }` lost to a `column` a later
-module wrote.
+**Dev orders the same way.** `registerCss` files a compiled module's
+stylesheet under the module's id, and the registry splits it back into rules,
+reads each atom's tier off its rule text, and orders atoms as `orderCss` orders
+the built asset. An atom two modules share is printed once.
+`compiler-rs/test/css-parity.test.ts` checks the runtime's sheet against
+`orderCss` over the same input, because a second way of deciding a tier is only
+safe while the two agree. Before this, composing a group from another module
+could invert such a pair, because that module's rules were registered first:
+measured on `@barqjs/ui`'s gallery, a calendar laid out in a column at 1280px
+because `@media (width >= 48rem) { flex-direction: row }` lost to a `column` a
+later module wrote.
 
 A tier is never a cascade layer, and that distinction is load-bearing. CSS
 decides by specificity first and order second; a layer decides before either. One
@@ -307,7 +345,7 @@ A token used inside a block in the same module folds:
 ```ts
 const card = css`
   color: ${theme.brand};
-  padding: ${theme.radius};
+  border-radius: ${tokens.radius};
 `;
 ```
 
@@ -416,7 +454,7 @@ It **merges**, which is what `atoms` does and what the rest of this package
 means by composing. Joining was the other option and it was wrong: two atoms for
 one property both apply and the stylesheet's order decides, so a `size` that
 sets `width` over a `base` that sets `width` lost to its own base. Merging costs
-a whole-block arm nothing — a `css` block's class carries no property, so it
+a whole-block arm nothing: a `css` block's class carries no property, so it
 merges against itself and survives whatever follows it.
 
 An axis spelled `{ true: …, false: … }` is selected with a boolean, and its
@@ -447,7 +485,7 @@ Most projects put the tokens in one file and import them, and share treatments
 the same way. All of it folds:
 
 ```ts
-// tokens.ts — no `@barqjs/css` in it at all
+// tokens.ts, with no `@barqjs/css` in it at all
 export const BRAND = "var(--brand)";
 
 // theme.ts
@@ -457,7 +495,7 @@ export const theme = defineVars({ brand: "#3b82f6" });
 export const ui = layer("app");
 export const shared = createIn("app", { ring: { outlineWidth: "3px" } });
 
-// card.tsx — every one of these is a literal after the build
+// card.tsx, where every one of these is a literal after the build
 const a = atomsIn("app", { color: theme.brand, borderColor: BRAND });
 const b = atomsIn("app", shared.ring, { padding: 12 });
 const c = ui({ padding: 4 });
@@ -470,11 +508,12 @@ the same thing in dev and in a build. That is what separates it from StyleX,
 whose `@layer priority1 … priorityN` is derived from every rule in the project
 and needs a store shared across the client, SSR and RSC environments to exist at
 all. It is also not vanilla-extract's answer, which is to start a second Vite
-server and _execute_ the `.css.ts` file — the reason that file has to be a
+server and _execute_ the `.css.ts` file, which is why that file has to be a
 different kind of file from one that ships.
 
 Costs one extra compile per imported file, cached by path and mtime, and only
-for the files something asked for. `resolveImports: false` turns it off.
+for the files something asked for. `barq({ compiler: { resolveImports: false } })`
+turns it off.
 
 Two things follow from it and are worth knowing.
 
@@ -482,7 +521,8 @@ Two things follow from it and are worth knowing.
   leave it with no used export, and a bundler then drops the module and the
   stylesheet import inside it. The consumer carries that stylesheet instead, so
   the rules a class on the page needs are still there.
-- **Under `bun test` there is no integration**, so those calls fall back to the
+- **Under `bun test` nothing resolves imports.** `@barqjs/testing`'s preload
+  compiles each `.tsx` file on its own, so those calls fall back to the
   runtime, which computes the same class names. Nothing diverges; only the CSS
   arrives through `<style id="barq-css">` rather than an asset, which is already
   true of every block in dev.
@@ -502,7 +542,8 @@ arrives.
   defaults to lightningcss, so minification, prefixing and target downleveling
   all happen downstream and no MPL-licensed crate enters barq's Cargo tree.
 - **Dev, and `bun test`.** Neither has a bundle to emit an asset from, so the
-  compiler appends `registerCss(id, css)` to the module instead. Keyed by module
+  integration (`@barqjs/vite` in dev, `@barqjs/testing`'s preload under
+  `bun test`) appends `registerCss(id, css)` to the module instead. Keyed by module
   id, so an HMR update replaces that module's rules rather than stacking a
   second copy.
 
@@ -515,8 +556,9 @@ stylesheet of any kind.
 There is one, and it is the escape hatch rather than the plan. It evaluates the
 blocks the compiler declined (`BARQ015` names each one and why), and it is what
 makes a component work under `bun test` with no build in front of it. Its
-classes are prefixed `r` where compiled ones are prefixed `b`, so an `r` in
-devtools is how you find a block that did not compile.
+classes are prefixed `r`, where compiled ones are prefixed `b` (or named after
+their binding in dev), so an `r` in devtools is how you find a block that did
+not compile.
 
 The package is `sideEffects: false`. An application that never writes an
 uncompiled block pays 76 bytes for the registry the server entry imports, and
@@ -533,23 +575,36 @@ painting after each rule, and 0.72 ms painting once.
 import { collectCss, setCssSink } from "@barqjs/css";
 ```
 
-`collectCss()` returns the rules registered when the application was **imported**
-— module scope, which every request needs. A rule a component body registers
-belongs to **one** request, and `setCssSink` is how a host claims it:
+`collectCss()` returns the shared sheet: every rule registered so far, ordered.
+A production build registers only what the compiler declined, because a
+compiled block's CSS is an asset the document links. Dev registers everything,
+which is what makes a server-rendered dev page arrive styled.
+
+A server imports the application once and renders many requests, so a host
+also needs to know which rules arrived during one render. `setCssSink` installs
+a function that is handed a copy of every new rule as it registers:
 
 ```ts
 setCssSink((key, rules) => {
-  // return true if this host took the rule, false to leave it in the shared sheet
+  // attribute the rule to the request in flight; the return value is unused
+  return false;
 });
 ```
 
-`@barqjs/start` installs a sink backed by the `AsyncLocalStorage` it already
-uses for `withRequest`, so two requests in flight at once cannot take each
-other's rules. Without the split, a server imported the application once and
-served forever: `/about` inlined the rules a request for `/css` had produced.
+It is a copy, not a move: the rule reaches the shared sheet either way. A
+lazily routed module registers its rules inside whichever request first
+imported it, and a sink that took them left every later page with no styles for
+that module. A sink may also carry `head(late)`, which is told each time the
+whole sheet is read (how a host serialises `<head>`) and handed a reader for
+every rule registered after that read.
 
-In a browser no sink is installed and everything goes to the one sheet, which is
-right — a rule from one route is still valid after navigating away and back.
+The server entry `@barqjs/vite` generates installs one through
+`installCssSink` from `@barqjs/start`, backed by the `AsyncLocalStorage` it
+already uses for `withRequest`, so two requests in flight at once cannot take
+each other's rules.
+
+In a browser no sink is installed and everything goes to the one sheet, which
+is right: a rule from one route is still valid after navigating away and back.
 
 ## The whole surface
 
@@ -558,19 +613,18 @@ Everything a consumer may rely on, in one list. Anything not here is
 shorthand map exist so the compiler and this package can be checked against each
 other, and none of them is stable.
 
-|                                           |                                              |
-| ----------------------------------------- | -------------------------------------------- |
-| `css`, `keyframes`, `globalCss`           | a block, an animation, whole rules           |
-| `atoms`, `atomsIn`                        | declarations as classes, merged              |
-| `create`, `createIn`                      | a named set of those                         |
-| `props`, `propsIn`                        | the `class` and `style` an element takes     |
-| `mergeStyles`                             | what a compiled `props` call becomes         |
-| `dynamic`, `dynamicIn`                    | a group whose values arrive at run time      |
-| `layer`                                   | all five above, with one layer bound         |
-| `variants`                                | a class per combination, merged and memoised |
-| `defineVars`, `globalVars`, `createTheme` | tokens as custom properties                  |
-| `firstThatWorks`                          | a declaration repeated, best last            |
-| `collectCss`, `registerCss`, `setCssSink` | the registry, for a server render            |
+- `css`, `keyframes`, `globalCss`: a block, an animation, whole rules.
+- `atoms`, `atomsIn`: declarations as classes, merged.
+- `create`, `createIn`: a named set of those.
+- `defineConditions`: conditions named once, for use as keys.
+- `props`, `propsIn`: the `class` and `style` an element takes.
+- `mergeStyles`: what a compiled `props` call becomes.
+- `dynamic`, `dynamicIn`: a group whose values arrive at run time.
+- `layer`: `atomsIn`, `createIn`, `propsIn` and `dynamicIn` with one layer bound.
+- `variants`: a class per combination, merged and memoised.
+- `defineVars`, `globalVars`, `createTheme`: tokens as custom properties.
+- `firstThatWorks`: a declaration repeated, best last.
+- `collectCss`, `registerCss`, `setCssSink`: the registry, for a server render.
 
 Every one of the pairs reads the same: the bare name is unlayered, the `…In`
 name takes a cascade layer as its first argument, and `layer(name)` binds that
@@ -586,19 +640,22 @@ sass-spec and the Less suite: native nesting, `@container`, `@layer`, `@scope`,
 
 A preprocessor's syntax is not CSS and is refused by name (`BARQ014`). The
 parser runs in SCSS mode because that is the only dialect its interpolation
-placeholders are legal in, and everything that widening lets through — `$var`,
-`@mixin`, `@if` — would otherwise compile to a rule no browser applies.
+placeholders are legal in, and everything that widening lets through (`$var`,
+`@mixin`, `@if`) would otherwise compile to a rule no browser applies.
 
 ## Diagnostics
 
-| code                                      | when                                                                            |
-| ----------------------------------------- | ------------------------------------------------------------------------------- |
-| [BARQ014](../compiler-rs/docs/BARQ014.md) | the block is not CSS this compiler can compile                                  |
-| [BARQ015](../compiler-rs/docs/BARQ015.md) | an interpolation is known only at run time, so the block stays on the runtime   |
-| [BARQ016](../compiler-rs/docs/BARQ016.md) | `atoms` has more than one conditional argument, so it stays on the runtime      |
-| [BARQ017](../compiler-rs/docs/BARQ017.md) | a style object could not be read, so `@barqjs/css`'s runtime evaluates the call |
+- [BARQ014](../compiler-rs/docs/BARQ014.md), an error: the block is not CSS
+  this compiler can compile.
+- [BARQ015](../compiler-rs/docs/BARQ015.md), a note: an interpolation is known
+  only at run time, so the block stays on the runtime.
+- [BARQ016](../compiler-rs/docs/BARQ016.md), a note: `atoms` has more than one
+  conditional argument, so it stays on the runtime.
+- [BARQ017](../compiler-rs/docs/BARQ017.md), a note: a style object could not
+  be read, so `@barqjs/css`'s runtime evaluates the call.
 
-`strictCss: true` turns all four into errors. A build that passes with it on has
+`barq({ compiler: { strictCss: true } })` turns all four into errors, and an
+explicit `checks` entry for one code still wins over it. A build that passes with it on has
 no call left for the runtime to evaluate, which is the fact worth being able to
 check rather than assert; `@barqjs/ui` passes today. `ZERO-RUNTIME.md` measures
 what that is worth.
@@ -622,7 +679,7 @@ Left to run, and why:
 
 - **`variants`** emits no CSS at all. Its arms are compiled blocks; the function
   merges their class strings, and a selection is made at run time because that
-  is the point. 50 ns, memoised per selection — a spec has finitely many.
+  is the point. 50 ns, memoised per selection, since a spec has finitely many.
 - **A dynamic value.** A colour from a signal is not knowable at build time,
   which is why it becomes a custom property.
 - **A value from a module the integration cannot resolve.** See below: with
