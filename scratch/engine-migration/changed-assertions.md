@@ -1064,3 +1064,8 @@ Each now orders what it waits on; no expectation's subject changed, and what mov
 - `ui/src/ssr.test.ts`: each probe is named once before its build is awaited. The output name was
   read from the shared counter after the await, so a probe whose test had timed out wrote over the
   next probe's module, and that test asserted on another page's markup.
+
+- `compiler/test/__snapshots__/modes.test.ts.snap`: the digests of
+  `sem-own-render-disposer-disposes` and `sem-testing-wrapper-eager` moved because the package
+  rename rewrote one comment in each fixture ("compiler-rs" to "compiler"). Emitted code keeps
+  comments, so the digest of every mode that row covers changed with them; no other row moved.
