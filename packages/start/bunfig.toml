@@ -11,10 +11,6 @@ root = "."
 coverage = true
 coverageDir = "./coverage"
 
-# Timeout per test (ms)
-timeout = 10000
-
-# Run tests in parallel
 smol = true
 
 [install]

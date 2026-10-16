@@ -83,7 +83,7 @@
     "build": "tsdown",
     "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
-    "test": "bun test && bun test --conditions=development"
+    "test": "bun test --timeout 10000 && bun test --timeout 10000 --conditions=development"
   },
   "dependencies": {
     "@barqjs/css": "workspace:*",

@@ -185,8 +185,8 @@
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
-    "test": "bun test && bun test --conditions=development",
-    "test:coverage": "bun test --coverage",
+    "test": "bun test --timeout 10000 && bun test --timeout 10000 --conditions=development",
+    "test:coverage": "bun test --timeout 10000 --coverage",
     "typecheck": "tsc --noEmit"
   },
   "devDependencies": {

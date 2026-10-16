@@ -49,7 +49,7 @@
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
-    "test": "bun test && bun test --conditions=development",
+    "test": "bun test --timeout 10000 && bun test --timeout 10000 --conditions=development",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

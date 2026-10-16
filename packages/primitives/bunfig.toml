@@ -1,7 +1,6 @@
 [test]
 root = "./src"
 preload = ["./src/test-setup.ts"]
-timeout = 10000
 
 [install]
 frozen = false

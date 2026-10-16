@@ -3,4 +3,3 @@
 # its generated temp modules both live under test/.
 root = "./test"
 preload = ["./test/preload.ts"]
-timeout = 30000

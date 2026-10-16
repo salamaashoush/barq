@@ -9,7 +9,6 @@ root = "./src"
 preload = ["./src/test-setup.ts"]
 
 coverage = false
-timeout = 10000
 smol = true
 
 [install]

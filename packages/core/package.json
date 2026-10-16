@@ -95,7 +95,7 @@
     "build": "tsdown",
     "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.conformance.json",
-    "test": "bun test && bun test --conditions=development"
+    "test": "bun test --timeout 10000 && bun test --timeout 10000 --conditions=development"
   },
   "dependencies": {
     "@solidjs/signals": "2.0.0-rc.15",

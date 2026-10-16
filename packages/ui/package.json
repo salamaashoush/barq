@@ -456,8 +456,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "bun test && bun test --conditions=development",
-    "test:coverage": "bun test --coverage",
+    "test": "bun test --timeout 10000 && bun test --timeout 10000 --conditions=development",
+    "test:coverage": "bun test --timeout 10000 --coverage",
     "exports": "bun run tools/exports.ts",
     "registry": "bun run tools/registry.ts",
     "verify": "bun --preload ./src/compile-setup.ts tools/verify.ts",

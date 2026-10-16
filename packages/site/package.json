@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "bun dist/server/serve.js",
     "typecheck": "tsc --noEmit",
-    "test": "bun test",
+    "test": "bun test --timeout 30000",
     "theme": "bun run tools/emit-theme.ts"
   },
   "dependencies": {

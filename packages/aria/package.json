@@ -321,8 +321,8 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "bun test && bun test --conditions=development",
-    "test:coverage": "bun test --coverage"
+    "test": "bun test --timeout 10000 && bun test --timeout 10000 --conditions=development",
+    "test:coverage": "bun test --timeout 10000 --coverage"
   },
   "devDependencies": {
     "@barqjs/compiler-rs": "workspace:*",
