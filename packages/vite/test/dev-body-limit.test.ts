@@ -12,6 +12,13 @@ const ROOT = fileURLToPath(new URL("./fixtures/start", import.meta.url));
 let server: ViteDevServer;
 let origin = "";
 
+const add = (title: string, id = "todos.ts#addTodo"): Promise<Response> =>
+  fetch(`${origin}${RPC_PREFIX}${encodeURIComponent(id)}${DATA_SUFFIX}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin },
+    body: JSON.stringify({ input: encodeWire(title) }),
+  });
+
 beforeAll(async () => {
   server = await createServer({
     root: ROOT,
@@ -36,18 +43,17 @@ beforeAll(async () => {
   await server.listen();
   const address = server.httpServer?.address() as { port: number };
   origin = `http://127.0.0.1:${address.port}`;
-});
+  // The first server-function request is what loads @barqjs/start's server
+  // graph through the module runner, from source. Answering one here keeps that
+  // out of the tests, which then time only their own request. Measured at
+  // 0.15 s idle and 4 s with every core contended; a CI runner sharing its
+  // cores with the other packages' suites has taken over 5 s.
+  expect((await add("probe", "todos.ts#missing")).status).toBe(404);
+}, 30_000);
 
 afterAll(async () => {
   await Promise.race([server?.close(), new Promise<void>((resolve) => setTimeout(resolve, 2_000))]);
 });
-
-const add = (title: string): Promise<Response> =>
-  fetch(`${origin}${RPC_PREFIX}${encodeURIComponent("todos.ts#addTodo")}${DATA_SUFFIX}`, {
-    method: "POST",
-    headers: { "content-type": "application/json", origin },
-    body: JSON.stringify({ input: encodeWire(title) }),
-  });
 
 describe("the dev server reads a body under the cap the project configured", () => {
   test("a call over it is a 413, through a real socket", async () => {
