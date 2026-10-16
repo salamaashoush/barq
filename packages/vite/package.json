@@ -20,9 +20,19 @@
   },
   "files": [
     "dist",
-    "boundary-modules.d.ts"
+    "boundary-modules.d.ts",
+    "src",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "!src/**/test-*.ts",
+    "!src/**/*-harness.ts",
+    "!src/**/*-probe.ts",
+    "!src/**/fixtures",
+    "!src/**/fixtures.ts",
+    "!src/**/ssr-fixtures.ts"
   ],
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -44,8 +54,7 @@
     "build": "tsdown",
     "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
-    "test": "bun test && bun test --conditions=development",
-    "prepublishOnly": "bun run build"
+    "test": "bun test && bun test --conditions=development"
   },
   "dependencies": {
     "@barqjs/compiler-rs": "workspace:*",
@@ -76,6 +85,10 @@
     }
   },
   "engines": {
-    "node": ">=20.19.0"
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }

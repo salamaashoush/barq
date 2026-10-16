@@ -23,7 +23,16 @@
   "files": [
     "registry",
     "src",
-    "styles"
+    "styles",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "!src/**/test-*.ts",
+    "!src/**/*-harness.ts",
+    "!src/**/*-probe.ts",
+    "!src/**/fixtures",
+    "!src/**/fixtures.ts",
+    "!src/**/ssr-fixtures.ts",
+    "!src/compile-setup.ts"
   ],
   "type": "module",
   "sideEffects": [
@@ -453,8 +462,11 @@
     "registry": "bun run tools/registry.ts",
     "verify": "bun --preload ./src/compile-setup.ts tools/verify.ts",
     "audit": "bun --preload ./src/compile-setup.ts tools/audit.ts",
-    "prepublishOnly": "bun run registry",
     "styles": "bun run tools/styles.ts"
+  },
+  "dependencies": {
+    "@tanstack/charts": "^1.1.0",
+    "embla-carousel": "^8.6.0"
   },
   "devDependencies": {
     "@barqjs/aria": "workspace:*",
@@ -488,8 +500,8 @@
   "engines": {
     "bun": ">=1.1.0"
   },
-  "dependencies": {
-    "@tanstack/charts": "^1.1.0",
-    "embla-carousel": "^8.6.0"
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }

@@ -19,9 +19,22 @@
   },
   "files": [
     "dist",
-    "src"
+    "src",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "!src/**/test-*.ts",
+    "!src/**/*-harness.ts",
+    "!src/**/*-probe.ts",
+    "!src/**/fixtures",
+    "!src/**/fixtures.ts",
+    "!src/**/ssr-fixtures.ts",
+    "!src/preload.ts"
   ],
   "type": "module",
+  "sideEffects": [
+    "./dist/index.js",
+    "./src/index.ts"
+  ],
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -56,15 +69,15 @@
       "import": "./dist/user.js"
     }
   },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
-    "lint": "bunx @biomejs/biome check src",
-    "lint:fix": "bunx @biomejs/biome check --write --unsafe src",
-    "format": "bunx @biomejs/biome format --write src",
-    "test": "bun test && bun test --conditions=development",
-    "prepublishOnly": "bun run build"
+    "test": "bun test && bun test --conditions=development"
   },
   "dependencies": {
     "@testing-library/dom": "^10.4.2"

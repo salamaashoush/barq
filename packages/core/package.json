@@ -24,9 +24,19 @@
   "files": [
     "dist",
     "docs",
-    "src"
+    "src",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "!src/**/test-*.ts",
+    "!src/**/*-harness.ts",
+    "!src/**/*-probe.ts",
+    "!src/**/fixtures",
+    "!src/**/fixtures.ts",
+    "!src/**/ssr-fixtures.ts",
+    "!src/jsx-types"
   ],
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "imports": {
@@ -77,15 +87,15 @@
       "import": "./dist/jsx-runtime.js"
     }
   },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.conformance.json",
-    "lint": "bunx @biomejs/biome check src",
-    "lint:fix": "bunx @biomejs/biome check --write --unsafe src",
-    "format": "bunx @biomejs/biome format --write src",
-    "test": "bun test && bun test --conditions=development",
-    "prepublishOnly": "bun run build"
+    "test": "bun test && bun test --conditions=development"
   },
   "dependencies": {
     "@solidjs/signals": "2.0.0-rc.15",
@@ -93,7 +103,6 @@
   },
   "devDependencies": {
     "@barqjs/compiler-rs": "workspace:*",
-    "@biomejs/biome": "^2.5.15",
     "@happy-dom/global-registrator": "^21.0.1",
     "@types/bun": "^1.4.3",
     "reactive-framework-test-suite": "^0.1.0",

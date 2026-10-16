@@ -23,7 +23,15 @@
     "directory": "packages/aria"
   },
   "files": [
-    "src"
+    "src",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "!src/**/test-*.ts",
+    "!src/**/*-harness.ts",
+    "!src/**/*-probe.ts",
+    "!src/**/fixtures",
+    "!src/**/fixtures.ts",
+    "!src/**/ssr-fixtures.ts"
   ],
   "type": "module",
   "sideEffects": false,
@@ -306,6 +314,10 @@
       "barq": "./src/toast.ts",
       "bun": "./src/toast.ts"
     }
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   },
   "scripts": {
     "typecheck": "tsc --noEmit",

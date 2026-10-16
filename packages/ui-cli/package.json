@@ -20,13 +20,23 @@
     "url": "git+https://github.com/salamaashoush/barq.git",
     "directory": "packages/ui-cli"
   },
+  "files": [
+    "dist",
+    "src",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "!src/**/test-*.ts",
+    "!src/**/*-harness.ts",
+    "!src/**/*-probe.ts",
+    "!src/**/fixtures",
+    "!src/**/fixtures.ts",
+    "!src/**/ssr-fixtures.ts"
+  ],
   "type": "module",
+  "sideEffects": false,
   "bin": {
     "barq-ui": "./dist/index.js"
   },
-  "files": [
-    "dist"
-  ],
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -39,8 +49,7 @@
     "build": "tsdown",
     "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
-    "test": "bun test",
-    "prepublishOnly": "bun run build"
+    "test": "bun test"
   },
   "devDependencies": {
     "@barqjs/ui": "workspace:*",
@@ -49,5 +58,9 @@
   },
   "engines": {
     "node": ">=20.19.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }

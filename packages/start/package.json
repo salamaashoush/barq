@@ -19,9 +19,19 @@
     "directory": "packages/start"
   },
   "files": [
-    "dist"
+    "dist",
+    "src",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "!src/**/test-*.ts",
+    "!src/**/*-harness.ts",
+    "!src/**/*-probe.ts",
+    "!src/**/fixtures",
+    "!src/**/fixtures.ts",
+    "!src/**/ssr-fixtures.ts"
   ],
   "type": "module",
+  "sideEffects": false,
   "main": "./dist/index.js",
   "exports": {
     ".": {
@@ -65,15 +75,15 @@
       "import": "./dist/protocol.js"
     }
   },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
-    "lint": "bunx @biomejs/biome check src",
-    "lint:fix": "bunx @biomejs/biome check --write --unsafe src",
-    "format": "bunx @biomejs/biome format --write src",
-    "test": "bun test && bun test --conditions=development",
-    "prepublishOnly": "bun run build"
+    "test": "bun test && bun test --conditions=development"
   },
   "dependencies": {
     "@barqjs/css": "workspace:*",
@@ -89,5 +99,8 @@
   "peerDependencies": {
     "@barqjs/core": ">=0.1.0",
     "@barqjs/server": ">=0.1.0"
+  },
+  "engines": {
+    "node": ">=20.16.0"
   }
 }
