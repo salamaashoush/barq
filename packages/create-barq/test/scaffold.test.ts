@@ -123,32 +123,33 @@ describe.each(TEMPLATES.map((template) => [template.name, template] as const))(
       expect(result.code, result.output).toBe(0);
     }, 120_000);
 
-    test.if(template.prerenders)("writes a static page", () => {
-      const { directory } = built.get(name)!;
-      const home = join(directory, template.clientOut, "index.html");
-      expect(existsSync(home)).toBe(true);
-      // The prerendered document, not a Vite `index.html`: it carries the page's
-      // own markup, which only a render produces.
-      expect(readFileSync(home, "utf8")).toContain("<h1>barq</h1>");
-    });
+    if (template.prerenders)
+      test("writes a static page", () => {
+        const { directory } = built.get(name)!;
+        const home = join(directory, template.clientOut, "index.html");
+        expect(existsSync(home)).toBe(true);
+        // The prerendered document, not a Vite `index.html`: it carries the page's
+        // own markup, which only a render produces.
+        expect(readFileSync(home, "utf8")).toContain("<h1>barq</h1>");
+      });
 
-    test.if(template.spa)("builds the document it declares", () => {
-      const { directory } = built.get(name)!;
-      const home = join(directory, template.clientOut, "index.html");
-      expect(existsSync(home)).toBe(true);
-      // The `<script>` the BUILD wrote, resolved back to a file it emitted. The
-      // source `index.html` names `/src/main.tsx`, so a document that still
-      // names it is one the bundler never saw.
-      const entry = /<script[^>]+src="([^"]+)"/.exec(readFileSync(home, "utf8"))?.[1];
-      expect(entry, "the built document names no module").toBeDefined();
-      expect(existsSync(join(directory, template.clientOut, (entry as string).slice(1)))).toBe(
-        true,
-      );
-    });
+    if (template.spa)
+      test("builds the document it declares", () => {
+        const { directory } = built.get(name)!;
+        const home = join(directory, template.clientOut, "index.html");
+        expect(existsSync(home)).toBe(true);
+        // The `<script>` the BUILD wrote, resolved back to a file it emitted. The
+        // source `index.html` names `/src/main.tsx`, so a document that still
+        // names it is one the bundler never saw.
+        const entry = /<script[^>]+src="([^"]+)"/.exec(readFileSync(home, "utf8"))?.[1];
+        expect(entry, "the built document names no module").toBeDefined();
+        expect(existsSync(join(directory, template.clientOut, (entry as string).slice(1)))).toBe(
+          true,
+        );
+      });
 
-    test.if(template.server)(
-      "serves what it built",
-      async () => {
+    if (template.server)
+      test("serves what it built", async () => {
         const { directory } = built.get(name)!;
         const port = 3400 + TEMPLATES.findIndex((one) => one.name === name);
         const server = Bun.spawn({
@@ -182,13 +183,10 @@ describe.each(TEMPLATES.map((template) => [template.name, template] as const))(
           server.kill();
           await server.exited;
         }
-      },
-      60_000,
-    );
+      }, 60_000);
 
-    test.if(!template.spa && template.server)(
-      "answers its API route",
-      async () => {
+    if (!template.spa && template.server)
+      test("answers its API route", async () => {
         const { directory } = built.get(name)!;
         const port = 3410 + TEMPLATES.findIndex((one) => one.name === name);
         const server = Bun.spawn({
@@ -214,9 +212,7 @@ describe.each(TEMPLATES.map((template) => [template.name, template] as const))(
           server.kill();
           await server.exited;
         }
-      },
-      60_000,
-    );
+      }, 60_000);
   },
 );
 
