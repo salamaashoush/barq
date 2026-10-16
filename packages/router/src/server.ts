@@ -21,6 +21,7 @@
  */
 
 import {
+  HEAD_SNIPPET,
   branch as ssrBranch,
   esc,
   escapeAttribute as escapeSsrAttribute,
@@ -60,7 +61,7 @@ import { type Redirect, NotFound, errorFallbackFor, isNotFound, isRedirect } fro
 import { type LocationRewrite, rewriteHref } from "./rewrite.ts";
 import { withRouterOverrides, wrapWith } from "./ssr.ts";
 import { type RenderChannel, createRenderChannel } from "./ssr-server.ts";
-import { type ManagedTag, projectHead, tagKey, tagProps } from "./head.ts";
+import { type ManagedTag, projectHead, resolveHead, tagKey, tagProps } from "./head.ts";
 import {
   type Reachability,
   describe as describeViolations,
@@ -946,6 +947,9 @@ export function createPageHandler(
       // Request-scoped, so the answer a loader throws cannot reach another
       // request. A module-level "current answer" hands one request's to the next.
       let answer: Response | null = null;
+      // Read through a call: `answer` is written by the router's callbacks, which
+      // the checker cannot see from here.
+      const answered = (): Response | null => answer;
       // `notFound()` is an ANSWER, not a failure: the page still renders (its
       // `notFoundComponent` does), and what changes is the status. Tracked
       // separately from `answer` for that reason — turning it into a `Response`
@@ -1165,11 +1169,17 @@ export function createPageHandler(
                 // first byte at 5 ms, a function head at 301 ms. Theirs waits
                 // for the whole matched chain on every page, so a static
                 // title pays there and does not here.
+                //
+                // On a STREAMED page that wait is not made at all: the head is
+                // projected without the function, and its title follows the
+                // shell as a patch once the loader has settled.
                 loaderData:
-                  ssr && typeof route.definition.head === "function"
+                  ssr && buffered && typeof route.definition.head === "function"
                     ? await settleLoader(state, route, params, session)
                     : undefined,
-                definition: route.definition as never,
+                definition: (ssr && !buffered && typeof route.definition.head === "function"
+                  ? { ...route.definition, head: undefined }
+                  : route.definition) as never,
               })),
             ),
             // `console.error` and a rendered page, which is what `projectLane`
@@ -1285,28 +1295,26 @@ export function createPageHandler(
               },
             );
           }
-          const stream = renderToStream(() => root() as never, {
+          let flushed!: () => void;
+          const shellFlushed = new Promise<void>((resolve) => {
+            flushed = resolve;
+          });
+          const rendering = renderToStream(() => root() as never, {
             signal: request.signal,
             nonce: options.nonce,
             session,
             // The route context and then the entry, ahead of every boundary
             // still to come: the entry is `async` and may run the moment it
             // loads, which is before the stream ends.
-            onCompleteShell:
-              shell === undefined
-                ? undefined
-                : ({ write }) =>
-                    write(
-                      context + entryScripts(options.clientAssets?.scripts, options.nonce, true),
-                    ),
-          }).readable;
-          // The shell has gone and the loaders it started have not settled.
-          channel.dehydrate(state, state.settled());
-          if (timing !== undefined) {
-            timing.phase("barq-render", "shell (the rest streams after it)");
-            draft.headers.append("server-timing", timing.header());
-          }
-          return new Response(
+            onCompleteShell: ({ write }) => {
+              if (shell !== undefined) {
+                write(context + entryScripts(options.clientAssets?.scripts, options.nonce, true));
+              }
+              flushed();
+            },
+          });
+          const stream = rendering.readable;
+          const body =
             shell === undefined
               ? wrapStream(
                   stream,
@@ -1318,11 +1326,42 @@ export function createPageHandler(
                   context,
                   channel,
                 )
-              : shellStream(stream, options, url, dispose, () => answer, channel),
-            {
-              status,
-              headers: { "content-type": "text/html; charset=utf-8" },
-            },
+              : shellStream(stream, options, url, dispose, () => answer, channel);
+          // THE HEAD IS DECIDED AT SHELL FLUSH, not when the render starts: a
+          // loader that answered while the shell was being written has said
+          // whether this page is a 404 or a redirect, and a declaration the
+          // shell made with `httpStatus` is in the draft.
+          await Promise.race([shellFlushed, rendering]);
+          const early = answered();
+          if (early !== null && early.status >= 300 && early.status < 400) {
+            await body.cancel();
+            return applyResponseDraft(early, draft);
+          }
+          // The shell has gone and the loaders it started have not settled.
+          channel.dehydrate(state, state.settled());
+          const awaited = projected.filter(
+            ({ route, ssr }) => ssr && typeof route.definition.head === "function",
+          );
+          if (awaited.length > 0) {
+            channel.hold(
+              lateTitle(state, projected, params, session, options.nonce).then((patch) => {
+                if (patch !== "") channel.serverSsr.injectScript(patch);
+              }),
+            );
+          }
+          if (timing !== undefined) {
+            timing.phase("barq-render", "shell (the rest streams after it)");
+            draft.headers.append("server-timing", timing.header());
+          }
+          return applyResponseDraft(
+            new Response(body, {
+              ...draftedStatus(draft, missing ? 404 : status),
+              headers: {
+                "content-type": "text/html; charset=utf-8",
+                ...(missing ? headerRecord(missingHeaders) : undefined),
+              },
+            }),
+            draft,
           );
         } catch (error) {
           // The stream was never handed over, so nothing else will dispose it.
@@ -1432,7 +1471,7 @@ function reportRefusedRedirect(to: string): void {
  * has already replaced the content with its fallback, and that is the whole of
  * what a stream can do about it. Authorization belongs before the shell.
  */
-function redirectScript(answer: Response | null): string {
+function redirectScript(answer: Response | null, nonce: string | undefined): string {
   if (answer === null || answer.status < 300 || answer.status >= 400) return "";
   const to = answer.headers.get("location");
   if (to === null || to === "") return "";
@@ -1447,8 +1486,9 @@ function redirectScript(answer: Response | null): string {
   // because `</script>` inside a string literal still ends the element.
   const js = JSON.stringify(to).replaceAll("<", "\\u003c");
   const attr = to.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
+  const attribute = nonce === undefined ? "" : ` nonce="${escapeAttribute(nonce)}"`;
   return (
-    `<script>location.replace(${js})</script>` +
+    `<script${attribute}>location.replace(${js})</script>` +
     `<noscript><meta http-equiv="refresh" content="0;url=${attr}"></noscript>`
   );
 }
@@ -1895,7 +1935,7 @@ function wrapStream(
       channel.renderFinished();
       await channel.written();
       inject(channel.drain());
-      const late = redirectScript(answer());
+      const late = redirectScript(answer(), options.nonce);
       if (late !== "") controller.enqueue(encoder.encode(late));
       controller.enqueue(encoder.encode(tail));
       controller.close();
@@ -2000,6 +2040,38 @@ export function renderShell(
     return shell({ children: () => rendered });
   };
   return provide(HeadAssetsContext, cell(assets), () => provide(RouterContext, cell(state), build));
+}
+
+/**
+ * The title a streamed page's function heads give it once their loaders have
+ * settled, as the patch that sets it, or `""`.
+ *
+ * The title alone: `<head>` is hydrated, and a tag the patch added would stand
+ * where the client's head expects none. The client's own head brings the rest
+ * when it renders with the same data.
+ */
+async function lateTitle(
+  state: RouterState,
+  projected: readonly { route: Route; ssr: boolean }[],
+  params: Readonly<Record<string, string>>,
+  session: symbol,
+  nonce: string | undefined,
+): Promise<string> {
+  const matches = await Promise.all(
+    projected.map(async ({ route, ssr }) => ({
+      params,
+      loaderData:
+        ssr && typeof route.definition.head === "function"
+          ? await settleLoader(state, route, params, session)
+          : undefined,
+      definition: route.definition as never,
+    })),
+  );
+  const assets = await projectHead(matches, { nonce, onError: (error) => console.error(error) });
+  const title = resolveHead(assets, { nonce }).find((tag) => tag.tag === "title");
+  if (title === undefined) return "";
+  const ops = [{ k: "title", t: "title", a: {}, c: title.children ?? "" }];
+  return `${HEAD_SNIPPET}window.__BARQ_HEAD__(${JSON.stringify(ops).replaceAll("<", "\\u003c")})`;
 }
 
 /**
@@ -2180,7 +2252,7 @@ function shellStream(
       channel.renderFinished();
       await channel.written();
       inject(channel.drain());
-      const late = redirectScript(answer());
+      const late = redirectScript(answer(), options.nonce);
       if (late !== "") controller.enqueue(encoder.encode(late));
       if (tail !== "") controller.enqueue(encoder.encode(tail));
       controller.close();

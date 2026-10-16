@@ -2398,7 +2398,15 @@ describe("loaderData in head", () => {
   for (const stream of [false, true]) {
     test(`a function head reads the loader (stream=${stream})`, async () => {
       const { title, body } = await render(fnHead, stream);
-      expect(title).toBe("FROM THE LOADER");
+      // A streamed page's title follows the shell as a patch; a buffered one
+      // has it in the document.
+      if (stream) {
+        expect(body).toContain(
+          'window.__BARQ_HEAD__([{"k":"title","t":"title","a":{},"c":"FROM THE LOADER"}])',
+        );
+      } else {
+        expect(title).toBe("FROM THE LOADER");
+      }
       // …and the page still renders, and still SEEDS, which is the thing that
       // breaks if the loader is read under a different async session.
       expect(body).toContain("<main>FROM THE LOADER</main>");
@@ -2492,7 +2500,7 @@ describe("loaderData in head", () => {
     expect(/<title[^>]*>([^<]*)<\/title>/.exec(body)?.[1]).toBe("none");
   });
 
-  test("a function head waits, and that is the trade", async () => {
+  test("a function head does not hold the shell for its loader", async () => {
     let release!: () => void;
     gate = new Promise((resolve) => (release = resolve));
     settled = false;
@@ -2502,23 +2510,19 @@ describe("loaderData in head", () => {
         stream: true,
         app: (state) => renderRoutes(state),
       });
-      const responded = handler(get("/post"));
-      const atFirstByte: { settled: boolean | null } = { settled: null };
-      const firstByte = responded.then(async (response) => {
-        const reader = response.body!.getReader();
-        await reader.read();
-        atFirstByte.settled = settled;
-        while (!(await reader.read()).done) {
-          /* drain */
-        }
-      });
-      // Enough turns of the loop for a handler that did not wait to have sent
-      // its first byte, and none of them settle the loader.
-      for (let turn = 0; turn < 10; turn++) await new Promise((resolve) => setTimeout(resolve, 0));
-      expect(atFirstByte.settled).toBe(null);
+      const response = await handler(get("/post"));
+      const reader = response.body!.getReader();
+      const decoder = new TextDecoder();
+      const first = decoder.decode((await reader.read()).value);
+      expect(settled).toBe(false);
       release();
-      await firstByte;
-      expect(atFirstByte.settled).toBe(true);
+      let rest = "";
+      for (let next = await reader.read(); !next.done; next = await reader.read()) {
+        rest += decoder.decode(next.value);
+      }
+      expect(first).toContain("<head>");
+      expect(first).not.toContain("FROM THE LOADER");
+      expect(rest).toContain('"c":"FROM THE LOADER"');
     } finally {
       gate = null;
     }

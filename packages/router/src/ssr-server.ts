@@ -34,6 +34,8 @@ export interface RenderChannel {
    * injected or given up on.
    */
   written(): Promise<void>;
+  /** Keep the stream open for `work`, which injects what it has to say. */
+  hold(work: Promise<void>): void;
 }
 
 export function createRenderChannel(nonce?: string): RenderChannel {
@@ -97,6 +99,12 @@ export function createRenderChannel(nonce?: string): RenderChannel {
     renderFinished() {
       finished = true;
       for (const listener of listeners.splice(0, listeners.length)) listener();
+    },
+    hold(work) {
+      const before = written;
+      written = Promise.all([before, work.catch((error: unknown) => console.error(error))]).then(
+        () => {},
+      );
     },
     async written() {
       let timer: ReturnType<typeof setTimeout> | undefined;

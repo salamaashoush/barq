@@ -885,3 +885,14 @@ cost-model split of an expensive, dependency-disjoint call is gone, and with it 
   the swap call is followed in the same script by the round's seed, so the expected text ends at
   `__BARQ_SWAP__(1,false,true);` rather than at `</script>`. A round is one script so that a client
   hydrated at shell time cannot run between a swap and the values its content reads.
+
+## A function head no longer holds a streamed shell
+
+- `router/src/server.test.ts` "a function head reads the loader (stream=true)": a streamed page's
+  title is no longer in the shell's `<title>`; it follows the shell as
+  `window.__BARQ_HEAD__([{"k":"title",...,"c":"FROM THE LOADER"}])`. The buffered case still
+  asserts the document's title, and both still assert the content and the seed.
+- `router/src/server.test.ts` "a function head waits, and that is the trade" is "a function head does
+  not hold the shell for its loader": the trade it pinned is the one the change removes. It asserts
+  the first chunk has the head without the loader's title and a later chunk carries it, rather than
+  a first-byte time.
