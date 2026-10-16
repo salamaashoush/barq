@@ -11,7 +11,7 @@ import {
   formOptions,
   mergeForm,
 } from "./index.ts";
-import { blur, click, drain, mount, settle, type } from "./test-helpers.ts";
+import { blur, click, drain, fakeClock, mount, realClock, settle, type } from "./test-helpers.ts";
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -179,12 +179,7 @@ describe("validators", () => {
   });
 
   test("an async validator is debounced, and reports while it is running", async () => {
-    // happy-dom folds every zero-delay timeout into one native timer. One an
-    // earlier test left pending on the real clock would collect the timeouts
-    // made below too, where the fake clock never reaches them, so it is let
-    // fire first.
-    await settle();
-    jest.useFakeTimers();
+    await fakeClock();
     try {
       const calls: string[] = [];
       const answer = Promise.withResolvers<void>();
@@ -239,14 +234,12 @@ describe("validators", () => {
       expect(view.text("#errors")).toBe("already taken");
       view.dispose();
     } finally {
-      jest.useRealTimers();
+      await realClock();
     }
   });
 
   test("a newer change aborts the validation still in flight", async () => {
-    // The zero-delay debounce below joins happy-dom's shared timer: see above.
-    await settle();
-    jest.useFakeTimers();
+    await fakeClock();
     try {
       const signals: AbortSignal[] = [];
       const answers: PromiseWithResolvers<void>[] = [];
@@ -303,7 +296,7 @@ describe("validators", () => {
       expect(view.text("#errors")).toBe("");
       view.dispose();
     } finally {
-      jest.useRealTimers();
+      await realClock();
     }
   });
 
