@@ -15,7 +15,7 @@
  * client's.
  */
 
-import { hydrate } from "@barqjs/core";
+import { hydrate, shellReady } from "@barqjs/core";
 import { type AnySerializationAdapter, registerSerializationAdapters } from "@barqjs/server/codec";
 
 import { Document, RouterProvider, resolveHeadFor } from "./components.ts";
@@ -130,6 +130,9 @@ export async function startClient(options: StartClientOptions = {}): Promise<Rou
         "Export one of them: `export const config = { routeTree }` or `export function getRouter() { return createRouter({ routeTree }); }`.",
     );
   }
+  // A streamed page loads this module from its head, so it can be here before
+  // the parser has reached the shell's seed. Nothing above read one.
+  await shellReady();
   // BEFORE anything reads a seeded value. The seed is an inline script that
   // ran while this module was still being fetched, so it queued its assignment
   // rather than making it — see `ADAPTER_BOOTSTRAP`. Registering here and

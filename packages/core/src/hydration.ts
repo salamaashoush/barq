@@ -365,6 +365,28 @@ export function beginHydration(container: Node): void {
 }
 
 /**
+ * Resolves once the server's shell and the scripts after it have been parsed:
+ * the stream's own marker, or `DOMContentLoaded`, or at once when the parser is
+ * done. A module entry loaded `async` from the head runs before the shell is
+ * in; everything up to its first read of a seed can happen meanwhile, and the
+ * read waits for this.
+ */
+export function shellReady(): Promise<void> {
+  const global = globalThis as { __BARQ_SHELL__?: number; __BARQ_SHELL_WAIT__?: (() => void)[] };
+  if (
+    typeof document === "undefined" ||
+    document.readyState !== "loading" ||
+    global.__BARQ_SHELL__ === 1
+  ) {
+    return Promise.resolve();
+  }
+  return new Promise<void>((resolve) => {
+    (global.__BARQ_SHELL_WAIT__ ??= []).push(resolve);
+    document.addEventListener("DOMContentLoaded", () => resolve(), { once: true });
+  });
+}
+
+/**
  * Claim server nodes that arrived after `hydrate` returned: a streamed
  * boundary's content, swapped in where the boundary's fallback was claimed.
  *

@@ -202,6 +202,7 @@ export {
   hole,
   hydrating as isHydrating,
   onHydrationEnd,
+  shellReady,
   type HydrationReport,
   type Mismatch,
   type MismatchKind,

@@ -1379,13 +1379,16 @@ describe("shellComponent", () => {
     expect(body).toContain('<div id="app">');
   });
 
-  test("a streamed page loads the entry async, after the seed and before the boundaries", async () => {
+  test("a streamed page loads the entry async from its head, and marks the end of its shell", async () => {
     const body = await render(table());
     const entry = body.indexOf('<script type="module" async src="/entry.js">');
     expect(entry).toBeGreaterThan(-1);
-    expect(body.indexOf("__BARQ_EVTS__")).toBeLessThan(entry);
-    expect(body.indexOf("</body>")).toBeGreaterThan(entry);
+    expect(entry).toBeLessThan(body.indexOf("</head>"));
     expect(body.match(/src="\/entry\.js"/g)).toHaveLength(1);
+    // The boot waits for the marker, which comes after the shell and its seed.
+    const marker = body.indexOf("window.__BARQ_SHELL__=1");
+    expect(body.indexOf("<main>page</main>")).toBeLessThan(marker);
+    expect(body.indexOf("__BARQ_EVTS__")).toBeLessThan(marker);
   });
 
   test("a buffered page keeps the deferred entry where `<Scripts />` stands", async () => {
@@ -1460,7 +1463,11 @@ describe("shellComponent", () => {
   });
 
   test("`<Scripts />` places the client entry and the route's body scripts", async () => {
-    const body = await render(table(undefined, () => [{ src: "/route.js" }]));
+    // Buffered: a streamed page loads its entry from the head instead.
+    const body = await render(
+      table(undefined, () => [{ src: "/route.js" }]),
+      { stream: false },
+    );
     expect(body).toContain('src="/route.js"');
     expect(body).toContain('src="/entry.js"');
     // The entry is in the BODY, after the mount element — not in the head.

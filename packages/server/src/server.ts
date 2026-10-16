@@ -1764,10 +1764,16 @@ function streamBody(
       // What the browser needs before anything of the application runs, in
       // ONE script right after the shell and ahead of `onCompleteShell`'s
       // writes: input capture, the values the shell resolved, and the swap
-      // every boundary below calls. A module entry written after it may run as
-      // soon as it loads, and finds them all in place.
+      // every boundary below calls, then the marker `shellReady` waits on. A
+      // module entry written after it may run as soon as it loads, and one that
+      // started earlier, from the head, waits for the marker.
       enqueue(
-        script(scripts ? EVENT_CAPTURE_SNIPPET : "", seed(), parked.length > 0 ? SWAP_SNIPPET : ""),
+        script(
+          scripts ? EVENT_CAPTURE_SNIPPET : "",
+          seed(),
+          parked.length > 0 ? SWAP_SNIPPET : "",
+          scripts ? SHELL_MARKER : "",
+        ),
       );
       options.onCompleteShell?.({ write: enqueue });
       await room(controller);
@@ -2096,6 +2102,13 @@ function eventCapture(eventNames: readonly string[] = CAPTURED_EVENTS): string {
 }
 
 const EVENT_CAPTURE_SNIPPET = eventCapture();
+
+/**
+ * The shell and its seed are in: what `shellReady` waits on, for an entry that
+ * started running before the parser got this far.
+ */
+const SHELL_MARKER =
+  "window.__BARQ_SHELL__=1;(window.__BARQ_SHELL_WAIT__||[]).splice(0).forEach(function(f){f()})";
 
 /**
  * Mark every seeded promise as handled, the moment it exists.

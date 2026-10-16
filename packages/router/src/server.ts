@@ -1331,20 +1331,23 @@ export function createPageHandler(
           const shellFlushed = new Promise<void>((resolve) => {
             flushed = resolve;
           });
+          // `async`, and in the head when the shell has one: it is fetched with
+          // the preloads and runs while the parser is still in the body, and
+          // the boot waits for the shell's marker before it reads a seed, so a
+          // shell with no head can carry it at its end.
+          const entry = entryScripts(options.clientAssets?.scripts, options.nonce, true);
+          const placeEntry = (document: string): string => {
+            const at = document.indexOf("</head>");
+            return at === -1
+              ? document + entry
+              : document.slice(0, at) + entry + document.slice(at);
+          };
           const rendering = renderToStream(() => root() as never, {
             signal: request.signal,
             nonce: options.nonce,
             session,
             manifest: options.moduleAssets,
-            // The route context and then the entry, ahead of every boundary
-            // still to come: the entry is `async` and may run the moment it
-            // loads, which is before the stream ends.
-            onCompleteShell: ({ write }) => {
-              if (shell !== undefined) {
-                write(context + entryScripts(options.clientAssets?.scripts, options.nonce, true));
-              }
-              flushed();
-            },
+            onCompleteShell: () => flushed(),
           });
           const stream = rendering.readable;
           const body =
@@ -1359,7 +1362,15 @@ export function createPageHandler(
                   context,
                   channel,
                 )
-              : shellStream(stream, options, url, dispose, () => answer, channel);
+              : shellStream(
+                  stream,
+                  options,
+                  url,
+                  dispose,
+                  () => answer,
+                  channel,
+                  (head) => placeEntry(head) + context,
+                );
           // THE HEAD IS DECIDED AT SHELL FLUSH, not when the render starts: a
           // loader that answered while the shell was being written has said
           // whether this page is a 404 or a redirect, and a declaration the
@@ -2259,6 +2270,8 @@ function shellStream(
   done: () => void,
   answer: () => Response | null,
   channel: RenderChannel,
+  /** The shell up to `</body>`, given the entry and the route context it carries. */
+  finishShell: (shell: string) => string,
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
   let first = true;
@@ -2305,7 +2318,7 @@ function shellStream(
           tail = head.slice(cut);
           head = head.slice(0, cut);
         }
-        controller.enqueue(encoder.encode(head));
+        controller.enqueue(encoder.encode(finishShell(head)));
       };
       try {
         await relay(reader, channel, forward, inject);

@@ -903,3 +903,10 @@ cost-model split of an expensive, dependency-disjoint call is gone, and with it 
   resolves `lazy(() => import(...))` specifiers through `this.resolve`. Its fake context gained a
   `resolve`. "not in a build, and not for the server" was passing on `undefined?.code ?? ""` once the
   hook returned a promise; awaited, it checks the transformed code again. No expectation changed.
+
+## A streamed page loads its entry from the head
+
+- `router/src/server.test.ts` "`<Scripts />` places the client entry and the route's body scripts":
+  renders with `stream: false`. `<Scripts />` places the entry on a buffered page; a streamed page
+  carries it `async` in the head, and the boot waits for the shell's marker before it reads a seed.
+  The assertions are unchanged.
