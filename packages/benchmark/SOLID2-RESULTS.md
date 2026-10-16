@@ -1,8 +1,9 @@
 # barq against Solid 2.0 and Solid 1.9
 
-Taken on 2026-10-16 with `bun run bench:solid2` on an Apple M5 Max (18 cores,
-48 GB, macOS 27.0.1), Bun 1.4.2, headless Chrome 155.0.8059.41. barq is this
-commit on `@solidjs/signals` 2.0.0-rc.15 from npm; Solid 2.0 is solid-next
+Taken on 2026-10-16 with `bun run bench:solid2` (Solid 2.0 prepared with `SOLID2_DIR`
+pointing outside the repository, `CDP_PORT` and `BENCH_PORT` pinned) on an Apple M5 Max (18 cores,
+48 GB, macOS 27.0.1), Bun 1.4.2, headless Chrome 155.0.8059.41. barq is
+`7c2d739` on `@solidjs/signals` 2.0.0-rc.15 from npm; Solid 2.0 is solid-next
 `3643c5e7` (2.0.0-rc.15 plus later fixes, its own signals build) compiled by
 its native `@solidjs/compiler`; Solid 1.9 is `solid-js` 1.9.17 with
 `babel-preset-solid`. The raw numbers, with every percentile, are in
@@ -33,49 +34,48 @@ Medians (spread in the JSON; script-lane p25..p75 is typically +-5%):
 
 ```
 jfb script (ms)          barq    Solid 2.0  Solid 1.9
-create 1,000 rows        1.845   1.490      1.480
-replace all rows         3.412   3.128      3.045
-partial update (4x)      0.670   0.765      0.645
-select row (4x)          1.043   1.027      0.312
-swap rows (4x)           0.230   0.535      0.595
-remove row (2x)          0.572   0.630      0.555
-create 10,000 rows       16.03   13.46      13.95
-append 1,000 rows        1.885   1.723      1.672
-clear rows (4x)          6.505   6.240      5.927
-run memory, 1,000 rows   2.09 MB 1.75 MB    1.77 MB
+create 1,000 rows        1.645   1.487      1.455
+replace all rows         3.235   3.043      3.035
+partial update (4x)      0.750   0.605      0.620
+select row (4x)          0.995   0.940      0.322
+swap rows (4x)           0.188   0.662      0.653
+remove row (2x)          0.550   0.615      0.580
+create 10,000 rows       14.81   13.19      13.86
+append 1,000 rows        1.788   1.727      1.633
+clear rows (4x)          6.463   5.775      5.760
+run memory, 1,000 rows   1.88 MB 1.75 MB    1.76 MB
 
 SSR (renders/s)          barq    Solid 2.0  Solid 1.9
-renderToString           20824   12896      21455
-renderToStream, drained  15234   10023      745
+renderToString           20798   12818      20816
+renderToStream, drained  15158   10019      745
 
 hydration, 100 cards     barq    Solid 2.0  Solid 1.9
-at load (ms)             5.27    4.76       2.11
-after load (ms)          2.08    2.03       1.12
+at load (ms)             5.19    4.72       2.09
+after load (ms)          1.99    1.96       1.08
 
 bundle, gzip / brotli    barq          Solid 2.0     Solid 1.9
-hello world              14715/13287   12458/11318   5391/4868
-jfb app                  21907/19795   15689/14236   7247/6544
+hello world              15446/13924   12458/11318   5391/4868
+jfb app                  22690/20550   15689/14236   7247/6544
 
-compiler output, 137 fixtures, sum of gzip: barq 52178, Solid 2.0 53960
+compiler output, 137 fixtures, sum of gzip: barq 52161, Solid 2.0 53960
 ```
 
-Closed in this pass (before is the same lane on the parent commit):
+Closed in this pass (before is the same lane, same machine, on the parent commit `4cc656d`):
 
-- Bundle: a render-only page no longer ships the hydration claim walk. hello
-  17865 to 14715 gz, jfb 24852 to 21907 gz.
-- swap rows: the two swapped rows are moved directly instead of indexing the
-  whole list; 0.064 to 0.016 ms per swap at 1x, 0.875 to 0.230 ms in the lane.
-- partial update: a live `textContent` writes its text node's data; 0.187 to
-  0.171 ms per update at 1x.
+- Effects per row: the compiler fuses every attribute, property, class and style binding of a
+  template into one render effect, as Solid 2.0 does, where it fused per element and kept an
+  expensive, dependency-disjoint call apart. A jfb row is one effect instead of two. create 1k
+  1.833 to 1.645 ms, create 10k 15.85 to 14.81 ms, replace 3.395 to 3.235 ms, memory 2.09 to
+  1.88 MB. select row, which now re-runs each row's whole record, stayed at 0.995 ms.
+- Compiler output over the 137 fixtures: 52171 to 52161 gzip (80366 to 80206 raw).
+- The jfb bundle grew 22628 to 22690 gzip: `readOpaque`, the read an opaque call makes inside
+  the fused record, ships beside `bindProp`.
 
 Open, and why:
 
-- create rows (+24%), memory (+19%): barq creates two effects per row where
-  Solid 2.0 fuses the row's class and label into one. The compiler fuses only
-  per element and keeps an expensive, dependency-disjoint call in its own
-  effect by design; a hand-fused barq row measured create 10k 16.6 to 15.5 ms
-  and memory 2.18 to 1.96 MB. The rest is `each`'s row machinery.
-- bundle size: what remains is the DOM layer (`dom.ts`, `flow.ts`) at about
-  three times `@solidjs/web`'s size; the regions' claim code still ships.
-- hydration at load: equal after load, so the 10% is first-run cost of the
-  larger code path rather than claim work.
+- create rows (+11%), memory (+7%): the rest is `each`'s row machinery and the row's own
+  scope; the effect count now matches Solid 2.0's.
+- bundle size: what remains is the DOM layer (`dom.ts`, `flow.ts`) at about three times
+  `@solidjs/web`'s size; the regions' claim code still ships.
+- hydration at load: equal after load, so the 10% is first-run cost of the larger code path
+  rather than claim work.

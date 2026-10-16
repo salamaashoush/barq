@@ -673,8 +673,8 @@ previous record before writing.
 There is no cost-based split. A change to any read re-runs every compute in the record, an
 expensive one included, and only the fields that moved are written. Rows are where effects are
 created by the thousand: on js-framework-benchmark one effect per row instead of one per bound
-element took creating 1,000 rows from 1.83 to 1.66 ms and their memory from 2.09 to 1.88 MB, and
-selecting a row, which re-runs every row's record, from 1.00 to 1.07 ms.
+element took creating 1,000 rows from 1.83 to 1.65 ms and their memory from 2.09 to 1.88 MB,
+while selecting a row, which re-runs every row's whole record, stayed at 1.00 ms.
 
 Also here: η-reduction (`() => f()` → `f`), inlining of user-written thunks with non-empty inner
 deps into the element's coalesced effect (deleting the user's closure), dead-patch elision, and
