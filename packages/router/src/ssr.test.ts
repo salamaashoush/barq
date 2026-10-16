@@ -6,7 +6,7 @@
 import { runInThisContext } from "node:vm";
 
 import { esc, html as ssrHtml } from "@barqjs/server";
-import { flush, render } from "@barqjs/core";
+import { type Child, flush, render } from "@barqjs/core";
 import { afterEach, describe, expect, test } from "bun:test";
 
 import { RouterProvider } from "./components.ts";
@@ -226,6 +226,21 @@ describe("dehydrate and hydrate", () => {
     });
   }
 
+  test("hydrate is handed the type dehydrate returns", async () => {
+    const seen: string[][] = [];
+    const state = createRouter({
+      routeTree: table(),
+      dehydrate: async () => ({ flags: ["salama"] }),
+      hydrate: (dehydrated) => {
+        seen.push(dehydrated.flags);
+      },
+      history: memoryHistory({ initial: ["/"] }),
+    });
+    await state.options.hydrate?.(await state.options.dehydrate?.());
+    state.dispose();
+    expect(seen).toEqual([["salama"]]);
+  });
+
   test("dehydrate runs after the loaders have settled", async () => {
     let loaded = "";
     const routeTree: AnyRouteDefinition[] = [
@@ -402,6 +417,31 @@ describe("Wrap and InnerWrap", () => {
     flush();
     await tick();
     expect(order).toEqual(["Wrap", "InnerWrap", "route"]);
+    expect(container.textContent).toBe("home");
+    dispose();
+    state.dispose();
+  });
+
+  test("children is a Child, whether a wrapper calls it or places it", async () => {
+    const state = createRouter({
+      routeTree: [
+        {
+          path: "/",
+          component: (() => globalThis.document.createTextNode("home")) as never,
+        },
+      ],
+      Wrap: (props) => {
+        const built: Child = props.children();
+        return built;
+      },
+      InnerWrap: (props): Child => props.children,
+      history: memoryHistory({ initial: ["/"] }),
+    });
+    const container = globalThis.document.createElement("div");
+    const provider = RouterProvider as never as (props: unknown) => unknown;
+    const dispose = render((() => provider({ state: () => state })) as never, container);
+    flush();
+    await tick();
     expect(container.textContent).toBe("home");
     dispose();
     state.dispose();

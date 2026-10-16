@@ -203,9 +203,10 @@ function absorbQueries(options: RouterSsrQueryOptions): void {
   const { router, queryClient } = options;
   const configured = router.options.hydrate;
 
-  router.options.hydrate = async (dehydrated: Partial<DehydratedQueries>): Promise<void> => {
-    await configured?.(dehydrated as never);
-    const carried = dehydrated.query;
+  router.options.hydrate = async (dehydrated: unknown): Promise<void> => {
+    await configured?.(dehydrated);
+    // The application's own payload, with what `carryQueries` laid over it.
+    const carried = (dehydrated as Partial<DehydratedQueries> | null | undefined)?.query;
     if (carried === undefined) return;
     const put = (queries: Dehydrated): void =>
       hydrate(queryClient, { mutations: [], queries }, options.hydrateOptions);

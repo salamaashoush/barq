@@ -713,7 +713,7 @@ export interface BlockOptions {
   readonly enableBeforeUnload?: boolean | (() => boolean);
 }
 
-export interface RouterConfig {
+export interface RouterConfig<Dehydrated = unknown> {
   /**
    * The route table, as `routeTree.gen.ts` exports it.
    *
@@ -735,9 +735,9 @@ export interface RouterConfig {
    * travels in the document to `hydrate`. A promise or an async iterable inside
    * it is streamed: what it settles on follows the shell.
    */
-  readonly dehydrate?: RouterOptions["dehydrate"];
+  readonly dehydrate?: RouterOptions<Dehydrated>["dehydrate"];
   /** Runs in the browser with what `dehydrate` returned, before the first render. */
-  readonly hydrate?: RouterOptions["hydrate"];
+  readonly hydrate?: RouterOptions<Dehydrated>["hydrate"];
   /** A component around the whole router output, outside the router's context. */
   readonly Wrap?: RouterOptions["Wrap"];
   /** A component around the matched routes, inside the router's context. */
@@ -1228,8 +1228,13 @@ export interface RouterState {
   dispose(): void;
 }
 
-export function createRouter(provided: RouterConfig): RouterState {
-  const config = resolveDefaults(applyRouterOverrides(provided));
+export function createRouter<Dehydrated = unknown>(
+  provided: RouterConfig<Dehydrated>,
+): RouterState {
+  // `Dehydrated` types the pair against each other where they are written. The
+  // payload crosses a document between them, and the router and its
+  // integrations hand it on as `unknown`.
+  const config = resolveDefaults(applyRouterOverrides(provided as RouterConfig));
   const base = config.basepath === undefined ? "" : normalizeBase(config.basepath);
   const trailingSlash: TrailingSlash = config.trailingSlash ?? "never";
   /**

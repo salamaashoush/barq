@@ -7,11 +7,13 @@
  * `@barqjs/server`, so the client half of an integration can import it.
  */
 
+import type { Child } from "@barqjs/core";
+
 import type { RouterConfig, RouterState } from "./router.ts";
 
 /** What `Wrap` and `InnerWrap` are handed: the tree they go around, to place once. */
 export interface WrapProps {
-  readonly children: () => unknown;
+  readonly children: () => Child;
 }
 
 export type WrapComponent = (props: WrapProps) => unknown;
@@ -20,11 +22,11 @@ export type WrapComponent = (props: WrapProps) => unknown;
  * The hooks of one router, mutable so an integration can install its own
  * around whatever the application configured.
  */
-export interface RouterOptions {
+export interface RouterOptions<Dehydrated = unknown> {
   /** Runs on the server once the matched loaders have settled. Its result reaches `hydrate`. */
-  dehydrate?: () => unknown;
+  dehydrate?: () => Dehydrated | Promise<Dehydrated>;
   /** Runs in the browser with what `dehydrate` returned, before the first render. */
-  hydrate?: (dehydrated: never) => void | Promise<void>;
+  hydrate?: (dehydrated: Dehydrated) => void | Promise<void>;
   /** Around the whole router output, outside the router's own context. */
   Wrap?: WrapComponent;
   /** Around the matched routes, inside the router's context. */
@@ -114,7 +116,10 @@ export function applyRouterOverrides(provided: RouterConfig): RouterConfig {
 
 /** `build`'s tree inside `component`, or as it stands when there is none. */
 export function wrapWith(component: WrapComponent | undefined, build: () => unknown): unknown {
-  return component === undefined ? build() : component({ children: build });
+  if (component === undefined) return build();
+  // On the string backend the tree is markup rather than nodes, and it is
+  // still what JSX written around it reads as a `Child`, as route children are.
+  return component({ children: build as () => Child });
 }
 
 type Queued = () => unknown;
@@ -172,7 +177,7 @@ export async function hydrateRouter(state: RouterState): Promise<void> {
   const hydrate = state.options.hydrate;
   if (hydrate === undefined) return;
   const dehydrated = takeDehydrated((value) => {
-    Promise.resolve(hydrate(value as never)).catch((error: unknown) => console.error(error));
+    Promise.resolve(hydrate(value)).catch((error: unknown) => console.error(error));
   });
-  if (dehydrated !== null) await hydrate(dehydrated.value as never);
+  if (dehydrated !== null) await hydrate(dehydrated.value);
 }
