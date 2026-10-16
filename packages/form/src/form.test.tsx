@@ -179,6 +179,11 @@ describe("validators", () => {
   });
 
   test("an async validator is debounced, and reports while it is running", async () => {
+    // happy-dom folds every zero-delay timeout into one native timer. One an
+    // earlier test left pending on the real clock would collect the timeouts
+    // made below too, where the fake clock never reaches them, so it is let
+    // fire first.
+    await settle();
     jest.useFakeTimers();
     try {
       const calls: string[] = [];
@@ -239,6 +244,8 @@ describe("validators", () => {
   });
 
   test("a newer change aborts the validation still in flight", async () => {
+    // The zero-delay debounce below joins happy-dom's shared timer: see above.
+    await settle();
     jest.useFakeTimers();
     try {
       const signals: AbortSignal[] = [];
