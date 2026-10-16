@@ -961,3 +961,40 @@ prose and its `-O0` build before each was restated:
 - "dedup-identical-markup: zero patch calls across both components" was an `it.todo` that counted
   the whole module, including the grid's two inserts of Left and Right. It now measures each
   component's body, and requires it to be a bare template clone.
+
+## Tests that timed a race against the wall clock
+
+Tests that failed on a loaded CI runner, or in a loaded full run, and passed on an idle machine.
+Each now orders what it waits on; no expectation's subject changed, and what moved is listed.
+
+- `router/src/match.test.ts` "useAwaited > is a promise's value as a cell, pending until it
+  settles": the promise settled on a 10 ms timer, which a slow mount outlived, so the pending read
+  found it settled. It is now `Promise.withResolvers`, resolved after the pending read is asserted.
+- `router/src/router.test.ts` "pendingMinMs keeps a fallback that HAS appeared from vanishing two
+  frames later": runs on `jest.useFakeTimers()`, which fakes `Date.now` as well, and the loader
+  waits on a gate rather than a 15 ms timer. Added: the page is empty before `pendingMs` and shows
+  the skeleton once it elapses, so the hold starts from a fallback known to have appeared; and the
+  skeleton is still there 1 ms before `pendingMinMs` ends. The two original expectations (skeleton
+  after the loader settled, data once the hold expires) are unchanged.
+- `query/src/router.test.ts` "the integration carries a request's queries to the page, read or not
+  (handler-streamed)": `late` settled on a 15 ms timer against loaders on 2 + 3 ms timers, so a
+  delayed event loop let it into the first snapshot. In the streamed mode it now waits until the
+  integration has taken that snapshot; in the buffered mode it settles at once, which is before the
+  render that waits on `slow` can end. Expectations unchanged.
+- `vite/test/dev-body-limit.test.ts`: `beforeAll` now makes one server-function request to an id
+  that does not exist and expects its 404, so the module runner's cold load of the start server is
+  setup rather than part of the 413 test. The two tests' expectations are unchanged.
+- `vite/test/hmr.test.ts`: each test has a dev server of its own, and `edit()` waits for Vite's
+  `server.hotUpdateEnvironments` to return for the edit instead of polling 5 s and sleeping 300 ms.
+  "Reloads nothing" therefore covers everything that edit's HMR sent, rather than whatever arrived
+  within 300 ms of the first payload. Setup writes a probe file until the watcher reports it.
+- `form/src/form.test.tsx` "an async validator is debounced, and reports while it is running" and
+  "a newer change aborts the validation still in flight": both run on fake timers, and each
+  validator waits on a gate rather than a 20 or 30 ms timer. Added to the first: no call 1 ms
+  before the debounce ends. In the second the aborted call is answered after the newer one, so its
+  stale error is what would remain if the abort were ignored; the expectation (no error) is
+  unchanged.
+- `vite/test/start-build.test.ts` "serves a page, an asset and a 404": `serve.js` is started on
+  port 0 and the origin is read from its "Listening on" line, instead of a random port in
+  3400-3499 (which `create-barq`'s scaffold suite also binds, at 3400-3412) and a capped poll.
+  Expectations unchanged.
