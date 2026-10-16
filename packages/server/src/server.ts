@@ -41,6 +41,7 @@ import {
 } from "@barqjs/core/internal";
 import {
   type LateCatcher,
+  type RevealGroup,
   type SsrHtml,
   html as ssrHtml,
   type StreamSink,
@@ -109,6 +110,8 @@ export interface RenderToStringOptions {
    * put it in: the host's own document template places it.
    */
   onHead?: (head: string) => void;
+  /** The assets each `lazy()` module needs, put in the head when one renders. */
+  manifest?: AssetManifest;
 }
 
 /**
@@ -123,9 +126,9 @@ export function renderToString(fn: RootRender, options: RenderToStringOptions = 
   let markup: string | null = null;
   const session = Symbol("render");
   const previous = setAsyncSession(session);
-  const head = new HeadCollector();
+  const head = new HeadCollector(options.manifest);
   const previousHead = setHeadSink(head.sink);
-  const owner = rootScope();
+  const owner = rootScope(null, options.renderId);
   try {
     runWithOwner(owner, () => {
       const value = fn(owner);
@@ -209,9 +212,15 @@ export async function renderPage(
      */
     session?: symbol;
     plugins?: readonly AnySerializationAdapter[];
+    renderId?: string;
+    manifest?: AssetManifest;
   },
 ): Promise<{ html: string; data: Record<string, unknown>; script: string }> {
-  const job = startRender(fn, { session: options?.session }, true);
+  const job = startRender(
+    fn,
+    { session: options?.session, renderId: options?.renderId, manifest: options?.manifest },
+    true,
+  );
   const page = await settledPage(job, BOUNDARY_TIMEOUT, null);
   return {
     html: page.html,
@@ -237,6 +246,8 @@ interface Parked {
   catcher: LateCatcher | null;
   /** Where on the page it stands, for a stream. */
   namespace: Namespace;
+  /** The `<Reveal>` it stands in. */
+  group: RevealGroup | null;
 }
 
 /** An error boundary a parked boundary below it may still fail. */
@@ -273,11 +284,30 @@ interface Job {
   sink: StreamSink;
   /** What `useHead` declared, by identity, and what came after the shell. */
   head: HeadCollector;
+  /** Each `<Reveal>`'s parked boundaries, in the order they parked. */
+  groups: Map<RevealGroup, Parked[]>;
+  /** Boundaries resumed into the shell, which a group counts as revealed. */
+  inlined: Set<Parked>;
   released: boolean;
 }
 
-/** One render's `useHead` declarations. */
+/**
+ * What a `lazy()` module needs on the page: its chunk and the chunks it
+ * imports, and its stylesheets. Keyed by the URL the bundler gave the module,
+ * or answered by a function a host computes it with.
+ */
+export type AssetManifest =
+  | Readonly<Record<string, ModuleAssets>>
+  | ((moduleUrl: string) => ModuleAssets | undefined);
+
+export interface ModuleAssets {
+  readonly js?: readonly string[];
+  readonly css?: readonly string[];
+}
+
+/** One render's `useHead` declarations, and the assets its `lazy()` modules need. */
 class HeadCollector {
+  constructor(private readonly manifest?: AssetManifest) {}
   readonly tags = new Map<string, HeadTag>();
   /** Set once the shell's head is written; declarations after it are patches. */
   sealed = false;
@@ -289,6 +319,21 @@ class HeadCollector {
         this.tags.set(key, tag);
         if (this.sealed) this.fresh.set(key, tag);
       }
+    },
+    module: (url: string): void => {
+      const manifest = this.manifest;
+      if (manifest === undefined) return;
+      const assets = typeof manifest === "function" ? manifest(url) : manifest[url];
+      if (assets === undefined) return;
+      const tags: HeadTag[] = [];
+      for (const href of assets.css ?? []) {
+        tags.push({ tag: "link", props: { rel: "stylesheet", href } });
+      }
+      for (const href of assets.js ?? []) {
+        tags.push({ tag: "link", props: { rel: "modulepreload", href } });
+      }
+      // A module that rendered once has said everything it has to say.
+      this.sink.add(tags.filter((tag) => !this.tags.has(headKey(tag))));
     },
   };
 
@@ -361,7 +406,7 @@ function withHead(html: string, head: HeadCollector, onHead?: (markup: string) =
  */
 function startRender(
   fn: RootRender,
-  options: { session?: symbol; renderId?: string },
+  options: { session?: symbol; renderId?: string; manifest?: AssetManifest },
   viaDom: boolean,
 ): Job {
   const stamp = crypto.randomUUID();
@@ -377,16 +422,18 @@ function startRender(
     guards: new Map(),
     guardsById: new Map(),
     sink: null as never,
-    head: new HeadCollector(),
+    head: new HeadCollector(options.manifest),
+    groups: new Map(),
+    inlined: new Set(),
     released: false,
   };
   let next = 0;
   job.sink = {
-    defer(resume, fallback, flags, parkedOn, catcher): string {
+    defer(resume, fallback, flags, parkedOn, catcher, group): string {
       const id = next++;
       const open = `<!--[b:${id}:${stamp}-->`;
       const close = `<!--]b:${id}:${stamp}-->`;
-      job.parked.push({
+      const record: Parked = {
         id,
         resume,
         at: Date.now(),
@@ -396,7 +443,14 @@ function startRender(
         close,
         catcher,
         namespace: "html",
-      });
+        group,
+      };
+      job.parked.push(record);
+      if (group !== null) {
+        let members = job.groups.get(group);
+        if (members === undefined) job.groups.set(group, (members = []));
+        members.push(record);
+      }
       return open + fallback + close;
     },
     guard(catcher, built, flags): string {
@@ -421,7 +475,7 @@ function startRender(
   try {
     const previousSession = setAsyncSession(job.session);
     try {
-      const root = rootScope();
+      const root = rootScope(null, job.renderId);
       job.owner = root;
       runWithOwner(root, () => {
         const value = fn(root);
@@ -1177,6 +1231,8 @@ export interface RenderToStreamOptions {
   plugins?: readonly AnySerializationAdapter[];
   /** See `RenderToStringOptions.onHead`. Later declarations stream as patches. */
   onHead?: (head: string) => void;
+  /** See `RenderToStringOptions.manifest`. A module that renders late streams its links. */
+  manifest?: AssetManifest;
   /**
    * How long one boundary may stay parked before it is abandoned to its
    * fallback, in ms. Remix ships 5000 and React Router 4950 for the same knob.
@@ -1236,7 +1292,11 @@ export function renderToStream(
 ): RenderToStreamResult {
   let job: Job;
   try {
-    job = startRender(fn, { session: options.session, renderId: options.renderId }, false);
+    job = startRender(
+      fn,
+      { session: options.session, renderId: options.renderId, manifest: options.manifest },
+      false,
+    );
   } catch (error) {
     options.onError?.(error, FAILED);
     throw error;
@@ -1649,9 +1709,47 @@ function streamBody(
     // abandoned fall back.
     abandonPendingSeeds(session);
     await serialized();
+    // A group whose earlier boundary was abandoned shows the rest at the end
+    // rather than never.
+    for (const members of job.groups.values()) for (const member of members) take(member);
+    if (revealed.length > 0) {
+      const late = revealed.splice(0, revealed.length);
+      enqueue(
+        late.map((swap) => swap.template).join("") +
+          script(late.map((swap) => swap.call).join(";")),
+      );
+    }
     enqueue(script(resolutions()));
     if (!consumerCancelled) enqueue(script(settleSeed()));
     options.onCompleteAll?.({ write: enqueue });
+  };
+
+  // `<Reveal>`: a boundary's swap waits for the ones its group puts before it.
+  const held = new Map<Parked, Swap | null>();
+  const revealed: Swap[] = [];
+  const reveal = (record: Parked, swap: Swap | null): void => {
+    const group = record.group;
+    const members = group === null ? undefined : job.groups.get(group);
+    if (group === null || members === undefined || group.order === "natural") {
+      if (swap !== null) revealed.push(swap);
+      return;
+    }
+    held.set(record, swap);
+    if (group.order === "together") {
+      if (!members.every((member) => held.has(member) || job.inlined.has(member))) return;
+      for (const member of members) take(member);
+      return;
+    }
+    for (const member of members) {
+      if (job.inlined.has(member)) continue;
+      if (!held.has(member)) return;
+      take(member);
+    }
+  };
+  const take = (member: Parked): void => {
+    const swap = held.get(member);
+    if (swap !== undefined && swap !== null) revealed.push(swap);
+    held.set(member, null);
   };
 
   const run = async (controller: ReadableStreamDefaultController<Uint8Array>): Promise<void> => {
@@ -1716,6 +1814,7 @@ function streamBody(
               const failed = placeFailure(record, error);
               report(thrownBy(error), failed === null ? CLIENT : FALLBACK);
               if (failed !== null) swaps.push(failed);
+              reveal(record, null);
             }
           } finally {
             setStreamSink(outerSink);
@@ -1731,11 +1830,12 @@ function streamBody(
             job,
           );
           const [wrapOpen, wrapClose] = FOREIGN_WRAP[record.namespace];
-          swaps.push({
+          reveal(record, {
             template: `<template data-barq="${wireId(job, record.id)}">${wrapOpen}${markup}${wrapClose}</template>`,
             call: swapCall(record.id, record.namespace === "html" ? "" : ",true"),
           });
         }
+        swaps.push(...revealed.splice(0, revealed.length));
         // Boundaries parked BY this round are already in `parked`; the ones
         // that merely stayed unready go in front of them.
         if (again.length > 0) parked.unshift(...again);
@@ -1833,6 +1933,10 @@ async function inlineSettled(job: Job, signal: AbortSignal | undefined): Promise
     const again: Parked[] = [];
     let resumed = false;
     for (const record of waiting) {
+      if (!inlinable(job, record)) {
+        again.push(record);
+        continue;
+      }
       const restore = setAsyncSession(job.session);
       const outerSink = setStreamSink(job.sink);
       const outerHead = setHeadSink(job.head.sink);
@@ -1851,12 +1955,29 @@ async function inlineSettled(job: Job, signal: AbortSignal | undefined): Promise
       }
       if (built === null) continue;
       resumed = true;
+      job.inlined.add(record);
       const content = record.hydrate ? `<!--[-->${built}<!--]-->` : built;
       job.shell = replaceBetween(job.shell, record.open, record.close, () => content);
     }
     job.parked.unshift(...again);
     if (!resumed) return;
   }
+}
+
+/**
+ * Whether the shell may show this boundary now: a `sequential` group's member
+ * only once every one before it is in the shell too, and a `together` group's
+ * never, since the rest of the group is what it waits for.
+ */
+function inlinable(job: Job, record: Parked): boolean {
+  const group = record.group;
+  if (group === null || group.order === "natural") return true;
+  if (group.order === "together") return false;
+  for (const member of job.groups.get(group) ?? []) {
+    if (member === record) return true;
+    if (!job.inlined.has(member)) return false;
+  }
+  return true;
 }
 
 /** Rounds of `inlineSettled`: a boundary resumed into the shell may park one of its own. */

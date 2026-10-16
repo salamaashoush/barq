@@ -67,6 +67,7 @@
 
 import type { Accessor, AsDeclared, CallSite, StrictAccessor, StrictChild } from "./config.ts";
 import type { ArrayElement, Child, JSXElement } from "./dom.ts";
+import { reportModule } from "./head.ts";
 import { resolveDynamic } from "./dom.ts";
 import { COUNT, HYDRATE, boundary, branch, each, island, portal, reveal } from "./flow.ts";
 import type { ComponentProps, JSX } from "./jsx-runtime.ts";
@@ -602,14 +603,18 @@ export type LazyComponent<T> = T & {
 
 export function lazy<T extends (props: never) => unknown>(
   load: () => Promise<{ default: T }>,
+  pick?: undefined,
+  moduleUrl?: string,
 ): LazyComponent<T>;
 export function lazy<M, T extends (props: never) => unknown>(
   load: () => Promise<M>,
   pick: (module: M) => T,
+  moduleUrl?: string,
 ): LazyComponent<T>;
 export function lazy<M extends Record<string, unknown>, K extends keyof M & string>(
   load: () => Promise<M>,
   options: { export: K },
+  moduleUrl?: string,
 ): LazyComponent<M[K]>;
 // `P` is the props type of the component this RETURNS, which is the only
 // thing a caller can say about a module whose export is not typed as a component.
@@ -617,10 +622,12 @@ export function lazy<M extends Record<string, unknown>, K extends keyof M & stri
 export function lazy<P = unknown>(
   load: () => Promise<Record<string, unknown>>,
   pick?: ((module: Record<string, unknown>) => unknown) | { export?: string },
+  moduleUrl?: string,
 ): LazyComponent<(props: P) => JSXElement>;
 export function lazy(
   load: () => Promise<Record<string, unknown>>,
   which?: ((module: Record<string, unknown>) => unknown) | { export?: string },
+  moduleUrl?: string,
 ): LazyComponent<(props: unknown) => JSXElement> {
   const name = typeof which === "object" ? (which.export ?? "default") : "default";
   const pick =
@@ -636,6 +643,9 @@ export function lazy(
     ));
 
   const component = (props: unknown): JSXElement => {
+    // Before the read, which throws while the module is on its way: the page
+    // needs the module's assets whether or not this render waits for them.
+    if (moduleUrl !== undefined) reportModule(moduleUrl);
     const Loaded = resolved()() as (props: unknown) => JSXElement;
     here = true;
     return Loaded(props);

@@ -73,7 +73,9 @@ export {
 } from "@barqjs/core";
 
 export {
+  type AssetManifest,
   type CSPNonce,
+  type ModuleAssets,
   type RenderToStreamOptions,
   type RenderToStreamResult,
   type RenderToStringOptions,

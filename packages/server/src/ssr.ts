@@ -770,6 +770,8 @@ export interface StreamSink {
     flags: number,
     parkedOn: NotReadyError,
     catcher: LateCatcher | null,
+    /** The `<Reveal>` it stands in, whose order a stream keeps. */
+    group: RevealGroup | null,
   ): string;
   /**
    * The content of an error boundary that a parked boundary below it may still
@@ -812,6 +814,17 @@ export function guardedRange(id: number, built: string, flags: number): string |
 
 let SINK: StreamSink | null = null;
 let CATCHER: LateCatcher | null = null;
+
+/**
+ * A `<Reveal>` a stream is revealing: `sequential` shows each boundary only
+ * once every one before it has, `together` shows them all at once, and
+ * `natural` as each is ready.
+ */
+export interface RevealGroup {
+  readonly order: string;
+}
+
+let REVEAL: RevealGroup | null = null;
 
 /** Install a sink for the duration of one render. Returns the previous one. */
 export function setStreamSink(sink: StreamSink | null): StreamSink | null {
@@ -1156,7 +1169,10 @@ function loadingBoundary(
     };
   }
   if (catcher !== null) catcher.parked = true;
-  return { markup: SINK.defer(build, String(shown), flags, parkedOn, catcher), parked: true };
+  return {
+    markup: SINK.defer(build, String(shown), flags, parkedOn, catcher, REVEAL),
+    parked: true,
+  };
 }
 
 /**
@@ -1533,15 +1549,21 @@ const VOID_TAGS = new Set([
  * emits one call with one argument order; which module it is imported from is
  * the TARGET's decision and nothing else differs.
  *
- * Ordering is a statement about WHEN boundaries swap their content in, and a
- * string render has one frame: there is nothing to order, so the children are
- * rendered under a scope of their own and the arguments are only read.
+ * Ordering is a statement about WHEN boundaries swap their content in. A
+ * string render has one frame and nothing to order; a stream does, so every
+ * boundary that parks below this one is told which group it is in.
  */
 export function reveal(order: unknown, collapsed: unknown, block: unknown): SsrHtml {
-  readValue(order, "Reveal.order");
+  const given = readValue(order, "Reveal.order");
   readValue(collapsed, "Reveal.collapsed");
   const scope = childScope(getOwner(), "provide");
-  return runWithOwner(scope, () => html(esc(invokeBlock(block, NO_ARGS))));
+  const outer = REVEAL;
+  REVEAL = { order: typeof given === "string" ? given : "sequential" };
+  try {
+    return runWithOwner(scope, () => html(esc(invokeBlock(block, NO_ARGS))));
+  } finally {
+    REVEAL = outer;
+  }
 }
 
 /**
