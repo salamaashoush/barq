@@ -1,8 +1,11 @@
-# barq and Solid 2.0
+# Coming from Solid
 
-`@barqjs/core` exports the reactive engine, `@solidjs/signals`, under Solid 2.0's own
-names, and its components and helpers follow `solid-js` and `@solidjs/web` where it can.
-This page lists where it does not, and why. A difference that is not here is a bug.
+barq's reactivity is `@solidjs/signals`, the engine Solid 2.0 is built on, and
+`@barqjs/core` exports it under the engine's own names. Its components and helpers
+take the names and arguments of `solid-js` and `@solidjs/web` wherever barq has the
+same thing, so code written for Solid 2.0 mostly reads the same here. This page is
+for someone who knows Solid: it lists where barq differs, and why. A difference that
+is not here is a bug.
 
 ## Deliberate differences
 
@@ -40,6 +43,11 @@ iterable; barq's reads the source in a memo per instance and keys a `branch` on 
 calls it where a `.jsx` or `.tsx` module calls `@barqjs/core`'s, so call `dynamic` in one of
 those rather than in a plain `.ts` module that a server build loads. `dynamicComponent`, the
 component-only variant, is not exported.
+
+**`clientOnly`** takes Solid's `{ lazy, export }` and its third `moduleUrl`, which the
+router's Vite plugin writes into a literal `clientOnly(() => import("./x"))` as it does for
+`lazy`. Its server half is `@barqjs/server`'s, which the compiler's server backend calls the
+way it calls `dynamic`'s, so call `clientOnly` in a `.jsx` or `.tsx` module too.
 
 **`DEV` carries barq's diagnostics channel.** It is the engine's development tier (devtools
 hooks and graph traversal, empty in a production build) with `DEV.diagnostics` added, the
@@ -167,11 +175,3 @@ Destructured props are not on this list. A destructured name holds the prop's fu
 which stays live, so it is a mistake only where the name is used as a value.
 [BARQ005](../../compiler-rs/docs/BARQ005.md) reports a destructured name used as a value,
 and BARQ001 to BARQ003 report `props.name` used the same way.
-
-## Not yet in barq
-
-- `createDeferred`. Solid 2.0 keeps the name for an async memo that may lag but never
-  leads. It is in `@solidjs/signals` after rc.15, which is the version barq depends on,
-  and arrives with the next engine update.
-- `Hydration`, `isHydratable` and `clientOnly` belong to the server rendering and
-  hydration work and are not exported yet.

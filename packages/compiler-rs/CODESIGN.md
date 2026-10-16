@@ -1,13 +1,13 @@
-# CODESIGN — the compiler and the runtime, designed together
+# The compiler and the runtime, designed together
 
-**Read this first (2026-10-16).** This is the design record of August 2026, kept because code, tests
-and `SEMANTICS.md` cite its sections. Three of its decisions have since been reversed, and §3, §4,
-§7 and §13 describe them as current:
+**Read this first.** This is the design record the compiler and the runtime were built from, kept
+because code, tests and `SEMANTICS.md` cite its sections. Three of its decisions have since been
+reversed, and §3, §4, §7 and §13 describe them as current:
 
 - **No scope argument.** The emitted convention is `Comp(props)` and `block(() => …)`; a construct
   makes the scope it opened the engine's current owner with `runWithOwner` before it invokes a Block.
   `Comp(s, props)`, `x($s)`, `enter`/`exit`, `_s$` and the rule that a Block never reads the ambient
-  owner (§3.0 rule 3, §3.1 O4.5) describe the convention before 2026-09-06.
+  owner (§3.0 rule 3, §3.1 O4.5) describe the earlier convention.
 - **The engine is `@solidjs/signals`.** `packages/core/src/signals.ts` re-exports it and adds scopes,
   Blocks and context. The `signals.ts` internals §0.5 and §4.2 measure (`markEpoch`, the node shape,
   the line numbers) belong to barq's former engine, and effects take `(compute, apply)`.
@@ -18,10 +18,8 @@ and `SEMANTICS.md` cite its sections. Three of its decisions have since been rev
 
 **Status.** This supersedes the earlier CODESIGN pass, whose framing ("the smallest change that does
 the job", "most of this system is right", `signals.ts` declared out of scope) no longer matches the
-directive. That document's *facts* were reliable — I re-verified every claim of it I depended on and
-none failed — and a copy is preserved at
-`/tmp/claude-1000/-home-sashoush-Workspace-barq/891b4642-1558-4131-a8ad-fe14d2cbba23/scratchpad/CODESIGN.prev-pass.md`
-so nothing is lost. What changes is the conclusion: `packages/core`'s rendering layer is replaced,
+directive. That document's *facts* were reliable: every claim of it this one depends on was re-verified and
+none failed. What changes is the conclusion: `packages/core`'s rendering layer is replaced,
 not evolved, and `signals.ts` is opened.
 
 Everything below that carries a number was measured on this machine in this session unless it is
@@ -2193,7 +2191,7 @@ written behind a compile-time flag so M6's byte-identity property survives untou
   benchmarked production path in exactly one place, and it is a `null` check. **Declared:** the wire
   is 55.7% larger raw and 7.3% larger gzipped on the 100-row page.
 - **Rules moved.** H1, H2, H3, H4 and H6, `VIOLATED`/`PLANNED` → `HOLDS`. All five moved on CHANNELS,
-  not on fixtures, and §14.1's five planned hydration fixtures were struck rather than written: a
+  not on fixtures, and §14.1's five hydration fixtures were struck rather than written: a
   percentage over a corpus, a diff between two compiles and a corrupted WIRE are none of them a source
   file. Coverage 32 → 37 of 88.
 - **What it is NOT.** Claiming is 1.4–1.6x more *node work* than replacing in happy-dom, measured at
@@ -2703,9 +2701,8 @@ framework. A locally-recoverable mismatch beats a smaller payload with no detect
 measured byte cost is material on a real page.
 
 **Q5 — CSS scoping is ecosystem, not framework.** Declining the opportunity on scope discipline.
-`packages/extra/src/css.ts` is deleted as planned; it is a goober wrapper whose pragma shim
-re-implements element creation a fifth time. Revisit after M3, when the compiler already parses every
-template and the marginal cost is visible.
+`packages/extra/src/css.ts` is deleted: it was a goober wrapper whose pragma shim re-implemented
+element creation a fifth time.
 
 **Q6 — gate the `Scope`-off-`ComputedNode` split on measurement, and revert if neutral.**
 `signals.ts:223-232` documents that the opposite tradeoff was chosen deliberately for the async

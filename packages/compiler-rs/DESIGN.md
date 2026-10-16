@@ -1,12 +1,13 @@
-# Ossify — Template IR for the barq Rust compiler
+# The barq compiler's template IR: a skeleton and a patch program
 
-A synthesis of three candidate designs. The architecture is **Ossify** (Skeleton + Patch
-Program), with the reactivity analysis grafted from **DepSet** and the addressing, dedup, and
-interning machinery grafted from **Ribbon**. See "Provenance" at the end for what came from
-where and what was rejected.
+Each template compiles to a static **skeleton**, the markup that never changes, and a **patch
+program**, the operations that fill in its dynamic parts. The design was chosen from three
+candidates: this split was one of them, and the reactivity analysis (**DepSet**) and the
+addressing, dedup and interning machinery (**Ribbon**) were taken from the other two. "Provenance"
+at the end says what came from where and what was rejected.
 
-**Status (2026-10-16).** This is the design the compiler was built from, amended as milestones
-landed. The IR, the passes and the addressing are still how `src/` is organised (`src/ir`,
+**Status.** This is the design the compiler was built from, amended where the code moved. The IR,
+the passes and the addressing are still how `src/` is organised (`src/ir`,
 `src/passes`, `src/codegen`). Read these parts as history: the worked example (§7) and the
 verification table (§8) use barq's former `signal()` API and the emissions of the day; `signals.ts`
 line numbers refer to barq's former reactive engine, which `@solidjs/signals` replaced; the SSR
@@ -15,11 +16,11 @@ convention no longer threads a scope argument (`SEMANTICS.md` C1).
 
 The Babel plugin that used to live in `packages/compiler` was never a target, a baseline or an
 oracle — only a catalogue of JSX shapes that have to be handled. That catalogue is now the
-fixture corpus (`fixtures/README.md`), and the plugin was deleted at M6. The Vite integration it
+fixture corpus (`fixtures/README.md`), and the plugin is deleted. The Vite integration it
 shared a package with is `@barqjs/vite` (`packages/vite`).
 
-The correctness oracle was `@barqjs/core/jsx-runtime` → `createElement()` until M9, which retired
-the un-compiled path: `jsx-runtime` now carries `Fragment` and the JSX types only, and compiled output is checked against
+The correctness oracle was `@barqjs/core/jsx-runtime` → `createElement()` until the un-compiled path
+was retired: `jsx-runtime` now carries `Fragment` and the JSX types only, and compiled output is checked against
 per-fixture goldens, hand-written effect counts and the `-O0`/`-Ox`/`interp` differentials.
 The bar is unchanged: compiled output must never do more reactive work than it has
 to. Doing less is the entire point.
@@ -1614,7 +1615,7 @@ binary is unbuilt gets an error naming the build command, not a quieter compile.
 
 ## 11. Provenance
 
-**Base: Ossify.** The Skeleton/Patch split is the only architecture in which target #2 is a
+**Base: the skeleton and patch program.** The Skeleton/Patch split is the only architecture in which target #2 is a
 type-level fact (`patch.is_empty()`) rather than an analysis result, and the opcode lowering
 table is the strongest available guarantee that the DOM and SSR backends cannot drift — a new
 opcode must be given a row in both. It was also the design most anchored to the real runtime:
@@ -1644,8 +1645,8 @@ it is dead weight; replaced with `Option<Const>`); `FxHashMap<Span, &[SymbolId]>
 variables (spans as keys is fragile and hashes in the hot path — replaced with Ribbon's
 `ScopeRanges` + a `u64` mask); `Deps::Set(&'a [SymbolId])` with arena merging (a `u64` mask
 answers the only question actually asked, with no allocation); the inter-procedural
-`specialized` prop map (soundness conditions — never exported, never aliased, all call sites
-agree — are too fragile to build on in M2..M6; parked as future work); and `$$clickData`.
+`specialized` prop map (its soundness conditions — never exported, never aliased, all call sites
+agree — are too fragile to build on); and `$$clickData`.
 
 **Grafted from Ribbon** (the throughput design):
 

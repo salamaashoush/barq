@@ -1,4 +1,4 @@
-# SEMANTICS — what barq means
+# What barq means: the semantics the compiler and the runtime are held to
 
 **Layer L1 of the oracle** (`CODESIGN.md` §6). This document is the specification the compiler, the
 runtime and the conformance suite are all checked *against*. It is not a description of what the code
@@ -311,22 +311,13 @@ through `onCleanup`, which is the same lifetime by a different mechanism — so 
 still has no production caller and the fetch half is M7's. `HOLDS` is the wrong word for a primitive
 whose only caller is its own test.
 
-O3.6 `PARTIAL`, and it has no compiler-rs channel: nothing about a cleanup throw is observable from
+O3.6 `VIOLATED`, and it has no compiler-rs channel: nothing about a cleanup throw is observable from
 emitted code, so `sem-err-cleanup-throw.tsx` was named here while it did not exist and is struck off.
-The half that holds is pinned by `packages/core/src/scope.test.ts`. The half that says a throwing
-cleanup MUST NOT abort the rest holds: `runUntracked`
-wraps every cleanup in `try/catch`, so a throw in the second of three still leaves all three run.
-The half that says it MUST route to `s.catcher` does not — the throw is swallowed with
-`console.error` and no catcher is consulted. Sharper than "unimplemented", and measured in the M7
-gate: `s.catcher` is written in exactly two places — `makeScope` inherits the parent's, and
-`enterRoot` installs the ROOT's rethrowing one — while `errorBoundary` installs its handler as the
-`ERROR_BOUNDARY` *context* value instead, which is what the effect-error path reads. So no user
-boundary can ever BE `s.catcher`, and the rule is unreachable by construction rather than one wiring
-change away: the two channels have to be unified first — either `errorBoundary` writes the instance
-scope's `catcher` alongside the context binding, or O3.6 is restated to route through
-`ERROR_BOUNDARY` like every other entry point and the field goes. (An earlier reading of this status said the throw
-"propagates out of `disposeNode` and aborts the rest", which is not what happens and is exactly the
-wrong-reason hazard §15 exists to catch.)
+A scope is a `@solidjs/signals` owner, and the engine runs its cleanups last-registered first with no
+`try/catch` around each one. Measured on three cleanups whose middle one throws: the third runs, the
+throw leaves `dispose`, and the first never runs. Neither half holds: the rest is aborted, and there
+is no `s.catcher` to route to, because an owner has no such field and an error boundary is the
+engine's `createErrorBoundary`.
 
 O3.7 `HOLDS` since M5. It was `PARTIAL` from M4, and the part that was left was B4's rather than this
 rule's; M5 closed it.
@@ -464,13 +455,9 @@ throw afterwards, which it cannot if `CURRENT` was left dangling.
 **Status.** O4.1–O4.2 `VIOLATED`. There is no `CURRENT` restoration on the exceptional path anywhere;
 `ErrorBoundary` catches inside a `computed` and never touches the ambient owner.
 
-O4.3 `VIOLATED`. **And `s.catcher` is written but read by nothing**, which is worth saying because it makes O4.3
-untestable rather than merely unimplemented. `makeScope` inherits it, `enterRoot` installs the root
-catcher, and no site reads it. `scope.test.ts`'s "O4.3: exit restores to the captured prev, not to
-the parent" exercises `exit`, not a catcher, so it separates `_prev` from `s.parent` — the half that
-`pin` makes observable — and cannot separate either from `getOwner()` at catch time, because no
-catching construct exists to do the restoring. The field stays because M4's `boundary` is what reads
-it; until then O4.3 has no executable channel and §14 lists it.
+O4.3 `VIOLATED`, and untestable as written: it is stated over `s.catcher`, and a scope is a
+`@solidjs/signals` owner, which has no such field. A boundary is the engine's `createErrorBoundary`,
+which catches inside a computation, so O4.3 has no executable channel and §14 lists it.
 
 O4.4 `PARTIAL`. Its one L1 claim holds — `sem-err-construction-throw`'s
 `the-failed-subtree-is-disposed-not-abandoned`, which is clause (b) of the falsification procedure —
@@ -647,14 +634,9 @@ declaration, and `publish_components` gives the scope parameter to every one thi
 tag, whatever the body returns. A tag site is proof, not evidence — this module writes the call, the
 call passes a scope, so the declaration has to accept one.
 
-The compile-time DIAGNOSTIC — naming a tag site whose callee is not in the component set, before
-the call is emitted — is not implemented, and is owed at M4. It is a better error, not a different
-outcome: the shapes above all render correctly now.
-
 **Pinned by.** `sem-calling-convention.tsx`, whose two C2 claims are the two directions —
 `function Label(props) { return props.text() }` written as a tag, and `rows.map((row) => <li/>)`
-whose callback must keep the arity `map` calls it with. `sem-props-direct-call-diagnostic.tsx`
-*(new)* is owed for the diagnostic.
+whose callback must keep the arity `map` calls it with.
 
 ### C3 — props are Cells and Blocks; the five laws
 
@@ -927,7 +909,7 @@ was given. §3.0 rule 3's brand (`_$b`, `Helper::Block`) is what makes the kind 
 so a consumer tests a property instead of guessing from arity — the guess that handed a row callback
 the Scope where its item belongs, and that invoked an arbitrary zero-argument prop once as a probe.
 
-**The emission**, as it is rather than as it was planned. P4 `shape` lowers every JSX child and every
+**The emission.** The `shape` pass lowers every JSX child and every
 JSX-valued prop to `_$block((_s$) => …)`, and when the body is a compiled unit its `Site` is
 retargeted to `ArrowBody` so codegen splices the walk and the patch program straight into the Block —
 the shape `CODESIGN.md` §7.1 prints, costing neither an IIFE nor a call. A row callback needs no
@@ -1052,14 +1034,15 @@ nesting, so merged merges stay linear.
 **Falsified by.** Later sources MUST shadow earlier ones on read; `ownKeys` and `has` MUST union all
 sources; a spread of a spread MUST NOT deepen the read path.
 
-**Status.** `HOLDS` (M3). P4 `shape` splits a component's attributes at
+**Status.** `HOLDS`. The `shape` pass splits a component's attributes at
 every spread boundary and emits `_$props([…])` with the records and the spread sources in written
 order, dropping empty records so `<Foo {...a} />` is one source rather than three. A component with no
 spread emits the object itself and never calls `_$props`, which is the "overwhelming case pays
-nothing" clause. **`_$props` itself does not exist in `packages/core`**, so the last-wins,
-`ownKeys`-union and no-deepening claims are unimplemented and this rule is not observable.
+nothing" clause. `_$props` is `props` in `packages/core/src/props.ts`, a view over the source list:
+later sources win, `ownKeys` and `has` union the list, and a merge over a merge stays flat.
  **Pinned by.** `component-spread.tsx`, `spread-static-mix.tsx` (existing,
-re-pinned), `sem-props-source-list-order.tsx` *(new)*.
+re-pinned), `sem-props-source-list-order.tsx`, and the source-list cases in
+`packages/core/src/props.test.ts`.
 
 ---
 
@@ -2022,8 +2005,7 @@ re-pinned).
 ### B4 — a listener dies with its position
 
 **Rule.** Every listener registers a cleanup on the owning scope. Removal costs zero bookkeeping and
-cannot be forgotten. Handler identity is bound once by default; `on:click={cell}` is the explicit live
-form.
+cannot be forgotten. Handler identity is bound once.
 
 **Falsified by.** The leak oracle: registered-listener count after `dispose()` MUST be 0. Today only
 `spread` removes listeners.
@@ -2058,9 +2040,8 @@ Delegated handlers are counted like every other listener: their listeners sit on
 `render` or `hydrate` mounted into, one per declared event type, and are removed when that root is
 disposed, so one still registered after `dispose()` is a B4 leak.
 
-What is NOT claimed: the second sentence of the rule. Handler identity is bound once by default, which
-holds; `on:click={cell}` as the explicit live form is not implemented, and `on:` today takes a
-verbatim event name and a handler like any other.
+Handler identity is bound once, which holds. There is no second, live form: `on:` is a Solid 1.x
+namespace, and BARQ024 refuses it.
 
 **Pinned by.** `delegated-event.tsx`, `non-delegated-event.tsx` (existing, re-pinned),
 `ref-cleanup.tsx` *(new — a ref callback returning an undo that removes a listener, the shape no
@@ -2073,17 +2054,15 @@ fixture nobody wrote.
 ### B5 — property-vs-attribute is a stated rule with an explicit override
 
 **Rule.** Known HTML attribute → attribute; else if the property exists on the prototype chain →
-property; else attribute. `prop:` / `attr:` / `bool:` force it. `on:` takes verbatim names with no
-lowercasing.
+property; else attribute. `prop:` forces the property on a custom element.
 
 **Falsified by.** `<my-grid rows={arr}>` MUST NOT become `setAttribute("rows", "[object Object]")`.
 
 **Status.** `PARTIAL` since M5, and the two halves are different kinds of claim.
 
-- **The override holds.** `prop:` / `attr:` / `bool:` / `style:` force the channel, `on:` takes a
-  verbatim event name with no lowercasing, and `bind:` resolves its property and its reporting event
-  from the tag and the `type` attribute. Every one of them is decided at P1 and emitted as a distinct
-  runtime entry point, so `<my-grid prop:rows={n}>` writes the property and nothing classifies a name
+- **The override holds.** `prop:` forces the property, and `bind:` resolves its property and its
+  reporting event from the tag and the `type` attribute. Both are decided at compile time and emitted
+  as a distinct runtime entry point, so `<my-grid prop:rows={n}>` writes the property and nothing classifies a name
   at run time. `attribute-namespaces.tsx` reads the property back into an attribute, because a
   property write is otherwise invisible to a DOM comparison — which is exactly why nothing could see
   this before.
@@ -2802,7 +2781,7 @@ export const App = () => Ctx({ value: _k$1, children: _$block(() => Child({})) }
 | O2.1 | a component body runs under the receiving scope, after its bindings | H (M3) | `sem-ctx-provider-direct-child`, `sem-ctx-provider-wrapper-component`, `sem-testing-wrapper-eager`, `own-provider-wrapper` |
 | O3.1–3 | disposal order: dead, kids reverse DFS, cleanups LIFO | H | `sem-own-dispose-order` *(new)* |
 | O3.4–5 | abort signal, range removal | I/U — O3.5 H | `sem-own-dispose-leaves-nothing` *(new)*, `mm-branch-flip`, `mm-switch-arm` |
-| O3.6 | a throwing cleanup does not abort the rest | P — H / **V** | no compiler-rs channel; the half that holds is pinned in packages/core/src/scope.test.ts (§14) |
+| O3.6 | a throwing cleanup does not abort the rest | **V** | no compiler-rs channel; the engine's disposal aborts the rest (§14) |
 | O3.7 | the leak invariant | H (M5) | `sem-own-render-disposer-disposes`, the whole corpus through `test/leaks.ts` |
 | O4.1–2 | restoration on both paths; the cost claim | **V** | `sem-err-current-restored-after-throw` *(new)* |
 | O4.3 | a catcher restores to `prev`, captured before its own `enter` | **V** | `sem-err-current-restored-after-throw` *(new)* |
@@ -2890,10 +2869,10 @@ one of those procedures runs a fixture and no fixture can run until `packages/co
 A status is a claim about an OBSERVATION; an emission is not one. M2's agent refused to mark O3.7
 `HOLDS` on the same reasoning and was right to.
 
-**M6b's hydration half moves five: H1, H2, H3, H4 and H6, `VIOLATED`/`PLANNED` → `HOLDS`.** Each moved
-on a CHANNEL rather than on a fixture, and §14.1's five planned hydration fixtures were struck rather
-than written: a percentage over a corpus, a diff between two compiles of everything, and a corrupted
-WIRE are none of them a source file, so §14.2 is the category they belong in. The reach is declared in
+**Five hydration rules hold: H1, H2, H3, H4 and H6.** Each holds on a CHANNEL rather than on a
+fixture, and §14.1's five hydration fixtures were struck rather than written: a percentage over a
+corpus, a diff between two compiles of everything, and a corrupted WIRE are none of them a source
+file, so §14.2 is the category they belong in. The reach is declared in
 `test/hydration.ts` and read by `semantics.test.ts`, which is what keeps "the oracle covers H" from
 being a sentence in this document. Corpus coverage moves 32 → 37 of 88.
 
@@ -2952,7 +2931,7 @@ absence is not.
 **Async (2).** `sem-async-optimistic-derived` (an action's optimistic write over a value a template
 reads, driven through compiled JSX) and `sem-async-stream`.
 
-**Hydration (0).** The five planned fixtures were not written, and the rules were struck off anyway —
+**Hydration (0).** No fixture was written for these five, and the rules were struck off anyway —
 by CHANNELS, which is §14.2's category and the honest one for this family. A single fixture cannot
 observe "node reuse is 100%" (it is a percentage over a corpus), "the index is free" (it is a diff
 between two compiles of everything) or "a mismatch has a local blast radius" (the input is a corrupted
