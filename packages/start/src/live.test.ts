@@ -46,16 +46,16 @@ test("each value an iterable yields is one event, typed, and the end closes the 
   for await (const each of stream) received.push(each as { n: number; at: Date });
 
   expect(received.map((each) => each.n)).toEqual([1, 2, 3]);
-  expect(received[2]!.at).toEqual(new Date(3000));
+  expect(received[2]?.at).toEqual(new Date(3000));
   expect(statuses).toEqual(["connected", "closed"]);
   expect(seen).toHaveLength(1);
-  expect(seen[0]!.headers.get("x-barq-rpc")).toBe("live");
-  expect(seen[0]!.headers.get("content-type")).toBe("text/event-stream; charset=utf-8");
+  expect(seen[0]?.headers.get("x-barq-rpc")).toBe("live");
+  expect(seen[0]?.headers.get("content-type")).toBe("text/event-stream; charset=utf-8");
 });
 
 test("a single value is one event", async () => {
   const once = createServerFn({ method: "GET" }).handler(() => "salama");
-  mount("live-once", once as ServerFn<never, unknown>);
+  mount("live-once", once);
   const seen: Response[] = [];
   throughHandler(seen);
 

@@ -35,6 +35,10 @@ function source(): {
 
 const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+// A seat answers a value already there as a bare result, which its
+// `AsyncIterator` type still calls a promise.
+const now = (iterator: AsyncIterator<number>): unknown => iterator.next();
+
 test("a seat taken after a value has arrived reads it at once, without waiting", async () => {
   const shared = new SharedSources();
   const feed = source();
@@ -44,7 +48,7 @@ test("a seat taken after a value has arrived reads it at once, without waiting",
   expect(await reading).toEqual({ done: false, value: 1 });
 
   const second = shared.seat(feed.iterable)[Symbol.asyncIterator]();
-  expect(second.next()).toEqual({ done: false, value: 1 });
+  expect(now(second)).toEqual({ done: false, value: 1 });
   shared.close();
 });
 
@@ -58,8 +62,8 @@ test("one pump feeds every seat, and a value past the first tells the connection
   feed.push(1);
   await settle();
   expect(changes).toBe(0);
-  expect(a.next()).toEqual({ done: false, value: 1 });
-  expect(b.next()).toEqual({ done: false, value: 1 });
+  expect(now(a)).toEqual({ done: false, value: 1 });
+  expect(now(b)).toEqual({ done: false, value: 1 });
   const nextA = a.next();
   feed.push(2);
   expect(await nextA).toEqual({ done: false, value: 2 });
