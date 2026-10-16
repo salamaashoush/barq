@@ -981,6 +981,73 @@ describe("useQueries", () => {
   });
 });
 
+describe("useQueries over queryOptions", () => {
+  interface Member {
+    readonly name: string;
+  }
+  const member = (id: string) =>
+    queryOptions({
+      queryKey: ["member", id],
+      queryFn: async (): Promise<Member> => ({ name: id }),
+    });
+
+  test("a tuple and a mapped array of queryOptions keep data typed", async () => {
+    const queryClient = client();
+
+    function Team() {
+      const pair = useQueries(() => ({ queries: [member("salama"), member("example.com")] }));
+      const first: Member | undefined = pair[0].data;
+      const second: Member | undefined = pair[1].data;
+      expect([first, second]).toEqual([undefined, undefined]);
+
+      const all = useQueries(() => ({ queries: ["salama", "example.com"].map(member) }));
+      const each: (Member | undefined)[] = all.map((result) => result.data);
+      expect(each).toEqual([undefined, undefined]);
+
+      return <p>{() => all.map((result) => result.data?.name ?? "?").join(",")}</p>;
+    }
+
+    const element = host();
+    const dispose = render(
+      () => (
+        <QueryClientProvider client={queryClient}>
+          <Team />
+        </QueryClientProvider>
+      ),
+      element,
+    );
+    await settled(20);
+    expect(element.textContent).toBe("salama,example.com");
+    dispose();
+  });
+
+  test("useSuspenseQueries over queryOptions has data that is there", async () => {
+    const queryClient = client();
+
+    function Pair() {
+      const [first, second] = useSuspenseQueries(() => ({
+        queries: [member("salama"), member("example.com")],
+      }));
+      return <p>{() => `${first.data.name}+${second.data.name}`}</p>;
+    }
+
+    const element = host();
+    const dispose = render(
+      () => (
+        <QueryClientProvider client={queryClient}>
+          <Loading fallback={<i>waiting</i>}>
+            <Pair />
+          </Loading>
+        </QueryClientProvider>
+      ),
+      element,
+    );
+    await settled(20);
+    expect(element.textContent).toBe("salama+example.com");
+    dispose();
+  });
+});
+
 describe("useSuspenseQueries", () => {
   test("parks until every member has data, while fetching them side by side", async () => {
     const queryClient = client();

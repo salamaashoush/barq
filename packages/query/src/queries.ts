@@ -82,6 +82,8 @@ type GetUseQueryOptionsForUseQueries<T> =
                   >
                 : UseQueryOptionsForUseQueries;
 
+// The key is `never` in the results: a `queryFn` taking a specific key, which is
+// what `queryOptions` hands back, is not a `QueryFunction` of every `QueryKey`.
 type GetUseQueryResult<T> = T extends {
   queryFnData: unknown;
   error?: infer TError;
@@ -99,7 +101,7 @@ type GetUseQueryResult<T> = T extends {
           : T extends [infer TQueryFnData]
             ? UseQueryResult<TQueryFnData>
             : T extends {
-                  queryFn?: QueryFunction<infer TQueryFnData> | SkipTokenForUseQueries;
+                  queryFn?: QueryFunction<infer TQueryFnData, never> | SkipTokenForUseQueries;
                   select?: (data: never) => infer TData;
                   throwOnError?: infer TThrow;
                 }
@@ -178,6 +180,7 @@ type GetUseSuspenseQueryOptions<T> = T extends {
                 >
               : UseSuspenseQueryOptions;
 
+// `never` for the key, as in `GetUseQueryResult`.
 type GetUseSuspenseQueryResult<T> = T extends {
   queryFnData: unknown;
   error?: infer TError;
@@ -195,7 +198,7 @@ type GetUseSuspenseQueryResult<T> = T extends {
           : T extends [infer TQueryFnData]
             ? UseSuspenseQueryResult<TQueryFnData>
             : T extends {
-                  queryFn?: QueryFunction<infer TQueryFnData>;
+                  queryFn?: QueryFunction<infer TQueryFnData, never>;
                   select?: (data: never) => infer TData;
                 }
               ? UseSuspenseQueryResult<unknown extends TData ? TQueryFnData : TData>
