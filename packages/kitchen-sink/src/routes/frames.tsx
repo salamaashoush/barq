@@ -3,14 +3,15 @@
  *
  * The loader calls `getStory`, whose answer is the region, and the page
  * renders it with its own component in each comment's slot. Choosing another
- * story mounts that story's region; revising one asks for its frame again,
- * and the answer is applied where the region stands: a comment you collapsed
- * stays collapsed, and nothing else on the page is built again.
+ * story mounts that story's region. Revising one is a mutation whose answer
+ * carries the story's region beside its value, applied where the region
+ * stands: a comment you collapsed stays collapsed, and nothing else on the
+ * page is built again.
  */
 
 import { type Child, type Incoming, createSignal, dynamic } from "@barqjs/core";
 import { css } from "@barqjs/css";
-import { Link, type RouteProps, createFileRoute, useLocation, useRouter } from "@barqjs/router";
+import { Link, type RouteProps, createFileRoute, useLocation } from "@barqjs/router";
 
 import { getStory, reviseStory } from "../data/stories.tsx";
 import { DemoCard, DemoSection } from "../demos/shared";
@@ -28,14 +29,12 @@ function Comment(props: Incoming<{ cid: number; children: Child }>) {
 }
 
 function Frames(props: RouteProps) {
-  const router = useRouter();
   const location = useLocation();
   const View = dynamic(() => props.data() as (props: Record<string, unknown>) => Node);
   const [revising, setRevising] = createSignal(false);
   const revise = async (): Promise<void> => {
     setRevising(true);
     await reviseStory({ data: { id: storyIn(new URLSearchParams(location().search)) } });
-    await router.invalidate({ sync: true });
     setRevising(false);
   };
   return (

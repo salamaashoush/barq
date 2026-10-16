@@ -6,7 +6,7 @@
  */
 
 import { type Child, useHead } from "@barqjs/core";
-import { type Slot, createServerFn } from "@barqjs/start";
+import { type Slot, createServerFn, invalidateFrames } from "@barqjs/start";
 
 interface Story {
   readonly title: string;
@@ -74,7 +74,11 @@ export const getStory = createServerFn({ method: "GET" })
     };
   });
 
-/** Edit a story on the server; the page asks for its frame again to show it. */
+/**
+ * Edit a story on the server. It says the story's frame changed, so its answer
+ * carries the region again beside its value: one request, and the page shows
+ * the edit where the story stands.
+ */
 export const reviseStory = createServerFn({ method: "POST" })
   .validator((input: { readonly id: string }) => ({ id: String(input.id) }))
   .handler(({ data }) => {
@@ -82,5 +86,6 @@ export const reviseStory = createServerFn({ method: "POST" })
     story.revision++;
     for (const comment of story.comments)
       comment.text = `${comment.text.replace(/ \(r\d+\)$/, "")} (r${story.revision})`;
+    invalidateFrames(getStory);
     return story.revision;
   });
