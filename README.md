@@ -1,30 +1,24 @@
-<div align="center">
+<p align="center"><img src="./logo.svg" alt="barq" width="96" height="96"></p>
 
-<img src="./logo.svg" alt="Barq" width="120" height="120">
+# barq
 
-# Barq
+barq is a web framework with Solid 2.0's reactive API, a native JSX compiler
+written in Rust, and a port of TanStack Router and Start for routing and server
+code. A component runs once, and when a signal changes only the DOM nodes that
+read it update.
 
-**Lightning-fast JSX framework with fine-grained reactivity**
+## Why barq
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue.svg)](https://www.typescriptlang.org/)
-[![Bun](https://img.shields.io/badge/Bun-1.1+-f9f1e1.svg)](https://bun.sh/)
-
-[Quick start](#quick-start) | [Packages](#packages) | [How it works](#how-it-works)
-
-</div>
-
----
-
-Barq (Arabic for "lightning") is a JSX framework where components run once and
-only the DOM nodes that read a changed signal update. No virtual DOM, no
-diffing.
-
-The compiler is not an optimisation on top of a runtime — it is how the
-framework works. JSX lowers to cloned templates and a walk to each dynamic hole,
-props cross a component boundary as callable cells rather than as values, and
-control flow becomes four primitives the compiler hands a `(parent, anchor)`
-pair it already computed.
+- Fine-grained reactivity with Solid 2.0's API. The engine is `@solidjs/signals`,
+  exported under Solid's own names: `createSignal`, `createMemo`, `createEffect`,
+  `createStore`, `Show`, `For`, `Loading`, `Errored`.
+- A native compiler. JSX becomes cloned templates and direct DOM writes, with no
+  virtual DOM, and every warning it gives has a code and a page that explains it.
+- Server rendering with streaming. `renderToStream` sends the shell first and
+  each `Loading` boundary's content as it resolves, then hydrates in place.
+- Server functions, middleware and server routes, with TanStack Start's API.
+- CSS-in-JS that compiles to a stylesheet at build time.
+- One Vite plugin, `barq()`, for the compiler, file routes and the server build.
 
 ## Quick start
 
@@ -35,10 +29,10 @@ bun install
 bun run dev
 ```
 
-Three templates: `full-stack` (server-rendered pages, API routes, server
-functions, prerendering), `spa` (client routing with server functions), and
-`minimal` (the compiler and signals, no router). Every one of them builds,
-typechecks and runs before it is published.
+`npm create barq@latest my-app` and `pnpm create barq my-app` work the same way.
+Pick a template with `--template`: `full-stack` (the default: server-rendered
+pages, API routes, server functions, prerendering), `spa` (client routing with
+server functions) or `minimal` (the compiler and signals, no router).
 
 ## A component
 
@@ -46,7 +40,6 @@ typechecks and runs before it is published.
 import { createSignal, render } from "@barqjs/core";
 
 function Counter() {
-  // This runs ONCE. Nothing below re-runs it.
   const [count, setCount] = createSignal(0);
 
   return (
@@ -59,85 +52,67 @@ function Counter() {
 render(() => <Counter />, document.getElementById("app")!);
 ```
 
-`{count}` is a tracked read, not a snapshot: the compiler wraps it, and the
-click updates that one text node.
+`Counter` runs once. `{count}` is a tracked read rather than a snapshot, so a
+click updates that one text node and nothing else. There are no rules of hooks
+and no dependency arrays.
 
 ## Packages
 
-| Package | What it is |
-| --- | --- |
-| [`@barqjs/core`](./packages/core#readme) | signals, JSX, the DOM renderer |
-| [`@barqjs/router`](./packages/router#readme) | file-based routing, SSR, prerendering, API routes |
-| [`@barqjs/start`](./packages/start#readme) | server functions, sessions, cookies, rate limiting, the server |
-| [`@barqjs/server`](./packages/server#readme) | the string backend and the streaming SSR runtime |
-| [`@barqjs/testing`](./packages/testing#readme) | rendering, routes, hydration and the RPC wire, under test |
-| [`@barqjs/vite`](./packages/vite#readme) | the Vite plugin: the compiler, file routes and the server half |
-| [`@barqjs/primitives`](./packages/primitives#readme) | scheduling, events, observers, browser APIs, collections, motion |
-| [`@barqjs/aria`](./packages/aria#readme) | accessible interactions, state and headless components |
-| [`@barqjs/css`](./packages/css#readme) | nested CSS and atomic styles, compiled to a stylesheet |
-| [`@barqjs/ui`](./packages/ui#readme) | shadcn/ui's components and every one of its themes |
-| [`@barqjs/ui-cli`](./packages/ui-cli#readme) | `barq-ui add button`, and `sync` that keeps your edits |
-| [`@barqjs/lucide`](./packages/lucide#readme) | every lucide icon, as a barq component |
-| [`@barqjs/query`](./packages/query#readme) | the TanStack Query adapter |
-| [`create-barq`](./packages/create-barq#readme) | `bun create barq my-app` |
+The framework:
 
-`@barqjs/vite` is a dev dependency of every application. Without it a `.tsx`
-file goes through a generic JSX transform and gets different semantics.
+- [`@barqjs/core`](./packages/core#readme): signals, stores, control flow, JSX and the DOM renderer.
+- [`@barqjs/vite`](./packages/vite#readme): the Vite plugin, `barq()`.
+- [`@barqjs/compiler-rs`](./packages/compiler-rs#readme): the native JSX compiler the plugin runs.
+- [`@barqjs/router`](./packages/router#readme): file routes, loaders, head management, SSR and prerendering.
+- [`@barqjs/start`](./packages/start#readme): server functions, middleware, sessions, cookies and the server.
+- [`@barqjs/server`](./packages/server#readme): `renderToString`, `renderToStream` and hydration.
+- [`@barqjs/css`](./packages/css#readme): nested and atomic CSS, compiled to a stylesheet.
+- [`@barqjs/testing`](./packages/testing#readme): render components, routes and server output in tests.
+- [`create-barq`](./packages/create-barq#readme): the project scaffolder.
 
-## How it works
+Components and libraries:
 
-```
-React:                              Barq:
-
-State changes                       State changes
-    |                                   |
-    v                                   v
-Re-run component function           Signal notifies subscribers
-    |                                   |
-    v                                   v
-Generate new VDOM                   Update specific DOM nodes
-    |                                   |
-    v                                   v
-Diff old vs new VDOM                Done!
-    |
-    v
-Patch real DOM
-```
-
-One consequence worth stating early: because a component body runs once, a
-"hook" here is not a call that has to happen in the same order every render.
-There is no rules-of-hooks, and no dependency array.
+- [`@barqjs/ui`](./packages/ui#readme): shadcn/ui's components and themes.
+- [`@barqjs/ui-cli`](./packages/ui-cli#readme): `barq-ui add`, which copies components into your project.
+- [`@barqjs/aria`](./packages/aria#readme): accessible interactions and headless components.
+- [`@barqjs/primitives`](./packages/primitives#readme): scheduling, events, observers, browser APIs and motion.
+- [`@barqjs/lucide`](./packages/lucide#readme): every lucide icon as a component.
+- [`@barqjs/query`](./packages/query#readme): TanStack Query.
+- [`@barqjs/form`](./packages/form#readme): TanStack Form.
+- [`@barqjs/table`](./packages/table#readme): TanStack Table.
+- [`@barqjs/virtual`](./packages/virtual#readme): TanStack Virtual.
 
 ## Documentation
 
-Each package's README is its own reference. Beyond those:
+Each package README is the reference for that package. Beyond them:
 
-- [compiler diagnostics](./packages/compiler-rs/docs/README.md) — every code the
-  compiler can report, what it means, and how to silence one.
-- [`packages/kitchen-sink`](./packages/kitchen-sink) — every feature in one
-  application that builds, prerenders and serves.
+- [Where barq differs from Solid 2.0](./packages/core/docs/solid-2.0.md).
+- [Compiler diagnostics](./packages/compiler-rs/docs/README.md): every code the
+  compiler reports, what it means and how to fix it.
+- [`packages/site`](./packages/site): the docs site for `@barqjs/ui`, with every
+  component's examples and the theme builder. Run it with
+  `bun run --cwd packages/site dev` after a root `bun run build`.
+- [`packages/kitchen-sink`](./packages/kitchen-sink): one application that uses
+  every feature, built and prerendered by CI.
 
-## Development
+## Contributing
+
+You need [Bun](https://bun.sh) and a Rust toolchain, since the root build
+compiles the native compiler.
 
 ```bash
 bun install
-bun run dev         # the kitchen-sink demo
-bun run test        # every package's suite
-bun run typecheck
-bun run build
-bun run ci          # lint and format, as CI runs them
+bun run build      # every package, then the apps
+bun run test       # every package's suite; the compiler's browser checks need Chrome
+bun run ci         # lint and format, as CI runs them
+bash .github/scripts/typecheck.sh
+bun run dev        # the kitchen-sink app
 ```
 
-The Rust compiler lives in `packages/compiler-rs` and is built by
-`bun run build` there; `cargo test` runs its own suite.
-
-## Acknowledgments
-
-- [SolidJS](https://solidjs.com) — the fine-grained reactivity model
-- [alien-signals](https://github.com/nickmccurdy/alien-signals) — fast signals
-- [TanStack Router](https://tanstack.com/router) — the routing and server-function
-  surface `@barqjs/router` and `@barqjs/start` follow
-- [TanStack Query](https://tanstack.com/query) — the adapter in `@barqjs/query`
+`bun test` resolves the workspace packages from `src`, but a Vite build such as
+the docs site resolves them from `dist`, so rebuild a package after changing it
+before checking the change there. Issues and pull requests are
+welcome at [github.com/salamaashoush/barq](https://github.com/salamaashoush/barq).
 
 ## License
 
