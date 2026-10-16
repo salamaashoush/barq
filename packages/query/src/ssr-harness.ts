@@ -17,7 +17,7 @@ interface Native {
   transform(code: string, options?: Record<string, unknown>): { code: string };
 }
 
-const native = createRequire(import.meta.url)("@barqjs/compiler-rs") as Native;
+const native = createRequire(import.meta.url)("@barqjs/compiler") as Native;
 
 const PACKAGE = join(import.meta.dir, "..");
 // Under the package's own `node_modules`, so a generated module resolves

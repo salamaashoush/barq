@@ -83,7 +83,7 @@
     "@testing-library/dom": "^10.4.2"
   },
   "devDependencies": {
-    "@barqjs/compiler-rs": "workspace:*",
+    "@barqjs/compiler": "workspace:*",
     "@barqjs/core": "workspace:*",
     "@barqjs/css": "workspace:*",
     "@barqjs/primitives": "workspace:*",

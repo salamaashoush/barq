@@ -10,7 +10,7 @@ export default defineConfig({
   deps: {
     neverBundle: [
       "vite",
-      "@barqjs/compiler-rs",
+      "@barqjs/compiler",
       /^@barqjs\/router(\/|$)/,
       /^@barqjs\/start(\/|$)/,
       /^srvx(\/|$)/,

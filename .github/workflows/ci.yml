@@ -34,7 +34,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2.9.2
         with:
-          workspaces: packages/compiler-rs
+          workspaces: packages/compiler
           shared-key: release-build
 
       - name: Install dependencies
@@ -70,7 +70,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: packages/compiler-rs
+        working-directory: packages/compiler
     steps:
       - uses: actions/checkout@v7
 
@@ -80,7 +80,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2.9.2
         with:
-          workspaces: packages/compiler-rs
+          workspaces: packages/compiler
 
       - name: Check formatting
         run: cargo fmt --all --check
@@ -107,14 +107,14 @@ jobs:
           key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
           restore-keys: bun-${{ runner.os }}-
 
-      # packages/compiler-rs's own suite runs fmt and clippy before its tests.
+      # packages/compiler's own suite runs fmt and clippy before its tests.
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
 
       - uses: Swatinem/rust-cache@v2.9.2
         with:
-          workspaces: packages/compiler-rs
+          workspaces: packages/compiler
           shared-key: release-build
 
       - name: Install dependencies
@@ -126,7 +126,7 @@ jobs:
       - name: Build packages
         run: bun run build:packages
 
-      # packages/compiler-rs/test/browser.test.ts renders the fixture corpus in
+      # packages/compiler/test/browser.test.ts renders the fixture corpus in
       # a real Chrome. happy-dom has hidden three bug classes on this project
       # (foster parenting, the tokenizer's NUL/CR rewriting, SVGElement
       # .className), so the browser checks fail rather than skip when Chrome
@@ -180,7 +180,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2.9.2
         with:
-          workspaces: packages/compiler-rs
+          workspaces: packages/compiler
           shared-key: release-build
 
       - name: Install dependencies

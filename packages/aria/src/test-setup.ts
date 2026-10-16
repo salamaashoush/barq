@@ -16,7 +16,7 @@ import { readFileSync } from "node:fs";
  * driving that path measures a path no consumer takes.
  */
 const require_ = createRequire(import.meta.url);
-const native = require_("@barqjs/compiler-rs") as {
+const native = require_("@barqjs/compiler") as {
   transform(code: string, options?: Record<string, unknown>): { code: string };
 };
 

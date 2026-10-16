@@ -84,7 +84,7 @@ const stubCore = (): {
 });
 
 /**
- * The scan and both emits are `compiler-rs`'s, and `routes.rs` holds their unit
+ * The scan and both emits are `compiler`'s, and `routes.rs` holds their unit
  * tests. What is left to check here is that this plugin ASKS correctly and
  * invalidates correctly — the two things that could not move into Rust.
  */

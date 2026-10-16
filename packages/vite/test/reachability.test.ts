@@ -63,7 +63,7 @@ group("the premise the walk rests on", () => {
     // that ever changed, every reachability answer would silently become empty
     // — so it is asserted against the real compiler rather than assumed.
     const { createRequire } = await import("node:module");
-    const native = createRequire(import.meta.url)("@barqjs/compiler-rs") as {
+    const native = createRequire(import.meta.url)("@barqjs/compiler") as {
       transform(code: string, options?: Record<string, unknown>): { code: string };
     };
 

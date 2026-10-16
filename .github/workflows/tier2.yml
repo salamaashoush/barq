@@ -58,13 +58,13 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2.9.2
         with:
-          workspaces: packages/compiler-rs
+          workspaces: packages/compiler
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
       - name: Build the native compiler
-        run: bun run --cwd packages/compiler-rs build
+        run: bun run --cwd packages/compiler build
 
       # FAIL rather than skip, the same discipline test/chrome.ts states. A
       # benchmark lane that quietly does nothing when the browser is missing
@@ -107,14 +107,14 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2.9.2
         with:
-          workspaces: packages/compiler-rs
+          workspaces: packages/compiler
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
       - name: Build the native compiler
-        run: bun run --cwd packages/compiler-rs build
+        run: bun run --cwd packages/compiler build
 
       - name: Compile throughput
-        working-directory: packages/compiler-rs
+        working-directory: packages/compiler
         run: bun test/throughput.bench.ts

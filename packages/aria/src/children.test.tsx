@@ -11,7 +11,7 @@
  * built DOM froze every other child beside it.
  *
  * These are runtime tests rather than codegen ones because that is the property:
- * `packages/compiler-rs/src/passes/shape.rs` pins the emitted shape, and this
+ * `packages/compiler/src/passes/shape.rs` pins the emitted shape, and this
  * pins what the shape has to DO. Every case below passed as markup on first
  * render and the failures were all in the second assertion.
  */

@@ -1,7 +1,7 @@
 /**
  * A headless Chrome over CDP, for measurement.
  *
- * `packages/compiler-rs/test/chrome.ts` is the same idea for CORRECTNESS, and
+ * `packages/compiler/test/chrome.ts` is the same idea for CORRECTNESS, and
  * this is deliberately not that file. A measurement driver needs three things a
  * correctness check must never silently inherit:
  *

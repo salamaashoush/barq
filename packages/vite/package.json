@@ -57,7 +57,7 @@
     "test": "bun test && bun test --conditions=development"
   },
   "dependencies": {
-    "@barqjs/compiler-rs": "workspace:*",
+    "@barqjs/compiler": "workspace:*",
     "srvx": "^1.0.5"
   },
   "devDependencies": {

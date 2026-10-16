@@ -16,7 +16,7 @@ bun add -d @barqjs/testing
 
 Components under test go through the barq compiler, like an application build.
 Under `vite`/vitest that is `barq()` from `@barqjs/vite`; under `bun test`, a
-preload that hands `.tsx` to `@barqjs/compiler-rs` (this package's own
+preload that hands `.tsx` to `@barqjs/compiler` (this package's own
 [`src/preload.ts`](./src/preload.ts) is one). Bun's generic JSX transform gives
 different semantics and is not supported.
 

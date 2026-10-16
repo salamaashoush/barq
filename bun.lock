@@ -20,7 +20,7 @@
       "name": "@barqjs/aria",
       "version": "0.1.0",
       "devDependencies": {
-        "@barqjs/compiler-rs": "workspace:*",
+        "@barqjs/compiler": "workspace:*",
         "@barqjs/core": "workspace:*",
         "@barqjs/primitives": "workspace:*",
         "@barqjs/server": "workspace:*",
@@ -43,7 +43,7 @@
       },
       "devDependencies": {
         "@babel/core": "^8.0.7",
-        "@barqjs/compiler-rs": "workspace:*",
+        "@barqjs/compiler": "workspace:*",
         "@barqjs/core": "workspace:*",
         "@barqjs/server": "workspace:*",
         "@barqjs/start": "workspace:*",
@@ -55,8 +55,8 @@
         "typescript": "^7.0.2",
       },
     },
-    "packages/compiler-rs": {
-      "name": "@barqjs/compiler-rs",
+    "packages/compiler": {
+      "name": "@barqjs/compiler",
       "version": "0.1.0",
       "devDependencies": {
         "@barqjs/core": "workspace:*",
@@ -68,41 +68,41 @@
         "@types/bun": "^1.4.3",
       },
       "optionalDependencies": {
-        "@barqjs/compiler-rs-darwin-arm64": "workspace:*",
-        "@barqjs/compiler-rs-darwin-x64": "workspace:*",
-        "@barqjs/compiler-rs-linux-arm64-gnu": "workspace:*",
-        "@barqjs/compiler-rs-linux-x64-gnu": "workspace:*",
-        "@barqjs/compiler-rs-linux-x64-musl": "workspace:*",
-        "@barqjs/compiler-rs-win32-arm64-msvc": "workspace:*",
-        "@barqjs/compiler-rs-win32-x64-msvc": "workspace:*",
+        "@barqjs/compiler-darwin-arm64": "workspace:*",
+        "@barqjs/compiler-darwin-x64": "workspace:*",
+        "@barqjs/compiler-linux-arm64-gnu": "workspace:*",
+        "@barqjs/compiler-linux-x64-gnu": "workspace:*",
+        "@barqjs/compiler-linux-x64-musl": "workspace:*",
+        "@barqjs/compiler-win32-arm64-msvc": "workspace:*",
+        "@barqjs/compiler-win32-x64-msvc": "workspace:*",
       },
     },
-    "packages/compiler-rs/npm/darwin-arm64": {
-      "name": "@barqjs/compiler-rs-darwin-arm64",
+    "packages/compiler/npm/darwin-arm64": {
+      "name": "@barqjs/compiler-darwin-arm64",
       "version": "0.1.0",
     },
-    "packages/compiler-rs/npm/darwin-x64": {
-      "name": "@barqjs/compiler-rs-darwin-x64",
+    "packages/compiler/npm/darwin-x64": {
+      "name": "@barqjs/compiler-darwin-x64",
       "version": "0.1.0",
     },
-    "packages/compiler-rs/npm/linux-arm64-gnu": {
-      "name": "@barqjs/compiler-rs-linux-arm64-gnu",
+    "packages/compiler/npm/linux-arm64-gnu": {
+      "name": "@barqjs/compiler-linux-arm64-gnu",
       "version": "0.1.0",
     },
-    "packages/compiler-rs/npm/linux-x64-gnu": {
-      "name": "@barqjs/compiler-rs-linux-x64-gnu",
+    "packages/compiler/npm/linux-x64-gnu": {
+      "name": "@barqjs/compiler-linux-x64-gnu",
       "version": "0.1.0",
     },
-    "packages/compiler-rs/npm/linux-x64-musl": {
-      "name": "@barqjs/compiler-rs-linux-x64-musl",
+    "packages/compiler/npm/linux-x64-musl": {
+      "name": "@barqjs/compiler-linux-x64-musl",
       "version": "0.1.0",
     },
-    "packages/compiler-rs/npm/win32-arm64-msvc": {
-      "name": "@barqjs/compiler-rs-win32-arm64-msvc",
+    "packages/compiler/npm/win32-arm64-msvc": {
+      "name": "@barqjs/compiler-win32-arm64-msvc",
       "version": "0.1.0",
     },
-    "packages/compiler-rs/npm/win32-x64-msvc": {
-      "name": "@barqjs/compiler-rs-win32-x64-msvc",
+    "packages/compiler/npm/win32-x64-msvc": {
+      "name": "@barqjs/compiler-win32-x64-msvc",
       "version": "0.1.0",
     },
     "packages/core": {
@@ -113,7 +113,7 @@
         "csstype": "^3.2.3",
       },
       "devDependencies": {
-        "@barqjs/compiler-rs": "workspace:*",
+        "@barqjs/compiler": "workspace:*",
         "@happy-dom/global-registrator": "^21.0.1",
         "@types/bun": "^1.4.3",
         "reactive-framework-test-suite": "^0.1.0",
@@ -155,7 +155,7 @@
         "@tanstack/store": "^0.11.2",
       },
       "devDependencies": {
-        "@barqjs/compiler-rs": "workspace:*",
+        "@barqjs/compiler": "workspace:*",
         "@barqjs/core": "workspace:*",
         "@barqjs/vite": "workspace:*",
         "@happy-dom/global-registrator": "^21.0.1",
@@ -190,7 +190,7 @@
       "name": "@barqjs/lucide",
       "version": "0.1.0",
       "devDependencies": {
-        "@barqjs/compiler-rs": "workspace:*",
+        "@barqjs/compiler": "workspace:*",
         "@barqjs/core": "workspace:*",
         "@barqjs/testing": "workspace:*",
         "@happy-dom/global-registrator": "^21.0.1",
@@ -223,7 +223,7 @@
         "@tanstack/query-core": "^5.104.3",
       },
       "devDependencies": {
-        "@barqjs/compiler-rs": "workspace:*",
+        "@barqjs/compiler": "workspace:*",
         "@barqjs/core": "workspace:*",
         "@barqjs/router": "workspace:*",
         "@barqjs/server": "workspace:*",
@@ -254,7 +254,7 @@
         "isbot": "^5.2.2",
       },
       "devDependencies": {
-        "@barqjs/compiler-rs": "workspace:*",
+        "@barqjs/compiler": "workspace:*",
         "@barqjs/core": "workspace:*",
         "@barqjs/server": "workspace:*",
         "@barqjs/start": "workspace:*",
@@ -309,7 +309,7 @@
         "d3-shape": "3.2.0",
       },
       "devDependencies": {
-        "@barqjs/compiler-rs": "workspace:*",
+        "@barqjs/compiler": "workspace:*",
         "@barqjs/testing": "workspace:*",
         "@barqjs/vite": "workspace:*",
         "@happy-dom/global-registrator": "^21.0.1",
@@ -326,7 +326,7 @@
         "srvx": "^1.0.5",
       },
       "devDependencies": {
-        "@barqjs/compiler-rs": "workspace:*",
+        "@barqjs/compiler": "workspace:*",
         "@barqjs/core": "workspace:*",
         "@barqjs/server": "workspace:*",
         "@types/bun": "^1.4.3",
@@ -345,7 +345,7 @@
         "@tanstack/table-core": "^9.3.1",
       },
       "devDependencies": {
-        "@barqjs/compiler-rs": "workspace:*",
+        "@barqjs/compiler": "workspace:*",
         "@barqjs/core": "workspace:*",
         "@barqjs/vite": "workspace:*",
         "@happy-dom/global-registrator": "^21.0.1",
@@ -363,7 +363,7 @@
         "@testing-library/dom": "^10.4.2",
       },
       "devDependencies": {
-        "@barqjs/compiler-rs": "workspace:*",
+        "@barqjs/compiler": "workspace:*",
         "@barqjs/core": "workspace:*",
         "@barqjs/css": "workspace:*",
         "@barqjs/primitives": "workspace:*",
@@ -395,7 +395,7 @@
       },
       "devDependencies": {
         "@barqjs/aria": "workspace:*",
-        "@barqjs/compiler-rs": "workspace:*",
+        "@barqjs/compiler": "workspace:*",
         "@barqjs/core": "workspace:*",
         "@barqjs/css": "workspace:*",
         "@barqjs/lucide": "workspace:*",
@@ -441,7 +441,7 @@
         "@tanstack/virtual-core": "^3.19.5",
       },
       "devDependencies": {
-        "@barqjs/compiler-rs": "workspace:*",
+        "@barqjs/compiler": "workspace:*",
         "@barqjs/core": "workspace:*",
         "@barqjs/server": "workspace:*",
         "@barqjs/vite": "workspace:*",
@@ -457,7 +457,7 @@
       "name": "@barqjs/vite",
       "version": "0.1.0",
       "dependencies": {
-        "@barqjs/compiler-rs": "workspace:*",
+        "@barqjs/compiler": "workspace:*",
         "srvx": "^1.0.5",
       },
       "devDependencies": {
@@ -531,21 +531,21 @@
 
     "@barqjs/benchmark": ["@barqjs/benchmark@workspace:packages/benchmark"],
 
-    "@barqjs/compiler-rs": ["@barqjs/compiler-rs@workspace:packages/compiler-rs"],
+    "@barqjs/compiler": ["@barqjs/compiler@workspace:packages/compiler"],
 
-    "@barqjs/compiler-rs-darwin-arm64": ["@barqjs/compiler-rs-darwin-arm64@workspace:packages/compiler-rs/npm/darwin-arm64"],
+    "@barqjs/compiler-darwin-arm64": ["@barqjs/compiler-darwin-arm64@workspace:packages/compiler/npm/darwin-arm64"],
 
-    "@barqjs/compiler-rs-darwin-x64": ["@barqjs/compiler-rs-darwin-x64@workspace:packages/compiler-rs/npm/darwin-x64"],
+    "@barqjs/compiler-darwin-x64": ["@barqjs/compiler-darwin-x64@workspace:packages/compiler/npm/darwin-x64"],
 
-    "@barqjs/compiler-rs-linux-arm64-gnu": ["@barqjs/compiler-rs-linux-arm64-gnu@workspace:packages/compiler-rs/npm/linux-arm64-gnu"],
+    "@barqjs/compiler-linux-arm64-gnu": ["@barqjs/compiler-linux-arm64-gnu@workspace:packages/compiler/npm/linux-arm64-gnu"],
 
-    "@barqjs/compiler-rs-linux-x64-gnu": ["@barqjs/compiler-rs-linux-x64-gnu@workspace:packages/compiler-rs/npm/linux-x64-gnu"],
+    "@barqjs/compiler-linux-x64-gnu": ["@barqjs/compiler-linux-x64-gnu@workspace:packages/compiler/npm/linux-x64-gnu"],
 
-    "@barqjs/compiler-rs-linux-x64-musl": ["@barqjs/compiler-rs-linux-x64-musl@workspace:packages/compiler-rs/npm/linux-x64-musl"],
+    "@barqjs/compiler-linux-x64-musl": ["@barqjs/compiler-linux-x64-musl@workspace:packages/compiler/npm/linux-x64-musl"],
 
-    "@barqjs/compiler-rs-win32-arm64-msvc": ["@barqjs/compiler-rs-win32-arm64-msvc@workspace:packages/compiler-rs/npm/win32-arm64-msvc"],
+    "@barqjs/compiler-win32-arm64-msvc": ["@barqjs/compiler-win32-arm64-msvc@workspace:packages/compiler/npm/win32-arm64-msvc"],
 
-    "@barqjs/compiler-rs-win32-x64-msvc": ["@barqjs/compiler-rs-win32-x64-msvc@workspace:packages/compiler-rs/npm/win32-x64-msvc"],
+    "@barqjs/compiler-win32-x64-msvc": ["@barqjs/compiler-win32-x64-msvc@workspace:packages/compiler/npm/win32-x64-msvc"],
 
     "@barqjs/core": ["@barqjs/core@workspace:packages/core"],
 

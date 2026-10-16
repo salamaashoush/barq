@@ -1,7 +1,7 @@
 /**
  * Bytes shipped: whole production bundles of the hello-world and the
  * js-framework-benchmark app, and the compiled output of every fixture in
- * `packages/compiler-rs/fixtures`.
+ * `packages/compiler/fixtures`.
  *
  * Every bundle goes through `Bun.build` with the same settings, minified, and
  * is reported raw, gzip at level 9 and brotli at quality 11. Fixtures are
@@ -16,7 +16,7 @@ import { brotliCompressSync, constants, gzipSync } from "node:zlib"
 import { compileBarq } from "../compile.ts"
 import { appSource, bundleFor, compileFor, compileSolid2, type Framework } from "./solid2.ts"
 
-const FIXTURES = join(import.meta.dir, "..", "..", "..", "compiler-rs", "fixtures")
+const FIXTURES = join(import.meta.dir, "..", "..", "..", "compiler", "fixtures")
 
 export interface Bytes {
   raw: number

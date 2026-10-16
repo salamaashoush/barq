@@ -2,7 +2,7 @@
  * SSR head-to-head: the barq COMPILER's string backend vs Solid's.
  *
  * Both sides are produced by running the real compiler over the same JSX —
- * `@barqjs/compiler-rs` with `ssr: true`, `babel-preset-solid` with
+ * `@barqjs/compiler` with `ssr: true`, `babel-preset-solid` with
  * `generate: "ssr"` — and then importing the module each one emitted. Nothing
  * here is a hand-written impression of a backend's output, so neither side can
  * drift away from what actually ships.

@@ -16,7 +16,7 @@ import { renderRoute } from "./router.ts";
 /**
  * REAL JSX, compiled by the real compiler.
  *
- * `preload.ts` hands every `.tsx` in this package to `@barqjs/compiler-rs`, so
+ * `preload.ts` hands every `.tsx` in this package to `@barqjs/compiler`, so
  * these are lowered exactly as a user's routes are. Hand-written components were
  * tried and are the wrong fixture: one that builds a node imperatively and
  * returns it renders correctly the first time and does not re-key when the chain

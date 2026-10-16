@@ -198,7 +198,7 @@ cascade.
 production bundle was not**. Since then, that turned out to hold only for atoms
 the runtime registered: a compiled module's sheet arrived in dev as one blob.
 The registry now splits each blob into rules and orders them the way
-`orderCss` does, and `compiler-rs/test/css-parity.test.ts` checks the two
+`orderCss` does, and `compiler/test/css-parity.test.ts` checks the two
 agree. `orderCss` is that same sort, exported from the
 compiler crate that owns `tier_of` and applied in the Vite plugin's
 `generateBundle`. `generateBundle` and not `transform`, because the ordering is a

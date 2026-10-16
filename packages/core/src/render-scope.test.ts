@@ -8,7 +8,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 import { DEV as ENGINE_DEV } from "@solidjs/signals";
-import { transform } from "@barqjs/compiler-rs";
+import { transform } from "@barqjs/compiler";
 
 import { createRoot, flush, render, type JSXElement } from "./index.ts";
 import { compileModule } from "./test-compile.ts";

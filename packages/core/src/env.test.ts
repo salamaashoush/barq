@@ -18,7 +18,7 @@ describe("which side this is", () => {
    * output rather than on the rule.
    */
   test("the compiler does not fold it into the template", async () => {
-    const { transform } = await import("@barqjs/compiler-rs");
+    const { transform } = await import("@barqjs/compiler");
     const source =
       `import { isServer } from "@barqjs/core";\n` +
       `export const V = () => <p>{isServer ? "s" : "c"}</p>;\n`;

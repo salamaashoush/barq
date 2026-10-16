@@ -24,7 +24,7 @@ import { cssRegistration } from "@barqjs/vite/internal";
  * transform first, so what these tests drive is what a user's build produces.
  */
 const require_ = createRequire(import.meta.url);
-const native = require_("@barqjs/compiler-rs") as {
+const native = require_("@barqjs/compiler") as {
   transform(code: string, options?: Record<string, unknown>): { code: string; css?: string };
 };
 

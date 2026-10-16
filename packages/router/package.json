@@ -65,7 +65,7 @@
     "isbot": "^5.2.2"
   },
   "devDependencies": {
-    "@barqjs/compiler-rs": "workspace:*",
+    "@barqjs/compiler": "workspace:*",
     "@barqjs/core": "workspace:*",
     "@barqjs/server": "workspace:*",
     "@barqjs/start": "workspace:*",

@@ -5,7 +5,7 @@
  * what is being measured:
  *
  *  1. **Both sides go through their real compiler.** The barq app is JSX that
- *     `@barqjs/compiler-rs` compiles; the Solid app is JSX that
+ *     `@barqjs/compiler` compiles; the Solid app is JSX that
  *     `babel-preset-solid` compiles. `src/compile.ts` already owns that and
  *     says why. A hand-written "shape the compiler would emit" measures the
  *     benchmark author's memory of the compiler.

@@ -59,13 +59,13 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 
 GlobalRegistrator.register();
 
-import { transform } from "@barqjs/compiler-rs";
+import { transform } from "@barqjs/compiler";
 import { effectAllocations, flush, render, scopeAllocations } from "@barqjs/core";
 
 import { paired, wilcoxon } from "./stats.ts";
 
 const HERE = fileURLToPath(new URL(".", import.meta.url));
-const FIXTURES = join(HERE, "..", "..", "compiler-rs", "fixtures");
+const FIXTURES = join(HERE, "..", "..", "compiler", "fixtures");
 const TMP = join(HERE, "..", ".flags-tmp");
 
 interface Case {

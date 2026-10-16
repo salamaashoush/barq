@@ -30,7 +30,7 @@ import { readFileSync } from "node:fs";
  * `src` under bun and have no business going through a second transform.
  */
 const require_ = createRequire(import.meta.url);
-const native = require_("@barqjs/compiler-rs") as {
+const native = require_("@barqjs/compiler") as {
   transform(code: string, options?: Record<string, unknown>): { code: string; css?: string };
 };
 

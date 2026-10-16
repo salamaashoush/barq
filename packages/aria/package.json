@@ -325,7 +325,7 @@
     "test:coverage": "bun test --timeout 10000 --coverage"
   },
   "devDependencies": {
-    "@barqjs/compiler-rs": "workspace:*",
+    "@barqjs/compiler": "workspace:*",
     "@barqjs/core": "workspace:*",
     "@barqjs/primitives": "workspace:*",
     "@barqjs/server": "workspace:*",

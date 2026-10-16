@@ -382,9 +382,9 @@ describe("the convention, from the other side", () => {
   // Replaces "it is compiled by Bun's JSX transform, not by the barq compiler".
   test("this package is compiled by the barq compiler", () => {
     const SETUP = readFileSync(join(SRC, "test-setup.ts"), "utf8");
-    expect(SETUP).toContain('require_("@barqjs/compiler-rs")');
+    expect(SETUP).toContain('require_("@barqjs/compiler")');
     expect(SETUP).toContain("native.transform(source");
-    expect(PKG.devDependencies?.["@barqjs/compiler-rs"]).toBeDefined();
+    expect(PKG.devDependencies?.["@barqjs/compiler"]).toBeDefined();
     // …and the library itself contains no JSX at all, so the app bundle and the
     // test process run ONE implementation.
     expect(readdirSync(SRC).filter((f) => f.endsWith(".tsx") && !f.includes(".test."))).toEqual([]);

@@ -1,4 +1,4 @@
-// Loads @barqjs/compiler-rs through its own loader, with the binding a build
+// Loads @barqjs/compiler through its own loader, with the binding a build
 // job produced beside it, and compiles one component. Plain node and no
 // install: the runners that check foreign architectures have neither bun nor
 // node_modules.
@@ -6,7 +6,7 @@
 
 const { join } = require("node:path");
 
-const compiler = require(join(__dirname, "../../packages/compiler-rs/index.js"));
+const compiler = require(join(__dirname, "../../packages/compiler/index.js"));
 const { code } = compiler.transform("export const A = () => <p>{count()}</p>;", {
   filename: "a.tsx",
 });

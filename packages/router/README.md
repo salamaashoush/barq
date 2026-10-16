@@ -72,7 +72,7 @@ itself are in [@barqjs/start](../start/README.md).
 `@barqjs/vite` turns file routes on when `@barqjs/router` is installed and
 `src/routes` exists. It writes `src/routeTree.gen.ts`, splits each route's
 components into their own chunk, and hands the compiler the route set
-[`BARQ013`](../compiler-rs/docs/BARQ013.md) checks links against.
+[`BARQ013`](../compiler/docs/BARQ013.md) checks links against.
 `barq({ router: { routesDir, routeTree, codeSplitting } })` moves or tunes it.
 
 `ssr: true` makes both halves hydratable, which server rendering requires: the

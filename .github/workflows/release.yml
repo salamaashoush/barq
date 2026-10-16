@@ -120,7 +120,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2.9.2
         with:
-          workspaces: packages/compiler-rs
+          workspaces: packages/compiler
           key: ${{ matrix.target }}
 
       - uses: mlugg/setup-zig@v2.2.1
@@ -137,7 +137,7 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Build
-        working-directory: packages/compiler-rs
+        working-directory: packages/compiler
         shell: bash
         run: bun x napi build --platform --release --no-js --target ${{ matrix.target }} ${{ matrix.flags }}
 
@@ -149,7 +149,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         with:
           name: bindings-${{ matrix.target }}
-          path: packages/compiler-rs/barq-compiler.*.node
+          path: packages/compiler/barq-compiler.*.node
           if-no-files-found: error
 
   # The bindings the build hosts cannot run, each on a machine that can.
@@ -179,7 +179,7 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           name: bindings-${{ matrix.target }}
-          path: packages/compiler-rs
+          path: packages/compiler
 
       - name: Smoke test
         if: matrix.image == ''
@@ -213,7 +213,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2.9.2
         with:
-          workspaces: packages/compiler-rs
+          workspaces: packages/compiler
           shared-key: release-build
 
       - name: Install dependencies
@@ -225,10 +225,10 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           pattern: bindings-*
-          path: packages/compiler-rs/artifacts
+          path: packages/compiler/artifacts
 
       - name: Move each binding into its platform package
-        run: bun run --cwd packages/compiler-rs artifacts
+        run: bun run --cwd packages/compiler artifacts
 
       - name: Pack, check and publish with --dry-run
         run: bun .github/scripts/publish.ts --dry-run --require-binaries
@@ -264,7 +264,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2.9.2
         with:
-          workspaces: packages/compiler-rs
+          workspaces: packages/compiler
           shared-key: release-build
 
       - name: Install dependencies
@@ -276,10 +276,10 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           pattern: bindings-*
-          path: packages/compiler-rs/artifacts
+          path: packages/compiler/artifacts
 
       - name: Move each binding into its platform package
-        run: bun run --cwd packages/compiler-rs artifacts
+        run: bun run --cwd packages/compiler artifacts
 
       # npm authenticates over OIDC where a trusted publisher is configured.
       # NPM_TOKEN covers what OIDC cannot: a package's very first version,

@@ -1,0 +1,93 @@
+{
+  "name": "@barqjs/compiler",
+  "version": "0.1.0",
+  "description": "The barq compiler, in Rust: JSX to cloned DOM templates, compiled styles, file routes and diagnostics with stable codes",
+  "keywords": [
+    "barq",
+    "compiler",
+    "jsx",
+    "napi",
+    "reactive",
+    "rust",
+    "signals"
+  ],
+  "homepage": "https://github.com/salamaashoush/barq#readme",
+  "bugs": {
+    "url": "https://github.com/salamaashoush/barq/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/salamaashoush/barq.git",
+    "directory": "packages/compiler"
+  },
+  "files": [
+    "index.js",
+    "index.d.ts",
+    "docs"
+  ],
+  "type": "commonjs",
+  "sideEffects": false,
+  "main": "./index.js",
+  "types": "./index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "scripts": {
+    "build": "napi build --platform --release --no-js",
+    "build:debug": "napi build --platform --no-js",
+    "test": "bun run check:fmt && bun run check:clippy && cargo test --workspace && bun test --timeout 30000",
+    "test:rust": "cargo test --workspace",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p fixtures/tsconfig.json",
+    "test:harness": "bun test --timeout 30000",
+    "check:fmt": "cargo fmt --check",
+    "check:clippy": "cargo clippy --workspace --all-targets -- -D warnings",
+    "check:snapshots": "bun test/check-snapshots.ts",
+    "test:browser": "bun test --timeout 30000 test/browser.test.ts",
+    "test:browser:parse": "bun test/browser-parse-check.ts",
+    "test:browser:svg": "bun test/browser-svg-class-check.ts",
+    "test:browser:differential": "bun test/browser-differential.ts",
+    "artifacts": "napi artifacts"
+  },
+  "devDependencies": {
+    "@barqjs/core": "workspace:*",
+    "@barqjs/router": "workspace:*",
+    "@barqjs/server": "workspace:*",
+    "@barqjs/start": "workspace:*",
+    "@happy-dom/global-registrator": "^21.0.1",
+    "@napi-rs/cli": "^3.10.8",
+    "@types/bun": "^1.4.3"
+  },
+  "optionalDependencies": {
+    "@barqjs/compiler-darwin-arm64": "workspace:*",
+    "@barqjs/compiler-darwin-x64": "workspace:*",
+    "@barqjs/compiler-linux-arm64-gnu": "workspace:*",
+    "@barqjs/compiler-linux-x64-gnu": "workspace:*",
+    "@barqjs/compiler-linux-x64-musl": "workspace:*",
+    "@barqjs/compiler-win32-arm64-msvc": "workspace:*",
+    "@barqjs/compiler-win32-x64-msvc": "workspace:*"
+  },
+  "engines": {
+    "node": ">=20.17.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "napi": {
+    "binaryName": "barq-compiler",
+    "packageName": "@barqjs/compiler",
+    "targets": [
+      "aarch64-apple-darwin",
+      "x86_64-apple-darwin",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-unknown-linux-gnu",
+      "x86_64-unknown-linux-musl",
+      "aarch64-pc-windows-msvc",
+      "x86_64-pc-windows-msvc"
+    ]
+  }
+}

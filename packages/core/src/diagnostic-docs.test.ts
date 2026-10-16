@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { afterEach, describe, expect, test } from "bun:test";
-import { transform } from "@barqjs/compiler-rs";
+import { transform } from "@barqjs/compiler";
 
 import * as core from "./index.ts";
 import { template } from "./dom.ts";

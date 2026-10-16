@@ -27,7 +27,7 @@ How each lane is taken:
   call made as the entry module runs, "after load" the same call on an idle
   page. A click must update the cart or the run fails.
 - Size: `Bun.build` minified bundles, gzip -9 and brotli 11; per-fixture
-  compiler output is each fixture in `packages/compiler-rs/fixtures` compiled
+  compiler output is each fixture in `packages/compiler/fixtures` compiled
   by barq and Solid 2.0, minified with imports external.
 
 Medians (spread in the JSON; script-lane p25..p75 is typically +-5%):

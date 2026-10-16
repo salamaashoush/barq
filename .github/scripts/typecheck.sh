@@ -51,7 +51,7 @@ if [ "${1:-}" = "--write" ]; then
   {
     echo "# Pre-existing TypeScript errors, as of the day the gate became real."
     echo "#"
-    echo "# These are NOT the compiler-rs project's work and nothing here was"
+    echo "# These are NOT the compiler project's work and nothing here was"
     echo "# weakened, deleted or @ts-ignored to make them go away. The gate fails"
     echo "# on any error NOT in this list, and equally on any line here that stops"
     echo "# reproducing — so the list can only shrink, never quietly grow."

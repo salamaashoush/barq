@@ -30,7 +30,7 @@
  *
  * BY REFERENCE, NOT BY READING SOURCE. The first design had the build read
  * `.middleware([...])` out of the AST. That is impossible: `grep -rn middleware
- * packages/compiler-rs/src` finds nothing, and the argument is a runtime
+ * packages/compiler/src` finds nothing, and the argument is a runtime
  * expression — `[m]`, `[...chain]`, `chain.filter(Boolean)` — over `Middleware`
  * values that are anonymous closures with no build-visible identity. The check
  * compares the same closure the route declared with `===`, which resolves all

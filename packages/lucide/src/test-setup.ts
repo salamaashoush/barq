@@ -15,7 +15,7 @@ import { readFileSync } from "node:fs";
  * the compiler clones one template.
  */
 const require_ = createRequire(import.meta.url);
-const native = require_("@barqjs/compiler-rs") as {
+const native = require_("@barqjs/compiler") as {
   transform(code: string, options?: Record<string, unknown>): { code: string };
 };
 

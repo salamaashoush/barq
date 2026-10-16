@@ -72,7 +72,7 @@
     "@tanstack/table-core": "^9.3.1"
   },
   "devDependencies": {
-    "@barqjs/compiler-rs": "workspace:*",
+    "@barqjs/compiler": "workspace:*",
     "@barqjs/core": "workspace:*",
     "@barqjs/vite": "workspace:*",
     "@happy-dom/global-registrator": "^21.0.1",

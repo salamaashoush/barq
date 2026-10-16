@@ -87,7 +87,7 @@ The framework:
 
 - [`@barqjs/core`](./packages/core#readme): signals, stores, control flow, JSX and the DOM renderer.
 - [`@barqjs/vite`](./packages/vite#readme): the Vite plugin, `barq()`.
-- [`@barqjs/compiler-rs`](./packages/compiler-rs#readme): the native JSX compiler the plugin runs.
+- [`@barqjs/compiler`](./packages/compiler#readme): the native JSX compiler the plugin runs.
 - [`@barqjs/router`](./packages/router#readme): file routes, loaders, head management, SSR and prerendering.
 - [`@barqjs/start`](./packages/start#readme): server functions, middleware, sessions, cookies and the server.
 - [`@barqjs/server`](./packages/server#readme): `renderToString`, `renderToStream` and hydration.
@@ -111,7 +111,7 @@ Components and libraries:
 
 Each package README is the reference for that package. Beyond them:
 
-- [Compiler diagnostics](./packages/compiler-rs/docs/README.md): every code the
+- [Compiler diagnostics](./packages/compiler/docs/README.md): every code the
   compiler reports, what it means and how to fix it.
 - [Coming from Solid](./packages/core/docs/solid-2.0.md): where barq's API
   differs from Solid 2.0's, and why.

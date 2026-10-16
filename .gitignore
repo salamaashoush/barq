@@ -32,11 +32,11 @@ yarn-debug.log*
 yarn-error.log*
 
 # Rust
-packages/compiler-rs/target/
+packages/compiler/target/
 
 # napi-rs generated artifacts
 *.node
-packages/compiler-rs/index.d.ts
+packages/compiler/index.d.ts
 
 # Browser-automation output. Regenerated on every run, and a debugging
 # session leaves a screenshot per step behind.

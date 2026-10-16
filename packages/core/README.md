@@ -380,4 +380,4 @@ Every name above is Solid 2.0's, and so are the rest: the engine's
 [docs/solid-2.0.md](docs/solid-2.0.md) lists where barq differs and why, which
 Solid 1.x APIs are gone and what replaces each, and what the compiler checks
 before anything runs. The compiler's own diagnostics are in
-[compiler-rs/docs](../compiler-rs/docs/README.md).
+[compiler/docs](../compiler/docs/README.md).

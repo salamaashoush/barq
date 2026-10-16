@@ -1327,7 +1327,7 @@ describe("createMiddleware", () => {
  *
  * The compiler replaces every one of these calls, so what is tested here is the
  * fallback: a bun test, a script run with no plugin, a package's own suite.
- * `packages/compiler-rs/src/env_fns.rs` tests the rewrite itself.
+ * `packages/compiler/src/env_fns.rs` tests the rewrite itself.
  */
 describe("env-only functions, uncompiled", () => {
   test("an isomorphic fn answers as the server, because that is where this runs", () => {

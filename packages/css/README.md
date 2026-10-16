@@ -276,7 +276,7 @@ asset, rule by rule.
 stylesheet under the module's id, and the registry splits it back into rules,
 reads each atom's tier off its rule text, and orders atoms as `orderCss` orders
 the built asset. An atom two modules share is printed once.
-`compiler-rs/test/css-parity.test.ts` checks the runtime's sheet against
+`compiler/test/css-parity.test.ts` checks the runtime's sheet against
 `orderCss` over the same input, because a second way of deciding a tier is only
 safe while the two agree. Before this, composing a group from another module
 could invert such a pair, because that module's rules were registered first:
@@ -645,13 +645,13 @@ placeholders are legal in, and everything that widening lets through (`$var`,
 
 ## Diagnostics
 
-- [BARQ014](../compiler-rs/docs/BARQ014.md), an error: the block is not CSS
+- [BARQ014](../compiler/docs/BARQ014.md), an error: the block is not CSS
   this compiler can compile.
-- [BARQ015](../compiler-rs/docs/BARQ015.md), a note: an interpolation is known
+- [BARQ015](../compiler/docs/BARQ015.md), a note: an interpolation is known
   only at run time, so the block stays on the runtime.
-- [BARQ016](../compiler-rs/docs/BARQ016.md), a note: `atoms` has more than one
+- [BARQ016](../compiler/docs/BARQ016.md), a note: `atoms` has more than one
   conditional argument, so it stays on the runtime.
-- [BARQ017](../compiler-rs/docs/BARQ017.md), a note: a style object could not
+- [BARQ017](../compiler/docs/BARQ017.md), a note: a style object could not
   be read, so `@barqjs/css`'s runtime evaluates the call.
 
 `barq({ compiler: { strictCss: true } })` turns all four into errors, and an

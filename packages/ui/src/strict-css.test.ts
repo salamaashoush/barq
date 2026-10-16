@@ -16,7 +16,7 @@ import { createRequire } from "node:module";
 import { Glob } from "bun";
 
 const require_ = createRequire(import.meta.url);
-const native = require_("@barqjs/compiler-rs") as {
+const native = require_("@barqjs/compiler") as {
   transform(code: string, options?: Record<string, unknown>): { warnings?: readonly string[] };
 };
 

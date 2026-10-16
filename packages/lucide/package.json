@@ -57,7 +57,7 @@
     "test": "bun test"
   },
   "devDependencies": {
-    "@barqjs/compiler-rs": "workspace:*",
+    "@barqjs/compiler": "workspace:*",
     "@barqjs/core": "workspace:*",
     "@barqjs/testing": "workspace:*",
     "@happy-dom/global-registrator": "^21.0.1",

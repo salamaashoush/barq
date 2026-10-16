@@ -6,7 +6,7 @@ interface Native {
 }
 
 const globals = [typeof window, typeof document, typeof ResizeObserver];
-const native = createRequire(import.meta.url)("@barqjs/compiler-rs") as Native;
+const native = createRequire(import.meta.url)("@barqjs/compiler") as Native;
 
 plugin({
   name: "barq-compiler-ssr",

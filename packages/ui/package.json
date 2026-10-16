@@ -470,7 +470,7 @@
   },
   "devDependencies": {
     "@barqjs/aria": "workspace:*",
-    "@barqjs/compiler-rs": "workspace:*",
+    "@barqjs/compiler": "workspace:*",
     "@barqjs/core": "workspace:*",
     "@barqjs/css": "workspace:*",
     "@barqjs/lucide": "workspace:*",

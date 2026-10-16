@@ -186,7 +186,7 @@ export function pack(workspace: Workspace, destination: string): string | null {
   if (isPlatformBinding(workspace.manifest)) {
     const binary = workspace.manifest.main as string;
     if (!existsSync(join(from, binary))) {
-      const local = join(root, "packages/compiler-rs", binary);
+      const local = join(root, "packages/compiler", binary);
       if (!existsSync(local)) return null;
       scratch = mkdtempSync(join(tmpdir(), "barq-binding-"));
       cpSync(from, scratch, { recursive: true });

@@ -13,7 +13,7 @@ import {
 } from "./server-diagnostics.ts";
 import type { Plugin, TransformResult, ViteDevServer } from "vite";
 
-const NATIVE_PACKAGE = "@barqjs/compiler-rs";
+const NATIVE_PACKAGE = "@barqjs/compiler";
 
 /** Custom HMR event the in-page panel listens on. */
 export const DIAGNOSTICS_EVENT = "barq:diagnostics";
@@ -943,7 +943,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
         throw new Error(
           `[barq-compiler] \`${NATIVE_PACKAGE}\` could not be loaded (${nativeLoadError}), so no JSX file can be compiled. ` +
             `Reinstall dependencies with \`bun install\`. In a checkout of the barq repository, build the native binary with ` +
-            `\`bun run --cwd packages/compiler-rs build\`.`,
+            `\`bun run --cwd packages/compiler build\`.`,
         );
       }
 

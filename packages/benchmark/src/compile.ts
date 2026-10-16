@@ -3,7 +3,7 @@
  *
  * A benchmark that hand-writes the shape a compiler "would" emit measures the
  * benchmark author's memory of the compiler, and drifts silently the moment the
- * backend changes. These helpers run the actual `@barqjs/compiler-rs` native
+ * backend changes. These helpers run the actual `@barqjs/compiler` native
  * binding and the actual `babel-preset-solid`, so both sides of a comparison are
  * whatever those two projects emit today.
  */
@@ -26,12 +26,12 @@ interface NativeCompiler {
 
 function loadNative(): NativeCompiler {
   try {
-    return require_("@barqjs/compiler-rs") as NativeCompiler;
+    return require_("@barqjs/compiler") as NativeCompiler;
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     throw new Error(
       "the benchmarks compile through the native binding, which is a build artifact and is not " +
-        "in git. Run `bun run --cwd packages/compiler-rs build` and try again. " +
+        "in git. Run `bun run --cwd packages/compiler build` and try again. " +
         `Underlying error: ${message}`,
       { cause: error },
     );

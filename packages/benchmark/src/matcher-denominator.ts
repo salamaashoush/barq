@@ -16,7 +16,7 @@
  * '@barqjs/server'". That is a separate, pre-existing breakage.)
  */
 
-import { transform } from "@barqjs/compiler-rs";
+import { transform } from "@barqjs/compiler";
 
 import { loadModule } from "./compile.ts";
 import { SUMMARY_HEADER, summarize, summaryLine } from "./stats.ts";

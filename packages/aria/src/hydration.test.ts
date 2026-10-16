@@ -30,7 +30,7 @@ import { join } from "node:path";
 import { renderAndHydrate } from "@barqjs/testing";
 
 const require_ = createRequire(import.meta.url);
-const native = require_("@barqjs/compiler-rs") as {
+const native = require_("@barqjs/compiler") as {
   transform(code: string, options?: Record<string, unknown>): { code: string };
 };
 

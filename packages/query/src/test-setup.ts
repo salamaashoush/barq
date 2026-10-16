@@ -23,7 +23,7 @@ interface Native {
 }
 
 const require_ = createRequire(import.meta.url);
-const native = require_("@barqjs/compiler-rs") as Native;
+const native = require_("@barqjs/compiler") as Native;
 
 plugin({
   name: "barq-compiler",

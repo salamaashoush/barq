@@ -28,7 +28,7 @@
   },
   "devDependencies": {
     "@babel/core": "^8.0.7",
-    "@barqjs/compiler-rs": "workspace:*",
+    "@barqjs/compiler": "workspace:*",
     "@barqjs/core": "workspace:*",
     "@barqjs/server": "workspace:*",
     "@barqjs/start": "workspace:*",

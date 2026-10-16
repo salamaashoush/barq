@@ -2,7 +2,7 @@
 
 Every package under `packages/` that is not `private` is published from CI,
 in one fixed version group: they always share a version. The platform
-packages of `@barqjs/compiler-rs` (`packages/compiler-rs/npm/*`) are in the
+packages of `@barqjs/compiler` (`packages/compiler/npm/*`) are in the
 group too, because the compiler pins them exactly.
 
 ## Day to day
@@ -76,7 +76,7 @@ npm, once per package:
   npm trust github @barqjs/core --repo salamaashoush/barq --file release.yml --env npm
   ```
 
-  Repeat for each package, the seven `@barqjs/compiler-rs-*` included.
+  Repeat for each package, the seven `@barqjs/compiler-*` included.
 - Once every package trusts the workflow, delete `NPM_TOKEN` and set each
   package's publishing access to "Require two-factor authentication and
   disallow tokens".

@@ -27,7 +27,7 @@ import { collectCss } from "@barqjs/css";
 import { ENTRIES } from "./entries.ts";
 import { FIXTURES } from "./ssr-fixtures.ts";
 const require_ = createRequire(import.meta.url);
-const native = require_("@barqjs/compiler-rs") as {
+const native = require_("@barqjs/compiler") as {
   transform(code: string, options?: Record<string, unknown>): { code: string; css?: string };
 };
 

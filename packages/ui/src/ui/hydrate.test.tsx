@@ -24,7 +24,7 @@ import { renderAndHydrate } from "@barqjs/testing";
 import { cssRegistration } from "@barqjs/vite/internal";
 
 const require_ = createRequire(import.meta.url);
-const native = require_("@barqjs/compiler-rs") as {
+const native = require_("@barqjs/compiler") as {
   transform(code: string, options?: Record<string, unknown>): { code: string; css?: string };
 };
 

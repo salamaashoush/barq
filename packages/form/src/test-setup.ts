@@ -14,7 +14,7 @@ interface Native {
 }
 
 const require_ = createRequire(import.meta.url);
-const native = require_("@barqjs/compiler-rs") as Native;
+const native = require_("@barqjs/compiler") as Native;
 
 // A `.tsx` test is compiled by the barq compiler like any consumer: bun's own
 // JSX transform cannot produce the Blocks and Cells components are called with.

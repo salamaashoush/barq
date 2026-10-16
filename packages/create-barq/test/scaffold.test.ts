@@ -35,14 +35,14 @@ const OWN_MODULES = fileURLToPath(new URL("../node_modules", import.meta.url));
  * entry imports `collectCss` from `@barqjs/css`, so a project that never writes
  * a `css` block still resolves it.
  */
-const WORKSPACE = ["core", "css", "router", "server", "start", "compiler-rs", "vite"];
+const WORKSPACE = ["core", "css", "router", "server", "start", "compiler", "vite"];
 
 /** Built once for the whole file: a template resolves `@barqjs/*` through it. */
 function ensureBuilt(): void {
   for (const name of WORKSPACE) {
     const directory = join(PACKAGES, name);
-    // `compiler-rs` is a native addon with no `dist`; it is built by cargo.
-    if (name === "compiler-rs" || existsSync(join(directory, "dist"))) continue;
+    // `compiler` is a native addon with no `dist`; it is built by cargo.
+    if (name === "compiler" || existsSync(join(directory, "dist"))) continue;
     const built = Bun.spawnSync({ cmd: ["bun", "run", "build"], cwd: directory });
     if (built.exitCode !== 0) {
       throw new Error(`packages/${name} failed to build:\n${built.stderr.toString()}`);

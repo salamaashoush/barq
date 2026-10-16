@@ -8,7 +8,7 @@ import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { transform } from "@barqjs/compiler-rs";
+import { transform } from "@barqjs/compiler";
 
 const INDEX = join(import.meta.dir, "index.ts");
 

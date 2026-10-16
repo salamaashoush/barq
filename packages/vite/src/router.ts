@@ -2,7 +2,7 @@
  * The build half: ask the compiler for the route table, serve it, invalidate it.
  *
  * The scan, the naming rules, the tree and both emits all live in
- * `compiler-rs`'s `routes.rs`. This file reads no directory, derives no route
+ * `compiler`'s `routes.rs`. This file reads no directory, derives no route
  * from a filename and builds no string — so a route table cannot mean two
  * things, and there is no second implementation to drift.
  *
@@ -37,7 +37,7 @@ export const DEFAULT_ROUTE_TREE = "src/routeTree.gen.ts";
  * `beforeLoad`, `errorComponent` and the cache options — every one of them is
  * read synchronously off `route.definition` and a `lazy()` cannot answer
  * synchronously. The price is an eager component, and this is where it is paid
- * back: `compiler-rs`'s `route_split` rewrites the module into the half the
+ * back: `compiler`'s `route_split` rewrites the module into the half the
  * tree imports and the half it `import()`s, which is where TanStack splits too
  * (`router-plugin/src/core/constants.ts:4-16`).
  *
@@ -228,7 +228,7 @@ export function routeChunks(
 const ROUTE_ASSETS_ID = "virtual:barq-route-assets";
 const RESOLVED_ROUTE_ASSETS_ID = `\0${ROUTE_ASSETS_ID}`;
 
-/** What `compiler-rs` answers with. */
+/** What `compiler` answers with. */
 export interface RouteTree {
   /** The contents of `routeTree.gen.ts` — the table AND its types. */
   readonly source: string;
@@ -283,7 +283,7 @@ interface Native {
   ): RouteSplit;
 }
 
-const native = createRequire(import.meta.url)("@barqjs/compiler-rs") as Native;
+const native = createRequire(import.meta.url)("@barqjs/compiler") as Native;
 
 /**
  * Scan and generate. Exported so a build script can do it without a dev server.

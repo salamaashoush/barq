@@ -1,5 +1,5 @@
 /**
- * The plugin surface. There is exactly one pipeline: `@barqjs/compiler-rs` is a
+ * The plugin surface. There is exactly one pipeline: `@barqjs/compiler` is a
  * hard dependency, and a checkout whose native binary has not been built is an
  * ERROR rather than a quieter build.
  */
@@ -82,7 +82,7 @@ function withoutTheNativePackage<T>(fn: () => T): T {
   const resolve = Module._resolveFilename;
   if (resolve) {
     Module._resolveFilename = (...args: unknown[]) => {
-      if (args[0] === "@barqjs/compiler-rs") throw new Error("Cannot find module");
+      if (args[0] === "@barqjs/compiler") throw new Error("Cannot find module");
       return resolve(...args);
     };
   }
@@ -192,10 +192,10 @@ describe("barqVitePlugin", () => {
       expect(loadNativeCompiler()).toBeUndefined();
 
       const plugin = barqVitePlugin();
-      expect(run(plugin, SOURCE, "/a/app.tsx")).rejects.toThrow(/@barqjs\/compiler-rs/);
+      expect(run(plugin, SOURCE, "/a/app.tsx")).rejects.toThrow(/@barqjs\/compiler/);
       // …and it names the command that fixes it, because the binary is a build
       // artifact and "not built yet" is a state a fresh checkout is in.
-      expect(run(plugin, SOURCE, "/a/app.tsx")).rejects.toThrow(/compiler-rs build/);
+      expect(run(plugin, SOURCE, "/a/app.tsx")).rejects.toThrow(/compiler build/);
     });
   });
 
@@ -273,7 +273,7 @@ describe("barqVitePlugin", () => {
       expect(warnings[0]).not.toContain("/a/app.tsx");
       expect(warnings[0]).toMatch(/^BARQ001 warning: /);
       expect(warnings[0]).toEndWith(
-        "\n  docs: https://github.com/salamaashoush/barq/blob/main/packages/compiler-rs/docs/BARQ001.md",
+        "\n  docs: https://github.com/salamaashoush/barq/blob/main/packages/compiler/docs/BARQ001.md",
       );
     });
 

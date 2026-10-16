@@ -193,27 +193,27 @@ listed with its 2.0 replacement, from Solid's `documentation/solid-2.0/MIGRATION
   calls `addEventListener`, the attribute's own name, `style` and `class` values.
 
 `Context.Provider`, `classList`, the namespaces and `<Dynamic>` still parse, so the compiler
-reports them with the replacement: [BARQ022](../../compiler-rs/docs/BARQ022.md),
-[BARQ023](../../compiler-rs/docs/BARQ023.md), [BARQ024](../../compiler-rs/docs/BARQ024.md)
-and [BARQ025](../../compiler-rs/docs/BARQ025.md). The rest are missing exports, which
+reports them with the replacement: [BARQ022](../../compiler/docs/BARQ022.md),
+[BARQ023](../../compiler/docs/BARQ023.md), [BARQ024](../../compiler/docs/BARQ024.md)
+and [BARQ025](../../compiler/docs/BARQ025.md). The rest are missing exports, which
 TypeScript and the bundler report.
 
 ## Checked at compile time
 
 Several mistakes Solid 2.0 reports at run time in development are also reported by barq's
 compiler, before anything runs, with a code, a span and a docs page
-(`packages/compiler-rs/docs`):
+(`packages/compiler/docs`):
 
 - A component choosing what to return from a signal it reads once, the case Solid's
-  `STRICT_READ_UNTRACKED` warns about: [BARQ018](../../compiler-rs/docs/BARQ018.md).
+  `STRICT_READ_UNTRACKED` warns about: [BARQ018](../../compiler/docs/BARQ018.md).
 - A write, a `refresh` or an action while a component body or a computation runs, which
   the engine's development build throws on as `REACTIVE_WRITE_IN_OWNED_SCOPE` or
-  `ACTION_CALLED_IN_OWNED_SCOPE`: [BARQ019](../../compiler-rs/docs/BARQ019.md).
-- A store destructured in a component body: [BARQ020](../../compiler-rs/docs/BARQ020.md).
+  `ACTION_CALLED_IN_OWNED_SCOPE`: [BARQ019](../../compiler/docs/BARQ019.md).
+- A store destructured in a component body: [BARQ020](../../compiler/docs/BARQ020.md).
 - A read after the first `await` of an async computation, Solid's
-  `UNTRACKED_READ_AFTER_AWAIT`: [BARQ021](../../compiler-rs/docs/BARQ021.md).
+  `UNTRACKED_READ_AFTER_AWAIT`: [BARQ021](../../compiler/docs/BARQ021.md).
 
 Destructured props are not on this list. A destructured name holds the prop's function,
 which stays live, so it is a mistake only where the name is used as a value.
-[BARQ005](../../compiler-rs/docs/BARQ005.md) reports a destructured name used as a value,
+[BARQ005](../../compiler/docs/BARQ005.md) reports a destructured name used as a value,
 and BARQ001 to BARQ003 report `props.name` used the same way.
