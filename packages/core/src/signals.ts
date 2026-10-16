@@ -763,10 +763,10 @@ export function resetChildIds(session?: symbol): void {
  * it is numbered from, which is what lets a server render and the client that
  * hydrates it agree on a key without either naming one.
  */
-export function rootScope(): Scope {
+export function rootScope(owner: Scope | null = null, renderId = ""): Scope {
   scopesAllocated++;
-  const id = nextRootId();
-  const root = runWithOwner(null, () => createOwner({ id }));
+  const id = renderId + nextRootId();
+  const root = runWithOwner(owner, () => createOwner({ id }));
   engineSetContext(NUMBERING, numberingAt(id), root);
   if (activeAsyncSession !== null) {
     recordsOf(activeAsyncSession);

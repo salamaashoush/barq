@@ -2781,7 +2781,26 @@ export function childToNodes(child: Child, s: Scope | null = getOwner()): Node[]
  * otherwise. Either way this disposer can only remove the range, and it says so
  * rather than pretending.
  */
-export function render(block: JSXElement | (() => JSXElement), container: HTMLElement): () => void {
+/**
+ * Solid 2.0's mount options. `owner` parents the root, so the mounted tree
+ * reads the contexts that owner sees and goes with it when it is disposed.
+ * `renderId` namespaces the ids the tree numbers its async values and
+ * `createUniqueId` from: a page with two roots gives each its own, and the
+ * server render of a root takes the same one.
+ */
+export interface MountOptions {
+  readonly owner?: Scope | null;
+  readonly renderId?: string;
+}
+
+/** Where a tree can be mounted. A Document is hydrated whole. */
+export type MountTarget = HTMLElement | ShadowRoot | DocumentFragment;
+
+export function render(
+  block: JSXElement | (() => JSXElement),
+  container: MountTarget,
+  options?: MountOptions,
+): () => void {
   container.textContent = ""; // Faster than innerHTML = ""
 
   if (typeof block !== "function") {
@@ -2796,7 +2815,7 @@ export function render(block: JSXElement | (() => JSXElement), container: HTMLEl
         "`render(() => <App />, host)`.",
     });
   }
-  const root = rootScope();
+  const root = rootScope(options?.owner ?? null, options?.renderId);
   ownRange(root, () => {
     container.textContent = "";
   });
@@ -2835,7 +2854,7 @@ function rootClaim(): number | undefined {
 function insertRendered(
   scope: Scope | null,
   element: JSXElement,
-  container: HTMLElement | Document,
+  container: MountTarget | Document,
 ): void {
   if (element === null || element === undefined || typeof element === "boolean") {
     return;
@@ -3100,8 +3119,8 @@ function eventFor(rec: CapturedEvent): Event {
  */
 function hydrateContainer(
   fn: () => JSXElement,
-  container: HTMLElement | Document,
-  options?: { data?: Record<string, unknown> },
+  container: MountTarget | Document,
+  options?: HydrateOptions,
 ): () => void {
   hydrate.report = { mismatches: [], claimed: 0, ranges: 0, built: 0, recovered: false };
   if (options?.data) {
@@ -3129,7 +3148,7 @@ function hydrateContainer(
   // nothing seeded counts the same way while it claims.
   const followed = followAsync(true);
   try {
-    clear = mount(fn, container, true);
+    clear = mount(fn, container, true, options);
   } catch (error) {
     failure = mismatchIn(error);
     if (failure === null) {
@@ -3173,7 +3192,7 @@ function hydrateContainer(
     (globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__ = seeds;
     resetChildIds();
     try {
-      clear = mount(fn, container, false);
+      clear = mount(fn, container, false, options);
     } catch (error) {
       unregisterDelegatedRoot(container);
       throw error;
@@ -3226,12 +3245,13 @@ export interface HydrationOutcome extends HydrationReport {
   /** The claim failed and the page was rendered cold — today's behaviour. */
   recovered: boolean;
 }
+export interface HydrateOptions extends MountOptions {
+  /** Seeds for this hydration, beside what the page's seed scripts assigned. */
+  readonly data?: Record<string, unknown>;
+}
+
 export interface Hydrate {
-  (
-    fn: () => JSXElement,
-    container: HTMLElement | Document,
-    options?: { data?: Record<string, unknown> },
-  ): () => void;
+  (fn: () => JSXElement, container: MountTarget | Document, options?: HydrateOptions): () => void;
   report: HydrationOutcome;
 }
 
@@ -3265,21 +3285,22 @@ export const hydrate: Hydrate = /* @__PURE__ */ Object.assign(hydrateContainer, 
  * the markup it was told to drop. Removing `documentElement` is the equivalent,
  * and it is the only child a Document has that is not its doctype.
  */
-function clearContainer(container: HTMLElement | Document): void {
+function clearContainer(container: MountTarget | Document): void {
   if (container.nodeType === 9 /* DOCUMENT_NODE */) {
     (container as Document).documentElement?.remove();
     return;
   }
-  (container as HTMLElement).textContent = "";
+  (container as MountTarget).textContent = "";
 }
 
 function mount(
   block: () => JSXElement,
-  container: HTMLElement | Document,
+  container: MountTarget | Document,
   claiming: boolean,
+  options?: MountOptions,
 ): () => void {
   if (!claiming) clearContainer(container);
-  const root = rootScope();
+  const root = rootScope(options?.owner ?? null, options?.renderId);
   ownRange(root, () => {
     clearContainer(container);
   });
