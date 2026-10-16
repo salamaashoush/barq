@@ -611,6 +611,16 @@ const DYNAMIC_UNREADABLE: (&str, &str) = (
      in a `create` group passed beside it.",
 );
 
+/// What a style object says when a value in it is bound inside a function.
+const LOCAL_VALUE: (&str, &str) = (
+    "This style object has a value bound inside a function, such as a parameter or a local \
+     variable, and the compiler reads only literals and `const`s declared at the top of the \
+     module.",
+    "For a value that changes, declare a `dynamic` group, `const tint = dynamic((color) => \
+     ({ color }))`, and spread `props(tint(value))`: its class is compiled, and the value is \
+     set as a custom property.",
+);
+
 /// What a group says when one of its style objects will not read.
 const GROUP_UNREADABLE: (&str, &str) = (
     "A style in this `create` or `createIn` call has a value, a key or a nested object the \
@@ -1040,12 +1050,12 @@ impl<'a> Css<'a, '_> {
             // An object this pass cannot read is the one shape that costs the
             // runtime's object walk, so it is the one that reports. A class
             // string it cannot read is a merge and reports nothing.
-            let mut object_declined: Option<Span> = None;
+            let mut object_declined: Option<&Expression<'a>> = None;
             let read = match expression {
                 Expression::ObjectExpression(_) => {
                     let read = self.declarations(expression);
                     if read.is_none() {
-                        object_declined = Some(expression.span());
+                        object_declined = Some(expression);
                     }
                     read.map(|declarations| Argument {
                         at,
@@ -1071,7 +1081,7 @@ impl<'a> Css<'a, '_> {
                         Expression::ObjectExpression(_) => {
                             let read = self.declarations(&logical.right);
                             if read.is_none() {
-                                object_declined = Some(logical.right.span());
+                                object_declined = Some(&logical.right);
                             }
                             read.map(|declarations| Argument {
                                 at,
@@ -1090,16 +1100,18 @@ impl<'a> Css<'a, '_> {
                 }
                 _ => None,
             };
-            if let Some(at) = object_declined {
-                self.decline(
-                    at,
+            if let Some(object) = object_declined {
+                let reason = if self.holds_local(object) {
+                    LOCAL_VALUE
+                } else {
                     (
                         "This style object has a value, a key or a nested object the compiler \
                          cannot read in this file, such as an imported value or a function call.",
                         "Write literals or a `const` declared in this module; for a value that \
                          changes, use `var(--name)` and set it through `style`.",
-                    ),
-                );
+                    )
+                };
+                self.decline(object.span(), reason);
             }
             slots.push(match read {
                 Some(argument) => Slot::Known(argument),
@@ -1892,6 +1904,37 @@ impl<'a> Css<'a, '_> {
     /// do exactly that — a top-level `"::placeholder"` key was read as a
     /// property whose conditions were its declarations, and `null` was skipped
     /// where it should remove.
+    /// Whether a style value names a binding declared inside a function.
+    ///
+    /// Only the shapes a value is written in are followed: a nested condition
+    /// object, a member read, a template and a `firstThatWorks` list.
+    fn holds_local(&self, value: &Expression<'_>) -> bool {
+        match without_type_wrappers(value) {
+            Expression::ObjectExpression(object) => object.properties.iter().any(|property| {
+                matches!(property, ObjectPropertyKind::ObjectProperty(property)
+                    if self.holds_local(&property.value))
+            }),
+            Expression::Identifier(_) => crate::analysis::symbol_of(self.scoping, value)
+                .is_some_and(|symbol| {
+                    self.scoping.symbol_scope_id(symbol) != self.scoping.root_scope_id()
+                }),
+            Expression::StaticMemberExpression(member) => self.holds_local(&member.object),
+            Expression::ComputedMemberExpression(member) => self.holds_local(&member.object),
+            Expression::TemplateLiteral(template) => {
+                template.expressions.iter().any(|expression| self.holds_local(expression))
+            }
+            Expression::CallExpression(call)
+                if self.tag_of(&call.callee) == Some(Tag::FirstThatWorks) =>
+            {
+                call.arguments
+                    .iter()
+                    .filter_map(|argument| argument.as_expression())
+                    .any(|expression| self.holds_local(expression))
+            }
+            _ => false,
+        }
+    }
+
     fn declarations(&self, object: &Expression<'_>) -> Option<Vec<Declaration>> {
         let Expression::ObjectExpression(object) = crate::analysis::without_type_wrappers(object)
         else {
@@ -3556,6 +3599,45 @@ mod decline_tests {
         // A spread of anything else is not an argument list this pass can
         // count through, and it says so.
         assert!(codes(&run("export const a = atoms(...rest);")).contains(&"BARQ017"));
+    }
+
+    /// A value that arrives when the code runs is what `dynamic` is for, so the
+    /// note says so rather than calling it an import or a function call.
+    #[test]
+    fn a_value_from_inside_a_function_points_at_dynamic() {
+        let message = |body: &str| -> String {
+            let out = run(body);
+            let notes: Vec<&str> = out
+                .warnings
+                .iter()
+                .filter(|w| w.code.map(Code::as_str) == Some("BARQ017"))
+                .map(|w| w.message.as_str())
+                .collect();
+            assert_eq!(notes.len(), 1, "{body}: {notes:?}");
+            notes[0].to_string()
+        };
+        for body in [
+            "export const a = (c) => atoms({ color: c });",
+            "export const a = (p) => atoms({ padding: 4, \":hover\": { color: p.tint } });",
+            "export const a = (on, w) => atoms(on && { width: `${w}px` });",
+            "export function A() {\n  let c = pick();\n  return atoms({ color: c });\n}",
+        ] {
+            let text = message(body);
+            assert!(text.contains("`dynamic`"), "{body}: {text}");
+            assert!(!text.contains("imported value"), "{body}: {text}");
+        }
+        for body in [
+            "import { theme } from \"./t.ts\";\nexport const a = atoms({ color: theme.brand });",
+            "export const a = atoms({ color: pick() });",
+        ] {
+            let text = message(body);
+            assert!(text.contains("imported value"), "{body}: {text}");
+            assert!(!text.contains("`dynamic`"), "{body}: {text}");
+        }
+        let fixed = run(
+            "const tint = dynamic((color) => ({ color }));\nexport const a = (c) => props(tint(c));",
+        );
+        assert!(codes(&fixed).is_empty(), "{:?}", codes(&fixed));
     }
 
     /// The line is at the OBJECT, not at the call. An argument this pass cannot

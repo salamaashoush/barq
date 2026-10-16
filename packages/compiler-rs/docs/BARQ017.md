@@ -39,6 +39,10 @@ and runs in the browser. A `dynamic` group turns each value into one custom prop
 `firstThatWorks` list inside one cannot be compiled either: keep the fallback in a `create`
 group passed to `props` beside it.
 
+A value bound inside a function, such as a parameter or a local variable, is reported
+with its own message: a value that changes belongs in a `dynamic` group, whose class is
+compiled and whose value is set as a custom property when it arrives.
+
 Nothing is broken, and the classes are the same. The note marks a call that could be
 compiled; the message says which part stopped it. To make every CSS note an error, so a
 build proves that no call is left for the browser, set `barq({ compiler: { strictCss: true } })`.
