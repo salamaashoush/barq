@@ -1,0 +1,43 @@
+{
+  "$schema": "https://unpkg.com/@changesets/config@4.0.1/schema.json",
+  "changelog": "@changesets/cli/changelog",
+  "commit": false,
+  "fixed": [
+    [
+      "@barqjs/aria",
+      "@barqjs/compiler-rs",
+      "@barqjs/compiler-rs-darwin-arm64",
+      "@barqjs/compiler-rs-darwin-x64",
+      "@barqjs/compiler-rs-linux-arm64-gnu",
+      "@barqjs/compiler-rs-linux-x64-gnu",
+      "@barqjs/compiler-rs-linux-x64-musl",
+      "@barqjs/compiler-rs-win32-arm64-msvc",
+      "@barqjs/compiler-rs-win32-x64-msvc",
+      "@barqjs/core",
+      "@barqjs/css",
+      "@barqjs/form",
+      "@barqjs/lucide",
+      "@barqjs/primitives",
+      "@barqjs/query",
+      "@barqjs/router",
+      "@barqjs/server",
+      "@barqjs/start",
+      "@barqjs/table",
+      "@barqjs/testing",
+      "@barqjs/ui",
+      "@barqjs/ui-cli",
+      "@barqjs/virtual",
+      "@barqjs/vite",
+      "create-barq"
+    ]
+  ],
+  "linked": [],
+  "access": "public",
+  "baseBranch": "main",
+  "updateInternalDependencies": "patch",
+  "privatePackages": {
+    "version": false,
+    "tag": false
+  },
+  "ignore": []
+}

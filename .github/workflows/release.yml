@@ -1,0 +1,292 @@
+name: Release
+
+# On main: with pending changesets, open or update the "Version Packages" pull
+# request. Once that merges there are none, and every version not yet on npm
+# is published, tagged and given a GitHub release.
+#
+# workflow_dispatch is the dry run: every binding is built and smoke-tested,
+# every package is packed and checked, and `npm publish --dry-run` runs for
+# each unpublished one. Nothing reaches npm, and no tag or release is made.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Never cancelled: a release stopped halfway leaves some packages published.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    name: Version PR or release plan
+    if: github.repository == 'salamaashoush/barq'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      has-changesets: ${{ steps.changesets.outputs.has-changesets }}
+      unpublished: ${{ steps.unpublished.outputs.count }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: latest
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # A pull request opened with the workflow's own token starts no
+      # workflows, so CI never runs on it. RELEASE_PR_TOKEN (a fine-grained
+      # token or a GitHub App token with contents and pull-requests write) is
+      # what makes CI run on the version PR; without it the PR still opens.
+      - name: Open or update the Version Packages pull request
+        id: changesets
+        if: github.event_name == 'push'
+        uses: changesets/action@v2.1.2
+        with:
+          github-token: ${{ secrets.RELEASE_PR_TOKEN || github.token }}
+          version-script: bun run version-packages
+          pr-title: "chore: version packages"
+          commit-message: "chore: version packages"
+
+      - name: Count unpublished versions
+        id: unpublished
+        if: github.event_name == 'workflow_dispatch' || steps.changesets.outputs.has-changesets == 'false'
+        run: bun .github/scripts/publish.ts --list >> "$GITHUB_OUTPUT"
+
+  binding:
+    name: Binding ${{ matrix.target }}
+    needs: plan
+    if: github.event_name == 'workflow_dispatch' || (needs.plan.outputs.unpublished != '' && needs.plan.outputs.unpublished != '0')
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            host: macos-latest
+            smoke: true
+          - target: x86_64-apple-darwin
+            host: macos-latest
+            smoke: false
+          # napi's cross toolchain links against glibc 2.17, so the binary
+          # loads on every distribution still supported, not only on the
+          # runner's own.
+          - target: x86_64-unknown-linux-gnu
+            host: ubuntu-latest
+            flags: --use-napi-cross
+            smoke: true
+          - target: aarch64-unknown-linux-gnu
+            host: ubuntu-latest
+            flags: --use-napi-cross
+            smoke: false
+          - target: x86_64-unknown-linux-musl
+            host: ubuntu-latest
+            flags: --cross-compile
+            smoke: false
+          - target: x86_64-pc-windows-msvc
+            host: windows-latest
+            smoke: true
+          - target: aarch64-pc-windows-msvc
+            host: windows-latest
+            smoke: false
+    runs-on: ${{ matrix.host }}
+    env:
+      MACOSX_DEPLOYMENT_TARGET: "11.0"
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: latest
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2.9.2
+        with:
+          workspaces: packages/compiler-rs
+          key: ${{ matrix.target }}
+
+      - uses: mlugg/setup-zig@v2.2.1
+        if: contains(matrix.target, 'musl')
+        with:
+          version: 0.15.1
+
+      - uses: taiki-e/install-action@v2
+        if: contains(matrix.target, 'musl')
+        with:
+          tool: cargo-zigbuild
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build
+        working-directory: packages/compiler-rs
+        shell: bash
+        run: bun x napi build --platform --release --no-js --target ${{ matrix.target }} ${{ matrix.flags }}
+
+      - name: Smoke test
+        if: matrix.smoke
+        shell: bash
+        run: node .github/scripts/binding-smoke.cjs
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bindings-${{ matrix.target }}
+          path: packages/compiler-rs/barq-compiler.*.node
+          if-no-files-found: error
+
+  # The bindings the build hosts cannot run, each on a machine that can.
+  binding-smoke:
+    name: Smoke ${{ matrix.target }}
+    needs: binding
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - target: x86_64-apple-darwin
+            host: macos-15-intel
+            image: ""
+          - target: aarch64-unknown-linux-gnu
+            host: ubuntu-24.04-arm
+            image: ""
+          - target: aarch64-pc-windows-msvc
+            host: windows-11-arm
+            image: ""
+          - target: x86_64-unknown-linux-musl
+            host: ubuntu-latest
+            image: node:24-alpine
+    runs-on: ${{ matrix.host }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: bindings-${{ matrix.target }}
+          path: packages/compiler-rs
+
+      - name: Smoke test
+        if: matrix.image == ''
+        shell: bash
+        run: node .github/scripts/binding-smoke.cjs
+
+      - name: Smoke test in ${{ matrix.image }}
+        if: matrix.image != ''
+        run: >-
+          docker run --rm -v "$PWD:/repo" -w /repo ${{ matrix.image }}
+          node .github/scripts/binding-smoke.cjs
+
+  dry-run:
+    name: Pack and check everything (dry run)
+    needs: [plan, binding, binding-smoke]
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2.9.2
+        with:
+          workspaces: packages/compiler-rs
+          shared-key: release-build
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build packages
+        run: bun run build:packages
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: bindings-*
+          path: packages/compiler-rs/artifacts
+
+      - name: Move each binding into its platform package
+        run: bun run --cwd packages/compiler-rs artifacts
+
+      - name: Pack, check and publish with --dry-run
+        run: bun .github/scripts/publish.ts --dry-run --require-binaries
+
+  publish:
+    name: Publish to npm
+    needs: [plan, binding, binding-smoke]
+    if: github.event_name == 'push' && needs.plan.outputs.unpublished != '' && needs.plan.outputs.unpublished != '0'
+    runs-on: ubuntu-latest
+    # Configure required reviewers on this environment so a publish waits for
+    # a person; npm's trusted publisher entries name it too.
+    environment: npm
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: latest
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      # Trusted publishing needs npm 11.5.1 or later.
+      - name: Use npm 11
+        run: npm install --global npm@11
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2.9.2
+        with:
+          workspaces: packages/compiler-rs
+          shared-key: release-build
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build packages
+        run: bun run build:packages
+
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: bindings-*
+          path: packages/compiler-rs/artifacts
+
+      - name: Move each binding into its platform package
+        run: bun run --cwd packages/compiler-rs artifacts
+
+      # npm authenticates over OIDC where a trusted publisher is configured.
+      # NPM_TOKEN covers what OIDC cannot: a package's very first version,
+      # before npm has a package to attach the trust to.
+      - name: Publish, tag and release
+        uses: changesets/action@v2.1.2
+        with:
+          publish-script: bun run release
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
