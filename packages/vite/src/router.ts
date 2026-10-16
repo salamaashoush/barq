@@ -130,13 +130,14 @@ export function routeStylesheets(
 }
 
 /**
- * `lazy(() => import("./x"))`, given the URL of the module it loads, so the
- * server can put that module's chunks and stylesheets in the page when it
- * renders. Only the literal forms are rewritten: one whose module the bundler
- * could not name either is left as it was.
+ * `lazy(() => import("./x"))` and `clientOnly(() => import("./x"))`, given the
+ * URL of the module they load, so the server can put that module's chunks and
+ * stylesheets in the page when it renders. Only the literal forms are
+ * rewritten: one whose module the bundler could not name either is left as it
+ * was.
  */
 const LAZY_IMPORT =
-  /\blazy\(\s*\(\)\s*=>\s*import\(\s*(["'])([^"'\n]+)\1\s*\)\s*(,\s*\{\s*export\s*:\s*(["'])[\w$]+\4\s*\}\s*)?\)/g;
+  /\b(lazy|clientOnly)\(\s*\(\)\s*=>\s*import\(\s*(["'])([^"'\n]+)\2\s*\)\s*(,\s*\{[^{}()]*\}\s*)?\)/g;
 
 export async function withModuleUrls(
   code: string,
@@ -144,20 +145,22 @@ export async function withModuleUrls(
   root: string,
   resolve: (spec: string) => Promise<{ id: string } | null>,
 ): Promise<string> {
-  if (id.includes("/node_modules/") || !code.includes("lazy(")) return code;
+  if (id.includes("/node_modules/") || !(code.includes("lazy(") || code.includes("clientOnly("))) {
+    return code;
+  }
   const found = [...code.matchAll(LAZY_IMPORT)];
   if (found.length === 0) return code;
   let out = "";
   let at = 0;
   for (const match of found) {
-    const spec = match[2] ?? "";
+    const spec = match[3] ?? "";
     const resolved = await resolve(spec);
     if (resolved === null || resolved.id.startsWith("\0")) continue;
     const url = moduleUrlOf(resolved.id, root);
-    const options = match[3] === undefined ? "undefined" : match[3].replace(/^,\s*/, "").trim();
+    const options = match[4] === undefined ? "undefined" : match[4].replace(/^,\s*/, "").trim();
     out +=
       code.slice(at, match.index) +
-      `lazy(() => import(${JSON.stringify(spec)}), ${options}, ${JSON.stringify(url)})`;
+      `${match[1]}(() => import(${JSON.stringify(spec)}), ${options}, ${JSON.stringify(url)})`;
     at = match.index + match[0].length;
   }
   return out + code.slice(at);
