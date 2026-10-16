@@ -11,10 +11,11 @@
  * already sent those bytes, and the client rebuilds the failed boundary.
  */
 
-import { type Cell, HYDRATE, createMemo } from "@barqjs/core";
+import { type Cell, HYDRATE, createMemo, markSafeError } from "@barqjs/core";
+import { clearHydrationData } from "@barqjs/core/internal";
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { clearRenderData, renderPage, renderToStream } from "./server.ts";
+import { renderPage, renderToStream } from "./server.ts";
 import { type SsrHtml, boundary, esc, html } from "./ssr.ts";
 
 const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
@@ -45,7 +46,7 @@ async function deadlinesFired<T>(run: () => Promise<T>): Promise<{ value: T; fir
 }
 
 afterEach(() => {
-  clearRenderData();
+  clearHydrationData();
   (globalThis as { __BARQ_DATA__?: unknown }).__BARQ_DATA__ = undefined;
 });
 
@@ -64,7 +65,7 @@ const rejectsLate = (key: string) =>
   createMemo(
     async (): Promise<string> => {
       await tick();
-      throw new Error("late boom");
+      throw markSafeError(new Error("late boom"));
     },
     { key },
   );
@@ -88,7 +89,7 @@ describe("a buffered page", () => {
         return "LATE";
       });
       const boom = (): string => {
-        if (late() === "LATE") throw new Error("late boom");
+        if (late() === "LATE") throw markSafeError(new Error("late boom"));
         return "never";
       };
       return html(
@@ -245,7 +246,7 @@ describe("a stream", () => {
 
   test("assembles to the page a buffered render writes", async () => {
     const buffered = await renderPage(lateFailure);
-    clearRenderData();
+    clearHydrationData();
     const host = assemble(await chunksOf(renderToStream(lateFailure, { onError: () => {} })));
 
     expect(host.innerHTML).toBe(buffered.html);
@@ -387,7 +388,7 @@ describe("an error boundary that catches while it builds", () => {
     const page = await renderPage(() =>
       html(
         `<main>${errored(() => {
-          throw new Error("now");
+          throw markSafeError(new Error("now"));
         })}</main>`,
       ),
     );

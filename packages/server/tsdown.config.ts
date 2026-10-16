@@ -10,7 +10,7 @@ export default defineConfig([
     outExtensions,
     dts: true,
     clean: false,
-    deps: { neverBundle: ["seroval", /^#/] },
+    deps: { neverBundle: ["seroval", "@barqjs/core", /^#/] },
   },
   {
     entry: ["./src/index.ts"],

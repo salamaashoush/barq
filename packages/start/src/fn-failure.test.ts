@@ -9,7 +9,7 @@
 
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { DEV, isDev } from "@barqjs/core";
+import { DEV, isDev, markSafeError } from "@barqjs/core";
 
 import { DATA_SUFFIX, RPC_PREFIX, ServerFnError, clientRpc, serverRpc } from "./index.ts";
 import { type HandlerOptions, handleServerFn, mount, unmountAll } from "./server.ts";
@@ -113,6 +113,28 @@ describe("a handler that throws", () => {
     expect(error.thrown).toBeUndefined();
     expect(error.message).not.toContain("salama");
     expect(await error.response?.text()).toBe("internal server error");
+  });
+
+  test("in production, passes an error the application marked safe by its name and message", async () => {
+    mount(
+      "locked",
+      serverRpc<undefined, null>(
+        { id: "locked" },
+        {
+          validator: null,
+          middleware: [],
+          handler: () => {
+            throw markSafeError(new RangeError("salama, that account is locked"));
+          },
+        },
+      ),
+    );
+    console.error = () => {};
+    globalThis.fetch = through();
+
+    const error = await caught(() => clientRpc<undefined, null>("locked")());
+    expect(error.status).toBe(500);
+    expect(error.thrown).toEqual({ name: "RangeError", message: "salama, that account is locked" });
   });
 
   test("on the development server, tells the caller what was thrown and where", async () => {

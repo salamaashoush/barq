@@ -7,7 +7,7 @@
  * above, or a 404 fallback ends up rendering for a crash.
  */
 
-import { createSignal, flush, insert, render } from "@barqjs/core";
+import { createSignal, flush, insert, markSafeError, render } from "@barqjs/core";
 import { esc, html as ssrHtml } from "@barqjs/server";
 import { afterEach, describe, expect, test } from "bun:test";
 
@@ -191,7 +191,7 @@ describe("on the string backend", () => {
                   errorComponent: () => (props: ErrorProps) =>
                     ssrHtml(`<p>caught: ${esc(props.error().message)}</p>`),
                   children: () => {
-                    throw new Error("boom");
+                    throw markSafeError(new Error("boom"));
                   },
                 }),
               )} after</main>`,

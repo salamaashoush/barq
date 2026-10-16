@@ -177,6 +177,8 @@ export type {
 
 export { isClient, isDev, isServer } from "./env.ts";
 
+export { isSafeError, markSafeError } from "./safe-error.ts";
+
 // Server-side rendering
 
 // Claim-based hydration. The two walk helpers are emitted ONLY by a

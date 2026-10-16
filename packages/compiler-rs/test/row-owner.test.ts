@@ -76,10 +76,10 @@ export default function Page() {
 `;
 
 const ROW_ERRORED = `
-import { Errored, For } from "@barqjs/core"
+import { Errored, For, markSafeError } from "@barqjs/core"
 function Cell(props) {
   const name = props.name()
-  if (name === "broken") throw new Error("row " + name)
+  if (name === "broken") throw markSafeError(new Error("row " + name))
   return <b>{name}</b>
 }
 export default function Page() {

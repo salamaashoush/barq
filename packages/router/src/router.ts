@@ -26,6 +26,8 @@ import {
   createSignal,
   type Signal,
   untrack,
+  isSafeError,
+  markSafeError,
 } from "@barqjs/core";
 
 import type { AnySerializationAdapter } from "@barqjs/server/codec";
@@ -1382,7 +1384,9 @@ export function createRouter(provided: RouterConfig): RouterState {
         // A `redirect` or a `notFound` from a parse is an ANSWER and travels as
         // itself; `errorFallbackFor` already routes both. Anything else is a
         // refused parameter and gets the name that says so.
-        failures.push(
+        // The refusal says what its cause says, so a cause the application
+        // marked safe to show keeps that mark.
+        const refused =
           isRedirect(error) || isNotFound(error)
             ? error
             : new PathParamError(
@@ -1390,8 +1394,8 @@ export function createRouter(provided: RouterConfig): RouterState {
                   ? error.message
                   : "A path parameter in the URL did not pass this route's `params.parse`.",
                 { cause: error },
-              ),
-        );
+              );
+        failures.push(isSafeError(error) ? markSafeError(refused) : refused);
         slices.push(merged);
       }
     }

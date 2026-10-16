@@ -12,14 +12,14 @@
  *
  * C7 and E3.
  */
-import { Errored, createSignal } from "@barqjs/core"
+import { Errored, createSignal, markSafeError } from "@barqjs/core"
 
 export const log: string[] = []
 
 export const [broken, setBroken] = createSignal(true)
 
 function Fragile() {
-  if (broken()) throw new Error("boom")
+  if (broken()) throw markSafeError(new Error("boom"))
   return <p class="ok">recovered</p>
 }
 

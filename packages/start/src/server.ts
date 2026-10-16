@@ -8,7 +8,7 @@
  * Each is cheap to close and expensive to retrofit.
  */
 
-import { isDev } from "@barqjs/core";
+import { isDev, isSafeError } from "@barqjs/core";
 import { diagnosticsEnabled, emitDiagnostic } from "@barqjs/core/internal";
 import { decodeWire, encodeWire } from "@barqjs/server/codec";
 import { createBodyTooLargeError, limitBodyStream } from "srvx/body-limit";
@@ -411,7 +411,7 @@ export async function handleServerFn(
       }
       if (isIterable(result)) {
         if (isData) {
-          return applyResponseDraft(streamed(result, sendContext, id, options?.revealError), draft);
+          return applyResponseDraft(streamed(result, sendContext, id, revealerOf(options)), draft);
         }
         // A browser following a form has nothing to read a stream with, so the
         // function is told nobody is listening and the form goes back.
@@ -538,6 +538,22 @@ function inputAnswer(error: InputError): ServerFnInputAnswer {
 }
 
 /**
+ * What a failed call may tell its caller: everything the development server
+ * asks for, and in production only an error the application branded with
+ * `markSafeError`, by its name and message.
+ */
+function revealerOf(
+  options: HandlerOptions | undefined,
+): (error: unknown) => ServerFnThrown | undefined {
+  const reveal = options?.revealError;
+  return (error) => {
+    if (reveal !== undefined) return reveal(error);
+    if (!(error instanceof Error) || !isSafeError(error)) return undefined;
+    return { name: error.name, message: error.message };
+  };
+}
+
+/**
  * A call that failed on the server: logged there, reported on the diagnostics
  * channel, and answered 500. The caller learns what was thrown only when the
  * development server asked for it.
@@ -549,7 +565,7 @@ function failed(
   options: HandlerOptions | undefined,
   where: "threw" | "middleware",
 ): Response {
-  const thrown = options?.revealError?.(error);
+  const thrown = revealerOf(options)(error);
   const happened =
     where === "threw"
       ? `The server function ${JSON.stringify(id)} threw`
@@ -768,7 +784,7 @@ function streamed(
   values: AsyncIterable<unknown>,
   sendContext: Record<string, unknown>,
   id: string,
-  reveal: ((error: unknown) => ServerFnThrown) | undefined,
+  reveal: (error: unknown) => ServerFnThrown | undefined,
 ): Response {
   const encoder = new TextEncoder();
   const line = (payload: RpcStreamLine): Uint8Array =>
@@ -798,7 +814,7 @@ function streamed(
       if (!cancelled) controller.close();
     } catch (error) {
       if (cancelled) return;
-      const thrown = reveal?.(error);
+      const thrown = reveal(error);
       const happened = `The server function ${JSON.stringify(id)} threw while streaming its result`;
       if (diagnosticsEnabled()) reportFailure(id, error, happened);
       console.error(

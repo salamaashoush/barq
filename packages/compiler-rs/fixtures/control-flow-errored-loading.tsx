@@ -1,9 +1,9 @@
-import { Errored, Loading, Reveal, createSignal } from "@barqjs/core"
+import { Errored, Loading, Reveal, createSignal, markSafeError } from "@barqjs/core"
 
 export const [failing, setFailing] = createSignal(true)
 
 function Flaky() {
-  if (failing()) throw new Error("nope")
+  if (failing()) throw markSafeError(new Error("nope"))
   return <p class="fine">fine</p>
 }
 

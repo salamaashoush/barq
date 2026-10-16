@@ -11,6 +11,7 @@
  * ambiguous payload to reason about.
  */
 
+import { isDev, isSafeError } from "@barqjs/core";
 import {
   Feature,
   type Plugin,
@@ -172,6 +173,34 @@ function kindOf(value: Error): "redirect" | "not-found" | "" {
   return "";
 }
 
+/** What a production page says in place of an error it may not show. */
+export const GENERIC_SERVER_ERROR = "Internal Server Error";
+
+const REPLACED = new WeakMap<object, Error>();
+
+/**
+ * What a THROWN value becomes on its way to the browser.
+ *
+ * Itself in a development build, and itself when it is control flow (a
+ * redirect, a not-found) or the application branded it with `markSafeError`.
+ * Anything else in production is one generic `Error`, the SAME one for the same
+ * original, so the markup an error boundary wrote and the seed the client
+ * hydrates that boundary from say the same thing.
+ */
+export function sanitizeThrown(value: unknown): unknown {
+  if (isDev || isSafeError(value)) return value;
+  if (value instanceof Error && kindOf(value) !== "") return value;
+  if (value === null || (typeof value !== "object" && typeof value !== "function")) {
+    return new Error(GENERIC_SERVER_ERROR);
+  }
+  let replaced = REPLACED.get(value);
+  if (replaced === undefined) {
+    replaced = new Error(GENERIC_SERVER_ERROR);
+    REPLACED.set(value, replaced);
+  }
+  return replaced;
+}
+
 /**
  * An `Error` reaches the wire as its name and message and nothing else.
  *
@@ -193,70 +222,80 @@ function kindOf(value: Error): "redirect" | "not-found" | "" {
  * `redirect()` is still one on the other side; `kindOf` below says why that is
  * not a widening of what leaks.
  */
-const redactError: Plugin<Error, ErrorInfo> = createPlugin<Error, ErrorInfo>({
-  tag: "barq/redacted-error",
-  test: (value) => value instanceof Error,
-  /**
-   * ALL THREE MODES, and defining only `sync` was a live leak rather than a gap.
-   *
-   * seroval picks the parse mode from the CONTEXT, not from the value: a plain
-   * `serialize` is sync, but a promise's settled value goes through `async`, and
-   * `crossSerializeStream` — which is what the streaming seed channel uses for
-   * every deferred loader — goes through `stream`. With only `sync` defined the
-   * plugin simply did not apply on the other two, and seroval fell back to its
-   * BUILT-IN Error node, which writes an error's own enumerable properties.
-   *
-   * On Bun those properties are `sourceURL`, `line`, `column`, `originalLine`
-   * and `originalColumn`, so a route whose loader REJECTED streamed the
-   * server's absolute filesystem path into the HTML of every such response:
-   *
-   * ```
-   * Object.assign(new Error("no such row"),{name:"NotFound",originalLine:2,
-   *   originalColumn:31,line:2,column:30,sourceURL:"/home/…/src/data/rows.ts"})
-   * ```
-   *
-   * The comment above used to say this plugin was "hardening, not a live leak",
-   * on the grounds that the seed records resolved values only. A rejection is
-   * the case that was missed, and it is the ordinary one: any loader that
-   * throws reaches it.
-   */
-  parse: {
-    sync: (value, ctx) => parseError(value, ctx),
-    async: (value, ctx) => Promise.resolve(parseError(value, ctx)),
-    stream: (value, ctx) => parseError(value, ctx),
-  },
-  // An IIFE rather than one `Object.assign`: a symbol key cannot be written in
-  // an object literal without a computed key, and the redirect branch adds two
-  // more fields. It is emitted once per Error in the payload.
-  serialize: (node, ctx) =>
-    `(()=>{const e=Object.assign(new Error(${ctx.serialize(node.message)}),` +
-    `{name:${ctx.serialize(node.name)}});const k=${ctx.serialize(node.kind)};` +
-    `if(k==="redirect"){e[Symbol.for("barq.redirect")]=true;` +
-    `e.to=${ctx.serialize(node.to)};e.status=${ctx.serialize(node.status)};` +
-    `const d=${ctx.serialize(node.detail)};if(d)e.options=d;}` +
-    `else if(k==="not-found"){e[Symbol.for("barq.not-found")]=true;` +
-    `const d=${ctx.serialize(node.detail)};if(d)Object.assign(e,d);}return e;})()`,
-  deserialize: (node, ctx) => {
-    const error = Object.assign(new Error(ctx.deserialize<string>(node.message)), {
-      name: ctx.deserialize<string>(node.name),
-    });
-    const kind = ctx.deserialize<string>(node.kind);
-    if (kind === "redirect") {
-      Object.assign(error as object, {
-        [REDIRECT]: true,
-        to: ctx.deserialize<string>(node.to),
-        status: ctx.deserialize<number>(node.status),
+function errorPlugin(redact: (value: Error) => Error): Plugin<Error, ErrorInfo> {
+  return createPlugin<Error, ErrorInfo>({
+    tag: "barq/redacted-error",
+    test: (value) => value instanceof Error,
+    /**
+     * ALL THREE MODES, and defining only `sync` was a live leak rather than a gap.
+     *
+     * seroval picks the parse mode from the CONTEXT, not from the value: a plain
+     * `serialize` is sync, but a promise's settled value goes through `async`, and
+     * `crossSerializeStream` — which is what the streaming seed channel uses for
+     * every deferred loader — goes through `stream`. With only `sync` defined the
+     * plugin simply did not apply on the other two, and seroval fell back to its
+     * BUILT-IN Error node, which writes an error's own enumerable properties.
+     *
+     * On Bun those properties are `sourceURL`, `line`, `column`, `originalLine`
+     * and `originalColumn`, so a route whose loader REJECTED streamed the
+     * server's absolute filesystem path into the HTML of every such response:
+     *
+     * ```
+     * Object.assign(new Error("no such row"),{name:"NotFound",originalLine:2,
+     *   originalColumn:31,line:2,column:30,sourceURL:"/home/…/src/data/rows.ts"})
+     * ```
+     *
+     * The comment above used to say this plugin was "hardening, not a live leak",
+     * on the grounds that the seed records resolved values only. A rejection is
+     * the case that was missed, and it is the ordinary one: any loader that
+     * throws reaches it.
+     */
+    parse: {
+      sync: (value, ctx) => parseError(redact(value), ctx),
+      async: (value, ctx) => Promise.resolve(parseError(redact(value), ctx)),
+      stream: (value, ctx) => parseError(redact(value), ctx),
+    },
+    // An IIFE rather than one `Object.assign`: a symbol key cannot be written in
+    // an object literal without a computed key, and the redirect branch adds two
+    // more fields. It is emitted once per Error in the payload.
+    serialize: (node, ctx) =>
+      `(()=>{const e=Object.assign(new Error(${ctx.serialize(node.message)}),` +
+      `{name:${ctx.serialize(node.name)}});const k=${ctx.serialize(node.kind)};` +
+      `if(k==="redirect"){e[Symbol.for("barq.redirect")]=true;` +
+      `e.to=${ctx.serialize(node.to)};e.status=${ctx.serialize(node.status)};` +
+      `const d=${ctx.serialize(node.detail)};if(d)e.options=d;}` +
+      `else if(k==="not-found"){e[Symbol.for("barq.not-found")]=true;` +
+      `const d=${ctx.serialize(node.detail)};if(d)Object.assign(e,d);}return e;})()`,
+    deserialize: (node, ctx) => {
+      const error = Object.assign(new Error(ctx.deserialize<string>(node.message)), {
+        name: ctx.deserialize<string>(node.name),
       });
-      const detail = ctx.deserialize<Record<string, unknown> | null>(node.detail);
-      if (detail !== null) Object.assign(error as object, { options: detail });
-    } else if (kind === "not-found") {
-      Object.assign(error as object, { [NOT_FOUND]: true });
-      const detail = ctx.deserialize<Record<string, unknown> | null>(node.detail);
-      if (detail !== null) Object.assign(error as object, detail);
-    }
-    return error;
-  },
-});
+      const kind = ctx.deserialize<string>(node.kind);
+      if (kind === "redirect") {
+        Object.assign(error as object, {
+          [REDIRECT]: true,
+          to: ctx.deserialize<string>(node.to),
+          status: ctx.deserialize<number>(node.status),
+        });
+        const detail = ctx.deserialize<Record<string, unknown> | null>(node.detail);
+        if (detail !== null) Object.assign(error as object, { options: detail });
+      } else if (kind === "not-found") {
+        Object.assign(error as object, { [NOT_FOUND]: true });
+        const detail = ctx.deserialize<Record<string, unknown> | null>(node.detail);
+        if (detail !== null) Object.assign(error as object, detail);
+      }
+      return error;
+    },
+  });
+}
+
+const redactError = errorPlugin((value) => value);
+
+/**
+ * The seed's, which also replaces what an ordinary error says in a production
+ * build: a seed is inlined in a page anyone can read.
+ */
+const seedError = errorPlugin((value) => sanitizeThrown(value) as Error);
 
 /** The two fields a redirect carries beyond an ordinary Error. */
 interface RedirectShape {
@@ -351,6 +390,7 @@ const ADAPTERS = new Map<string, AnySerializationAdapter>();
 export function registerSerializationAdapters(adapters: readonly AnySerializationAdapter[]): void {
   for (const adapter of adapters) ADAPTERS.set(adapter.key, adapter);
   plugins = null;
+  seedPlugins = null;
 }
 
 /** What is installed, for the client bootstrap and for tests. */
@@ -362,6 +402,7 @@ export function serializationAdapters(): readonly AnySerializationAdapter[] {
 export function clearSerializationAdapters(): void {
   ADAPTERS.clear();
   plugins = null;
+  seedPlugins = null;
 }
 
 interface AdapterNode extends PluginInfo {
@@ -411,6 +452,7 @@ export const ADAPTER_GLOBAL = "window.__BARQ_REVIVE__";
 type AnyPlugin = Plugin<never, never>;
 
 let plugins: AnyPlugin[] | null = null;
+let seedPlugins: AnyPlugin[] | null = null;
 
 function pluginList(): AnyPlugin[] {
   plugins ??= [
@@ -419,6 +461,24 @@ function pluginList(): AnyPlugin[] {
   ];
   return plugins;
 }
+
+function seedPluginList(extra: readonly AnySerializationAdapter[] = NO_ADAPTERS): AnyPlugin[] {
+  if (extra.length > 0) {
+    return [
+      ...[...ADAPTERS.values(), ...extra].map(
+        (adapter) => pluginFor(adapter) as unknown as AnyPlugin,
+      ),
+      seedError as unknown as AnyPlugin,
+    ];
+  }
+  seedPlugins ??= [
+    ...[...ADAPTERS.values()].map((adapter) => pluginFor(adapter) as unknown as AnyPlugin),
+    seedError as unknown as AnyPlugin,
+  ];
+  return seedPlugins;
+}
+
+const NO_ADAPTERS: readonly AnySerializationAdapter[] = [];
 
 // The hardening is shared: the same disabled features and the same Error
 // redaction, so a value that cannot leave through one channel cannot leave
@@ -442,7 +502,10 @@ export function decodeWire<T>(payload: unknown): T {
 
 /** Encode one render's resolved values as the JS expression that rebuilds them. */
 export function encodeSeed(data: Record<string, unknown>): string {
-  const payload = serialize(data, { disabledFeatures: DISABLED, plugins: pluginList() as never });
+  const payload = serialize(data, {
+    disabledFeatures: DISABLED,
+    plugins: seedPluginList() as never,
+  });
   warnIfLarge(payload.length);
   return payload;
 }
@@ -517,9 +580,12 @@ function carriesPending(value: unknown, seen: WeakSet<object> = new WeakSet()): 
  * embedded in one document would otherwise index into one `$R` bucket with two
  * different ref maps and overwrite each other's entries.
  */
-export function createSeedEncoder(): SeedEncoder {
+export function createSeedEncoder(
+  adapters: readonly AnySerializationAdapter[] = NO_ADAPTERS,
+): SeedEncoder {
   const scopeId = `b${scopes++}`;
   const refs = new Map<unknown, number>();
+  const list = seedPluginList(adapters);
   return {
     header: getCrossReferenceHeader(scopeId),
     hasPending: (value) => carriesPending(value),
@@ -528,7 +594,7 @@ export function createSeedEncoder(): SeedEncoder {
         scopeId,
         refs,
         disabledFeatures: DISABLED,
-        plugins: pluginList() as never,
+        plugins: list as never,
       });
       warnIfLarge(payload.length);
       return payload;
@@ -539,7 +605,7 @@ export function createSeedEncoder(): SeedEncoder {
         scopeId,
         refs,
         disabledFeatures: DISABLED,
-        plugins: pluginList() as never,
+        plugins: list as never,
         onSerialize(payload, isInitial) {
           if (isInitial) initial = payload;
           else onLater(payload);

@@ -1238,14 +1238,14 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots control-flow-error-boundary 1`] = `
-"import { createSignal, template as _$template, insert as _$insert, delegateEvents as _$delegateEvents, block as _$block, boundary as _$boundary, bindEvent as _$bindEvent } from "@barqjs/core";
+"import { createSignal, markSafeError, template as _$template, insert as _$insert, delegateEvents as _$delegateEvents, block as _$block, boundary as _$boundary, bindEvent as _$bindEvent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<p class="ok">recovered</p>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<div></div>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<button type="button"></button>\`);
 _$delegateEvents(["click"]);
 export const [broken, setBroken] = createSignal(true);
 function Fragile() {
-  if (broken()) throw new Error("boom");
+  if (broken()) throw markSafeError(new Error("boom"));
   return _tmpl$1();
 }
 export default function ControlFlowErrorBoundary() {
@@ -1290,7 +1290,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots control-flow-errored-loading 1`] = `
-"import { createSignal, template as _$template, insert as _$insert, delegateEvents as _$delegateEvents, block as _$block, boundary as _$boundary, reveal as _$reveal, bindEvent as _$bindEvent } from "@barqjs/core";
+"import { createSignal, markSafeError, template as _$template, insert as _$insert, delegateEvents as _$delegateEvents, block as _$block, boundary as _$boundary, reveal as _$reveal, bindEvent as _$bindEvent } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<p class="fine">fine</p>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<span class="busy">busy</span>\`);
 const _tmpl$3 = /* @__PURE__ */ _$template(\`<button type="button"></button>\`);
@@ -1298,7 +1298,7 @@ const _k$1 = () => "together";
 _$delegateEvents(["click"]);
 export const [failing, setFailing] = createSignal(true);
 function Flaky() {
-  if (failing()) throw new Error("nope");
+  if (failing()) throw markSafeError(new Error("nope"));
   return _tmpl$1();
 }
 export default function ControlFlowErroredLoading() {

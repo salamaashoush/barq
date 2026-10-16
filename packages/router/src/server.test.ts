@@ -17,7 +17,7 @@ import {
   setResponseStatus,
 } from "@barqjs/start";
 import { mount, unmountAll } from "@barqjs/start/server";
-import { createMemo, flush, hole, hydrate, insert, template } from "@barqjs/core";
+import { createMemo, flush, hole, hydrate, insert, markSafeError, template } from "@barqjs/core";
 import { describe, expect, test } from "bun:test";
 import { runInThisContext } from "node:vm";
 
@@ -518,7 +518,7 @@ describe("errorComponent and notFoundComponent", () => {
         table(
           id,
           () => {
-            throw new Error("the database is on fire");
+            throw markSafeError(new Error("the database is on fire"));
           },
           {
             errorComponent: (props: { error: () => Error }) =>
@@ -590,7 +590,7 @@ describe("errorComponent and notFoundComponent", () => {
             path: "$id",
             loader: async () => {
               await tick();
-              throw new Error("leaf failed");
+              throw markSafeError(new Error("leaf failed"));
             },
             component: (props: { data: () => unknown }) =>
               ssrHtml(`<main>${esc(String(props.data()))}</main>`),
@@ -871,7 +871,7 @@ describe("Await", () => {
         path: "/report",
         loader: async () => ({
           rows: new Promise((_resolve, reject) =>
-            setTimeout(() => reject(new Error("the slow part failed")), 5),
+            setTimeout(() => reject(markSafeError(new Error("the slow part failed"))), 5),
           ),
         }),
         component: (props: { data: () => { rows: unknown } }) =>
@@ -2685,7 +2685,7 @@ describe("params.parse on the server", () => {
           params: {
             parse: (given: Record<string, string>) => {
               const id = Number(given.id);
-              if (Number.isNaN(id)) throw new Error("id must be a number");
+              if (Number.isNaN(id)) throw markSafeError(new Error("id must be a number"));
               return { id };
             },
           },
@@ -2958,7 +2958,7 @@ describe("router options on the server", () => {
         {
           path: "/broken",
           loader: () => {
-            throw new Error("boom");
+            throw markSafeError(new Error("boom"));
           },
           component: leaf,
         },

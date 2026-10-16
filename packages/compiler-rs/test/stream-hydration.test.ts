@@ -366,13 +366,13 @@ describe("L5-S the streaming mechanism itself", () => {
    */
   test("a failure after the shell streams the error fallback, and the client claims and resets it", async () => {
     const source = `
-import { Errored, Loading, createMemo, createSignal } from "@barqjs/core"
+import { Errored, Loading, createMemo, createSignal, markSafeError } from "@barqjs/core"
 export const [healthy, setHealthy] = createSignal(false)
 export default function StreamErroredReset() {
   const read = createMemo(() => {
     const ok = healthy()
     return new Promise((resolve, reject) =>
-      setTimeout(() => (ok ? resolve("RECOVERED") : reject(new Error("late boom"))), 0),
+      setTimeout(() => (ok ? resolve("RECOVERED") : reject(markSafeError(new Error("late boom")))), 0),
     )
   })
   return (

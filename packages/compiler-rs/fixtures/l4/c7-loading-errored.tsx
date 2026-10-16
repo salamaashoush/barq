@@ -4,14 +4,14 @@
  * `Loading` parks its content while something below is pending; `Errored`
  * catches. Both are the same `region` driver, so both owe the same count.
  */
-import { Errored, Loading, createSignal } from "@barqjs/core"
+import { Errored, Loading, createSignal, markSafeError } from "@barqjs/core"
 
 export const log: string[] = []
 
 export const [failing, setFailing] = createSignal(true)
 
 function Flaky() {
-  if (failing()) throw new Error("nope")
+  if (failing()) throw markSafeError(new Error("nope"))
   return <p class="fine">fine</p>
 }
 

@@ -50,6 +50,8 @@ import {
   thrownBy,
 } from "@barqjs/core/internal";
 
+import { sanitizeThrown } from "./codec.ts";
+
 /**
  * Markup a compiled module produced. It is branded rather than a bare string
  * so a value crossing a hole can be told apart from user data: user data is
@@ -1036,7 +1038,7 @@ function errorBoundary(
   const showFallback = (): string => {
     let shown = "";
     if (fallback !== null && fallback !== undefined) {
-      const error = (): Error => asError(caught);
+      const error = (): Error => asError(sanitizeThrown(caught));
       shown = activate(given, fallback, [error, reset], flags, "branch");
     }
     return (flags & HYDRATE) === 0 ? shown : parkedRange(shown);
