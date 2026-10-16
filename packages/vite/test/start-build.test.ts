@@ -354,6 +354,20 @@ describe("verify, the route-action chain check", () => {
  * `<out>/server/client` instead of `<out>/client`, so every page still rendered
  * and every asset 404'd. Only fetching an asset says so.
  */
+/** The origin a spawned `serve.js` announces once it is bound. */
+async function listening(child: Bun.Subprocess<"ignore", "pipe", "pipe">): Promise<string> {
+  const decoder = new TextDecoder();
+  let out = "";
+  for await (const chunk of child.stdout) {
+    out += decoder.decode(chunk, { stream: true });
+    const announced = /Listening on: (http:\/\/[^\s/]+)/.exec(out);
+    if (announced?.[1] !== undefined) return announced[1];
+  }
+  throw new Error(
+    `serve.js exited before it was listening:\n${out}${await new Response(child.stderr).text()}`,
+  );
+}
+
 describe("`serve.js`, the half a person runs", () => {
   test("is a SEPARATE file from the one the build imports", () => {
     // `bun <file>` auto-serves any module whose default export has a `fetch`
@@ -368,23 +382,16 @@ describe("`serve.js`, the half a person runs", () => {
   });
 
   test("serves a page, an asset and a 404, with one command and no wrapper", async () => {
-    const port = 3400 + Math.floor(Math.random() * 100);
+    // Port 0, and the address read back from the server's own announcement. A
+    // port picked here can be one another suite is serving on at the time, and
+    // the requests below then reach that server rather than this one.
     const child = Bun.spawn(["bun", join(OUT, "server", "serve.js")], {
-      env: { ...process.env, PORT: String(port) },
+      env: { ...process.env, PORT: "0" },
       stdout: "pipe",
       stderr: "pipe",
     });
     try {
-      const base = `http://localhost:${port}`;
-      // Poll rather than sleep: a fixed wait is either flaky or slow.
-      for (let attempt = 0; attempt < 100; attempt++) {
-        try {
-          await fetch(base);
-          break;
-        } catch {
-          await Bun.sleep(20);
-        }
-      }
+      const base = await listening(child);
 
       const asset = readdirSync(join(OUT, "client", "assets")).find((n) => n.endsWith(".js"));
       const [page, chunk, missing] = await Promise.all([
