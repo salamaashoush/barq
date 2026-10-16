@@ -158,7 +158,6 @@ describe("keyboard", () => {
     function Nested() {
       const { keyboardProps } = keyboard({ onKeyDown: () => undefined });
       return (
-        // biome-ignore lint/a11y/noNoninteractiveElementInteractions: a test fixture
         <div onKeyDown={() => outer.push("outer")}>
           <input {...keyboardProps} aria-label="field" />
         </div>
@@ -177,7 +176,6 @@ describe("keyboard", () => {
     function Nested() {
       const { keyboardProps } = keyboard({ onKeyDown: (e) => e.continuePropagation() });
       return (
-        // biome-ignore lint/a11y/noNoninteractiveElementInteractions: a test fixture
         <div onKeyDown={() => outer.push("outer")}>
           <input {...keyboardProps} aria-label="field" />
         </div>
@@ -239,10 +237,7 @@ describe("move", () => {
       onMove: (e) => props.log().push(`move:${e.deltaX},${e.deltaY}`),
       onMoveEnd: () => props.log().push("end"),
     });
-    return (
-      // biome-ignore lint/a11y/useSemanticElements: the point is the ARIA pattern
-      <div {...moveProps} role="slider" tabIndex={0} aria-label="value" aria-valuenow={0} />
-    );
+    return <div {...moveProps} role="slider" tabIndex={0} aria-label="value" aria-valuenow={0} />;
   }
 
   test("arrow keys move by one in each direction", () => {

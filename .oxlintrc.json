@@ -114,6 +114,34 @@
       "rules": {
         "@typescript-eslint/no-explicit-any": "off"
       }
+    },
+    {
+      // `installSeed` runs a server-rendered seed script the way a browser
+      // runs the tag carrying it, in the global scope. An indirect `eval` is
+      // that operation; anything else is a different one.
+      "files": ["packages/testing/src/hydrate.ts"],
+      "rules": {
+        "no-eval": "off"
+      }
+    },
+    {
+      // `no-thenable` stops an object becoming awaitable by accident. Here the
+      // `then` is the subject under test: A7 claims the runtime asks for the
+      // Promises/A+ shape rather than `instanceof Promise`, and only an object
+      // that has one can observe that.
+      "files": ["packages/core/src/async-source.test.ts"],
+      "rules": {
+        "unicorn/no-thenable": "off"
+      }
+    },
+    {
+      // The modality tracker wraps `HTMLElement.prototype.focus` and re-applies
+      // the `this` each call arrives with, so capturing the method unbound is
+      // the mechanism rather than a mistake.
+      "files": ["packages/aria/src/interactions/modality.ts"],
+      "rules": {
+        "@typescript-eslint/unbound-method": "off"
+      }
     }
   ],
   "ignorePatterns": [

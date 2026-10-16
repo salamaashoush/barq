@@ -52,8 +52,7 @@ export function globalListeners(): GlobalListeners {
 
   const removeAll = (): void => {
     // A copy, because `remove` deletes from the map being walked.
-    // oxlint-disable-next-line unicorn/no-useless-spread
-    for (const [key, entry] of [...registered]) {
+    for (const [key, entry] of Array.from(registered)) {
       remove(entry.target, entry.type, key, entry.options);
     }
   };

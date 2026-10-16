@@ -11,7 +11,7 @@
  */
 
 import { createSignal } from "../index.ts";
-import type { JSX } from "../index.ts";
+import type { FunctionMaybe, JSX } from "../index.ts";
 import { assertType } from "./assert.ts";
 import type { Equal } from "./assert.ts";
 
@@ -199,7 +199,7 @@ assertType<Equal<"href" extends keyof DivProps ? true : false, false>>();
 assertType<
   Equal<
     ButtonProps["type"],
-    JSX.FunctionMaybe<"submit" | "reset" | "button" | "menu" | undefined> | undefined
+    FunctionMaybe<"submit" | "reset" | "button" | "menu" | undefined> | undefined
   >
 >();
 

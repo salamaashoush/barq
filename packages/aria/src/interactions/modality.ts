@@ -221,7 +221,6 @@ function setupModalityListeners(element?: Element | null): void {
   //
   // Capturing the unbound method is the point: `focusWithModality` re-applies
   // the `this` it was called on.
-  // oxlint-disable-next-line typescript/unbound-method
   const original = view.HTMLElement.prototype.focus;
   Reflect.defineProperty(view.HTMLElement.prototype, "focus", {
     configurable: true,

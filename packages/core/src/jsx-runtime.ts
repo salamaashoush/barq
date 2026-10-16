@@ -182,12 +182,7 @@ export namespace JSX {
     DeclaredCallSite<P> extends AsDeclared
       ? P
       : unknown extends DeclaredCallSite<P>
-        ? C extends (
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            scope: any,
-            props: infer Q,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          ) => any
+        ? C extends (scope: never, props: infer Q) => unknown
           ? unknown extends Q
             ? Outgoing<P>
             : Q
@@ -245,21 +240,6 @@ export namespace JSX {
       ? Accessor<X>
       : R
     : R;
-
-  // Core utility types (following SolidJS patterns)
-
-  /**
-   * Accessor type - a function that returns a value reactively
-   */
-  // oxlint-disable-next-line no-shadow
-  export type Accessor<T> = () => T;
-
-  /**
-   * FunctionMaybe - value can be static or a reactive accessor
-   * This is the core pattern for reactive attributes
-   */
-  // oxlint-disable-next-line no-shadow
-  export type FunctionMaybe<T> = T | Accessor<T>;
 
   /**
    * Event handler with proper currentTarget typing

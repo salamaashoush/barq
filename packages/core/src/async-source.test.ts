@@ -39,11 +39,6 @@ function read<T>(node: () => T): T | "PENDING" {
   }
 }
 
-// oxlint's `no-thenable` exists to stop an object ACCIDENTALLY becoming
-// awaitable. Here the `then` is the subject under test: A7's whole claim is
-// that the runtime asks for the Promises/A+ SHAPE rather than for `instanceof
-// Promise`, and the only way to observe that is an object that has one.
-// oxlint-disable no-thenable
 describe("A7: a thenable that is not a native Promise", () => {
   test(
     "is awaited, not stored",

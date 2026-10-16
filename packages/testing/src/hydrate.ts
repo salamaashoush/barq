@@ -143,6 +143,5 @@ export function installSeed(payload: string): void {
     .replace(/^<script[^>]*>/, "")
     .replace(/<\/script>$/, "")
     .replaceAll("window.", "globalThis.");
-  // oxlint-disable-next-line no-eval -- running a seed IS what this reproduces
   (0, eval)(script);
 }
