@@ -4,7 +4,7 @@
  * that run beside them show the runtime agrees with the types.
  */
 
-import { describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, test } from "bun:test";
 
 import {
   type FreshServerFn,
@@ -16,11 +16,16 @@ import {
   type ResultProblem,
   type FunctionContextOf,
   type StandardSchema,
+  clearStart,
   clientRpc,
   createMiddleware,
   createServerFn,
   createStart,
 } from "./index.ts";
+
+// `createStart` registers the process's one instance, which every server
+// function in every later file would then run behind.
+afterEach(clearStart);
 
 /** Each assignable to the other: the two types admit the same values. */
 type Equal<A, B> = [A] extends [B] ? ([B] extends [A] ? true : false) : false;
