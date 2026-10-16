@@ -1043,3 +1043,24 @@ Each now orders what it waits on; no expectation's subject changed, and what mov
   Outside a server component the thunk is never called and the hole writes nothing, so the
   fixture renders the same bytes on both backends; only the emitted code's digest moved. The DOM
   modes' digests are unchanged.
+
+- `query/src/{hooks,index,providers,router,ssr}.test.*`: every file runs on a fake clock installed
+  in `beforeEach` and run out in `afterEach` (`src/test-helpers.ts`). `settled(ms)` and the
+  test-side `tick(ms)` now step fake time a millisecond at a time with the microtasks of each step
+  run, and a wait inside a query or mutation function is a plain timer that clock drives. Two tests
+  awaited a refetch before letting time pass (`await refetch`, `await invalidateQueries`); they now
+  let the fetch's time pass first. No expectation changed. A zero-delay timeout left on the fake
+  clock strands happy-dom's shared zero-delay timer for the rest of the file, which is why the
+  clock is run out rather than dropped.
+- `router/src/router.test.ts` "pendingMs shows the fallback once the delay has elapsed": fake
+  clock and a gated loader. Added: still empty 1 ms before `pendingMs`.
+- `router/src/navigation.test.ts` "a loader's signal aborts when a newer run supersedes it" and
+  `router/src/abort.test.ts` "a loader run the router aborts": the loaders are gated and the test
+  waits for each run to start, instead of racing a 15 or 20 ms loader against 2 or 5 ms ticks. In
+  the second, the aborted run is answered after the newer one. Expectations unchanged.
+- `start/src/prerender.test.ts` "a slow page holds one slot": the slow page is answered once every
+  quick page has been, instead of after 120 ms. A queue that runs a batch at a time now shows up as
+  a timeout rather than a count. Expectations unchanged.
+- `ui/src/ssr.test.ts`: each probe is named once before its build is awaited. The output name was
+  read from the shared counter after the await, so a probe whose test had timed out wrote over the
+  next probe's module, and that test asserted on another page's markup.
