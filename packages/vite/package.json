@@ -1,7 +1,7 @@
 {
   "name": "@barqjs/vite",
   "version": "0.1.0",
-  "description": "The barq Vite plugin: the compiler, file routes and the server half, from one call.",
+  "description": "The barq Vite plugin: the compiler, file routes, compiled styles and the server build, from one call",
   "keywords": [
     "barq",
     "ssr",

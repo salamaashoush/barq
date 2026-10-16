@@ -1,7 +1,7 @@
 {
   "name": "@barqjs/compiler-rs",
   "version": "0.1.0",
-  "description": "Barq compiler (Rust) - native JSX transform for fine-grained reactive code",
+  "description": "The barq compiler, in Rust: JSX to cloned DOM templates, compiled styles, file routes and diagnostics with stable codes",
   "keywords": [
     "barq",
     "compiler",

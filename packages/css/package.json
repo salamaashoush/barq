@@ -1,7 +1,7 @@
 {
   "name": "@barqjs/css",
   "version": "0.1.0",
-  "description": "Barq CSS-in-JS - nested CSS compiled to a stylesheet at build time",
+  "description": "Zero-runtime CSS-in-JS for barq: nested and atomic styles compiled to a stylesheet at build time",
   "keywords": [
     "barq",
     "compiler",

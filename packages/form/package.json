@@ -1,7 +1,7 @@
 {
   "name": "@barqjs/form",
   "version": "0.1.0",
-  "description": "TanStack Form for Barq: createForm, createField and Subscribe over @tanstack/form-core",
+  "description": "Forms for barq: typed fields, validation and field arrays, on @tanstack/form-core",
   "keywords": [
     "barq",
     "form",

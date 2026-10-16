@@ -1,7 +1,7 @@
 {
   "name": "@barqjs/table",
   "version": "0.1.0",
-  "description": "TanStack Table for Barq: createTable and FlexRender over @tanstack/table-core",
+  "description": "Headless tables for barq: createTable, FlexRender and createTableHook, on @tanstack/table-core",
   "keywords": [
     "barq",
     "datagrid",

@@ -1,7 +1,7 @@
 {
   "name": "@barqjs/aria",
   "version": "0.1.0",
-  "description": "Accessible interactions, state and headless components for Barq: WAI-ARIA behaviour on fine-grained signals",
+  "description": "Accessible interactions, state and headless components for barq: WAI-ARIA behaviour on fine-grained signals",
   "keywords": [
     "a11y",
     "accessibility",

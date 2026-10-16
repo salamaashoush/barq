@@ -2,7 +2,7 @@
   "name": "barq-monorepo",
   "version": "0.1.0",
   "private": true,
-  "description": "Barq - Lightning fast JSX renderer with fine-grained reactivity via signals",
+  "description": "barq: a full-stack web framework with fine-grained reactivity, compile-time diagnostics, zero-runtime styles, and typed routing and server functions",
   "scripts": {
     "dev": "bun run --cwd packages/kitchen-sink dev",
     "build": "bun run build:packages && bun run build:apps",

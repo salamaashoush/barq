@@ -1,7 +1,7 @@
 {
   "name": "create-barq",
   "version": "0.1.0",
-  "description": "Scaffold a barq project.",
+  "description": "Scaffold a barq project from the full-stack, SPA or minimal template",
   "keywords": [
     "barq",
     "create",

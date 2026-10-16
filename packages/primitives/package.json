@@ -1,7 +1,7 @@
 {
   "name": "@barqjs/primitives",
   "version": "0.1.0",
-  "description": "A collection of reactive primitives for Barq: scheduling, events, observers, browser APIs, collections and animation",
+  "description": "Reactive primitives for barq: scheduling, events, observers, browser APIs, collections and animation",
   "keywords": [
     "barq",
     "dom",

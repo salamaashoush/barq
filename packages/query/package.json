@@ -1,7 +1,7 @@
 {
   "name": "@barqjs/query",
   "version": "0.1.0",
-  "description": "TanStack Query for Barq: useQuery, useMutation, useInfiniteQuery, over @tanstack/query-core",
+  "description": "Data fetching and caching for barq: queries, mutations and infinite queries, on @tanstack/query-core",
   "keywords": [
     "async",
     "barq",

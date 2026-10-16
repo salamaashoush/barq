@@ -1,7 +1,7 @@
 {
   "name": "@barqjs/start",
   "version": "0.1.0",
-  "description": "Barq server functions: the builder, the RPC wire, and the request handler.",
+  "description": "Server functions, middleware, sessions, cookies and the built server for barq",
   "keywords": [
     "barq",
     "rpc",

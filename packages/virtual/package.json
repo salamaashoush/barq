@@ -1,7 +1,7 @@
 {
   "name": "@barqjs/virtual",
   "version": "0.1.0",
-  "description": "TanStack Virtual for Barq: createVirtualizer and createWindowVirtualizer over @tanstack/virtual-core",
+  "description": "Virtualized scrolling for barq: createVirtualizer and createWindowVirtualizer, on @tanstack/virtual-core",
   "keywords": [
     "barq",
     "headless",

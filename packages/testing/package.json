@@ -1,7 +1,7 @@
 {
   "name": "@barqjs/testing",
   "version": "0.1.0",
-  "description": "Testing utilities for Barq components",
+  "description": "Testing utilities for barq: components, user events, accessibility checks, routes, hydration and server functions",
   "keywords": [
     "barq",
     "testing",

@@ -1,7 +1,7 @@
 {
   "name": "@barqjs/router",
   "version": "0.1.0",
-  "description": "Barq routing: a compiler-aware router with SSR, streaming, and server-function loaders.",
+  "description": "Typed file-based routing for barq, with server rendering, streaming, prerendering and API routes",
   "keywords": [
     "barq",
     "router",

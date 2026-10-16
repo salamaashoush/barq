@@ -1,7 +1,7 @@
 {
   "name": "@barqjs/lucide",
   "version": "0.1.0",
-  "description": "Every lucide icon as a Barq component, generated from lucide-static",
+  "description": "Every lucide icon as a barq component, generated from lucide-static",
   "keywords": [
     "barq",
     "icons",

@@ -1,7 +1,7 @@
 {
   "name": "@barqjs/core",
   "version": "0.1.0",
-  "description": "Barq - Lightning fast JSX renderer with fine-grained reactivity via signals. No virtual DOM, just direct DOM.",
+  "description": "Signals, stores, control flow, JSX and the DOM renderer for barq: fine-grained updates with no virtual DOM",
   "keywords": [
     "barq",
     "fine-grained",

@@ -1,7 +1,7 @@
 {
   "name": "@barqjs/ui",
   "version": "0.1.0",
-  "description": "shadcn/ui for Barq: the same components and every one of its themes, on @barqjs/aria and @barqjs/css",
+  "description": "Styled, accessible components and twenty-four themes for barq, compiled to a stylesheet, from shadcn/ui's designs",
   "keywords": [
     "barq",
     "components",
