@@ -38,6 +38,26 @@ describe("createFileRoute", () => {
     expect(createFileRoute("/posts")({}).id).toBe("/posts");
   });
 
+  test("the loader's value types useLoaderData, with no type argument", () => {
+    interface Post {
+      readonly title: string;
+    }
+    const fetchPost = async (id: string): Promise<Post> => ({ title: id });
+    const Route = createFileRoute("/posts/$postId")({
+      loader: ({ params }) => fetchPost(params.postId),
+    });
+    const Declared = createFileRoute<Post>("/drafts/$postId")({
+      loader: ({ params }) => fetchPost(params.postId),
+    });
+    const typed = (): void => {
+      const post: Post = Route.useLoaderData()();
+      const title: string = Route.useLoaderData({ select: (data) => data.title })();
+      const draft: Post = Declared.useLoaderData()();
+      void [post, title, draft];
+    };
+    expect(typeof typed).toBe("function");
+  });
+
   test("every route-scoped hook is present", () => {
     const Route = createFileRoute("/a")({});
     for (const hook of [

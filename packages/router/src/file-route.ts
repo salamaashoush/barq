@@ -229,10 +229,19 @@ function hooksFor<Data, Params>(id: string): Omit<FileRoute<Data, Params>, "id" 
 /**
  * A file route. Curried, because the id is known at the call site and the
  * options carry the generics that depend on nothing but themselves.
+ *
+ * The loader's value is inferred from `loader` in the second call. A type
+ * argument on the first is the type that value must satisfy, and is the
+ * value's type for a route with no loader.
  */
-export function createFileRoute<Data = unknown, Params = Record<string, string>, Deps = undefined>(
+export function createFileRoute<
+  Declared = unknown,
+  Params = Record<string, string>,
+  Deps = undefined,
+>(
   id: string,
 ): <
+  Data extends Declared = Declared,
   Search = Record<string, unknown>,
   const ServerChain extends readonly Middleware[] = readonly Middleware[],
 >(
@@ -244,7 +253,7 @@ export function createFileRoute<Data = unknown, Params = Record<string, string>,
   RouteDefinition<Data, Params, Deps, Search, ServerChain>,
   Search
 > {
-  return (options) => ({ id, options, ...hooksFor<Data, Params>(id) }) as never;
+  return (options) => ({ id, options, ...hooksFor<Declared, Params>(id) }) as never;
 }
 
 /** The root route: the document, and everything every page inherits. */

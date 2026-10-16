@@ -134,7 +134,7 @@ function Post() {
   );
 }
 
-export const Route = createFileRoute<Post>("/posts/$postId")({
+export const Route = createFileRoute("/posts/$postId")({
   loader: ({ params }) => fetchPost(params.postId),
   component: Post,
   pendingComponent: () => <p>loading…</p>,
@@ -146,9 +146,10 @@ export const Route = createFileRoute<Post>("/posts/$postId")({
 The argument is the route ID, not a pattern to parse. The generator rewrites
 that literal in place when you rename the file.
 
-The loader's value type is the first type argument of `createFileRoute`. It is
-not inferred from `loader`, because the call that names the id comes before the
-options.
+`Route.useLoaderData()` is typed by what `loader` returns, here a `Post` when
+`fetchPost` returns `Promise<Post>`. A type argument, `createFileRoute<Post>(…)`,
+is a type the loader's value must satisfy, and the value's type for a route
+with no loader.
 
 `Route.useLoaderData()`, `useParams()`, `useSearch()`, `useLoaderDeps()`,
 `useRouteContext()`, `useMatch()` and `useNavigate()` hang off the route so they
@@ -267,14 +268,14 @@ A router carries TanStack's four hooks, as configuration or installed on
 createRouter({
   routeTree,
   dehydrate: () => ({ flags }), // server, once the matched loaders have settled
-  hydrate: (dehydrated: { flags: string[] }) => restore(dehydrated.flags), // browser, before the first render
-  Wrap: (props) => <Theme>{props.children() as Child}</Theme>, // around the router output
-  InnerWrap: (props) => <Session>{props.children() as Child}</Session>, // inside the router context
+  hydrate: (dehydrated) => restore(dehydrated.flags), // browser, before the first render
+  Wrap: (props) => <Theme>{props.children()}</Theme>, // around the router output
+  InnerWrap: (props) => <Session>{props.children()}</Session>, // inside the router context
 });
 ```
 
-`hydrate` takes what `dehydrate` returned, so annotate its parameter with that
-type. `children` is typed as returning `unknown`, hence the cast to `Child`.
+`hydrate` is typed by what `dehydrate` returns. A wrapper's `children` builds
+the tree it goes around, so call it once, where that tree belongs.
 The value crosses through the same codec as loader data: a promise or an async
 iterable inside it is streamed, so the shell goes first and what settles later
 follows it. During a render `router.serverSsr` offers `injectScript(source)` and
