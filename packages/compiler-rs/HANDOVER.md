@@ -1,5 +1,7 @@
 # Handover
 
+*History, as of 2026-10-16: a session handover from 2026-08-17. Every milestone it lists is closed, and it predates the move to `@solidjs/signals`, Solid 2.0's API and the convention without a scope argument, so its open list and its file references no longer describe the code.*
+
 Written 2026-08-16, extended 2026-08-17 for M11. Everything below was measured on this machine, on a
 forced native rebuild, not carried over from a report.
 

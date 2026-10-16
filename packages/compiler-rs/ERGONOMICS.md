@@ -1,5 +1,7 @@
 # Ergonomics
 
+*History, as of 2026-10-16: a decision record from August 2026. Its `file:line` references point at code since deleted (`packages/extra`, `packages/compiler`, barq's former engine in `signals.ts`, `hooks.ts`), and its proposals predate the move to `@solidjs/signals` and Solid 2.0's API. The diagnostics it ranks shipped as the `BARQ0xx` codes in `docs/`.*
+
 What it costs to write barq, what that cost is made of, and which of it we should pay down.
 
 Scope: this is a decision document, not a survey. It draws on four inputs — a survey of Solid's

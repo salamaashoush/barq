@@ -1,5 +1,7 @@
 # `@barqjs/compiler-rs` — completion report, milestones 1 through 7
 
+*History, as of 2026-10-16: the M1 to M7 completion report, measured on 2026-08-09. It describes `packages/compiler` (now `packages/vite`), the retired `createElement` oracle and barq's former reactive engine; none of its numbers describe the current tree.*
+
 An optimizing JSX compiler in Rust on oxc, targeting the `@barqjs/core` fine-grained reactive
 runtime. This document is the state of the project as measured on **2026-08-09**, on this machine,
 from this committed tree. Every number in §1–§5 is the output of a command run while writing it;

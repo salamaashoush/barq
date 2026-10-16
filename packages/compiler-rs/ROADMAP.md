@@ -1,5 +1,7 @@
 # Roadmap — what comes after M7
 
+*History, as of 2026-10-16: the plan written after M7. Its milestone numbers are not the ones the work was done under, its items have shipped or been superseded, and its `file:line` references point at `packages/compiler` and barq's former engine.*
+
 Milestones 1–6 built the compiler; M7 closes the measured gaps in `MILESTONES.md` §5. This file
 plans what comes next, in the order it should be built. Same shape as `DESIGN.md` §10: each
 milestone names its deliverable, the one risk that could sink it, the cost constraint, and the

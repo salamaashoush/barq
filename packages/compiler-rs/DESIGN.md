@@ -5,14 +5,24 @@ Program), with the reactivity analysis grafted from **DepSet** and the addressin
 interning machinery grafted from **Ribbon**. See "Provenance" at the end for what came from
 where and what was rejected.
 
+**Status (2026-10-16).** This is the design the compiler was built from, amended as milestones
+landed. The IR, the passes and the addressing are still how `src/` is organised (`src/ir`,
+`src/passes`, `src/codegen`). Read these parts as history: the worked example (§7) and the
+verification table (§8) use barq's former `signal()` API and the emissions of the day; `signals.ts`
+line numbers refer to barq's former reactive engine, which `@solidjs/signals` replaced; the SSR
+runtime this document asks `packages/core` for lives in `@barqjs/server`; and the emitted calling
+convention no longer threads a scope argument (`SEMANTICS.md` C1).
+
 The Babel plugin that used to live in `packages/compiler` was never a target, a baseline or an
 oracle — only a catalogue of JSX shapes that have to be handled. That catalogue is now the
-fixture corpus (`fixtures/README.md`), and the plugin was deleted at M6. `packages/compiler` is
-the Vite integration and nothing else.
+fixture corpus (`fixtures/README.md`), and the plugin was deleted at M6. The Vite integration it
+shared a package with is `@barqjs/vite` (`packages/vite`).
 
-The correctness oracle is `@barqjs/core/jsx-runtime` → `createElement()`. Compiled output must
-produce an identical DOM and must never do more reactive work than the un-compiled path. Doing
-less is the entire point.
+The correctness oracle was `@barqjs/core/jsx-runtime` → `createElement()` until M9, which retired
+the un-compiled path: `jsx-runtime` now carries `Fragment` and the JSX types only, and compiled output is checked against
+per-fixture goldens, hand-written effect counts and the `-O0`/`-Ox`/`interp` differentials.
+The bar is unchanged: compiled output must never do more reactive work than it has
+to. Doing less is the entire point.
 
 ---
 
@@ -667,7 +677,7 @@ joins too, read through `readOpaque` as `bindProp` would read it: the compiler w
 thunk, so the runtime would have opened an effect for it anyway. The header goes where the first
 member stands and no member moves, because addresses are numbered in program order on both
 targets. `len == 1` lowers to a thunk compute with a scalar `prev`. `len >= 2` lowers to one
-`renderEffect` whose compute returns a flat record and whose apply compares each field with the
+`bindEffect` (a render effect) whose compute returns a flat record and whose apply compares each field with the
 previous record before writing.
 
 There is no cost-based split. A change to any read re-runs every compute in the record, an
@@ -804,22 +814,20 @@ accept arrays.
 | `Insert{Live}` | `_$insert(p, () => v, a)` |
 | `Insert{Opaque}` | `_$insert(p, v, a)` |
 
-**The fused-effect form is verified against the runtime.** `recompute` calls
-`node._fn(uninitialised ? undefined : node._value)` (`signals.ts:868`) and stores the return
-into `node._value` (`signals.ts:972`), so a compute's previous return value *is* threaded back:
+**The fused-effect form, as emitted today.** The engine's effects take two functions, so the
+record is the compute's return and the previous record is the apply's second argument:
 
 ```js
-_$renderEffect((_p$ = {}) => {
-  const _v$ = a(), _v$2 = b();
-  if (_v$  !== _p$.a) _$setProp(el, "x", (_p$.a = _v$));
-  if (_v$2 !== _p$.b) _$setProp(el, "y", (_p$.b = _v$2));
-  return _p$;
+_$bindEffect(() => ({ a: a(), b: b() }), (_v$, _p$ = {}) => {
+  if (_v$.a !== _p$.a) _$setAttr(el, "x", _v$.a);
+  if (_v$.b !== _p$.b) _$setAttr(el, "y", _v$.b);
 });
 ```
 
-One caveat that is a hard rule: **a fused effect must never return a function.** `signals.ts:994`
-registers a function return value as the effect's cleanup when there is no `apply` argument.
-Returning a plain object is safe.
+The form this section first specified was a single function, `_$renderEffect((_p$ = {}) => { …;
+return _p$ })`, which relied on barq's former engine threading a compute's previous return value
+back into it. That engine is gone, and with it the rule that such a compute must never return a
+function.
 
 **Statement splicing.** `Site::Return` / `Init` / `ArrowBody` emit flat statements into the
 enclosing function body. Only `Site::Nested` wraps in an IIFE. One fewer closure allocation and

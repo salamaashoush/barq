@@ -1,5 +1,21 @@
 # CODESIGN — the compiler and the runtime, designed together
 
+**Read this first (2026-10-16).** This is the design record of August 2026, kept because code, tests
+and `SEMANTICS.md` cite its sections. Three of its decisions have since been reversed, and §3, §4,
+§7 and §13 describe them as current:
+
+- **No scope argument.** The emitted convention is `Comp(props)` and `block(() => …)`; a construct
+  makes the scope it opened the engine's current owner with `runWithOwner` before it invokes a Block.
+  `Comp(s, props)`, `x($s)`, `enter`/`exit`, `_s$` and the rule that a Block never reads the ambient
+  owner (§3.0 rule 3, §3.1 O4.5) describe the convention before 2026-09-06.
+- **The engine is `@solidjs/signals`.** `packages/core/src/signals.ts` re-exports it and adds scopes,
+  Blocks and context. The `signals.ts` internals §0.5 and §4.2 measure (`markEpoch`, the node shape,
+  the line numbers) belong to barq's former engine, and effects take `(compute, apply)`.
+- **Solid 2.0's names, not §13's.** The public API is `createSignal` (a `[read, write]` pair),
+  `createMemo`, `createEffect`, `createStore`, `createContext`, `useContext(Ctx)`; a context is its
+  own provider, `<Ctx value={…}>`. `signal`, `computed`, `effect`, `resource`, `Ctx.Provider` and
+  `Ctx.use()` are gone.
+
 **Status.** This supersedes the earlier CODESIGN pass, whose framing ("the smallest change that does
 the job", "most of this system is right", `signals.ts` declared out of scope) no longer matches the
 directive. That document's *facts* were reliable — I re-verified every claim of it I depended on and
@@ -3108,6 +3124,12 @@ this in its own place too, so that the dead number cannot be used to reopen the 
 ---
 
 ## 13. NAMING (2026-08-16, M9)
+
+*Reversed when the engine became `@solidjs/signals` (2026-10): barq exports Solid 2.0's names under
+their own spelling, `createSignal`, `createMemo`, `createEffect`, `createRenderEffect`,
+`createStore`, `createRoot`, `createOwner`, `createContext`, `createOptimistic`,
+`createProjection`, `createErrorBoundary`, `createLoadingBoundary`, `createRevealOrder`. The table
+below records the M9 decision, not the current surface. `merge`, `omit` and `dynamic` did survive.*
 
 Decided by the user, after the export surface was audited and found to carry **three constructor
 conventions at once**: bare (`signal`, `computed`, `effect`, `resource`), `create*`

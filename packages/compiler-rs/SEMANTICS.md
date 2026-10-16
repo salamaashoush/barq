@@ -11,10 +11,29 @@ down what `<Provider><Child/></Provider>` must do, so neither implementation was
 anything.** §12 answers that question, and answering it on this document's own terms is this
 document's acceptance test.
 
-**Status: normative, unimplemented.** M0 lands this document, the ownership trace and the regression
-fixtures against the *current* compiler. M0 changes no semantics. A rule marked `VIOLATED` or
-`PLANNED` below is *expected* to fail its fixture at M0, and a fixture for such a rule that **passes**
-is itself a suite failure — it means the oracle cannot see the defect and the oracle is wrong (§15).
+**Status: normative.** Each rule's own **Status.** line, and §13, say whether the code meets it
+today; `test/semantics.test.ts` reads both and fails when they disagree with each other or with the
+fixtures. The document landed at M0 with the ownership trace and the regression fixtures, against the
+compiler of the day, and changed no semantics. A rule marked `VIOLATED` or `PLANNED` below is
+*expected* to fail its fixture, and a fixture for such a rule that **passes** is itself a suite
+failure — it means the oracle cannot see the defect and the oracle is wrong (§15).
+
+**What has moved since the rules were written (2026-10-16).** Three changes reach many sections, and
+the prose below keeps the older wording where it is recording a milestone:
+
+- **The emitted convention carries no scope argument** (since 2026-09-06). A component is
+  `Comp(props)`, a Block is `block(() => …)`, and a construct makes the scope it opened the engine's
+  current owner (`runWithOwner`) before it invokes a Block. Where a rule says a scope is passed "as
+  the first argument", or quotes an emission with `_s$`, read "made current by the construct". The
+  ownership claims themselves (O2.1, X1, X3) are unchanged and still checked by the ownership trace.
+- **barq's own reactive engine is gone.** `packages/core/src/signals.ts` now re-exports
+  `@solidjs/signals` under Solid 2.0's names (`createSignal` pairs, `createMemo`, `createEffect`,
+  `flush`) and adds scopes, Blocks and context beside it. `signal()`, `computed()`, `linked`,
+  `useState`, `markWave`, `markNode`, `flushSync`, `adoptOrphans` and the `signals.ts` line numbers
+  quoted in O3, O5, M4, R5 and R8 belong to the old engine.
+- **A context is its own provider.** `<Ctx value={…}>` provides and `useContext(Ctx)` reads;
+  `Ctx.Provider` and `Ctx.use()` no longer exist. `packages/extra` is gone too: its router is
+  `packages/router`.
 
 ---
 
@@ -160,10 +179,11 @@ ships this; Svelte allocates per component and pays for it.
 1. create exactly one fresh scope `c` whose parent is the scope `K` itself was invoked under;
 2. install everything that activation owns onto `c` — its context bindings (X1), its catcher (E1), its
    abort signal — **before** step 3;
-3. invoke the Block for that activation with `c` as its first argument.
+3. invoke the Block for that activation with `c` as the current owner.
 
-A Block MUST run under the scope it was passed and MUST NOT consult an ambient owner to decide
-ownership. `CURRENT` is an *observation* channel (O4.5), never a decision channel.
+A Block MUST run under the scope its construct opened for it. The emitted code passes no scope: the
+construct makes `c` current with `runWithOwner` before it invokes the Block, so the owner the Block
+reads is `c` and never the one that was ambient at the call site. `CURRENT` is an *observation* channel (O4.5), never a decision channel.
 
 **The consequence that names the Provider bug, stated on its own so it can be quoted:**
 
@@ -174,15 +194,16 @@ ownership. `CURRENT` is an *observation* channel (O4.5), never a decision channe
 **Escape hatch.** `pin(s, block)` returns a Block that ignores its scope argument and uses `s`. It is
 the only sanctioned way to break dynamic ownership and it is visible in the emitted text.
 
-**Falsified by.** `<Ctx value={1}><Child/></Ctx>` where `Child` calls `Ctx.use()`
+**Falsified by.** `<Ctx value={1}><Child/></Ctx>` where `Child` calls `useContext(Ctx)`
 and `Ctx` has no default. If `Child` throws `ContextNotFoundError`, or renders the default when a
 provider is present, or the ownership trace records `Child` running under a scope that is not the
 provider's instance scope, O2 is false. **`Child` MUST NOT be a syntactic argument of the provider
 call in the emitted module** — that shape is O2's negation written down.
 
-**Status.** `HOLDS` (M3). Verified emission: `(0, Ctx.Provider)(_s$, { value: _k$1, children:
-_$block((_s$) => Child(_s$, {})) })`. `children` is a Block, so `Child` is constructed by `provide`,
-inside the instance scope, after the binding is written. Verified runtime:
+**Status.** `HOLDS` (M3). Verified emission today: `Ctx({ value: _k$1, children: _$block(() =>
+Child({})) })`; at M3 it was `(0, Ctx.Provider)(_s$, { value: _k$1, children: _$block((_s$) =>
+Child(_s$, {})) })`. `children` is a Block, so `Child` is constructed by the provider, inside the
+instance scope, after the binding is written. Verified runtime:
 `<div><span class="child">provided</span></div>`.
 
 O2.1 `HOLDS` since M3, and it is the clause the emission above is about: `children` is a Block, so a
@@ -389,7 +410,7 @@ their signals and removes their range. Half-built DOM is never left in the docum
 cleanups are never left unrun.
 
 **O4.5 — `CURRENT` is never read to decide ownership.** It exists so that user-written `onCleanup()`
-and `Ctx.use()` can find their owner without being handed a scope. A framework primitive that consults
+and `useContext(Ctx)` can find their owner without being handed a scope. A framework primitive that consults
 `CURRENT` at a point where a `Scope` argument is in scope is a defect, and it is the defect shape this
 whole redesign exists to remove.
 
@@ -565,13 +586,15 @@ Inside `untrack`, read a signal; the enclosing effect MUST NOT re-run when it is
 
 ### C1 — one calling convention
 
-**Rule.** Every component is `Comp(s: Scope, props: Props) → Out`. Scope first. There is exactly one
-implementation of component invocation in the system. There is **no** un-compiled authoring path
+**Rule.** Every component is `Comp(props: Props) → Out`, called under the owner of the construct that
+invoked it. There is exactly one implementation of component invocation in the system. (Until
+2026-09-06 the convention was `Comp(s: Scope, props)`, scope first; the paragraphs below record that
+milestone, and `optimality` now asserts that no emission mentions `_s$`.) There is **no** un-compiled authoring path
 (`CODESIGN.md` §11, Q2 accepted): a second, semantically-different implementation of component
 invocation is the root cause of the Provider bug and is not permitted to exist.
 
-**Falsified by.** Any emitted call to a user component that does not pass a scope as its first
-argument; any runtime path that constructs an element from `(tag, props)` other than the compiled one.
+**Falsified by.** Any emitted call to a user component in a shape other than `Comp(props)`; any
+runtime path that constructs an element from `(tag, props)` other than the compiled one.
 
 **Status.** `HOLDS` (M3), for the compiled path, which §11 Q2 makes the only authoring path.
 
@@ -1145,7 +1168,7 @@ observe.
 
 ### X5 — a miss with no default throws, carrying the component stack
 
-**Rule.** `Ctx.use()` with no provider and no default MUST throw, and the error MUST carry the
+**Rule.** `useContext(Ctx)` with no provider and no default MUST throw, and the error MUST carry the
 consuming scope's `origin` chain as a component stack. This is free, because the scope chain **is**
 the logical tree.
 
@@ -1689,13 +1712,13 @@ before the element joins its parent, and no returned function is registered.
 ### M4 — updates flush on a microtask; render effects before user effects
 
 **Rule.** A write schedules a flush on the microtask queue. Within a flush, **render** effects drain
-completely before **user** effects, and the loop repeats until both heaps are empty. `batch` flushes
-synchronously at its end. `flush(fn)` runs `fn` and then drains.
+completely before **user** effects, and the loop repeats until both heaps are empty. `flush()` drains
+now, and `flush(fn)` runs `fn` and then drains.
 
 **Falsified by.** Write two signals in one turn; assert exactly one flush, all DOM writes before any
 user effect, and every user effect observing final DOM.
 
-**Status.** `HOLDS` (`signals.ts:1089` `flushSync`). **Pinned by.** every fixture with `steps`;
+**Status.** `HOLDS` (the scheduler of `@solidjs/signals`, through `flush`). **Pinned by.** every fixture with `steps`;
 discriminated by `multi-signal-expression.tsx` (existing).
 
 ### M5 — a stable re-render preserves every node
@@ -1814,23 +1837,32 @@ batch cost one traversal, not four. See R8 for the marking invariant this rests 
 **Falsified by.** The ablation harness in `packages/core`, with correctness assertions on every
 variant.
 
+*Since the engine became `@solidjs/signals`, barq no longer owns the marking code this rule is about:
+`markWave`, `markEpoch` and the ablation harness went with barq's own engine. The rule stays as the
+record of what that engine was held to.*
+
 **Status.** `HOLDS`. **Pinned by.** benchmark, not fixture (§14).
 
 ### R6 — a signal getter is a Cell
 
-**Rule.** A signal getter **is** a `Cell`, carrying `.set` / `.peek` / `.update` on the function
-object. Therefore a signal is passable as a prop with zero adaptation and η-reduction (`x={s()}` →
-`x: s`) is sound by construction (C5.2).
+**Rule.** The read half of `createSignal` **is** a `Cell`: a function of no arguments that reads.
+Therefore a signal is passable as a prop with zero adaptation and η-reduction (`x={s()}` → `x: s`) is
+sound by construction (C5.2).
 
-**Falsified by.** `useState`'s getter returning a bare `() => s()` and dropping `.set`/`.peek`/
-`.update` — `hooks.ts:11-22` does exactly this today, which makes the tuple's getter a degraded Cell
-that C5.2 may not η-reduce.
+**Falsified by.** A getter that is not a plain read. When the rule was written barq had two signal
+shapes: `signal()`, a callable object carrying `.set` / `.peek` / `.update`, and `useState`, whose
+tuple getter wrapped it as a bare `() => s()` and was a degraded Cell that C5.2 could not η-reduce.
+Both are gone; `createSignal` returns the engine's own `[read, write]` pair.
 
-**Status.** `VIOLATED` for `useState`, `HOLDS` for `signal`.
+**Status.** `HOLDS` for `createSignal`'s read half.
 
 **Pinned by.** `signal-object.tsx`, `signal-methods-in-handler.tsx` (existing, re-pinned).
 
 ### R7 — `linked` is writable derived state that re-seeds
+
+*Today this is Solid 2.0's derived signal, `createSignal(fn)`: `fn` receives the previous value, the
+pair's write holds until what `fn` reads changes, and `sem-state-linked-reseeds.tsx` pins it in that
+spelling. `linked` was barq's name for the same thing and no longer exists.*
 
 **Rule.** `linked(source, compute, options?)` returns a `Cell` that is WRITABLE. A write holds until
 `source` next changes; that change recomputes `compute(source(), previous)` and the write is gone.
@@ -1863,6 +1895,9 @@ what this rule asserts and MUST get the full walk.
 
 The consequence is the rule's observable form, and it is the one to test: **the cost of propagating
 one write MUST be linear in graph depth. Milliseconds per layer MUST NOT rise as layers are added.**
+
+*As with R5, the marking code is the engine's now; `markNode` and `signals.test.ts` went with barq's own
+engine, and this section records what that engine was held to.*
 
 **Falsified by.** A recompute that re-walks its transitive closure. That is what `signals.ts` did
 until M7c and it made propagation quadratic in depth (F1): 54,439,208 `markNode` calls at 800 layers
@@ -2344,7 +2379,7 @@ compiler reached.
 
 ### A7 — a compute returns a value, ANY thenable, or an async iterable
 
-**Rule.** `computed(fn)`'s `fn` may hand back three things and they are one node at three arities.
+**Rule.** `createMemo(fn)`'s `fn` may hand back three things and they are one node at three arities.
 
 | returned | the node |
 |---|---|
@@ -2700,23 +2735,23 @@ as coordinates, so `keydown` and the typed value and the caret position are in t
 Source:
 
 ```jsx
-const Ctx = context();                       // no default → a miss THROWS
-const Child = () => <span>{Ctx.use()()}</span>;
+const Ctx = createContext<number>();         // no default → a miss THROWS
+const Child = () => <span>{useContext(Ctx)}</span>;
 export const App = () => <Ctx value={1}><Child /></Ctx>;
 ```
 
 The specification answers, rule by rule, with no appeal to any implementation:
 
 1. **`Child` is not evaluated at the provider's call site.** Its JSX lowers to a `Block` (C6). A Block
-   takes a scope as its first argument and there is no expression in the emitted language meaning
+   is a deferred construction that only the receiving construct runs, and there is no expression in the emitted language meaning
    "children, already built" (C6, falsification clause).
 2. **`provide` creates one scope** — `provide` is one of the six creators (O1) — as a child of the
    scope `App` is running under (O2.1).
 3. **`provide` forks the context record and writes the value, before invoking anything** (X1). The
    fork is `Object.create`, so the cost is flat in the number of keys already in scope (X6).
-4. **`provide` invokes the children Block with that scope** (O2), **exactly once** (C7).
+4. **`provide` invokes the children Block with that scope current** (O2), **exactly once** (C7).
 5. **`Child` runs under the provider's instance scope.** It creates no scope of its own (O1).
-6. **`Ctx.use()` returns a Cell; calling it resolves at read time by walking the scope chain from
+6. **`useContext(Ctx)` resolves at read time by walking the scope chain from
    `Child`'s owner** (X3, C4). It finds the provider's fork. It returns `1`.
 7. **The rendered output is `<span>1</span>`.**
 8. **If the provided value later changes, `<span>` is not rebuilt** — the value is a Cell, the read is
@@ -2730,7 +2765,7 @@ The specification answers, rule by rule, with no appeal to any implementation:
 11. **`Child`'s scope dies exactly when the provider's activation dies**, in reverse creation order,
     with its cleanups LIFO and its listeners and fetches gone (O3).
 
-**What the implementation does today**, for contrast, and this is the entire reason for M0:
+**What the implementation did at M0**, for contrast, and this is the entire reason for M0:
 
 ```js
 export const App = () => (0, Ctx.Provider)({ value: 1, children: Child({}) });
@@ -2741,6 +2776,12 @@ verified — before `scope` inside `Provider` has created the scope that `owner.
 writes into. Result: `<span>THREW:ContextNotFoundError</span>`. Rules violated: **O2, O2.1, X1, C6**.
 The un-compiled `createElement` path fails identically, which is why the differential harness was
 green, which is why L1 exists.
+
+What it emits today, with a context that is its own provider:
+
+```js
+export const App = () => Ctx({ value: _k$1, children: _$block(() => Child({})) });
+```
 
 ---
 
@@ -2769,7 +2810,7 @@ green, which is why L1 exists.
 | O4.5 | `CURRENT` never decides ownership | **H** (M12) | `sem-own-given-scope-wins`, structural (§14) |
 | O5 | `render` opens a root; the disposer disposes | **H** (M12) | `sem-own-render-disposer-disposes` |
 | O6 | owner and observer are separate | H | `sem-react-untrack-keeps-owner` |
-| C1 | `Comp(s, props)`, one convention | H | `component-boundary-props`, `arrow-body-component` |
+| C1 | `Comp(props)`, one convention | H | `component-boundary-props`, `arrow-body-component` |
 | C2 | components are declared, not inferred | H | `sem-calling-convention`, `sem-props-direct-call-diagnostic` *(new)* |
 | C3.1–5 | the five props laws | **V** | `sem-props-laziness-conformance` *(new)*, `sem-props-cell-not-memoised` *(new)*, `component-getter-props` |
 | C3.6 | Cells are arity-tolerant | H | `sem-props-block-in-cell-slot` |
@@ -2817,7 +2858,7 @@ green, which is why L1 exists.
 | R3 | a Cell is neutral | P (M3) | `sem-react-cell-neutrality` *(new)* |
 | R4 | `untrack` changes only the observer | H | `sem-react-untrack-keeps-owner` |
 | R5 | epoch dedupe and `markWave` are load-bearing | H | ablation bench (§14) |
-| R6 | a signal getter is a Cell | H / **V** | `signal-object`, `signal-methods-in-handler` |
+| R6 | a signal getter is a Cell | H | `signal-object`, `signal-methods-in-handler` |
 | R7 | `linked` re-seeds on its source | H (M7) | `sem-state-linked-reseeds` |
 | R8 | a mark implies its closure; propagation is linear in depth | H (M7c) | depth test + bench (§14) |
 | B1 | every binding on an element is equally live | H | `equal-liveness`, `class-with-live-siblings` |
