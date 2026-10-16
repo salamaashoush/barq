@@ -3,7 +3,7 @@ import { defineConfig } from "tsdown";
 /**
  * A subpath in `exports` needs an entry HERE and a build, or it resolves to
  * `any` with nothing to say so. With no config at all `tsdown` builds
- * `src/index.ts` alone, and `./server`, `./vite` and `./serve` were never
+ * `src/index.ts` alone, and `./server` and `./serve` were never
  * emitted.
  */
 export default defineConfig({
@@ -14,7 +14,6 @@ export default defineConfig({
     "./src/env.ts",
     "./src/server.ts",
     "./src/serve.ts",
-    "./src/vite.ts",
     "./src/prerender.ts",
     "./src/protocol.ts",
   ],
@@ -26,11 +25,9 @@ export default defineConfig({
       "@barqjs/core",
       "@barqjs/server",
       "@barqjs/server/codec",
-      "@barqjs/compiler",
       "srvx",
       "srvx/body-limit",
       "srvx/node",
-      "vite",
       "node:async_hooks",
     ],
   },

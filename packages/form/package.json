@@ -46,9 +46,9 @@
     "@tanstack/store": "^0.11.2"
   },
   "devDependencies": {
-    "@barqjs/compiler": "workspace:*",
     "@barqjs/compiler-rs": "workspace:*",
     "@barqjs/core": "workspace:*",
+    "@barqjs/vite": "workspace:*",
     "@happy-dom/global-registrator": "^21.0.1",
     "@types/bun": "^1.4.3",
     "typescript": "^7.0.2"

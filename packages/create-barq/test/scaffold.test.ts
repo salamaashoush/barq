@@ -35,7 +35,7 @@ const OWN_MODULES = fileURLToPath(new URL("../node_modules", import.meta.url));
  * entry imports `collectCss` from `@barqjs/css`, so a project that never writes
  * a `css` block still resolves it.
  */
-const WORKSPACE = ["core", "css", "router", "server", "start", "compiler", "compiler-rs", "vite"];
+const WORKSPACE = ["core", "css", "router", "server", "start", "compiler-rs", "vite"];
 
 /** Built once for the whole file: a template resolves `@barqjs/*` through it. */
 function ensureBuilt(): void {
@@ -54,7 +54,7 @@ function ensureBuilt(): void {
  * `node_modules`, by symlink.
  *
  * Node and bun both resolve a package through its realpath, so a link to
- * `packages/router` resolves `@barqjs/router/vite` through that package's own
+ * `packages/vite` resolves `@barqjs/vite` through that package's own
  * `exports` — `import` to `dist`, which is what a published install gives and
  * what the workspace's `bun` condition hides.
  */

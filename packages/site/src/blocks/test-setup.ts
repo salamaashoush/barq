@@ -3,7 +3,7 @@ import * as dom from "./register-dom.ts";
 
 void dom;
 
-import { cssRegistration } from "@barqjs/compiler/vite";
+import { cssRegistration } from "@barqjs/vite/internal";
 import { plugin } from "bun";
 import { createRequire } from "node:module";
 import { readdirSync, readFileSync } from "node:fs";

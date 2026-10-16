@@ -29,7 +29,6 @@
     "d3-shape": "3.2.0"
   },
   "devDependencies": {
-    "@barqjs/compiler": "workspace:*",
     "@barqjs/compiler-rs": "workspace:*",
     "@barqjs/testing": "workspace:*",
     "@barqjs/vite": "workspace:*",

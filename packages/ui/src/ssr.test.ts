@@ -21,7 +21,7 @@ import { createRequire } from "node:module";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { cssRegistration } from "@barqjs/compiler/vite";
+import { cssRegistration } from "@barqjs/vite/internal";
 import { collectCss } from "@barqjs/css";
 
 import { ENTRIES } from "./entries.ts";

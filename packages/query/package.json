@@ -60,11 +60,11 @@
     "@tanstack/query-core": "^5.104.3"
   },
   "devDependencies": {
-    "@barqjs/compiler": "workspace:*",
     "@barqjs/compiler-rs": "workspace:*",
     "@barqjs/core": "workspace:*",
     "@barqjs/router": "workspace:*",
     "@barqjs/server": "workspace:*",
+    "@barqjs/vite": "workspace:*",
     "@happy-dom/global-registrator": "^21.0.1",
     "@tanstack/query-devtools": "5.104.3",
     "@tanstack/query-persist-client-core": "5.104.3",

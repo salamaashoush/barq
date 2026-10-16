@@ -70,7 +70,6 @@
     "@testing-library/dom": "^10.4.2"
   },
   "devDependencies": {
-    "@barqjs/compiler": "workspace:*",
     "@barqjs/compiler-rs": "workspace:*",
     "@barqjs/core": "workspace:*",
     "@barqjs/css": "workspace:*",
@@ -78,6 +77,7 @@
     "@barqjs/router": "workspace:*",
     "@barqjs/server": "workspace:*",
     "@barqjs/start": "workspace:*",
+    "@barqjs/vite": "workspace:*",
     "@happy-dom/global-registrator": "^21.0.1",
     "@types/bun": "^1.4.3",
     "happy-dom": "^21.0.1",

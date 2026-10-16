@@ -1,0 +1,255 @@
+/**
+ * The whole pipeline, through a real Vite dev server.
+ *
+ * Every other test in this package drives one piece with the others stubbed.
+ * This one boots Vite, lets the compiler plugin transform a module for both
+ * environments, lets the manifest mount what it found, and calls a server
+ * function over HTTP — so a break anywhere between the compiler's id and the
+ * registry's key surfaces here as a 404 rather than as a green unit test.
+ */
+
+import { afterAll, beforeAll, describe, expect, test } from "bun:test";
+import { type Server, createServer as createHttpServer } from "node:http";
+import { fileURLToPath } from "node:url";
+import { type ViteDevServer, createServer } from "vite";
+
+import { barqStart } from "../src/start.ts";
+import { encodeWire } from "@barqjs/server/codec";
+
+import { DATA_SUFFIX, PAYLOAD_PARAM, RPC_CALLER, RPC_PREFIX } from "@barqjs/start";
+
+const ROOT = fileURLToPath(new URL("./fixtures/start", import.meta.url));
+
+let server: ViteDevServer;
+const hotSent: { event?: string; data?: unknown }[] = [];
+let http: Server;
+let origin: string;
+
+beforeAll(async () => {
+  server = await createServer({
+    root: ROOT,
+    configFile: false,
+    logLevel: "error",
+    server: { middlewareMode: true },
+    // The fixture lives inside this package, so the workspace links that make
+    // `@barqjs/start` resolvable from an app are not on its resolution path.
+    resolve: {
+      alias: {
+        "@barqjs/start/server": fileURLToPath(
+          new URL("../../start/src/server.ts", import.meta.url),
+        ),
+        // BEFORE the bare specifier: a string alias is a PREFIX replacement, so
+        // `@barqjs/start` listed first turns `@barqjs/start/client` into
+        // `…/src/index.ts/client` and the build cannot resolve it.
+        "@barqjs/start/client": fileURLToPath(
+          new URL("../../start/src/client.ts", import.meta.url),
+        ),
+        "@barqjs/start": fileURLToPath(new URL("../../start/src/index.ts", import.meta.url)),
+      },
+    },
+    plugins: barqStart(),
+  });
+  // Discovery rides the client transform, so the module has to have been asked
+  // for at least once — which in a real app is what importing it does.
+  await server.environments.client.transformRequest("/todos.ts");
+  await server.environments.client.transformRequest("/failing.ts");
+  const send = server.hot.send.bind(server.hot);
+  server.hot.send = ((payload: { event?: string; data?: unknown }) => {
+    hotSent.push(payload);
+    send(payload as Parameters<typeof send>[0]);
+  }) as typeof server.hot.send;
+
+  // A REAL socket, because that is what the handler is written against: srvx
+  // builds its `Request` from a Node req/res pair, and a hand-rolled stand-in
+  // proves the test's fake works rather than that the server does.
+  http = createHttpServer(server.middlewares);
+  await new Promise<void>((resolve) => http.listen(0, "127.0.0.1", resolve));
+  const address = http.address() as { port: number };
+  origin = `http://127.0.0.1:${address.port}`;
+});
+
+afterAll(async () => {
+  // Keep-alive sockets outlive `close()` and hold the suite open.
+  http?.closeAllConnections();
+  await new Promise<void>((resolve) => http?.close(() => resolve()));
+  // Bounded: a dev server with a module runner still resolving does not always
+  // settle, and a teardown that can hang turns a green suite into a timeout
+  // with no failing assertion to read.
+  await Promise.race([server?.close(), new Promise<void>((resolve) => setTimeout(resolve, 2_000))]);
+});
+
+const call = (id: string, input: unknown, headers: Record<string, string> = {}) =>
+  fetch(`${origin}${RPC_PREFIX}${encodeURIComponent(id)}${DATA_SUFFIX}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", origin, ...headers },
+    // The real encoder, not a hand-written approximation of its output: this
+    // test exists to catch a mismatch between the two halves, and inventing the
+    // shape here would be a third half to get wrong.
+    body: JSON.stringify({ input: encodeWire(input) }),
+  });
+
+/** A GET call, the way the stub sends one: the payload in the query, and the caller header. */
+const read = (id: string, input: unknown) =>
+  fetch(
+    `${origin}${RPC_PREFIX}${encodeURIComponent(id)}${DATA_SUFFIX}?${PAYLOAD_PARAM}=${encodeURIComponent(
+      JSON.stringify({ input: encodeWire(input) }),
+    )}`,
+    { headers: { origin, [RPC_CALLER]: "1" } },
+  );
+
+describe("a server function, end to end through Vite", () => {
+  test("the client transform synthesizes stubs and drops the server module", async () => {
+    const result = await server.environments.client.transformRequest("/todos.ts");
+    const code = result?.code ?? "";
+
+    expect(code).toContain("clientRpc");
+    expect(code).toContain("todos.ts#addTodo");
+    // The bare-import-and-secret pair that defeats dead-code elimination.
+    expect(code).not.toContain("server-only-token");
+    expect(code).not.toContain("./db");
+    expect(code).not.toContain("store.push");
+    // Export-ness: `internal` is never exported, so it gets no stub and no id.
+    // `usesInternal` is exported and calls it in-process, which is the point.
+    expect(code).toContain("usesInternal");
+    expect(code).not.toContain('"todos.ts#internal"');
+  });
+
+  test("the ssr transform keeps the module intact", async () => {
+    const result = await server.environments.ssr.transformRequest("/todos.ts");
+    const code = result?.code ?? "";
+    expect(code).toContain("store.push");
+    expect(code).toContain("createServerFn");
+  });
+
+  test("the manifest mounts exactly what the stubs call", async () => {
+    const manifest = await server.environments.ssr.transformRequest("virtual:barq-server-fns");
+    const code = manifest?.code ?? "";
+    expect(code).toContain("todos.ts#addTodo");
+    expect(code).toContain("todos.ts#listTodos");
+    // Never exported, so never mounted — no id, no endpoint.
+    expect(code).not.toContain("#internal");
+  });
+
+  test("calling one over HTTP reaches the handler and comes back", async () => {
+    const added = await call("todos.ts#addTodo", "milk");
+    expect(added.status).toBe(200);
+
+    const listed = await read("todos.ts#listTodos", undefined);
+    expect(listed.status).toBe(200);
+    const body = (await listed.json()) as unknown;
+    expect(JSON.stringify(body)).toContain("milk");
+  });
+
+  test("an unmounted id is a 404 rather than an HTML page", async () => {
+    const response = await call("todos.ts#nope", undefined);
+    expect(response.status).toBe(404);
+    expect(response.headers.get("content-type") ?? "").not.toContain("text/html");
+  });
+
+  test("the dev middleware enforces the same origin rule as production", async () => {
+    const response = await call("todos.ts#listTodos", undefined, {
+      origin: "https://evil.test",
+    });
+    expect(response.status).toBe(403);
+  });
+});
+
+/**
+ * The other half of the dev server: pages.
+ *
+ * `barqStart()` answered `/_barq/fn/*` and called `next()` for everything else,
+ * so `vite dev` gave an SPA with working RPC and no SSR at all —
+ * `createPageHandler` had zero non-test call sites in the repo. These drive the
+ * wiring: entry resolution, the module runner, and the middleware ORDER, which
+ * is the part a unit test cannot see.
+ */
+describe("pages in dev", () => {
+  test("a page URL reaches the project's own entry-server", async () => {
+    const response = await fetch(`${origin}/anything/at/all`);
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toContain("text/html");
+    // The fixture's `src/entry-server.ts`, not a generated default: it echoes
+    // the path, which is how we know whose entry answered.
+    expect(await response.text()).toContain("path:/anything/at/all");
+  });
+
+  test("the entry decides its own methods", async () => {
+    const response = await fetch(`${origin}/anything`, { method: "POST" });
+    expect(response.status).toBe(405);
+  });
+
+  /**
+   * ORDER, which is the whole reason the page handler is a POST hook and the
+   * RPC one is not.
+   *
+   * A page handler that also answered an RPC URL would turn a mutation into an
+   * HTML document. Here the RPC middleware is registered inside
+   * `configureServer` and the page one is the function it RETURNS, so Vite's
+   * own stack sits between them and the RPC URL can never reach the page.
+   */
+  test("a server function still wins its URL", async () => {
+    const response = await call("todos.ts#addTodo", "from the page test");
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).not.toContain("text/html");
+  });
+
+  test("Vite still serves its own client and the project's modules", async () => {
+    const client = await fetch(`${origin}/@vite/client`);
+    expect(client.status).toBe(200);
+    expect(client.headers.get("content-type")).toContain("javascript");
+
+    const module = await fetch(`${origin}/src/entry-client.ts`);
+    expect(module.status).toBe(200);
+    expect(await module.text()).toContain("booted");
+  });
+
+  test("the client entry resolves to the project's own file, not to a default", async () => {
+    const resolved = await server.environments.client.pluginContainer.resolveId(
+      "virtual:barq-entry-client",
+    );
+    expect(resolved?.id ?? "").toContain("fixtures/start/src/entry-client.ts");
+  });
+});
+
+/**
+ * A server function that throws, in development: the caller is told what was
+ * thrown with its stack mapped to the source file, and the overlay is sent the
+ * same failure from the server's side.
+ */
+describe("a failing server function in dev", () => {
+  test("answers with the error's name, message and source-mapped stack", async () => {
+    const logged = console.error;
+    console.error = () => {};
+    try {
+      const response = await call("failing.ts#placeOrder", {});
+      expect(response.status).toBe(500);
+      const body = (await response.json()) as {
+        error: string;
+        thrown: { name: string; message: string; stack?: string };
+      };
+      expect(body.error).toBe("internal server error");
+      expect(body.thrown.name).toBe("TypeError");
+      expect(body.thrown.message).toContain("length");
+      expect(body.thrown.stack).toContain(`${ROOT}/failing.ts:6:`);
+    } finally {
+      console.error = logged;
+    }
+  });
+
+  test("is shown in the overlay as a server entry pointing at the line that threw", async () => {
+    const logged = console.error;
+    console.error = () => {};
+    hotSent.length = 0;
+    try {
+      await call("failing.ts#placeOrder", {});
+    } finally {
+      console.error = logged;
+    }
+    const entries = hotSent
+      .filter((payload) => payload.event === "barq:server-diagnostics")
+      .map((payload) => payload.data as { code?: string; at?: { file: string; line: number } });
+    const failure = entries.find((entry) => entry.code === "SERVER_FUNCTION_FAILED");
+    expect(failure?.at?.file).toBe(`${ROOT}/failing.ts`);
+    expect(failure?.at?.line).toBe(6);
+  });
+});

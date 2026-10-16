@@ -13,7 +13,7 @@ GlobalRegistrator.register();
 
 import { createRequire } from "node:module";
 import { plugin } from "bun";
-import { cssRegistration } from "@barqjs/compiler";
+import { cssRegistration } from "@barqjs/vite/internal";
 
 interface Native {
   transform(

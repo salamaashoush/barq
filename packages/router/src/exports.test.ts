@@ -31,7 +31,7 @@ const PACKAGES = [
   "query",
   "css",
   "testing",
-  "compiler",
+  "vite",
 ];
 
 interface Manifest {

@@ -7,7 +7,7 @@ void dom;
 import { plugin } from "bun";
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
-import { cssRegistration } from "@barqjs/compiler";
+import { cssRegistration } from "@barqjs/vite/internal";
 
 /**
  * This package's own suite goes through the COMPILER, like every consumer does.

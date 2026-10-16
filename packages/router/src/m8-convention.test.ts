@@ -456,7 +456,6 @@ describe("the convention, from the other side", () => {
       "server.ts": "server.test.ts",
       "ssr.ts": "ssr.test.ts",
       "ssr-server.ts": "ssr.test.ts",
-      "vite.ts": "vite.test.ts",
       "index.ts": "exports.test.ts",
     };
     // `.d.ts` is excluded: a declaration file has no runtime behaviour to cover,

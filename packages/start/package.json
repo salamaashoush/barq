@@ -49,11 +49,6 @@
       "bun": "./src/server.ts",
       "import": "./dist/server.js"
     },
-    "./vite": {
-      "types": "./dist/vite.d.ts",
-      "bun": "./src/vite.ts",
-      "import": "./dist/vite.js"
-    },
     "./serve": {
       "types": "./dist/serve.d.ts",
       "bun": "./src/serve.ts",
@@ -85,18 +80,14 @@
     "srvx": "^1.0.5"
   },
   "devDependencies": {
-    "@barqjs/compiler": "workspace:*",
     "@barqjs/compiler-rs": "workspace:*",
     "@barqjs/core": "workspace:*",
     "@barqjs/server": "workspace:*",
     "@types/bun": "^1.4.3",
-    "typescript": "^7.0.2",
-    "vite": "^8.3.4"
+    "typescript": "^7.0.2"
   },
   "peerDependencies": {
-    "@barqjs/compiler": ">=0.1.0",
     "@barqjs/core": ">=0.1.0",
-    "@barqjs/server": ">=0.1.0",
-    "vite": ">=8.0.0"
+    "@barqjs/server": ">=0.1.0"
   }
 }

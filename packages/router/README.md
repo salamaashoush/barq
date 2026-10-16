@@ -33,9 +33,6 @@ Under `vite dev`, an edit inside a route's component replaces the component in
 place. An edit to the route's options (`loader`, `head`, `validateSearch`)
 reloads the page, because the router read them when it was created.
 
-`barqRouter()` from `@barqjs/router/vite` is the route-table plugin on its own,
-for a build that composes its plugins by hand.
-
 ## `src/routeTree.gen.ts`
 
 The plugin writes it. **Commit it, and do not edit it.** It is an ordinary
@@ -307,7 +304,6 @@ one route table per project, and an application is not obliged to satisfy it.
 | `@barqjs/router`        | isomorphic: routes, components, hooks         |
 | `@barqjs/router/client` | `startClient()`, the hydrating boot           |
 | `@barqjs/router/server` | `createStartHandler()`, `createPageHandler()` |
-| `@barqjs/router/vite`   | `barqRouter()`, used by `@barqjs/vite`        |
 
 Do not import `@barqjs/router/server` from a route module. A root route ships to
 the browser like any other route, and that subpath reaches `node:async_hooks`.

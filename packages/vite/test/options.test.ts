@@ -9,7 +9,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Plugin } from "vite";
 
-import { SERVER_ENTRY_ID, isProviderOwned } from "@barqjs/start/vite";
+import { SERVER_ENTRY_ID, isProviderOwned } from "../src/start.ts";
 
 import { boundaryModules } from "../src/boundary.ts";
 import { consumerOf } from "../src/environment.ts";
@@ -47,12 +47,14 @@ async function conditionsFor(
   options: BarqOptions,
   name: "client" | "ssr",
   command: "serve" | "build",
+  own?: readonly string[],
 ): Promise<{ conditions?: string[]; externalConditions?: string[] }> {
   const plugins = await barq(options);
   const config = named(plugins, "barq:config");
   hook(config, "config").call(config, {}, { command, mode: "development" });
   const environment: { consumer: string; resolve?: { conditions?: string[] } } = {
     consumer: name === "client" ? "client" : "server",
+    ...(own === undefined ? {} : { resolve: { conditions: [...own] } }),
   };
   hook(config, "configEnvironment").call(config, name, environment, {});
   return environment.resolve ?? {};
@@ -126,8 +128,8 @@ describe("resolution", () => {
   test("under `vite dev`, both halves resolve the development builds", async () => {
     const client = await conditionsFor({}, "client", "serve");
     const server = await conditionsFor({}, "ssr", "serve");
-    expect(client.conditions?.[0]).toBe("development");
-    expect(server.conditions?.[0]).toBe("development");
+    expect(client.conditions?.slice(0, 2)).toEqual(["barq", "development"]);
+    expect(server.conditions?.slice(0, 2)).toEqual(["barq", "development"]);
     expect(client.conditions).toContain("browser");
     expect(server.conditions).toContain("node");
     // What Node loads by itself for the server, too.
@@ -150,7 +152,35 @@ describe("resolution", () => {
 
   test("`conditions` reaches the server environment, which a top-level list does not", async () => {
     const server = await conditionsFor({ conditions: ["bun"] }, "ssr", "build");
-    expect(server.conditions?.[0]).toBe("bun");
+    expect(server.conditions?.slice(0, 2)).toEqual(["barq", "bun"]);
+  });
+
+  /**
+   * Vite applies its default conditions only where none were given, so a list
+   * holding `barq` alone would remove `module`, `browser` or `node`, and
+   * `development|production`, from every environment. The last of those is
+   * what selects a dependency's development build under `vite dev`.
+   */
+  test("the barq condition goes in front of Vite's defaults, which it keeps", async () => {
+    const client = await conditionsFor({}, "client", "build");
+    expect(client.conditions?.[0]).toBe("barq");
+    expect(client.conditions).toContain("browser");
+    expect(client.conditions).toContain("development|production");
+
+    const server = await conditionsFor({}, "ssr", "build");
+    expect(server.conditions?.[0]).toBe("barq");
+    expect(server.conditions).toContain("node");
+    expect(server.conditions).not.toContain("browser");
+    expect(server.conditions).toContain("development|production");
+
+    // A list the application wrote is the application's: only `barq` is added.
+    const own = await conditionsFor({}, "client", "build", ["custom"]);
+    expect(own.conditions).toEqual(["barq", "custom"]);
+  });
+
+  test("`compilePackages: false` names no barq condition", async () => {
+    const client = await conditionsFor({ compiler: { compilePackages: false } }, "client", "build");
+    expect(client.conditions).not.toContain("barq");
   });
 
   test("the runtime is deduped to the copy the project can reach", async () => {

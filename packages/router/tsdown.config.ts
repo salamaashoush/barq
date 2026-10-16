@@ -1,7 +1,7 @@
 import { defineConfig } from "tsdown";
 
 export default defineConfig({
-  entry: ["./src/index.ts", "./src/client.ts", "./src/server.ts", "./src/vite.ts"],
+  entry: ["./src/index.ts", "./src/client.ts", "./src/server.ts"],
   format: ["esm"],
   dts: true,
   clean: true,
@@ -13,9 +13,6 @@ export default defineConfig({
       "@barqjs/core",
       "@barqjs/server",
       "@barqjs/start",
-      "vite",
-      "node:fs",
-      "node:path",
       "#barq-router-entry",
       "#barq-start-entry",
       /^virtual:barq-/,

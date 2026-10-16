@@ -1,9 +1,6 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 
-import { type BarqVitePluginOptions, barqVitePlugin } from "@barqjs/compiler/vite";
-import type { BarqRouterOptions } from "@barqjs/router/vite";
-import type { BarqStartOptions } from "@barqjs/start/vite";
 import {
   type Plugin,
   type UserConfig,
@@ -13,7 +10,16 @@ import {
 } from "vite";
 
 import { boundaryModules } from "./boundary.ts";
+import {
+  BARQ_CONDITION,
+  type BarqVitePluginOptions,
+  barqVitePlugin,
+  packageDir,
+} from "./compiler.ts";
 import { startEnv } from "./env.ts";
+import type { Reachability } from "./reachability.ts";
+import { type BarqRouterOptions, barqRouter } from "./router.ts";
+import type { BarqStartOptions } from "./start.ts";
 
 export { CLIENT_ENV_ID, ENV_TYPES_FILE, SERVER_ENV_ID } from "./env.ts";
 
@@ -102,37 +108,36 @@ export interface BarqOptions {
  */
 interface Shared {
   routes: readonly string[] | undefined;
-  reachability: ReadonlyMap<string, ReadonlySet<string>> | undefined;
+  reachability: Reachability | undefined;
 }
 
 const RUNTIME_PACKAGES = ["@barqjs/core", "@solidjs/signals"];
 
-function canResolve(root: string, name: string): boolean {
-  let at = root;
-  for (;;) {
-    if (existsSync(join(at, "node_modules", name, "package.json"))) return true;
-    const up = resolve(at, "..");
-    if (up === at) return false;
-    at = up;
+function installed(name: string): boolean {
+  try {
+    import.meta.resolve(name);
+    return true;
+  } catch {
+    return false;
   }
 }
 
-async function optionalPackage<T>(specifier: string, required: string | null): Promise<T | null> {
+async function optionalPackage<T>(
+  load: () => Promise<T>,
+  name: string,
+  required: string,
+): Promise<T> {
   try {
-    return (await import(specifier)) as T;
+    return await load();
   } catch (error) {
     const code = (error as { code?: string }).code;
     const missing =
       (code === "ERR_MODULE_NOT_FOUND" || code === "MODULE_NOT_FOUND") &&
-      (error as Error).message.includes(specifier.split("/").slice(0, 2).join("/"));
+      (error as Error).message.includes(name);
     if (!missing) throw error;
-    if (required !== null) {
-      throw new Error(
-        `[barq] ${required} needs \`${specifier.split("/").slice(0, 2).join("/")}\`, which is not installed.`,
-        { cause: error },
-      );
-    }
-    return null;
+    throw new Error(`[barq] ${required} needs \`${name}\`, which is not installed.`, {
+      cause: error,
+    });
   }
 }
 
@@ -165,7 +170,7 @@ function configPlugin(
       }
       const root = resolve(user.root ?? process.cwd());
       return {
-        resolve: { dedupe: RUNTIME_PACKAGES.filter((name) => canResolve(root, name)) },
+        resolve: { dedupe: RUNTIME_PACKAGES.filter((name) => packageDir(root, name) !== null) },
       };
     },
     configEnvironment(name, config, environment) {
@@ -178,6 +183,7 @@ function configPlugin(
       const own = config.resolve.conditions ?? [...defaults];
       const development = serving && options.dev !== false;
       config.resolve.conditions = [
+        ...(options.compiler?.compilePackages === false ? [] : [BARQ_CONDITION]),
         ...(options.conditions ?? []),
         ...(development ? ["development"] : []),
         // A server render inside a worker runtime still resolves the browser
@@ -257,20 +263,17 @@ export default async function barq(options: BarqOptions = {}): Promise<Plugin[]>
   const routesDir = routerOptions?.routesDir ?? "src/routes";
   const hmr = options.refresh?.disabled !== true;
 
-  const routerModule =
-    routerOptions === null
-      ? null
-      : await optionalPackage<typeof import("@barqjs/router/vite")>(
-          "@barqjs/router/vite",
-          options.router === undefined ? null : "`router`",
-        );
+  const routerInstalled = routerOptions !== null && installed("@barqjs/router");
+  if (options.router !== undefined && routerOptions !== null && !routerInstalled) {
+    throw new Error("[barq] `router` needs `@barqjs/router`, which is not installed.");
+  }
   const startModule =
     startOptions === null
       ? null
-      : await optionalPackage<typeof import("@barqjs/start/vite")>("@barqjs/start/vite", "`start`");
+      : await optionalPackage(() => import("./start.ts"), "@barqjs/start", "`start`");
 
   let root = process.cwd();
-  const routerOn = (): boolean => routerModule !== null && existsSync(join(root, routesDir));
+  const routerOn = (): boolean => routerInstalled && existsSync(join(root, routesDir));
 
   const { routes: extraRoutes, ...compilerOptions } = options.compiler ?? {};
   const routes = (): readonly string[] | undefined =>
@@ -290,14 +293,14 @@ export default async function barq(options: BarqOptions = {}): Promise<Plugin[]>
     boundaryModules(),
   ];
 
-  if (routerModule !== null && routerOptions !== null) {
+  if (routerInstalled && routerOptions !== null) {
     const router: BarqRouterOptions = {
       ...routerOptions,
       hmr,
       onRoutes: (patterns) => (shared.routes = patterns),
       onReachability: (found) => (shared.reachability = found),
     };
-    plugins.push(routerModule.barqRouter(router));
+    plugins.push(barqRouter(router));
   }
 
   if (startModule !== null && startOptions !== null) {

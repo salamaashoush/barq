@@ -63,14 +63,15 @@ them, so there is no separate `serverFunctions` flag.
 
 ## What it composes
 
-- The compiler from `@barqjs/compiler`, hydratable when `ssr` is on.
-- The route table, route code splitting and the route-to-server-function walk
-  `verify` checks, from `@barqjs/router`.
-- From `@barqjs/start`: the generated entries, the server-function manifest, the
+- The compiler, hydratable when `ssr` is on.
+- For `@barqjs/router`: the route table, route code splitting and the
+  route-to-server-function walk `verify` checks.
+- For `@barqjs/start`: the generated entries, the server-function manifest, the
   dev middleware, `buildApp`, `vite preview`, and the `.server.` / `.client.`
   bundle check.
 - `server-only` and `client-only` import markers.
-- Resolution: `development` under `vite dev` in every environment and in the
+- Resolution: the `barq` condition, under which a barq package publishes its
+  source, and `development` under `vite dev`, in every environment and in the
   server's `externalConditions`, and `resolve.dedupe` of `@barqjs/core` and
   `@solidjs/signals` where the project can reach them.
 - Dependency optimization: packages that publish barq source are excluded, and
@@ -142,8 +143,8 @@ pages. In a build, barq builds the client first and leaves the server to the
 host's own orchestration; `prerender` and `verify` import the server bundle
 barq builds, so under such a host they do not run, and the build says so.
 
-## Building blocks
+## Internal subpath
 
-`barqVitePlugin` from `@barqjs/compiler/vite`, `barqRouter` from
-`@barqjs/router/vite` and `barqStart` from `@barqjs/start/vite` are what this
-plugin composes, for a build that composes them by hand.
+`@barqjs/vite/internal` is not public API. It holds the CSS registration the
+repository's own `bun test` preloads append to a compiled module, and it can
+change in any release.

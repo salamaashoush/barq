@@ -567,5 +567,5 @@ a `virtual:` or `#`-prefixed specifier.
 | `@barqjs/start/client`    | the RPC stub the compiler emits, and `staticFunctionMiddleware`          |
 | `@barqjs/start/server`    | `handleServerFn`, `mount`, the origin check                              |
 | `@barqjs/start/serve`     | `serveBarq`, the asset middleware                                        |
-| `@barqjs/start/vite`      | `barqStart()`, used by `@barqjs/vite`                                    |
 | `@barqjs/start/prerender` | the prerenderer, for a custom build                                      |
+| `@barqjs/start/protocol`  | the server-entry contract router and vite share; not public API          |

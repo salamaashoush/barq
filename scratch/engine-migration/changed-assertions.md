@@ -910,3 +910,22 @@ cost-model split of an expensive, dependency-disjoint call is gone, and with it 
   renders with `stream: false`. `<Scripts />` places the entry on a buffered page; a streamed page
   carries it `async` in the head, and the boot waits for the shell's marker before it reads a seed.
   The assertions are unchanged.
+
+## One Vite plugin package
+
+The compiler, router and start plugins moved into `packages/vite`, with their suites. `barq:config`
+now writes every environment's conditions, `barq` included, so the compiler plugin no longer has a
+conditions hook of its own.
+
+- `vite/test/options.test.ts` "under `vite dev`, both halves resolve the development builds": was
+  `conditions[0] === "development"`, is `conditions.slice(0, 2)` equal to `["barq", "development"]`.
+  The compiler used to prepend `barq` in a later hook, so the list an environment ended with was
+  already this one; the test read the list half-built.
+- `vite/test/options.test.ts` "`conditions` reaches the server environment": the same, `["barq", "bun"]`.
+- `compiler/src/vite.test.ts` "the barq condition goes in front of Vite's defaults, which it keeps"
+  is now in `vite/test/options.test.ts`, driven through `barq()`'s `barq:config` rather than the
+  compiler plugin. Same assertions. Added "`compilePackages: false` names no barq condition".
+- `vite/test/dev-server.test.ts` "the client entry resolves to the project's own file": the fixture
+  path it matches is `fixtures/start/src/entry-client.ts` (was `fixture/src/entry-client.ts`).
+- `core/src/diagnostic-docs.test.ts` "not-hydratable": the fix the message names is `ssr: true` in
+  `barq()` from `@barqjs/vite`; it named the deleted `@barqjs/compiler`'s `hydratable` option.

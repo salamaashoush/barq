@@ -31,6 +31,11 @@
       "bun": "./src/index.ts",
       "import": "./dist/index.js"
     },
+    "./internal": {
+      "types": "./dist/css-registration.d.ts",
+      "bun": "./src/css-registration.ts",
+      "import": "./dist/css-registration.js"
+    },
     "./boundary-modules": {
       "types": "./boundary-modules.d.ts"
     }
@@ -39,21 +44,21 @@
     "build": "tsdown",
     "dev": "tsdown --watch",
     "typecheck": "tsc --noEmit",
-    "test": "bun test",
+    "test": "bun test && bun test --conditions=development",
     "prepublishOnly": "bun run build"
   },
   "dependencies": {
-    "@barqjs/compiler": "workspace:*"
+    "@barqjs/compiler-rs": "workspace:*",
+    "srvx": "^1.0.5"
   },
   "devDependencies": {
-    "@barqjs/compiler-rs": "workspace:*",
     "@barqjs/core": "workspace:*",
     "@barqjs/css": "workspace:*",
     "@barqjs/router": "workspace:*",
     "@barqjs/server": "workspace:*",
     "@barqjs/start": "workspace:*",
+    "@happy-dom/global-registrator": "^21.0.1",
     "@types/bun": "^1.4.3",
-    "srvx": "^1.0.5",
     "typescript": "^7.0.2",
     "vite": "^8.3.4"
   },

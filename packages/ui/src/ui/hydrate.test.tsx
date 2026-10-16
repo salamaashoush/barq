@@ -21,7 +21,7 @@ import { fileURLToPath } from "node:url";
 
 import { flush } from "@barqjs/core";
 import { renderAndHydrate } from "@barqjs/testing";
-import { cssRegistration } from "@barqjs/compiler/vite";
+import { cssRegistration } from "@barqjs/vite/internal";
 
 const require_ = createRequire(import.meta.url);
 const native = require_("@barqjs/compiler-rs") as {
