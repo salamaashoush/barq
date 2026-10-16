@@ -9,7 +9,7 @@ failure is named so you can recognise it.
 ## Before anything: the reference is a pinned checkout
 
 ```bash
-git clone --depth 1 https://github.com/shadcn-ui/ui ~/Workspace/vendor/ui
+git clone --depth 1 https://github.com/shadcn-ui/ui ~/src/shadcn-ui
 ```
 
 `ui.shadcn.com` serves a newer registry whose look lives in a stylesheet rather
@@ -55,7 +55,7 @@ component. It is the provenance for every rule this package ships, and
 
 ```bash
 # The class lists, extracted from upstream's source:
-cd ~/Workspace/vendor/ui/apps/v4/registry/new-york-v4/ui
+cd ~/src/shadcn-ui/apps/v4/registry/new-york-v4/ui
 grep -n 'data-slot="drawer' -A 6 drawer.tsx
 ```
 
@@ -194,7 +194,7 @@ scrollbar — belongs in step 8 instead.
 ```bash
 bun run exports     # src/index.ts, src/entries.ts, package.json's exports map
 bun run registry    # registry/, which is what `barq-ui add` writes
-bun run styles ~/Workspace/vendor/ui   # styles/*.css, the eight
+bun run styles ~/src/shadcn-ui   # styles/*.css, the eight
 ```
 
 Never edit a generated file. `tools/exports.ts` was stale once and rewrote
@@ -237,8 +237,13 @@ record of where this package does not match upstream.
 **This is the method, not a suggestion.** Every visual bug in this package was
 found this way and none by a test.
 
+The browser surface is the docs site, `packages/site`. Give the component a
+page: its examples go in `packages/site/src/docs/examples/<name>/`, one file per
+example and an `index.ts` listing them, and the site's own suite renders every
+one.
+
 ```bash
-bun run gallery      # add the component to gallery/src/main.tsx first
+bun run --cwd ../site dev      # then open /docs/components/<name>
 ```
 
 Then drive it. Not "look at it": measure it.
@@ -252,11 +257,13 @@ Then drive it. Not "look at it": measure it.
 - `document.activeElement` for anything about focus. happy-dom leaves it on a
   removed element, so a focus test can pass for the wrong reason.
 
-The geometry harness compares against upstream directly:
+The geometry harness compares against upstream directly. It was written for
+the standalone gallery this package used to carry, and `tools/geometry.ts`
+still reads that gallery's build output (`gallery/dist/assets`), which no longer
+exists; pointing it at the site's build is not done yet. When it ran:
 
 ```bash
-bun run gallery:build && bun run tools/geometry.ts
-bun run gallery
+bun run tools/geometry.ts
 # in the page:
 #   eval(await (await fetch("/geometry/compare.js")).text());
 #   await globalThis.__geometry;
@@ -291,7 +298,7 @@ From `packages/ui`:
 ```bash
 bun test
 bun run typecheck
-bun run gallery:build              # what CI builds
+bun run --cwd ../site build        # what CI builds
 bun run --cwd ../aria test         # if you touched aria
 ```
 
@@ -300,12 +307,12 @@ From the repository root, because `oxlint` and `oxfmt` refuse a path holding
 
 ```bash
 bunx oxlint --type-aware --deny-warnings packages/ui packages/aria
-bunx oxfmt packages/ui/src packages/ui/tools packages/ui/gallery packages/aria/src
+bunx oxfmt packages/ui/src packages/ui/tools packages/aria/src
 ```
 
 CI runs `bun run ci` at the root, which is lint plus format check, and a
-separate job builds the gallery. The gallery build is the part the suite cannot
-do: `bun test` compiles each module on its own, and what breaks in a gallery is
+separate step builds the docs site. That build is the part the suite cannot
+do: `bun test` compiles each module on its own, and what breaks in a site is
 the GRAPH — an export condition a package never declared, a module the bundler
 cannot resolve.
 
@@ -455,15 +462,16 @@ Recorded so nobody re-opens them:
   the class lists straight out of the pinned components is the fix.
 - `@barqjs/lucide`'s dist is 15 MB across 3,586 files. Nobody has measured what
   that does to an `npm install`.
-- `Disclosure` and `DisclosureGroupItem` in `@barqjs/aria` render no element, so
-  a `class` handed to them vanishes. That cost the accordion its dividers.
+- `Disclosure` and `DisclosureGroupItem` in `@barqjs/aria` render no element.
+  A `class` handed to them used to vanish, which cost the accordion its
+  dividers; they no longer declare `StyleProps`.
 - The overlays, menus, select, combobox, command and navigation menu ported in
   parts were driven through `@barqjs/testing` only. Nothing in step 8 was done
   for them: exit animations, the navigation viewport's size, the indicator's
   position, item-aligned select placement and where focus lands while a closing
   menu is still animating are all unmeasured in a browser.
-- The libraries shadcn wraps are unpacked under `~/Workspace/vendor/npm/`, one
-  directory each, and are read from there. `InputOTP` writes no `<noscript>`
+- The libraries shadcn wraps are read from their published sources, unpacked
+  one directory each beside the shadcn checkout. `InputOTP` writes no `<noscript>`
   fallback, which a component that needs script to type into has no use for.
   The drawer's `autoFocus` defaults to true where vaul's is false. The Base UI
   toast announces a high priority toast through `aria-live="assertive"` on the

@@ -3,16 +3,25 @@
 Copy [`@barqjs/ui`](../ui#readme) components into your project, and keep them in
 sync with the registry they came from.
 
+A component you add is your code: it lands in your repository, it goes through
+your review, and you edit it. That is shadcn/ui's idea, and the commands follow
+the `shadcn` CLI's. What is different is that this CLI knows which files you
+have edited, so `sync` can take an upstream change without taking your changes
+back.
+
+## Install
+
+Nothing to install. Run it with `bunx` (or `npx`) in the project; the binary is
+`barq-ui`:
+
 ```bash
 bunx @barqjs/ui-cli init
 bunx @barqjs/ui-cli add button card dialog
 bunx @barqjs/ui-cli add dashboard-01
 ```
 
-A component you add is your code: it lands in your repository, it goes through
-your review, and you edit it. That is shadcn/ui's idea and this is the same one.
-What is different is that this CLI knows which files you have edited, so
-`sync` can take an upstream change without taking your changes back.
+The default registry is the `@barqjs/ui` in your `node_modules`, so add it to
+the project first (`bun add @barqjs/ui`).
 
 ## Commands
 
@@ -31,9 +40,10 @@ barq-ui build <dir>          turn a directory of components into a registry
 ```
 
 `--cwd <dir>` runs against another directory, `--yes` takes every default,
-`--overwrite` replaces a file you have edited. Piped into a script there is
-nowhere to prompt, so every question takes its default and `--yes` is
-unnecessary in CI.
+`--overwrite` replaces a file you have edited, and `--json` makes `search` and
+`info` print JSON. Piped into a script there is nowhere to prompt, so every
+question takes its default and `--yes` is unnecessary in CI. `barq-ui --help`
+lists every flag.
 
 ## `add`
 
@@ -67,14 +77,12 @@ the ui components it is built from. `barq-ui search sidebar` lists what matches.
 `init` and `add` record a hash per file in `components.json`. That is the whole
 mechanism, and it is what lets `sync` tell three cases apart:
 
-| your file | what happens |
-| --- | --- |
-| identical to the registry's | nothing, and nothing is said |
-| untouched since it was added | replaced |
-| edited | shown as a diff and **kept**, unless you say otherwise |
+- Identical to the registry's: nothing happens, and nothing is said.
+- Untouched since it was added: replaced.
+- Edited: shown as a diff and **kept**, unless you pass `--overwrite`.
 
-shadcn's `diff` cannot make that distinction — it has no record of what it
-wrote — so it shows you the difference and leaves the applying to you. Owning
+shadcn's `diff` cannot make that distinction (it has no record of what it
+wrote), so it shows you the difference and leaves the applying to you. Owning
 the code means your edit wins by default; taking it back silently would be the
 tool taking the ownership back.
 
@@ -96,8 +104,9 @@ tool taking the ownership back.
 }
 ```
 
-**`registry`** is either `"node_modules"` — the copy of `@barqjs/ui` this
-project already has — or a URL with `{name}` in it. The default reads the
+**`registry`** is either `"node_modules"` (the copy of `@barqjs/ui` this
+project already has) or a URL with `{name}` in it, which `init --registry`
+writes. The default reads the
 installed package, so a monorepo, a pinned version and a machine with no network
 all work, and what `add` writes is exactly the version in your lockfile.
 
@@ -139,10 +148,12 @@ with none, you get this package's own look, which is shadcn's classic registry
 transcribed. Choosing one copies that stylesheet into your project, because a
 style is 180 KB and you picked one.
 
-Each of the four has a flag, so `init` is scriptable: `--style`, `--theme`, `--accent`,
-`--radius`, and `--dark <selector>` for the class dark mode is asked for by, or
-`--dark media` to follow the operating system. A name none of the themes has
-stops `init` before it writes anything, and says which names exist.
+Each of the four has a flag, so `init` is scriptable: `--style`, `--theme`,
+`--accent`, `--radius`, and `--dark <selector>` for the class dark mode is asked
+for by, or `--dark media` to follow the operating system. `--path <dir>` moves
+the components, and `--no-reset` leaves out the CSS reset. A name none of the
+themes has stops `init` before it writes anything, and says which names exist.
+`barq-ui theme <name>` and `barq-ui style <name>` change either one later.
 
 ## A registry of your own
 

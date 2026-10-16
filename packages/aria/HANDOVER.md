@@ -5,7 +5,11 @@ The package surface, its conventions and what is not implemented are in
 changes this package caused, the traps that cost a debugging session each, and
 what has not been re-run.
 
-Green on the current tree: `bun test` passes in aria (678), core (938),
+This is a session record from before `@barqjs/core` moved onto
+`@solidjs/signals`. The counts, the failing gates and the open items below
+describe the tree as it was then; where one no longer holds, it says so.
+
+Green on the tree at the time: `bun test` passes in aria (678), core (938),
 router (519), primitives (246), start (192), server (122), testing (101),
 css (92) and query (15), and `cargo test --workspace` in `compiler-rs`
 (512 + 34 + 30). `bunx tsc --noEmit` is clean in `packages/aria` and
@@ -189,12 +193,13 @@ claims Enter and Space from the children the keystrokes belong to.
 
 ## What `@barqjs/ui` still needs from here
 
-- **A Toast**, which is the whole of what stands between the package and
-  `Sonner`.
-- **`DisclosureGroupItem` and `Disclosure` declare `StyleProps` they cannot
-  honour.** They render no element, so a `class` handed to them vanishes in
+- **A Toast**, which was the whole of what stood between the package and
+  `Sonner`. Done since: `toastQueue` and `toastSwipe` in `toast.ts`, which
+  `@barqjs/ui`'s `sonner.tsx` and `toast.tsx` are built on.
+- **`DisclosureGroupItem` and `Disclosure` declared `StyleProps` they could not
+  honour.** They render no element, so a `class` handed to them vanished in
   silence. `@barqjs/ui`'s accordion lost its dividers to it and now brings its
-  own element. Either they render one or the type stops promising.
+  own element. Done since: neither declares `StyleProps` any more.
 - **Sixteen components still overwrite a caller's `data-slot`** after the props
   spread. `Button` and `Separator` were fixed because they blocked composition;
   `Checkbox`, `Switch`, `Tabs`, `Select` and the rest are the same shape.
@@ -241,9 +246,10 @@ asserting where focus went needs to await a frame as well.
 
 ## Things that will bite
 
-- **`<For each={x}>` where `x` is an identifier bound to an accessor does not
-  work.** The compiler wraps it as `() => x`, so `For` iterates the function.
-  Write `each={() => x()}`. This cost an afternoon in `calendar.tsx`.
+- **`<For each={x}>` where `x` is an identifier bound to an accessor did not
+  work** at the time: the compiler wrapped it as `() => x`, so `For` iterated
+  the function. This cost an afternoon in `calendar.tsx`. It works now; an
+  accessor passed by name is read as the list.
 - **Keying a `<For>` by an object built in the `each` expression rebuilds every
   row on every read**, and the row holding focus is destroyed under the user.
   `datefield.tsx` keys its segments by INDEX for this reason.
@@ -293,5 +299,4 @@ the portal change in particular deserves it, because clipping under
 Mid-session in the first session, something outside this work added
 `fetch("/__trace…")` instrumentation to
 `packages/router/src/{router,server,client,components}.ts` and
-`packages/kitchen-sink/preview-trace.mjs`. It is still in the tree and is not
-from this work.
+`packages/kitchen-sink/preview-trace.mjs`. It has since been removed.
