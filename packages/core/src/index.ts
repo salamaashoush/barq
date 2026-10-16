@@ -342,9 +342,8 @@ export type {
 export type { JSX } from "./jsx-runtime.ts";
 
 // Type utilities
-// `getProperty`/`setProperty` are NOT exported — zero consumers, and one
-// character from `setProp`, which is a different thing. Both stay as internal
-// helpers of `type-utils.ts`, which `dom.ts` uses to write a `{current}` ref.
+// `setProperty` is NOT exported: it is one character from `setProp`, which is a
+// different thing, and only `dom.ts` uses it, to write a `{current}` ref.
 export { isArray, toString } from "./type-utils.ts";
 
 // Helper types for components (following SolidJS/React patterns)

@@ -222,7 +222,7 @@ export function routeChunks(
   return out;
 }
 
-export const ROUTE_ASSETS_ID = "virtual:barq-route-assets";
+const ROUTE_ASSETS_ID = "virtual:barq-route-assets";
 const RESOLVED_ROUTE_ASSETS_ID = `\0${ROUTE_ASSETS_ID}`;
 
 /** What `compiler-rs` answers with. */
