@@ -1604,9 +1604,11 @@ mod tests {
         );
     }
 
-    /// Every one of the four things the ROADMAP asks a suppression to be:
-    /// the code is mandatory, the reason is required, it is scoped to the code
-    /// AND the span, and an unused one is reported.
+    /// The four things a suppression has to be: the code is mandatory, the
+    /// reason is required, it is scoped to the code AND the span, and an unused
+    /// one is reported. The reason is required so the author says why, as
+    /// Svelte's ignore comments and typescript-eslint's `ban-ts-comment` make
+    /// them do.
     #[test]
     fn a_suppression_needs_a_code_and_a_reason_and_is_scoped_to_both() {
         let silenced = "import { createSignal } from \"@barqjs/core\";\n\

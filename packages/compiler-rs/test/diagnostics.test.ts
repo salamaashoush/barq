@@ -89,9 +89,9 @@ describe("the diagnostic engine", () => {
   });
 
   /**
-   * `` `${count}` `` and `-count` are the two the ROADMAP names as the cases
-   * NOTHING else in the toolchain catches — `tsc --strict` reports zero errors on
-   * either. Both name the symbol and print the fix.
+   * `` `${count}` `` and `-count` are the two cases NOTHING else in the
+   * toolchain catches — `tsc --strict` reports zero errors on either. Both name
+   * the symbol and print the fix.
    */
   it("names the symbol and prints the fix for the two cases nothing else catches", () => {
     for (const [expression, code] of [

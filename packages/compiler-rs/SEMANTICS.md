@@ -2208,7 +2208,7 @@ action attribute:     "[object Promise]"
 ```
 
 Both halves silent — no console error, and a form whose target is a relative URL named after a
-promise. It is `ERGONOMICS`'s dominant harm exactly: the value crossed a boundary and lost its kind.
+promise: the value crossed a boundary and lost its kind.
 
 The string backend writes a URL and writes nothing for a handler, which is stated rather than
 averaged: there is no byte on the wire that means client behaviour, so a form submitted before
