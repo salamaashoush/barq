@@ -1,5 +1,8 @@
 # barq, full-stack
 
+Pages rendered on the server and hydrated in the browser, one prerendered at
+build time, an API route and a server function.
+
 ```bash
 npm install
 npm run dev        # http://localhost:5173

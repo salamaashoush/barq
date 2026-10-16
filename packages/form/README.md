@@ -1,9 +1,10 @@
 # @barqjs/form
 
-[TanStack Form](https://tanstack.com/form) for barq. A thin adapter over
-`@tanstack/form-core`: the core owns the form state, and barq signals carry the
-notifications that re-render what read it. The API follows `@tanstack/solid-form`,
-with the differences listed below.
+Forms for barq: typed fields, validation and field arrays, where a change
+re-renders only what read the value. It is a thin adapter over
+`@tanstack/form-core`, the engine of [TanStack Form](https://tanstack.com/form):
+the core owns the form state, and barq signals carry the notifications. The API
+follows `@tanstack/solid-form`, with the differences listed below.
 
 ## Install
 

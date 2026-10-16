@@ -1,9 +1,9 @@
 # @barqjs/query
 
-[TanStack Query](https://tanstack.com/query) for barq, over `@tanstack/query-core`.
-Queries, mutations, infinite queries, suspense against barq's `Loading`
-boundary, and the server render's hydration, with results you read field by
-field.
+Data fetching and caching for barq: queries, mutations, infinite queries,
+suspense against barq's `Loading` boundary, and the server render's hydration,
+with results you read field by field. It runs on `@tanstack/query-core`, the
+engine of [TanStack Query](https://tanstack.com/query).
 
 ## Install
 

@@ -1,8 +1,9 @@
 # @barqjs/core
 
-Signals, JSX and the DOM renderer. A component runs once; afterwards only the
-nodes that read a changed signal are touched. The reactive API is Solid 2.0's,
-from `@solidjs/signals`, under Solid's own names.
+Signals, stores, control flow, JSX and the DOM renderer. A component runs once;
+afterwards only the nodes that read a changed signal are touched, with no
+virtual DOM and no dependency arrays. Reactivity is Solid's engine,
+`@solidjs/signals`, exported under its own names.
 
 ## Install
 
@@ -53,8 +54,7 @@ node updates and nothing else does.
 
 ## Signals, memos and effects
 
-The reactive primitives are Solid 2.0's, from `@solidjs/signals`, exported under
-their own names.
+The reactive primitives come from `@solidjs/signals` and keep its names.
 
 ```tsx
 import { createEffect, createMemo, createRoot, createSignal, flush, untrack } from "@barqjs/core";
@@ -371,7 +371,7 @@ value updates the consumers that read it.
 All of them share one copy of the runtime. Importing two of them does not give
 you two schedulers.
 
-## Solid 2.0
+## Coming from Solid
 
 Every name above is Solid 2.0's, and so are the rest: the engine's
 `createProjection`, `createOptimistic`, `createOptimisticStore`, `action` and

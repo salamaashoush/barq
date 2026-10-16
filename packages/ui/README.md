@@ -1,10 +1,12 @@
 # @barqjs/ui
 
-shadcn/ui's components, for barq. The same look, every one of its twenty-four
-colour themes, and none of React, Radix or Tailwind underneath: behaviour comes
-from [`@barqjs/aria`](../aria#readme), styling from
+Styled, accessible components for barq, with twenty-four colour themes and
+styles compiled to a stylesheet at build time. Import them from the package, or
+copy their source into your project with [`barq-ui add`](../ui-cli#readme).
+Behaviour comes from [`@barqjs/aria`](../aria#readme), styling from
 [`@barqjs/css`](../css#readme), and icons from
-[`@barqjs/lucide`](../lucide#readme).
+[`@barqjs/lucide`](../lucide#readme). The designs and themes are shadcn/ui's,
+with none of React, Radix or Tailwind underneath.
 
 ## Install
 

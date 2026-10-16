@@ -8,7 +8,9 @@ signal. With `ssr: true` the same analysis emits a string renderer that imports
 
 It also generates the file route table, splits route and middleware modules into
 their client and server halves, compiles `@barqjs/css` blocks to a stylesheet,
-and reports [diagnostics](./docs/README.md) with stable `BARQ` codes.
+and reports mistakes before the code runs: 24 [diagnostics](./docs/README.md),
+each with a stable `BARQ` code, a page that shows the fix, and a required reason
+to silence it.
 
 ## Install
 
@@ -35,13 +37,11 @@ The binary is built per platform. The targets are listed under `napi.targets` in
 `package.json`: Linux x64 and arm64 (glibc), macOS x64 and arm64, and Windows
 x64 and arm64.
 
-## Relation to Solid 2.0
+## Coming from Solid
 
-Solid 2.0 compiles JSX with `@solidjs/compiler`, the native compiler
-`@solidjs/vite-plugin` loads, and keeps the dom-expressions Babel plugin as a
-fallback. This package plays the same part for barq, and the output has the same
-shape: a static template per element tree, cloned, then one binding per dynamic
-hole, with delegated events.
+The output has the shape Solid 2.0's `@solidjs/compiler` produces: a static
+template per element tree, cloned, then one binding per dynamic hole, with
+delegated events.
 
 Where it differs:
 

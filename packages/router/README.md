@@ -1,9 +1,11 @@
 # @barqjs/router
 
-File-based routing for barq, with server rendering, streaming, prerendering and
-API routes. The authoring API is TanStack Router's: `createFileRoute`,
-`createRootRoute`, `beforeLoad`, `loader`, `loaderDeps`, `head`,
-`shellComponent`, `<HeadContent />` and `<Scripts />`.
+Typed file-based routing for barq, with server rendering, streaming,
+prerendering and API routes. A file under `src/routes` is a route, its params
+and loader data are typed from it, and the compiler reports a `<Link to>` that
+no route matches. The route API follows TanStack Router's design:
+`createFileRoute`, `createRootRoute`, `beforeLoad`, `loader`, `loaderDeps`,
+`head`, `shellComponent`, `<HeadContent />` and `<Scripts />`.
 
 ## Install
 
@@ -373,7 +375,7 @@ one route table per project.
 Do not import `@barqjs/router/server` from a route module. A root route ships to
 the browser like any other route, and that subpath reaches `node:async_hooks`.
 
-## Relation to TanStack Router
+## Coming from TanStack Router
 
 Route options, hooks, `head`, search validation and middlewares, `beforeLoad`,
 `loaderDeps`, `shouldReload`, `redirect` and `notFound` follow TanStack Router

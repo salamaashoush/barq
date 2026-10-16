@@ -69,5 +69,5 @@ starts the server it produced and fetches from it.
 A route is a file under `src/routes`. `about.tsx` is `/about`. `posts/$id.tsx`
 is `/posts/:id`. `api/health.ts` is an API route, because it declares `server`
 handlers instead of a component. `__root.tsx` is the layout every page renders
-inside and, for a server-rendered app, the document. The conventions are
-TanStack Router's; see the [router README](../router/README.md).
+inside and, for a server-rendered app, the document. The
+[router README](../router/README.md) has the full set of conventions.

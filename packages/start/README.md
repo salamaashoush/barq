@@ -1,7 +1,11 @@
 # @barqjs/start
 
 Server functions, middleware, the request context, sessions, cookies, rate
-limiting, and the server the build emits. The API is TanStack Start's:
+limiting, and the server the build emits. A server function is a typed `GET` or
+`POST` endpoint you call like a function. A `GET` call needs barq's `x-barq-fn`
+header and passes an origin check. A production server sends a thrown error's
+message only when it was marked with `markSafeError`. With `verify` on, the
+build refuses to ship a route whose server functions skip its middleware. The API follows TanStack Start's design:
 `createServerFn`, `createMiddleware`, `createStart`, `useSession`, and the
 request helpers under their names.
 
@@ -28,7 +32,7 @@ export const serverTime = createServerFn().handler(() => new Date());
 const at = await serverTime(); // a Date, fetched from the server
 ```
 
-## Relation to TanStack Start
+## Coming from TanStack Start
 
 `createServerFn` with `GET` as the default method, `.validator`, `.middleware`,
 `.handler`, `createMiddleware` with `.server` and `.client` halves,

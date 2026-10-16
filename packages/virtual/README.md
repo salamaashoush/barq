@@ -1,7 +1,10 @@
 # @barqjs/virtual
 
-[TanStack Virtual](https://tanstack.com/virtual) for barq, over `@tanstack/virtual-core`.
-The API follows `@tanstack/solid-virtual`, with the differences listed below.
+Virtualized scrolling for barq. A list of ten thousand rows puts only the ones
+in view in the DOM, and scrolling changes which ones. `createVirtualizer` and
+`createWindowVirtualizer` run on `@tanstack/virtual-core`, the engine of
+[TanStack Virtual](https://tanstack.com/virtual), and the API follows
+`@tanstack/solid-virtual` with the differences listed below.
 
 ## Install
 

@@ -1,7 +1,8 @@
 # @barqjs/table
 
-[TanStack Table](https://tanstack.com/table) for barq: `createTable`, `FlexRender`
-and `createTableHook` over `@tanstack/table-core` 9. The API follows
+Headless tables for barq: `createTable`, `FlexRender` and `createTableHook`
+over `@tanstack/table-core` 9, the engine of
+[TanStack Table](https://tanstack.com/table). The API follows
 `@tanstack/solid-table`, with the differences listed below.
 
 Table state, row models and column APIs are tracked reads. Call one inside JSX,

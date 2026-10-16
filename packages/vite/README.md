@@ -1,9 +1,7 @@
 # @barqjs/vite
 
-The Vite plugin for barq: the compiler, file routes and the server half, from
-one call. It is barq's counterpart to Solid 2.0's `@solidjs/vite-plugin`, and it
-wires in what TanStack Start's plugin does for `@barqjs/router` and
-`@barqjs/start`.
+The Vite plugin for barq: the compiler, the file route table, compiled styles,
+server functions and the server build, from one call to `barq()`.
 
 ## Install
 
@@ -36,8 +34,9 @@ barq(); // the compiler alone
 
 ## Options
 
-The names are those of Solid 2.0's `@solidjs/vite-plugin` wherever the concept
-is the same, so `solid({ ssr: true, start: true })` reads the same here.
+Where a concept is the same, the option has the name Solid 2.0's
+`@solidjs/vite-plugin` gives it, so `solid({ ssr: true, start: true })` reads
+the same here.
 
 - `ssr`: whether the server renders pages. One meaning everywhere: the
   server renders the document and the client hydrates it, so both halves compile

@@ -1,8 +1,11 @@
 # @barqjs/server
 
-Server rendering for barq: `renderToString` and `renderToStream` with Solid
-2.0's names and options, the hydration seed, and the string runtime that a
-module compiled for the server calls into.
+Server rendering for barq: `renderToString` and `renderToStream`, the
+hydration seed, and the string runtime that a module compiled for the server
+calls into. A stream sends the shell first and each `Loading` boundary as it
+resolves, a boundary past its `timeout` keeps its fallback, a failure after the
+shell swaps in the nearest `Errored` fallback, and a hydration mismatch degrades
+to a client render.
 
 Most applications never import this directly. `@barqjs/router` renders through
 it, and `@barqjs/start` builds the server that drives it. Reach for it when you
@@ -59,7 +62,8 @@ compiles them for the string backend. The first bytes are the shell with the
 
 ## Rendering
 
-The entry points are Solid 2.0's, under its names and options:
+The entry points and their options use Solid 2.0's names, for code that
+already calls them:
 
 ```ts
 import { renderToStream, renderToString } from "@barqjs/server";
