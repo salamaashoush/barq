@@ -138,18 +138,18 @@ describe("keying by address", () => {
   test("`X-Forwarded-For` is IGNORED unless the deployment says otherwise", async () => {
     // Otherwise any caller picks their own bucket by sending a header, and the
     // limit stops existing.
-    const request = new Request("http://x/", { headers: { "x-forwarded-for": "1.2.3.4" } });
+    const request = new Request("http://x/", { headers: { "x-forwarded-for": "203.0.113.4" } });
     const guessed = await withRequest(request, () => byIP()());
     const trusted = await withRequest(request, () => byIP({ xForwardedFor: true })());
     expect(guessed).toBe("unknown");
-    expect(trusted).toBe("1.2.3.4");
+    expect(trusted).toBe("203.0.113.4");
   });
 
   test("the leftmost entry is the client; the rest were added by hops", async () => {
     const request = new Request("http://x/", {
-      headers: { "x-forwarded-for": "1.2.3.4, 10.0.0.1, 10.0.0.2" },
+      headers: { "x-forwarded-for": "203.0.113.4, 10.0.0.1, 10.0.0.2" },
     });
-    expect(await withRequest(request, () => byIP({ xForwardedFor: true })())).toBe("1.2.3.4");
+    expect(await withRequest(request, () => byIP({ xForwardedFor: true })())).toBe("203.0.113.4");
   });
 
   test("no address at all pools into one bucket rather than exempting", async () => {
