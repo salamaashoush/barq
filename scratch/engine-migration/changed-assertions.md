@@ -1009,3 +1009,16 @@ Each now orders what it waits on; no expectation's subject changed, and what mov
   tier, and the commit folds a stub's `Server-Timing` onto a response entry by entry, so the
   header's name is in a production server bundle by design. The development build's test still
   requires both.
+- `query/src/hooks.test.tsx` "refetchInterval polls": runs on fake timers. "At least 3 fetches by
+  70 ms" is now exactly 1 at mount, still 1 a millisecond before the 15 ms interval, 2 at it and 3
+  one interval later, with the DOM showing 3 once published. "No fetch after dispose" is unchanged.
+  It first lets one real zero-delay turn pass: happy-dom folds every zero-delay timeout into one
+  native timer, and one an earlier test left pending would collect the notify manager's timeouts
+  out of the fake clock's reach. The form fake-timer tests take the same turn for the same reason.
+- `create-barq/test/scaffold.test.ts` "serves what it built" and "answers its API route": `serve.js`
+  starts on port 0 and the origin is read from its "Listening on" line, instead of fixed ports
+  3400-3412 and a 10 s poll. Expectations unchanged.
+- `aria/src/drawer.test.ts` "onDrag hears how much of the drawer is gone, and onRelease whether it
+  stayed": the drag ran on `Date.now`, so a start and an end either side of a millisecond made a
+  100 px move a flick at 100 px/ms, and the drawer closed. It now takes the `now` option the other
+  drag tests use, with a second between start and release. Expectations unchanged.
