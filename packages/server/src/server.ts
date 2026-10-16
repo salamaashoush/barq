@@ -20,6 +20,8 @@ import {
   flush,
   isSsrHtml,
   render,
+  type RequestEvent,
+  getRequestEvent,
   rootScope,
   runWithOwner,
   settle,
@@ -33,11 +35,15 @@ import {
   pendingSeedsOf,
   setAsyncSession,
   settleStep,
+  deferredFlightsOf,
   diagnosticsEnabled,
   emitDiagnostic,
   headKey,
   setHeadSink,
   thrownBy,
+  freezeDeclarations,
+  traceForEvent,
+  traceMetaMarkup,
 } from "@barqjs/core/internal";
 import {
   type LateCatcher,
@@ -125,8 +131,9 @@ export function renderToString(fn: RootRender, options: RenderToStringOptions = 
   let container: HTMLElement | null = null;
   let markup: string | null = null;
   const session = Symbol("render");
+  const event = getRequestEvent();
   const previous = setAsyncSession(session);
-  const head = new HeadCollector(options.manifest);
+  const head = new HeadCollector(options.manifest, event);
   const previousHead = setHeadSink(head.sink);
   const owner = rootScope(null, options.renderId);
   try {
@@ -153,16 +160,22 @@ export function renderToString(fn: RootRender, options: RenderToStringOptions = 
       head,
       options.onHead,
     );
-    if (options.noScripts === true) return html;
-    const data = getHydrationData(session);
-    if (Object.keys(data).length === 0) return html;
-    const script =
-      `<script${nonceAttr(scriptNonce(options.nonce))}>` +
-      adapted(
-        `window.__BARQ_DATA__=Object.assign(window.__BARQ_DATA__||{},${encodeSeed(data, options.plugins)});${SEED_SETTLE_GUARD}`,
-      ) +
-      "</script>";
-    return beforeBodyEnd(html, script);
+    const data = options.noScripts === true ? {} : getHydrationData(session);
+    const page =
+      Object.keys(data).length === 0
+        ? html
+        : beforeBodyEnd(
+            html,
+            `<script${nonceAttr(scriptNonce(options.nonce))}>` +
+              adapted(
+                `window.__BARQ_DATA__=Object.assign(window.__BARQ_DATA__||{},${encodeSeed(data, options.plugins)});${SEED_SETTLE_GUARD}`,
+              ) +
+              "</script>",
+          );
+    // The render is complete and its scopes are about to be disposed: what
+    // they declared with `httpStatus` and `httpHeader` is the page's.
+    freezeDeclarations(event?.response);
+    return page;
   } catch (error) {
     options.onError?.(error, FAILED);
     throw error;
@@ -289,6 +302,8 @@ interface Job {
   /** Boundaries resumed into the shell, which a group counts as revealed. */
   inlined: Set<Parked>;
   released: boolean;
+  /** The request the render was started for, whose head a completed render freezes. */
+  event: RequestEvent | undefined;
 }
 
 /**
@@ -307,7 +322,14 @@ export interface ModuleAssets {
 
 /** One render's `useHead` declarations, and the assets its `lazy()` modules need. */
 class HeadCollector {
-  constructor(private readonly manifest?: AssetManifest) {}
+  /** The request's trace as `<meta>` tags, when the browser is told about it. */
+  private readonly trace: string;
+  constructor(
+    private readonly manifest?: AssetManifest,
+    event?: RequestEvent,
+  ) {
+    this.trace = event === undefined ? "" : traceMetaMarkup(traceForEvent(event));
+  }
   readonly tags = new Map<string, HeadTag>();
   /** Set once the shell's head is written; declarations after it are patches. */
   sealed = false;
@@ -339,7 +361,7 @@ class HeadCollector {
 
   /** The shell's head, as markup. */
   markup(): string {
-    let out = "";
+    let out = this.trace;
     for (const [key, tag] of this.tags) out += headMarkup(key, tag);
     return out;
   }
@@ -410,6 +432,7 @@ function startRender(
   viaDom: boolean,
 ): Job {
   const stamp = crypto.randomUUID();
+  const event = getRequestEvent();
   const job: Job = {
     session: options.session ?? Symbol("render-session"),
     stamp,
@@ -422,10 +445,11 @@ function startRender(
     guards: new Map(),
     guardsById: new Map(),
     sink: null as never,
-    head: new HeadCollector(options.manifest),
+    head: new HeadCollector(options.manifest, event),
     groups: new Map(),
     inlined: new Set(),
     released: false,
+    event,
   };
   let next = 0;
   job.sink = {
@@ -612,6 +636,7 @@ async function settledPage(
     const flights = pendingSeedsOf(job.session);
     abandonPendingSeeds(job.session);
     data = await settleNested(await withFailures(getHydrationData(job.session), flights));
+    freezeDeclarations(job.event?.response);
   } finally {
     release(job);
   }
@@ -1755,7 +1780,7 @@ function streamBody(
   const run = async (controller: ReadableStreamDefaultController<Uint8Array>): Promise<void> => {
     controllerOf = controller;
     try {
-      await inlineSettled(job, signal);
+      await inlineSettled(job, signal, deadline);
       const shell = wireOf(job, withHead(job.shell, job.head, options.onHead));
       placeParked(shell, "html", [...parked, ...job.guardsById.values()], job);
       // The status is settled from here: these bytes are gone and nothing
@@ -1926,8 +1951,35 @@ function streamBody(
  * synchronously, a cache hit. Waiting on anything slower than that is what
  * streaming exists to avoid, so this asks `settleStep` with a budget of
  * microtasks and stops the moment a round brings nothing.
+ *
+ * A `deferStream` memo is the exception the page asked for: the shell waits for
+ * it, up to the boundary deadline, and the boundary it stands in is resumed
+ * into the shell with its value.
  */
-async function inlineSettled(job: Job, signal: AbortSignal | undefined): Promise<void> {
+async function inlineSettled(
+  job: Job,
+  signal: AbortSignal | undefined,
+  deadline: number,
+): Promise<void> {
+  const until = Date.now() + deadline;
+  for (;;) {
+    const held = deferredFlightsOf(job.session);
+    const left = until - Date.now();
+    if (held.length === 0 || left <= 0 || signal?.aborted === true) break;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        Promise.allSettled(held),
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, left);
+        }),
+      ]);
+    } finally {
+      clearTimeout(timer);
+    }
+    flush();
+    resumeIntoShell(job);
+  }
   for (let round = 0; round < SHELL_ROUNDS && job.parked.length > 0; round++) {
     if (signal?.aborted === true) return;
     const stepped = await Promise.race([
@@ -1935,39 +1987,44 @@ async function inlineSettled(job: Job, signal: AbortSignal | undefined): Promise
       microtasks(SHELL_TURNS),
     ]);
     if (stepped !== true) return;
-    const waiting = job.parked.splice(0, job.parked.length);
-    const again: Parked[] = [];
-    let resumed = false;
-    for (const record of waiting) {
-      if (!inlinable(job, record)) {
-        again.push(record);
-        continue;
-      }
-      const restore = setAsyncSession(job.session);
-      const outerSink = setStreamSink(job.sink);
-      const outerHead = setHeadSink(job.head.sink);
-      let built: string | null = null;
-      try {
-        built = record.resume();
-      } catch (error) {
-        // Unready, or failed: either way the stream's own rounds answer it,
-        // with a template or with the error boundary's fallback.
-        if (error instanceof NotReadyError) record.parkedOn = error;
-        again.push(record);
-      } finally {
-        setStreamSink(outerSink);
-        setHeadSink(outerHead);
-        setAsyncSession(restore);
-      }
-      if (built === null) continue;
-      resumed = true;
-      job.inlined.add(record);
-      const content = record.hydrate ? `<!--[-->${built}<!--]-->` : built;
-      job.shell = replaceBetween(job.shell, record.open, record.close, () => content);
-    }
-    job.parked.unshift(...again);
-    if (!resumed) return;
+    if (!resumeIntoShell(job)) return;
   }
+}
+
+/** Resume each parked boundary the shell may show, once. Whether any came back built. */
+function resumeIntoShell(job: Job): boolean {
+  const waiting = job.parked.splice(0, job.parked.length);
+  const again: Parked[] = [];
+  let resumed = false;
+  for (const record of waiting) {
+    if (!inlinable(job, record)) {
+      again.push(record);
+      continue;
+    }
+    const restore = setAsyncSession(job.session);
+    const outerSink = setStreamSink(job.sink);
+    const outerHead = setHeadSink(job.head.sink);
+    let built: string | null = null;
+    try {
+      built = record.resume();
+    } catch (error) {
+      // Unready, or failed: either way the stream's own rounds answer it,
+      // with a template or with the error boundary's fallback.
+      if (error instanceof NotReadyError) record.parkedOn = error;
+      again.push(record);
+    } finally {
+      setStreamSink(outerSink);
+      setHeadSink(outerHead);
+      setAsyncSession(restore);
+    }
+    if (built === null) continue;
+    resumed = true;
+    job.inlined.add(record);
+    const content = record.hydrate ? `<!--[-->${built}<!--]-->` : built;
+    job.shell = replaceBetween(job.shell, record.open, record.close, () => content);
+  }
+  job.parked.unshift(...again);
+  return resumed;
 }
 
 /**

@@ -182,12 +182,15 @@ export { isSafeError, markSafeError } from "./safe-error.ts";
 
 export {
   getRequestEvent,
+  getTraceContext,
   httpHeader,
   httpStatus,
   type RequestEvent,
   type RequestEventLocals,
   type ResponseStub,
 } from "./request-event.ts";
+
+export type { TraceContext } from "./trace-context.ts";
 
 export { useHead, type HeadInput, type HeadTag, type HeadTagName } from "./head.ts";
 

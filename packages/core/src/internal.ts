@@ -1,13 +1,13 @@
 /**
- * `@barqjs/core/internal` — the runtime surface `@barqjs/server` needs and no
- * application does.
+ * `@barqjs/core/internal` — the runtime surface `@barqjs/server` and
+ * `@barqjs/start` need and no application does.
  *
  * The string backend is a second implementation of the same ABI, so it reaches
  * for the same scope operations and the same async session the DOM backend
  * does. None of that is application API, and exporting it from
  * the package index to move one package would have made it so permanently.
  *
- * Every name here is imported by `@barqjs/server`. Adding one that nothing there
+ * Every name here is imported by one of those two. Adding one that neither
  * imports makes this a second public surface by accident.
  */
 
@@ -26,6 +26,7 @@ export {
   provideOn,
   SEED_ABANDONED,
   abandonPendingSeeds,
+  deferredFlightsOf,
   pendingSeedsOf,
   serverRendering,
   setAsyncSession,
@@ -36,5 +37,18 @@ export {
 } from "./signals.ts";
 
 export { headKey, reportModule, setHeadSink } from "./head.ts";
+
+export {
+  COMPOSED_BODY_FRAMING,
+  commitEventResponse,
+  commitResponseStub,
+  createRequestEvent,
+  createResponseStub,
+  foldResponseStub,
+  freezeDeclarations,
+  getExpectedRedirectStatus,
+} from "./request-event.ts";
+
+export { mergeServerTiming, traceForEvent, traceMetaMarkup } from "./trace-context.ts";
 
 export { isObject } from "./type-utils.ts";

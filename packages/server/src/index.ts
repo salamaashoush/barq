@@ -64,6 +64,7 @@ export { block, readSlot } from "@barqjs/core";
 
 export {
   getRequestEvent,
+  getTraceContext,
   httpHeader,
   httpStatus,
   isSafeError,
@@ -71,7 +72,23 @@ export {
   type RequestEvent,
   type RequestEventLocals,
   type ResponseStub,
+  type TraceContext,
 } from "@barqjs/core";
+
+export {
+  commitEventResponse,
+  commitResponseStub,
+  createRequestEvent,
+  createResponseStub,
+  getExpectedRedirectStatus,
+} from "@barqjs/core/internal";
+
+export {
+  type FetchMiddleware,
+  type SSRResponseOptions,
+  composeMiddleware,
+  createSSRResponse,
+} from "./http.ts";
 
 export {
   type AssetManifest,

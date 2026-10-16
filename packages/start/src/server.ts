@@ -9,8 +9,15 @@
  */
 
 import { isDev, isSafeError } from "@barqjs/core";
-import { diagnosticsEnabled, emitDiagnostic } from "@barqjs/core/internal";
+import {
+  commitEventResponse,
+  commitResponseStub,
+  createRequestEvent,
+  diagnosticsEnabled,
+  emitDiagnostic,
+} from "@barqjs/core/internal";
 import { decodeWire, encodeWire } from "@barqjs/server/codec";
+import { provideRequestEvent } from "@barqjs/server/storage";
 import { createBodyTooLargeError, limitBodyStream } from "srvx/body-limit";
 
 import {
@@ -18,9 +25,7 @@ import {
   applyResponseDraft,
   createResponseDraft,
   draftedStatus,
-  markResponseSent,
   setRequestMiddlewareContext,
-  withRequest,
 } from "./context.ts";
 import {
   NOT_FOUND,
@@ -483,30 +488,28 @@ export async function handleServerFn(
   // for it, so it costs nothing and reaches nothing.
   const context: Record<string, unknown> = {};
   const timing = isDev ? serverTiming() : undefined;
+  const event = createRequestEvent(request, { response: draft });
   try {
-    const response = await withRequest(
-      request,
-      () => {
-        setRequestMiddlewareContext(context);
-        return runRequestMiddleware(
-          startOptions().requestMiddleware ?? [],
-          { request, pathname: url.pathname, handlerType: "serverFn", context },
-          respond,
-        );
-      },
-      { response: draft },
-    );
+    const response = await provideRequestEvent(event, () => {
+      setRequestMiddlewareContext(context);
+      return runRequestMiddleware(
+        startOptions().requestMiddleware ?? [],
+        { request, pathname: url.pathname, handlerType: "serverFn", context },
+        respond,
+      );
+    });
     if (timing !== undefined) {
       timing.phase("barq-fn", id);
       draft.headers.append("server-timing", timing.header());
     }
-    return applyResponseDraft(response, draft);
+    return commitEventResponse(response, event);
   } catch (error) {
     // A request middleware refuses the way a function's own does.
-    if (error instanceof Response) return thrownAnswer(error, isData, draft);
-    return applyResponseDraft(failed(id, error, isData, options, "middleware"), draft);
+    if (error instanceof Response)
+      return commitEventResponse(thrownAnswer(error, isData, draft), event);
+    return commitEventResponse(failed(id, error, isData, options, "middleware"), event);
   } finally {
-    markResponseSent(draft);
+    commitResponseStub(draft, { event });
   }
 }
 

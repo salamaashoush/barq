@@ -22,6 +22,7 @@ import {
   createContext as engineCreateContext,
   createEffect as engineCreateEffect,
   createMemo as engineCreateMemo,
+  createSignal as engineCreateSignal,
   onSettled as engineOnSettled,
   createOwner,
   createRenderEffect,
@@ -1174,21 +1175,50 @@ export function internalMemo<T>(
 export const createMemo: {
   <T>(
     compute: (prev: T) => T | PromiseLike<T> | AsyncIterable<T>,
-    options: MemoOptions<T> & { key?: string; loadingValue: T },
+    options: MemoOptions<T> & HydrationOptions & { loadingValue: T },
   ): SourceAccessor<T>;
   <T>(
     compute: (prev: T | undefined) => T | PromiseLike<T> | AsyncIterable<T>,
-    options?: MemoOptions<T> & { key?: string },
+    options?: MemoOptions<T> & HydrationOptions,
   ): SourceAccessor<T>;
 } = <T>(
   compute: (prev: T | undefined) => T | PromiseLike<T> | AsyncIterable<T>,
-  options?: MemoOptions<T> & { key?: string },
+  options?: MemoOptions<T> & HydrationOptions,
 ): SourceAccessor<T> => {
   let fn = compute;
-  if (seeding()) fn = asyncAware(fn, options?.key, options?.name);
+  const source = options?.ssrSource;
+  if (seeding() || (source !== undefined && source !== "server" && hydrating())) {
+    fn = asyncAware(fn, options);
+  }
   if (OWNERSHIP.sink !== null) fn = traced(fn as never, "pure") as typeof fn;
   return engineCreateMemo<T>(fn as never, options);
 };
+
+/**
+ * Where a memo's value comes from across a server render, Solid 2.0's
+ * per-memo options. `ssrSource`:
+ *
+ * - `"server"`, the default: the server's value is seeded and the browser
+ *   adopts it without running the compute.
+ * - `"hybrid"`: the same, and a compute that returns an async iterable is run
+ *   again in the browser once the page has been claimed, continuing the
+ *   stream from the server's value. Its first yield repeats that value and is
+ *   dropped.
+ * - `"client"`: the server never runs the compute. It renders the memo's
+ *   `loadingValue` when one is declared, and otherwise the memo never settles
+ *   there and the `<Loading>` around it ships its fallback. The browser runs
+ *   the compute once the page has been claimed.
+ *
+ * `deferStream` holds a streamed shell until the memo's first value has
+ * settled, so the `<Loading>` around it renders its content into the shell
+ * instead of its fallback. It means nothing in the browser.
+ */
+export interface HydrationOptions {
+  /** The seed key, in place of the memo's position. Unique across the page. */
+  readonly key?: string;
+  readonly ssrSource?: "server" | "hybrid" | "client";
+  readonly deferStream?: boolean;
+}
 
 let following = false;
 
@@ -1398,6 +1428,12 @@ export function serverRendering(): boolean {
   return activeAsyncSession !== null;
 }
 
+/** The server render the calling owner belongs to, while that render is still open. */
+export function currentRenderSession(): symbol | null {
+  const session = declaringSession(getOwner());
+  return session !== null && hydrationData.has(session) ? session : null;
+}
+
 /**
  * The render a root was opened for. Every scope and computation below the root
  * inherits it, which is how a declaration made long after the render's own
@@ -1487,6 +1523,96 @@ function getSeed(key: string): { found: boolean; value?: unknown } {
 }
 
 /**
+ * What a compute that must not run yet answers with: a flight that never
+ * lands. A synchronous answer would be the memo's first value, which a bare
+ * memo would commit as `undefined` and a declared one would take in place of
+ * its `loadingValue`. A later run supersedes it, so its callbacks never fire.
+ */
+const UNASKED: PromiseLike<never> = new Promise<never>(() => {});
+
+/**
+ * The seed a `"hybrid"` memo whose compute returned an async iterable is sent
+ * as, so the browser knows to continue the stream rather than adopt the value
+ * and stop. Only the server knows the compute's shape: asking in the browser
+ * would mean calling it, which for a promise is the fetch the seed saves.
+ */
+const LIVE_SEED = "__barq_live__";
+
+function liveSeed(value: unknown): { live: boolean; value: unknown } {
+  if (typeof value === "object" && value !== null && LIVE_SEED in value) {
+    return { live: true, value: (value as Record<string, unknown>)[LIVE_SEED] };
+  }
+  return { live: false, value };
+}
+
+/** The keys each server render declared `"hybrid"`, whose values are sent as live seeds. */
+const liveKeys = new Map<symbol, Set<string>>();
+
+/** Flights a streamed shell waits for: those of `deferStream` memos, by render. */
+const deferred = new Map<symbol, Set<PromiseLike<unknown>>>();
+
+/** What a streamed shell is still waiting on before it may flush. */
+export function deferredFlightsOf(session: symbol): PromiseLike<unknown>[] {
+  return [...(deferred.get(session) ?? [])];
+}
+
+function holdShell(session: symbol, promise: PromiseLike<unknown>): void {
+  let held = deferred.get(session);
+  if (held === undefined) deferred.set(session, (held = new Set()));
+  held.add(promise);
+  const release = (): void => {
+    held.delete(promise);
+    if (held.size === 0 && deferred.get(session) === held) deferred.delete(session);
+  };
+  promise.then(release, release);
+}
+
+function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as AsyncIterable<unknown>)[Symbol.asyncIterator] === "function"
+  );
+}
+
+/**
+ * A stream continued from the value the page was served: that value first, in
+ * the same turn, so the memo reads settled through the handoff, then the
+ * source's own first yield, which repeats it and lands as an equal write, then
+ * everything after.
+ */
+function continuedFrom<T>(source: AsyncIterable<T>, adopted: T): AsyncIterable<T> {
+  return {
+    [Symbol.asyncIterator](): AsyncIterator<T> {
+      const inner = source[Symbol.asyncIterator]();
+      let step = 0;
+      return {
+        next: () => {
+          if (step === 0) {
+            step = 1;
+            // A bare result, not a promise: the engine takes it as a step that
+            // has already settled, as `for await` does, so it lands in this turn.
+            return { done: false, value: adopted } as unknown as Promise<IteratorResult<T>>;
+          }
+          const pulled = Promise.resolve(inner.next());
+          if (step === 1) {
+            step = 2;
+            return pulled.then((first) =>
+              first.done === true ? first : { done: false, value: adopted },
+            );
+          }
+          return pulled;
+        },
+        return: (value?: unknown) =>
+          inner.return === undefined
+            ? Promise.resolve({ done: true, value: value as T })
+            : Promise.resolve(inner.return(value)),
+      };
+    },
+  };
+}
+
+/**
  * Wrap a compute so its async answers are visible to `settle` and, under a key,
  * cross from the server to the client.
  *
@@ -1497,9 +1623,12 @@ function getSeed(key: string): { found: boolean; value?: unknown } {
  */
 function asyncAware<T>(
   fn: (prev: T | undefined) => T | PromiseLike<T> | AsyncIterable<T>,
-  explicitKey: string | undefined,
-  name: string | undefined,
+  options: (MemoOptions<T> & HydrationOptions) | undefined,
 ): (prev: T | undefined) => T | PromiseLike<T> | AsyncIterable<T> {
+  const explicitKey = options?.key;
+  const name = options?.name;
+  const source = options?.ssrSource ?? "server";
+  const holdsShell = options?.deferStream === true;
   const owner = getOwner();
   const declaredIn = declaringSession(owner);
   const records = declaredIn === null ? null : recordsOf(declaredIn);
@@ -1518,10 +1647,45 @@ function asyncAware<T>(
     if (keys === undefined) unhydrated.set(declaredIn, (keys = new Set()));
     keys.add(key);
   }
+  // The browser's half of `"client"` and `"hybrid"`: shut while the page is
+  // claimed, and opened a microtask after the claim pass, which is when the
+  // compute may run against the browser. The claim pass is synchronous to its
+  // end, so a microtask is after it and before anything paints.
+  let gate: (() => boolean) | null = null;
+  if (declaredIn === null && source !== "server" && hydrating()) {
+    const [opened, open] = engineCreateSignal(false);
+    gate = opened;
+    queueMicrotask(() => open(true));
+  }
+  // A `"hybrid"` memo that adopted a live seed, until its stream is continued.
+  let handoff = false;
   let first = true;
+
+  const adopt = (value: unknown): T => {
+    const seeded = liveSeed(value);
+    if (seeded.live && source === "hybrid" && gate !== null) {
+      handoff = true;
+      // Read so that opening the gate runs the compute again.
+      gate();
+    }
+    return seeded.value as T;
+  };
 
   const run = (prev: T | undefined, session: symbol | null): ReturnType<typeof fn> => {
     const node = getOwner();
+    if (source === "client") {
+      // The server never runs it, and nothing waits for it there.
+      if (declaredIn !== null) return UNASKED;
+      if (gate !== null && !gate()) return UNASKED;
+      first = false;
+    }
+    if (handoff && gate !== null && gate()) {
+      handoff = false;
+      const continued = fn(prev);
+      return isAsyncIterable(continued)
+        ? followStream(continuedFrom(continued, prev as T), session, undefined, node, false)
+        : continued;
+    }
     if (first) {
       first = false;
       if (key !== undefined) {
@@ -1549,6 +1713,7 @@ function asyncAware<T>(
               session,
               undefined,
               node,
+              holdsShell,
             );
           }
         }
@@ -1567,7 +1732,7 @@ function asyncAware<T>(
             // otherwise reach the client as content that is not ready yet.
             const stamped = value as { s?: unknown; v?: unknown };
             if (stamped.s === 2) throw stamped.v;
-            if (stamped.s === 1 && !isAbandonedSeed(stamped.v)) return stamped.v as T;
+            if (stamped.s === 1 && !isAbandonedSeed(stamped.v)) return adopt(stamped.v);
             // Followed without a key: the wait is this read's own work, and
             // what arrives is the server's value, already on the page.
             return follow(
@@ -1575,23 +1740,29 @@ function asyncAware<T>(
                 // The server gave up on this key: fetch it, which is what a
                 // page with no seed at all does.
                 if (isAbandonedSeed(arrived)) return fn(prev) as T | PromiseLike<T>;
-                return arrived as T;
+                return liveSeed(arrived).value as T;
               }),
               session,
               undefined,
               node,
+              false,
             );
           }
-          return value as T;
+          return adopt(value);
         }
       }
     }
 
     const result = fn(prev);
     if (typeof result !== "object" || result === null) return result;
-    if (isThenable(result)) return follow(result, session, key, node);
-    if (typeof (result as AsyncIterable<T>)[Symbol.asyncIterator] === "function") {
-      return followStream(result as AsyncIterable<T>, session, key, node);
+    if (isThenable(result)) return follow(result, session, key, node, holdsShell);
+    if (isAsyncIterable(result)) {
+      if (source === "hybrid" && key !== undefined && session !== null) {
+        let keys = liveKeys.get(session);
+        if (keys === undefined) liveKeys.set(session, (keys = new Set()));
+        keys.add(key);
+      }
+      return followStream(result, session, key, node, holdsShell);
     }
     return result;
   };
@@ -1622,9 +1793,11 @@ function follow<T>(
   session: symbol | null,
   key: string | undefined,
   node: object | null,
+  holdsShell: boolean,
 ): PromiseLike<T> {
   inFlight.set(promise, session);
   if (node !== null) flights.set(node, promise);
+  if (holdsShell && session !== null) holdShell(session, promise);
   const landed = (): void => {
     inFlight.delete(promise);
     if (node !== null && flights.get(node) === promise) flights.delete(node);
@@ -1669,6 +1842,7 @@ function followStream<T>(
   session: symbol | null,
   key: string | undefined,
   node: object | null,
+  holdsShell: boolean,
 ): AsyncIterable<T> {
   let answered!: (value: unknown) => void;
   const firstAnswer = new Promise<unknown>((res) => {
@@ -1676,6 +1850,7 @@ function followStream<T>(
   });
   inFlight.set(firstAnswer, session);
   if (node !== null) flights.set(node, firstAnswer);
+  if (holdsShell && session !== null) holdShell(session, firstAnswer);
   const firstAnswered = (value: unknown): void => {
     inFlight.delete(firstAnswer);
     if (node !== null && flights.get(node) === firstAnswer) flights.delete(node);
@@ -1835,7 +2010,11 @@ export function getHydrationData(session?: symbol): Record<string, unknown> {
   const result: Record<string, unknown> = {};
   const emit = (from: symbol | null, bucket: Map<string, unknown>): void => {
     const kept = unhydrated.get(from);
-    for (const [key, value] of bucket) if (kept?.has(key) !== true) result[key] = value;
+    const live = from === null ? undefined : liveKeys.get(from);
+    for (const [key, value] of bucket) {
+      if (kept?.has(key) === true) continue;
+      result[key] = live?.has(key) === true ? { [LIVE_SEED]: value } : value;
+    }
   };
   if (session !== undefined) {
     const bucket = hydrationData.get(session);
@@ -1861,10 +2040,14 @@ export function clearHydrationData(session?: symbol): void {
     }
     unhydrated.delete(session);
     unhydrated.delete(null);
+    liveKeys.delete(session);
+    deferred.delete(session);
   } else {
     hydrationData.clear();
     inFlight.clear();
     unhydrated.clear();
+    liveKeys.clear();
+    deferred.clear();
   }
   resetChildIds(session);
 }

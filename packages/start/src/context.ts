@@ -24,10 +24,18 @@
  * one divergence progressive enhancement exists to prevent.
  */
 
-import { AsyncLocalStorage } from "node:async_hooks";
+import type { AsyncLocalStorage } from "node:async_hooks";
 
-import type { RequestEventLocals } from "@barqjs/core";
-import { diagnosticsEnabled, emitDiagnostic } from "@barqjs/core/internal";
+import type { RequestEventLocals, ResponseStub } from "@barqjs/core";
+import {
+  commitResponseStub,
+  createRequestEvent,
+  createResponseStub,
+  diagnosticsEnabled,
+  emitDiagnostic,
+  foldResponseStub,
+} from "@barqjs/core/internal";
+import { provideRequestEvent } from "@barqjs/server/storage";
 
 import { type CookieOptions, deleteCookieLine, parseCookies, serializeCookie } from "./cookies.ts";
 import type { OpenContext } from "./middleware.ts";
@@ -37,21 +45,11 @@ import type { GlobalRequestContext } from "./start-instance.ts";
 const REQUEST_EVENT = Symbol.for("barq.request-event");
 
 /**
- * Headers and a status a handler asked for, merged into whatever is returned.
- *
- * A `Headers` rather than a plain object because `set-cookie` is the one header
- * that legitimately appears more than once, and only `Headers` can hold two.
+ * Headers and a status a handler asked for, merged into whatever is returned:
+ * the request event's response head, Solid's `ResponseStub`, under the name
+ * this package's helpers have always given it.
  */
-export interface ResponseDraft {
-  readonly headers: Headers;
-  status?: number;
-  statusText?: string;
-  /**
-   * The response this draft describes has been handed to the server, status
-   * and headers with it. A write after this reaches nothing.
-   */
-  sent?: boolean;
-}
+export type ResponseDraft = ResponseStub;
 
 export interface RequestContext {
   request: Request;
@@ -125,73 +123,30 @@ export interface RequestContext {
 }
 
 /**
- * Built on first use, never at module scope.
+ * The request event's storage, under the symbol `getRequestEvent` reads and
+ * `provideRequestEvent` enters, so a component asking Solid's way finds the
+ * request a handler entered.
  *
- * `@barqjs/start` is documented as the ISOMORPHIC entry — `createServerFn`, the
- * context, sessions, cookies — so a browser bundle reaches this module whenever
- * an application imports any of them from a file the client graph can see. A
- * route that names a middleware closure for the build's chain check is the
- * ordinary way that happens, and it is not a mistake the application can avoid:
- * the check compares references, so the route has to import the same binding
- * the server function carries.
+ * ONE storage per process, whichever copy of this module asks: a build
+ * compiles this module into its server bundle, and a host serving that bundle
+ * through its own `serveBarq` has imported a second copy. Each holding its own,
+ * the host entered the request into one and the bundle's functions read the
+ * other, so every server function that read a cookie answered 500.
  *
- * `node:async_hooks` has no browser implementation, and a bundler answers it
- * with an empty stub rather than an error. Constructing at module scope
- * therefore turned "this module is in the graph" into `AsyncLocalStorage is not
- * a constructor`, thrown while the chunk evaluated — before any application
- * code ran, on a page that never intended to call a server API at all.
- *
- * Lazily, the read path below never constructs anything: no storage means no
- * request in flight, which is exactly what it already reports. Only a caller
- * that tries to ENTER a request context off-server reaches the constructor, and
- * that one gets told what it did.
- */
-/**
- * ONE storage per process, whichever copy of this module asks, for the reason
- * the server-function registry is one: a build compiles this module into its
- * server bundle, and a host serving that bundle through its own `serveBarq`
- * has imported a second copy. Each holding its own, the host entered the
- * request into one and the bundle's functions read the other, so every server
- * function that read a cookie answered 500.
- *
- * It is the request event's storage, under the symbol `getRequestEvent` reads,
- * so a component asking Solid's way finds the request a handler entered.
+ * Read lazily, and nothing is constructed here: `@barqjs/start` is the
+ * ISOMORPHIC entry, so a browser bundle evaluates this module, and a bundler
+ * answers `node:async_hooks` there with an empty stub. No storage is no
+ * request in flight, which is what the read path reports.
  */
 const SHARED = {
   get storage(): AsyncLocalStorage<RequestContext> | undefined {
     return (globalThis as { [REQUEST_EVENT]?: AsyncLocalStorage<RequestContext> })[REQUEST_EVENT];
   },
-  set storage(storage: AsyncLocalStorage<RequestContext>) {
-    (globalThis as { [REQUEST_EVENT]?: AsyncLocalStorage<RequestContext> })[REQUEST_EVENT] =
-      storage;
-  },
 };
 
-function enterable(): AsyncLocalStorage<RequestContext> {
-  if (SHARED.storage !== undefined) return SHARED.storage;
-  if (typeof AsyncLocalStorage !== "function") {
-    throw new Error(
-      "[barq] `withRequest` was called where `AsyncLocalStorage` from `node:async_hooks` does not exist, so the request cannot be made available to the code it runs. " +
-        "It works only on the server. If this is the browser, server-only code reached the browser bundle: " +
-        "move it behind a server function.",
-    );
-  }
-  SHARED.storage = new AsyncLocalStorage<RequestContext>();
-  return SHARED.storage;
-}
+/** A fresh, empty draft, one per request: Solid's `createResponseStub`. */
+export const createResponseDraft: () => ResponseDraft = createResponseStub;
 
-/** A fresh, empty draft. One per request. */
-export function createResponseDraft(): ResponseDraft {
-  return { headers: new Headers() };
-}
-
-/**
- * Run `body` with `request` as the ambient one.
- *
- * The DRAFT is the caller's to hold, because the caller is what builds the
- * response and it does so after `body` has returned. `handleServerFn` and
- * `createPageHandler` both make one, pass it in, and merge it on the way out.
- */
 /**
  * Send `@barqjs/css`'s render-time rules to whichever request is running.
  *
@@ -230,6 +185,13 @@ export function installCssSink(setSink: (sink: CssSink) => void): void {
   setSink(sink);
 }
 
+/**
+ * Run `body` with `request` as the ambient one, under the event
+ * `createRequestEvent` builds for it and `provideRequestEvent` enters.
+ *
+ * The DRAFT is the caller's to hold, because the caller is what builds the
+ * response and it does so after `body` has returned.
+ */
 export function withRequest<T>(
   request: Request,
   body: () => T,
@@ -239,13 +201,11 @@ export function withRequest<T>(
   // Both spellings work, because the string form reads better at the one call
   // site that uses it — the prerenderer, which refuses and carries no draft.
   const resolved = typeof options === "string" ? { refuse: options } : options;
-  return enterable().run(
-    {
-      request,
+  return provideRequestEvent(
+    createRequestEvent(request, {
       refuse: resolved.refuse,
-      response: resolved.response ?? createResponseDraft(),
-      locals: {},
-    },
+      response: resolved.response ?? createResponseStub(),
+    }),
     body,
   );
 }
@@ -449,13 +409,12 @@ export function getRequestProtocol(options: { readonly xForwardedProto?: boolean
 // ---------------------------------------------------------------------------
 
 /**
- * Mark the draft's response as handed to the server. A streamed page goes on
- * rendering after this, and so does a streamed server function, and a header
- * one of them writes now changes nothing the browser receives.
+ * Mark the draft's response as handed to the server: Solid's
+ * `commitResponseStub`. A streamed page goes on rendering after this, and so
+ * does a streamed server function, and a header one of them writes now changes
+ * nothing the browser receives.
  */
-export function markResponseSent(draft: ResponseDraft | undefined): void {
-  if (draft !== undefined) draft.sent = true;
-}
+export const markResponseSent: typeof commitResponseStub = commitResponseStub;
 
 /**
  * The draft a write goes to, reporting the write when the response has already
@@ -464,8 +423,10 @@ export function markResponseSent(draft: ResponseDraft | undefined): void {
  */
 function draftFor(api: (...args: never[]) => unknown, argument?: unknown): ResponseDraft {
   const draft = context().response;
-  if (draft.sent === true && diagnosticsEnabled()) reportLateWrite(api, argument);
-  return draft;
+  if (draft.committed !== true) return draft;
+  if (diagnosticsEnabled()) reportLateWrite(api, argument);
+  // Somewhere the write can land and go nowhere, reported once, here.
+  return createResponseStub();
 }
 
 function reportLateWrite(api: (...args: never[]) => unknown, argument: unknown): void {
@@ -655,70 +616,16 @@ export function deleteCookie(name: string, options?: CookieOptions): void {
 // ---------------------------------------------------------------------------
 
 /**
- * Fold a draft into a response.
+ * Fold a draft into a response, Solid's fold for `commitEventResponse` without
+ * the commit: `foldResponseStub` in `@barqjs/core` says what wins and why.
  *
- * THE PRECEDENCE RULE, stated once and applied everywhere: a `Response` a
- * handler RETURNED wins on every header it sets and on its status, because a
- * handler that built a whole response has said what it wants. The one exception
- * is `set-cookie`, which is ADDITIVE — a middleware that refreshes a session and
- * a handler that sets a preference are both right, and dropping either is a bug
- * neither can see.
- *
- * A new `Response` rather than a mutation: `Headers` on a response that came
- * back from `fetch()` is guarded immutable, and mutating it throws.
+ * It does NOT override the status of a `Response` a handler returned, because
+ * a handler that built a whole response has said what it wants.
  */
-export function applyResponseDraft(response: Response, draft: ResponseDraft | undefined): Response {
-  if (draft === undefined) return response;
-  // A request middleware wraps a handler that has already folded this draft
-  // into what it returned, and may have drafted more since. Each cookie line
-  // goes onto a response once, however many times the draft is folded in.
-  const sent = APPLIED.get(response) ?? new Set<string>();
-  const cookies = draft.headers.getSetCookie().filter((line) => !sent.has(line));
-  const others = [...draft.headers].filter(([name]) => name !== "set-cookie");
-  if (cookies.length === 0 && others.length === 0 && draft.status === undefined) {
-    return response;
-  }
-
-  // MUTATE FIRST, rebuild only if the response refuses.
-  //
-  // A rebuild is not equivalent, which cost an afternoon: `new Response(body,
-  // { headers })` DROPS every `set-cookie` under happy-dom, so the whole merge
-  // silently produced a cookie-less response in the router's suite while
-  // passing in `packages/start`, which registers no DOM. Mutating the headers
-  // the response already has touches none of that.
-  //
-  // The rebuild stays as the fallback because a response that came back from
-  // `fetch()` has an immutable header guard and `set()` on it throws — which is
-  // a real shape here, since a route handler may proxy one.
-  try {
-    for (const [name, value] of others) {
-      if (!response.headers.has(name)) response.headers.set(name, value);
-    }
-    for (const cookie of cookies) response.headers.append("set-cookie", cookie);
-    for (const cookie of cookies) sent.add(cookie);
-    APPLIED.set(response, sent);
-    return response;
-  } catch {
-    // Immutable. Fall through.
-  }
-
-  const headers = new Headers(response.headers);
-  for (const [name, value] of others) {
-    if (!headers.has(name)) headers.set(name, value);
-  }
-  for (const cookie of cookies) headers.append("set-cookie", cookie);
-  const rebuilt = new Response(response.body, {
-    status: response.status,
-    statusText: response.statusText,
-    headers,
-  });
-  for (const cookie of cookies) sent.add(cookie);
-  APPLIED.set(rebuilt, sent);
-  return rebuilt;
-}
-
-/** The cookie lines each response has already been given from a draft. */
-const APPLIED = new WeakMap<Response, Set<string>>();
+export const applyResponseDraft: (
+  response: Response,
+  draft: ResponseDraft | undefined,
+) => Response = foldResponseStub;
 
 /**
  * The status and text a framework-built response should carry.

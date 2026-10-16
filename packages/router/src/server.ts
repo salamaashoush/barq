@@ -10,9 +10,9 @@
  *     the shell synchronously, so a 404 discovered mid-render would land after
  *     the headers. The match runs first, the status comes from it, and the
  *     render is entered afterwards.
- *  2. **The render runs inside `withRequest`.** Nothing else enters it for a
- *     page — `handleServerFn` is its only other caller — so without this a
- *     loader's server function calling `getRequest()` throws *inside* the
+ *  2. **The render runs inside the request's event**, which
+ *     `createRequestEvent` builds and `provideRequestEvent` enters. Without it
+ *     a loader's server function calling `getRequest()` throws *inside* the
  *     render. With it, a middleware that refuses throws a `Response` this
  *     handler returns as the page's own.
  *  3. **The router owns the document.** `renderPage` returns body markup;
@@ -23,6 +23,9 @@
 import {
   type AssetManifest,
   HEAD_SNIPPET,
+  commitEventResponse,
+  commitResponseStub,
+  createRequestEvent,
   branch as ssrBranch,
   clientOnly as ssrClientOnly,
   esc,
@@ -48,14 +51,13 @@ import {
   applyResponseDraft,
   createResponseDraft,
   draftedStatus,
-  markResponseSent,
   peekResponseDraft,
   runRequestMiddleware,
   serverTiming,
   setRequestMiddlewareContext,
   startOptions,
-  withRequest,
 } from "@barqjs/start";
+import { provideRequestEvent } from "@barqjs/server/storage";
 import { crossOriginRefused, mountOnDemand, mounted, mountedFn } from "@barqjs/start/server";
 import { PRERENDER_HEADER } from "@barqjs/start/protocol";
 
@@ -1415,36 +1417,37 @@ export function createPageHandler(
       })();
     };
 
+    // The PRERENDER REFUSAL reaches a handler too. A build mints the
+    // `Request`, so `getRequest()` inside one would answer with the build
+    // machine's headers and a cookie jar that is empty for everyone.
+    const event = createRequestEvent(request, { refuse: options.refuseRequest, response: draft });
     try {
-      const response = await withRequest(
-        request,
-        () => {
-          setRequestMiddlewareContext(context);
-          return runRequestMiddleware(
-            startOptions().requestMiddleware ?? [],
-            { request, pathname, handlerType: "router", context },
-            async () =>
-              (await runRouteHandlers(request, url, match, handling, draft, context)) ??
-              (await answerPage()),
-          );
-        },
-        // The PRERENDER REFUSAL reaches a handler too. A build mints the
-        // `Request`, so `getRequest()` inside one would answer with the build
-        // machine's headers and a cookie jar that is empty for everyone.
-        { refuse: options.refuseRequest, response: draft },
-      );
-      return applyResponseDraft(response, draft);
+      const response = await provideRequestEvent(event, () => {
+        setRequestMiddlewareContext(context);
+        return runRequestMiddleware(
+          startOptions().requestMiddleware ?? [],
+          { request, pathname, handlerType: "router", context },
+          async () =>
+            (await runRouteHandlers(request, url, match, handling, draft, context)) ??
+            (await answerPage()),
+        );
+      });
+      // THE HEAD COMMITS HERE, at the edge, once the request middleware has
+      // unwound, and not at the shell flush: a middleware may still set a
+      // cookie after `next()`, and nothing has reached the wire until this
+      // handler returns.
+      return commitEventResponse(response, event);
     } catch (error) {
       const thrown = asResponse(error);
       // A `beforeLoad` that sets a cookie and THEN redirects keeps the cookie —
       // which is the whole shape of a login: authenticate, seat the session,
       // send the browser on. Dropping it would redirect a user who is somehow
       // still signed out.
-      if (thrown !== null) return applyResponseDraft(thrown, draft);
+      if (thrown !== null) return commitEventResponse(thrown, event);
       throw error;
     } finally {
-      // What streams on after the shell writes into a draft nobody reads.
-      markResponseSent(draft);
+      // What streams on after the shell writes into a head nobody reads.
+      commitResponseStub(draft, { event });
     }
   };
 }
