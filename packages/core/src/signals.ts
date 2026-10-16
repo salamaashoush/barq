@@ -1406,7 +1406,7 @@ function declaringSession(owner: Owner | null): symbol | null {
   return activeAsyncSession;
 }
 
-/** Client: the payload emitted by generateHydrationScript, if present */
+/** Client: the payload a server render's seed script assigned, if present */
 function getSeed(key: string): { found: boolean; value?: unknown } {
   const store = (globalThis as { __BARQ_DATA__?: Record<string, unknown> }).__BARQ_DATA__;
   if (store && Object.hasOwn(store, key)) {

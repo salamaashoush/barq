@@ -27,14 +27,18 @@ import {
   createRoot,
   settle,
   createSignal,
+  isDev,
+  markSafeError,
 } from "@barqjs/core";
-import { SEED_ABANDONED, pendingSeedsOf, setAsyncSession } from "@barqjs/core/internal";
+import {
+  SEED_ABANDONED,
+  clearHydrationData,
+  pendingSeedsOf,
+  setAsyncSession,
+} from "@barqjs/core/internal";
 import { afterEach, describe, expect, test } from "bun:test";
 
 import {
-  clearRenderData,
-  generateHydrationScript,
-  getRenderData,
   renderPage,
   renderToStream,
   renderToString,
@@ -89,7 +93,7 @@ function runSeedScripts(html: string): Record<string, unknown> {
 }
 
 afterEach(() => {
-  clearRenderData();
+  clearHydrationData();
   (globalThis as { __BARQ_DATA__?: unknown }).__BARQ_DATA__ = undefined;
 });
 
@@ -160,7 +164,7 @@ describe("renderToStringAsync", () => {
   });
 
   test("records keyed async values for hydration", async () => {
-    await renderToStringAsync(() => {
+    const { data } = await renderPage(() => {
       const a = createMemo(async () => 1, { key: "a" });
       const b = createMemo(
         async () => {
@@ -176,7 +180,6 @@ describe("renderToStringAsync", () => {
       });
     });
 
-    const data = getRenderData();
     expect(data.a).toBe(1);
     expect(data.b).toBe(2);
   });
@@ -220,13 +223,12 @@ describe("renderToStringAsync", () => {
     expect(out.data["r:/users/$id|{id:7}"]).toBe("Ada");
   });
 
-  test("generateHydrationScript escapes script-breaking content", async () => {
-    await renderToStringAsync(() => {
+  test("the seed script escapes script-breaking content", async () => {
+    const { script } = await renderPage(() => {
       const evil = createMemo(async () => "</script><script>alert(1)</script>", { key: "evil" });
       return element("div", { children: () => evil().length.toString() });
     });
 
-    const script = generateHydrationScript();
     expect(script.startsWith("<script>window.__BARQ_DATA__=")).toBe(true);
     expect(script).not.toContain("</script><script>");
     expect(script.match(/<\/script>/g)?.length).toBe(1); // only the closing tag of the wrapper
@@ -241,12 +243,12 @@ describe("the seed encoder", () => {
   test("carries Date, Map, Set, BigInt and cycles", async () => {
     const cyclic: Record<string, unknown> = { when: new Date(0), tags: new Set(["a"]) };
     cyclic.self = cyclic;
-    await renderToStringAsync(() => {
+    const { data } = await renderPage(() => {
       const rich = createMemo(async () => cyclic, { key: "rich" });
       return element("div", { children: () => (rich() as { tags: Set<unknown> }).tags.size });
     });
 
-    const back = (0, eval)(encodeSeed(getRenderData())) as Record<string, { self: unknown }>;
+    const back = (0, eval)(encodeSeed(data)) as Record<string, { self: unknown }>;
     const value = back.rich as unknown as typeof cyclic;
     expect(value.when).toBeInstanceOf(Date);
     expect((value.when as Date).toISOString()).toBe("1970-01-01T00:00:00.000Z");
@@ -261,12 +263,13 @@ describe("the seed encoder", () => {
    */
   test("redacts an Error to its name and message, with no server path", () => {
     const payload = encodeSeed({ e: new Error("db connection failed") });
-    expect(payload).toContain("db connection failed");
+    expect(payload).toContain(isDev ? "db connection failed" : "Internal Server Error");
+    if (!isDev) expect(payload).not.toContain("db connection failed");
     expect(payload).not.toContain("sourceURL");
     expect(payload).not.toContain(import.meta.dir);
 
     const back = (0, eval)(payload) as { e: Error };
-    expect(back.e.message).toBe("db connection failed");
+    expect(back.e.message).toBe(isDev ? "db connection failed" : "Internal Server Error");
     expect(Object.keys(back.e)).toEqual(["name"]);
   });
 
@@ -519,9 +522,8 @@ describe("hydrate", () => {
       };
     };
 
-    const serverHtml = await renderToStringAsync(makeApp());
+    const { html: serverHtml, data } = await renderPage(makeApp());
     expect(fetches).toBe(1);
-    const data = getRenderData();
 
     // --- client ---
     const container = document.createElement("div");
@@ -584,10 +586,9 @@ describe("hydrate", () => {
         : () => boundary(null, null, "loading", fallback, content, HYDRATE);
     };
 
-    const serverHtml = await renderToStringAsync(makeApp(true));
+    const { html: serverHtml, data } = await renderPage(makeApp(true));
     expect(serverHtml).toContain("<b>Ada</b>");
     expect(serverHtml).toContain("<!--[-->");
-    const data = getRenderData();
 
     const container = document.createElement("div");
     document.body.appendChild(container);
@@ -1106,7 +1107,7 @@ describe("a pending promise inside a seeded value", () => {
           return {
             now: "here",
             later: new Promise((_resolve, reject) =>
-              setTimeout(() => reject(new Error("the slow part failed")), 5),
+              setTimeout(() => reject(markSafeError(new Error("the slow part failed"))), 5),
             ),
           };
         },
@@ -1146,7 +1147,7 @@ describe("a pending promise inside a seeded value", () => {
             return {
               now: "here",
               later: new Promise((_resolve, reject) =>
-                setTimeout(() => reject(new Error("nested failure")), 5),
+                setTimeout(() => reject(markSafeError(new Error("nested failure"))), 5),
               ),
             };
           },

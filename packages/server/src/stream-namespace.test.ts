@@ -9,9 +9,10 @@
  */
 
 import { createMemo } from "@barqjs/core";
+import { clearHydrationData } from "@barqjs/core/internal";
 import { afterEach, expect, test } from "bun:test";
 
-import { clearRenderData, renderToStream, swapDeferredRange } from "./server.ts";
+import { renderToStream, swapDeferredRange } from "./server.ts";
 import { attr, esc, html, ssrLoading } from "./ssr.ts";
 
 const SVG = "http://www.w3.org/2000/svg";
@@ -31,7 +32,7 @@ async function collect(stream: ReadableStream<Uint8Array>): Promise<string> {
 }
 
 afterEach(() => {
-  clearRenderData();
+  clearHydrationData();
 });
 
 /** A page whose one late value is read inside a boundary placed by `around`. */

@@ -2899,8 +2899,8 @@ function insertRendered(
 /**
  * Hydrate server-rendered markup.
  *
- * Seeds keyed async values from the `__BARQ_DATA__` payload emitted by
- * generateHydrationScript, then renders the app over the server markup in
+ * Seeds keyed async values from the `__BARQ_DATA__` payload a server render's
+ * seed script assigned, then renders the app over the server markup in
  * one synchronous pass: seeded async values resolve synchronously, so the
  * client produces identical markup immediately (no fallback flash, no
  * refetch). Delegated event listeners are on `container` and active from

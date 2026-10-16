@@ -59,10 +59,12 @@ export { COUNT } from "@barqjs/core";
 export { cell, props } from "@barqjs/core";
 export { block, readSlot } from "@barqjs/core";
 
+export { isSafeError, markSafeError } from "@barqjs/core";
+
 export {
-  clearRenderData,
+  type CSPNonce,
+  HydrationScript,
   generateHydrationScript,
-  getRenderData,
   renderPage,
   type RootRender,
   renderToStream,

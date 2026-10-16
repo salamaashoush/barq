@@ -10,9 +10,10 @@
  */
 
 import { createMemo } from "@barqjs/core";
+import { clearHydrationData } from "@barqjs/core/internal";
 import { afterEach, expect, test } from "bun:test";
 
-import { clearRenderData, renderPage, renderToStream } from "./server.ts";
+import { renderPage, renderToStream } from "./server.ts";
 import { esc, html, ssrLoading } from "./ssr.ts";
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
@@ -55,7 +56,7 @@ async function collect(stream: ReadableStream<Uint8Array>): Promise<string> {
 }
 
 afterEach(() => {
-  clearRenderData();
+  clearHydrationData();
 });
 
 function makePage(): { page: () => unknown; fetches: () => number } {

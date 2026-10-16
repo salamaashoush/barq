@@ -11,15 +11,16 @@
  */
 
 import { createMemo } from "@barqjs/core";
+import { clearHydrationData } from "@barqjs/core/internal";
 import { afterEach, expect, test } from "bun:test";
 
-import { clearRenderData, renderPage } from "./server.ts";
+import { renderPage } from "./server.ts";
 import { attr, esc, html, ssrLoading } from "./ssr.ts";
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
 afterEach(() => {
-  clearRenderData();
+  clearHydrationData();
 });
 
 function parse(markup: string): HTMLElement {

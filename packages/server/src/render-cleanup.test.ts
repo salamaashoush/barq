@@ -6,17 +6,17 @@
  */
 
 import { createMemo, onCleanup } from "@barqjs/core";
-import { getHydrationData, pendingSeedsOf } from "@barqjs/core/internal";
+import { getHydrationData, pendingSeedsOf, clearHydrationData } from "@barqjs/core/internal";
 import { afterEach, expect, test } from "bun:test";
 
-import { clearRenderData, renderPage, renderToStream, renderToString } from "./server.ts";
+import { renderPage, renderToStream, renderToString } from "./server.ts";
 import { esc, html, ssrLoading } from "./ssr.ts";
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 afterEach(() => {
-  clearRenderData();
+  clearHydrationData();
 });
 
 const defer = (value: () => unknown): string =>

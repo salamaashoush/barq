@@ -848,3 +848,27 @@ cost-model split of an expensive, dependency-disjoint call is gone, and with it 
 - `start/src/session.test.ts` "`createdAt` is the SEALED time" slept 20 ms and compared against
   `Date.now`. It sets the clock with `setSystemTime` instead, seals at a fixed instant, reads
   20 s later, and requires `createdAt` to equal the sealing instant exactly.
+
+## SSR: no render data in a module global, errors redacted in production
+
+- `server/src/server.test.ts` "records keyed async values for hydration", "the seed encoder carries
+  Date, Map, Set, BigInt and cycles" and the two hydration tests that read the seed: they took the
+  data from `getRenderData()` after `renderToStringAsync`, a module global that held whichever render
+  finished last. They read `renderPage(...).data` now; the values asserted are unchanged.
+- `server/src/server.test.ts` "generateHydrationScript escapes script-breaking content" is "the seed
+  script escapes script-breaking content" and reads `renderPage(...).script`. `generateHydrationScript`
+  is Solid's bootstrap and carries no data; the escaping asserted is the same.
+- `server/src/server.test.ts` "redacts an Error to its name and message, with no server path": in a
+  production build the seed carries `Internal Server Error` in place of the message. The development
+  run still asserts the message; both still assert no `sourceURL` and no server path.
+- Thrown errors made safe with `markSafeError`, assertions unchanged, because these tests are about
+  where a failure's fallback lands and print the message to find it: `server/src/late-failure.test.ts`
+  ("late boom", "now"), `server/src/server.test.ts` two seeded rejections, `router/src/server.test.ts`
+  five route errors, `router/src/catch.test.ts` one, `compiler-rs/test/row-owner.test.ts`,
+  `compiler-rs/test/stream-hydration.test.ts` "late boom", and the fixtures
+  `control-flow-error-boundary`, `control-flow-errored-loading`, `l4/c7-error-boundary`,
+  `l4/c7-error-boundary-fallback`, `l4/c7-loading-errored`.
+- Snapshots, through `bun test --update-snapshots`: `modes.test.ts.snap` digests of those five
+  fixtures and `roundtrip.test.ts.snap` emitted code of the two corpus fixtures (the import of
+  `markSafeError` and the wrapped throw). No other snapshot changed.
+- `clearRenderData()` in eight server test files' `afterEach` is `clearHydrationData()`.

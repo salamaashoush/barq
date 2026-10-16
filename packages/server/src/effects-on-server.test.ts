@@ -6,13 +6,14 @@
  */
 
 import { createEffect, createMemo, createSignal, flush, onSettled } from "@barqjs/core";
+import { clearHydrationData } from "@barqjs/core/internal";
 import { afterEach, expect, test } from "bun:test";
 
-import { clearRenderData, renderPage, renderToStream, renderToString } from "./server.ts";
+import { renderPage, renderToStream, renderToString } from "./server.ts";
 import { esc, html, ssrLoading } from "./ssr.ts";
 
 afterEach(() => {
-  clearRenderData();
+  clearHydrationData();
 });
 
 function page(ran: string[], body: () => unknown = () => "orders"): string {

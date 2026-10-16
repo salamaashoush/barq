@@ -41,6 +41,7 @@ import {
 import {
   type LateCatcher,
   type SsrHtml,
+  html as ssrHtml,
   type StreamSink,
   contentRange,
   esc,
@@ -48,7 +49,7 @@ import {
   escapeAttribute,
   setStreamSink,
 } from "./ssr.ts";
-import { createSeedEncoder, encodeSeed, serializationAdapters } from "./codec.ts";
+import { createSeedEncoder, encodeSeed, sanitizeThrown, serializationAdapters } from "./codec.ts";
 import { SWAP_SNIPPET, swapDeferredRange } from "#swap";
 
 export { swapDeferredRange };
@@ -127,9 +128,6 @@ export async function renderToStringAsync(fn: RootRender): Promise<string> {
   const { html } = await renderPage(fn);
   return html;
 }
-
-/** Data captured by the most recent renderPage/renderToStringAsync */
-let lastRenderData: Record<string, unknown> = {};
 
 /**
  * Render a page after async work settles, returning the HTML, the
@@ -274,7 +272,6 @@ export async function renderPage(
     clearHydrationData(session);
     if (owner !== null) disposeScope(owner);
   }
-  lastRenderData = data;
 
   return { html, data, script: await seedScriptFor(data, options?.nonce) };
 }
@@ -565,6 +562,22 @@ function placed(error: unknown): unknown {
   throw error;
 }
 /**
+ * A flight as the browser is told of it: what it settles on, or what it threw
+ * after `sanitizeThrown`. Handled here, because a rejection seroval has not
+ * subscribed to yet would otherwise be reported as unhandled.
+ */
+function sanitizedFlight(flight: Promise<unknown>): Promise<unknown> {
+  const told = flight.then(
+    (value) => value,
+    (error: unknown) => {
+      throw sanitizeThrown(error);
+    },
+  );
+  told.catch(() => {});
+  return told;
+}
+
+/**
  * A promise that is already rejected and already handled.
  *
  * The `catch` is not error handling — it is what stops the runtime reporting an
@@ -572,7 +585,7 @@ function placed(error: unknown): unknown {
  * attaches its own handler a moment later.
  */
 function handledRejection(reason: unknown): Promise<never> {
-  const rejected = Promise.reject(reason);
+  const rejected = Promise.reject(sanitizeThrown(reason));
   rejected.catch(() => {});
   return rejected;
 }
@@ -1029,7 +1042,7 @@ export function renderToStream(
       if (sent.has(key)) continue;
       sent.add(key);
       promised.add(key);
-      fresh[key] = promise;
+      fresh[key] = sanitizedFlight(promise);
       any = true;
     }
     if (!any) return "";
@@ -1477,19 +1490,47 @@ export function escapeScriptPayload(json: string): string {
  * input; the last one for a given element wins, and `hydrate` applies them all
  * before it replays anything.
  */
-const EVENT_CAPTURE_SNIPPET =
-  "window.__BARQ_EVTS__=[];window.__BARQ_EVTS_STOP__=(function(){" +
-  "var q=window.__BARQ_EVTS__;" +
-  'var ts=["click","dblclick","pointerdown","pointerup","mousedown","mouseup","touchstart","touchend","contextmenu","keydown","keyup","keypress","input","change","focusin"];' +
-  "var p=function(n){var a=[];while(n&&n!==document.body){var i=0;var s=n;while((s=s.previousSibling))i++;a.unshift(i);n=n.parentNode}return n?a:[]};" +
-  "var st=function(t){if(!t||t.value===undefined)return;" +
-  "q.push({type:'@state',node:t,path:p(t),value:t.value,checked:t.checked,start:t.selectionStart===null?undefined:t.selectionStart,end:t.selectionEnd===null?undefined:t.selectionEnd,focus:document.activeElement===t,ctrlKey:false,metaKey:false,shiftKey:false,altKey:false})};" +
-  "var h=function(e){var t=e.target;" +
-  "if(e.type==='input'||e.type==='change'||e.type==='focusin')st(t);" +
-  "if(e.type==='focusin')return;" +
-  "q.push({type:e.type,node:t,path:p(t),x:e.clientX,y:e.clientY,button:e.button,key:e.key,code:e.code,ctrlKey:!!e.ctrlKey,metaKey:!!e.metaKey,shiftKey:!!e.shiftKey,altKey:!!e.altKey})};" +
-  "ts.forEach(function(t){document.addEventListener(t,h,true)});" +
-  "return function(){ts.forEach(function(t){document.removeEventListener(t,h,true)})}})();";
+const CAPTURED_EVENTS: readonly string[] = [
+  "click",
+  "dblclick",
+  "pointerdown",
+  "pointerup",
+  "mousedown",
+  "mouseup",
+  "touchstart",
+  "touchend",
+  "contextmenu",
+  "keydown",
+  "keyup",
+  "keypress",
+  "input",
+  "change",
+  "focusin",
+];
+
+/**
+ * Installed once per document: a page whose head carries `HydrationScript` and
+ * whose stream writes the capture again after the shell keeps the queue the
+ * first one filled.
+ */
+function eventCapture(eventNames: readonly string[] = CAPTURED_EVENTS): string {
+  return (
+    "if(!window.__BARQ_EVTS_STOP__){window.__BARQ_EVTS__=[];window.__BARQ_EVTS_STOP__=(function(){" +
+    "var q=window.__BARQ_EVTS__;" +
+    `var ts=${JSON.stringify(eventNames).replaceAll("<", "\\u003c")};` +
+    "var p=function(n){var a=[];while(n&&n!==document.body){var i=0;var s=n;while((s=s.previousSibling))i++;a.unshift(i);n=n.parentNode}return n?a:[]};" +
+    "var st=function(t){if(!t||t.value===undefined)return;" +
+    "q.push({type:'@state',node:t,path:p(t),value:t.value,checked:t.checked,start:t.selectionStart===null?undefined:t.selectionStart,end:t.selectionEnd===null?undefined:t.selectionEnd,focus:document.activeElement===t,ctrlKey:false,metaKey:false,shiftKey:false,altKey:false})};" +
+    "var h=function(e){var t=e.target;" +
+    "if(e.type==='input'||e.type==='change'||e.type==='focusin')st(t);" +
+    "if(e.type==='focusin')return;" +
+    "q.push({type:e.type,node:t,path:p(t),x:e.clientX,y:e.clientY,button:e.button,key:e.key,code:e.code,ctrlKey:!!e.ctrlKey,metaKey:!!e.metaKey,shiftKey:!!e.shiftKey,altKey:!!e.altKey})};" +
+    "ts.forEach(function(t){document.addEventListener(t,h,true)});" +
+    "return function(){ts.forEach(function(t){document.removeEventListener(t,h,true)})}})()}"
+  );
+}
+
+const EVENT_CAPTURE_SNIPPET = eventCapture();
 
 /**
  * Mark every seeded promise as handled, the moment it exists.
@@ -1619,32 +1660,46 @@ async function seedScriptFor(data: Record<string, unknown>, nonce?: string): Pro
  * `script-src 'unsafe-inline'`, which is the directive CSP exists to avoid.
  */
 function nonceAttr(nonce?: string): string {
-  return nonce === undefined ? "" : ` nonce="${escapeAttribute(nonce)}"`;
+  return nonce === undefined || nonce === "" ? "" : ` nonce="${escapeAttribute(nonce)}"`;
 }
 
 /**
- * Inline script transferring server-resolved async data to the client.
- * Reflects the most recent renderPage/renderToStringAsync; concurrent
- * servers should use the `script` returned by renderPage instead.
- * Place it before the bundle that calls hydrate().
+ * Solid's `CSPNonce`. Only `script-src` and `style-src` match a nonce, so a
+ * page whose policy gives the two different values names both.
  */
-export function generateHydrationScript(nonce?: string): string {
-  return hydrationScriptFor(lastRenderData, nonce);
+export type CSPNonce = string | { readonly script?: string; readonly style?: string };
+
+export function scriptNonce(nonce: CSPNonce | undefined): string | undefined {
+  return typeof nonce === "string" ? nonce : nonce?.script;
+}
+
+export function styleNonce(nonce: CSPNonce | undefined): string | undefined {
+  return typeof nonce === "string" ? nonce : nonce?.style;
 }
 
 /**
- * Keyed async data resolved by the most recent renderPage/
- * renderToStringAsync. Concurrent servers should use the `data` returned
- * by renderPage instead.
+ * Solid's `generateHydrationScript`: the bootstrap a hand-built document puts
+ * ahead of the application, which captures input made before `hydrate` runs so
+ * it can be replayed onto the claimed nodes.
+ *
+ * It carries no render's data. A render's seed is its own and is returned by
+ * that render (`renderPage`'s `script`, the stream's chunks); an answer from
+ * this function that held one would be whichever render finished last, which
+ * on a server with two requests in flight is another user's.
  */
-export function getRenderData(): Record<string, unknown> {
-  return lastRenderData;
+export function generateHydrationScript(options?: {
+  nonce?: CSPNonce;
+  eventNames?: readonly string[];
+}): string {
+  return `<script${nonceAttr(scriptNonce(options?.nonce))}>${eventCapture(options?.eventNames)}</script>`;
 }
 
-/** Reset all recorded async data and the last-render snapshot */
-export function clearRenderData(): void {
-  clearHydrationData();
-  lastRenderData = {};
+/** The same bootstrap as markup the string backend writes where it stands. */
+export function HydrationScript(props?: {
+  nonce?: CSPNonce;
+  eventNames?: readonly string[];
+}): SsrHtml {
+  return ssrHtml(generateHydrationScript(props));
 }
 
 export { settle };
