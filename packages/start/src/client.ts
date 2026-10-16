@@ -46,7 +46,7 @@ export { ServerFnError, type ServerFnIssue, type ServerFnThrown } from "./fn-err
 export { LIVE_CALL, type LiveRequest, clientStub } from "./stubs.ts";
 export { type FrameComponent, applyFrameResponse, frameAdapter } from "./frames-client.ts";
 export { type LiveIterable, type LiveStatus, live } from "./live-client.ts";
-export { FRAME_APPLIED_EVENT, type Slot, isFrame } from "./frames.ts";
+export { type BindingSlot, FRAME_APPLIED_EVENT, type Slot, isFrame } from "./frames.ts";
 
 export const SERVER_FN: unique symbol = Symbol.for("barq.server-fn");
 

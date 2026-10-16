@@ -13,16 +13,24 @@
 import {
   type HeadTag,
   type Owner,
+  bindEvent,
   block,
+  classToString,
+  createRenderEffect,
   createRoot,
   createSignal,
+  delegate,
   element,
   getOwner,
   insert,
   isHydrating,
   onCleanup,
   onHydrationEnd,
+  ref as bindRef,
   runWithOwner,
+  setClass,
+  setProp,
+  setStyle,
   untrack,
   useHead,
 } from "@barqjs/core";
@@ -32,6 +40,10 @@ import { type AnySerializationAdapter, decodeWire } from "@barqjs/server/codec";
 import { ServerFnError } from "./fn-error.ts";
 import { LIVE_CALL, type LiveRequest, type Stub, clientStub } from "./stubs.ts";
 import {
+  BIND_ATTRIBUTE,
+  BIND_EVENT,
+  BIND_TEXT_END,
+  type BindEntry,
   FRAME,
   FRAME_APPLIED_EVENT,
   FRAME_TAG,
@@ -43,6 +55,8 @@ import {
   PAYLOAD_TYPE,
   REGION_TAG,
   type SlotRecord,
+  bindEntries,
+  bindTextEntry,
   isFrame,
   slotClose,
   slotEnd,
@@ -66,6 +80,20 @@ interface Occurrence {
   readonly dispose: () => void;
 }
 
+/**
+ * One binding slot occurrence: the page's fill, run once, and the positions of
+ * the server's markup its properties fill, by the node that carries each and
+ * the position's spelling.
+ */
+interface Binding {
+  readonly name: string;
+  readonly owner: Owner | null;
+  readonly values: Record<string, unknown> | null;
+  readonly setArgs: (args: Record<string, unknown>) => void;
+  readonly dispose: () => void;
+  readonly positions: Map<Node, Map<string, () => void>>;
+}
+
 /** One place a frame is mounted. */
 interface Mount {
   readonly host: Element;
@@ -74,6 +102,8 @@ interface Mount {
   readonly owner: Owner | null;
   readonly props: Record<string, unknown>;
   readonly occurrences: Map<Comment, Occurrence>;
+  /** The binding slot occurrences, by key. */
+  bindings: Map<string, Binding>;
 }
 
 interface FrameState {
@@ -260,8 +290,10 @@ function fill(site: Mount, start: Comment, record: SlotRecord): Occurrence | nul
   const given = site.props[record.name];
   const content = (): unknown => {
     if (record.name === "children") return given;
-    const fn = typeof given === "function" ? untrack(given as () => unknown) : undefined;
-    if (typeof fn !== "function") return null;
+    // A fill that takes nothing reaches the props as the Cell it is, so reading
+    // the prop is calling it.
+    const fn = typeof given === "function" ? untrack(given as () => unknown) : given;
+    if (typeof fn !== "function") return fn ?? null;
     const props: Record<string, unknown> = {};
     for (const key of Object.keys(untrack(args))) props[key] = (): unknown => args()[key];
     if (region !== null) {
@@ -339,9 +371,11 @@ function mount(state: FrameState, props: Record<string, unknown>): Node {
     owner,
     props,
     occurrences: new Map(),
+    bindings: new Map(),
     claiming: adopted && isHydrating(),
   };
   fillAll(placed, payload);
+  bindAll(placed, payload);
   placed.claiming = false;
   state.mounts.add(placed);
   useHead(() => state.head());
@@ -349,6 +383,7 @@ function mount(state: FrameState, props: Record<string, unknown>): Node {
   onCleanup(() => {
     state.mounts.delete(placed);
     for (const occurrence of placed.occurrences.values()) occurrence.dispose();
+    for (const binding of placed.bindings.values()) binding.dispose();
     if (state.mounts.size === 0) state.connection?.stop();
   });
   return host;
@@ -387,6 +422,264 @@ function commentsIn(root: Node): Comment[] {
   return out;
 }
 
+// ── binding slots ─────────────────────────────────────────────────────────
+
+/** The page's fill for a binding slot, run once: the object whose properties fill its positions. */
+function bindOccurrence(site: Mount, record: SlotRecord): Binding {
+  const [args, setArgs] = createSignal<Record<string, unknown>>(
+    record.args === undefined ? {} : decodeWire(record.args),
+    { ownedWrite: true },
+  );
+  const given = site.props[record.name];
+  return runWithOwner(site.owner, () =>
+    createRoot((dispose): Binding => {
+      const props: Record<string, unknown> = {};
+      for (const key of Object.keys(untrack(args))) props[key] = (): unknown => args()[key];
+      // A fill that takes nothing reaches the props as the Cell it is, so
+      // reading the prop is calling it.
+      const result = withoutClaim(() =>
+        untrack(() => {
+          const fn = typeof given === "function" ? (given as () => unknown)() : given;
+          return typeof fn === "function"
+            ? (fn as (props: Record<string, unknown>) => unknown)(props)
+            : fn;
+        }),
+      );
+      let values: Record<string, unknown> | null = null;
+      if (
+        typeof result === "object" &&
+        result !== null &&
+        !Array.isArray(result) &&
+        !(result instanceof Node)
+      ) {
+        values = result as Record<string, unknown>;
+      } else if (given !== undefined) {
+        console.error(
+          `[barq] The page's \`${record.name}\` fill returned ${result === null ? "null" : Array.isArray(result) ? "an array" : typeof result} where the server component reads it as data. ` +
+            "A binding slot's fill returns a plain object whose properties fill the positions the server marked, so the server's values stay in place.",
+        );
+      }
+      const binding: Binding = {
+        name: record.name,
+        owner: getOwner(),
+        values,
+        setArgs,
+        positions: new Map(),
+        dispose: () => {
+          for (const at of binding.positions.values()) for (const release of at.values()) release();
+          binding.positions.clear();
+          dispose();
+        },
+      };
+      return binding;
+    }),
+  );
+}
+
+interface Found {
+  readonly node: Node;
+  readonly position: string;
+  readonly entry: BindEntry;
+}
+
+/** Every position marked in `root`, a nested frame's aside, in document order. */
+function positionsIn(root: Element): Found[] {
+  const out: Found[] = [];
+  const walker = root.ownerDocument.createTreeWalker(
+    root,
+    NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_COMMENT,
+    {
+      acceptNode: (node) =>
+        node !== root && node.nodeType === 1 && (node as Element).localName === FRAME_TAG
+          ? NodeFilter.FILTER_REJECT
+          : NodeFilter.FILTER_ACCEPT,
+    },
+  );
+  for (let node = walker.nextNode(); node !== null; node = walker.nextNode()) {
+    if (node.nodeType === 8) {
+      const entry = bindTextEntry((node as Comment).data);
+      if (entry !== null) out.push({ node, position: "", entry });
+      continue;
+    }
+    const element = node as Element;
+    for (const name of element.getAttributeNames()) {
+      if (!name.startsWith(BIND_ATTRIBUTE)) continue;
+      const position = name.slice(BIND_ATTRIBUTE.length);
+      for (const entry of bindEntries(element.getAttribute(name) ?? "")) {
+        out.push({ node, position, entry });
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * Bring the binding slot occurrences up to date with a payload: a new one's
+ * fill runs, a kept one's arguments move and its fill is not run again, and
+ * each position in the markup is bound once, a position the morph replaced or
+ * dropped released.
+ */
+function bindAll(site: Mount, payload: FramePayload): void {
+  const byAt = new Map<number, Binding>();
+  const next = new Map<string, Binding>();
+  for (const record of payload.slots) {
+    if (record.bind !== true) continue;
+    let binding = site.bindings.get(record.key);
+    if (binding !== undefined && binding.name === record.name) {
+      if (record.args !== undefined) binding.setArgs(decodeWire(record.args));
+    } else {
+      binding = bindOccurrence(site, record);
+    }
+    next.set(record.key, binding);
+    byAt.set(record.at, binding);
+  }
+  for (const [key, binding] of site.bindings) if (next.get(key) !== binding) binding.dispose();
+  site.bindings = next;
+  if (next.size === 0) return;
+
+  const seen = new Map<Binding, Map<Node, Set<string>>>();
+  for (const found of positionsIn(site.host)) {
+    const binding = byAt.get(found.entry.at);
+    if (binding === undefined || binding.values === null) continue;
+    const id = `${found.position}|${found.entry.key}|${found.entry.member ?? ""}`;
+    let nodes = seen.get(binding);
+    if (nodes === undefined) seen.set(binding, (nodes = new Map<Node, Set<string>>()));
+    let ids = nodes.get(found.node);
+    if (ids === undefined) nodes.set(found.node, (ids = new Set()));
+    ids.add(id);
+    let at = binding.positions.get(found.node);
+    if (at === undefined) binding.positions.set(found.node, (at = new Map<string, () => void>()));
+    if (at.has(id)) continue;
+    const claiming = site.claiming;
+    const values = binding.values;
+    at.set(
+      id,
+      runWithOwner(binding.owner, () =>
+        createRoot((release) => {
+          bindPosition(found, values, claiming);
+          return release;
+        }),
+      ),
+    );
+  }
+  for (const binding of next.values()) {
+    const nodes = seen.get(binding);
+    for (const [node, at] of binding.positions) {
+      const ids = nodes?.get(node);
+      for (const [id, release] of at) {
+        if (ids?.has(id) === true) continue;
+        release();
+        at.delete(id);
+      }
+      if (at.size === 0) binding.positions.delete(node);
+    }
+  }
+}
+
+function textOf(value: unknown): string {
+  return typeof value === "string"
+    ? value
+    : typeof value === "number" || typeof value === "bigint"
+      ? String(value)
+      : "";
+}
+
+/**
+ * A detached element for the style a claimed position already shows: what
+ * `setStyle` would have applied, without writing to the page's element.
+ */
+let scratch: HTMLElement | null = null;
+
+/**
+ * Fill one position from the fill's object. A value position follows the
+ * property, a handler and a ref are read once, as the page's own JSX reads
+ * them. While the page is claimed the server already wrote each value, so the
+ * first run writes nothing.
+ */
+function bindPosition(found: Found, values: Record<string, unknown>, claiming: boolean): void {
+  const { node, position, entry } = found;
+  const read = (): unknown => values[entry.key];
+  if (position === "") {
+    const start = node as Comment;
+    let text: Text;
+    if (start.nextSibling !== null && start.nextSibling.nodeType === 3) {
+      text = start.nextSibling as Text;
+    } else {
+      text = document.createTextNode("");
+      start.parentNode?.insertBefore(text, start.nextSibling);
+    }
+    createRenderEffect(
+      () => textOf(read()),
+      (value) => {
+        if (text.data !== value) text.data = value;
+      },
+    );
+    return;
+  }
+  const element = node as Element;
+  if (position === "ref") {
+    bindRef(element, untrack(read));
+    return;
+  }
+  if (position.startsWith(BIND_EVENT)) {
+    const type = position.slice(BIND_EVENT.length);
+    const capture = entry.member === "capture";
+    bindEvent(element, type, untrack(read), capture);
+    // A delegated handler is the element's own expando, which nothing else
+    // takes back when the position is released.
+    if (!capture) onCleanup(() => delegate(element, type, undefined));
+    return;
+  }
+  if (position === "class" && entry.member !== undefined) {
+    const name = entry.member;
+    createRenderEffect(
+      () => Boolean(read()),
+      (on) => {
+        if (element.classList.contains(name) !== on) element.classList.toggle(name, on);
+      },
+    );
+    return;
+  }
+  // What the channel last applied, which `setStyle` and `setClass` diff against.
+  let applied: unknown;
+  let first = claiming;
+  if (position === "style") {
+    const member = entry.member;
+    createRenderEffect(
+      () => (member === undefined ? read() : { [member]: read() }),
+      (value) => {
+        if (first) {
+          first = false;
+          scratch ??= document.createElement("div");
+          scratch.removeAttribute("style");
+          applied = setStyle(scratch, "style", value);
+          return;
+        }
+        applied = setStyle(element, "style", value, applied);
+      },
+    );
+    return;
+  }
+  if (position === "class") {
+    createRenderEffect(read, (value) => {
+      if (first) {
+        first = false;
+        applied = classToString(value);
+        return;
+      }
+      applied = setClass(element, "class", value, applied);
+    });
+    return;
+  }
+  createRenderEffect(read, (value) => {
+    if (first) {
+      first = false;
+      return;
+    }
+    setProp(element, position, value);
+  });
+}
+
 // ── the morph ─────────────────────────────────────────────────────────────
 
 interface MorphContext {
@@ -405,14 +698,89 @@ function sameNode(current: Node, next: Node): boolean {
   return a.localName === b.localName && a.getAttribute("id") === b.getAttribute("id");
 }
 
+/**
+ * The positions of an element a binding slot fills, by its markers: whole
+ * attributes, and the class names and style properties it fills in object form.
+ */
+function ownedBy(element: Element): {
+  whole: Set<string>;
+  classes: Set<string>;
+  styles: Set<string>;
+} {
+  const owned = { whole: new Set<string>(), classes: new Set<string>(), styles: new Set<string>() };
+  for (const name of element.getAttributeNames()) {
+    if (!name.startsWith(BIND_ATTRIBUTE)) continue;
+    const position = name.slice(BIND_ATTRIBUTE.length);
+    if (position === "ref" || position.startsWith(BIND_EVENT)) continue;
+    for (const entry of bindEntries(element.getAttribute(name) ?? "")) {
+      if (entry.member === undefined) owned.whole.add(position);
+      else if (position === "class") owned.classes.add(entry.member);
+      else if (position === "style") owned.styles.add(entry.member);
+    }
+  }
+  return owned;
+}
+
+/**
+ * The server's attributes, written over the element's, except where the page
+ * fills a position: a whole attribute it fills is left as it stands, and the
+ * class names and style properties it fills keep their current state inside
+ * the server's new class and style.
+ */
 function patchAttributes(current: Element, next: Element): void {
+  const owned = ownedBy(next);
+  const classes = owned.classes.size > 0;
+  const styles = owned.styles.size > 0;
   for (const name of current.getAttributeNames()) {
+    if (owned.whole.has(name) || (name === "class" && classes) || (name === "style" && styles)) {
+      continue;
+    }
     if (!next.hasAttribute(name)) current.removeAttribute(name);
   }
   for (const name of next.getAttributeNames()) {
+    if (owned.whole.has(name) || (name === "class" && classes) || (name === "style" && styles)) {
+      continue;
+    }
     const value = next.getAttribute(name) ?? "";
     if (current.getAttribute(name) !== value) current.setAttribute(name, value);
   }
+  if (classes) {
+    const tokens = new Set((next.getAttribute("class") ?? "").split(/\s+/).filter(Boolean));
+    for (const name of owned.classes) {
+      if (current.classList.contains(name)) tokens.add(name);
+      else tokens.delete(name);
+    }
+    const value = [...tokens].join(" ");
+    if ((current.getAttribute("class") ?? "") !== value) current.setAttribute("class", value);
+  }
+  if (styles) {
+    const style = (current as HTMLElement).style;
+    const kept = new Map<string, string>();
+    for (const property of owned.styles) {
+      const css = cssProperty(property);
+      kept.set(css, style.getPropertyValue(css));
+    }
+    const value = next.getAttribute("style");
+    if (current.getAttribute("style") !== value) {
+      if (value === null) current.removeAttribute("style");
+      else current.setAttribute("style", value);
+      for (const [css, text] of kept) {
+        if (text === "") style.removeProperty(css);
+        else style.setProperty(css, text);
+      }
+    }
+  }
+}
+
+/** A style object's key as the declaration's name, as `setStyle` writes it. */
+function cssProperty(property: string): string {
+  return property.startsWith("--")
+    ? property
+    : property.replace(/[A-Z]/g, (letter) => `-${letter.toLowerCase()}`);
+}
+
+function isTextEnd(node: Node | null): boolean {
+  return node !== null && node.nodeType === 8 && (node as Comment).data === BIND_TEXT_END;
 }
 
 function occurrenceAt(context: MorphContext, node: Node | null): Occurrence | null {
@@ -462,6 +830,21 @@ function morphChildren(current: Node, next: Node, context: MorphContext): void {
       }
       current.insertBefore(document.createComment(slotOpen(opening)), cursor);
       current.insertBefore(document.createComment(slotClose(opening)), cursor);
+      continue;
+    }
+    // A text position the page fills keeps the page's text: the server's
+    // pair has nothing between, and the morph steps over both.
+    if (
+      node.nodeType === 8 &&
+      bindTextEntry((node as Comment).data) !== null &&
+      cursor !== null &&
+      cursor.nodeType === 8 &&
+      (cursor as Comment).data === (node as Comment).data
+    ) {
+      while (at + 1 < incoming.length && !isTextEnd(incoming[at])) at++;
+      let end: Node | null = cursor.nextSibling;
+      while (end !== null && !isTextEnd(end)) end = end.nextSibling;
+      cursor = end === null ? null : end.nextSibling;
       continue;
     }
     if (cursor !== null && sameNode(cursor, node)) {
@@ -530,6 +913,7 @@ function update(site: Mount, payload: FramePayload, markup: string): void {
   site.occurrences.clear();
   for (const [start, occurrence] of occurrences) site.occurrences.set(start, occurrence);
   fillAll(site, payload);
+  bindAll(site, payload);
 }
 
 // ── assets ────────────────────────────────────────────────────────────────

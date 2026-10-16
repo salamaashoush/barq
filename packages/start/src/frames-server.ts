@@ -11,8 +11,8 @@
 
 import type { HeadTag } from "@barqjs/core";
 import { block, childScope, getOwner, runWithOwner, untrack } from "@barqjs/core";
-import { setHeadSink, setHydratable } from "@barqjs/core/internal";
-import { esc, html, renderFrame } from "@barqjs/server";
+import { SSR_HTML_BRAND, setHeadSink, setHydratable } from "@barqjs/core/internal";
+import { SlotValue, esc, html, renderFrame, setServerComponent } from "@barqjs/server";
 import {
   encodeWire,
   registerSerializationAdapters,
@@ -31,6 +31,7 @@ import {
   type FrameRef,
   RPC_FRAME,
   type SlotRecord,
+  bindEntries,
   frameAddress,
   frameOpen,
   isFrame,
@@ -99,14 +100,31 @@ function valueOf(argument: unknown): unknown {
   return typeof argument === "function" ? untrack(argument as () => unknown) : argument;
 }
 
+/** What a slot call returns that is never one of its properties: the markup's own names. */
+const NOT_A_PROPERTY = new Set(["t", "then", "toString", "toJSON", "valueOf", "constructor"]);
+
+type Record_ = { -readonly [K in keyof SlotRecord]: SlotRecord[K] };
+
+/** The page's fill for one occurrence, run once, and the scope it ran under. */
+interface Filled {
+  readonly result: unknown;
+  readonly scope: ReturnType<typeof childScope>;
+}
+
 /**
  * The props a server component is rendered with: every name is a slot.
  *
+ * A slot call is placed as markup, `<props.comment … />`, or read as data,
+ * `props.row(args).done`, which makes it a binding slot. Which one is known
+ * only once the component uses what the call returned, so the call answers
+ * both: its markup when it is placed, a stand-in for each property read.
+ *
  * `fills` are the page's own props, when the frame is written into the page:
- * each slot then holds what the browser would put there, for the first paint.
+ * each slot then holds what the browser would put there, for the first paint,
+ * and a binding slot's stand-ins hold the fill's first values.
  */
 class Slots {
-  private readonly records: (SlotRecord | null)[] = [];
+  private readonly records: (Record_ | null)[] = [];
   readonly props: Record<string, unknown>;
 
   constructor(private readonly fills: Record<string, unknown> | null) {
@@ -117,15 +135,25 @@ class Slots {
   }
 
   private slot(name: string): unknown {
-    if (name === "children") return html(this.occurrence("children", undefined));
-    return (args?: Record<string, unknown>): unknown => html(this.occurrence(name, args));
+    if (name === "children") {
+      const at = this.reserve();
+      this.records[at] = { at, name, key: "" };
+      return html(this.markup(at, this.fill(name, at, {}, undefined)));
+    }
+    return (args?: Record<string, unknown>): unknown => this.call(name, args);
   }
 
-  private occurrence(name: string, args: Record<string, unknown> | undefined): string {
-    // Taken before the region renders, so an occurrence inside it numbers
-    // after this one, in document order.
-    const at = this.records.length;
+  /**
+   * Taken before the region renders, so an occurrence inside it numbers after
+   * this one, in document order.
+   */
+  private reserve(): number {
     this.records.push(null);
+    return this.records.length - 1;
+  }
+
+  private call(name: string, args: Record<string, unknown> | undefined): unknown {
+    const at = this.reserve();
     const values: Record<string, unknown> = {};
     let explicit = "";
     for (const [key, argument] of Object.entries(args ?? {})) {
@@ -135,36 +163,93 @@ class Slots {
     }
     const children = args?.children;
     const region = children === undefined ? undefined : esc(children);
-    this.records[at] = {
+    const record: Record_ = {
       at,
       name,
       key: explicit,
       ...(args === undefined ? {} : { args: encodeWire(values) }),
       ...(region === undefined ? {} : { region, hasRegion: true }),
     };
-    return `<!--${slotOpen(at)}-->${this.filled(name, at, values, region)}<!--${slotClose(at)}-->`;
+    this.records[at] = record;
+    const filled = this.fill(name, at, values, region);
+    let markup: string | null = null;
+    const placed = (): string => {
+      if (record.bind === true) throw readTwice(name);
+      markup ??= this.markup(at, filled);
+      return markup;
+    };
+    const standIns = new Map<string, SlotValue>();
+    const read = (key: string): SlotValue => {
+      if (markup !== null) throw readTwice(name);
+      record.bind = true;
+      let standIn = standIns.get(key);
+      if (standIn === undefined) {
+        const result = filled?.result;
+        const known = typeof result === "object" && result !== null;
+        const value = known
+          ? runWithOwner(filled!.scope, () =>
+              untrack(() => (result as Record<string, unknown>)[key]),
+            )
+          : undefined;
+        standIn = new SlotValue(at, key, this.fills !== null && known, value);
+        standIns.set(key, standIn);
+      }
+      return standIn;
+    };
+    return new Proxy(
+      {},
+      {
+        get: (_, key) => {
+          if (key === SSR_HTML_BRAND) return record.bind !== true;
+          if (key === "t") return placed();
+          if (key === "toString") return placed;
+          if (typeof key === "symbol" || NOT_A_PROPERTY.has(key)) return undefined;
+          return read(key);
+        },
+        ownKeys: () => {
+          throw new Error(
+            `[barq] A server component spread what \`props.${name}()\` returned. A binding slot's properties are placed one position at a time, ` +
+              "so the markup shows what the browser fills: name each one, as in `<li hidden={row.hidden}>`.",
+          );
+        },
+      },
+    );
   }
 
-  /** The page's content for a slot, rendered for the first paint, or nothing over the wire. */
-  private filled(
+  private markup(at: number, filled: Filled | null): string {
+    const content = filled === null ? "" : runWithOwner(filled.scope, () => esc(filled.result));
+    return `<!--${slotOpen(at)}-->${content}<!--${slotClose(at)}-->`;
+  }
+
+  /**
+   * The page's fill for a slot, run once for the first paint: its content for
+   * a slot that is placed, its values for one read as data. Nothing over the
+   * wire, where the browser fills every slot itself.
+   */
+  private fill(
     name: string,
     at: number,
     values: Record<string, unknown>,
     region: string | undefined,
-  ): string {
-    if (this.fills === null) return "";
+  ): Filled | null {
+    if (this.fills === null) return null;
     const given = this.fills[name];
     // The page's own content, which the browser claims, under a scope that
     // hydrates again inside the server component's.
     const scope = childScope(getOwner(), "branch");
     setHydratable(scope, true);
-    if (name === "children") return runWithOwner(scope, () => esc(given));
-    const fill = valueOf(given);
-    if (typeof fill !== "function") return "";
+    setServerComponent(scope, false);
+    if (name === "children") return { result: given, scope };
     const props: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(values)) props[key] = (): unknown => value;
     if (region !== undefined) props.children = block(() => html(regionMarkup(String(at), region)));
-    return runWithOwner(scope, () => esc((fill as ServerComponent)(props)));
+    // A fill that takes nothing reaches the props as the Cell it is, so reading
+    // the prop is calling it.
+    const result = runWithOwner(scope, () => {
+      const fill = valueOf(given);
+      return typeof fill === "function" ? (fill as ServerComponent)(props) : fill;
+    });
+    return result === undefined ? null : { result, scope };
   }
 
   /**
@@ -176,6 +261,10 @@ class Slots {
   final(markup: string, inline: boolean): SlotRecord[] {
     const present = new Set<number>();
     for (const found of markup.matchAll(/<!--s:(\d+)-->/g)) present.add(Number(found[1]));
+    for (const found of markup.matchAll(/ _b-[^\s=>]+="([^"]*)"/g)) {
+      for (const entry of bindEntries(found[1])) present.add(entry.at);
+    }
+    for (const found of markup.matchAll(/<!--_b:(\d+):/g)) present.add(Number(found[1]));
     const ordinal = new Map<string, number>();
     const out: SlotRecord[] = [];
     for (const record of this.records) {
@@ -187,12 +276,32 @@ class Slots {
         name: record.name,
         key: record.key === "" ? `${record.name}:${count}` : `$${record.key}`,
         ...(record.args === undefined ? {} : { args: record.args }),
-        ...(record.hasRegion === true ? { hasRegion: true } : {}),
-        ...(inline || record.region === undefined ? {} : { region: record.region }),
+        ...(record.bind === true
+          ? { bind: true }
+          : {
+              ...(record.hasRegion === true ? { hasRegion: true } : {}),
+              ...(inline || record.region === undefined ? {} : { region: record.region }),
+            }),
       });
     }
     return out;
   }
+}
+
+function readTwice(name: string): Error {
+  return new Error(
+    `[barq] A server component both placed \`props.${name}()\` as markup and read it as data. ` +
+      "A slot call is one or the other: place it, `<props." +
+      name +
+      " />`, for the browser's content, or read its properties, for a binding slot.",
+  );
+}
+
+/** Render a server component: what renders under it may read binding slots. */
+function asServerComponent<T>(render: () => T): T {
+  const scope = childScope(getOwner(), "branch");
+  setServerComponent(scope, true);
+  return runWithOwner(scope, render);
 }
 
 /**
@@ -223,6 +332,7 @@ function documentFrame(
   // browser never runs it, so a value seeded for it is one nothing claims.
   const scope = childScope(getOwner(), "branch");
   setHydratable(scope, false);
+  setServerComponent(scope, true);
   let region: string;
   try {
     region = runWithOwner(scope, () => esc(component(slots.props)));
@@ -273,10 +383,13 @@ async function renderMarkup(
 ): Promise<string> {
   const { address, args, component } = frame;
   const slots = new Slots(null);
-  const rendered = await renderFrame(() => component(slots.props) as never, {
-    renderId: `f${address.slice(address.lastIndexOf("#") + 1)}-`,
-    session: options.session,
-  });
+  const rendered = await renderFrame(
+    () => asServerComponent(() => component(slots.props)) as never,
+    {
+      renderId: `f${address.slice(address.lastIndexOf("#") + 1)}-`,
+      session: options.session,
+    },
+  );
   const head = [...rendered.head];
   const css = collectRequestCss();
   if (css !== "") head.push({ tag: "style", props: { "data-frame-css": address }, children: css });

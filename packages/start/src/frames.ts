@@ -37,6 +37,21 @@ export type Slot<P extends object = {}> = (
   props: Incoming<P & { readonly $key?: string | number; readonly children?: Child }>,
 ) => JSXElement;
 
+/**
+ * A slot the server component reads as data: called once per data context,
+ * `const like = props.like({ cid })`, and each property placed whole at a
+ * position of the server's own markup, an attribute, a class name or style
+ * property in object form, a handler, a ref or a text child. The page's fill
+ * takes the call's arguments and returns the object those positions read; the
+ * server never has its values to compute with.
+ */
+export type BindingSlot<
+  A extends object = {},
+  B extends object = Record<string, unknown>,
+> = keyof A extends never
+  ? (args?: { readonly $key?: string | number }) => Readonly<B>
+  : (args: A & { readonly $key?: string | number }) => Readonly<B>;
+
 /** The brand on a frame, on either side, carrying where it lives. */
 export const FRAME: unique symbol = Symbol.for("barq.frame") as never;
 
@@ -133,6 +148,11 @@ export interface SlotRecord {
   readonly region?: string;
   /** Whether the call passed `children` at all. */
   readonly hasRegion?: boolean;
+  /**
+   * The call was read as data, a binding slot: it has no range, and its
+   * properties fill the positions marked with its index.
+   */
+  readonly bind?: boolean;
 }
 
 /** What a frame's script carries. */
@@ -213,4 +233,52 @@ export const FRAME_CLOSE = `</${FRAME_TAG}>`;
 export function regionMarkup(key: string, html: string): string {
   const attribute = key.replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
   return `<${REGION_TAG} data-region="${attribute}" style="display:contents">${html}</${REGION_TAG}>`;
+}
+
+/**
+ * A binding slot's markers, as `@barqjs/server` writes them: an attribute
+ * `_b-<position>` on each element it fills, valued `<at>:<key>[=<member>]`
+ * entries separated by commas, and a text child between `<!--_b:<at>:<key>-->`
+ * and `<!--/_b-->`. The position is the attribute's name, `on-<event>` or
+ * `ref`; a member is a class name or style property in object form, or
+ * `capture` on a handler.
+ */
+export const BIND_ATTRIBUTE = "_b-";
+export const BIND_EVENT = "on-";
+export const BIND_TEXT = "_b:";
+export const BIND_TEXT_END = "/_b";
+
+export interface BindEntry {
+  readonly at: number;
+  readonly key: string;
+  readonly member?: string;
+}
+
+function bindEntry(text: string): BindEntry | null {
+  const colon = text.indexOf(":");
+  if (colon < 1) return null;
+  const at = Number(text.slice(0, colon));
+  if (!Number.isInteger(at)) return null;
+  const equals = text.indexOf("=", colon);
+  const key = decodeURIComponent(
+    equals === -1 ? text.slice(colon + 1) : text.slice(colon + 1, equals),
+  );
+  return equals === -1
+    ? { at, key }
+    : { at, key, member: decodeURIComponent(text.slice(equals + 1)) };
+}
+
+/** The entries of a marker attribute's value. */
+export function bindEntries(value: string): BindEntry[] {
+  const out: BindEntry[] = [];
+  for (const text of value.split(",")) {
+    const entry = bindEntry(text);
+    if (entry !== null) out.push(entry);
+  }
+  return out;
+}
+
+/** The entry a text position's opening comment names, or `null` when it is not one. */
+export function bindTextEntry(data: string): BindEntry | null {
+  return data.startsWith(BIND_TEXT) ? bindEntry(data.slice(BIND_TEXT.length)) : null;
 }
