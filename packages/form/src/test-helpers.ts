@@ -49,3 +49,13 @@ export async function settle(ms = 0): Promise<void> {
   await tick(ms);
   flush();
 }
+
+/**
+ * Runs every queued microtask, then applies what they wrote. `setImmediate` is
+ * the one timer fake timers leave real, and it fires only once the microtask
+ * queue is empty.
+ */
+export async function drain(): Promise<void> {
+  await new Promise<void>((resolve) => setImmediate(resolve));
+  flush();
+}

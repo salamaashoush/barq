@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, mock, test } from "bun:test";
+import { afterEach, describe, expect, jest, mock, test } from "bun:test";
 import { For, type Incoming, createRoot, createSignal, flush } from "@barqjs/core";
 
 import {
@@ -11,7 +11,7 @@ import {
   formOptions,
   mergeForm,
 } from "./index.ts";
-import { blur, click, mount, settle, type } from "./test-helpers.ts";
+import { blur, click, drain, mount, settle, type } from "./test-helpers.ts";
 
 afterEach(() => {
   document.body.innerHTML = "";
@@ -179,96 +179,125 @@ describe("validators", () => {
   });
 
   test("an async validator is debounced, and reports while it is running", async () => {
-    const calls: string[] = [];
-    const view = mount(() => {
-      const form = createForm(() => ({ defaultValues: { handle: "" } }));
-      return (
-        <form.Field
-          name="handle"
-          validators={{
-            onChangeAsyncDebounceMs: 30,
-            onChangeAsync: async ({ value }) => {
-              calls.push(value);
-              await new Promise((resolve) => setTimeout(resolve, 30));
-              return value === "taken" ? "already taken" : undefined;
-            },
-          }}
-        >
-          {(field) => (
-            <label>
-              <input
-                id="handle"
-                value={field().state.value}
-                onInput={(event) => field().handleChange(event.currentTarget.value)}
-              />
-              <em id="errors">{errorsOf(field())}</em>
-              <em id="validating">{`${field().state.meta.isValidating}`}</em>
-            </label>
-          )}
-        </form.Field>
-      );
-    });
+    jest.useFakeTimers();
+    try {
+      const calls: string[] = [];
+      const answer = Promise.withResolvers<void>();
+      const view = mount(() => {
+        const form = createForm(() => ({ defaultValues: { handle: "" } }));
+        return (
+          <form.Field
+            name="handle"
+            validators={{
+              onChangeAsyncDebounceMs: 30,
+              onChangeAsync: async ({ value }) => {
+                calls.push(value);
+                await answer.promise;
+                return value === "taken" ? "already taken" : undefined;
+              },
+            }}
+          >
+            {(field) => (
+              <label>
+                <input
+                  id="handle"
+                  value={field().state.value}
+                  onInput={(event) => field().handleChange(event.currentTarget.value)}
+                />
+                <em id="errors">{errorsOf(field())}</em>
+                <em id="validating">{`${field().state.meta.isValidating}`}</em>
+              </label>
+            )}
+          </form.Field>
+        );
+      });
 
-    type(view.input("#handle"), "t");
-    type(view.input("#handle"), "ta");
-    type(view.input("#handle"), "taken");
-    await settle(5);
-    expect(calls).toEqual([]);
-    expect(view.text("#validating")).toBe("true");
+      type(view.input("#handle"), "t");
+      type(view.input("#handle"), "ta");
+      type(view.input("#handle"), "taken");
+      await drain();
+      expect(calls).toEqual([]);
+      expect(view.text("#validating")).toBe("true");
 
-    await settle(40);
-    expect(calls).toEqual(["taken"]);
-    expect(view.text("#validating")).toBe("true");
+      jest.advanceTimersByTime(29);
+      await drain();
+      expect(calls, "a millisecond before the debounce ends").toEqual([]);
 
-    await settle(50);
-    expect(view.text("#validating")).toBe("false");
-    expect(view.text("#errors")).toBe("already taken");
-    view.dispose();
+      jest.advanceTimersByTime(1);
+      await drain();
+      expect(calls).toEqual(["taken"]);
+      expect(view.text("#validating")).toBe("true");
+
+      answer.resolve();
+      await drain();
+      expect(view.text("#validating")).toBe("false");
+      expect(view.text("#errors")).toBe("already taken");
+      view.dispose();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test("a newer change aborts the validation still in flight", async () => {
-    const signals: AbortSignal[] = [];
-    const view = mount(() => {
-      const form = createForm(() => ({ defaultValues: { handle: "" } }));
-      return (
-        <form.Field
-          name="handle"
-          validators={{
-            onChangeAsync: async ({ value, signal }) => {
-              signals.push(signal);
-              await new Promise((resolve) => setTimeout(resolve, 20));
-              return value === "taken" ? "already taken" : undefined;
-            },
-          }}
-        >
-          {(field) => (
-            <label>
-              <input
-                id="handle"
-                value={field().state.value}
-                onInput={(event) => field().handleChange(event.currentTarget.value)}
-              />
-              <em id="errors">{errorsOf(field())}</em>
-            </label>
-          )}
-        </form.Field>
-      );
-    });
+    jest.useFakeTimers();
+    try {
+      const signals: AbortSignal[] = [];
+      const answers: PromiseWithResolvers<void>[] = [];
+      const view = mount(() => {
+        const form = createForm(() => ({ defaultValues: { handle: "" } }));
+        return (
+          <form.Field
+            name="handle"
+            validators={{
+              onChangeAsync: async ({ value, signal }) => {
+                signals.push(signal);
+                const answer = Promise.withResolvers<void>();
+                answers.push(answer);
+                await answer.promise;
+                return value === "taken" ? "already taken" : undefined;
+              },
+            }}
+          >
+            {(field) => (
+              <label>
+                <input
+                  id="handle"
+                  value={field().state.value}
+                  onInput={(event) => field().handleChange(event.currentTarget.value)}
+                />
+                <em id="errors">{errorsOf(field())}</em>
+              </label>
+            )}
+          </form.Field>
+        );
+      });
 
-    type(view.input("#handle"), "taken");
-    await settle(5);
-    expect(signals).toHaveLength(1);
-    expect(signals[0]?.aborted).toBe(false);
+      type(view.input("#handle"), "taken");
+      await drain();
+      jest.runOnlyPendingTimers();
+      await drain();
+      expect(signals).toHaveLength(1);
+      expect(signals[0]?.aborted).toBe(false);
 
-    type(view.input("#handle"), "free");
-    await settle(5);
-    expect(signals).toHaveLength(2);
-    expect(signals[0]?.aborted).toBe(true);
-    expect(signals[1]?.aborted).toBe(false);
+      type(view.input("#handle"), "free");
+      await drain();
+      jest.runOnlyPendingTimers();
+      await drain();
+      expect(signals).toHaveLength(2);
+      expect(signals[0]?.aborted).toBe(true);
+      expect(signals[1]?.aborted).toBe(false);
 
-    await settle(40);
-    expect(view.text("#errors")).toBe("");
-    view.dispose();
+      // The aborted call answers last, so its stale error would be the one left
+      // standing if the abort were ignored.
+      answers[1]?.resolve();
+      await drain();
+      answers[0]?.resolve();
+      await drain();
+      expect(view.text("#errors")).toBe("");
+      view.dispose();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test("a validator option that reads a signal is re-applied when it changes", () => {
