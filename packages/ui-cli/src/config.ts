@@ -13,8 +13,6 @@ import { parseConfig, type Config } from "./schema.ts";
 
 export const CONFIG_FILE = "components.json";
 
-export const SCHEMA_URL = "https://github.com/salamaashoush/barq/schema/components.json";
-
 /** The nearest directory at or above `from` holding a `components.json`. */
 export function findRoot(from: string): string | undefined {
   let directory = resolve(from);
@@ -39,7 +37,7 @@ export function readConfig(root: string): Config {
  */
 export function writeConfig(root: string, config: Config): void {
   const ordered = {
-    $schema: config.$schema ?? SCHEMA_URL,
+    ...(config.$schema === undefined ? {} : { $schema: config.$schema }),
     registry: config.registry,
     ...(Object.keys(config.registries).length === 0
       ? {}

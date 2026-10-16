@@ -18,12 +18,13 @@
  * otherwise. Owning the code means the edit wins by default.
  */
 
-import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { stdout } from "node:process";
+import { fileURLToPath } from "node:url";
 
 import { applyItems, missingDependencies, type WrittenFile } from "./add.ts";
-import { CONFIG_FILE, findRoot, requireConfig, SCHEMA_URL, writeConfig } from "./config.ts";
+import { CONFIG_FILE, findRoot, requireConfig, writeConfig } from "./config.ts";
 import { hashOf, placed, read, rewrite, targetOf, write } from "./files.ts";
 import { install, installCommand, installedPackages, packageManager } from "./project.ts";
 import {
@@ -393,7 +394,6 @@ async function init(args: Args): Promise<void> {
     const root = args.cwd;
     const parent = path.replace(/\/ui$/, "");
     const config = parseConfig({
-      $schema: SCHEMA_URL,
       registry: args.registry ?? "node_modules",
       paths: {
         ui: path,
@@ -1005,8 +1005,11 @@ async function main(): Promise<void> {
 
 /**
  * Exported so the suite can drive the commands, and guarded so importing it
- * does not run one. `import.meta.main` is false for an import and true for
- * `bun src/index.ts` and for the built `bin`.
+ * does not run one. The guard compares the script node was asked to run with
+ * this module rather than reading `import.meta.main`, which node only defines
+ * from 24.2 and so is `undefined` for the built `bin` on every older node the
+ * engines range admits. `argv[1]` is the `.bin` symlink under a package
+ * manager, hence the realpath.
  */
 export async function run(): Promise<void> {
   try {
@@ -1017,4 +1020,9 @@ export async function run(): Promise<void> {
   }
 }
 
-if (import.meta.main) await run();
+function invokedDirectly(): boolean {
+  const script = process.argv[1];
+  return script !== undefined && realpathSync(script) === fileURLToPath(import.meta.url);
+}
+
+if (invokedDirectly()) await run();
