@@ -12,7 +12,9 @@ group too, because the compiler pins them exactly.
 2. On every push to `main`, the Release workflow opens or updates a pull
    request titled "chore: version packages". It runs `bun run version-packages`:
    `changeset version`, then the create-barq templates are pointed at the new
-   version, then `bun install` refreshes `bun.lock`.
+   version, then `bun install` refreshes `bun.lock`. It then dispatches CI on
+   the pull request's branch, because a push made with the workflow's own
+   token starts no `pull_request` run.
 3. Merging that pull request publishes. The workflow builds the native binding
    for every target, smoke-tests each on a machine that can run it, packs and
    checks every package (`.github/scripts/publish.ts`), publishes the versions
@@ -54,10 +56,6 @@ GitHub, in the repository settings:
 - Environments: create `npm` and add yourself as a required reviewer, so every
   publish waits for an approval. Restrict it to the `main` branch.
 - Actions, General: allow GitHub Actions to create and approve pull requests.
-- Optional secret `RELEASE_PR_TOKEN`: a fine-grained token (or GitHub App
-  token) with contents and pull-requests write on this repository. A pull
-  request opened with the default token starts no workflows, so without it CI
-  does not run on the version PR until it is closed and reopened.
 - Branch protection on `main`: require the CI checks "Lint, format and types",
   "Rust (fmt, clippy, test)", "Test" and "Package quality".
 

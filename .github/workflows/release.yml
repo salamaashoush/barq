@@ -27,6 +27,7 @@ jobs:
     if: github.repository == 'salamaashoush/barq'
     runs-on: ubuntu-latest
     permissions:
+      actions: write
       contents: write
       pull-requests: write
     outputs:
@@ -50,19 +51,25 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      # A pull request opened with the workflow's own token starts no
-      # workflows, so CI never runs on it. RELEASE_PR_TOKEN (a fine-grained
-      # token or a GitHub App token with contents and pull-requests write) is
-      # what makes CI run on the version PR; without it the PR still opens.
       - name: Open or update the Version Packages pull request
         id: changesets
         if: github.event_name == 'push'
         uses: changesets/action@v2.1.2
         with:
-          github-token: ${{ secrets.RELEASE_PR_TOKEN || github.token }}
+          github-token: ${{ github.token }}
           version-script: bun run version-packages
           pr-title: "chore: version packages"
           commit-message: "chore: version packages"
+
+      # A push made with the workflow's own token starts no workflows, so the
+      # version branch gets no pull_request run. A dispatch is the one event
+      # that token may start, and its checks land on the branch's head commit,
+      # which is the pull request's.
+      - name: Run CI on the Version Packages pull request
+        if: steps.changesets.outputs.pr-number != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --repo "${{ github.repository }}" --ref changeset-release/main
 
       - name: Count unpublished versions
         id: unpublished
