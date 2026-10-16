@@ -78,7 +78,11 @@ afterAll(() => rmSync(workspace, { recursive: true, force: true }));
 let probes = 0;
 
 async function server(source: string): Promise<{ page: () => string }> {
-  const entry = join(workspace, `probe${probes++}.tsx`);
+  // Named once, before the build is awaited: a probe still building when its
+  // test timed out read the counter after the next one bumped it, and the two
+  // wrote and imported the same file.
+  const id = probes++;
+  const entry = join(workspace, `probe${id}.tsx`);
   writeFileSync(entry, source.replaceAll("<root>", root).replaceAll("<toast>", toastEntry));
 
   const result = await Bun.build({
@@ -90,7 +94,7 @@ async function server(source: string): Promise<{ page: () => string }> {
   });
   if (!result.success) throw new AggregateError(result.logs, "the page did not build");
 
-  const file = join(workspace, `built${probes}.mjs`);
+  const file = join(workspace, `built${id}.mjs`);
   writeFileSync(file, await (result.outputs[0] as { text(): Promise<string> }).text());
   return (await import(file)) as { page: () => string };
 }
@@ -117,7 +121,8 @@ function html(mod: { page: () => string }): string {
 async function serverProcess(
   source: string,
 ): Promise<{ code: number; html: string; errors: string }> {
-  const entry = join(workspace, `process${probes++}.tsx`);
+  const id = probes++;
+  const entry = join(workspace, `process${id}.tsx`);
   writeFileSync(entry, source.replaceAll("<root>", root).replaceAll("<toast>", toastEntry));
 
   const result = await Bun.build({
@@ -129,9 +134,9 @@ async function serverProcess(
   });
   if (!result.success) throw new AggregateError(result.logs, "the page did not build");
 
-  const built = join(workspace, `process-built${probes}.mjs`);
+  const built = join(workspace, `process-built${id}.mjs`);
   writeFileSync(built, await (result.outputs[0] as { text(): Promise<string> }).text());
-  const runner = join(workspace, `process-run${probes}.mjs`);
+  const runner = join(workspace, `process-run${id}.mjs`);
   writeFileSync(
     runner,
     [
