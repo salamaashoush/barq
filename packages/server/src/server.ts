@@ -242,6 +242,34 @@ export async function renderPage(
   };
 }
 
+/**
+ * A region of the page rendered on its own, for a frame: its markup with every
+ * boundary settled in place, and what it declared for the head. Nothing is
+ * seeded, because nothing in it hydrates: the browser receives the markup and
+ * never the code that wrote it.
+ */
+export interface RenderedFrame {
+  readonly html: string;
+  /** What `useHead` declared, and the stylesheets and chunks its `lazy()` modules need. */
+  readonly head: readonly HeadTag[];
+}
+
+/**
+ * Render a region on its own, after its async work settles: a server
+ * component, as a frame response carries it.
+ *
+ * `renderId` namespaces the ids the region writes, so a region placed into a
+ * page that already has boundaries of its own does not answer theirs.
+ */
+export async function renderFrame(
+  fn: RootRender,
+  options: { renderId?: string; manifest?: AssetManifest; timeout?: number } = {},
+): Promise<RenderedFrame> {
+  const job = startRender(fn, { renderId: options.renderId, manifest: options.manifest }, false);
+  const page = await settledPage(job, options.timeout ?? BOUNDARY_TIMEOUT, null, () => {});
+  return { html: page.html, head: [...job.head.tags.values()] };
+}
+
 /** A boundary the shell parked, with the stamped markers that find it again. */
 interface Parked {
   id: number;

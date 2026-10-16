@@ -56,6 +56,10 @@ import {
   takeSendContext,
 } from "./index.ts";
 import { serverTiming } from "./timing.ts";
+import { type ServerFrame, frameResponse, serverFrame } from "./frames-server.ts";
+import { installFrames, isFrame } from "./frames.ts";
+
+installFrames(serverFrame as never);
 
 /**
  * id → function, and the ONLY way an id becomes callable.
@@ -413,6 +417,12 @@ export async function handleServerFn(
         // this one says it is not. A browser following a form needs no telling.
         if (isData) draft.headers.set(RPC_CONTROL, RPC_RESPONSE);
         return applyResponseDraft(result, draft);
+      }
+      // A component is a frame: the region it renders, for the page to apply.
+      // A browser following a form has no page to apply it to.
+      if (isFrame(result)) {
+        if (isData) return applyResponseDraft(await frameResponse(result as ServerFrame), draft);
+        return applyResponseDraft(seeOther(request), draft);
       }
       if (isIterable(result)) {
         if (isData) {

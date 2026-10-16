@@ -22,6 +22,8 @@
  */
 
 import { decodeWire, encodeWire } from "@barqjs/server/codec";
+import { applyFrameResponse } from "./frames-client.ts";
+import { RPC_FRAME } from "./frames.ts";
 import {
   type Middleware,
   NOT_FOUND,
@@ -33,6 +35,8 @@ import { startOptions } from "./start-instance.ts";
 
 export { STATIC_PREFIX, staticFunctionMiddleware, staticUrl } from "./static-fn.ts";
 export { NOT_FOUND, REDIRECT } from "./middleware.ts";
+export { type FrameComponent, applyFrameResponse, frameAdapter } from "./frames-client.ts";
+export { FRAME_APPLIED_EVENT, type Slot, isFrame } from "./frames.ts";
 
 export const SERVER_FN: unique symbol = Symbol.for("barq.server-fn");
 
@@ -555,6 +559,7 @@ export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
     if (control === RPC_RESPONSE) return response as Out;
     if (control === RPC_THROWN) throw response;
     if (control === RPC_STREAM) return received(response, id, context) as Out;
+    if (control === RPC_FRAME) return (await applyFrameResponse(response)) as Out;
     if (control !== null) throw fromControl((await response.json()) as RpcControl);
     if (!response.ok) {
       throw new ServerFnError(id, response.status, response, await failedAnswer(response));

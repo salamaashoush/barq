@@ -104,6 +104,8 @@ export {
   generateHydrationScript,
   renderPage,
   type RootRender,
+  type RenderedFrame,
+  renderFrame,
   renderToStream,
   renderToString,
   renderToStringAsync,

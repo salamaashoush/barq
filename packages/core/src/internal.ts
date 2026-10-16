@@ -38,6 +38,8 @@ export {
 
 export { headKey, reportModule, setHeadSink } from "./head.ts";
 
+export { withoutClaim } from "./hydration.ts";
+
 export {
   COMPOSED_BODY_FRAMING,
   commitEventResponse,

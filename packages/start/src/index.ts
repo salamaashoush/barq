@@ -127,6 +127,7 @@ export {
 } from "./client.ts";
 export type { ServerFnInputAnswer, ServerFnIssue, ServerFnThrown } from "./client.ts";
 export { type ServerTiming, serverTiming } from "./timing.ts";
+export { FRAME_APPLIED_EVENT, type Slot, isFrame } from "./frames.ts";
 
 import {
   type AnyServerFn,
@@ -143,6 +144,7 @@ import {
   urlOf,
 } from "./client.ts";
 import { getGlobalStartContext, offerSendContext, peekRequest } from "./context.ts";
+import { asFrame } from "./frames.ts";
 import {
   type Carries,
   type ChainContribution,
@@ -657,8 +659,10 @@ export function serverRpc<
 
     offerSendContext(sendContext);
     // A `ReadableStream` is handed on as the async iterable every caller is
-    // told to expect, so one in process reads what one in a browser does.
-    return (result instanceof ReadableStream ? valuesOf(result) : result) as Streamed<Awaited<Out>>;
+    // told to expect, so one in process reads what one in a browser does, and
+    // a component is a frame, which a route renders and a browser asks for.
+    if (result instanceof ReadableStream) return valuesOf(result) as Streamed<Awaited<Out>>;
+    return asFrame(meta.id, input, result) as Streamed<Awaited<Out>>;
   };
 
   const fn = Object.assign(call, {

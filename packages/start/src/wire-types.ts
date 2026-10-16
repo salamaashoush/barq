@@ -94,18 +94,21 @@ export type WireProblem<Value, Path extends string = "the value", Left extends n
               : `${Path} is ${RefusedName<Value>}`;
 
 /**
- * A handler's result: a `Response` or a stream as the whole of it, or a value
- * the codec carries. A stream's values are checked like any other.
+ * A handler's result: a `Response` or a stream as the whole of it, a
+ * component, which crosses as a frame of its markup, or a value the codec
+ * carries. A stream's values are checked like any other.
  */
 export type ResultProblem<Result> = 0 extends 1 & Result
   ? never
   : Result extends Response
     ? never
-    : Result extends ReadableStream<infer Value>
-      ? WireProblem<Value, "each value it streams">
-      : Result extends AsyncIterable<infer Value>
-        ? WireProblem<Value, "each value it yields">
-        : WireProblem<Result, "the result">;
+    : Result extends (props: never) => unknown
+      ? never
+      : Result extends ReadableStream<infer Value>
+        ? WireProblem<Value, "each value it streams">
+        : Result extends AsyncIterable<infer Value>
+          ? WireProblem<Value, "each value it yields">
+          : WireProblem<Result, "the result">;
 
 /** A validator's input: a value the codec carries, or a form where a form can be sent. */
 export type InputProblem<Input, Method> = 0 extends 1 & Input

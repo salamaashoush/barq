@@ -244,6 +244,16 @@ describe("what crosses the wire", () => {
     holds<Equal<Refused<typeof fine, Accepted<ReturnType<typeof fine>>>, false>>();
   });
 
+  test("a component result crosses, as a frame", () => {
+    holds<Equal<ResultProblem<(props: { readonly title: string }) => unknown>, never>>();
+    holds<
+      Equal<
+        ResultProblem<{ render: (props: object) => unknown }>,
+        "the result.render is a function"
+      >
+    >();
+  });
+
   test("the error says where the value is", () => {
     holds<Equal<ResultProblem<{ a: { b: () => void } }>, "the result.a.b is a function">>();
     holds<

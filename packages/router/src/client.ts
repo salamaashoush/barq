@@ -17,6 +17,7 @@
 
 import { hydrate, shellReady } from "@barqjs/core";
 import { type AnySerializationAdapter, registerSerializationAdapters } from "@barqjs/server/codec";
+import { frameAdapter } from "@barqjs/start/client";
 
 import { Document, RouterProvider, resolveHeadFor } from "./components.ts";
 import { browserHistory } from "./history.ts";
@@ -81,7 +82,10 @@ function installSerializationAdapters(adapters: readonly AnySerializationAdapter
     __BARQ_SEED__?: { drain: () => void };
   };
   if (holder.__BARQ_ADAPTERS__ !== undefined) {
-    for (const adapter of adapters) {
+    // A frame a route's loader returned is named in the seed by its address.
+    // Only the seed names one, so the codec, which reads server-function
+    // answers, is not given it.
+    for (const adapter of [...adapters, frameAdapter]) {
       holder.__BARQ_ADAPTERS__.set(adapter.key, adapter.fromSerializable);
     }
   }
