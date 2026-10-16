@@ -92,9 +92,11 @@ async function setup() {
   return { ssr, dom, getStory, call, startClient };
 }
 
+// A frame registers the adapter that names it in a seed, and the registry is
+// the process's: a later suite's seeds must not carry it.
 afterEach(async () => {
-  const startServer = await import("@barqjs/start/server");
-  startServer.unmountAll();
+  (await import("@barqjs/start/server")).unmountAll();
+  (await import("@barqjs/server/codec")).clearSerializationAdapters();
 });
 
 test("a route writes the frame into the page, its slots filled for the first paint", async () => {

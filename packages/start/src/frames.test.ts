@@ -5,7 +5,7 @@
  */
 
 import { block, useHead } from "@barqjs/core";
-import { encodeWire } from "@barqjs/server/codec";
+import { clearSerializationAdapters, encodeWire } from "@barqjs/server/codec";
 import { esc, html } from "@barqjs/server";
 import { afterEach, describe, expect, test } from "bun:test";
 
@@ -15,7 +15,12 @@ import { handleServerFn, mount, unmountAll } from "./server.ts";
 
 const ORIGIN = "https://example.com";
 
-afterEach(unmountAll);
+// A frame registers the adapter that names it in a seed, and the registry is
+// the process's: a later suite's seeds must not carry it.
+afterEach(() => {
+  unmountAll();
+  clearSerializationAdapters();
+});
 
 let renders = 0;
 

@@ -13,7 +13,11 @@ import type { HeadTag } from "@barqjs/core";
 import { block, untrack } from "@barqjs/core";
 import { setHeadSink } from "@barqjs/core/internal";
 import { esc, html, renderFrame } from "@barqjs/server";
-import { encodeWire, registerSerializationAdapters } from "@barqjs/server/codec";
+import {
+  encodeWire,
+  registerSerializationAdapters,
+  serializationAdapters,
+} from "@barqjs/server/codec";
 
 import { collectRequestCss } from "./context.ts";
 import {
@@ -43,26 +47,23 @@ export interface ServerFrame {
 
 /**
  * How a frame crosses inside the page's own seed: by address, as a reference
- * the browser resolves to the region already on the page. Registered the first
- * time a frame is made, so an application that has none sends the bytes it
- * always did.
+ * the browser resolves to the region already on the page. Registered when a
+ * frame is made and the registry does not hold it, so an application that has
+ * none sends the bytes it always did.
  */
-let registered = false;
+const FRAME_ADAPTER = {
+  key: "barq.frame",
+  test: isFrame,
+  toSerializable: (frame: ServerFrame): FrameRef => ({
+    id: frame[FRAME].id,
+    address: frame[FRAME].address,
+  }),
+  fromSerializable: (ref: FrameRef): FrameRef => ref,
+};
 
 function registerFrameAdapter(): void {
-  if (registered) return;
-  registered = true;
-  registerSerializationAdapters([
-    {
-      key: "barq.frame",
-      test: isFrame,
-      toSerializable: (frame: ServerFrame): FrameRef => ({
-        id: frame[FRAME].id,
-        address: frame[FRAME].address,
-      }),
-      fromSerializable: (ref: FrameRef): FrameRef => ref,
-    },
-  ]);
+  if (serializationAdapters().some((adapter) => adapter.key === FRAME_ADAPTER.key)) return;
+  registerSerializationAdapters([FRAME_ADAPTER]);
 }
 
 /** The server function's component result, as a frame. */
