@@ -167,10 +167,9 @@ and `src/virtual.d.ts` are gone:
 package.json           scripts: dev / build / preview / typecheck
 tsconfig.json          moduleResolution Bundler, jsx react-jsx,
                        jsxImportSource @barqjs/core, allowImportingTsExtensions
-vite.config.ts         barqRouter() + barqStart()
+vite.config.ts         barq({ ssr: true, start: true }) from @barqjs/vite
 src/routes/__root.tsx  shellComponent + <HeadContent/> + <Scripts/>
 src/routes/index.tsx
-src/barq.d.ts          Barq.Config COMPILER_MODE
 src/router.ts          OPTIONAL: `export const config = { routeTree }`, and the
                        only place a project names `./routeTree.gen`
 ```
