@@ -151,17 +151,15 @@ describe.each(TEMPLATES.map((template) => [template.name, template] as const))(
     if (template.server)
       test("serves what it built", async () => {
         const { directory } = built.get(name)!;
-        const port = 3400 + TEMPLATES.findIndex((one) => one.name === name);
         const server = Bun.spawn({
           cmd: ["bun", join(directory, "dist", "server", "serve.js")],
           cwd: directory,
-          env: { ...process.env, PORT: String(port) },
+          env: { ...process.env, PORT: "0" },
           stdout: "pipe",
           stderr: "pipe",
         });
         try {
-          const base = `http://localhost:${port}`;
-          await waitFor(base);
+          const base = await listening(server);
           const home = await fetch(`${base}/`, { headers: { accept: "text/html" } });
           expect(home.status).toBe(200);
           // An SPA's document carries the mount point and no markup — the page
@@ -188,17 +186,15 @@ describe.each(TEMPLATES.map((template) => [template.name, template] as const))(
     if (!template.spa && template.server)
       test("answers its API route", async () => {
         const { directory } = built.get(name)!;
-        const port = 3410 + TEMPLATES.findIndex((one) => one.name === name);
         const server = Bun.spawn({
           cmd: ["bun", join(directory, "dist", "server", "serve.js")],
           cwd: directory,
-          env: { ...process.env, PORT: String(port) },
+          env: { ...process.env, PORT: "0" },
           stdout: "pipe",
           stderr: "pipe",
         });
         try {
-          const base = `http://localhost:${port}`;
-          await waitFor(base);
+          const base = await listening(server);
           const health = await fetch(`${base}/api/health`);
           expect(health.status).toBe(200);
           expect(await health.json()).toEqual({ ok: true });
@@ -216,16 +212,22 @@ describe.each(TEMPLATES.map((template) => [template.name, template] as const))(
   },
 );
 
-async function waitFor(base: string): Promise<void> {
-  for (let attempt = 0; attempt < 100; attempt++) {
-    try {
-      await fetch(base, { headers: { accept: "text/html" } });
-      return;
-    } catch {
-      await Bun.sleep(100);
-    }
+/**
+ * The origin a spawned `serve.js` announces once it is bound. Port 0 and the
+ * announcement, because a fixed port is one a concurrent run can be serving
+ * on, and the requests then reach that server rather than this one.
+ */
+async function listening(child: Bun.Subprocess<"ignore", "pipe", "pipe">): Promise<string> {
+  const decoder = new TextDecoder();
+  let out = "";
+  for await (const chunk of child.stdout) {
+    out += decoder.decode(chunk, { stream: true });
+    const announced = /Listening on: (http:\/\/[^\s/]+)/.exec(out);
+    if (announced?.[1] !== undefined) return announced[1];
   }
-  throw new Error(`${base} never came up`);
+  throw new Error(
+    `serve.js exited before it was listening:\n${out}${await new Response(child.stderr).text()}`,
+  );
 }
 
 /**
