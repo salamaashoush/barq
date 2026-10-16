@@ -1,14 +1,41 @@
 # @barqjs/start
 
-Server functions, the request context, sessions, cookies, rate limiting, and the
-server the build emits.
+Server functions, middleware, the request context, sessions, cookies, rate
+limiting, and the server the build emits. The API is TanStack Start's:
+`createServerFn`, `createMiddleware`, `createStart`, `useSession`, and the
+request helpers under their names.
+
+## Install
 
 ```bash
 bun add @barqjs/start
+bun add -d @barqjs/vite vite
 ```
 
-Normally installed for you by `bun create barq`. This document is the reference
-for what that project uses.
+`bun create barq` installs it for you. This document is the reference for what
+that project uses. Routing, the document and API routes are in
+[@barqjs/router](../router/README.md).
+
+## Example
+
+The smallest server function, and a call to it:
+
+```tsx
+import { createServerFn } from "@barqjs/start";
+
+export const serverTime = createServerFn().handler(() => new Date());
+
+const at = await serverTime(); // a Date, fetched from the server
+```
+
+## Relation to TanStack Start
+
+`createServerFn` with `GET` as the default method, `.validator`, `.middleware`,
+`.handler`, `createMiddleware` with `.server` and `.client` halves,
+`createStart` with request and function middleware, `redirect`, `notFound`,
+`useSession` and the request helpers follow TanStack Start under their names.
+What barq adds is the build-time route-action check (`verify`), the wire-type
+check on results, and the `x-barq-fn` header on `GET` calls.
 
 ## Server functions
 
@@ -16,16 +43,17 @@ for what that project uses.
 import { createServerFn } from "@barqjs/start";
 
 export const createPost = createServerFn({ method: "POST" })
-  .validator(PostSchema) // any Standard Schema: zod, valibot, arktype
+  .validator(PostSchema) // any Standard Schema, such as zod, valibot or arktype
   .handler(async ({ data, context, signal }) => db.posts.insert(data));
 ```
 
 `.validator` is TanStack's name for it. `.inputValidator`, the name their
 release candidates used, is the same method and is accepted so code written
 against them keeps working. It takes a Standard Schema, a function that returns
-the validated value or throws, or an object with a `parse`. The caller passes the schema's INPUT and the handler is handed its
-OUTPUT, so a schema that turns an ISO string into a `Date` is called with a
-string. A function validator's parameter type is what the caller passes:
+the validated value or throws, or an object with a `parse`. The caller passes
+the schema's INPUT and the handler is handed its OUTPUT, so a schema that turns
+an ISO string into a `Date` is called with a string. A function validator's
+parameter type is what the caller passes:
 
 ```ts
 export const byId = createServerFn()
@@ -44,7 +72,7 @@ const post = await createPost({ data: { title: "Hello" } });
 ```
 
 The compiler replaces this module's exports with client stubs that call
-`/_barq/fn/<id>`, so the handler's body — and the database driver it imports —
+`/_barq/fn/<id>`, so the handler's body, and the database driver it imports,
 is in no client chunk. The id is `<project-relative module>#<export>`, derived
 once and used by both halves, because deriving it twice is how the two drift
 into a call that reaches nothing.
@@ -70,8 +98,8 @@ export const listNotes = createServerFn() // GET
 The call is the same either way. A `GET` call carries its payload in
 `?payload=`, so one input is one URL, and a long input belongs in a `POST`.
 `method` must be a literal, since the compiler reads it to write the stub; a
-value it cannot read is taken as the default. Nothing is cached unless the handler says
-so: an answer carries no `cache-control` and no `Vary` of its own, which is
+value it cannot read is taken as the default. Nothing is cached unless the
+handler says so: an answer carries no `cache-control` and no `Vary` of its own, which is
 TanStack's behaviour too.
 
 A link still cannot reach a `GET` function, so one that writes and forgot to
@@ -79,8 +107,8 @@ say `POST` is not a one-click CSRF carrying `SameSite=Lax` cookies. Every `GET`
 call carries an `x-barq-fn` header, which a link, an `<img>`, a prefetch or a
 navigation cannot set, and the server answers a `GET` without it with a 403. A
 script on another site that sets it is preflighted, and the origin check
-refuses it either way. A function answers its own method only (a `POST` to a `GET`
-function is a 405, and the reverse), a `GET` function has no form channel, and a
+refuses it either way. A function answers its own method only (a `POST` to a
+`GET` function is a 405, and the reverse), a `GET` function has no form channel, and a
 payload longer than `maxBodySize` is a 413. Keep `public` out of `cache-control`
 for anything that reads a session: a shared cache would hand one user's answer to
 the next.
@@ -101,9 +129,11 @@ A `Response` a middleware, a validator or the handler throws
 (`throw new Response("sign in first", { status: 401 })`) is what the call
 rejects with, as in TanStack: its status, headers and body are the author's
 words to the caller. Any other failure rejects with `ServerFnError`, carrying
-the `status` and the server's `response`. A handler's own error is answered
-with one fixed line and nothing else, so a thrown `Error`'s message never
-leaves the server.
+the `status`, the server's `response`, and `issues` when the validator refused
+the input. A handler's own error is answered with one fixed line and nothing
+else, so a thrown `Error`'s message never leaves the server. A development
+server also sends `thrown`, the error's name, message and stack; production
+leaves it `undefined`.
 
 `throw redirect({ to, params, search, hash, replace, reloadDocument, href })`
 and `throw notFound({ data, routeId })` from a handler reach the caller with
@@ -138,8 +168,8 @@ plain objects cross; a function, a symbol, a `RegExp`, a `URL`, a `Blob` and an
 instance of a class with methods do not. A form crosses as a `POST`'s input. A
 class with no methods is a plain object to a type and is refused by the codec
 at runtime only. `createServerFn({ strict: false })` turns the check off, and
-`{ input: false }` or `{ output: false }` one side of it, for a class a
-`createSerializationAdapter` carries.
+`strict: { input: false }` or `strict: { output: false }` one side of it, for a
+class a `createSerializationAdapter` carries.
 
 ### Static server functions
 
@@ -154,7 +184,7 @@ export const buildInfo = createServerFn({ method: "GET" })
 
 While the build prerenders, each call writes its result to
 `/_barq/static/<key>.json` in the client output, one file per function and
-input, the input's key order notwithstanding. In the browser the call reads
+input. Reordering the input's keys gives the same file. In the browser the call reads
 that file first and goes to the server only when there is none, so a page
 prerendered whole works from a host that serves files and nothing else.
 
@@ -255,17 +285,16 @@ barq({ ssr: true, start: { verify: true } });
 export const Route = createFileRoute("/admin")({ middleware: [requireSession] });
 ```
 
-**This closes the hole every framework in the field documents instead.** A
-server function is its own HTTP endpoint; a guard on the route that renders it
-does not run when the function is called directly. Next.js says so in as many
-words, and TanStack says it three times in their own docs. `vite build` walks
+A server function is its own HTTP endpoint, so a guard on the route that
+renders it does not run when the function is called directly. Next.js and
+TanStack both document that gap and leave it to the author. `vite build` walks
 the client module graph from each route to the functions it can reach, and fails
 naming the route, the function, and how much of the chain is missing.
 
 It VALIDATES AND REJECTS, never redispatches. Re-running a mis-routed action
-under the owning route's middleware executes it in a different request context,
-and — the deeper reason — a client-supplied route selecting a middleware chain
-lets the caller pick the weakest chain that reaches the action.
+under the owning route's middleware executes it in a different request context.
+The deeper reason: a client-supplied route selecting a middleware chain lets the
+caller pick the weakest chain that reaches the action.
 
 The chain is compared by reference identity. `Middleware` is an anonymous
 closure with no build-visible name, and every attempt to read `.middleware([…])`
@@ -281,7 +310,7 @@ import { getRequest, getRequestHeader, setCookie, setResponseHeader } from "@bar
 These read an ambient request, so a loader, a route handler, a server function
 and a middleware all reach it the same way. It is an `AsyncLocalStorage` and not
 a module variable: two requests are in flight at once on any real server, and a
-module variable hands one request's session to another — which has shipped
+module variable hands one request's session to another. That has shipped
 elsewhere as cross-user data disclosure.
 
 `setCookie` and `deleteCookie` default to `path: "/"`. A browser would otherwise
@@ -306,7 +335,7 @@ const sessionConfig: SessionConfig = {
 
 const session = await useSession<{ user: string }>(sessionConfig);
 session.data.user;
-const next = await session.update({ user: "ada" });
+const next = await session.update({ user: "salama" });
 ```
 
 A sealed cookie with no store behind it: AES-GCM through WebCrypto, so no
@@ -331,7 +360,7 @@ Rotating it logs everyone out, which is the intended way to do that.
 ## Rate limiting
 
 ```ts
-import { byIP, memoryStore, rateLimit } from "@barqjs/start";
+import { byIP, createServerFn, memoryStore, rateLimit } from "@barqjs/start";
 
 const limit = rateLimit({
   limit: 30,
@@ -339,15 +368,28 @@ const limit = rateLimit({
   key: byIP(),
   store: memoryStore(),
 });
+
+export const login = createServerFn({ method: "POST" })
+  .middleware([limit])
+  .validator(LoginSchema)
+  .handler(({ data }) => signIn(data));
 ```
 
+`rateLimit` returns a middleware, so the same value guards a server function or
+a route's `server.middleware`. It runs before validation. Past the limit it
+throws a 429 with `Retry-After`, or what `onLimit(info)` returns. A store that
+throws lets the request through and logs the error, because a limiter that
+refuses everything while its store is down has become the outage.
+
 Build it ONCE at module scope. The store is the state, and a fresh one per
-request counts to one forever.
+request counts to one forever. A store is one atomic method,
+`hit(key, windowMs)`, returning `{ count, resetAt }`; Redis does it with `INCR`
+and `PEXPIRE`.
 
 Neither `key` nor `store` has a default, and that is the point:
 
-- Keying by IP is right for a public endpoint and wrong for an authenticated one
-  behind a corporate NAT, where it limits a building as though it were one user.
+- Keying by IP is right for a public endpoint and wrong for an authenticated
+  one behind a corporate NAT, where it limits a building as though it were one user.
   Key by user id where there is one. Returning `null` exempts the caller.
 - `memoryStore()` is correct for a single instance and wrong behind a load
   balancer, where three instances permit three times the limit.
@@ -432,6 +474,23 @@ const add = action(function* (text: string) {
 
 On the server the memo's call is in-process and its answer seeds the page, so
 the browser does not ask again until `refresh`.
+
+## Subpaths
+
+- `@barqjs/start`: the isomorphic surface. `createServerFn`, `createMiddleware`,
+  `createStart`, the request context, sessions, cookies, rate limiting.
+- `@barqjs/start/client`: the RPC stub the compiler emits, and
+  `staticFunctionMiddleware`.
+- `@barqjs/start/server`: `handleServerFn`, `mount`, the origin check.
+- `@barqjs/start/serve`: `serveBarq`, `createFetchHandler`, the asset
+  middleware.
+- `@barqjs/start/prerender`: the prerenderer, for a custom build.
+- `@barqjs/start/middleware` and `@barqjs/start/env`: the middleware runner and
+  the one-side functions, split out so the client stub can import them without
+  reaching `node:async_hooks`. The compiler emits these; import from
+  `@barqjs/start` instead.
+- `@barqjs/start/protocol`: the server-entry contract router and vite share.
+  Not public API.
 
 ## The build and the server
 
@@ -535,6 +594,24 @@ barq({
 });
 ```
 
+### Functions for one side
+
+```ts
+import { createClientOnlyFn, createIsomorphicFn, createServerOnlyFn } from "@barqjs/start";
+
+const readConfig = createServerOnlyFn(() => process.env.API_TOKEN);
+const storage = createClientOnlyFn(() => localStorage);
+const now = createIsomorphicFn()
+  .server(() => "server")
+  .client(() => "browser");
+```
+
+The compiler replaces these calls in each bundle. `createServerOnlyFn` keeps its
+body in the server build and becomes a throwing stub in the browser, so a secret
+cannot reach the client even as dead code. `createClientOnlyFn` is the mirror.
+`createIsomorphicFn` keeps one half per bundle, and a half that is not declared
+is a no-op. Uncompiled code, such as a `bun test`, gets the server half.
+
 ### Server-only and client-only files
 
 `db.server.ts` is for what must not leave the server, `chart.client.ts` for what
@@ -558,14 +635,3 @@ and Cloudflare take the same entry.
 `src/entry-client.tsx` and `src/entry-server.tsx` are overrides. The defaults
 are two lines each and the plugin supplies them; nothing in an application names
 a `virtual:` or `#`-prefixed specifier.
-
-## Subpaths
-
-| import                    | where it runs                                                            |
-| ------------------------- | ------------------------------------------------------------------------ |
-| `@barqjs/start`           | the isomorphic surface: `createServerFn`, the context, sessions, cookies |
-| `@barqjs/start/client`    | the RPC stub the compiler emits, and `staticFunctionMiddleware`          |
-| `@barqjs/start/server`    | `handleServerFn`, `mount`, the origin check                              |
-| `@barqjs/start/serve`     | `serveBarq`, the asset middleware                                        |
-| `@barqjs/start/prerender` | the prerenderer, for a custom build                                      |
-| `@barqjs/start/protocol`  | the server-entry contract router and vite share; not public API          |
