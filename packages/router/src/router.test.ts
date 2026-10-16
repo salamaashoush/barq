@@ -17,7 +17,7 @@ import {
   render,
   settle,
 } from "@barqjs/core";
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, jest, test } from "bun:test";
 
 import { Await, Link, NavLink, Router, RouterProvider, linkHref, useRouter } from "./components.ts";
 import { notFound, redirect } from "./errors.ts";
@@ -2067,42 +2067,56 @@ describe("the smaller surface", () => {
   });
 
   test("pendingMinMs keeps a fallback that HAS appeared from vanishing two frames later", async () => {
-    const history = memoryHistory({ initial: ["/x"] });
-    const state = createRouter({
-      routeTree: [
-        { path: "/x", component: page("x") },
-        {
-          path: "/slow",
-          pendingMs: 5,
-          pendingMinMs: 120,
-          loader: async () => {
-            await new Promise((resolve) => setTimeout(resolve, 15));
-            return "data";
+    jest.useFakeTimers();
+    try {
+      const loaded = Promise.withResolvers<void>();
+      const history = memoryHistory({ initial: ["/x"] });
+      const state = createRouter({
+        routeTree: [
+          { path: "/x", component: page("x") },
+          {
+            path: "/slow",
+            pendingMs: 5,
+            pendingMinMs: 120,
+            loader: async () => {
+              await loaded.promise;
+              return "data";
+            },
+            pendingComponent: page("SKELETON"),
+            component: (props: RouteProps) => {
+              const node = document.createElement("span");
+              insert(node, () => String(props.data()));
+              return node;
+            },
           },
-          pendingComponent: page("SKELETON"),
-          component: (props: RouteProps) => {
-            const node = document.createElement("span");
-            insert(node, () => String(props.data()));
-            return node;
-          },
-        },
-      ] as never,
-      history,
-    });
-    const { host, dispose } = mountState(state);
+        ] as never,
+        history,
+      });
+      const { host, dispose } = mountState(state);
 
-    await state.navigate("/slow");
-    flush();
-    await new Promise((resolve) => setTimeout(resolve, 40));
-    flush();
-    // The loader settled at ~15 ms; the skeleton appeared at ~5 and is held.
-    expect(visibleText(host)).toBe("SKELETON");
+      await state.navigate("/slow");
+      flush();
+      expect(visibleText(host)).toBe("");
+      jest.advanceTimersByTime(5);
+      flush();
+      expect(visibleText(host)).toBe("SKELETON");
 
-    await new Promise((resolve) => setTimeout(resolve, 140));
-    flush();
-    expect(visibleText(host)).toBe("data");
-    dispose();
-  }, 10_000);
+      loaded.resolve();
+      await settle();
+      flush();
+      expect(visibleText(host), "the loader settled inside the hold").toBe("SKELETON");
+      jest.advanceTimersByTime(119);
+      flush();
+      expect(visibleText(host), "one millisecond before the hold ends").toBe("SKELETON");
+
+      jest.advanceTimersByTime(1);
+      flush();
+      expect(visibleText(host)).toBe("data");
+      dispose();
+    } finally {
+      jest.useRealTimers();
+    }
+  });
 
   test("a mask shows one url and renders another", async () => {
     // A photo over a feed: the address bar reads `/feed` so closing it is a back

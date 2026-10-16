@@ -541,16 +541,14 @@ describe("useAwaited", () => {
   test("is a promise's value as a cell, pending until it settles", async () => {
     let value: Cell<string> | undefined;
     let handed: Promise<string> | undefined;
-    const promise = (async () => {
-      await tick(10);
-      return "settled";
-    })();
+    const { promise, resolve } = Promise.withResolvers<string>();
     const { dispose } = await at("/posts/7", () => {
       [value, handed] = useAwaited({ promise });
       return document.createTextNode("leaf");
     });
     expect(handed).toBe(promise);
     expect(() => value?.()).toThrow();
+    resolve("settled");
     await promise;
     await tick(5);
     flush();
