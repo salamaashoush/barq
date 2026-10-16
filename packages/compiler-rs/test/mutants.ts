@@ -19,9 +19,13 @@
  * The crate is COPIED to a scratch directory and mutated there. Nothing writes
  * to `src/`, and nothing overwrites the committed `barq-compiler.*.node` — the
  * mutant is built as a plain `cdylib` and the harness is pointed at it through
- * `BARQ_NATIVE`. `packages/core` is symlinked rather than copied, because
- * `build.rs` derives `DOM_PROPS`, `SVG_TAGS` and the delegated-event table out
- * of the runtime source and a stale copy would be a second, silent mutation.
+ * `BARQ_NATIVE`. The copy is the whole workspace, `crates/` and `Cargo.lock`
+ * included, so the mutant resolves the same members and the same dependency
+ * versions as the crate it stands in for. The sibling packages are symlinked
+ * rather than copied, because both build scripts derive their tables
+ * (`DOM_PROPS`, `SVG_TAGS`, the delegated-event table, the css shorthands) out
+ * of runtime source in `packages/core`, `packages/server` and `packages/css`,
+ * and a stale copy would be a second, silent mutation.
  *
  * The first row is always the NULL mutant — the scratch crate built unmutated.
  * It must be green. Without it a red row could be an artefact of the debug
@@ -31,16 +35,16 @@
  *   bun test/mutants.ts walk fold  # only those whose id contains a given word
  */
 
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { cpSync, symlinkSync } from "node:fs";
+import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, lstatSync, symlinkSync, unlinkSync } from "node:fs";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { basename, join } from "node:path";
 
 import { generateMany } from "./generator.ts";
 
 const CRATE = join(import.meta.dir, "..");
-const CORE = join(CRATE, "..", "core");
+const PACKAGES = join(CRATE, "..");
 const ROOT = process.env.BARQ_MUTANT_DIR ?? join(tmpdir(), "barq-mutants");
 const SCRATCH = join(ROOT, "packages", "compiler-rs");
 const TARGET = join(ROOT, "target");
@@ -162,12 +166,8 @@ const MUTANTS: Mutant[] = [
       },
       {
         file: "src/passes/fold.rs",
-        find:
-          "        Chan::Prop | Chan::Live | Chan::Bool | Chan::StyleProp | Chan::ClassList | Chan::Html => {\n" +
-          "            false\n" +
-          "        }",
-        replace:
-          "        Chan::Live | Chan::Bool | Chan::StyleProp | Chan::ClassList | Chan::Html => false,",
+        find: "        Chan::Prop | Chan::Live | Chan::Html => false,",
+        replace: "        Chan::Live | Chan::Html => false,",
       },
     ],
   },
@@ -264,11 +264,6 @@ const MUTANTS: Mutant[] = [
         find: "        Chan::Class => Helper::SetClass,",
         replace: "        Chan::Class => Helper::SetAttr,",
       },
-      {
-        file: "src/codegen/dom.rs",
-        find: "        Chan::ClassList => Helper::SetClassList,",
-        replace: "        Chan::ClassList => Helper::SetAttr,",
-      },
     ],
   },
   {
@@ -339,13 +334,13 @@ const MUTANTS: Mutant[] = [
       {
         file: "src/passes/classify.rs",
         find:
-          "                SourceKind::Accessor { .. } => {\n" +
+          "                SourceKind::Accessor => {\n" +
           "                    return Rx {\n" +
           "                        react: React::Reactive,\n" +
           "                        deps: self.dep(symbol),\n" +
           "                        thunk: Thunk::Eta,",
         replace:
-          "                SourceKind::Accessor { .. } => {\n" +
+          "                SourceKind::Accessor => {\n" +
           "                    return Rx {\n" +
           "                        react: React::Static,\n" +
           "                        deps: self.dep(symbol),\n" +
@@ -489,19 +484,44 @@ function sh(
   };
 }
 
+/** Build output and the bindings `napi build` writes, none of which a mutant may inherit. */
+const NOT_SOURCE = new Set(["target", "node_modules", "npm", "artifacts"]);
+
 function prepareScratch(): void {
-  rmSync(join(SCRATCH, "src"), { recursive: true, force: true });
+  rmSync(SCRATCH, { recursive: true, force: true });
   mkdirSync(SCRATCH, { recursive: true });
-  cpSync(join(CRATE, "src"), join(SCRATCH, "src"), { recursive: true });
-  for (const file of ["Cargo.toml", "Cargo.lock", "build.rs", "rustfmt.toml"]) {
-    cpSync(join(CRATE, file), join(SCRATCH, file));
+  for (const entry of [
+    "src",
+    "crates",
+    "tests",
+    "Cargo.toml",
+    "Cargo.lock",
+    "build.rs",
+    "rustfmt.toml",
+  ]) {
+    cpSync(join(CRATE, entry), join(SCRATCH, entry), {
+      recursive: true,
+      filter: (path) => !NOT_SOURCE.has(basename(path)) && !path.endsWith(".node"),
+    });
   }
-  const core = join(ROOT, "packages", "core");
-  if (!existsSync(core)) {
-    mkdirSync(dirname(core), { recursive: true });
-    symlinkSync(CORE, core);
+  // Re-pointed on every run: a link left by a run from another checkout still
+  // resolves, or dangles, and either way the build would read someone else's
+  // runtime tables.
+  for (const sibling of readdirSync(PACKAGES)) {
+    if (sibling === basename(CRATE)) continue;
+    const link = join(ROOT, "packages", sibling);
+    if (lstatSync(link, { throwIfNoEntry: false })?.isSymbolicLink()) unlinkSync(link);
+    symlinkSync(join(PACKAGES, sibling), link);
   }
 }
+
+/** What `cargo build` names a `cdylib` on this host. */
+const DYLIB =
+  process.platform === "win32"
+    ? "barq_compiler.dll"
+    : process.platform === "darwin"
+      ? "libbarq_compiler.dylib"
+      : "libbarq_compiler.so";
 
 function apply(edits: Edit[]): void {
   for (const edit of edits) {
@@ -519,11 +539,11 @@ function apply(edits: Edit[]): void {
 }
 
 function build(id: string): { ok: boolean; out: string; binary: string } {
-  const built = sh(["cargo", "build", "--lib"], SCRATCH, { CARGO_TARGET_DIR: TARGET });
+  const built = sh(["cargo", "build", "--lib", "--locked"], SCRATCH, { CARGO_TARGET_DIR: TARGET });
   const binary = join(BIN, `${id}.node`);
   if (built.ok) {
     mkdirSync(BIN, { recursive: true });
-    cpSync(join(TARGET, "debug", "libbarq_compiler.so"), binary);
+    cpSync(join(TARGET, "debug", DYLIB), binary);
   }
   return { ...built, binary };
 }
@@ -554,9 +574,6 @@ interface Result {
 /** Every `bun test` file, for the second pass over a survivor. */
 const WHOLE_SUITE = ["test"];
 
-/** Wall-clock budgets, which a debug build fails on its own. */
-const TIMING = /throughput|costs less than|compiles fast/;
-
 function run(binary: string, files: string[]): { failures: number; killers: Map<string, string> } {
   const out = sh(["bun", "test", ...files], CRATE, { BARQ_NATIVE: binary }).out;
 
@@ -567,15 +584,9 @@ function run(binary: string, files: string[]): { failures: number; killers: Map<
     if (!failed) continue;
     failures++;
     const name = failed[1];
-    // The mutants are built with `cargo build`, not `--release`, so a wall-clock
-    // budget fails for the profile rather than for the mutation. Counting one as
-    // a kill would credit the harness with catching something it did not.
-    if (TIMING.test(name)) {
-      failures--;
-      continue;
-    }
     const driver = DRIVERS.find(([prefix]) => name.startsWith(prefix))?.[1] ?? "other";
-    if (!killers.has(driver)) killers.set(driver, name.slice(name.indexOf(" > ") + 3));
+    const test = name.includes(" > ") ? name.slice(name.indexOf(" > ") + 3) : name;
+    if (!killers.has(driver)) killers.set(driver, test);
   }
   return { failures, killers };
 }
