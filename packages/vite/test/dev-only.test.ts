@@ -70,10 +70,11 @@ describe("dev-only diagnostics in a server bundle", () => {
     expect(code).toContain("server-timing");
   }, 60_000);
 
-  test("a production build carries no Server-Timing and no development reporting", async () => {
+  test("a production build carries no server-function timing and no development reporting", async () => {
     const code = await bundle("production", SERVER);
+    // The timing's own metric. `server-timing` itself is in every build: the
+    // request's W3C trace is handed to the browser on it.
     expect(code).not.toContain(";dur=");
-    expect(code).not.toContain("server-timing");
     expect(code).not.toContain("ssrFixStacktrace");
     // The redaction itself is unchanged: the fixed line is what a failure answers.
     expect(code).toContain("internal server error");

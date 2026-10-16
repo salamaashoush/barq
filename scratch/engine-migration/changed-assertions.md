@@ -998,3 +998,14 @@ Each now orders what it waits on; no expectation's subject changed, and what mov
   port 0 and the origin is read from its "Listening on" line, instead of a random port in
   3400-3499 (which `create-barq`'s scaffold suite also binds, at 3400-3412) and a capped poll.
   Expectations unchanged.
+
+## The trace context writes `Server-Timing` in every build
+
+- `vite/test/dev-only.test.ts` "a production build carries no Server-Timing and no development
+  reporting" is "a production build carries no server-function timing and no development
+  reporting", and its `not.toContain("server-timing")` is gone; `not.toContain(";dur=")`, the
+  development timing's own metric, stays. `getTraceContext` hands a sampled incoming trace to the
+  browser as a `Server-Timing` entry at the head's commit, which Solid 2.0 does in every build
+  tier, and the commit folds a stub's `Server-Timing` onto a response entry by entry, so the
+  header's name is in a production server bundle by design. The development build's test still
+  requires both.
