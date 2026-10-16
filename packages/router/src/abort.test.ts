@@ -8,7 +8,7 @@
  * and a crash reporter or a console told about it reports a failure nobody had.
  */
 
-import { flush, render } from "@barqjs/core";
+import { flush, render, settle } from "@barqjs/core";
 import { afterEach, describe, expect, test } from "bun:test";
 
 import { RouterProvider } from "./components.ts";
@@ -118,6 +118,12 @@ describe("a loader run the router aborts", () => {
   test("is not told to onError or onLoaderError, logs nothing, and the newer run is shown", async () => {
     const told: unknown[] = [];
     let runs = 0;
+    const answers: (() => void)[] = [];
+    let started = Promise.withResolvers<void>();
+    const nextRun = async (): Promise<void> => {
+      await started.promise;
+      started = Promise.withResolvers<void>();
+    };
     const state = createRouter({
       routeTree: routes([
         {
@@ -127,11 +133,9 @@ describe("a loader run the router aborts", () => {
           loader: ({ signal }: { signal: AbortSignal }) => {
             const run = ++runs;
             return new Promise((resolve, reject) => {
-              const timer = setTimeout(() => resolve(`run ${run}`), 20);
-              signal.addEventListener("abort", () => {
-                clearTimeout(timer);
-                reject(signal.reason);
-              });
+              answers.push(() => resolve(`run ${run}`));
+              signal.addEventListener("abort", () => reject(signal.reason));
+              started.resolve();
             });
           },
         },
@@ -155,9 +159,13 @@ describe("a loader run the router aborts", () => {
         host,
       );
       flush();
-      await tick(5);
+      await nextRun();
       void state.invalidate();
-      await tick(40);
+      await nextRun();
+      // The aborted run answering late must not be what is shown.
+      answers[1]?.();
+      answers[0]?.();
+      await settle();
       flush();
       expect(host.textContent).toBe("run 2");
       dispose();
@@ -172,6 +180,8 @@ describe("a loader run the router aborts", () => {
 
   test("by disposing the router is not told either", async () => {
     const told: unknown[] = [];
+    const started = Promise.withResolvers<void>();
+    const aborted = Promise.withResolvers<void>();
     const state = createRouter({
       routeTree: routes([
         {
@@ -180,7 +190,11 @@ describe("a loader run the router aborts", () => {
           onError: (error: unknown) => told.push(error),
           loader: ({ signal }: { signal: AbortSignal }) =>
             new Promise((_, reject) => {
-              signal.addEventListener("abort", () => reject(signal.reason));
+              signal.addEventListener("abort", () => {
+                reject(signal.reason);
+                aborted.resolve();
+              });
+              started.resolve();
             }),
         },
       ]),
@@ -188,9 +202,10 @@ describe("a loader run the router aborts", () => {
       onLoaderError: (error: unknown) => told.push(error),
     });
     void state.load();
-    await tick(5);
+    await started.promise;
     state.dispose();
-    await tick(5);
+    await aborted.promise;
+    await tick();
     expect(told).toEqual([]);
   });
 });

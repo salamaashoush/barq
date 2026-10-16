@@ -39,6 +39,41 @@ import { type RouterEvent, type RouterState, createRouter, unmask } from "./rout
 
 const tick = (ms = 0) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+// `setImmediate` is the one timer fake timers leave real, and it fires once the
+// microtask queue is empty.
+const immediate = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
+
+/**
+ * Installs the fake clock.
+ *
+ * happy-dom folds every zero-delay timeout into one native timer. One left
+ * pending on the real clock would collect the zero-delay timeouts made under the
+ * fake one, where advancing it never reaches them, so it is let fire first.
+ */
+async function fakeClock(): Promise<void> {
+  await tick();
+  jest.useFakeTimers();
+}
+
+/**
+ * Runs out the fake clock, then puts the real one back.
+ *
+ * A zero-delay timeout still pending on the fake clock is dropped with it, and
+ * happy-dom's shared timer would then never fire again, taking every later
+ * zero-delay timeout in the file with it.
+ */
+async function realClock(): Promise<void> {
+  if (!jest.isFakeTimers()) return;
+  for (let round = 0; jest.getTimerCount() > 0; round++) {
+    if (round === 100) {
+      throw new Error(`${jest.getTimerCount()} timers still pending: something was left running`);
+    }
+    jest.runOnlyPendingTimers();
+    await immediate();
+  }
+  jest.useRealTimers();
+}
+
 afterEach(() => {
   document.body.innerHTML = "";
 });
@@ -2031,43 +2066,53 @@ describe("the smaller surface", () => {
   });
 
   test("pendingMs shows the fallback once the delay has elapsed", async () => {
-    const history = memoryHistory({ initial: ["/x"] });
-    const state = createRouter({
-      routeTree: [
-        { path: "/x", component: page("x") },
-        {
-          path: "/slow",
-          pendingMs: 10,
-          loader: async () => {
-            await new Promise((resolve) => setTimeout(resolve, 60));
-            return "data";
+    await fakeClock();
+    try {
+      const loaded = Promise.withResolvers<void>();
+      const history = memoryHistory({ initial: ["/x"] });
+      const state = createRouter({
+        routeTree: [
+          { path: "/x", component: page("x") },
+          {
+            path: "/slow",
+            pendingMs: 10,
+            loader: async () => {
+              await loaded.promise;
+              return "data";
+            },
+            pendingComponent: page("SKELETON"),
+            component: (props: RouteProps) => {
+              const node = document.createElement("span");
+              insert(node, () => String(props.data()));
+              return node;
+            },
           },
-          pendingComponent: page("SKELETON"),
-          component: (props: RouteProps) => {
-            const node = document.createElement("span");
-            insert(node, () => String(props.data()));
-            return node;
-          },
-        },
-      ] as never,
-      history,
-    });
-    const { host, dispose } = mountState(state);
+        ] as never,
+        history,
+      });
+      const { host, dispose } = mountState(state);
 
-    await state.navigate("/slow");
-    flush();
-    expect(visibleText(host)).toBe("");
-    await new Promise((resolve) => setTimeout(resolve, 30));
-    flush();
-    expect(visibleText(host)).toBe("SKELETON");
-    await settle();
-    flush();
-    expect(visibleText(host)).toBe("data");
-    dispose();
+      await state.navigate("/slow");
+      flush();
+      expect(visibleText(host)).toBe("");
+      jest.advanceTimersByTime(9);
+      flush();
+      expect(visibleText(host), "a millisecond before the delay ends").toBe("");
+      jest.advanceTimersByTime(1);
+      flush();
+      expect(visibleText(host)).toBe("SKELETON");
+      loaded.resolve();
+      await settle();
+      flush();
+      expect(visibleText(host)).toBe("data");
+      dispose();
+    } finally {
+      await realClock();
+    }
   });
 
   test("pendingMinMs keeps a fallback that HAS appeared from vanishing two frames later", async () => {
-    jest.useFakeTimers();
+    await fakeClock();
     try {
       const loaded = Promise.withResolvers<void>();
       const history = memoryHistory({ initial: ["/x"] });
@@ -2114,7 +2159,7 @@ describe("the smaller surface", () => {
       expect(visibleText(host)).toBe("data");
       dispose();
     } finally {
-      jest.useRealTimers();
+      await realClock();
     }
   });
 

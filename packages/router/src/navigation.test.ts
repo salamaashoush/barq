@@ -882,6 +882,12 @@ describe("what a loader's cache does over time", () => {
 
   test("a loader's signal aborts when a newer run supersedes it, and when its entry is collected", async () => {
     const signals: AbortSignal[] = [];
+    const finish: (() => void)[] = [];
+    let started = Promise.withResolvers<void>();
+    const nextRun = async (): Promise<void> => {
+      await started.promise;
+      started = Promise.withResolvers<void>();
+    };
     const state = createRouter({
       routeTree: routes([
         { path: "/", component: page("home") },
@@ -891,30 +897,39 @@ describe("what a loader's cache does over time", () => {
           gcTime: 0,
           loader: async ({ signal }: { signal: AbortSignal }) => {
             signals.push(signal);
-            await tick(15);
+            const answer = Promise.withResolvers<void>();
+            finish.push(answer.resolve);
+            started.resolve();
+            await answer.promise;
             return "done";
           },
         },
       ]),
       history: memoryHistory({ initial: ["/slow"] }),
     });
-    await state.load();
+    const loading = state.load();
+    await nextRun();
+    finish[0]?.();
+    await loading;
     expect(signals[0]?.aborted).toBe(false);
 
     // Two reloads in a row: the first is superseded before it can settle.
     void state.invalidate();
-    await tick(2);
+    await nextRun();
     void state.invalidate();
-    await tick(2);
+    await nextRun();
     expect(signals).toHaveLength(3);
     expect(signals[1]?.aborted).toBe(true);
     expect(signals[2]?.aborted).toBe(false);
+    finish[1]?.();
+    finish[2]?.();
     await state.load({ sync: true });
 
     // Collected with a run in flight: disposing the entry aborts it.
     void state.invalidate();
-    await tick(2);
+    await nextRun();
     state.dispose();
     expect(signals[3]?.aborted).toBe(true);
+    finish[3]?.();
   });
 });
