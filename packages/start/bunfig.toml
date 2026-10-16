@@ -2,6 +2,7 @@
 # https://bun.sh/docs/runtime/bunfig
 
 [test]
+onlyFailures = true
 # BOTH halves. `root = "./src"` hid `test/dev-server.test.ts` — six passing tests
 # through a real Vite dev server on a real socket — from every gate that runs
 # `bun test`, and the package's headline number read 36 for a suite of 42.

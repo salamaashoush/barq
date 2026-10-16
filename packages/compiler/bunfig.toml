@@ -1,4 +1,5 @@
 [test]
+onlyFailures = true
 # Keep bun's default globs away from target/ and node_modules; the harness and
 # its generated temp modules both live under test/.
 root = "./test"

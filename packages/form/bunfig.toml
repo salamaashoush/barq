@@ -2,6 +2,7 @@
 # https://bun.sh/docs/runtime/bunfig
 
 [test]
+onlyFailures = true
 # Test file patterns
 root = "./src"
 

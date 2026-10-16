@@ -1,3 +1,4 @@
 [test]
+onlyFailures = true
 root = "./src"
 preload = ["./src/test-setup.ts"]

@@ -2,6 +2,7 @@
 # https://bun.sh/docs/runtime/bunfig
 
 [test]
+onlyFailures = true
 root = "./src"
 
 # happy-dom plus the barq compiler, so a `.tsx` test reaches the runtime through

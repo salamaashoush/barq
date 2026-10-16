@@ -2,4 +2,5 @@
 peer = false
 
 [test]
+onlyFailures = true
 root = "./test"
