@@ -56,7 +56,7 @@ impl Target {
     }
 }
 
-pub const HELPER_COUNT: usize = 60;
+pub const HELPER_COUNT: usize = 61;
 
 /// The first helper that lives in `<server_source>` rather than in the
 /// module source itself. The string backend calls into `ssr.ts`, which the DOM
@@ -261,33 +261,38 @@ pub enum Helper {
     /// and a handler is not: there is no byte on the wire that means client
     /// behaviour, and `ssr.ts` states the consequence for a pre-hydration submit.
     FormAttr = 52,
+    /// `_$clientOnly(fn, options, moduleUrl)` — Solid 2.0's factory, which the
+    /// AUTHOR calls, pointed at the string half the way [`Dynamic`] is. The
+    /// client half starts the import, and a server render must never run a
+    /// module written for the browser.
+    ClientOnly = 53,
     // ── `<module_source>/interp` ──────────────────────────────────────────
-    Interp = 53,
+    Interp = 54,
     /// `_$getOwner()` — the ambient owner, read where a scope VALUE is needed
     /// rather than a construction under one. The delegated-event dispatcher
     /// stores it on the element (`__bqs`) so a throw routes to the scope's
     /// catcher; nothing else needs it, because every construct reads the
     /// ambient itself.
-    GetOwner = 54,
+    GetOwner = 55,
     /// `_$readKeys(value)` — a `style` object with the getters
     /// it holds called, in the READ half of the binding that writes it. A key
     /// may be live on its own, and the read is where that becomes a
     /// dependency; the write half is handed values only.
-    ReadKeys = 55,
+    ReadKeys = 56,
     /// `_$classToString(value)` — a lone `class` binding's value in its applied
     /// form, computed in the READ half so the effect's own equality decides
     /// whether the write half runs at all.
-    ClassToString = 56,
+    ClassToString = 57,
     /// `_$untrack(() => Comp(props))` — a component called where a compute may
     /// be running, so a signal its setup reads does not rebuild it.
-    Untrack = 57,
+    Untrack = 58,
     /// `_$createComponent(Comp, props, "Comp")` — a development compile's
     /// component call, run under an owner named for the tag so a finding, an
     /// error or a hydration report inside it carries the component path.
-    CreateComponent = 58,
+    CreateComponent = 59,
     /// `_$readOpaque(value, "title")` — `bindProp`'s read of an opaque call,
     /// for one that joined its template's effect.
-    ReadOpaque = 59,
+    ReadOpaque = 60,
 }
 
 const IMPORTED: [&str; HELPER_COUNT] = [
@@ -344,6 +349,7 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "ssrIsland",
     "ssrReveal",
     "formAttr",
+    "clientOnly",
     "interp",
     "getOwner",
     "readKeys",
@@ -752,7 +758,7 @@ impl<'a> VisitMut<'a> for Emit<'a, '_> {
         if self.target == Target::Ssr
             && let Expression::CallExpression(call) = it
         {
-            self.server_dynamic(call);
+            self.server_factory(call);
         }
         if let Expression::Identifier(identifier) = it
             && let Some(index) = self.module.uids.root_index(identifier.name.as_str())
@@ -778,33 +784,44 @@ impl<'a> VisitMut<'a> for Emit<'a, '_> {
 }
 
 impl<'a> Emit<'a, '_> {
-    /// `dynamic(source)` from the runtime, pointed at the server's half. The
-    /// author imported the client's, which builds DOM. A named import whose
-    /// every call was pointed here loses its specifier in `install`; the
-    /// namespace spelling keeps the namespace, which serves other names.
-    fn server_dynamic(&mut self, call: &mut CallExpression<'a>) {
+    /// `dynamic(source)` and `clientOnly(fn)` from the runtime, pointed at the
+    /// server's halves. The author imported the client's: `dynamic` builds DOM
+    /// and `clientOnly` starts an import of a module written for the browser. A
+    /// named import whose every call was pointed here loses its specifier in
+    /// `install`; the namespace spelling keeps the namespace, which serves
+    /// other names.
+    fn server_factory(&mut self, call: &mut CallExpression<'a>) {
         // A module that is not JSX is never bound, so it has no symbols to ask.
         if self.module.env.kind.is_empty() {
             return;
         }
+        let factory = |prim: Prim| match prim {
+            Prim::Dynamic => Some(Helper::Dynamic),
+            Prim::ClientOnly => Some(Helper::ClientOnly),
+            _ => None,
+        };
         let named =
-            crate::analysis::symbol_of(&self.module.scoping, &call.callee).filter(|symbol| {
-                self.module.env.kind_of(*symbol) == SourceKind::Primitive(Prim::Dynamic)
+            crate::analysis::symbol_of(&self.module.scoping, &call.callee).and_then(|symbol| {
+                match self.module.env.kind_of(symbol) {
+                    SourceKind::Primitive(prim) => factory(prim).map(|helper| (symbol, helper)),
+                    _ => None,
+                }
             });
         let namespaced = match crate::analysis::without_type_wrappers(&call.callee) {
-            Expression::StaticMemberExpression(member) => {
-                member.property.name == "dynamic"
-                    && crate::analysis::symbol_of(&self.module.scoping, &member.object)
-                        .is_some_and(|object| self.module.env.namespaces.contains(&object))
+            Expression::StaticMemberExpression(member)
+                if crate::analysis::symbol_of(&self.module.scoping, &member.object)
+                    .is_some_and(|object| self.module.env.namespaces.contains(&object)) =>
+            {
+                Prim::of_export(member.property.name.as_str()).and_then(factory)
             }
-            _ => false,
+            _ => None,
         };
-        if named.is_none() && !namespaced {
+        let Some(helper) = named.map(|(_, helper)| helper).or(namespaced) else {
             return;
-        }
+        };
         let span = call.callee.span();
-        call.callee = self.helper(Helper::Dynamic, span);
-        if let Some(symbol) = named {
+        call.callee = self.helper(helper, span);
+        if let Some((symbol, _)) = named {
             self.module.flow_rewrites.push(symbol);
         }
     }

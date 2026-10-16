@@ -1084,7 +1084,9 @@ impl<'a> Binder<'_, 'a> {
             // that binding is not a tracked read. What IS a tracked read is the
             // call itself, and that is `classify`'s to say (A5 (f)).
             Prim::Untrack | Prim::ReadMode => Produced::kind(SourceKind::Inert),
-            Prim::Flow(_) | Prim::Dynamic | Prim::RemovedDynamic => Produced::OPAQUE,
+            Prim::Flow(_) | Prim::Dynamic | Prim::ClientOnly | Prim::RemovedDynamic => {
+                Produced::OPAQUE
+            }
         }
     }
 

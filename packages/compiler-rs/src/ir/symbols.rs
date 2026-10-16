@@ -81,6 +81,10 @@ pub enum Prim {
     /// `dynamic(source)`, Solid 2.0's factory for a component chosen at run
     /// time. The server backend calls the string half of the same name.
     Dynamic,
+    /// `clientOnly(fn)`, Solid 2.0's factory for a component that renders only
+    /// in the browser. The server backend calls the string half of the same
+    /// name, which never starts the import.
+    ClientOnly,
     /// `Dynamic`, which Solid 2.0 deprecates in favour of `dynamic` and barq
     /// does not export. Resolved only so BARQ025 can name the replacement.
     RemovedDynamic,
@@ -123,6 +127,7 @@ impl Prim {
             "Reveal" => Prim::Flow(Flow::Reveal),
             "Portal" => Prim::Flow(Flow::Portal),
             "dynamic" => Prim::Dynamic,
+            "clientOnly" => Prim::ClientOnly,
             "Dynamic" => Prim::RemovedDynamic,
             "NoHydration" => Prim::Flow(Flow::NoHydration),
             _ => return None,

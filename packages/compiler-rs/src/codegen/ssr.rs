@@ -1843,6 +1843,41 @@ mod tests {
         assert!(plain.contains("return hash(x);"), "{plain}");
     }
 
+    /// `clientOnly` is the same arrangement as `dynamic`: the author calls the
+    /// client half, which starts the import, and the server backend points the
+    /// call at the string half, which never does. The namespace spelling is
+    /// pointed there too.
+    #[test]
+    fn the_client_only_factory_calls_the_string_half() {
+        let source = "import { clientOnly } from \"@barqjs/core\";\n\
+             const Chart = clientOnly(() => import(\"./chart.tsx\"), { lazy: true });\n\
+             export const V = () => <div><Chart fallback={<i>wait</i>} /></div>;\n";
+        let code = ssr(source).code;
+        assert!(
+            code.contains(
+                "const Chart = _$clientOnly(() => import(\"./chart.tsx\"), { lazy: true });"
+            ),
+            "{code}"
+        );
+        let server_import = code
+            .lines()
+            .find(|line| line.ends_with("from \"@barqjs/server\";"))
+            .unwrap_or_default();
+        assert!(server_import.contains("clientOnly as _$clientOnly"), "{code}");
+        assert!(!core_import(&code).contains("clientOnly"), "{code}");
+
+        let namespaced = ssr("import * as core from \"@barqjs/core\";\n\
+             const Chart = core.clientOnly(() => import(\"./chart.tsx\"));\n\
+             export const V = () => <div><Chart /></div>;\n")
+        .code;
+        assert!(namespaced.contains("const Chart = _$clientOnly("), "{namespaced}");
+
+        let options = ResolvedOptions::with_filename("V.tsx");
+        let dom = compile(source, &options).expect("compiles").code;
+        assert!(dom.contains("const Chart = clientOnly("), "{dom}");
+        assert!(!dom.contains("_$clientOnly"), "{dom}");
+    }
+
     /// A rewritten callee leaves its import specifier with no reader, and that
     /// name drags `@barqjs/core`'s whole DOM runtime into a server bundle. It
     /// comes off only when EVERY reference was rewritten.
