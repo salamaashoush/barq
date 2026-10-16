@@ -26,6 +26,11 @@ rustc-hash = "2.1.3"
 [build-dependencies]
 napi-build = "2.6.0"
 
+# Its own `main`: the allocation counter it reads is process-wide.
+[[test]]
+name = "compile_work"
+harness = false
+
 [profile.release]
 lto = true
 strip = "symbols"

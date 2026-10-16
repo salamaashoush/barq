@@ -1,8 +1,8 @@
 import { compileSource } from "./harness.ts";
 
 /**
- * Compile-time measurement, shared by the throughput gate and the target-11
- * assertion so both report the same number.
+ * Compile-time measurement for `throughput.bench.ts`, and the workloads it times,
+ * which the suite reuses to count what the same inputs emit.
  *
  * Methodology is lifted from packages/benchmark/src/dom-head-to-head.ts: warm
  * up, force a GC, then take the MINIMUM per-op time across several rounds. The
@@ -72,9 +72,12 @@ export function concatFixtures(names: string[], read: (name: string) => string):
  * "Typical component file" as a concrete artifact rather than a vibe: the three
  * richest fixtures concatenated into one module.
  */
+export const TYPICAL_COMPONENT_FILE = [
+  "control-flow-for",
+  "control-flow-switch-match",
+  "component-boundary-props",
+];
+
 export function typicalComponentFile(read: (name: string) => string): string {
-  return concatFixtures(
-    ["control-flow-for", "control-flow-switch-match", "component-boundary-props"],
-    read,
-  );
+  return concatFixtures(TYPICAL_COMPONENT_FILE, read);
 }

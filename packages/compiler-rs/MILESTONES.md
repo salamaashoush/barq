@@ -1185,7 +1185,7 @@ bun test
 bun test test/ssr.test.ts
 bun test test/browser.test.ts
 bun run test:browser:parse && bun run test:browser:svg && bun run test:browser:differential
-bun test test/throughput.test.ts
+bun test/throughput.bench.ts
 
 cd ../..
 bun run test

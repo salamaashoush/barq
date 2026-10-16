@@ -11,6 +11,7 @@ import {
   renderViaCompiler,
   compileFixture,
   compileFixtureBody,
+  compileSource,
   emittedCalls,
   fixtureOptimality,
   fixtureSource,
@@ -28,7 +29,7 @@ import {
   type FixtureModule,
   type OptimalityExpectation,
 } from "./harness.ts";
-import { measure, typicalComponentFile } from "./measure.ts";
+import { concatFixtures, TYPICAL_COMPONENT_FILE, typicalComponentFile } from "./measure.ts";
 import { countAnchors } from "./normalize.ts";
 
 /**
@@ -1365,10 +1366,12 @@ describe("target 9 — marker elision", () => {
  */
 
 describe("target 11 — compile throughput", () => {
-  // Live from milestone 1: the compiler already runs, so this is a real budget,
-  // not a promise. test/throughput.test.ts prints the full per-fixture table;
-  // this asserts the two files that would break the budget first.
-  it("the slowest fixture and a typical component file compile in under 1ms", () => {
+  // Time is the target, and a clock is the one thing this suite does not read:
+  // `test/throughput.bench.ts` holds the 1ms budget, and `tests/compile_work.rs`
+  // counts the allocations behind it, which no machine can move. What is left
+  // here is the claim both of them stand on, that what they measure is a real
+  // compile, and the one cost the emitted module itself shows.
+  it("the corpus is really compiled, and the module grows only with the input", () => {
     const names = listFixtures();
     // A compiler that emits its input back is instantaneous, so the budget on
     // its own measures nothing. What is being timed has to be a real compile —
@@ -1383,14 +1386,18 @@ describe("target 11 — compile throughput", () => {
       "and most of the corpus reached a template",
     ).toBeGreaterThanOrEqual(40);
 
-    const slowest = names
-      .map((name) => measure(name, fixtureSource(name)))
-      .reduce((worst, row) => (row.msPerCompile > worst.msPerCompile ? row : worst));
-    const typical = measure("typical-component-file", typicalComponentFile(fixtureSource));
-
-    expect(slowest.msPerCompile, `slowest fixture: ${slowest.name}`).toBeLessThan(1);
-    expect(typical.msPerCompile).toBeLessThan(1);
-  }, 120_000);
+    // Eight copies of a typical file emit at most eight times one copy, and
+    // the same template table: an emitter whose output grows faster than the
+    // source is a codegen cost every compile pays.
+    const once = compileSource(typicalComponentFile(fixtureSource), "typical.tsx");
+    const eight = compileSource(
+      concatFixtures(Array.from({ length: 8 }, () => TYPICAL_COMPONENT_FILE).flat(), fixtureSource),
+      "typical-x8.tsx",
+    );
+    expect(emittedCalls(once, "template"), "one copy reached a template").toBeGreaterThan(0);
+    expect(emittedCalls(eight, "template")).toBe(emittedCalls(once, "template"));
+    expect(eight.length).toBeLessThanOrEqual(8 * once.length);
+  });
 });
 
 describe("open questions the harness must be able to state", () => {

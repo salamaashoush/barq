@@ -117,12 +117,14 @@ jobs:
 
       # Its own step, and BEFORE the rest, so the per-fixture table lands in a
       # log section of its own and a regression is attributable to the commit
-      # that caused it instead of buried in 300 lines of suite output. The
-      # asserted gate is the pass-stage RATIO, which does not move with the
-      # runner's speed — see the block at the bottom of throughput.test.ts.
+      # that caused it instead of buried in 300 lines of suite output. It
+      # reports rather than gates: every number in it is a clock reading, which
+      # a loaded runner moves. The gate is `cargo test`'s compile_work, which
+      # counts the same workloads' allocations.
       - name: Compile throughput
-        run: bun test test/throughput.test.ts
+        run: bun test/throughput.bench.ts
         working-directory: packages/compiler-rs
+        continue-on-error: true
 
       # Every package, no exclusions. `packages/query` was excluded from M2 to
       # M8 while its migration was scheduled; M8 landed it, so the exclusion and

@@ -1661,7 +1661,8 @@ What is genuinely refused after that is markup no clone can carry — `<td>` out
 
 Today 0.013–0.025 ms/file against 1 ms — ~40x headroom. Every new pass is a linear walk over an IR
 that already exists. **Budget: ≤0.1 ms/typical file**, i.e. spend at most 4x the current cost and sit
-10x inside the budget, enforced by the existing `throughput.test.ts`. `-O0` doubles fixture compile
+10x inside the budget, measured by `test/throughput.bench.ts` and held by count in
+`tests/compile_work.rs`. `-O0` doubles fixture compile
 work in CI only (120 × 2 × 0.1 ms = 24 ms — irrelevant). **Compile time is the cheapest resource in
 this system by roughly 40x and must not be treated as a constraint on the design.**
 
