@@ -218,8 +218,8 @@ the iterable with a `ServerFnError`.
 
 A handler that returns a component answers with a frame: the component runs on
 the server, and the page receives its markup and never its code. Its props are
-slots, positions the server marks and the page fills with components of its
-own.
+slots, positions the server marks and the page fills: with components of its
+own where a slot is placed, and with behaviour where a slot is read as data.
 
 ```tsx
 import { type Child, dynamic } from "@barqjs/core";
@@ -267,7 +267,8 @@ export const Route = createFileRoute("/story")({
   inline as `<barq-frame>` with a payload script naming its slots, and the
   slots hold the page's components rendered for the first paint. The page's
   seed names the frame by address, so the browser asks for nothing at boot: it
-  claims the region where it stands and fills the slots.
+  claims the region where it stands, and the slots' content with it, as
+  hydration claims the rest of the page.
 - **Over the wire**, a call from the browser answers under
   `x-barq-rpc: frame` with the same markup, the region rendered on its own and
   its slots empty. A slot call's `children` cross in the payload as a nested
@@ -285,6 +286,81 @@ export const Route = createFileRoute("/story")({
 - **The same checks.** A frame is a server function's answer, so the origin
   check, the body limit and the request middleware run before the component
   does. A browser posting a form to one is sent back with a `303`.
+
+A slot the component calls and reads, rather than places, is a binding slot:
+the server's own markup, with the page's behaviour bound to it. Each property
+goes whole at one position, an attribute, a class name or style property in
+object form, a handler, a ref or a text child:
+
+```tsx
+import { type BindingSlot } from "@barqjs/start";
+
+type Like = { liked: boolean; label: string; toggle: () => void };
+
+// In the server component, per comment:
+const like = props.like({ $key: c.id, cid: c.id });
+<button class={{ liked: like.liked }} aria-pressed={like.liked} onClick={like.toggle}>
+  {like.label}
+</button>;
+
+// In the page, the fill, run once per occurrence:
+<Story
+  like={(slot: Incoming<{ cid: number }>): Like => {
+    const [liked, setLiked] = createSignal(false);
+    return {
+      get liked() {
+        return liked();
+      },
+      get label() {
+        return liked() ? "liked" : "like";
+      },
+      toggle: () => setLiked((was) => !was),
+    };
+  }}
+/>;
+```
+
+The server writes a marker beside each position, with the fill's first value
+in the document and none over the wire, and never has the value to compute
+with: a stand-in is an object, so a comparison or a branch on one is decided on
+the page, in the fill. The browser binds each position once, the claim writing
+nothing the server already wrote. An update keeps the fill and its state,
+leaves the positions it owns alone and binds the ones the server added.
+
+A mutation that changes a frame says so, and its answer carries the region
+beside its value, in one request:
+
+```ts
+export const reviseStory = createServerFn({ method: "POST" })
+  .validator((input: { id: string }) => input)
+  .handler(({ data }) => {
+    saveRevision(data.id);
+    invalidateFrames(getStory);
+    return "saved";
+  });
+```
+
+A page names the frames it has mounted on each `POST` (`x-barq-frames`, the
+first 32), each one is asked for again through its own function, validator and
+middleware included, and the regions it answers are applied where they stand
+before the caller is handed the value.
+
+`live(fn)` keeps a frame current over one connection. On the server a frame
+that reads a standing source, an async iterable in a memo, is rendered again
+each time the source moves, and each rendering goes out as a server-sent event
+applied in place:
+
+```tsx
+const board = createMemo(() => live(getBoard)());
+const Board = dynamic(() => board() as (props: Record<string, unknown>) => Node);
+```
+
+A dropped connection reconnects with backoff from the last event it applied,
+which is not sent again, and `onstatus` hears `"connected"`, `"reconnecting"`
+and `"closed"`. A frame the document was served through `live` connects once
+the page is claimed, and closes when the last place it is mounted goes. A
+`live` call to a function that answers with values rather than a frame reads
+one value per event.
 
 ### With JavaScript off
 
@@ -556,7 +632,7 @@ the browser does not ask again until `refresh`.
 - `@barqjs/start`: the isomorphic surface. `createServerFn`, `createMiddleware`,
   `createStart`, the request context, sessions, cookies, rate limiting.
 - `@barqjs/start/client`: the RPC stub the compiler emits,
-  `staticFunctionMiddleware`, and the browser half of frames:
+  `staticFunctionMiddleware`, `live`, and the browser half of frames:
   `applyFrameResponse` and `frameAdapter`, which `@barqjs/router`'s client
   entry installs for a frame named in the seed.
 - `@barqjs/start/server`: `handleServerFn`, `mount`, the origin check.

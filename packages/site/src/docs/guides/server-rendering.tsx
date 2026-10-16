@@ -114,11 +114,27 @@ export function Body() {
       <CodeBlock code={frame} />
       <p>
         A route renders the frame its loader answered with. On the first request the server writes
-        it into the page, and the browser claims it without asking for anything. Asking for the same
-        story again, after a mutation or on <code>router.invalidate()</code>, hands back the same
-        component, so nothing remounts: the new markup is morphed into the region, and a comment the
-        reader collapsed stays collapsed. A stylesheet the region names is loaded before the update
-        is shown.
+        it into the page, and the browser claims it without asking for anything, the slots' content
+        with it, as hydration claims the rest of the page. Asking for the same story again hands
+        back the same component, so nothing remounts: the new markup is morphed into the region, and
+        a comment the reader collapsed stays collapsed. A stylesheet the region names is loaded
+        before the update is shown.
+      </p>
+      <p>
+        A slot the component calls and reads rather than places is a binding slot:{" "}
+        <code>{"const like = props.like({ cid })"}</code>, then{" "}
+        <code>{"<button class={{ liked: like.liked }} onClick={like.toggle}>"}</code>. The markup is
+        the server's and the behaviour is the page's: the page's fill returns the object each
+        position reads, an attribute, a class name, a style property, a handler, a ref or a text
+        child, and owns those positions from then on. The server never has the values to compute
+        with, so anything decided from one is decided in the fill.
+      </p>
+      <p>
+        A mutation that calls <code>invalidateFrames(getStory)</code> answers with the story's
+        region beside its value, in one request, applied where the region stands before the caller
+        sees the value. A frame read through <code>live(getBoard)()</code> stays current over one
+        connection: the server renders it again each time a source it reads moves, and each
+        rendering is applied in place.
       </p>
     </>
   );
