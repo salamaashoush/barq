@@ -16,6 +16,9 @@ import { resolve } from "node:path";
 
 const root = resolve(import.meta.dir, "..");
 
+// The timeout is the spawned bun's, which translates every spec and scans every
+// component: measured at 0.8 s idle and 2.1 s with every core contended, and
+// past 5 s on a CI runner whose cores the other packages' suites share.
 test("the verify script runs outside the runner and finds nothing missing", () => {
   const manifest = JSON.parse(readFileSync(resolve(root, "package.json"), "utf8")) as {
     scripts: Record<string, string>;
@@ -29,4 +32,4 @@ test("the verify script runs outside the runner and finds nothing missing", () =
   expect(output).not.toContain("outside of the test runner");
   expect(output).toMatch(/\d+ declarations from shadcn's class lists, 0 not in the stylesheet/);
   expect(run.exitCode).toBe(0);
-});
+}, 30_000);
