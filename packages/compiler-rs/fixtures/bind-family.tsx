@@ -69,8 +69,7 @@ export const optimality = {
   // M5, not M7: what this fixture DECLARES is the channel, and the channel is
   // M5's. M7's halves — the compare, the caret, the re-assertion — are
   // behavioural and are declared where behaviour is observed, in
-  // `fixtures/semantics/`. A declaration for a milestone the harness has not
-  // reached is an `it.todo`, which is a test that does not run.
+  // `fixtures/semantics/`.
   milestone: 5,
   templates: 1,
   // The property and the reporting event are STRINGS in the emitted call: the

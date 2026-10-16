@@ -40,9 +40,9 @@ export const steps = [
 export const optimality = {
   target: 1,
   milestone: 10,
-  templates: 2,
+  templates: 3,
   // The value IS the key, and one body serves every key — no two-row table,
   // because the arm is decided by the value rather than by an index.
-  emits: ["branch(", "|| false", ", v) =>"],
+  emits: ["branch(", "|| false"],
   absent: ["Show(", "? 1 : 0"],
 }

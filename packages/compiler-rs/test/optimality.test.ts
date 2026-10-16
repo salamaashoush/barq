@@ -109,13 +109,6 @@ function runtimeImports(code: string): string[] {
     .sort();
 }
 
-/**
- * The milestone that has landed. Every fixture declaring an `optimality` at or
- * below it is ASSERTED; the ones above it are pending, and raising this number
- * is what turns a milestone's whole claim on at once.
- */
-const MILESTONE = 6;
-
 const declarations = await Promise.all(
   listFixtures().map(async (name) => [name, await fixtureOptimality(name)] as const),
 );
@@ -506,9 +499,7 @@ describe("declared optimality", () => {
 
   for (const [name, decl] of declarations) {
     if (!decl) continue;
-    const live = decl.milestone <= MILESTONE;
-    const run = live ? it : it.todo;
-    run(`${name} — target ${decl.target} (M${decl.milestone})`, async () => {
+    it(`${name} — target ${decl.target} (M${decl.milestone})`, async () => {
       assertDeclared(name, decl, compileFixtureBody(name));
       if (decl.effects === undefined) return;
       const render = await renderViaCompiler(name);
@@ -527,6 +518,15 @@ describe("target 1 — semantic reactivity (never name regexes)", () => {
 
     expect(count(code, /=>/)).toBe(0);
     expect(count(code, /renderEffect|bindEffect|_\$effect/)).toBe(0);
+  });
+
+  it("control-flow-show-keyed: one body is handed each key's value, not an accessor", () => {
+    // A uid shape, so it is asserted here rather than as a needle in the
+    // fixture's declaration, where naming `_v$` would shift every emitted uid.
+    const code = compileFixtureBody("control-flow-show-keyed");
+    expect(code).toMatch(
+      /const (_v\$\d*) = value\(\);\s*return \1 \? _\$block\(\(v\) => \{[\s\S]*?\}\)\(\1\)/,
+    );
   });
 
   it("handler-no-closure: a handler closing over nothing is not re-created per instance", () => {
@@ -584,9 +584,16 @@ describe("target 2 — fully-static subtree costs one clone and nothing else", (
     expect(render.trace.created).toBe(0);
   });
 
-  it.todo("dedup-identical-markup: zero patch calls across both components", () => {
+  it("dedup-identical-markup: zero patch calls across both components", () => {
     const code = compileFixtureBody("dedup-identical-markup");
-    expect(emittedCalls(code, "insert") + propCalls(code)).toBe(0);
+    // The two inserts the module does make are the grid placing Left and Right,
+    // so each component's own body is measured rather than the module.
+    for (const name of ["Left", "Right"]) {
+      const start = code.indexOf(`function ${name}()`);
+      const body = code.slice(start, code.indexOf("\n}", start));
+      expect(body, name).toMatch(/return _tmpl\$\d+\(\);$/);
+      expect(emittedCalls(body, "insert") + propCalls(body), name).toBe(0);
+    }
   });
 });
 

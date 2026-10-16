@@ -117,7 +117,7 @@ export const nativeCompiler: NativeCompiler = native;
 export interface OptimalityExpectation {
   /** Which of the ten optimization targets this fixture is the proof of. */
   target: number;
-  /** The milestone that turns it on. `optimality.test.ts` holds the current one. */
+  /** The milestone the claim belongs to. Every declaration is asserted whatever it says. */
   milestone: number;
   /** Effects the compiled render must create. */
   effects?: number;

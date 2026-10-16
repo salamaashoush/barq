@@ -31,7 +31,7 @@ export const optimality = {
   milestone: 9,
   // The markup is still a template; only the attribute list leaves it.
   templates: 1,
-  emits: ['<div>spread</div>', '"id", "fixed"', '"class", "after-spread"'],
+  emits: ['<div>spread</div>', '"id": "fixed"', '"class", "after-spread"'],
   // The un-compiled path that used to build this element, and the baked
   // attributes whose order it could not honour.
   absent: ["createElement", '<div id="fixed"'],

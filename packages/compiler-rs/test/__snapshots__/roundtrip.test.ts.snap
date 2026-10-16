@@ -297,8 +297,7 @@ export const optimality = {
   // M5, not M7: what this fixture DECLARES is the channel, and the channel is
   // M5's. M7's halves — the compare, the caret, the re-assertion — are
   // behavioural and are declared where behaviour is observed, in
-  // \`fixtures/semantics/\`. A declaration for a milestone the harness has not
-  // reached is an \`it.todo\`, which is a test that does not run.
+  // \`fixtures/semantics/\`.
   milestone: 5,
   templates: 1,
   // The property and the reporting event are STRINGS in the emitted call: the
@@ -2304,14 +2303,10 @@ export const steps = [
 export const optimality = {
   target: 1,
   milestone: 10,
-  templates: 2,
+  templates: 3,
   // The value IS the key, and one body serves every key — no two-row table,
   // because the arm is decided by the value rather than by an index.
-  emits: [
-    "branch(",
-    "|| false",
-    ", v) =>"
-  ],
+  emits: ["branch(", "|| false"],
   absent: ["Show(", "? 1 : 0"]
 };
 "
@@ -2364,7 +2359,7 @@ export const optimality = {
   emits: [
     "branch(",
     "? 1 : 0",
-    ", v) =>"
+    "})(value)"
   ],
   absent: ["Show(", "v())"]
 };
@@ -2592,7 +2587,7 @@ export const optimality = {
     "?? 0",
     "(i) =>"
   ],
-  absent: ["Repeat(", "count: "]
+  absent: ["Repeat(", "children: "]
 };
 "
 `;
@@ -5645,7 +5640,7 @@ export const optimality = {
   templates: 1,
   emits: [
     "<div>spread</div>",
-    "\\"id\\", \\"fixed\\"",
+    "\\"id\\": \\"fixed\\"",
     "\\"class\\", \\"after-spread\\""
   ],
   // The un-compiled path that used to build this element, and the baked

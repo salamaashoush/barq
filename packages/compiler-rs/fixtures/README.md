@@ -67,7 +67,7 @@ the emitted code is *good*, stated next to the JSX it is a claim about.
 ```ts
 export const optimality = {
   target: 3,          // which of the ten optimization targets this fixture proves
-  milestone: 3,       // the milestone that turns the claim on
+  milestone: 3,       // the milestone the claim belongs to
   effects: 0,         // effects the compiled render must create
   templates: 1,       // _$template() calls
   patchCalls: 0,      // _$insert + _$setProp + _$spread calls
@@ -77,9 +77,9 @@ export const optimality = {
 }
 ```
 
-`optimality.test.ts` holds a single `MILESTONE` constant. A declaration at or below it
-is **asserted**; one above it is pending, and raising that constant is what turns a whole
-milestone's claim on at once. Every field is optional except `target` and `milestone`.
+`optimality.test.ts` asserts every declaration in the corpus; none is pending. A claim the
+compiler does not meet yet is a failing test, not a skipped one. Every field is optional
+except `target` and `milestone`.
 
 The declaration is source like any other and reaches the emitted module, so code-level
 assertions compile the fixture through `compileFixtureBody`, which strips it first.

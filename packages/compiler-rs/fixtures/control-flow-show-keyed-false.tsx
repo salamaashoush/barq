@@ -43,6 +43,6 @@ export const optimality = {
   // The key is the truthiness index and the body is the two-row table. The
   // read η-reduces to the accessor, which is the whole claim: a bare name in
   // the hole is what a LIVE binding looks like here.
-  emits: ["branch(", "? 1 : 0", ", v) =>"],
+  emits: ["branch(", "? 1 : 0", "})(value)"],
   absent: ["Show(", "v())"],
 }

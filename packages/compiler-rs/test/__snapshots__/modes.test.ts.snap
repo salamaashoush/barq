@@ -8,7 +8,7 @@ corpus/arrow-body-component  843758393542 4aa3bb1b34b5 7521c118edc2 7521c118edc2
 corpus/async-value  fff23e5191a2 66b8b017532b 4d6784079328 4d6784079328 93738f152a33 48a87b376d1e 4d6784079328
 corpus/attribute-namespaces  2b7a57a77ad4 d2740a79afa4 82fbfa31bb1e 82fbfa31bb1e b7d8b9326a79 ae0365a5e672 82fbfa31bb1e
 corpus/auto-thunked-read  c6f79747469d 57dac2d7c1d8 edf4a1a0f4d4 edf4a1a0f4d4 ebd4495582c2 4aa415a54526 edf4a1a0f4d4
-corpus/bind-family  3684a191c765 bea37dc628e0 80e6aba54ab9 80e6aba54ab9 b41ce9d19ac3 aa1e91490e8d 80e6aba54ab9
+corpus/bind-family  7ebffdfa8451 2a21b354b8ca dd545f746436 dd545f746436 77ae17be6523 0b1a17be43f1 dd545f746436
 corpus/bind-value-channel  2c3f8b416e0c 9b67175569b3 4c90c72c8931 4c90c72c8931 ca1278136c38 d9f001a2dc8a 4c90c72c8931
 corpus/boolean-and-nullish-props  11aa01a16e5c e7639c368030 75be96701100 83d1c0bd46b0 5b02d816b53e 3633ddc111b7 75be96701100
 corpus/class-empty-string  cdcc02981787 63fcea25305d 99ae4422fee4 99ae4422fee4 8d130d698ca5 f03184123f85 99ae4422fee4
@@ -45,12 +45,12 @@ corpus/control-flow-show-cleanup-body  e5f7b0bdc481 157a0e7c91ef 2c5299598588 d6
 corpus/control-flow-show-eager-children  646ca3d6784e ac03324b91cb 35206b7ba5be 1ab9e8244846 90e169db7c3e 070357f26e0d e5294c693998
 corpus/control-flow-show-eager-static-body  e27b99ba7ffb 73ffd025b51e 779264ba87bd 3af0b006dd9d 59fb66d87bce 260a0ddec0f8 cfd897c9043b
 corpus/control-flow-show-fragment-body  ce80a82ef879 9cd003f9b4c9 558889023228 3af38f0e5fba ca90fd91ea42 65ea3832b6c5 48bbd837f011
-corpus/control-flow-show-keyed  78989dcc39d1 dd16235659c8 4d6e104242e6 4c7fad26c2c7 5b8b74c6281c 95ea09b159b4 fd133b640bfa
-corpus/control-flow-show-keyed-false  3bf039c26d8d c622529d3d90 4e316fc39bc4 dd129e6380e0 68b18604d451 6004a286a224 ac48608a95b5
+corpus/control-flow-show-keyed  78c112ae960a 24bacc94213e f9e7f250f5a2 8988dd23d0b0 f1f65060d206 325d0e1fcd21 638a403c684f
+corpus/control-flow-show-keyed-false  b21d2de51489 7f60868b740a c40d9c8d1236 c71d75718b08 ce49cf21f00b d2b3f10eaa94 d297be19e5ad
 corpus/control-flow-show-static-body  084fd8a79835 1bc8045618f1 d7d501232172 089a307f1579 be9734414ed5 f6e6609ffe55 54cc811a3667
 corpus/control-flow-show-static-key  5a02b5613603 3c07a4fc4d26 e6dc9b954425 9492eb787d70 c8231d48c4ab 606ef2146bab 9da8a26b68ad
 corpus/control-flow-spread-precedence  06a1ee7eb12d a583891f4851 1e8a1307f253 88b1198ea137 711eadf96d1f 4ecd2406f826 6ff37ef25b9f
-corpus/control-flow-spread-repeat  33991ae360b2 efde7660401a a251be4bfcde 972d811ae139 e1d5f463e5f0 89766e461841 03e6b00edb03
+corpus/control-flow-spread-repeat  512fad40f82f 8b618ec6b61d 69a7717917ad aa6e876b96c7 f44ed0a5ed9a baa2b8681da9 79f9a28cc675
 corpus/control-flow-spread-show  0762e642e603 ebc4ec8e6f8f ba73fdeda8b4 5c191d4f3be4 c682facc7557 f2ea81d89016 6a8d1b1195f1
 corpus/control-flow-switch-match  e0f14f1c5b56 94eac6d3d3b9 d5fd6867d638 7011b64fc4cb 724f96f8d68d 03e8677bf733 a463d11c611b
 corpus/control-flow-switch-static-key  30645769b317 eb58821b05e1 07b2a324fb62 e59f95c3d743 9cf35010caf9 ce095be4bc7d 5eb581942f25
@@ -120,7 +120,7 @@ corpus/sibling-walk  67dc36a115dd 7f0e61afe3bc 06667e88da6d 06667e88da6d 2d453ce
 corpus/signal-alias  a11713cc2837 51e7a5f333ca a5d60753f251 a5d60753f251 450c5b9e0387 8e862e39bb34 a5d60753f251
 corpus/signal-methods-in-handler  016a3771aa46 4be4930a4c18 e2aaafc90d3f e2aaafc90d3f 15e1ceaa9950 b0669b3a4b25 e2aaafc90d3f
 corpus/signal-object  8c4eeb3d50f2 b5e26125d27c 7ea681ebc812 7ea681ebc812 3bad35f53905 8fd8a590f671 7ea681ebc812
-corpus/spread-static-mix  23206f65f815 bc49b0dcf1ad 443d1c0c0b7f 443d1c0c0b7f 9d94fa16289e 23206f65f815 443d1c0c0b7f
+corpus/spread-static-mix  1fdaf3e80f37 818baf55bbc9 26e52e0d9dd1 26e52e0d9dd1 4569ac7fd66f 1fdaf3e80f37 26e52e0d9dd1
 corpus/static-attribute-expression  74939c202b6b 716883241486 f60ec9a50630 c9e6cbc4c6b8 f549b045be58 74939c202b6b f60ec9a50630
 corpus/static-only  4618de62974f 4618de62974f 73c1b5815aa1 73c1b5815aa1 ab7897d19613 4618de62974f 73c1b5815aa1
 corpus/store-member  f3b6745608a0 cf976b5a8b71 4407240591d7 4407240591d7 e6a5a4c16a7c 9cc0c038acee 4407240591d7

@@ -938,3 +938,26 @@ conditions hook of its own.
 - `lucide/src/lucide.test.tsx`: added "every name lucide-static exports is the same component here",
   which reads lucide-static's own entry and requires each name it exports, old names included, to be
   the barrel's component for the same module. No existing expectation changed.
+
+## Every optimality declaration runs
+
+`optimality.test.ts` no longer gates a declaration on its `milestone`; the sixteen above the old
+`MILESTONE = 6` were `it.todo` and now run. Twelve passed as written. Four declared a shape the
+renderer change had since moved, and the compiler's output was checked against the fixture's
+prose and its `-O0` build before each was restated:
+
+- `control-flow-show-keyed`: `templates` was 2, is 3. The fallback `<i>none</i>` is a template of
+  its own at both levels, as `control-flow-show-keyed-false` already declares. The `", v) =>"`
+  needle (a two-argument body) is gone: the body is now a one-argument Block called with the
+  key's value. That claim names the `_v$` uid, so it moved to the test file as
+  "control-flow-show-keyed: one body is handed each key's value, not an accessor".
+- `control-flow-show-keyed-false`: `", v) =>"` is `"})(value)"`, the body called with the accessor
+  itself, which is the η-reduction the fixture describes. `-O0` does not emit it.
+- `control-flow-spread-repeat`: absent `"count: "` is `"children: "`. `"count: "` matched the
+  fixture's own `opts` object, so it could not pass; `children: ` is the adapter's props object,
+  emitted at `-O0` and gone at `-Ox`.
+- `spread-static-mix`: `'"id", "fixed"'` is `'"id": "fixed"'`. The literal now enters the spread's
+  props object ahead of `...extra()` instead of a separate write, which keeps source order.
+- "dedup-identical-markup: zero patch calls across both components" was an `it.todo` that counted
+  the whole module, including the grid's two inserts of Left and Right. It now measures each
+  component's body, and requires it to be a bare template clone.
