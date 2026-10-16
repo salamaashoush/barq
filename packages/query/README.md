@@ -1,13 +1,35 @@
 # @barqjs/query
 
 [TanStack Query](https://tanstack.com/query) for barq, over `@tanstack/query-core`.
+Queries, mutations, infinite queries, suspense against barq's `Loading`
+boundary, and the server render's hydration, with results you read field by
+field.
+
+## Install
 
 ```bash
 bun add @barqjs/query @tanstack/query-core
 ```
 
+`@barqjs/core` is a peer dependency. `@barqjs/router`,
+`@tanstack/query-persist-client-core` and `@tanstack/query-devtools` are optional
+peers, needed only by the entries that name them.
+
+## Example
+
 ```tsx
+import { For, Show, render } from "@barqjs/core";
 import { QueryClient, QueryClientProvider, useQuery } from "@barqjs/query";
+
+interface User {
+  id: number;
+  name: string;
+}
+
+async function fetchUsers(): Promise<User[]> {
+  const response = await fetch("https://example.com/api/users");
+  return response.json();
+}
 
 const client = new QueryClient();
 
@@ -15,8 +37,10 @@ function Users() {
   const users = useQuery(() => ({ queryKey: ["users"], queryFn: fetchUsers }));
 
   return (
-    <Show when={() => !users.isPending} fallback={<Spinner />}>
-      <For each={() => users.data ?? []}>{(user) => <li>{user.name}</li>}</For>
+    <Show when={!users.isPending} fallback={<p>loading</p>}>
+      <ul>
+        <For each={users.data ?? []}>{(user) => <li>{user.name}</li>}</For>
+      </ul>
     </Show>
   );
 }
@@ -27,16 +51,9 @@ render(
       <Users />
     </QueryClientProvider>
   ),
-  root,
+  document.getElementById("app")!,
 );
 ```
-
-`useQuery`, `useSuspenseQuery`, `useInfiniteQuery`, `useSuspenseInfiniteQuery`,
-`useMutation`, `useQueries`, `useSuspenseQueries`, `useMutationState`,
-`useIsFetching`, `useIsMutating`, `usePrefetchQuery`,
-`usePrefetchInfiniteQuery`, `useQueryClient` and `useIsRestoring`, plus the
-typed `queryOptions`, `infiniteQueryOptions` and `mutationOptions` helpers.
-That is the same surface the React and Solid adapters carry.
 
 ## Two things it does differently
 
@@ -56,7 +73,7 @@ The store writes the result field by field and drops a write whose value did
 not change. A refetch returning the same response wakes nobody.
 `src/index.test.tsx` counts the runs.
 
-That is the same design `@tanstack/solid-query` uses, for the same reason.
+`@tanstack/solid-query` uses the same design, for the same reason.
 
 ## Suspense
 
@@ -66,10 +83,10 @@ import { useSuspenseQuery } from "@barqjs/query";
 
 function Profile() {
   const user = useSuspenseQuery(() => ({ queryKey: ["me"], queryFn: fetchMe }));
-  return <h1>{() => user.data.name}</h1>;
+  return <h1>{user.data.name}</h1>;
 }
 
-<Loading fallback={<Spinner />}>
+<Loading fallback={<p>loading</p>}>
   <Profile />
 </Loading>;
 ```
@@ -78,7 +95,7 @@ Reading `data` before there is any parks the enclosing `Loading` boundary.
 `isPending` and `error` stay readable, so a fallback and an inline indicator
 are both expressible against the same object.
 
-`throwOnError` works too, and routes to the enclosing `Errored` boundary — a
+`throwOnError` works too, and routes to the enclosing `Errored` boundary. A
 barq component body runs once, so the check lives in an effect rather than in a
 render that happens again.
 
@@ -101,7 +118,10 @@ like every other result, and a bare number has no field to subscribe to.
 
 ```ts
 const summary = useQueries(() => ({
-  queries: [userQuery(id()), teamQuery(id())],
+  queries: [
+    { queryKey: ["user", id()], queryFn: () => fetchUser(id()) },
+    { queryKey: ["team", id()], queryFn: () => fetchTeam(id()) },
+  ],
   combine: ([user, team]) => ({
     pending: user.isPending || team.isPending,
     title: `${user.data?.name} of ${team.data?.name}`,
@@ -113,17 +133,21 @@ const summary = useQueries(() => ({
 
 ## Across a server render
 
-A query read during `renderPage` or `renderToStream` parks its `Loading`
-boundary until the data is there, and the answer is written into the page with
-the rest of the render's seeds. Hydration finds it, fills the cache, and mounts
-without fetching. On a streamed page a query that settles after the shell
-arrives with its boundary, and a client that hydrated first waits for it.
+A query read during `renderPage` or `renderToStream` (from `@barqjs/server`)
+parks its `Loading` boundary until the data is there, and the answer is written
+into the page with the rest of the render's seeds. Hydration finds it, fills
+the cache, and mounts without fetching. On a streamed page a query that settles
+after the shell arrives with its boundary, and a client that hydrated first
+waits for it.
 
 Nothing has to be dehydrated by hand for that. What does need care is the
 client: one for each request, never one for the module.
 
 ```tsx
-export function render(request: Request) {
+import { QueryClient, QueryClientProvider } from "@barqjs/query";
+import { renderToStream } from "@barqjs/server";
+
+export function handle(request: Request) {
   const client = new QueryClient();
   return new Response(
     renderToStream(() => (
@@ -160,6 +184,7 @@ function Guarded() {
     <Errored
       fallback={(error, reset) => (
         <button
+          type="button"
           onClick={() => {
             queries.reset();
             reset();
@@ -184,8 +209,9 @@ function Guarded() {
 Each needs a package the main entry does not, so each is an optional peer
 behind its own import.
 
+`@barqjs/query/persist` needs `@tanstack/query-persist-client-core`:
+
 ```tsx
-// @tanstack/query-persist-client-core
 import { PersistQueryClientProvider } from "@barqjs/query/persist";
 
 <PersistQueryClientProvider client={client} persistOptions={{ persister }}>
@@ -193,8 +219,10 @@ import { PersistQueryClientProvider } from "@barqjs/query/persist";
 </PersistQueryClientProvider>;
 ```
 
+`@barqjs/query/devtools` needs `@tanstack/query-devtools`, imported when the
+component is first built in a browser:
+
 ```tsx
-// @tanstack/query-devtools, imported when the component is first built
 import { BarqQueryDevtools } from "@barqjs/query/devtools";
 
 <BarqQueryDevtools initialIsOpen={false} />;
@@ -204,58 +232,78 @@ Keep the devtools behind a development flag. The panel is a Solid 1
 application and delegates events the way barq does, so while it is loaded a
 delegated handler runs once for each of them.
 
-```tsx
-// @barqjs/router: src/router.ts
-import { setupRouterSsrQueryIntegration } from "@barqjs/query/router";
+`@barqjs/query/router` needs `@barqjs/router`. The router entry
+(`src/router.ts`) creates one client with the router, once for each request on
+the server and once for the tab in the browser:
 
-// Once for each request on the server, once for the tab in the browser.
+```tsx
+import { QueryClient } from "@barqjs/query";
+import { setupRouterSsrQueryIntegration } from "@barqjs/query/router";
+import { createRouter } from "@barqjs/router";
+
+import { routeTree } from "./routeTree.gen.ts";
+
 export function getRouter() {
   const queryClient = new QueryClient();
   const router = createRouter({ routeTree, context: { queryClient } });
   setupRouterSsrQueryIntegration({ router, queryClient });
   return router;
 }
-
-// Any route.
-loader: ({ context, params }) => context.queryClient.ensureQueryData(userQuery(params.id)),
-component: (props) => {
-  const user = useSuspenseQuery(() => userQuery(props.params().id));
-  return <h1>{user.data.name}</h1>;
-},
 ```
 
-`setupRouterSsrQueryIntegration({ router, queryClient })` ties the two together:
+Any route can then fill the cache in its loader and read it in its component:
 
-- the client reaches every route through the router's `Wrap`, so no
-  `QueryClientProvider` is written (`wrapQueryClient: false` leaves that to you);
-- what a loader put in the cache crosses to the page whether or not a component
-  read it, and a query that settles after the loaders is streamed behind them;
-- the browser's cache is filled before the first render, so hydrating a page
-  fetches nothing the server already fetched;
-- a redirect a query or a mutation fails with is followed (`handleRedirects`).
+```tsx
+import { type QueryClient, queryOptions, useSuspenseQuery } from "@barqjs/query";
+import { createFileRoute } from "@barqjs/router";
+
+const userQuery = (id: string) =>
+  queryOptions({ queryKey: ["user", id], queryFn: () => fetchUser(id) });
+
+export const Route = createFileRoute("/users/$id")({
+  loader: ({ context, params }) =>
+    (context.queryClient as QueryClient).ensureQueryData(userQuery(params.id)),
+  component: (props) => {
+    const user = useSuspenseQuery(() => userQuery(props.params().id));
+    return <h1>{user.data.name}</h1>;
+  },
+});
+```
+
+What `setupRouterSsrQueryIntegration({ router, queryClient })` does:
+
+- The client reaches every route through the router's `Wrap`, so no
+  `QueryClientProvider` is written. `wrapQueryClient: false` leaves that to you.
+- What a loader put in the cache crosses to the page whether or not a component
+  read it. A query that settles after the loaders is streamed behind them.
+- The browser's cache is filled before the first render, so hydrating a page
+  fetches nothing the server already fetched.
+- A redirect a query or a mutation fails with is followed. `handleRedirects:
+  false` turns that off.
 
 `dehydrateOptions` and `hydrateOptions` are passed through to `query-core`. The
 returned function undoes all of it.
 
 Without `getRouter`, `queryClientContext(() => new QueryClient())` on the root
-route's `context` still gives each request a client of its own, and
-`RouterQueryClientProvider` provides it from the root route's component.
+route's `context` still gives each request a client of its own,
+`RouterQueryClientProvider` provides it from the root route's component, and
+`useRouterQueryClient()` reads it anywhere below.
 
-## The surface
+## API
 
-|                                                         |                                     |
-| ------------------------------------------------------- | ----------------------------------- |
-| `useQuery` `useSuspenseQuery`                           | one query                           |
-| `useInfiniteQuery` `useSuspenseInfiniteQuery`           | paged                               |
-| `useQueries` `useSuspenseQueries`                       | a set, through one observer         |
-| `useMutation` `useMutationState`                        | writes                              |
-| `useIsFetching` `useIsMutating`                         | counters                            |
-| `usePrefetchQuery` `usePrefetchInfiniteQuery`           | start one without reading it        |
-| `useQueryClient` `useIsRestoring`                       | the client, and a persister's state |
-| `queryOptions` `infiniteQueryOptions` `mutationOptions` | typed, shareable options            |
-| `QueryClientProvider` `IsRestoringProvider`             | the two providers                   |
-| `HydrationBoundary`                                     | dehydrated state, into the client   |
-| `QueryErrorResetBoundary` `useQueryErrorResetBoundary`  | the retry half of `Errored`         |
+- `useQuery`, `useSuspenseQuery`: one query.
+- `useInfiniteQuery`, `useSuspenseInfiniteQuery`: paged.
+- `useQueries`, `useSuspenseQueries`: a set, through one observer.
+- `useMutation`, `useMutationState`: writes.
+- `useIsFetching`, `useIsMutating`: counters.
+- `usePrefetchQuery`, `usePrefetchInfiniteQuery`: start one without reading it.
+- `useQueryClient`, `useIsRestoring`: the client, and a persister's state.
+- `queryOptions`, `infiniteQueryOptions`, `mutationOptions`: typed, shareable
+  options.
+- `QueryClientProvider`, `IsRestoringProvider`: the two providers.
+- `HydrationBoundary`: dehydrated state, into the client.
+- `QueryErrorResetBoundary`, `useQueryErrorResetBoundary`: the retry half of
+  `Errored`.
 
 Everything `@tanstack/query-core` exports is re-exported (`QueryClient`,
 `focusManager`, `onlineManager`, `hydrate`, `dehydrate`, `skipToken`,
@@ -265,8 +313,6 @@ version rather than two.
 The filters `useIsFetching`, `useIsMutating` and `useMutationState` take may be
 an object or a function; a function is tracked.
 
-## Outside a provider
-
 Every hook takes an optional client as its last argument, which is what makes a
 query usable in a test or in a route loader that has the client in hand and no
 component tree to read it through.
@@ -275,6 +321,17 @@ component tree to read it through.
 const users = useQuery(() => ({ queryKey: ["users"], queryFn: fetchUsers }), client);
 ```
 
-This package used to live inside `@barqjs/extra`, alongside hook-shaped wrappers
-that were a second copy of what `@barqjs/primitives` owns. Those are gone; the
-adapter is here.
+The option and result types, and every option and method of the client, are
+TanStack's: see the [TanStack Query reference](https://tanstack.com/query/latest/docs/reference/QueryClient).
+
+## Compared with `@tanstack/solid-query`
+
+- The hook names are the same, and options are an accessor in both. There are
+  no `createQuery`-style aliases.
+- The surface is React Query's, which is wider than Solid's: the suspense
+  hooks, the prefetch hooks, `HydrationBoundary` and `QueryErrorResetBoundary`
+  have no Solid counterpart.
+- Suspense parks Solid 2.0's `Loading` boundary from `@barqjs/core`, and errors
+  reach `Errored`. There is no `Suspense` or `ErrorBoundary`.
+- Server rendering and hydration go through barq's seed channel and need no
+  dehydrate step.

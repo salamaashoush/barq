@@ -1,7 +1,9 @@
 # @barqjs/form
 
-TanStack Form for barq. A thin adapter over `@tanstack/form-core`: the core owns the
-form state, and barq signals carry the notifications that re-render what read it.
+[TanStack Form](https://tanstack.com/form) for barq. A thin adapter over
+`@tanstack/form-core`: the core owns the form state, and barq signals carry the
+notifications that re-render what read it. The API follows `@tanstack/solid-form`,
+with the differences listed below.
 
 ## Install
 
@@ -225,6 +227,9 @@ function Profile() {
 - Everything from `@tanstack/form-core`: `formOptions`, `mergeForm`, `FormApi`,
   `FieldApi`, `revalidateLogic`, the Standard Schema helpers, and the types.
 
+Every form and field option is TanStack's: see the
+[TanStack Form documentation](https://tanstack.com/form/latest/docs/overview).
+
 ## Differences from `@tanstack/solid-form`
 
 - Props are Cells and children are Blocks, as everywhere in barq. A component passed to
@@ -249,7 +254,8 @@ function Profile() {
 - A field group's `Subscribe` hands its children an accessor, like `form.Subscribe`.
 - The extended types are named for barq: `BarqFormApi`, `BarqFormExtendedApi`,
   `AppFieldExtendedBarqFormApi`, `AppFieldExtendedBarqFieldGroupApi`.
-- Array rows use `<For keyed={false}>` where Solid uses `<Index>`.
+- Array rows use `<For keyed={false}>`, Solid 2.0's replacement for the `<Index>`
+  that `@tanstack/solid-form`'s Solid 1 examples use.
 
 ## Not included
 

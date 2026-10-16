@@ -1,13 +1,17 @@
 # @barqjs/virtual
 
 [TanStack Virtual](https://tanstack.com/virtual) for barq, over `@tanstack/virtual-core`.
+The API follows `@tanstack/solid-virtual`, with the differences listed below.
+
+## Install
 
 ```bash
 bun add @barqjs/virtual
 ```
 
-`@tanstack/virtual-core` is a dependency of this package and is re-exported from
-it, so one import covers the adapter and the core.
+`@barqjs/core` is a peer dependency. `@tanstack/virtual-core` is a dependency of
+this package and is re-exported from it, so one import covers the adapter and
+the core.
 
 ## Example
 
@@ -77,9 +81,10 @@ Three things in it are barq, not TanStack:
   re-applies the options when it changes. A plain object works too, and so does
   an object of getters.
 - `For` takes a key function, `keyed={(item) => item.key}`, which hands the row
-  an accessor. `item().start` is then a tracked read and a measurement moves the
-  rows already rendered. With the default by-item `For`, the compiler applies
-  `item.start` once and the rows never move.
+  an accessor. `item().start` is then a tracked read, and a measurement moves
+  the rows already rendered. The items are a store reconciled by key, so a
+  by-item `For` reading `item.start` keeps its rows and moves them too, but the
+  compiler cannot see where the items come from and reports `BARQ004` for it.
 - `ref={virtualizer.measureElement}` is enough for dynamic sizes. A barq ref
   runs before its element is in the document, so the adapter measures on the
   next microtask.
@@ -125,13 +130,11 @@ passes everything else straight through.
   range or `isScrolling` changes, so a mirror of them would be stale between
   notifications.
 
-`isScrolling` and `range` are fields, and the compiler applies a member read on
-a local once. Read them through an accessor to render them:
+`isScrolling` and `range` are fields. The compiler wraps a member read in JSX,
+so they render reactively as they are written:
 
 ```tsx
-const scrolling = () => virtualizer.isScrolling;
-
-<div class={scrolling() ? "list scrolling" : "list"} />;
+<div class={virtualizer.isScrolling ? "list scrolling" : "list"} />
 ```
 
 ## Server rendering

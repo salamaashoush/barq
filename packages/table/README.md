@@ -1,7 +1,8 @@
 # @barqjs/table
 
-TanStack Table for barq: `createTable`, `FlexRender` and `createTableHook` over
-`@tanstack/table-core` 9.
+[TanStack Table](https://tanstack.com/table) for barq: `createTable`, `FlexRender`
+and `createTableHook` over `@tanstack/table-core` 9. The API follows
+`@tanstack/solid-table`, with the differences listed below.
 
 Table state, row models and column APIs are tracked reads. Call one inside JSX,
 `createMemo` or an effect and that computation follows the slice it read: a
@@ -184,6 +185,9 @@ When `data` is replaced wholesale, key by id to keep the rows across it:
 - Sub-entries, as in the Solid adapter: `@barqjs/table/static-functions`,
   `@barqjs/table/flex-render`, `@barqjs/table/experimental-worker-plugin`.
 
+Every table option, feature and row model is TanStack's: see the
+[TanStack Table documentation](https://tanstack.com/table/latest).
+
 ## Templates
 
 A template function is called once per cell, untracked, like a component body.
@@ -198,18 +202,16 @@ const columns: Array<ColumnDef<Features, Person>> = [
 
 ## Reading state in JSX
 
-The barq compiler makes a JSX expression reactive when it contains a call. Table
-APIs are calls, so `{table.getPageCount()}` and `{column.getIsSorted()}` update.
-A property chain with no call is evaluated once, which catches the two getters
-table-core exposes:
+The barq compiler wraps a JSX expression that contains a call or a member read,
+so table APIs and the state getters all update where they are rendered:
 
 ```tsx
-<span>{table.atoms.pagination.get().pageIndex}</span>   // updates
-<span>{table.store.state.pagination.pageIndex}</span>   // evaluated once
+<span>{table.getPageCount()}</span>
+<span>{table.atoms.pagination.get().pageIndex}</span>
+<span>{table.store.state.pagination.pageIndex}</span>
 ```
 
-Outside JSX both are tracked reads. An array built inline for `each` is also a
-value evaluated once, so wrap it:
+An array literal built inline for `each` is a value evaluated once, so wrap it:
 `<For each={() => [...column.getFacetedUniqueValues().entries()]}>`.
 
 ## Writes and controlled state
