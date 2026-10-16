@@ -25,6 +25,7 @@ import {
   applyResponseDraft,
   createResponseDraft,
   draftedStatus,
+  invalidatedFrames,
   setRequestMiddlewareContext,
 } from "./context.ts";
 import {
@@ -56,8 +57,14 @@ import {
   takeSendContext,
 } from "./index.ts";
 import { serverTiming } from "./timing.ts";
-import { type ServerFrame, frameResponse, serverFrame } from "./frames-server.ts";
-import { installFrames, isFrame } from "./frames.ts";
+import {
+  type ServerFrame,
+  flightResponse,
+  frameResponse,
+  mountedFrames,
+  serverFrame,
+} from "./frames-server.ts";
+import { FRAMES_HEADER, installFrames, isFrame } from "./frames.ts";
 
 installFrames(serverFrame as never);
 
@@ -439,6 +446,39 @@ export async function handleServerFn(
         // build, so `setResponseStatus(201)` decides it — where a response the
         // handler RETURNED has already decided for itself.
         const answer = draftedStatus(draft, 200);
+        // SINGLE FLIGHT: a mutation that said which frames it changed answers
+        // with them, rendered again for the arguments the page has them
+        // mounted with, beside its value. Each is asked for through its own
+        // function, so its validator and its middleware decide as for a call.
+        const mountedHere = mountedFrames(request.headers.get(FRAMES_HEADER));
+        const changed = invalidatedFrames();
+        if (mountedHere.length > 0 && changed.size > 0) {
+          const flight = await flightResponse(
+            Object.keys(sendContext).length === 0 ? result : { result, context: sendContext },
+            mountedHere,
+            changed,
+            async (frame) => {
+              const asked = REGISTRY.get(frame.id);
+              if (asked === undefined || options?.reachable?.(frame.id) === false) return undefined;
+              try {
+                return await (asked as (o: unknown) => Promise<unknown>)({
+                  data: decodeWire(frame.args),
+                });
+              } catch (error) {
+                console.error(
+                  `[barq] The frame of ${JSON.stringify(frame.id)} could not be rendered again for the mutation ${JSON.stringify(id)}, so its answer leaves it out. The error:`,
+                  error,
+                );
+                return undefined;
+              }
+            },
+          );
+          if (Object.keys(sendContext).length > 0) flight.headers.set(RPC_CONTEXT, "1");
+          return applyResponseDraft(
+            new Response(flight.body, { ...answer, headers: flight.headers }),
+            draft,
+          );
+        }
         // The ordinary shape is the RESULT and nothing around it. A chain that
         // sent something back gets the envelope instead, flagged by a header, so
         // a call that sends nothing pays neither the wrapper nor a second parse.

@@ -22,8 +22,8 @@
  */
 
 import { decodeWire, encodeWire } from "@barqjs/server/codec";
-import { applyFrameResponse } from "./frames-client.ts";
-import { RPC_FRAME } from "./frames.ts";
+import { applyFlight, applyFrameResponse, mountedFramesHeader } from "./frames-client.ts";
+import { FRAMES_HEADER, RPC_FLIGHT, RPC_FRAME } from "./frames.ts";
 import {
   type Middleware,
   NOT_FOUND,
@@ -515,8 +515,17 @@ export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
     // boundary, and setting it by hand produces a body nothing can parse. None
     // for a GET either, which has no body to describe.
     let headers: HeadersInit | undefined = method === "GET" ? CALLER : form ? undefined : JSON_BODY;
+    // A mutation names the frames the page has mounted, so its answer can
+    // carry the ones it changed.
+    const mountedFrames = method === "POST" ? mountedFramesHeader() : null;
+    if (mountedFrames !== null) {
+      const withFrames = new Headers(headers);
+      withFrames.set(FRAMES_HEADER, mountedFrames);
+      headers = withFrames;
+    }
     if (chainHeaders !== undefined || asked?.headers !== undefined) {
       const merged = new Headers(chainHeaders);
+      if (mountedFrames !== null) merged.set(FRAMES_HEADER, mountedFrames);
       if (asked?.headers !== undefined) {
         for (const [name, value] of new Headers(asked.headers)) merged.set(name, value);
       }
@@ -560,6 +569,13 @@ export function clientRpc<In, Out, Method extends ServerFnMethod = "POST">(
     if (control === RPC_THROWN) throw response;
     if (control === RPC_STREAM) return received(response, id, context) as Out;
     if (control === RPC_FRAME) return (await applyFrameResponse(response)) as Out;
+    if (control === RPC_FLIGHT) {
+      const flown = await applyFlight(response);
+      if (response.headers.get(RPC_CONTEXT) === null) return flown as Out;
+      const envelope = flown as RpcEnvelope;
+      if (context !== undefined) Object.assign(context, envelope.context);
+      return envelope.result as Out;
+    }
     if (control !== null) throw fromControl((await response.json()) as RpcControl);
     if (!response.ok) {
       throw new ServerFnError(id, response.status, response, await failedAnswer(response));

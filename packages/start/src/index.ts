@@ -37,6 +37,7 @@ export {
   getResponseHeader,
   getResponseHeaders,
   getResponseStatus,
+  invalidateFrames,
   peekRequest,
   peekResponseDraft,
   removeResponseHeader,

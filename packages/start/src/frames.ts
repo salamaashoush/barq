@@ -87,6 +87,23 @@ export const PAYLOAD_TYPE = "application/barq-frame";
 /** The `x-barq-rpc` value a frame response carries. */
 export const RPC_FRAME = "frame";
 
+/**
+ * The `x-barq-rpc` value of a mutation's answer that carries the regions it
+ * changed beside its value: single flight, one round trip for both.
+ */
+export const RPC_FLIGHT = "flight";
+
+/**
+ * The request header a page sends with a mutation: the frames it has mounted,
+ * as `[{ id, args }]`, so the answer can carry the ones the mutation changed.
+ * Bounded, as a header is: a page with more mounted frames names the first ones.
+ */
+export const FRAMES_HEADER = "x-barq-frames";
+export const FRAMES_BUDGET = 32;
+
+/** The `type` of the script a single-flight answer carries its value in. */
+export const FLIGHT_TYPE = "application/barq-flight";
+
 /** Dispatched on `document` once a frame update has been applied to the page. */
 export const FRAME_APPLIED_EVENT = "barq:frame-applied";
 
@@ -121,6 +138,12 @@ export interface SlotRecord {
 /** What a frame's script carries. */
 export interface FramePayload {
   readonly v: number;
+  /**
+   * What the call was given, wire-encoded: what the page sends to ask for the
+   * region again, live or after a mutation. It is the call's own input, which
+   * the page could have sent itself.
+   */
+  readonly args?: unknown;
   readonly slots: readonly SlotRecord[];
   /** What the region declared for the head, and the assets it needs. */
   readonly head: readonly HeadTag[];

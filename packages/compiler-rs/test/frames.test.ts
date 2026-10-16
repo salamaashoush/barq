@@ -10,7 +10,7 @@
 
 import { afterEach, expect, test } from "bun:test";
 
-import { compileText, host } from "./hydration.ts";
+import { census, compileText, host, reuse } from "./hydration.ts";
 
 const SOURCE = `
 import { createSignal, dynamic, useHead } from "@barqjs/core"
@@ -156,7 +156,14 @@ test("the browser claims the frame, fills its slots, and an update morphs it in 
   ) => Node;
 
   const container = host(html);
-  const served = { article: container.querySelector("article"), h1: container.querySelector("h1") };
+  const served = {
+    article: container.querySelector("article"),
+    h1: container.querySelector("h1"),
+    comment: container.querySelector('[data-cid="1"]'),
+    region: container.querySelector("barq-region"),
+    share: container.querySelector(".share"),
+  };
+  const before = census(container);
   core.resetChildIds();
   const dispose = core.hydrate(() => dom.default({ view: () => view }) as never, container);
   core.flush();
@@ -165,15 +172,19 @@ test("the browser claims the frame, fills its slots, and an update morphs it in 
   expect(core.hydrate.report.mismatches).toEqual([]);
   expect(container.querySelector("article")).toBe(served.article);
   expect(container.querySelector("h1")).toBe(served.h1);
+  // The slots' content is claimed like any other hole's: every node the server
+  // wrote, the page's own components included, is still in the tree.
+  expect(reuse(before, container)).toMatchObject({ lost: 0, percent: 100 });
+  expect(container.querySelector('[data-cid="1"]')).toBe(served.comment);
+  expect(container.querySelector("barq-region")).toBe(served.region);
+  expect(container.querySelector(".share")).toBe(served.share);
   const buttons = (): HTMLButtonElement[] => [...container.querySelectorAll("button")];
   expect(buttons().map((button) => button.textContent)).toEqual(["open", "open"]);
   buttons()[1]!.click();
   core.flush();
   expect(buttons()[1]!.textContent).toBe("closed");
   const second = container.querySelector('[data-cid="2"]');
-  // A slot's content is the browser's from here on, built when the page was claimed.
-  const share = container.querySelector(".share");
-  expect(share).not.toBeNull();
+  const share = served.share;
 
   ssr.story.title = "second";
   ssr.story.comments = [

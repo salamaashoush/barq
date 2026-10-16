@@ -94,6 +94,8 @@ export interface RequestContext {
    * another caller's response.
    */
   sendContext?: Record<string, unknown>;
+  /** The server functions whose frames this request's mutation changed. */
+  invalidatedFrames?: Set<string>;
   /**
    * The sessions this request has opened, by cookie name.
    *
@@ -267,6 +269,28 @@ export function offerSendContext(sendContext: Record<string, unknown>): void {
   const found = SHARED.storage?.getStore();
   if (found !== undefined) found.sendContext = sendContext;
 }
+
+/**
+ * Say that this mutation changed what these server functions' frames show, so
+ * its answer carries those regions, rendered again, beside its value: single
+ * flight, one round trip. A frame the page has not mounted is not rendered.
+ * Outside a request it does nothing, as there is no answer to carry them.
+ */
+export function invalidateFrames(
+  ...fns: readonly { readonly meta: { readonly id: string } }[]
+): void {
+  const found = SHARED.storage?.getStore();
+  if (found === undefined) return;
+  found.invalidatedFrames ??= new Set();
+  for (const fn of fns) found.invalidatedFrames.add(fn.meta.id);
+}
+
+/** The server functions `invalidateFrames` named in this request, or none. */
+export function invalidatedFrames(): ReadonlySet<string> {
+  return SHARED.storage?.getStore()?.invalidatedFrames ?? EMPTY_SET;
+}
+
+const EMPTY_SET: ReadonlySet<string> = new Set();
 
 /** Take the pending `sendContext`, leaving nothing behind for the next call. */
 export function takeSendContext(): Record<string, unknown> {

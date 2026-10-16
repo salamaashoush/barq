@@ -19,18 +19,21 @@ import {
   element,
   getOwner,
   insert,
+  isHydrating,
   onCleanup,
   runWithOwner,
   untrack,
   useHead,
 } from "@barqjs/core";
-import { withoutClaim } from "@barqjs/core/internal";
+import { type Range, withRange, withoutClaim } from "@barqjs/core/internal";
 import { type AnySerializationAdapter, decodeWire } from "@barqjs/server/codec";
 
 import {
   FRAME,
   FRAME_APPLIED_EVENT,
   FRAME_TAG,
+  FLIGHT_TYPE,
+  FRAMES_BUDGET,
   FRAME_VERSION,
   type FramePayload,
   type FrameRef,
@@ -63,6 +66,8 @@ interface Occurrence {
 /** One place a frame is mounted. */
 interface Mount {
   readonly host: Element;
+  /** The page is being claimed over this mount's server markup, slots included. */
+  claiming: boolean;
   readonly owner: Owner | null;
   readonly props: Record<string, unknown>;
   readonly occurrences: Map<Comment, Occurrence>;
@@ -180,8 +185,12 @@ function regionElement(key: string, markup: string): Element {
 /**
  * Fill one slot: the page's `children` where the server placed them, or the
  * page's function for a named slot called with the occurrence's arguments.
- * The server's own content for the slot, written for the first paint, goes;
- * a nested region it carries is kept and handed to the fill as its children.
+ *
+ * While the page is being claimed, the server's content for the slot is
+ * CLAIMED: the fill runs over a cursor on the slot's range, as the content of
+ * any other hole does, and takes the nodes the server wrote for it. Otherwise
+ * the slot is empty and the fill builds into it. A nested region the server
+ * wrote is handed to the fill as its children either way.
  */
 function fill(site: Mount, start: Comment, record: SlotRecord): Occurrence | null {
   const end = closeOf(start);
@@ -189,6 +198,7 @@ function fill(site: Mount, start: Comment, record: SlotRecord): Occurrence | nul
   const parent = end.parentNode;
   if (parent === null) return null;
   const served = between(start, end);
+  const claiming = site.claiming && served.length > 0;
   let region: Element | null = null;
   if (record.hasRegion === true) {
     for (const node of served) {
@@ -203,10 +213,10 @@ function fill(site: Mount, start: Comment, record: SlotRecord): Occurrence | nul
         break;
       }
     }
-    region?.remove();
+    if (!claiming) region?.remove();
     region ??= regionElement(String(record.at), record.region ?? "");
   }
-  for (const node of served) node.parentNode?.removeChild(node);
+  if (!claiming) for (const node of served) node.parentNode?.removeChild(node);
   const [args, setArgs] = createSignal<Record<string, unknown>>(
     record.args === undefined ? {} : decodeWire(record.args),
     { ownedWrite: true },
@@ -224,14 +234,28 @@ function fill(site: Mount, start: Comment, record: SlotRecord): Occurrence | nul
     }
     return untrack(() => (fn as (props: Record<string, unknown>) => unknown)(props));
   };
-  const dispose = withoutClaim(() =>
-    runWithOwner(site.owner, () =>
-      createRoot((release) => {
-        insert(parent, content() as never, end);
-        return release;
-      }),
-    ),
-  );
+  const range: Range = { open: start, close: end, parent, nodes: served };
+  const dispose = claiming
+    ? runWithOwner(site.owner, () =>
+        createRoot((release) => {
+          withRange(range, () => {
+            const value = content();
+            // A Block is called with the scope it builds under, as `insert` calls one.
+            return typeof value === "function"
+              ? (value as (scope: unknown) => unknown)(getOwner())
+              : value;
+          });
+          return release;
+        }),
+      )
+    : withoutClaim(() =>
+        runWithOwner(site.owner, () =>
+          createRoot((release) => {
+            insert(parent, content() as never, end);
+            return release;
+          }),
+        ),
+      );
   return { key: record.key, name: record.name, start, end, region, setArgs, dispose };
 }
 
@@ -274,8 +298,15 @@ function mount(state: FrameState, props: Record<string, unknown>): Node {
   state.payload ??= payloadOf(host);
   const payload = state.payload ?? { v: FRAME_VERSION, slots: [], head: [] };
   if (untrack(state.head).length === 0 && payload.head.length > 0) state.setHead(payload.head);
-  const placed: Mount = { host, owner, props, occurrences: new Map() };
+  const placed: Mount = {
+    host,
+    owner,
+    props,
+    occurrences: new Map(),
+    claiming: adopted && isHydrating(),
+  };
   fillAll(placed, payload);
+  placed.claiming = false;
   state.mounts.add(placed);
   useHead(() => state.head());
   onCleanup(() => {
@@ -507,10 +538,14 @@ async function loadStylesheets(head: readonly HeadTag[]): Promise<void> {
 export async function applyFrameResponse(response: Response): Promise<FrameComponent> {
   const template = document.createElement("template");
   template.innerHTML = await response.text();
-  const host = template.content.firstElementChild;
+  return applyFrameMarkup(template.content.firstElementChild);
+}
+
+/** One frame's markup, applied to every place its address is mounted. */
+async function applyFrameMarkup(host: Element | null): Promise<FrameComponent> {
   const address = host?.getAttribute("data-frame") ?? null;
-  const payload = host === null || host === undefined ? null : payloadOf(host);
-  if (host === null || host === undefined || address === null || payload === null) {
+  const payload = host === null ? null : payloadOf(host);
+  if (host === null || address === null || payload === null) {
     throw new Error(
       "[barq] A server function answered with a frame whose markup has no `barq-frame` element and payload, so there is nothing to apply. " +
         "The server and this page were built from different versions: reload the page.",
@@ -533,6 +568,46 @@ export async function applyFrameResponse(response: Response): Promise<FrameCompo
   for (const placed of state.mounts) update(placed, payload, markup);
   document.dispatchEvent(new CustomEvent(FRAME_APPLIED_EVENT, { detail: { address } }));
   return state.component;
+}
+
+/**
+ * What a mutation sends so its answer can carry the regions it changed: every
+ * mounted frame's function and arguments, up to the budget, or `null` with
+ * none mounted.
+ */
+export function mountedFramesHeader(): string | null {
+  const out: { id: string; args: unknown }[] = [];
+  for (const state of FRAMES.values()) {
+    if (state.mounts.size === 0 || state.payload?.args === undefined) continue;
+    out.push({ id: state.ref.id, args: state.payload.args });
+    if (out.length === FRAMES_BUDGET) break;
+  }
+  return out.length === 0 ? null : JSON.stringify(out);
+}
+
+/**
+ * A mutation's single-flight answer: each region it carries applied where it
+ * is mounted, then the value, which is what the caller is handed.
+ */
+export async function applyFlight(response: Response): Promise<unknown> {
+  const template = document.createElement("template");
+  template.innerHTML = await response.text();
+  const script = template.content.firstElementChild;
+  if (
+    script === null ||
+    script.localName !== "script" ||
+    script.getAttribute("type") !== FLIGHT_TYPE
+  ) {
+    throw new Error(
+      "[barq] A server function answered with a single flight whose value script is missing, so there is no value to hand the caller. " +
+        "The server and this page were built from different versions: reload the page.",
+    );
+  }
+  const value = decodeWire(JSON.parse(script.textContent ?? "null"));
+  for (const host of template.content.children) {
+    if (host.localName === FRAME_TAG) await applyFrameMarkup(host);
+  }
+  return value;
 }
 
 /** Forget every frame, for a test that renders more than one page. */
