@@ -20,7 +20,7 @@ How each lane is taken:
   framework after 3 warmups, GC between samples, upstream's CPU throttling.
 - barq and Solid 2.0 run one source (`src/solid2/apps/jfb.tsx`); Solid 1.9
   runs its official entry, which has `createSelector`.
-- SSR: a 100-card storefront (`apps/page.jsx`, `apps/page-barq.tsx` in barq's
+- SSR: a 100-card storefront (`src/solid2/apps/page.jsx`, `src/solid2/apps/page-barq.tsx` in barq's
   prop convention), 15 interleaved rounds of 200 renders after 500 warmups, GC
   before each round, renders per second. Output text is checked equal first.
 - Hydration: the same page served hydratable, 20 loads each; "at load" is the
