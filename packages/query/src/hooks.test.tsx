@@ -4,8 +4,8 @@
  * browser would produce.
  */
 
-import { afterEach, describe, expect, jest, test } from "bun:test";
-import { Errored, Loading, createSignal, flush, render } from "@barqjs/core";
+import { afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
+import { Errored, Loading, createSignal, render } from "@barqjs/core";
 import {
   type InfiniteData,
   QueryClient,
@@ -30,20 +30,9 @@ import {
   useSuspenseQueries,
   useSuspenseQuery,
 } from "./index.ts";
+import { delay, drain, elapse, fakeClock, realClock } from "./test-helpers.ts";
 
-const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
-
-// `setImmediate` is the one timer fake timers leave real, and it fires once the
-// microtask queue is empty.
-async function drain(): Promise<void> {
-  await new Promise<void>((resolve) => setImmediate(resolve));
-  flush();
-}
-
-async function settled(ms = 10): Promise<void> {
-  await tick(ms);
-  flush();
-}
+const settled = (ms = 10): Promise<void> => elapse(ms);
 
 function client(): QueryClient {
   return new QueryClient({
@@ -57,10 +46,13 @@ function host(): HTMLElement {
   return element;
 }
 
-afterEach(() => {
+beforeEach(fakeClock);
+
+afterEach(async () => {
   document.body.innerHTML = "";
   focusManager.setFocused(undefined);
   onlineManager.setOnline(true);
+  await realClock();
 });
 
 describe("useInfiniteQuery", () => {
@@ -430,7 +422,7 @@ describe("query options", () => {
       const query = useQuery(() => ({
         queryKey: ["page", page()],
         queryFn: async () => {
-          await tick(15);
+          await delay(15);
           return `page-${page()}`;
         },
         placeholderData: keepPreviousData,
@@ -470,56 +462,46 @@ describe("query options", () => {
   });
 
   test("refetchInterval polls", async () => {
-    // happy-dom folds every zero-delay timeout into one native timer. One an
-    // earlier test left pending on the real clock would collect the notify
-    // manager's timeouts too, where the fake clock never reaches them, so it
-    // is let fire first.
-    await tick(0);
-    jest.useFakeTimers();
-    try {
-      const queryClient = client();
-      let fetches = 0;
+    const queryClient = client();
+    let fetches = 0;
 
-      function Polled() {
-        const query = useQuery(() => ({
-          queryKey: ["polled"],
-          queryFn: async () => ++fetches,
-          refetchInterval: 15,
-        }));
-        return <p>{() => String(query.data)}</p>;
-      }
-
-      const element = host();
-      const dispose = render(
-        () => (
-          <QueryClientProvider client={queryClient}>
-            <Polled />
-          </QueryClientProvider>
-        ),
-        element,
-      );
-      await drain();
-      expect(fetches).toBe(1);
-      jest.advanceTimersByTime(14);
-      await drain();
-      expect(fetches, "a millisecond before the interval").toBe(1);
-      jest.advanceTimersByTime(1);
-      await drain();
-      expect(fetches).toBe(2);
-      jest.advanceTimersByTime(15);
-      await drain();
-      expect(fetches).toBe(3);
-      jest.advanceTimersByTime(0);
-      await drain();
-      expect(element.textContent).toBe("3");
-
-      dispose();
-      jest.advanceTimersByTime(50);
-      await drain();
-      expect(fetches).toBe(3);
-    } finally {
-      jest.useRealTimers();
+    function Polled() {
+      const query = useQuery(() => ({
+        queryKey: ["polled"],
+        queryFn: async () => ++fetches,
+        refetchInterval: 15,
+      }));
+      return <p>{() => String(query.data)}</p>;
     }
+
+    const element = host();
+    const dispose = render(
+      () => (
+        <QueryClientProvider client={queryClient}>
+          <Polled />
+        </QueryClientProvider>
+      ),
+      element,
+    );
+    await drain();
+    expect(fetches).toBe(1);
+    jest.advanceTimersByTime(14);
+    await drain();
+    expect(fetches, "a millisecond before the interval").toBe(1);
+    jest.advanceTimersByTime(1);
+    await drain();
+    expect(fetches).toBe(2);
+    jest.advanceTimersByTime(15);
+    await drain();
+    expect(fetches).toBe(3);
+    jest.advanceTimersByTime(0);
+    await drain();
+    expect(element.textContent).toBe("3");
+
+    dispose();
+    jest.advanceTimersByTime(50);
+    await drain();
+    expect(fetches).toBe(3);
   });
 
   test("a stale query refetches when the window regains focus, and when the network returns", async () => {

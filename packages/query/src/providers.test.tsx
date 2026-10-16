@@ -3,8 +3,8 @@
  * restored from storage, and the devtools panel.
  */
 
-import { afterEach, describe, expect, mock, test } from "bun:test";
-import { createSignal, flush, render } from "@barqjs/core";
+import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
+import { createSignal, render } from "@barqjs/core";
 import type { PersistedClient, Persister } from "@tanstack/query-persist-client-core";
 
 import { BarqQueryDevtools } from "./devtools.ts";
@@ -18,13 +18,9 @@ import {
   useQuery,
 } from "./index.ts";
 import { PersistQueryClientProvider } from "./persist.ts";
+import { delay, elapse, fakeClock, realClock } from "./test-helpers.ts";
 
-const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
-
-async function settled(ms = 10): Promise<void> {
-  await tick(ms);
-  flush();
-}
+const settled = (ms = 10): Promise<void> => elapse(ms);
 
 function host(): HTMLElement {
   const element = document.createElement("div");
@@ -40,8 +36,11 @@ async function dehydratedWith(key: string, value: string): Promise<DehydratedSta
   return state;
 }
 
-afterEach(() => {
+beforeEach(fakeClock);
+
+afterEach(async () => {
   document.body.innerHTML = "";
+  await realClock();
 });
 
 describe("HydrationBoundary", () => {
@@ -109,7 +108,7 @@ describe("HydrationBoundary", () => {
     await settled();
     expect(element.textContent).toBe("first");
 
-    await tick(5);
+    await elapse(5);
     setState(await dehydratedWith("feed", "second"));
     await settled();
     expect(element.textContent).toBe("second");
@@ -132,7 +131,7 @@ describe("PersistQueryClientProvider", () => {
         stored.writes++;
       },
       restoreClient: async () => {
-        await tick(20);
+        await delay(20);
         return stored.client;
       },
       removeClient: async () => {

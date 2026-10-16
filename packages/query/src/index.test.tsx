@@ -4,7 +4,7 @@
  * rather than whichever was set last, and two clients can coexist on one page.
  */
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   type JSXElement,
   Loading,
@@ -25,8 +25,7 @@ import {
   useQueryClient,
   useSuspenseQuery,
 } from "./index.ts";
-
-const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+import { delay, elapse, fakeClock, realClock } from "./test-helpers.ts";
 
 function client(): QueryClient {
   return new QueryClient({
@@ -75,10 +74,13 @@ export function Adder(): JSXElement {
   );
 }
 
-afterEach(() => {
+beforeEach(fakeClock);
+
+afterEach(async () => {
   seen.length = 0;
   results.length = 0;
   document.body.innerHTML = "";
+  await realClock();
 });
 
 describe("the client is reached through the scope chain", () => {
@@ -155,7 +157,7 @@ describe("the hooks", () => {
     );
 
     await flush();
-    await tick(10);
+    await elapse(10);
     await flush();
     expect(host.textContent).toContain("alice,bob");
     dispose();
@@ -194,7 +196,7 @@ describe("the hooks", () => {
     expect(host.textContent).toContain("idle");
 
     host.querySelector("button")?.click();
-    await tick(10);
+    await elapse(10);
     await flush();
 
     expect(results).toEqual(["zoe"]);
@@ -217,7 +219,7 @@ describe("ownership", () => {
     );
 
     await flush();
-    await tick(10);
+    await elapse(10);
     await flush();
     expect(shared.getQueryCache().find({ queryKey: ["users"] })?.observers.length).toBe(1);
 
@@ -249,7 +251,7 @@ describe("results are fine-grained", () => {
         // a flag raised and lowered inside one tick publishes once, and the
         // reader this test is about would never see it move.
         queryFn: async () => {
-          await tick(20);
+          await delay(20);
           return "same";
         },
       }));
@@ -281,7 +283,7 @@ describe("results are fine-grained", () => {
       host,
     );
 
-    await tick(60);
+    await elapse(60);
     flush();
     const afterFirst = dataRuns;
     expect(afterFirst).toBeGreaterThan(0);
@@ -292,12 +294,11 @@ describe("results are fine-grained", () => {
     // Mid-flight, and flushed: a flag raised and lowered inside ONE tick
     // publishes once and moves nothing, so the control has to observe the
     // fetch while it is actually in flight.
-    await tick(5);
+    await elapse(5);
     flush();
     const whileFetching = fetchingRuns;
+    await elapse(60);
     await refetch;
-    await tick(60);
-    flush();
 
     expect(dataRuns, "a refetch returning the same data woke the data reader").toBe(afterFirst);
     expect(whileFetching, "isFetching never rose").toBeGreaterThan(afterFirst);
@@ -336,13 +337,13 @@ describe("results are fine-grained", () => {
       host,
     );
 
-    await tick(10);
+    await elapse(10);
     flush();
     const afterFirst = dataRuns;
 
     value = "second";
     await queryClient.refetchQueries({ queryKey: ["moving"] });
-    await tick(10);
+    await elapse(10);
     flush();
 
     expect(dataRuns).toBeGreaterThan(afterFirst);
@@ -386,7 +387,7 @@ describe("useQueries", () => {
       host,
     );
 
-    await tick(20);
+    await elapse(20);
     flush();
     expect(seenLength).toBe(3);
     expect(values.toSorted()).toEqual(["A", "B", "C"]);
@@ -462,12 +463,12 @@ describe("useSuspenseQuery", () => {
       host,
     );
 
-    await tick(10);
+    await elapse(10);
     flush();
     expect(host.textContent, "the boundary did not park").toContain("waiting");
 
     release("arrived");
-    await tick(30);
+    await elapse(30);
     flush();
     expect(host.textContent).toContain("arrived");
     dispose();
@@ -495,7 +496,7 @@ describe("useSuspenseQuery", () => {
       host,
     );
 
-    await tick(10);
+    await elapse(10);
     flush();
     expect(host.textContent).toContain("pending");
     dispose();

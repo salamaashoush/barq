@@ -4,7 +4,7 @@
  * in a server process, and hydrated here.
  */
 
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { flush, hydrate, resetChildIds } from "@barqjs/core";
 import {
   RouterProvider,
@@ -34,8 +34,7 @@ import {
   serve,
   unseeded,
 } from "./ssr-harness.ts";
-
-const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+import { elapse, fakeClock, realClock } from "./test-helpers.ts";
 
 const ROUTES = `
 import { Loading } from "@barqjs/core"
@@ -100,12 +99,15 @@ interface Handled {
 const body = (html: string): string => html.slice(html.indexOf("[APP[") + 5, html.indexOf("]APP]"));
 
 let cleanup: (() => void) | undefined;
-afterEach(() => {
+beforeEach(fakeClock);
+
+afterEach(async () => {
   cleanup?.();
   cleanup = undefined;
   unseeded();
   (globalThis as Record<string, unknown>).__BARQ_ROUTER__ = undefined;
   document.body.innerHTML = "";
+  await realClock();
 });
 
 test("a loader's ensureQueryData crosses to the page, and each request has its own client", async () => {
@@ -147,7 +149,7 @@ test("a loader's ensureQueryData crosses to the page, and each request has its o
 
   expect(container.textContent).toBe("shell:salama-7|salama-7");
   expect(hydrate.report.recovered).toBe(false);
-  await tick(30);
+  await elapse(30);
   flush();
   expect(module.counts.fetches).toBe(0);
   expect(module.clients).toHaveLength(1);
@@ -214,13 +216,13 @@ test("a redirect a query fails with is followed", async () => {
 
   const offRedirect = observe("guarded", redirected("/login"));
   const offFailure = observe("broken", new Error("plain"));
-  await tick(10);
+  await elapse(10);
   expect(went).toEqual(["/login"]);
   expect(failures.map((error) => (error as Error).message)).toEqual(["plain"]);
 
   stop();
   const offLater = observe("guarded-later", redirected("/elsewhere"));
-  await tick(10);
+  await elapse(10);
   expect(went).toEqual(["/login"]);
   offRedirect();
   offFailure();
@@ -382,7 +384,7 @@ for (const mode of ["handler", "handler-streamed"] as const) {
 
     expect(container.textContent).toBe("shell:salama-7slow-7");
     expect(hydrate.report.recovered).toBe(false);
-    await tick(60);
+    await elapse(60);
     flush();
     expect(module.counts.fetches).toBe(0);
     expect(module.clients).toHaveLength(1);

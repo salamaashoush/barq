@@ -7,7 +7,7 @@
  * fetched to render a page, the browser does not fetch again to hydrate it.
  */
 
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, beforeEach, expect, test } from "bun:test";
 import { flush, hydrate, resetChildIds } from "@barqjs/core";
 
 import { QueryClient } from "./index.ts";
@@ -22,8 +22,7 @@ import {
   serve,
   unseeded,
 } from "./ssr-harness.ts";
-
-const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+import { elapse, fakeClock, realClock } from "./test-helpers.ts";
 
 const cachedAt = (client: QueryClient, key: readonly unknown[]): unknown =>
   client.getQueryData(key);
@@ -97,11 +96,14 @@ let compiled: Compiled | undefined;
 const fixture = (): Compiled => (compiled ??= compile(PAGE, "round-trip"));
 
 let cleanup: (() => void) | undefined;
-afterEach(() => {
+beforeEach(fakeClock);
+
+afterEach(async () => {
   cleanup?.();
   cleanup = undefined;
   unseeded();
   document.body.innerHTML = "";
+  await realClock();
 });
 
 async function hydrated(container: HTMLElement) {
@@ -143,15 +145,17 @@ test("a buffered page: the server waits, and hydration fetches nothing", async (
   expect(cachedAt(client, ["user", "salama"])).toEqual({ name: "salama" });
   expect(cachedAt(client, ["cached"])).toBe("from-a-loader");
 
-  await tick(60);
+  await elapse(60);
   flush();
   expect(module.counts.fetches).toBe(0);
   expect(container.textContent).toBe(SHOWN);
 
   // Seeded is not frozen: the observers are subscribed, and an invalidation
   // reaches the page.
-  await client.invalidateQueries({ queryKey: ["slow"] });
-  await tick(5);
+  const invalidated = client.invalidateQueries({ queryKey: ["slow"] });
+  await elapse(25);
+  await invalidated;
+  await elapse(5);
   flush();
   expect(module.counts.fetches).toBe(1);
 });
@@ -172,7 +176,7 @@ test("a streamed page: what settles after the shell is delivered later, and not 
   expect(container.textContent).toContain("slow-value");
 
   const { module, client } = await hydrated(container);
-  await tick(60);
+  await elapse(60);
   flush();
   expect(module.counts.fetches).toBe(0);
   expect(hydrate.report.recovered).toBe(false);
@@ -199,7 +203,7 @@ test("hydrating before the stream has finished waits for it instead of fetching"
   assemble(chunks.slice(0, settledFrom), container);
   expect(container.textContent).toContain("wait-parked");
   const { module, client } = await hydrated(container);
-  await tick(10);
+  await elapse(10);
   flush();
   expect(module.counts.fetches).toBe(0);
   expect(cachedAt(client, ["slow"])).toBeUndefined();
@@ -212,7 +216,7 @@ test("hydrating before the stream has finished waits for it instead of fetching"
     );
     runScripts(chunk);
   }
-  await tick(60);
+  await elapse(60);
   flush();
   expect(module.counts.fetches).toBe(0);
   expect(cachedAt(client, ["slow"])).toBe("slow-value");
