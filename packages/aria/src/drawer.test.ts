@@ -502,17 +502,21 @@ describe("what a drag reports", () => {
   test("onDrag hears how much of the drawer is gone, and onRelease whether it stayed", () => {
     const dragged: number[] = [];
     const released: boolean[] = [];
+    let now = 1000;
     const drag = drawerDrag({
+      now: () => now,
       onDrag: (progress) => dragged.push(progress),
       onRelease: (open) => released.push(open),
     });
     drag.start(at(0, 0), 400);
+    now += 1000;
     drag.move(at(0, 100));
     drag.end();
     expect(dragged).toEqual([0.25]);
     expect(released).toEqual([true]);
 
     drag.start(at(0, 0), 400);
+    now += 1000;
     drag.move(at(0, 300));
     drag.end();
     expect(released).toEqual([true, false]);
