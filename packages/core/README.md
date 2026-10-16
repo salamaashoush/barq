@@ -5,10 +5,10 @@ nodes that read a changed signal are touched.
 
 ```bash
 bun add @barqjs/core
-bun add -d @barqjs/compiler
+bun add -d @barqjs/vite
 ```
 
-`@barqjs/compiler` is not optional in practice. It is the Vite plugin that
+`@barqjs/vite` is not optional in practice. Its compiler
 lowers JSX to the runtime's own calls, and without it a `.tsx` file goes through
 whatever generic JSX transform is configured and gets different semantics: props
 arrive as plain values instead of Cells, and children are built eagerly instead

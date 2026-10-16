@@ -227,7 +227,7 @@ describe("a hydration mismatch says what was sent, why, and what happened", () =
       "Hydration mismatch (not-hydratable): the container holds markup and `hydrate` reused none of it",
     );
     expect(events[0]?.message).toContain(
-      "Set `hydratable: true` in the `@barqjs/compiler` options of both the server build and the browser build",
+      "Set `ssr: true` in `barq()` from `@barqjs/vite`, which compiles both the server build and the browser build hydratable",
     );
     dispose();
   });

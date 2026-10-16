@@ -1,7 +1,7 @@
 /**
  * `css`, `keyframes` and `globalCss`.
  *
- * With `@barqjs/compiler` in the build, none of these three functions runs:
+ * With the compiler in the build, none of these three functions runs:
  * the compiler resolves the tag by symbol, replaces the whole tagged template
  * with the class name it produced, and hands the CSS to the bundler. A block
  * used as `class={card}` on an intrinsic element is then folded into the

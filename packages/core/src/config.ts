@@ -1,7 +1,7 @@
 /**
  * The types a JSX call site writes against.
  *
- * There is one mode. `@barqjs/compiler` wraps a bare value in a thunk on the
+ * There is one mode. The compiler wraps a bare value in a thunk on the
  * way through, so `<Show when={count() > 5}>` and `<For each={items()}>` are
  * what a caller writes and what the emitted code hands the construct.
  *

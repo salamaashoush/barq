@@ -117,8 +117,8 @@ const CAUSES: Record<MismatchKind, string> = {
     "This usually means the `mount` target of a `<Portal>` differs between the server and the " +
     "browser.",
   "not-hydratable":
-    "Set `hydratable: true` in the `@barqjs/compiler` options of both the server build and the " +
-    "browser build, and deploy the two together.",
+    "Set `ssr: true` in `barq()` from `@barqjs/vite`, which compiles both the server build and the " +
+    "browser build hydratable, and deploy the two together.",
 };
 
 export function usualCauses(kind: MismatchKind): string {

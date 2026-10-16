@@ -6,7 +6,7 @@ all": what is left, what each remaining lever is worth, and which ones the
 measurement kills.
 
 Every number here was taken on the gallery, which is all forty-six components of
-`@barqjs/ui` on one page, built through Vite 8 with `barqVitePlugin` and
+`@barqjs/ui` on one page, built through Vite 8 with `barq()` from `@barqjs/vite` and
 lightningcss minification. `bunx vite build --config gallery/vite.config.ts`.
 
 ## What ships today

@@ -173,7 +173,7 @@ function main(): void {
   // SOURCE, under a `barq` condition, because no build can be right for every
   // consumer: the same file emits `template()`/`spread` for the DOM and
   // `html()`/`esc()` for a string render, and `hydratable` moves it again.
-  // `@barqjs/compiler/vite` puts `barq` first in every environment and compiles
+  // `@barqjs/vite` puts `barq` first in every environment and compiles
   // this package out of `node_modules`.
   const entry = (file: string): Record<string, string> => ({
     types: file,

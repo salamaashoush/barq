@@ -71,7 +71,7 @@ click updates that one text node.
 | [`@barqjs/start`](./packages/start#readme) | server functions, sessions, cookies, rate limiting, the server |
 | [`@barqjs/server`](./packages/server#readme) | the string backend and the streaming SSR runtime |
 | [`@barqjs/testing`](./packages/testing#readme) | rendering, routes, hydration and the RPC wire, under test |
-| [`@barqjs/compiler`](./packages/compiler) | the Vite plugin |
+| [`@barqjs/vite`](./packages/vite#readme) | the Vite plugin: the compiler, file routes and the server half |
 | [`@barqjs/primitives`](./packages/primitives#readme) | scheduling, events, observers, browser APIs, collections, motion |
 | [`@barqjs/aria`](./packages/aria#readme) | accessible interactions, state and headless components |
 | [`@barqjs/css`](./packages/css#readme) | nested CSS and atomic styles, compiled to a stylesheet |
@@ -81,7 +81,7 @@ click updates that one text node.
 | [`@barqjs/query`](./packages/query#readme) | the TanStack Query adapter |
 | [`create-barq`](./packages/create-barq#readme) | `bun create barq my-app` |
 
-`@barqjs/compiler` is a dev dependency of every application. Without it a `.tsx`
+`@barqjs/vite` is a dev dependency of every application. Without it a `.tsx`
 file goes through a generic JSX transform and gets different semantics.
 
 ## How it works

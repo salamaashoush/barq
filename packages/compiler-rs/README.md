@@ -5,8 +5,8 @@ Native (Rust + oxc) JSX compiler for Barq, exposed to JS through napi-rs.
 ## Status
 
 This package **is** the compiler. The Babel plugin it replaced was deleted at M6, after every JSX
-shape its 55 test cases pinned was mined into the fixture corpus. `@barqjs/compiler` is now the
-Vite integration alone, and it depends on this package.
+shape its 55 test cases pinned was mined into the fixture corpus. `@barqjs/vite` is the
+Vite integration, and it depends on this package.
 
 The correctness oracle is the runtime's own JSX runtime (`@barqjs/core/jsx-runtime`): a JSX file
 transpiled by Bun/esbuild with `jsxImportSource=@barqjs/core` into `createElement()` calls, run
@@ -101,8 +101,7 @@ export default defineConfig({
 })
 ```
 
-`@barqjs/vite` composes this compiler with the router and the server half. The
-compiler's own plugin is `barqVitePlugin` from `@barqjs/compiler/vite`.
+`@barqjs/vite` composes this compiler with the router and the server half.
 
 There is one pipeline, so the plugin throws if the binary is missing rather than compiling the
 file some other way.

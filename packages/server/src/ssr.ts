@@ -1208,7 +1208,7 @@ function refuseASite(parent: Node | null, anchor: Node | null, origin: string): 
   throw new Error(
     `\`${origin}\` was called on the server with a DOM node to insert at, which only a module compiled for the browser passes. ` +
       "The server would leave this part of the page out of the markup. " +
-      "Compile the module for the server: the `@barqjs/compiler` Vite plugin does that in an SSR build.",
+      "Compile the module for the server: `barq()` from `@barqjs/vite` does that in an SSR build.",
   );
 }
 

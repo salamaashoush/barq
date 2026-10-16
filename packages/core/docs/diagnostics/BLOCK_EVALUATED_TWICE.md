@@ -41,7 +41,7 @@ is a second appearance, and it is not reported.
 
 There is nothing to change in the component. Report it at
 https://github.com/salamaashoush/barq/issues with the component that was on
-screen and the versions of `@barqjs/core` and `@barqjs/compiler` in use.
+screen and the versions of `@barqjs/core` and `@barqjs/vite` in use.
 
 ## Why it is reported
 

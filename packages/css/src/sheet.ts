@@ -395,7 +395,7 @@ function retire(entry: Entry, rules: string, tier: number): void {
 /**
  * A compiled module's stylesheet, handed over at module evaluation.
  *
- * What `@barqjs/compiler` appends in dev and under `bun test`, where a
+ * What the compiler plugin appends in dev and under `bun test`, where a
  * production build gets a real `.css` asset instead. The key is the module id,
  * so an HMR update replaces that module's rules rather than stacking a second
  * copy on top of them.

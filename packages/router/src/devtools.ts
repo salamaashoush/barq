@@ -1,7 +1,7 @@
 /**
  * A panel that shows what the router thinks is true.
  *
- * Deliberately NOT a second diagnostics channel: `@barqjs/compiler`'s Vite
+ * Deliberately NOT a second diagnostics channel: `@barqjs/vite`'s compiler
  * plugin already ships a panel for compile-time diagnostics, fed by a custom HMR
  * event. This one answers a different question — what the ROUTER is doing right
  * now — and it is a plain component rather than a plugin, so it lives and dies

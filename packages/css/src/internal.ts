@@ -1,7 +1,7 @@
 /**
  * What the two implementations of this semantic have to agree on.
  *
- * `@barqjs/compiler` compiles `atoms` at build time and this package evaluates
+ * The compiler compiles `atoms` at build time and this package evaluates
  * what it declined, and the two must name a declaration the same class or one
  * rule reaches the page under two names. Everything here exists so the parity
  * tests on both sides can read the same answer.

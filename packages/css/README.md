@@ -26,7 +26,7 @@ export function Card(props: { children?: unknown }) {
 }
 ```
 
-`@barqjs/compiler` resolves the tag by `SymbolId`, replaces the whole tagged
+The compiler resolves the tag by `SymbolId`, replaces the whole tagged
 template with `"b1n4k2p0"`, and hands the CSS to Vite. That happens before the
 JSX is lowered, so `class={card}` is already a literal when the compiler folds
 the template, and the element carries no class channel and no `renderEffect`:
@@ -213,7 +213,7 @@ An arrow function of your own does not fold, which is the difference:
 `@barqjs/ui` wrote its wrapper that way once and its whole stylesheet travelled
 inside the JS bundle. It is per module because the pass is: a binding that
 crosses a module boundary is not one the compiler reads by itself, and
-`@barqjs/compiler/vite` resolves the ones that do.
+`@barqjs/vite` resolves the ones that do.
 
 ### Ordering
 
@@ -464,7 +464,7 @@ const c = ui({ padding: 4 });
 ```
 
 **The compiler still reads no file.** It reports which binding a fold would have
-needed, `@barqjs/compiler/vite` resolves that one module and compiles again with
+needed, `@barqjs/vite` resolves that one module and compiles again with
 the answer, so `transform` stays a pure function of its inputs and a name means
 the same thing in dev and in a build. That is what separates it from StyleX,
 whose `@layer priority1 … priorityN` is derived from every rule in the project
@@ -626,7 +626,7 @@ Left to run, and why:
 - **A dynamic value.** A colour from a signal is not knowable at build time,
   which is why it becomes a custom property.
 - **A value from a module the integration cannot resolve.** See below: with
-  `@barqjs/compiler/vite` an imported token, group or layer binding folds, and
+  `@barqjs/vite` an imported token, group or layer binding folds, and
   what is left is a specifier nothing on disk answers for.
 - **`atoms` with two or more conditional arguments** (`BARQ016`). Four outcomes,
   then eight, and a nested ternary over eight class strings is larger than the

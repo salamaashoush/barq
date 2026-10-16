@@ -65,9 +65,9 @@ export default function Page() {
 - `key`: the server rendered one branch of a conditional and the browser picks
   another. Usual causes: a condition that reads `typeof window`,
   `localStorage`, a media query or the time.
-- `not-hydratable`: one side was compiled without `hydratable: true`. Set it in
-  the `@barqjs/compiler` options of both the server build and the browser
-  build, and deploy the two together.
+- `not-hydratable`: one side was compiled without hydration markers. Set
+  `ssr: true` in `barq()` from `@barqjs/vite`, which compiles both the server
+  build and the browser build hydratable, and deploy the two together.
 
 ## What happens next
 

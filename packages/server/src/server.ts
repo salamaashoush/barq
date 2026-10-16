@@ -141,7 +141,7 @@ export function renderToString(fn: RootRender, options: RenderToStringOptions = 
       if (typeof document === "undefined") {
         throw new Error(
           "`renderToString` was given a view that was not compiled for the server, and there is no global `document` to build it with. " +
-            "Compile the module with the `@barqjs/compiler` Vite plugin in an SSR build, or register a DOM such as happy-dom's `GlobalRegistrator` before rendering.",
+            "Compile the module with `barq()` from `@barqjs/vite` in an SSR build, or register a DOM such as happy-dom's `GlobalRegistrator` before rendering.",
         );
       }
       container = document.createElement("div");
@@ -490,7 +490,7 @@ function startRender(
         if (typeof document === "undefined") {
           throw new Error(
             "`renderToStringAsync` was given a view that was not compiled for the server, and there is no global `document` to build it with. " +
-              "Compile the module with the `@barqjs/compiler` Vite plugin in an SSR build, or register a DOM such as happy-dom's `GlobalRegistrator` before rendering.",
+              "Compile the module with `barq()` from `@barqjs/vite` in an SSR build, or register a DOM such as happy-dom's `GlobalRegistrator` before rendering.",
           );
         }
         job.container = document.createElement("div");
