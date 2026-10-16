@@ -5,8 +5,8 @@
  * renders it with its own component in each comment's slot. Choosing another
  * story mounts that story's region. Revising one is a mutation whose answer
  * carries the story's region beside its value, applied where the region
- * stands: a comment you collapsed stays collapsed, and nothing else on the
- * page is built again.
+ * stands: a comment you collapsed stays collapsed, a comment you liked stays
+ * liked, and nothing else on the page is built again.
  */
 
 import { type Child, type Incoming, createMemo, createSignal, dynamic } from "@barqjs/core";
@@ -14,8 +14,22 @@ import { live } from "@barqjs/start";
 import { css } from "@barqjs/css";
 import { Link, type RouteProps, createFileRoute, useLocation } from "@barqjs/router";
 
-import { getStory, liveBoard, postLine, reviseStory } from "../data/stories.tsx";
+import { type Like, getStory, liveBoard, postLine, reviseStory } from "../data/stories.tsx";
 import { DemoCard, DemoSection } from "../demos/shared";
+
+/** The page's side of a comment's like button: the server's markup, this behaviour. */
+function like(): Like {
+  const [liked, setLiked] = createSignal(false);
+  return {
+    get liked() {
+      return liked();
+    },
+    get label() {
+      return liked() ? "liked" : "like";
+    },
+    toggle: () => setLiked((was) => !was),
+  };
+}
 
 function Comment(props: Incoming<{ cid: number; children: Child }>) {
   const [open, setOpen] = createSignal(true);
@@ -87,6 +101,7 @@ function Frames(props: RouteProps) {
           comment={(slot: Incoming<{ cid: number; children: Child }>) => (
             <Comment cid={slot.cid()}>{slot.children}</Comment>
           )}
+          like={like}
         >
           <p class={shareStyle}>shared from the page</p>
         </View>

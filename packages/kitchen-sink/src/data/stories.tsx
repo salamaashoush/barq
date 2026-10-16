@@ -2,11 +2,13 @@
  * The server functions `/frames` calls. `getStory`'s handler returns a
  * component, which makes its answer a frame: the story is rendered on the
  * server, and the browser receives its markup and never this code. Each
- * comment is a slot the page fills with a component of its own.
+ * comment is a slot the page fills with a component of its own, and each
+ * comment's like button is the server's markup with the page's behaviour
+ * bound to it: a binding slot.
  */
 
 import { type Child, Loading, createMemo, useHead } from "@barqjs/core";
-import { type Slot, createServerFn, invalidateFrames } from "@barqjs/start";
+import { type BindingSlot, type Slot, createServerFn, invalidateFrames } from "@barqjs/start";
 
 interface Story {
   readonly title: string;
@@ -49,24 +51,47 @@ const REGION_SHEET =
     "barq-frame article.story { border-left: 3px solid #60a5fa; padding-left: 12px }",
   );
 
+/** What the page binds to a comment's like button. */
+export interface Like {
+  readonly liked: boolean;
+  readonly label: string;
+  readonly toggle: () => void;
+}
+
 export const getStory = createServerFn({ method: "GET" })
   .validator((input: { readonly id: string }) => ({ id: String(input.id) }))
   .handler(({ data }) => {
     const story = storyOf(data.id);
-    return (props: { readonly comment: Slot<{ cid: number }>; readonly children?: Child }) => {
+    return (props: {
+      readonly comment: Slot<{ cid: number }>;
+      readonly like: BindingSlot<{ cid: number }, Like>;
+      readonly children?: Child;
+    }) => {
       useHead({ tag: "link", props: { rel: "stylesheet", href: REGION_SHEET } });
       return (
         <article class="story" id="story" data-story={data.id}>
           <h2 id="story-title">{story.title}</h2>
           <p id="story-revision">revision {story.revision}</p>
           <ul id="story-comments">
-            {story.comments.map((comment) => (
-              <li>
-                <props.comment $key={comment.id} cid={comment.id}>
-                  <p class="comment-text">{comment.text}</p>
-                </props.comment>
-              </li>
-            ))}
+            {story.comments.map((comment) => {
+              const like = props.like({ $key: comment.id, cid: comment.id });
+              return (
+                <li>
+                  <props.comment $key={comment.id} cid={comment.id}>
+                    <p class="comment-text">{comment.text}</p>
+                  </props.comment>
+                  <button
+                    type="button"
+                    id={`like-${comment.id}`}
+                    class={{ like: true, liked: like.liked }}
+                    aria-pressed={like.liked}
+                    onClick={like.toggle}
+                  >
+                    {like.label}
+                  </button>
+                </li>
+              );
+            })}
           </ul>
           <footer>{props.children}</footer>
         </article>
