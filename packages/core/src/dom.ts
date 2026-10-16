@@ -1222,14 +1222,8 @@ export function bindProp(element: Element, write: Channel, name: string, value: 
   // what an element effect depends on, which is a divergence no DOM comparison
   // would show until something in a channel started reading.
   const keyed = write === setStyle;
-  // A property is the one channel a function can be the VALUE of. Everywhere
-  // else a Cell that yields a Cell is read through, which is what a compiled
-  // call is when the call hands back an accessor: `title={labelOf(row)}`.
-  const read =
-    write === setDomProp
-      ? (): unknown => readSlot(value, `The \`${name}\` attribute`)
-      : (): unknown =>
-          readSlot(readSlot(value, `The \`${name}\` attribute`), `The \`${name}\` attribute`);
+  const property = write === setDomProp;
+  const read = (): unknown => readOpaque(value(), name, property);
   let prev: unknown;
   effectUnder(
     given,
@@ -1241,6 +1235,26 @@ export function bindProp(element: Element, write: Channel, name: string, value: 
       prev = write(element, name, next, prev);
     },
   );
+}
+
+/**
+ * What a Cell in an attribute yields, given what the Cell returned. A Block
+ * is refused rather than stringified into the attribute: a Cell that YIELDS
+ * one walks past the brand test on the Cell itself. A property is the one
+ * channel a function can be the value of; everywhere else a Cell that yields a
+ * Cell is read through, which is what a compiled call is when it hands back an
+ * accessor: `title={labelOf(row)}`.
+ *
+ * `bindProp` reads through it, and so does a compiled template effect for an
+ * opaque call that joined it, so the two cannot disagree about a value.
+ */
+export function readOpaque(value: unknown, name: string, property?: boolean): unknown {
+  if (typeof value !== "function") return value;
+  if (isBlock(value)) throw jsxAsValue(`The \`${name}\` attribute`, true);
+  if (property === true) return value;
+  const read = (value as () => unknown)();
+  if (isBlock(read)) throw jsxAsValue(`The \`${name}\` attribute`, true);
+  return read;
 }
 
 /**

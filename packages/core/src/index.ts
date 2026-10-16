@@ -212,6 +212,7 @@ export {
   setHtml,
   setRef,
   bindProp,
+  readOpaque,
   readKeys,
   bindEffect,
   bindValue,
