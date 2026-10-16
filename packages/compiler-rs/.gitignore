@@ -1,7 +1,5 @@
 /target
-/npm
 /artifacts
 *.node
-/index.js
 /index.d.ts
 test/.l1-conformance.txt

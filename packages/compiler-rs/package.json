@@ -22,10 +22,12 @@
     "directory": "packages/compiler-rs"
   },
   "files": [
-    "docs",
+    "index.js",
     "index.d.ts",
-    "index.js"
+    "docs"
   ],
+  "type": "commonjs",
+  "sideEffects": false,
   "main": "./index.js",
   "types": "./index.d.ts",
   "exports": {
@@ -35,8 +37,8 @@
     }
   },
   "scripts": {
-    "build": "napi build --platform --release",
-    "build:debug": "napi build --platform",
+    "build": "napi build --platform --release --no-js",
+    "build:debug": "napi build --platform --no-js",
     "test": "bun run check:fmt && bun run check:clippy && cargo test --workspace && bun test",
     "test:rust": "cargo test --workspace",
     "typecheck": "tsc --noEmit && tsc --noEmit -p fixtures/tsconfig.json",
@@ -48,8 +50,7 @@
     "test:browser:parse": "bun test/browser-parse-check.ts",
     "test:browser:svg": "bun test/browser-svg-class-check.ts",
     "test:browser:differential": "bun test/browser-differential.ts",
-    "artifacts": "napi artifacts",
-    "prepublishOnly": "napi prepublish -t npm"
+    "artifacts": "napi artifacts"
   },
   "devDependencies": {
     "@barqjs/core": "workspace:*",
@@ -58,19 +59,33 @@
     "@napi-rs/cli": "^3.10.8",
     "@types/bun": "^1.4.3"
   },
+  "optionalDependencies": {
+    "@barqjs/compiler-rs-darwin-arm64": "workspace:*",
+    "@barqjs/compiler-rs-darwin-x64": "workspace:*",
+    "@barqjs/compiler-rs-linux-arm64-gnu": "workspace:*",
+    "@barqjs/compiler-rs-linux-x64-gnu": "workspace:*",
+    "@barqjs/compiler-rs-linux-x64-musl": "workspace:*",
+    "@barqjs/compiler-rs-win32-arm64-msvc": "workspace:*",
+    "@barqjs/compiler-rs-win32-x64-msvc": "workspace:*"
+  },
+  "engines": {
+    "node": ">=20.17.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
   "napi": {
     "binaryName": "barq-compiler",
     "packageName": "@barqjs/compiler-rs",
     "targets": [
-      "x86_64-unknown-linux-gnu",
-      "aarch64-unknown-linux-gnu",
-      "x86_64-apple-darwin",
       "aarch64-apple-darwin",
-      "x86_64-pc-windows-msvc",
-      "aarch64-pc-windows-msvc"
+      "x86_64-apple-darwin",
+      "aarch64-unknown-linux-gnu",
+      "x86_64-unknown-linux-gnu",
+      "x86_64-unknown-linux-musl",
+      "aarch64-pc-windows-msvc",
+      "x86_64-pc-windows-msvc"
     ]
-  },
-  "engines": {
-    "node": ">=20.17.0"
   }
 }

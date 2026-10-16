@@ -1,0 +1,43 @@
+{
+  "name": "@barqjs/compiler-rs-win32-x64-msvc",
+  "version": "0.1.0",
+  "description": "The x86_64-pc-windows-msvc native binding of @barqjs/compiler-rs",
+  "keywords": [
+    "barq",
+    "compiler",
+    "jsx",
+    "napi",
+    "reactive",
+    "rust",
+    "signals"
+  ],
+  "homepage": "https://github.com/salamaashoush/barq#readme",
+  "bugs": {
+    "url": "https://github.com/salamaashoush/barq/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/salamaashoush/barq.git",
+    "directory": "packages/compiler-rs/npm/win32-x64-msvc"
+  },
+  "files": [
+    "barq-compiler.win32-x64-msvc.node"
+  ],
+  "type": "commonjs",
+  "sideEffects": false,
+  "main": "barq-compiler.win32-x64-msvc.node",
+  "engines": {
+    "node": ">=20.17.0"
+  },
+  "os": [
+    "win32"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

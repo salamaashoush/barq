@@ -1,0 +1,43 @@
+{
+  "name": "@barqjs/compiler-rs-darwin-x64",
+  "version": "0.1.0",
+  "description": "The x86_64-apple-darwin native binding of @barqjs/compiler-rs",
+  "keywords": [
+    "barq",
+    "compiler",
+    "jsx",
+    "napi",
+    "reactive",
+    "rust",
+    "signals"
+  ],
+  "homepage": "https://github.com/salamaashoush/barq#readme",
+  "bugs": {
+    "url": "https://github.com/salamaashoush/barq/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/salamaashoush/barq.git",
+    "directory": "packages/compiler-rs/npm/darwin-x64"
+  },
+  "files": [
+    "barq-compiler.darwin-x64.node"
+  ],
+  "type": "commonjs",
+  "sideEffects": false,
+  "main": "barq-compiler.darwin-x64.node",
+  "engines": {
+    "node": ">=20.17.0"
+  },
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "x64"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}
