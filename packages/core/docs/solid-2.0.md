@@ -45,11 +45,12 @@ twice). The engine's own `DEV` and `OBSERVE` are not re-exported under those nam
 **`<Portal mount>` also takes a selector string**, which barq looks up, as well as a node.
 
 **`lazy`** takes either a function that picks the export, `lazy(load, (m) => m.Card)`, or
-Solid's `{ export: "Card" }`. Beside `preload()` it has `ready()`, a tracked read that
-throws `NotReadyError` until the module is here, and `loaded()`, a synchronous answer to
-whether it already is; a router needs both. `preload()` resolves to nothing rather than to
-the module, and there is no third `moduleUrl` argument, because barq has no hydration
-module registry for it to key.
+Solid's `{ export: "Card" }`, and Solid's third `moduleUrl`, which the router's Vite plugin
+writes into a literal `lazy(() => import("./x"))`. A server render given a `manifest` puts
+the module's chunks and stylesheets in the page when it renders. Beside `preload()` it has
+`ready()`, a tracked read that throws `NotReadyError` until the module is here, and
+`loaded()`, a synchronous answer to whether it already is; a router needs both.
+`preload()` resolves to nothing rather than to the module.
 
 **`lazyModule`** caches the import and `peek()` answers the module once it has landed. For
 the same reason it does not read a hydration module registry, so `peek()` during
@@ -69,6 +70,33 @@ bubbles to the handlers around the `<Portal>`. The difference is the box: barq m
 portal's content into a `<div style="display: contents">` of its own and registers that,
 where Solid registers the mount element. A handler on an element no root rendered never
 runs, and there is no `clearDelegatedEvents`; dispose the root instead.
+
+## Server rendering
+
+`renderToString`, `renderToStream`, `getRequestEvent`, `httpStatus`, `httpHeader`,
+`markSafeError`, `generateHydrationScript` and `<HydrationScript />` take Solid 2.0's
+arguments and options. The differences:
+
+- **Two packages, not one.** The server entry points are `@barqjs/server`'s and the
+  isomorphic ones (`getRequestEvent`, `httpStatus`, `httpHeader`, `useHead`,
+  `markSafeError`, `isServer`) are `@barqjs/core`'s. `provideRequestEvent` is
+  `@barqjs/server/storage`'s. `isServer` is a literal per side, by export condition, as in
+  Solid; under `bun` it is the run-time check the test suites rely on.
+- **`renderToStream` renders its shell synchronously**, and a stream consumer claims the
+  result in the tick it started in. A result no stream claimed by then is settled for its
+  promise, boundaries resumed in place. barq keeps `session` and a per-boundary `timeout`
+  beside Solid's options. `noScripts` keeps the swaps, without which a streamed boundary's
+  content never reaches the page.
+- **The settled document resumes boundaries in place** rather than buffering the stream,
+  and `renderToStringAsync` and `renderPage` are still exported for it.
+- **`useHead` takes Solid's tag descriptors** (`{ tag, props, children }`) and keys a tag
+  by its identity, the last declaration winning. A tag declared after the shell streams as
+  a patch with its boundary's swap. Stylesheets do not gate a reveal.
+- **`onError`** hears `failed`, `fallback` and `client`; there is no `serialize`, because a
+  value seroval cannot encode fails the render. There is no `configureServerErrors`.
+- **Not yet:** `createRequestEvent`, `createSSRResponse`, `commitEventResponse`,
+  `composeMiddleware` (the router's page handler and `@barqjs/start` own the response),
+  `getTraceContext`, per-memo `deferStream` and `ssrSource`, and frames.
 
 ## Solid 1.x APIs barq does not have
 
