@@ -1,21 +1,55 @@
 # @barqjs/core
 
 Signals, JSX and the DOM renderer. A component runs once; afterwards only the
-nodes that read a changed signal are touched.
+nodes that read a changed signal are touched. The reactive API is Solid 2.0's,
+from `@solidjs/signals`, under Solid's own names.
+
+## Install
 
 ```bash
 bun add @barqjs/core
-bun add -d @barqjs/vite
+bun add -d @barqjs/vite vite
 ```
 
-`@barqjs/vite` is not optional in practice. Its compiler
-lowers JSX to the runtime's own calls, and without it a `.tsx` file goes through
-whatever generic JSX transform is configured and gets different semantics: props
-arrive as plain values instead of Cells, and children are built eagerly instead
-of being deferred.
+`@barqjs/vite` is not optional in practice. Its compiler lowers JSX to the
+runtime's own calls. Without it a `.tsx` file goes through whatever generic JSX
+transform is configured and gets different semantics: props arrive as plain
+values instead of Cells, and children are built eagerly instead of being
+deferred.
 
-The API is Solid 2.0's. Where barq differs, and why, is in
-[docs/solid-2.0.md](docs/solid-2.0.md).
+```ts
+// vite.config.ts
+import barq from "@barqjs/vite";
+import { defineConfig } from "vite";
+
+export default defineConfig({
+  plugins: [barq()],
+});
+```
+
+`tsconfig.json` needs `"jsx": "react-jsx"` and `"jsxImportSource": "@barqjs/core"`.
+
+## A component
+
+```tsx
+import { createSignal, render } from "@barqjs/core";
+
+function Counter() {
+  const [count, setCount] = createSignal(0);
+  return (
+    <button type="button" onClick={() => setCount((n) => n + 1)}>
+      clicked {count} times
+    </button>
+  );
+}
+
+const dispose = render(() => <Counter />, document.getElementById("app")!);
+```
+
+`{count}` is a tracked read, not a snapshot. The compiler wraps it, so that text
+node updates and nothing else does.
+
+`render` returns a disposer. Calling it runs every `onCleanup` in the tree.
 
 ## Signals, memos and effects
 
@@ -65,28 +99,6 @@ A memo or an effect belongs to an owner: a component body, or a `createRoot` as
 above. Created under none, a memo recomputes on every read and an effect is
 never disposed.
 
-## Rendering
-
-```tsx
-import { createSignal, render } from "@barqjs/core";
-
-function Counter() {
-  const [count, setCount] = createSignal(0);
-  return (
-    <button type="button" onClick={() => setCount((n) => n + 1)}>
-      clicked {count} times
-    </button>
-  );
-}
-
-const dispose = render(() => <Counter />, document.getElementById("app")!);
-```
-
-`{count}` is a tracked read, not a snapshot. The compiler wraps it, so that text
-node updates and nothing else does.
-
-`render` returns a disposer. Calling it runs every `onCleanup` in the tree.
-
 ## Control flow
 
 ```tsx
@@ -118,13 +130,14 @@ it is what streams a fallback and resumes when the value arrives.
 ### `keyed`, and why it changes the callback
 
 `keyed` decides what a row IS, and with it the signature of `children`. The
-middle row is the one most people are looking for.
+key function is the one most people are looking for.
 
-| `keyed`          | a row is identified by | `children` receives                    |
-| ---------------- | ---------------------- | -------------------------------------- |
-| omitted / `true` | the item itself        | `(item, index: () => number)`          |
-| `(item) => key`  | `key`                  | `(item: () => T, index: () => number)` |
-| `false`          | its position           | `(item: () => T, index: number)`       |
+- Omitted or `true`: a row is the item itself, and `children` receives
+  `(item, index: () => number)`.
+- `(item) => key`: a row is its key, and `children` receives
+  `(item: () => T, index: () => number)`.
+- `false`: a row is its position, and `children` receives
+  `(item: () => T, index: number)`.
 
 Identity keying is the default: replace an item with a new object and it is a
 different row, so the old DOM is thrown away. `item` arrives as a plain value,
@@ -136,7 +149,7 @@ keystroke:
 
 ```tsx
 <For each={rows} keyed={(row) => row.id}>
-  {(row: () => Row) => <input value={row().text} />}
+  {(row) => <input value={row().text} />}
 </For>
 ```
 
@@ -338,17 +351,33 @@ function Page() {
 ```
 
 The context is its own provider component, as in Solid 2.0; there is no
-`Theme.Provider`. `useContext` returns a Cell, so a provider that changes value
-updates the consumers that read it.
+`Theme.Provider`. `useContext` returns an accessor, so a provider that changes
+value updates the consumers that read it.
 
 ## Subpaths
 
-| import                     | what it is                                                         |
-| -------------------------- | ------------------------------------------------------------------ |
-| `@barqjs/core`             | the public surface                                                 |
-| `@barqjs/core/jsx-runtime` | the JSX runtime; `jsxImportSource` points here                     |
-| `@barqjs/core/internal`    | the runtime surface `@barqjs/server` needs and no application does |
-| `@barqjs/core/interp`      | the reference backend, for the compiler's own oracle               |
+- `@barqjs/core`: the public surface. Under the `development` export condition,
+  which Vite's dev server and Vitest set, it resolves the engine's development
+  build, which throws on model violations, and installs the console reporter for
+  the [runtime diagnostics](docs/diagnostics).
+- `@barqjs/core/jsx-runtime` and `@barqjs/core/jsx-dev-runtime`: the JSX types
+  and `Fragment`; `jsxImportSource` points here.
+- `@barqjs/core/hot`: component replacement for a development server, which
+  `@barqjs/vite` wires up.
+- `@barqjs/core/internal`: the runtime surface `@barqjs/server` needs and no
+  application does.
+- `@barqjs/core/interp`: the reference backend, for the compiler's own oracle.
 
-All four share one copy of the runtime. Importing two of them does not give you
-two schedulers.
+All of them share one copy of the runtime. Importing two of them does not give
+you two schedulers.
+
+## Solid 2.0
+
+Every name above is Solid 2.0's, and so are the rest: the engine's
+`createProjection`, `createOptimistic`, `createOptimisticStore`, `action` and
+`mapArray`, and the components and factories `Repeat`, `Reveal`, `dynamic` and
+`lazy`.
+[docs/solid-2.0.md](docs/solid-2.0.md) lists where barq differs and why, which
+Solid 1.x APIs are gone and what replaces each, and what the compiler checks
+before anything runs. The compiler's own diagnostics are in
+[compiler-rs/docs](../compiler-rs/docs/README.md).

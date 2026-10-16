@@ -27,8 +27,8 @@ A handler that throws:
 import { createServerFn } from "@barqjs/start";
 
 export const placeOrder = createServerFn({ method: "POST" })
-  .validator("unchecked")
-  .handler(async ({ data }: { data: { lines?: string[] } }) => data.lines!.length);
+  .validator((input: { lines?: string[] }) => input)
+  .handler(async ({ data }) => data.lines!.length);
 ```
 
 ## The fix
@@ -40,8 +40,8 @@ one:
 import { createServerFn } from "@barqjs/start";
 
 export const placeOrder = createServerFn({ method: "POST" })
-  .validator("unchecked")
-  .handler(async ({ data }: { data: { lines?: string[] } }) => {
+  .validator((input: { lines?: string[] }) => input)
+  .handler(async ({ data }) => {
     if (data.lines === undefined) {
       throw new Response("an order needs at least one line", { status: 422 });
     }

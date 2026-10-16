@@ -26,9 +26,12 @@ is the owner-targeted read and answers with the value.
 beside Solid's `{ name }`. Either names the context in the error a missing provider
 throws.
 
-**There is no `createComponent`.** The compiler calls a component directly, as
-`Card({ title, children })`, and children are deferred as Blocks the callee runs in its own
-scope. Nothing needs a runtime wrapper around that call.
+**`createComponent` is a development aid, not the call path.** A production compile calls a
+component directly, as `Card({ title, children })`, and children are deferred as Blocks the
+callee runs in its own scope. A development compile emits
+`createComponent(Card, props, "Card")` instead, which runs the component under an owner named
+for it so a diagnostic, an error or a hydration report says `in <App> › <Card>`. Nothing
+needs to call it by hand.
 
 **`dynamic(source)`** takes no options and its source answers synchronously. Solid's
 also takes `{ static, deferStream }` and a source that answers with a promise or an async
@@ -38,9 +41,11 @@ calls it where a `.jsx` or `.tsx` module calls `@barqjs/core`'s, so call `dynami
 those rather than in a plain `.ts` module that a server build loads. `dynamicComponent`, the
 component-only variant, is not exported.
 
-**`DEV` is barq's renderer channel.** `DEV.diagnostics` carries what the renderer can see
-and the engine cannot (hydration mismatches, a write to a read-only binding, a Block run
-twice). The engine's own `DEV` and `OBSERVE` are not re-exported under those names.
+**`DEV` carries barq's diagnostics channel.** It is the engine's development tier (devtools
+hooks and graph traversal, empty in a production build) with `DEV.diagnostics` added, the
+channel where the engine's findings and the renderer's own arrive together: hydration
+mismatches, a write to a read-only binding, a Block run twice. `DEV.diagnostics` exists in
+every build. `OBSERVE` is the engine's, re-exported as it is.
 
 **`<Portal mount>` also takes a selector string**, which barq looks up, as well as a node.
 

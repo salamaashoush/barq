@@ -71,10 +71,11 @@ export default function Page() {
 
 ## What happens next
 
-When the mismatch is inside a conditional such as `<Show>` or `<Switch>`, only
-that part is rebuilt and the rest of the server's markup is reused. Those
-repairs are listed in `hydrate.report.mismatches` and raise no diagnostic.
-Otherwise the server's markup is discarded and the whole page is rendered again
+Two kinds are repaired where they happen. A dynamic text hole whose value
+differs is rewritten in the server's node, and a conditional such as `<Show>` or
+`<Switch>` that picks another branch rebuilds only that branch. The rest of the
+server's markup is reused. Those repairs are listed in
+`hydrate.report.mismatches` and raise no diagnostic. Otherwise the server's markup is discarded and the whole page is rendered again
 in the browser, which is when this diagnostic is raised. The page works either
 way. What is lost is the benefit of server rendering: the first paint is
 replaced, and the browser does the full render it was meant to skip.

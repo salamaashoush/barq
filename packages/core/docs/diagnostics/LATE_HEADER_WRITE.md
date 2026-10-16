@@ -51,16 +51,21 @@ export function Page() {
 
 ## The fix
 
-Write it where the response is still open, before the shell is sent:
+Write it where the response is still open, before the shell is sent, such as
+the route's `beforeLoad`:
 
 ```tsx
+import { createFileRoute } from "@barqjs/router";
 import { setResponseHeader } from "@barqjs/start";
 
-export async function beforeLoad(): Promise<void> {
-  setResponseHeader("cache-control", "private, max-age=60");
-}
+export const Route = createFileRoute("/profile")({
+  beforeLoad: () => {
+    setResponseHeader("cache-control", "private, max-age=60");
+  },
+  component: Profile,
+});
 
-export function Page() {
+function Profile() {
   return <p>Salama</p>;
 }
 ```
