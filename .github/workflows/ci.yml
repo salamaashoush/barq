@@ -6,42 +6,64 @@ on:
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
-  ci:
-    name: Lint, Format & Typecheck
+  lint:
+    name: Lint, format and types
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@v2.2.0
         with:
           bun-version: latest
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2.9.2
+        with:
+          workspaces: packages/compiler-rs
+          shared-key: release-build
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: packages/compiler-rs
-
-      # BEFORE lint and typecheck: both resolve workspace imports through each
-      # package's dist and the native compiler's generated index.d.ts. On a
-      # clean runner neither exists, cross-package types widen to `any`, and
-      # lint fails on no-unsafe-argument and typecheck on TS2307.
-      - name: Build packages (required for lint and typecheck)
+      # Lint and typecheck resolve workspace imports through each package's
+      # dist and the native compiler's generated index.d.ts. On a clean runner
+      # neither exists, cross-package types widen to `any`, and lint fails on
+      # no-unsafe-argument and typecheck on TS2307.
+      - name: Build packages
         run: bun run build:packages
 
-      - name: Run lint and format check
+      - name: Stray declarations, lint (warnings fail) and format
         run: bun run ci
 
-      # The script runs each package on its own and diffs the result against
-      # .github/typecheck-baseline.txt, so a new error fails the build and a
-      # fixed one has to be struck off the list. Nothing is silenced: no
-      # @ts-ignore, no skipped file, and the count is printed on every run.
-      - name: Run type check
+      # Each package on its own, diffed against .github/typecheck-baseline.txt,
+      # so a new error fails and a fixed one has to be struck off the list.
+      - name: Typecheck packages
         run: .github/scripts/typecheck.sh
+
+      - name: Typecheck the release scripts
+        run: bun run typecheck:scripts
+
+      # The registry is generated from src and shipped by @barqjs/ui; a
+      # component edited without regenerating it ships the old copy.
+      - name: The ui registry matches its sources
+        run: |
+          bun run --cwd packages/ui registry
+          git diff --exit-code -- packages/ui/registry
 
   rust:
     name: Rust (fmt, clippy, test)
@@ -56,18 +78,18 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.2
         with:
           workspaces: packages/compiler-rs
 
       - name: Check formatting
-        run: cargo fmt --check
+        run: cargo fmt --all --check
 
-      - name: Lint
-        run: cargo clippy --all-targets -- -D warnings
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Test
-        run: cargo test
+        run: cargo test --workspace
 
   test:
     name: Test
@@ -75,106 +97,100 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@v2.2.0
         with:
           bun-version: latest
 
-      # index.js, index.d.ts and the .node binary are build artifacts, not
-      # sources. Without this step packages/compiler-rs has no binding to test
-      # against and its harness cannot even load.
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
 
-      - uses: Swatinem/rust-cache@v2
+      # packages/compiler-rs's own suite runs fmt and clippy before its tests.
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2.9.2
         with:
           workspaces: packages/compiler-rs
+          shared-key: release-build
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      # Every package, the native compiler with them. The suites build Vite
-      # projects that resolve workspace packages through their dist, the way an
-      # install does, and the export tests check each dist exists.
+      # The suites build Vite projects that resolve workspace packages through
+      # their dist, the way an install does, and the native binding is a build
+      # artifact the compiler's harness cannot load without.
       - name: Build packages
         run: bun run build:packages
 
-      # packages/compiler-rs/test/browser.test.ts renders the whole fixture
-      # corpus in a real Chrome — both paths, driven through their steps and
-      # events — plus the template parse conformance sweep and the O5 probes.
-      # happy-dom has hidden three separate bug classes on this project already
+      # packages/compiler-rs/test/browser.test.ts renders the fixture corpus in
+      # a real Chrome. happy-dom has hidden three bug classes on this project
       # (foster parenting, the tokenizer's NUL/CR rewriting, SVGElement
-      # .className), so that suite is not optional. google-chrome-stable is
-      # preinstalled on the ubuntu runner images; the checks FAIL rather than
-      # skip when it is missing, so a runner image that drops it is visible
-      # instead of silently disarming them.
+      # .className), so the browser checks fail rather than skip when Chrome
+      # is missing. The ubuntu image ships google-chrome-stable.
       - name: Locate Chrome
         run: |
-          CHROME=$(which google-chrome-stable || which google-chrome || which chromium)
-          echo "using $CHROME"
-          echo "CHROME_PATH=$CHROME" >> "$GITHUB_ENV"
+          chrome=$(command -v google-chrome-stable || command -v google-chrome || true)
+          if [ -z "$chrome" ]; then
+            echo "::error::no Chrome on this runner image"
+            exit 1
+          fi
+          "$chrome" --version
+          echo "CHROME_PATH=$chrome" >> "$GITHUB_ENV"
 
-      # Its own step, and BEFORE the rest, so the per-fixture table lands in a
-      # log section of its own and a regression is attributable to the commit
-      # that caused it instead of buried in 300 lines of suite output. It
-      # reports rather than gates: every number in it is a clock reading, which
-      # a loaded runner moves. The gate is `cargo test`'s compile_work, which
-      # counts the same workloads' allocations.
-      - name: Compile throughput
-        run: bun test/throughput.bench.ts
-        working-directory: packages/compiler-rs
-        continue-on-error: true
-
-      # Every package, no exclusions. `packages/query` was excluded from M2 to
-      # M8 while its migration was scheduled; M8 landed it, so the exclusion and
-      # the informational second run that stood in for it are gone with it.
+      # Every package, both engine builds: each package's `test` runs its suite
+      # once as shipped and once under `--conditions=development`.
       - name: Run tests
         run: bun run test
 
-      # The reference application is the acceptance test, and twice now a green
-      # suite has not been able to see it. Its typecheck is not yet clean (the
-      # JSX type layer has not moved to C1), so it reports rather than gates —
-      # but it reports on every build instead of nowhere.
-      - name: Reference application — typecheck (informational)
-        continue-on-error: true
+      # Loads what the compiler emits for each dynamic prop and checks a signal
+      # write reaches the DOM, so a benchmark case cannot time a dead binding.
+      - name: Emitted bindings are live
+        run: bun run --cwd packages/benchmark bench:shape
+
+      - name: Reference application typechecks
         run: bun run --cwd packages/kitchen-sink typecheck
 
-      # The gallery is where every visual bug in @barqjs/ui was found, and a
-      # gallery that does not build finds nothing. The suite cannot see this:
-      # `bun test` compiles each module on its own, and what breaks here is the
-      # graph — a missing export condition, a style that reaches no element, a
-      # module the bundler cannot resolve.
-      - name: Component gallery — build
-        run: bun run --cwd packages/site build
+      # `bun test` compiles each module on its own; what breaks in an app is
+      # the graph: a missing export condition, a style that reaches no element,
+      # a module the bundler cannot resolve.
+      - name: Build the apps
+        run: bun run build:apps
 
-  build:
-    name: Build
+  package-quality:
+    name: Package quality
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@v2.2.0
         with:
           bun-version: latest
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+          restore-keys: bun-${{ runner.os }}-
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2.9.2
+        with:
+          workspaces: packages/compiler-rs
+          shared-key: release-build
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build publishable packages
-        run: |
-          bun run --cwd packages/core build
-          bun run --cwd packages/query build
-          bun run --cwd packages/testing build
+      - name: Build packages
+        run: bun run build:packages
 
-      - name: Verify package contents
-        run: |
-          for pkg in core query testing; do
-            echo "Checking packages/$pkg/dist..."
-            ls -la packages/$pkg/dist/
-            if [ ! -f "packages/$pkg/dist/index.js" ]; then
-              echo "Error: index.js not found in $pkg/dist"
-              exit 1
-            fi
-            if [ ! -f "packages/$pkg/dist/index.d.ts" ]; then
-              echo "Error: index.d.ts not found in $pkg/dist"
-              exit 1
-            fi
-          done
+      # Packs every publishable package and checks the tarball: contents,
+      # manifest, publint and Are the Types Wrong. Only this runner's native
+      # binding exists here; the release dry run checks all of them.
+      - name: Check every package as it would be published
+        run: bun run pack:check

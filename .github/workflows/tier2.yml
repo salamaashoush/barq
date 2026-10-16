@@ -32,6 +32,13 @@ on:
     # against a floating dependency is not a bar anyone can hold."
     - cron: "0 4 * * 1"
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
 jobs:
   tier2:
     name: js-framework-benchmark, js-reactivity-benchmark, §0.2/§0.3 in Chrome
@@ -40,7 +47,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@v2.2.0
         with:
           bun-version: latest
 
@@ -49,7 +56,7 @@ jobs:
       # compiler, never a hand-written approximation of what it emits.
       - uses: dtolnay/rust-toolchain@stable
 
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@v2.9.2
         with:
           workspaces: packages/compiler-rs
 
@@ -65,9 +72,13 @@ jobs:
       # ran.
       - name: Locate Chrome
         run: |
-          CHROME=$(which google-chrome-stable || which google-chrome || which chromium)
-          echo "using $CHROME"
-          echo "CHROME_PATH=$CHROME" >> "$GITHUB_ENV"
+          chrome=$(command -v google-chrome-stable || command -v google-chrome || true)
+          if [ -z "$chrome" ]; then
+            echo "::error::no Chrome on this runner image"
+            exit 1
+          fi
+          "$chrome" --version
+          echo "CHROME_PATH=$chrome" >> "$GITHUB_ENV"
 
       - name: Run the Tier-2 lane
         run: bun run --cwd packages/benchmark bench:tier2 ${{ github.event.inputs.suites }}
@@ -77,3 +88,33 @@ jobs:
           name: tier2-results
           path: packages/benchmark/tier2-results.json
           if-no-files-found: error
+
+  # Compile throughput against the stated per-file budgets. A clock reading,
+  # which a loaded runner moves, so it lives here rather than in CI; the gate
+  # that no machine can move is `cargo test`'s compile_work, which counts the
+  # same workloads' allocations.
+  throughput:
+    name: Compile throughput
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: oven-sh/setup-bun@v2.2.0
+        with:
+          bun-version: latest
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2.9.2
+        with:
+          workspaces: packages/compiler-rs
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build the native compiler
+        run: bun run --cwd packages/compiler-rs build
+
+      - name: Compile throughput
+        working-directory: packages/compiler-rs
+        run: bun test/throughput.bench.ts
