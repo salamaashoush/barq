@@ -17,6 +17,31 @@ import { esc, html, ssrLoading } from "./ssr.ts";
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
+/**
+ * The delay of every timer of a deadline's length that fired while `run` was
+ * pending. Which timer let a render go is a fact about the render; how long it
+ * took is a fact about the machine.
+ */
+async function deadlinesFired<T>(run: () => Promise<T>): Promise<{ value: T; fired: number[] }> {
+  const real = globalThis.setTimeout;
+  const fired: number[] = [];
+  const recording = (handler: (...args: unknown[]) => void, ms = 0, ...args: unknown[]) =>
+    real(
+      (...passed: unknown[]) => {
+        if (ms >= 1000) fired.push(ms);
+        handler(...passed);
+      },
+      ms,
+      ...args,
+    );
+  globalThis.setTimeout = recording as unknown as typeof setTimeout;
+  try {
+    return { value: await run(), fired };
+  } finally {
+    globalThis.setTimeout = real;
+  }
+}
+
 async function collect(stream: ReadableStream<Uint8Array>): Promise<string> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
@@ -67,14 +92,12 @@ test("a stream resumes a boundary whose body declares its own async memo", async
 test("renderPage settles it rather than refetching until the boundary deadline", async () => {
   const { page, fetches } = makePage();
 
-  const started = performance.now();
-  const out = await renderPage(page as never);
-  const elapsed = performance.now() - started;
+  const { value: out, fired } = await deadlinesFired(() => renderPage(page as never));
 
   expect(out.html).toBe("<main><b>salama</b></main>");
   expect(fetches()).toBe(1);
   expect(Object.keys(out.data)).toHaveLength(1);
-  expect(elapsed).toBeLessThan(1000);
+  expect(fired, "the boundary settled, so no deadline let the render go").toEqual([]);
 }, 15_000);
 
 test("a boundary inside the body keeps its own declarations apart from the body's", async () => {

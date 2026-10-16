@@ -234,7 +234,7 @@ test("a not-found page the build names is written with its status, and a crawled
 });
 
 /** A site whose pages fail the first `failing` times they are asked for. */
-const flaky = (failing: number) => {
+const flaky = (failing: number, events: string[] = []) => {
   const asked = new Map<string, number>();
   const site: ServerEntryModule = {
     default: {
@@ -242,6 +242,7 @@ const flaky = (failing: number) => {
         const { pathname } = new URL(request.url);
         const count = (asked.get(pathname) ?? 0) + 1;
         asked.set(pathname, count);
+        events.push(`ask ${pathname}`);
         if (count > failing) return html(`<h1>${pathname}</h1>`);
         if (pathname === "/throws") throw new Error("no such row");
         return new Response("upstream is down", { status: 503 });
@@ -252,8 +253,21 @@ const flaky = (failing: number) => {
 };
 
 test("a page that throws or answers 5xx is asked again, and written when it then succeeds", async () => {
-  const { site, asked } = flaky(1);
-  const started = performance.now();
+  // The retry delay is a timer, so the proof it was honoured is the timer
+  // firing between the two asks, not a clock reading across them.
+  const events: string[] = [];
+  const { site, asked } = flaky(1, events);
+  const real = globalThis.setTimeout;
+  const recording = (handler: (...args: unknown[]) => void, ms = 0, ...args: unknown[]) =>
+    real(
+      (...passed: unknown[]) => {
+        if (ms === 40) events.push("waited 40");
+        handler(...passed);
+      },
+      ms,
+      ...args,
+    );
+  globalThis.setTimeout = recording as unknown as typeof setTimeout;
   const { pages } = await prerender({
     entry: site,
     outDir: join(sandbox, "retried"),
@@ -264,6 +278,8 @@ test("a page that throws or answers 5xx is asked again, and written when it then
     base: "/",
     retryCount: 1,
     retryDelay: 40,
+  }).finally(() => {
+    globalThis.setTimeout = real;
   });
 
   expect(
@@ -275,7 +291,11 @@ test("a page that throws or answers 5xx is asked again, and written when it then
     ["/throws", 200],
   ]);
   expect(Object.fromEntries(asked)).toEqual({ "/throws": 2, "/down": 2 });
-  expect(performance.now() - started).toBeGreaterThanOrEqual(35);
+  for (const path of ["/throws", "/down"]) {
+    const first = events.indexOf(`ask ${path}`);
+    const again = events.lastIndexOf(`ask ${path}`);
+    expect(events.slice(first, again), `${path} waited before its retry`).toContain("waited 40");
+  }
 });
 
 test("a page that is still failing after its retries fails the build, once", async () => {

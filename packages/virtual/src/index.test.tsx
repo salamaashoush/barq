@@ -256,16 +256,28 @@ describe("fixed sizes", () => {
   });
 
   test("a million rows cost a window, not a list", async () => {
-    const started = performance.now();
-    const list = mount(() => ({ count: 1_000_000 }));
+    let estimated = 0;
+    const list = mount(() => ({
+      count: 1_000_000,
+      estimateSize: () => {
+        estimated++;
+        return 50;
+      },
+    }));
     await settle();
+    const first = builtRows.length;
     scroll(list.scroller, 25_000_000);
     await settle();
 
     expect(list.rows()).toHaveLength(6);
     expect(list.indexes()[0]).toBe(499_999);
     expect(list.total()).toBe(50_000_000);
-    expect(performance.now() - started).toBeLessThan(2000);
+    // The DOM holds a window at a time, and the jump builds the one it lands
+    // on and nothing it passed.
+    expect(first, "the first window").toBeLessThanOrEqual(6);
+    expect(builtRows).toHaveLength(first + 6);
+    // Offsets are a table over every row, built once rather than per scroll.
+    expect(estimated).toBe(1_000_000);
   });
 
   test("the mirror never rewrites what the core measured", async () => {

@@ -796,3 +796,55 @@ cost-model split of an expensive, dependency-disjoint call is gone, and with it 
   `drawerDrag` ("the threshold is a FRACTION", "a flick closes it", "a slow pull", "a flick BACK")
   now drive the drawer's injected `now` instead of `Date.now` and `setTimeout`. Expectations are
   unchanged.
+- `compiler-rs/test/throughput.test.ts` is gone from the suite: its four tests asserted compile times
+  (every fixture under 1 ms, the typical component file under 1 ms, the guard-thread path over
+  20 MB/s, templates-on under 1.9x templates-off), which a loaded runner failed with the compiler
+  unchanged. The same four budgets run as `bun test/throughput.bench.ts`, which exits non-zero
+  when one breaks; CI runs it as a report (`continue-on-error`). The suite's guard is the new
+  `compiler-rs/tests/compile_work.rs`, which counts every allocation a compile makes and is
+  deterministic: the typical file at 1, 2, 4, 8 and 16 copies grows by at most 2.1x the
+  allocation calls per doubling and the series crosses the 8 KiB guard-thread limit; the corpus
+  glued into one module costs no more than its fixtures compiled apart; templates-on stays under
+  2.75x the calls and 2.35x the bytes of templates-off (measured 2.17x and 1.87x). A pass made
+  quadratic on purpose fails the first two. `mutants.ts` loses its `TIMING` filter, which only
+  existed to discount these names.
+- `compiler-rs/test/optimality.test.ts` "the slowest fixture and a typical component file compile
+  in under 1ms" is now "the corpus is really compiled, and the module grows only with the input".
+  It keeps both real-compile checks and adds that eight copies of the typical file emit the same
+  template table and at most eight times the bytes of one. The 1 ms budget is the bench's.
+- `core/src/rendering.test.ts` "For should handle large list reordering efficiently" and "For
+  should handle shuffle efficiently" asserted a reorder under 100 ms. An O(n^2) LIS over 1000
+  rows is about a million comparisons and finishes well inside that, so the bound never held the
+  property its comment claimed. Both now count `insertBefore` calls on the container: a reversal
+  of 1000 moves between 999 and 1000 rows, and a seeded shuffle of 500 (replacing `Math.random`)
+  moves exactly `n - LIS` rows and lands in the shuffled order.
+- `table/src/state.test.tsx` "ten thousand rows sort and page within a generous bound" (2 s and
+  4 s) is now "... sort in n log n comparisons and render one page". The two columns sort through
+  counting wrappers around `sortFn_basic` and `sortFn_alphanumeric`, the functions `auto` picked,
+  and each sort makes between `n - 1` and `n * ceil(log2 n)` comparisons. Page size and order
+  expectations are unchanged.
+- `virtual/src/index.test.tsx` "a million rows cost a window, not a list" asserted under 2 s. It
+  now asserts the first window built at most 6 rows, the jump built 6 more and nothing between,
+  and `estimateSize` ran once per row (1,000,000), so offsets are not rebuilt per scroll.
+- `primitives/src/promise.test.ts` "sleep resolves after the delay" read `Date.now` across a real
+  20 ms sleep. It runs on fake timers: unresolved at 19 ms, resolved at 20.
+  `primitives/src/timer.test.ts` "elapsed counts from the call" asserted under 5 ms at the call
+  and at least 20 later; on fake timers it is exactly 0, then exactly 20 after 25 ms (sampled at
+  10 and 20).
+- `server/src/boundary-resume.test.ts` "renderPage settles it rather than refetching until the
+  boundary deadline" asserted under 1000 ms. It now records which deadline-length timers (1 s
+  and over) fired while the render was pending, and requires none. `server/src/late-failure.test.ts`
+  "finishes at the boundary deadline when a read never answers" asserted under 7000 ms; it now
+  requires exactly one, the 5000 ms boundary deadline. Both still take the real time they took.
+- `router/src/server.test.ts` "a static head streams its first byte before the loader settles"
+  (first byte under 30 ms) and "a function head waits, and that is the trade" (first byte at
+  50 ms or later) raced a 60 ms loader against a clock. The loader now waits on a gate the test
+  opens: the static head's first byte arrives with the loader still held, and the function
+  head's has not arrived after ten turns of the event loop and arrives after the gate opens,
+  with the loader settled. The unused `headersAt` reading in the shared `render` helper is gone.
+- `start/src/prerender.test.ts` "a page that throws or answers 5xx is asked again" asserted the
+  run took at least 35 ms for a 40 ms `retryDelay`. It now logs each ask and each 40 ms timer as
+  it fires, and requires the timer between every path's first ask and its retry.
+- `start/src/session.test.ts` "`createdAt` is the SEALED time" slept 20 ms and compared against
+  `Date.now`. It sets the clock with `setSystemTime` instead, seals at a fixed instant, reads
+  20 s later, and requires `createdAt` to equal the sealing instant exactly.

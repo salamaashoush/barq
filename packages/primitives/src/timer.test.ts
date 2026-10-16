@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, jest, test } from "bun:test";
 import { flush, createRoot, createSignal } from "@barqjs/core";
 import { elapsed, interval, now, timeout } from "./timer.ts";
 
@@ -106,16 +106,17 @@ describe("now / elapsed", () => {
     dispose[0]();
   });
 
-  test("elapsed counts from the call", async () => {
-    const dispose = createRoot((d) => {
-      const since = elapsed(10);
-      expect(since()).toBeLessThan(5);
-      return [d, since] as const;
-    });
-    await eventually(() => {
+  test("elapsed counts from the call", () => {
+    jest.useFakeTimers();
+    try {
+      const [dispose, since] = createRoot((d) => [d, elapsed(10)] as const);
+      expect(since()).toBe(0);
+      jest.advanceTimersByTime(25);
       flush();
-      return dispose[1]() >= 20;
-    }, "20ms of elapsed time to be sampled");
-    dispose[0]();
+      expect(since(), "sampled at 10 and 20, not read live").toBe(20);
+      dispose();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

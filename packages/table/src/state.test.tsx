@@ -20,9 +20,12 @@ import {
   type PaginationState,
   type Row,
   type RowSelectionState,
+  type SortFn,
   type SortingState,
   FlexRender,
   createTable,
+  sortFn_alphanumeric,
+  sortFn_basic,
 } from "./index.ts";
 
 afterEach(unmountAll);
@@ -465,16 +468,31 @@ describe("row identity", () => {
 });
 
 describe("scale", () => {
-  test("ten thousand rows sort and page within a generous bound", () => {
+  test("ten thousand rows sort in n log n comparisons and render one page", () => {
     const teams = ["core", "docs", "infra", "web"];
-    const many = Array.from({ length: 10_000 }, (_, index) =>
+    const rows = 10_000;
+    const many = Array.from({ length: rows }, (_, index) =>
       person(index, `user${index}`, (index * 7919) % 1000, teams[index % teams.length]),
     );
+    // The two functions `auto` resolves these columns to, counted.
+    let comparisons = 0;
+    const counted =
+      (sort: SortFn<Features, Person>): SortFn<Features, Person> =>
+      (a, b, id) => {
+        comparisons++;
+        return sort(a, b, id);
+      };
+    const countedColumns: Array<ColumnDef<Features, Person>> = [
+      { accessorKey: "name", sortFn: counted(sortFn_alphanumeric) },
+      { accessorKey: "age", sortFn: counted(sortFn_basic) },
+      { accessorKey: "team" },
+    ];
+    const bound = rows * Math.ceil(Math.log2(rows));
     let table!: BarqTable<Features, Person>;
     const view = mount(() => {
       table = createTable({
         features,
-        columns,
+        columns: countedColumns,
         data: many,
         getRowId: (row) => row.id,
         initialState: { pagination: { pageIndex: 0, pageSize: 50 } },
@@ -483,18 +501,20 @@ describe("scale", () => {
     });
     expect(view.host.querySelectorAll("li")).toHaveLength(50);
 
-    const started = performance.now();
     table.setSorting([{ id: "age", desc: true }]);
     flush();
-    const ascending = performance.now();
+    const byAge = comparisons;
+    comparisons = 0;
     table.setSorting([{ id: "name", desc: false }]);
     flush();
-    const elapsed = performance.now() - started;
+    const byName = comparisons;
 
     expect(view.host.querySelectorAll("li")).toHaveLength(50);
     expect(view.text("li .name").slice(0, 3)).toEqual(["user0", "user1", "user2"]);
-    expect(ascending - started).toBeLessThan(2000);
-    expect(elapsed).toBeLessThan(4000);
+    expect(byAge, "the age sort compared rows").toBeGreaterThanOrEqual(rows - 1);
+    expect(byAge).toBeLessThanOrEqual(bound);
+    expect(byName, "the name sort compared rows").toBeGreaterThanOrEqual(rows - 1);
+    expect(byName).toBeLessThanOrEqual(bound);
 
     table.setSorting([{ id: "age", desc: true }]);
     flush();

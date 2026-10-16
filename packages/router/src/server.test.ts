@@ -2333,7 +2333,10 @@ describe("a redirect target has to be navigable", () => {
  * pays there and does not here.
  */
 describe("loaderData in head", () => {
-  const LOADER_MS = 60;
+  // The loader settles when a test says so, or after a tick when nothing does,
+  // so which comes first is an order of events rather than a race of clocks.
+  let gate: Promise<void> | null = null;
+  let settled = false;
   const table = (head: unknown) =>
     [
       {
@@ -2350,7 +2353,8 @@ describe("loaderData in head", () => {
             id: "/post",
             path: "post",
             loader: async () => {
-              await new Promise((resolve) => setTimeout(resolve, LOADER_MS));
+              await (gate ?? new Promise((resolve) => setTimeout(resolve, 0)));
+              settled = true;
               return { title: "FROM THE LOADER" };
             },
             head,
@@ -2367,11 +2371,9 @@ describe("loaderData in head", () => {
       stream,
       app: (state) => renderRoutes(state),
     });
-    const started = Date.now();
     const response = await handler(get("/post"));
-    const headersAt = Date.now() - started;
     const body = await response.text();
-    return { body, headersAt, title: /<title[^>]*>([^<]*)<\/title>/.exec(body)?.[1] ?? "NONE" };
+    return { body, title: /<title[^>]*>([^<]*)<\/title>/.exec(body)?.[1] ?? "NONE" };
   };
 
   const fnHead = ({ loaderData }: { loaderData: { title?: string } | undefined }) => ({
@@ -2396,28 +2398,35 @@ describe("loaderData in head", () => {
 
   /**
    * The whole reason the signal is the SHAPE of `head` rather than a flag: a
-   * static title must keep the fast path. Measured rather than asserted, because
-   * this is the property the design exists for.
+   * static title must keep the fast path. The loader is held until the first
+   * byte is in hand, so a handler that waited for it never sends one.
    */
   test("a static head streams its first byte before the loader settles", async () => {
-    const handler = createPageHandler({
-      routeTree: table({ meta: [{ title: "STATIC" }] }),
-      stream: true,
-      app: (state) => renderRoutes(state),
-    });
-    const started = Date.now();
-    const response = await handler(get("/post"));
-    const reader = response.body!.getReader();
-    await reader.read();
-    const firstByteAt = Date.now() - started;
-    // DRAINED, not cancelled: cancelling delegates to the inner stream, which
-    // this reader has locked, and `Cannot cancel a locked ReadableStream` reads
-    // like a bug in the handler rather than in the test.
-    while (!(await reader.read()).done) {
-      /* drain */
+    let release!: () => void;
+    gate = new Promise((resolve) => (release = resolve));
+    settled = false;
+    try {
+      const handler = createPageHandler({
+        routeTree: table({ meta: [{ title: "STATIC" }] }),
+        stream: true,
+        app: (state) => renderRoutes(state),
+      });
+      const response = await handler(get("/post"));
+      const reader = response.body!.getReader();
+      const first = await reader.read();
+      expect(first.done).toBe(false);
+      expect(settled).toBe(false);
+      release();
+      // DRAINED, not cancelled: cancelling delegates to the inner stream, which
+      // this reader has locked, and `Cannot cancel a locked ReadableStream` reads
+      // like a bug in the handler rather than in the test.
+      while (!(await reader.read()).done) {
+        /* drain */
+      }
+      expect(settled).toBe(true);
+    } finally {
+      gate = null;
     }
-    // Comfortably inside the loader's own time, so this cannot pass by accident.
-    expect(firstByteAt).toBeLessThan(LOADER_MS / 2);
   });
 
   /**
@@ -2469,20 +2478,35 @@ describe("loaderData in head", () => {
   });
 
   test("a function head waits, and that is the trade", async () => {
-    const handler = createPageHandler({
-      routeTree: table(fnHead),
-      stream: true,
-      app: (state) => renderRoutes(state),
-    });
-    const started = Date.now();
-    const response = await handler(get("/post"));
-    const reader = response.body!.getReader();
-    await reader.read();
-    const firstByteAt = Date.now() - started;
-    while (!(await reader.read()).done) {
-      /* drain */
+    let release!: () => void;
+    gate = new Promise((resolve) => (release = resolve));
+    settled = false;
+    try {
+      const handler = createPageHandler({
+        routeTree: table(fnHead),
+        stream: true,
+        app: (state) => renderRoutes(state),
+      });
+      const responded = handler(get("/post"));
+      const atFirstByte: { settled: boolean | null } = { settled: null };
+      const firstByte = responded.then(async (response) => {
+        const reader = response.body!.getReader();
+        await reader.read();
+        atFirstByte.settled = settled;
+        while (!(await reader.read()).done) {
+          /* drain */
+        }
+      });
+      // Enough turns of the loop for a handler that did not wait to have sent
+      // its first byte, and none of them settle the loader.
+      for (let turn = 0; turn < 10; turn++) await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(atFirstByte.settled).toBe(null);
+      release();
+      await firstByte;
+      expect(atFirstByte.settled).toBe(true);
+    } finally {
+      gate = null;
     }
-    expect(firstByteAt).toBeGreaterThanOrEqual(LOADER_MS - 10);
   });
 });
 

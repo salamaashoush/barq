@@ -19,6 +19,31 @@ import { type SsrHtml, boundary, esc, html } from "./ssr.ts";
 
 const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
+/**
+ * The delay of every timer of a deadline's length that fired while `run` was
+ * pending. Which timer let a render go is a fact about the render; how long it
+ * took is a fact about the machine.
+ */
+async function deadlinesFired<T>(run: () => Promise<T>): Promise<{ value: T; fired: number[] }> {
+  const real = globalThis.setTimeout;
+  const fired: number[] = [];
+  const recording = (handler: (...args: unknown[]) => void, ms = 0, ...args: unknown[]) =>
+    real(
+      (...passed: unknown[]) => {
+        if (ms >= 1000) fired.push(ms);
+        handler(...passed);
+      },
+      ms,
+      ...args,
+    );
+  globalThis.setTimeout = recording as unknown as typeof setTimeout;
+  try {
+    return { value: await run(), fired };
+  } finally {
+    globalThis.setTimeout = real;
+  }
+}
+
 afterEach(() => {
   clearRenderData();
   (globalThis as { __BARQ_DATA__?: unknown }).__BARQ_DATA__ = undefined;
@@ -127,14 +152,15 @@ describe("a buffered page", () => {
   });
 
   test("finishes at the boundary deadline when a read never answers", async () => {
-    const started = Date.now();
-    const page = await renderPage(() => {
-      const never = createMemo(() => new Promise<string>(() => {}), { key: "never" });
-      return html(`<main>${loading(() => html(`<u>${esc(never())}</u>`))}</main>`);
-    });
+    const { value: page, fired } = await deadlinesFired(() =>
+      renderPage(() => {
+        const never = createMemo(() => new Promise<string>(() => {}), { key: "never" });
+        return html(`<main>${loading(() => html(`<u>${esc(never())}</u>`))}</main>`);
+      }),
+    );
 
     expect(page.html).toBe("<main><!--[b:0--><i>skel</i><!--]--></main>");
-    expect(Date.now() - started).toBeLessThan(7_000);
+    expect(fired, "one boundary deadline, and no wait past it").toEqual([5_000]);
   }, 10_000);
 
   test("still fails when no error boundary stands around the boundary", async () => {

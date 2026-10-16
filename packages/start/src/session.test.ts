@@ -6,7 +6,7 @@
  * rather than as an error, an exception, or somebody else's session.
  */
 
-import { describe, expect, spyOn, test } from "bun:test";
+import { describe, expect, setSystemTime, spyOn, test } from "bun:test";
 
 import {
   type SessionConfig,
@@ -120,20 +120,24 @@ describe("a session round-trips through the cookie", () => {
 
   test("`createdAt` is the SEALED time, not the time it was read", async () => {
     // `Date.now()` here reported every session as brand new, which is exactly
-    // wrong for the one thing the field is for.
-    const first = await inRequest(async () => {
-      await (await useSession<{ a: number }>(CONFIG)).update({ a: 1 });
-    });
-    // The SLEEP COMES FIRST. Taking the timestamp before it left no gap once
-    // the KDF became 566x faster — the seal and the comparison landed in the
-    // same millisecond and `toBeLessThan` is strict.
-    await new Promise((resolve) => setTimeout(resolve, 20));
-    const before = Date.now();
-    const second = await inRequest(
-      async () => (await getSession<{ a: number }>(CONFIG)).createdAt,
-      asRequestCookie(first.setCookie[0] ?? ""),
-    );
-    expect(second.value).toBeLessThan(before);
+    // wrong for the one thing the field is for. The clock is set rather than
+    // slept on, so the seal and the read are twenty seconds apart however fast
+    // the KDF runs.
+    const sealedAt = Date.UTC(2026, 0, 1);
+    setSystemTime(new Date(sealedAt));
+    try {
+      const first = await inRequest(async () => {
+        await (await useSession<{ a: number }>(CONFIG)).update({ a: 1 });
+      });
+      setSystemTime(new Date(sealedAt + 20_000));
+      const second = await inRequest(
+        async () => (await getSession<{ a: number }>(CONFIG)).createdAt,
+        asRequestCookie(first.setCookie[0] ?? ""),
+      );
+      expect(second.value).toBe(sealedAt);
+    } finally {
+      setSystemTime();
+    }
   });
 
   test("the id survives an update and changes on a clear", async () => {

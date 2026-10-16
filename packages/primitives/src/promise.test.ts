@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, jest, test } from "bun:test";
 import { flush, createRoot, createSignal } from "@barqjs/core";
 import { TimeoutError, abortOnCleanup, raceTimeout, sleep, until } from "./promise.ts";
 
@@ -72,9 +72,19 @@ describe("raceTimeout", () => {
 
 describe("sleep", () => {
   test("resolves after the delay", async () => {
-    const start = Date.now();
-    await sleep(20);
-    expect(Date.now() - start).toBeGreaterThanOrEqual(15);
+    jest.useFakeTimers();
+    try {
+      let resolved = false;
+      void sleep(20).then(() => (resolved = true));
+      jest.advanceTimersByTime(19);
+      await Promise.resolve();
+      expect(resolved).toBe(false);
+      jest.advanceTimersByTime(1);
+      await Promise.resolve();
+      expect(resolved).toBe(true);
+    } finally {
+      jest.useRealTimers();
+    }
   });
 
   test("is cancelled with its owner, and never resolves after that", async () => {

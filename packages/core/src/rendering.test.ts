@@ -102,6 +102,49 @@ describe("For component item updates", () => {
 // ============================================================================
 // Issue 2: LIS algorithm performance - should be O(n log n) not O(n²)
 // ============================================================================
+/**
+ * DOM moves made by `run` under `parent`. The reorder's cost is its moves: each
+ * one is a removal and an insertion the browser lays out, and it is the number
+ * the longest increasing subsequence exists to minimise.
+ */
+function movesUnder(parent: Node, run: () => void): number {
+  const insertBefore = parent.insertBefore;
+  let moves = 0;
+  parent.insertBefore = function <T extends Node>(node: T, child: Node | null): T {
+    moves++;
+    return insertBefore.call(this, node, child) as T;
+  };
+  try {
+    run();
+  } finally {
+    parent.insertBefore = insertBefore;
+  }
+  return moves;
+}
+
+/** The rows a minimal reorder keeps standing: an O(n²) LIS, as a reference. */
+function longestIncreasing(values: readonly number[]): number {
+  const best = values.map(() => 1);
+  for (let i = 0; i < values.length; i++) {
+    for (let j = 0; j < i; j++) {
+      if (values[j] < values[i]) best[i] = Math.max(best[i], best[j] + 1);
+    }
+  }
+  return Math.max(0, ...best);
+}
+
+/** Fisher-Yates over a fixed seed, so the permutation is the same on every run. */
+function seededShuffle<T>(items: readonly T[], seed: number): T[] {
+  const out = [...items];
+  let state = seed;
+  for (let i = out.length - 1; i > 0; i--) {
+    state = (Math.imul(state, 1103515245) + 12345) >>> 0;
+    const j = state % (i + 1);
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
 describe("LIS algorithm performance", () => {
   test("For should handle large list reordering efficiently", () => {
     // Create a large list
@@ -120,15 +163,14 @@ describe("LIS algorithm performance", () => {
 
     container.appendChild(node as Node);
 
-    // Reverse the list - this should use LIS for minimal moves
-    const start = performance.now();
-    setItems(initialItems.toReversed());
-    flush();
-    const elapsed = performance.now() - start;
+    const moves = movesUnder(container, () => {
+      setItems(initialItems.toReversed());
+      flush();
+    });
 
-    // With O(n log n) LIS, this should be fast
-    // With O(n²), this would be noticeably slow
-    expect(elapsed).toBeLessThan(100); // Should complete quickly
+    // A reversal keeps one row standing at best and moves each row at most once.
+    expect(moves).toBeGreaterThanOrEqual(size - 1);
+    expect(moves).toBeLessThanOrEqual(size);
 
     // Verify correct order
     const divs = container.querySelectorAll("div");
@@ -151,14 +193,16 @@ describe("LIS algorithm performance", () => {
 
     container.appendChild(node as Node);
 
-    // Shuffle
-    const shuffled = items().toSorted(() => Math.random() - 0.5);
-    const start = performance.now();
-    setItems(shuffled);
-    flush();
-    const elapsed = performance.now() - start;
+    const shuffled = seededShuffle(items(), 7);
+    const moves = movesUnder(container, () => {
+      setItems(shuffled);
+      flush();
+    });
 
-    expect(elapsed).toBeLessThan(100);
+    expect(moves).toBe(size - longestIncreasing(shuffled.map((item) => item.id)));
+    expect([...container.querySelectorAll("div")].map((div) => Number(div.dataset.id))).toEqual(
+      shuffled.map((item) => item.id),
+    );
   });
 });
 
