@@ -5,7 +5,7 @@
  * comment is a slot the page fills with a component of its own.
  */
 
-import { type Child, useHead } from "@barqjs/core";
+import { type Child, Loading, createMemo, useHead } from "@barqjs/core";
 import { type Slot, createServerFn, invalidateFrames } from "@barqjs/start";
 
 interface Story {
@@ -88,4 +88,74 @@ export const reviseStory = createServerFn({ method: "POST" })
       comment.text = `${comment.text.replace(/ \(r\d+\)$/, "")} (r${story.revision})`;
     invalidateFrames(getStory);
     return story.revision;
+  });
+
+/** The live board's lines, and every connection listening to them. */
+let lines: readonly string[] = ["the board is open"];
+const listening = new Set<() => void>();
+
+/**
+ * A standing source: every reader starts from the board as it stands, then
+ * hears each line posted, until its connection ends.
+ */
+function board(signal: AbortSignal | undefined): AsyncIterable<readonly string[]> {
+  return {
+    [Symbol.asyncIterator](): AsyncIterator<readonly string[]> {
+      let owed = true;
+      let wake: (() => void) | null = null;
+      const heard = (): void => {
+        owed = true;
+        wake?.();
+      };
+      listening.add(heard);
+      const stop = (): void => {
+        listening.delete(heard);
+        wake?.();
+      };
+      signal?.addEventListener("abort", stop, { once: true });
+      return {
+        async next(): Promise<IteratorResult<readonly string[]>> {
+          while (!owed && listening.has(heard))
+            await new Promise<void>((resolve) => (wake = resolve));
+          if (!listening.has(heard)) return { done: true, value: undefined };
+          owed = false;
+          return { done: false, value: lines };
+        },
+        async return(): Promise<IteratorResult<readonly string[]>> {
+          stop();
+          return { done: true, value: undefined };
+        },
+      };
+    },
+  };
+}
+
+/** A live frame: the board, rendered again on the server for each line posted. */
+export const liveBoard = createServerFn({ method: "GET" }).handler(({ signal }) => {
+  const feed = board(signal);
+  return () => {
+    const latest = createMemo(() => feed);
+    return (
+      <Loading fallback={<p>opening the board…</p>}>
+        <ul id="live-board">
+          {latest().map((line) => (
+            <li>{line}</li>
+          ))}
+        </ul>
+      </Loading>
+    );
+  };
+});
+
+/** Post a line; every page showing the board receives it over its connection. */
+export const postLine = createServerFn({ method: "POST" })
+  .validator((input: { readonly text: string }) => {
+    const text = input.text.trim();
+    if (text === "" || text.length > 120) throw new Error("a line is 1 to 120 characters");
+    return { text };
+  })
+  .handler(({ data }) => {
+    lines = [...lines, data.text];
+    for (const heard of listening) heard();
+    return lines.length;
   });

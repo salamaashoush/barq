@@ -9,11 +9,12 @@
  * page is built again.
  */
 
-import { type Child, type Incoming, createSignal, dynamic } from "@barqjs/core";
+import { type Child, type Incoming, createMemo, createSignal, dynamic } from "@barqjs/core";
+import { live } from "@barqjs/start";
 import { css } from "@barqjs/css";
 import { Link, type RouteProps, createFileRoute, useLocation } from "@barqjs/router";
 
-import { getStory, reviseStory } from "../data/stories.tsx";
+import { getStory, liveBoard, postLine, reviseStory } from "../data/stories.tsx";
 import { DemoCard, DemoSection } from "../demos/shared";
 
 function Comment(props: Incoming<{ cid: number; children: Child }>) {
@@ -25,6 +26,37 @@ function Comment(props: Incoming<{ cid: number; children: Child }>) {
       </button>
       <div hidden={() => !open()}>{props.children}</div>
     </section>
+  );
+}
+
+/**
+ * A live frame: the server renders the board again for each line posted, and
+ * this page receives each rendering over one connection, applied in place.
+ */
+function LiveBoard() {
+  const board = createMemo(() => live(liveBoard)());
+  const Board = dynamic(() => board() as unknown as (props: Record<string, unknown>) => Node);
+  const [text, setText] = createSignal("");
+  const post = async (event: SubmitEvent): Promise<void> => {
+    event.preventDefault();
+    const line = text();
+    setText("");
+    await postLine({ data: { text: line } });
+  };
+  return (
+    <DemoCard title="A live frame">
+      <form class={navStyle} onSubmit={(event: SubmitEvent) => void post(event)}>
+        <input
+          id="line-text"
+          value={text()}
+          onInput={(event: Event) => setText((event.target as HTMLInputElement).value)}
+        />
+        <button type="submit" id="line-post">
+          post
+        </button>
+      </form>
+      <Board />
+    </DemoCard>
   );
 }
 
@@ -59,6 +91,7 @@ function Frames(props: RouteProps) {
           <p class={shareStyle}>shared from the page</p>
         </View>
       </DemoCard>
+      <LiveBoard />
     </DemoSection>
   );
 }
