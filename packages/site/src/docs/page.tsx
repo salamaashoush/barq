@@ -215,7 +215,7 @@ function Found(props: Incoming<{ entry: ComponentDoc }>) {
               <h2 class={anchor} id="installation">
                 Installation
               </h2>
-              <CommandTabs command={() => `barq-ui add ${addName(entry()) ?? ""}`} />
+              <CommandTabs command={() => `@barqjs/ui-cli add ${addName(entry()) ?? ""}`} />
             </>
           )
         }

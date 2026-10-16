@@ -73,10 +73,15 @@ export function Body() {
       </h2>
       <p>
         <code>installTheme</code> takes a base colour theme, optionally an accent over it, and a
-        radius. The compiler folds the call into the stylesheet, so nothing runs in the browser.
+        radius. It registers the theme's rules when it runs, and a second call replaces the first,
+        so an app can change theme while the page is open.
       </p>
       <CodeBlock code={theme} title="src/theme.ts" />
-      <p>With the CLI, the same choice is one command, and it rewrites the file for you.</p>
+      <p>
+        The CLI writes the same rules into a <code>theme.ts</code> of its own instead, a{" "}
+        <code>globalCss</code> block the compiler folds into the stylesheet, so nothing runs in the
+        browser. Changing that theme is one command, and it rewrites the file for you.
+      </p>
       <CommandTabs command="@barqjs/ui-cli theme stone" />
 
       <h2 class={anchor} id="scope">

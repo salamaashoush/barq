@@ -55,10 +55,12 @@ export function Body() {
         Validation
       </h2>
       <p>
-        A validator is a function from the value to an error message, or <code>undefined</code> when
-        the value is fine. <code>validators</code> says when each one runs: <code>onChange</code>,{" "}
-        <code>onBlur</code>, <code>onSubmit</code>, and the <code>Async</code> forms of each, which
-        take a debounce.
+        A validator takes <code>{"{ value }"}</code> and returns an error message, or{" "}
+        <code>undefined</code> when the value is fine. <code>validators</code> says when each one
+        runs: <code>onMount</code>, <code>onChange</code>, <code>onBlur</code>,{" "}
+        <code>onSubmit</code>, and the <code>Async</code> forms of the last three.{" "}
+        <code>onChangeAsyncDebounceMs</code> and <code>onBlurAsyncDebounceMs</code> debounce the
+        async ones.
       </p>
 
       <h2 class={anchor} id="errors">

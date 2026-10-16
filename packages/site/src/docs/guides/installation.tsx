@@ -7,7 +7,7 @@ export const PACKAGES = [
   "@barqjs/aria",
   "@barqjs/css",
   "@barqjs/lucide",
-  "@barqjs/ui-cli",
+  "@barqjs/primitives",
 ] as const;
 
 export const sections: readonly DocsSection[] = [
@@ -29,10 +29,11 @@ export function Body() {
         Install the package
       </h2>
       <p>
-        Behaviour comes from <code>@barqjs/aria</code>, styling from <code>@barqjs/css</code> and
-        icons from <code>@barqjs/lucide</code>.
+        Behaviour comes from <code>@barqjs/aria</code>, styling from <code>@barqjs/css</code>, icons
+        from <code>@barqjs/lucide</code> and refs and observers from <code>@barqjs/primitives</code>
+        . They are peer dependencies, so the app installs them once.
       </p>
-      <CodeBlock code="bun add @barqjs/ui @barqjs/aria @barqjs/css @barqjs/lucide" />
+      <CodeBlock code={`bun add ${PACKAGES.join(" ")}`} />
 
       <h2 class={anchor} id="styles">
         Add the base styles

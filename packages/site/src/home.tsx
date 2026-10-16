@@ -147,7 +147,7 @@ export function Home() {
     >
       <PageHeader
         title="Components you can own, compiled away"
-        lede="Composable, accessible components with thoughtful defaults, built on a compiler that folds the reactivity and the styles away. Customize, extend, and make them your own."
+        lede="Composable, accessible components with thoughtful defaults, on fine-grained signals and a compiler that folds the styles into a stylesheet. Customize, extend, and make them your own."
         actions={
           <>
             <Link to="/docs/components" class={plain}>

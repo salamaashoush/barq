@@ -83,7 +83,9 @@ export function Body() {
         A base colour theme in <code>base</code>, optionally an <code>accent</code> over it, and the{" "}
         <code>radius</code>. <code>init</code> writes them into a <code>theme.ts</code> the compiler
         folds into a stylesheet. <code>style</code> is one of the eight component styles and is
-        optional: with none you get the package's own look.
+        optional: with none you get the package's own look. <code>dark</code> is the selector dark
+        mode is asked for by, <code>.dark</code> when it is missing, or <code>"media"</code> to
+        follow the operating system.
       </p>
 
       <h2 class={anchor} id="reset">

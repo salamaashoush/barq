@@ -169,8 +169,9 @@ const MANAGERS = [
 
 /**
  * `npx shadcn@latest add <name>` across the four, which is what upstream's
- * install block shows first. Ours is `barq-ui`, since that is the CLI that
- * writes these components into a project.
+ * install block shows first. Ours runs `@barqjs/ui-cli`, the package whose
+ * `barq-ui` command writes these components into a project: a runner given the
+ * bare `barq-ui` would look for a package of that name.
  */
 export function CommandTabs(props: Incoming<{ command: string }>) {
   const [picked, setPicked] = createSignal<string>("pnpm");

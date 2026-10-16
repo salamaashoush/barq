@@ -57,7 +57,7 @@ const head = {
     {
       name: "description",
       content:
-        "shadcn/ui's components, ported to barq. Composable, accessible components with thoughtful defaults, compiled away.",
+        "shadcn/ui's components, ported to barq. Composable, accessible components on fine-grained signals, with styles compiled to a stylesheet.",
     },
   ],
 };

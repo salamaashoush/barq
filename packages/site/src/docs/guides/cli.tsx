@@ -98,13 +98,13 @@ export const COMMANDS: readonly Command[] = [
   {
     name: "theme",
     line: "theme stone",
-    does: "Changes the colour theme and rewrites the project's `theme.ts`.",
-    options: [],
+    does: "Changes the base colour theme, or the accent when the name is one, and rewrites the project's `theme.ts`.",
+    options: [{ flag: "--radius <len>", does: "Change the radius as well." }],
   },
   {
     name: "style",
     line: "style nova",
-    does: "Changes the component style and copies that stylesheet into the project.",
+    does: "Changes the component style and copies that stylesheet into the project. The style applies under a `style-<name>` class.",
     options: [],
   },
   {
