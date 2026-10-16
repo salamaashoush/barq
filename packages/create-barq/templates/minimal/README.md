@@ -17,9 +17,9 @@ src/App.tsx      a signal and a button
 ```
 
 `{count}` in JSX is a tracked read rather than a snapshot: the compiler wraps it,
-and only that text node updates when the signal changes. `src/barq.d.ts` turns on
-compiler mode, which is what lets control-flow props like `when` and `each` take
-a raw value instead of a thunk.
+and only that text node updates when the signal changes. The same wrapping is why
+control-flow props take a plain expression, as in `<Show when={count() > 5}>`,
+rather than a function.
 
 Adding `@barqjs/router` and `@barqjs/start` later is not a rewrite, but starting
 from the `full-stack` template is less work than retrofitting.

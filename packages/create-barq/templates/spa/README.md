@@ -2,8 +2,8 @@
 
 Routing and rendering happen in the browser. `index.html` is the document, and
 `vite build` bundles it like any other Vite app. Server functions still work:
-they are real HTTP endpoints, and `dist/server/serve.js` serves them alongside
-the static files.
+they are real HTTP endpoints, and the built server answers them beside the
+static files.
 
 ```bash
 npm install
@@ -32,5 +32,5 @@ so the first frame draws the page that actually matched. `startClient()` from
 whose server renders the page.
 
 `dist/server/serve.js` answers a path no route claims with `index.html`, so a
-deep link works on a reload. Deploying the client half to a static host works
-too, as long as that host is configured to do the same.
+deep link works on a reload. A static host serving `dist/client` needs the same
+fallback configured.

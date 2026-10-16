@@ -1,11 +1,20 @@
 # @barqjs/vite
 
 The Vite plugin for barq: the compiler, file routes and the server half, from
-one call.
+one call. It is barq's counterpart to Solid 2.0's `@solidjs/vite-plugin`, and it
+wires in what TanStack Start's plugin does for `@barqjs/router` and
+`@barqjs/start`.
+
+## Install
 
 ```bash
 bun add -d @barqjs/vite vite
 ```
+
+Every barq application needs it. Without it a `.tsx` file goes through a generic
+JSX transform and gets different semantics.
+
+## Usage
 
 ```ts
 // vite.config.ts
@@ -20,7 +29,7 @@ export default defineConfig({
 `bun create barq` writes one of three shapes:
 
 ```ts
-barq({ ssr: true, start: { prerender: { routes: ["/"] } } }); // pages rendered on the server
+barq({ ssr: true, start: { prerender: { routes: ["/"] }, verify: true } }); // pages rendered on the server
 barq({ start: true }); // pages rendered in the browser from index.html, plus server functions
 barq(); // the compiler alone
 ```
@@ -30,29 +39,29 @@ barq(); // the compiler alone
 The names are those of Solid 2.0's `@solidjs/vite-plugin` wherever the concept
 is the same, so `solid({ ssr: true, start: true })` reads the same here.
 
-- **`ssr`**: whether the server renders pages. One meaning everywhere: the
+- `ssr`: whether the server renders pages. One meaning everywhere: the
   server renders the document and the client hydrates it, so both halves compile
   hydratable. With `start`, it also turns the page handler on. Off by default.
-- **`start`**: the server half from `@barqjs/start`. Server functions and API
+- `start`: the server half from `@barqjs/start`. Server functions and API
   routes, the dev server's page and function middleware, `vite preview`, and a
   `vite build` that builds the client and then the server. `true` is `{}`. Its
   options are `@barqjs/start`'s: `prerender`, `server`, `spa`, `allowedOrigins`,
   `importProtection`, `srcDirectory`, `outputDirectory`, plus `verify` and `env`
   below.
-- **`router`**: file routes from `@barqjs/router`. On when `src/routes` exists
+- `router`: file routes from `@barqjs/router`. On when `src/routes` exists
   and the package is installed; `false` turns it off, and an object sets
   `routesDir`, `routeTree` and `codeSplitting`. The route table is generated
   into `src/routeTree.gen.ts`, and its patterns are what `BARQ013` checks every
   `<Link to>` against.
-- **`dev`**: resolve the development builds under `vite dev` and compile with
+- `dev`: resolve the development builds under `vite dev` and compile with
   the dev-only diagnostics. On by default; no effect on `vite build`.
-- **`refresh`**: `{ disabled: true }` turns off replacing an edited component
+- `refresh`: `{ disabled: true }` turns off replacing an edited component
   in place.
-- **`conditions`**: export conditions every environment resolves first. A
+- `conditions`: export conditions every environment resolves first. A
   top-level `resolve.conditions` reaches the client environment only, and a
   condition that selects a package's build has to reach both halves or the app
   loads two copies of it.
-- **`compiler`**: options for the barq compiler (`strictCss`, `checks`,
+- `compiler`: options for the barq compiler (`strictCss`, `checks`,
   `overlay`, and the rest). `compiler.routes` adds patterns `BARQ013` accepts
   beside the file routes, for a router the app mounts with a table of its own.
 
