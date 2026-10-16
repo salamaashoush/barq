@@ -25,15 +25,13 @@ export const Field = (props) => <input onInput={props.onInput} />;
 
 Every prefix the check reports, and what to write instead:
 
-| prefix | write instead |
-| --- | --- |
-| `on:x` | `onX={handler}`, or `addEventListener` in a ref for a hyphenated name or options |
-| `capture:x`, `oncapture:x` | `onXCapture={handler}`, or `addEventListener` with `{ capture: true }` in a ref |
-| `attr:x` | `x={…}` |
-| `bool:x` | `x={on()}`: `true` adds the attribute and `false` removes it |
-| `style:x` | a key of the `style` object |
-| `class:x` | a key of the `class` map |
-| `use:x` | `ref={x(…)}`, and `ref={[x(…), y]}` for several |
+- `on:x`: `onX={handler}`, or `addEventListener` in a ref for a hyphenated name or options.
+- `capture:x`, `oncapture:x`: `onXCapture={handler}`, or `addEventListener` with `{ capture: true }` in a ref.
+- `attr:x`: `x={…}`.
+- `bool:x`: `x={on()}`, where `true` adds the attribute and `false` removes it.
+- `style:x`: a key of the `style` object.
+- `class:x`: a key of the `class` map.
+- `use:x`: `ref={x(…)}`, and `ref={[x(…), y]}` for several.
 
 ## Why this rule exists
 

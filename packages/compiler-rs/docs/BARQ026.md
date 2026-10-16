@@ -15,10 +15,10 @@ The first sentence names what the parser does at that element. The other shapes 
 
 - a table part outside its parent, or anything but its parts inside a table: `<tr>`
   directly in a `<table>` (the parser adds a `<tbody>`), `<td>` in a `<div>` (the parser
-  drops the tag), `<div>` in a `<tr>` (the parser moves it before the table);
-- an element `<select>`, `<optgroup>` or `<option>` does not take;
+  drops the tag), `<div>` in a `<tr>` (the parser moves it before the table).
+- an element `<select>`, `<optgroup>` or `<option>` does not take.
 - a second `<a>`, `<button>`, `<form>`, `<li>`, `<nobr>`, `<dd>` or `<dt>` inside an open one,
-  which the parser closes first;
+  which the parser closes first.
 - `<html>`, `<head>`, `<body>` and the obsolete `<frame>`, `<frameset>`, `<plaintext>`, which
   are never an element of their own inside a page.
 

@@ -41,8 +41,7 @@ group passed to `props` beside it.
 
 Nothing is broken, and the classes are the same. The note marks a call that could be
 compiled; the message says which part stopped it. To make every CSS note an error, so a
-build proves that no call is left for the browser, set `strictCss: true` in the plugin
-options.
+build proves that no call is left for the browser, set `barq({ compiler: { strictCss: true } })`.
 
 ## Silencing one line
 

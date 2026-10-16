@@ -4,40 +4,45 @@ Every diagnostic the compiler reports has a stable code, a level and a page here
 page shows the message, an example that raises it, the fixed example, why the rule
 exists and how to silence it.
 
-| code | level | what it reports |
-| --- | --- | --- |
-| [BARQ001](BARQ001.md) | warning | An accessor is used as a value without being called |
-| [BARQ002](BARQ002.md) | warning | An accessor is used as a condition, which is always true |
-| [BARQ003](BARQ003.md) | warning | A property is read from an accessor instead of from its value |
-| [BARQ004](BARQ004.md) | note | `<For>` rows may show stale fields when `each` holds store objects |
-| [BARQ005](BARQ005.md) | warning | A destructured prop is used as a value, or called where it may not be a function |
-| [BARQ008](BARQ008.md) | warning | A `barq-ignore-next-line` comment silences nothing on the next line |
-| [BARQ009](BARQ009.md) | warning | A `barq-ignore-next-line` comment is malformed and silences nothing |
-| [BARQ010](BARQ010.md) | warning | JSX is passed to a prop the component reads as a value, which throws |
-| [BARQ011](BARQ011.md) | note | `keyed={false}` keeps element state in place when the list reorders |
-| [BARQ012](BARQ012.md) | error | A module exports server functions together with other things |
-| [BARQ013](BARQ013.md) | warning | `<Link to>` names a path that no route matches |
-| [BARQ014](BARQ014.md) | error | A `css`, `keyframes` or `globalCss` block is not valid CSS |
-| [BARQ015](BARQ015.md) | note | A `css` block interpolates a runtime value, so the browser builds it |
-| [BARQ016](BARQ016.md) | note | `atoms` has several conditional arguments, so the browser evaluates it |
-| [BARQ017](BARQ017.md) | note | A `@barqjs/css` call cannot be compiled, so the browser evaluates it |
-| [BARQ018](BARQ018.md) | warning | A component decides what to return from a reactive value it reads once |
-| [BARQ019](BARQ019.md) | warning | State is written while a component body or a computation runs |
-| [BARQ020](BARQ020.md) | warning | A store is destructured in a component body, so each name is a snapshot |
-| [BARQ021](BARQ021.md) | warning | An async computation reads a source after its first `await`, which is not tracked |
-| [BARQ022](BARQ022.md) | error | A context is rendered through `.Provider`, which a context does not have |
-| [BARQ023](BARQ023.md) | error | `classList` is written on an element, where it is an ordinary attribute |
-| [BARQ024](BARQ024.md) | error | An attribute uses a Solid 1.x namespace such as `on:` or `attr:` |
-| [BARQ025](BARQ025.md) | error | `<Dynamic>` is rendered, where Solid 2.0 uses the `dynamic` factory |
-| [BARQ026](BARQ026.md) | error | Markup the browser's HTML parser builds differently from the JSX |
+- [BARQ001](BARQ001.md), warning: An accessor is used as a value without being called.
+- [BARQ002](BARQ002.md), warning: An accessor is used as a condition, which is always true.
+- [BARQ003](BARQ003.md), warning: A property is read from an accessor instead of from its value.
+- [BARQ004](BARQ004.md), note: `<For>` rows may show stale fields when `each` holds store objects.
+- [BARQ005](BARQ005.md), warning: A destructured prop is used as a value, or called where it may not be a function.
+- [BARQ008](BARQ008.md), warning: A `barq-ignore-next-line` comment silences nothing on the next line.
+- [BARQ009](BARQ009.md), warning: A `barq-ignore-next-line` comment is malformed and silences nothing.
+- [BARQ010](BARQ010.md), warning: JSX is passed to a prop the component reads as a value, which throws.
+- [BARQ011](BARQ011.md), note: `keyed={false}` keeps element state in place when the list reorders.
+- [BARQ012](BARQ012.md), error: A module exports server functions together with other things.
+- [BARQ013](BARQ013.md), warning: `<Link to>` names a path that no route matches.
+- [BARQ014](BARQ014.md), error: A `css`, `keyframes` or `globalCss` block is not valid CSS.
+- [BARQ015](BARQ015.md), note: A `css` block interpolates a runtime value, so the browser builds it.
+- [BARQ016](BARQ016.md), note: `atoms` has several conditional arguments, so the browser evaluates it.
+- [BARQ017](BARQ017.md), note: A `@barqjs/css` call cannot be compiled, so the browser evaluates it.
+- [BARQ018](BARQ018.md), warning: A component decides what to return from a reactive value it reads once.
+- [BARQ019](BARQ019.md), warning: State is written while a component body or a computation runs.
+- [BARQ020](BARQ020.md), warning: A store is destructured in a component body, so each name is a snapshot.
+- [BARQ021](BARQ021.md), warning: An async computation reads a source after its first `await`, which is not tracked.
+- [BARQ022](BARQ022.md), error: A context is rendered through `.Provider`, which a context does not have.
+- [BARQ023](BARQ023.md), error: `classList` is written on an element, where it is an ordinary attribute.
+- [BARQ024](BARQ024.md), error: An attribute uses a Solid 1.x namespace such as `on:` or `attr:`.
+- [BARQ025](BARQ025.md), error: `<Dynamic>` is rendered, where Solid 2.0 uses the `dynamic` factory.
+- [BARQ026](BARQ026.md), error: Markup the browser's HTML parser builds differently from the JSX.
 
-BARQ001, BARQ002, BARQ003, BARQ005, BARQ011 and BARQ018 to BARQ021 are reported when the
-`diagnostics` option is on, which it is in development builds. BARQ004 and BARQ010 are reported in development
-builds only.
-BARQ012 to BARQ017 and BARQ022 to BARQ026 are reported in every build, so they can fail CI. BARQ008 and BARQ009
-report on your own suppression comments.
+When each code is reported:
 
-[BARQ006](BARQ006.md) was removed and is not reported.
+- BARQ001, BARQ002, BARQ003, BARQ005, BARQ011 and BARQ018 to BARQ021: when the
+  `diagnostics` option is on. It defaults to on in development builds, and
+  `barq({ compiler: { diagnostics: true } })` runs them in a production build.
+- BARQ004 and BARQ010: in development builds only.
+- BARQ012 to BARQ017 and BARQ022 to BARQ026: in every build, so they can fail CI.
+  BARQ013 also needs the route table, which file-based routing provides.
+- BARQ008 and BARQ009: in every build, about your own suppression comments.
+
+[BARQ006](BARQ006.md) and BARQ007 were removed and are not reported. BARQ006 has a page
+because a suppression comment may still name it. BARQ007 announced a fallback from the
+server renderer to the DOM renderer, and there is no such fallback any more. A comment
+that names either code is reported as [BARQ009](BARQ009.md).
 
 ## Codes are stable
 
