@@ -68,9 +68,12 @@ describe("drawerDrag", () => {
 
   test("letting go short of the threshold keeps it", () => {
     let closed = 0;
-    const drag = drawerDrag({ onClose: () => closed++ });
+    let now = 1000;
+    const drag = drawerDrag({ onClose: () => closed++, now: () => now });
     drag.start(at(0, 0), 400);
     flush();
+    // A second for 80px is a deliberate pull, so only the distance decides.
+    now += 1000;
     drag.move(at(0, 80));
     flush();
     expect(drag.end()).toBe(false);
@@ -93,49 +96,56 @@ describe("drawerDrag", () => {
 
   test("the threshold is a FRACTION, so a tall drawer needs a longer pull", () => {
     // 100px is halfway down a 200px drawer and a nudge on an 800px one.
-    const short = drawerDrag();
+    let now = 1000;
+    const short = drawerDrag({ now: () => now });
     short.start(at(0, 0), 200);
+    now += 1000;
     short.move(at(0, 100));
     expect(short.end()).toBe(true);
 
-    const tall = drawerDrag();
+    const tall = drawerDrag({ now: () => now });
     tall.start(at(0, 0), 800);
+    now += 1000;
     tall.move(at(0, 100));
     expect(tall.end()).toBe(false);
   });
 
-  test("a flick closes it however far it got", async () => {
+  test("a flick closes it however far it got", () => {
     // Someone who throws the drawer down has already decided.
-    const drag = drawerDrag();
+    let now = 1000;
+    const drag = drawerDrag({ now: () => now });
     drag.start(at(0, 0), 1000);
     flush();
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    now += 20;
     drag.move(at(0, 60));
     flush();
-    // 60px in ~20ms is 3px/ms, far past 0.4, and 60 of 1000 is nowhere near
+    // 60px in 20ms is 3px/ms, far past 0.4, and 60 of 1000 is nowhere near
     // the threshold.
     expect(drag.end()).toBe(true);
   });
 
-  test("a slow pull the same distance does not", async () => {
-    const drag = drawerDrag();
+  test("a slow pull the same distance does not", () => {
+    let now = 1000;
+    const drag = drawerDrag({ now: () => now });
     drag.start(at(0, 0), 1000);
     flush();
     for (const y of [10, 20, 30, 40, 50, 60]) {
-      await new Promise((resolve) => setTimeout(resolve, 30));
+      now += 30;
       drag.move(at(0, y));
       flush();
     }
     expect(drag.end()).toBe(false);
   });
 
-  test("a flick BACK does not close it", async () => {
-    const drag = drawerDrag();
+  test("a flick BACK does not close it", () => {
+    let now = 1000;
+    const drag = drawerDrag({ now: () => now });
     drag.start(at(0, 0), 200);
     flush();
+    now += 20;
     drag.move(at(0, 60));
     flush();
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    now += 20;
     drag.move(at(0, 10));
     flush();
     expect(drag.end()).toBe(false);
