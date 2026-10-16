@@ -21,6 +21,7 @@
  */
 
 import {
+  type AssetManifest,
   HEAD_SNIPPET,
   branch as ssrBranch,
   esc,
@@ -619,6 +620,21 @@ export interface PageHandlerOptions extends SharedRouterOptions {
    * cover.
    */
   readonly routeCss?: Readonly<Record<string, readonly string[]>>;
+  /**
+   * The `Link` values for what the matched page needs before its markup, the
+   * entry, the chain's modules and its stylesheets, as soon as they are known
+   * and before the render. The host answers with a `103 Early Hints` here. The
+   * default does so through Node's `writeEarlyHints` when the request carries a
+   * Node response, as srvx's does; the same values go out as the page's `Link`
+   * header, which a CDN turns into a 103 of its own.
+   */
+  readonly onEarlyHints?: (links: readonly string[], request: Request) => void;
+  /**
+   * What each `lazy()` module needs, from `virtual:barq-route-assets`. A lazy
+   * component that renders puts its chunks and stylesheets in the page's head,
+   * and one that renders after the shell streams them.
+   */
+  readonly moduleAssets?: AssetManifest;
 
   /**
    * The framework's collected stylesheet, read PER REQUEST.
@@ -1191,6 +1207,14 @@ export function createPageHandler(
           const context = contextScript(url, before.produced, options.nonce);
           const preloads = chainFiles(rendered, options.routeAssets);
           const preload = preloadTags(rendered, options.routeAssets);
+          const hints = earlyHints(
+            [...(options.clientAssets?.scripts ?? []), ...preloads],
+            [...(options.clientAssets?.css ?? []), ...chainFiles(rendered, options.routeCss)],
+          );
+          if (hints.length > 0) {
+            (options.onEarlyHints ?? writeEarlyHints)(hints, request);
+            draft.headers.append("link", hints.join(", "));
+          }
           const headAssets: HeadAssets = {
             matches: assets,
             nonce: options.nonce,
@@ -1256,6 +1280,7 @@ export function createPageHandler(
             const page = await renderPage(() => root() as never, {
               nonce: options.nonce,
               session,
+              manifest: options.moduleAssets,
             });
             // A loader that threw a `Response` or a `Redirect` decided this
             // page, even though the render completed around it.
@@ -1303,6 +1328,7 @@ export function createPageHandler(
             signal: request.signal,
             nonce: options.nonce,
             session,
+            manifest: options.moduleAssets,
             // The route context and then the entry, ahead of every boundary
             // still to come: the entry is `async` and may run the moment it
             // loads, which is before the stream ends.
@@ -1493,6 +1519,36 @@ function redirectScript(answer: Response | null, nonce: string | undefined): str
   );
 }
 
+/** `Link` values: modules preloaded as modules, stylesheets as styles. */
+export function earlyHints(scripts: readonly string[], styles: readonly string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const add = (href: string, rel: string): void => {
+    if (seen.has(href) || /[\s<>,;]/.test(href)) return;
+    seen.add(href);
+    out.push(`<${href}>; ${rel}`);
+  };
+  for (const href of scripts) add(href, "rel=modulepreload");
+  for (const href of styles) add(href, "rel=preload; as=style");
+  return out;
+}
+
+/** Node's 103, for a request that carries its Node response; nothing elsewhere. */
+function writeEarlyHints(links: readonly string[], request: Request): void {
+  const response = (
+    request as {
+      runtime?: { node?: { res?: { writeEarlyHints?: (hints: { link: string[] }) => void } } };
+    }
+  ).runtime?.node?.res;
+  try {
+    response?.writeEarlyHints?.({ link: [...links] });
+  } catch (error) {
+    // A response that has started can no longer take a 103; the `Link` header
+    // still carries the hints.
+    console.error(error);
+  }
+}
+
 /**
  * One matched chain's files, from a per-route map, deduplicated in chain order.
  *
@@ -1681,7 +1737,7 @@ export function createStartHandler(extra: Partial<PageHandlerOptions> = {}): Sta
   mountOnDemand(mountManifest);
   const app = (): Promise<PageHandlerOptions> => {
     parts ??= (async (): Promise<PageHandlerOptions> => {
-      const [entry, { routeAssets, routeCss }, { clientAssets }] = await Promise.all([
+      const [entry, { routeAssets, routeCss, moduleAssets }, { clientAssets }] = await Promise.all([
         import("#barq-router-entry"),
         import("virtual:barq-route-assets"),
         import("virtual:barq-client-assets"),
@@ -1691,6 +1747,7 @@ export function createStartHandler(extra: Partial<PageHandlerOptions> = {}): Sta
         ...(await entryOptions(entry)),
         routeAssets,
         routeCss,
+        moduleAssets,
         clientAssets,
         app: (state: RouterState): unknown => renderRoutes(state),
       };

@@ -10,6 +10,8 @@ import {
   barqRouter,
   routeStylesheets,
   routeTree,
+  lazyModuleAssets,
+  withModuleUrls,
 } from "./vite.ts";
 
 const made: string[] = [];
@@ -266,10 +268,14 @@ export const Route = createFileRoute("/posts")({ loader: () => 1, component: Pos
   const transform = (plugin: ReturnType<typeof barqRouter>, file: string, consumer: string) =>
     (
       plugin as unknown as {
-        transform(this: unknown, code: string, id: string): { code: string } | null;
+        transform(this: unknown, code: string, id: string): Promise<{ code: string } | null>;
       }
     ).transform.call(
-      { environment: { config: { consumer } }, warn: () => undefined },
+      {
+        environment: { config: { consumer } },
+        warn: () => undefined,
+        resolve: () => Promise.resolve(null),
+      },
       ROUTE,
       `${file}?${SPLIT_QUERY}`,
     );
@@ -280,26 +286,27 @@ export const Route = createFileRoute("/posts")({ loader: () => 1, component: Pos
    * to be in place BEFORE those lines, and this pins that the split still emits
    * them in that shape.
    */
-  test("the split half hands its options out through `hot` before it exports them", () => {
+  test("the split half hands its options out through `hot` before it exports them", async () => {
     const root = project({ "src/routes/posts.tsx": ROUTE });
     const plugin = barqRouter({});
     resolve(hooks(plugin), root, "serve");
-    const code = transform(plugin, join(root, "src/routes/posts.tsx"), "client")?.code ?? "";
+    const code =
+      (await transform(plugin, join(root, "src/routes/posts.tsx"), "client"))?.code ?? "";
     const wrapped = code.indexOf("$$barqHot(import.meta.hot");
     expect(wrapped).toBeGreaterThan(-1);
     expect(wrapped).toBeLessThan(code.indexOf("export const component = $$barqOptions.component;"));
     expect(code).toContain("import.meta.hot.accept(");
   });
 
-  test("not in a build, and not for the server", () => {
+  test("not in a build, and not for the server", async () => {
     const root = project({ "src/routes/posts.tsx": ROUTE });
     const file = join(root, "src/routes/posts.tsx");
     const built = barqRouter({});
     resolve(hooks(built), root, "build");
-    expect(transform(built, file, "client")?.code ?? "").not.toContain("import.meta.hot");
+    expect((await transform(built, file, "client"))?.code ?? "").not.toContain("import.meta.hot");
     const served = barqRouter({});
     resolve(hooks(served), root, "serve");
-    expect(transform(served, file, "server")?.code ?? "").not.toContain("import.meta.hot");
+    expect((await transform(served, file, "server"))?.code ?? "").not.toContain("import.meta.hot");
   });
 });
 
@@ -843,5 +850,60 @@ describe("routeStylesheets", () => {
       "/",
     );
     expect(map["/posts"]).toEqual([]);
+  });
+});
+
+describe("lazy() module URLs", () => {
+  const resolveIn =
+    (root: string) =>
+    (spec: string): Promise<{ id: string }> =>
+      Promise.resolve({ id: join(root, "src", `${spec.replace("./", "")}.tsx`) });
+
+  test("a literal lazy import is given the URL of the module it loads", async () => {
+    const root = "/home/salama/app";
+    const code = [
+      'const Chart = lazy(() => import("./Chart"));',
+      'const Map = lazy(() => import("./Map"), { export: "WorldMap" });',
+      "const Other = lazy(() => import(name));",
+    ].join("\n");
+    const out = await withModuleUrls(code, `${root}/src/page.tsx`, root, resolveIn(root));
+
+    expect(out).toContain('lazy(() => import("./Chart"), undefined, "/src/Chart.tsx")');
+    expect(out).toContain('lazy(() => import("./Map"), { export: "WorldMap" }, "/src/Map.tsx")');
+    expect(out).toContain("lazy(() => import(name))");
+  });
+
+  test("leaves dependencies alone", async () => {
+    const code = 'const Chart = lazy(() => import("./Chart"));';
+    const out = await withModuleUrls(
+      code,
+      "/home/salama/app/node_modules/acme/index.js",
+      "/home/salama/app",
+      resolveIn("/home/salama/app"),
+    );
+
+    expect(out).toBe(code);
+  });
+
+  test("a lazy module's assets are its chunk, the chunks it imports, and their stylesheets", () => {
+    const assets = lazyModuleAssets(
+      [
+        {
+          module: "/home/salama/app/src/Chart.tsx",
+          fileName: "assets/Chart.js",
+          imports: ["assets/d3.js"],
+        },
+      ],
+      [
+        { fileName: "assets/Chart.js", css: ["assets/Chart.css"] },
+        { fileName: "assets/d3.js", css: [] },
+      ],
+      "/home/salama/app",
+      "/",
+    );
+
+    expect(assets).toEqual({
+      "/src/Chart.tsx": { js: ["/assets/Chart.js", "/assets/d3.js"], css: ["/assets/Chart.css"] },
+    });
   });
 });

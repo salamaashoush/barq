@@ -896,3 +896,10 @@ cost-model split of an expensive, dependency-disjoint call is gone, and with it 
   not hold the shell for its loader": the trade it pinned is the one the change removes. It asserts
   the first chunk has the head without the loader's title and a later chunk carries it, rather than
   a first-byte time.
+
+## The router plugin's transform is async
+
+- `router/src/vite.test.ts` "a route edit while serving": the harness awaits `transform`, which now
+  resolves `lazy(() => import(...))` specifiers through `this.resolve`. Its fake context gained a
+  `resolve`. "not in a build, and not for the server" was passing on `undefined?.code ?? ""` once the
+  hook returned a promise; awaited, it checks the transformed code again. No expectation changed.

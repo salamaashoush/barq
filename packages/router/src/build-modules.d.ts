@@ -55,7 +55,11 @@ declare module "#barq-start-entry" {
 declare module "virtual:barq-route-assets" {
   const routeAssets: Readonly<Record<string, readonly string[]>>;
   const routeCss: Readonly<Record<string, readonly string[]>>;
-  export { routeAssets, routeCss };
+  /** Module URL -> what a `lazy()` of it needs, for the renderer's `manifest`. */
+  const moduleAssets: Readonly<
+    Record<string, { readonly js: readonly string[]; readonly css: readonly string[] }>
+  >;
+  export { moduleAssets, routeAssets, routeCss };
   export default routeAssets;
 }
 

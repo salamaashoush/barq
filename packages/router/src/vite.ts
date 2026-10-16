@@ -147,6 +147,68 @@ export function routeStylesheets(
   return out;
 }
 
+/**
+ * `lazy(() => import("./x"))`, given the URL of the module it loads, so the
+ * server can put that module's chunks and stylesheets in the page when it
+ * renders. Only the literal forms are rewritten: one whose module the bundler
+ * could not name either is left as it was.
+ */
+const LAZY_IMPORT =
+  /\blazy\(\s*\(\)\s*=>\s*import\(\s*(["'])([^"'\n]+)\1\s*\)\s*(,\s*\{\s*export\s*:\s*(["'])[\w$]+\4\s*\}\s*)?\)/g;
+
+export async function withModuleUrls(
+  code: string,
+  id: string,
+  root: string,
+  resolve: (spec: string) => Promise<{ id: string } | null>,
+): Promise<string> {
+  if (id.includes("/node_modules/") || !code.includes("lazy(")) return code;
+  const found = [...code.matchAll(LAZY_IMPORT)];
+  if (found.length === 0) return code;
+  let out = "";
+  let at = 0;
+  for (const match of found) {
+    const spec = match[2] ?? "";
+    const resolved = await resolve(spec);
+    if (resolved === null || resolved.id.startsWith("\0")) continue;
+    const url = moduleUrlOf(resolved.id, root);
+    const options = match[3] === undefined ? "undefined" : match[3].replace(/^,\s*/, "").trim();
+    out +=
+      code.slice(at, match.index) +
+      `lazy(() => import(${JSON.stringify(spec)}), ${options}, ${JSON.stringify(url)})`;
+    at = match.index + match[0].length;
+  }
+  return out + code.slice(at);
+}
+
+/** The key a module has in `moduleAssets`: its path from the project root. */
+function moduleUrlOf(id: string, root: string): string {
+  const file = id.split("?", 1)[0] ?? id;
+  const path = relative(root, file).split("\\").join("/");
+  return path.startsWith("..") ? file : `/${path}`;
+}
+
+/** Module URL -> the chunks a `lazy()` of it loads and the stylesheets they import. */
+export function lazyModuleAssets(
+  entries: readonly { module: string; fileName: string; imports: readonly string[] }[],
+  chunks: readonly { fileName: string; css: readonly string[] }[],
+  root: string,
+  base: string,
+): Record<string, { js: string[]; css: string[] }> {
+  const cssOf = new Map(chunks.map((chunk) => [chunk.fileName, chunk.css]));
+  const out: Record<string, { js: string[]; css: string[] }> = {};
+  for (const entry of entries) {
+    const files = [entry.fileName, ...entry.imports];
+    const css = new Set<string>();
+    for (const file of files) for (const sheet of cssOf.get(file) ?? []) css.add(`${base}${sheet}`);
+    out[moduleUrlOf(entry.module, root)] = {
+      js: files.map((file) => `${base}${file}`),
+      css: [...css],
+    };
+  }
+  return out;
+}
+
 export const ROUTE_ASSETS_ID = "virtual:barq-route-assets";
 const RESOLVED_ROUTE_ASSETS_ID = `\0${ROUTE_ASSETS_ID}`;
 
@@ -405,6 +467,7 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
   const references = new Map<string, string>();
   let routeAssets: Record<string, string[]> = {};
   let routeCss: Record<string, string[]> = {};
+  let moduleAssets: Record<string, { js: string[]; css: string[] }> = {};
   const empty = (): RouteTree => ({
     source: "",
     files: [],
@@ -647,6 +710,26 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
       }
 
       routeAssets = next;
+      moduleAssets = lazyModuleAssets(
+        Object.values(bundle).flatMap((chunk) =>
+          chunk.type === "chunk" && chunk.isDynamicEntry && chunk.facadeModuleId !== null
+            ? [
+                {
+                  module: chunk.facadeModuleId,
+                  fileName: chunk.fileName,
+                  imports: chunk.imports,
+                },
+              ]
+            : [],
+        ),
+        Object.values(bundle).flatMap((chunk) =>
+          chunk.type === "chunk"
+            ? [{ fileName: chunk.fileName, css: [...(chunk.viteMetadata?.importedCss ?? [])] }]
+            : [],
+        ),
+        root,
+        base,
+      );
       routeCss = routeStylesheets(
         tree.entries,
         Object.values(bundle).flatMap((chunk) =>
@@ -685,6 +768,7 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
         return (
           `export const routeAssets = ${JSON.stringify(routeAssets)};\n` +
           `export const routeCss = ${JSON.stringify(routeCss)};\n` +
+          `export const moduleAssets = ${JSON.stringify(moduleAssets)};\n` +
           `export default routeAssets;\n`
         );
       }
@@ -703,24 +787,27 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
      * still works — both halves come back as the original source — so the build
      * carries on and the message names the one binding to move.
      */
-    transform(
+    async transform(
       this: {
         warn(message: string): void;
+        resolve(source: string, importer: string): Promise<{ id: string } | null>;
         environment?: { name?: string; config?: { consumer?: string } };
       },
-      code,
+      source,
       id,
     ) {
+      const code = await withModuleUrls(source, id, root, (spec) => this.resolve(spec, id));
+      const injected = code !== source;
       const wantsSplit = isSplitId(id);
       const file = wantsSplit ? fileOfSplitId(id) : (id.split("?", 1)[0] ?? id);
-      if (!isRouteFile(file)) return null;
+      if (!isRouteFile(file)) return injected ? { code, map: null } : null;
 
       // The CLIENT build also DELETES `server`, which holds the route's HTTP
       // handlers, and that happens whether or not code splitting is on: it is
       // not a size optimisation, it is what keeps a handler's body — and the
       // database import it needed — out of the browser bundle.
       const client = forClient(this.environment);
-      if (!codeSplitting && !client) return null;
+      if (!codeSplitting && !client) return injected ? { code, map: null } : null;
 
       const answer = split(code, file, client);
       const refused = answer.refused !== undefined && answer.refused !== null;
@@ -736,7 +823,7 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
           ? withSplitHot(answer.split)
           : answer.split
         : answer.reference;
-      return out === code ? null : { code: out, map: null };
+      return out === source ? null : { code: out, map: null };
     },
 
     /**
