@@ -228,7 +228,7 @@ test("a redirect a query fails with is followed", async () => {
   queryClient.clear();
 });
 
-const INTEGRATED = `
+const integrated = (streamed: boolean): string => `
 import { Loading } from "@barqjs/core"
 import { createRouter } from "@barqjs/router"
 import { QueryClient, queryOptions, useSuspenseQuery } from ${JSON.stringify(ENTRY.index)}
@@ -244,8 +244,17 @@ const fetched = (key, ms, value) => queryOptions({
 
 const user = (id) => fetched(["user", id], 3, { id, name: "salama-" + id })
 const unread = (id) => fetched(["unread", id], 2, "unread-" + id)
-const late = (id) => fetched(["late", id], 15, "late-" + id)
 const slow = (id) => fetched(["slow", id], 40, "slow-" + id)
+
+const snapshots = new WeakMap()
+const late = (id, client) => queryOptions({
+  queryKey: ["late", id],
+  queryFn: async () => {
+    counts.fetches++
+    await snapshots.get(client)
+    return "late-" + id
+  },
+})
 
 function Root(props) {
   return <main>shell:{props.children}</main>
@@ -275,7 +284,7 @@ export const routes = [
         path: "users/$id",
         component: User,
         loader: async ({ context, params }) => {
-          void context.queryClient.prefetchQuery(late(params.id))
+          void context.queryClient.prefetchQuery(late(params.id, context.queryClient))
           await context.queryClient.ensureQueryData(unread(params.id))
           return context.queryClient.ensureQueryData(user(params.id))
         },
@@ -289,6 +298,18 @@ export function getRouter() {
   clients.push(queryClient)
   const router = createRouter({ routeTree: routes, context: { queryClient } })
   setupRouterSsrQueryIntegration({ router, queryClient })
+  if (${streamed}) {
+    // A streamed page carries the cache as the loaders left it, and "late" has
+    // to settle after that snapshot to prove it follows in a chunk of its own.
+    const taken = Promise.withResolvers()
+    snapshots.set(queryClient, taken.promise)
+    const carry = router.options.dehydrate
+    router.options.dehydrate = async () => {
+      const payload = await carry()
+      taken.resolve()
+      return payload
+    }
+  }
   return router
 }
 `;
@@ -305,7 +326,7 @@ interface Streamed {
 for (const mode of ["handler", "handler-streamed"] as const) {
   test(`the integration carries a request's queries to the page, read or not (${mode})`, async () => {
     unseeded();
-    const compiled = compile(INTEGRATED, "integrated");
+    const compiled = compile(integrated(mode === "handler-streamed"), "integrated");
     const served = serve(compiled.ssr, mode, "/users/7,/users/8") as {
       result: Streamed;
       fetches: number;
