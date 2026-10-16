@@ -91,7 +91,7 @@ The previous handover's 133/71/52 were wrong.
   because `bun <file>` auto-serves any default export carrying a `fetch`.
 - Static serving from a build-time manifest: 0.3290 us against 0.7476 us for the
   `statSync` it replaced. A prerendered page now keeps the status it was
-  rendered as. `scratch/nitro/` has the numbers and the method.
+  rendered as. `packages/benchmark/src/static-lookup.ts` is the method.
 - Three compiler bugs where a JSX hole lost its tracked read.
 - `packages/testing` gained hydration, auto-cleanup, `renderRoute` and
   `@barqjs/testing/server`.
@@ -250,16 +250,16 @@ api route GET   0.0021 ms  472,000/s      session seal    0.017 ms  59,600/s
 page render     0.0152 ms   65,000/s      session unseal  0.013 ms  77,500/s
 404             0.0065 ms  154,000/s
 
-static asset lookup, per request (scratch/nitro/barq-static.mjs)
+static asset lookup, per request (packages/benchmark/src/static-lookup.ts)
   assetMiddleware (build-time manifest)  0.3290 us  3,039,208/s
   the existsSync + statSync it replaced  0.7476 us  1,337,528/s
 
-nitro, if it is ever reconsidered (scratch/nitro/same-job.mjs)
+nitro, if it is ever reconsidered (a model of h3's dispatch, in git history)
   +0.459 us per request, which is h3's dispatch and nothing else
 ```
 
-`scratch/nitro/README.md` records why nitro was rejected and why `preview.mjs`
-is the wrong baseline to compare against.
+Nitro was rejected: on identical work it costs h3's dispatch and nothing else.
+The probes that measured it were removed from `scratch/` and live in git history.
 
 ---
 

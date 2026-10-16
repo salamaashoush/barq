@@ -71,7 +71,6 @@
     "@biomejs/biome": "^2.5.15",
     "@happy-dom/global-registrator": "^21.0.1",
     "@types/bun": "^1.4.3",
-    "reactive-framework-test-suite": "^0.1.0",
     "typescript": "^7.0.2"
   },
   "peerDependencies": {

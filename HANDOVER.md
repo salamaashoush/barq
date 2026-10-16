@@ -21,8 +21,7 @@ Paste this as the opening prompt. Everything below was verified at `bb2a5cd`.
 4. **The design documents are deleted, deliberately.** They were treated as
    binding. Do not write new ones. Put the reasoning in code comments beside the
    thing, and in commit messages.
-5. Measure before claiming. Probes go in `scratch/`; there are working ones
-   (`scratch/frontdoor/probe-boot` drives Chrome, `probe-title`, `scratch/redteam/*`).
+5. Measure before claiming. Probes go in `scratch/`.
 6. Every gate green before each commit. Commit messages carry the why, including
    what was tried and rejected.
 

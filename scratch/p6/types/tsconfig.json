@@ -1,1 +1,0 @@
-{ "compilerOptions": { "strict": true, "noEmit": true, "module": "esnext", "target": "esnext", "moduleResolution": "bundler", "allowImportingTsExtensions": true, "skipLibCheck": true } }

@@ -7,7 +7,7 @@
  * IT USED TO BE A HAND-ROLLED STATIC SERVER, and that is the whole reason
  * `serveBarq` grew `static`. It called `existsSync` and `statSync` per request,
  * which measured 0.7476 us to answer the MISS every SSR request is, against
- * 0.3290 us for the build-time manifest (`scratch/nitro/barq-static.mjs`), and
+ * 0.3290 us for the build-time manifest (`packages/benchmark/src/static-lookup.ts`), and
  * it could not know a prerendered page had a status of its own, so every page
  * came back 200 whatever it was rendered as.
  *

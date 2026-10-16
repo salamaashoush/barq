@@ -51,3 +51,6 @@ scratch/css-research/
 # `tools/geometry.ts` writes these for a browser to read; they are the
 # stylesheet and the spec, both regenerated from source.
 packages/ui/gallery/geometry/
+
+# Agent worktrees, each a checkout of its own branch.
+.claude/worktrees/

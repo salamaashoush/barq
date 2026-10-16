@@ -4,11 +4,9 @@
  * A production request is overwhelmingly a MISS: an SSR page asks this layer
  * about a path that is not a file, and every static server that answers by
  * touching the filesystem pays two syscalls to say "no". Measured on this
- * machine against `packages/kitchen-sink/preview.mjs`, which is the shape barq
- * had (`scratch/nitro/static.mjs`):
+ * machine by `packages/benchmark/src/static-lookup.ts`, on kitchen-sink's build:
  *
- *     MISS   existsSync + statSync   1.3295 us     build-time map   0.8080 us
- *     HIT    existsSync + statSync   1.1544 us     build-time map   0.7986 us
+ *     MISS   existsSync + statSync   1.2634 us     this manifest   0.2297 us
  *
  * So the manifest is a NEGATIVE index first and foremost. On a miss nothing
  * touches the disk; on a hit the work is handed to `srvx/static`, which already

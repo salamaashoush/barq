@@ -20,17 +20,18 @@
     "bench:tier2:jrb": "bun run src/tier2/run.ts jrb",
     "bench:solid2": "bun run src/solid2/run.ts",
     "bench:solid2:prepare": "bun run src/solid2/prepare.ts",
-    "build": "bun build src/browser.ts --outdir dist --target browser --format esm"
+    "build": "bun build src/browser.ts --outdir dist --target browser --format esm",
+    "bench:static": "bun run src/static-lookup.ts"
   },
   "dependencies": {
     "solid-js": "^1.9.17"
   },
   "devDependencies": {
-    "@anthropic-ai/tokenizer": "^0.0.4",
     "@babel/core": "^8.0.7",
     "@barqjs/compiler-rs": "workspace:*",
     "@barqjs/core": "workspace:*",
     "@barqjs/server": "workspace:*",
+    "@barqjs/start": "workspace:*",
     "@happy-dom/global-registrator": "^21.0.1",
     "@solidjs/signals": "2.0.0-rc.15",
     "@types/babel__core": "^7.20.5",
