@@ -56,9 +56,9 @@ export const optimality = {
   target: 1,
   milestone: 11,
   templates: 1,
-  // One fused effect per element (B2) for the three live positions, and the
-  // control's class object handed straight to `setClass` with no thunk around
-  // it and no effect over it.
+  // One fused effect (B2) for the template's two live classes, the `latest`
+  // hole's own effect, and the control's class object handed straight to
+  // `setClass` with no thunk around it and no effect over it.
   emits: [
     "bindEffect(",
     "isPending(guess)",

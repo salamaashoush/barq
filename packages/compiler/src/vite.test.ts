@@ -486,11 +486,12 @@ describe("barqVitePlugin", () => {
       const reference = await build({ optimize: 0 });
       expect(reference.match(/_\$bindEffect\(/g)).toHaveLength(2);
       expect((await build()).match(/_\$bindEffect\(/g)).toHaveLength(1);
-      // Each is a fused record of ONE, so its previous value is a scalar and
-      // the compute returns it directly. The optimised build merges the two
-      // into one record with positional fields.
-      expect(reference).toContain(`if (_v$ !== _p$) _$setAttr(_el$1, "id", _v$);`);
-      expect(reference).toContain(`if (_v$ !== _p$) _$setAttr(_el$1, "title", _v$);`);
+      // Each is a fused record of ONE, so its previous value is a scalar, the
+      // compute returns it directly and the channel is handed it to compare
+      // against. The optimised build merges the two into one record with
+      // positional fields.
+      expect(reference).toContain(`_$setAttr(_el$1, "id", _v$, _p$);`);
+      expect(reference).toContain(`_$setAttr(_el$1, "title", _v$, _p$);`);
       expect(await build()).toContain(`if (_v$.a !== _p$.a) _$setAttr(_el$1, "id", _v$.a);`);
       expect(await build()).toContain(`if (_v$.b !== _p$.b) _$setAttr(_el$1, "title", _v$.b);`);
     });

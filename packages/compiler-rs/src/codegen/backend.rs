@@ -40,8 +40,8 @@ use oxc::span::Span;
 pub struct At<'p> {
     pub patch: Patch,
     /// The patches an [`Op::EffectGroup`] header covers, in program order. Empty
-    /// for every other op — a group header is a prefix marker, so its members
-    /// are the records that follow it and no `Op` payload can carry them.
+    /// for every other op — a group header is a marker, so its members are
+    /// records later in the program and no `Op` payload can carry them.
     pub members: &'p [Patch],
 }
 
@@ -130,7 +130,7 @@ backend! {
     /// `(parent, anchor)` pair comes from `at.target()` and `anchor`, which is
     /// the whole point — the runtime used to re-derive it.
     Region { slot: SlotId, anchor: Anchor, region: RegionId } => region;
-    /// A prefix marker: `at.members` are the patches that share one effect.
+    /// A marker: `at.members` are the patches that share one effect.
     EffectGroup { len: u16 } => effect_group;
 }
 

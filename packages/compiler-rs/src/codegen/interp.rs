@@ -63,20 +63,23 @@ pub fn emit_unit<'a>(
     let mut sources: Vec<(&'a str, Expression<'a>)> = Vec::new();
 
     // The driver, and the one thing the `Backend` trait deliberately does not
-    // cover: program order, one pass, group members read off the records that
-    // follow their header — the same traversal `dom.rs` performs, because the
-    // patch program is the same program.
-    let mut index = 0;
-    while index < unit.patch.len() {
+    // cover: program order, one pass, group members read off the program after
+    // their header — the same traversal `dom.rs` performs, because the patch
+    // program is the same program.
+    let mut grouped = vec![false; unit.patch.len()];
+    for index in 0..unit.patch.len() {
+        if grouped[index] {
+            continue;
+        }
         let patch = unit.patch[index];
-        index += 1;
         let members: Vec<Patch> = match patch.op {
-            Op::EffectGroup { len } => {
-                let end = (index + len as usize).min(unit.patch.len());
-                let members = unit.patch[index..end].to_vec();
-                index = end;
-                members
-            }
+            Op::EffectGroup { len } => crate::passes::group::members(unit, index, len)
+                .into_iter()
+                .map(|member| {
+                    grouped[member] = true;
+                    unit.patch[member]
+                })
+                .collect(),
             _ => Vec::new(),
         };
         let mut backend = Interp { ctx, unit, slots: &mut slots, sources: &mut sources };
@@ -421,7 +424,7 @@ impl<'a> Backend<'a> for Interp<'a, '_, '_, '_, '_> {
         let members: Vec<Expression<'a>> = at
             .members
             .iter()
-            .filter(|patch| matches!(patch.op, Op::SetLive { .. }))
+            .filter(|patch| matches!(patch.op, Op::SetLive { .. } | Op::SetOpaque { .. }))
             .filter_map(|patch| lower(self, At::one(*patch)))
             .collect();
         let span = at.span();

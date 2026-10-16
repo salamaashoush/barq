@@ -50,6 +50,7 @@ import {
   bindEvent,
   bindProp,
   readKeys,
+  readOpaque,
   bindValue,
   formAction,
   insert,
@@ -91,10 +92,11 @@ const CHANNEL: Record<Chan, Channel> = {
 };
 
 type SetLive = readonly ["setLive", number, string, number, Diff, Chan];
+type SetOpaque = readonly ["setOpaque", number, string, number, Chan];
 
 export type Op =
   | readonly ["setOnce", number, string, number, Chan]
-  | readonly ["setOpaque", number, string, number, Chan]
+  | SetOpaque
   | SetLive
   | readonly ["setEvent", number, string, number]
   | readonly ["delegate", number, string, number]
@@ -105,7 +107,7 @@ export type Op =
   | readonly ["spread", number, number, boolean, (readonly string[])?]
   | readonly ["insert", number, number, Plan, number | null]
   | Region
-  | readonly ["effectGroup", readonly SetLive[]];
+  | readonly ["effectGroup", readonly (SetLive | SetOpaque)[]];
 
 /** A control-flow region: `flow.ts`'s four primitives, as data.
  *
@@ -337,15 +339,17 @@ function apply(op: Op, nodes: readonly Node[], slots: readonly Slot[]): void {
  * Every read happens before any write, which is not a detail: a write can change
  * what a later prop on the same element would have read.
  */
-function fuse(members: readonly SetLive[], nodes: readonly Node[], slots: readonly Slot[]): void {
+function fuse(
+  members: readonly (SetLive | SetOpaque)[],
+  nodes: readonly Node[],
+  slots: readonly Slot[],
+): void {
+  const rows = members.map(row);
   bindEffect(
-    () =>
-      members.map((member) =>
-        member[5] === "style" ? readKeys(slots[member[3]]()) : slots[member[3]](),
-      ),
+    () => rows.map((member) => member.read()),
     (values: unknown[], prev: unknown[] | undefined) => {
-      for (let i = 0; i < members.length; i++) {
-        const [, node, key, , diff, chan] = members[i];
+      for (let i = 0; i < rows.length; i++) {
+        const { node, key, diff, chan } = rows[i];
         const element = nodes[node] as Element;
         if (diff === "thread") {
           values[i] = CHANNEL[chan](element, key, values[i], prev?.[i]);
@@ -360,4 +364,31 @@ function fuse(members: readonly SetLive[], nodes: readonly Node[], slots: readon
       }
     },
   );
+
+  function row(member: SetLive | SetOpaque): {
+    node: number;
+    key: string;
+    diff: Diff;
+    chan: Chan;
+    read: () => unknown;
+  } {
+    if (member[0] === "setLive") {
+      const [, node, key, slot, diff, chan] = member;
+      const read = chan === "style" ? () => readKeys(slots[slot]()) : (): unknown => slots[slot]();
+      return { node, key, diff, chan, read };
+    }
+    // An opaque call that joined the group: its slot yields the function that
+    // makes the call, and the value is what `bindProp` would have read from it.
+    const [, node, key, slot, chan] = member;
+    const diff: Diff =
+      chan === "class" || chan === "style" || chan === "html"
+        ? "thread"
+        : chan === "live"
+          ? "always"
+          : "identity";
+    const value = (): unknown =>
+      readOpaque((slots[slot]() as () => unknown)(), key, chan === "prop");
+    const read = chan === "style" ? () => readKeys(value()) : value;
+    return { node, key, diff, chan, read };
+  }
 }

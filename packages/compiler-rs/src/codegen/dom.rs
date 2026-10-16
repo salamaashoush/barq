@@ -48,20 +48,24 @@ pub fn emit_unit_parts<'a>(
     // The driver. It owns traversal — program order, one pass — and the
     // instruction set belongs to the `Backend` impl below, which is the surface
     // the string backend and the reference backend answer on too.
-    let mut index = 0;
     let mut owned: FxHashSet<NodeId> = FxHashSet::default();
-    while index < unit.patch.len() {
+    let mut grouped = vec![false; unit.patch.len()];
+    for index in 0..unit.patch.len() {
+        if grouped[index] {
+            continue;
+        }
         let patch = unit.patch[index];
-        index += 1;
-        // A group header's members are the records that follow it, so they are
-        // read off the program here and handed to the op that governs them.
+        // A group header's members are records later in the program, so they
+        // are read off it here, handed to the op that governs them, and not
+        // lowered again where they stand.
         let members: Vec<Patch> = match patch.op {
-            Op::EffectGroup { len } => {
-                let end = (index + len as usize).min(unit.patch.len());
-                let members = unit.patch[index..end].to_vec();
-                index = end;
-                members
-            }
+            Op::EffectGroup { len } => crate::passes::group::members(unit, index, len)
+                .into_iter()
+                .map(|member| {
+                    grouped[member] = true;
+                    unit.patch[member]
+                })
+                .collect(),
             _ => Vec::new(),
         };
         let mut backend = Dom { ctx, unit, owned: &mut owned };
@@ -425,9 +429,9 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
         Some(Statement::new_expression_statement(span, call, &self.ctx.ast))
     }
 
-    /// Target #4 and B2. Every live prop on one element computes into ONE flat
-    /// record and applies by field comparison; a group of one needs no record at
-    /// all, because its previous value is a scalar.
+    /// Target #4 and B2. Every live binding of one template computes into ONE
+    /// flat record and applies by field comparison; a group of one needs no
+    /// record at all, because its previous value is a scalar.
     fn effect_group(&mut self, at: At<'_>, _len: u16) -> Self::Out {
         Some(fused_effect(self.ctx, self.unit, at.members, at.patch))
     }
@@ -786,10 +790,15 @@ fn fused_effect<'a>(
     let value = ctx.module.uids.temp();
     let prev = ctx.module.uids.prev();
 
-    let rows: Vec<(Patch, NameId, ExprId, Chan, Diff)> = members
+    let rows: Vec<(Patch, NameId, ExprId, Chan, Diff, bool)> = members
         .iter()
         .filter_map(|patch| match patch.op {
-            Op::SetLive { name, value, chan, diff } => Some((*patch, name, value, chan, diff)),
+            Op::SetLive { name, value, chan, diff } => {
+                Some((*patch, name, value, chan, diff, false))
+            }
+            Op::SetOpaque { name, value, chan } => {
+                Some((*patch, name, value, chan, opaque_diff(chan), true))
+            }
             _ => None,
         })
         .collect();
@@ -798,7 +807,7 @@ fn fused_effect<'a>(
     // the channel applies, so an unchanged class stops at the effect's own
     // equality check and the write half never runs. The css and classList maps
     // have no such form: their identity says nothing about their content.
-    if let [(patch, name, one, Chan::Class, Diff::Thread)] = rows[..] {
+    if let [(patch, name, one, Chan::Class, Diff::Thread, false)] = rows[..] {
         let read = keyed_read(ctx, unit, one, Chan::Class, patch.span);
         let read = if is_string_valued(&read) {
             read
@@ -818,30 +827,25 @@ fn fused_effect<'a>(
 
     // One prop whose applied form IS its value needs no record: the previous
     // value is a scalar and the compute returns it directly.
-    if let [(patch, name, one, chan, diff)] = rows[..]
+    if let [(patch, name, one, chan, diff, false)] = rows[..]
         && diff != Diff::Thread
     {
         let read = keyed_read(ctx, unit, one, chan, patch.span);
         let compute = arrow(ctx, no_params(ctx, span), ArrowFunctionBody::from(read), span);
         let held = ctx.ident(value, patch.span);
-        let write = channel_write(ctx, unit, patch, name, chan, vec![held], patch.span);
         let (body, params) = match diff {
+            // Handed `prev`, the attribute and property channels make the
+            // identity compare themselves, the record's `!==` in fewer bytes.
             Diff::Identity => {
-                let mine = ctx.ident(value, patch.span);
                 let theirs = ctx.ident(prev, patch.span);
-                let test = Expression::new_binary_expression(
-                    patch.span,
-                    mine,
-                    oxc::ast::ast::BinaryOperator::StrictInequality,
-                    theirs,
-                    &ctx.ast,
-                );
-                (
-                    vec![Statement::new_if_statement(patch.span, test, write, None, &ctx.ast)],
-                    apply_params(ctx, value, Some((prev, false)), span),
-                )
+                let write =
+                    channel_write(ctx, unit, patch, name, chan, vec![held, theirs], patch.span);
+                (vec![write], apply_params(ctx, value, Some((prev, false)), span))
             }
-            _ => (vec![write], apply_params(ctx, value, None, span)),
+            _ => {
+                let write = channel_write(ctx, unit, patch, name, chan, vec![held], patch.span);
+                (vec![write], apply_params(ctx, value, None, span))
+            }
         };
         let apply = arrow(ctx, params, block(ctx, body, span), span);
         return effect_call(ctx, compute, apply, span);
@@ -851,9 +855,13 @@ fn fused_effect<'a>(
     let mut body: Vec<Statement<'a>> = Vec::with_capacity(rows.len());
     let mut reads_prev = false;
 
-    for (index, (patch, name, one, chan, diff)) in rows.iter().copied().enumerate() {
+    for (index, (patch, name, one, chan, diff, opaque)) in rows.iter().copied().enumerate() {
         let key = slot_key(index, ctx.allocator);
-        let read = keyed_read(ctx, unit, one, chan, patch.span);
+        let read = if opaque {
+            opaque_read(ctx, unit, name, one, chan, patch.span)
+        } else {
+            keyed_read(ctx, unit, one, chan, patch.span)
+        };
         properties.push(property(ctx, key, read, patch.span));
 
         let mine = ctx.member(ctx.ident(value, patch.span), key, patch.span);
@@ -910,6 +918,70 @@ fn fused_effect<'a>(
     effect_call(ctx, compute, apply, span)
 }
 
+/// What `bindProp` would compare with for the same channel: its own `prev`
+/// threaded through the channel where the applied form differs from the value,
+/// nothing for the user-mutable channel, identity everywhere else.
+fn opaque_diff(chan: Chan) -> Diff {
+    if chan.threads_prev() {
+        Diff::Thread
+    } else if chan == Chan::Live {
+        Diff::Always
+    } else {
+        Diff::Identity
+    }
+}
+
+/// The read `bindProp` makes of an opaque call, inside the record:
+/// `_$readOpaque(row.label(), "textContent", true)`. The runtime refuses a
+/// Block and reads a returned Cell through, except on a property, which can
+/// hold a function as its value.
+fn opaque_read<'a>(
+    ctx: &mut Emit<'a, '_>,
+    unit: &mut Unit<'a>,
+    name: NameId,
+    value: ExprId,
+    chan: Chan,
+    span: Span,
+) -> Expression<'a> {
+    let callable = unit.exprs.rx(value).shape.may_be_callable();
+    let value = take(ctx, unit, value, span);
+    let read = if !callable || is_primitive_valued(&value) {
+        value
+    } else {
+        let key = ctx.module.interner.name(name).text;
+        let mut arguments = vec![Argument::from(value), Argument::from(ctx.string(key, span))];
+        if chan == Chan::Prop {
+            arguments.push(Argument::from(Expression::new_boolean_literal(span, true, &ctx.ast)));
+        }
+        let callee = ctx.helper(Helper::ReadOpaque, span);
+        ctx.call(callee, arguments, span)
+    };
+    if chan != Chan::Style || holds_no_getter(&read) {
+        return read;
+    }
+    let callee = ctx.helper(Helper::ReadKeys, span);
+    ctx.call(callee, vec![Argument::from(read)], span)
+}
+
+/// An expression that can only evaluate to a primitive, so never to a Block or
+/// a Cell.
+fn is_primitive_valued(expression: &Expression<'_>) -> bool {
+    match expression {
+        Expression::StringLiteral(_)
+        | Expression::TemplateLiteral(_)
+        | Expression::NumericLiteral(_)
+        | Expression::BooleanLiteral(_)
+        | Expression::BinaryExpression(_)
+        | Expression::UnaryExpression(_) => true,
+        Expression::ParenthesizedExpression(inner) => is_primitive_valued(&inner.expression),
+        Expression::ConditionalExpression(conditional) => {
+            is_primitive_valued(&conditional.consequent)
+                && is_primitive_valued(&conditional.alternate)
+        }
+        _ => false,
+    }
+}
+
 /// An expression that can only evaluate to a string, which `classToString`
 /// would hand back unchanged.
 fn is_string_valued(expression: &Expression<'_>) -> bool {
@@ -924,7 +996,7 @@ fn is_string_valued(expression: &Expression<'_>) -> bool {
 }
 
 /// The record's field names are POSITIONAL, not the attribute names. Two props
-/// on one element cannot collide, the emitted bytes do not grow with the name,
+/// of one name on two elements cannot collide, the emitted bytes do not grow with the name,
 /// and `__proto__` — which as an object-literal key would set the prototype
 /// rather than create a slot — is not a case that has to be excluded.
 fn slot_key(index: usize, allocator: &Allocator) -> &str {

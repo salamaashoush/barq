@@ -79,7 +79,7 @@ pub struct Opt {
     /// P5's anchor half. A hole anchors against a node the template already
     /// carries. Off: every hole gets its own `<!---->`.
     pub anchor: bool,
-    /// P5's grouping half. An element's live props share one `bindEffect`.
+    /// P5's grouping half. A template's live bindings share one `bindEffect`.
     /// Off: every binding becomes its own live effect.
     pub fuse: bool,
     /// P6. A node is addressed from the nearest already-addressed sibling, in

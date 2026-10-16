@@ -15,7 +15,7 @@ pub use module::{
     Hoisted, LineIndex, Mappings, Module, Root, Site, TemplateMeta, TemplateRow, Uids, Unit,
 };
 pub use patch::{Anchor, Chan, Diff, HandlerRef, InsertPlan, Op, Patch};
-pub use react::{BIT_OVERFLOW, Const, Cost, DepSet, FreeVars, React, Rx, Shape, Thunk};
+pub use react::{BIT_OVERFLOW, Const, DepSet, FreeVars, React, Rx, Shape, Thunk};
 pub use region::{
     DETECT, HYDRATE, NO_SCOPE, Region, RegionId, RegionKind, STATIC_KEY, TAGGED, WHOLE,
 };

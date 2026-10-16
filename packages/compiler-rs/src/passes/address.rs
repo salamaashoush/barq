@@ -278,8 +278,8 @@ pub fn locate(module: &mut Module<'_>) {
 
 /// What an opcode is a position OF, and the key that names it inside its unit.
 ///
-/// `EffectGroup` is the one opcode with no position: it is a prefix marker over
-/// the records that follow it, and giving it an address would shift every
+/// `EffectGroup` is the one opcode with no position: it is a marker over
+/// records later in the program, and giving it an address would shift every
 /// address after it the moment effect fusion was turned off — which is exactly
 /// the instability `-O0` exists to expose rather than to introduce.
 fn classify_position(op: Op) -> Option<(PositionKind, u32)> {
@@ -405,7 +405,7 @@ mod address_tests {
 
     /// `-O0` and `-Ox` are the same program at a different speed, so
     /// they name the same positions. Effect fusion is the case that could break
-    /// it: `EffectGroup` is a prefix marker with no position of its own, and
+    /// it: `EffectGroup` is a marker with no position of its own, and
     /// giving it one would shift every address behind it the moment fusion was
     /// turned off.
     #[test]

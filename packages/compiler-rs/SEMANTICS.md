@@ -1912,13 +1912,17 @@ compiler's auto-thunking, not the author's closure, has to treat the names alike
 `class-with-live-siblings.tsx` (the explicit-thunk shape, re-cut: it asserted the exclusion and now
 asserts its absence), `class-owns-only-its-tokens.tsx`.
 
-### B2 — one fused effect per element, with a compiler-allocated prev record
+### B2 — one fused effect per template, with a compiler-allocated prev record
 
-**Rule.** All of an element's reactive bindings compute into one flat record and apply by field
-comparison. The previous-value store is the compute's own return value: no runtime-allocated object,
-no per-element expando. `class`, `style` and `classList` are members of that record like any other.
+**Rule.** All of a template's reactive attribute, property, class and style bindings, on every
+element of it, compute into one flat record and apply by field comparison, as Solid 2.0 fuses them.
+An opaque call joins the record and is read through `readOpaque`, the read `bindProp` makes. The
+previous-value store is the compute's own return value: no runtime-allocated object, no per-element
+expando. `class`, `style` and `classList` are members of that record like any other. Child holes
+keep their own effects.
 
-**Falsified by.** Count effects per element with N reactive bindings: it MUST be 1, not N.
+**Falsified by.** Count effects per template clone with N reactive bindings over any number of
+elements: it MUST be 1, not N.
 
 **Status.** `HOLDS` since M5. The emitted shape is
 
@@ -1955,7 +1959,8 @@ bytes (−0.53%)** — the positional keys and the deleted accumulator plumbing 
 second arrow. Compile stayed at **0.0342–0.0350 ms/typical file** against a 1 ms budget.
 
 **Pinned by.** `multi-prop-one-element.tsx`, `reactive-attribute.tsx`, `class-with-live-siblings.tsx`,
-`equal-liveness.tsx` (all re-cut), `sem-react-apply-is-untracked.tsx`.
+`equal-liveness.tsx` (all re-cut), `sibling-live-props.tsx` (two elements, one record),
+`sem-react-apply-is-untracked.tsx`.
 
 ### B3 — `ref` is not a prop
 
@@ -2817,7 +2822,7 @@ green, which is why L1 exists.
 | R7 | `linked` re-seeds on its source | H (M7) | `sem-state-linked-reseeds` |
 | R8 | a mark implies its closure; propagation is linear in depth | H (M7c) | depth test + bench (§14) |
 | B1 | every binding on an element is equally live | H | `equal-liveness`, `class-with-live-siblings` |
-| B2 | one fused effect per element | H | `multi-prop-one-element`, `class-owns-only-its-tokens` |
+| B2 | one fused effect per template | H | `multi-prop-one-element`, `class-owns-only-its-tokens` |
 | B3 | `ref` is not a prop | P (M5) | `ref-writable-binding`, `ref-binding`, `ref-on-component` |
 | B4 | a listener dies with its position | H (M5) | `delegated-event`, `non-delegated-event`, the corpus through `test/leaks.ts` |
 | B5 | property-vs-attribute is a stated rule | P (M5) | `attribute-namespaces`, `bind-value-channel`, `custom-elements`, `property-attrs` |

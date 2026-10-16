@@ -15,6 +15,7 @@ import {
   fixtureOptimality,
   fixtureSource,
   formatDivergences,
+  groupClones,
   groupTargets,
   listFixtures,
   loadModule,
@@ -611,7 +612,7 @@ describe("target 3 — constant folding into the template string", () => {
   });
 });
 
-describe("target 4 — one effect per element, not one per prop", () => {
+describe("target 4 — one effect per template, not one per prop", () => {
   it("multi-prop-one-element: three dynamic props share a single effect", async () => {
     // The contrast used to be the oracle's count — one effect per live prop.
     // the oracle design retires it, so the same claim is stated off the module: ONE bindEffect
@@ -742,15 +743,15 @@ describe("target 4 — one effect per element, not one per prop", () => {
     }
   }, 30_000);
 
-  it("no effect group spans two elements, across the corpus", () => {
-    // P5 merges a CONTIGUOUS run of live props on ONE element. Merging across
-    // elements would still produce identical DOM and FEWER effects, so the old
-    // one-sided effect BOUND could not see it — fewer effects was never a
-    // divergence against a reference. `effect-counts.ts` makes the count an
-    // equality and would now move, but the number alone does not say WHICH
-    // elements a group spans. `passes::group::tests` pins the pass itself; this
+  it("no template opens two effects and no effect spans two templates, across the corpus", () => {
+    // P5 fuses every live binding of ONE template into one record. Splitting it
+    // again, or merging two templates' bindings, still produces identical DOM,
+    // so a rendered comparison cannot see either. `effect-counts.ts` makes the
+    // count an equality and would move, but the number alone does not say WHICH
+    // clone a group serves. `passes::group::tests` pins the pass itself; this
     // pins what codegen actually emitted.
     let groups = 0;
+    let across = 0;
     for (const name of listFixtures()) {
       const code = compileFixtureBody(name);
       const bodies = bindEffectBodies(code);
@@ -760,28 +761,34 @@ describe("target 4 — one effect per element, not one per prop", () => {
       expect(bodies, `${name}: every bindEffect must be scanned`).toHaveLength(
         emittedCalls(code, "bindEffect"),
       );
-      for (const targets of groupTargets(code)) {
-        expect(targets, `${name}: one effect must serve one element`).toHaveLength(1);
+      const seen = new Set<string>();
+      for (const clones of groupClones(code)) {
+        expect(clones, `${name}: one effect must serve one template`).toHaveLength(1);
+        expect(seen.has(clones[0]), `${name}: ${clones[0]} opens two effects`).toBe(false);
+        seen.add(clones[0]);
         groups++;
       }
+      across += groupTargets(code).filter((targets) => targets.length > 1).length;
     }
     expect(groups, "the scan has to be finding real groups").toBeGreaterThan(0);
+    expect(across, "and some of them have to span elements").toBeGreaterThan(0);
   });
 
-  it("the one-element rule goes red on a deliberate over-merge", () => {
+  it("the one-template rule goes red on a deliberate split", () => {
     // The proof that the assertion above is a detector and not a description.
-    // Rewriting one prop inside an existing group to write a DIFFERENT element
-    // is exactly what an over-eager P5 would emit: identical DOM, one fewer
+    // Moving one element's write into an effect of its own is exactly what a
+    // P5 that stopped at the element would emit: identical DOM, one more
     // effect, and nothing else in the suite can see it.
-    const code = compileFixtureBody("multi-prop-one-element");
-    expect(groupTargets(code)).toEqual([["_el$1"]]);
+    const code = compileFixtureBody("sibling-live-props");
+    expect(groupClones(code)).toEqual([["_el$1"]]);
+    expect(groupTargets(code)[0]).toHaveLength(2);
 
-    const overMerged = code.replace(
-      '_$setAttr(_el$1, "data-width"',
-      '_$setAttr(_el$2, "data-width"',
+    const split = code.replace(
+      "  _$bindEffect(",
+      '  _$bindEffect(() => 0, (_v$) => { _$setAttr(_el$3, "lang", _v$); });\n  _$bindEffect(',
     );
-    expect(overMerged, "the mutation is stale").not.toBe(code);
-    expect(groupTargets(overMerged)).toEqual([["_el$1", "_el$2"]]);
+    expect(split, "the mutation is stale").not.toBe(code);
+    expect(groupClones(split)).toEqual([["_el$1"], ["_el$1"]]);
   });
 });
 

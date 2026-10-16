@@ -20,9 +20,9 @@ impl React {
     }
 }
 
-/// "Do these two expressions share a dependency?" is the only question the
-/// effect-grouping cost model asks, so a 64-bit mask over the unit's dense
-/// symbol numbering is sufficient. No arena slices, no merging, no allocation.
+/// The tracked reads of an expression, as a 64-bit mask over the unit's dense
+/// symbol numbering. "Does it read anything tracked?" is the question codegen
+/// asks of it, which a mask answers with no arena slices and no allocation.
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
 pub struct DepSet {
     pub mask: u64,
@@ -36,8 +36,8 @@ impl DepSet {
     pub const EMPTY: Self = Self { mask: 0, overflow: false };
 
     /// `bit == BIT_OVERFLOW` means the unit had more than 64 reactive symbols;
-    /// the set degrades to "may depend on anything", which only ever refuses a
-    /// merge, never permits a wrong one.
+    /// the set degrades to "may depend on anything", which is never empty, so a
+    /// read past the mask is still a read.
     #[inline]
     pub fn single(bit: u8) -> Self {
         if bit >= 64 {
@@ -50,11 +50,6 @@ impl DepSet {
     #[inline]
     pub fn join(self, other: Self) -> Self {
         Self { mask: self.mask | other.mask, overflow: self.overflow | other.overflow }
-    }
-
-    #[inline]
-    pub fn disjoint(self, other: Self) -> bool {
-        !self.overflow && !other.overflow && self.mask & other.mask == 0
     }
 
     #[inline]
@@ -120,14 +115,6 @@ pub enum Thunk {
     Eta,
 }
 
-/// loop / `.map` / `.sort` / `new` ⇒ `Expensive`
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
-pub enum Cost {
-    #[default]
-    Cheap,
-    Expensive,
-}
-
 /// Free variables of an arrow/function, relative to the enclosing component
 /// scope. `only_globals` is the handler-hoisting predicate (target #7).
 #[derive(Clone, Copy, Default, PartialEq, Eq, Debug)]
@@ -146,7 +133,6 @@ pub struct Rx<'a> {
     pub konst: Option<Const<'a>>,
     pub shape: Shape,
     pub free: FreeVars,
-    pub cost: Cost,
     pub thunk: Thunk,
 }
 
@@ -160,7 +146,6 @@ impl<'a> Rx<'a> {
         konst: None,
         shape: Shape::Unknown,
         free: FreeVars { mask: 0, only_globals: false },
-        cost: Cost::Cheap,
         thunk: Thunk::None,
     };
 
@@ -201,17 +186,12 @@ mod tests {
     }
 
     #[test]
-    fn overflow_makes_a_dep_set_share_with_everything() {
-        let a = DepSet::single(3);
-        let b = DepSet::single(4);
-        assert!(a.disjoint(b));
-        assert!(!a.disjoint(a));
-
+    fn overflow_is_a_read_of_something() {
         let over = DepSet::single(BIT_OVERFLOW);
         assert!(over.overflow);
-        assert!(!over.disjoint(a));
-        assert!(!a.disjoint(over));
+        assert_eq!(over.mask, 0);
         assert!(!over.is_empty());
+        assert!(DepSet::EMPTY.is_empty());
     }
 
     #[test]
@@ -219,7 +199,6 @@ mod tests {
         let joined = DepSet::single(1).join(DepSet::single(BIT_OVERFLOW));
         assert!(joined.overflow);
         assert_eq!(joined.mask, 1 << 1);
-        assert!(!joined.disjoint(DepSet::single(9)));
     }
 
     /// A user-written `() => 1` reads nothing. Treating it as reactive because it

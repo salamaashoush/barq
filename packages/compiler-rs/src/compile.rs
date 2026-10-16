@@ -3709,8 +3709,7 @@ export const Route = createFileRoute("/x")({ component: Page });
         // anchor: the hole anchors against `<u>` rather than a marker of its own.
         assert!(!ox.contains("<u></u></em>") || !ox.contains("<!---->"), "{ox}");
         assert!(o0.contains("<!----><u></u>"), "{o0}");
-        // fuse: two live props on one element share one effect, then get one
-        // each. The effect itself is no longer a knob — with the channel
+        // fuse: two live props share one effect, then get one each. The effect itself is no longer a knob — with the channel
         // resolved there is no `setProp` left to hand a thunk to, so the
         // compiler owns every live write's effect at both levels.
         assert_eq!(ox.matches("_$bindEffect(").count(), 1, "{ox}");
@@ -3823,7 +3822,7 @@ export const Route = createFileRoute("/x")({ component: Page });
         // survives as runtime work.
         assert!(output.code.contains("id=\"dark\""), "{}", output.code);
         assert!(!output.code.contains("\"id\""), "{}", output.code);
-        assert!(output.code.contains("_$setAttr(_el$1, \"title\", _v$)"), "{}", output.code);
+        assert!(output.code.contains("_$setAttr(_el$1, \"title\", _v$, _p$)"), "{}", output.code);
         assert_eq!(output.code.matches("_$setAttr(").count(), 1, "{}", output.code);
 
         // `count.set` is masked as non-tracking, so it folds nowhere and creates
@@ -4023,11 +4022,7 @@ export const Route = createFileRoute("/x")({ component: Page });
             "{}",
             output.code
         );
-        assert!(
-            output.code.contains("if (_v$ !== _p$) _$setAttr(_el$1, \"title\", _v$);"),
-            "{}",
-            output.code
-        );
+        assert!(output.code.contains("_$setAttr(_el$1, \"title\", _v$, _p$);"), "{}", output.code);
         assert!(!output.code.contains("_p$ = {}"), "no record for one field: {}", output.code);
     }
 

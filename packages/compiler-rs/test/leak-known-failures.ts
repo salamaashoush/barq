@@ -179,11 +179,15 @@ export const LEAK_FAILURES: readonly LeakKnownFailure[] = Object.freeze(
  * type and removes it at disposal. Those registrations used to be one listener
  * per type on the document for the whole process, outside every session. They
  * are counted, and none is outstanding.
+ *
+ * Then 324 effects to 310: every live binding of a template shares one render
+ * effect, where each element had its own and an opaque call in an attribute
+ * had one through `bindProp`. Survivors stay at zero.
  */
 export const LEAK_REACH: Readonly<Record<string, number>> = Object.freeze({
   sessions: 158,
   scopesEntered: 501,
-  effectsCreated: 324,
+  effectsCreated: 310,
   listeners: 328,
 });
 

@@ -3,7 +3,7 @@ mod anchor;
 pub(crate) mod classify;
 pub(crate) mod flow;
 mod fold;
-mod group;
+pub(crate) mod group;
 mod serialize;
 mod shape;
 

@@ -731,3 +731,68 @@ into a root first. No expectation about what a handler does changed.
 - `server/src/async-autokey.test.ts`, two `HYDRATION_SEED_DRIFT` cases: `event.data` is
   `{ keys: [...] }`, not the bare array. The engine's event types `data` as a record, and the
   leftover keys are the same.
+
+## compiler: one fused effect per template
+
+Every live attribute, property, class and style binding of a template shares one render effect, on
+whichever element, and an opaque call in an attribute joins it through `readOpaque`. The
+cost-model split of an expensive, dependency-disjoint call is gone, and with it `Cost` and
+`DepSet::disjoint`, which only that split read.
+
+- `passes::group::tests`: `every_live_prop_on_one_element_shares_a_single_effect` is now
+  `every_live_prop_in_one_template_shares_a_single_effect` (headers `[2, 1]` became one header of
+  3 over two elements). `an_expensive_prop_with_no_shared_dependency_keeps_its_own_effect` is
+  removed with the rule it pinned. Added: an opaque call joins and an opaque value does not; a lone
+  opaque call keeps `bindProp`.
+- `ir::react::tests` `overflow_makes_a_dep_set_share_with_everything` is now
+  `overflow_is_a_read_of_something`, and `joining_carries_overflow` loses its `disjoint` line:
+  overflow matters now only because it keeps the set non-empty.
+- `passes::shape::tests` `an_opaque_call_in_an_attribute_is_thunked_rather_than_spent` is now
+  `..._is_read_in_the_effect_rather_than_spent`: `title={label()}` is `_$readOpaque(label(),
+  "title")` inside the one effect instead of `bindProp(..., () => label())`; the template literal
+  beside it is read bare, being a string. `a_call_to_a_derived_function_is_a_proven_read`: `id={fixed()}`
+  is the record's third field instead of a `bindProp` thunk. Both still assert the call stays live.
+- `optimality.test.ts` "no effect group spans two elements" is now "no template opens two effects
+  and no effect spans two templates", and its detector "goes red on a deliberate over-merge" is now
+  "goes red on a deliberate split". `optimisation.test.ts` "a fused effect applies to exactly one
+  element" is now "a template's bindings share one fused effect". `mutants.ts` replaces
+  `fuse-merges-across-elements`, now the design, with `fuse-stops-at-the-first-element`.
+- `fixtures/sibling-live-props.tsx`: `optimality.effects` 2 to 1, and its comment states the fused
+  pair. `fixtures/read-mode-binding.tsx`: comment only.
+- `effect-counts.ts`, ten rows, every one `created` down by the bindings that fused:
+  attribute-namespaces 2 to 1, boolean-and-nullish-props 2 to 1, class-empty-string 3 to 1,
+  class-list-prop 2 to 1, dashboard-composite 5 to 4, live-call-hole 3 to 2, property-attrs 2 to 1,
+  read-mode-binding 3 to 2, sibling-live-props 2 to 1, table-rows 13 to 10. `runs` falls with them
+  and `busiest` rises where one effect now re-runs for what two did.
+- `ownership-known-failures.ts` effects 276 to 263, `leak-known-failures.ts` effectsCreated 324
+  to 310, the same bindings counted from the other two channels.
+- `compile.rs` `a_bare_tracked_read_in_an_attribute_becomes_a_live_binding` and
+  `a_provably_static_value_gets_no_effect_and_a_tracked_read_does`: a lone attribute or property
+  binding is `_$setAttr(el, "title", _v$, _p$)` instead of `if (_v$ !== _p$) _$setAttr(el,
+  "title", _v$)`. Handed `prev`, the channel makes the same identity compare (including the first
+  run's `undefined`), in fewer bytes; that is what keeps the fixture corpus from growing.
+  `compiler/src/vite.test.ts` "optimize 0 turns every optimisation off" restates its two `-O0`
+  expectations the same way; the effect counts it asserts (2 at `-O0`, 1 optimised) are unchanged.
+- Snapshots, via `bun test -u`. `roundtrip.test.ts.snap`, 24 fixtures: attribute-namespaces,
+  auto-thunked-read, boolean-and-nullish-props, class-empty-string, class-list-prop,
+  component-forwarded-handler-tuple, custom-elements, dashboard-composite,
+  diagnostic-accessor-coercion, live-call-hole, multi-signal-expression, numeric-and-boolean-attrs,
+  projection-store, property-attrs, props-destructured-body, props-raw-forward, read-mode-binding,
+  sibling-live-props, signal-methods-in-handler, signal-object, store-member, svg,
+  table-root-shapes, table-rows; each is the fused record, the lone binding handing `prev` to its
+  channel, or both. `modes.test.ts.snap`: 30 rows move in the dom-Ox, dom-O0, interp and
+  dom-hydratable columns for the same two reasons; the ssr columns move only for
+  `sibling-live-props` and `read-mode-binding`, whose sources changed.
+
+## flaky timing tests
+
+- `compiler-rs/test/roundtrip.test.ts` "generating the map costs less than the compile it maps"
+  timed two compiles and asserted a ratio, which a loaded runner failed. It is now "the map holds
+  each mapped position once, in under half the bytes it maps": a doubled map, the regression it was
+  for, fails both halves, and neither reads a clock. Compile time is still printed by
+  `throughput.test.ts`.
+- `aria/src/drawer.test.ts` "letting go short of the threshold keeps it" read `Date.now`, so a
+  millisecond tick between `start` and `move` made 80px a flick. It and the other velocity tests in
+  `drawerDrag` ("the threshold is a FRACTION", "a flick closes it", "a slow pull", "a flick BACK")
+  now drive the drawer's injected `now` instead of `Date.now` and `setTimeout`. Expectations are
+  unchanged.

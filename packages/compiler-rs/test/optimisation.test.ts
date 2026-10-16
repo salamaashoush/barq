@@ -33,6 +33,7 @@ import {
   countTemplateAnchors,
   drive,
   fixtureSource,
+  groupClones,
   listFixtures,
   renderViaCompiler,
   stripLiterals,
@@ -484,29 +485,28 @@ describe("the front end L3 cannot grade, graded absolutely", () => {
    * B2's grouping key, asserted absolutely — the one mutation the whole L3 axis
    * could not see.
    *
-   * `group.rs` fuses consecutive `SetLive` patches only while `target` is the
-   * SAME element. Removing that condition (the `fuse-merges-across-elements`
-   * row in `mutants.ts`) merges the live props of two elements into one
-   * `bindEffect`, and the differential stays green: `-O0` fuses nothing, so both
-   * builds still write the same values in the same order — what changes is
-   * WHICH effect owns them, which a rendered-DOM comparison cannot report.
-   * Node identity cannot see it either; both elements are still cloned once.
+   * `group.rs` fuses every live binding of a TEMPLATE into one `bindEffect`.
+   * Stopping at the element (the `fuse-stops-at-the-first-element` row in
+   * `mutants.ts`) splits it into one effect per element again, and the
+   * differential stays green: `-O0` fuses nothing, so both builds still write
+   * the same values in the same order — what changes is HOW MANY effects own
+   * them, which a rendered-DOM comparison cannot report. Node identity cannot
+   * see it either; every element is still cloned once.
    *
-   * The symptom it hides is real: one record, so a write to either element's
-   * value re-applies BOTH, and the record's `prev` slots collide by index.
-   *
-   * So it is graded here, where it is a fact about the emitted module: an apply
-   * body names exactly one element binding. This is the check the mutation
-   * runner reports as `front end (absolute)`.
+   * So it is graded here, where it is a fact about the emitted module: every
+   * apply body writes into one clone, and no clone is written by two.
    */
-  it("a fused effect applies to exactly one element", () => {
+  it("a template's bindings share one fused effect", () => {
     const offenders: string[] = [];
     for (const name of listFixtures()) {
       const code = compileFixture(name);
-      for (const apply of applyBodies(code)) {
-        const elements = new Set(apply.match(/_el\$\d+/g) ?? []);
-        if (elements.size > 1) {
-          offenders.push(`${name}: ${[...elements].join(" + ")} share one bindEffect`);
+      const seen = new Set<string>();
+      for (const clones of groupClones(code)) {
+        if (clones.length > 1)
+          offenders.push(`${name}: ${clones.join(" + ")} share one bindEffect`);
+        for (const clone of clones) {
+          if (seen.has(clone)) offenders.push(`${name}: ${clone} opens two bindEffects`);
+          seen.add(clone);
         }
       }
     }

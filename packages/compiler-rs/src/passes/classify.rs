@@ -8,8 +8,8 @@ use oxc::semantic::{ScopeFlags, ScopeId, Scoping};
 
 use crate::analysis::symbol_of;
 use crate::ir::{
-    Const, Cost, DepSet, Diff, ExprId, FreeVars, HandlerRef, HoistId, Hoisted, InsertPlan,
-    Interner, Module, Op, Patch, Prim, React, ReactiveEnv, Rx, Shape, SourceKind, Thunk, Unit,
+    Const, DepSet, Diff, ExprId, FreeVars, HandlerRef, HoistId, Hoisted, InsertPlan, Interner,
+    Module, Op, Patch, Prim, React, ReactiveEnv, Rx, Shape, SourceKind, Thunk, Unit,
 };
 use crate::tables;
 
@@ -375,9 +375,7 @@ impl<'a> Lift<'a, '_> {
             // read was emitted unwrapped.
             Expression::NewExpression(new) => {
                 match self.proven_reactive_parts(&new.callee, &new.arguments) {
-                    Some(deps) => {
-                        Rx { react: React::Reactive, deps, cost: Cost::Expensive, ..Rx::OPAQUE }
-                    }
+                    Some(deps) => Rx { react: React::Reactive, deps, ..Rx::OPAQUE },
                     None => {
                         // An unknown read or call among the arguments is spent
                         // when the object is built, as it is anywhere else.
@@ -396,7 +394,7 @@ impl<'a> Lift<'a, '_> {
                                 thunk = Thunk::Arrow;
                             }
                         }
-                        Rx { cost: Cost::Expensive, thunk, ..Rx::OPAQUE }
+                        Rx { thunk, ..Rx::OPAQUE }
                     }
                 }
             }
@@ -594,7 +592,7 @@ impl<'a> Lift<'a, '_> {
         // and spent once it is a value that never moves again.
         let thunk = if unknown || inner.thunk == Thunk::Arrow { Thunk::Arrow } else { Thunk::None };
         let react = if row { React::Opaque } else { inner.react };
-        Rx { react, deps: inner.deps, cost: inner.cost, thunk, ..Rx::OPAQUE }
+        Rx { react, deps: inner.deps, thunk, ..Rx::OPAQUE }
     }
 
     /// One link of an optional chain, classified as the non-optional spelling is.
@@ -754,11 +752,8 @@ impl<'a> Lift<'a, '_> {
         // on the folder's whitelist. Every other container already propagated:
         // an array, an object, a template, a conditional, a binary and a logical
         // expression all thunk when a part of them is reactive.
-        //
-        // `Cost::Expensive` is kept either way. Reactivity and cost are separate
-        // verdicts: this says the result MOVES, not that it is cheap to redo.
         if let Some(deps) = self.proven_reactive_parts(&call.callee, &call.arguments) {
-            return Rx { react: React::Reactive, deps, cost: Cost::Expensive, ..Rx::OPAQUE };
+            return Rx { react: React::Reactive, deps, ..Rx::OPAQUE };
         }
         // `Thunk::Arrow` because EVALUATING a call is not free of consequence.
         // `Opaque` means "emit it unwrapped and let the runtime decide", which
@@ -767,7 +762,7 @@ impl<'a> Lift<'a, '_> {
         // running it, and what reaches the runtime is a plain result with the
         // reads already spent. `<div>{label()}<b/></div>` was applied once and
         // never moved again.
-        Rx { cost: Cost::Expensive, thunk: Thunk::Arrow, ..Rx::OPAQUE }
+        Rx { thunk: Thunk::Arrow, ..Rx::OPAQUE }
     }
 
     /// The only calls the folder is allowed to evaluate: a whitelisted global
@@ -819,19 +814,14 @@ impl<'a> Lift<'a, '_> {
         let accessor = zero_arg && yields_a_value(&arrow.body);
         // A user-written `() => …` is an accessor whose BODY carries the deps;
         // creating a closure itself reads nothing.
-        let (inner, cost) = if !zero_arg {
-            (DepSet::EMPTY, Cost::Cheap)
+        let inner = if !zero_arg {
+            DepSet::EMPTY
         } else if let ArrowFunctionBody::FunctionBody(body) = &arrow.body {
-            // Statements are where loops live, and the cost model only ever
-            // uses `Expensive` to REFUSE a merge.
-            (self.body_deps(scope, |visitor| visitor.visit_function_body(body)), Cost::Expensive)
+            self.body_deps(scope, |visitor| visitor.visit_function_body(body))
         } else {
             match arrow.body.as_expression() {
-                Some(body) => {
-                    let body = self.rx(body);
-                    (body.deps, body.cost)
-                }
-                None => (DepSet::EMPTY, Cost::Cheap),
+                Some(body) => self.rx(body).deps,
+                None => DepSet::EMPTY,
             }
         };
         Rx {
@@ -839,7 +829,6 @@ impl<'a> Lift<'a, '_> {
             shape: if accessor { Shape::Accessor } else { Shape::Handler },
             inner,
             free,
-            cost,
             ..Rx::OPAQUE
         }
     }
@@ -964,11 +953,6 @@ fn join<'a>(left: Rx<'a>, right: Rx<'a>) -> Rx<'a> {
         free: FreeVars {
             mask: left.free.mask | right.free.mask,
             only_globals: left.free.only_globals && right.free.only_globals,
-        },
-        cost: if left.cost == Cost::Expensive || right.cost == Cost::Expensive {
-            Cost::Expensive
-        } else {
-            Cost::Cheap
         },
         // `Arrow` travels up. A container holding an opaque CALL cannot be
         // evaluated once either: the call inside it is spent the moment the

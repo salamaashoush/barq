@@ -1126,7 +1126,7 @@ exactly one channel — `attr`, `attrNS`, `prop`, `bool`, `class`, `classBits`, 
 `text`, `event`, `ref`, `bind` — from `NameFlags` plus the element type, with `prop:` / `attr:` /
 `bool:` overrides. Justified on capability, not speed (§0.4).
 
-**One fused effect per element, with a compiler-allocated flat record:**
+**One fused effect per template, with a compiler-allocated flat record:**
 
 ```js
 _$fx(() => ({ a: cls(), b: id(), c: w() }), (v, p) => {
@@ -2973,7 +2973,7 @@ conservative rather than by knowing anything.** Compiled through
 `_$effect(() => !!isPending(user), _v$ => _el$.classList.toggle("stale", _v$))` — their rule is that
 ANY `CallExpression` in an attribute is dynamic, and a bare identifier is not. barq's rule is
 precise, which is target 1's whole argument, and the price of precision is that a combinator which
-hides a read has to be declared. Both spellings are live now and fuse into ONE effect per element
+hides a read has to be declared. Both spellings are live now and fuse into ONE effect per template
 (B2) where the reference emits one per attribute.
 
 This is also why `unpinned-rules.ts` carried A5 until M11 with the reason "entirely runtime

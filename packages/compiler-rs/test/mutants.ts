@@ -208,20 +208,15 @@ const MUTANTS: Mutant[] = [
     ],
   },
   {
-    id: "fuse-merges-across-elements",
+    id: "fuse-stops-at-the-first-element",
     pass: "fuse",
-    what: "P5 puts live props of DIFFERENT elements in one bindEffect",
+    what: "P5 fuses only the first element's bindings, so every other element opens its own",
     edits: [
       {
         file: "src/passes/group.rs",
-        find:
-          "        while end < old.len()\n" +
-          "            && matches!(old[end].op, Op::SetLive { .. })\n" +
-          "            && old[end].target == target\n" +
-          "        {",
+        find: "        .filter(|(_, patch)| fuses(patch, &unit.exprs))\n",
         replace:
-          "        let _ = target;\n" +
-          "        while end < old.len() && matches!(old[end].op, Op::SetLive { .. }) {",
+          "        .filter(|(_, patch)| fuses(patch, &unit.exprs) && patch.target == unit.patch[header].target)\n",
       },
     ],
   },

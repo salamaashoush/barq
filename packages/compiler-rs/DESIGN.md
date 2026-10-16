@@ -243,9 +243,9 @@ pub enum HandlerRef { Inline(ExprId), Hoisted(HoistId) }
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum React { Static = 0, Reactive = 1, Opaque = 2 }
 
-/// "Do these two expressions share a dependency?" is the only question the
-/// effect-grouping cost model asks, so a 64-bit mask over the unit's dense
-/// symbol numbering is sufficient. No arena slices, no merging, no allocation.
+/// The tracked reads of an expression. "Does it read anything tracked?" is the
+/// question codegen asks, so a 64-bit mask over the unit's dense symbol
+/// numbering is sufficient. No arena slices, no merging, no allocation.
 #[derive(Clone, Copy, Default)]
 pub struct DepSet { pub mask: u64, pub overflow: bool }
 
@@ -253,9 +253,7 @@ impl DepSet {
     #[inline] pub fn join(self, o: Self) -> Self {
         Self { mask: self.mask | o.mask, overflow: self.overflow | o.overflow }
     }
-    #[inline] pub fn disjoint(self, o: Self) -> bool {
-        !self.overflow && !o.overflow && self.mask & o.mask == 0
-    }
+    #[inline] pub fn is_empty(self) -> bool { self.mask == 0 && !self.overflow }
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -283,9 +281,6 @@ pub enum Thunk {
     Eta,
 }
 
-#[derive(Clone, Copy)]
-pub enum Cost { Cheap, Expensive }   // loop / .map / .sort / new ⇒ Expensive
-
 pub struct Rx<'a> {
     pub react: React,
     pub deps:  DepSet,
@@ -294,7 +289,6 @@ pub struct Rx<'a> {
     pub konst: Option<Const<'a>>,   // Some ⇒ foldable into the skeleton
     pub shape: Shape,
     pub free:  FreeVars,
-    pub cost:  Cost,
     pub thunk: Thunk,
 }
 
@@ -667,16 +661,20 @@ mutate the skeleton.
 4. Otherwise → `Anchor::Node(next)` and emit **nothing**. A hole followed by a static element or
    by a single text run costs zero comment nodes.
 
-**Effect grouping.** Stable-sort patches by `target`; wrap each element's contiguous run of
-`SetLive` in one `EffectGroup { len }`. `len == 1` lowers to `setProp(el, k, () => v)` — same
-effect count, less code, and the runtime keeps its own `prev`. `len >= 2` lowers to one
-`renderEffect` with a threaded accumulator and per-key `!==` guards.
+**Effect grouping.** Every live binding of one template, on whichever element, shares one
+`EffectGroup { len }`, as Solid 2.0's compiler fuses a template's dynamic bindings. An opaque call
+joins too, read through `readOpaque` as `bindProp` would read it: the compiler wraps it in a
+thunk, so the runtime would have opened an effect for it anyway. The header goes where the first
+member stands and no member moves, because addresses are numbered in program order on both
+targets. `len == 1` lowers to a thunk compute with a scalar `prev`. `len >= 2` lowers to one
+`renderEffect` whose compute returns a flat record and whose apply compares each field with the
+previous record before writing.
 
-The merge policy refuses to group a prop whose `Cost` is `Expensive` **and** whose `DepSet` is
-disjoint from every other live prop on that element — otherwise a change to a hot signal would
-recompute an unrelated expensive expression. This is the one place where one-effect-per-element
-can do more work than the oracle, and it is a heuristic with a threshold; it will be wrong in
-both directions occasionally.
+There is no cost-based split. A change to any read re-runs every compute in the record, an
+expensive one included, and only the fields that moved are written. Rows are where effects are
+created by the thousand: on js-framework-benchmark one effect per row instead of one per bound
+element took creating 1,000 rows from 1.83 to 1.66 ms and their memory from 2.09 to 1.88 MB, and
+selecting a row, which re-runs every row's record, from 1.00 to 1.07 ms.
 
 Also here: η-reduction (`() => f()` → `f`), inlining of user-written thunks with non-empty inner
 deps into the element's coalesced effect (deleting the user's closure), dead-patch elision, and
@@ -1276,7 +1274,7 @@ e6  () => track("bump")                    e7  <For each={items()}>{…}</For>
 
 ```
 e0  Static    konst=Str("card card--lg dark")   ← SIZE and theme are ConstLit
-e1  Reactive  deps={s7}  Shape=Str   Cost=Cheap  Thunk=Arrow
+e1  Reactive  deps={s7}  Shape=Str               Thunk=Arrow
 e2  Reactive  deps={s7}  Shape=Num                Thunk=Eta     // `count()` → `count`
 e3  Reactive  deps={s7}  Shape=Bool               Thunk=Arrow
 e4  Reactive  deps={s7}  Shape=Str                Thunk=Arrow
@@ -1332,17 +1330,17 @@ Anchors, Unit B: `t0` → `Anchor::Node(m1)`; `t1` → `Anchor::End`. Zero marke
 literal text runs which the parser fuses into one node, rule 3 fires, and a `<!---->` **is**
 emitted. The elision is a theorem about the parse.)
 
-Effect grouping: `n9` has two `SetLive` with identical dep-sets `{s7}`, both `Cost::Cheap` →
-merge accepted → `EffectGroup{len:2}`. `n6`'s lone `SetLive` stays ungrouped → thunk form.
+Effect grouping: Unit A has three `SetLive`, `n6`'s and two on `n9`, so one `EffectGroup{len:3}`
+goes where the first of them stands and covers all three. Unit B has none.
 
 Final patch A:
 
 ```
-0  n6   SetLive     { "title", e1, Attr, Identity }        // len-1 ⇒ thunk form
-1  n6   Insert      { s0, Node(n8), e2, Live, eta }
-2  n9   Delegate    { "click", Inline(e5) }
-3  n9   Delegate    { "pointerdown", Hoisted(_h$1) }
-4  n9   EffectGroup { len: 2 }
+0  n6   EffectGroup { len: 3 }                             // members: 1, 5, 6
+1  n6   SetLive     { "title", e1, Attr, Identity }
+2  n6   Insert      { s0, Node(n8), e2, Live, eta }
+3  n9   Delegate    { "click", Inline(e5) }
+4  n9   Delegate    { "pointerdown", Hoisted(_h$1) }
 5  n9   SetLive     { "disabled",   e3, Prop, Identity }
 6  n9   SetLive     { "aria-label", e4, Attr, Identity }
 7  n11  Insert      { s1, End, e7, Once }
@@ -1391,8 +1389,9 @@ delegated: {"click", "pointerdown"}
 import {
   template as _$template,
   insert as _$insert,
-  setProp as _$setProp,
-  renderEffect as _$renderEffect,
+  bindEffect as _$bindEffect,
+  setAttr as _$setAttr,
+  setDomProp as _$setDomProp,
   delegateEvents as _$delegateEvents,
 } from "@barqjs/core";
 import { For, signal } from "@barqjs/core";
@@ -1423,19 +1422,19 @@ export function Card(props) {
   const _el$4 = _el$2.nextSibling;              // <button>
   const _el$5 = _el$1.lastChild;                // <ul>
 
-  _$setProp(_el$2, "title", () => `count: ${count()}`);
+  _$bindEffect(() => ({
+    a: `count: ${count()}`,
+    b: count() > 9,
+    c: `bump to ${count() + 1}`,
+  }), (_v$, _p$ = {}) => {
+    if (_v$.a !== _p$.a) _$setAttr(_el$2, "title", _v$.a);
+    if (_v$.b !== _p$.b) _$setDomProp(_el$4, "disabled", _v$.b);
+    if (_v$.c !== _p$.c) _$setAttr(_el$4, "aria-label", _v$.c);
+  });
   _$insert(_el$2, count, _el$3);
 
   _el$4.$$click = () => count.set(count() + 1);
   _el$4.$$pointerdown = _h$1;
-
-  _$renderEffect((_p$ = {}) => {
-    const _v$ = count() > 9;
-    const _v$2 = `bump to ${count() + 1}`;
-    if (_v$ !== _p$.a) _$setProp(_el$4, "disabled", (_p$.a = _v$));
-    if (_v$2 !== _p$.b) _$setProp(_el$4, "aria-label", (_p$.b = _v$2));
-    return _p$;
-  });
 
   _$insert(
     _el$5,
@@ -1631,7 +1630,6 @@ hole must not shift the sibling walk), and the only one that noticed `template()
 - The η-reduction rules and their legality boundary: legal for builtin flow props whose
   unwrapping contract we know, illegal for user component props.
 - `PropInit::Getter` vs `Value` for component props.
-- The disjoint-deps split in the effect-grouping cost model.
 
 **Rejected from DepSet:** the `Vol` axis (the author's own weakness note is right — two thirds of
 it is dead weight; replaced with `Option<Const>`); `FxHashMap<Span, &[SymbolId]>` for free

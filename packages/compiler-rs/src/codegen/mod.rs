@@ -56,7 +56,7 @@ impl Target {
     }
 }
 
-pub const HELPER_COUNT: usize = 59;
+pub const HELPER_COUNT: usize = 60;
 
 /// The first helper that lives in `<server_source>` rather than in the
 /// module source itself. The string backend calls into `ssr.ts`, which the DOM
@@ -285,6 +285,9 @@ pub enum Helper {
     /// component call, run under an owner named for the tag so a finding, an
     /// error or a hydration report inside it carries the component path.
     CreateComponent = 58,
+    /// `_$readOpaque(value, "title")` — `bindProp`'s read of an opaque call,
+    /// for one that joined its template's effect.
+    ReadOpaque = 59,
 }
 
 const IMPORTED: [&str; HELPER_COUNT] = [
@@ -347,6 +350,7 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "classToString",
     "untrack",
     "createComponent",
+    "readOpaque",
 ];
 
 /// The name a helper is imported under, for a test that has to check the table

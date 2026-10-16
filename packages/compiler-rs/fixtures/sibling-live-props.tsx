@@ -6,13 +6,11 @@ export const [right, setRight] = createSignal("r1")
 /**
  * Two elements, two live props each, driven by DIFFERENT signals.
  *
- * Target #4 groups the live props of ONE element into one `renderEffect`. The
- * boundary is the element: a group that ran across elements would write both
- * values through the second element's group, and would re-run the whole group
- * whenever either signal moved. `multi-prop-one-element` states the positive
- * half — three props, one effect — and nothing in the corpus stated the
- * boundary, so widening the grouping loop to ignore its target was a mutation
- * only the random generator ever killed. This is the input that names it.
+ * Target #4 fuses every live prop of ONE template into one `renderEffect`, so
+ * the pair costs one effect, not one per element. The record compares each
+ * field with its previous value, which is what keeps a write to one signal from
+ * reaching the other element: the effect re-runs, and only the fields that
+ * moved are written.
  *
  * The two signals are separate so the effect COUNT is not the only channel:
  * writing `left` must move the first element's title and nothing else.
@@ -35,7 +33,7 @@ export const steps = [() => setLeft("l2"), () => setRight("r2")]
 export const optimality = {
   target: 4,
   milestone: 3,
-  // One per element, never one for the pair.
-  effects: 2,
+  // One for the pair, never one per element.
+  effects: 1,
   templates: 1,
 }

@@ -1102,15 +1102,38 @@ export function bindEffectBodies(code: string): string[] {
 }
 
 /**
- * Elements each emitted effect group writes to. Target #4 merges a contiguous
- * run of live props on ONE element; merging across elements produces identical
- * DOM and FEWER effects, so no bound in the differential harness can see it.
+ * Elements each emitted effect group writes to. Target #4 fuses every live
+ * binding of ONE template; splitting it again produces identical DOM and MORE
+ * effects, and merging two templates' bindings identical DOM and fewer, so no
+ * bound in the differential harness can see either.
  */
 export function groupTargets(code: string): string[][] {
   return bindEffectBodies(code).map((body) => [
     // A resolved channel takes the ELEMENT first: the scope is not an argument
     // at all, because a channel write is not an effect and opens nothing.
     ...new Set([...body.matchAll(CHANNEL_CALL)].map((m) => m[2])),
+  ]);
+}
+
+/**
+ * The clone every element reference in `code` was walked from, named by the
+ * reference the `_tmpl$N()` call was bound to. One template cloned at two sites
+ * is two clones.
+ */
+export function cloneRoots(code: string): Map<string, string> {
+  const roots = new Map<string, string>();
+  for (const match of code.matchAll(/const (_el\$+\d+) = (?:_tmpl\$+\d+\(\)|(_el\$+\d+)\.\w+);/g)) {
+    const root = match[2] === undefined ? match[1] : roots.get(match[2]);
+    if (root !== undefined) roots.set(match[1], root);
+  }
+  return roots;
+}
+
+/** The clones each emitted effect group writes into. */
+export function groupClones(code: string): string[][] {
+  const roots = cloneRoots(code);
+  return groupTargets(code).map((targets) => [
+    ...new Set(targets.map((target) => roots.get(target) ?? target)),
   ]);
 }
 

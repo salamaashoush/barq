@@ -1906,13 +1906,13 @@ mod tests {
         assert!(code.contains("_$insert(_el$4, n, _el$5)"), "{code}");
     }
 
-    /// The same call in an ATTRIBUTE crosses as the function that makes it.
+    /// The same call in an ATTRIBUTE is made inside the template's effect.
     ///
     /// Left bare it was run at the call site and the result handed to
     /// `bindProp`, which saw a value and wrote it once: a derived function was
     /// live at a hole and dead in the attribute beside it.
     #[test]
-    fn an_opaque_call_in_an_attribute_is_thunked_rather_than_spent() {
+    fn an_opaque_call_in_an_attribute_is_read_in_the_effect_rather_than_spent() {
         let code = emit(
             "import { label } from \"./labels\";\n\
              const fixed = { text: \"x\" };\n\
@@ -1921,10 +1921,30 @@ mod tests {
              );\n",
         )
         .code;
-        assert!(code.contains("\"title\", () => label())"), "{code}");
-        assert!(code.contains("\"lang\", () => `${label()}!`)"), "{code}");
+        assert_eq!(code.matches("_$bindEffect(").count(), 1, "{code}");
+        assert!(code.contains("a: _$readOpaque(label(), \"title\")"), "{code}");
+        // A template literal is a string, so nothing it yields can be a Cell.
+        assert!(code.contains("b: `${label()}!`"), "{code}");
         // A member read runs nothing, so the runtime is still handed the value.
         assert!(code.contains("\"id\", fixed.text)"), "{code}");
+    }
+
+    /// An opaque call joins the record with `bindProp`'s read: a property keeps
+    /// a function it is handed, and a style object still has its getters
+    /// called where they can be tracked.
+    #[test]
+    fn an_opaque_call_reads_in_the_record_as_bind_prop_would() {
+        let code = emit(
+            "import { label, toneOf } from \"./labels\";\n\
+             export const V = () => (\n\
+               <p title={label()} style={toneOf()}><input value={label()} /></p>\n\
+             );\n",
+        )
+        .code;
+        assert_eq!(code.matches("_$bindEffect(").count(), 1, "{code}");
+        assert!(code.contains("_$readKeys(_$readOpaque(toneOf(), \"style\"))"), "{code}");
+        assert!(code.contains("_$readOpaque(label(), \"value\""), "{code}");
+        assert!(!code.contains("_$bindProp("), "{code}");
     }
 
     /// A zero-arity function whose body reads a signal is proved, not guessed:
@@ -1950,8 +1970,9 @@ mod tests {
         assert_eq!(code.matches("_$bindEffect(").count(), 1, "{code}");
         assert!(code.contains("_$insert(_el$1, quad)"), "{code}");
         assert!(code.contains("__bq_click = bump"), "{code}");
-        // Reads nothing tracked, so nothing is claimed about it.
-        assert!(code.contains("\"id\", () => fixed())"), "{code}");
+        // Reads nothing tracked, so nothing is claimed about it: the runtime
+        // reads whatever it returns, as `bindProp` would.
+        assert!(code.contains("c: _$readOpaque(fixed(), \"id\")"), "{code}");
     }
 
     /// `String(…)`, `Number(…)` and `Boolean(…)` run what they convert, so an

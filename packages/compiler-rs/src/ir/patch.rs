@@ -22,7 +22,7 @@ pub enum Op {
         value: ExprId,
         chan: Chan,
     },
-    /// `React::Reactive`. P5 always folds these into an `EffectGroup`.
+    /// `React::Reactive`. P5 always folds these into the unit's `EffectGroup`.
     SetLive {
         name: NameId,
         value: ExprId,
@@ -119,8 +119,9 @@ pub enum Op {
     },
 
     // ── structure ─────────────────────────────────────────────────────────
-    /// Prefix marker: the next `len` patches share ONE bindEffect.
-    /// Created only by P5. `len == 1` lowers to the cheaper thunk form.
+    /// The next `len` patches that fuse (`passes::group::fuses`), wherever they
+    /// stand in the unit, share ONE bindEffect, emitted here. Created only by
+    /// P5. `len == 1` lowers to the cheaper thunk form.
     EffectGroup {
         len: u16,
     },
@@ -273,8 +274,8 @@ impl Op {
         }
     }
 
-    /// `EffectGroup` is a prefix marker, not an instruction with a target — the
-    /// patches it covers are the `len` records that follow it.
+    /// `EffectGroup` is a marker, not an instruction with a target — the
+    /// patches it covers are the `len` fusing records after it.
     #[inline]
     pub fn is_group_header(self) -> bool {
         matches!(self, Op::EffectGroup { .. })

@@ -256,11 +256,16 @@ export const WRAPPER_GATE_FIXTURE = "own-provider-wrapper";
  * that the lowered `<Dynamic>` region, keyed on a Cell the compiler wrote, did
  * not raise. Its component, `Tagged`, is made by a call, so the census lists it
  * as opaque.
+ *
+ * Then 276 to 263: every live binding of a template shares one render effect,
+ * where each element had its own and an opaque call in an attribute had one
+ * through `bindProp`. Thirteen effects across ten fixtures, the same ones
+ * `effect-counts.ts` moved, and every other column stays where it was.
  */
 export const OWNERSHIP_REACH: Readonly<Record<string, number>> = Object.freeze({
   fixtures: 144,
   scopes: 416,
-  effects: 276,
+  effects: 263,
   clones: 320,
   determined: 318,
   unattributed: 1,

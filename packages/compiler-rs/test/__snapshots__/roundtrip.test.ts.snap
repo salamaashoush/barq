@@ -130,18 +130,17 @@ export default function AttributeNamespaces() {
   });
   _$bindEffect(() => ({
     a: rows(),
-    b: compact()
+    b: compact(),
+    c: String(beeps())
   }), (_v$, _p$ = {}) => {
     if (_v$.a !== _p$.a) _$setDomProp(_el$2, "rows", _v$.a);
     if (_v$.b !== _p$.b) _$setAttr(_el$2, "compact", _v$.b);
+    if (_v$.c !== _p$.c) _$setAttr(_el$3, "data-beeps", _v$.c);
   });
   _$ref(_el$3, (el: Element) => {
     const beep = () => setBeeps(beeps() + 1);
     el.addEventListener("my-beep", beep);
     return () => el.removeEventListener("my-beep", beep);
-  });
-  _$bindEffect(() => String(beeps()), (_v$, _p$) => {
-    if (_v$ !== _p$) _$setAttr(_el$3, "data-beeps", _v$);
   });
   return _el$1;
 }
@@ -214,7 +213,7 @@ export default function AutoThunkedRead() {
   const _el$3 = _el$2.nextSibling;
   const _el$4 = _el$1.lastChild;
   _$bindEffect(() => \`count: \${count()}\`, (_v$, _p$) => {
-    if (_v$ !== _p$) _$setAttr(_el$2, "title", _v$);
+    _$setAttr(_el$2, "title", _v$, _p$);
   });
   _$insert(_el$3, () => \`n=\${count()}\`);
   _$insert(_el$4, count);
@@ -366,11 +365,12 @@ export default function BooleanAndNullishProps() {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$1.lastChild;
-  _$bindEffect(() => flag(), (_v$, _p$) => {
-    if (_v$ !== _p$) _$setDomProp(_el$2, "disabled", _v$);
-  });
-  _$bindEffect(() => flag() ? "yes" : null, (_v$, _p$) => {
-    if (_v$ !== _p$) _$setAttr(_el$3, "data-present", _v$);
+  _$bindEffect(() => ({
+    a: flag(),
+    b: flag() ? "yes" : null
+  }), (_v$, _p$ = {}) => {
+    if (_v$.a !== _p$.a) _$setDomProp(_el$2, "disabled", _v$.a);
+    if (_v$.b !== _p$.b) _$setAttr(_el$3, "data-present", _v$.b);
   });
   return _el$1;
 }
@@ -391,7 +391,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots class-empty-string 1`] = `
-"import { createSignal, template as _$template, bindEffect as _$bindEffect, setClass as _$setClass, classToString as _$classToString } from "@barqjs/core";
+"import { createSignal, template as _$template, bindEffect as _$bindEffect, setClass as _$setClass } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="host"><span data-p="static" class=""></span><span data-p="dynamic"></span><span data-p="merged"></span><span data-p="map"></span></div>\`);
 export const [label, setLabel] = createSignal("");
 export const [extra, setExtra] = createSignal(false);
@@ -420,17 +420,17 @@ export default function ClassEmptyString() {
   const _el$2 = _el$1.lastChild;
   const _el$3 = _el$2.previousSibling;
   const _el$4 = _el$3.previousSibling;
-  _$bindEffect(() => _$classToString(label()), (_v$, _p$) => {
-    _$setClass(_el$4, "class", _v$, _p$);
-  });
-  _$bindEffect(() => _$classToString([extra() ? "on" : "", { hit: extra() }]), (_v$, _p$) => {
-    _$setClass(_el$3, "class", _v$, _p$);
-  });
-  _$bindEffect(() => _$classToString({
-    a: extra(),
-    b: extra()
-  }), (_v$, _p$) => {
-    _$setClass(_el$2, "class", _v$, _p$);
+  _$bindEffect(() => ({
+    a: label(),
+    b: [extra() ? "on" : "", { hit: extra() }],
+    c: {
+      a: extra(),
+      b: extra()
+    }
+  }), (_v$, _p$ = {}) => {
+    _v$.a = _$setClass(_el$4, "class", _v$.a, _p$.a);
+    _v$.b = _$setClass(_el$3, "class", _v$.b, _p$.b);
+    _v$.c = _$setClass(_el$2, "class", _v$.c, _p$.c);
   });
   return _el$1;
 }
@@ -481,7 +481,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots class-list-prop 1`] = `
-"import { createSignal, template as _$template, bindEffect as _$bindEffect, setClass as _$setClass, classToString as _$classToString } from "@barqjs/core";
+"import { createSignal, template as _$template, bindEffect as _$bindEffect, setClass as _$setClass } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="host"><span>keyed</span><span>reactive</span></div>\`);
 export const [on, setOn] = createSignal(false);
 /**
@@ -493,14 +493,15 @@ export default function ClassListProp() {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$1.lastChild;
-  _$bindEffect(() => _$classToString(["badge", {
-    active: on(),
-    muted: false
-  }]), (_v$, _p$) => {
-    _$setClass(_el$2, "class", _v$, _p$);
-  });
-  _$bindEffect(() => _$classToString([{ "one two": on() }, ["four", { three: !on() }]]), (_v$, _p$) => {
-    _$setClass(_el$3, "class", _v$, _p$);
+  _$bindEffect(() => ({
+    a: ["badge", {
+      active: on(),
+      muted: false
+    }],
+    b: [{ "one two": on() }, ["four", { three: !on() }]]
+  }), (_v$, _p$ = {}) => {
+    _v$.a = _$setClass(_el$2, "class", _v$.a, _p$.a);
+    _v$.b = _$setClass(_el$3, "class", _v$.b, _p$.b);
   });
   return _el$1;
 }
@@ -857,7 +858,7 @@ function Chip(props: {
 }) {
   const _el$1 = _tmpl$1();
   _$bindEffect(() => props.tone(), (_v$, _p$) => {
-    if (_v$ !== _p$) _$setAttr(_el$1, "data-tone", _v$);
+    _$setAttr(_el$1, "data-tone", _v$, _p$);
   });
   _$setAttr(_el$1, "data-same", String(props.cb === props.cb));
   _$setAttr(_el$1, "data-render-same", String(props.render === props.render));
@@ -2771,7 +2772,7 @@ export default function CustomElements() {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.firstChild.nextSibling;
   _$bindEffect(() => value(), (_v$, _p$) => {
-    if (_v$ !== _p$) _$setAttr(_el$2, "data-value", _v$);
+    _$setAttr(_el$2, "data-value", _v$, _p$);
   });
   return _el$1;
 }
@@ -2846,11 +2847,12 @@ export default function DashboardComposite() {
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$2.nextSibling;
   const _el$4 = _el$1.lastChild;
-  _$bindEffect(() => tab() === "posts" ? "posts" : "other", (_v$, _p$) => {
-    _$setClass(_el$1, "class", _v$, _p$);
-  });
-  _$bindEffect(() => state.filters.search, (_v$) => {
-    _$setLive(_el$2, "value", _v$);
+  _$bindEffect(() => ({
+    a: tab() === "posts" ? "posts" : "other",
+    b: state.filters.search
+  }), (_v$, _p$ = {}) => {
+    _v$.a = _$setClass(_el$1, "class", _v$.a, _p$.a);
+    _$setLive(_el$2, "value", _v$.b);
   });
   _el$2.__bq_input = _h$1, _el$2.__bqs = _$getOwner();
   _el$3.__bq_click = _h$2, _el$3.__bqs = _$getOwner();
@@ -3131,7 +3133,7 @@ export default function DiagnosticAccessorCoercion() {
   const _el$3 = _el$2.nextSibling;
   const _el$4 = _el$1.lastChild;
   _$bindEffect(() => count(), (_v$, _p$) => {
-    if (_v$ !== _p$) _$setAttr(_el$2, "id", _v$);
+    _$setAttr(_el$2, "id", _v$, _p$);
   });
   _$insert(_el$3, count);
   _$insert(_el$4, \`total: \${count}\`);
@@ -4022,13 +4024,12 @@ export default function LiveCallHole() {
   const _el$2 = _el$1.firstChild;
   _$bindEffect(() => ({
     a: count(),
-    b: String(count())
+    b: String(count()),
+    c: label()
   }), (_v$, _p$ = {}) => {
     if (_v$.a !== _p$.a) _$setAttr(_el$1, "title", _v$.a);
     if (_v$.b !== _p$.b) _$setAttr(_el$1, "data-text", _v$.b);
-  });
-  _$bindEffect(() => label(), (_v$, _p$) => {
-    if (_v$ !== _p$) _$setAttr(_el$2, "title", _v$);
+    if (_v$.c !== _p$.c) _$setAttr(_el$2, "title", _v$.c);
   });
   _$insert(_el$1, () => String(count()), _el$2);
   return _el$1;
@@ -4218,7 +4219,7 @@ export const [b, setB] = createSignal(2);
 export default function MultiSignalExpression() {
   const _el$1 = _tmpl$1();
   _$bindEffect(() => \`\${a()}/\${b()}\`, (_v$, _p$) => {
-    if (_v$ !== _p$) _$setAttr(_el$1, "data-both", _v$);
+    _$setAttr(_el$1, "data-both", _v$, _p$);
   });
   _$insert(_el$1, () => a() + b());
   return _el$1;
@@ -4405,7 +4406,7 @@ export default function NumericAndBooleanAttrs() {
   const _el$1 = _tmpl$1();
   const _el$2 = _el$1.lastChild;
   _$bindEffect(() => active() ? "on" : "off", (_v$, _p$) => {
-    if (_v$ !== _p$) _$setAttr(_el$2, "data-live", _v$);
+    _$setAttr(_el$2, "data-live", _v$, _p$);
   });
   return _el$1;
 }
@@ -4645,7 +4646,7 @@ const selected = createProjection<{
 export default function CreateProjectionStore() {
   const _el$1 = _tmpl$1();
   _$bindEffect(() => selected.on ? "1" : "0", (_v$, _p$) => {
-    if (_v$ !== _p$) _$setAttr(_el$1, "data-on", _v$);
+    _$setAttr(_el$1, "data-on", _v$, _p$);
   });
   _$insert(_el$1, () => selected.on ? "yes" : "no");
   return _el$1;
@@ -4675,13 +4676,14 @@ export default function PropertyAttrs() {
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$2.nextSibling;
   const _el$4 = _el$1.lastChild;
-  _$bindEffect(() => text(), (_v$) => {
-    _$setLive(_el$2, "value", _v$);
+  _$bindEffect(() => ({
+    a: text(),
+    b: checked()
+  }), (_v$) => {
+    _$setLive(_el$2, "value", _v$.a);
+    _$setLive(_el$3, "checked", _v$.b);
   });
   _$setDomProp(_el$2, "readOnly", true);
-  _$bindEffect(() => checked(), (_v$) => {
-    _$setLive(_el$3, "checked", _v$);
-  });
   _$setDomProp(_el$3, "disabled", true);
   _$setLive(_el$4, "value", "static");
   return _el$1;
@@ -4709,7 +4711,7 @@ function Chip(props: {
   const { text, tone } = props;
   const _el$1 = _tmpl$1();
   _$bindEffect(() => tone(), (_v$, _p$) => {
-    if (_v$ !== _p$) _$setAttr(_el$1, "data-tone", _v$);
+    _$setAttr(_el$1, "data-tone", _v$, _p$);
   });
   _$insert(_el$1, text);
   return _el$1;
@@ -4828,7 +4830,7 @@ function Chip(props: {
 }) {
   const _el$1 = _tmpl$1();
   _$bindEffect(() => props.tone(), (_v$, _p$) => {
-    if (_v$ !== _p$) _$setAttr(_el$1, "data-tone", _v$);
+    _$setAttr(_el$1, "data-tone", _v$, _p$);
   });
   _$insert(_el$1, props.tone);
   return _el$1;
@@ -5010,7 +5012,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots read-mode-binding 1`] = `
-"import { action, createOptimistic, isPending, latest, template as _$template, insert as _$insert, bindEffect as _$bindEffect, setClass as _$setClass, classToString as _$classToString } from "@barqjs/core";
+"import { action, createOptimistic, isPending, latest, template as _$template, insert as _$insert, bindEffect as _$bindEffect, setClass as _$setClass } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<div class="read-mode"><h1>by reference</h1><h2>through a thunk</h2><p class="settled"></p><span>control</span></div>\`);
 export const [guess, setGuess] = createOptimistic("a");
 /** A module constant, so the control below is provably static. */
@@ -5045,11 +5047,12 @@ export default function ReadModeBinding() {
   const _el$3 = _el$2.nextSibling;
   const _el$4 = _el$3.nextSibling;
   const _el$5 = _el$1.lastChild;
-  _$bindEffect(() => _$classToString({ stale: isPending(guess) }), (_v$, _p$) => {
-    _$setClass(_el$2, "class", _v$, _p$);
-  });
-  _$bindEffect(() => _$classToString({ stale: isPending(() => guess()) }), (_v$, _p$) => {
-    _$setClass(_el$3, "class", _v$, _p$);
+  _$bindEffect(() => ({
+    a: { stale: isPending(guess) },
+    b: { stale: isPending(() => guess()) }
+  }), (_v$, _p$ = {}) => {
+    _v$.a = _$setClass(_el$2, "class", _v$.a, _p$.a);
+    _v$.b = _$setClass(_el$3, "class", _v$.b, _p$.b);
   });
   _$setClass(_el$5, "class", { plain: flagIsSet });
   _$insert(_el$4, () => latest(() => guess()));
@@ -5069,9 +5072,9 @@ export const optimality = {
   target: 1,
   milestone: 11,
   templates: 1,
-  // One fused effect per element (B2) for the three live positions, and the
-  // control's class object handed straight to \`setClass\` with no thunk around
-  // it and no effect over it.
+  // One fused effect (B2) for the template's two live classes, the \`latest\`
+  // hole's own effect, and the control's class object handed straight to
+  // \`setClass\` with no thunk around it and no effect over it.
   emits: [
     "bindEffect(",
     "isPending(guess)",
@@ -5421,13 +5424,11 @@ export const [right, setRight] = createSignal("r1");
 /**
 * Two elements, two live props each, driven by DIFFERENT signals.
 *
-* Target #4 groups the live props of ONE element into one \`renderEffect\`. The
-* boundary is the element: a group that ran across elements would write both
-* values through the second element's group, and would re-run the whole group
-* whenever either signal moved. \`multi-prop-one-element\` states the positive
-* half — three props, one effect — and nothing in the corpus stated the
-* boundary, so widening the grouping loop to ignore its target was a mutation
-* only the random generator ever killed. This is the input that names it.
+* Target #4 fuses every live prop of ONE template into one \`renderEffect\`, so
+* the pair costs one effect, not one per element. The record compares each
+* field with its previous value, which is what keeps a write to one signal from
+* reaching the other element: the effect re-runs, and only the fields that
+* moved are written.
 *
 * The two signals are separate so the effect COUNT is not the only channel:
 * writing \`left\` must move the first element's title and nothing else.
@@ -5438,17 +5439,14 @@ export default function SiblingLiveProps() {
   const _el$3 = _el$1.lastChild;
   _$bindEffect(() => ({
     a: left(),
-    b: \`\${left()}!\`
+    b: \`\${left()}!\`,
+    c: right(),
+    d: \`\${right()}!\`
   }), (_v$, _p$ = {}) => {
     if (_v$.a !== _p$.a) _$setAttr(_el$2, "title", _v$.a);
     if (_v$.b !== _p$.b) _$setAttr(_el$2, "data-tag", _v$.b);
-  });
-  _$bindEffect(() => ({
-    a: right(),
-    b: \`\${right()}!\`
-  }), (_v$, _p$ = {}) => {
-    if (_v$.a !== _p$.a) _$setAttr(_el$3, "title", _v$.a);
-    if (_v$.b !== _p$.b) _$setAttr(_el$3, "data-tag", _v$.b);
+    if (_v$.c !== _p$.c) _$setAttr(_el$3, "title", _v$.c);
+    if (_v$.d !== _p$.d) _$setAttr(_el$3, "data-tag", _v$.d);
   });
   return _el$1;
 }
@@ -5456,8 +5454,8 @@ export const steps = [() => setLeft("l2"), () => setRight("r2")];
 export const optimality = {
   target: 4,
   milestone: 3,
-  // One per element, never one for the pair.
-  effects: 2,
+  // One for the pair, never one per element.
+  effects: 1,
   templates: 1
 };
 "
@@ -5542,7 +5540,7 @@ export const [seen, setSeen] = createSignal(0);
 export default function SignalMethodsInHandler() {
   const _el$1 = _tmpl$1();
   _$bindEffect(() => String(seen()), (_v$, _p$) => {
-    if (_v$ !== _p$) _$setAttr(_el$1, "data-seen", _v$);
+    _$setAttr(_el$1, "data-seen", _v$, _p$);
   });
   _el$1.__bq_click = _h$1, _el$1.__bqs = _$getOwner();
   _$insert(_el$1, () => count());
@@ -5584,7 +5582,7 @@ export default function SignalObject() {
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$1.lastChild;
   _$bindEffect(() => String(count() + 1), (_v$, _p$) => {
-    if (_v$ !== _p$) _$setAttr(_el$2, "data-plus-one", _v$);
+    _$setAttr(_el$2, "data-plus-one", _v$, _p$);
   });
   _el$3.__bq_click = _h$1, _el$3.__bqs = _$getOwner();
   _$insert(_el$2, () => count() + 1);
@@ -5721,7 +5719,7 @@ export default function StoreMember() {
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$1.lastChild;
   _$bindEffect(() => String(state.count), (_v$, _p$) => {
-    if (_v$ !== _p$) _$setAttr(_el$3, "data-count", _v$);
+    _$setAttr(_el$3, "data-count", _v$, _p$);
   });
   _$insert(_el$2, () => state.user.name);
   return _el$1;
@@ -5781,7 +5779,7 @@ export default function Svg() {
   const _el$2 = _el$1.firstChild;
   const _el$3 = _el$2.firstChild;
   _$bindEffect(() => String(radius()), (_v$, _p$) => {
-    if (_v$ !== _p$) _$setAttr(_el$3, "r", _v$);
+    _$setAttr(_el$3, "r", _v$, _p$);
   });
   return _el$1;
 }
@@ -5932,7 +5930,7 @@ export default function TableRootShapes() {
   const _el$4 = _el$1.lastChild;
   const _el$5 = _el$4.firstChild;
   _$bindEffect(() => String(revision()), (_v$, _p$) => {
-    if (_v$ !== _p$) _$setAttr(_el$1, "data-rev", _v$);
+    _$setAttr(_el$1, "data-rev", _v$, _p$);
   });
   _$insert(_el$1, _tmpl$2(), _el$2);
   _$insert(_el$1, _tmpl$3());
@@ -5966,7 +5964,7 @@ export const optimality = {
 `;
 
 exports[`emitted code snapshots table-rows 1`] = `
-"import { createSignal, template as _$template, insert as _$insert, bindEffect as _$bindEffect, block as _$block, each as _$each, setAttr as _$setAttr, setClass as _$setClass, bindProp as _$bindProp } from "@barqjs/core";
+"import { createSignal, template as _$template, insert as _$insert, bindEffect as _$bindEffect, block as _$block, each as _$each, setAttr as _$setAttr, setClass as _$setClass } from "@barqjs/core";
 const _tmpl$1 = /* @__PURE__ */ _$template(\`<table class="grid"><tbody></tbody></table>\`);
 const _tmpl$2 = /* @__PURE__ */ _$template(\`<tr><td class="col-id"></td><td class="col-label"><a class="lbl"></a></td><td class="col-pad"></td></tr>\`);
 export const [rows, setRows] = createSignal([{
@@ -6001,10 +5999,13 @@ export default function TableRows() {
     const _el$4 = _el$3.firstChild;
     const _el$5 = _el$4.nextSibling;
     const _el$6 = _el$5.firstChild;
-    _$bindEffect(() => selected() === row.id ? "row danger" : "row", (_v$, _p$) => {
-      _$setClass(_el$3, "class", _v$, _p$);
+    _$bindEffect(() => ({
+      a: selected() === row.id ? "row danger" : "row",
+      b: String(row.id)
+    }), (_v$, _p$ = {}) => {
+      _v$.a = _$setClass(_el$3, "class", _v$.a, _p$.a);
+      if (_v$.b !== _p$.b) _$setAttr(_el$3, "data-id", _v$.b);
     });
-    _$bindProp(_el$3, _$setAttr, "data-id", () => String(row.id));
     _$insert(_el$4, () => row.id);
     _$insert(_el$6, () => row.label);
     return _el$3;
