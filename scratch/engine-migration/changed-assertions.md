@@ -1033,3 +1033,13 @@ Each now orders what it waits on; no expectation's subject changed, and what mov
   which a live frame's render needs to read its shared sources where they stand. The test's claim,
   assimilated rather than crashed on, is unchanged.
 
+
+## A handler or ref that reads a member is a hole on the wire
+
+- `compiler-rs/test/__snapshots__/modes.test.ts.snap` "the matrix is locked": the row for
+  `corpus/ref-on-component` has new digests for its three string-backend modes. The fixture's
+  `<span ref={props.ref}>` now compiles to `${_$bindAttr("ref", () => props.ref)}`: a binding
+  slot can fill a handler or ref position, so the server marks one whose value reads a member.
+  Outside a server component the thunk is never called and the hole writes nothing, so the
+  fixture renders the same bytes on both backends; only the emitted code's digest moved. The DOM
+  modes' digests are unchanged.

@@ -313,6 +313,9 @@ fn open_tag<'a>(
     for (index, attr) in element.attrs.iter().enumerate() {
         items.push((attr.order, Item::Baked(index)));
     }
+    // Handler and ref positions a binding slot can fill, written after every
+    // attribute: their markers name no attribute the author wrote.
+    let mut bound = Vec::new();
     // A spread names nothing, so its position is found by count: the nth spread
     // patch on this element is the nth spread the author wrote on it.
     let mut spreads = unit
@@ -338,6 +341,7 @@ fn open_tag<'a>(
                 items.push((spreads.next().unwrap_or(u32::MAX), Item::Patch(index)))
             }
             Slot::Unnamed => items.push((u32::MAX, Item::Patch(index))),
+            Slot::Elsewhere if reads_a_member(unit, unit.patch[index].op) => bound.push(index),
             Slot::Elsewhere => {}
         }
     }
@@ -357,6 +361,7 @@ fn open_tag<'a>(
         let callee = ctx.helper(Helper::SpreadAttrs, span);
         let call = ctx.call(callee, vec![Argument::from(object), Argument::from(name)], span);
         chunks.hole(call);
+        bind_positions(ctx, unit, chunks, tag, &bound);
         return;
     }
 
@@ -379,6 +384,38 @@ fn open_tag<'a>(
             }
         }
     }
+    bind_positions(ctx, unit, chunks, tag, &bound);
+}
+
+fn bind_positions<'a>(
+    ctx: &mut Emit<'a, '_>,
+    unit: &mut Unit<'a>,
+    chunks: &mut Chunks<'a>,
+    tag: &'a str,
+    bound: &[usize],
+) {
+    for &index in bound {
+        let patch = unit.patch[index];
+        let mut backend = Ssr { ctx, unit, chunks, place: Place::OpenTag(tag) };
+        lower(&mut backend, At::one(patch));
+    }
+}
+
+/// Whether a handler or ref reads a member, `row.toggle`: the shape a binding
+/// slot's property takes at such a position. Any other expression there is
+/// client behaviour with nothing to mark, and is never evaluated on the server.
+fn reads_a_member(unit: &Unit<'_>, op: Op) -> bool {
+    let value = match op {
+        Op::Delegate { handler: HandlerRef::Inline(value), data: None, .. }
+        | Op::Listen { handler: HandlerRef::Inline(value), .. }
+        | Op::SetEvent { value, .. }
+        | Op::Ref { value, write: false } => value,
+        _ => return false,
+    };
+    matches!(
+        unit.exprs.entry(value).src.expression(),
+        Some(Expression::StaticMemberExpression(_) | Expression::ComputedMemberExpression(_))
+    )
 }
 
 enum Item {
@@ -555,6 +592,43 @@ impl<'a> Ssr<'a, '_, '_, '_, '_> {
         }
     }
 
+    /// `bindAttr(position, () => value)`, the position `on:click`,
+    /// `capture:click` or `ref`. The read is a thunk so the runtime decides
+    /// whether to evaluate it at all.
+    fn bind_attr(&mut self, at: At<'_>, prefix: &str, event: Option<NameId>, value: ExprId) {
+        let span = at.span();
+        let position: &'a str = match event {
+            Some(event) => {
+                let name = self.ctx.module.interner.name(event).text;
+                self.ctx.allocator.alloc_str(&format!("{prefix}{name}"))
+            }
+            None => self.ctx.allocator.alloc_str(prefix),
+        };
+        let expression = take(self.ctx, self.unit, value, span);
+        let params = oxc::ast::ast::FormalParameters::boxed(
+            span,
+            oxc::ast::ast::FormalParameterKind::ArrowFormalParameters,
+            ArenaVec::new_in(&self.ctx.allocator),
+            None,
+            &self.ctx.ast,
+        );
+        let body = oxc::ast::ast::ArrowFunctionBody::from(expression);
+        let read = Expression::new_arrow_function_expression(
+            span,
+            false,
+            None,
+            params,
+            None,
+            body,
+            &self.ctx.ast,
+        );
+        let position = self.ctx.string(position, span);
+        let callee = self.ctx.helper(Helper::BindAttr, span);
+        let call =
+            self.ctx.call(callee, vec![Argument::from(position), Argument::from(read)], span);
+        self.chunks.hole(call);
+    }
+
     /// `content(key, value)` — the helper that decides between `innerHTML` and
     /// escaped text, which is the same decision `setProp` makes on the client.
     fn content(&mut self, key: &'a str, value: ExprId, span: Span) {
@@ -695,21 +769,36 @@ impl<'a> Backend<'a> for Ssr<'a, '_, '_, '_, '_> {
         self.chunks.markup(call);
     }
 
-    // ── nothing reaches the wire ──────────────────────────────────────────
+    // ── handlers and refs ─────────────────────────────────────────────────
     //
-    // Not "unhandled": these are decisions. A server render has no element to
-    // hang a handler on, no variable to write a ref into, and no effect to
-    // group — the client installs all three when it hydrates. Writing them out
-    // is what keeps the choice reviewable, and what makes a NEW opcode that
-    // needs bytes on the wire impossible to forget.
+    // A server render has no element to hang a handler on and no variable to
+    // write a ref into: the client installs both when it hydrates. The one
+    // thing the wire can say about either is that a binding slot fills it,
+    // and `open_tag` routes here only the positions that read a member, the
+    // shape such a property takes. `bindAttr` writes a marker when the value
+    // is a slot's property and nothing otherwise.
 
-    fn delegate(&mut self, _at: At<'_>, _event: NameId, _h: HandlerRef, _data: Option<ExprId>) {}
+    fn delegate(&mut self, at: At<'_>, event: NameId, handler: HandlerRef, data: Option<ExprId>) {
+        if let (HandlerRef::Inline(value), None) = (handler, data) {
+            self.bind_attr(at, "on:", Some(event), value);
+        }
+    }
 
-    fn listen(&mut self, _at: At<'_>, _event: NameId, _handler: HandlerRef, _capture: bool) {}
+    fn listen(&mut self, at: At<'_>, event: NameId, handler: HandlerRef, capture: bool) {
+        if let HandlerRef::Inline(value) = handler {
+            self.bind_attr(at, if capture { "capture:" } else { "on:" }, Some(event), value);
+        }
+    }
 
-    fn set_event(&mut self, _at: At<'_>, _event: NameId, _value: ExprId, _capture: bool) {}
+    fn set_event(&mut self, at: At<'_>, event: NameId, value: ExprId, capture: bool) {
+        self.bind_attr(at, if capture { "capture:" } else { "on:" }, Some(event), value);
+    }
 
-    fn set_ref(&mut self, _at: At<'_>, _value: ExprId, _write: bool) {}
+    fn set_ref(&mut self, at: At<'_>, value: ExprId, write: bool) {
+        if !write {
+            self.bind_attr(at, "ref", None, value);
+        }
+    }
 
     /// `${_$formAttr(value)}` — a URL is written and a handler is not. There is
     /// no byte on the wire that means client behaviour, and the consequence for

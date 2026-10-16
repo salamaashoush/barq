@@ -56,7 +56,7 @@ impl Target {
     }
 }
 
-pub const HELPER_COUNT: usize = 61;
+pub const HELPER_COUNT: usize = 62;
 
 /// The first helper that lives in `<server_source>` rather than in the
 /// module source itself. The string backend calls into `ssr.ts`, which the DOM
@@ -293,7 +293,17 @@ pub enum Helper {
     /// `_$readOpaque(value, "title")` — `bindProp`'s read of an opaque call,
     /// for one that joined its template's effect.
     ReadOpaque = 60,
+    /// `_$bindAttr("on:click", () => row.toggle)` — a handler or ref position
+    /// on the wire. Nothing is written for it unless the server component
+    /// rendering it read the value off a binding slot, and the read runs only
+    /// there: anywhere else a handler expression is never evaluated on the
+    /// server. A `<server_source>` helper numbered after the module-source
+    /// tail, so the import grouping names it apart.
+    BindAttr = 61,
 }
+
+/// The helpers past the module-source tail that live in `<server_source>`.
+pub const FIRST_LATE_SERVER_HELPER: usize = Helper::BindAttr as usize;
 
 const IMPORTED: [&str; HELPER_COUNT] = [
     "template",
@@ -357,6 +367,7 @@ const IMPORTED: [&str; HELPER_COUNT] = [
     "untrack",
     "createComponent",
     "readOpaque",
+    "bindAttr",
 ];
 
 /// The name a helper is imported under, for a test that has to check the table

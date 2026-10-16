@@ -97,7 +97,7 @@ pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
                     // `getOwner` and what follows it sit past the interp entry
                     // in the table but are module-source helpers like the rest
                     // of the DOM surface.
-                    .chain((super::Helper::GetOwner as usize)..super::HELPER_COUNT),
+                    .chain((super::Helper::GetOwner as usize)..super::FIRST_LATE_SERVER_HELPER),
             ),
         ),
         (
@@ -105,6 +105,7 @@ pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
             helper_specifiers(
                 emit,
                 (super::FIRST_SERVER_HELPER..super::FIRST_INTERP_HELPER)
+                    .chain(super::FIRST_LATE_SERVER_HELPER..super::HELPER_COUNT)
                     .chain(super::SHARED_ABI.filter(|index| !shared_here(index))),
             ),
         ),

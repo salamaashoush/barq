@@ -30,12 +30,16 @@ import {
   block,
   childScope,
   classToString,
+  createContext,
+  getContext,
   getOwner,
+  type Owner,
   isArray,
   isBlock,
   isSsrHtml,
   omit,
   runWithOwner,
+  setContext,
   toString,
   untrack,
 } from "@barqjs/core";
@@ -200,6 +204,7 @@ export function esc(value: unknown): string {
     for (let i = 0; i < value.length; i++) out += esc(value[i]);
     return out;
   }
+  if (isSlotValue(value)) return boundText(value);
   if (isSsrHtml(value)) return value.t;
   const node = serializeNode(value);
   return node === null ? escapeText(toString(value)) : node;
@@ -389,6 +394,7 @@ function refuseName(name: string, kind: string): never {
  */
 export function attr(name: string, value: unknown, tag?: string): string {
   const key = name === "className" ? "class" : name === "htmlFor" ? "for" : name;
+  if (isSlotValue(value)) return boundAttr(key, value, tag);
 
   // Events never reach the wire. `applyProp` intercepts them before
   // `setElementAttr`, so an `on…` attribute in the markup would be a name the
@@ -397,13 +403,18 @@ export function attr(name: string, value: unknown, tag?: string): string {
   if (key in NOT_AN_ATTRIBUTE) return "";
   if (key === "value" && tag !== undefined && tag in VALUE_IS_NOT_AN_ATTRIBUTE) return "";
 
-  if (key === "class") return classAttr(classToString(unwrap(value)));
-  if (key === "style") {
-    const css = styleToString(unwrap(value));
+  if (key === "class" || key === "style") {
+    const whole = unwrap(value);
+    if (isSlotValue(whole)) return boundAttr(key, whole, tag);
+    const members = boundMembers(key, whole);
+    if (members !== null) return members;
+    if (key === "class") return classAttr(classToString(whole));
+    const css = styleToString(whole);
     return css === null ? "" : ` style="${escapeAttribute(css)}"`;
   }
 
   const resolved = unwrap(value);
+  if (isSlotValue(resolved)) return boundAttr(key, resolved, tag);
   // Nullish and `false` write nothing, and the DOM path's `removeAttribute`
   // does not validate either — so a name is only checked where it reaches bytes.
   // The exception is an ENUMERATED attribute, where `false` is a value.
@@ -546,6 +557,7 @@ export function formAttr(value: unknown): string {
 export function attrLit(name: string, value: unknown): string {
   const resolved = typeof value === "function" ? (value as () => unknown)() : value;
   if (resolved === null || resolved === undefined) return "";
+  if (isSlotValue(resolved)) return boundAttr(name, resolved);
   if (typeof resolved === "boolean" && isEnumeratedAttr(name)) {
     return ` ${name}="${resolved ? "true" : "false"}"`;
   }
@@ -604,6 +616,132 @@ export function spreadAttrs(props: unknown, tag?: string): string {
     out += attr(key, resolved[key], tag);
   }
   return out;
+}
+
+// ── binding slots ────────────────────────────────────────────────────────
+//
+// A server component can read a slot as data, `const row = props.row(args)`,
+// and place its properties at positions of its own markup: an attribute, a
+// class name or style property in object form, a handler, a ref, a text child.
+// The browser runs the fill and owns each position from then on. The server
+// has a stand-in for each property, holding the fill's first value when the
+// page's own render ran the fill and nothing over the wire, and writes a
+// marker beside the position saying which occurrence and key fill it:
+//
+//   _b-<attribute>="<at>:<key>[=<member>],..."   on the element
+//   _b-on-<event>, _b-ref                         a handler, a ref
+//   <!--_b:<at>:<key>-->text<!--/_b-->            a text child
+//
+// Keys and members are percent-encoded, so neither can break the grammar. A
+// marker's name has no colon: a DOM that reads `_b:class` as a prefixed name
+// takes it for the element's class.
+
+const SLOT_VALUE = Symbol.for("barq.slot-value");
+
+/** One property of a binding slot, as the server component reads it. */
+export class SlotValue {
+  readonly [SLOT_VALUE] = true;
+
+  constructor(
+    /** The occurrence: the slot call's index in its markers. */
+    readonly at: number,
+    readonly key: string,
+    /** Whether `value` is the fill's: the page's own render ran it, an answer over the wire did not. */
+    readonly known: boolean,
+    readonly value: unknown,
+  ) {}
+
+  /** Stringified, a stand-in is nothing: the server never has the value to compute with. */
+  toString(): string {
+    return "";
+  }
+}
+
+export function isSlotValue(value: unknown): value is SlotValue {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    (value as Record<symbol, unknown>)[SLOT_VALUE] === true
+  );
+}
+
+function slotEntry(slot: SlotValue, member?: string): string {
+  const entry = `${slot.at}:${encodeURIComponent(slot.key)}`;
+  return member === undefined ? entry : `${entry}=${encodeURIComponent(member)}`;
+}
+
+/** The event a handler key names, as the client binds it, and whether it is captured. */
+function eventOf(key: string): [string, boolean] {
+  if (key.startsWith("on:")) return [key.slice(3), false];
+  if (key.startsWith("capture:")) return [key.slice(8), true];
+  if (key.endsWith("Capture")) return [key.slice(2, -7).toLowerCase(), true];
+  return [key.slice(2).toLowerCase(), false];
+}
+
+/** A whole position filled by a binding slot: its first value when known, and its marker. */
+function boundAttr(key: string, slot: SlotValue, tag?: string): string {
+  if (key === "ref") return ` _b-ref="${slotEntry(slot)}"`;
+  if (key.startsWith("capture:") || (key.charCodeAt(0) === 111 && key.charCodeAt(1) === 110)) {
+    const [type, capture] = eventOf(key);
+    checkName(type, "event");
+    return ` _b-on-${type}="${slotEntry(slot, capture ? "capture" : undefined)}"`;
+  }
+  const attribute = REFLECTS_AS[key] ?? key;
+  checkName(attribute);
+  const first = slot.known && !isSlotValue(slot.value) ? attr(key, slot.value, tag) : "";
+  return `${first} _b-${attribute}="${slotEntry(slot)}"`;
+}
+
+/** A class or style object some of whose members a binding slot fills. */
+function boundMembers(key: "class" | "style", value: unknown): string | null {
+  if (!isObject(value) || isArray(value)) return null;
+  let plain: Record<string, unknown> | null = null;
+  let entries = "";
+  for (const member in value) {
+    const given = value[member];
+    if (!isSlotValue(given)) continue;
+    plain ??= { ...value };
+    plain[member] = given.known ? given.value : undefined;
+    entries += (entries === "" ? "" : ",") + slotEntry(given, member);
+  }
+  if (plain === null) return null;
+  return `${attr(key, plain)} _b-${key}="${entries}"`;
+}
+
+/** A text child filled by a binding slot: its markers, and its first value between them when known. */
+function boundText(slot: SlotValue): string {
+  const value = slot.known ? slot.value : undefined;
+  const text =
+    typeof value === "string"
+      ? escapeText(value)
+      : typeof value === "number" || typeof value === "bigint"
+        ? String(value)
+        : "";
+  return `<!--_b:${slotEntry(slot)}-->${text}<!--/_b-->`;
+}
+
+/**
+ * Whether the render under a scope is a server component's own: the one place
+ * a handler or ref position can be a binding slot's.
+ */
+const SERVER_COMPONENT = createContext<boolean>(false, "barq.server-component");
+
+/** Mark what renders under `scope` as a server component's, or as the page's again inside one. */
+export function setServerComponent(scope: Owner, inside: boolean): void {
+  setContext(SERVER_COMPONENT, inside, scope);
+}
+
+/**
+ * A handler or ref position: `on:click`, `capture:click` or `ref`. The read is
+ * run only inside a server component, so a handler expression is never
+ * evaluated anywhere else on the server, and it writes a marker only when it
+ * reads a binding slot's property.
+ */
+export function bindAttr(position: string, read: () => unknown): string {
+  const owner = getOwner();
+  if (owner === null || !getContext(SERVER_COMPONENT, owner)) return "";
+  const value = read();
+  return isSlotValue(value) ? boundAttr(position, value) : "";
 }
 
 /**

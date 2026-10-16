@@ -111,7 +111,7 @@ corpus/read-mode-binding  078afecd45cc e9e7ce137c5d 55d4e831a4a0 55d4e831a4a0 cf
 corpus/reassigned-binding  dc35d99746e4 b6b76b1f3710 bfdeb05f7c77 bfdeb05f7c77 5b644d40e3af 7c2658438c59 bfdeb05f7c77
 corpus/ref-binding  3db476beaa22 ebb737e4346f 378889bfc52f 378889bfc52f b8b667ff9894 2d845c935801 378889bfc52f
 corpus/ref-cleanup  7e0b2e051ef9 02b8f3a42903 26c52bdc33c8 26c52bdc33c8 03bb8d99193e 7c16fa5bbfbb 26c52bdc33c8
-corpus/ref-on-component  f2a3967a827d f8f9d4593f86 4043de6804ca 8691dc8aaf58 6528ff1021f0 c85ce6d84854 36a689c3295a
+corpus/ref-on-component  f2a3967a827d f8f9d4593f86 418af5161429 d37f8b7facdd 6528ff1021f0 c85ce6d84854 75e07f679838
 corpus/ref-writable-binding  6c626e7f5f0c 0c688b45be9c a2dc3982431a a2dc3982431a 8c6fec088db2 25d0f4d4a130 a2dc3982431a
 corpus/renamed-core-import  7a8c9bab81aa ab36a39b3b72 ba4a274422a9 3b07224cc1e6 83b3a3cf6a31 efb9c8ea38c7 efe231e4a0d5
 corpus/select-option-multiple  e09c737db66d 8f6509b98ce4 42b46634771e 42b46634771e 4b6cf7596801 1029a7acc214 42b46634771e
