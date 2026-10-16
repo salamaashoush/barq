@@ -400,10 +400,9 @@ function timePair(c: Case): [number, number] {
     throw new Error(`barq harness is not reactive (got ${bspan.textContent})`);
   }
 
-  // The insert guard above says nothing about the PROP channel, and barq keeps
-  // `class` out of the compiled effect on purpose (it is a STATEFUL_DIFF prop —
-  // see dom-emitted-shape.ts), so a class write that silently never lands would
-  // hand this file a free win on "prop: class update".
+  // The insert guard above says nothing about the PROP channel, and a class
+  // write that silently never lands would hand this file a free win on
+  // "prop: class update".
   const bcls = document.createElement("div");
   const [cs, setCs] = barq.createSignal(0);
   owned(() => barq.setProp(bcls, "class", () => (cs() % 2 ? "a" : "b")));

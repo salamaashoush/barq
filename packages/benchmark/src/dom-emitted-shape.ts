@@ -146,21 +146,20 @@ function rowShape(benchmark: string): string {
 /**
  * A benchmark case only means something if the binding it times is live.
  *
- * Two forms of every dynamic prop are compiled here, because barq treats them
- * differently on purpose. `classify.rs` leaves `class`, `style`, `classList`,
- * `ref` and `dangerouslySetInnerHTML` — the STATEFUL_DIFF channels — out of the
- * compiled effect, so the runtime can keep threading the previously applied
- * value and REMOVE what vanished. The consequence is that on those five props
- * the thunk has to come from the author: `class={cond ? "a" : "b"}` is applied
- * once and stays put, while `class={() => (cond ? "a" : "b")}` is live. Every
- * other prop auto-thunks. That asymmetry is the reason this section exists.
+ * Every dynamic prop auto-thunks, `class` and `style` included. Those two apply
+ * a normalised value (the class string, the css map) and diff against what was
+ * last applied so a vanished class or property is removed; `classify.rs` keeps
+ * that by threading the channel's return through the effect's record slot
+ * (`Diff::Thread`) rather than by leaving the prop out of the effect. So
+ * `class={cond ? "a" : "b"}` and `class={() => (cond ? "a" : "b")}` are both
+ * live, and the probes below hold the compiler to it.
  */
 interface LivenessProbe {
   what: string;
   jsx: string;
   read: (el: HTMLElement) => string;
   /** Whether barq is expected to keep this binding live. */
-  expect: "live" | "static by design";
+  expect: "live" | "static";
 }
 
 const attrOf =
@@ -186,7 +185,7 @@ const LIVENESS: LivenessProbe[] = [
     what: `class={s() > 3 ? "a" : "b"}`,
     jsx: `<div class={s() > 3 ? "a" : "b"} />`,
     read: attrOf("class"),
-    expect: "static by design",
+    expect: "live",
   },
   {
     what: `class={() => (s() > 3 ? "a" : "b")}`,
@@ -198,7 +197,7 @@ const LIVENESS: LivenessProbe[] = [
     what: `style={{ width: s() + "px" }}`,
     jsx: `<div style={{ width: s() + "px" }} />`,
     read: attrOf("style"),
-    expect: "static by design",
+    expect: "live",
   },
   {
     what: `style={() => ({ width: s() + "px" })}`,
@@ -235,7 +234,7 @@ if (solidWeb.isServer) {
     mod.setS(7);
     core.flush();
     const after = probe.read(el);
-    const observed = before === after ? "static by design" : "live";
+    const observed = before === after ? "static" : "live";
     const ok = observed === probe.expect;
     if (!ok) surprises.push(`${probe.what}: expected ${probe.expect}, observed ${observed}`);
     console.log(
@@ -271,9 +270,9 @@ console.log(`NOTES — differences that the helper-set diff above cannot see:
 ${rowShape("list: create 100 rows")}
 ${rowShape("list: create 100 rows (in a real table)")}
 
-  * "prop: class update" is FAIR despite the drift line above. \`class\` is a STATEFUL_DIFF
-    channel: the compiler deliberately does not auto-thunk it, so the live form really is
-    the author-written \`class={() => …}\`, which the compiler passes through unchanged as
-    \`setProp(el, "class", () => …)\` — exactly what the benchmark calls. The liveness table
-    is the proof; without it "the benchmark is 1.14x faster here" could as easily have
-    been "the benchmark is timing a write that never lands".`);
+  * "prop: class update" drifts, and the drift line above is real. The compiler
+    auto-thunks \`class={s() % 2 ? "a" : "b"}\` into \`bindEffect\` plus \`setClass\`,
+    the value threaded through the record slot; the benchmark times
+    \`setProp(el, "class", () => …)\`, the path an author-written thunk takes when
+    no compiler is involved. Both are live (the liveness table is the proof), so the
+    ratio is a real class write, but it is not the compiled one.`);
