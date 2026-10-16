@@ -306,7 +306,8 @@ export const COMPONENTS: readonly ComponentDoc[] = [
   {
     slug: "chart",
     title: "Chart",
-    description: "Beautiful charts, built on TanStack Charts. Copy and paste into your apps.",
+    description:
+      "Bar, line, area, pie, radar and radial charts in the theme's colours, drawn with TanStack Charts.",
     usage: [
       importLine(
         "ChartBars, ChartContainer, ChartLegend, ChartLines, ChartTooltipContent",

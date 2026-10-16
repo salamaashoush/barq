@@ -104,7 +104,8 @@ export const demos: readonly Demo[] = [
 export const doc: ComponentDoc = {
   slug: "data-table",
   title: "Data Table",
-  description: "Powerful table and datagrids built using TanStack Table.",
+  description:
+    "Tables with sorting, filtering, pagination, row selection and column visibility, on @barqjs/table.",
   add: "table",
   usage: [
     'import { FlexRender, createTable, tableFeatures } from "@barqjs/table";',

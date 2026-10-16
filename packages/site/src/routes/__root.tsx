@@ -53,11 +53,11 @@ function Shell(props: { children: Child }) {
 
 const head = {
   meta: [
-    { title: "@barqjs/ui — components you can own" },
+    { title: "@barqjs/ui: components you can own" },
     {
       name: "description",
       content:
-        "shadcn/ui's components, ported to barq. Composable, accessible components on fine-grained signals, with styles compiled to a stylesheet.",
+        "Accessible components for barq apps, with styles compiled to a stylesheet at build time. Install the package or copy the source into your project.",
     },
   ],
 };
