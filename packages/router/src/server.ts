@@ -24,6 +24,7 @@ import {
   type AssetManifest,
   HEAD_SNIPPET,
   branch as ssrBranch,
+  clientOnly as ssrClientOnly,
   esc,
   escapeAttribute as escapeSsrAttribute,
   html as ssrHtml,
@@ -159,13 +160,12 @@ const linkBackend = {
     }
     return ssrHtml(`<a ${attributes}>${esc(children)}</a>`);
   },
-  /**
-   * `<ClientOnly>`: the fallback arm of the same two-armed region the client
-   * builds, so the ranges the client claims are the ranges the server wrote.
-   * A bare fallback with no region is what a mismatch looks like.
-   */
-  clientOnly: (fallback: Block<unknown>, children: Block<unknown>): unknown =>
-    ssrBranch(null, null, () => 0, [fallback, children], HYDRATE),
+  /** `<ClientOnly>`: the server half of the `clientOnly` the client builds. */
+  clientOnly: (load: () => Promise<{ default: unknown }>, fallback: Block<unknown>): unknown =>
+    ssrClientOnly(load)({ fallback }),
+  /** `<MatchRoute>`: the arm the server matched, in the region the client claims. */
+  branch: (arm: number, bodies: readonly Block<unknown>[]): unknown =>
+    ssrBranch(null, null, () => arm, bodies, HYDRATE),
   /**
    * `<Await>`: the same loading boundary a route depth gets, one level down.
    *

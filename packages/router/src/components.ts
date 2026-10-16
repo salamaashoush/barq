@@ -28,6 +28,7 @@ import {
   boundary,
   branch,
   cell,
+  clientOnly,
   createMemo,
   createContext,
   createEffect,
@@ -108,15 +109,16 @@ const RouterContext: Context<RouterState> = createContext<RouterState>(undefined
  */
 export interface LinkBackend {
   /**
-   * `<ClientOnly>`, on the string backend.
-   *
-   * It cannot use the DOM `branch` — that renders nothing without a document —
-   * and it must not simply emit the fallback either: the client builds a BRANCH
-   * there, and a server that wrote no range is a tree the client cannot claim.
-   * So the backend writes the same two-armed region with the first arm chosen,
-   * which is the shape the client's first render produces.
+   * `<ClientOnly>`, on the string backend: `@barqjs/server`'s `clientOnly`
+   * over the same loader, because the core one renders nothing without a
+   * document.
    */
-  readonly clientOnly?: (fallback: Block<unknown>, children: Block<unknown>) => unknown;
+  readonly clientOnly?: (load: typeof loadChildren, fallback: Block<unknown>) => unknown;
+  /**
+   * A two-armed region with the arm the SERVER chose, on the string backend,
+   * which the client's `branch` claims.
+   */
+  readonly branch?: (arm: number, bodies: readonly Block<unknown>[]) => unknown;
   /**
    * `<Await>`, on the string backend: the same loading boundary the DOM path
    * builds, so a body that parks writes a deferred range the stream can swap
@@ -1057,40 +1059,35 @@ export function useHydrated(): Accessor<boolean> {
  * the route-level answer to the same problem; this is the component-level one,
  * so a page that is otherwise server-rendered can carve out one region.
  *
- * WHY A SIGNAL AND NOT `typeof document`. The two renders have to AGREE: the
- * server writes the fallback, and the client's first render must write the
- * fallback too or hydration is comparing different trees. A signal that starts
- * `false` and is flipped by an `effect` gives exactly that — the effect runs
- * after the first render on the client and never on the string backend, so the
- * swap happens on the second render, with the server's markup already claimed.
- *
- * Sniffing the environment cannot do this: it would be `true` on the client's
- * FIRST render, which is the render that has to match the server's.
+ * It is `clientOnly` over a component that renders its children, so the swap
+ * is core's: the server writes the fallback, the client's first render claims
+ * it, and the children replace it once hydration has ended. Sniffing the
+ * environment cannot do this: it would be `true` on the client's FIRST render,
+ * which is the render that has to match the server's.
  */
 function ClientOnlyImpl(props: Incoming<ClientOnlyProps>): JSXElement {
-  const shown = useHydrated();
-  // A Block is INVOKED with the scope the branch is holding, exactly as
-  // `Outlet` invokes the next depth; anything else is a value and is returned.
-  // That is what lets `<ClientOnly>` take JSX children and a JSX fallback.
-  const place = (slot: unknown) => () =>
-    typeof slot === "function" ? (slot as () => unknown)() : (slot ?? null);
-
-  const bodies = [block(place(props.fallback)), block(place(props.children))] as const;
-  // The string backend writes the same region with the fallback arm chosen.
+  const shown = place(props.fallback);
+  const fallback = block((): JSXElement => shown() as JSXElement);
   const backend = linkBackend();
   if (backend?.clientOnly !== undefined) {
-    return backend.clientOnly(bodies[0], bodies[1]) as JSXElement;
+    return backend.clientOnly(loadChildren, fallback) as JSXElement;
   }
-  // The key is an INDEX into `bodies`, not a boolean — core's own
-  // `errorBoundary` picks `0` or `1` the same way. A boolean key selects
-  // `bodies[false]`, which is `undefined`, and the region renders nothing.
-  const arm = (): number => (shown() ? 1 : 0);
-  return branch(null, null, arm, [
-    // Index 0 is `false`: the fallback. Index 1 is `true`: the children.
-    bodies[0],
-    bodies[1],
-  ]);
+  return ShownWhenLive({ fallback, children: props.children });
 }
+
+/**
+ * A Block is INVOKED with the scope the region is holding, exactly as `Outlet`
+ * invokes the next depth; anything else is a value and is returned. That is
+ * what lets `<ClientOnly>` take JSX children and a JSX fallback.
+ */
+const place = (slot: unknown) => (): unknown =>
+  typeof slot === "function" ? (slot as () => unknown)() : (slot ?? null);
+
+function loadChildren(): Promise<{ default: (props: { children?: unknown }) => unknown }> {
+  return Promise.resolve({ default: (props) => place(props.children)() });
+}
+
+const ShownWhenLive = clientOnly(loadChildren);
 
 export const ClientOnly = ClientOnlyImpl as unknown as (props: ClientOnlyProps) => JSXElement;
 
@@ -1252,27 +1249,13 @@ function MatchRouteImpl(props: Incoming<MatchRouteProps>): JSXElement {
     });
   };
 
-  // An INDEX into the arms, as `ClientOnly` picks: a boolean key selects
-  // `bodies[false]`, which is `undefined`, and the region renders nothing.
+  // An INDEX into the arms: a boolean key selects `bodies[false]`, which is
+  // `undefined`, and the region renders nothing.
   const arm = (): number => (matched() === false ? 0 : 1);
+  const bodies = [block(() => null), block(body)];
   const backend = linkBackend();
-  if (backend?.clientOnly !== undefined) {
-    // The string backend's two-armed region, with the arm the SERVER chose.
-    // Reusing `clientOnly` rather than adding a second hook: the shape is the
-    // same and the name on the backend is about the shape, not the component.
-    return (
-      arm() === 0
-        ? backend.clientOnly(
-            block(() => null),
-            block(body),
-          )
-        : backend.clientOnly(
-            block(body),
-            block(() => null),
-          )
-    ) as JSXElement;
-  }
-  return branch(null, null, arm as Cell<number>, [block(() => null), block(body)]);
+  if (backend?.branch !== undefined) return backend.branch(arm(), bodies) as JSXElement;
+  return branch(null, null, arm as Cell<number>, bodies);
 }
 
 export const MatchRoute = MatchRouteImpl as unknown as (props: MatchRouteProps) => JSXElement;
