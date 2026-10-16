@@ -26,12 +26,15 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 
+import type { RequestEventLocals } from "@barqjs/core";
 import { diagnosticsEnabled, emitDiagnostic } from "@barqjs/core/internal";
 
 import { type CookieOptions, deleteCookieLine, parseCookies, serializeCookie } from "./cookies.ts";
 import type { OpenContext } from "./middleware.ts";
 import type { OpenSession } from "./session.ts";
 import type { GlobalRequestContext } from "./start-instance.ts";
+
+const REQUEST_EVENT = Symbol.for("barq.request-event");
 
 /**
  * Headers and a status a handler asked for, merged into whatever is returned.
@@ -54,6 +57,8 @@ export interface RequestContext {
   request: Request;
   /** What the handler has asked the response to carry. */
   response: ResponseDraft;
+  /** Solid's `RequestEvent.locals`: what middleware hangs on the request. */
+  locals: RequestEventLocals;
   /**
    * The request's cookies, parsed ONCE.
    *
@@ -148,10 +153,19 @@ export interface RequestContext {
  * has imported a second copy. Each holding its own, the host entered the
  * request into one and the bundle's functions read the other, so every server
  * function that read a cookie answered 500.
+ *
+ * It is the request event's storage, under the symbol `getRequestEvent` reads,
+ * so a component asking Solid's way finds the request a handler entered.
  */
-const SHARED = ((globalThis as Record<symbol, unknown>)[Symbol.for("barq.start.request")] ??= {
-  storage: undefined,
-}) as { storage: AsyncLocalStorage<RequestContext> | undefined };
+const SHARED = {
+  get storage(): AsyncLocalStorage<RequestContext> | undefined {
+    return (globalThis as { [REQUEST_EVENT]?: AsyncLocalStorage<RequestContext> })[REQUEST_EVENT];
+  },
+  set storage(storage: AsyncLocalStorage<RequestContext>) {
+    (globalThis as { [REQUEST_EVENT]?: AsyncLocalStorage<RequestContext> })[REQUEST_EVENT] =
+      storage;
+  },
+};
 
 function enterable(): AsyncLocalStorage<RequestContext> {
   if (SHARED.storage !== undefined) return SHARED.storage;
@@ -230,6 +244,7 @@ export function withRequest<T>(
       request,
       refuse: resolved.refuse,
       response: resolved.response ?? createResponseDraft(),
+      locals: {},
     },
     body,
   );

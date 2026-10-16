@@ -46,6 +46,11 @@
       "types": "./dist/codec.d.ts",
       "bun": "./src/codec.ts",
       "import": "./dist/codec.js"
+    },
+    "./storage": {
+      "types": "./dist/storage.d.ts",
+      "bun": "./src/storage.ts",
+      "import": "./dist/storage.js"
     }
   },
   "scripts": {

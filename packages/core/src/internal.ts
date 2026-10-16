@@ -34,4 +34,6 @@ export {
   unclaimedSeeds,
 } from "./signals.ts";
 
+export { headKey, setHeadSink } from "./head.ts";
+
 export { isObject } from "./type-utils.ts";

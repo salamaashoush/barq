@@ -106,3 +106,33 @@ export function swapDeferredRange(n: number | string, wrapped?: boolean, failed?
 
 /** The same function, as the bytes a page gets. Inlined once per stream. */
 export const SWAP_SNIPPET: string = `window.__BARQ_SWAP__=${swapDeferredRange.toString()};`;
+
+/**
+ * The client half of a head patch: the tags a boundary declared with `useHead`
+ * after the shell, applied when that boundary's swap runs. The same three
+ * constraints as `swapDeferredRange`, for the same reason.
+ */
+export function applyHeadPatch(
+  tags: readonly { k: string; t: string; a: Record<string, string>; c?: string }[],
+): void {
+  for (const tag of tags) {
+    if (tag.t === "title") {
+      document.title = tag.c ?? "";
+      continue;
+    }
+    let element: Element | null = null;
+    for (const candidate of document.head.querySelectorAll("[data-bh]")) {
+      if (candidate.getAttribute("data-bh") === tag.k) element = candidate;
+    }
+    if (!element) {
+      element = document.createElement(tag.t);
+      document.head.appendChild(element);
+    }
+    for (const name of Object.keys(tag.a)) element.setAttribute(name, tag.a[name] ?? "");
+    element.setAttribute("data-bh", tag.k);
+    if (tag.c !== undefined) element.textContent = tag.c;
+  }
+}
+
+/** The head patch function, as the bytes a page gets. Inlined once, by the first patch. */
+export const HEAD_SNIPPET: string = `window.__BARQ_HEAD__=${applyHeadPatch.toString()};`;

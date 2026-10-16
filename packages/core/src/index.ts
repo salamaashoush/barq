@@ -179,6 +179,17 @@ export { isClient, isDev, isServer } from "#env";
 
 export { isSafeError, markSafeError } from "./safe-error.ts";
 
+export {
+  getRequestEvent,
+  httpHeader,
+  httpStatus,
+  type RequestEvent,
+  type RequestEventLocals,
+  type ResponseStub,
+} from "./request-event.ts";
+
+export { useHead, type HeadInput, type HeadTag, type HeadTagName } from "./head.ts";
+
 // Server-side rendering
 
 // Claim-based hydration. The two walk helpers are emitted ONLY by a

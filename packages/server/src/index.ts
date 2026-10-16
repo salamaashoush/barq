@@ -55,11 +55,22 @@ export {
   ssrSwitch,
 } from "./ssr.ts";
 
+export { HEAD_SNIPPET, applyHeadPatch } from "#swap";
+
 export { COUNT } from "@barqjs/core";
 export { cell, props } from "@barqjs/core";
 export { block, readSlot } from "@barqjs/core";
 
-export { isSafeError, markSafeError } from "@barqjs/core";
+export {
+  getRequestEvent,
+  httpHeader,
+  httpStatus,
+  isSafeError,
+  markSafeError,
+  type RequestEvent,
+  type RequestEventLocals,
+  type ResponseStub,
+} from "@barqjs/core";
 
 export {
   type CSPNonce,

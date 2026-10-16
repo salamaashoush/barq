@@ -15,6 +15,7 @@
  * `/admin` route crashed on load.
  */
 
+import { getRequestEvent } from "@barqjs/core";
 import { describe, expect, test } from "bun:test";
 
 import {
@@ -106,5 +107,20 @@ describe("the per-request CSS bucket", () => {
     const [a, b] = await Promise.all([render("first", 20), render("second", 5)]);
     expect(a).toBe(".first{color:red}");
     expect(b).toBe(".second{color:red}");
+  });
+});
+
+describe("Solid's request event", () => {
+  test("is the request a handler entered, with its response draft and locals", () => {
+    const request = new Request("https://example.com/orders");
+    const seen = withRequest(request, () => {
+      const event = getRequestEvent();
+      if (event !== undefined) event.locals.user = "salama";
+      return { event, draft: peekResponseDraft() };
+    });
+
+    expect(seen.event?.request).toBe(request);
+    expect(seen.event?.response).toBe(seen.draft);
+    expect(seen.event?.locals).toEqual({ user: "salama" });
   });
 });

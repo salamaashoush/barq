@@ -12,6 +12,7 @@
  */
 
 import {
+  type HeadTag,
   type JSXElement,
   HYDRATE,
   type Scope,
@@ -34,6 +35,8 @@ import {
   settleStep,
   diagnosticsEnabled,
   emitDiagnostic,
+  headKey,
+  setHeadSink,
   thrownBy,
 } from "@barqjs/core/internal";
 import {
@@ -45,6 +48,8 @@ import {
   esc,
   guardedRange,
   escapeAttribute,
+  escapeText,
+  rawText,
   setStreamSink,
 } from "./ssr.ts";
 import {
@@ -54,7 +59,7 @@ import {
   sanitizeThrown,
   serializationAdapters,
 } from "./codec.ts";
-import { SWAP_SNIPPET, swapDeferredRange } from "#swap";
+import { HEAD_SNIPPET, SWAP_SNIPPET, swapDeferredRange } from "#swap";
 
 export { swapDeferredRange };
 
@@ -99,6 +104,11 @@ export interface RenderToStringOptions {
   /** Serialization adapters for this render, beside the process's registry. */
   plugins?: readonly AnySerializationAdapter[];
   onError?: ServerErrorHook;
+  /**
+   * What `useHead` declared, as markup, when the render has no `</head>` to
+   * put it in: the host's own document template places it.
+   */
+  onHead?: (head: string) => void;
 }
 
 /**
@@ -113,6 +123,8 @@ export function renderToString(fn: RootRender, options: RenderToStringOptions = 
   let markup: string | null = null;
   const session = Symbol("render");
   const previous = setAsyncSession(session);
+  const head = new HeadCollector();
+  const previousHead = setHeadSink(head.sink);
   const owner = rootScope();
   try {
     runWithOwner(owner, () => {
@@ -133,7 +145,11 @@ export function renderToString(fn: RootRender, options: RenderToStringOptions = 
       render(value, container);
     });
     flush();
-    const html = markup ?? (container as HTMLElement | null)?.innerHTML ?? "";
+    const html = withHead(
+      markup ?? (container as HTMLElement | null)?.innerHTML ?? "",
+      head,
+      options.onHead,
+    );
     if (options.noScripts === true) return html;
     const data = getHydrationData(session);
     if (Object.keys(data).length === 0) return html;
@@ -150,6 +166,7 @@ export function renderToString(fn: RootRender, options: RenderToStringOptions = 
   } finally {
     disposeScope(owner);
     setAsyncSession(previous);
+    setHeadSink(previousHead);
     clearHydrationData(session);
   }
 }
@@ -254,7 +271,88 @@ interface Job {
   guards: Map<LateCatcher, Guard>;
   guardsById: Map<number, Guard>;
   sink: StreamSink;
+  /** What `useHead` declared, by identity, and what came after the shell. */
+  head: HeadCollector;
   released: boolean;
+}
+
+/** One render's `useHead` declarations. */
+class HeadCollector {
+  readonly tags = new Map<string, HeadTag>();
+  /** Set once the shell's head is written; declarations after it are patches. */
+  sealed = false;
+  fresh = new Map<string, HeadTag>();
+  readonly sink = {
+    add: (tags: readonly HeadTag[]): void => {
+      for (const tag of tags) {
+        const key = headKey(tag);
+        this.tags.set(key, tag);
+        if (this.sealed) this.fresh.set(key, tag);
+      }
+    },
+  };
+
+  /** The shell's head, as markup. */
+  markup(): string {
+    let out = "";
+    for (const [key, tag] of this.tags) out += headMarkup(key, tag);
+    return out;
+  }
+
+  /** What was declared since the last call, as the patch `__BARQ_HEAD__` applies. */
+  patch(): string {
+    if (this.fresh.size === 0) return "";
+    const ops = [...this.fresh].map(([key, tag]) => ({
+      k: key,
+      t: tag.tag,
+      a: attributesOf(tag),
+      c: tag.children,
+    }));
+    this.fresh = new Map();
+    return `window.__BARQ_HEAD__(${JSON.stringify(ops).replaceAll("<", "\\u003c")})`;
+  }
+}
+
+function attributesOf(tag: HeadTag): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const [name, value] of Object.entries(tag.props ?? {})) {
+    if (value === undefined || value === null || value === false) continue;
+    out[name] = value === true ? "" : String(value);
+  }
+  return out;
+}
+
+function headMarkup(key: string, tag: HeadTag): string {
+  let attributes = "";
+  for (const [name, value] of Object.entries(attributesOf(tag))) {
+    attributes += value === "" ? ` ${name}` : ` ${name}="${escapeAttribute(value)}"`;
+  }
+  attributes += ` data-bh="${escapeAttribute(key)}"`;
+  if (tag.tag === "meta" || tag.tag === "link" || tag.tag === "base")
+    return `<${tag.tag}${attributes}>`;
+  const body =
+    tag.children === undefined
+      ? ""
+      : tag.tag === "title"
+        ? escapeText(tag.children)
+        : rawText(tag.children, tag.tag);
+  return `<${tag.tag}${attributes}>${body}</${tag.tag}>`;
+}
+
+/**
+ * The shell with what `useHead` declared, inside its `<head>` when it has one
+ * and handed to `onHead` when the host writes the head itself.
+ */
+function withHead(html: string, head: HeadCollector, onHead?: (markup: string) => void): string {
+  head.sealed = true;
+  const markup = head.markup();
+  if (markup === "") return html;
+  const at = html.indexOf("</head>");
+  if (at === -1) {
+    onHead?.(markup);
+    return html;
+  }
+  return html.slice(0, at) + markup + html.slice(at);
 }
 
 /**
@@ -279,6 +377,7 @@ function startRender(
     guards: new Map(),
     guardsById: new Map(),
     sink: null as never,
+    head: new HeadCollector(),
     released: false,
   };
   let next = 0;
@@ -318,6 +417,7 @@ function startRender(
   };
 
   const previousSink = setStreamSink(job.sink);
+  const previousHead = setHeadSink(job.head.sink);
   try {
     const previousSession = setAsyncSession(job.session);
     try {
@@ -353,6 +453,7 @@ function startRender(
     throw error;
   } finally {
     setStreamSink(previousSink);
+    setHeadSink(previousHead);
   }
   return job;
 }
@@ -428,6 +529,7 @@ async function settledPage(
   job: Job,
   deadline: number,
   uncaught: ((error: unknown) => void) | null,
+  onHead?: (head: string) => void,
 ): Promise<{ html: string; data: Record<string, unknown> }> {
   let html: string;
   let data: Record<string, unknown>;
@@ -439,9 +541,17 @@ async function settledPage(
     await withinDeadline(settle(job.session), deadline);
     html =
       job.container === null
-        ? await drainParked(job.shell, job.parked, job.sink, job.session, deadline, uncaught)
+        ? await drainParked(
+            job.shell,
+            job.parked,
+            job.sink,
+            job.session,
+            deadline,
+            uncaught,
+            job.head,
+          )
         : job.container.innerHTML;
-    html = finishedWireOf(job, html);
+    html = withHead(finishedWireOf(job, html), job.head, onHead);
     // A key whose read FAILED is owed to the client as much as one that
     // settled: the page already shows the error boundary that caught it, and a
     // client that refetched instead would build the content over that markup.
@@ -472,6 +582,7 @@ async function drainParked(
   session: symbol,
   deadline: number,
   uncaught: ((error: unknown) => void) | null,
+  head: HeadCollector,
 ): Promise<string> {
   let out = markup;
   const unsettled: Parked[] = [];
@@ -485,6 +596,7 @@ async function drainParked(
       if (cut && !out.includes(record.open)) continue;
       const restore = setAsyncSession(session);
       const outerSink = setStreamSink(sink);
+      const outerHead = setHeadSink(head.sink);
       let settled: string | null = null;
       try {
         settled = record.resume();
@@ -505,6 +617,7 @@ async function drainParked(
         record.parkedOn = error;
       } finally {
         setStreamSink(outerSink);
+        setHeadSink(outerHead);
         setAsyncSession(restore);
       }
       if (settled === null) {
@@ -1062,6 +1175,8 @@ export interface RenderToStreamOptions {
    */
   noScripts?: boolean;
   plugins?: readonly AnySerializationAdapter[];
+  /** See `RenderToStringOptions.onHead`. Later declarations stream as patches. */
+  onHead?: (head: string) => void;
   /**
    * How long one boundary may stay parked before it is abandoned to its
    * fallback, in ms. Remix ships 5000 and React Router 4950 for the same knob.
@@ -1225,7 +1340,7 @@ async function settledDocument(
 ): Promise<string> {
   const report = reporter(options);
   try {
-    const page = await settledPage(job, deadline, (error) => report(error, CLIENT));
+    const page = await settledPage(job, deadline, (error) => report(error, CLIENT), options.onHead);
     let html = page.html;
     if (options.noScripts !== true) {
       html = beforeBodyEnd(
@@ -1420,6 +1535,15 @@ function streamBody(
     );
   };
 
+  let headInstalled = false;
+  const headPatch = (): string => {
+    const patch = job.head.patch();
+    if (patch === "") return "";
+    const install = headInstalled ? "" : HEAD_SNIPPET;
+    headInstalled = true;
+    return install + patch;
+  };
+
   const script = (...bodies: string[]): string => {
     const joined = bodies.filter((body) => body !== "").join(";");
     return joined === "" ? "" : `<script${nonceAttr(nonce)}>${joined}</script>`;
@@ -1433,9 +1557,6 @@ function streamBody(
     signal?.removeEventListener("abort", end);
     release(job);
   };
-
-  const shell = wireOf(job, job.shell);
-  placeParked(shell, "html", [...parked, ...job.guardsById.values()], job);
 
   const swapCall = (id: number, ...flags: string[]): string =>
     `window.__BARQ_SWAP__(${job.renderId === "" ? String(id) : JSON.stringify(wireId(job, id))}${flags.join("")})`;
@@ -1536,6 +1657,9 @@ function streamBody(
   const run = async (controller: ReadableStreamDefaultController<Uint8Array>): Promise<void> => {
     controllerOf = controller;
     try {
+      await inlineSettled(job, signal);
+      const shell = wireOf(job, withHead(job.shell, job.head, options.onHead));
+      placeParked(shell, "html", [...parked, ...job.guardsById.values()], job);
       // The status is settled from here: these bytes are gone and nothing
       // after them can change the response line.
       enqueue(shell);
@@ -1572,6 +1696,7 @@ function streamBody(
           const before = parked.length;
           const restore = setAsyncSession(session);
           const outerSink = setStreamSink(job.sink);
+          const outerHead = setHeadSink(job.head.sink);
           let built: string | null = null;
           try {
             built = record.resume();
@@ -1594,6 +1719,7 @@ function streamBody(
             }
           } finally {
             setStreamSink(outerSink);
+            setHeadSink(outerHead);
             setAsyncSession(restore);
           }
           if (built === null) continue;
@@ -1627,7 +1753,7 @@ function streamBody(
         await send(
           controller,
           swaps.map((swap) => swap.template).join("") +
-            script(swaps.map((swap) => swap.call).join(";"), seed(), resolutions()),
+            script(swaps.map((swap) => swap.call).join(";"), headPatch(), seed(), resolutions()),
         );
         if (step === null || (await step) !== true) break;
       }
@@ -1684,6 +1810,65 @@ function streamBody(
       end();
     },
   });
+}
+
+/**
+ * Put into the shell every boundary whose values are already there.
+ *
+ * A read that has settled, or settles within a few microtask turns, is not
+ * worth a fallback, a template and a script: a loader that answered
+ * synchronously, a cache hit. Waiting on anything slower than that is what
+ * streaming exists to avoid, so this asks `settleStep` with a budget of
+ * microtasks and stops the moment a round brings nothing.
+ */
+async function inlineSettled(job: Job, signal: AbortSignal | undefined): Promise<void> {
+  for (let round = 0; round < SHELL_ROUNDS && job.parked.length > 0; round++) {
+    if (signal?.aborted === true) return;
+    const stepped = await Promise.race([
+      settleStep(job.session, flightsOf(job.parked)),
+      microtasks(SHELL_TURNS),
+    ]);
+    if (stepped !== true) return;
+    const waiting = job.parked.splice(0, job.parked.length);
+    const again: Parked[] = [];
+    let resumed = false;
+    for (const record of waiting) {
+      const restore = setAsyncSession(job.session);
+      const outerSink = setStreamSink(job.sink);
+      const outerHead = setHeadSink(job.head.sink);
+      let built: string | null = null;
+      try {
+        built = record.resume();
+      } catch (error) {
+        // Unready, or failed: either way the stream's own rounds answer it,
+        // with a template or with the error boundary's fallback.
+        if (error instanceof NotReadyError) record.parkedOn = error;
+        again.push(record);
+      } finally {
+        setStreamSink(outerSink);
+        setHeadSink(outerHead);
+        setAsyncSession(restore);
+      }
+      if (built === null) continue;
+      resumed = true;
+      const content = record.hydrate ? `<!--[-->${built}<!--]-->` : built;
+      job.shell = replaceBetween(job.shell, record.open, record.close, () => content);
+    }
+    job.parked.unshift(...again);
+    if (!resumed) return;
+  }
+}
+
+/** Rounds of `inlineSettled`: a boundary resumed into the shell may park one of its own. */
+const SHELL_ROUNDS = 4;
+
+/** What an already-settled read needs to reach the engine, and no macrotask. */
+const SHELL_TURNS = 8;
+
+function microtasks(turns: number): Promise<"idle"> {
+  let chain: Promise<unknown> = Promise.resolve();
+  for (let turn = 0; turn < turns; turn++) chain = chain.then(() => {});
+  return chain.then(() => "idle" as const);
 }
 
 interface Swap {

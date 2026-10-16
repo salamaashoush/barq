@@ -13,6 +13,14 @@ export default defineConfig([
     deps: { neverBundle: ["seroval", "@barqjs/core", /^#/] },
   },
   {
+    entry: ["./src/storage.ts"],
+    format: ["esm"],
+    outExtensions,
+    dts: true,
+    clean: false,
+    deps: { neverBundle: ["@barqjs/core"] },
+  },
+  {
     entry: ["./src/index.ts"],
     format: ["esm"],
     outExtensions,
