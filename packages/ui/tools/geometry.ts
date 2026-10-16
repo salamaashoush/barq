@@ -6,23 +6,25 @@
  * declaration can be present and lose to another rule, or land on the wrong
  * element entirely and still be found. Only a browser settles it.
  *
- * This writes the two things a browser needs and nothing else:
+ * This writes one script, `probe.js`, that carries the two things a browser
+ * needs ahead of `compare.js`, the browser half:
  *
- * - `theirs.css.txt` — real Tailwind's output for every candidate in `specs/`,
- *   UTILITIES only. The `base` layer is a reset that zeroes padding, margin and
- *   border on every element, and its layer sorts after this package's, so
- *   injecting the whole sheet made all 84 comparable slots differ.
- * - `spec.json` — the class list per slot, so the probe can be built.
+ * - real Tailwind's output for every candidate in `specs/`, UTILITIES only. The
+ *   `base` layer is a reset that zeroes padding, margin and border on every
+ *   element, and its layer sorts after this package's, so injecting the whole
+ *   sheet made all 84 comparable slots differ.
+ * - the class list per slot, so the probe can be built.
  *
- * `compare.js` is the browser half: run it in the gallery's console, or through
- * a driver, and it appends a probe carrying upstream's classes beside each
- * element this package rendered and reports every computed property that
- * differs. It compares only slots with exactly ONE visible element, because
- * which element a rule meant is otherwise a guess.
+ * Evaluate it in a page the site renders, from the console or through a driver,
+ * and it appends a probe carrying upstream's classes beside each element this
+ * package rendered and reports every computed property that differs. It
+ * compares only slots with exactly ONE visible element, because which element a
+ * rule meant is otherwise a guess.
  *
  * ```
- * bun run gallery:build && bun run tools/geometry.ts
- * bun run gallery                       # then run compare.js in the page
+ * bun run tools/geometry.ts [out-dir]
+ * bun run --cwd ../site dev    # open /docs/components/<name>, evaluate probe.js
+ * await globalThis.__geometry
  * ```
  *
  * It found `cn-radio-group` landing on the wrapper rather than the row inside
@@ -45,7 +47,7 @@ import { createBuilder, print } from "./css.ts";
 import { selectorFor, slotsWeEmit } from "./styles.ts";
 
 const SPECS = resolve(import.meta.dir, "../specs");
-const OUT = resolve(import.meta.dir, "../gallery/geometry");
+const OUT = resolve(process.argv[2] ?? resolve(import.meta.dir, "../node_modules/.cache/geometry"));
 
 /** Every `slot -> class list` the specs describe, keyed `spec/slot`. */
 function everySlot(): Map<string, string> {
@@ -59,47 +61,6 @@ function everySlot(): Map<string, string> {
     }
   }
   return out;
-}
-
-/** Ours, as the gallery's build wrote it. */
-function ourStylesheet(): string {
-  const assets = resolve(import.meta.dir, "../gallery/dist/assets");
-  const files = readdirSync(assets).filter((name) => name.endsWith(".css"));
-  if (files.length === 0) {
-    throw new Error("no built stylesheet: run `bun run gallery:build` first");
-  }
-  return files.map((name) => readFileSync(join(assets, name), "utf8")).join("\n");
-}
-
-/**
- * The element a selector describes, inside the ancestors it needs.
- *
- * A slot alone is not what a style targets. `attachment-size-default` is the
- * attachment carrying `data-size="default"`, and `attachment-media` is styled
- * BY its attachment, so measuring either on a bare element measures a rule that
- * never applied. The ancestry is the longest known slot that prefixes this one,
- * repeated up to the root.
- */
-function nest(selector: string, known: ReadonlySet<string>): string {
-  const attrs = [...selector.matchAll(/\[([a-z-]+)="([^"]*)"\]/g)]
-    .map(([, name, value]) => `${name ?? ""}="${value ?? ""}"`)
-    .join(" ");
-  const slot = /\[data-slot="([a-z0-9-]+)"\]/.exec(selector)?.[1] ?? "";
-
-  const chain: string[] = [];
-  let rest = slot;
-  for (;;) {
-    const parent = [...known]
-      .filter((one) => one !== rest && rest.startsWith(`${one}-`))
-      .toSorted((a, b) => b.length - a.length)[0];
-    if (parent === undefined) break;
-    chain.push(parent);
-    rest = parent;
-  }
-
-  let markup = `<div ${attrs}>x</div>`;
-  for (const parent of chain) markup = `<div data-slot="${parent}">${markup}</div>`;
-  return markup;
 }
 
 async function main(): Promise<void> {
@@ -123,10 +84,6 @@ async function main(): Promise<void> {
     "\n" +
     print(compiled.utilities);
 
-  mkdirSync(OUT, { recursive: true });
-  // `.txt`, because the dev server that hosts the gallery turns a fetched
-  // `.css` into a JS module and the page then reads one CSS rule from 123 KB.
-  writeFileSync(join(OUT, "theirs.css.txt"), theirs);
   // The SELECTOR rather than the slot name, because they are not always the
   // same element: `cn-radio-group` styles the row inside the group here, and
   // comparing against the wrapper reports a difference the alias exists to
@@ -138,16 +95,15 @@ async function main(): Promise<void> {
     const selector = selectorFor(`cn-${slot}`, ours);
     if (selector !== null) pairs[name] = { selector, classes };
   }
-  writeFileSync(join(OUT, "spec.json"), JSON.stringify(pairs, null, 2));
+  mkdirSync(OUT, { recursive: true });
+  const input = JSON.stringify({ css: theirs, spec: pairs });
   writeFileSync(
-    join(OUT, "compare.js"),
-    readFileSync(resolve(import.meta.dir, "compare.js"), "utf8"),
+    join(OUT, "probe.js"),
+    `globalThis.__geometryInput = ${input};\n` +
+      readFileSync(resolve(import.meta.dir, "compare.js"), "utf8"),
   );
-  void nest;
-  void ourStylesheet;
   process.stdout.write(
-    `${String(slots.size)} slots, ${String(candidates.length)} candidates -> ` +
-      `${OUT}/{theirs.css.txt,spec.json,compare.js}\n`,
+    `${String(slots.size)} slots, ${String(candidates.length)} candidates -> ${OUT}/probe.js\n`,
   );
 }
 

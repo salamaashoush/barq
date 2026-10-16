@@ -257,15 +257,14 @@ Then drive it. Not "look at it": measure it.
 - `document.activeElement` for anything about focus. happy-dom leaves it on a
   removed element, so a focus test can pass for the wrong reason.
 
-The geometry harness compares against upstream directly. It was written for
-the standalone gallery this package used to carry, and `tools/geometry.ts`
-still reads that gallery's build output (`gallery/dist/assets`), which no longer
-exists; pointing it at the site's build is not done yet. When it ran:
+The geometry harness compares against upstream directly. `tools/geometry.ts`
+writes one script, `node_modules/.cache/geometry/probe.js` unless given another
+directory, and the page it runs in needs nothing else:
 
 ```bash
 bun run tools/geometry.ts
-# in the page:
-#   eval(await (await fetch("/geometry/compare.js")).text());
+bun run --cwd ../site dev      # open /docs/components/<name>
+# in the page, evaluate probe.js, then:
 #   await globalThis.__geometry;
 ```
 

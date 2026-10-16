@@ -3,19 +3,16 @@
  *
  * Appends a probe carrying upstream's own utility classes beside each element
  * this package rendered, and reports every computed property that differs. Run
- * it in the gallery: a headless DOM has no opinion about geometry, which is the
- * whole reason this exists.
+ * it in a real browser: a headless DOM has no opinion about geometry, which is
+ * the whole reason this exists.
  *
- * A global rather than a module export, because the dev server that hosts the
- * gallery compiles a fetched `.js` and the page then cannot import it:
- *
- *     eval(await (await fetch("/geometry/compare.js")).text());
- *     await globalThis.__geometry;
+ * Not run on its own: `geometry.ts` writes it into `probe.js` behind the
+ * stylesheet and the slots it reads from `globalThis.__geometryInput`, so the
+ * page evaluating it needs nothing served beside it.
  */
 globalThis.__geometry = (async () => {
-  const css = await (await fetch("/geometry/theirs.css.txt")).text();
-  /** @type {Record<string, { selector: string, classes: string }>} */
-  const spec = await (await fetch("/geometry/spec.json")).json();
+  /** @type {{ css: string, spec: Record<string, { selector: string, classes: string }> }} */
+  const { css, spec } = globalThis.__geometryInput;
   const style = document.createElement("style");
   style.textContent = css;
   document.head.append(style);
