@@ -6,10 +6,23 @@
  * content, `<!--[e:n-->`, and the template is its fallback in a range of its
  * own, so the comments go with what they held.
  *
- * It reads the boundary comments the string backend wrote, which is what those
- * bytes are paid for. Nested ranges are why the scan counts
- * depth rather than stopping at the first close: a fallback may itself contain a
- * range, and its `<!--]-->` is not this boundary's.
+ * FOUND WITHOUT A WALK PER SWAP. The open comments are indexed once, by one
+ * walk of the document the first time a swap needs one, and every template is
+ * indexed as it arrives, before its content is placed: a boundary nested in
+ * content the stream delivered is only ever in a template first. A swap is
+ * then a lookup. The walk per swap this replaced made a page O(nodes x
+ * boundaries).
+ *
+ * A HYDRATED BOUNDARY IS ASKED FIRST. A client that hydrated while the stream
+ * was still open has claimed the fallback, and a boundary that did so leaves a
+ * function on its open comment. It answers whether the server's content should
+ * still go in: yes when the boundary has not built its own, and it then claims
+ * the nodes this places once its values arrive; no when it already shows
+ * content, or for a late failure, which the client's own error boundary shows.
+ *
+ * Nested ranges are why the scan counts depth rather than stopping at the first
+ * close: a fallback may itself contain a range, and its `<!--]-->` is not this
+ * boundary's.
  *
  * Three constraints, and each of them is a property of the SOURCE rather than of
  * the behaviour, because this function is shipped by `toString()`:
@@ -24,20 +37,33 @@
  *   beside a test that paraphrases it is two implementations, and the one that
  *   ships is the one nothing runs.
  */
-export function swapDeferredRange(n: number, wrapped?: boolean, failed?: boolean): void {
+export function swapDeferredRange(n: number | string, wrapped?: boolean, failed?: boolean): void {
   const t = document.querySelector<HTMLTemplateElement>(`template[data-barq="${n}"]`);
   if (!t) return;
-  const w = document.createTreeWalker(document.body, 128);
-  const mark = (failed ? "[e:" : "[b:") + n;
-  let c: Node | null;
-  let open: Comment | null = null;
-  while ((c = w.nextNode())) {
-    if ((c as Comment).data === mark) {
-      open = c as Comment;
-      break;
+  const g = globalThis as { __BARQ_MARKS__?: Map<string, Comment> };
+  const marks = g.__BARQ_MARKS__ ?? (g.__BARQ_MARKS__ = new Map<string, Comment>());
+  const index = (root: Node): void => {
+    const w = document.createTreeWalker(root, 128);
+    let c: Node | null;
+    while ((c = w.nextNode())) {
+      const data = (c as Comment).data;
+      if (data.startsWith("[b:") || data.startsWith("[e:")) marks.set(data, c as Comment);
     }
+  };
+  const mark = (failed ? "[e:" : "[b:") + n;
+  let open = marks.get(mark);
+  if (!open || !open.isConnected || open.data !== mark) {
+    index(document.body);
+    open = marks.get(mark);
   }
-  if (open === null) return;
+  if (!open || !open.isConnected) return;
+  marks.delete(mark);
+  const owner = (open as { $$barq?: (failed: boolean) => boolean }).$$barq;
+  if (owner && !owner(!!failed)) {
+    t.parentNode?.removeChild(t);
+    return;
+  }
+  index(t.content);
   let depth = 0;
   let node: Node | null = open.nextSibling;
   const dead: Node[] = [];

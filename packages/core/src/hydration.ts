@@ -365,6 +365,41 @@ export function beginHydration(container: Node): void {
 }
 
 /**
+ * Claim server nodes that arrived after `hydrate` returned: a streamed
+ * boundary's content, swapped in where the boundary's fallback was claimed.
+ *
+ * A session of its own for the length of `work`, over nothing but the range
+ * the caller opens a cursor on, and only where a `hydrate` installed the walk:
+ * a page that only ever renders never reaches this with a claim to make. What
+ * a mismatch below hands `abandonClaim` comes back as `abandoned`, for the
+ * caller to rebuild its own range rather than the page.
+ */
+export function claimLate<T>(
+  container: Node,
+  work: () => T,
+): { value: T; abandoned: HydrationMismatch | null } {
+  if (walk === null || SESSION !== null) return { value: work(), abandoned: null };
+  const session: Session = {
+    container,
+    marked: true,
+    stack: [],
+    mismatches: [],
+    claimed: 0,
+    ranges: 0,
+    built: 0,
+    taken: [],
+    abandoned: null,
+  };
+  SESSION = session;
+  try {
+    return { value: work(), abandoned: session.abandoned };
+  } finally {
+    SESSION = null;
+    holeTaken = null;
+  }
+}
+
+/**
  * Give `mismatch` to `hydrate` from a place where throwing it would hand it to
  * the engine instead.
  *

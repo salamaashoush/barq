@@ -23,6 +23,7 @@ import {
   HydrationMismatch,
   abandonClaim,
   atCursor,
+  claimLate,
   claimAt,
   cursorAtEnd,
   cursorRest,
@@ -1476,6 +1477,21 @@ function guarded(
   // this boundary's fallback, which is the only thing entitled to it.
   let fallbackClaim: Range | null = firstClaim === null ? takeUnsettledClaim(site) : null;
   let live: Site = firstClaim === null ? park : site;
+  // A range the stream still owes content: `swapDeferredRange` asks this
+  // boundary before it places the server's nodes, and the boundary claims them
+  // when its values arrive instead of building a second copy beside them. An
+  // error boundary's range is never replaced under a client that hydrated it:
+  // its own fallback shows the failure.
+  let lateOpen: Comment | null = null;
+  const owed = (fallbackClaim ?? firstClaim)?.open ?? null;
+  if (owed !== null && (owed.data.startsWith("[b:") || owed.data.startsWith("[e:"))) {
+    const deferred = owed.data.startsWith("[b:");
+    (owed as Comment & { $$barq?: (failed: boolean) => boolean }).$$barq = (failed) => {
+      if (!deferred || failed || content !== NOTHING || owed.parentNode === null) return false;
+      lateOpen = owed;
+      return true;
+    };
+  }
   let content: Instance = NOTHING;
   let standIn: Instance = NOTHING;
   // Not the application's error, and this is not the thing that recovers from
@@ -1532,6 +1548,48 @@ function guarded(
   // where the boundary is listening.
   const routed = kind === "error" ? createSignal<{ error: unknown } | null>(null) : null;
 
+  // The swapped range, as a claim: everything between the open comment the
+  // swap left and this site's anchor, which is the range's close.
+  const lateClaim = (): Range | null => {
+    const open = lateOpen;
+    lateOpen = null;
+    const parent = open?.parentNode ?? null;
+    if (open === null || parent === null) return null;
+    const nodes: Node[] = [];
+    for (
+      let node = open.nextSibling;
+      node !== null && node !== site.anchor;
+      node = node.nextSibling
+    ) {
+      nodes.push(node);
+    }
+    return { open, close: site.anchor as Comment | null, parent, nodes };
+  };
+
+  // Claimed where they stand. A mismatch costs this boundary its server nodes
+  // and nothing else: the content is built cold, as it would have been had the
+  // swap never come.
+  const adopt = (own: Scope | null, claim: Range): Instance => {
+    const cold = (): Instance => {
+      live = park;
+      return attempt(own, park, body, EMPTY_ARGS, 0, "branch", null);
+    };
+    live = site;
+    if (!pinned) lead = claim.open;
+    let claimed: { value: Instance; abandoned: HydrationMismatch | null };
+    try {
+      claimed = claimLate(claim.parent, () =>
+        attempt(own, site, body, EMPTY_ARGS, 0, "branch", claim),
+      );
+    } catch (error) {
+      if (!(error instanceof HydrationMismatch)) throw error;
+      return cold();
+    }
+    if (claimed.abandoned === null) return claimed.value;
+    teardown(claimed.value);
+    return cold();
+  };
+
   const compose = (): typeof CONTENT => {
     if (routed !== null) {
       const thrown = routed[0]();
@@ -1551,6 +1609,11 @@ function guarded(
       const claim = firstClaim;
       firstClaim = null;
       activation++;
+      const late = claim === null ? lateClaim() : null;
+      if (late !== null) {
+        content = adopt(own, late);
+        return;
+      }
       try {
         content = attempt(own, live, body, EMPTY_ARGS, 0, "branch", claim);
       } catch (error) {
