@@ -1,0 +1,13 @@
+import type { Incoming } from "@barqjs/core";
+
+import { type IconProps, iconProps } from "../icon.ts";
+
+export function Lens(props: Incoming<IconProps>) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M15.725 7.296h.01" />
+      <path d="M6 12a6 6 0 016-6" />
+      <circle cx="12" cy="12" r="10" />
+    </svg>
+  );
+}

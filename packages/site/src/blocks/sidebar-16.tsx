@@ -70,7 +70,7 @@ import { Settings2 } from "@barqjs/lucide/icons/settings-2";
 import { Share } from "@barqjs/lucide/icons/share";
 import { Sparkles } from "@barqjs/lucide/icons/sparkles";
 import { SquareTerminal } from "@barqjs/lucide/icons/square-terminal";
-import { Trash2 } from "@barqjs/lucide/icons/trash-2";
+import { Trash } from "@barqjs/lucide/icons/trash";
 
 import { blockFillsPreview } from "../layout.ts";
 
@@ -501,7 +501,7 @@ function NavProjects() {
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem>
-                    <Trash2 class={mutedIcon} />
+                    <Trash class={mutedIcon} />
                     <span>Delete Project</span>
                   </DropdownMenuItem>
                 </DropdownMenuContent>

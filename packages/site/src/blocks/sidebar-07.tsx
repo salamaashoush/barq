@@ -19,7 +19,7 @@ import { Forward } from "@barqjs/lucide/icons/forward";
 import { LogOut } from "@barqjs/lucide/icons/log-out";
 import { Plus } from "@barqjs/lucide/icons/plus";
 import { Sparkles } from "@barqjs/lucide/icons/sparkles";
-import { Trash2 } from "@barqjs/lucide/icons/trash-2";
+import { Trash } from "@barqjs/lucide/icons/trash";
 import {
   Breadcrumb,
   BreadcrumbItem,
@@ -381,7 +381,7 @@ export function Sidebar07() {
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem variant="destructive">
-                          <Trash2 />
+                          <Trash />
                           <span>Delete Project</span>
                         </DropdownMenuItem>
                       </DropdownMenuContent>

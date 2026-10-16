@@ -50,7 +50,7 @@ import { Inbox } from "@barqjs/lucide/icons/inbox";
 import { LogOut } from "@barqjs/lucide/icons/log-out";
 import { Send } from "@barqjs/lucide/icons/send";
 import { Sparkles } from "@barqjs/lucide/icons/sparkles";
-import { Trash2 } from "@barqjs/lucide/icons/trash-2";
+import { Trash } from "@barqjs/lucide/icons/trash";
 import { blockFillsPreview } from "../layout.ts";
 
 const outer = css`
@@ -307,7 +307,7 @@ const NAV_MAIN = [
   { id: "drafts", name: "Drafts", icon: File },
   { id: "sent", name: "Sent", icon: Send },
   { id: "junk", name: "Junk", icon: ArchiveX },
-  { id: "trash", name: "Trash", icon: Trash2 },
+  { id: "trash", name: "Trash", icon: Trash },
 ];
 
 interface Mail {

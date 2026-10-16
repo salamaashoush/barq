@@ -1,9 +1,19 @@
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+
 import { describe, expect, test } from "bun:test";
 import { render } from "@barqjs/testing";
 
 import { Check } from "./icons/check.tsx";
 import { CircleCheck } from "./icons/circle-check.tsx";
 import { ICON_ALIASES, ICON_NAMES, LUCIDE_VERSION } from "./manifest.ts";
+
+function pascal(name: string): string {
+  return name
+    .split("-")
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join("");
+}
 
 function svgOf(node: () => unknown): SVGSVGElement {
   const { container } = render(node as never);
@@ -103,8 +113,31 @@ describe("the set", () => {
     expect(barrel["MoreHorizontal"]).toBe(barrel["Ellipsis"]);
   });
 
+  test("every name lucide-static exports is the same component here", async () => {
+    // lucide's entry exports an icon and its old names from one module, which is
+    // the rename record a regeneration must not lose.
+    const entry = readFileSync(
+      join(dirname(require.resolve("lucide-static/package.json")), "dist/esm/lucide-static.mjs"),
+      "utf8",
+    );
+    const barrel = (await import("./index.ts")) as Record<string, unknown>;
+    let names = 0;
+    for (const [, list, file] of entry.matchAll(
+      /^export \{([^}]+)\} from '\.\/icons\/([\w-]+)\.mjs';$/gm,
+    )) {
+      const target = barrel[pascal(file ?? "")];
+      expect(typeof target, file).toBe("function");
+      for (const [, name] of (list ?? "").matchAll(/default as (\w+)/g)) {
+        expect(barrel[name ?? ""], `${name} is not ${file}`).toBe(target);
+        names++;
+      }
+    }
+    expect(names).toBe(ICON_NAMES.length + Object.keys(ICON_ALIASES).length);
+    expect(barrel["Trash2"]).toBe(barrel["Trash"]);
+  });
+
   test("every name in the manifest has a module and exports its component", async () => {
-    // A sample rather than all 1,790: the generator writes them from one
+    // A sample rather than all 1,890: the generator writes them from one
     // template, so a name that resolves proves the naming rule for the rest.
     const sample = ["check", "chevron-down", "a-arrow-down", "arrow-up-1-0", "circle-check"];
     for (const name of sample) {

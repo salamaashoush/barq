@@ -1,6 +1,6 @@
 import { createSignal } from "@barqjs/core";
 import { css } from "@barqjs/css";
-import { Building2 } from "@barqjs/lucide/icons/building-2";
+import { BuildingComplex } from "@barqjs/lucide/icons/building-complex";
 import { CreditCard } from "@barqjs/lucide/icons/credit-card";
 import { Wallet } from "@barqjs/lucide/icons/wallet";
 import {
@@ -39,7 +39,7 @@ export default function DropdownMenuRadioIcons() {
               Digital Wallet
             </DropdownMenuRadioItem>
             <DropdownMenuRadioItem value="bank">
-              <Building2 />
+              <BuildingComplex />
               Bank Transfer
             </DropdownMenuRadioItem>
           </DropdownMenuRadioGroup>

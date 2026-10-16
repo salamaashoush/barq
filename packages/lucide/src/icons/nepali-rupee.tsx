@@ -1,0 +1,15 @@
+import type { Incoming } from "@barqjs/core";
+
+import { type IconProps, iconProps } from "../icon.ts";
+
+export function NepaliRupee(props: Incoming<IconProps>) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M18 16.173 A4.74 4.74 0 0 0 13.496 8.005" />
+      <path d="M4 3 L20 3" />
+      <path d="M5 13 L13.5 21" />
+      <path d="M5 13 L9 13" />
+      <path d="M8 13 C15.5 13 14.667 3 8 3" />
+    </svg>
+  );
+}

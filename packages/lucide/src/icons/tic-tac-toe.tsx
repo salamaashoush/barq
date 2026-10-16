@@ -1,0 +1,18 @@
+import type { Incoming } from "@barqjs/core";
+
+import { type IconProps, iconProps } from "../icon.ts";
+
+export function TicTacToe(props: Incoming<IconProps>) {
+  return (
+    <svg {...iconProps(props)}>
+      <path d="M12 2v20" />
+      <path d="m21 16-5 5" />
+      <path d="m21 21-5-5" />
+      <path d="M22 12H2" />
+      <path d="M8 3 3 8" />
+      <path d="M8 8 3 3" />
+      <circle cx="18.5" cy="5.5" r="2.5" />
+      <circle cx="5.5" cy="18.5" r="2.5" />
+    </svg>
+  );
+}

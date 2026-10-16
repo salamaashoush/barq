@@ -10,12 +10,12 @@
  *
  * ## What it reads
  *
- * `icon-nodes.json` — the 1,790 canonical icons as
+ * `icon-nodes.json` — the 1,890 canonical icons as
  * `{ "check": [["path", { "d": "…" }]] }`. That is the same data
  * `lucide-react` builds from, so the shapes are lucide's rather than a
  * transcription of them.
  *
- * `icons/*.svg` — 2,048 files, because lucide keeps a file per ALIAS too.
+ * `icons/*.svg` — 2,154 files, because lucide keeps a file per ALIAS too.
  * An alias is not a second icon: its file is byte-identical to its target's
  * once both are reduced to nodes, so this matches them that way and emits a
  * re-export. `MoreHorizontal` is `Ellipsis` for the same reason it is in
@@ -23,7 +23,7 @@
  *
  * ## Why a file each
  *
- * One module per icon, so a bundler drops the 1,789 an application does not
+ * One module per icon, so a bundler drops the 1,889 an application does not
  * use without needing to prove anything about a barrel. `@barqjs/lucide/icons/check`
  * is the same component by a path a dev server does not have to parse 30,000
  * lines to reach.
@@ -148,8 +148,11 @@ function main(): void {
     JSON.parse(readFileSync(join(lucide, "package.json"), "utf8")) as { version: string }
   ).version;
 
+  const barrel = resolve(import.meta.dir, "../src/index.ts");
+  const manifest = resolve(import.meta.dir, "../src/manifest.ts");
+
   writeFileSync(
-    resolve(import.meta.dir, "../src/index.ts"),
+    barrel,
     [
       "/**",
       ` * Every lucide icon, from lucide-static ${version}.`,
@@ -175,7 +178,7 @@ function main(): void {
   );
 
   writeFileSync(
-    resolve(import.meta.dir, "../src/manifest.ts"),
+    manifest,
     [
       "/**",
       " * Which icons exist, for a tool that has to choose one by name.",
@@ -193,6 +196,14 @@ function main(): void {
       "",
     ].join("\n"),
   );
+
+  // Both files are under the repository's format check, so they are written in
+  // the shape that check accepts rather than left for someone to reformat.
+  const formatted = Bun.spawnSync(["oxfmt", barrel, manifest], {
+    stdout: "inherit",
+    stderr: "inherit",
+  });
+  if (formatted.exitCode !== 0) throw new Error(`oxfmt exited with ${formatted.exitCode}`);
 
   process.stdout.write(`${names.length} icons, ${ordered.length} aliases, lucide ${version}\n`);
 }

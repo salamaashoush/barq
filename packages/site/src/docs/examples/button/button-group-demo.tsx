@@ -8,7 +8,7 @@ import { Ellipsis } from "@barqjs/lucide/icons/ellipsis";
 import { ListFilter } from "@barqjs/lucide/icons/list-filter";
 import { MailCheck } from "@barqjs/lucide/icons/mail-check";
 import { Tag } from "@barqjs/lucide/icons/tag";
-import { Trash2 } from "@barqjs/lucide/icons/trash-2";
+import { Trash } from "@barqjs/lucide/icons/trash";
 import {
   Button,
   ButtonGroup,
@@ -101,7 +101,7 @@ export default function ButtonGroupDemo() {
             <DropdownMenuSeparator />
             <DropdownMenuGroup>
               <DropdownMenuItem variant="destructive">
-                <Trash2 />
+                <Trash />
                 Trash
               </DropdownMenuItem>
             </DropdownMenuGroup>

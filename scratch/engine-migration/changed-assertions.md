@@ -929,3 +929,12 @@ conditions hook of its own.
   path it matches is `fixtures/start/src/entry-client.ts` (was `fixture/src/entry-client.ts`).
 - `core/src/diagnostic-docs.test.ts` "not-hydratable": the fix the message names is `ssr: true` in
   `barq()` from `@barqjs/vite`; it named the deleted `@barqjs/compiler`'s `hydratable` option.
+
+## lucide-static 1.57.0
+
+- `lucide/src/tree-shaking.test.ts` "one icon from the barrel brings no others": the aperture probe
+  was `M2.5 21a.5.5`, a path no lucide icon has ever drawn, so its `not.toContain` could not fail. It
+  is `m14.31 8 5.74 9.94`, aperture's first path.
+- `lucide/src/lucide.test.tsx`: added "every name lucide-static exports is the same component here",
+  which reads lucide-static's own entry and requires each name it exports, old names included, to be
+  the barrel's component for the same module. No existing expectation changed.

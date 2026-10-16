@@ -1,5 +1,5 @@
 /**
- * The barrel must not drag 1,790 icons in with it.
+ * The barrel must not drag 1,890 icons in with it.
  *
  * `sideEffects: false` plus one module per icon is the claim; this is the
  * measurement. A bundler is asked for a module that imports one icon from the
@@ -43,7 +43,7 @@ async function bundle(source: string): Promise<string> {
 
 /** A path from an icon nobody imported. Distinctive enough to find in a bundle. */
 const ELSEWHERE = [
-  "M2.5 21a.5.5", // aperture
+  "m14.31 8 5.74 9.94", // aperture
   "m21.73 18-8-14", // triangle-alert
   "M9 3v18", // panel-left
 ];

@@ -54,7 +54,7 @@ import { AudioWaveform } from "@barqjs/lucide/icons/audio-waveform";
 import { BadgeCheck } from "@barqjs/lucide/icons/badge-check";
 import { Bell } from "@barqjs/lucide/icons/bell";
 import { Blocks } from "@barqjs/lucide/icons/blocks";
-import { BookMarked } from "@barqjs/lucide/icons/book-marked";
+import { BookBookmark } from "@barqjs/lucide/icons/book-bookmark";
 import { Brain } from "@barqjs/lucide/icons/brain";
 import { Briefcase } from "@barqjs/lucide/icons/briefcase";
 import { Calendar as CalendarIcon } from "@barqjs/lucide/icons/calendar";
@@ -97,7 +97,7 @@ import { Sprout } from "@barqjs/lucide/icons/sprout";
 import { Star } from "@barqjs/lucide/icons/star";
 import { StarOff } from "@barqjs/lucide/icons/star-off";
 import { Target } from "@barqjs/lucide/icons/target";
-import { Trash2 } from "@barqjs/lucide/icons/trash-2";
+import { Trash } from "@barqjs/lucide/icons/trash";
 import { Wallet } from "@barqjs/lucide/icons/wallet";
 import { Wrench } from "@barqjs/lucide/icons/wrench";
 
@@ -486,7 +486,7 @@ const NAV_SECONDARY: readonly SecondaryItem[] = [
   { title: "Calendar", url: "#", icon: CalendarIcon },
   { title: "Settings", url: "#", icon: Settings2 },
   { title: "Templates", url: "#", icon: Blocks },
-  { title: "Trash", url: "#", icon: Trash2 },
+  { title: "Trash", url: "#", icon: Trash },
   { title: "Help", url: "#", icon: MessageCircleQuestionMark },
 ];
 
@@ -500,7 +500,7 @@ const FAVORITES: readonly Page[] = [
   { name: "Project Management & Task Tracking", url: "#", icon: ChartColumn },
   { name: "Family Recipe Collection & Meal Planning", url: "#", icon: CookingPot },
   { name: "Fitness Tracker & Workout Routines", url: "#", icon: Dumbbell },
-  { name: "Book Notes & Reading List", url: "#", icon: BookMarked },
+  { name: "Book Notes & Reading List", url: "#", icon: BookBookmark },
   { name: "Sustainable Gardening Tips & Plant Care", url: "#", icon: Sprout },
   { name: "Language Learning Progress & Resources", url: "#", icon: Languages },
   { name: "Home Renovation Ideas & Budget Tracker", url: "#", icon: House },
@@ -705,7 +705,7 @@ function NavFavorites() {
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem>
-                    <Trash2 class={mutedIcon} />
+                    <Trash class={mutedIcon} />
                     <span>Delete</span>
                   </DropdownMenuItem>
                 </DropdownMenuContent>

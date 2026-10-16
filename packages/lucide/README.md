@@ -1,8 +1,8 @@
 # @barqjs/lucide
 
-Every [lucide](https://lucide.dev) icon as a barq component: 1,790 icons and
-254 of the old names they were renamed from, generated from `lucide-static`
-1.37.0. Each is lowered by the barq compiler, so an icon is one cloned template
+Every [lucide](https://lucide.dev) icon as a barq component: 1,890 icons and
+260 of the old names they were renamed from, generated from `lucide-static`
+1.57.0. Each is lowered by the barq compiler, so an icon is one cloned template
 rather than an `<svg>` built element by element. The props are `lucide-react`'s.
 
 ## Install
@@ -54,8 +54,8 @@ The same set as `lucide-react`:
 ```tsx
 <Check size={16} color="var(--primary)" />
 <Check size={12} absoluteStrokeWidth />        {/* still a 2px stroke at 12px */}
-<Trash2 aria-label="Delete" />                 {/* announced */}
-<Trash2 />                                     {/* aria-hidden, which is the default */}
+<Trash aria-label="Delete" />                  {/* announced */}
+<Trash />                                      {/* aria-hidden, which is the default */}
 ```
 
 **Every icon is `aria-hidden` until you name it.** A chevron beside "Options" is

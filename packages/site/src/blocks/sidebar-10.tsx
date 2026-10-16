@@ -97,7 +97,6 @@ import { Star } from "@barqjs/lucide/icons/star";
 import { StarOff } from "@barqjs/lucide/icons/star-off";
 import { Target } from "@barqjs/lucide/icons/target";
 import { Trash } from "@barqjs/lucide/icons/trash";
-import { Trash2 } from "@barqjs/lucide/icons/trash-2";
 import { Wallet } from "@barqjs/lucide/icons/wallet";
 import { Wrench } from "@barqjs/lucide/icons/wrench";
 import { blockFillsPreview } from "../layout.ts";
@@ -356,7 +355,7 @@ const NAV_SECONDARY: readonly {
   { id: "calendar", name: "Calendar", icon: Calendar },
   { id: "settings", name: "Settings", icon: Settings2 },
   { id: "templates", name: "Templates", icon: Blocks },
-  { id: "trash", name: "Trash", icon: Trash2 },
+  { id: "trash", name: "Trash", icon: Trash },
   { id: "help", name: "Help", icon: MessageCircleQuestionMark },
 ];
 
@@ -448,7 +447,7 @@ const PAGE_ACTIONS: readonly (readonly Action[])[] = [
     { label: "Copy Link", icon: Link },
     { label: "Duplicate", icon: Copy },
     { label: "Move to", icon: CornerUpRight },
-    { label: "Move to Trash", icon: Trash2 },
+    { label: "Move to Trash", icon: Trash },
   ],
   [
     { label: "Undo", icon: CornerUpLeft },
@@ -567,7 +566,7 @@ function NavFavorites() {
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem>
-                    <Trash2 class={quiet} />
+                    <Trash class={quiet} />
                     <span>Delete</span>
                   </DropdownMenuItem>
                 </DropdownMenuContent>

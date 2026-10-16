@@ -2,7 +2,7 @@ import type { Incoming } from "@barqjs/core";
 
 import { type IconProps, iconProps } from "../icon.ts";
 
-export function Building2(props: Incoming<IconProps>) {
+export function BuildingComplex(props: Incoming<IconProps>) {
   return (
     <svg {...iconProps(props)}>
       <path d="M10 12h4" />

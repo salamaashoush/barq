@@ -1,5 +1,5 @@
 import { css } from "@barqjs/css";
-import { Trash2 } from "@barqjs/lucide/icons/trash-2";
+import { Trash } from "@barqjs/lucide/icons/trash";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -32,7 +32,7 @@ export default function AlertDialogDestructive() {
       <AlertDialogContent size="sm">
         <AlertDialogHeader>
           <AlertDialogMedia class={danger}>
-            <Trash2 />
+            <Trash />
           </AlertDialogMedia>
           <AlertDialogTitle>Delete chat?</AlertDialogTitle>
           <AlertDialogDescription>

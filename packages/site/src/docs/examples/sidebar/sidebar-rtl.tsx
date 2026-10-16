@@ -18,7 +18,7 @@ import { Map as MapIcon } from "@barqjs/lucide/icons/map";
 import { Settings2 } from "@barqjs/lucide/icons/settings-2";
 import { Sparkles } from "@barqjs/lucide/icons/sparkles";
 import { SquareTerminal } from "@barqjs/lucide/icons/square-terminal";
-import { Trash2 } from "@barqjs/lucide/icons/trash-2";
+import { Trash } from "@barqjs/lucide/icons/trash";
 import {
   Avatar,
   AvatarFallback,
@@ -349,7 +349,7 @@ function NavProjects() {
                   <DropdownMenuSeparator />
                   <DropdownMenuGroup>
                     <DropdownMenuItem>
-                      <Trash2 class={muted} />
+                      <Trash class={muted} />
                       <span>حذف المشروع</span>
                     </DropdownMenuItem>
                   </DropdownMenuGroup>
