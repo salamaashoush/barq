@@ -4125,7 +4125,7 @@ export const Route = createFileRoute("/x")({ component: Page });
 
     /// `class` is diffed statefully by the runtime, so an effect shared with
     /// another prop would rewrite `element.className` on an unrelated change and
-    /// wipe what `classList` (or a ref, or a directive) put there.
+    /// wipe what a ref or a directive put there.
     #[test]
     fn class_joins_the_fused_record_and_the_wipe_becomes_unrepresentable() {
         let source = format!(

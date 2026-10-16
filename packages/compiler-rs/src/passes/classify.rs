@@ -108,10 +108,10 @@ impl<'a> Classify<'a, '_> {
                         chan,
                     });
                 }
-                // B2. `class` / `style` / `classList` / `dangerouslySetInnerHTML`
-                // thread the previously APPLIED representation — the normalised
-                // class string, the css map, the toggled key set — so their
-                // record slot holds the channel's RETURN and not the compute's.
+                // B2. `class` / `style` / `dangerouslySetInnerHTML` thread the
+                // previously APPLIED representation — the normalised class
+                // string, the css map — so their record slot holds the
+                // channel's RETURN and not the compute's.
                 // That is the whole of what kept them out of a compiled effect,
                 // and the compiler owns the slot now.
                 let diff = if chan.threads_prev() {

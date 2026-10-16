@@ -1272,8 +1272,8 @@ export function createPageHandler(
           const root = (): unknown =>
             shell === undefined ? options.app(state) : renderShell(state, shell, headAssets);
           // A streamed response is not finished when this function returns it:
-          // `renderToStream` hands back the `ReadableStream` before a byte of the
-          // body exists, and the boundaries resume against this state afterwards.
+          // `renderToStream` hands back its `readable` before a byte of the body
+          // exists, and the boundaries resume against this state afterwards.
           // Disposing in a `finally` therefore cleared the loader cache and
           // unsubscribed history MID-RENDER, and every entry was re-minted on
           // resume — masked today only because a re-minted cell for a settled key

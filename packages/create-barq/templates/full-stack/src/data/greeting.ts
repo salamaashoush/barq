@@ -2,7 +2,7 @@
  * A server function: one HTTP endpoint, called like a function.
  *
  * The body never reaches the browser. The compiler replaces this module's
- * exports with client stubs that POST to `/_barq/fn/<id>`, so anything it
+ * exports with client stubs that call `/_barq/fn/<id>`, so anything it
  * imports — a database driver, a secret — stays on the server.
  */
 

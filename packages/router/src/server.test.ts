@@ -418,7 +418,7 @@ describe("P6 defects", () => {
   test("B5 — the router state outlives the stream that is still using it", async () => {
     // `createPageHandler` runs `finally { state.dispose() }` inside the
     // `withRequest` callback, and for a streamed response that callback returns
-    // as soon as `renderToStream` hands back the ReadableStream — before one
+    // as soon as `renderToStream` hands back its `readable` — before one
     // byte of the body exists. So the loader cache is cleared and history is
     // unsubscribed WHILE the boundaries are still resuming, and every entry is
     // re-minted on resume.

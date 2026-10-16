@@ -1457,10 +1457,10 @@ reversal on evidence, and each is stated here so the table above is not read as 
 - **`createElement` is gone, and `element(scope, tag, props)` replaces the part of it that was not
   a second calling convention.** The objection was to a second implementation of COMPONENT
   invocation, and that is what left. Building one element by tag NAME is a different thing and is
-  still needed twice — for `<Dynamic component={"div"}>` (§3.13 item 4) and for the intrinsic the
-  browser's tree builder would not produce as written. It takes a scope, applies props through
-  `spread` and children through `insert`, so it is not a fifth path: it is the same two entry
-  points a compiled element uses, minus the clone.
+  still needed twice — for a `dynamic` component whose source answers `"div"` (§3.13 item 4) and
+  for the intrinsic the browser's tree builder would not produce as written. It takes a scope,
+  applies props through `spread` and children through `insert`, so it is not a fifth path: it is
+  the same two entry points a compiled element uses, minus the clone.
 - **The Block brand does NOT go behind `dev`, and the reason is a measurement.** The item asks for
   the brand to be DEV-only because "it allocates a closure per construction to serve two DEV
   facilities". Two things are wrong with that. First, the closure is not a DEV facility: it
@@ -3142,9 +3142,8 @@ delete it and reversed on evidence.
 
 - They are not one operation. `merge` treats a later `undefined` as a VALUE and
   `mergeProps` skips it, which is a real difference in what a defaulted prop
-  resolves to — `props.test.ts` pins it in a test named for it ("mergeProps
-  skips a later undefined; merge treats it as a value"), and `props.ts` says so
-  at the definition.
+  resolves to — `props.test.ts` pins it in a test named for it ("merge treats a
+  later undefined as a value"), and `props.ts` says so at the definition.
 - The direction is backwards for the version it cites. `@solidjs/signals`
   2.0.0-beta.31 exports `merge` and has NO `mergeProps`; `mergeProps` is
   Solid 1.x's name. Renaming toward `mergeProps` moves AWAY from Solid 2.0,

@@ -3,16 +3,17 @@
 The compiler does not report this code. [All codes](README.md)
 
 BARQ006 warned that `<Dynamic>` read every prop once and handed the component it rendered
-values that never updated. `<Dynamic>` passes each prop through as the same Cell it
-received, so the component it renders reads current values and there is nothing to warn
-about:
+values that never updated. barq no longer exports `<Dynamic>` (see [BARQ025](BARQ025.md)).
+The component the `dynamic` factory returns passes each prop through as the same Cell it
+received, so what it renders reads current values and there is nothing to warn about:
 
 ```tsx
-import { Dynamic, createSignal } from "@barqjs/core";
+import { createSignal, dynamic } from "@barqjs/core";
 
 const [total] = createSignal(0);
+const Output = dynamic(() => "output");
 
-export const Total = () => <Dynamic component="output" value={total()} />;
+export const Total = () => <Output value={total()} />;
 ```
 
 ## If a comment still names it

@@ -302,9 +302,9 @@ async function failedAnswer(response: Response): Promise<FailedAnswer | undefine
 }
 
 /**
- * The HTTP methods a server function answers. `POST` is the default and the
- * only one a form can reach; `GET` is for a read the browser and a CDN may
- * cache, and see {@link RPC_CALLER} for what keeps a link from reaching one.
+ * The HTTP methods a server function answers. `GET` is the default, for a read
+ * the browser and a CDN may cache; see {@link RPC_CALLER} for what keeps a link
+ * from reaching one. `POST` is for a write and is the only one a form can reach.
  */
 export type ServerFnMethod = "GET" | "POST";
 

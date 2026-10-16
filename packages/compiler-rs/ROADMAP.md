@@ -227,8 +227,8 @@ defineProps()` to `__props.count`, justified as "Props is a component-only conce
 here is very clear. The magic never leaks into normal JS/TS code"
 ([RFC discussion #502](https://github.com/vuejs/rfcs/discussions/502)). Only Solid lints it. barq
 cannot follow Vue and Svelte because `lower::lower` takes no `Program` and codegen only splices at
-recorded `Site`s. So D3 should say "barq cannot make this reactive", print the `mergeProps` /
-`splitProps` rewrite as text, and stop. Scope it to the parameter list exactly as
+recorded `Site`s. So D3 should say "barq cannot make this reactive", print the `merge` / `omit`
+rewrite as text, and stop. Scope it to the parameter list exactly as
 [`solid/no-destructure`](https://raw.githubusercontent.com/solidjs-community/eslint-plugin-solid/main/packages/eslint-plugin-solid/docs/no-destructure.md)
 does — that rule has **zero** false-positive issues in its tracker, and its own docs say why:
 "catching it in the params covers the most common cases with good DX."

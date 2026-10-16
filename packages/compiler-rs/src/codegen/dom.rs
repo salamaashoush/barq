@@ -805,8 +805,8 @@ fn fused_effect<'a>(
 
     // `class` alone needs no record either. The compute hands back the string
     // the channel applies, so an unchanged class stops at the effect's own
-    // equality check and the write half never runs. The css and classList maps
-    // have no such form: their identity says nothing about their content.
+    // equality check and the write half never runs. The css map has no such
+    // form: its identity says nothing about its content.
     if let [(patch, name, one, Chan::Class, Diff::Thread, false)] = rows[..] {
         let read = keyed_read(ctx, unit, one, Chan::Class, patch.span);
         let read = if is_string_valued(&read) {

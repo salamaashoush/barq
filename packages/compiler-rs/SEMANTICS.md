@@ -174,7 +174,7 @@ ownership. `CURRENT` is an *observation* channel (O4.5), never a decision channe
 **Escape hatch.** `pin(s, block)` returns a Block that ignores its scope argument and uses `s`. It is
 the only sanctioned way to break dynamic ownership and it is visible in the emitted text.
 
-**Falsified by.** `<Ctx.Provider value={1}><Child/></Ctx.Provider>` where `Child` calls `Ctx.use()`
+**Falsified by.** `<Ctx value={1}><Child/></Ctx>` where `Child` calls `Ctx.use()`
 and `Ctx` has no default. If `Child` throws `ContextNotFoundError`, or renders the default when a
 provider is present, or the ownership trace records `Child` running under a scope that is not the
 provider's instance scope, O2 is false. **`Child` MUST NOT be a syntactic argument of the provider
@@ -200,13 +200,13 @@ until M3 thirteen of the fourteen read `getOwner()` instead, which made the argu
 construct handed scope A while B was ambient put its subtree under B, and the falsification procedure
 below could not tell the two apart because no fixture ever made them differ. `packages/core`'s
 `calling-convention.test.ts` is the channel that can: it hands `Fragment`, `Show`, `For`, `Errored`,
-`Ctx.Provider` and `provide` a scope that is NOT the ambient one and asserts on the scope argument's
-subtree. Reverting `Ctx.Provider` to `enter(getOwner())` fails it; before M3 that mutation left every
-suite in the repository green.
+a context's provider and `provide` a scope that is NOT the ambient one and asserts on the scope
+argument's subtree. Reverting the provider to `enter(getOwner())` fails it; before M3 that mutation
+left every suite in the repository green.
 
 **Pinned by.** `sem-ctx-provider-direct-child.tsx` *(new)* — the direct form, with **no** `{() => …}`
 wrapper. The existing `context-provider.tsx` does not pin O2: it is written in explicit-thunk style
-(`<Theme.Provider>{() => <Badge />}</Theme.Provider>`), which is the hand-written workaround for this
+(`<Theme value={…}>{() => <Badge />}</Theme>`), which is the hand-written workaround for this
 exact bug. `packages/extra/src/router.tsx:1766` carries the author's own comment — *"Must use function
 children so inner JSX is evaluated AFTER context is set"* — which is a hand-written statement of O2
 and an admission that the framework does not provide it.
@@ -648,8 +648,7 @@ whose callback must keep the arity `map` calls it with. `sem-props-direct-call-d
   subscribes, at the consumer's position, not the producer's.
 - **C3.4 Copy-transparency.** Any operation that copies own enumerable properties preserves C3.1 —
   a guarantee of the language, not of the runtime. Therefore `{...props}`, rest destructuring,
-  `Object.assign`, `for…in`, `mergeProps`, `splitProps` and `omit` are all correct with their bodies
-  untouched.
+  `Object.assign`, `for…in`, `merge` and `omit` are all correct with their bodies untouched.
 - **C3.5 Boundary scope.** C3.1–C3.4 govern values crossing a **component** boundary. Element
   attributes, template holes and static text are compiler-internal and lower to direct writes; no Cell
   is materialised for them.
@@ -827,8 +826,8 @@ value's kind (C3.9). Therefore this situation arises only two ways, and each has
    scope-using Block is forwarded into a slot the callee declares as `Cell` — naming both positions.
    Two kinds of position are Cell slots and both are diagnosed: a named attribute on an INTRINSIC
    element, and a named Cell slot of a FLOW construct — `For`'s `each`, `Repeat`'s
-   `count`/`from`, `Show`/`Match`'s `when`, `Portal`'s `target`, `Loading`'s `on`, `Await`'s
-   `resource`, `Reveal`'s `order`/`collapsed`, `Dynamic`'s `component` (`Flow::cell_slot`).
+   `count`/`from`, `Show`/`Match`'s `when`, `Portal`'s `mount`, `Loading`'s `on`, `Reveal`'s
+   `order`/`collapsed` (`Flow::cell_slot`).
 
    The bounds, stated in full because a bound nobody wrote down is a bound somebody discovers:
    - a SPREAD on either side ends the chain — `{...rest}` names no key, so the fixpoint has nothing
@@ -837,8 +836,8 @@ value's kind (C3.9). Therefore this situation arises only two ways, and each has
      though a Block reaching one is legal there anyway (C3.7);
    - the read must be `props.thing` at the consuming site — aliasing through a local
      (`const v = props.thing`) is invisible to the pass;
-   - a `Ctx.Provider`'s `value` is a Cell slot the runtime refuses, but its tag is a MEMBER
-     expression and the callee is not resolved, so it is not diagnosed;
+   - a context's `value` (`<Ctx value={…}>`) is a Cell slot the runtime refuses, but a context is
+     not a FLOW construct, so its `value` is not one of the slots above and it is not diagnosed;
    - and the whole thing is DEV-only, so a production build gets item 2 and nothing else.
 
    None is a gap in the guarantee — item 2 is total, and the M7 gate measured it firing at the two
@@ -1918,7 +1917,7 @@ asserts its absence), `class-owns-only-its-tokens.tsx`.
 element of it, compute into one flat record and apply by field comparison, as Solid 2.0 fuses them.
 An opaque call joins the record and is read through `readOpaque`, the read `bindProp` makes. The
 previous-value store is the compute's own return value: no runtime-allocated object, no per-element
-expando. `class`, `style` and `classList` are members of that record like any other. Child holes
+expando. `class` and `style` are members of that record like any other. Child holes
 keep their own effects.
 
 **Falsified by.** Count effects per template clone with N reactive bindings over any number of
@@ -1940,7 +1939,7 @@ and four things follow from it, each of which is why the shape is that one.
   off. R2, and the property that removes a bug class rather than a bug.
 - **The prev store is the compute's own return.** Nothing is allocated by the runtime and no expando
   is stamped on the element. A channel whose applied form differs from its input writes that form back
-  into the same slot, which is how `class`, `style`, `classList` and `dangerouslySetInnerHTML` keep
+  into the same slot, which is how `class`, `style` and `dangerouslySetInnerHTML` keep
   the REMOVAL half of their diff inside a shared effect — the thing `STATEFUL_DIFF` existed to protect
   and the reason B1 was violated.
 - **The fields are POSITIONAL.** `__proto__` as a record key would write through `Object.prototype`'s
@@ -2703,7 +2702,7 @@ Source:
 ```jsx
 const Ctx = context();                       // no default → a miss THROWS
 const Child = () => <span>{Ctx.use()()}</span>;
-export const App = () => <Ctx.Provider value={1}><Child /></Ctx.Provider>;
+export const App = () => <Ctx value={1}><Child /></Ctx>;
 ```
 
 The specification answers, rule by rule, with no appeal to any implementation:
