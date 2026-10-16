@@ -1,6 +1,7 @@
 import { anchor, type DocsSection } from "../../docs.tsx";
 import { CodeBlock } from "../code.tsx";
 import declarations from "./snippets/server-rendering/declarations.tsx?raw";
+import frame from "./snippets/server-rendering/frame.tsx?raw";
 import handler from "./snippets/server-rendering/handler.tsx?raw";
 import memoOptions from "./snippets/server-rendering/memo-options.tsx?raw";
 import trace from "./snippets/server-rendering/trace.ts?raw";
@@ -10,6 +11,7 @@ export const sections: readonly DocsSection[] = [
   { id: "handler", label: "A handler of your own" },
   { id: "memos", label: "Where a memo's value comes from" },
   { id: "trace", label: "The trace" },
+  { id: "frames", label: "Frames" },
 ];
 
 export function Body() {
@@ -18,8 +20,9 @@ export function Body() {
       <p>
         A page is rendered on the server by <code>@barqjs/server</code>, and the router and{" "}
         <code>@barqjs/start</code> drive it for you. This page is about what they drive: the event a
-        request runs under, the response head it builds, and the options that decide where an async
-        value comes from. The names are Solid 2.0's, whose engine barq runs on.
+        request runs under, the response head it builds, the options that decide where an async
+        value comes from, and frames, regions the server renders on their own. The names are Solid
+        2.0's, whose engine barq runs on.
       </p>
 
       <h2 class={anchor} id="request">
@@ -96,6 +99,26 @@ export function Body() {
         When the incoming trace was sampled, the browser is told too: a <code>Server-Timing</code>{" "}
         entry on the response and a <code>{'<meta name="traceparent">'}</code> in the document's
         head, which is what a browser tracing library reads.
+      </p>
+
+      <h2 class={anchor} id="frames">
+        Frames
+      </h2>
+      <p>
+        A server function whose handler returns a component answers with a frame: a region of markup
+        the server rendered, which the page can ask for again and apply where it stands. The
+        component never reaches the browser. Its props are slots, positions it marks for the page to
+        fill: <code>props.children</code>, and a call such as <code>props.comment(...)</code> whose
+        arguments cross as data and whose children cross as server markup.
+      </p>
+      <CodeBlock code={frame} />
+      <p>
+        A route renders the frame its loader answered with. On the first request the server writes
+        it into the page, and the browser claims it without asking for anything. Asking for the same
+        story again, after a mutation or on <code>router.invalidate()</code>, hands back the same
+        component, so nothing remounts: the new markup is morphed into the region, and a comment the
+        reader collapsed stays collapsed. A stylesheet the region names is loaded before the update
+        is shown.
       </p>
     </>
   );

@@ -160,7 +160,7 @@ one.
 
 A handler's result and a validator's input are checked against what the codec
 carries, so a value it would refuse at runtime is a type error where it is
-written, naming where:
+written, naming where. A component is the exception, and crosses as a frame:
 
 ```ts
 createServerFn().handler(() => ({ user: { format: () => "x" } }));
@@ -213,6 +213,78 @@ for await (const { row, at } of await ticks()) render(row, at);
 
 Leaving the loop early stops the generator. A failure after the first value ends
 the iterable with a `ServerFnError`.
+
+### Frames
+
+A handler that returns a component answers with a frame: the component runs on
+the server, and the page receives its markup and never its code. Its props are
+slots, positions the server marks and the page fills with components of its
+own.
+
+```tsx
+import { type Child, dynamic } from "@barqjs/core";
+import { type Slot, createServerFn } from "@barqjs/start";
+
+export const getStory = createServerFn({ method: "GET" })
+  .validator((input: { id: string }) => input)
+  .handler(({ data }) => {
+    const story = loadStory(data.id);
+    return (props: { comment: Slot<{ cid: number }>; children?: Child }) => (
+      <article>
+        <h2>{story.title}</h2>
+        {story.comments.map((c) => (
+          <props.comment $key={c.id} cid={c.id}>
+            <p>{c.text}</p>
+          </props.comment>
+        ))}
+        <footer>{props.children}</footer>
+      </article>
+    );
+  });
+```
+
+A route renders what its loader answered with:
+
+```tsx
+export const Route = createFileRoute("/story")({
+  loader: () => getStory({ data: { id: "1" } }),
+  component: (props: RouteProps) => {
+    const Story = dynamic(() => props.data() as (props: Record<string, unknown>) => Node);
+    return (
+      <Story
+        comment={(slot: Incoming<{ cid: number; children: Child }>) => (
+          <Comment cid={slot.cid()}>{slot.children}</Comment>
+        )}
+      >
+        <ShareBar />
+      </Story>
+    );
+  },
+});
+```
+
+- **In the document**, where the server renders the route, the frame is written
+  inline as `<barq-frame>` with a payload script naming its slots, and the
+  slots hold the page's components rendered for the first paint. The page's
+  seed names the frame by address, so the browser asks for nothing at boot: it
+  claims the region where it stands and fills the slots.
+- **Over the wire**, a call from the browser answers under
+  `x-barq-rpc: frame` with the same markup, the region rendered on its own and
+  its slots empty. A slot call's `children` cross in the payload as a nested
+  region of server markup, the fill's own `children`.
+- **One component per address.** A call's address is its function and its
+  arguments, and asking again answers with the same component, so a `dynamic`
+  over it does not remount: `applyFrameResponse` morphs the new markup into
+  every place the region is mounted. A slot's content is the page's, kept with
+  its state, moved when the server moved it (by `$key`, or by position among
+  the calls of that name) and given the new arguments. `barq:frame-applied`
+  (`FRAME_APPLIED_EVENT`) is dispatched on `document` once it is applied.
+- **A region's assets** are what it declared with `useHead` and what its
+  `lazy()` modules need. They are owned by the frame and go when it is
+  unmounted, and an update waits for a stylesheet it names to load.
+- **The same checks.** A frame is a server function's answer, so the origin
+  check, the body limit and the request middleware run before the component
+  does. A browser posting a form to one is sent back with a `303`.
 
 ### With JavaScript off
 
@@ -483,8 +555,10 @@ the browser does not ask again until `refresh`.
 
 - `@barqjs/start`: the isomorphic surface. `createServerFn`, `createMiddleware`,
   `createStart`, the request context, sessions, cookies, rate limiting.
-- `@barqjs/start/client`: the RPC stub the compiler emits, and
-  `staticFunctionMiddleware`.
+- `@barqjs/start/client`: the RPC stub the compiler emits,
+  `staticFunctionMiddleware`, and the browser half of frames:
+  `applyFrameResponse` and `frameAdapter`, which `@barqjs/router`'s client
+  entry installs for a frame named in the seed.
 - `@barqjs/start/server`: `handleServerFn`, `mount`, the origin check.
 - `@barqjs/start/serve`: `serveBarq`, `createFetchHandler`, the asset
   middleware.

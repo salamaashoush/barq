@@ -64,7 +64,7 @@ export const GUIDES: readonly GuideMeta[] = [
   {
     slug: "server-rendering",
     title: "Server Rendering",
-    description: "The request, the response head, and where an async value comes from.",
+    description: "The request, the response head, async values and frames.",
   },
   {
     slug: "registry",

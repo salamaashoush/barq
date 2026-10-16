@@ -90,8 +90,8 @@ runs, and there is no `clearDelegatedEvents`; dispose the root instead.
 `httpHeader`, `markSafeError`, `generateHydrationScript`, `<HydrationScript />`,
 `createRequestEvent`, `createResponseStub`, `commitResponseStub`, `createSSRResponse`,
 `commitEventResponse`, `getExpectedRedirectStatus` and `composeMiddleware` take Solid 2.0's
-arguments and options, and a memo takes Solid's `ssrSource` and `deferStream`. The
-differences:
+arguments and options, a memo takes Solid's `ssrSource` and `deferStream`, and a server
+function that returns a component answers with a frame. The differences:
 
 - **Two packages, not one.** The server entry points are `@barqjs/server`'s and the
   isomorphic ones (`getRequestEvent`, `getTraceContext`, `httpStatus`, `httpHeader`,
@@ -139,7 +139,18 @@ differences:
   a patch with its boundary's swap. Stylesheets do not gate a reveal.
 - **`onError`** hears `failed`, `fallback` and `client`; there is no `serialize`, because a
   value seroval cannot encode fails the render. There is no `configureServerErrors`.
-- **Not yet:** frames.
+- **Frames are a server function's answer**, as in Solid: a handler that returns a
+  component answers with a frame and `dynamic` renders it, one component per address, an
+  answer for the same address morphed into the region where it stands. `@barqjs/start` and
+  `@barqjs/router` install both halves, so there is no `installServerComponents`,
+  `frameTransformResult` or `ServerComponentPlugin` to configure, and
+  `applyFrameResponse`, `FRAME_APPLIED_EVENT` (`barq:frame-applied`) and `Slot` keep
+  Solid's names. The markup is `<barq-frame>` with a JSON payload script, a slot is a
+  comment range, and a slot call's `children` is a `<barq-region>`. An answer over the wire
+  is the region with its boundaries settled rather than a stream of fragments, a slot's
+  content is built again when the page is claimed rather than claimed, and a frame's head
+  is applied through `useHead`. Binding slots, `live()` frames and single-flight regions
+  are Solid's alone.
 
 ## Solid 1.x APIs barq does not have
 
