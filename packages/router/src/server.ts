@@ -627,8 +627,8 @@ export interface PageHandlerOptions extends SharedRouterOptions {
    * entry, the chain's modules and its stylesheets, as soon as they are known
    * and before the render. The host answers with a `103 Early Hints` here. The
    * default does so through Node's `writeEarlyHints` when the request carries a
-   * Node response, as srvx's does; the same values go out as the page's `Link`
-   * header, which a CDN turns into a 103 of its own.
+   * Node response over HTTP/2, as srvx's does; the same values go out as the
+   * page's `Link` header, which a CDN turns into a 103 of its own.
    */
   readonly onEarlyHints?: (links: readonly string[], request: Request) => void;
   /**
@@ -1551,15 +1551,26 @@ export function earlyHints(scripts: readonly string[], styles: readonly string[]
   return out;
 }
 
-/** Node's 103, for a request that carries its Node response; nothing elsewhere. */
+/**
+ * Node's 103, for a request that carries its Node response over HTTP/2 or
+ * later; nothing elsewhere. Browsers act on a 103 only on those versions, and
+ * an HTTP/1.1 client that does not expect an interim response may read it as
+ * the answer.
+ */
 function writeEarlyHints(links: readonly string[], request: Request): void {
-  const response = (
+  const node = (
     request as {
-      runtime?: { node?: { res?: { writeEarlyHints?: (hints: { link: string[] }) => void } } };
+      runtime?: {
+        node?: {
+          req?: { httpVersionMajor?: number };
+          res?: { writeEarlyHints?: (hints: { link: string[] }) => void };
+        };
+      };
     }
-  ).runtime?.node?.res;
+  ).runtime?.node;
+  if ((node?.req?.httpVersionMajor ?? 1) < 2) return;
   try {
-    response?.writeEarlyHints?.({ link: [...links] });
+    node?.res?.writeEarlyHints?.({ link: [...links] });
   } catch (error) {
     // A response that has started can no longer take a 103; the `Link` header
     // still carries the hints.

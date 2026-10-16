@@ -43,19 +43,26 @@ test("the page's early hints reach the host before the render, and ride the Link
   expect(await response.text()).toContain("<main>orders</main>");
 });
 
-test("a Node response is sent a 103 when the host gave no hook", async () => {
-  const sent: { link: string[] }[] = [];
+test("a Node response over HTTP/2 is sent a 103 when the host gave no hook, and HTTP/1.1 is not", async () => {
   const handler = createPageHandler({
     routeTree: routes,
     app: (state) => renderRoutes(state),
     ...assets,
   });
-  const request = Object.assign(new Request("https://example.com/orders"), {
-    runtime: {
-      node: { res: { writeEarlyHints: (hints: { link: string[] }) => sent.push(hints) } },
-    },
-  });
-  await (await handler(request)).text();
+  const sent: { version: number; hints: { link: string[] } }[] = [];
+  for (const version of [2, 1]) {
+    const request = Object.assign(new Request("https://example.com/orders"), {
+      runtime: {
+        node: {
+          req: { httpVersionMajor: version },
+          res: {
+            writeEarlyHints: (hints: { link: string[] }) => sent.push({ version, hints }),
+          },
+        },
+      },
+    });
+    await (await handler(request)).text();
+  }
 
-  expect(sent).toEqual([{ link: EXPECTED }]);
+  expect(sent).toEqual([{ version: 2, hints: { link: EXPECTED } }]);
 });
