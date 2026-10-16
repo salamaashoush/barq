@@ -68,6 +68,7 @@ declare module "virtual:barq-client-assets" {
   const clientAssets: {
     readonly scripts?: readonly string[];
     readonly css?: readonly string[];
+    readonly preload?: readonly string[];
   };
   export { clientAssets };
   export default clientAssets;

@@ -580,6 +580,8 @@ export interface PageHandlerOptions extends SharedRouterOptions {
   readonly clientAssets?: {
     readonly scripts?: readonly string[];
     readonly css?: readonly string[];
+    /** What the entry imports on its way to hydrating, preloaded beside the route chain. */
+    readonly preload?: readonly string[];
   };
   /**
    * Answer a crawler with the WHOLE page instead of a stream.
@@ -1205,7 +1207,12 @@ export function createPageHandler(
           );
           timing?.phase("barq-head", "head and the loaders it waits for");
           const context = contextScript(url, before.produced, options.nonce);
-          const preloads = chainFiles(rendered, options.routeAssets);
+          const preloads = [
+            ...new Set([
+              ...(options.clientAssets?.preload ?? []),
+              ...chainFiles(rendered, options.routeAssets),
+            ]),
+          ];
           const preload = preloadTags(rendered, options.routeAssets);
           const hints = earlyHints(
             [...(options.clientAssets?.scripts ?? []), ...preloads],

@@ -496,6 +496,7 @@ const RESOLVED_CLIENT_ASSETS_ID = `\0${CLIENT_ASSETS_ID}`;
 interface ClientAssets {
   scripts: string[];
   css: string[];
+  preload?: string[];
 }
 
 export interface PrerenderOptions {
@@ -1109,9 +1110,23 @@ export function barqStart(options: BarqStartOptions = {}): Plugin[] {
       for (const chunk of Object.values(bundle)) {
         if (chunk.type !== "chunk" || !chunk.isEntry || chunk.name !== "index") continue;
         const css = [...(chunk.viteMetadata?.importedCss ?? [])];
+        // What the entry imports before it can hydrate: its static imports,
+        // which the browser otherwise finds only once the entry has been
+        // parsed, and the two entries the boot imports at once. An `async`
+        // entry runs as soon as these are in, so each one not preloaded is a
+        // round trip on the way to an interactive page.
+        const boot = chunk.dynamicImports.filter((file) => {
+          const imported = bundle[file];
+          return (
+            imported?.type === "chunk" &&
+            (imported.name.includes("barq-start-entry") ||
+              imported.name.includes("barq-router-entry"))
+          );
+        });
         clientAssets = {
           scripts: [`${base}${chunk.fileName}`],
           css: css.map((file) => `${base}${file}`),
+          preload: [...chunk.imports, ...boot].map((file) => `${base}${file}`),
         };
       }
     },

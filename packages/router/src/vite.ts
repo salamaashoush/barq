@@ -209,6 +209,37 @@ export function lazyModuleAssets(
   return out;
 }
 
+/**
+ * Route id -> the chunks its modules are in and the chunks those import.
+ *
+ * Both halves of a split route: the reference the table imports and the
+ * component the `?split` module holds. The second is what the route renders,
+ * and a page that did not preload it fetched it only once the router had
+ * started, one round trip into hydration.
+ */
+export function routeChunks(
+  entries: readonly { readonly id: string; readonly file: string }[],
+  chunks: readonly { fileName: string; modules: readonly string[]; imports: readonly string[] }[],
+  base: string,
+): Record<string, string[]> {
+  const out: Record<string, string[]> = {};
+  for (const entry of entries) {
+    const files = new Set<string>();
+    for (const chunk of chunks) {
+      for (const moduleId of chunk.modules) {
+        const file = moduleId.endsWith(`?${SPLIT_QUERY}`)
+          ? moduleId.slice(0, -(SPLIT_QUERY.length + 1))
+          : moduleId;
+        if (!file.endsWith(entry.file)) continue;
+        files.add(chunk.fileName);
+        for (const imported of chunk.imports) files.add(imported);
+      }
+    }
+    if (files.size > 0) out[entry.id] = [...files].map((file) => `${base}${file}`);
+  }
+  return out;
+}
+
 export const ROUTE_ASSETS_ID = "virtual:barq-route-assets";
 const RESOLVED_ROUTE_ASSETS_ID = `\0${ROUTE_ASSETS_ID}`;
 
@@ -691,24 +722,21 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
       // `viteMetadata.importedCss` is per CHUNK, so a route's stylesheets are
       // its own chunk's plus every chunk it statically imports — the same
       // closure the preloads use, read off the same `chunk.imports`.
-      const byFile = new Map<string, string[]>();
-      for (const chunk of Object.values(bundle)) {
-        if (chunk.type !== "chunk") continue;
-        const assets = [chunk.fileName, ...chunk.imports];
-        for (const moduleId of Object.keys(chunk.modules)) {
-          byFile.set(moduleId, assets);
-        }
-      }
-      const next: Record<string, string[]> = {};
-      for (const entry of tree.entries) {
-        for (const [moduleId, assets] of byFile) {
-          if (moduleId.endsWith(entry.file)) {
-            next[entry.id] = assets.map((file) => `${base}${file}`);
-            break;
-          }
-        }
-      }
-
+      const next = routeChunks(
+        tree.entries,
+        Object.values(bundle).flatMap((chunk) =>
+          chunk.type === "chunk"
+            ? [
+                {
+                  fileName: chunk.fileName,
+                  modules: Object.keys(chunk.modules),
+                  imports: chunk.imports,
+                },
+              ]
+            : [],
+        ),
+        base,
+      );
       routeAssets = next;
       moduleAssets = lazyModuleAssets(
         Object.values(bundle).flatMap((chunk) =>

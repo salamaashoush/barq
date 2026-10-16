@@ -8,6 +8,7 @@ import {
   DEFAULT_ROUTE_TREE,
   SPLIT_QUERY,
   barqRouter,
+  routeChunks,
   routeStylesheets,
   routeTree,
   lazyModuleAssets,
@@ -904,6 +905,37 @@ describe("lazy() module URLs", () => {
 
     expect(assets).toEqual({
       "/src/Chart.tsx": { js: ["/assets/Chart.js", "/assets/d3.js"], css: ["/assets/Chart.css"] },
+    });
+  });
+});
+
+describe("a route's chunks", () => {
+  test("are both halves of a split route and what each imports", () => {
+    const chunks = routeChunks(
+      [{ id: "/orders", file: "src/routes/orders.tsx" }],
+      [
+        {
+          fileName: "assets/orders-ref.js",
+          modules: ["/home/salama/app/src/routes/orders.tsx"],
+          imports: ["assets/core.js"],
+        },
+        {
+          fileName: "assets/orders-view.js",
+          modules: [`/home/salama/app/src/routes/orders.tsx?${SPLIT_QUERY}`],
+          imports: ["assets/core.js", "assets/table.js"],
+        },
+        { fileName: "assets/other.js", modules: ["/home/salama/app/src/other.ts"], imports: [] },
+      ],
+      "/",
+    );
+
+    expect(chunks).toEqual({
+      "/orders": [
+        "/assets/orders-ref.js",
+        "/assets/core.js",
+        "/assets/orders-view.js",
+        "/assets/table.js",
+      ],
     });
   });
 });

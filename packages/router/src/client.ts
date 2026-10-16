@@ -97,11 +97,12 @@ export async function startClient(options: StartClientOptions = {}): Promise<Rou
   // browser bundle.
   // The project's `src/start.ts` first: importing it registers the global
   // middleware whose client halves run around every server-function call.
-  const start = options.routeTree === undefined ? await import("#barq-start-entry") : undefined;
-  const entry =
+  // Both at once: awaited one after the other, the router's entry was not even
+  // requested until the start entry had been fetched and run.
+  const [start, entry] =
     options.routeTree === undefined
-      ? await import("#barq-router-entry")
-      : { config: { routeTree: options.routeTree }, getRouter: undefined };
+      ? await Promise.all([import("#barq-start-entry"), import("#barq-router-entry")])
+      : [undefined, { config: { routeTree: options.routeTree }, getRouter: undefined }];
   // The base reaches the HISTORY, not only the router: `browserHistory`
   // strips it from `window.location` on the way in and adds it back on every
   // push, and it is the only thing that reads `window.location` at all. A

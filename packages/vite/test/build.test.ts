@@ -71,6 +71,24 @@ describe("the full-stack template: `barq({ ssr: true, start })`", () => {
     expect(await response.text()).toContain("Hello from the server.");
   });
 
+  test("preloads what the entry imports to boot, and loads the entry async after the seed", async () => {
+    // A browser's: a crawler is answered with the buffered page and its deferred entry.
+    const html = await (
+      await fetch(`${built.origin}/about`, {
+        headers: { accept: "text/html", "user-agent": "Mozilla/5.0 Chrome/141.0.0.0" },
+      })
+    ).text();
+    const preloads = [...html.matchAll(/<link rel="modulepreload" href="([^"]+)"/g)].map(
+      (match) => match[1] ?? "",
+    );
+    const entry = /<script type="module" async src="([^"]+)"><\/script>/.exec(html);
+
+    expect(preloads.some((href) => href.includes("_barq-start-entry"))).toBe(true);
+    expect(preloads.some((href) => href.includes("_barq-router-entry"))).toBe(true);
+    expect(entry).not.toBeNull();
+    expect(html.indexOf("__BARQ_DATA__")).toBeLessThan(html.indexOf(entry?.[0] ?? "<none>"));
+  });
+
   test("serves an API route and answers a miss with the app's own 404", async () => {
     const health = await fetch(`${built.origin}/api/health`);
     expect(await health.json()).toEqual({ ok: true });
