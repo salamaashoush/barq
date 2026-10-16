@@ -75,8 +75,15 @@ test("a crawled href with dot segments is never written outside the output direc
 });
 
 /** A site of one slow page and several quick ones, reporting how it was asked. */
-const paced = (slowMs: number, quickMs: number) => {
+/**
+ * A slow page that is answered only once every quick page has been. A queue
+ * that runs a batch at a time never gets past the first batch, so it shows up
+ * as this test timing out rather than as a count.
+ */
+const paced = (quickPages: number) => {
   const state = { inFlight: 0, most: 0, startedWhileSlowRan: 0, slowRunning: false };
+  const quickDone = Promise.withResolvers<void>();
+  let answered = 0;
   const site: ServerEntryModule = {
     default: {
       createFetch: () => async (request) => {
@@ -86,7 +93,8 @@ const paced = (slowMs: number, quickMs: number) => {
         state.most = Math.max(state.most, state.inFlight);
         if (slow) state.slowRunning = true;
         else if (state.slowRunning) state.startedWhileSlowRan += 1;
-        await Bun.sleep(slow ? slowMs : quickMs);
+        if (slow) await quickDone.promise;
+        else if (++answered === quickPages) quickDone.resolve();
         if (slow) state.slowRunning = false;
         state.inFlight -= 1;
         return html(`<h1>${pathname}</h1>`);
@@ -99,7 +107,7 @@ const paced = (slowMs: number, quickMs: number) => {
 const quick = Array.from({ length: 6 }, (_, index) => `/quick-${index}`);
 
 test("a slow page holds one slot, and the rest of the queue moves through the others", async () => {
-  const { site, state } = paced(120, 1);
+  const { site, state } = paced(quick.length);
   await prerender({
     entry: site,
     outDir: join(sandbox, "paced"),
@@ -110,8 +118,7 @@ test("a slow page holds one slot, and the rest of the queue moves through the ot
     base: "/",
   });
 
-  // Every quick page fits inside the slow one's 120 ms when a slot is free for
-  // them; taken a batch at a time, only the one that shared its batch does.
+  // Every quick page runs while the slow one holds its slot.
   expect(state.startedWhileSlowRan).toBe(quick.length);
   expect(state.most).toBe(2);
 });
