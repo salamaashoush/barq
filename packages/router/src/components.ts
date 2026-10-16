@@ -211,6 +211,13 @@ export interface HeadAssets {
   /** The route-context handoff, already rendered. */
   readonly context?: string;
   /**
+   * The stream writes the entry itself, `async`, right after the shell's own
+   * scripts, so hydration starts while the slow parts of the page are still on
+   * their way. `<Scripts />` then leaves it out: the entry here would run ahead
+   * of the seed it reads.
+   */
+  readonly entryAfterShell?: boolean;
+  /**
    * How this backend turns markup into an element.
    *
    * Still needed for the parts that are opaque strings on both sides — what the
@@ -303,10 +310,26 @@ export function Scripts(): JSXElement {
   return assets.raw(
     (late === "" ? "" : `<style id="barq-css-late"${nonce}>${styleText(late)}</style>`) +
       renderTags(resolveScripts(assets.matches, { nonce: assets.nonce })) +
-      (assets.clientAssets?.scripts ?? [])
-        .map((src) => `<script type="module"${nonce} src="${escapeHeadAttribute(src)}"></script>`)
-        .join(""),
+      (assets.entryAfterShell === true
+        ? ""
+        : entryScripts(assets.clientAssets?.scripts, assets.nonce)),
   ) as JSXElement;
+}
+
+/**
+ * The client entry. `async` only where the stream places it, after the seed
+ * and the swap: a module that runs as soon as it loads must find them.
+ */
+export function entryScripts(
+  scripts: readonly string[] | undefined,
+  nonce: string | undefined,
+  async = false,
+): string {
+  const attrs =
+    (nonce === undefined ? "" : ` nonce="${escapeHeadAttribute(nonce)}"`) + (async ? " async" : "");
+  return (scripts ?? [])
+    .map((src) => `<script type="module"${attrs} src="${escapeHeadAttribute(src)}"></script>`)
+    .join("");
 }
 
 /** Enough for a URL in an attribute: the four that can end it or open a tag. */

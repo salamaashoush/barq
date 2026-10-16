@@ -232,14 +232,14 @@ describe("a stream", () => {
   test("places the error boundary's fallback over everything it held, and reports the failure", async () => {
     const seen: unknown[] = [];
     const chunks = await chunksOf(
-      renderToStream(lateFailure, { onError: (error) => seen.push(error) }),
+      renderToStream(lateFailure, { onError: (error) => seen.push(error) }).readable,
     );
     const out = chunks.join("");
 
     expect(out).toStartWith("<main><!--[e:1--><!--[b:0--><i>skel</i><!--]--><!--]--></main>");
     expect(out).toContain(
       '<template data-barq="1"><!--[f:--><em>failed: late boom</em><!--]--></template>' +
-        "<script>window.__BARQ_SWAP__(1,false,true)</script>",
+        "<script>window.__BARQ_SWAP__(1,false,true);",
     );
     expect(seen.map(String)).toEqual(["Error: late boom"]);
   });
@@ -247,7 +247,9 @@ describe("a stream", () => {
   test("assembles to the page a buffered render writes", async () => {
     const buffered = await renderPage(lateFailure);
     clearHydrationData();
-    const host = assemble(await chunksOf(renderToStream(lateFailure, { onError: () => {} })));
+    const host = assemble(
+      await chunksOf(renderToStream(lateFailure, { onError: () => {} }).readable),
+    );
 
     expect(host.innerHTML).toBe(buffered.html);
   });
@@ -263,7 +265,7 @@ describe("a stream", () => {
             );
           },
           { onError: () => {} },
-        ),
+        ).readable,
       ),
     );
 
@@ -293,7 +295,7 @@ describe("a stream", () => {
           );
         },
         { onError: () => {} },
-      ),
+      ).readable,
     );
 
     expect(given).toHaveLength(2);
@@ -320,7 +322,7 @@ describe("a stream", () => {
             );
           },
           { onError: () => {} },
-        ),
+        ).readable,
       ),
     );
 
@@ -354,7 +356,7 @@ describe("a stream", () => {
           );
         },
         { onError: () => {} },
-      ),
+      ).readable,
     );
     const host = assemble(chunks);
 
@@ -373,7 +375,7 @@ describe("a stream", () => {
             return html(`<main>${loading(() => html(`<b>${esc(bad())}</b>`))}</main>`);
           },
           { onError: (error) => seen.push(error) },
-        ),
+        ).readable,
       )
     ).join("");
 

@@ -1,16 +1,14 @@
 /**
- * Server-side rendering.
+ * Server-side rendering: Solid 2.0's entry points over barq's two backends.
  *
- * Renders through the same component stack as the client against an
- * ambient DOM implementation (`document` must exist - e.g. happy-dom's
- * GlobalRegistrator on a Bun/Node server). Text goes through real text
- * nodes, so HTML injection is escaped by construction.
+ * `renderToString` is one synchronous pass. `renderToStream` renders the shell
+ * synchronously and hands back Solid's result: the shell then one template per
+ * boundary as it settles through `readable`, `pipe` or `pipeTo`, or the whole
+ * settled document through `then`. Both ways are the same render, decided by
+ * which consumer claims it, so no page is ever rendered twice.
  *
- * Async flow: components read keyed async values (computed with
- * `key`); renderToStringAsync settles the graph, Loading boundaries swap
- * to content, and the resolved values are captured for the client via
- * generateHydrationScript - hydrate() then resolves them synchronously
- * without refetching.
+ * A string-compiled module is markup already. Anything else is built against
+ * an ambient DOM (happy-dom's `GlobalRegistrator` on a server) and serialized.
  */
 
 import {
@@ -49,21 +47,17 @@ import {
   escapeAttribute,
   setStreamSink,
 } from "./ssr.ts";
-import { createSeedEncoder, encodeSeed, sanitizeThrown, serializationAdapters } from "./codec.ts";
+import {
+  type AnySerializationAdapter,
+  createSeedEncoder,
+  encodeSeed,
+  sanitizeThrown,
+  serializationAdapters,
+} from "./codec.ts";
 import { SWAP_SNIPPET, swapDeferredRange } from "#swap";
 
 export { swapDeferredRange };
 
-/**
- * Render synchronously to an HTML string. Pending async values render
- * their Loading fallbacks; use renderToStringAsync to wait for them.
- *
- * `SsrHtml` IS in the parameter type, because the body checks `isSsrHtml` and
- * takes a different path for it — index.ts's header has said "accepts both"
- * since this module existed, and the signature said otherwise. It surfaced when
- * `@barqjs/testing` handed it the output of `html()`, which is the ordinary way
- * to write the server half of a hydration test.
- */
 /**
  * The root of a server render, which takes the scope it is given.
  *
@@ -79,11 +73,44 @@ export { swapDeferredRange };
  */
 export type RootRender = (scope?: Scope) => JSXElement | SsrHtml;
 
-export function renderToString(fn: RootRender): string {
+/**
+ * Where a failure was met, Solid's `ServerErrorContext` for a render: `failed`
+ * fails the request (the shell threw), `fallback` is an error boundary that
+ * shows its fallback for it, and `client` is a boundary the stream gave up on,
+ * which the browser builds again.
+ */
+export interface ServerErrorContext {
+  readonly kind: "render";
+  readonly handling: "failed" | "fallback" | "client";
+}
+
+/** A one-argument listener still works; it hears every failure. */
+export type ServerErrorHook = (error: unknown, context: ServerErrorContext) => void;
+
+export interface RenderToStringOptions {
+  nonce?: CSPNonce;
+  /**
+   * Namespaces the ids this render writes, so two renders in one document do
+   * not answer each other's boundaries. The client passes the same id.
+   */
+  renderId?: string;
+  /** No script at all: no seed, no input capture. */
+  noScripts?: boolean;
+  /** Serialization adapters for this render, beside the process's registry. */
+  plugins?: readonly AnySerializationAdapter[];
+  onError?: ServerErrorHook;
+}
+
+/**
+ * Render synchronously to an HTML string.
+ *
+ * Pending async values render their `Loading` fallbacks. What the render did
+ * resolve is seeded unless `noScripts`, before `</body>` when the markup is a
+ * document and after it otherwise, so the client does not fetch it again.
+ */
+export function renderToString(fn: RootRender, options: RenderToStringOptions = {}): string {
   let container: HTMLElement | null = null;
   let markup: string | null = null;
-  // A session of its own, for the one thing it says here: this is a server
-  // render, so the effects the tree declares do not run.
   const session = Symbol("render");
   const previous = setAsyncSession(session);
   const owner = rootScope();
@@ -91,11 +118,7 @@ export function renderToString(fn: RootRender): string {
     runWithOwner(owner, () => {
       const value = fn(owner);
       // A module compiled by the SSR string backend already IS the markup, and
-      // renders with no DOM at all. Anything else — a hand-written `createElement`
-      // tree, a component from a module this compiler never saw — goes through the
-      // ambient DOM as before. Since M6 nothing the compiler emits takes that
-      // path: `uninlinable_flow` and the whole-module downgrade behind it are
-      // deleted, and every construct has a string lowering.
+      // renders with no DOM at all. Anything else goes through the ambient DOM.
       if (isSsrHtml(value)) {
         markup = value.t;
         return;
@@ -110,8 +133,20 @@ export function renderToString(fn: RootRender): string {
       render(value, container);
     });
     flush();
-
-    return markup ?? (container as HTMLElement | null)?.innerHTML ?? "";
+    const html = markup ?? (container as HTMLElement | null)?.innerHTML ?? "";
+    if (options.noScripts === true) return html;
+    const data = getHydrationData(session);
+    if (Object.keys(data).length === 0) return html;
+    const script =
+      `<script${nonceAttr(scriptNonce(options.nonce))}>` +
+      adapted(
+        `window.__BARQ_DATA__=Object.assign(window.__BARQ_DATA__||{},${encodeSeed(data, options.plugins)});${SEED_SETTLE_GUARD}`,
+      ) +
+      "</script>";
+    return beforeBodyEnd(html, script);
+  } catch (error) {
+    options.onError?.(error, FAILED);
+    throw error;
   } finally {
     disposeScope(owner);
     setAsyncSession(previous);
@@ -119,10 +154,18 @@ export function renderToString(fn: RootRender): string {
   }
 }
 
+const FAILED: ServerErrorContext = { kind: "render", handling: "failed" };
+const FALLBACK: ServerErrorContext = { kind: "render", handling: "fallback" };
+const CLIENT: ServerErrorContext = { kind: "render", handling: "client" };
+
+function beforeBodyEnd(html: string, script: string): string {
+  const at = html.lastIndexOf("</body>");
+  return at === -1 ? html + script : html.slice(0, at) + script + html.slice(at);
+}
+
 /**
- * Render to an HTML string after all async work settles: Loading
- * boundaries resolve to content and keyed async values are recorded for
- * generateHydrationScript.
+ * Render to an HTML string after all async work settles. Solid removed it for
+ * `await renderToStream(...)`, which is the same document with its seed.
  */
 export async function renderToStringAsync(fn: RootRender): Promise<string> {
   const { html } = await renderPage(fn);
@@ -130,15 +173,14 @@ export async function renderToStringAsync(fn: RootRender): Promise<string> {
 }
 
 /**
- * Render a page after async work settles, returning the HTML, the
- * resolved keyed async data, and the inline hydration script. Safe for
- * concurrent renders: each render only waits for and serializes its own
- * session's fetches.
+ * Render a page after async work settles, returning the HTML, the resolved
+ * keyed async data, and the inline script that seeds it. Concurrent renders
+ * are independent: each waits for and serializes only its own session's reads.
  */
 export async function renderPage(
   fn: RootRender,
   options?: {
-    nonce?: string;
+    nonce?: CSPNonce;
     /**
      * The async session to attribute this render's keyed reads to.
      *
@@ -149,37 +191,103 @@ export async function renderPage(
      * "seeded into nobody" and the client refetches everything.
      */
     session?: symbol;
+    plugins?: readonly AnySerializationAdapter[];
   },
 ): Promise<{ html: string; data: Record<string, unknown>; script: string }> {
-  const session = options?.session ?? Symbol("render-session");
-  let owner: Scope | null = null;
-  let container: HTMLElement | null = null;
-  let stringMode = false;
-  let markup = "";
+  const job = startRender(fn, { session: options?.session }, true);
+  const page = await settledPage(job, BOUNDARY_TIMEOUT, null);
+  return {
+    html: page.html,
+    data: page.data,
+    script: await seedScriptFor(page.data, scriptNonce(options?.nonce), options?.plugins),
+  };
+}
 
-  // The SAME park-and-resume machinery the streamed arm uses. This is the whole
-  // of the unification: a boundary that cannot settle inside the shell parks its
-  // content build here exactly as it does for a stream, and the loop below
-  // resumes it and patches the settled markup into the bytes.
-  //
-  // What this REPLACED was a second full render of the page, which is a
-  // mechanism neither Solid nor TanStack has: both render one stream and await
-  // it when a whole document is wanted. The second render cost two real
-  // defects: the second pass built under a fresh root so every auto-key missed
-  // and crawlers and the prerenderer were served SKELETONS, and one extra pass
-  // settles exactly one level of nesting, so a boundary inside a boundary
-  // shipped a skeleton whatever happened.
-  const parked: Buffered[] = [];
-  const catchers: LateCatcher[] = [];
-  let nextId = 0;
-  let stamp: string | null = null;
-  const sink: StreamSink = {
+/** A boundary the shell parked, with the stamped markers that find it again. */
+interface Parked {
+  id: number;
+  /** The build the shell refused to wait for. Throws `NotReadyError` while it still cannot. */
+  resume: () => string;
+  /** When it parked, so its own deadline is measured from there. */
+  at: number;
+  /** What its last attempt threw: the value it is waiting for. */
+  parkedOn: NotReadyError;
+  /** Whether this boundary's page hydrates — see `StreamSink.defer`. */
+  hydrate: boolean;
+  open: string;
+  close: string;
+  /** The error boundary that stood around it, for a failure on a later resume. */
+  catcher: LateCatcher | null;
+  /** Where on the page it stands, for a stream. */
+  namespace: Namespace;
+}
+
+/** An error boundary a parked boundary below it may still fail. */
+interface Guard {
+  id: number;
+  flags: number;
+  /** Whether a stream can address it, `<!--[e:N-->`; see `guardedRange`. */
+  streamable: boolean;
+  namespace: Namespace;
+  /** Its fallback has replaced the range, and everything that stood in it. */
+  failed: boolean;
+}
+
+/**
+ * One render's shell, and everything a consumer needs to finish it either way.
+ *
+ * The sink writes markers carrying a value minted for this render, because the
+ * buffered consumer finds a range again in the bytes and nothing on the page
+ * can reproduce that value. A stream rewrites them into the comments the client
+ * reads (`wireOf`) as each piece leaves.
+ */
+interface Job {
+  session: symbol;
+  stamp: string;
+  markers: RegExp;
+  renderId: string;
+  owner: Scope | null;
+  shell: string;
+  /** Built as DOM rather than as markup, so the page is read off `container`. */
+  container: HTMLElement | null;
+  parked: Parked[];
+  guards: Map<LateCatcher, Guard>;
+  guardsById: Map<number, Guard>;
+  sink: StreamSink;
+  released: boolean;
+}
+
+/**
+ * Render the shell, synchronously. A throw is the shell failing, and it leaves
+ * nothing held.
+ */
+function startRender(
+  fn: RootRender,
+  options: { session?: symbol; renderId?: string },
+  viaDom: boolean,
+): Job {
+  const stamp = crypto.randomUUID();
+  const job: Job = {
+    session: options.session ?? Symbol("render-session"),
+    stamp,
+    markers: new RegExp(`<!--([\\[\\]])([be]):(\\d+):${stamp}-->`, "g"),
+    renderId: options.renderId ?? "",
+    owner: null,
+    shell: "",
+    container: null,
+    parked: [],
+    guards: new Map(),
+    guardsById: new Map(),
+    sink: null as never,
+    released: false,
+  };
+  let next = 0;
+  job.sink = {
     defer(resume, fallback, flags, parkedOn, catcher): string {
-      const id = nextId++;
-      stamp ??= crypto.randomUUID();
+      const id = next++;
       const open = `<!--[b:${id}:${stamp}-->`;
       const close = `<!--]b:${id}:${stamp}-->`;
-      parked.push({
+      job.parked.push({
         id,
         resume,
         at: Date.now(),
@@ -188,92 +296,162 @@ export async function renderPage(
         open,
         close,
         catcher,
+        namespace: "html",
       });
       return open + fallback + close;
     },
     guard(catcher, built, flags): string {
-      const id = nextId++;
-      stamp ??= crypto.randomUUID();
+      const id = next++;
       catcher.open = `<!--[e:${id}:${stamp}-->`;
       catcher.close = `<!--]e:${id}:${stamp}-->`;
-      catchers.push(catcher);
-      return catcher.open + contentRange(built, flags) + catcher.close;
+      const guard: Guard = {
+        id,
+        flags,
+        streamable: guardedRange(id, "", flags) !== null,
+        namespace: "html",
+        failed: false,
+      };
+      job.guards.set(catcher, guard);
+      job.guardsById.set(id, guard);
+      return catcher.open + built + catcher.close;
     },
   };
 
+  const previousSink = setStreamSink(job.sink);
+  try {
+    const previousSession = setAsyncSession(job.session);
+    try {
+      const root = rootScope();
+      job.owner = root;
+      runWithOwner(root, () => {
+        const value = fn(root);
+        if (isSsrHtml(value)) {
+          job.shell = value.t;
+          return;
+        }
+        if (!viaDom) {
+          job.shell = esc(value);
+          return;
+        }
+        if (typeof document === "undefined") {
+          throw new Error(
+            "`renderToStringAsync` was given a view that was not compiled for the server, and there is no global `document` to build it with. " +
+              "Compile the module with the `@barqjs/compiler` Vite plugin in an SSR build, or register a DOM such as happy-dom's `GlobalRegistrator` before rendering.",
+          );
+        }
+        job.container = document.createElement("div");
+        render(value, job.container);
+      });
+    } finally {
+      setAsyncSession(previousSession);
+    }
+    // The flush is the whole process's: it runs whatever any render has
+    // pending, so it is not made in this one's name.
+    flush();
+  } catch (error) {
+    release(job);
+    throw error;
+  } finally {
+    setStreamSink(previousSink);
+  }
+  return job;
+}
+
+/** Everything a render holds, let go of once, on every way out of it. */
+function release(job: Job): void {
+  if (job.released) return;
+  job.released = true;
+  abandonPendingSeeds(job.session);
+  clearHydrationData(job.session);
+  if (job.owner !== null) disposeScope(job.owner);
+}
+
+const CONTENT_EDGES = new Map<number, readonly [open: string, close: string]>();
+
+/** What an error boundary writes around its content when nothing below it failed. */
+function contentEdges(flags: number): readonly [open: string, close: string] {
+  let edges = CONTENT_EDGES.get(flags);
+  if (edges === undefined) {
+    const [open = "", close = ""] = contentRange("\u0000", flags).split("\u0000");
+    edges = [open, close];
+    CONTENT_EDGES.set(flags, edges);
+  }
+  return edges;
+}
+
+/** The id a boundary has on the wire, namespaced by the render's `renderId`. */
+function wireId(job: Job, id: number): string {
+  return `${job.renderId}${id}`;
+}
+
+/**
+ * Markup as it leaves on a stream: a parked boundary is the `<!--[b:N-->` range
+ * the swap finds, and an error boundary is the `<!--[e:N-->` range a late
+ * failure replaces, or its ordinary range where no stream can address it.
+ */
+function wireOf(job: Job, markup: string): string {
+  if (!markup.includes(job.stamp)) return markup;
+  return markup.replace(job.markers, (_, edge: string, kind: string, id: string) => {
+    if (kind === "b") return edge === "[" ? `<!--[b:${wireId(job, Number(id))}-->` : "<!--]-->";
+    const guard = job.guardsById.get(Number(id));
+    if (guard !== undefined && guard.streamable) {
+      return edge === "[" ? `<!--[e:${wireId(job, guard.id)}-->` : "<!--]-->";
+    }
+    const [open, close] = contentEdges(guard?.flags ?? 0);
+    return edge === "[" ? open : close;
+  });
+}
+
+/**
+ * The same, for a page that is finished: what never settled is the range the
+ * client reads as "build this one yourself", and an error boundary that did
+ * not fail is the range it would have written in the shell.
+ */
+function finishedWireOf(job: Job, markup: string): string {
+  if (!markup.includes(job.stamp)) return markup;
+  return markup.replace(job.markers, (_, edge: string, kind: string, id: string) => {
+    if (kind === "b") return edge === "[" ? `<!--[b:${wireId(job, Number(id))}-->` : "<!--]-->";
+    const [open, close] = contentEdges(job.guardsById.get(Number(id))?.flags ?? 0);
+    return edge === "[" ? open : close;
+  });
+}
+
+/**
+ * The buffered completion: resume every parked boundary into the bytes, then
+ * collect what the render resolved.
+ *
+ * `uncaught`, when given, hears a late failure no error boundary stands
+ * around, and the boundary keeps its fallback. Without it that failure fails
+ * the render, as a shell failure does.
+ */
+async function settledPage(
+  job: Job,
+  deadline: number,
+  uncaught: ((error: unknown) => void) | null,
+): Promise<{ html: string; data: Record<string, unknown> }> {
   let html: string;
   let data: Record<string, unknown>;
   try {
-    const prevSink = setStreamSink(sink);
-    try {
-      const prev = setAsyncSession(session);
-      try {
-        const root = rootScope();
-        owner = root;
-        runWithOwner(root, () => {
-          const value = fn(root);
-          if (isSsrHtml(value)) {
-            stringMode = true;
-            markup = value.t;
-            return;
-          }
-          if (typeof document === "undefined") {
-            throw new Error(
-              "`renderToStringAsync` was given a view that was not compiled for the server, and there is no global `document` to build it with. " +
-                "Compile the module with the `@barqjs/compiler` Vite plugin in an SSR build, or register a DOM such as happy-dom's `GlobalRegistrator` before rendering.",
-            );
-          }
-          container = document.createElement("div");
-          render(value, container);
-        });
-      } finally {
-        setAsyncSession(prev);
-      }
-      // The flush is the whole process's: it runs whatever any render has
-      // pending, so it is not made in this one's name.
-      flush();
-    } finally {
-      setStreamSink(prevSink);
-    }
-
     // Session-scoped: concurrent renders don't wait on each other's fetches.
     // Bounded by the boundary deadline, because `settle` waits for every flight
     // and a fetch that never answers would hold the response for good; what is
     // still parked past it is abandoned by the drain below.
-    await withinDeadline(settle(session), BOUNDARY_TIMEOUT);
-
-    if (stringMode) markup = await drainParked(markup, parked, sink, session);
-
-    // What never settled reaches the page as the range a stream would have left
-    // behind, which the client reads as "build this one yourself". A tree built
-    // as DOM resumes nothing, so every boundary a string-compiled part of it
-    // parked is still here.
-    html = stringMode ? markup : ((container as HTMLElement | null)?.innerHTML ?? "");
-    for (const record of parked) {
-      html = replaceBetween(html, record.open, record.close, (fallback) =>
-        deferredRange(record.id, fallback),
-      );
-    }
-    for (const catcher of catchers) {
-      html = replaceBetween(html, catcher.open!, catcher.close!, (inner) => inner);
-    }
+    await withinDeadline(settle(job.session), deadline);
+    html =
+      job.container === null
+        ? await drainParked(job.shell, job.parked, job.sink, job.session, deadline, uncaught)
+        : job.container.innerHTML;
+    html = finishedWireOf(job, html);
     // A key whose read FAILED is owed to the client as much as one that
     // settled: the page already shows the error boundary that caught it, and a
     // client that refetched instead would build the content over that markup.
-    const flights = pendingSeedsOf(session);
-    abandonPendingSeeds(session);
-    data = await settleNested(await withFailures(getHydrationData(session), flights));
+    const flights = pendingSeedsOf(job.session);
+    abandonPendingSeeds(job.session);
+    data = await settleNested(await withFailures(getHydrationData(job.session), flights));
   } finally {
-    // Whether the render finished or threw. Anything still in flight is given
-    // up on, exactly as the streamed arm does: a buffered page settles
-    // everything it can before this line, so on a render that finished this
-    // releases only what a boundary deadline abandoned.
-    abandonPendingSeeds(session);
-    clearHydrationData(session);
-    if (owner !== null) disposeScope(owner);
+    release(job);
   }
-
-  return { html, data, script: await seedScriptFor(data, options?.nonce) };
+  return { html, data };
 }
 
 /**
@@ -289,18 +467,20 @@ export async function renderPage(
  */
 async function drainParked(
   markup: string,
-  parked: Buffered[],
+  parked: Parked[],
   sink: StreamSink,
   session: symbol,
+  deadline: number,
+  uncaught: ((error: unknown) => void) | null,
 ): Promise<string> {
   let out = markup;
-  const unsettled: Buffered[] = [];
+  const unsettled: Parked[] = [];
   // Set once a failure has replaced an error boundary's markup, which may have
   // taken boundaries still parked inside it off the page.
   let cut = false;
   while (parked.length > 0) {
     const round = parked.splice(0, parked.length);
-    const again: Buffered[] = [];
+    const again: Parked[] = [];
     for (const record of round) {
       if (cut && !out.includes(record.open)) continue;
       const restore = setAsyncSession(session);
@@ -310,8 +490,16 @@ async function drainParked(
         settled = record.resume();
       } catch (error) {
         if (!(error instanceof NotReadyError)) {
-          out = failLate(out, record, error);
-          cut = true;
+          const failed = failLate(out, record, error);
+          if (failed !== null) {
+            out = failed;
+            cut = true;
+          } else if (uncaught === null) {
+            throw error;
+          } else {
+            uncaught(thrownBy(error));
+            unsettled.push(record);
+          }
           continue;
         }
         record.parkedOn = error;
@@ -322,7 +510,7 @@ async function drainParked(
       if (settled === null) {
         // Past its own deadline it is abandoned to the fallback the shell
         // already carries, which is the rule the streamed arm applies too.
-        if (Date.now() - record.at < BOUNDARY_TIMEOUT) again.push(record);
+        if (Date.now() - record.at < deadline) again.push(record);
         else unsettled.push(record);
         continue;
       }
@@ -341,7 +529,7 @@ async function drainParked(
     const oldest = Math.min(...parked.map((record) => record.at));
     let timer: ReturnType<typeof setTimeout> | undefined;
     const expired = new Promise<"expired">((resolve) => {
-      timer = setTimeout(() => resolve("expired"), oldest + BOUNDARY_TIMEOUT - Date.now());
+      timer = setTimeout(() => resolve("expired"), oldest + deadline - Date.now());
     });
     let stepped: boolean | "expired";
     try {
@@ -372,7 +560,7 @@ async function withinDeadline(work: Promise<unknown>, ms: number): Promise<void>
 }
 
 /** What each parked boundary's last attempt threw, for `settleStep` to wait on. */
-function flightsOf(parked: readonly Continuation[]): NotReadyError[] {
+function flightsOf(parked: readonly Parked[]): NotReadyError[] {
   return parked.map((record) => record.parkedOn);
 }
 
@@ -380,14 +568,13 @@ function flightsOf(parked: readonly Continuation[]): NotReadyError[] {
  * A parked boundary failed on a resume, after the error boundary around it
  * had written its markup. That error boundary's fallback replaces all of it,
  * which is what it would have shown had the failure come while it was still
- * building. With no error boundary around it the render fails, as it does when
- * the shell throws.
+ * building. `null` when no error boundary stands around it.
  */
-function failLate(page: string, record: Buffered, error: unknown): string {
+function failLate(page: string, record: Parked, error: unknown): string | null {
   // An outer failure already took this boundary off the page.
   if (!page.includes(record.open)) return page;
   const catcher = record.catcher;
-  if (catcher === null || catcher.open === null || catcher.close === null) throw error;
+  if (catcher === null || catcher.open === null || catcher.close === null) return null;
   return replaceBetween(page, catcher.open, catcher.close, () => {
     try {
       return catcher.fallback(thrownBy(error));
@@ -602,84 +789,6 @@ function handledRejection(reason: unknown): Promise<never> {
 // instead of settling for the fallback, and the loop below resumes them in the
 // order they settle.
 
-interface Continuation {
-  id: number;
-  /** The build the shell refused to wait for. Throws `NotReadyError` while it still cannot. */
-  resume: () => string;
-  /** When it parked, so its own deadline is measured from there. */
-  at: number;
-  /** What its last attempt threw: the value it is waiting for. */
-  parkedOn: NotReadyError;
-}
-
-/** A boundary parked by a buffered render, with the markers that find it again. */
-interface Buffered extends Continuation {
-  /** Whether this boundary's page hydrates — see `StreamSink.defer`. */
-  hydrate: boolean;
-  open: string;
-  close: string;
-  /** The error boundary that stood around it, for a failure on a later resume. */
-  catcher: LateCatcher | null;
-}
-
-/** A boundary parked by a stream, with where on the page it stands. */
-interface Streamed extends Continuation {
-  namespace: Namespace;
-  /** The error boundary that stood around it, for a failure on a later resume. */
-  catcher: LateCatcher | null;
-}
-
-/** An error boundary a stream wrote in a range of its own, `<!--[e:id-->`. */
-interface Guarded {
-  id: number;
-  namespace: Namespace;
-  /** Its fallback has replaced the range, and everything that stood in it. */
-  failed: boolean;
-}
-
-/**
- * The streaming range: a boundary whose content is still to come, addressed
- * by the continuation the stream will resume.
- */
-function deferredRange(id: number, inner: string): string {
-  return `<!--[b:${id}-->${inner}<!--]-->`;
-}
-
-export interface StreamOptions {
-  /**
-   * The async session to attribute this render's keyed reads to. See
-   * `renderPage`'s own option — the reason is the same and so is the default.
-   */
-  session?: symbol;
-  /** Stops the render. The stream closes and parked boundaries keep their fallbacks. */
-  signal?: AbortSignal;
-  /** CSP nonce, applied to every inline script this render emits. */
-  nonce?: string;
-  /**
-   * How long one boundary may stay parked before it is abandoned to its
-   * fallback, in ms. Remix ships 5000 and React Router 4950 for the same knob.
-   */
-  timeout?: number;
-  /**
-   * Every error this render raises after the shell. Defaults to `console.error`,
-   * which is React's default too (`ReactFizzServer.js`'s `defaultErrorHandler`).
-   *
-   * A SHELL failure never reaches here: the shell is rendered before the stream
-   * is constructed, so it throws out of `renderToStream` itself and the caller
-   * still has an open status to answer with.
-   */
-  onError?: (error: unknown) => void;
-  /** The shell is on the wire. Nothing after this can change the status. */
-  onShellReady?: () => void;
-  /** Every boundary has settled or been abandoned, and the stream is closing. */
-  onAllReady?: () => void;
-}
-
-/** React's `defaultErrorHandler`: a server that says nothing is worse than a log. */
-function defaultStreamError(error: unknown): void {
-  console.error(error);
-}
-
 /**
  * A failure after the shell, on the diagnostics channel. The status has gone
  * out with the shell, so the response cannot say it, and this is where a
@@ -743,10 +852,11 @@ function placeParked(
   markup: string,
   outer: Namespace,
   fresh: readonly { readonly id: number; namespace: Namespace }[],
+  job: Job,
 ): void {
   if (fresh.length === 0) return;
   const found = namespacesOf(markup, outer);
-  for (const record of fresh) record.namespace = found.get(record.id) ?? outer;
+  for (const record of fresh) record.namespace = found.get(wireId(job, record.id)) ?? outer;
 }
 
 const FOREIGN_ROOT = /<(?:svg|math)[\s/>]/i;
@@ -801,8 +911,8 @@ function isSpace(code: number): boolean {
  * where HTML resumes, and an element of the same name nested in either, so
  * that its end tag is not taken for the outer one's.
  */
-function namespacesOf(markup: string, outer: Namespace): Map<number, Namespace> {
-  const found = new Map<number, Namespace>();
+function namespacesOf(markup: string, outer: Namespace): Map<string, Namespace> {
+  const found = new Map<string, Namespace>();
   if (outer === "html" && !FOREIGN_ROOT.test(markup)) return found;
   const length = markup.length;
   const entered: { name: string; back: Namespace }[] = [];
@@ -818,7 +928,7 @@ function namespacesOf(markup: string, outer: Namespace): Map<number, Namespace> 
         const end = markup.indexOf("-->", at + 3);
         const stop = end === -1 ? length : end;
         if (markup.startsWith("[b:", at + 3) || markup.startsWith("[e:", at + 3)) {
-          found.set(Number(markup.slice(at + 6, stop)), ns);
+          found.set(markup.slice(at + 6, stop), ns);
         }
         at = stop + 3;
       } else if (ns !== "html" && markup.startsWith("[CDATA[", at + 1)) {
@@ -935,47 +1045,237 @@ function namespacesOf(markup: string, outer: Namespace): Map<number, Namespace> 
   return found;
 }
 
+export interface RenderToStreamOptions {
+  /**
+   * The async session to attribute this render's keyed reads to. See
+   * `renderPage`'s own option — the reason is the same and so is the default.
+   */
+  session?: symbol;
+  /** Stops the render. The stream closes and parked boundaries keep their fallbacks. */
+  signal?: AbortSignal;
+  /** Applied to every inline script this render emits. */
+  nonce?: CSPNonce;
+  renderId?: string;
+  /**
+   * No seed and no input capture. The swaps stay: without them a streamed
+   * boundary's content never reaches the page.
+   */
+  noScripts?: boolean;
+  plugins?: readonly AnySerializationAdapter[];
+  /**
+   * How long one boundary may stay parked before it is abandoned to its
+   * fallback, in ms. Remix ships 5000 and React Router 4950 for the same knob.
+   */
+  timeout?: number;
+  /**
+   * Every failure the render meets, with where it was met. A shell that throws
+   * is heard here with `handling: "failed"` and then thrown out of
+   * `renderToStream` itself, while the caller still has a status to answer
+   * with. Defaults to `console.error` for what comes after the shell.
+   */
+  onError?: ServerErrorHook;
+  /**
+   * The shell and its scripts are on the wire. `write` puts markup right after
+   * them, ahead of every boundary still to come: the place for a module entry
+   * that may run as soon as it loads.
+   */
+  onCompleteShell?: (info: { write: (markup: string) => void }) => void;
+  /** Every boundary has settled or been abandoned; `write` adds the last bytes. */
+  onCompleteAll?: (info: { write: (markup: string) => void }) => void;
+}
+
+/** The name it had before Solid's options. */
+export type StreamOptions = RenderToStreamOptions;
+
+/**
+ * Solid's `renderToStream` result: the settled document as a promise, and the
+ * bytes through `readable`, `pipe` or `pipeTo`.
+ *
+ * Exactly one kind of consumer. A stream consumer claims the render in the
+ * tick it was started in, as `new Response(stream.readable)` does; a render no
+ * stream claimed by then is settled for the promise, every boundary resumed in
+ * place and the seed before `</body>`, as `renderPage` builds it. The promise
+ * never rejects: a late failure with no error boundary is heard by `onError`
+ * and keeps its fallback. Under a stream consumer it resolves with `""` once
+ * the stream ends, because the document went out as the stream.
+ */
+export interface RenderToStreamResult extends Promise<string> {
+  /** `Uint8Array` chunks, ready for `new Response(stream.readable)`. The same stream on every read. */
+  readonly readable: ReadableStream<Uint8Array>;
+  /** A Node-style writable: `write` per chunk, `end` once. */
+  pipe(writable: { write: (chunk: string) => unknown; end: () => unknown }): void;
+  /** Settles once the whole render has been written. */
+  pipeTo(writable: WritableStream<Uint8Array>): Promise<void>;
+}
+
 /**
  * Render to a stream: the shell first, then one `<template>` per boundary as
  * its promises settle.
  *
- * The parts are not "chunks of a string that was already built" — the shell is
- * flushed before any deferred boundary has resolved, which is the only thing
- * that makes streaming worth doing.
+ * The shell is rendered here, synchronously, so a shell that throws throws out
+ * of this call while the caller can still answer with a status.
  */
 export function renderToStream(
   fn: RootRender,
-  options?: StreamOptions,
-): ReadableStream<Uint8Array> {
-  const session = options?.session ?? Symbol("stream-session");
-  const encoder = new TextEncoder();
-  const parked: Streamed[] = [];
-  const guarded = new Map<LateCatcher, Guarded>();
-  // In order, so a round places only what it guarded itself.
-  const guards: Guarded[] = [];
-  let next = 0;
-  const sink: StreamSink = {
-    defer(resume, fallback, _flags, parkedOn, catcher): string {
-      const id = next++;
-      parked.push({ id, resume, at: Date.now(), parkedOn, namespace: "html", catcher });
-      return deferredRange(id, fallback);
-    },
-    guard(catcher, built, flags): string {
-      const id = next;
-      const written = guardedRange(id, built, flags);
-      if (written === null) return contentRange(built, flags);
-      next++;
-      const guard: Guarded = { id, namespace: "html", failed: false };
-      guarded.set(catcher, guard);
-      guards.push(guard);
-      return written;
-    },
+  options: RenderToStreamOptions = {},
+): RenderToStreamResult {
+  let job: Job;
+  try {
+    job = startRender(fn, { session: options.session, renderId: options.renderId }, false);
+  } catch (error) {
+    options.onError?.(error, FAILED);
+    throw error;
+  }
+  const deadline = options.timeout ?? BOUNDARY_TIMEOUT;
+
+  let finish!: (html: string) => void;
+  const settled = new Promise<string>((resolve) => {
+    finish = resolve;
+  });
+  let consumer: string | null = null;
+  const claim = (name: string): void => {
+    if (consumer !== null && consumer !== name) {
+      throw new Error(
+        `This \`renderToStream\` result was already consumed through \`${consumer}\` and cannot also be consumed through \`${name}\`. ` +
+          "Use exactly one of `readable`, `pipe` or `pipeTo`, in the tick the render started, or await it for the settled document.",
+      );
+    }
+    consumer = name;
   };
+  queueMicrotask(() => {
+    if (consumer !== null) return;
+    consumer = "the promise";
+    void settledDocument(job, options, deadline).then(finish);
+  });
+  let body: ReadableStream<Uint8Array> | null = null;
+  const bytes = (): ReadableStream<Uint8Array> =>
+    (body ??= streamBody(job, options, deadline, () => finish("")));
+
+  return Object.defineProperties(settled, {
+    readable: {
+      get(): ReadableStream<Uint8Array> {
+        claim("readable");
+        return bytes();
+      },
+    },
+    pipe: {
+      value(writable: { write: (chunk: string) => unknown; end: () => unknown }): void {
+        claim("pipe");
+        void pump(bytes(), writable);
+      },
+    },
+    pipeTo: {
+      value(writable: WritableStream<Uint8Array>): Promise<void> {
+        claim("pipeTo");
+        return pumpTo(bytes(), writable);
+      },
+    },
+  }) as RenderToStreamResult;
+}
+
+async function pump(
+  stream: ReadableStream<Uint8Array>,
+  writable: { write: (chunk: string) => unknown; end: () => unknown },
+): Promise<void> {
+  const reader = stream.getReader();
+  const decoder = new TextDecoder();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      writable.write(decoder.decode(value, { stream: true }));
+    }
+  } catch {
+    // A writable that threw has gone away; cancelling stops the render.
+    await reader.cancel().catch(() => {});
+  } finally {
+    writable.end();
+  }
+}
+
+/**
+ * By hand rather than `ReadableStream.prototype.pipeTo`, which refuses a
+ * writable from another realm: a server with a DOM registered has two.
+ */
+async function pumpTo(
+  stream: ReadableStream<Uint8Array>,
+  writable: WritableStream<Uint8Array>,
+): Promise<void> {
+  const reader = stream.getReader();
+  const writer = writable.getWriter();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      await writer.write(value);
+    }
+    await writer.close();
+  } catch (error) {
+    await reader.cancel(error).catch(() => {});
+    await writer.abort(error).catch(() => {});
+  } finally {
+    writer.releaseLock();
+  }
+}
+
+async function settledDocument(
+  job: Job,
+  options: RenderToStreamOptions,
+  deadline: number,
+): Promise<string> {
+  const report = reporter(options);
+  try {
+    const page = await settledPage(job, deadline, (error) => report(error, CLIENT));
+    let html = page.html;
+    if (options.noScripts !== true) {
+      html = beforeBodyEnd(
+        html,
+        await seedScriptFor(page.data, scriptNonce(options.nonce), options.plugins),
+      );
+    }
+    options.onCompleteAll?.({
+      write: (markup) => {
+        html += markup;
+      },
+    });
+    return html;
+  } catch (error) {
+    report(error, FAILED);
+    return "";
+  }
+}
+
+/** React's `defaultErrorHandler`: a server that says nothing is worse than a log. */
+function reporter(
+  options: RenderToStreamOptions,
+): (error: unknown, context: ServerErrorContext) => void {
+  const onError = options.onError;
+  return (error, context) => {
+    if (diagnosticsEnabled()) reportContained(error);
+    if (onError === undefined) console.error(error);
+    else onError(error, context);
+  };
+}
+
+/** The bytes of a streamed render. */
+function streamBody(
+  job: Job,
+  options: RenderToStreamOptions,
+  deadline: number,
+  written: () => void,
+): ReadableStream<Uint8Array> {
+  const session = job.session;
+  const parked = job.parked;
+  const encoder = new TextEncoder();
+  const nonce = scriptNonce(options.nonce);
+  const scripts = options.noScripts !== true;
+  const report = reporter(options);
+
   // Whether a failure has taken this error boundary, or one it stands in, off
   // the page: what was parked under it has nowhere left to go.
   const gone = (catcher: LateCatcher | null): boolean => {
     for (let at = catcher; at !== null; at = at.outer) {
-      if (guarded.get(at)?.failed === true) return true;
+      if (job.guards.get(at)?.failed === true) return true;
     }
     return false;
   };
@@ -998,7 +1298,6 @@ export function renderToStream(
     stop();
   };
 
-  const deadline = options?.timeout ?? BOUNDARY_TIMEOUT;
   const timer = setTimeout(end, deadline + STREAM_GRACE);
   // A pending timer must not be what keeps a server process alive.
   (timer as { unref?: () => void }).unref?.();
@@ -1009,11 +1308,11 @@ export function renderToStream(
   // previous ones did not.
   const sent = new Set<string>();
   // Keys that went out as PROMISES. They are settled over at the end of the
-  // stream — see `settleSeedScript`.
+  // stream — see `settleSeed`.
   const promised = new Set<string>();
   // One encoder for the whole render, so a value reachable from two keys seeded
   // in different rounds is ONE object on the client.
-  const seeds = createSeedEncoder();
+  const seeds = createSeedEncoder(options.plugins);
   let seededHeader = false;
   // Deferred values still being serialized. The stream stays open until this
   // reaches zero: closing on top of one drops it, and the client would wait for
@@ -1022,7 +1321,9 @@ export function renderToStream(
   let drained: (() => void) | null = null;
   const later: string[] = [];
 
-  const seedScript = (): string => {
+  /** The statements that seed what is new since the last call, or `""`. */
+  const seed = (): string => {
+    if (!scripts) return "";
     const fresh: Record<string, unknown> = {};
     let any = false;
     for (const [key, value] of Object.entries(getHydrationData(session))) {
@@ -1067,13 +1368,25 @@ export function renderToStream(
         })()
       : seeds.encode(fresh);
     return (
-      `<script${nonceAttr(options?.nonce)}>${header}` +
+      header +
       adapted(
         `window.__BARQ_DATA__=Object.assign(window.__BARQ_DATA__||{},${payload});${SEED_SETTLE_GUARD}`,
-      ) +
-      "</script>"
+      )
     );
   };
+
+  /**
+   * The resolutions themselves. A statement here settles a promise the initial
+   * payload already put in `__BARQ_DATA__`, so the read that is awaiting it
+   * wakes with no channel in between.
+   *
+   * QUEUED WITH THE PAYLOAD when adapters deferred it. These reference `$R`
+   * slots the initial payload creates, so running them ahead of it reads an
+   * empty reference table — measured in Chrome as `Cannot read properties of
+   * undefined (reading 's')` on the first deferred value of an adapted page.
+   */
+  const resolutions = (): string =>
+    later.length === 0 ? "" : adapted(later.splice(0, later.length).join(";"));
 
   /**
    * Replace every promise still standing in the store with the value it settled
@@ -1081,12 +1394,10 @@ export function renderToStream(
    *
    * A key seeded eagerly is a promise on the wire, which is the point: a read
    * that runs while the stream is open awaits it instead of refetching. But a
-   * client that hydrates AFTER the stream has ended — which is every client
-   * today, because the entry is a deferred module — would find a promise where
-   * a plain value used to be, and `.then` is asynchronous however settled the
+   * client that hydrates AFTER the stream has ended would find a promise where a
+   * plain value used to be, and `.then` is asynchronous however settled the
    * promise is. Its boundary would render the FALLBACK and hydration would
-   * mismatch against markup that already holds the content. Measured on the
-   * streaming oracle as `recovered: true` on all three fixtures.
+   * mismatch against markup that already holds the content.
    *
    * Solid draws the same line from the other side: `Suspense.ts:147` awaits
    * `sharedConfig.load(key)` only when it is NOT already resolved.
@@ -1094,7 +1405,7 @@ export function renderToStream(
    * Encoded through the same `refs` map, so the value is a reference to what the
    * resolution statement already built rather than a second copy of it.
    */
-  const settleSeedScript = (): string => {
+  const settleSeed = (): string => {
     if (promised.size === 0) return "";
     const settledValues: Record<string, unknown> = {};
     let any = false;
@@ -1104,61 +1415,30 @@ export function renderToStream(
       any = true;
     }
     if (!any) return "";
-    return (
-      `<script${nonceAttr(options?.nonce)}>` +
-      adapted(
-        `window.__BARQ_DATA__=Object.assign(window.__BARQ_DATA__||{},${seeds.encode(settledValues)});${SEED_SETTLE_GUARD}`,
-      ) +
-      "</script>"
+    return adapted(
+      `window.__BARQ_DATA__=Object.assign(window.__BARQ_DATA__||{},${seeds.encode(settledValues)});${SEED_SETTLE_GUARD}`,
     );
   };
 
-  const signal = options?.signal;
+  const script = (...bodies: string[]): string => {
+    const joined = bodies.filter((body) => body !== "").join(";");
+    return joined === "" ? "" : `<script${nonceAttr(nonce)}>${joined}</script>`;
+  };
+
+  const signal = options.signal;
   if (signal?.aborted) end();
   signal?.addEventListener("abort", end, { once: true });
-  const release = (): void => {
+  const letGo = (): void => {
     clearTimeout(timer);
     signal?.removeEventListener("abort", end);
+    release(job);
   };
 
-  let owner: Scope | null = null;
-  // Everything this render holds, let go of on every way out of it: the shell
-  // throwing, the stream finishing, the consumer leaving.
-  const letGo = (): void => {
-    release();
-    abandonPendingSeeds(session);
-    clearHydrationData(session);
-    if (owner !== null) disposeScope(owner);
-  };
-  let shell = "";
+  const shell = wireOf(job, job.shell);
+  placeParked(shell, "html", [...parked, ...job.guardsById.values()], job);
 
-  const previousSink = setStreamSink(sink);
-  try {
-    const previousSession = setAsyncSession(session);
-    try {
-      const root = rootScope();
-      owner = root;
-      runWithOwner(root, () => {
-        const value = fn(root);
-        shell = isSsrHtml(value) ? value.t : esc(value);
-      });
-    } finally {
-      setAsyncSession(previousSession);
-    }
-    flush();
-  } catch (error) {
-    letGo();
-    throw error;
-  } finally {
-    setStreamSink(previousSink);
-  }
-  placeParked(shell, "html", [...parked, ...guards]);
-
-  const onError = options?.onError ?? defaultStreamError;
-  const report = (error: unknown): void => {
-    if (diagnosticsEnabled()) reportContained(error);
-    onError(error);
-  };
+  const swapCall = (id: number, ...flags: string[]): string =>
+    `window.__BARQ_SWAP__(${job.renderId === "" ? String(id) : JSON.stringify(wireId(job, id))}${flags.join("")})`;
 
   /**
    * The swap that puts an error boundary's fallback where its content stood,
@@ -1166,12 +1446,11 @@ export function renderToStream(
    * nothing to place: no error boundary the stream wrote stands around it, and
    * the client rebuilds it instead, where its error boundary reports it.
    */
-  const placeFailure = (record: Streamed, error: unknown): string | null => {
+  const placeFailure = (record: Parked, error: unknown): Swap | null => {
     const catcher = record.catcher;
-    const guard = catcher === null ? undefined : guarded.get(catcher);
-    if (catcher === null || guard === undefined) return null;
+    const guard = catcher === null ? undefined : job.guards.get(catcher);
+    if (catcher === null || guard === undefined || !guard.streamable) return null;
     const before = parked.length;
-    const guardedBefore = guards.length;
     let shown: string;
     try {
       shown = catcher.fallback(thrownBy(error));
@@ -1182,32 +1461,14 @@ export function renderToStream(
       shown = "";
     }
     guard.failed = true;
-    placeParked(shown, guard.namespace, [...parked.slice(before), ...guards.slice(guardedBefore)]);
+    const markup = wireOf(job, shown);
+    placeParked(markup, guard.namespace, [...parked.slice(before), ...guardsIn(job, shown)], job);
     const [wrapOpen, wrapClose] = FOREIGN_WRAP[guard.namespace];
     const wrapped = guard.namespace === "html" ? "false" : "true";
-    return (
-      `<template data-barq="${guard.id}">${wrapOpen}${shown}${wrapClose}</template>` +
-      `<script${nonceAttr(options?.nonce)}>window.__BARQ_SWAP__(${guard.id},${wrapped},true)</script>`
-    );
-  };
-
-  const flushLater = (target: ReadableStreamDefaultController<Uint8Array>): void => {
-    if (later.length === 0 || consumerCancelled) return;
-    const statements = later.splice(0, later.length).join(";");
-    target.enqueue(
-      encoder.encode(
-        // The resolutions themselves. A statement here settles a promise the
-        // initial payload already put in `__BARQ_DATA__`, so the read that is
-        // awaiting it wakes with no channel in between.
-        //
-        // QUEUED WITH THE PAYLOAD when adapters deferred it. These reference
-        // `$R` slots the initial payload creates, so running them ahead of
-        // it reads an empty reference table — measured in Chrome as
-        // `Cannot read properties of undefined (reading 's')` on the first
-        // deferred value of an adapted page.
-        `<script${nonceAttr(options?.nonce)}>${adapted(statements)}</script>`,
-      ),
-    );
+    return {
+      template: `<template data-barq="${wireId(job, guard.id)}">${wrapOpen}${markup}${wrapClose}</template>`,
+      call: swapCall(guard.id, `,${wrapped},true`),
+    };
   };
 
   const serialized = async (): Promise<void> => {
@@ -1220,32 +1481,12 @@ export function renderToStream(
     ]);
   };
 
-  const finish = async (target: ReadableStreamDefaultController<Uint8Array>): Promise<void> => {
-    // Deferred values, if any are still in flight. Closing on top of one
-    // drops it, and a client waiting on that key would wait for a value
-    // that never comes instead of fetching it — so the stream is held open,
-    // bounded by the same `stopped` promise everything else here is.
-    await serialized();
-    // Nothing more is coming. Every key still in flight is settled with a
-    // marker rather than left pending, so the client read waiting on it falls
-    // back to fetching instead of waiting for a value that will never arrive —
-    // per key rather than as one global flag, so only the reads whose keys were
-    // abandoned fall back.
-    abandonPendingSeeds(session);
-    await serialized();
-    flushLater(target);
-    if (!consumerCancelled) {
-      const settledOver = settleSeedScript();
-      if (settledOver !== "") target.enqueue(encoder.encode(settledOver));
-    }
-    options?.onAllReady?.();
-  };
-
   // BACK-PRESSURE. A slow reader holds the render rather than the render
   // queueing the page in memory for it: after each chunk the work waits until
   // the consumer has room, and resumes no boundary in the meantime. The tail
   // that settles promised keys is small and is never held.
   let wake: (() => void) | null = null;
+  let controllerOf: ReadableStreamDefaultController<Uint8Array> | null = null;
   const full = (target: ReadableStreamDefaultController<Uint8Array>): boolean =>
     !ended && target.desiredSize !== null && target.desiredSize <= 0;
   // Raced with `stopped`, so an abort or the deadline ends a paused render
@@ -1260,48 +1501,54 @@ export function renderToStream(
       ]);
     }
   };
+  let closed = false;
+  const enqueue = (text: string): void => {
+    // A consumer that left has closed the stream, and enqueueing throws.
+    if (text === "" || consumerCancelled || closed || controllerOf === null) return;
+    controllerOf.enqueue(encoder.encode(text));
+  };
   const send = async (
     target: ReadableStreamDefaultController<Uint8Array>,
     text: string,
   ): Promise<void> => {
-    // A consumer that left has closed the stream, and enqueueing throws.
-    if (consumerCancelled) return;
-    target.enqueue(encoder.encode(text));
+    enqueue(text);
     await room(target);
   };
 
+  const finish = async (): Promise<void> => {
+    // Deferred values, if any are still in flight. Closing on top of one
+    // drops it, and a client waiting on that key would wait for a value
+    // that never comes instead of fetching it — so the stream is held open,
+    // bounded by the same `stopped` promise everything else here is.
+    await serialized();
+    // Nothing more is coming. Every key still in flight is settled with a
+    // marker rather than left pending, so the client read waiting on it falls
+    // back to fetching instead of waiting for a value that will never arrive —
+    // per key rather than as one global flag, so only the reads whose keys were
+    // abandoned fall back.
+    abandonPendingSeeds(session);
+    await serialized();
+    enqueue(script(resolutions()));
+    if (!consumerCancelled) enqueue(script(settleSeed()));
+    options.onCompleteAll?.({ write: enqueue });
+  };
+
   const run = async (controller: ReadableStreamDefaultController<Uint8Array>): Promise<void> => {
+    controllerOf = controller;
     try {
-      controller.enqueue(encoder.encode(shell));
       // The status is settled from here: these bytes are gone and nothing
-      // after them can change the response line. React draws the same line
-      // with `onShellReady`.
-      options?.onShellReady?.();
-      await room(controller);
-      // Pre-hydration input capture, on the STREAMED path too.
-      //
-      // `hydrationScriptFor` installs it for `renderPage`, and nothing
-      // installed it here — so the DEFAULT page (`createPageHandler` streams
-      // unless told otherwise) dropped every click and keystroke made before
-      // hydration, so claim-based replay was unreachable on the path most
-      // pages take. Counted in the emitted bytes:
-      // 1 occurrence on a non-streamed page, 0 on a streamed one.
-      //
-      // Right after the shell, which is the earliest a stream can manage —
-      // the shell is one synchronous render and there is no byte before it to
-      // hang a listener from.
-      await send(
-        controller,
-        `<script${nonceAttr(options?.nonce)}>${EVENT_CAPTURE_SNIPPET}</script>`,
+      // after them can change the response line.
+      enqueue(shell);
+      // What the browser needs before anything of the application runs, in
+      // ONE script right after the shell and ahead of `onCompleteShell`'s
+      // writes: input capture, the values the shell resolved, and the swap
+      // every boundary below calls. A module entry written after it may run as
+      // soon as it loads, and finds them all in place.
+      enqueue(
+        script(scripts ? EVENT_CAPTURE_SNIPPET : "", seed(), parked.length > 0 ? SWAP_SNIPPET : ""),
       );
-      // Whatever the shell already resolved. Without this a streamed page
-      // seeded nothing at all and the client refetched every value the server
-      // had just awaited.
-      const shellSeed = seedScript();
-      if (shellSeed !== "") await send(controller, shellSeed);
-      if (parked.length > 0) {
-        await send(controller, `<script${nonceAttr(options?.nonce)}>${SWAP_SNIPPET}</script>`);
-      }
+      options.onCompleteShell?.({ write: enqueue });
+      await room(controller);
       // One round per settled promise, not one round per session. `settle`
       // here would hold every boundary until the slowest one in the session
       // resolved, which is not streaming — it is the shell followed by
@@ -1314,8 +1561,8 @@ export function renderToStream(
       // oxlint-disable-next-line no-unmodified-loop-condition
       while (parked.length > 0 && !ended) {
         const round = parked.splice(0, parked.length);
-        const again: Streamed[] = [];
-        const swaps: string[] = [];
+        const again: Parked[] = [];
+        const swaps: Swap[] = [];
         for (const record of round) {
           if (ended) {
             again.push(record);
@@ -1323,60 +1570,49 @@ export function renderToStream(
           }
           if (gone(record.catcher)) continue;
           const before = parked.length;
-          const guardedBefore = guards.length;
           const restore = setAsyncSession(session);
-          const outerSink = setStreamSink(sink);
-          let markup: string | null = null;
+          const outerSink = setStreamSink(job.sink);
+          let built: string | null = null;
           try {
-            markup = record.resume();
+            built = record.resume();
           } catch (error) {
             if (error instanceof NotReadyError) {
-              // Still unready, so it goes back on the queue. Dropping it here
-              // is what left a boundary showing its fallback for good once the
-              // batch barrier stopped guaranteeing readiness.
+              // Still unready, so it goes back on the queue. Past its own
+              // deadline it is abandoned rather than requeued, and the
+              // fallback the shell already flushed stands.
               record.parkedOn = error;
-              // Past its own deadline it is abandoned rather than requeued, and
-              // the fallback the shell already flushed stands.
               if (Date.now() - record.at < deadline) again.push(record);
             } else {
               // ONE boundary failed, and that is all that failed: every other
-              // boundary on the page is still owed its content. React errors
-              // the boundary rather than the response for the same reason. The
-              // error boundary around it shows its fallback in place of all it
-              // held, as it would have had the failure come during the shell;
+              // boundary on the page is still owed its content. The error
+              // boundary around it shows its fallback in place of all it held;
               // with none the stream wrote, the boundary keeps the fallback the
               // shell flushed and the client rebuilds it.
-              report(thrownBy(error));
               const failed = placeFailure(record, error);
+              report(thrownBy(error), failed === null ? CLIENT : FALLBACK);
               if (failed !== null) swaps.push(failed);
             }
           } finally {
             setStreamSink(outerSink);
             setAsyncSession(restore);
           }
-          if (markup === null) continue;
-          placeParked(markup, record.namespace, [
-            ...parked.slice(before),
-            ...guards.slice(guardedBefore),
-          ]);
-          const [wrapOpen, wrapClose] = FOREIGN_WRAP[record.namespace];
-          const wrapped = record.namespace === "html" ? "" : ",true";
-          swaps.push(
-            `<template data-barq="${record.id}">${wrapOpen}${markup}${wrapClose}</template>` +
-              `<script${nonceAttr(options?.nonce)}>window.__BARQ_SWAP__(${record.id}${wrapped})</script>`,
+          if (built === null) continue;
+          const markup = wireOf(job, built);
+          placeParked(
+            markup,
+            record.namespace,
+            [...parked.slice(before), ...guardsIn(job, built)],
+            job,
           );
+          const [wrapOpen, wrapClose] = FOREIGN_WRAP[record.namespace];
+          swaps.push({
+            template: `<template data-barq="${wireId(job, record.id)}">${wrapOpen}${markup}${wrapClose}</template>`,
+            call: swapCall(record.id, record.namespace === "html" ? "" : ",true"),
+          });
         }
         // Boundaries parked BY this round are already in `parked`; the ones
         // that merely stayed unready go in front of them.
         if (again.length > 0) parked.unshift(...again);
-        // Nothing these boundaries are waiting on is still in the air: they
-        // keep the fallback the shell flushed. Recovery is the point.
-        //
-        // The race is what bounds this loop. `settleStep` alone waits on a
-        // promise that a caller is free never to settle, and a resumed
-        // boundary may park boundaries of its own, so neither the queue nor
-        // any single await is bounded without it.
-        //
         // Asked BEFORE anything waits for the reader. A flight that lands while
         // the render is paused is still one these boundaries were waiting on,
         // and asked afterwards it reads as nothing in the air.
@@ -1384,11 +1620,15 @@ export function renderToStream(
           parked.length === 0
             ? null
             : Promise.race([settleStep(session, flightsOf(parked)), stopped]);
-        for (const swap of swaps) await send(controller, swap);
-        const roundSeed = seedScript();
-        if (roundSeed !== "") await send(controller, roundSeed);
-        // Anything a deferred value resolved into since the last round.
-        flushLater(controller);
+        // A round is ONE script after its templates: the swaps, then the values
+        // they read. A client that hydrated at shell time adopts the swapped
+        // nodes when those values wake its boundary, and the two arriving in
+        // one script means no task can run between the markup and its data.
+        await send(
+          controller,
+          swaps.map((swap) => swap.template).join("") +
+            script(swaps.map((swap) => swap.call).join(";"), seed(), resolutions()),
+        );
         if (step === null || (await step) !== true) break;
       }
     } catch (error) {
@@ -1400,17 +1640,18 @@ export function renderToStream(
       // Tearing the body now hands the client a truncated document with no
       // error UI and no way to recover, when the bytes it already has are a
       // VALID page showing fallbacks.
-      report(error);
+      report(error, CLIENT);
     } finally {
       // The tail runs however the loop ended. What it owes does not depend on
       // why: a client holding a promise for a key is waiting on this stream to
       // settle it or to say it never will.
       try {
-        await finish(controller);
+        await finish();
       } catch (error) {
-        report(error);
+        report(error, CLIENT);
       } finally {
         if (!consumerCancelled) {
+          closed = true;
           try {
             controller.close();
           } catch {
@@ -1418,6 +1659,7 @@ export function renderToStream(
           }
         }
         letGo();
+        written();
       }
     }
   };
@@ -1442,6 +1684,23 @@ export function renderToStream(
       end();
     },
   });
+}
+
+interface Swap {
+  template: string;
+  call: string;
+}
+
+/** The guards whose markers stand in `markup`, the ones a resume just wrote. */
+function guardsIn(job: Job, markup: string): Guard[] {
+  const out: Guard[] = [];
+  if (!markup.includes(job.stamp)) return out;
+  for (const match of markup.matchAll(job.markers)) {
+    if (match[1] !== "[" || match[2] !== "e") continue;
+    const guard = job.guardsById.get(Number(match[3]));
+    if (guard !== undefined) out.push(guard);
+  }
+  return out;
 }
 
 /**
@@ -1597,9 +1856,13 @@ const SEED_SETTLE_GUARD =
   "if(Object.getPrototypeOf(v)!==Object.prototype)return;" +
   "for(var k in v)w(v[k])};w(window.__BARQ_DATA__)})()";
 
-function hydrationScriptFor(data: Record<string, unknown>, nonce?: string): string {
+function hydrationScriptFor(
+  data: Record<string, unknown>,
+  nonce: string | undefined,
+  plugins: readonly AnySerializationAdapter[] | undefined,
+): string {
   return (
-    `<script${nonceAttr(nonce)}>${adapted(`window.__BARQ_DATA__=${encodeSeed(data)};${SEED_SETTLE_GUARD};`)}` +
+    `<script${nonceAttr(nonce)}>${adapted(`window.__BARQ_DATA__=${encodeSeed(data, plugins)};${SEED_SETTLE_GUARD};`)}` +
     `${EVENT_CAPTURE_SNIPPET}</script>`
   );
 }
@@ -1630,9 +1893,13 @@ function adapted(assignment: string): string {
  * rather than in a later chunk, which is the only difference between the two
  * arms once the encoder is the same.
  */
-async function seedScriptFor(data: Record<string, unknown>, nonce?: string): Promise<string> {
-  const seeds = createSeedEncoder();
-  if (!seeds.hasPending(data)) return hydrationScriptFor(data, nonce);
+async function seedScriptFor(
+  data: Record<string, unknown>,
+  nonce: string | undefined,
+  plugins: readonly AnySerializationAdapter[] | undefined,
+): Promise<string> {
+  const seeds = createSeedEncoder(plugins);
+  if (!seeds.hasPending(data)) return hydrationScriptFor(data, nonce, plugins);
 
   const later: string[] = [];
   let finish!: () => void;

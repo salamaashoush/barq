@@ -1379,6 +1379,21 @@ describe("shellComponent", () => {
     expect(body).toContain('<div id="app">');
   });
 
+  test("a streamed page loads the entry async, after the seed and before the boundaries", async () => {
+    const body = await render(table());
+    const entry = body.indexOf('<script type="module" async src="/entry.js">');
+    expect(entry).toBeGreaterThan(-1);
+    expect(body.indexOf("__BARQ_EVTS__")).toBeLessThan(entry);
+    expect(body.indexOf("</body>")).toBeGreaterThan(entry);
+    expect(body.match(/src="\/entry\.js"/g)).toHaveLength(1);
+  });
+
+  test("a buffered page keeps the deferred entry where `<Scripts />` stands", async () => {
+    const body = await render(table(), { stream: false });
+    expect(body).toContain('</div><script type="module" src="/entry.js"></script>');
+    expect(body).not.toContain(" async ");
+  });
+
   test("`<HeadContent />` renders the merged chain, deepest wins", async () => {
     const body = await render(
       table({ meta: [{ title: "Page" }, { name: "description", content: "page" }] }),

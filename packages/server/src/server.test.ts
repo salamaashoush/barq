@@ -305,7 +305,9 @@ describe("the seed encoder", () => {
       );
     };
 
-    const html = (await collect(renderToStream(page as never, { nonce: "r4nd0m" }))).join("");
+    const html = (await collect(renderToStream(page as never, { nonce: "r4nd0m" }).readable)).join(
+      "",
+    );
     const opens = html.match(/<script[^>]*>/g) ?? [];
     expect(opens.length).toBeGreaterThanOrEqual(2);
     for (const tag of opens) expect(tag).toContain('nonce="r4nd0m"');
@@ -336,7 +338,7 @@ describe("the seed encoder", () => {
       );
     };
 
-    const html = (await collect(renderToStream(page as never))).join("");
+    const html = (await collect(renderToStream(page as never).readable)).join("");
     expect(html).toContain("__BARQ_DATA__");
     expect(html).toContain("streamed-user");
 
@@ -410,7 +412,7 @@ describe("the seed encoder", () => {
       return ssrHtml(`<main>${defer(fast)}${defer(slow)}</main>`);
     };
 
-    const reader = renderToStream(page as never).getReader();
+    const reader = renderToStream(page as never).readable.getReader();
     const decoder = new TextDecoder();
     let html = "";
     for (;;) {
@@ -466,7 +468,7 @@ describe("the seed encoder", () => {
       );
     };
 
-    const reader = renderToStream(page as never).getReader();
+    const reader = renderToStream(page as never).readable.getReader();
     const decoder = new TextDecoder();
     let html = "";
     while (!html.includes("__BARQ_DATA__")) {
@@ -770,7 +772,7 @@ describe("renderToStream", () => {
       );
     };
 
-    const parts = await collect(renderToStream(page as never));
+    const parts = await collect(renderToStream(page as never).readable);
 
     // The shell is its own chunk, and it carries the fallback, not the value.
     expect(parts[0]).toContain("<i>loading</i>");
@@ -815,7 +817,7 @@ describe("renderToStream", () => {
       );
     };
 
-    const html = (await collect(renderToStream(page as never))).join("");
+    const html = (await collect(renderToStream(page as never).readable)).join("");
     const host = document.createElement("div");
     document.body.appendChild(host);
     try {
@@ -873,7 +875,7 @@ describe("renderToStream", () => {
       return ssrHtml(`<main>${defer(fast)}${defer(slow)}</main>`);
     };
 
-    const reader = renderToStream(page as never).getReader();
+    const reader = renderToStream(page as never).readable.getReader();
     const decoder = new TextDecoder();
     let sawFast = false;
     let sawSlow = false;
@@ -917,7 +919,7 @@ describe("renderToStream", () => {
       );
     };
 
-    const html = (await collect(renderToStream(page as never))).join("");
+    const html = (await collect(renderToStream(page as never).readable)).join("");
     expect(html).toContain("<b>Ada</b>");
     // Re-invoking the content Block reads the keyed value the session already
     // recorded, so a retried round costs no second fetch.
@@ -943,7 +945,7 @@ describe("renderToStream", () => {
 
     test("the caller's signal ends a render whose boundary never settles", async () => {
       const controller = new AbortController();
-      const stream = renderToStream(neverSettles as never, { signal: controller.signal });
+      const stream = renderToStream(neverSettles as never, { signal: controller.signal }).readable;
       const reader = stream.getReader();
 
       const shell = await reader.read();
@@ -959,13 +961,15 @@ describe("renderToStream", () => {
     });
 
     test("a boundary past its timeout is abandoned to its fallback", async () => {
-      const html = (await collect(renderToStream(neverSettles as never, { timeout: 20 }))).join("");
+      const html = (
+        await collect(renderToStream(neverSettles as never, { timeout: 20 }).readable)
+      ).join("");
       expect(html).toContain("<i>loading</i>");
       expect(html).not.toContain("<template");
     });
 
     test("cancelling the consumer stops the render", async () => {
-      const reader = renderToStream(neverSettles as never, { timeout: 50 }).getReader();
+      const reader = renderToStream(neverSettles as never, { timeout: 50 }).readable.getReader();
       await reader.read();
       // The throw this would produce if `start` closed an already-cancelled
       // controller is the regression; `cancel` resolving is the assertion.
@@ -974,7 +978,7 @@ describe("renderToStream", () => {
   });
 
   test("a page with nothing to defer streams the shell, the capture, and no swap machinery", async () => {
-    const parts = await collect(renderToStream(() => ssrHtml("<p>flat</p>")));
+    const parts = await collect(renderToStream(() => ssrHtml("<p>flat</p>")).readable);
     expect(parts[0]).toBe("<p>flat</p>");
     // The capture goes out even with nothing deferred: a user can click before
     // the bundle arrives on any page, deferred or not.
@@ -1032,7 +1036,7 @@ describe("a Loading fallback that is itself not ready", () => {
   });
 
   test("renderToStream emits a shell instead of producing nothing", async () => {
-    const parts = await collect(renderToStream(build("rs").page as never));
+    const parts = await collect(renderToStream(build("rs").page as never).readable);
     expect(parts.join("")).toContain("<b>content</b>");
   });
 });
@@ -1157,7 +1161,7 @@ describe("a pending promise inside a seeded value", () => {
           fallback: () => ssrHtml("<i>l</i>"),
           children: () => ssrHtml(`<b>${esc((cell() as { now: string }).now)}</b>`),
         });
-      }),
+      }).readable,
     );
     const whole = parts.join("");
     // Run every seed script the way a browser does, then let the rejection land.
@@ -1188,7 +1192,7 @@ describe("a pending promise inside a seeded value", () => {
           fallback: () => ssrHtml("<i>l</i>"),
           children: () => ssrHtml(`<b>${esc((cell() as { now: string }).now)}</b>`),
         });
-      }),
+      }).readable,
     );
     const whole = parts.join("");
     expect(whole).toContain("<b>here</b>");
@@ -1231,7 +1235,7 @@ describe("a throw after the shell", () => {
       renderToStream(pageThatThrowsLate(), {
         timeout: 100,
         onError: (error) => seen.push(error),
-      }),
+      }).readable,
     );
     // Reading to completion is the assertion: before the policy existed this
     // rejected with `Error: late boom` and produced no page at all.
@@ -1247,7 +1251,7 @@ describe("a throw after the shell", () => {
     const logged: unknown[] = [];
     console.error = (...args: unknown[]) => logged.push(args[0]);
     try {
-      await collect(renderToStream(pageThatThrowsLate(), { timeout: 100 }));
+      await collect(renderToStream(pageThatThrowsLate(), { timeout: 100 }).readable);
     } finally {
       console.error = original;
     }
@@ -1256,7 +1260,9 @@ describe("a throw after the shell", () => {
 
   test("is reported on the diagnostics channel, for a development server to show", async () => {
     const capture = DEV.diagnostics.capture();
-    await collect(renderToStream(pageThatThrowsLate(), { timeout: 100, onError: () => {} }));
+    await collect(
+      renderToStream(pageThatThrowsLate(), { timeout: 100, onError: () => {} }).readable,
+    );
     const events = capture.stop().filter((event) => event.code === "SSR_RENDER_ERROR_CONTAINED");
     expect(events).toHaveLength(1);
     const [event] = events;
@@ -1301,7 +1307,8 @@ describe("a throw after the shell", () => {
 
     const html = (
       await collect(
-        renderToStream(pageWithAFailureAndASibling, { onError: (error) => seen.push(error) }),
+        renderToStream(pageWithAFailureAndASibling, { onError: (error) => seen.push(error) })
+          .readable,
       )
     ).join("");
 
@@ -1317,7 +1324,9 @@ describe("a throw after the shell", () => {
     const session = Symbol("render");
 
     const html = (
-      await collect(renderToStream(pageWithAFailureAndASibling, { session, onError: () => {} }))
+      await collect(
+        renderToStream(pageWithAFailureAndASibling, { session, onError: () => {} }).readable,
+      )
     ).join("");
     const data = runSeedScripts(html);
     const state = (value: unknown): Promise<string> =>
@@ -1339,7 +1348,7 @@ describe("a throw after the shell", () => {
 });
 
 describe("the stream's lifecycle", () => {
-  test("onShellReady fires before onAllReady, and both fire once", async () => {
+  test("onCompleteShell fires before onCompleteAll, once each, and each writes where it stands", async () => {
     const order: string[] = [];
     const page = (): unknown => {
       const late = createMemo(async () => {
@@ -1359,14 +1368,24 @@ describe("the stream's lifecycle", () => {
     const html = (
       await collect(
         renderToStream(page as never, {
-          onShellReady: () => order.push("shell"),
-          onAllReady: () => order.push("all"),
-        }),
+          onCompleteShell: ({ write }) => {
+            order.push("shell");
+            write("<!--after-shell-->");
+          },
+          onCompleteAll: ({ write }) => {
+            order.push("all");
+            write("<!--after-all-->");
+          },
+        }).readable,
       )
     ).join("");
 
     expect(order).toEqual(["shell", "all"]);
-    // …and `onAllReady` really means it: the deferred content is on the wire.
+    // After the shell's own scripts, so a module entry written here finds the
+    // seed and the swap in place, and before the first boundary's content.
+    expect(html.indexOf("__BARQ_SWAP__=")).toBeLessThan(html.indexOf("<!--after-shell-->"));
+    expect(html.indexOf("<!--after-shell-->")).toBeLessThan(html.indexOf("<template"));
+    expect(html.endsWith("<!--after-all-->")).toBe(true);
     expect(html).toContain("LATE");
   });
 });

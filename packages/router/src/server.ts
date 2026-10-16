@@ -104,6 +104,7 @@ import {
   NOT_FOUND,
   RouteMatchContext,
   RouterContext,
+  entryScripts,
   linkAttrHref,
   routePropsFor,
 } from "./components.ts";
@@ -1199,6 +1200,7 @@ export function createPageHandler(
             lateCss: () => options.requestCss?.() ?? "",
             preloads,
             preload,
+            entryAfterShell: !buffered && shell !== undefined,
             // The string backend's own renderer, handed over the way
             // `LinkBackend` is: `HeadContent` and `Scripts` live in the
             // ISOMORPHIC entry because the ROOT ROUTE MODULE — which is where a
@@ -1287,7 +1289,17 @@ export function createPageHandler(
             signal: request.signal,
             nonce: options.nonce,
             session,
-          });
+            // The route context and then the entry, ahead of every boundary
+            // still to come: the entry is `async` and may run the moment it
+            // loads, which is before the stream ends.
+            onCompleteShell:
+              shell === undefined
+                ? undefined
+                : ({ write }) =>
+                    write(
+                      context + entryScripts(options.clientAssets?.scripts, options.nonce, true),
+                    ),
+          }).readable;
           // The shell has gone and the loaders it started have not settled.
           channel.dehydrate(state, state.settled());
           if (timing !== undefined) {
@@ -1306,7 +1318,7 @@ export function createPageHandler(
                   context,
                   channel,
                 )
-              : shellStream(stream, options, url, dispose, () => answer, context, channel),
+              : shellStream(stream, options, url, dispose, () => answer, channel),
             {
               status,
               headers: { "content-type": "text/html; charset=utf-8" },
@@ -2110,16 +2122,6 @@ function shellStream(
   url: URL,
   done: () => void,
   answer: () => Response | null,
-  /**
-   * The `beforeLoad` handoff, placed where the seed is rather than in `<head>`.
-   *
-   * `<head>` is rendered by `<HeadContent />` and the document is HYDRATED, so
-   * every node in it has to be one the client's tree produces. The handoff is a
-   * server-computed string with no client counterpart, so it cannot be one —
-   * and it does not need to be: it is read by the boot, which runs at the end of
-   * the body, so anywhere before that will do.
-   */
-  context: string,
   channel: RenderChannel,
 ): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
@@ -2180,7 +2182,6 @@ function shellStream(
       inject(channel.drain());
       const late = redirectScript(answer());
       if (late !== "") controller.enqueue(encoder.encode(late));
-      if (context !== "") controller.enqueue(encoder.encode(context));
       if (tail !== "") controller.enqueue(encoder.encode(tail));
       controller.close();
       done();

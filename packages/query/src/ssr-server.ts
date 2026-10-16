@@ -48,7 +48,7 @@ async function buffered(who?: string) {
 async function streamed() {
   const client = new QueryClient();
   await fixture.before?.(client);
-  const stream = renderToStream(fixture.page(client) as never, { timeout: 2000 });
+  const stream = renderToStream(fixture.page(client) as never, { timeout: 2000 }).readable;
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   const chunks: string[] = [];

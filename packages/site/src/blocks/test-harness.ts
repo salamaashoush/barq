@@ -97,7 +97,7 @@ export async function serverRender(
       [
         'import { renderToStream } from "@barqjs/server";',
         'import { Page } from "./built-ssr.mjs";',
-        "const html = await new Response(renderToStream(Page)).text();",
+        "const html = await new Response(renderToStream(Page).readable).text();",
         "await new Promise((resolve) => setTimeout(resolve, 20));",
         "process.stdout.write(html);",
         "",

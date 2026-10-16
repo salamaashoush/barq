@@ -72,15 +72,16 @@ test("renderToStream releases the render when the shell throws", () => {
   const session = Symbol("render");
   let cleaned = 0;
 
-  expect(() =>
-    renderToStream(
-      () => {
-        onCleanup(() => cleaned++);
-        createMemo(async () => "a large payload", { key: "ok" });
-        throw new Error("no such page");
-      },
-      { session },
-    ),
+  expect(
+    () =>
+      renderToStream(
+        () => {
+          onCleanup(() => cleaned++);
+          createMemo(async () => "a large payload", { key: "ok" });
+          throw new Error("no such page");
+        },
+        { session },
+      ).readable,
   ).toThrow("no such page");
 
   expect({ cleaned, pending: Object.keys(pendingSeedsOf(session)) }).toEqual({
@@ -105,7 +106,7 @@ test("a fetch that answers after its stream was aborted is not kept", async () =
       return html(`<main>${defer(slow)}</main>`);
     },
     { session, signal: controller.signal },
-  );
+  ).readable;
   setTimeout(() => controller.abort(), 5);
   const reader = stream.getReader();
   while (!(await reader.read()).done);

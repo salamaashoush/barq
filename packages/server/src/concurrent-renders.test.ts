@@ -66,8 +66,8 @@ test("two streams of a cold lazy route both get the route", async () => {
   const page = coldRoute();
 
   const [first, second] = await Promise.all([
-    collect(renderToStream(page as never)),
-    collect(renderToStream(page as never)),
+    collect(renderToStream(page as never).readable),
+    collect(renderToStream(page as never).readable),
   ]);
 
   expect(first).toContain("<b>ROUTE</b>");

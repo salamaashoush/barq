@@ -63,6 +63,12 @@ export { isSafeError, markSafeError } from "@barqjs/core";
 
 export {
   type CSPNonce,
+  type RenderToStreamOptions,
+  type RenderToStreamResult,
+  type RenderToStringOptions,
+  type ServerErrorContext,
+  type ServerErrorHook,
+  type StreamOptions,
   HydrationScript,
   generateHydrationScript,
   renderPage,

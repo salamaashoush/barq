@@ -872,3 +872,16 @@ cost-model split of an expensive, dependency-disjoint call is gone, and with it 
   fixtures and `roundtrip.test.ts.snap` emitted code of the two corpus fixtures (the import of
   `markSafeError` and the wrapped throw). No other snapshot changed.
 - `clearRenderData()` in eight server test files' `afterEach` is `clearHydrationData()`.
+
+## renderToStream returns Solid's result
+
+- Every `renderToStream(...)` used as a `ReadableStream` in a test reads `.readable` now (server
+  tests, `compiler-rs/test/stream.ts`, `query/src/ssr-server.ts`, the site's block harness). The
+  bytes asserted are unchanged.
+- `server/src/server.test.ts` "onShellReady fires before onAllReady, and both fire once" is
+  "onCompleteShell fires before onCompleteAll, once each, and each writes where it stands": Solid's
+  names, and it also asserts where each `write` lands.
+- `server/src/late-failure.test.ts` "places the error boundary's fallback over everything it held":
+  the swap call is followed in the same script by the round's seed, so the expected text ends at
+  `__BARQ_SWAP__(1,false,true);` rather than at `</script>`. A round is one script so that a client
+  hydrated at shell time cannot run between a swap and the values its content reads.

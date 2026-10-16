@@ -125,11 +125,13 @@ client: one for each request, never one for the module.
 ```tsx
 export function render(request: Request) {
   const client = new QueryClient();
-  return renderToStream(() => (
-    <QueryClientProvider client={client}>
-      <App />
-    </QueryClientProvider>
-  ));
+  return new Response(
+    renderToStream(() => (
+      <QueryClientProvider client={client}>
+        <App />
+      </QueryClientProvider>
+    )).readable,
+  );
 }
 ```
 

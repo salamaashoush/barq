@@ -27,25 +27,41 @@ module imports from here and from nowhere else.
 
 ## Rendering
 
-```ts
-import { renderToStream, renderToString, renderToStringAsync } from "@barqjs/server";
+Solid 2.0's entry points, under its names and options:
 
-const html = renderToString(() => App()); // synchronous
-const settled = await renderToStringAsync(() => App()); // waits for every async memo
-const stream = renderToStream(() => App()); // shell first, then patches
+```ts
+import { renderToStream, renderToString } from "@barqjs/server";
+
+const html = renderToString(() => App(), { nonce }); // synchronous, with its seed
+const stream = renderToStream(() => App(), { nonce, onCompleteShell, onCompleteAll });
+new Response(stream.readable); // or stream.pipe(res), stream.pipeTo(writable)
+const settled = await renderToStream(() => App()); // the settled document
 ```
 
-`renderToStringAsync` settles the reactive graph before it emits a byte. It is a
-different RENDERER, not a buffered stream — which matters, because buffering a
-stream gives you a document with the streaming protocol baked into it:
-placeholders and swap scripts for data that was fully known.
+`renderToStream` renders the shell synchronously, so a shell that throws throws
+here, after `onError` heard it with `handling: "failed"`. Exactly one consumer
+may claim the result. `then` resumes every boundary in place rather than
+buffering the stream, so the settled document carries no placeholders or swap
+scripts for data that was fully known.
+
+`nonce` is a string or `{ script, style }`. `noScripts` drops the seed and the
+input capture, `plugins` adds serialization adapters for one render, and
+`renderId` namespaces the ids a render writes. `generateHydrationScript()` and
+`<HydrationScript />` are the input-capture bootstrap for a hand-built
+document; a render's data travels only with that render.
 
 ## Streaming
 
 An unready `Loading` boundary flushes `<!--[b:7-->fallback<!--]-->` plus a
 continuation record — the Block and its scope — and when its promises settle the
-server flushes a `<template>` and a swap. The Block is re-invocable with its
-scope, so there is no second code path for a resumed boundary to diverge along.
+server flushes a `<template>` and, in one script, the swap and the values the
+content read. The Block is re-invocable with its scope, so there is no second
+code path for a resumed boundary to diverge along.
+
+A client may hydrate while the stream is open: a boundary hydrated on its
+fallback is asked before a swap replaces it, and claims the nodes the swap
+places when its values arrive. `onCompleteShell({ write })` is where an `async`
+module entry goes, after the shell's seed and swap.
 
 The shell is one ordinary string render with a sink installed. There is no
 second render of the page.

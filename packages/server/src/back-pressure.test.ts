@@ -56,7 +56,7 @@ async function rest(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<st
 
 test("a reader that stops reading stops the render", async () => {
   const counts = { builds: 0, disposed: false };
-  const reader = renderToStream(page(counts)).getReader();
+  const reader = renderToStream(page(counts)).readable.getReader();
   const first = await reader.read();
   expect(new TextDecoder().decode(first.value)).toStartWith("<main>");
 
@@ -73,7 +73,7 @@ test("a reader that stops reading stops the render", async () => {
 test("an abort while the render waits for its reader releases the render", async () => {
   const counts = { builds: 0, disposed: false };
   const abort = new AbortController();
-  const reader = renderToStream(page(counts), { signal: abort.signal }).getReader();
+  const reader = renderToStream(page(counts), { signal: abort.signal }).readable.getReader();
   await reader.read();
   await pause(30);
   expect(counts.disposed).toBe(false);
@@ -105,6 +105,6 @@ test("a read that lands while the render waits for its reader still resumes its 
     );
   };
 
-  const out = await rest(renderToStream(twoReads).getReader());
+  const out = await rest(renderToStream(twoReads).readable.getReader());
   expect(out).toContain("<b>AB</b>");
 });

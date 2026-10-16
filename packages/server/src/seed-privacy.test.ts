@@ -109,7 +109,7 @@ describe("an error a server render sends to the browser", () => {
   });
 
   test("is redacted on a stream the same way", async () => {
-    const body = await collect(renderToStream(rejecting(new Error(SECRET))));
+    const body = await collect(renderToStream(rejecting(new Error(SECRET))).readable);
 
     if (isDev) expect(body).toContain(SECRET);
     else {

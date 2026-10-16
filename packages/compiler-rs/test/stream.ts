@@ -31,7 +31,7 @@ export async function chunksOf(mod: FixtureModule): Promise<string[]> {
   const stream = server.renderToStream(
     (() => (mod.default as unknown as (props?: unknown) => unknown)()) as never,
     { timeout: 150 },
-  );
+  ).readable;
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   const out: string[] = [];
@@ -98,6 +98,29 @@ export async function assemble(mod: FixtureModule, container: HTMLElement): Prom
   }
 
   return { chunks: chunks.length, swaps, templates };
+}
+
+/**
+ * The same assembly, with `start` called once chunk `after` has run: a client
+ * whose entry is `async` boots while the stream is still open, and every later
+ * swap lands under a page that is already hydrated.
+ */
+export async function assembleHydrating(
+  mod: FixtureModule,
+  container: HTMLElement,
+  after: number,
+  start: () => void,
+): Promise<string[]> {
+  const chunks = await chunksOf(mod);
+  for (const [index, chunk] of chunks.entries()) {
+    if (index === 0) container.innerHTML = withoutScripts(chunk);
+    else container.insertAdjacentHTML("beforeend", withoutScripts(chunk));
+    for (const source of scriptsOf(chunk)) {
+      if (source.trim() !== "") (0, eval)(source);
+    }
+    if (index === after) start();
+  }
+  return chunks;
 }
 
 /**

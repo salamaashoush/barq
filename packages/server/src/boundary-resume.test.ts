@@ -84,7 +84,7 @@ function makePage(): { page: () => unknown; fetches: () => number } {
 test("a stream resumes a boundary whose body declares its own async memo", async () => {
   const { page, fetches } = makePage();
 
-  const out = await collect(renderToStream(page as never, { timeout: 200 }));
+  const out = await collect(renderToStream(page as never, { timeout: 200 }).readable);
 
   expect(out).toContain("<b>salama</b>");
   expect(fetches()).toBe(1);

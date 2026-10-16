@@ -128,10 +128,29 @@ type Queued = () => unknown;
  * payload; each one after it settles something the payload left pending. What
  * arrives once this has run is applied on arrival.
  */
-export function takeDehydrated(): { readonly value: unknown } | null {
+export function takeDehydrated(
+  late?: (value: unknown) => void,
+): { readonly value: unknown } | null {
   const holder = globalThis as Record<string, unknown>;
   const queue = holder[ROUTER_DEHYDRATED_GLOBAL] as Queued[] | undefined;
-  if (!Array.isArray(queue) || queue.length === 0) return null;
+  if (!Array.isArray(queue) || queue.length === 0) {
+    // A streamed page's payload comes after the loaders settle, which is after
+    // a client that hydrates at shell time has booted. Its first entry is
+    // handed over when it lands.
+    if (late !== undefined && queue === undefined) {
+      let first = true;
+      holder[ROUTER_DEHYDRATED_GLOBAL] = {
+        push(settle: Queued): void {
+          const value = settle();
+          if (first) {
+            first = false;
+            late(value);
+          }
+        },
+      };
+    }
+    return null;
+  }
   const [first, ...later] = queue;
   const value = first?.();
   for (const settle of later) settle();
@@ -152,6 +171,8 @@ export function takeDehydrated(): { readonly value: unknown } | null {
 export async function hydrateRouter(state: RouterState): Promise<void> {
   const hydrate = state.options.hydrate;
   if (hydrate === undefined) return;
-  const dehydrated = takeDehydrated();
+  const dehydrated = takeDehydrated((value) => {
+    Promise.resolve(hydrate(value as never)).catch((error: unknown) => console.error(error));
+  });
   if (dehydrated !== null) await hydrate(dehydrated.value as never);
 }

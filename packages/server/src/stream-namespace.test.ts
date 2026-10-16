@@ -50,7 +50,7 @@ function streamed(around: (boundary: string) => string, content = '<circle r="5"
         }),
       );
       return html(around(boundary));
-    }),
+    }).readable,
   );
 }
 
@@ -127,7 +127,7 @@ test("a boundary parked by a resumed boundary stands where that one does", async
           }),
         )}</svg>`,
       );
-    }),
+    }).readable,
   );
 
   expect(out).toContain(

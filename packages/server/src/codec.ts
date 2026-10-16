@@ -462,8 +462,8 @@ function pluginList(): AnyPlugin[] {
   return plugins;
 }
 
-function seedPluginList(extra: readonly AnySerializationAdapter[] = NO_ADAPTERS): AnyPlugin[] {
-  if (extra.length > 0) {
+function seedPluginList(extra?: readonly AnySerializationAdapter[]): AnyPlugin[] {
+  if (extra !== undefined && extra.length > 0) {
     return [
       ...[...ADAPTERS.values(), ...extra].map(
         (adapter) => pluginFor(adapter) as unknown as AnyPlugin,
@@ -477,8 +477,6 @@ function seedPluginList(extra: readonly AnySerializationAdapter[] = NO_ADAPTERS)
   ];
   return seedPlugins;
 }
-
-const NO_ADAPTERS: readonly AnySerializationAdapter[] = [];
 
 // The hardening is shared: the same disabled features and the same Error
 // redaction, so a value that cannot leave through one channel cannot leave
@@ -501,10 +499,13 @@ export function decodeWire<T>(payload: unknown): T {
 }
 
 /** Encode one render's resolved values as the JS expression that rebuilds them. */
-export function encodeSeed(data: Record<string, unknown>): string {
+export function encodeSeed(
+  data: Record<string, unknown>,
+  adapters?: readonly AnySerializationAdapter[],
+): string {
   const payload = serialize(data, {
     disabledFeatures: DISABLED,
-    plugins: seedPluginList() as never,
+    plugins: seedPluginList(adapters) as never,
   });
   warnIfLarge(payload.length);
   return payload;
@@ -580,9 +581,7 @@ function carriesPending(value: unknown, seen: WeakSet<object> = new WeakSet()): 
  * embedded in one document would otherwise index into one `$R` bucket with two
  * different ref maps and overwrite each other's entries.
  */
-export function createSeedEncoder(
-  adapters: readonly AnySerializationAdapter[] = NO_ADAPTERS,
-): SeedEncoder {
+export function createSeedEncoder(adapters?: readonly AnySerializationAdapter[]): SeedEncoder {
   const scopeId = `b${scopes++}`;
   const refs = new Map<unknown, number>();
   const list = seedPluginList(adapters);

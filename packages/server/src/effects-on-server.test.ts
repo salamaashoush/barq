@@ -77,7 +77,7 @@ test("a streamed render runs none of them, in the shell or in a boundary that re
           }),
         ),
       ),
-    ),
+    ).readable,
   );
   flush();
   expect(out).toContain("<b>late</b>");
