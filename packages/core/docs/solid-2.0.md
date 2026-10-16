@@ -86,15 +86,47 @@ runs, and there is no `clearDelegatedEvents`; dispose the root instead.
 
 ## Server rendering
 
-`renderToString`, `renderToStream`, `getRequestEvent`, `httpStatus`, `httpHeader`,
-`markSafeError`, `generateHydrationScript` and `<HydrationScript />` take Solid 2.0's
-arguments and options. The differences:
+`renderToString`, `renderToStream`, `getRequestEvent`, `getTraceContext`, `httpStatus`,
+`httpHeader`, `markSafeError`, `generateHydrationScript`, `<HydrationScript />`,
+`createRequestEvent`, `createResponseStub`, `commitResponseStub`, `createSSRResponse`,
+`commitEventResponse`, `getExpectedRedirectStatus` and `composeMiddleware` take Solid 2.0's
+arguments and options, and a memo takes Solid's `ssrSource` and `deferStream`. The
+differences:
 
 - **Two packages, not one.** The server entry points are `@barqjs/server`'s and the
-  isomorphic ones (`getRequestEvent`, `httpStatus`, `httpHeader`, `useHead`,
-  `markSafeError`, `isServer`) are `@barqjs/core`'s. `provideRequestEvent` is
+  isomorphic ones (`getRequestEvent`, `getTraceContext`, `httpStatus`, `httpHeader`,
+  `useHead`, `markSafeError`, `isServer`) are `@barqjs/core`'s. `provideRequestEvent` is
   `@barqjs/server/storage`'s. `isServer` is a literal per side, by export condition, as in
   Solid; under `bun` it is the run-time check the test suites rely on.
+- **`@barqjs/start` is the same lifecycle under its older names.** Its `withRequest`
+  enters a `createRequestEvent` event with `provideRequestEvent`, `createResponseDraft` is
+  `createResponseStub`, `markResponseSent` is `commitResponseStub`, and `applyResponseDraft`
+  is the fold `commitEventResponse` makes, without the commit. `setCookie`,
+  `setResponseHeader` and `setResponseStatus` write to `getRequestEvent().response`.
+- **`@barqjs/router`'s page handler commits its head at its edge**, with
+  `commitEventResponse` once the request middleware has unwound, rather than through
+  `createSSRResponse` at the shell flush: a request middleware may still set a cookie after
+  `next()`, as `@barqjs/start` has always allowed. `createSSRResponse` is for a handler
+  written on `@barqjs/server` directly, and commits at the flush as Solid's does.
+- **A completed render freezes what it declared** instead of committing the head: an awaited
+  `renderToStream`, `renderToString` and `renderPage` keep every live `httpStatus` and
+  `httpHeader` declaration past the render's disposal, and the head stays open for the
+  handler that called them. A render that throws retracts them, as in Solid.
+- **`composeMiddleware` is for fetch-style middleware** on a handler of your own.
+  `@barqjs/start`'s request middleware (`createMiddleware({ type: "request" })`) is the
+  framework's, with TanStack's `next({ context })`, and the two are not mixed in one chain.
+- **A late header write is a diagnostic.** A write to a committed head, through
+  `httpHeader`, `setCookie` or the head's own `headers`, changes nothing and is reported as
+  `LATE_HEADER_WRITE` in a development build. Solid's development build throws.
+- **`getTraceContext`** continues or originates the W3C trace, keeps one object per request,
+  and tells the browser (a `Server-Timing` entry at the commit and a `<meta>` in the
+  document's head) only for a sampled incoming trace. There is no `OBSERVE.server.trace`
+  provider slot, and the `solid-shell`, `solid-boundary` and `solid-invocation` timings are
+  not written.
+- **`ssrSource` and `deferStream` are a memo's.** `createMemo` takes both; the function form
+  of `createSignal`, `createStore`, `createProjection` and the effects do not. A `"client"`
+  or `"hybrid"` memo takes over from the server's value a microtask after the claim pass,
+  not when the last streamed boundary has arrived.
 - **`renderToStream` renders its shell synchronously**, and a stream consumer claims the
   result in the tick it started in. A result no stream claimed by then is settled for its
   promise, boundaries resumed in place. barq keeps `session` and a per-boundary `timeout`
@@ -107,9 +139,7 @@ arguments and options. The differences:
   a patch with its boundary's swap. Stylesheets do not gate a reveal.
 - **`onError`** hears `failed`, `fallback` and `client`; there is no `serialize`, because a
   value seroval cannot encode fails the render. There is no `configureServerErrors`.
-- **Not yet:** `createRequestEvent`, `createSSRResponse`, `commitEventResponse`,
-  `composeMiddleware` (the router's page handler and `@barqjs/start` own the response),
-  `getTraceContext`, per-memo `deferStream` and `ssrSource`, and frames.
+- **Not yet:** frames.
 
 ## Solid 1.x APIs barq does not have
 

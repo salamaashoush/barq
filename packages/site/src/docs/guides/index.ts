@@ -10,6 +10,7 @@ import * as installation from "./installation.tsx";
 import { GUIDES, type Guide } from "./registry-data.ts";
 import * as registry from "./registry.tsx";
 import * as rtl from "./rtl.tsx";
+import * as serverRendering from "./server-rendering.tsx";
 import * as theming from "./theming.tsx";
 
 interface GuideModule {
@@ -25,6 +26,7 @@ const MODULES: Record<string, GuideModule> = {
   rtl,
   cli,
   forms,
+  "server-rendering": serverRendering,
   registry,
   changelog,
 };

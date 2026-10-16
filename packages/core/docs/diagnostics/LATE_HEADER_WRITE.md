@@ -2,8 +2,9 @@
 
 **Severity:** warning. Raised on the server by `setResponseHeader`,
 `appendResponseHeader`, `removeResponseHeader`, `clearResponseHeaders`,
-`setResponseStatus`, `setCookie`, `replaceCookie` and `deleteCookie`, in a
-development build.
+`setResponseStatus`, `setCookie`, `replaceCookie` and `deleteCookie`, by
+`httpStatus` and `httpHeader`, and by a write to `getRequestEvent().response.headers`
+itself, once the response head has been committed, in a development build.
 
 ## Message
 
@@ -72,10 +73,9 @@ function Profile() {
 
 ## Why it is reported
 
-The status and headers leave with the shell. A write after that lands in a
-draft nobody reads, so the header, the cookie or the status silently never
-reaches the browser: a session that is not rotated, a page cached that should
-not be.
+The status and headers leave with the shell. A write after that changes a head
+nobody reads, so the header, the cookie or the status silently never reaches the
+browser: a session that is not rotated, a page cached that should not be.
 
 ## Where it shows
 

@@ -112,8 +112,15 @@ a server package:
   or `undefined` outside a request and in the browser.
 - **`httpStatus(code, text?)`** and **`httpHeader(name, value, { append })`**
   declare the response status and headers for as long as the calling scope
-  lives. A declaration made after the head was sent is reported as
-  `LATE_HEADER_WRITE` rather than lost silently.
+  lives. A scope that goes takes back its own declaration and nobody else's,
+  whatever order siblings go in, and a render that completes keeps every
+  declaration still alive. A declaration made after the head was sent is
+  reported as `LATE_HEADER_WRITE` rather than lost silently.
+- **`getTraceContext()`** is the W3C trace the request belongs to, continued
+  from an incoming `traceparent` or started here, one object for the whole
+  request. Forward it with `getTraceContext()?.entries.traceparent`. A sampled
+  incoming trace is handed to the browser as a `Server-Timing` entry and a
+  `<meta name="traceparent">` in the document's head.
 - **`markSafeError(error)`** lets an error reach the browser as thrown in a
   production build too, where every other error is replaced with a generic one.
 - **`useHead(tags)`** (from `@barqjs/core`) declares head tags from wherever a
@@ -124,6 +131,110 @@ a server package:
 `provideRequestEvent(event, fn)` from `@barqjs/server/storage` runs `fn` with
 `event` as the current request across every `await`. It is its own entry
 because it imports `node:async_hooks`. `@barqjs/start` calls it for you.
+
+## A handler of your own
+
+The response-head lifecycle a request runs, for a server written on this
+package without `@barqjs/start`:
+
+```tsx
+import {
+  commitEventResponse,
+  composeMiddleware,
+  createRequestEvent,
+  createSSRResponse,
+  getRequestEvent,
+  renderToStream,
+} from "@barqjs/server";
+import { provideRequestEvent } from "@barqjs/server/storage";
+
+import { App } from "./App.tsx";
+
+const middleware = composeMiddleware([
+  async (request, next) => {
+    getRequestEvent()!.locals.user = request.headers.get("x-user") ?? "salama";
+    return next();
+  },
+]);
+
+export default {
+  async fetch(request: Request): Promise<Response> {
+    const event = createRequestEvent(request);
+    const response = await provideRequestEvent(event, () =>
+      middleware(request, () =>
+        createSSRResponse(
+          renderToStream(() => <App />),
+          event,
+        ),
+      ),
+    );
+    return commitEventResponse(response, event);
+  },
+};
+```
+
+- **`createRequestEvent(request, init?)`** builds the event: the request, an
+  empty `locals`, and a fresh `response` head (`createResponseStub()`). `init`
+  spreads over those, for fields of your own.
+- **`createSSRResponse(result, event, options?)`** is the exit for a page. Over
+  a string it answers at once; over a `renderToStream` result it answers when
+  the shell flushes, which is when the head is committed. A `Location` on the
+  head before then is a bodiless redirect at `getExpectedRedirectStatus`, and
+  the render is torn down; one after it ends the stream with a script that goes
+  there, carrying `options.nonce`. `responseInit` gives the defaults the head
+  writes over and `transformChunk` rewrites each chunk on its way out.
+- **`commitEventResponse(response, event?)`** is the exit for everything else:
+  a middleware's own answer, an API response. It folds the head onto a new
+  `Response`: `set-cookie` lines are added, `server-timing` entries merged, a
+  header the response lacks filled in, and its status kept. The application's
+  object is never written into, so one held for every request does not collect
+  every visitor's cookies. An already committed head passes the response
+  through, so it is safe to apply once at the edge, whatever answered.
+- **`composeMiddleware(list)`** composes `(request, next) => Response`
+  functions; `next(request)` hands a different request down.
+- **`commitResponseStub(stub, options?)`** freezes a head by hand: a later
+  write to its `headers` changes nothing and is reported.
+
+`@barqjs/router`'s page handler runs the same lifecycle and commits at its
+edge, once the request middleware has unwound, so a middleware may still set a
+cookie after `next()`.
+
+## Where a memo's value comes from
+
+`createMemo` takes two options for a server render:
+
+```tsx
+import { Loading, createMemo } from "@barqjs/core";
+
+function Account() {
+  // The shell waits for this one, so its boundary ships the name, not the fallback.
+  const name = createMemo(() => loadName(), { deferStream: true });
+  // Never run on the server: it renders `null`, and the browser reads storage.
+  const draft = createMemo(() => localStorage.getItem("draft"), {
+    ssrSource: "client",
+    loadingValue: null,
+  });
+  return (
+    <Loading fallback={<p>loading</p>}>
+      <h1>{name()}</h1>
+      <textarea>{draft() ?? ""}</textarea>
+    </Loading>
+  );
+}
+```
+
+- **`deferStream: true`** holds a streamed shell until the memo's first value,
+  up to the boundary deadline.
+- **`ssrSource: "server"`** (the default) seeds the server's value and the
+  browser adopts it without running the compute.
+- **`ssrSource: "hybrid"`** seeds the server's value too, and a compute that
+  returned an async iterable is run again in the browser once the page is
+  claimed, continuing the stream; its first yield repeats the server's value
+  and is dropped.
+- **`ssrSource: "client"`** never runs on the server. With a `loadingValue` the
+  server renders that, and without one the `<Loading>` around it ships its
+  fallback and the browser renders the content. The browser runs the compute a
+  microtask after the claim pass.
 
 ## Serialization
 

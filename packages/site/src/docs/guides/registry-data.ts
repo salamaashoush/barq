@@ -62,6 +62,11 @@ export const GUIDES: readonly GuideMeta[] = [
     description: "Build forms with @barqjs/form and the Field components.",
   },
   {
+    slug: "server-rendering",
+    title: "Server Rendering",
+    description: "The request, the response head, and where an async value comes from.",
+  },
+  {
     slug: "registry",
     title: "Registry",
     description: "Run your own component registry.",
