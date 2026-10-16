@@ -21,6 +21,7 @@ import { Route as ClientonlyRoute } from "./routes/clientonly";
 import { Route as ComponentsRoute } from "./routes/components";
 import { Route as ControlRoute } from "./routes/control";
 import { Route as CssRoute } from "./routes/css";
+import { Route as FramesRoute } from "./routes/frames";
 import { Route as HooksRoute } from "./routes/hooks";
 import { Route as JsxTypesRoute } from "./routes/jsx-types";
 import { Route as LinksRoute } from "./routes/links";
@@ -79,6 +80,7 @@ export const routeTree: AnyRouteDefinition[] = [
       },
       { ...ControlRoute.options, id: "/control", path: "control", src: "/src/routes/control.tsx" },
       { ...CssRoute.options, id: "/css", path: "css", src: "/src/routes/css.tsx" },
+      { ...FramesRoute.options, id: "/frames", path: "frames", src: "/src/routes/frames.tsx" },
       {
         ...HooksRoute.options,
         id: "/hooks",
@@ -154,6 +156,7 @@ export interface FileRoutesById {
   "/components": typeof ComponentsRoute;
   "/control": typeof ControlRoute;
   "/css": typeof CssRoute;
+  "/frames": typeof FramesRoute;
   "/hooks": typeof HooksRoute;
   "/jsx-types": typeof JsxTypesRoute;
   "/links": typeof LinksRoute;
@@ -181,6 +184,7 @@ export interface FileRouteTypes {
     | "/components"
     | "/control"
     | "/css"
+    | "/frames"
     | "/hooks"
     | "/jsx-types"
     | "/links"
@@ -204,6 +208,7 @@ export interface FileRouteTypes {
     | "/components"
     | "/control"
     | "/css"
+    | "/frames"
     | "/hooks"
     | "/jsx-types"
     | "/links"

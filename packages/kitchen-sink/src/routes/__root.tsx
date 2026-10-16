@@ -98,6 +98,7 @@ export const sections = [
   { id: "jsx-types", label: "JSX Types" },
   { id: "control", label: "Control Flow" },
   { id: "start", label: "Server Functions" },
+  { id: "frames", label: "Frames" },
 ] as const;
 
 globalCss`
