@@ -67,7 +67,8 @@ fn plan<'a>(
         }
     }
 
-    define(unit, unit.skeleton.roots.0, Step::Root, uids, interner, allocator);
+    let mut namer = Namer { uids, interner, allocator };
+    namer.define(unit, unit.skeleton.roots.0, Step::Root);
     // Increasing `NodeId` is document order, so a group's parent is always
     // already defined when the group is reached.
     for id in 0..count {
@@ -75,17 +76,7 @@ fn plan<'a>(
             continue;
         }
         let SkelNode::Element(element) = unit.skeleton.nodes[id] else { continue };
-        group(
-            unit,
-            id as NodeId,
-            element.children,
-            element.mat_kids,
-            &needed,
-            uids,
-            interner,
-            allocator,
-            nearest,
-        );
+        group(unit, id as NodeId, element.children, element.mat_kids, &needed, &mut namer, nearest);
     }
 }
 
@@ -99,16 +90,13 @@ fn plan<'a>(
 /// is a path plus a hub: only `parent→child` (a `firstChild`/`lastChild`
 /// descent) and CONSECUTIVE sibling edges can appear, since any longer sibling
 /// edge costs at least the hops it spans.
-#[expect(clippy::too_many_arguments)]
 fn group<'a>(
     unit: &mut Unit<'a>,
     parent: NodeId,
     children: (NodeId, NodeId),
     mat_kids: u32,
     needed: &[bool],
-    uids: &mut Uids<'a>,
-    interner: &mut Interner<'a>,
-    allocator: &'a Allocator,
+    namer: &mut Namer<'a, '_>,
     nearest: bool,
 ) {
     let (lo, hi) = children;
@@ -128,7 +116,7 @@ fn group<'a>(
 
     if !nearest {
         for (index, node) in wanted {
-            define(unit, node, Step::FirstChild(base, index), uids, interner, allocator);
+            namer.define(unit, node, Step::FirstChild(base, index));
         }
         return;
     }
@@ -178,20 +166,20 @@ fn group<'a>(
         } else {
             Step::LastChild(base, last - index)
         };
-        refs[seed] = define(unit, node, step, uids, interner, allocator);
+        refs[seed] = namer.define(unit, node, step);
 
         let mut at = seed;
         while at + 1 < count && linked[at + 1] {
             let hops = wanted[at + 1].0 - wanted[at].0;
             let step = Step::NextSibling(refs[at], hops);
-            refs[at + 1] = define(unit, wanted[at + 1].1, step, uids, interner, allocator);
+            refs[at + 1] = namer.define(unit, wanted[at + 1].1, step);
             at += 1;
         }
         let mut at = seed;
         while at > 0 && linked[at] {
             let hops = wanted[at].0 - wanted[at - 1].0;
             let step = Step::PrevSibling(refs[at], hops);
-            refs[at - 1] = define(unit, wanted[at - 1].1, step, uids, interner, allocator);
+            refs[at - 1] = namer.define(unit, wanted[at - 1].1, step);
             at -= 1;
         }
     }
@@ -210,20 +198,22 @@ fn find(owner: &mut [usize], at: usize) -> usize {
     root
 }
 
-fn define<'a>(
-    unit: &mut Unit<'a>,
-    node: NodeId,
-    step: Step,
-    uids: &mut Uids<'a>,
-    interner: &mut Interner<'a>,
+/// The module state every def draws its binding name from.
+struct Namer<'a, 'm> {
+    uids: &'m mut Uids<'a>,
+    interner: &'m mut Interner<'a>,
     allocator: &'a Allocator,
-) -> RefId {
-    let name = interner.intern_arena_str(uids.element(allocator));
-    let span = unit.spans[node as usize];
-    let id = unit.refs.defs.len() as RefId;
-    unit.refs.defs.push(RefDef { node, step, name, span });
-    unit.refs.of_node[node as usize] = id;
-    id
+}
+
+impl<'a> Namer<'a, '_> {
+    fn define(&mut self, unit: &mut Unit<'a>, node: NodeId, step: Step) -> RefId {
+        let name = self.interner.intern_arena_str(self.uids.element(self.allocator));
+        let span = unit.spans[node as usize];
+        let id = unit.refs.defs.len() as RefId;
+        unit.refs.defs.push(RefDef { node, step, name, span });
+        unit.refs.of_node[node as usize] = id;
+        id
+    }
 }
 
 // ============================================================================
