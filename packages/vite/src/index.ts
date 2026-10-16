@@ -180,6 +180,11 @@ function configPlugin(
       config.resolve.conditions = [
         ...(options.conditions ?? []),
         ...(development ? ["development"] : []),
+        // A server render inside a worker runtime still resolves the browser
+        // builds of its dependencies, and `worker` ahead of them picks the
+        // server half of a package that ships one, such as `@barqjs/core`'s
+        // `isServer`.
+        ...(environment.isSsrTargetWebworker === true ? ["worker"] : []),
         ...(serving && options.dev === false
           ? own.map((condition) =>
               condition === "development|production" ? "production" : condition,

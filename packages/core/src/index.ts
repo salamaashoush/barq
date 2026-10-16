@@ -175,7 +175,7 @@ export type {
   StrictChild,
 } from "./config.ts";
 
-export { isClient, isDev, isServer } from "./env.ts";
+export { isClient, isDev, isServer } from "#env";
 
 export { isSafeError, markSafeError } from "./safe-error.ts";
 

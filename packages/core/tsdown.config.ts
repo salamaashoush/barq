@@ -21,13 +21,16 @@ export default defineConfig({
     "./src/jsx-runtime.ts",
     "./src/interp.ts",
     "./src/internal.ts",
+    "./src/env.ts",
+    "./src/env.server.ts",
+    "./src/env.client.ts",
   ],
   format: ["esm"],
   // `exports` names `.js`/`.d.ts`; tsdown 0.22 defaults to `.mjs`/`.d.mts`.
   outExtensions: () => ({ js: ".js", dts: ".d.ts" }),
   dts: true,
   clean: true,
-  deps: { neverBundle: ["csstype"] },
+  deps: { neverBundle: ["csstype", "#env"] },
   esbuildOptions: {
     jsx: "automatic",
     jsxImportSource: ".",

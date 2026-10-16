@@ -29,6 +29,18 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "imports": {
+    "#env": {
+      "types": "./src/env.ts",
+      "worker": "./dist/env.server.js",
+      "workerd": "./dist/env.server.js",
+      "browser": "./dist/env.client.js",
+      "bun": "./src/env.ts",
+      "deno": "./dist/env.server.js",
+      "node": "./dist/env.server.js",
+      "default": "./dist/env.js"
+    }
+  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
