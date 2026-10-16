@@ -13,10 +13,16 @@ import {
 import { built, provideClient } from "./client.ts";
 import { seededByRead } from "./seed.ts";
 
-/** What the integration puts in the router context, and reads back out of it. */
-export interface QueryRouterContext {
+/**
+ * What the integration puts in the router context, and reads back out of it.
+ *
+ * A type alias rather than an interface: a route's `context` and
+ * `createRootRouteWithContext` take a `Record<string, unknown>`, and an
+ * interface has no index signature to satisfy one.
+ */
+export type QueryRouterContext = {
   queryClient: QueryClient;
-}
+};
 
 /**
  * A root route's `context`, handing every loader and component a `QueryClient`.

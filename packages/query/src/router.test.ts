@@ -9,6 +9,8 @@ import { flush, hydrate, resetChildIds } from "@barqjs/core";
 import {
   RouterProvider,
   type RouterState,
+  createRootRoute,
+  createRootRouteWithContext,
   createRouter,
   hydrateRouter,
   memoryHistory,
@@ -17,7 +19,11 @@ import {
 } from "@barqjs/router";
 
 import { QueryClient, QueryObserver } from "./index.ts";
-import { queryClientContext, setupRouterSsrQueryIntegration } from "./router.ts";
+import {
+  type QueryRouterContext,
+  queryClientContext,
+  setupRouterSsrQueryIntegration,
+} from "./router.ts";
 import {
   ENTRY,
   assemble,
@@ -159,6 +165,18 @@ test("the browser keeps one client across navigations; a server makes one for ea
   const first = context().queryClient;
   expect(context().queryClient).toBe(first);
   expect(made).toBe(1);
+});
+
+test("the context is what a root route's `context` and `createRootRouteWithContext` take", () => {
+  const root = createRootRoute({ context: queryClientContext(() => new QueryClient()) });
+  const typed = createRootRouteWithContext<QueryRouterContext>()({
+    beforeLoad: ({ context }) => {
+      const client: QueryClient = context.queryClient;
+      return { client };
+    },
+  });
+  expect(root.options.context?.({} as never).queryClient).toBeInstanceOf(QueryClient);
+  expect(typed.id).toBe(root.id);
 });
 
 test("a redirect a query fails with is followed", async () => {
