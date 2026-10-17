@@ -6,7 +6,7 @@
 
 import { DEV, createMemo, httpHeader, httpStatus } from "@barqjs/core";
 import { esc, html as ssrHtml, ssrLoading } from "@barqjs/server";
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 
 import type { AnyRouteDefinition } from "./route.ts";
 import { createPageHandler, notFound, redirect, renderRoutes } from "./server.ts";
@@ -90,11 +90,22 @@ describe("a streamed page", () => {
       component: (props: { data: () => unknown }) =>
         ssrHtml(`<main>${esc(String(props.data()))}</main>`),
     });
-    const response = await handler(get(path));
-    const body = await response.text();
+    const error = spyOn(console, "error");
+    let printed: unknown[][];
+    let response: Response;
+    let body: string;
+    try {
+      response = await handler(get(path));
+      body = await response.text();
+    } finally {
+      printed = error.mock.calls.map((call) => [...call]);
+      error.mockRestore();
+    }
 
     expect(response.status).toBe(200);
     expect(body).toContain('<script nonce="n0nce">location.replace("/login")</script>');
+    // The redirect is the page's answer, so nothing reports it as a failure.
+    expect(printed).toEqual([]);
   });
 
   test("takes the status and headers the shell declared with httpStatus and httpHeader", async () => {
@@ -133,9 +144,20 @@ describe("a streamed page", () => {
       },
     });
     const capture = DEV.diagnostics.capture();
-    const response = await handler(get(path));
-    const body = await response.text();
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
+    let printed: string[];
+    let response: Response;
+    let body: string;
+    try {
+      response = await handler(get(path));
+      body = await response.text();
+    } finally {
+      printed = warn.mock.calls.map((call) => String(call[0]));
+      warn.mockRestore();
+    }
     const late = capture.stop().filter((event) => event.code === "LATE_HEADER_WRITE");
+    // A development build prints the finding as well, once per distinct one.
+    for (const line of printed) expect(line).toStartWith("[barq] LATE_HEADER_WRITE: ");
 
     expect(response.status).toBe(200);
     expect(body).toContain("<b>salama</b>");

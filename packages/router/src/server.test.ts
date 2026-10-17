@@ -18,7 +18,7 @@ import {
 } from "@barqjs/start";
 import { mount, unmountAll } from "@barqjs/start/server";
 import { createMemo, flush, hole, hydrate, insert, markSafeError, template } from "@barqjs/core";
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import { runInThisContext } from "node:vm";
 
 import {
@@ -46,6 +46,22 @@ import {
 import type { AnyRouteDefinition } from "./route.ts";
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
+
+/** What `body` printed through `console.error`, which it does on purpose. */
+async function printedErrors(body: () => Promise<void>): Promise<unknown[][]> {
+  const error = spyOn(console, "error").mockImplementation(() => {});
+  try {
+    await body();
+    return error.mock.calls.map((call) => [...call]);
+  } finally {
+    error.mockRestore();
+  }
+}
+
+const refusedRedirect = (to: string): string =>
+  `[barq-router] A redirect to ${JSON.stringify(to)} was refused, because only a path or an \`http(s)\` URL is a valid target. ` +
+  "A target such as `javascript:` or `data:` can run as script in the browser, which is cross-site scripting. " +
+  "Validate the value passed to `redirect()` before using it, especially when it comes from the request.";
 
 const document = ({ body, seed }: { body: string; seed: string }): string =>
   `<!doctype html><html><head><title>t</title></head><body>${body}${seed}</body></html>`;
@@ -222,7 +238,15 @@ describe("the request is ambient for the whole render", () => {
       stream: false,
     });
 
-    expect((await handler(get("/"))).status).toBe(401);
+    const printed = await printedErrors(async () => {
+      expect((await handler(get("/"))).status).toBe(401);
+    });
+    // The refusal also reached the route's boundary, which has no
+    // `errorComponent` to show it with.
+    expect(printed).toHaveLength(1);
+    expect(String(printed[0]?.[0])).toStartWith(
+      '[barq-router] The route "/" threw while rendering',
+    );
     // …and the same page answers normally once the header is there.
     const ok = await handler(get("/", { headers: { authorization: "Bearer abc" } }));
     expect(ok.status).toBe(200);
@@ -1787,7 +1811,11 @@ describe("a failure before the render, and what the handler does with it", () =>
       app: (state) => renderRoutes(state),
     });
 
-    const body = await (await handler(get("/x"))).text();
+    let body = "";
+    const printed = await printedErrors(async () => {
+      body = await (await handler(get("/x"))).text();
+    });
+    expect(printed.map((call) => (call[0] as Error).message)).toEqual(["head is broken"]);
     // The document renders, the layout's tags survive, the broken route's are
     // simply absent — `projectHead`'s per-route swallow, which is what
     // `projectLane` does with the same failure.
@@ -2325,22 +2353,34 @@ describe("a redirect target has to be navigable", () => {
   });
 
   test("a `javascript:` target is refused before the shell, not sent", async () => {
-    const response = await render("javascript:alert(1)", "beforeLoad");
+    let response!: Response;
+    const printed = await printedErrors(async () => {
+      response = await render("javascript:alert(1)", "beforeLoad");
+    });
     expect(response.status).toBe(500);
     expect(response.headers.get("location")).toBeNull();
+    expect(printed).toEqual([[refusedRedirect("javascript:alert(1)")]]);
   });
 
   test("…and never reaches the script a streamed redirect replays", async () => {
     // This is the arm that would EXECUTE it.
-    const body = await (await render("javascript:alert(1)", "loader")).text();
+    let body = "";
+    const printed = await printedErrors(async () => {
+      body = await (await render("javascript:alert(1)", "loader")).text();
+    });
     expect(body).not.toContain("javascript:alert(1)");
     expect(body).not.toContain("location.replace");
+    expect(printed).toEqual([[refusedRedirect("javascript:alert(1)")]]);
   });
 
   test("`data:` and `vbscript:` go the same way", async () => {
-    for (const to of ["data:text/html,<script>alert(1)</script>", "vbscript:msgbox(1)"]) {
-      expect((await render(to, "beforeLoad")).status).toBe(500);
-    }
+    const targets = ["data:text/html,<script>alert(1)</script>", "vbscript:msgbox(1)"];
+    const printed = await printedErrors(async () => {
+      for (const to of targets) {
+        expect((await render(to, "beforeLoad")).status).toBe(500);
+      }
+    });
+    expect(printed).toEqual(targets.map((to) => [refusedRedirect(to)]));
   });
 });
 

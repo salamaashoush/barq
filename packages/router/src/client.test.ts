@@ -1,8 +1,10 @@
-import { expect, test } from "bun:test";
+import { DEV } from "@barqjs/core";
+import { expect, spyOn, test } from "bun:test";
 
-import { startClient } from "./client.ts";
+import { type StartClientOptions, startClient } from "./client.ts";
 import { memoryHistory } from "./history.ts";
 import type { AnyRouteDefinition } from "./route.ts";
+import type { RouterState } from "./router.ts";
 
 /**
  * `startClient` — the boot an application no longer writes.
@@ -14,6 +16,26 @@ import type { AnyRouteDefinition } from "./route.ts";
  * resolve the head, and only then hydrate. Each step exists because the step
  * after it claims something.
  */
+
+/**
+ * The boot, into a container no server rendered: `hydrate` finds nothing to
+ * claim, reports the mismatch and renders the page instead.
+ */
+async function bootUnrendered(options: StartClientOptions): Promise<RouterState> {
+  const capture = DEV.diagnostics.capture();
+  const warn = spyOn(console, "warn").mockImplementation(() => {});
+  const error = spyOn(console, "error").mockImplementation(() => {});
+  let printed: string[];
+  try {
+    return await startClient(options);
+  } finally {
+    printed = [...warn.mock.calls, ...error.mock.calls].map((call) => String(call[0]));
+    warn.mockRestore();
+    error.mockRestore();
+    expect(capture.stop().map((event) => event.code)).toEqual(["HYDRATION_MISMATCH"]);
+    for (const line of printed) expect(line).toStartWith("[barq] HYDRATION_MISMATCH: ");
+  }
+}
 
 function table(seen: string[]): AnyRouteDefinition[] {
   return [
@@ -47,7 +69,7 @@ test("the boot starts the router, resolves the head and mounts, in that order", 
   const container = globalThis.document.createElement("div");
   globalThis.document.body.appendChild(container);
 
-  const state = await startClient({
+  const state = await bootUnrendered({
     routeTree: table(seen),
     history: memoryHistory({ initial: ["/"] }),
     container,
@@ -74,7 +96,7 @@ test("a table with no shell still boots, and the container is what it mounts int
   const container = globalThis.document.createElement("div");
   globalThis.document.body.appendChild(container);
 
-  const state = await startClient({
+  const state = await bootUnrendered({
     routeTree: table(seen),
     history: memoryHistory({ initial: ["/"] }),
     container,

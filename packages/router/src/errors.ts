@@ -328,7 +328,9 @@ export function errorFallbackFor(
     // render as an empty `<div id="app">` with no clue why. A route that has
     // not said what to do with an error still deserves to have the error said
     // out loud once.
-    if (missing) return null;
+    // A redirect is an answer too: the server writes it after the shell, and
+    // the region it stood in has nothing to show while the browser leaves.
+    if (missing || isRedirect(thrown)) return null;
     const route = chain[depth]?.id ?? `depth ${depth}`;
     reportUnhandled(route, thrown);
     // In development the region says what happened instead of standing empty.
