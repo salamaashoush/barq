@@ -9,12 +9,12 @@
  * ready.
  */
 
-import { createMemo } from "@barqjs/core";
+import { DEV, createMemo } from "@barqjs/core";
 import { clearHydrationData } from "@barqjs/core/internal";
 import { afterEach, expect, test } from "bun:test";
 
 import { renderPage, renderToStream } from "./server.ts";
-import { esc, html, ssrLoading } from "./ssr.ts";
+import { esc, html, reveal, ssrLoading } from "./ssr.ts";
 
 const tick = () => new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -131,9 +131,147 @@ test("a boundary inside the body keeps its own declarations apart from the body'
     );
   };
 
+  const capture = DEV.diagnostics.capture();
   const out = await renderPage(page as never);
+  const codes = capture.stop().map((event) => event.code);
 
   expect(out.html).toBe("<main><b>outer</b><u>inner</u><s>after</s></main>");
   expect(fetches).toBe(3);
   expect(new Set(Object.values(out.data))).toEqual(new Set(["after", "inner", "outer"]));
+  expect(codes).not.toContain("RUN_WITH_DISPOSED_OWNER");
+});
+
+const wait = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * A boundary that parks inside a body which then reads a value of its own that
+ * has not arrived: the body unwinds and takes the inner boundary's range with
+ * it, and only the rebuild's copy of that boundary stands on the page.
+ */
+function nestedUnderUnwind(innerMs: number): {
+  page: () => unknown;
+  fetches: () => number;
+} {
+  let fetches = 0;
+  const Inner = (): unknown => {
+    const inner = createMemo(async () => {
+      fetches++;
+      await wait(innerMs);
+      return "inner";
+    });
+    return html(`<u>${esc(inner())}</u>`);
+  };
+  const Outer = (): unknown => {
+    const outer = createMemo(async () => {
+      fetches++;
+      await tick();
+      return "outer";
+    });
+    const nested = ssrLoading({ fallback: () => html("<i>inner</i>"), children: () => Inner() });
+    return html(`${esc(nested)}<b>${esc(outer())}</b>`);
+  };
+  const page = (): unknown =>
+    html(
+      `<main>${esc(
+        ssrLoading({ fallback: () => html("<i>outer</i>"), children: () => Outer() }),
+      )}</main>`,
+    );
+  return { page, fetches: () => fetches };
+}
+
+/** Every swap whose `<!--[b:N-->` range had not reached the page before its template did. */
+function swapsWithoutRange(out: string): string[] {
+  return [...out.matchAll(/<template data-barq="(\d+)">/g)]
+    .filter((swap) => !out.slice(0, swap.index).includes(`<!--[b:${swap[1]}-->`))
+    .map((swap) => swap[1]);
+}
+
+test("a stream resumes a boundary the rebuilt body parked, not the one it unwound", async () => {
+  const { page, fetches } = nestedUnderUnwind(15);
+
+  const capture = DEV.diagnostics.capture();
+  const out = await collect(renderToStream(page as never, { timeout: 1000 }).readable);
+  const codes = capture.stop().map((event) => event.code);
+
+  expect(swapsWithoutRange(out)).toEqual([]);
+  expect(out).toContain("<b>outer</b>");
+  expect(out).toContain("<u>inner</u>");
+  expect(out.match(/<template data-barq=/g)).toHaveLength(2);
+  expect(fetches()).toBe(2);
+  expect(codes).not.toContain("RUN_WITH_DISPOSED_OWNER");
+});
+
+test("a stream inlines the rebuilt inner boundary when its value arrived with the body's", async () => {
+  const { page, fetches } = nestedUnderUnwind(0);
+
+  const capture = DEV.diagnostics.capture();
+  const out = await collect(renderToStream(page as never, { timeout: 1000 }).readable);
+  const codes = capture.stop().map((event) => event.code);
+
+  expect(swapsWithoutRange(out)).toEqual([]);
+  expect(out).toContain("<u>inner</u><b>outer</b></template>");
+  expect(out.match(/<template data-barq=/g)).toHaveLength(1);
+  expect(fetches()).toBe(2);
+  expect(codes).not.toContain("RUN_WITH_DISPOSED_OWNER");
+});
+
+test("a buffered page settles the rebuilt inner boundary and seeds both values once", async () => {
+  const { page, fetches } = nestedUnderUnwind(15);
+
+  const capture = DEV.diagnostics.capture();
+  const out = await renderPage(page as never);
+  const codes = capture.stop().map((event) => event.code);
+
+  expect(out.html).toBe("<main><u>inner</u><b>outer</b></main>");
+  expect(fetches()).toBe(2);
+  expect(Object.keys(out.data)).toHaveLength(2);
+  expect(new Set(Object.values(out.data))).toEqual(new Set(["inner", "outer"]));
+  expect(codes).not.toContain("RUN_WITH_DISPOSED_OWNER");
+});
+
+test("a sequential Reveal does not hold a sibling back for a boundary the body unwound", async () => {
+  const value = (name: string, ms: number) =>
+    createMemo(async () => {
+      await wait(ms);
+      return name;
+    });
+  const page = (): unknown =>
+    html(
+      `<main>${esc(
+        reveal("sequential", false, () => {
+          const outer = ssrLoading({
+            fallback: () => html("<i>outer</i>"),
+            children: () => {
+              const slow = value("slow", 40);
+              const fast = value("fast", 0);
+              const nested = ssrLoading({
+                fallback: () => html("<i>slow</i>"),
+                children: () => html(`<u>${esc(slow())}</u>`),
+              });
+              return html(`${esc(nested)}<b>${esc(fast())}</b>`);
+            },
+          });
+          const sibling = value("sibling", 0);
+          const after = ssrLoading({
+            fallback: () => html("<i>sibling</i>"),
+            children: () => html(`<s>${esc(sibling())}</s>`),
+          });
+          return html(`${esc(outer)}${esc(after)}`);
+        }),
+      )}</main>`,
+    );
+
+  const reader = renderToStream(page as never, { timeout: 1000 }).readable.getReader();
+  const decoder = new TextDecoder();
+  const parts: string[] = [];
+  for (let next = await reader.read(); !next.done; next = await reader.read()) {
+    parts.push(decoder.decode(next.value));
+  }
+  const chunkWith = (text: string): number => parts.findIndex((part) => part.includes(text));
+
+  expect(chunkWith("<b>fast</b>")).toBeGreaterThan(0);
+  expect(chunkWith("<s>sibling</s>")).toBeGreaterThan(0);
+  expect(chunkWith("<b>fast</b>")).toBeLessThan(chunkWith("<u>slow</u>"));
+  expect(chunkWith("<s>sibling</s>")).toBeLessThan(chunkWith("<u>slow</u>"));
+  expect(swapsWithoutRange(parts.join(""))).toEqual([]);
 });

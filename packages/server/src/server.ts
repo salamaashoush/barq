@@ -22,6 +22,7 @@ import {
   render,
   type RequestEvent,
   getRequestEvent,
+  ownRange,
   rootScope,
   runWithOwner,
   settle,
@@ -487,7 +488,7 @@ function startRender(
   };
   let next = 0;
   job.sink = {
-    defer(resume, fallback, flags, parkedOn, catcher, group): string {
+    defer(resume, fallback, flags, parkedOn, catcher, group, scope): string {
       const id = next++;
       const open = `<!--[b:${id}:${stamp}-->`;
       const close = `<!--]b:${id}:${stamp}-->`;
@@ -509,6 +510,12 @@ function startRender(
         if (members === undefined) job.groups.set(group, (members = []));
         members.push(record);
       }
+      // A boundary parked inside a build that then unwinds stands in markup
+      // nobody will write. Resumed, it would build under a disposed owner and
+      // swap into a range no page holds, and a `<Reveal>` would hold its
+      // siblings back for it. The rebuild parks the boundary again where it
+      // now stands, and its reads join the same flights by key.
+      ownRange(scope, () => withdraw(job, record));
       return open + fallback + close;
     },
     guard(catcher, built, flags): string {
@@ -568,6 +575,15 @@ function startRender(
     setHeadSink(previousHead);
   }
   return job;
+}
+
+function withdraw(job: Job, record: Parked): void {
+  if (job.released) return;
+  const at = job.parked.indexOf(record);
+  if (at !== -1) job.parked.splice(at, 1);
+  const members = record.group === null ? undefined : job.groups.get(record.group);
+  const member = members?.indexOf(record) ?? -1;
+  if (member !== -1) members!.splice(member, 1);
 }
 
 /** Everything a render holds, let go of once, on every way out of it. */

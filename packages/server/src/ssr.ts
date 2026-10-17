@@ -904,6 +904,11 @@ export interface StreamSink {
    * one must be left with the bare markup, exactly as a boundary that settled
    * inside the shell would have written. Without this the sink's mere presence
    * added comments to `renderToString` output.
+   *
+   * `scope` is the boundary's own. The range lives inside the markup of the
+   * build that opened it, so when that build unwinds and disposes the scope
+   * the range is gone from every page, and the sink must stop resuming it.
+   * The rebuild opens the boundary again and parks it under a scope that lives.
    */
   defer(
     resume: () => string,
@@ -913,6 +918,7 @@ export interface StreamSink {
     catcher: LateCatcher | null,
     /** The `<Reveal>` it stands in, whose order a stream keeps. */
     group: RevealGroup | null,
+    scope: Scope,
   ): string;
   /**
    * The content of an error boundary that a parked boundary below it may still
@@ -1311,7 +1317,7 @@ function loadingBoundary(
   }
   if (catcher !== null) catcher.parked = true;
   return {
-    markup: SINK.defer(build, String(shown), flags, parkedOn, catcher, REVEAL),
+    markup: SINK.defer(build, String(shown), flags, parkedOn, catcher, REVEAL, own),
     parked: true,
   };
 }
