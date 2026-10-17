@@ -1190,3 +1190,7 @@ callback through because the two cases were indistinguishable.
   for its window, so a session counts the container listeners its own module asks for. 32 alone,
   in the suite, and after three random sets of preceding files. The B4 assertions still run on
   every listener a session registers.
+- `router/src/m8-convention.test.ts` "this package is compiled by the barq compiler": the preload
+  now installs the shared `compilerLoader` from `@barqjs/vite/internal`, so the test looks for that
+  import and the `plugin(compilerLoader(` call instead of `require_("@barqjs/compiler")` and
+  `native.transform(source`. The `@barqjs/compiler` devDependency and no-JSX checks are unchanged.

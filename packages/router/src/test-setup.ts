@@ -28,26 +28,7 @@ afterEach(() => {
   resetErrorHalt();
 });
 
-import { createRequire } from "node:module";
 import { plugin } from "bun";
+import { compilerLoader } from "@barqjs/vite/internal";
 
-interface Native {
-  transform(code: string, options?: Record<string, unknown>): { code: string; warnings: string[] };
-}
-
-const require_ = createRequire(import.meta.url);
-const native = require_("@barqjs/compiler") as Native;
-
-plugin({
-  name: "barq-compiler",
-  setup(build) {
-    build.onLoad({ filter: /\.tsx$/ }, async (args) => {
-      const source = await Bun.file(args.path).text();
-      const out = native.transform(source, { filename: args.path, dev: true });
-      if (out.warnings.length > 0) {
-        console.warn(`[barq] ${args.path}\n  ${out.warnings.join("\n  ")}`);
-      }
-      return { contents: out.code, loader: "ts" };
-    });
-  },
-});
+plugin(compilerLoader({ transform: { dev: true } }));
