@@ -17,6 +17,7 @@ import {
   getRequest,
 } from "./index.ts";
 import { handleServerFn, mount, unmountAll } from "./server.ts";
+import { besides, printedBy } from "./test-console.ts";
 
 const ORIGIN = "https://example.com";
 const realFetch = globalThis.fetch;
@@ -160,13 +161,27 @@ test("a failure part way through reaches the reader as a failure, without the ha
 
   const received: number[] = [];
   let failure: unknown;
-  try {
-    for await (const n of await clientRpc<undefined, AsyncIterableIterator<number>>("flaky")()) {
-      received.push(n);
+  const printed = await printedBy(async () => {
+    try {
+      for await (const n of await clientRpc<undefined, AsyncIterableIterator<number>>("flaky")()) {
+        received.push(n);
+      }
+    } catch (error) {
+      failure = error;
     }
-  } catch (error) {
-    failure = error;
-  }
+  });
+  // The server's log keeps the handler's message; the reader does not get it.
+  expect(
+    besides(printed, "SERVER_FUNCTION_FAILED").map(([line, error]) => [
+      line,
+      (error as Error).message,
+    ]),
+  ).toEqual([
+    [
+      '[barq] The server function "flaky" threw while streaming its result, so the stream ended early and the caller receives a `ServerFnError`. The error:',
+      "column users.secret does not exist",
+    ],
+  ]);
   expect(received).toEqual([1]);
   expect(failure).toBeInstanceOf(ServerFnError);
   expect((failure as Error).message).not.toContain("secret");

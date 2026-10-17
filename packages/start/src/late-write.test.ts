@@ -17,6 +17,7 @@ import {
   setResponseStatus,
   withRequest,
 } from "./index.ts";
+import { holdReports } from "./test-console.ts";
 
 const request = (): Request => new Request("https://example.com/profile/salama");
 
@@ -25,6 +26,8 @@ function loadProfileLate(): void {
 }
 
 describe("a write after the response was sent", () => {
+  holdReports("LATE_HEADER_WRITE");
+
   test("is reported with the call and the code that made it", () => {
     const draft = createResponseDraft();
     const capture = DEV.diagnostics.capture();

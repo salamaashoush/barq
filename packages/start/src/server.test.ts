@@ -29,6 +29,7 @@ import {
 import { decodeWire, encodeWire } from "@barqjs/server/codec";
 
 import { createFetchHandler } from "./serve.ts";
+import { printedBy } from "./test-console.ts";
 import {
   crossOriginRefused,
   handleServerFn,
@@ -38,6 +39,10 @@ import {
   originAllowed,
   unmountAll,
 } from "./server.ts";
+
+const refusal = (to: string): string =>
+  `[barq] A server function threw \`redirect(${JSON.stringify(to)})\`, which is not a path or an \`http(s)\` URL, so the redirect was refused and the call answered 500. ` +
+  "Validate the value passed to `redirect()` before using it, especially when it comes from the request.";
 
 /** Mounts under the id the function already carries, which is what the tests mean. */
 const mountOf = (fn: { meta: { id: string } }): void => mount(fn.meta.id, fn as never);
@@ -1088,13 +1093,16 @@ describe("a server function's control-flow throws", () => {
       "data:text/html,<script>alert(1)</script>",
       "vbscript:x",
     ];
-    for (const [at, to] of refused.entries()) {
-      throwing(`evil-${at}`, new Redirected(to));
-      const response = await handleServerFn(post(`evil-${at}`, undefined));
-      expect(response?.status).toBe(500);
-      expect(response?.headers.get("location")).toBeNull();
-      expect(response?.headers.get(RPC_CONTROL)).toBeNull();
-    }
+    const printed = await printedBy(async () => {
+      for (const [at, to] of refused.entries()) {
+        throwing(`evil-${at}`, new Redirected(to));
+        const response = await handleServerFn(post(`evil-${at}`, undefined));
+        expect(response?.status).toBe(500);
+        expect(response?.headers.get("location")).toBeNull();
+        expect(response?.headers.get(RPC_CONTROL)).toBeNull();
+      }
+    });
+    expect(printed).toEqual(refused.map((to) => [refusal(to)]));
   });
 
   test("the targets a redirect may name are the router's list, exactly", async () => {

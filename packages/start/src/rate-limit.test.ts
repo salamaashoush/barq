@@ -11,6 +11,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { type RateLimitStore, byIP, memoryStore, rateLimit } from "./rate-limit.ts";
 import { withRequest } from "./context.ts";
 import { runMiddleware } from "./middleware.ts";
+import { printedBy } from "./test-console.ts";
 
 /** Run a middleware the way `serverRpc` does, reporting what the handler saw. */
 async function run(
@@ -94,6 +95,9 @@ describe("counting", () => {
 });
 
 describe("when the store is not there", () => {
+  const FAILED_OPEN =
+    "[barq] The rate-limit `store` or `key` threw, so this request was let through without being counted. The error:";
+
   /**
    * FAIL OPEN, deliberately. A limiter that refuses everything because Redis is
    * down has become the outage it exists to prevent. That is the right trade for
@@ -106,20 +110,32 @@ describe("when the store is not there", () => {
         throw new Error("redis is down");
       },
     };
-    const result = await run(limiter({ store: broken }));
+    let result!: Awaited<ReturnType<typeof run>>;
+    const printed = await printedBy(async () => {
+      result = await run(limiter({ store: broken }));
+    });
     expect(result.refused).toBeNull();
     expect(result.ran).toBe(true);
+    expect(printed.map(([line, error]) => [line, (error as Error).message])).toEqual([
+      [FAILED_OPEN, "redis is down"],
+    ]);
   });
 
   test("a key function that throws does too", async () => {
-    const result = await run(
-      limiter({
-        key: () => {
-          throw new Error("no session");
-        },
-      }),
-    );
+    let result!: Awaited<ReturnType<typeof run>>;
+    const printed = await printedBy(async () => {
+      result = await run(
+        limiter({
+          key: () => {
+            throw new Error("no session");
+          },
+        }),
+      );
+    });
     expect(result.ran).toBe(true);
+    expect(printed.map(([line, error]) => [line, (error as Error).message])).toEqual([
+      [FAILED_OPEN, "no session"],
+    ]);
   });
 });
 

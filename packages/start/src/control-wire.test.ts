@@ -19,6 +19,7 @@ import {
   serverRpc,
 } from "./index.ts";
 import { handleServerFn, mount, unmountAll } from "./server.ts";
+import { printedBy } from "./test-console.ts";
 
 const ORIGIN = "https://example.com";
 const realFetch = globalThis.fetch;
@@ -151,7 +152,13 @@ test("a redirect that names a target a browser may not be sent to is refused who
   const seen: Response[] = [];
   throughHandler(seen);
 
-  await caught("bad");
+  const printed = await printedBy(() => caught("bad"));
+  expect(printed).toEqual([
+    [
+      '[barq] A server function threw `redirect("javascript:alert(1)")`, which is not a path or an `http(s)` URL, so the redirect was refused and the call answered 500. ' +
+        "Validate the value passed to `redirect()` before using it, especially when it comes from the request.",
+    ],
+  ]);
   expect(seen[0]?.status).toBe(500);
   expect(await seen[0]?.text()).not.toContain("javascript");
 });

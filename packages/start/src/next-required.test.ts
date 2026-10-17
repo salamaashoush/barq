@@ -18,6 +18,7 @@ import {
   serverRpc,
 } from "./index.ts";
 import { handleServerFn, mount, unmountAll } from "./server.ts";
+import { besides, printedBy } from "./test-console.ts";
 
 afterEach(unmountAll);
 
@@ -110,15 +111,25 @@ describe("a server middleware", () => {
         },
       ),
     );
-    const response = await handleServerFn(
-      new Request(`${ORIGIN}/_barq/fn/${encodeURIComponent("notes.ts#guarded")}.data`, {
-        method: "POST",
-        headers: { "content-type": "application/json", origin: ORIGIN },
-        body: JSON.stringify({ input: encodeWire(undefined) }),
-      }),
-    );
+    let response: Response | null | undefined;
+    const printed = await printedBy(async () => {
+      response = await handleServerFn(
+        new Request(`${ORIGIN}/_barq/fn/${encodeURIComponent("notes.ts#guarded")}.data`, {
+          method: "POST",
+          headers: { "content-type": "application/json", origin: ORIGIN },
+          body: JSON.stringify({ input: encodeWire(undefined) }),
+        }),
+      );
+    });
     expect(response?.status).toBe(500);
     expect(ran).toBe(false);
+    const logged = besides(printed, "SERVER_FUNCTION_FAILED");
+    expect(logged.map(([line]) => line)).toEqual([
+      '[barq] The server function "notes.ts#guarded" threw, so the call answered 500 without the error\'s text. The error:',
+    ]);
+    expect(String((logged[0]?.[1] as Error | undefined)?.message)).toStartWith(
+      '[barq] The server middleware 1 of 1 around the server function "notes.ts#guarded" returned without calling `next()`',
+    );
   });
 });
 
