@@ -903,9 +903,12 @@ callback that returns a function has that function registered as a cleanup on th
 **Falsified by.** A parent ref that reads `el.childElementCount` must see the final count. A child ref
 must run before its parent's. A returned disposer must run at dispose.
 
-**Status.** `PARTIAL`: a returned disposer is registered as a cleanup (`ref-cleanup.tsx`), and refs
-still run inline, at the position, during construction, before the element joins its parent. Pinned
-by `ref-binding.tsx` and `ref-on-component.tsx`.
+**Status.** `VIOLATED`. A ref runs inline where the compiler emits `_$ref`, right after its own
+template is cloned: a parent's ref runs before its children's, and before a component child's subtree
+is inserted, so it sees `childElementCount` 0 there; a component's root element is not yet in its
+parent when its ref runs. The cleanup clause holds: a returned function runs at dispose and when a
+branch holding the element leaves, and the ref runs again when it comes back
+(`test/ref-cleanup.test.ts`). Pinned by `ref-binding.tsx` and `ref-on-component.tsx`.
 
 ### M4 — updates flush on a microtask; render effects before user effects
 
