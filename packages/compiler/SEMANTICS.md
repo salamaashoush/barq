@@ -555,7 +555,9 @@ answer.
 **Falsified by.** Change the provided value; assert every node in the consuming subtree is the same
 object it was, and the consumed text changed.
 
-**Status.** `HOLDS`. Pinned by `context-provider.tsx` and `sem-ctx-value-is-live.tsx`.
+**Status.** `HOLDS`, for a value written as an expression and as an accessor, and `getContext` and
+`useContext` agree on a plain value and on a function set as one. Pinned by
+`test/context-value-live.test.ts`, `context-provider.tsx` and `sem-ctx-value-is-live.tsx`.
 
 ### X3 — context resolves at READ time, through the scope chain
 
