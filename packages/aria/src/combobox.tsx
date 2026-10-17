@@ -1314,7 +1314,7 @@ function createComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>): ComboboxR
     // the highlight nor a half-typed query survives a close.
     let wasOpen = untrack(isOpen);
     createEffect(isOpen, (open) => {
-      const manager = list.selectionManager();
+      const manager = untrack(list.selectionManager);
       manager.setFocused(open);
       if (!open) {
         manager.setFocusedKey(null);
@@ -1335,8 +1335,10 @@ function createComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>): ComboboxR
       (strategy) => {
         if (strategy === null) return;
         setPending(null);
-        const key = strategy === "last" ? delegate.getLastKey() : delegate.getFirstKey();
-        list.selectionManager().setFocusedKey(key);
+        untrack(() => {
+          const key = strategy === "last" ? delegate.getLastKey() : delegate.getFirstKey();
+          list.selectionManager().setFocusedKey(key);
+        });
       },
     );
 
@@ -1348,7 +1350,7 @@ function createComboboxRoot<V>(props: Incoming<ComboboxRootProps<V>>): ComboboxR
       (now) => {
         if (now === shownFor) return;
         shownFor = now;
-        if (!isMultiple() && !isOpen()) settleInput();
+        if (untrack(() => !isMultiple() && !isOpen())) settleInput();
       },
     );
   }

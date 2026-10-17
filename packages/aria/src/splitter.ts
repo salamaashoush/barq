@@ -468,11 +468,14 @@ export function splitterState(options: SplitterStateOptions): SplitterState {
     ordered().filter((each): each is PanelEntry => each.kind === "panel");
   const panelIds = (): readonly string[] => panels().map((each) => each.id);
 
+  const extentOf = (element: Element, along: Orientation): number => {
+    const box = element.getBoundingClientRect();
+    return along === "horizontal" ? box.width : box.height;
+  };
   const measure = (): number => {
     const element = access(options.ref);
     if (element === null || element === undefined) return 0;
-    const box = element.getBoundingClientRect();
-    return orientation() === "horizontal" ? box.width : box.height;
+    return extentOf(element, orientation());
   };
 
   const sizeContext = (): SizeContext => {
@@ -811,10 +814,10 @@ export function splitterState(options: SplitterStateOptions): SplitterState {
     createEffect(
       // Orientation read so a turn from row to column measures the other axis.
       () => [access(options.ref), orientation()] as const,
-      ([element]) => {
+      ([element, along]) => {
         if (element === null || element === undefined) return undefined;
         const update = (): void => {
-          const next = measure();
+          const next = extentOf(element, along);
           if (next === untrack(groupPixels)) return;
           setGroupPixels(next);
           // Only a limit written as a length changes its share when the group does.

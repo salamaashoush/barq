@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createSignal, flush, Show, type Child, type Incoming } from "@barqjs/core";
+import { createRoot, createSignal, flush, Show, type Child, type Incoming } from "@barqjs/core";
 import { render, tick } from "@barqjs/testing";
 
 import { listState } from "./collections.ts";
@@ -197,7 +197,9 @@ describe("staticCollection", () => {
   test("a list state built from it walks the items and honours a disabled one", async () => {
     const collection = staticCollection();
     const [disabled, setDisabled] = createSignal(true);
-    const state = listState<StaticEntry>({ items: collection.entries, ...staticAccessors });
+    const state = createRoot(() =>
+      listState<StaticEntry>({ items: collection.entries, ...staticAccessors }),
+    );
     render(() => (
       <ul>
         <Row of={collection} id="a">

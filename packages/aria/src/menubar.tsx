@@ -182,7 +182,7 @@ export function Menubar(props: Incoming<MenubarComponentProps>) {
     const closed = wasOpen;
     wasOpen = open;
     if (open !== "" || closed === "" || switching) return;
-    const trigger = entries.get(closed)?.trigger() ?? null;
+    const trigger = untrack(() => entries.get(closed)?.trigger() ?? null);
     if (trigger === null) return;
     requestAnimationFrame(() => {
       if (value() !== "" || !trigger.isConnected) return;

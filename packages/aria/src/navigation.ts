@@ -497,23 +497,19 @@ export function navigationMenu(
 
     // Where the open trigger is along the bar. Kept when the menu closes, so
     // the indicator fades out where it was rather than jumping to the corner.
-    const place = (): void => {
-      const nav = root();
-      const trigger = openRecord()?.trigger() ?? null;
+    const placement = () => [root(), openRecord()?.trigger() ?? null, orientation()] as const;
+    const place = ([nav, trigger, along]: ReturnType<typeof placement>): void => {
       if (nav === null || trigger === null) return;
       const bar = nav.getBoundingClientRect();
       const box = trigger.getBoundingClientRect();
       setIndicator(
-        orientation() === "horizontal"
+        along === "horizontal"
           ? { offset: box.left - bar.left, size: box.width }
           : { offset: box.top - bar.top, size: box.height },
       );
     };
-    createEffect(
-      () => [root(), openRecord()?.trigger() ?? null, orientation()] as const,
-      () => place(),
-    );
-    resizeObserver(root, place);
+    createEffect(placement, place);
+    resizeObserver(root, () => place(placement()));
   }
 
   const register = (key: Key): void => {
@@ -570,16 +566,13 @@ export function navigationMenu(
       // The viewport grows to whatever is open, so the panel says how big it
       // is. `offsetWidth`, not `getBoundingClientRect`: every panel enters with
       // a scale animation, and a transformed box reports what it is PAINTED at.
-      const report = (): void => {
-        const element = content();
-        if (element === null || !isOpen()) return;
+      const shown = (): HTMLElement | null => (isOpen() ? content() : null);
+      const report = (element: HTMLElement | null): void => {
+        if (element === null) return;
         setViewportSize({ width: element.offsetWidth, height: element.offsetHeight });
       };
-      createEffect(
-        () => [content(), isOpen()] as const,
-        () => report(),
-      );
-      resizeObserver(() => (isOpen() ? content() : null), report);
+      createEffect(shown, report);
+      resizeObserver(shown, () => report(shown()));
     }
 
     const onContentKeyDown = (event: KeyboardEvent): void => {

@@ -31,6 +31,7 @@ import {
   install,
   isServer,
   provide,
+  untrack,
 } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { button } from "./button.tsx";
@@ -121,7 +122,8 @@ export function tagGroup(options: TagGroupOptions, state: ListState<unknown>): T
     createEffect(
       () => [state.collection().size, access(options.ref) as HTMLElement | null] as const,
       ([size, element]) => {
-        if (previous > 0 && size === 0 && isFocusWithin() && element !== null) element.focus();
+        if (previous > 0 && size === 0 && untrack(isFocusWithin) && element !== null)
+          element.focus();
         previous = size;
       },
     );

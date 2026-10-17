@@ -34,6 +34,7 @@ import {
   isServer,
   createSignal,
   onSettled,
+  untrack,
 } from "@barqjs/core";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { focusWithoutScrolling } from "./dom.ts";
@@ -548,7 +549,7 @@ export function sliderThumb(options: SliderThumbOptions, state: SliderState): Sl
     // The state decides which thumb is focused — the track hands focus to the
     // one a press picked up — so the DOM follows it rather than the reverse.
     createEffect(isFocused, (focused) => {
-      if (focused) focusInput();
+      if (focused) untrack(focusInput);
     });
 
     createEffect(isDisabled, (disabled) => {

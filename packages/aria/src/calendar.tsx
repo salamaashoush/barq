@@ -738,7 +738,7 @@ export function calendar(options: CalendarOptions, state: AnyCalendarState): Cal
     createEffect(title, (current) => {
       if (current === previous) return;
       previous = current;
-      if (!state.isFocused()) announce(current);
+      if (!untrack(state.isFocused)) announce(current);
     });
   }
 

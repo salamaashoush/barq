@@ -411,9 +411,7 @@ export function virtualizer(options: VirtualizerOptions): VirtualizerState {
 
   const overscan = (): number => access(options.overscan) ?? 1;
 
-  const read = (): void => {
-    const element = access(options.ref) as HTMLElement | null;
-    if (element === null) return;
+  const read = (element: HTMLElement): void => {
     const next = rect(
       element.scrollLeft,
       element.scrollTop,
@@ -429,15 +427,15 @@ export function virtualizer(options: VirtualizerOptions): VirtualizerState {
       (element) => {
         if (element === null) return undefined;
 
-        read();
-        element.addEventListener("scroll", read, { passive: true });
+        const measure = (): void => read(element);
+        measure();
+        element.addEventListener("scroll", measure, { passive: true });
 
-        const observer =
-          typeof ResizeObserver === "undefined" ? null : new ResizeObserver(() => read());
+        const observer = typeof ResizeObserver === "undefined" ? null : new ResizeObserver(measure);
         observer?.observe(element);
 
         return () => {
-          element.removeEventListener("scroll", read);
+          element.removeEventListener("scroll", measure);
           observer?.disconnect();
         };
       },

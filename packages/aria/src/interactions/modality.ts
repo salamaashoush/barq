@@ -14,7 +14,7 @@
  * makes that a lie.
  */
 
-import { type Accessor, isServer, createSignal } from "@barqjs/core";
+import { type Accessor, isServer, createSignal, untrack } from "@barqjs/core";
 import { activeElement, eventTarget, ownerDocument, ownerWindow } from "../dom.ts";
 import { isAndroid, isMac } from "../platform.ts";
 import { tryCleanup } from "@barqjs/primitives/utils";
@@ -221,13 +221,17 @@ function setupModalityListeners(element?: Element | null): void {
   //
   // Capturing the unbound method is the point: `focusWithModality` re-applies
   // the `this` it was called on.
+  //
+  // Untracked because the focus and blur listeners run synchronously inside
+  // the caller: an effect callback that moves focus has not read what its
+  // listeners read, and the engine's dev build would say it had.
   const original = view.HTMLElement.prototype.focus;
   Reflect.defineProperty(view.HTMLElement.prototype, "focus", {
     configurable: true,
     writable: true,
     value: function focusWithModality(this: HTMLElement, ...args: [FocusOptions?]): void {
       hasEventBeforeFocus = true;
-      original.apply(this, args);
+      untrack(() => original.apply(this, args));
     },
   });
 
