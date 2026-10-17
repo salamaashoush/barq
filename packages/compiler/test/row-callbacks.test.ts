@@ -6,9 +6,11 @@ import { compileSource, loadModule } from "./harness.ts";
  * A flow construct's callback written by name, as a `function` declaration or a
  * `const`, is the same callback written inline: it is handed the row or the
  * narrowed value, and its reads of that value are as live as the inline one's.
+ * A `<Match>` hands the narrowed accessor unless it is keyed, at every level,
+ * as `<Show>` does.
  */
 const SOURCE = `
-import { For, Show, createStore } from "@barqjs/core";
+import { For, Match, Show, Switch, createStore } from "@barqjs/core";
 export const [state, setState] = createStore({
   rows: [{ id: 1, label: "salama", done: false }],
   picked: { name: "salama" } as { name: string } | null,
@@ -21,6 +23,15 @@ function declaredPick(picked) { return <b>{picked().name}</b>; }
 export function DeclaredFor() { return <ul><For each={state.rows}>{declaredRow}</For></ul>; }
 export function NamedFor() { return <ul><For each={state.rows}>{namedRow}</For></ul>; }
 export function DeclaredShow() { return <p><Show when={state.picked}>{declaredPick}</Show></p>; }
+export function DeclaredMatch() {
+  return <p><Switch><Match when={state.picked}>{declaredPick}</Match></Switch></p>;
+}
+export function InlineMatch() {
+  return <p><Switch><Match when={state.picked}>{(picked) => <b>{picked().name}</b>}</Match></Switch></p>;
+}
+export function KeyedMatch() {
+  return <p><Switch><Match when={state.picked} keyed>{(picked) => <b>{picked.name}</b>}</Match></Switch></p>;
+}
 `;
 
 type Module = Record<string, () => unknown> & {
@@ -76,7 +87,7 @@ for (const optimize of [0, 2]) {
       });
     }
 
-    for (const name of ["DeclaredShow"]) {
+    for (const name of ["DeclaredShow", "DeclaredMatch", "InlineMatch", "KeyedMatch"]) {
       test(`${name}: the narrowed value is handed to it`, async () => {
         const view = await mounted(name, optimize);
         try {

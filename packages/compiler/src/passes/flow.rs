@@ -233,7 +233,11 @@ fn admits_value<'a>(
         // `keyed` decides whether the key carries the value or only its
         // truthiness. Anything the compiler cannot read is refused rather than
         // assumed — the two answers are different programs.
-        Flow::Show | Flow::Match => boolean_of(value).is_some(),
+        Flow::Show => boolean_of(value).is_some(),
+        // A keyed arm is rebuilt when its VALUE moves, and `switch` keys its
+        // branch on the winning arm's index alone, so only a non-keyed arm
+        // lowers. The adapter keys a keyed one on a generation counter.
+        Flow::Match => boolean_of(value) == Some(false),
         // `For` accepts a third answer: a key FUNCTION, told from a Cell by the
         // parameter it declares — the discriminator
         // `components.ts` applies at runtime, asked at compile time.
@@ -719,11 +723,13 @@ fn switch<'a>(
         let when = arm_bag.take(shaper, "when").expect("checked by `admits`");
         let konst = shaper.lift.rx(&when.value).konst.is_some();
         let cell = shaper.cell_value(when.value, when.span);
-        let value = read_of(shaper, dup(shaper, &cell), arm_span);
+        // A non-keyed arm is handed the narrowed ACCESSOR, as `Show` hands its
+        // children and the adapter hands an arm, so its reads stay live.
+        let narrowed = dup(shaper, &cell);
         let test = read_of(shaper, cell, arm_span);
         statik &= is_static(shaper, &test, konst);
         let body = body_slot_of(shaper, arm_kids, arm_span)
-            .map(|body| pass_value(shaper, body, value, arm_span));
+            .map(|body| pass_value(shaper, body, narrowed, arm_span));
         tests.push((test, arm_span));
         bodies.push(body);
     }
