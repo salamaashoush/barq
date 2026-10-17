@@ -1220,3 +1220,15 @@ callback through because the two cases were indistinguishable.
   uniqueness) stay.
 - `compiler/test/leaks.test.ts` "no fixture leaks anything" is `expect(formatLeaks(findings)).toBe("")`;
   with an empty registry the old unregistered-only filter matched every finding.
+
+## Core/web split (hard cut, user decision: one home per name)
+
+- `compiler/src/options.rs`: the expected default `moduleSource` is `@barqjs/web`; a new assertion
+  pins `coreSource` defaulting to `@barqjs/core`.
+- `compiler/src/compile.rs` `helpers_extend_an_existing_import`: input and expected text use an
+  `@barqjs/web` import, since DOM helpers now live there.
+- `compiler/src/codegen/ssr.rs`: `core_import` became `import_from(code, CORE | WEB)`; SSR output
+  imports shared helpers from core and renderer ones from web.
+- `vite/test/compiler.test.ts`: the interp source is `@barqjs/web/interp`.
+- `core/src/dist-entries.test.ts` lists four entries: `./interp`, `./jsx-runtime` and
+  `./jsx-dev-runtime` moved to web.
