@@ -108,6 +108,23 @@ describe("a streamed page", () => {
     expect(printed).toEqual([]);
   });
 
+  test("does not tell the route's onCatch about a redirect that comes after the shell", async () => {
+    const caught: string[] = [];
+    const { handler, path } = page({
+      loader: async () => {
+        await tick();
+        redirect("/login");
+      },
+      component: (props: { data: () => unknown }) =>
+        ssrHtml(`<main>${esc(String(props.data()))}</main>`),
+      onCatch: (error: Error) => caught.push(error.message),
+    });
+    const body = await (await handler(get(path))).text();
+
+    expect(body).toContain('<script nonce="n0nce">location.replace("/login")</script>');
+    expect(caught).toEqual([]);
+  });
+
   test("takes the status and headers the shell declared with httpStatus and httpHeader", async () => {
     const { handler, path } = page({
       component: () => {

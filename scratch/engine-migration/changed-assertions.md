@@ -1069,3 +1069,19 @@ Each now orders what it waits on; no expectation's subject changed, and what mov
   `sem-own-render-disposer-disposes` and `sem-testing-wrapper-eager` moved because the package
   rename rewrote one comment in each fixture ("compiler-rs" to "compiler"). Emitted code keeps
   comments, so the digest of every mode that row covers changed with them; no other row moved.
+
+## router: answers are not failures (2026-10-17)
+
+- `router/src/server.test.ts` "a middleware that refuses becomes the page's own response": asserted
+  that the buffered (`stream: false`) render printed one `[barq-router] The route "/" threw while
+  rendering` report alongside the 401. It now asserts nothing is printed. The thrown `Response` is
+  the page's answer and the markup it would have left empty is never sent, so the report described
+  a failure nobody could see. `errorFallbackFor` takes a `superseded` check the page handler fills
+  with "buffered, and a thrown answer was taken", and stays quiet when it holds. A streamed page
+  that cannot honour the 401 after its shell still reports.
+- Added, no assertion changed: `router/src/errors.test.ts` "a redirect is not a catch" and "a render
+  a thrown answer superseded reports nothing", and `router/src/shell-head.test.ts` "does not tell
+  the route's onCatch about a redirect that comes after the shell". No existing test pinned
+  `onCatch` hearing a redirect; it did, because `errorFallbackFor` skipped only `notFound`. It now
+  skips a redirect as well, matching TanStack Router, whose route boundary rethrows a not-found
+  before `onCatch` and whose loaders settle a redirect before any boundary sees it.

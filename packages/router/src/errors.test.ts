@@ -15,7 +15,7 @@
  */
 
 import { isDev } from "@barqjs/core";
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 
 import {
   NOT_FOUND,
@@ -203,6 +203,64 @@ describe("onCatch", () => {
     });
     errorFallbackFor(chain, 0, () => ({}))(
       () => new NotFound("gone"),
+      () => {},
+    );
+    expect(seen).toEqual([]);
+  });
+
+  /**
+   * A buffered page that a loader's thrown `Response` answered sends that
+   * instead of the markup, so the empty region is never seen. A streamed one
+   * has already sent the region, and still hears about it.
+   */
+  test("a render a thrown answer superseded reports nothing", () => {
+    const error = spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const refused = () => new Error("[object Response]");
+      const superseded = errorFallbackFor(
+        chainOf({}),
+        0,
+        () => ({}),
+        undefined,
+        () => true,
+      )(refused, () => {});
+      expect(superseded).toBeNull();
+      expect(error).not.toHaveBeenCalled();
+
+      errorFallbackFor(
+        chainOf({}),
+        0,
+        () => ({}),
+        undefined,
+        () => false,
+      )(refused, () => {});
+      expect(error).toHaveBeenCalledTimes(1);
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  /** A redirect is an ANSWER as well, and neither a route's nor the router's `onCatch` hears of it. */
+  test("a redirect is not a catch", () => {
+    const seen: string[] = [];
+    const chain = chainOf(
+      { onCatch: (e: Error) => seen.push(`root:${e.message}`) },
+      { onCatch: (e: Error) => seen.push(`leaf:${e.message}`) },
+    );
+    const shown = errorFallbackFor(chain, 1, () => ({}), {
+      onCatch: (e: Error) => seen.push(`default:${e.message}`),
+    })(
+      () => new Redirect("/login"),
+      () => {},
+    );
+    expect(shown).toBeNull();
+    expect(seen).toEqual([]);
+
+    const fallback = errorFallbackFor(chainOf({}), 0, () => ({}), {
+      onCatch: (e: Error) => seen.push(`default:${e.message}`),
+    });
+    fallback(
+      () => new Redirect("/login"),
       () => {},
     );
     expect(seen).toEqual([]);

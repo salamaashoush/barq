@@ -242,11 +242,9 @@ describe("the request is ambient for the whole render", () => {
       expect((await handler(get("/"))).status).toBe(401);
     });
     // The refusal also reached the route's boundary, which has no
-    // `errorComponent` to show it with.
-    expect(printed).toHaveLength(1);
-    expect(String(printed[0]?.[0])).toStartWith(
-      '[barq-router] The route "/" threw while rendering',
-    );
+    // `errorComponent`, but the 401 replaced the page, so there is no empty
+    // region to report.
+    expect(printed).toEqual([]);
     // …and the same page answers normally once the header is there.
     const ok = await handler(get("/", { headers: { authorization: "Bearer abc" } }));
     expect(ok.status).toBe(200);

@@ -360,6 +360,7 @@ export function renderRoutes(state: RouterState): unknown {
                   depth,
                   () => state.params(),
                   state.config.defaults,
+                  state.config.superseded,
                 )(error, reset);
                 return shown === null || shown === undefined ? ssrHtml("") : shown;
               },
@@ -964,6 +965,9 @@ export function createPageHandler(
             ? "1"
             : "0";
 
+      // Decided BEFORE the head is projected, because it is what decides
+      // whether `head` sees `loaderData` at all.
+      const buffered = options.stream === false || isCrawler(request, options);
       // Request-scoped, so the answer a loader throws cannot reach another
       // request. A module-level "current answer" hands one request's to the next.
       let answer: Response | null = null;
@@ -1013,6 +1017,7 @@ export function createPageHandler(
           }
           answer ??= answerFor(error);
         },
+        superseded: () => buffered && answer !== null,
       };
 
       // Rule 2. The whole render, including every loader and every server
@@ -1131,9 +1136,6 @@ export function createPageHandler(
           // `<title>` at all, which hydration then found a `<style>` in place of.
           const rendered = untrack(state.chain);
           await preloadMatched(rendered);
-          // Decided BEFORE the head is projected, because it is what decides
-          // whether `head` sees `loaderData` at all.
-          const buffered = options.stream === false || isCrawler(request, options);
           const shell = shellComponentOf(options.routeTree);
           // `projectLane`, in the same pre-shell phase. Every route's `head` and
           // `scripts` run here with the params, the context and whatever

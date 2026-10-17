@@ -915,6 +915,13 @@ export interface RouterConfig<Dehydrated = unknown> {
    * the callback rides it.
    */
   readonly onLoaderError?: (error: unknown) => void;
+  /**
+   * Whether a thrown answer has superseded this render. A buffered page whose
+   * loader threw a `Response` or a redirect answers with that instead of the
+   * markup, so a boundary the throw reached stands in a region nobody is sent
+   * and has no failure to report. The page handler fills it; a browser has none.
+   */
+  readonly superseded?: () => boolean;
 }
 
 /**

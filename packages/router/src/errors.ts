@@ -262,12 +262,14 @@ export function errorFallbackFor(
   depth: number,
   params: () => Record<string, string>,
   fallbacks?: ErrorFallbacks,
+  superseded?: () => boolean,
 ): (error: () => Error, reset: () => void) => unknown {
   // ONE report per error OBJECT. The fallback re-renders — a reset, a
   // re-entered branch — and `onCatch` is a notification, not a render step, so
   // firing it every time would report one failure many times to a crash
-  // reporter. A `notFound()` is an ANSWER rather than a failure and is not
-  // reported at all.
+  // reporter. A `notFound()` or a redirect is an ANSWER rather than a failure
+  // and is not reported at all, as TanStack's route boundary rethrows the one
+  // and never sees the other.
   let reported: unknown = null;
   watchUnload();
   return (error, reset) => {
@@ -277,7 +279,8 @@ export function errorFallbackFor(
       return null;
     }
     const missing = isNotFound(thrown);
-    if (!missing && reported !== thrown) {
+    const answer = missing || isRedirect(thrown);
+    if (!answer && reported !== thrown) {
       reported = thrown;
       let told = false;
       for (let at = depth; at >= 0; at--) {
@@ -330,7 +333,8 @@ export function errorFallbackFor(
     // out loud once.
     // A redirect is an answer too: the server writes it after the shell, and
     // the region it stood in has nothing to show while the browser leaves.
-    if (missing || isRedirect(thrown)) return null;
+    // Once a thrown answer has superseded the render, no region of it is sent.
+    if (answer || superseded?.() === true) return null;
     const route = chain[depth]?.id ?? `depth ${depth}`;
     reportUnhandled(route, thrown);
     // In development the region says what happened instead of standing empty.
