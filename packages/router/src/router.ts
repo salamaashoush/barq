@@ -2075,7 +2075,7 @@ export function createRouter<Dehydrated = unknown>(
         } as never)) as Record<string, unknown> | undefined | null;
         if (isRedirect(own) || isNotFound(own)) throw own;
       } catch (error) {
-        if (!isRedirect(error) && !isNotFound(error) && !(error instanceof Response)) {
+        if (!isRedirect(error) && !isNotFound(error)) {
           route.definition.onError?.(error);
         }
         throw error;

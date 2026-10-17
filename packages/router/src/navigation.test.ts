@@ -693,6 +693,34 @@ describe("router defaults, TanStack's names", () => {
     expect(told).toEqual(["broken: boom"]);
     state.dispose();
   });
+
+  test("`onError` is told about a Response thrown by `beforeLoad` and by a loader alike", async () => {
+    const told: string[] = [];
+    const refusing = (id: string, phase: "beforeLoad" | "loader"): Record<string, unknown> => ({
+      path: `/${id}`,
+      component: page(id),
+      onError: (error: unknown) => told.push(`${id}: ${(error as Response).status}`),
+      [phase]: () => {
+        throw new Response("sign in first", { status: 401 });
+      },
+    });
+    const state = createRouter({
+      routeTree: routes([
+        { path: "/", component: page("home") },
+        refusing("guarded", "beforeLoad"),
+        refusing("loaded", "loader"),
+      ]),
+      history: memoryHistory({ initial: ["/"] }),
+    });
+    // A `beforeLoad` refusal rejects the navigation it stopped.
+    expect(await state.navigate("/guarded").catch((error: unknown) => error)).toBeInstanceOf(
+      Response,
+    );
+    await state.navigate("/loaded");
+    await tick(5);
+    expect(told).toEqual(["guarded: 401", "loaded: 401"]);
+    state.dispose();
+  });
 });
 
 describe("the router instance", () => {
