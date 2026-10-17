@@ -56,41 +56,7 @@ function firstCallOnly<Args extends unknown[]>(callback: (...args: Args) => void
 export const debounce: Schedule = <Args extends unknown[]>(
   callback: (...args: Args) => void,
   wait?: number,
-): Scheduled<Args> => {
-  if (isServer) return inert<Args>();
-
-  let id: ReturnType<typeof setTimeout> | undefined;
-  let held: Args | undefined;
-
-  const run = (): void => {
-    id = undefined;
-    const args = held as Args;
-    held = undefined;
-    callback(...args);
-  };
-
-  const call = ((...args: Args) => {
-    held = args;
-    if (id !== undefined) clearTimeout(id);
-    id = setTimeout(run, wait);
-  }) as Scheduled<Args>;
-
-  call.clear = () => {
-    if (id === undefined) return;
-    clearTimeout(id);
-    id = undefined;
-    held = undefined;
-  };
-  call.flush = () => {
-    if (id === undefined) return;
-    clearTimeout(id);
-    run();
-  };
-  call.pending = () => id !== undefined;
-
-  tryCleanup(call.clear);
-  return call;
-};
+): Scheduled<Args> => trailing(callback, wait, true);
 
 /**
  * A callback that runs at most once per `wait` milliseconds, on the trailing
@@ -99,7 +65,13 @@ export const debounce: Schedule = <Args extends unknown[]>(
 export const throttle: Schedule = <Args extends unknown[]>(
   callback: (...args: Args) => void,
   wait?: number,
-): Scheduled<Args> => {
+): Scheduled<Args> => trailing(callback, wait, false);
+
+function trailing<Args extends unknown[]>(
+  callback: (...args: Args) => void,
+  wait: number | undefined,
+  restart: boolean,
+): Scheduled<Args> {
   if (isServer) return inert<Args>();
 
   let id: ReturnType<typeof setTimeout> | undefined;
@@ -114,7 +86,10 @@ export const throttle: Schedule = <Args extends unknown[]>(
 
   const call = ((...args: Args) => {
     held = args;
-    if (id !== undefined) return;
+    if (id !== undefined) {
+      if (!restart) return;
+      clearTimeout(id);
+    }
     id = setTimeout(run, wait);
   }) as Scheduled<Args>;
 
@@ -133,7 +108,7 @@ export const throttle: Schedule = <Args extends unknown[]>(
 
   tryCleanup(call.clear);
   return call;
-};
+}
 
 const hasIdleCallback = typeof requestIdleCallback === "function";
 
