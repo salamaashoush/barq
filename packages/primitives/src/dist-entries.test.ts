@@ -14,41 +14,17 @@
  * `dist` and needs the package built.
  */
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { basename } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { describe, expect, test } from "bun:test";
 
-const ENTRIES = [
-  "index",
-  "animation",
-  "browser",
-  "bus",
-  "clipboard",
-  "collections",
-  "derived",
-  "element",
-  "event",
-  "focus",
-  "fullscreen",
-  "geolocation",
-  "history",
-  "keyboard",
-  "machine",
-  "media",
-  "mouse",
-  "observers",
-  "promise",
-  "raf",
-  "refs",
-  "scheduled",
-  "scroll",
-  "storage",
-  "timer",
-  "utils",
-  "virtual",
-  "websocket",
-] as const;
+const manifest = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8")) as {
+  exports: Record<string, { import: string }>;
+};
+
+const ENTRIES = Object.values(manifest.exports).map((entry) => basename(entry.import, ".js"));
 
 const distOf = (entry: string): string =>
   fileURLToPath(new URL(`../dist/${entry}.js`, import.meta.url));
