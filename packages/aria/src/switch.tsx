@@ -16,7 +16,7 @@ import {
   type Incoming,
   install,
 } from "@barqjs/core";
-import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
+import { ref as makeRef, type RefTarget } from "@barqjs/primitives/refs";
 import { focusRing } from "./focus.ts";
 import { hover } from "./interactions/hover.ts";
 import type { PressEvent } from "./interactions/press.ts";
@@ -26,15 +26,13 @@ import {
   toggle,
   toggleState,
   toggleElementType,
-  pressesInput,
-  HIDDEN_INPUT_STYLE,
   type ToggleElementType,
   type ToggleOptions,
   type ToggleResult,
 } from "./toggle.ts";
+import { toggleInput } from "./toggle-input.tsx";
 import type { ValidateFunction, ValidationBehavior } from "./validation.ts";
 import {
-  access,
   callback,
   filterDOMProps,
   fromProps,
@@ -175,31 +173,14 @@ export function Switch(props: Incoming<SwitchComponentProps>) {
     },
   );
 
-  const elementType = toggleElementType(props.elementType?.(), props.children);
-
-  if (elementType === "span") {
-    const onClick = pressesInput(() => access(inputRef), isDisabled);
-
-    return (
-      <span {...mergeProps(outerProps, { onClick })}>
-        <input
-          {...mergeProps(inputProps, focusProps)}
-          ref={mergeRefs(inputRef.set, props.ref?.())}
-          style={HIDDEN_INPUT_STYLE}
-        />
-        {props.children}
-      </span>
-    );
-  }
-
-  return (
-    <label {...outerProps}>
-      <input
-        {...mergeProps(inputProps, focusProps)}
-        ref={mergeRefs(inputRef.set, props.ref?.())}
-        style={HIDDEN_INPUT_STYLE}
-      />
-      {props.children}
-    </label>
-  );
+  return toggleInput({
+    elementType: toggleElementType(props.elementType?.(), props.children),
+    outerProps,
+    inputProps,
+    focusProps,
+    inputRef,
+    ref: props.ref?.(),
+    children: props.children,
+    isDisabled,
+  });
 }

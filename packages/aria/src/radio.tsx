@@ -23,7 +23,7 @@ import {
   getOwner,
   install,
 } from "@barqjs/core";
-import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
+import { ref as makeRef, type RefTarget } from "@barqjs/primitives/refs";
 import { ownerWindow, targetElement } from "./dom.ts";
 import { focusableWalker } from "./focus.ts";
 import { focusRing } from "./focus.ts";
@@ -32,13 +32,8 @@ import { focusable } from "./interactions/focusable.ts";
 import { press, type ElementRef, type PressEvent } from "./interactions/press.ts";
 import { useLocale } from "./i18n.ts";
 import { field, type FieldOptions } from "./label.ts";
-import {
-  formReset,
-  HIDDEN_INPUT_STYLE,
-  pressesInput,
-  toggleElementType,
-  type ToggleElementType,
-} from "./toggle.ts";
+import { formReset, toggleElementType, type ToggleElementType } from "./toggle.ts";
+import { toggleInput } from "./toggle-input.tsx";
 import {
   fieldValidation,
   type FormValidationState,
@@ -559,29 +554,14 @@ export function Radio(props: Incoming<RadioComponentProps>) {
     },
   );
 
-  if (toggleElementType(props.elementType?.(), props.children) === "span") {
-    const onClick = pressesInput(() => access(inputRef), isDisabled);
-
-    return (
-      <span {...mergeProps(outerProps, { onClick })}>
-        <input
-          {...mergeProps(inputProps, focusProps)}
-          ref={mergeRefs(inputRef.set, props.ref?.())}
-          style={HIDDEN_INPUT_STYLE}
-        />
-        {props.children}
-      </span>
-    );
-  }
-
-  return (
-    <label {...outerProps}>
-      <input
-        {...mergeProps(inputProps, focusProps)}
-        ref={mergeRefs(inputRef.set, props.ref?.())}
-        style={HIDDEN_INPUT_STYLE}
-      />
-      {props.children}
-    </label>
-  );
+  return toggleInput({
+    elementType: toggleElementType(props.elementType?.(), props.children),
+    outerProps,
+    inputProps,
+    focusProps,
+    inputRef,
+    ref: props.ref?.(),
+    children: props.children,
+    isDisabled,
+  });
 }
