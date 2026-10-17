@@ -7,7 +7,7 @@
  */
 
 import { flush, insert, render } from "@barqjs/core";
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 
 import { RouterProvider } from "./components.ts";
 import { isNotFound, isRedirect, notFound, redirect } from "./errors.ts";
@@ -728,6 +728,75 @@ describe("router defaults, TanStack's names", () => {
     expect(state.location().pathname).toBe("/");
     dispose();
     state.dispose();
+  });
+
+  test("loaders that redirect to each other stop at the bound, with the error", async () => {
+    const runs: string[] = [];
+    const bouncing = (from: string, to: string): Record<string, unknown> => ({
+      path: from,
+      component: page(from),
+      loader: async () => {
+        runs.push(from);
+        await tick(1);
+        throw redirect({ to });
+      },
+    });
+    const errors: string[] = [];
+    const error = spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      errors.push(args.join(" "));
+    });
+    try {
+      const state = createRouter({
+        routeTree: routes([
+          { path: "/", component: page("home") },
+          bouncing("/a", "/b"),
+          bouncing("/b", "/a"),
+        ]),
+        history: memoryHistory({ initial: ["/"] }),
+      });
+      const { dispose } = mountState(state);
+      await state.navigate("/a");
+      for (let i = 0; i < 40 && errors.length === 0; i++) {
+        await tick(2);
+        flush();
+      }
+      const settled = runs.length;
+      await tick(20);
+      flush();
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain("redirected more than 10 times");
+      expect(errors[0]).toContain("routes' loaders");
+      expect(settled).toBe(11);
+      expect(runs).toHaveLength(settled);
+      dispose();
+      state.dispose();
+    } finally {
+      error.mockRestore();
+    }
+  });
+
+  test("routes whose beforeLoad redirect to each other stop at the bound, with the error", async () => {
+    const errors: string[] = [];
+    const error = spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+      errors.push(args.join(" "));
+    });
+    try {
+      const state = createRouter({
+        routeTree: routes([
+          { path: "/", component: page("home") },
+          { path: "/a", component: page("a"), beforeLoad: () => redirect("/b") },
+          { path: "/b", component: page("b"), beforeLoad: () => redirect("/a") },
+        ]),
+        history: memoryHistory({ initial: ["/"] }),
+      });
+      await state.navigate("/a");
+      expect(errors).toHaveLength(1);
+      expect(errors[0]).toContain("redirected more than 10 times");
+      expect(state.location().pathname).toBe("/");
+      state.dispose();
+    } finally {
+      error.mockRestore();
+    }
   });
 
   test("`onError` is told about a Response thrown by `beforeLoad` and by a loader alike", async () => {

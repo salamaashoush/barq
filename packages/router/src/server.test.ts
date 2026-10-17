@@ -305,6 +305,47 @@ describe("the request is ambient for the whole render", () => {
 });
 
 describe("redirect() from a loader", () => {
+  // The server never follows a redirect: each request answers with one hop, and
+  // the browser, which does follow them, bounds a cycle of 302s itself.
+  test("loaders that redirect to each other answer one hop per request", async () => {
+    const runs: string[] = [];
+    const bouncing = (from: string, to: string, delay: number) => ({
+      path: from,
+      loader: async () => {
+        runs.push(from);
+        if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+        redirect(to);
+      },
+      component: (props: { data: () => unknown }) => ssrHtml(`<b>${esc(String(props.data()))}</b>`),
+    });
+    for (const [stream, delay] of [
+      [false, 0],
+      [true, 0],
+      [true, 5],
+    ] as const) {
+      runs.length = 0;
+      const handler = createPageHandler({
+        routeTree: [bouncing("/a", "/b", delay), bouncing("/b", "/a", delay)] as never,
+        app: (state) => ssrHtml(`<main>${esc(renderRoutes(state))}</main>`),
+        document,
+        stream,
+      });
+      const printed = await printedErrors(async () => {
+        const response = await handler(get("/a"));
+        const body = await response.text();
+        if (stream && delay > 0) {
+          expect(response.status).toBe(200);
+          expect(body).toContain('location.replace("/b")');
+        } else {
+          expect(response.status).toBe(302);
+          expect(response.headers.get("location")).toBe("/b");
+        }
+      });
+      expect(printed).toEqual([]);
+      expect(runs).toEqual(["/a"]);
+    }
+  });
+
   test("becomes a 302 rather than a 500", async () => {
     const handler = createPageHandler({
       routeTree: baseTable,

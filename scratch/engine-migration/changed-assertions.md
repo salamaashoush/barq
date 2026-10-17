@@ -1093,3 +1093,10 @@ Each now orders what it waits on; no expectation's subject changed, and what mov
   so a streamed page and the browser hydrating it agree. The page handler reports a late refusal
   itself. Added, no assertion changed: two streamed refusal tests in `router/src/server.test.ts`
   (honoured before the shell, reported after it) and two in `server/src/codec.test.ts`.
+- `router/src/m8-convention.test.ts` "redirects are bounded": asserted the router source matches
+  `/hops\+\+/`; it now matches `/redirects >= MAX_REDIRECTS/`. A source-shape check, restated
+  because the bound moved: the per-router `hops` counter, which every navigation reset before its
+  `beforeLoad` ran (so a `beforeLoad` cycle hung the process) and which loader redirects never
+  touched, is now a count carried along the redirect chain and checked in one `follow`. The
+  behaviour is pinned by two new navigation tests (a loader cycle and a `beforeLoad` cycle stop
+  with one error) and a server test (each request answers one hop, buffered or streamed).

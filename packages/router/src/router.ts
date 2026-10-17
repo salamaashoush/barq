@@ -1737,7 +1737,8 @@ export function createRouter<Dehydrated = unknown>(
                     // A loader that throws before its first await is still
                     // inside the computation that ran it, which may not write.
                     const redirected = error;
-                    queueMicrotask(() => void follow(redirected));
+                    const redirects = arrivedRedirects;
+                    queueMicrotask(() => void follow(redirected, redirects, "routes' loaders"));
                   }
                   throw error;
                 }
@@ -1818,6 +1819,10 @@ export function createRouter<Dehydrated = unknown>(
   /** Whether a cached entry should be asked again, and the three-way that decides. */
   const shouldReload = (entry: Entry, forParams: Readonly<Record<string, string>>): boolean => {
     if (entry.inFlight) return false;
+    // A redirect is an instruction rather than a result. Kept, a return to the
+    // route read it again and went nowhere, and a cycle of loaders never met
+    // its bound.
+    if (isRedirect(entry.error)) return true;
     if (entry.updatedAt === 0) return false;
     const definition = entry.route.definition;
     const configured =
@@ -2590,6 +2595,8 @@ export function createRouter<Dehydrated = unknown>(
     const wasNavigate = pendingIsNavigate;
     pendingNavigate = undefined;
     pendingIsNavigate = false;
+    arrivedRedirects = wasNavigate ? pendingRedirects : 0;
+    pendingRedirects = 0;
     const before = untrack(chain);
     // Captured before the commit moves it: every event after this point is
     // about a navigation FROM here, and `location()` stops saying so as soon as
@@ -2927,29 +2934,52 @@ export function createRouter<Dehydrated = unknown>(
   /** Whether the entry about to commit came from `navigate` rather than a popstate. */
   let pendingIsNavigate = false;
 
-  let hops = 0;
   const MAX_REDIRECTS = 10;
+  // How many redirects led to the navigation about to commit, and to the one on
+  // screen. The count rides the chain rather than resetting per navigation,
+  // because a loader redirects only after its navigation has committed.
+  let pendingRedirects = 0;
+  let arrivedRedirects = 0;
 
-  const navigate = (async (to: string | NavigateOptions, options?: NavigateOptions) => {
+  const run = async (asked: NavigateOptions, redirects: number): Promise<void> => {
     noteIdle();
     setNavigating(untrack(navigating) + 1);
     try {
-      return await attemptNavigate(typeof to === "string" ? { ...options, to } : to);
+      return await attemptNavigate(asked, redirects);
     } finally {
       setNavigating(untrack(navigating) - 1);
     }
-  }) as NavigateFn;
+  };
 
-  /** A redirect thrown in process still has the navigation it described; one off the wire has `to`. */
-  const follow = (answer: {
-    readonly to: string;
-    readonly options?: NavigateOptions;
-  }): Promise<void> =>
-    answer.options === undefined
-      ? navigate(answer.to, { replace: true })
-      : navigate({ ...answer.options, replace: true, ignoreBlocker: true });
+  const navigate = ((to: string | NavigateOptions, options?: NavigateOptions) =>
+    run(typeof to === "string" ? { ...options, to } : to, 0)) as NavigateFn;
 
-  const attemptNavigate = async (asked: NavigateOptions): Promise<void> => {
+  /**
+   * Every redirect a navigation follows, whichever step threw it, counted
+   * against one bound. A redirect thrown in process still has the navigation it
+   * described; one off the wire has `to`.
+   */
+  const follow = async (
+    answer: { readonly to: string; readonly options?: NavigateOptions },
+    redirects: number,
+    who: string,
+  ): Promise<void> => {
+    if (redirects >= MAX_REDIRECTS) {
+      console.error(
+        `[barq-router] This navigation was redirected more than ${MAX_REDIRECTS} times and was abandoned at ${JSON.stringify(answer.to)}. ` +
+          `Two ${who} are probably redirecting to each other: make one of them let the navigation through.`,
+      );
+      return;
+    }
+    await run(
+      answer.options === undefined
+        ? { to: answer.to, replace: true }
+        : { ...answer.options, replace: true, ignoreBlocker: true },
+      redirects + 1,
+    );
+  };
+
+  const attemptNavigate = async (asked: NavigateOptions, redirects: number): Promise<void> => {
     // Middlewares run on the way OUT, while the location is being built, so a
     // retained key is present in it rather than patched on afterwards.
     const target = locate(asked, untrack);
@@ -2980,21 +3010,11 @@ export function createRouter<Dehydrated = unknown>(
     const verdict = await runGuards(target);
     if (verdict === false) return;
     if (typeof verdict === "string") {
-      if (hops++ >= MAX_REDIRECTS) {
-        hops = 0;
-        console.error(
-          `[barq-router] This navigation was redirected more than ${MAX_REDIRECTS} times and was abandoned at ${JSON.stringify(verdict)}. ` +
-            "Two `beforeEach` or `beforeEnter` guards are probably redirecting to each other: make one of them let the navigation through.",
-        );
-        return;
-      }
       // A refused route must not be left in the URL bar, so a guard's redirect
       // always replaces rather than pushing.
-      await navigate(verdict, { replace: true });
-      hops = 0;
+      await follow({ to: verdict }, redirects, "`beforeEach` or `beforeEnter` guards");
       return;
     }
-    hops = 0;
     emit("onBeforeLoad", untrack(location), target);
 
     // `beforeLoad` runs BEFORE the commit, so a `throw redirect(...)` from one
@@ -3007,16 +3027,7 @@ export function createRouter<Dehydrated = unknown>(
       produced = (await runBeforeLoad(target, candidate)).contexts;
     } catch (error) {
       if (isRedirect(error)) {
-        if (hops++ >= MAX_REDIRECTS) {
-          hops = 0;
-          console.error(
-            `[barq-router] This navigation was redirected more than ${MAX_REDIRECTS} times and was abandoned. ` +
-              "Two routes are probably redirecting to each other from `beforeLoad`: make one of them let the navigation through.",
-          );
-          return;
-        }
-        await follow(error);
-        hops = 0;
+        await follow(error, redirects, "routes' `beforeLoad`s");
         return;
       }
       throw error;
@@ -3024,6 +3035,7 @@ export function createRouter<Dehydrated = unknown>(
     pendingContexts = produced;
     pendingNavigate = asked;
     pendingIsNavigate = true;
+    pendingRedirects = redirects;
     // The per-call `mask` wins: a call site that names one has said something
     // about THIS navigation that a table cannot know.
     const declared = maskFor(target);

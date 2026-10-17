@@ -302,7 +302,7 @@ describe("the workarounds the first pass left behind", () => {
   // without bound and hung the process.
   test("redirects are bounded", () => {
     expect(ROUTER).toContain("MAX_REDIRECTS");
-    expect(ROUTER).toMatch(/hops\+\+/);
+    expect(ROUTER).toMatch(/redirects >= MAX_REDIRECTS/);
   });
 });
 
