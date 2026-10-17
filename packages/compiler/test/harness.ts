@@ -979,7 +979,7 @@ export interface AnchorAudit {
  * anchor that no `_$insert` names is a bug — either a marker elision missed or a
  * marker emitted for nothing.
  *
- * Needs a DOM, so it runs under `bun test` and not from the CLI scripts.
+ * Needs a DOM, so it runs under `bun test`.
  */
 export function auditAnchors(code: string): AnchorAudit {
   if (typeof document === "undefined") throw new Error("auditAnchors needs a DOM");

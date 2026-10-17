@@ -3,3 +3,4 @@
 *.node
 /index.d.ts
 test/.*.txt
+test/.tmp-*/

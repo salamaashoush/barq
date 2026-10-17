@@ -568,28 +568,3 @@ export function compareRuns(
 
   return divergences;
 }
-
-export function reportDifferential(report: DifferentialReport): number {
-  console.log(
-    `corpus rendered in a real browser: ${report.checked} fixtures, ${report.frames} frames, ` +
-      `${report.attributeLines} attribute lines`,
-  );
-  for (const d of report.divergences) {
-    console.error(
-      `\n[${d.kind}${d.step === undefined ? "" : ` step ${d.step}`}] ${d.fixture}` +
-        `\n  expected: ${d.expected}\n  actual  : ${d.actual}`,
-    );
-  }
-  if (report.divergences.length === 0) {
-    console.log("every fixture renders and drives clean in Chrome");
-  } else {
-    console.log(`\n${report.divergences.length} divergence(s)`);
-  }
-  return report.divergences.length;
-}
-
-if (import.meta.main) {
-  const { withChrome } = await import("./chrome.ts");
-  const report = await withChrome((page) => checkDifferential(page));
-  process.exit(reportDifferential(report) === 0 ? 0 : 1);
-}

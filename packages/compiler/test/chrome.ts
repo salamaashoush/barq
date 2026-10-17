@@ -29,11 +29,7 @@ const CANDIDATES = [
  * an assertion that cannot fail, and this suite has already been bitten by it.
  */
 export function chromePath(explicit?: string): string {
-  const fromArgv = process.argv.indexOf("--chrome");
-  const candidate =
-    explicit ??
-    (fromArgv === -1 ? undefined : process.argv[fromArgv + 1]) ??
-    process.env.CHROME_PATH;
+  const candidate = explicit ?? process.env.CHROME_PATH;
   if (candidate) {
     if (!existsSync(candidate)) throw new Error(`no Chrome at ${candidate}`);
     return candidate;
@@ -41,7 +37,7 @@ export function chromePath(explicit?: string): string {
   const found = CANDIDATES.find((path) => existsSync(path));
   if (!found) {
     throw new Error(
-      `no Chrome found; tried ${CANDIDATES.join(", ")}. Set CHROME_PATH or pass --chrome <path>. ` +
+      `no Chrome found; tried ${CANDIDATES.join(", ")}. Set CHROME_PATH. ` +
         "These checks are the only oracle for HTML tree construction and the SVG class branch, " +
         "so they fail rather than skip.",
     );

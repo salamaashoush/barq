@@ -9,10 +9,7 @@
  * browser's property shape to close that gap, and THIS script is what proves
  * the shape it installs is the real one.
  *
- * Runs three ways, all of them the same code: as a CLI, from
- * `test/browser.test.ts` inside `bun test`, and in CI.
- *
- *   bun test/browser-svg-class-check.ts [--chrome /path/to/chromium]
+ * Run by `browser.test.ts`.
  */
 
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
@@ -192,22 +189,4 @@ export function svgClassClaims({
     ],
     ["the class goes back", fixture.off === "dot", fixture.off],
   ];
-}
-
-if (import.meta.main) {
-  const result = await withChrome((page) => checkSvgClass(page));
-  const failures: string[] = [];
-
-  console.log("O5, verified against a real browser\n");
-  for (const [why, held, got] of svgClassClaims(result)) {
-    console.log(`${held ? "ok  " : "FAIL"}  ${why}${held ? "" : ` — got ${JSON.stringify(got)}`}`);
-    if (!held) failures.push(why);
-  }
-
-  if (failures.length === 0) {
-    console.log("\nall checks passed in a real browser");
-    process.exit(0);
-  }
-  console.error(`\n${failures.length} check(s) failed`);
-  process.exit(1);
 }

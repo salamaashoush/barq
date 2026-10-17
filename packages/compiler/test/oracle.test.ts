@@ -669,9 +669,8 @@ describe("template parse conformance", () => {
    * does not foster-parent, does not auto-close `<p>`, and does not run the
    * adoption agency, so this sweep can only catch the cases it does model. The
    * table in `src/lower/parse.rs` is spec-derived and its Rust tests are what
-   * hold the predicate honest. `bun test/browser-parse-check.ts` runs the same
-   * sweep against a real Chrome and is the strong version; it is out of the
-   * suite on purpose, because CI has no browser.
+   * hold the predicate honest. `browser.test.ts` runs the same sweep against a
+   * real Chrome and is the strong version.
    */
   function templateStrings(code: string): string[] {
     return [...code.matchAll(/_\$template\(`([\s\S]*?)`(?:,\s*(true))?\)/g)].map((m) =>

@@ -8,10 +8,7 @@
  * does not auto-close `<p>`, and does not run the adoption agency. So the
  * harness is structurally unable to falsify the predicate that protects it.
  *
- * This script is that second oracle. It runs three ways, all of them the same
- * code: as a CLI, from `test/browser.test.ts` inside `bun test`, and in CI.
- *
- *   bun test/browser-parse-check.ts [--chrome /path/to/chromium]
+ * This is that second oracle, run by `browser.test.ts`.
  *
  * It extracts every `_$template(...)` string the corpus emits, parses each one
  * in Chrome, and fails on three things: a template that parses to more than one
@@ -343,28 +340,4 @@ export async function checkParseConformance(page: Page, rows: Template[]): Promi
     return (JSON.parse(value ?? '{"bad":[]}') as { bad: Failure[] }).bad;
   };
   return [...(await run(CHECK, rows)), ...(await run(HAZARD_CHECK, HAZARDS))];
-}
-
-export function reportParseConformance(rows: Template[], failures: Failure[]): void {
-  console.log(
-    `templates checked in a real browser: ${rows.length}, plus ${HAZARDS.length} hazard rows`,
-  );
-  if (failures.length === 0) {
-    console.log("all parse to one root, with no tag moved and no comment lost");
-    console.log("every refused byte is confirmed rewritten by the real parser");
-    return;
-  }
-  for (const failure of failures) {
-    console.error(
-      `\n[${failure.why}] ${failure.fixture}\n  in : ${failure.html}\n  out: ${failure.back}`,
-    );
-  }
-  console.error(`\n${failures.length} template(s) the browser reshapes`);
-}
-
-if (import.meta.main) {
-  const rows = corpus();
-  const failures = await withChrome((page) => checkParseConformance(page, rows));
-  reportParseConformance(rows, failures);
-  process.exit(failures.length === 0 ? 0 : 1);
 }
