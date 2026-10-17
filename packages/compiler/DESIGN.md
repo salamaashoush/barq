@@ -529,7 +529,8 @@ does not. Then a small worklist runs to fixpoint over:
 - **Aliasing.** `const c = count` → `Accessor`; `const c = count()` → `Inert`.
 - **Reassigned `let`.** Join every write RHS kind; any unresolvable RHS ⇒ `Opaque`.
 - **Control-flow parameter attribution, by arity and position, from the real signatures.**
-  Keyed `For.children: (item: T, index: () => number)` ⇒ `(RowValue, Accessor)`.
+  Keyed `For.children: (item: T, index: () => number)` ⇒ `(RowValue, Accessor)`. A callback
+  passed by name, `<For>{row}</For>` or `children={row}`, takes the same kinds as the inline one.
   `For keyed={false}`'s children: `(item: () => T, index: number)` ⇒ `(Accessor, Inert)`.
   `Repeat.children: (index: number)` ⇒ `(Inert)`.
   `keyed: false` is the positional mode; `keyed={fn}` boxes the row in a signal, so BOTH
@@ -576,7 +577,7 @@ The lifting rule, bottom-up over each expression:
 | `Member(o, m)` where `o: Accessor` and `m ∈ nonreactive` (`.set`/`.peek`/`.update`) | `Static` |
 | `Member(o, m)` where `o: ReactiveObject` | `Reactive`, deps = `{o}` |
 | `Member(o, m)` where `o: AccessorRecord` | `Static` (the *call* is the read) |
-| `Member(o, m)` where `o: RowValue` | `Static` — the row is recreated by `mapArray` |
+| `Member(o, m)` where `o: RowValue` | `Opaque`, `Thunk::Arrow` — a store writes the row's field in place, so the hole reads it |
 | `Call(untrack, [fn])` | `Static`, regardless of the body |
 | `Arrow` / `Function` | `Static`, `Shape::Accessor(deps-of-body)` — creating a closure reads nothing |
 | `Call(unknown callee)` | `Opaque`, unless the callee is a whitelisted pure global or a local fn proven `Static` |
@@ -1703,6 +1704,12 @@ silently produces a non-updating cell if the row item is a store proxy the analy
 array of proxies from another module, a `mapArray` result crossing a function boundary). Do you
 want this on by default, on with a compile-time note when `each`'s origin is unresolvable, or
 behind a flag?
+
+*Closed.* Neither: a member read off a row is emitted as a read its hole repeats, `() =>
+item.name`, so a store row written in place updates as it does under Solid (the `RowValue` row
+of the table in §3). What is left is a read the row makes once while it is built, a destructured
+parameter or a field read outside the JSX, and BARQ004 reports that when `each`'s rows are not
+proven plain.
 
 **O4 — compiler-mode auto-thunking.** `<div>{count()}</div>` is a one-shot text node under
 `createElement` but the compiler makes it live. `config.ts` has `IsCompilerMode` /

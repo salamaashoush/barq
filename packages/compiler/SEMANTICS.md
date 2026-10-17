@@ -1233,8 +1233,9 @@ identical under all three modes — which is exactly how 110 fixtures missed the
     objects. Every row's nodes MUST be the same objects, in their items' new positions, and the typed
     text MUST have travelled with the item.
  2. The same list, with `rows` replaced by a structurally-equal array of FRESH objects. No row's nodes
-    may survive. A survivor means the runtime is comparing something other than the item, and
-    `{row.text}` — applied once, with no thunk (O3) — would be stale.
+    may survive. A survivor means the runtime is comparing something other than the item, and the
+    row would go on reading the item it was built with: `{row.text}` is a live read (`() =>
+    row.text`), but of the old object, so a write to the new one would never reach it.
  3. The same list under `keyed={false}`, reordered. The nodes MUST stay put and the values MUST move
     through them; the typed text stays at its slot. (This is K3's half.)
 
