@@ -14,7 +14,7 @@
  * mode it was not in.
  */
 
-import type { Child } from "./dom.ts";
+import type { Child } from "./types.ts";
 
 /** A deferred read: the fundamental reactive primitive. */
 export type Accessor<T> = () => T;

@@ -30,7 +30,7 @@ import {
   type Scope,
 } from "./signals.ts";
 
-import type { JSXElement } from "./dom.ts";
+import type { JSXElement } from "./types.ts";
 
 export type { Scope } from "./signals.ts";
 

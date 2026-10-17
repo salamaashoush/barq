@@ -14,10 +14,8 @@ import {
   NotReadyError,
   OBSERVE,
   onCleanup,
-  getObserver,
   installClaimEffect,
   getOwner,
-  isDisposed,
   ScopeMissingError,
   jsxAsValue,
   flush,
@@ -36,6 +34,7 @@ import {
   type Accessor,
   type Scope,
   type Setter,
+  effectUnder,
 } from "./signals.ts";
 import {
   isString,
@@ -49,6 +48,7 @@ import {
   isSignalGetter,
 } from "./type-utils.ts";
 import type { Cell } from "./scope.ts";
+import type { Child, JSXElement } from "./types.ts";
 import { coerceLive, writeLive } from "./forms.ts";
 import {
   HydrationMismatch,
@@ -77,24 +77,6 @@ import {
   type Range,
   type Taken,
 } from "./hydration.ts";
-
-/**
- * A function child is a `Cell<Child>` or a `Block<Child>` and the two are
- * not distinguished here — a Cell ignores the scope a Block needs, so both are
- * called the same way and both belong in the same position.
- */
-export type Child =
-  | Node
-  | string
-  | number
-  | boolean
-  | null
-  | undefined
-  | ((...args: never[]) => Child)
-  | Child[];
-export type Props = Record<string, unknown> & { children?: Child | Child[] };
-// Component type - generic over props like React's FunctionComponent
-export type Component<P = Props> = (props: P) => JSXElement;
 
 // SVG namespace
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -651,26 +633,6 @@ function toKebabCase(str: string): string {
 }
 
 /**
- * A fragment: JSX elements, and the CELLS among them.
- *
- * A member that is a function is a live hole rather than a value, which is what
- * `<>{() => cond() ? <a/> : <b/>}</>` compiles to — an array whose only member
- * is a Cell. `insert` has always placed one; the type said otherwise, so the
- * capability was reachable from the runtime and not from typed code.
- */
-export type ArrayElement = (JSXElement | (() => JSXElement))[];
-
-/**
- * JSXElement type that components can return
- * Matches SolidJS's JSX.Element type exactly
- * The (string & {}) pattern allows string literals while avoiding widening
- */
-export type JSXElement = Node | ArrayElement | (string & {}) | number | boolean | null | undefined;
-
-// Re-export as Element for convenience
-export type { JSXElement as Element };
-
-/**
  * The body of every `dynamic` instance: a component or a tag whose value is not
  * a module-local `const` cannot be resolved at compile time, so the choice is
  * made here and nowhere else.
@@ -726,7 +688,7 @@ export function element(tag: string, props: Record<string, unknown>): Element {
     // for a `<!--]-->` that was never written — measured as "expected <!--]-->
     // before the end of <html>, found <body>".
     if (children !== undefined && children !== null) {
-      insert(claimed, children as Child, null, WHOLE);
+      insert(claimed, children, null, WHOLE);
     }
     return claimed;
   }
@@ -735,7 +697,7 @@ export function element(tag: string, props: Record<string, unknown>): Element {
       tag in SVG_TAGS ? document.createElementNS(SVG_NS, tag) : document.createElement(tag);
     spread(node, props);
     const children = props.children;
-    if (children !== undefined && children !== null) insert(node, children as Child);
+    if (children !== undefined && children !== null) insert(node, children);
     return node;
   });
 }
@@ -1279,25 +1241,6 @@ export function readOpaque(value: unknown, name: string, property?: boolean): un
 }
 
 /**
- * O4.5 for the element-binding channel: the effect belongs to the scope the
- * enclosing Block was HANDED, not to whatever the call site left current.
- *
- * This is what the compiled attribute/class/style/domprop path emits, and it
- * used to emit a bare `renderEffect(compute, apply)` taking no scope at all —
- * so `insert` and `setProp` honoured the argument while the channel beside them
- * followed `CURRENT`, and one component could split its ownership across two
- * scopes. The scope-first shape makes a mistiming a missing argument rather
- * than a silent reparent, and it is why `brand` can see these components: a
- * body whose only reactive work is an element binding now names `_s$`.
- */
-export function bindEffect<T>(
-  compute: (prev: T | undefined) => T,
-  apply: (value: T, prev: T | undefined) => void | (() => void),
-): void {
-  effectUnder(getOwner(), "bindEffect", compute, apply);
-}
-
-/**
  * A counter every `bind:` effect reads and every reported edit bumps. See the
  * paragraph in `bindValue`'s listener for why it has to be shared rather than
  * per-element. `equals: false` because the VALUE is meaningless — what is being
@@ -1709,7 +1652,7 @@ function normalizeChildToNodes(value: Child, prev: Node[], s: Scope | null): Nod
     }
 
     // Primitive: reuse the previous text node at this position when equal
-    const text = String(child);
+    const text = `${child as TextValue}`;
     const candidate = prev[out.length];
     if (candidate && candidate.nodeType === 3 && (candidate as Text).data === text) {
       out.push(candidate);
@@ -2084,26 +2027,6 @@ function yielded(value: Child, owner: Scope | null): Child {
 }
 
 /**
- * A render effect owned by `given`. Entering `given` makes it current and the
- * build untracked; when it already is both, entering it again changes nothing,
- * and every binding of every row would pay two closures and a `runWithOwner`
- * for it. A disposed `given` still goes through `runWithOwner`, whose
- * development build reports it.
- */
-function effectUnder<T>(
-  given: Scope | null,
-  origin: string,
-  compute: (prev: T | undefined) => T,
-  apply: (value: T, prev: T | undefined) => void | (() => void),
-): void {
-  if (given === null || (given === getOwner() && getObserver() === null && !isDisposed(given))) {
-    renderEffect(compute, apply);
-    return;
-  }
-  underScope(given, origin, () => renderEffect(compute, apply));
-}
-
-/**
  * Insert a child into `parent` before `marker` (or append when absent), under
  * the scope the enclosing Block was given. Scope FIRST.
  *
@@ -2303,11 +2226,14 @@ export function insert(
     // had: the element IS the range, so the text needs no node of its own to
     // track. `textContent = ""` creates NO text node where `appendChild`
     // creates an empty one, so the empty string keeps the old path.
-    if (anchor === null && value !== "" && parent.firstChild === null) {
-      fillText(parent, value);
+    // Any object that is not a node is written as its string, which is what
+    // `createTextNode` makes of it.
+    const text = value as TextValue;
+    if (anchor === null && text !== "" && parent.firstChild === null) {
+      fillText(parent, text);
       return;
     }
-    parent.insertBefore(textNode(value), anchor);
+    parent.insertBefore(textNode(text), anchor);
   }
 }
 
@@ -2785,7 +2711,7 @@ export function childToNodes(child: Child, s: Scope | null = getOwner()): Node[]
     return nodes;
   }
 
-  const text = String(child);
+  const text = `${child as TextValue}`;
   return [claimText(text) ?? document.createTextNode(text)];
 }
 
@@ -2933,7 +2859,7 @@ function insertRendered(
     insert(container, element, null, WHOLE);
     return;
   }
-  container.appendChild(document.createTextNode(String(element)));
+  container.appendChild(document.createTextNode(String(element as TextValue)));
 }
 
 /**

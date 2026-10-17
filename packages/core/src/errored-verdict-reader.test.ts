@@ -11,10 +11,10 @@
  * which spun `flush()` forever and froze the page.
  */
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { bindEffect, insert, render, setAttr, setClass } from "./dom.ts";
+import { insert, render, setAttr, setClass } from "./dom.ts";
 import { boundary } from "./flow.ts";
 import { block } from "./props.ts";
-import { createMemo, createRoot, createSignal, flush, isPending } from "./signals.ts";
+import { bindEffect, createMemo, createRoot, createSignal, flush, isPending } from "./signals.ts";
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 

@@ -46,7 +46,6 @@
  */
 
 import {
-  bindEffect,
   bindEvent,
   bindProp,
   readKeys,
@@ -66,7 +65,7 @@ import {
   type Channel,
 } from "./dom.ts";
 import { boundary, branch, each, island, portal } from "./flow.ts";
-import { getOwner } from "./signals.ts";
+import { bindEffect, getOwner } from "./signals.ts";
 import type { Cell } from "./scope.ts";
 
 export type Slot = () => unknown;

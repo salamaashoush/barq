@@ -6,7 +6,7 @@
 import { describe, expect, test, beforeEach, afterEach } from "bun:test";
 import { For, Fragment, Match, Show, Switch } from "./components.ts";
 import { childToNodes, insert } from "./dom.ts";
-import type { Child } from "./dom.ts";
+import type { Child } from "./types.ts";
 import { createSignal, createEffect, createRoot, onCleanup, onSettled, flush } from "./signals.ts";
 
 // Simple DOM setup for testing

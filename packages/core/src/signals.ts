@@ -28,6 +28,7 @@ import {
   createRenderEffect,
   flush,
   getContext as engineGetContext,
+  getObserver,
   getOwner,
   isDisposed,
   onCleanup,
@@ -831,7 +832,7 @@ export function lookupContext(scope: Scope | null, key: string | symbol): unknow
 type MaybeAccessor<T> = T | (() => T);
 
 // Type-only: keeps a context usable as a JSX component (no runtime cycle)
-import type { JSXElement } from "./dom.ts";
+import type { JSXElement } from "./types.ts";
 
 /** What a context provider is handed: `value` is a Cell, `children` a Block. */
 export interface ContextProviderProps<T> {
@@ -1098,6 +1099,45 @@ export function renderEffect<T>(
     return;
   }
   createRenderEffect<T>(run as never, apply);
+}
+
+/**
+ * A render effect owned by `given`. Entering `given` makes it current and the
+ * build untracked; when it already is both, entering it again changes nothing,
+ * and every binding of every row would pay two closures and a `runWithOwner`
+ * for it. A disposed `given` still goes through `runWithOwner`, whose
+ * development build reports it.
+ */
+export function effectUnder<T>(
+  given: Scope | null,
+  origin: string,
+  compute: (prev: T | undefined) => T,
+  apply: (value: T, prev: T | undefined) => void | (() => void),
+): void {
+  if (given === null || (given === getOwner() && getObserver() === null && !isDisposed(given))) {
+    renderEffect(compute, apply);
+    return;
+  }
+  underScope(given, origin, () => renderEffect(compute, apply));
+}
+
+/**
+ * O4.5 for the element-binding channel: the effect belongs to the scope the
+ * enclosing Block was HANDED, not to whatever the call site left current.
+ *
+ * This is what the compiled attribute/class/style/domprop path emits, and it
+ * used to emit a bare `renderEffect(compute, apply)` taking no scope at all —
+ * so `insert` and `setProp` honoured the argument while the channel beside them
+ * followed `CURRENT`, and one component could split its ownership across two
+ * scopes. The scope-first shape makes a mistiming a missing argument rather
+ * than a silent reparent, and it is why `brand` can see these components: a
+ * body whose only reactive work is an element binding now names `_s$`.
+ */
+export function bindEffect<T>(
+  compute: (prev: T | undefined) => T,
+  apply: (value: T, prev: T | undefined) => void | (() => void),
+): void {
+  effectUnder(getOwner(), "bindEffect", compute, apply);
 }
 
 /**
@@ -1491,7 +1531,7 @@ export function isHydratable(): boolean {
   // No render above it: the client's answer where there is a document, and
   // the server's outside a render where there is none. Asked at the call, not
   // read from `#env`, whose answer is fixed before a test registers its DOM.
-  return typeof document !== "undefined";
+  return "document" in globalThis;
 }
 
 /**

@@ -73,8 +73,8 @@ import type {
   StrictAccessor,
   StrictChild,
 } from "./config.ts";
-import type { ArrayElement, Child, JSXElement } from "./dom.ts";
-import { reportModule } from "./head.ts";
+import type { ArrayElement, Child, JSXElement } from "./types.ts";
+import { reportModule } from "./module-sink.ts";
 import { hydrating, onHydrationEnd } from "./hydration.ts";
 import { omit } from "./props.ts";
 import { resolveDynamic } from "./dom.ts";
@@ -355,7 +355,7 @@ function flattenChildren(list: readonly unknown[], out: ResolvedElement[]): NotR
 export function Fragment(props: { children?: Child | Child[] }): JSXElement {
   // C8: a fragment is an ARRAY of its parts. Nothing builds a DocumentFragment.
   const kids = props.children;
-  return (Array.isArray(kids) ? kids : [kids]) as unknown as JSXElement;
+  return Array.isArray(kids) ? kids : [kids];
 }
 
 export function Show<T, K extends boolean = false>(props: ShowProps<T, K>): JSXElement {
@@ -420,7 +420,7 @@ export function Repeat(props: RepeatProps): JSXElement {
 
 /** C8-adjacent: `Match` is an identity function — `Switch` reads its props. */
 export function Match<T, K extends boolean = false>(props: MatchProps<T, K>): JSXElement {
-  return props as unknown as JSXElement;
+  return props;
 }
 
 export function Switch(props: SwitchProps): JSXElement {

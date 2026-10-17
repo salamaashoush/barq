@@ -158,7 +158,7 @@ export {
  * has the same slots the
  * compiled path has and must refuse a Block in one the same way.
  */
-export { readSlot } from "./signals.ts";
+export { bindEffect, readSlot } from "./signals.ts";
 export type { Block, Cell, Scope, Slot } from "./scope.ts";
 
 // The props model. `props` and `cell` are the two
@@ -235,7 +235,6 @@ export {
   bindProp,
   readOpaque,
   readKeys,
-  bindEffect,
   bindValue,
   bindEvent,
   bindChannelOf,
@@ -251,12 +250,8 @@ export {
   // fell back to this backend renders a string-compiled component's markup
   // through it.
   isSsrHtml,
-  type Child,
-  type Props,
-  type JSXElement,
-  type Element,
-  type ArrayElement,
 } from "./dom.ts";
+export type { Child, Props, JSXElement, Element, ArrayElement } from "./types.ts";
 
 // The two halves of a form write, exported because they are a CHANNEL and not
 // an internal: `setLive` and every author-written directive that touches a
@@ -367,13 +362,11 @@ export type {
   VoidComponent,
   ParentComponent,
   FlowComponent,
-  ComponentProps,
-  ValidComponent,
-  IntrinsicElementProps,
   Ref,
   RefCallback,
   RefObject,
-} from "./jsx-runtime.ts";
+} from "./component-types.ts";
+export type { ComponentProps, ValidComponent, IntrinsicElementProps } from "./jsx-runtime.ts";
 
 // The L2b ownership trace. DEV/test only, off until asked
 // for; every instrumentation site behind it is one branch when it is off.

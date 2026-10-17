@@ -14,6 +14,7 @@
 
 import { getOwner, onCleanup } from "@solidjs/signals";
 
+import { type ModuleSink, setModuleSink } from "./module-sink.ts";
 import { createRenderEffect } from "./signals.ts";
 
 export type HeadTagName = "title" | "meta" | "link" | "style" | "script" | "base";
@@ -28,23 +29,17 @@ export interface HeadTag {
 export type HeadInput = HeadTag | readonly HeadTag[] | (() => HeadTag | readonly HeadTag[]);
 
 /** What a server render collects, in the order the tags were declared. */
-export interface HeadSink {
+export interface HeadSink extends ModuleSink {
   add(tags: readonly HeadTag[]): void;
-  /** A `lazy()` module that rendered, by the URL the bundler gave it. */
-  module?(url: string): void;
-}
-
-/** Tell the render a `lazy()` module rendered, so its assets reach the page. */
-export function reportModule(url: string): void {
-  SINK?.module?.(url);
 }
 
 let SINK: HeadSink | null = null;
 
-/** Install a server render's sink. Returns the previous one. */
+/** Install a server render's sink, which hears its modules too. Returns the previous one. */
 export function setHeadSink(sink: HeadSink | null): HeadSink | null {
   const previous = SINK;
   SINK = sink;
+  setModuleSink(sink);
   return previous;
 }
 

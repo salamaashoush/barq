@@ -10,7 +10,7 @@
  *   hands `region` as its own arms.
  */
 
-import type { Child } from "./dom.ts";
+import type { Child } from "./types.ts";
 import {
   LIVE_EDGES,
   childToNodes,

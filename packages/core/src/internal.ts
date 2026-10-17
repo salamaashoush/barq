@@ -36,7 +36,9 @@ export {
   unclaimedSeeds,
 } from "./signals.ts";
 
-export { headKey, reportModule, setHeadSink } from "./head.ts";
+export { headKey, setHeadSink } from "./head.ts";
+
+export { reportModule, setModuleSink } from "./module-sink.ts";
 
 export { type Range, withRange, withoutClaim } from "./hydration.ts";
 

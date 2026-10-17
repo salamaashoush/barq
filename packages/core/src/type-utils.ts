@@ -15,7 +15,7 @@ export function isBoolean(value: unknown): value is boolean {
   return typeof value === "boolean";
 }
 
-export function isRefCallback(value: unknown): value is (el: Element) => void {
+export function isRefCallback(value: unknown): value is (el: object) => void {
   return typeof value === "function";
 }
 

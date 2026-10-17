@@ -5,7 +5,8 @@
  */
 
 import { expect, test } from "bun:test";
-import { type Child, insert } from "./dom.ts";
+import { insert } from "./dom.ts";
+import type { Child } from "./types.ts";
 import { createRoot, createSignal, flush } from "./signals.ts";
 
 const HOLES = 2000;
