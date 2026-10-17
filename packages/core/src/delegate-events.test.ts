@@ -4,7 +4,7 @@
  * delegated handler outside one has nothing listening for it.
  */
 
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { delegateEvents, render, setProp } from "./dom.ts";
 import { DEV } from "./signals.ts";
 
@@ -344,11 +344,16 @@ describe("a delegated handler runs under no owner", () => {
       event.preventDefault();
     };
     globalThis.addEventListener("error", onError);
+    const printed = spyOn(console, "error").mockImplementation(() => {});
     let thrown: unknown = null;
+    let logged: unknown[];
     try {
       el.dispatchEvent(new Event("click", { bubbles: true }));
     } catch (error) {
       thrown = error;
+    } finally {
+      logged = printed.mock.calls.map((call) => call[0]);
+      printed.mockRestore();
     }
     globalThis.removeEventListener("error", onError);
 
@@ -363,6 +368,10 @@ describe("a delegated handler runs under no owner", () => {
       thrown !== null || errors.length > 0,
       "a Block at a handler slot was neither invoked nor reported",
     ).toBe(true);
+    expect(
+      logged.map((error) => (error as Error).name),
+      "the unhandled refusal reached the console as itself",
+    ).toEqual(errors.map(() => "ScopeMissingError"));
   });
 });
 
@@ -387,4 +396,47 @@ test("the pointer-capture events are bound under their own names, in the bubble 
   element.dispatchEvent(new Event("lostpointercapture"));
   element.dispatchEvent(new Event("gotpointer"));
   expect(seen).toEqual(["got", "lost"]);
+});
+
+test("a handler a dispatch runs from inside an effect's callback is not the callback's read", async () => {
+  const { createEffect, createRoot, createSignal, delegate, flush, listen, OBSERVE, runWithOwner } =
+    await import("./index.ts");
+  const button = document.createElement("button");
+  container.appendChild(button);
+  const [count] = createSignal(1);
+  const [go, setGo] = createSignal(false);
+  const seen: string[] = [];
+  const dispose = runWithOwner(null, () =>
+    createRoot((disposeRoot) => {
+      delegate(button, "click", () => seen.push(`click ${count()}`));
+      listen(button, "focus", () => seen.push(`focus ${count()}`));
+      createEffect(go, (now) => {
+        if (!now) return;
+        button.click();
+        button.focus();
+        seen.push(`callback ${count()}`);
+      });
+      return disposeRoot;
+    }),
+  );
+  delegateEvents(["click"]);
+  flush();
+
+  const warn = spyOn(console, "warn").mockImplementation(() => {});
+  const capture = DEV.diagnostics.capture();
+  let printed: string[];
+  try {
+    setGo(true);
+    flush();
+  } finally {
+    printed = warn.mock.calls.map((call) => String(call[0]).split("\n")[0]);
+    warn.mockRestore();
+  }
+  const strict = capture.stop().filter((event) => event.code === "STRICT_READ_UNTRACKED");
+  dispose();
+
+  expect(seen).toEqual(["click 1", "focus 1", "callback 1"]);
+  // The engine's development build checks reads; only the callback's own read is one.
+  expect(strict.length).toBe(OBSERVE === undefined ? 0 : 1);
+  expect(printed).toEqual(strict.map((event) => event.message));
 });

@@ -388,6 +388,14 @@ function ownerIn(state: DelegatedContainer, from: Node | null): Node | null {
   return null;
 }
 
+// `el.focus()` or `dispatchEvent` called from an effect's callback runs the
+// listeners synchronously inside it, and the engine's dev build would blame
+// their reads on that callback. A handler is a scope of its own: it reads the
+// current value on purpose, so it runs untracked, with no owner.
+function asHandler(run: () => void): void {
+  runWithOwner(null, () => untrack(run));
+}
+
 function dispatchDelegated(e: Event, container: Node, state: DelegatedContainer): void {
   const marked = (e as Event & Record<string, unknown>)[EVENT_OWNER] as Node | undefined;
   const target = ((e.composedPath?.()[0] as Node | undefined) ?? e.target) as Node | null;
@@ -433,7 +441,7 @@ function dispatchDelegated(e: Event, container: Node, state: DelegatedContainer)
           // an owner is a scope that is being built. It runs under none, as an
           // effect's callback does, and one that needs to own what it creates
           // names the owner itself.
-          runWithOwner(null, () => {
+          asHandler(() => {
             // The RETURN is tested for the same reason `applyRefs` tests one:
             // the LAUNDERED shape, `() => aBlock`, carries no brand for the
             // value test above to see, and a handler is invoked with the Event
@@ -1155,7 +1163,7 @@ function routedListener(
 ): EventListener {
   return function (this: unknown, e: Event): void {
     try {
-      runWithOwner(null, () => {
+      asHandler(() => {
         // C3.8's laundered shape, tested on the RETURN — the same move
         // `applyRefs` already makes for `ref`, and for the same reason: a
         // handler is invoked with the EVENT, so `block`'s entry guard can never
