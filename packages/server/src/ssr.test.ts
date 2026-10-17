@@ -1,10 +1,12 @@
 import {
+  DEV,
   For,
   Match,
   Repeat,
   Show,
   Switch,
   cell,
+  createRoot,
   element,
   props,
   render,
@@ -12,7 +14,7 @@ import {
 } from "@barqjs/core";
 import { describe, expect, test } from "bun:test";
 
-import { renderToString } from "./server.ts";
+import { renderPage, renderToString } from "./server.ts";
 import {
   SsrHtml,
   attr,
@@ -200,7 +202,7 @@ describe("escaping", () => {
   });
 
   test("a real DOM node from a fallback module reaches the wire as markup", () => {
-    const node = element("b", { class: "c", children: "hi" }) as Node;
+    const node = createRoot(() => element("b", { class: "c", children: "hi" })) as Node;
     expect(esc(node)).toBe('<b class="c">hi</b>');
     // …and the node is not consumed: it is cloned, not moved.
     expect((node as Element).textContent).toBe("hi");
@@ -312,7 +314,10 @@ describe("attributes", () => {
       // direct `attr` assertion above is the one that can be trusted, the same
       // way the attribute-name check below trusts only what happy-dom does
       // implement.
-      const live = element(tag, { [name]: value }) as unknown as Record<string, unknown>;
+      const live = createRoot(() => element(tag, { [name]: value })) as unknown as Record<
+        string,
+        unknown
+      >;
       const host = globalThis.document.createElement("div");
       host.innerHTML = `<${tag}${attr(name, value, tag)}></${tag}>`;
       const parsed = host.firstElementChild as unknown as Record<string, unknown>;
@@ -630,18 +635,26 @@ describe("the two SSR strategies compose", () => {
     expect(renderToString(() => html('<div class="c">x</div>'))).toBe('<div class="c">x</div>');
   });
 
+  test("a view built with the DOM is owned by the render that writes it out", async () => {
+    const capture = DEV.diagnostics.capture();
+    const view = () => element("p", { children: "salama" });
+    expect(renderToString(view)).toBe("<p>salama</p>");
+    expect((await renderPage(view)).html).toBe("<p>salama</p>");
+    expect(capture.stop().map((event) => event.code)).toEqual([]);
+  });
+
   test("a DOM-backend module renders a string-compiled component's markup", () => {
     // The direction the brand exists for: a fallback module builds real nodes
     // and one of its children is markup a string-compiled module produced.
     const container = document.createElement("div");
-    render(element("section", { children: html('<b class="x">bold</b>') }), container);
+    render(() => element("section", { children: html('<b class="x">bold</b>') }), container);
     expect(container.innerHTML).toBe('<section><b class="x">bold</b></section>');
     expect(container.querySelector("b")?.className).toBe("x");
   });
 
   test("and it is not inserted as escaped text", () => {
     const container = document.createElement("div");
-    render(element("section", { children: "<b>bold</b>" }), container);
+    render(() => element("section", { children: "<b>bold</b>" }), container);
     expect(container.innerHTML).toBe("<section>&lt;b&gt;bold&lt;/b&gt;</section>");
   });
 });

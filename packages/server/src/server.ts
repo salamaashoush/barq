@@ -152,7 +152,9 @@ export function renderToString(fn: RootRender, options: RenderToStringOptions = 
         );
       }
       container = document.createElement("div");
-      render(value, container);
+      // Built above, under `owner`, which goes with this render. Mounted under
+      // it too, so the mount does not take the nodes for ones nothing owns.
+      render(() => value, container, { owner });
     });
     flush();
     const html = withHead(
@@ -550,7 +552,7 @@ function startRender(
           );
         }
         job.container = document.createElement("div");
-        render(value, job.container);
+        render(() => value, job.container, { owner: root });
       });
     } finally {
       setAsyncSession(previousSession);
