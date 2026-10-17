@@ -751,6 +751,26 @@ pub(crate) fn collect_refs_excluding(
     walk::walk_program(&mut collector, program);
 }
 
+/// Whether an expression is a call chain whose root callee is `factory`.
+pub(crate) fn rooted_at(expression: &Expression<'_>, factory: SymbolId, scoping: &Scoping) -> bool {
+    let mut current = expression;
+    loop {
+        match current {
+            Expression::ParenthesizedExpression(inner) => current = &inner.expression,
+            Expression::CallExpression(call) => current = &call.callee,
+            Expression::StaticMemberExpression(member) => current = &member.object,
+            Expression::Identifier(reference) => {
+                return reference
+                    .reference_id
+                    .get()
+                    .and_then(|id| scoping.get_reference(id).symbol_id())
+                    .is_some_and(|symbol| symbol == factory);
+            }
+            _ => return false,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

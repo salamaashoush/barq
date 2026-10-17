@@ -26,7 +26,7 @@ use rustc_hash::FxHashSet;
 use crate::options::Env;
 use crate::route_split::{
     Blanker, collect_refs, collect_refs_excluding, declaration_of, dependencies, reachable,
-    top_level,
+    rooted_at, top_level,
 };
 
 /// The three names, and what the subpath that holds them is called.
@@ -395,26 +395,6 @@ fn collect(
 
 fn env_name(env: Env) -> &'static str {
     if env == Env::Client { "client" } else { "server" }
-}
-
-/// Whether an expression is a call chain whose root callee is `factory`.
-fn rooted_at(expression: &Expression<'_>, factory: SymbolId, scoping: &Scoping) -> bool {
-    let mut current = expression;
-    loop {
-        match current {
-            Expression::ParenthesizedExpression(inner) => current = &inner.expression,
-            Expression::CallExpression(call) => current = &call.callee,
-            Expression::StaticMemberExpression(member) => current = &member.object,
-            Expression::Identifier(reference) => {
-                return reference
-                    .reference_id
-                    .get()
-                    .and_then(|id| scoping.get_reference(id).symbol_id())
-                    .is_some_and(|symbol| symbol == factory);
-            }
-            _ => return false,
-        }
-    }
 }
 
 #[cfg(test)]

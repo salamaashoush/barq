@@ -34,7 +34,7 @@ use rustc_hash::FxHashSet;
 
 use crate::route_split::{
     Blanker, collect_refs, collect_refs_excluding, declaration_of, dependencies, reachable,
-    top_level,
+    rooted_at, top_level,
 };
 
 /// The cheap question first, as every other pass in the compiler asks it: a
@@ -292,26 +292,6 @@ fn collect_server_halves(
     }
     let mut finder = Finder { factory, scoping, out, marker: std::marker::PhantomData };
     finder.visit_program(program);
-}
-
-/// Whether an expression is a call chain whose root callee is `factory`.
-fn rooted_at(expression: &Expression<'_>, factory: SymbolId, scoping: &Scoping) -> bool {
-    let mut current = expression;
-    loop {
-        match current {
-            Expression::ParenthesizedExpression(inner) => current = &inner.expression,
-            Expression::CallExpression(call) => current = &call.callee,
-            Expression::StaticMemberExpression(member) => current = &member.object,
-            Expression::Identifier(reference) => {
-                return reference
-                    .reference_id
-                    .get()
-                    .and_then(|id| scoping.get_reference(id).symbol_id())
-                    .is_some_and(|symbol| symbol == factory);
-            }
-            _ => return false,
-        }
-    }
 }
 
 #[cfg(test)]
