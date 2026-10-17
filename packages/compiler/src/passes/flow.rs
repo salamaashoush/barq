@@ -58,12 +58,12 @@ use oxc::ast::ast::{
     Argument, ArrayExpressionElement, ArrowFunctionBody, BinaryOperator, BindingPattern,
     Expression, FormalParameter, FormalParameterKind, FormalParameters, IdentifierName,
     JSXAttributeItem, JSXAttributeName, JSXAttributeValue, JSXChild, JSXElement, JSXElementName,
-    LogicalOperator, NumberBase, Statement, VariableDeclarationKind, VariableDeclarator,
+    LogicalOperator, NumberBase, Statement,
 };
 use oxc::span::Span;
 
 use crate::analysis::symbol_of;
-use crate::codegen::Helper;
+use crate::codegen::{Helper, const_binding};
 use crate::ir::{Flow, NO_SCOPE, React, Region, RegionKind, STATIC_KEY, SourceKind};
 use crate::lower::jsx::{attribute_expression, attribute_name, object_property};
 use crate::lower::text;
@@ -1087,7 +1087,7 @@ fn keyed_body<'a>(
 ) -> Expression<'a> {
     let temp = shaper.uids.temp();
     let read = read_of(shaper, dup(shaper, cell), span);
-    let declaration = binding(shaper, temp, read, span);
+    let declaration = const_binding(&shaper.ast, temp, read, span);
 
     let shown = match content {
         Some(slot) => {
@@ -1413,29 +1413,6 @@ fn or_false<'a>(shaper: &Shaper<'a, '_>, value: Expression<'a>, span: Span) -> E
 
 fn number<'a>(shaper: &Shaper<'a, '_>, value: f64, span: Span) -> Expression<'a> {
     Expression::new_numeric_literal(span, value, None, NumberBase::Decimal, &shaper.ast)
-}
-
-fn binding<'a>(
-    shaper: &Shaper<'a, '_>,
-    name: &'a str,
-    init: Expression<'a>,
-    span: Span,
-) -> Statement<'a> {
-    let declarator = VariableDeclarator::new(
-        span,
-        BindingPattern::new_binding_identifier(span, name, &shaper.ast),
-        None,
-        Some(init),
-        false,
-        &shaper.ast,
-    );
-    Statement::new_variable_declaration(
-        span,
-        VariableDeclarationKind::Const,
-        [declarator],
-        false,
-        &shaper.ast,
-    )
 }
 
 impl<'a> Shaper<'a, '_> {

@@ -435,6 +435,30 @@ pub fn emit<'a>(
     install::run(&mut emit, program);
 }
 
+/// Free of `Emit` because the shape passes declare temporaries too.
+pub fn const_binding<'a>(
+    ast: &AstBuilder<'a>,
+    name: &'a str,
+    init: Expression<'a>,
+    span: Span,
+) -> Statement<'a> {
+    let declarator = VariableDeclarator::new(
+        span,
+        BindingPattern::new_binding_identifier(span, name, ast),
+        None,
+        Some(init),
+        false,
+        ast,
+    );
+    Statement::new_variable_declaration(
+        span,
+        VariableDeclarationKind::Const,
+        [declarator],
+        false,
+        ast,
+    )
+}
+
 pub struct Emit<'a, 'm> {
     pub allocator: &'a Allocator,
     pub ast: AstBuilder<'a>,
@@ -594,21 +618,7 @@ impl<'a, 'm> Emit<'a, 'm> {
     }
 
     pub fn binding(&self, name: &'a str, init: Expression<'a>, span: Span) -> Statement<'a> {
-        let declarator = VariableDeclarator::new(
-            span,
-            BindingPattern::new_binding_identifier(span, name, &self.ast),
-            None,
-            Some(init),
-            false,
-            &self.ast,
-        );
-        Statement::new_variable_declaration(
-            span,
-            VariableDeclarationKind::Const,
-            [declarator],
-            false,
-            &self.ast,
-        )
+        const_binding(&self.ast, name, init, span)
     }
 
     pub fn thunk(&self, body: Expression<'a>, span: Span) -> Expression<'a> {
