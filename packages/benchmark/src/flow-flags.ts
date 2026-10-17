@@ -215,11 +215,16 @@ const CASES: readonly Case[] = [staticKey, noScope];
 const declared = new Map(
   [
     ...readFileSync(new URL("../../core/src/flow.ts", import.meta.url), "utf8").matchAll(
-      /^export const (\w+) = 1 << (\d+);$/gm,
+      /^export const (\w+)(?:: number)? = 1 << (\d+);$/gm,
     ),
   ].map((match) => [match[1], 1 << Number(match[2])] as const),
 );
-const unmeasured = [...declared.keys()].filter((flag) => !CASES.some((c) => c.flag === flag));
+// `HYDRATE` proves nothing and skips nothing: it says the server wrote this
+// range's comments, so a build without it is wrong rather than slower.
+const NOT_A_PROOF = new Set(["HYDRATE"]);
+const unmeasured = [...declared.keys()].filter(
+  (flag) => !NOT_A_PROOF.has(flag) && !CASES.some((c) => c.flag === flag),
+);
 if (unmeasured.length > 0) {
   throw new Error(
     `flow.ts declares ${unmeasured.join(", ")} with no row in this table. A flag ` +
