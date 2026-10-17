@@ -179,60 +179,16 @@ export interface BrowserHistoryOptions {
  */
 export function browserHistory(options: BrowserHistoryOptions = {}): History {
   const base = options.base === undefined ? "" : normalizeBase(options.base);
-  const listeners = new Set<(location: Location, action: NavigationAction) => void>();
-
-  const read = (): Location =>
-    parseLocation(
-      stripBase(window.location.pathname, base) + window.location.search + window.location.hash,
-      withoutIndex(window.history.state),
-    );
-
-  let current = read();
-  // The entry's position among the ones THIS application pushed, which is the
-  // only "can I go back" a browser makes available: `history.length` counts the
-  // whole session, including entries from other origins, and there is no API
-  // for the real question. An entry nothing here wrote reads as the first.
-  let seen = indexOf(window.history.state) ?? 0;
-
-  const emit = (location: Location, action: NavigationAction): void => {
-    current = location;
-    // A snapshot, not the live Set: a listener that subscribes another during
-    // an emit must not have it called in the same emit.
-    for (const listener of Array.from(listeners)) listener(location, action);
-  };
-
-  window.addEventListener(
-    "popstate",
-    () => {
-      seen = indexOf(window.history.state) ?? 0;
-      emit(read(), "pop");
-    },
-    { signal: options.signal },
-  );
-
-  return {
-    current: () => current,
-    depth: () => seen,
-    go(delta) {
-      window.history.go(delta);
-    },
-    push(to, pushOptions) {
-      const location = parseLocation(to, pushOptions?.state ?? null);
-      const url = addBase(location.pathname, base) + location.search + location.hash;
-      const replace = pushOptions?.replace === true;
-      if (replace) {
-        window.history.replaceState(withIndex(location.state, seen), "", url);
-      } else {
-        seen++;
-        window.history.pushState(withIndex(location.state, seen), "", url);
-      }
-      emit(location, replace ? "replace" : "push");
-    },
-    subscribe(listener) {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-  };
+  return windowHistory({
+    event: "popstate",
+    read: () =>
+      parseLocation(
+        stripBase(window.location.pathname, base) + window.location.search + window.location.hash,
+        withoutIndex(window.history.state),
+      ),
+    url: (location) => addBase(location.pathname, base) + location.search + location.hash,
+    signal: options.signal,
+  });
 }
 
 /** One leading slash, no trailing slash. `"/"` and `""` both mean no base. */
@@ -261,29 +217,48 @@ export interface HashHistoryOptions {
  * under either.
  */
 export function hashHistory(options: HashHistoryOptions = {}): History {
+  return windowHistory({
+    // `hashchange` and not `popstate`: a hash edit in the address bar fires only
+    // the first, and a page whose route is its hash has to answer to it.
+    event: "hashchange",
+    read: () => {
+      const raw = window.location.hash.slice(1);
+      return parseLocation(raw === "" ? "/" : raw, withoutIndex(window.history.state));
+    },
+    url: (location) => `#${href(location)}`,
+    signal: options.signal,
+  });
+}
+
+function windowHistory(options: {
+  event: "popstate" | "hashchange";
+  read: () => Location;
+  url: (location: Location) => string;
+  signal: AbortSignal | undefined;
+}): History {
+  const { read, url } = options;
   const listeners = new Set<(location: Location, action: NavigationAction) => void>();
 
-  const read = (): Location => {
-    const raw = window.location.hash.slice(1);
-    return parseLocation(raw === "" ? "/" : raw, withoutIndex(window.history.state));
-  };
-
   let current = read();
+  // The entry's position among the ones THIS application pushed, which is the
+  // only "can I go back" a browser makes available: `history.length` counts the
+  // whole session, including entries from other origins, and there is no API
+  // for the real question. An entry nothing here wrote reads as the first.
   let seen = indexOf(window.history.state) ?? 0;
 
   const emit = (location: Location, action: NavigationAction): void => {
     current = location;
+    // A snapshot, not the live Set: a listener that subscribes another during
+    // an emit must not have it called in the same emit.
     for (const listener of Array.from(listeners)) listener(location, action);
   };
 
-  // `hashchange` and not `popstate`: a hash edit in the address bar fires only
-  // the first, and a page whose route is its hash has to answer to it.
   window.addEventListener(
-    "hashchange",
+    options.event,
     () => {
       // A hash typed into the address bar is an entry nothing here stamped, and
       // it sits wherever the last known one did.
-      seen = indexOf(window.history.state) ?? seen;
+      seen = indexOf(window.history.state) ?? (options.event === "hashchange" ? seen : 0);
       emit(read(), "pop");
     },
     { signal: options.signal },
@@ -297,14 +272,13 @@ export function hashHistory(options: HashHistoryOptions = {}): History {
     },
     push(to, pushOptions) {
       const location = parseLocation(to, pushOptions?.state ?? null);
-      const url = `#${href(location)}`;
       if (pushOptions?.replace === true) {
-        window.history.replaceState(withIndex(location.state, seen), "", url);
+        window.history.replaceState(withIndex(location.state, seen), "", url(location));
         emit(location, "replace");
         return;
       }
       seen++;
-      window.history.pushState(withIndex(location.state, seen), "", url);
+      window.history.pushState(withIndex(location.state, seen), "", url(location));
       emit(location, "push");
     },
     subscribe(listener) {
