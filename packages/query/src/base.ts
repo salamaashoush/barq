@@ -236,8 +236,10 @@ export function baseQuery<TQueryFnData, TError, TData, TQueryData, TQueryKey ext
 
   // Options are their own effect. Folding it into the subscription would tear
   // the socket down and rebuild it on every keystroke that touches a query key.
+  // A fetch the new options start calls the caller's `queryFn` from inside
+  // `setOptions`, and what that reads is the query's, not this callback's.
   createRenderEffect(defaulted, (resolved) => {
-    if (!held) observer.setOptions(resolved);
+    if (!held) untrack(() => observer.setOptions(resolved));
   });
 
   /**
