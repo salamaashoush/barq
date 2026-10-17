@@ -18,6 +18,7 @@ export default defineConfig({
     "./src/protocol.ts",
   ],
   format: ["esm"],
+  tsconfig: "./tsconfig.build.json",
   dts: true,
   clean: true,
   deps: {

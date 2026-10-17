@@ -11,7 +11,7 @@ import { describe, expect, spyOn, test } from "bun:test";
 import { type RateLimitStore, byIP, memoryStore, rateLimit } from "./rate-limit.ts";
 import { withRequest } from "./context.ts";
 import { runMiddleware } from "./middleware.ts";
-import { printedBy } from "./test-console.ts";
+import { printedBy } from "../../server/src/test-console.ts";
 
 /** Run a middleware the way `serverRpc` does, reporting what the handler saw. */
 async function run(

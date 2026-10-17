@@ -17,7 +17,7 @@ import {
   setResponseStatus,
   withRequest,
 } from "./index.ts";
-import { holdReports } from "./test-console.ts";
+import { holdReports } from "../../server/src/test-console.ts";
 
 const request = (): Request => new Request("https://example.com/profile/salama");
 

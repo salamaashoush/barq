@@ -29,7 +29,7 @@ import {
 import { decodeWire, encodeWire } from "@barqjs/server/codec";
 
 import { createFetchHandler } from "./serve.ts";
-import { printedBy } from "./test-console.ts";
+import { printedBy } from "../../server/src/test-console.ts";
 import {
   crossOriginRefused,
   handleServerFn,

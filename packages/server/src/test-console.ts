@@ -42,3 +42,8 @@ export function holdReports(code: string): void {
     expectOnly(printed, code);
   });
 }
+
+/** The lines that are not the development console's report of `code`. */
+export function besides(printed: unknown[][], code: string): unknown[][] {
+  return printed.filter(([line]) => !String(line).startsWith(`[barq] ${code}: `));
+}

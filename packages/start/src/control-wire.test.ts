@@ -19,7 +19,7 @@ import {
   serverRpc,
 } from "./index.ts";
 import { handleServerFn, mount, unmountAll } from "./server.ts";
-import { printedBy } from "./test-console.ts";
+import { printedBy } from "../../server/src/test-console.ts";
 
 const ORIGIN = "https://example.com";
 const realFetch = globalThis.fetch;

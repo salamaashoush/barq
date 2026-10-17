@@ -17,7 +17,7 @@ import {
   getRequest,
 } from "./index.ts";
 import { handleServerFn, mount, unmountAll } from "./server.ts";
-import { besides, printedBy } from "./test-console.ts";
+import { besides, printedBy } from "../../server/src/test-console.ts";
 
 const ORIGIN = "https://example.com";
 const realFetch = globalThis.fetch;

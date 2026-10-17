@@ -18,7 +18,7 @@ import {
   serverRpc,
 } from "./index.ts";
 import { handleServerFn, mount, unmountAll } from "./server.ts";
-import { besides, printedBy } from "./test-console.ts";
+import { besides, printedBy } from "../../server/src/test-console.ts";
 
 afterEach(unmountAll);
 
