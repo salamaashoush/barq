@@ -14,26 +14,7 @@
 
 import { collectCss } from "@barqjs/css";
 
-/** The contents of the package's cascade layer, however many blocks it is in. */
-function layerBody(sheet: string): string {
-  const open = "@layer barq.ui{";
-  const out: string[] = [];
-  let from = 0;
-  for (;;) {
-    const at = sheet.indexOf(open, from);
-    if (at < 0) break;
-    const start = at + open.length;
-    let depth = 1;
-    let index = start;
-    for (; index < sheet.length; index++) {
-      if (sheet[index] === "{") depth++;
-      else if (sheet[index] === "}" && --depth === 0) break;
-    }
-    out.push(sheet.slice(start, index));
-    from = index;
-  }
-  return out.join("");
-}
+import { layerBody } from "../../css/src/test-layer.ts";
 
 /** One string per top-level rule or at-rule. */
 function statements(body: string): string[] {
@@ -59,7 +40,7 @@ function statements(body: string): string[] {
 export function rulesFor(classes: string): string {
   const names = classes.split(" ").filter((name) => name !== "");
   if (names.length === 0) return "";
-  return statements(layerBody(collectCss()))
+  return statements(layerBody(collectCss(), "barq.ui"))
     .filter((chunk) => names.some((name) => new RegExp(`\\.${name}(?![\\w-])`).test(chunk)))
     .join("\n")
     .replaceAll(/\{([^{}]*)\}/g, (_, body: string) => `{${body.replaceAll(/:\s*/g, ": ")}}`);

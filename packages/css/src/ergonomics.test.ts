@@ -20,6 +20,7 @@ import {
 } from "./index.ts";
 import type { VariantProps } from "./index.ts";
 import { TIERS, dynamicVar, tierOf } from "./internal.ts";
+import { layerBody } from "./test-layer.ts";
 
 /**
  * The rule a class produced, out of the one sheet.
@@ -281,29 +282,6 @@ describe("create", () => {
  * exist for: a layered rule loses to an unlayered one whatever the specificity,
  * so an application's `* { margin: 0 }` beat every `margin` atom on the page.
  */
-/** What one cascade layer holds, out of the whole sheet. */
-/** Everything a layer holds, however many blocks it is written in. */
-function layerBody(name: string): string {
-  const sheet = collectCss();
-  const open = `@layer ${name}{`;
-  const out: string[] = [];
-  let from = 0;
-  for (;;) {
-    const at = sheet.indexOf(open, from);
-    if (at < 0) break;
-    const start = at + open.length;
-    let depth = 1;
-    let index = start;
-    for (; index < sheet.length; index++) {
-      if (sheet[index] === "{") depth++;
-      else if (sheet[index] === "}" && --depth === 0) break;
-    }
-    out.push(sheet.slice(start, index));
-    from = index;
-  }
-  return out.join("");
-}
-
 describe("layer", () => {
   test("binds the layer for every helper that writes a rule", () => {
     const ui = layer("barq.probe");
@@ -312,7 +290,7 @@ describe("layer", () => {
     const attrs = ui.props({ zIndex: 41 });
     const bg = ui.dynamic((c: string) => ({ backgroundColor: c }))("red");
     for (const cls of [group.ring, attrs.class, bg.$class]) {
-      expect(layerBody("barq.probe")).toContain(`.${cls.split(" ")[0]}`);
+      expect(layerBody(collectCss(), "barq.probe")).toContain(`.${cls.split(" ")[0]}`);
     }
   });
 
@@ -455,7 +433,7 @@ describe("atomsIn", () => {
   test("puts every atom in the layer it is given", () => {
     const classes = atomsIn("barq.ui", { color: "rebeccapurple", padding: { ":hover": 4 } });
     expect(classes).not.toBe("");
-    const body = layerBody("barq.ui");
+    const body = layerBody(collectCss(), "barq.ui");
     for (const cls of classes.split(" ")) expect(body).toContain(`.${cls}`);
   });
 
@@ -477,7 +455,7 @@ describe("atomsIn", () => {
     const sheet = collectCss();
     for (const tier of TIERS) expect(sheet).not.toContain(`barq.probe.${tier}`);
     // Registered at-rule first, and the sort still puts the base rule before it.
-    const body = layerBody("barq.probe");
+    const body = layerBody(collectCss(), "barq.probe");
     expect(body.indexOf("color:white")).toBeLessThan(body.indexOf("@media print"));
   });
 
@@ -487,8 +465,8 @@ describe("atomsIn", () => {
     const plain = atoms({ color: "papayawhip" });
     const layered = atomsIn("barq.ui", { color: "papayawhip" });
     expect(layered).not.toBe(plain);
-    expect(layerBody("barq.ui")).not.toContain(`.${plain}`);
-    expect(layerBody("barq.ui")).toContain(`.${layered}`);
+    expect(layerBody(collectCss(), "barq.ui")).not.toContain(`.${plain}`);
+    expect(layerBody(collectCss(), "barq.ui")).toContain(`.${layered}`);
   });
 
   test("and they still merge, because the key is the property", () => {
@@ -499,7 +477,7 @@ describe("atomsIn", () => {
 
   test("a condition inside a layer keeps both", () => {
     const cls = atomsIn("barq.ui", { color: { "@media print": "black" } }).split(" ")[0] ?? "";
-    expect(layerBody("barq.ui")).toContain(`@media print{.${cls}{color:black}}`);
+    expect(layerBody(collectCss(), "barq.ui")).toContain(`@media print{.${cls}{color:black}}`);
   });
 });
 
@@ -529,7 +507,7 @@ describe("createIn", () => {
       ring: createIn("barq.ui", { ring: { outlineWidth: "3px" } }).ring,
       flat: createIn("barq.ui", { flat: { boxShadow: "none" } }).flat,
     });
-    const body = layerBody("barq.ui");
+    const body = layerBody(collectCss(), "barq.ui");
     expect(body).toContain(`.${shared.ring}{outline-width:3px}`);
     expect(body).toContain(`.${shared.flat}{box-shadow:none}`);
   });
