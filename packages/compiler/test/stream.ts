@@ -28,9 +28,13 @@ export async function chunksOf(mod: FixtureModule): Promise<string[]> {
   // grace, and 143 fixtures against that is a suite nobody runs. What is being
   // measured is the assembly, not the clock: every fixture that settles at all
   // settles on a `tick`.
+  //
+  // A fixture that fails after the shell does so on purpose, and the error
+  // boundary's fallback in the assembled page is how the oracle sees it. The
+  // default `onError` would print each one as well.
   const stream = server.renderToStream(
     (() => (mod.default as unknown as (props?: unknown) => unknown)()) as never,
-    { timeout: 150 },
+    { timeout: 150, onError: () => {} },
   ).readable;
   const reader = stream.getReader();
   const decoder = new TextDecoder();

@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { type FixtureModule, compileSource } from "./harness.ts";
 import { census, compileText, host, reuse, shape, wire } from "./hydration.ts";
+import { writeReport } from "./report.ts";
 
 /**
  * L6 pointed at hydration. the mutation layer, the wire decision Q4.
@@ -346,7 +347,10 @@ for (const dev of [false, true]) {
             `${v.degraded.padEnd(6)} reuse ${String(v.reuse).padStart(3)}%  ${v.kinds.join(",")}`
           : `  ${v.name.padEnd(52)} n/a       not expressible on this wire`,
       );
-      console.log(`L6 hydration mutations (${build}):\n${rows.join("\n")}`);
+      writeReport(
+        `hydration-mutations-${build}`,
+        `L6 hydration mutations (${build}):\n${rows.join("\n")}`,
+      );
       // Every mutation that BIT has to be caught, and the ones that are not are
       // named — an EQUALITY, so a new silent row cannot slip in beside them and
       // a declared one that starts being caught fails as stale.

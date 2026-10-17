@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { compileSource, loadModule, stripLiterals } from "./harness.ts";
+import { compileSource, haltsHeld, loadModule, stripLiterals } from "./harness.ts";
 import {
   describeThrown,
   PreconditionFailed,
@@ -163,7 +163,7 @@ export async function runSemanticFixture(
     // claim's own observation and not a condition the next one starts from.
     core.resetErrorHalt();
     try {
-      await claim.check(bindRule(kit, claim.rule));
+      await haltsHeld(async () => claim.check(bindRule(kit, claim.rule)));
     } catch (error) {
       if (error instanceof SemanticViolation) {
         failure = error.message;

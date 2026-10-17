@@ -2,4 +2,4 @@
 /artifacts
 *.node
 /index.d.ts
-test/.l1-conformance.txt
+test/.*.txt

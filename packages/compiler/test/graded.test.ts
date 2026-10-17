@@ -21,6 +21,7 @@ import { describe, expect, it } from "bun:test";
 
 import { CHANNELS, channel, exemptionCount, L4_RULES, type Grade } from "./graded.ts";
 import { documentedRules } from "./semantics.ts";
+import { writeReport } from "./report.ts";
 
 const GRADES: readonly Grade[] = [
   "differential",
@@ -43,7 +44,8 @@ const SPEC_ROWS = [
 
 const CRATE = join(import.meta.dir, "..");
 
-console.log(
+writeReport(
+  "graded",
   `L4 grades: ${CHANNELS.length} channels — ` +
     CHANNELS.map((c) => `${c.id}:${c.grade}`).join(" ") +
     `\n  exemptions bought back across the whole table: ${exemptionCount()}`,

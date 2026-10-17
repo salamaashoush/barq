@@ -1,7 +1,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { compileSource, fixtureSource, loadModule, type FixtureModule } from "./harness.ts";
+import {
+  compileSource,
+  fixtureSource,
+  haltsHeld,
+  loadModule,
+  type FixtureModule,
+} from "./harness.ts";
 
 /**
  * The dual-render conformance seam .
@@ -151,10 +157,12 @@ export async function renderSsr(mod: FixtureModule): Promise<SsrRender> {
   // it is owned by nothing, and everything a boundary makes afterwards has no
   // scope to be filed under.
   let value: unknown;
-  const html = server.renderToString(() => {
-    value = (mod.default as unknown as () => unknown)();
-    return value as never;
-  });
+  const html = await haltsHeld(async () =>
+    server.renderToString(() => {
+      value = (mod.default as unknown as () => unknown)();
+      return value as never;
+    }),
+  );
   // A compiled SSR module returns branded markup, not a bare string — the brand
   // is what keeps user data (escaped) apart from compiler output (not), so
   // `typeof value === "string"` would classify every module as a fallback and

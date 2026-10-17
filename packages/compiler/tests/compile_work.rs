@@ -192,7 +192,7 @@ fn linear_in_the_module(on: &ResolvedOptions) -> Check {
         })
         .collect();
     for (copies, bytes, spent) in &series {
-        println!("typical component file x{copies:<2} {bytes:>6} bytes  {spent:?}");
+        report(format_args!("typical component file x{copies:<2} {bytes:>6} bytes  {spent:?}"));
     }
     let (_, first_bytes, first) = series[0];
     let (_, last_bytes, last) = series[series.len() - 1];
@@ -232,7 +232,10 @@ fn no_dearer_glued_than_apart(on: &ResolvedOptions) -> Check {
     }
     let glued = concat(&sources);
     let (whole, code) = work(&glued, on);
-    println!("{compiled} fixtures apart {apart:?}, glued into {} bytes {whole:?}", glued.len());
+    report(format_args!(
+        "{compiled} fixtures apart {apart:?}, glued into {} bytes {whole:?}",
+        glued.len()
+    ));
     if compiled < 100 {
         return Err(format!("only {compiled} fixtures compiled on their own"));
     }
@@ -261,13 +264,21 @@ fn ir_pipeline_is_a_small_multiple_of_parsing(
         return Err("the compiled half must template and the baseline must not".to_string());
     }
     let (calls, bytes) = compiled.ratio(parsed);
-    println!("templates on against off: {calls:.2}x calls, {bytes:.2}x bytes");
+    report(format_args!("templates on against off: {calls:.2}x calls, {bytes:.2}x bytes"));
     if calls > 2.75 || bytes > 2.35 {
         return Err(format!(
             "the IR pipeline costs {calls:.2}x the calls and {bytes:.2}x the bytes"
         ));
     }
     Ok(())
+}
+
+/// What a check measured, for a reader. A green run prints the checks' results
+/// alone; `BARQ_TEST_REPORT=1` prints the measurements beside them.
+fn report(line: std::fmt::Arguments) {
+    if std::env::var_os("BARQ_TEST_REPORT").is_some() {
+        println!("{line}");
+    }
 }
 
 fn main() {

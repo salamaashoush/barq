@@ -9,6 +9,7 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import { createRequire } from "node:module";
+import { spyOn } from "bun:test";
 
 import {
   expectedAttributeOrder,
@@ -525,7 +526,29 @@ function markupOf(node: Node): string {
   return [...node.childNodes].map((child) => markupOf(child)).join("");
 }
 
-export async function renderModule(mod: FixtureModule): Promise<RenderResult> {
+/**
+ * Runs a fixture with the engine's halt notice held. A fixture that lets an
+ * error escape halts the engine on purpose, and what it rendered is how the
+ * suite observes that. Anything else printed still reaches the console.
+ */
+export async function haltsHeld<T>(run: () => Promise<T>): Promise<T> {
+  const print = console.error.bind(console);
+  const error = spyOn(console, "error").mockImplementation((...args: unknown[]) => {
+    if (typeof args[0] === "string" && args[0].startsWith("[REACTIVITY_HALTED]")) return;
+    print(...args);
+  });
+  try {
+    return await run();
+  } finally {
+    error.mockRestore();
+  }
+}
+
+export function renderModule(mod: FixtureModule): Promise<RenderResult> {
+  return haltsHeld(() => renderUnheld(mod));
+}
+
+async function renderUnheld(mod: FixtureModule): Promise<RenderResult> {
   const core = await import("@barqjs/core");
 
   const container = document.createElement("div");

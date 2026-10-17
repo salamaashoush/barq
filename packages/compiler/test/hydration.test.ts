@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 
 import { compileSource, fixtureSource, listFixtures, loadModule } from "./harness.ts";
 import { beginTrace, endTrace, summarize } from "./tracer.ts";
+import { writeReport } from "./report.ts";
 import {
   HYDRATION_KNOWN,
   census,
@@ -203,7 +204,8 @@ describe("L5 hydration conformance", () => {
     const claimed = results.filter(
       (r) => !registered.has(r.name) && r.reuse.percent === 100,
     ).length;
-    console.log(
+    writeReport(
+      "hydration",
       `L5 hydration: ${results.length} fixtures — ${claimed} claim every node, ` +
         `${registered.size} registered divergence(s)`,
     );
@@ -379,7 +381,8 @@ describe("the claim payload", () => {
 
     const page = await realPage(PAGE, "sole");
     const mixed = await realPage(MIXED_PAGE, "mixed");
-    console.log(
+    writeReport(
+      "hydration-payload",
       "the claim payload, after §12's split:\n" +
         `  corpus       production  ${plain} → ${production} bytes\n` +
         `  corpus       development ${plain} → ${development} bytes\n` +
@@ -675,7 +678,10 @@ describe("claim against replace", () => {
           `replace ${cold.toFixed(0).padStart(5)} µs   ${(cold / hot).toFixed(2)}x`,
       );
     }
-    console.log(`hydration, claim against replace (median of 21):\n${rows.join("\n")}`);
+    writeReport(
+      "hydration-timing",
+      `hydration, claim against replace (median of 21):\n${rows.join("\n")}`,
+    );
     // Deliberately no threshold. The number that MATTERS is H6's, and a wall
     // clock in a fake DOM is not the place to assert a speedup nobody agreed to.
     expect(rows.length).toBe(4);

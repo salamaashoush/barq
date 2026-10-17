@@ -16,6 +16,7 @@ import { checkDifferential, compareRuns, type DifferentialReport } from "./brows
 import { checkMathml, type MathReport } from "./browser-mathml-check.ts";
 import { checkCaret, formatCaret, type CaretReport } from "./browser-caret-check.ts";
 import { listBrowserOnlyFixtures, listFixtures } from "./harness.ts";
+import { writeReport } from "./report.ts";
 
 /**
  * The real-browser half of the suite, inside `bun test` and inside CI.
@@ -276,7 +277,7 @@ describe("real browser: the corpus in Chrome", () => {
 
 describe("real browser: the caret (B7)", () => {
   it("survives a write that arrives while the user is typing", () => {
-    console.log(`caret, typed through CDP:\n${formatCaret(caret)}`);
+    writeReport("browser-caret", `caret, typed through CDP:\n${formatCaret(caret)}`);
     expect(caret.rows.length, "the caret check has to drive something").toBeGreaterThanOrEqual(3);
     expect(
       caret.rows.filter((row) => !row.ok).map((row) => `${row.target}: ${row.why}`),
@@ -298,7 +299,7 @@ describe("real browser: the caret (B7)", () => {
 
 describe("real browser: a select whose options change", () => {
   it("shows the value it was given once an option carries it", () => {
-    console.log(`select, against options that change:\n${formatSelect(select)}`);
+    writeReport("browser-select", `select, against options that change:\n${formatSelect(select)}`);
     expect(select.rows.length, "the select check has to drive something").toBeGreaterThanOrEqual(5);
     expect(
       select.rows

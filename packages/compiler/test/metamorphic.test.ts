@@ -27,6 +27,7 @@ import {
   type StepClass,
 } from "./metamorphic.ts";
 import { l4Source, listL4Fixtures, openSession, type Session } from "./session.ts";
+import { writeReport } from "./report.ts";
 
 const CLASSES: readonly StepClass[] = ["preserves", "permutes", "rebuilds", "grows", "shrinks"];
 
@@ -64,7 +65,8 @@ for (const session of sessions.values()) {
   }
 }
 
-console.log(
+writeReport(
+  "metamorphic",
   `L4 metamorphic: ${sessions.size} sessions (${CORPUS.length} corpus + ${L4.length} declared) — ` +
     `MM1 ${checks["MM1-noop-write"]}, MM2 ${checks["MM2-step-replay"]}, ` +
     `MM3 ${checks["MM3-replay-identity"]}, MM4 ${checks["MM4-declared"]} ` +

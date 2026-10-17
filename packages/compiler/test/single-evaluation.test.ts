@@ -33,6 +33,7 @@ import { describe, expect, it } from "bun:test";
 import { channel } from "./graded.ts";
 import { fixtureSource, listFixtures } from "./harness.ts";
 import { l4Source, listL4Fixtures, openSession, type Session } from "./session.ts";
+import { writeReport } from "./report.ts";
 
 interface C7Declaration {
   readonly why: string;
@@ -93,7 +94,8 @@ const totalInvocations = [...sessions.values()].reduce(
   0,
 );
 
-console.log(
+writeReport(
+  "single-evaluation",
   `L4 single evaluation: ${Object.keys(CONSUMERS).length} consumers driven with an instrumented ` +
     `Block, ${totalInvocations} recorded invocation(s); ` +
     `${twice.length} BLOCK_EVALUATED_TWICE across ${sessions.size} sessions`,

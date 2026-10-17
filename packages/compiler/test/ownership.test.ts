@@ -24,6 +24,7 @@ import {
 } from "./ownership-known-failures.ts";
 import { CURRENT_MILESTONE, OVERDUE_WHY, overdue } from "./milestone.ts";
 import { ratchet, reachRatchet } from "./ratchet.ts";
+import { writeReport } from "./report.ts";
 
 /**
  * Layer L2b of the oracle — the oracle design, and the half of M0 that has no
@@ -89,9 +90,9 @@ const OBSERVED: Observed[] = RUNS.flatMap((run) =>
 );
 
 /**
- * Printed unconditionally, the way `ssr.test.ts` announces how many fixtures it
+ * Reported on every run, the way `ssr.test.ts` reports how many fixtures it
  * compared live. "Green except the known failures" is the state this suite
- * asserts, and a state nobody can read off the output is one a human ends up
+ * asserts, and a state nobody can read off a report is one a human ends up
  * eyeballing after all.
  *
  * `determined` is the honesty number. A template the compiler places at exactly
@@ -120,7 +121,8 @@ const TOTALS = RUNS.reduce(
     byRule.set(finding.rule, (byRule.get(finding.rule) ?? 0) + 1);
   }
   const affected = new Set(OBSERVED.map((o) => o.fixture)).size;
-  console.log(
+  writeReport(
+    "ownership",
     `L2b ownership: ${RUNS.length} fixtures — ${totals.scopes} scopes, ${totals.effects} effects, ` +
       `${totals.clones} clones checked against the static tree (${totals.determined} of them at a ` +
       `single legal path), ${totals.unattributed} unattributed, ` +

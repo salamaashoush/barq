@@ -5,6 +5,7 @@ import { compileSource, compileSourceRaw, loadModule, type FixtureModule } from 
 import { renderSourceViaDom, renderSourceViaSsr, sameTree, ssrStatus } from "./ssr.ts";
 import { digest, reachRatchet } from "./ratchet.ts";
 import { MODE_MATRIX_REACH, MATRIX_EXCEPTIONS } from "./mode-matrix.ts";
+import { writeReport } from "./report.ts";
 
 /**
  * L5, the mode matrix, over the UNION.
@@ -120,7 +121,8 @@ const RENDERABLE = RENDERED.filter((r) => r.dom !== null && r.ssr !== null);
 const UNRENDERABLE = RENDERED.filter((r) => r.dom === null && r.ssr === null);
 const LOPSIDED = RENDERED.filter((r) => (r.dom === null) !== (r.ssr === null));
 
-console.log(
+writeReport(
+  "modes",
   `L5 mode matrix: ${UNION.length} fixtures x ${MODES.length} modes = ${CELLS.length} compiles\n` +
     `  by family: ${[...new Map(UNION.map((f) => [f.family, UNION.filter((g) => g.family === f.family).length]))].map(([k, v]) => `${k}=${v}`).join(" ")}\n` +
     `  backend agreement: ${RENDERABLE.length} fixtures render on BOTH backends, ` +

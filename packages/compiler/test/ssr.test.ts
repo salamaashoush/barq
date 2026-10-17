@@ -40,6 +40,7 @@ import {
   ssrStatus,
   type EscapeContext,
 } from "./ssr.ts";
+import { writeReport } from "./report.ts";
 
 /**
  * The dual-render conformance suite — the dual-render deliverable, and target
@@ -91,7 +92,7 @@ const SSR_FALLBACK: readonly string[] = [];
 
 function report(): void {
   if (ssrStatus.landed) {
-    console.log(`SSR conformance: P8b has landed — ${CORPUS.length} fixtures compared live`);
+    writeReport("ssr", `SSR conformance: P8b has landed — ${CORPUS.length} fixtures compared live`);
     return;
   }
   console.log(

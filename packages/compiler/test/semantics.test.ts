@@ -34,6 +34,7 @@ import {
 import { FICTION_PINS, UNPINNED_RULES } from "./unpinned-rules.ts";
 import { CURRENT_MILESTONE, OVERDUE_WHY, overdue } from "./milestone.ts";
 import { digest, ratchet, regenerationReport } from "./ratchet.ts";
+import { writeReport } from "./report.ts";
 
 /**
  * Layer L1 of the oracle, run against the CURRENT compiler — the shipping gate's
@@ -94,9 +95,9 @@ const PINNED = new Set<string>([
 ]);
 
 /**
- * Printed unconditionally, the way `ssr.test.ts` announces how many fixtures it
+ * Reported on every run, the way `ssr.test.ts` reports how many fixtures it
  * compared live. "Green except the known failures" is the state this suite
- * asserts, and a state nobody can read off the output is one a human ends up
+ * asserts, and a state nobody can read off a report is one a human ends up
  * eyeballing after all.
  */
 const L1_DETAIL = join(import.meta.dir, ".l1-conformance.txt");
@@ -116,7 +117,8 @@ const L1_DETAIL = join(import.meta.dir, ".l1-conformance.txt");
     );
   });
   writeFileSync(L1_DETAIL, `${detail.join("\n\n")}\n`);
-  console.log(
+  writeReport(
+    "semantics",
     `L1 conformance: ${RUNS.length} fixtures, ${OUTCOMES.length} claims — ` +
       `${failed.length} registered-and-still-failing, ${held} holding as controls\n` +
       `  the failures, by rule: ${tally.join(" ")}\n` +

@@ -26,6 +26,7 @@ import { CURRENT_MILESTONE, OVERDUE_WHY, overdue } from "./milestone.ts";
 import { ratchet, reachRatchet } from "./ratchet.ts";
 import { documentedRules } from "./semantics.ts";
 import { l4Source, listL4Fixtures, openSession, type Session } from "./session.ts";
+import { writeReport } from "./report.ts";
 
 const CORPUS = listFixtures();
 const L4 = listL4Fixtures();
@@ -42,7 +43,8 @@ const REGISTRY = leakIndex();
 const byKind = new Map<string, number>();
 for (const finding of findings) byKind.set(finding.kind, (byKind.get(finding.kind) ?? 0) + 1);
 
-console.log(
+writeReport(
+  "leaks",
   `L4 leak oracle: ${sessions.size} sessions, ${findings.length} finding(s) — ` +
     `${
       [...byKind]
