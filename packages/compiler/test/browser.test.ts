@@ -10,13 +10,12 @@ import {
   type ShapeDivergence,
   type Template,
 } from "./browser-parse-check.ts";
-import { checkSelect, formatSelect, type SelectReport } from "./browser-select-check.ts";
+import { checkSelect, type SelectReport } from "./browser-select-check.ts";
 import { checkSvgClass, svgClassClaims, type SvgClassResult } from "./browser-svg-class-check.ts";
 import { checkDifferential, compareRuns, type DifferentialReport } from "./browser-differential.ts";
 import { checkMathml, type MathReport } from "./browser-mathml-check.ts";
-import { checkCaret, formatCaret, type CaretReport } from "./browser-caret-check.ts";
+import { checkCaret, type CaretReport } from "./browser-caret-check.ts";
 import { listBrowserOnlyFixtures, listFixtures } from "./harness.ts";
-import { writeReport } from "./report.ts";
 
 /**
  * The real-browser half of the suite, inside `bun test` and inside CI.
@@ -277,7 +276,6 @@ describe("real browser: the corpus in Chrome", () => {
 
 describe("real browser: the caret (B7)", () => {
   it("survives a write that arrives while the user is typing", () => {
-    writeReport("browser-caret", `caret, typed through CDP:\n${formatCaret(caret)}`);
     expect(caret.rows.length, "the caret check has to drive something").toBeGreaterThanOrEqual(3);
     expect(
       caret.rows.filter((row) => !row.ok).map((row) => `${row.target}: ${row.why}`),
@@ -299,7 +297,6 @@ describe("real browser: the caret (B7)", () => {
 
 describe("real browser: a select whose options change", () => {
   it("shows the value it was given once an option carries it", () => {
-    writeReport("browser-select", `select, against options that change:\n${formatSelect(select)}`);
     expect(select.rows.length, "the select check has to drive something").toBeGreaterThanOrEqual(5);
     expect(
       select.rows

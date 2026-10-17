@@ -1,5 +1,5 @@
 import { describe, expect, it } from "bun:test";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
 import {
@@ -207,12 +207,13 @@ describe("the diagnostic engine", () => {
   /**
    * Codes are a public API — an ignore comment in user code is a call into this
    * table. Svelte 5 renamed every code and silently invalidated every
-   * `svelte-ignore` in every codebase (sveltejs/svelte#11414).
+   * `svelte-ignore` in every codebase (sveltejs/svelte#11414). That each page
+   * exists and the index lists it is `every_code_has_a_docs_page_and_the_index_lists_it`
+   * in `src/compile.rs`.
    */
-  it("publishes one code table, and every code in it has a docs page", () => {
+  it("publishes one code table, each code with a docs URL", () => {
     const table = native.diagnosticCodes();
     expect(table.length).toBeGreaterThan(0);
-    const index = readFileSync(join(PACKAGE_ROOT, "docs/README.md"), "utf8");
     for (const entry of table) {
       expect(entry.code).toMatch(/^BARQ\d{3}$/);
       expect(["note", "warning", "error"]).toContain(entry.level);
@@ -221,8 +222,6 @@ describe("the diagnostic engine", () => {
       // inside the package at the same trailing path.
       expect(entry.docs).toStartWith("https://");
       expect(entry.docs).toEndWith(`/docs/${entry.code}.md`);
-      expect(existsSync(join(PACKAGE_ROOT, "docs", `${entry.code}.md`))).toBe(true);
-      expect(index).toContain(entry.code);
     }
     expect(new Set(table.map((entry) => entry.code)).size).toBe(table.length);
   });

@@ -246,31 +246,15 @@ export function runtimePath(tree: RuntimeTree, id: number): string[] | null {
 // findings
 // ---------------------------------------------------------------------------
 
-/**
- * Every rule this channel is able to report. Not the rules it happens to be
- * reporting today: a rule leaves this list only when the check that can produce
- * it is deleted, which makes the list the channel's declared reach and lets
- * `semantics.test.ts` compute what the whole oracle covers.
- */
-export const CHANNEL_RULES: readonly string[] = Object.freeze([
-  "O2",
-  "O2.1",
-  "O3.1",
-  "O3.2",
-  "O3.7",
-  "O4.5",
-]);
-
 export interface Finding {
   /**
-   * Stable within a fixture, and what the registry addresses a row by:
-   * `<kind>@<the emitted template binding, or the scope kind>`. Keying a row
-   * on the fixture alone would let a SECOND violation of the same shape land
-   * inside an existing row and never be seen; keying it on the message would
-   * make every reworded diagnostic a registry diff.
+   * Stable within a fixture:
+   * `<kind>@<the emitted template binding, or the scope kind>`. An id naming
+   * the fixture alone would fold a SECOND violation of the same shape into the
+   * first; one naming the message would change with every reworded diagnostic.
    */
   id: string;
-  /** the the rule set rule this violation is about */
+  /** the rule this violation is about */
   rule: string;
   kind: string;
   detail: string;
@@ -739,9 +723,8 @@ export async function checkOwnership(
     findings.push({
       // The observed path is part of the identity, not only of the message.
       // One template misplaced at two different wrong paths is two violations,
-      // and an id that named only the template would let the second land
-      // inside the first's registry row and never be seen — the hazard this
-      // id's own contract is written to prevent.
+      // and an id that named only the template would fold the second into the
+      // first, the hazard this id's own contract is written to prevent.
       id: `misplaced-clone@${positions[0].template}@${joined}`,
       rule,
       kind: "clone-under-a-scope-the-compiler-did-not-place-it-under",

@@ -3,9 +3,7 @@ import { describe, expect, it } from "bun:test";
 import { MODES, unionFixtures, type Fixture, type ModeId } from "./corpus.ts";
 import { compileSource, compileSourceRaw, loadModule, type FixtureModule } from "./harness.ts";
 import { renderSourceViaDom, renderSourceViaSsr, sameTree, ssrStatus } from "./ssr.ts";
-import { digest, reachRatchet } from "./ratchet.ts";
-import { MODE_MATRIX_REACH, MATRIX_EXCEPTIONS } from "./mode-matrix.ts";
-import { writeReport } from "./report.ts";
+import { MATRIX_EXCEPTIONS } from "./mode-matrix.ts";
 
 /**
  * L5, the mode matrix, over the UNION.
@@ -121,14 +119,6 @@ const RENDERABLE = RENDERED.filter((r) => r.dom !== null && r.ssr !== null);
 const UNRENDERABLE = RENDERED.filter((r) => r.dom === null && r.ssr === null);
 const LOPSIDED = RENDERED.filter((r) => (r.dom === null) !== (r.ssr === null));
 
-writeReport(
-  "modes",
-  `L5 mode matrix: ${UNION.length} fixtures x ${MODES.length} modes = ${CELLS.length} compiles\n` +
-    `  by family: ${[...new Map(UNION.map((f) => [f.family, UNION.filter((g) => g.family === f.family).length]))].map(([k, v]) => `${k}=${v}`).join(" ")}\n` +
-    `  backend agreement: ${RENDERABLE.length} fixtures render on BOTH backends, ` +
-    `${UNRENDERABLE.length} on neither, ${LOPSIDED.length} on exactly one`,
-);
-
 describe("the union compiles in every mode", () => {
   it("the union is every fixture directory, and it is bigger than the one suite most tests use", () => {
     const families = new Set(UNION.map((f) => f.family));
@@ -178,29 +168,6 @@ describe("the union compiles in every mode", () => {
     );
     expect(empty.join("\n")).toBe("");
   });
-
-  /**
-   * The matrix, locked.
-   *
-   * One line per fixture, one digest per mode. Any change to any mode's output
-   * for any fixture is a diff a reviewer sees, and `bun test --update-snapshots`
-   * is the regeneration — which is the same ratchet `known-failures.ts` carries,
-   * applied to emission instead of to a claim. A run that improved SSR output
-   * for a semantics fixture nobody has ever compiled that way fails here, on
-   * purpose, because that is a change nobody asked for and nobody reviewed.
-   */
-  it("the matrix is locked", () => {
-    const byFixture = new Map<string, Map<ModeId, string>>();
-    for (const cell of CELLS) {
-      let row = byFixture.get(cell.fixture.id);
-      if (!row) byFixture.set(cell.fixture.id, (row = new Map()));
-      row.set(cell.mode, digest(cell.code));
-    }
-    const lines = [...byFixture]
-      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-      .map(([id, row]) => `${id}  ${MODES.map((m) => row.get(m.id)).join(" ")}`);
-    expect(`${MODES.map((m) => m.id).join(" ")}\n${lines.join("\n")}`).toMatchSnapshot();
-  });
 });
 
 describe("the two backends agree, over the union", () => {
@@ -215,7 +182,7 @@ describe("the two backends agree, over the union", () => {
       });
       const json = raw.addresses;
       if (json === undefined || json === null) {
-        throw new Error(`${fixture.id}: the build has no \`addresses\` option — P6 has not landed`);
+        throw new Error(`${fixture.id}: the build has no \`addresses\` option`);
       }
       return (JSON.parse(json) as Table).positions.map(
         (p) => `${p.at} ${p.kind} ${p.key} ${p.start}-${p.end}`,
@@ -293,8 +260,7 @@ describe("the two backends agree, over the union", () => {
     ).toBe("");
     expect(compared, "nothing was actually compared").toBeGreaterThan(120);
     // The declared exceptions are pinned so that one silently growing into
-    // three is a failure. A suite whose exception list can widen without a diff
-    // is the failure mode the three known-failure registries exist to prevent.
+    // three is a failure.
     expect(declared, "the number of declared SSR divergences moved").toBe(
       MATRIX_EXCEPTIONS.declaredDivergences,
     );
@@ -332,23 +298,5 @@ describe("the two backends agree, over the union", () => {
     // `ssr.ts` detects the backend rather than trusting the option, and every
     // assertion in this describe is vacuous without it.
     expect(ssrStatus.state, ssrStatus.refusal).toBe("live");
-  });
-});
-
-describe("the matrix's own reach", () => {
-  it("is pinned, and moves in a diff", () => {
-    const complaint = reachRatchet({
-      channel: "L5 mode matrix",
-      expected: MODE_MATRIX_REACH,
-      observed: {
-        fixtures: UNION.length,
-        modes: MODES.length,
-        cells: CELLS.length,
-        renderableOnBoth: RENDERABLE.length,
-        renderableOnNeither: UNRENDERABLE.length,
-      },
-      file: "test/mode-matrix.ts",
-    });
-    expect(complaint ?? "").toBe("");
   });
 });

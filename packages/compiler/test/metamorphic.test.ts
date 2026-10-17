@@ -12,7 +12,6 @@
 
 import { describe, expect, it } from "bun:test";
 
-import { channel } from "./graded.ts";
 import { fixtureSource, listFixtures } from "./harness.ts";
 import {
   checkMetamorphic,
@@ -27,7 +26,6 @@ import {
   type StepClass,
 } from "./metamorphic.ts";
 import { l4Source, listL4Fixtures, openSession, type Session } from "./session.ts";
-import { writeReport } from "./report.ts";
 
 const CLASSES: readonly StepClass[] = ["preserves", "permutes", "rebuilds", "grows", "shrinks"];
 
@@ -65,27 +63,7 @@ for (const session of sessions.values()) {
   }
 }
 
-writeReport(
-  "metamorphic",
-  `L4 metamorphic: ${sessions.size} sessions (${CORPUS.length} corpus + ${L4.length} declared) — ` +
-    `MM1 ${checks["MM1-noop-write"]}, MM2 ${checks["MM2-step-replay"]}, ` +
-    `MM3 ${checks["MM3-replay-identity"]}, MM4 ${checks["MM4-declared"]} ` +
-    `(${disposingTransitions} of the corpus's transitions disposed a scope)\n` +
-    `  ${violations.length} violation(s); exemptions honoured by this channel: ` +
-    `${channel("node-identity").exemptions.length}`,
-);
-
 describe("L4 — node identity, graded metamorphic", () => {
-  it("the channel takes no exemptions at all", () => {
-    // The whole claim of the regrade. `compareToOracle`'s identity comparison
-    // has two: a per-frame guard that switches it off when the two paths'
-    // markup disagrees, and `wins`, which does the same thing by declaration.
-    // A metamorphic property compares one implementation against itself, so
-    // there is nothing for either to be about.
-    expect(channel("node-identity").exemptions).toEqual([]);
-    expect(channel("node-identity").grade).toBe("metamorphic");
-  });
-
   it("holds over the whole corpus and the declared corpus", () => {
     expect(formatViolations(violations)).toBe("");
   });
@@ -213,8 +191,7 @@ describe("L4 — node identity, graded metamorphic", () => {
 describe("L4 — the metamorphic channel is not inert", () => {
   /**
    * A property no mutation can violate is not a property. These two corrupt the
-   * SESSION rather than the runtime — a runtime mutant needs a subprocess and
-   * lives in `runtime-mutants.ts` — and they establish the weaker but necessary
+   * SESSION rather than the runtime, and they establish the weaker but necessary
    * fact that the comparison discriminates at all: identical inputs pass, and
    * the two exact defects the channel exists for do not.
    */

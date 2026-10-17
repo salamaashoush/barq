@@ -5100,9 +5100,7 @@ const _tmpl$1 = /* @__PURE__ */ _$template(\`<p class="reassigned"></p>\`);
 * The corpus contained no reassigned \`let\` at all, in any position, so dropping
 * that one guard was a mutation the whole L3 differential and the whole Interp
 * differential ran green against — it moves the emitted bytes AND the rendered
-* DOM, and no input reached it. An operator with no killing input is a
-* shipping gate for the pass it belongs to, and \`mutants.ts\` carries the
-* operator (\`fold-folds-a-reassigned-binding\`); this is its input.
+* DOM, and no input reached it. This fixture is that input.
 */
 let label = "before";
 label = "after";
@@ -5181,7 +5179,7 @@ export const seen: string[] = [];
 * the element is disposed, and nothing in the corpus exercised that: every
 * other ref fixture hands out an object ref or a callback that only writes an
 * attribute, so a \`ref\` that dropped its cleanup entirely survived every
-* channel in the repository (\`test/runtime-mutants.ts\`, \`ref-drops-its-cleanup\`).
+* channel in the repository.
 *
 * The undo is made observable by giving it something to undo — a raw listener
 * the leak oracle can match against its removal. \`my-beep\` is nothing the

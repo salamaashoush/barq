@@ -16,9 +16,8 @@
  * ```
  *
  * Every claim carries the rule it is about, so a violation is reported as
- * `O2 violated — …` rather than as a DOM diff. The known-failure registry
- * (`known-failures.ts`) then asserts that each expected failure fails *for that
- * rule*, which is what makes the M0 gate mean anything.
+ * `O2 violated — …` rather than as a DOM diff, and a failing claim names the
+ * rule it broke.
  *
  * The compiled path is the only one this channel runs. the wire decision
  * records the decision that the compiler is a hard dependency and that there is
@@ -71,13 +70,10 @@ export interface Kit {
    * A positive observation that the construct under test RAN, asserted before
    * anything is concluded from what it did.
    *
-   * Without one, "the bug is present" and "the fixture stopped exercising the
-   * bug" are the same outcome. Gutting the gate fixture to
-   * `function Direct() { return <div /> }` left three of its four claims still
-   * "failing as registered", because a claim that observes an absence is
+   * Without one, "the claim holds" and "the fixture stopped exercising the
+   * rule" are the same outcome, because a claim that observes an absence is
    * satisfied by an absence for any reason at all. A failed precondition
-   * CRASHES rather than reporting a violation, so the registry assertions's third assertion
-   * catches it as a wrong reason.
+   * CRASHES rather than reporting a result.
    */
   precondition(ok: boolean, observed: string): void;
 }
@@ -94,7 +90,7 @@ export class PreconditionFailed extends Error {
 }
 
 export interface Claim {
-  /** Stable within the fixture; the registry addresses rows by it. */
+  /** Stable within the fixture. */
   readonly id: string;
   /** The rule ID from the rule set this claim is a falsification procedure for. */
   readonly rule: string;

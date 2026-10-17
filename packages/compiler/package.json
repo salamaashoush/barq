@@ -45,7 +45,6 @@
     "test:harness": "bun test --timeout 30000",
     "check:fmt": "cargo fmt --check",
     "check:clippy": "cargo clippy --workspace --all-targets -- -D warnings",
-    "check:snapshots": "bun test/check-snapshots.ts",
     "test:browser": "bun test --timeout 30000 test/browser.test.ts",
     "test:browser:parse": "bun test/browser-parse-check.ts",
     "test:browser:svg": "bun test/browser-svg-class-check.ts",

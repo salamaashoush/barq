@@ -31,20 +31,13 @@
  * accident: a leaked subscription that never fires is indistinguishable from no
  * subscription for every purpose anyone has.
  *
- * ## What a finding is, and what a row in the registry is
- *
- * A finding is `(fixture, kind, detail)`. `leak-known-failures.ts` carries the
- * same four assertions the other two registries do — stale rows fail, unregistered
- * findings fail, a row whose rule is not the rule the probe named fails, and every
- * rule is a defined rule. There is no wildcard and no opt-out.
+ * A finding is `(fixture, kind, detail)`, and any finding fails the suite.
+ * There is no wildcard and no opt-out.
  */
 
 import type { Session } from "./session.ts";
 
 export type LeakKind = "scope" | "effect" | "listener" | "async" | "node";
-
-/** Every rule this channel can report. The channel's declared reach, not today's output. */
-export const LEAK_RULES: readonly string[] = Object.freeze(["O3.7", "B4"]);
 
 const RULE_OF: Record<LeakKind, string> = {
   scope: "O3.7",
@@ -62,8 +55,7 @@ export interface LeakFinding {
   /**
    * Stable within a fixture: `<kind>@<what>`. The detail is part of the identity
    * because one fixture leaking a `mouseenter` and a `focus` listener is two
-   * defects, and an id naming only the kind would let the second land inside the
-   * first's registry row unseen.
+   * defects, and an id naming only the kind would fold the second into the first.
    */
   id: string;
   message: string;

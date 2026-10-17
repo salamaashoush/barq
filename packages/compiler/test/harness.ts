@@ -73,13 +73,9 @@ interface NativeCompiler {
 }
 
 /**
- * `BARQ_NATIVE` points the whole harness at a different build of the compiler.
- * L6 (the oracle design) asks whether this suite would notice a wrong compiler
- * change, and the only honest way to answer it is to run the suite against a
- * compiler that really has been changed. `test/mutants.ts` builds one mutant
- * per optimisation pass out of a scratch copy of the crate and points this at
- * each in turn, so the experiment never writes to the source tree or to the
- * committed binding.
+ * `BARQ_NATIVE` points the whole harness at a different build of the compiler,
+ * so the suite can be run against a deliberately broken compiler built outside
+ * the source tree to show that it notices.
  */
 function loadNative(): NativeCompiler {
   const mutant = process.env.BARQ_NATIVE;
@@ -100,13 +96,8 @@ const native = loadNative();
 
 /**
  * The ONE resolved binding, exported so nothing has to re-require `../index.js`.
- *
- * A module that resolves its own binding is invisible to `BARQ_NATIVE`, and a
- * channel a mutant compiler never reaches cannot judge it: `ownership.ts` and
- * `diagnostics.test.ts` both did that, so `mutants.ts`'s survivor pass reported
- * "nothing in the project sees it" for two files that had been pointed at the
- * PRISTINE compiler all along. Measured: under an identity-transform stub the
- * L2b ownership banner came out byte-identical to the real build.
+ * A module that resolves its own binding is invisible to `BARQ_NATIVE` and
+ * would go on judging the pristine compiler under a substituted one.
  */
 export const nativeCompiler: NativeCompiler = native;
 

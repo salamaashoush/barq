@@ -1583,10 +1583,17 @@ mod tests {
     }
 
     #[test]
-    fn scanning_this_crate_finds_its_own_docs_free_of_route_files() {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-        // `docs/` holds only markdown, so the extension filter is doing its job.
-        assert!(scan(root, "docs").is_empty());
+    fn scanning_skips_files_that_are_not_route_modules() {
+        let base = std::env::temp_dir().join("barq-routes-non-modules");
+        let routes = base.join("routes");
+        let _ = std::fs::remove_dir_all(&base);
+        std::fs::create_dir_all(&routes).expect("a scratch directory");
+        for path in ["README.md", "notes.txt", "posts.css", "data.json"] {
+            std::fs::write(routes.join(path), "").expect("a scratch file");
+        }
+
+        assert!(scan(&base, "routes").is_empty());
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     /// A `-` prefix takes a file OR A DIRECTORY out of the tree, which is what

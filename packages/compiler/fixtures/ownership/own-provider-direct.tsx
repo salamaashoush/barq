@@ -1,6 +1,6 @@
 /**
- * `<Ctx value={…}><Child/></Ctx>` — the M0 gate for L2b, and the shape the
- * whole redesign exists for.
+ * `<Ctx value={…}><Child/></Ctx>`, the ownership channel's gate, and the shape
+ * the whole redesign exists for.
  *
  * The context has a DEFAULT, which is what makes this fixture the one worth
  * writing. With no default the defect announces itself as a
@@ -11,15 +11,13 @@
  * and passes. `createElement` produces the identical markup, so the oracle
  * certifies it.
  *
- * L2b sees it, because it is not looking at the DOM. The compiler says
- * `<span class="label"> </span>` occurs at `root > provide` and at no other
- * position in this module; the runtime clones it at `root`, because
- * `Label({})` is an *argument* of the provider call and runs before
- * `scope` inside the provider has made the scope that
- * `owner._context[id] = props.value` writes into.
+ * The ownership channel sees it, because it is not looking at the DOM. The
+ * compiler says `<span class="label"> </span>` occurs at `root > provide` and
+ * at no other position in this module. A runtime that built `Label({})` as an
+ * *argument* of the provider call would clone it at `root`, before the
+ * provider has made the scope its value is written into.
  *
  * O2, O2.1 and X1, X3; C6.
- * Registered in `ownership-known-failures.ts`.
  */
 import { createContext, useContext } from "@barqjs/core"
 

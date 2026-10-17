@@ -79,8 +79,7 @@ describe("emitted code snapshots", () => {
    * The corpus-driven snapshot suites hold exactly one entry per fixture, so a
    * recorded entry with no fixture behind it is a stale snapshot and a fixture
    * with no entry is an unrecorded one. Asserting it in-repo makes the invariant
-   * independent of what git happens to have at HEAD, the same way
-   * `known-failures.ts` makes a stale registration a red test.
+   * independent of what git happens to have at HEAD.
    *
    * The file is read as it stood when the run started — bun rewrites it on
    * completion — so the run that ADDS a fixture reports the miss and the next

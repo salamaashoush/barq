@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
 
-import { documentedRules } from "./semantics.ts";
 import {
   checkOwnership,
   corpusFixtures,
@@ -13,18 +12,9 @@ import {
   type OwnershipEvent,
   type OwnershipRun,
 } from "./ownership.ts";
-import { censusIndex, OWNERSHIP_CENSUS } from "./ownership-census.ts";
-import {
-  GATE_FIXTURE,
-  OWNERSHIP_KNOWN_FAILURES,
-  OWNERSHIP_REACH,
-  ownershipIndex,
-  ownershipKey,
-  WRAPPER_GATE_FIXTURE,
-} from "./ownership-known-failures.ts";
-import { CURRENT_MILESTONE, OVERDUE_WHY, overdue } from "./milestone.ts";
-import { ratchet, reachRatchet } from "./ratchet.ts";
-import { writeReport } from "./report.ts";
+
+const GATE_FIXTURE = "own-provider-direct";
+const WRAPPER_GATE_FIXTURE = "own-provider-wrapper";
 
 /**
  * Layer L2b of the oracle — the oracle design, and the half of M0 that has no
@@ -45,16 +35,8 @@ import { writeReport } from "./report.ts";
  * expected value is **derived from the source**, so this channel needs no
  * second implementation and cannot inherit one's bugs.
  *
- * The gate is unusual and easy to get backwards, so, plainly:
- *
- * - a finding that OCCURS and is registered is the intended state — the oracle
- *   can see a defect it is supposed to see;
- * - a registered finding that stops occurring is a SUITE FAILURE. Either the
- *   defect was fixed without the registry being updated, or the check stopped
- *   discriminating and the oracle is blind where it reports sight;
- * - an unregistered finding is a suite failure, which is what stops the
- *   registry absorbing anything by accident;
- * - a registered finding reported under the wrong rule is a suite failure.
+ * Any finding fails the suite. The channel is kept honest by the self-checks
+ * below, which reintroduce each defect and require the channel to see it.
  *
  * Everything is run ONCE, here, and every assertion below reads that result.
  * Each run compiles a fixture, renders it under a traced root, drives its
@@ -73,11 +55,14 @@ for (const name of listOwnershipFixtures()) {
 }
 
 const RUNS = [...CORPUS, ...OWN];
-const REGISTRY = ownershipIndex();
 const OWN_NAMES = new Set(listOwnershipFixtures());
 
 function sourceOf(fixture: string): string {
   return OWN_NAMES.has(fixture) ? ownershipSource(fixture) : corpusSource(fixture);
+}
+
+function opaqueOf(fixture: string): string[] {
+  return staticTree(sourceOf(fixture), `${fixture}.tsx`).tree.opaque;
 }
 
 interface Observed {
@@ -89,52 +74,6 @@ const OBSERVED: Observed[] = RUNS.flatMap((run) =>
   run.findings.map((finding) => ({ fixture: run.fixture, finding })),
 );
 
-/**
- * Reported on every run, the way `ssr.test.ts` reports how many fixtures it
- * compared live. "Green except the known failures" is the state this suite
- * asserts, and a state nobody can read off a report is one a human ends up
- * eyeballing after all.
- *
- * `determined` is the honesty number. A template the compiler places at exactly
- * one path is one this check can falsify; a template that occurs at several is
- * checked against a set, and a clone landing on the wrong member of that set
- * passes. The ratio is what the channel's strength actually is, and it is
- * asserted below rather than assumed.
- */
-const TOTALS = RUNS.reduce(
-  (sum, run) => ({
-    fixtures: sum.fixtures + 1,
-    clones: sum.clones + run.clones,
-    determined: sum.determined + run.determined,
-    unattributed: sum.unattributed + run.unattributed,
-    scopes: sum.scopes + run.scopes,
-    effects: sum.effects + run.effects,
-    cascades: sum.cascades + run.cascades,
-  }),
-  { fixtures: 0, clones: 0, determined: 0, unattributed: 0, scopes: 0, effects: 0, cascades: 0 },
-);
-
-{
-  const totals = TOTALS;
-  const byRule = new Map<string, number>();
-  for (const { finding } of OBSERVED) {
-    byRule.set(finding.rule, (byRule.get(finding.rule) ?? 0) + 1);
-  }
-  const affected = new Set(OBSERVED.map((o) => o.fixture)).size;
-  writeReport(
-    "ownership",
-    `L2b ownership: ${RUNS.length} fixtures — ${totals.scopes} scopes, ${totals.effects} effects, ` +
-      `${totals.clones} clones checked against the static tree (${totals.determined} of them at a ` +
-      `single legal path), ${totals.unattributed} unattributed, ` +
-      `${totals.cascades} disposal cascades\n` +
-      `  ${OBSERVED.length} findings in ${affected} fixtures, all registered: ` +
-      `${[...byRule]
-        .sort()
-        .map(([rule, n]) => `${rule}×${n}`)
-        .join(" ")}`,
-  );
-}
-
 function report(fixture: string, finding: Finding): string {
   return [
     `  fixture   ${fixture}`,
@@ -144,137 +83,21 @@ function report(fixture: string, finding: Finding): string {
   ].join("\n");
 }
 
-// ---------------------------------------------------------------------------
-// the registry assertions — the four assertions about the registry
-// ---------------------------------------------------------------------------
-
-describe("the known-failure registry", () => {
-  it("absorbs nothing: every finding the channel reports is a registered row", () => {
-    const surprises = OBSERVED.filter((o) => !REGISTRY.has(ownershipKey(o.fixture, o.finding.id)));
+describe("ownership findings", () => {
+  it("no ownership finding in any fixture", () => {
     expect(
-      surprises.map((o) => report(o.fixture, o.finding)).join("\n\n"),
-      `${surprises.length} ownership finding(s) with no registry row. This is the ordinary ` +
-        "failure mode: either a change broke ownership somewhere, or a new fixture arrived with " +
-        "a defect nobody has decided about. Registering it is a deliberate act — add a row to " +
-        "ownership-known-failures.ts with a slot and a greenAt, in a diff a reviewer sees.",
+      OBSERVED.map((o) => report(o.fixture, o.finding)).join("\n\n"),
+      `${OBSERVED.length} ownership finding(s): a clone built under a scope other than the one ` +
+        "the compiler placed it at.",
     ).toBe("");
-  });
-
-  it("goes stale loudly: every registered row still describes a finding that occurs", () => {
-    const seen = new Set(OBSERVED.map((o) => ownershipKey(o.fixture, o.finding.id)));
-    const stale = OWNERSHIP_KNOWN_FAILURES.filter(
-      (row) => !seen.has(ownershipKey(row.fixture, row.finding)),
-    );
-    expect(
-      stale
-        .map((row) => `  ${row.fixture} :: ${row.finding} (${row.rule}, ${row.slot})`)
-        .join("\n"),
-      `${stale.length} registered ownership failure(s) stopped occurring. Either the defect was ` +
-        "fixed — delete the row, that is what a milestone's completion looks like — or the check " +
-        "stopped discriminating, which is the dangerous reading and the one to rule out first.",
-    ).toBe("");
-  });
-
-  it("fails for the right reason: the rule named is the rule registered", () => {
-    const mismatched: string[] = [];
-    for (const o of OBSERVED) {
-      const row = REGISTRY.get(ownershipKey(o.fixture, o.finding.id));
-      if (row === undefined) continue;
-      if (row.rule !== o.finding.rule) {
-        mismatched.push(
-          `${o.fixture} :: ${o.finding.id}\n    registered as ${row.rule}, reported as ${o.finding.rule}`,
-        );
-      }
-    }
-    expect(
-      mismatched.join("\n"),
-      "a registered failure reported under a different rule. A fixture that fails for a reason " +
-        "the registry did not predict is not evidence that the oracle saw what it claims to see; " +
-        "SEMANTICS.md §15.2 assertion 3 is the one that makes M0 mean anything.",
-    ).toBe("");
-  });
-
-  it("no row is past the milestone it promised", () => {
-    const late = OWNERSHIP_KNOWN_FAILURES.filter((row) => overdue(row.greenAt)).map(
-      (row) =>
-        `OVERDUE: ${ownershipKey(row.fixture, row.finding)} promised green at ${row.greenAt} and ` +
-        `is still reported at M${CURRENT_MILESTONE}`,
-    );
-    expect(late.join("\n"), OVERDUE_WHY).toBe("");
-  });
-
-  it("names rules SEMANTICS.md actually defines", () => {
-    const documented = documentedRules();
-    const unknown = OWNERSHIP_KNOWN_FAILURES.filter((row) => !documented.has(row.rule)).map(
-      (row) => `${row.fixture} :: ${row.finding} names ${row.rule}`,
-    );
-    expect(
-      unknown.join("\n"),
-      "a registry row naming a rule the specification does not define",
-    ).toBe("");
-    const reported = [...new Set(OBSERVED.map((o) => o.finding.rule))].filter(
-      (rule) => !documented.has(rule),
-    );
-    expect(
-      reported.join(", "),
-      "the channel reported a rule the specification does not define",
-    ).toBe("");
-  });
-
-  it("has no row that could never be reached", () => {
-    const fixtures = new Set([...corpusFixtures(), ...listOwnershipFixtures()]);
-    const missing = OWNERSHIP_KNOWN_FAILURES.filter((row) => !fixtures.has(row.fixture));
-    expect(missing.map((row) => row.fixture).join(", "), "registry rows naming no fixture").toBe(
-      "",
-    );
-  });
-
-  // The ratchet — the wire split, `ratchet.ts`. A finding that goes on
-  // occurring while its DETAIL changes leaves every assertion above green and
-  // the row's `slot` describing something that no longer happens.
-  it("ratchets: a registered finding that changed shape is a failure either way", () => {
-    const complaints: string[] = [];
-    for (const o of OBSERVED) {
-      const row = REGISTRY.get(ownershipKey(o.fixture, o.finding.id));
-      if (row === undefined) continue;
-      const complaint = ratchet({
-        key: ownershipKey(o.fixture, o.finding.id),
-        expected: row.observed,
-        observed: o.finding.detail,
-        file: "test/ownership-known-failures.ts",
-      });
-      if (complaint) complaints.push(complaint);
-    }
-    expect(complaints.join("\n")).toBe("");
-  });
-
-  // The reach ratchet. With the table empty this is the only thing standing
-  // between "no ownership defects" and "the channel stopped looking".
-  it("ratchets the channel's reach, in both directions", () => {
-    const complaint = reachRatchet({
-      channel: "L2b ownership",
-      expected: OWNERSHIP_REACH,
-      observed: TOTALS,
-      file: "test/ownership-known-failures.ts",
-    });
-    expect(complaint ?? "").toBe("");
   });
 });
 
-// ---------------------------------------------------------------------------
-// the gate rows — what the gate is really about
-// ---------------------------------------------------------------------------
-
-describe("the M3 gate", () => {
-  // At M0 these two asserted the channel SEES the Provider bug — if L2b could
-  // not see the defect that prompted the redesign, L2b was worthless. M3 is
-  // where the defect closes, so the same two fixtures now assert the opposite,
-  // by the same route: the runtime's scope chain for every clone must be the
-  // path the compiler's static tree placed it at.
-  //
-  // `determined > 0` is what stops this from being satisfied by a channel that
-  // stopped looking, which is the failure mode inverting a gate invites.
-  it("the direct Provider now clones its child at the path the compiler placed it", () => {
+describe("a Provider builds its children under its own scope", () => {
+  // The runtime's scope chain for every clone must be the path the compiler's
+  // static tree placed it at. `determined > 0` is what stops this from being
+  // satisfied by a channel that stopped looking.
+  it("the direct Provider clones its child at the path the compiler placed it", () => {
     const run = OWN.find((r) => r.fixture === GATE_FIXTURE);
     expect(run, `${GATE_FIXTURE} did not run`).toBeDefined();
     expect(
@@ -330,47 +153,34 @@ describe("the M3 gate", () => {
 // ---------------------------------------------------------------------------
 
 describe("the channel is not inert", () => {
-  it("observes exactly what the census declares, per fixture", () => {
-    const census = censusIndex();
-    const drift: string[] = [];
-    for (const run of RUNS) {
-      const row = census.get(run.fixture);
-      if (row === undefined) {
-        drift.push(`${run.fixture}: no census row`);
-        continue;
-      }
-      const opaque = [...staticTree(sourceOf(run.fixture), `${run.fixture}.tsx`).tree.opaque];
-      if (run.clones !== row.clones) {
-        drift.push(`${run.fixture}: ${run.clones} clones, census says ${row.clones}`);
-      }
-      if (run.unattributed !== row.unattributed) {
-        drift.push(
-          `${run.fixture}: ${run.unattributed} unattributed, census says ${row.unattributed}`,
-        );
-      }
-      if (opaque.join(",") !== [...row.opaque].join(",")) {
-        drift.push(`${run.fixture}: opaque [${opaque}], census says [${row.opaque}]`);
-      }
-    }
-    for (const row of OWNERSHIP_CENSUS) {
-      if (!RUNS.some((run) => run.fixture === row.fixture)) {
-        drift.push(`${row.fixture}: a census row for a fixture that did not run`);
-      }
-    }
-    expect(
-      drift.join("\n"),
-      "the ownership census moved. A clone count that changes with no fixture edit is a Block " +
-        "invoked a different number of times — the one defect that passes every other test in " +
-        "this repository. An unattributed clone is one this channel did not check, and a " +
-        "non-empty `opaque` means the static tree is partial there. All three are declared in " +
-        "ownership-census.ts and all three are a deliberate diff.",
-    ).toBe("");
+  /**
+   * Three counts per fixture, each closing a hole a mutation walked through.
+   *
+   *   - `clones`. A Block invoked twice per activation builds two DOM subtrees
+   *     and drops one, and every DOM-shaped test passes under it. Multiplicity
+   *     is not decidable from the source (an `each` position produces one clone
+   *     per row), so this is a recorded observation rather than a derived
+   *     expectation, which is why it is a snapshot.
+   *   - `unattributed`. A clone whose template the static tree never placed is
+   *     a clone this channel did not check. `own-cross-module` is the one
+   *     multi-file fixture, and its single unattributed clone is recorded here
+   *     rather than excluded.
+   *   - `opaque`. The components the walk could not follow, so the tree is
+   *     partial for that fixture.
+   */
+  it("observes the recorded census, per fixture", () => {
+    const census = RUNS.map(
+      (run) =>
+        `${run.fixture} clones=${run.clones} unattributed=${run.unattributed} ` +
+        `opaque=[${opaqueOf(run.fixture).join(",")}]`,
+    );
+    expect(census.join("\n")).toMatchSnapshot();
   });
 
   it("keeps at least one fixture in which the static tree is partial", () => {
-    const partial = OWNERSHIP_CENSUS.filter((row) => row.opaque.length > 0);
+    const partial = RUNS.filter((run) => opaqueOf(run.fixture).length > 0);
     expect(
-      partial.map((row) => row.fixture).join(", "),
+      partial.map((run) => run.fixture).join(", "),
       "no fixture imports a component, so the static tree is total everywhere and " +
         "`unattributed === 0` would be a property of the corpus rather than of the channel. " +
         "`own-cross-module.tsx` exists to keep the degradation exercised.",

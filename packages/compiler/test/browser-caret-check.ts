@@ -281,15 +281,3 @@ export async function checkCaret(page: Page): Promise<CaretReport> {
 
   return { rows, control };
 }
-
-export function formatCaret(report: CaretReport): string {
-  const line = (row: CaretRow): string =>
-    `  ${row.ok ? "OK  " : "LOST"}  ${row.target.padEnd(18)} caret ${row.before} → ${row.after}` +
-    `  typed=${JSON.stringify(row.afterTyping)} written=${JSON.stringify(row.value)}` +
-    `${row.why ? `  — ${row.why}` : ""}`;
-  return [
-    ...report.rows.map(line),
-    `  ${report.control.ok ? "OK  " : "BLIND"}  control (mutated): ${report.control.before} → ` +
-      `${report.control.after}${report.control.why ? `  — ${report.control.why}` : ""}`,
-  ].join("\n");
-}

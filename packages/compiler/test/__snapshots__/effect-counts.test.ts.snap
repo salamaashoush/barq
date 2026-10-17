@@ -1,0 +1,279 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`effect counts, graded absolutely array-hole 1`] = `"  { fixture: "array-hole", created: 2, runs: 10, busiest: 5, frames: 5 },"`;
+
+exports[`effect counts, graded absolutely arrow-body-component 1`] = `"  { fixture: "arrow-body-component", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely async-value 1`] = `"  { fixture: "async-value", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely attribute-namespaces 1`] = `"  { fixture: "attribute-namespaces", created: 1, runs: 4, busiest: 4, frames: 5 },"`;
+
+exports[`effect counts, graded absolutely auto-thunked-read 1`] = `"  { fixture: "auto-thunked-read", created: 3, runs: 6, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely bind-family 1`] = `"  { fixture: "bind-family", created: 6, runs: 14, busiest: 4, frames: 6 },"`;
+
+exports[`effect counts, graded absolutely bind-value-channel 1`] = `"  { fixture: "bind-value-channel", created: 2, runs: 6, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely boolean-and-nullish-props 1`] = `"  { fixture: "boolean-and-nullish-props", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely class-empty-string 1`] = `"  { fixture: "class-empty-string", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely class-list-array-object 1`] = `"  { fixture: "class-list-array-object", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely class-list-prop 1`] = `"  { fixture: "class-list-prop", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely class-owns-only-its-tokens 1`] = `"  { fixture: "class-owns-only-its-tokens", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely class-with-live-siblings 1`] = `"  { fixture: "class-with-live-siblings", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely component-boundary-props 1`] = `"  { fixture: "component-boundary-props", created: 4, runs: 5, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely component-child-of-element 1`] = `"  { fixture: "component-child-of-element", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely component-children-slot 1`] = `"  { fixture: "component-children-slot", created: 2, runs: 4, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely component-forwarded-handler-tuple 1`] = `"  { fixture: "component-forwarded-handler-tuple", created: 3, runs: 4, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely component-function-props 1`] = `"  { fixture: "component-function-props", created: 2, runs: 3, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely component-getter-props 1`] = `"  { fixture: "component-getter-props", created: 1, runs: 2, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely component-spread 1`] = `"  { fixture: "component-spread", created: 4, runs: 5, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely computed-derived 1`] = `"  { fixture: "computed-derived", created: 2, runs: 6, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely conditional-children 1`] = `"  { fixture: "conditional-children", created: 1, runs: 4, busiest: 4, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely context-provider 1`] = `"  { fixture: "context-provider", created: 2, runs: 3, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely control-flow-await-suspense 1`] = `"  { fixture: "control-flow-await-suspense", created: 4, runs: 6, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely control-flow-error-boundary 1`] = `"  { fixture: "control-flow-error-boundary", created: 2, runs: 3, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely control-flow-errored-loading 1`] = `"  { fixture: "control-flow-errored-loading", created: 3, runs: 4, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely control-flow-for 1`] = `"  { fixture: "control-flow-for", created: 10, runs: 15, busiest: 4, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely control-flow-for-keyed-by-item 1`] = `"  { fixture: "control-flow-for-keyed-by-item", created: 5, runs: 7, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely control-flow-for-keyed-false 1`] = `"  { fixture: "control-flow-for-keyed-false", created: 4, runs: 9, busiest: 3, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely control-flow-for-keyed-fn 1`] = `"  { fixture: "control-flow-for-keyed-fn", created: 5, runs: 13, busiest: 3, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely control-flow-for-keyed-spread 1`] = `"  { fixture: "control-flow-for-keyed-spread", created: 3, runs: 7, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely control-flow-for-keyed-unprovable 1`] = `"  { fixture: "control-flow-for-keyed-unprovable", created: 3, runs: 7, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely control-flow-for-static-body 1`] = `"  { fixture: "control-flow-for-static-body", created: 1, runs: 4, busiest: 4, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely control-flow-index 1`] = `"  { fixture: "control-flow-index", created: 7, runs: 11, busiest: 3, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely control-flow-nested 1`] = `"  { fixture: "control-flow-nested", created: 3, runs: 7, busiest: 3, frames: 5 },"`;
+
+exports[`effect counts, graded absolutely control-flow-repeat 1`] = `"  { fixture: "control-flow-repeat", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely control-flow-reveal 1`] = `"  { fixture: "control-flow-reveal", created: 1, runs: 2, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely control-flow-show 1`] = `"  { fixture: "control-flow-show", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely control-flow-show-cleanup-body 1`] = `"  { fixture: "control-flow-show-cleanup-body", created: 2, runs: 8, busiest: 4, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely control-flow-show-eager-children 1`] = `"  { fixture: "control-flow-show-eager-children", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely control-flow-show-eager-static-body 1`] = `"  { fixture: "control-flow-show-eager-static-body", created: 1, runs: 4, busiest: 4, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely control-flow-show-fragment-body 1`] = `"  { fixture: "control-flow-show-fragment-body", created: 1, runs: 4, busiest: 4, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely control-flow-show-keyed 1`] = `"  { fixture: "control-flow-show-keyed", created: 4, runs: 7, busiest: 4, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely control-flow-show-keyed-false 1`] = `"  { fixture: "control-flow-show-keyed-false", created: 3, runs: 6, busiest: 3, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely control-flow-show-static-body 1`] = `"  { fixture: "control-flow-show-static-body", created: 1, runs: 4, busiest: 4, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely control-flow-show-static-key 1`] = `"  { fixture: "control-flow-show-static-key", created: 1, runs: 2, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely control-flow-spread-precedence 1`] = `"  { fixture: "control-flow-spread-precedence", created: 4, runs: 9, busiest: 3, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely control-flow-spread-repeat 1`] = `"  { fixture: "control-flow-spread-repeat", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely control-flow-spread-show 1`] = `"  { fixture: "control-flow-spread-show", created: 3, runs: 6, busiest: 3, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely control-flow-switch-match 1`] = `"  { fixture: "control-flow-switch-match", created: 1, runs: 4, busiest: 4, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely control-flow-switch-static-key 1`] = `"  { fixture: "control-flow-switch-static-key", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely custom-elements 1`] = `"  { fixture: "custom-elements", created: 1, runs: 2, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely dangerously-set-inner-html 1`] = `"  { fixture: "dangerously-set-inner-html", created: 1, runs: 1, busiest: 1, frames: 1 },"`;
+
+exports[`effect counts, graded absolutely dashboard-composite 1`] = `"  { fixture: "dashboard-composite", created: 4, runs: 9, busiest: 4, frames: 6 },"`;
+
+exports[`effect counts, graded absolutely dedup-identical-markup 1`] = `"  { fixture: "dedup-identical-markup", created: 0, runs: 0, busiest: 0, frames: 1 },"`;
+
+exports[`effect counts, graded absolutely deep-walk 1`] = `"  { fixture: "deep-walk", created: 1, runs: 2, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely delegated-event 1`] = `"  { fixture: "delegated-event", created: 1, runs: 4, busiest: 4, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely delegated-handler-tuple 1`] = `"  { fixture: "delegated-handler-tuple", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely delegated-two-types 1`] = `"  { fixture: "delegated-two-types", created: 1, runs: 5, busiest: 5, frames: 5 },"`;
+
+exports[`effect counts, graded absolutely derived-local-thunk 1`] = `"  { fixture: "derived-local-thunk", created: 2, runs: 6, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely diagnostic-accessor-coercion 1`] = `"  { fixture: "diagnostic-accessor-coercion", created: 2, runs: 4, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely dom-prop-static-value 1`] = `"  { fixture: "dom-prop-static-value", created: 0, runs: 0, busiest: 0, frames: 1 },"`;
+
+exports[`effect counts, graded absolutely dynamic 1`] = `"  { fixture: "dynamic", created: 7, runs: 9, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely equal-liveness 1`] = `"  { fixture: "equal-liveness", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely escaped-text-and-attribute 1`] = `"  { fixture: "escaped-text-and-attribute", created: 0, runs: 0, busiest: 0, frames: 1 },"`;
+
+exports[`effect counts, graded absolutely escaping-adversarial 1`] = `"  { fixture: "escaping-adversarial", created: 4, runs: 12, busiest: 3, frames: 5 },"`;
+
+exports[`effect counts, graded absolutely flow-prop-eta-boundary 1`] = `"  { fixture: "flow-prop-eta-boundary", created: 3, runs: 7, busiest: 3, frames: 6 },"`;
+
+exports[`effect counts, graded absolutely for-each-local-function 1`] = `"  { fixture: "for-each-local-function", created: 4, runs: 6, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely for-unkeyed-rows 1`] = `"  { fixture: "for-unkeyed-rows", created: 4, runs: 6, busiest: 2, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely form-action 1`] = `"  { fixture: "form-action", created: 2, runs: 5, busiest: 3, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely fragment-root 1`] = `"  { fixture: "fragment-root", created: 1, runs: 2, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely handler-by-reference 1`] = `"  { fixture: "handler-by-reference", created: 1, runs: 4, busiest: 4, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely handler-closure 1`] = `"  { fixture: "handler-closure", created: 1, runs: 4, busiest: 4, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely handler-no-closure 1`] = `"  { fixture: "handler-no-closure", created: 0, runs: 0, busiest: 0, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely hole-then-element-sibling 1`] = `"  { fixture: "hole-then-element-sibling", created: 2, runs: 5, busiest: 3, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely html-entities 1`] = `"  { fixture: "html-entities", created: 0, runs: 0, busiest: 0, frames: 1 },"`;
+
+exports[`effect counts, graded absolutely hygiene-shifted-uids 1`] = `"  { fixture: "hygiene-shifted-uids", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely inert-member-reads 1`] = `"  { fixture: "inert-member-reads", created: 0, runs: 0, busiest: 0, frames: 1 },"`;
+
+exports[`effect counts, graded absolutely inner-html-with-children 1`] = `"  { fixture: "inner-html-with-children", created: 0, runs: 0, busiest: 0, frames: 1 },"`;
+
+exports[`effect counts, graded absolutely literal-class-style 1`] = `"  { fixture: "literal-class-style", created: 0, runs: 0, busiest: 0, frames: 1 },"`;
+
+exports[`effect counts, graded absolutely live-call-hole 1`] = `"  { fixture: "live-call-hole", created: 2, runs: 5, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely logical-and-child 1`] = `"  { fixture: "logical-and-child", created: 4, runs: 10, busiest: 3, frames: 7 },"`;
+
+exports[`effect counts, graded absolutely marker-literal-text 1`] = `"  { fixture: "marker-literal-text", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely mathml 1`] = `"  { fixture: "mathml", created: 0, runs: 0, busiest: 0, frames: 1 },"`;
+
+exports[`effect counts, graded absolutely multi-prop-one-element 1`] = `"  { fixture: "multi-prop-one-element", created: 1, runs: 4, busiest: 4, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely multi-signal-expression 1`] = `"  { fixture: "multi-signal-expression", created: 2, runs: 6, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely nested-fragments 1`] = `"  { fixture: "nested-fragments", created: 1, runs: 2, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely nested-template-element 1`] = `"  { fixture: "nested-template-element", created: 0, runs: 0, busiest: 0, frames: 1 },"`;
+
+exports[`effect counts, graded absolutely no-hydration-island 1`] = `"  { fixture: "no-hydration-island", created: 1, runs: 2, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely non-delegated-event 1`] = `"  { fixture: "non-delegated-event", created: 1, runs: 6, busiest: 6, frames: 6 },"`;
+
+exports[`effect counts, graded absolutely numeric-and-boolean-attrs 1`] = `"  { fixture: "numeric-and-boolean-attrs", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely optimistic-signal 1`] = `"  { fixture: "optimistic-signal", created: 1, runs: 2, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely portal 1`] = `"  { fixture: "portal", created: 1, runs: 1, busiest: 1, frames: 1 },"`;
+
+exports[`effect counts, graded absolutely pre-dynamic-leading-newline 1`] = `"  { fixture: "pre-dynamic-leading-newline", created: 2, runs: 4, busiest: 2, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely pre-leading-newline 1`] = `"  { fixture: "pre-leading-newline", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely pre-whitespace 1`] = `"  { fixture: "pre-whitespace", created: 0, runs: 0, busiest: 0, frames: 1 },"`;
+
+exports[`effect counts, graded absolutely projection-store 1`] = `"  { fixture: "projection-store", created: 2, runs: 6, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely property-attrs 1`] = `"  { fixture: "property-attrs", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely props-destructured-body 1`] = `"  { fixture: "props-destructured-body", created: 2, runs: 3, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely props-destructured-param 1`] = `"  { fixture: "props-destructured-param", created: 4, runs: 5, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely props-raw-forward 1`] = `"  { fixture: "props-raw-forward", created: 2, runs: 4, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely props-renamed-and-defaulted 1`] = `"  { fixture: "props-renamed-and-defaulted", created: 3, runs: 4, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely props-rest-spread 1`] = `"  { fixture: "props-rest-spread", created: 2, runs: 3, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely reactive-attribute 1`] = `"  { fixture: "reactive-attribute", created: 1, runs: 4, busiest: 4, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely read-mode-binding 1`] = `"  { fixture: "read-mode-binding", created: 2, runs: 4, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely reassigned-binding 1`] = `"  { fixture: "reassigned-binding", created: 0, runs: 0, busiest: 0, frames: 1 },"`;
+
+exports[`effect counts, graded absolutely ref-binding 1`] = `"  { fixture: "ref-binding", created: 0, runs: 0, busiest: 0, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely ref-cleanup 1`] = `"  { fixture: "ref-cleanup", created: 0, runs: 0, busiest: 0, frames: 1 },"`;
+
+exports[`effect counts, graded absolutely ref-on-component 1`] = `"  { fixture: "ref-on-component", created: 1, runs: 1, busiest: 1, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely ref-writable-binding 1`] = `"  { fixture: "ref-writable-binding", created: 0, runs: 0, busiest: 0, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely renamed-core-import 1`] = `"  { fixture: "renamed-core-import", created: 3, runs: 6, busiest: 3, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely select-option-multiple 1`] = `"  { fixture: "select-option-multiple", created: 0, runs: 0, busiest: 0, frames: 1 },"`;
+
+exports[`effect counts, graded absolutely sibling-live-props 1`] = `"  { fixture: "sibling-live-props", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely sibling-walk 1`] = `"  { fixture: "sibling-walk", created: 2, runs: 4, busiest: 2, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely signal-alias 1`] = `"  { fixture: "signal-alias", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely signal-methods-in-handler 1`] = `"  { fixture: "signal-methods-in-handler", created: 2, runs: 5, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely signal-object 1`] = `"  { fixture: "signal-object", created: 2, runs: 8, busiest: 4, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely spread-static-mix 1`] = `"  { fixture: "spread-static-mix", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely static-attribute-expression 1`] = `"  { fixture: "static-attribute-expression", created: 0, runs: 0, busiest: 0, frames: 1 },"`;
+
+exports[`effect counts, graded absolutely static-only 1`] = `"  { fixture: "static-only", created: 0, runs: 0, busiest: 0, frames: 1 },"`;
+
+exports[`effect counts, graded absolutely store-member 1`] = `"  { fixture: "store-member", created: 2, runs: 5, busiest: 3, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely style-object 1`] = `"  { fixture: "style-object", created: 1, runs: 2, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely svg 1`] = `"  { fixture: "svg", created: 1, runs: 2, busiest: 2, frames: 2 },"`;
+
+exports[`effect counts, graded absolutely svg-dynamic-class 1`] = `"  { fixture: "svg-dynamic-class", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely svg-nested-in-html 1`] = `"  { fixture: "svg-nested-in-html", created: 0, runs: 0, busiest: 0, frames: 1 },"`;
+
+exports[`effect counts, graded absolutely switch-match-component-bodies 1`] = `"  { fixture: "switch-match-component-bodies", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely table-root-shapes 1`] = `"  { fixture: "table-root-shapes", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely table-rows 1`] = `"  { fixture: "table-rows", created: 10, runs: 16, busiest: 4, frames: 5 },"`;
+
+exports[`effect counts, graded absolutely text-gt-hole 1`] = `"  { fixture: "text-gt-hole", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely text-hole-adjacent 1`] = `"  { fixture: "text-hole-adjacent", created: 2, runs: 5, busiest: 3, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely text-hole-followed 1`] = `"  { fixture: "text-hole-followed", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely text-hole-fused 1`] = `"  { fixture: "text-hole-fused", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely text-hole-trailing 1`] = `"  { fixture: "text-hole-trailing", created: 1, runs: 4, busiest: 4, frames: 4 },"`;
+
+exports[`effect counts, graded absolutely two-components-two-templates 1`] = `"  { fixture: "two-components-two-templates", created: 0, runs: 0, busiest: 0, frames: 1 },"`;
+
+exports[`effect counts, graded absolutely two-nested-holes 1`] = `"  { fixture: "two-nested-holes", created: 2, runs: 4, busiest: 2, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely unicode-long-template 1`] = `"  { fixture: "unicode-long-template", created: 1, runs: 3, busiest: 3, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely void-elements 1`] = `"  { fixture: "void-elements", created: 0, runs: 0, busiest: 0, frames: 1 },"`;
+
+exports[`effect counts, graded absolutely walk-from-the-back 1`] = `"  { fixture: "walk-from-the-back", created: 2, runs: 4, busiest: 2, frames: 3 },"`;
+
+exports[`effect counts, graded absolutely whitespace-only 1`] = `"  { fixture: "whitespace-only", created: 0, runs: 0, busiest: 0, frames: 1 },"`;

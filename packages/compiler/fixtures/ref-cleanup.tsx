@@ -5,7 +5,7 @@ export const seen: string[] = []
  * the element is disposed, and nothing in the corpus exercised that: every
  * other ref fixture hands out an object ref or a callback that only writes an
  * attribute, so a `ref` that dropped its cleanup entirely survived every
- * channel in the repository (`test/runtime-mutants.ts`, `ref-drops-its-cleanup`).
+ * channel in the repository.
  *
  * The undo is made observable by giving it something to undo — a raw listener
  * the leak oracle can match against its removal. `my-beep` is nothing the

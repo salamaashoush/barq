@@ -1200,3 +1200,23 @@ callback through because the two cases were indistinguishable.
   live. The fixture now destructures the row (`({ name }) => <li>{name}</li>`), a shape whose field
   is read once, so the three tests still pin what they are about: a dev-only note shows in a dev
   server run, not in a production build, and an explicit `dev` option wins.
+
+## Compiler test harness trim
+
+- `compiler/test/effect-counts.ts`'s hand-kept `ROWS` table (139 rows) is now
+  `effect-counts.test.ts.snap`, one `toMatchSnapshot()` per fixture over the same
+  `formatEffectRow` literal. Content identical: every one of the 139 rows was diffed against
+  the old table before it was deleted. The floor and run-count sanity checks now read the
+  measured rows instead of the table.
+- `compiler/test/ownership-census.ts`'s `clones`/`unattributed`/`opaque` table (144 rows) is
+  now one snapshot in `ownership.test.ts.snap`, "observes the recorded census, per fixture".
+  Content identical: all 144 rows diffed against the old table.
+- `compiler/test/semantics.test.ts`: every claim is now asserted with
+  `if (outcome.failure) throw new Error(outcome.failure)`. The old `verdict()` reached the same
+  result because the known-failure registry held no rows.
+- `compiler/test/diagnostics.test.ts` "publishes one code table": the page-exists and
+  index-lists-it checks are dropped there because `every_code_has_a_docs_page_and_the_index_lists_it`
+  in `src/compile.rs` asserts both. The napi-surface checks (code format, level, https URL,
+  uniqueness) stay.
+- `compiler/test/leaks.test.ts` "no fixture leaks anything" is `expect(formatLeaks(findings)).toBe("")`;
+  with an empty registry the old unregistered-only filter matched every finding.

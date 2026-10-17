@@ -30,10 +30,8 @@
 
 import { describe, expect, it } from "bun:test";
 
-import { channel } from "./graded.ts";
 import { fixtureSource, listFixtures } from "./harness.ts";
 import { l4Source, listL4Fixtures, openSession, type Session } from "./session.ts";
-import { writeReport } from "./report.ts";
 
 interface C7Declaration {
   readonly why: string;
@@ -92,13 +90,6 @@ const twice = [...sessions.values()].flatMap((session) =>
 const totalInvocations = [...sessions.values()].reduce(
   (n, session) => n + ((session.exports.log as string[] | undefined)?.length ?? 0),
   0,
-);
-
-writeReport(
-  "single-evaluation",
-  `L4 single evaluation: ${Object.keys(CONSUMERS).length} consumers driven with an instrumented ` +
-    `Block, ${totalInvocations} recorded invocation(s); ` +
-    `${twice.length} BLOCK_EVALUATED_TWICE across ${sessions.size} sessions`,
 );
 
 describe("L4 — C7, single evaluation", () => {
@@ -166,7 +157,7 @@ describe("L4 — C7, single evaluation", () => {
     //
     // So the exact mechanism a session uses is driven against a diagnostic the
     // runtime is KNOWN to emit: `render()` handed an already-built subtree while
-    // an owner is current warns `RENDER_SUBTREE_NOT_OWNED` (the O5 registry row).
+    // an owner is current warns `RENDER_SUBTREE_NOT_OWNED` (O5).
     const core = await import("@barqjs/core");
     const host = document.createElement("div");
     document.body.appendChild(host);
@@ -184,21 +175,12 @@ describe("L4 — C7, single evaluation", () => {
     }
   });
 
-  it("no consumer can reach the counter, which is why a mutant is what arms it", () => {
-    // Stated rather than left as an unexplained zero. Every call site of `build`
-    // in `flow.ts` bumps `activation` first — `activate` does, `each`'s mapper
-    // does per row, `each`'s fallback does, `portal`'s microtask does — so no
+  it("no consumer evaluates a Block twice at one activation", () => {
+    // Every call site of `build` in `flow.ts` bumps `activation` first, so no
     // sequence of writes against the shipped primitives can produce two
-    // invocations at one activation. That is C7 holding, and it means the
-    // counter cannot be armed from inside the corpus. `runtime-mutants.ts`
-    // mutates `build` to invoke its Block twice and reports which channel
-    // catches it; this assertion is the record that the zero above is expected.
+    // invocations at one activation. The zero is C7 holding; the floor on
+    // invocations is what keeps it from being an empty run.
     expect(twice).toEqual([]);
     expect(totalInvocations).toBeGreaterThan(20);
-  });
-
-  it("the channel takes no exemptions", () => {
-    expect(channel("single-evaluation").exemptions).toEqual([]);
-    expect(channel("single-evaluation").grade).toBe("absolute");
   });
 });

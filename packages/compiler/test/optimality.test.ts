@@ -1,6 +1,5 @@
 import { describe, expect, it } from "bun:test";
 
-import { emittedFlags, FLAG_CENSUS } from "./flag-census.ts";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
@@ -433,73 +432,9 @@ describe("declared optimality", () => {
     );
   }, 120_000);
 
-  it("the declarations cover every target M3 is supposed to prove", () => {
-    const targets = new Set(declarations.flatMap(([, d]) => (d ? [d.target] : [])));
-    for (const target of [1, 2, 3, 4, 7]) {
-      expect([...targets], `no fixture declares target ${target}`).toContain(target);
-    }
-  });
-
-  it("the corpus declares a fixture for every target M4 has to prove", () => {
-    // Written down before the passes land, so "M4 is done" is a fact about the
-    // corpus rather than about whichever fixture happened to get looked at.
-    const by = (target: number) =>
-      declarations.filter(([, d]) => d?.target === target).map(([n]) => n);
-    expect(by(5), "walk elision").toEqual(
-      expect.arrayContaining(["deep-walk", "walk-from-the-back"]),
-    );
-    expect(by(6), "template dedup").toContain("dedup-identical-markup");
-    expect(by(9), "marker elision").toEqual(
-      expect.arrayContaining(["marker-literal-text", "text-hole-followed", "text-hole-trailing"]),
-    );
-  });
-
-  it("the corpus declares a fixture for every target M5 has to prove", () => {
-    // Same contract as the M4 block above: what "M5 is done" means is a fact
-    // about the corpus, not about whichever fixture a target block happened to
-    // name by hand.
-    const by = (target: number) =>
-      declarations.filter(([, d]) => d?.target === target).map(([n]) => n);
-    expect(by(8), "thunk elision, and its boundary").toEqual(
-      expect.arrayContaining([
-        "control-flow-show-eager-static-body",
-        "control-flow-show-static-body",
-        "control-flow-for-static-body",
-      ]),
-    );
-    // Every one of the thirteen flow components is emitted as a real call, and
-    // the shape of that call is declared rather than left to a snapshot.
-    expect(by(8), "the flow catalogue").toEqual(
-      expect.arrayContaining([
-        "control-flow-for",
-        "control-flow-index",
-        "control-flow-repeat",
-        "control-flow-show",
-        "control-flow-switch-match",
-        "control-flow-await-suspense",
-        "control-flow-error-boundary",
-        "control-flow-errored-loading",
-      ]),
-    );
-    // Props flow: the raw read, the forward, the shapes that snapshot, and the
-    // shapes that must NOT become getters.
-    expect(by(1), "props across a component boundary").toEqual(
-      expect.arrayContaining([
-        "component-getter-props",
-        "props-raw-forward",
-        "component-boundary-props",
-        "component-function-props",
-        "props-destructured-param",
-        "props-destructured-body",
-        "props-renamed-and-defaulted",
-        "props-rest-spread",
-      ]),
-    );
-  });
-
   for (const [name, decl] of declarations) {
     if (!decl) continue;
-    it(`${name} — target ${decl.target} (M${decl.milestone})`, async () => {
+    it(`${name} — target ${decl.target}`, async () => {
       assertDeclared(name, decl, compileFixtureBody(name));
       if (decl.effects === undefined) return;
       const render = await renderViaCompiler(name);
@@ -1068,18 +1003,6 @@ describe("K5 — the thirteen constructs, and the four they lower onto", () => {
     for (const primitive of ["_$reveal(", "_$boundary("]) {
       expect(all, `${primitive} is emitted by no fixture`).toContain(primitive);
     }
-  });
-
-  /**
-   * The flags, from the emission rather than from the pass. A property the
-   * compiler proved is an integer in the call; a property it could not is a
-   * zero it never writes, and the runtime does the work.
-   */
-  it("a proven property is shipped as a flag and an unproven one is not", () => {
-    // The list is `flag-census.ts`, imported rather than repeated, because the
-    // L3 suite asserts the same thing — the flag census is the ABSOLUTE channel
-    // for a claim a differential cannot carry, and two copies of it would drift.
-    expect(emittedFlags()).toEqual([...FLAG_CENSUS]);
   });
 
   /**

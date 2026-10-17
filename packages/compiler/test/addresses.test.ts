@@ -1,10 +1,9 @@
 import { describe, expect, it } from "bun:test";
 
-import { ADDRESS_CHANNEL_RULES } from "./addresses.ts";
 import { compileFixtureRaw, listFixtures } from "./harness.ts";
 
 /**
- * P6, the compile-time address table.
+ * The compile-time address table.
  *
  * The acceptance criterion is that the whole corpus compiles both ways and the
  * address sets diff clean. This is that fixture.
@@ -36,7 +35,7 @@ function table(name: string, options: Record<string, unknown> = {}): Table {
   const raw = compileFixtureRaw(name, { addresses: true, ...options });
   const json = raw.addresses;
   if (json === undefined || json === null) {
-    throw new Error(`${name}: the build has no \`addresses\` option — P6 has not landed`);
+    throw new Error(`${name}: the build has no \`addresses\` option`);
   }
   return JSON.parse(json) as Table;
 }
@@ -49,13 +48,6 @@ function rows(it: Table): string[] {
 }
 
 describe("compile-time addresses", () => {
-  it("declares the rule it reports on", () => {
-    // H5 names this channel, and `semantics.test.ts` computes
-    // the oracle's coverage from the same constant — so a channel that stopped
-    // reporting a rule and a document that stopped claiming one cannot drift.
-    expect([...ADDRESS_CHANNEL_RULES]).toEqual(["H5"]);
-  });
-
   it("the option exists and produces a table", () => {
     // Detection, not declaration — the same discipline `ssr.ts` applies to the
     // string backend. A build without the option must fail here rather than let

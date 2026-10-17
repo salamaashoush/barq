@@ -153,9 +153,3 @@ export async function checkSelect(page: Page): Promise<SelectReport> {
     naive.cleanup();
   }
 }
-
-export function formatSelect(report: SelectReport): string {
-  return [...report.rows, report.control]
-    .map((entry) => `  ${entry.ok ? "ok  " : "FAIL"} ${entry.what}: shows ${entry.shows}`)
-    .join("\n");
-}

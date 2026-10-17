@@ -463,19 +463,15 @@ function applyBodies(code: string): string[] {
 
 describe("the front end L3 cannot grade, graded absolutely", () => {
   /**
-   * The flag census, in the suite the mutation runner drives — because a flag
-   * is the one thing in this pass that L3 structurally cannot grade.
+   * The flag census, because a flag is the one thing in this pass that the
+   * -O0/-Ox differential structurally cannot grade.
    *
    * `-O0` emits no region at all, so the differential can only ever see a
    * flag's SYMPTOM. Dropping a proven flag has none by construction: the
    * program is correct and merely slower. SHIPPING an unproven one is a
-   * miscompilation, and it had a symptom until M4b's gate round, when `insert`
-   * began owning its render effect by the scope it was handed (O4.5) and the
-   * DOM divergence `flow-ships-no-scope-unproven` was killed by on
-   * `dashboard-composite` went away. The mutation is no less wrong; the
-   * differential simply stopped being able to see it. This is the channel that
-   * can, in both directions, and it is the reason it lives here as well as in
-   * `optimality.test.ts` — one list, two suites, imported.
+   * miscompilation with no DOM symptom either, because `insert` owns its render
+   * effect by the scope it was handed (O4.5) whatever the flag says. This is the
+   * channel that can see both directions.
    */
   it("every flag the corpus emits is one the compiler proved", () => {
     expect(emittedFlags()).toEqual([...FLAG_CENSUS]);
@@ -486,8 +482,7 @@ describe("the front end L3 cannot grade, graded absolutely", () => {
    * could not see.
    *
    * `group.rs` fuses every live binding of a TEMPLATE into one `bindEffect`.
-   * Stopping at the element (the `fuse-stops-at-the-first-element` row in
-   * `mutants.ts`) splits it into one effect per element again, and the
+   * Stopping at the element splits it into one effect per element again, and the
    * differential stays green: `-O0` fuses nothing, so both builds still write
    * the same values in the same order — what changes is HOW MANY effects own
    * them, which a rendered-DOM comparison cannot report. Node identity cannot

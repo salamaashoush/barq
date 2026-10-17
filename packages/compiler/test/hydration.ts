@@ -252,56 +252,14 @@ export interface KnownDivergence {
 }
 
 /**
- * EVERY `reuse` below was re-measured at M7b and most of them MOVED, without a
- * single fixture changing what it claims.
- *
- * The boundary comments came off the wire wherever the client
- * can read a position's extent off its parent, and the census counts NODES — so
- * a comment that used to sit in the server's markup and trivially survive was in
- * the denominator, and is not any more. A row that loses the same subtree over a
- * smaller total reports a smaller percentage. The numbers went DOWN because the
- * wire got smaller, not because the claim got worse, and the check that says so
- * is the one every row already passes: `hydratedShape === coldShape`.
- *
- * One row LEFT this registry at M10 and is worth recording, because it is the
- * shape the rest of the "no flags to forward" note below still describes.
- * `control-flow-for-keyed-spread` was registered for `not-hydratable`: a
- * construct whose props arrived through a spread stayed a component call, and
- * `components.ts`'s adapters call the primitives with `flags = 0`, so the
- * primitive was never told the module was `hydratable` and built cold inside the
- * range the enclosing `insert` had claimed. M10 lowers a spread source, so that
- * construct is a region with the flag on it and the row is not a divergence any
- * more. It is deleted rather than re-measured, which is what a registry row is
- * for.
+ * `reuse` counts NODES, and boundary comments come off the wire wherever the
+ * client can read a position's extent off its parent, so a row's percentage is
+ * over the nodes the server actually sends.
  */
 export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
-  // `dynamic` WAS registered here at 33% reuse with a `structure` mismatch, for
-  // "the fallback element path: built, never claimed". It is deleted rather than
-  // re-measured, which is what a registry row is for — it now claims everything
-  // and reports nothing, so it belongs on the green path with every other row.
-  //
-  // What closed it: `element()` was unconditionally `withoutClaim`, because a
-  // null-addressed hole meant "the server serialised this subtree inline and
-  // there is no walk to claim it with". That was true only because nothing had
-  // taught the fallback path to walk. It now claims by TAG NAME
-  // (`hydration.ts`'s `claimElement`), the compiler marks the position `TAGGED`
-  // (`ir/region.rs`) so the hole stops suspending the cursor, and the element's
-  // children are claimed `WHOLE` — the server writes them no boundary comments,
-  // so the claim is every child of the node.
-  //
-  // The reason the path was cold — "a `template()` inside it takes the node
-  // belonging to the NEXT position" — is answered by scoping the cursor to the
-  // claimed element's own child list, and by resolving thunk children INSIDE
-  // that cursor rather than on the way into `applyInsert`.
-  //
-  // This is what makes a tree rooted at `<html>` hydratable at all: the parser
-  // strips `<html>`, `<head>` and `<body>` out of a `<template>`, so the whole
-  // document frame can only be emitted as `element()` and every one of those
-  // positions used to build cold.
-
   // ── raw text, where the tokenizer eats a newline nobody can see ────────
   //
-  // M9 put a hole inside `<textarea>`/`<style>` on the template path, so the
+  // A hole inside `<textarea>`/`<style>` is on the template path, so the
   // server writes the value's own bytes there and the client CLAIMS them. In a
   // browser that is exact: the serialiser doubles a leading U+000A because the
   // parser eats one, and the two cancel. happy-dom implements neither half, so
@@ -347,28 +305,3 @@ export const HYDRATION_KNOWN: Record<string, KnownDivergence> = {
     why: "a custom element's `rows` resolves to the PROPERTY on the client and to an attribute on the server (there is no prototype chain on a string), so the served attribute survives beside the property — every node is claimed, and the difference is one attribute React leaves too",
   },
 };
-
-/**
- * The hydration channel's declared REACH: the H family.
- *
- * Stated here rather than inside the suites so that `semantics.test.ts` can
- * compute what the whole oracle covers without importing one. A rule leaves this
- * list only when the check that can report it is deleted, which is the contract
- * `ownership.ts`'s `CHANNEL_RULES` and `addresses.ts`'s `ADDRESS_CHANNEL_RULES`
- * state for theirs.
- *
- * What each one is reported BY:
- *
- * | H1 | the node-identity census in `hydration.test.ts` — reuse must be 100%   |
- * | H2 | the branch-key comparison, and L6's "a branch index disagrees" row     |
- * | H3 | the emission diff, `hydratable` on against off, over the whole corpus  |
- * | H4 | L6's blast-radius column: `claim` / `local` / `cold` per mutation      |
- * | H6 | the focus-and-typed-value pair, plus the keystroke replay              |
- */
-export const HYDRATION_CHANNEL_RULES: readonly string[] = Object.freeze([
-  "H1",
-  "H2",
-  "H3",
-  "H4",
-  "H6",
-]);

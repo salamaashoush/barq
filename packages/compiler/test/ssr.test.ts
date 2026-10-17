@@ -40,7 +40,6 @@ import {
   ssrStatus,
   type EscapeContext,
 } from "./ssr.ts";
-import { writeReport } from "./report.ts";
 
 /**
  * The dual-render conformance suite — the dual-render deliverable, and target
@@ -89,19 +88,6 @@ const CORPUS = fixtures;
  * deliberate edit here, with a reason.
  */
 const SSR_FALLBACK: readonly string[] = [];
-
-function report(): void {
-  if (ssrStatus.landed) {
-    writeReport("ssr", `SSR conformance: P8b has landed — ${CORPUS.length} fixtures compared live`);
-    return;
-  }
-  console.log(
-    `SSR conformance: ${CORPUS.length} fixture comparisons and the ${ESCAPE_CONTEXTS.length}×` +
-      `${ESCAPE_VALUES.length} escaping matrix are PENDING — the compiler still refuses ` +
-      `ssr: true. Reason it gave: ${JSON.stringify(ssrStatus.refusal.split("\n").pop()?.trim())}`,
-  );
-}
-report();
 
 describe("the SSR backend's landing state", () => {
   it("`ssr: true` is either implemented or REFUSED, never quietly ignored", () => {

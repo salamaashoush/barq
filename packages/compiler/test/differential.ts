@@ -78,8 +78,7 @@ const INTERP_PROBE =
  *
  * `ssr.ts` established the pattern this follows — detect the mode rather than
  * being told, so a suite cannot sit asleep behind a boolean somebody forgot to
- * flip. Two-valued detection has a failure mode of its own, and the mutation
- * experiment in `mutants.ts` walked straight into it: a compiler mutant that
+ * flip. Two-valued detection has a failure mode of its own: a compiler mutant that
  * offered statement splicing to the non-DOM backends made the SSR compile PANIC
  * on 106 of the 117 fixtures and made `interp: true` emit ordinary DOM code —
  * and the whole L3 suite went GREEN, because every probe failed, every mode was

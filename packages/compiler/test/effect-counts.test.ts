@@ -1,17 +1,49 @@
+/**
+ * The absolute effect channel: per fixture, how many effects the compiled
+ * render creates and how often they run. These are optimality claims, never
+ * equivalence claims, and an equality catches both directions: a binding that
+ * silently went missing reads as one effect FEWER, and an over-eager one as one
+ * more.
+ *
+ * ## The columns
+ *
+ *  - `created`  — effects the compiled render constructs across the whole cycle
+ *  - `runs`     — total effect invocations across the whole cycle
+ *  - `busiest`  — the highest run count any single effect reached
+ *  - `frames`   — initial render + scripted steps + dispatched events
+ *
+ * `busiest` is the column the aggregate hides: one binding re-running on every
+ * frame is invisible in `runs` whenever another binding runs fewer times, which
+ * is exactly how a mis-fused effect group used to pass.
+ *
+ * The rows are snapshots, so a number that moves is a snapshot diff read in the
+ * change that moves it.
+ */
+
 import { describe, expect, it } from "bun:test";
 
 import { listFixtures, renderViaCompiler } from "./harness.ts";
-import {
-  duplicateEffectRows,
-  EFFECT_COUNTS,
-  effectCounts,
-  formatEffectRow,
-  type EffectCount,
-} from "./effect-counts.ts";
 
-const fixtures = listFixtures();
-const TABLE = effectCounts();
-const PRINT = process.env.BARQ_EFFECTS === "print";
+interface EffectCount {
+  /** A `.tsx` under `fixtures/`, without the extension. */
+  readonly fixture: string;
+  /** Effects the compiled render creates across every frame. */
+  readonly created: number;
+  /** Total effect runs across every frame. */
+  readonly runs: number;
+  /** The busiest single effect's run count. */
+  readonly busiest: number;
+  /** Initial render plus every scripted step and dispatched event. */
+  readonly frames: number;
+}
+
+/** One row, as the snapshot records it. */
+function formatEffectRow(row: EffectCount): string {
+  return (
+    `  { fixture: ${JSON.stringify(row.fixture)}, created: ${row.created}, ` +
+    `runs: ${row.runs}, busiest: ${row.busiest}, frames: ${row.frames} },`
+  );
+}
 
 async function measure(name: string): Promise<EffectCount> {
   const render = await renderViaCompiler(name);
@@ -24,34 +56,27 @@ async function measure(name: string): Promise<EffectCount> {
   };
 }
 
-describe("L4 — effect counts, graded absolutely", () => {
-  it("the table has no duplicate rows", () => {
-    expect(duplicateEffectRows().join(", ")).toBe("");
-  });
+const MEASURED: EffectCount[] = [];
+for (const name of listFixtures()) MEASURED.push(await measure(name));
 
-  it("every row is a fixture, and every fixture has a row", () => {
-    const rows = new Set(EFFECT_COUNTS.map((row) => row.fixture));
-    expect([...rows].filter((name) => !fixtures.includes(name))).toEqual([]);
-    expect(fixtures.filter((name) => !rows.has(name))).toEqual([]);
-  });
-
+describe("effect counts, graded absolutely", () => {
   /**
-   * The floor that says the channel is measuring something. A table of 131 rows
-   * all reading zero would satisfy every equality below and prove nothing, and
-   * that is the exact shape the channel degrades into if `mock.module` stops
-   * intercepting `signals.ts` — the tracer goes quiet and every count is 0.
+   * The floor that says the channel is measuring something. Every row reading
+   * zero would match a snapshot taken while the tracer was quiet, and that is
+   * the exact shape the channel degrades into if `mock.module` stops
+   * intercepting `signals.ts`.
    */
-  it("the table is not all zeroes — the tracer is actually intercepting", () => {
-    const live = EFFECT_COUNTS.filter((row) => row.created > 0);
+  it("the counts are not all zeroes, so the tracer is actually intercepting", () => {
+    const live = MEASURED.filter((row) => row.created > 0);
     expect(
       live.length,
       "no fixture creates an effect — the tracer is not installed",
     ).toBeGreaterThanOrEqual(20);
-    expect(EFFECT_COUNTS.reduce((n, row) => n + row.runs, 0)).toBeGreaterThan(live.length);
+    expect(MEASURED.reduce((n, row) => n + row.runs, 0)).toBeGreaterThan(live.length);
   });
 
-  it("no row claims effects that never run", () => {
-    for (const row of EFFECT_COUNTS) {
+  it("no fixture creates effects that never run", () => {
+    for (const row of MEASURED) {
       if (row.created === 0) {
         expect(row.runs, `${row.fixture} runs effects it never created`).toBe(0);
         continue;
@@ -66,27 +91,9 @@ describe("L4 — effect counts, graded absolutely", () => {
     }
   });
 
-  if (PRINT) {
-    it("BARQ_EFFECTS=print — the table body, from this build", async () => {
-      const rows: string[] = [];
-      for (const name of fixtures) rows.push(formatEffectRow(await measure(name)));
-      console.log(`\n${rows.join("\n")}\n`);
-    }, 300_000);
-  }
-
-  for (const name of fixtures) {
-    it(`${name}`, async () => {
-      const row = TABLE.get(name);
-      const observed = await measure(name);
-      expect(
-        row,
-        `${name} has no row in effect-counts.ts — add ${formatEffectRow(observed)}`,
-      ).toBeDefined();
-      // One assertion over the whole row, so a failure prints the literal that
-      // replaces it rather than three separate numbers to reassemble by hand.
-      expect(formatEffectRow(observed), "BARQ_EFFECTS=print regenerates the table").toBe(
-        formatEffectRow(row!),
-      );
+  for (const row of MEASURED) {
+    it(row.fixture, () => {
+      expect(formatEffectRow(row)).toMatchSnapshot();
     });
   }
 });

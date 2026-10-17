@@ -7,8 +7,8 @@
  * It is here because the channel could not see it. The static tree attributed
  * the call site's children to the CALL SITE, which is where the runtime wrongly
  * builds them, so the compiler's expected value agreed with the runtime's
- * defect and the comparison reported nothing — the same-belief failure L2b was
- * built to escape, reproduced inside L2b. A component owns nothing (O1), so
+ * defect and the comparison reported nothing: the same-belief failure the
+ * ownership channel was built to escape, reproduced inside it. A component owns nothing (O1), so
  * forwarding children through one cannot move ownership to it: they belong to
  * the construct the wrapper hands them to.
  *
@@ -19,7 +19,6 @@
  * looking at.
  *
  * O2, O2.1 and X1.
- * Registered in `ownership-known-failures.ts`.
  */
 import { createContext, useContext } from "@barqjs/core"
 

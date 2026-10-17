@@ -2,7 +2,6 @@ import { describe, expect, test } from "bun:test";
 
 import { compileSource, fixtureSource, listFixtures, loadModule } from "./harness.ts";
 import { beginTrace, endTrace, summarize } from "./tracer.ts";
-import { writeReport } from "./report.ts";
 import {
   HYDRATION_KNOWN,
   census,
@@ -200,15 +199,6 @@ describe("L5 hydration conformance", () => {
     for (const [name, row] of Object.entries(HYDRATION_KNOWN)) {
       expect({ name, why: row.why.length > 40 }).toEqual({ name, why: true });
     }
-
-    const claimed = results.filter(
-      (r) => !registered.has(r.name) && r.reuse.percent === 100,
-    ).length;
-    writeReport(
-      "hydration",
-      `L5 hydration: ${results.length} fixtures — ${claimed} claim every node, ` +
-        `${registered.size} registered divergence(s)`,
-    );
   });
 });
 
@@ -322,17 +312,6 @@ function bytes(markup: string): Bytes {
   return { raw: markup.length, gz: Bun.gzipSync(new TextEncoder().encode(markup)).length };
 }
 
-function delta(before: Bytes, after: Bytes): string {
-  const pct = (a: number, b: number): string =>
-    b === a ? "+0.0" : `+${(((b - a) / a) * 100).toFixed(1)}`;
-  return (
-    `${String(before.raw).padStart(6)} → ${String(after.raw).padStart(6)} raw ` +
-    `(${pct(before.raw, after.raw)}%), ` +
-    `${String(before.gz).padStart(5)} → ${String(after.gz).padStart(5)} gzipped ` +
-    `(${pct(before.gz, after.gz)}%)`
-  );
-}
-
 describe("the claim payload", () => {
   /**
    * "Revisit if the measured byte cost is material on a real page."
@@ -381,19 +360,6 @@ describe("the claim payload", () => {
 
     const page = await realPage(PAGE, "sole");
     const mixed = await realPage(MIXED_PAGE, "mixed");
-    writeReport(
-      "hydration-payload",
-      "the claim payload, after §12's split:\n" +
-        `  corpus       production  ${plain} → ${production} bytes\n` +
-        `  corpus       development ${plain} → ${development} bytes\n` +
-        `  100-row page, every hole the SOLE OCCUPANT of its element:\n` +
-        `    production  ${delta(page.plain, page.production)}\n` +
-        `    development ${delta(page.plain, page.development)}\n` +
-        `  100-row page, holes with STATIC SIBLINGS and a per-row <Show>:\n` +
-        `    production  ${delta(mixed.plain, mixed.production)}\n` +
-        `    development ${delta(mixed.plain, mixed.development)}`,
-    );
-
     // The acceptance criterion: the production number should go to roughly
     // zero, and if it does not the split did not land. On THIS page it is
     // zero EXACTLY — every hole owns the element it sits in, every row is
@@ -634,83 +600,3 @@ describe("H6 focus and typed input survive hydration", () => {
     container.remove();
   });
 });
-
-// ---------------------------------------------------------------------------
-// what claiming costs against what replacing costs
-// ---------------------------------------------------------------------------
-
-describe("claim against replace", () => {
-  /**
-   * The replace path was measured losing focus and discarding
-   * typed input at EVERY page size, and put the layout cost past a 60Hz frame at
-   * about 3500 nodes. The first half is asserted by H6 above. This is the
-   * second, on the same page at four sizes: the claim path against the path a
-   * page that was NOT compiled hydratable takes, which is the same full client
-   * render `hydrate` degrades to and therefore exactly today's behaviour.
-   *
-   * happy-dom does no layout, so this is a NODE-WORK number and not a frame
-   * budget — the frame claim needs a real browser and belongs with the Chrome
-   * differential. What it does measure honestly is how much of the page each
-   * strategy has to construct, which is the input to that cost.
-   */
-  test("costs what it costs, at four page sizes", async () => {
-    const core = await import("@barqjs/core");
-    const rows: string[] = [];
-    for (const size of [10, 100, 400, 1000]) {
-      const source = ROWS(size);
-      const claiming = await compileText(source, `perf-claim-${size}`);
-      const replacing = await compileText(source, `perf-replace-${size}`, false);
-      const markup = wire(claiming.ssr);
-      const plain = wire(replacing.ssr);
-
-      const hot = time(() => {
-        const container = host(markup);
-        core.hydrate(claiming.dom.default as never, container)();
-        container.remove();
-      });
-      const cold = time(() => {
-        const container = host(plain);
-        core.hydrate(replacing.dom.default as never, container)();
-        container.remove();
-      });
-      rows.push(
-        `  ${String(size).padStart(4)} rows  claim ${hot.toFixed(0).padStart(5)} µs   ` +
-          `replace ${cold.toFixed(0).padStart(5)} µs   ${(cold / hot).toFixed(2)}x`,
-      );
-    }
-    writeReport(
-      "hydration-timing",
-      `hydration, claim against replace (median of 21):\n${rows.join("\n")}`,
-    );
-    // Deliberately no threshold. The number that MATTERS is H6's, and a wall
-    // clock in a fake DOM is not the place to assert a speedup nobody agreed to.
-    expect(rows.length).toBe(4);
-  });
-});
-
-function ROWS(n: number): string {
-  return `
-import { For, createSignal } from "@barqjs/core";
-export const [rows] = createSignal(Array.from({ length: ${n} }, (_, i) => ({ id: i, label: "row " + i })));
-export default function Page() {
-  return (
-    <table class="rows"><tbody>
-      <For each={rows()}>
-        {(row) => <tr class="r"><td class="id">{row.id}</td><td class="label">{row.label}</td></tr>}
-      </For>
-    </tbody></table>
-  );
-}
-`;
-}
-
-function time(run: () => void): number {
-  for (let i = 0; i < 3; i++) run();
-  const samples: number[] = [];
-  for (let i = 0; i < 21; i++) {
-    const started = Bun.nanoseconds();
-    run();
-    samples.push((Bun.nanoseconds() - started) / 1000);
-  }
-  return samples.toSorted((a, b) => a - b)[10];
-}
