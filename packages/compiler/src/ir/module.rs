@@ -291,6 +291,28 @@ impl<'a> Uids<'a> {
             .and_then(|value| value.checked_sub(1))
     }
 
+    /// Whether `name` is one this module minted. Every base is absent from the
+    /// source text, so a name that begins with one cannot be the author's, and
+    /// an unbound name that does not is a genuine global.
+    pub fn is_generated(&self, name: &str) -> bool {
+        [
+            self.element,
+            self.template,
+            self.root,
+            self.handler,
+            self.prev,
+            self.value,
+            self.ir,
+            self.scope,
+            self.konst,
+            self.block,
+            self.region,
+            self.sources,
+        ]
+        .iter()
+        .any(|base| name.starts_with(base))
+    }
+
     /// The scope every component takes and every Block declares.
     #[inline]
     pub fn scope(&self) -> &'a str {
@@ -687,6 +709,19 @@ mod tests {
             op: Op::SetOpaque { name: 0, value: 0, chan: Chan::Attr },
         });
         assert!(!unit.is_pure_static());
+    }
+
+    #[test]
+    fn a_minted_name_is_told_from_a_global() {
+        let allocator = Allocator::new();
+        let uids = Uids::new("const _g$1 = String;", &allocator);
+        assert!(uids.is_generated(uids.region(0, &allocator)));
+        assert!(uids.is_generated(uids.root(3, &allocator)));
+        assert!(!uids.is_generated("String"));
+        assert!(!uids.is_generated("globalThis"));
+        // The source spells the region base, so the module mints another one,
+        // and the author's `_g$1` is not mistaken for a placeholder.
+        assert!(!uids.is_generated("_g$1"));
     }
 
     #[test]

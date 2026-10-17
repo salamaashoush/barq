@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import { join } from "node:path";
 
 import { compileSource, loadModule } from "./harness.ts";
+import { describePick, renderRow } from "./row-callbacks-imports.ts";
 
 /**
  * A flow construct's callback written by name, as a `function` declaration or a
@@ -12,6 +13,10 @@ import { compileSource, loadModule } from "./harness.ts";
  * as `<Show>` does.
  */
 const IMPORTS = join(import.meta.dir, "row-callbacks-imports.ts");
+
+// Globals the compiled module reads without importing, as a page script would
+// define them.
+Object.assign(globalThis, { renderGlobalRow: renderRow, describeGlobalPick: describePick });
 
 const SOURCE = `
 import { For, Match, Repeat, Show, Switch, createStore } from "@barqjs/core";
@@ -50,6 +55,9 @@ export function ImportedShowCallback() { return <p><Show when={state.picked}>{de
 export function ImportedMatchCallback() {
   return <p><Switch><Match when={state.picked}>{describePick}</Match></Switch></p>;
 }
+export function GlobalFor() { return <ul><For each={state.rows}>{renderGlobalRow}</For></ul>; }
+export function GlobalMemberFor() { return <ul><For each={state.rows}>{globalThis.renderGlobalRow}</For></ul>; }
+export function GlobalShowCallback() { return <p><Show when={state.picked}>{describeGlobalPick}</Show></p>; }
 export function ImportedShowValue() { return <p><Show when={state.picked}>{count}</Show></p>; }
 export function KeyedMatch() {
   return <p><Switch><Match when={state.picked} keyed>{(picked) => <b>{picked.name}</b>}</Match></Switch></p>;
@@ -146,6 +154,8 @@ for (const optimize of [0, 2]) {
       "ReassignedFor",
       "ParameterFor",
       "AttributeFor",
+      "GlobalFor",
+      "GlobalMemberFor",
     ]) {
       test(`${name}: For calls it with each row`, async () => {
         const view = await mounted(name, optimize);
@@ -175,7 +185,7 @@ for (const optimize of [0, 2]) {
       }
     });
 
-    for (const name of ["ImportedShowCallback", "ImportedMatchCallback"]) {
+    for (const name of ["ImportedShowCallback", "ImportedMatchCallback", "GlobalShowCallback"]) {
       test(`${name}: a function that declares a parameter is called with the narrowed value`, async () => {
         const view = await mounted(name, optimize);
         try {

@@ -1224,8 +1224,8 @@ impl<'a> Shaper<'a, '_> {
     /// not follow at all. Syntactic on purpose: it drives a note, and the honest
     /// answer for anything it cannot see through is "not proven".
     /// Whether a flow construct's lone child is a value whose kind the analysis
-    /// cannot see, an import, a reassigned binding, a parameter, or a member of
-    /// one, and so goes to the construct as written. Solid 2.0 decides such a
+    /// cannot see, an import, a reassigned binding, a parameter, a global, or a
+    /// member of one, and so goes to the construct as written. Solid 2.0 decides such a
     /// child at run time, and so does the construct: `For` calls it with each
     /// row, `Repeat` calls a function with each index, and `Show` and `Match`
     /// call one that declares a parameter and render anything else. Wrapped as
@@ -1245,10 +1245,14 @@ impl<'a> Shaper<'a, '_> {
                 _ => return false,
             };
         }
-        // Resolved only: the passes stand placeholders for built DOM and staged
-        // regions in as unbound names, and those are values.
-        symbol_of(self.lift.scoping(), root)
-            .is_some_and(|symbol| self.lift.env().kind_of(symbol) == SourceKind::Opaque)
+        let Expression::Identifier(identifier) = root else { return false };
+        match symbol_of(self.lift.scoping(), root) {
+            Some(symbol) => self.lift.env().kind_of(symbol) == SourceKind::Opaque,
+            // An unbound name is a global unless the passes minted it: they stand
+            // placeholders for built DOM and staged regions in as unbound names,
+            // and those are values.
+            None => !self.uids.is_generated(identifier.name.as_str()),
+        }
     }
 
     /// Whether the analysis found the row callback of the `<For>` at `span`
@@ -2886,7 +2890,9 @@ mod tests {
              const [rows] = createSignal([]);\n\
              export const A = () => <ul><For each={rows}>{renderRow}</For></ul>;\n\
              export const B = () => <ul><Repeat count={2} from={1}>{cell}</Repeat></ul>;\n\
-             export const C = () => <p><Show when={rows}>{content}</Show></p>;\n",
+             export const C = () => <p><Show when={rows}>{content}</Show></p>;\n\
+             export const D = () => <ul><For each={rows}>{String}</For></ul>;\n\
+             export const E = () => <ul><For each={rows}>{globalThis.row}</For></ul>;\n",
         )
         .code;
         assert!(code.contains("_$each(_el$1, null, rows, null, renderRow)"), "{code}");
@@ -2895,5 +2901,7 @@ mod tests {
         assert!(!code.contains("() => cell"), "{code}");
         assert!(code.contains("children: content"), "{code}");
         assert!(!code.contains("() => content"), "{code}");
+        assert!(code.contains("rows, null, String)"), "{code}");
+        assert!(code.contains("rows, null, globalThis.row)"), "{code}");
     }
 }
