@@ -24,32 +24,24 @@ fire once the event reaches `document`.
 Both exports must actually change the DOM. `oracle.test.ts` fails a fixture whose steps
 or events are inert, so a fixture cannot quietly stop testing anything.
 
-## What holds a fixture, after M9
+## What holds a fixture
 
-There is **nothing left for a fixture to declare its way out of**, and that is the point
-of `CODESIGN.md` §6. Until M9 every frame was compared against the un-compiled
-`createElement` path, so a fixture the compiler was RIGHT about had to buy the difference
-back, with a `win` on the DOM channel or a `goesLive` entry on the effect channel. Both
-exports are gone with the reference that made them necessary.
-
-What replaces them is absolute rather than comparative:
+There is **nothing for a fixture to declare its way out of**. Every check is absolute
+rather than a comparison against a second implementation:
 
 - **Rendered DOM**: every frame, and every element's attribute line, recorded per
   fixture in `__snapshots__/oracle.test.ts.snap`. A change to what the compiler renders
   is a diff to read, not an agreement between two builds that moved together.
-- **Effect counts**: `test/effect-counts.ts`, one hand-written row per fixture:
-  creations, total runs, and the busiest single effect, each an **equality**. The old
-  bound was one-sided, so a binding that silently went missing read as a win; an equality
-  catches both directions. Regenerate with `BARQ_EFFECTS=print bun test
-  test/effect-counts.test.ts` and read the diff.
+- **Effect counts**: `test/effect-counts.test.ts`, one row per fixture: creations, total
+  runs, and the busiest single effect, each an **equality**. A one-sided bound would read
+  a binding that silently went missing as a win; an equality catches both directions.
 - **Marker layout and the attribute partition**: self-checks in `harness.ts
-  auditCompiled`. Both sides come off the emitted module and the clones it produced, so
-  there was never a reference involved.
+  auditCompiled`. Both sides come off the emitted module and the clones it produced.
 - **`-O0` vs `-Ox` vs `interp`**: the differential, in `optimisation.test.ts` and
   `interp.test.ts`.
 
 Fixtures are written in **explicit-thunk style** (`{() => count()}`,
-`when={() => flag()}`). A fixture that means to exercise O4 auto-thunking writes
+`when={() => flag()}`). A fixture that means to exercise auto-thunking writes
 `{count()}` instead; it needs no declaration, because the effect row for it is simply one
 higher and a hole that stopped going live moves that number.
 
@@ -105,16 +97,12 @@ that `auditCompiled` and the per-fixture golden assert separately:
   inserts before is either an elision the compiler missed or a marker it emitted for
   nothing, and no count could tell the difference once anchors became optional.
 
-  Against the DOM the bound is an EQUALITY, for every fixture. It used to degrade
-  to "a module whose templates bake no anchor cannot produce one" whenever the
-  emitted code could not be shown to clone each template once, which switched the
-  per-frame check off for seven fixtures, including `component-boundary-props`, the
-  one the exclusion was written for and one that bakes an anchor. `tracer.ts` now
-  wraps `template` and records the node every clone returns, and the Chrome
-  differential does the same through a `@barqjs/core` shim. So the anchors a frame
-  may hold are the anchors of the clones attached to it, which is exact for a component
-  called twice, for a `For` cloning a row per item, and for a `Show` parking its
-  body in a detached fragment.
+  Against the DOM the bound is an EQUALITY, for every fixture. `tracer.ts` wraps
+  `template` and records the node every clone returns, and the Chrome differential
+  does the same through a `@barqjs/core` shim. So the anchors a frame may hold are
+  the anchors of the clones attached to it, which is exact for a component called
+  twice, for a `For` cloning a row per item, and for a `Show` parking its body in a
+  detached fragment.
 - **attribute order**: every attribute in document order, compared against source
   order, partitioned into the attributes the template bakes in and
   the props the patch code applies after the clone. A static that merely trails a dynamic
@@ -122,9 +110,8 @@ that `auditCompiled` and the per-fixture golden assert separately:
 
 ## The corpus by target
 
-Every fixture that is the proof of an optimization target declares it. `optimality.test.ts`
-asserts that every target from 1 to 9 has a declaring fixture, so "the milestone is
-done" is a fact about the corpus rather than about whichever fixture got looked at.
+Every fixture that is the proof of an optimization target declares it, and
+`optimality.test.ts` asserts each declaration.
 
 - **1 semantic reactivity**: `static-only`, `static-attribute-expression`, `auto-thunked-read`, `inert-member-reads`, `signal-alias`, `signal-methods-in-handler`, `store-member`, `component-getter-props`, `live-call-hole`. A provably-static expression gets no effect, no thunk, no closure, and the same identifier can be reactive as a call and inert as a member.
 - **2 static subtree**: `static-only`, `void-elements`, `whitespace-only`, `svg-nested-in-html`, `fragment-root`, `select-option-multiple`. One clone, zero patch calls, zero effects, including one template per root where a fragment cannot be one.
@@ -142,16 +129,11 @@ done" is a fact about the corpus rather than about whichever fixture got looked 
 
 ## The shape catalogue
 
-`packages/compiler` used to hold a Babel plugin. Its expected OUTPUT was never a
-target, but its 55 test cases were a catalogue of the JSX SHAPES a compiler for
-this runtime has to handle, and DESIGN §10 named mining them as M5's deliverable
-and as the evidence for deleting the plugin in M6.
-
-Every one of those shapes is a fixture here, judged by the oracle comparison
-rather than by a string match against what Babel used to print. **This corpus is
-now the only record of them**: the plugin and its tests were deleted at M6, so a
-shape that leaves this directory leaves the project. The rows worth knowing about
-are:
+The corpus is the catalogue of the JSX SHAPES a compiler for this runtime has to
+handle, including every case of the Babel plugin `packages/compiler` once held.
+Each shape is judged by the rendered DOM rather than by a string match against
+some printer's output. **This corpus is the only record of them**, so a shape that
+leaves this directory leaves the project. The rows worth knowing about are:
 
 - **the P0 return-shape table**: `signal-object` (the `[read, write]` pair `createSignal` returns),
   `store-member` (proxy, member reads), `computed-derived` (a memo, which is an accessor),
@@ -217,10 +199,8 @@ property, which has no markup).
 
 `ssr.test.ts` renders every fixture two ways and diffs the markup:
 
-1. The compiled DOM module, serialised by the runtime. This used to be the
-   un-compiled `createElement` tree; that reference is retired, and the DOM
-   backend took its place because both backends share one front end and one IR
-   and nothing else.
+1. The compiled DOM module, serialised by the runtime. Both backends share one
+   front end and one IR and nothing else.
 2. The compiled SSR module's own string.
 
 Comparing bytes is what catches the compiler's template text disagreeing with
@@ -233,10 +213,10 @@ the Rust option struct, so there is nothing to forget to flip); whether it WORKS
 is asked separately, by compiling a probe and comparing it against a plain
 compile of the same source. No option is `absent` and the suite says so. An
 option that throws, or that emits the same module with and without it, is
-`broken`: a hard failure, never a skip. Two-valued detection was fail-open in
-both directions: a mutant that panicked the SSR compile on 106 of 117 fixtures
-turned every claim below into a silent pass, and a build that IGNORED `ssr: true`
-compared DOM against DOM and called it a string-backend differential.
+`broken`: a hard failure, never a skip. Two-valued detection is fail-open in
+both directions: a build that panics the SSR compile turns every claim below into
+a silent pass, and a build that IGNORES `ssr: true` compares DOM against DOM and
+calls it a string-backend differential.
 
 Beside the corpus runs an escaping matrix, seven contexts by fifteen values, each
 cell asserted as a ROUND TRIP: parse the markup back and the value is still the
@@ -246,21 +226,13 @@ the only one an XSS cannot satisfy. The contexts do not agree on what needs
 escaping (`<` is legal inside a quoted attribute value and fatal in text), so
 each is asked the question that is dangerous for it.
 
-## `semantics/`: the L1 fixtures, which are expected to FAIL
+## `semantics/`: claims against SEMANTICS.md
 
-Everything above this line is judged by what the compiler renders and by what it
-emits. The corpus missed the Provider defect for four years because it was judged
-against a second implementation that failed identically: the `createElement` oracle
-evaluated `children` at the call site exactly the way the compiled path did, so the
-comparison certified the bug. That reference is retired (§6). Worse, the style rule
-this file states (explicit-thunk children, `{() => <Badge />}`) **is** the
-hand-written workaround for that defect, so no fixture written to this README's
-convention can reach it. `context-provider.tsx` is written that way and passes.
-
-`fixtures/semantics/` asks the other question: does the observed behaviour match
-what `SEMANTICS.md` says it MUST be, with no second implementation involved. Those
-fixtures are written in the direct form on purpose, and they export claims rather
-than DOM:
+`fixtures/semantics/` asks whether the observed behaviour matches what
+`SEMANTICS.md` says it MUST be, with no second implementation involved. The
+explicit-thunk style above is the hand-written workaround for the Provider
+defect, so these fixtures are written in the direct form on purpose, and they
+export claims rather than DOM:
 
 ```ts
 export const rules: string[]      // rule IDs from SEMANTICS.md this fixture pins
@@ -268,19 +240,11 @@ export const claims: Claim[]      // one falsification procedure each, carrying 
 ```
 
 They are out of `listFixtures()`'s reach, for the same reason `browser-only/` is:
-`oracle.test.ts` compares two implementations that are both wrong here, and
-`ssr.test.ts` asks for markup from a fixture whose point is that it throws. Keeping
-them separate is what lets M0 add eight fixtures without moving a single existing
-number.
-
-They were written to fail, and most of them did. Every claim holds today, and
-`test/known-failures.ts` registers no failure. That file alone decides which failures
-are acceptable: a registered claim that
-starts passing is reported as stale, an unregistered failure fails the suite, and a
-registered failure whose message does not name its rule fails the suite as the wrong
-reason. Every fixture also carries at least one CONTROL claim in the explicit-thunk
-form, which passes; without it a failure is evidence that something is broken but not
-evidence about what.
+`oracle.test.ts` and `ssr.test.ts` judge rendered markup, and a claim fixture's
+point can be that something throws. `semantics.test.ts` runs every claim and
+fails on any that does not hold. Every fixture also carries at least one CONTROL
+claim in the explicit-thunk form; without it a failure is evidence that something
+is broken but not evidence about what.
 
 ## `browser-only/`
 

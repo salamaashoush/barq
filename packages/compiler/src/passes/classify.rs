@@ -468,7 +468,7 @@ impl<'a> Lift<'a, '_> {
                     rx = join(rx, part);
                 }
                 rx.konst = None;
-                // V2: the bound-handler tuple lives in `$$<type>` itself; there
+                // The bound-handler tuple lives in `$$<type>` itself; there
                 // is no `$$<type>Data` in this runtime.
                 rx.shape = if first_is_function && array.elements.len() == 2 {
                     Shape::HandlerTuple
@@ -526,7 +526,7 @@ impl<'a> Lift<'a, '_> {
                 Rx { react: React::Reactive, deps: self.dep(symbol), ..Rx::OPAQUE }
             }
             // The row is recreated by `mapArray` when the item changes, so
-            // reading it tracks nothing (DESIGN O3).
+            // reading it tracks nothing.
             SourceKind::RowValue | SourceKind::Inert | SourceKind::Primitive(_) => {
                 Rx { react: React::Static, ..Rx::OPAQUE }
             }

@@ -222,7 +222,7 @@ const declared = new Map(
 const unmeasured = [...declared.keys()].filter((flag) => !CASES.some((c) => c.flag === flag));
 if (unmeasured.length > 0) {
   throw new Error(
-    `flow.ts declares ${unmeasured.join(", ")} with no row in this table. CODESIGN.md §8: a flag ` +
+    `flow.ts declares ${unmeasured.join(", ")} with no row in this table. A flag ` +
       "that moves neither an allocation count nor a wall-clock number is deleted, not kept.",
   );
 }

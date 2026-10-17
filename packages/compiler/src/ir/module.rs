@@ -205,7 +205,7 @@ pub struct Uids<'a> {
     template: &'a str,
     root: &'a str,
     handler: &'a str,
-    /// The accumulator a fused effect threads through `recompute` (V6), and the
+    /// The accumulator a fused effect threads through `recompute`, and the
     /// per-slot value it compares against.
     prev: &'a str,
     value: &'a str,

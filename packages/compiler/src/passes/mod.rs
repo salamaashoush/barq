@@ -279,11 +279,10 @@ mod tests {
         );
     }
 
-    /// P3's child half. DESIGN's M4 amendment left this open because folding a
-    /// constant child has to merge adjacent text runs and then re-answer the
-    /// anchor and addressing questions; in the pass order as built, P3 runs
-    /// before both, so the only new work is the merge — and the merge has to
-    /// leave the node count alone, because `NodeId` is what everything addresses.
+    /// P3's child half. Folding a constant child merges adjacent text runs, and
+    /// P3 runs before anchor selection and addressing, so the only work is the
+    /// merge, which has to leave the node count alone because `NodeId` is what
+    /// everything addresses.
     #[test]
     fn a_constant_child_migrates_into_the_template_and_takes_its_patch_with_it() {
         let allocator = oxc::allocator::Allocator::new();

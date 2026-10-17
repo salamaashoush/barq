@@ -384,7 +384,7 @@ describe("declared optimality", () => {
     },
     svg: {
       why:
-        "namespace handling: DESIGN §8 V13 kebab-cases every SVG attribute EXCEPT class and " +
+        "namespace handling: `setElementAttr` kebab-cases every SVG attribute EXCEPT class and " +
         "viewBox, and the folded bytes are what the parse conformance pass reads back",
       holds: ({ code }) => {
         const html = templateHtml(code).join("");

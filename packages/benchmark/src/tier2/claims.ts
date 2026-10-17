@@ -29,8 +29,6 @@ export type Tier = "microbenchmark" | "mount" | "reactivity" | "server"
 
 export interface Claim {
   id: string
-  /** Where the claim was recorded. */
-  section: string
   /** The claim, in the document's own terms. */
   says: string
   /** What it was measured on, in the document's own terms. */
@@ -51,7 +49,6 @@ export interface Claim {
 export const CLAIMS: readonly Claim[] = Object.freeze([
   {
     id: "C1",
-    section: "§0.3 conclusion 4",
     says:
       "the chosen calling convention costs 23.7% of JS overhead against what ships, and 0% " +
       "through a DOM — D is 3.6% FASTER than A on happy-dom",
@@ -69,7 +66,6 @@ export const CLAIMS: readonly Claim[] = Object.freeze([
   },
   {
     id: "C2",
-    section: "§0.3 conclusion 1",
     says:
       "return-DOM, append-to-anchor and scope-passing are within noise of each other, so nobody " +
       "may claim a speed win for any of them",
@@ -79,7 +75,6 @@ export const CLAIMS: readonly Claim[] = Object.freeze([
   },
   {
     id: "C3",
-    section: "§0.3 conclusion 2",
     says:
       "a Scope per position costs 7.3 ns a row — real but small, worth a NO_SCOPE flag and not a " +
       "design",
@@ -92,7 +87,6 @@ export const CLAIMS: readonly Claim[] = Object.freeze([
   },
   {
     id: "C4",
-    section: "§0.3 conclusion 3",
     says:
       "component inlining is not worth 30–40% of mount: 15% of JS overhead on a stub DOM and 0% " +
       "on happy-dom, so Anvil's headline optimisation goes to the backlog",
@@ -102,7 +96,6 @@ export const CLAIMS: readonly Claim[] = Object.freeze([
   },
   {
     id: "C5",
-    section: "§0.2, and §12's closing line",
     says:
       "a getter is 8.7x more expensive to allocate at the scale a props object is allocated — " +
       "once per component instance, i.e. once per list row. §12: 'The 8.7x number stands unrefuted.'",
@@ -118,7 +111,6 @@ export const CLAIMS: readonly Claim[] = Object.freeze([
   },
   {
     id: "C6",
-    section: "§0.4",
     says:
       "removing the setProp dispatcher is worth 0–8% per write, not the 10–25% all three designs " +
       "claimed; the branch cascade is well predicted",
@@ -136,7 +128,6 @@ export const CLAIMS: readonly Claim[] = Object.freeze([
   },
   {
     id: "C7",
-    section: "§0.1",
     says: "barq's reactivity core beats @solidjs/signals 2.0 — 10 wins / 1 tie, up to 6.25x",
     tier1: "eleven graphs this project wrote, timed in Node with min-of-9",
     procedure:
@@ -147,7 +138,6 @@ export const CLAIMS: readonly Claim[] = Object.freeze([
   },
   {
     id: "C8",
-    section: "§0.1",
     says:
       "the SSR 100-row envelope is 2.10x Solid's, drifting to 1.86x — and the bar 'hold ≥2.10x' " +
       "cannot be met or missed because the comparand floats",
@@ -157,7 +147,6 @@ export const CLAIMS: readonly Claim[] = Object.freeze([
   },
   {
     id: "C9",
-    section: "§0.1 / §9.1",
     says: "barq's DOM rendering is competitive with Solid's at application scale",
     tier1: "no Tier-1 claim of this shape exists; the DOM head-to-head is component-level",
     procedure: "js-framework-benchmark, nine CPU rows plus run memory, in Chrome",

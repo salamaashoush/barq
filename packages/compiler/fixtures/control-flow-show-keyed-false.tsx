@@ -13,7 +13,7 @@ export const [value, setValue] = createSignal<string | null>("alpha")
  * an accessor, and `analysis::bind::row_params` did not say so: it typed `For`
  * and `Repeat` and returned early for everything else, so `{v()}` was an opaque
  * call the classifier applied ONCE and the text froze at activation. It is the
- * by-item `For` bug (V8) in the construct beside it.
+ * by-item `For` bug in the construct beside it.
  *
  * Step 0 is the only frame that can see it. `alpha` to `beta` is a value change
  * with no truthiness change, so a frozen read and a live one agree on every

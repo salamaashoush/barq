@@ -1496,7 +1496,7 @@ impl<'a> Binder<'_, 'a> {
 
     /// Control-flow row parameters, by arity and position from the real
     /// signatures (`components.ts`). The by-item `For` row VALUE is a plain
-    /// value, not an accessor — the classic name-heuristic bug (V8) — and a
+    /// value, not an accessor — the classic name-heuristic bug — and a
     /// key FUNCTION is a third arm, not the by-item one.
     fn row_params(&mut self, element: &JSXElement<'a>) {
         let JSXElementName::IdentifierReference(name) = &element.opening_element.name else {
@@ -1551,7 +1551,7 @@ impl<'a> Binder<'_, 'a> {
             // the content stays mounted across a value change and only its
             // READS move — so a body written `{v()}` was an opaque call applied
             // once and the text froze at activation. That is the `For` by-item
-            // bug (V8) in the construct next to it, and it never had a fixture.
+            // bug in the construct next to it, and it never had a fixture.
             //
             // The keyed default hands the VALUE, like a by-item row. `ByFn` is
             // where a spread lands, and there the body may receive either — the

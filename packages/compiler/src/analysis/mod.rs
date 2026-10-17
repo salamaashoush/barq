@@ -265,7 +265,7 @@ mod tests {
         assert_eq!(module.env.bit_of(size), BIT_OVERFLOW);
     }
 
-    /// V8: the DEFAULT `For` row VALUE is a plain value and its INDEX is an
+    /// The DEFAULT `For` row VALUE is a plain value and its INDEX is an
     /// accessor (K1 — identity keying is the default). `keyed={false}` is the
     /// other way round. Getting this from the resolved `keyed` rather than from
     /// the parameter's name is the whole point.

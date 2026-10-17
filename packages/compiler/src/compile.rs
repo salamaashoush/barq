@@ -1801,8 +1801,8 @@ mod tests {
 
     /// Two diagnostics that predate the engine, and neither is here any more.
     ///
-    /// `BARQ006` (O7) warned that `Dynamic`'s `{ component: _, ...rest }` reads
-    /// every getter once. Under M3 there are no getters — every prop is a Cell,
+    /// `BARQ006` warned that `Dynamic`'s `{ component: _, ...rest }` reads
+    /// every getter once. There are no getters — every prop is a Cell,
     /// and a copy of a Cell is the same Cell (C3.4) — so the warning's premise
     /// is gone and warning anyway would be a lie about the emitted module. The
     /// shape is now a `dynamic` component given a live prop.
@@ -3968,7 +3968,7 @@ export const Route = createFileRoute("/x")({ component: Page });
 
     /// Target #4. Two tracked props on one element share ONE bindEffect with
     /// per-key `!==` guards, and the fused compute returns the accumulator —
-    /// never a function, which `signals.ts` would register as a cleanup (V6).
+    /// never a function, which `signals.ts` would register as a cleanup.
     #[test]
     fn two_live_props_on_one_element_share_a_single_effect() {
         let source = format!(
@@ -4078,7 +4078,7 @@ export const Route = createFileRoute("/x")({ component: Page });
         assert!(output.code.contains("_$delegateEvents([\"click\"])"), "{}", output.code);
     }
 
-    /// V2: the bound-handler tuple lives in `__bq_<type>` itself. Emitting a
+    /// The bound-handler tuple lives in `__bq_<type>` itself. Emitting a
     /// `__bq_clickData` compiles cleanly and does nothing.
     #[test]
     fn a_bound_handler_tuple_is_written_whole_into_the_expando() {

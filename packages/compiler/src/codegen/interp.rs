@@ -374,7 +374,7 @@ impl<'a> Backend<'a> for Interp<'a, '_, '_, '_, '_> {
     }
 
     /// `el.__bq_click = h`. The tuple form lives inside the handler expression, so
-    /// `data` is carried by the IR and read by neither backend (V2).
+    /// `data` is carried by the IR and read by neither backend.
     fn delegate(
         &mut self,
         at: At<'_>,

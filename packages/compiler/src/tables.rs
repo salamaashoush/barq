@@ -216,7 +216,7 @@ mod tests {
 
     #[test]
     fn the_tables_carry_what_the_runtime_declares() {
-        // V12: 22 names, and the absentees are the ones a hand transcription
+        // 22 names, and the absentees are the ones a hand transcription
         // gets wrong.
         assert_eq!(DELEGATED_EVENTS.len(), 22);
         for event in ["click", "pointerdown", "input", "keydown", "touchstart"] {
@@ -226,7 +226,6 @@ mod tests {
             assert!(!is_delegated_event(event), "{event} is NOT delegated by this runtime");
         }
 
-        // V11: larger than any design listed.
         assert_eq!(DOM_PROPS.len(), 12);
         assert!(is_dom_prop("value") && is_dom_prop("readOnly") && is_dom_prop("innerHTML"));
         assert!(!is_dom_prop("class") && !is_dom_prop("href"));

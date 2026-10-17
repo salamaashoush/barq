@@ -264,7 +264,7 @@ impl<'a> Backend<'a> for Dom<'a, '_, '_, '_> {
     /// `__bq_<type>` plus one `delegateEvents` call per module, never
     /// `addEventListener` for the delegated set. `delegatedEventHandler` reads
     /// `__bq_<type>` and accepts either a function or a `[fn, data]` tuple, so the
-    /// tuple needs no second property (V2).
+    /// tuple needs no second property.
     ///
     /// The scope goes beside it in `__bqs` — one expando per ELEMENT, not per type
     /// — so the dispatcher can route a throw to `scope.catcher` (E2 #6) instead

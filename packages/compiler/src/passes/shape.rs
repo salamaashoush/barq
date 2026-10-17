@@ -420,9 +420,9 @@ impl<'a> Shaper<'a, '_> {
             self.diagnose(Code::Barq004, at, STALE_ROW);
         }
 
-        // O7 is gone with the getters, and this is where that is recorded. It
-        // warned that `Dynamic`'s `{ component: _, ...rest }` reads every getter
-        // once and hands the rendered component dead values. Under M3 there are
+        // `BARQ006` is gone with the getters, and this is where that is recorded.
+        // It warned that `Dynamic`'s `{ component: _, ...rest }` reads every
+        // getter once and hands the rendered component dead values. There are
         // no getters — every prop is a Cell, and a copy of a Cell is the same
         // Cell (C3.4) — so the premise is false and warning anyway would be a
         // lie about the emitted module.
@@ -2643,9 +2643,10 @@ mod tests {
         );
     }
 
-    /// O3 is the one documented divergence M3 leaves standing, so it is not
-    /// allowed to be silent. O7 is gone: it warned that `Dynamic` spreading its
-    /// props reads every getter once, and after M3 there are no getters to read.
+    /// A member read on a keyed row is the one documented divergence left
+    /// standing, so it is not allowed to be silent. `BARQ006` is gone: it warned
+    /// that `Dynamic` spreading its props reads every getter once, and there are
+    /// no getters to read.
     /// Its shape is now a `dynamic` component given a live prop.
     #[test]
     fn the_documented_divergence_is_reported_and_the_getter_one_is_gone() {
@@ -2719,7 +2720,7 @@ mod tests {
             .is_empty()
         );
 
-        // O7's shape, now silent, and the emitted module says why: no getter.
+        // `BARQ006`'s shape, now silent, and the emitted module says why: no getter.
         let dynamic = dev("import { dynamic, createSignal } from \"@barqjs/core\";\n\
              const [n] = createSignal(0);\n\
              const Chosen = dynamic(() => \"b\");\n\

@@ -230,9 +230,8 @@ describe("the diagnostic engine", () => {
    * A code nothing can produce is a ghost in a published API: `barq-ignore-next-line
    * BARQ006` went on parsing, went on suppressing nothing, and went on being
    * advertised by `diagnosticCodes()` for a rule the compiler had stopped
-   * emitting. BARQ006 is how that was found — M3 deleted DESIGN O7 with the
-   * getters its premise was about, and only a plugin test that used it as a
-   * PROBE noticed. This is the assertion that would have noticed instead.
+   * emitting. BARQ006 is how that was found: the getters its premise was about
+   * were deleted, and only a plugin test that used it as a PROBE noticed. This is the assertion that would have noticed instead.
    *
    * One source per advertised code, each of which must produce exactly that
    * code. A code with no source here fails the first expectation, so silencing

@@ -2,9 +2,14 @@ name: Tier 2
 
 # Tier 2 is a SOURCE OF TRUTH, not a gate.
 #
-# `CODESIGN.md` §12, adopted from Solid's benchmarking-strategy.md: "Tier 1 is
-# the iteration tool. Tier 2 is the source of truth. Tier-1 wins must be
-# validated against the relevant Tier-2 suite before they stay."
+# Tier 1 is Node, Bun, a stub DOM and happy-dom: fast, deterministic, and where
+# a change is developed. Tier 2 is a real browser, js-framework-benchmark and
+# js-reactivity-benchmark driven through CDP, with durations read from Chrome's
+# trace rather than a wall clock in the page. A Tier-1 win is provisional until
+# Tier 2 confirms it, and a Tier-1 number is not a fact about an application
+# until it has. Every number states its instrument (suite, trials, p,
+# comparand) and what that instrument cannot decide. Adopted from Solid's
+# benchmarking-strategy.md.
 #
 # It deliberately does not fail the build on a ratio. A benchmark job that goes
 # red on a number gets its threshold widened after the third false alarm, and
@@ -28,8 +33,8 @@ on:
         default: ""
   schedule:
     # Weekly, so drift in a floating comparand is visible as a trend rather
-    # than as a surprise at the next milestone. §0.1's own note: "A ratio
-    # against a floating dependency is not a bar anyone can hold."
+    # than as a surprise: a ratio against a floating dependency is not a bar
+    # anyone can hold.
     - cron: "0 4 * * 1"
 
 concurrency:
@@ -41,7 +46,7 @@ permissions:
 
 jobs:
   tier2:
-    name: js-framework-benchmark, js-reactivity-benchmark, §0.2/§0.3 in Chrome
+    name: js-framework-benchmark, js-reactivity-benchmark, prop shapes in Chrome
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:

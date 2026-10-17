@@ -45,13 +45,12 @@ enum Baked<'a> {
     Absent,
 }
 
-/// The child half of P3, and the half DESIGN's M4 amendment parked: a constant
-/// text child used to keep its hole, its `insert` call and — because the text
-/// either side would fuse — its `<!---->`, where the same markup written
-/// literally costs one clone and nothing else.
+/// The child half of P3: a constant text child folds into the template instead
+/// of keeping its hole, its `insert` call and (because the text either side
+/// would fuse) its `<!---->`, so it costs what the same markup written
+/// literally costs: one clone and nothing else.
 ///
-/// What made it look expensive was owning the anchor and addressing invariants
-/// afterwards. In the pass order as built it does not: P3 runs BEFORE P5's
+/// The anchor and addressing invariants come for free: P3 runs BEFORE P5's
 /// anchor selection and P6's addressing, so both are computed against the
 /// skeleton this leaves behind rather than patched up after the fact. What is
 /// left is fusing the runs, and the walk depends on no two `Text` nodes ever

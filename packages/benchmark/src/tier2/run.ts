@@ -64,7 +64,7 @@ console.log("\n" + "=".repeat(100))
 console.log("THE SURVIVAL TABLE — every Tier-1 claim this lane can rule on")
 console.log("=".repeat(100))
 for (const claim of CLAIMS) {
-  console.log(`\n${claim.id}  ${claim.section}`)
+  console.log(`\n${claim.id}`)
   console.log(`  claim      ${claim.says}`)
   console.log(`  Tier 1     ${claim.tier1}`)
   console.log(

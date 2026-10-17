@@ -280,7 +280,7 @@ console.log(
   }
 }
 report(
-  `100-row page whose module also mentions \`Portal\` — CODESIGN §0.1's fallback row (${TRIALS} trials x ${ENVELOPE_ITERATIONS} iters)`,
+  `100-row page whose module also mentions \`Portal\` (${TRIALS} trials x ${ENVELOPE_ITERATIONS} iters)`,
   multi(
     [
       {
