@@ -11,8 +11,9 @@ pub use backend::{At, Backend};
 
 use oxc::allocator::{Allocator, TakeIn, Vec as ArenaVec};
 use oxc::ast::ast::{
-    Argument, ArrowFunctionBody, ArrowFunctionExpression, CallExpression, Expression,
-    IdentifierName, Program, Statement,
+    Argument, ArrowFunctionBody, ArrowFunctionExpression, BindingPattern, CallExpression,
+    Expression, FormalParameter, FormalParameterKind, FormalParameters, IdentifierName, Program,
+    Statement,
 };
 use oxc::ast::builder::AstBuilder;
 use oxc::ast_visit::VisitMut;
@@ -590,6 +591,54 @@ impl<'a, 'm> Emit<'a, 'm> {
     ) -> Expression<'a> {
         let arguments = ArenaVec::from_iter_in(arguments, &self.allocator);
         Expression::new_call_expression(span, callee, None, arguments, false, &self.ast)
+    }
+
+    pub fn thunk(&self, body: Expression<'a>, span: Span) -> Expression<'a> {
+        self.arrow(None, body, span)
+    }
+
+    pub fn lambda(&self, name: &'a str, body: Expression<'a>, span: Span) -> Expression<'a> {
+        let pattern = BindingPattern::new_binding_identifier(span, name, &self.ast);
+        self.arrow(Some(self.parameter(pattern, span)), body, span)
+    }
+
+    pub fn parameter(&self, pattern: BindingPattern<'a>, span: Span) -> FormalParameter<'a> {
+        FormalParameter::new(
+            span,
+            ArenaVec::new_in(&self.allocator),
+            pattern,
+            None,
+            None,
+            false,
+            None,
+            false,
+            false,
+            &self.ast,
+        )
+    }
+
+    fn arrow(
+        &self,
+        parameter: Option<FormalParameter<'a>>,
+        body: Expression<'a>,
+        span: Span,
+    ) -> Expression<'a> {
+        let params = FormalParameters::boxed(
+            span,
+            FormalParameterKind::ArrowFormalParameters,
+            ArenaVec::from_iter_in(parameter, &self.allocator),
+            None,
+            &self.ast,
+        );
+        Expression::new_arrow_function_expression(
+            span,
+            false,
+            None,
+            params,
+            None,
+            ArrowFunctionBody::from(body),
+            &self.ast,
+        )
     }
 
     /// `_s$` — the scope the enclosing Block was given. The convention puts

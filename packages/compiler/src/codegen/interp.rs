@@ -39,8 +39,8 @@
 
 use oxc::allocator::Vec as ArenaVec;
 use oxc::ast::ast::{
-    ArrayExpressionElement, ArrowFunctionBody, BindingPattern, Expression, FormalParameterKind,
-    FormalParameters, NumberBase, Statement, VariableDeclarationKind, VariableDeclarator,
+    ArrayExpressionElement, BindingPattern, Expression, NumberBase, Statement,
+    VariableDeclarationKind, VariableDeclarator,
 };
 use oxc::span::Span;
 
@@ -166,14 +166,14 @@ impl<'a> Interp<'a, '_, '_, '_, '_> {
     /// serialisation.
     fn once(&mut self, value: ExprId, span: Span) -> Expression<'a> {
         let expression = crate::codegen::dom::take(self.ctx, self.unit, value, span);
-        self.push(nullary(self.ctx, expression, span), span)
+        self.push(self.ctx.thunk(expression, span), span)
     }
 
     /// `once`, for the value `bindProp` decides about: the same expression the
     /// DOM backend hands it, which for a call is the function that makes it.
     fn opaque(&mut self, value: ExprId, span: Span) -> Expression<'a> {
         let expression = crate::codegen::dom::opaque_value(self.ctx, self.unit, value, span);
-        self.push(nullary(self.ctx, expression, span), span)
+        self.push(self.ctx.thunk(expression, span), span)
     }
 
     /// A slot that yields the value a LIVE binding resolves to. It is built by
@@ -188,7 +188,7 @@ impl<'a> Interp<'a, '_, '_, '_, '_> {
     fn handler(&mut self, handler: HandlerRef, span: Span) -> Expression<'a> {
         let expression =
             crate::codegen::dom::handler_expression(self.ctx, self.unit, handler, span);
-        self.push(nullary(self.ctx, expression, span), span)
+        self.push(self.ctx.thunk(expression, span), span)
     }
 
     /// A slot holding an expression VERBATIM, for the region arguments the
@@ -296,7 +296,7 @@ impl<'a> Backend<'a> for Interp<'a, '_, '_, '_, '_> {
         let (slot, kind) = if write {
             (unary(self.ctx, expression, span), "assign")
         } else {
-            (nullary(self.ctx, expression, span), "apply")
+            (self.ctx.thunk(expression, span), "apply")
         };
         let slot = self.raw(slot, span);
         let kind = text(self.ctx, kind, span);
@@ -448,50 +448,11 @@ impl<'a> Backend<'a> for Interp<'a, '_, '_, '_, '_> {
     }
 }
 
-fn nullary<'a>(ctx: &Emit<'a, '_>, body: Expression<'a>, span: Span) -> Expression<'a> {
-    let params = FormalParameters::boxed(
-        span,
-        FormalParameterKind::ArrowFormalParameters,
-        ArenaVec::new_in(&ctx.allocator),
-        None,
-        &ctx.ast,
-    );
-    Expression::new_arrow_function_expression(
-        span,
-        false,
-        None,
-        params,
-        None,
-        ArrowFunctionBody::from(body),
-        &ctx.ast,
-    )
-}
-
 /// `(_v$) => (binding = _v$)` — the ONE slot shape that is written rather than
 /// read. `ref={binding}` with a writable binding is an assignment (B3), and an
 /// assignment cannot be serialised as a value.
 fn unary<'a>(ctx: &mut Emit<'a, '_>, target: Expression<'a>, span: Span) -> Expression<'a> {
     let name = ctx.module.uids.value(ctx.allocator);
-    let pattern = BindingPattern::new_binding_identifier(span, name, &ctx.ast);
-    let parameter = oxc::ast::ast::FormalParameter::new(
-        span,
-        ArenaVec::new_in(&ctx.allocator),
-        pattern,
-        None,
-        None,
-        false,
-        None,
-        false,
-        false,
-        &ctx.ast,
-    );
-    let params = FormalParameters::boxed(
-        span,
-        FormalParameterKind::ArrowFormalParameters,
-        ArenaVec::from_iter_in([parameter], &ctx.allocator),
-        None,
-        &ctx.ast,
-    );
     let assign = Expression::new_assignment_expression(
         span,
         oxc::ast::ast::AssignmentOperator::Assign,
@@ -504,15 +465,7 @@ fn unary<'a>(ctx: &mut Emit<'a, '_>, target: Expression<'a>, span: Span) -> Expr
         ctx.ident(name, span),
         &ctx.ast,
     );
-    Expression::new_arrow_function_expression(
-        span,
-        false,
-        None,
-        params,
-        None,
-        ArrowFunctionBody::from(assign),
-        &ctx.ast,
-    )
+    ctx.lambda(name, assign, span)
 }
 
 /// The channel name, spelled the same way on both sides so the reference

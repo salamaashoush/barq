@@ -1,9 +1,8 @@
 use oxc::allocator::{Allocator, Box as ArenaBox, Vec as ArenaVec};
 use oxc::ast::ast::{
     Argument, ArrayExpressionElement, ArrowFunctionBody, ArrowFunctionExpression, AssignmentTarget,
-    BindingPattern, Expression, FormalParameter, FormalParameterKind, FormalParameters,
-    IdentifierName, MemberExpression, ObjectPropertyKind, Statement, VariableDeclarationKind,
-    VariableDeclarator,
+    BindingPattern, Expression, FormalParameterKind, FormalParameters, IdentifierName,
+    MemberExpression, ObjectPropertyKind, Statement, VariableDeclarationKind, VariableDeclarator,
 };
 use oxc::span::Span;
 use rustc_hash::FxHashSet;
@@ -665,35 +664,7 @@ pub(super) fn bind_sources<'a>(
     span: Span,
 ) -> Expression<'a> {
     let Some((name, list)) = sources else { return call };
-    let binding = BindingPattern::new_binding_identifier(span, name, &ctx.ast);
-    let parameter = FormalParameter::new(
-        span,
-        ArenaVec::new_in(&ctx.allocator),
-        binding,
-        None,
-        None,
-        false,
-        None,
-        false,
-        false,
-        &ctx.ast,
-    );
-    let params = FormalParameters::boxed(
-        span,
-        FormalParameterKind::ArrowFormalParameters,
-        ArenaVec::from_iter_in([parameter], &ctx.allocator),
-        None,
-        &ctx.ast,
-    );
-    let arrow = Expression::new_arrow_function_expression(
-        span,
-        false,
-        None,
-        params,
-        None,
-        ArrowFunctionBody::from(call),
-        &ctx.ast,
-    );
+    let arrow = ctx.lambda(name, call, span);
     ctx.call(arrow, vec![Argument::from(list)], span)
 }
 
@@ -708,22 +679,7 @@ fn hole_call<'a>(
     span: Span,
 ) -> Expression<'a> {
     let anchor = anchor.unwrap_or_else(|| Expression::new_null_literal(span, &ctx.ast));
-    let params = FormalParameters::boxed(
-        span,
-        FormalParameterKind::ArrowFormalParameters,
-        ArenaVec::new_in(&ctx.allocator),
-        None,
-        &ctx.ast,
-    );
-    let build = Expression::new_arrow_function_expression(
-        span,
-        false,
-        None,
-        params,
-        None,
-        ArrowFunctionBody::from(value),
-        &ctx.ast,
-    );
+    let build = ctx.thunk(value, span);
     let callee = ctx.helper(Helper::Hole, span);
     let mut arguments = vec![Argument::from(parent), Argument::from(anchor), Argument::from(build)];
     if whole {
@@ -815,7 +771,7 @@ fn fused_effect<'a>(
             let callee = ctx.helper(Helper::ClassToString, patch.span);
             ctx.call(callee, vec![Argument::from(read)], patch.span)
         };
-        let compute = arrow(ctx, no_params(ctx, span), ArrowFunctionBody::from(read), span);
+        let compute = ctx.thunk(read, span);
         let mine = ctx.ident(value, patch.span);
         let theirs = ctx.ident(prev, patch.span);
         let write =
@@ -831,7 +787,7 @@ fn fused_effect<'a>(
         && diff != Diff::Thread
     {
         let read = keyed_read(ctx, unit, one, chan, patch.span);
-        let compute = arrow(ctx, no_params(ctx, span), ArrowFunctionBody::from(read), span);
+        let compute = ctx.thunk(read, span);
         let held = ctx.ident(value, patch.span);
         let (body, params) = match diff {
             // Handed `prev`, the attribute and property channels make the
@@ -912,7 +868,7 @@ fn fused_effect<'a>(
         ArenaVec::from_iter_in(properties, &ctx.allocator),
         &ctx.ast,
     );
-    let compute = arrow(ctx, no_params(ctx, span), ArrowFunctionBody::from(record), span);
+    let compute = ctx.thunk(record, span);
     let params = apply_params(ctx, value, reads_prev.then_some((prev, true)), span);
     let apply = arrow(ctx, params, block(ctx, body, span), span);
     effect_call(ctx, compute, apply, span)
@@ -1102,16 +1058,6 @@ fn block<'a>(
     )
 }
 
-fn no_params<'a>(ctx: &Emit<'a, '_>, span: Span) -> ArenaBox<'a, FormalParameters<'a>> {
-    FormalParameters::boxed(
-        span,
-        FormalParameterKind::ArrowFormalParameters,
-        ArenaVec::new_in(&ctx.allocator),
-        None,
-        &ctx.ast,
-    )
-}
-
 /// `(_v$)` or `(_v$, _p$)` or `(_v$, _p$ = {})`. The default is what makes the
 /// FIRST apply see an empty record rather than `undefined`; a scalar prev needs
 /// none, because comparing against `undefined` is exactly the first-run write.
@@ -1122,11 +1068,8 @@ fn apply_params<'a>(
     span: Span,
 ) -> ArenaBox<'a, FormalParameters<'a>> {
     let mut parameters = Vec::with_capacity(2);
-    parameters.push(parameter(
-        ctx,
-        BindingPattern::new_binding_identifier(span, value, &ctx.ast),
-        span,
-    ));
+    parameters
+        .push(ctx.parameter(BindingPattern::new_binding_identifier(span, value, &ctx.ast), span));
     if let Some((name, empty)) = prev {
         let mut pattern = BindingPattern::new_binding_identifier(span, name, &ctx.ast);
         if empty {
@@ -1134,32 +1077,13 @@ fn apply_params<'a>(
                 Expression::new_object_expression(span, ArenaVec::new_in(&ctx.allocator), &ctx.ast);
             pattern = BindingPattern::new_assignment_pattern(span, pattern, record, &ctx.ast);
         }
-        parameters.push(parameter(ctx, pattern, span));
+        parameters.push(ctx.parameter(pattern, span));
     }
     FormalParameters::boxed(
         span,
         FormalParameterKind::ArrowFormalParameters,
         ArenaVec::from_iter_in(parameters, &ctx.allocator),
         None,
-        &ctx.ast,
-    )
-}
-
-fn parameter<'a>(
-    ctx: &Emit<'a, '_>,
-    pattern: BindingPattern<'a>,
-    span: Span,
-) -> oxc::ast::ast::FormalParameter<'a> {
-    oxc::ast::ast::FormalParameter::new(
-        span,
-        ArenaVec::new_in(&ctx.allocator),
-        pattern,
-        None,
-        None,
-        false,
-        None,
-        false,
-        false,
         &ctx.ast,
     )
 }
@@ -1342,15 +1266,7 @@ pub(super) fn thunk<'a>(
     {
         return call.unbox().callee;
     }
-    let body = ArrowFunctionBody::from(expression);
-    let params = FormalParameters::boxed(
-        span,
-        FormalParameterKind::ArrowFormalParameters,
-        ArenaVec::new_in(&ctx.allocator),
-        None,
-        &ctx.ast,
-    );
-    Expression::new_arrow_function_expression(span, false, None, params, None, body, &ctx.ast)
+    ctx.thunk(expression, span)
 }
 
 fn clone_call<'a>(ctx: &mut Emit<'a, '_>, unit: &Unit<'a>, span: Span) -> Expression<'a> {

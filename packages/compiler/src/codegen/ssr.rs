@@ -605,23 +605,7 @@ impl<'a> Ssr<'a, '_, '_, '_, '_> {
             None => self.ctx.allocator.alloc_str(prefix),
         };
         let expression = take(self.ctx, self.unit, value, span);
-        let params = oxc::ast::ast::FormalParameters::boxed(
-            span,
-            oxc::ast::ast::FormalParameterKind::ArrowFormalParameters,
-            ArenaVec::new_in(&self.ctx.allocator),
-            None,
-            &self.ctx.ast,
-        );
-        let body = oxc::ast::ast::ArrowFunctionBody::from(expression);
-        let read = Expression::new_arrow_function_expression(
-            span,
-            false,
-            None,
-            params,
-            None,
-            body,
-            &self.ctx.ast,
-        );
+        let read = self.ctx.thunk(expression, span);
         let position = self.ctx.string(position, span);
         let callee = self.ctx.helper(Helper::BindAttr, span);
         let call =

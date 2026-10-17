@@ -1,9 +1,8 @@
 use oxc::allocator::{Box as ArenaBox, Vec as ArenaVec};
 use oxc::ast::ast::{
-    Argument, ArrayExpressionElement, ArrowFunctionBody, Expression, FormalParameterKind,
-    FormalParameters, IdentifierName, JSXAttributeItem, JSXChild, JSXElement, JSXElementName,
-    JSXFragment, JSXMemberExpression, JSXMemberExpressionObject, ObjectProperty,
-    ObjectPropertyKind, PropertyKey, PropertyKind, SpreadElement, StringLiteral,
+    Argument, ArrayExpressionElement, Expression, IdentifierName, JSXAttributeItem, JSXChild,
+    JSXElement, JSXElementName, JSXFragment, JSXMemberExpression, JSXMemberExpressionObject,
+    ObjectProperty, ObjectPropertyKind, PropertyKey, PropertyKind, SpreadElement, StringLiteral,
 };
 use oxc::span::{GetSpan, SPAN};
 
@@ -99,29 +98,6 @@ impl<'a> Emit<'a, '_> {
         }
     }
 
-    /// `() => expr`, so the expression is evaluated by whoever calls the thunk
-    /// rather than where it is written.
-    fn thunk(&mut self, value: Expression<'a>, span: oxc::span::Span) -> Expression<'a> {
-        use oxc::allocator::Vec as ArenaVec;
-        use oxc::ast::ast::{ArrowFunctionBody, FormalParameterKind, FormalParameters};
-        let params = FormalParameters::boxed(
-            span,
-            FormalParameterKind::ArrowFormalParameters,
-            ArenaVec::new_in(&self.allocator),
-            None,
-            &self.ast,
-        );
-        Expression::new_arrow_function_expression(
-            span,
-            false,
-            None,
-            params,
-            None,
-            ArrowFunctionBody::from(value),
-            &self.ast,
-        )
-    }
-
     /// `_$hole(null, null, () => …, TAGGED)` — a position with no RANGE, whose
     /// build can still claim.
     ///
@@ -137,24 +113,7 @@ impl<'a> Emit<'a, '_> {
     /// original reason for going cold: "a `template()` inside it takes the node
     /// belonging to the NEXT position".
     fn cold_call(&mut self, value: Expression<'a>, span: oxc::span::Span) -> Expression<'a> {
-        use oxc::allocator::Vec as ArenaVec;
-        use oxc::ast::ast::{ArrowFunctionBody, FormalParameterKind, FormalParameters};
-        let params = FormalParameters::boxed(
-            span,
-            FormalParameterKind::ArrowFormalParameters,
-            ArenaVec::new_in(&self.allocator),
-            None,
-            &self.ast,
-        );
-        let build = Expression::new_arrow_function_expression(
-            span,
-            false,
-            None,
-            params,
-            None,
-            ArrowFunctionBody::from(value),
-            &self.ast,
-        );
+        let build = self.thunk(value, span);
         let callee = self.helper(Helper::Hole, span);
         let null = Expression::new_null_literal(span, &self.ast);
         let null2 = Expression::new_null_literal(span, &self.ast);
@@ -392,22 +351,7 @@ impl<'a> Emit<'a, '_> {
             return value;
         }
         let span = value.span();
-        let params = FormalParameters::boxed(
-            span,
-            FormalParameterKind::ArrowFormalParameters,
-            ArenaVec::new_in(&self.allocator),
-            None,
-            &self.ast,
-        );
-        Expression::new_arrow_function_expression(
-            span,
-            false,
-            None,
-            params,
-            None,
-            ArrowFunctionBody::from(value),
-            &self.ast,
-        )
+        self.thunk(value, span)
     }
 
     fn decoded(&self, text: &'a str) -> &'a str {
