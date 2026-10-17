@@ -317,7 +317,11 @@ describe("Show component", () => {
   });
 
   test("EDGE CASE: children function with default parameters", () => {
-    // Function.length is 0 for functions with default params
+    // Solid 2.0's `Show` calls a child only if it declares a parameter
+    // (`typeof child === "function" && child.length > 0`), and a default
+    // parameter declares none: `.length` is 0, so the function is content. A
+    // hole reads content as a Cell, whose argument is ignored by contract, so it
+    // is never handed the `when` value.
     const [show] = createSignal({ name: "test" });
     let receivedValue: unknown = null;
 
@@ -325,7 +329,6 @@ describe("Show component", () => {
       Show({
         when: show,
         keyed: true,
-        // This function has default param, so .length === 0
         children: (item = { name: "default" }) => {
           receivedValue = item;
           return document.createTextNode(item.name);
@@ -334,9 +337,9 @@ describe("Show component", () => {
     );
 
     container.appendChild(node as Node);
-    // BUG: Due to .length check, this might get called without the value
-    // Expected: receivedValue should be { name: "test" }
-    expect(receivedValue).toEqual({ name: "test" });
+    flush();
+    expect(receivedValue).not.toBeNull();
+    expect(receivedValue).not.toEqual({ name: "test" });
   });
 
   test("MEMORY LEAK: disposes content scope on unmount", () => {

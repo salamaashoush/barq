@@ -15,7 +15,7 @@ const IMPORTS = join(import.meta.dir, "row-callbacks-imports.ts");
 
 const SOURCE = `
 import { For, Match, Repeat, Show, Switch, createStore } from "@barqjs/core";
-import { count, labels, renderRow } from ${JSON.stringify(IMPORTS)};
+import { count, describePick, labels, renderRow } from ${JSON.stringify(IMPORTS)};
 export const [state, setState] = createStore({
   rows: [{ id: 1, label: "salama", done: false }],
   picked: { name: "salama" } as { name: string } | null,
@@ -45,6 +45,10 @@ export function ParameterFor() { return rows(renderRow); }
 export function AttributeFor() { return <ul><For each={state.rows} children={renderRow} /></ul>; }
 export function ImportedRepeat() {
   return <ul><Repeat count={2}>{(index) => <li>{index}</li>}</Repeat><Repeat count={1} from={4}>{labels.index}</Repeat></ul>;
+}
+export function ImportedShowCallback() { return <p><Show when={state.picked}>{describePick}</Show></p>; }
+export function ImportedMatchCallback() {
+  return <p><Switch><Match when={state.picked}>{describePick}</Match></Switch></p>;
 }
 export function ImportedShowValue() { return <p><Show when={state.picked}>{count}</Show></p>; }
 export function KeyedMatch() {
@@ -127,11 +131,12 @@ for (const optimize of [0, 2]) {
 }
 
 /**
- * A list child the compiler cannot see the kind of goes to the construct as
- * written, which decides it by Solid 2.0's rule: `For` calls it with each row
- * (`solid/src/client/flow.ts:96`) and `Repeat` calls any function with the
- * index (`:140`). `Show` renders a function that declares no parameter as
- * content (`:232`), so a signal handed to it stays live.
+ * A child the compiler cannot see the kind of goes to the construct as written,
+ * which decides it by Solid 2.0's rule: `For` calls it with each row
+ * (`solid/src/client/flow.ts:96`), `Repeat` calls any function with the index
+ * (`:140`), and `Show` and `Match` call a function that declares a parameter,
+ * untracked, and render anything else, so a signal handed to them stays live
+ * (`:232`, `:323`).
  */
 for (const optimize of [0, 2]) {
   describe(`a child of unknown kind, at -O${optimize}`, () => {
@@ -169,6 +174,21 @@ for (const optimize of [0, 2]) {
         view.dispose();
       }
     });
+
+    for (const name of ["ImportedShowCallback", "ImportedMatchCallback"]) {
+      test(`${name}: a function that declares a parameter is called with the narrowed value`, async () => {
+        const view = await mounted(name, optimize);
+        try {
+          expect(view.host.querySelector("p")?.textContent).toBe("picked salama");
+          view.write((draft: { picked: { name: string } | null }) => {
+            draft.picked = null;
+          });
+          expect(view.host.querySelector("p")?.textContent).toBe("");
+        } finally {
+          view.dispose();
+        }
+      });
+    }
 
     test("Show renders a zero-arity function child as a live value", async () => {
       const { setCount } = await import(IMPORTS);

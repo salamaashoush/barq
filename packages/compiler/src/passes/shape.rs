@@ -1223,14 +1223,17 @@ impl<'a> Shaper<'a, '_> {
     /// recreate — a store proxy, a props forward, or an origin the analysis could
     /// not follow at all. Syntactic on purpose: it drives a note, and the honest
     /// answer for anything it cannot see through is "not proven".
-    /// Whether a list construct's lone child is a value whose kind the analysis
+    /// Whether a flow construct's lone child is a value whose kind the analysis
     /// cannot see, an import, a reassigned binding, a parameter, or a member of
     /// one, and so goes to the construct as written. Solid 2.0 decides such a
     /// child at run time, and so does the construct: `For` calls it with each
-    /// row and `Repeat` calls a function with each index. Wrapped as a Cell it
-    /// was a value, and a row callback never received its row.
+    /// row, `Repeat` calls a function with each index, and `Show` and `Match`
+    /// call one that declares a parameter and render anything else. Wrapped as
+    /// a Cell it was a value, and a callback never received its argument.
     pub(super) fn callback_at_runtime(&self, flow: Option<Flow>, value: &Expression<'a>) -> bool {
-        if !matches!(flow, Some(Flow::For | Flow::Repeat)) || self.builds_dom(value) {
+        if !matches!(flow, Some(Flow::For | Flow::Repeat | Flow::Show | Flow::Match))
+            || self.builds_dom(value)
+        {
             return false;
         }
         let mut root = strip_wrappers(value);
@@ -2869,23 +2872,28 @@ mod tests {
         assert_eq!(tanstack("{({ original }) => <tr><td>{original.name}</td></tr>}"), 1);
     }
 
-    /// A list child whose kind the analysis cannot see goes to the construct as
+    /// A child whose kind the analysis cannot see goes to the construct as
     /// written, and the construct decides it as Solid 2.0 does: `For` hands it
-    /// each row and `Repeat` each index. A `Repeat` with `from` stays on its
-    /// adapter, which calls only a function.
+    /// each row and `Repeat` each index. A `Repeat` with `from`, a `Show` and a
+    /// `Match` over one stay on their adapters, which call a `Repeat` child only
+    /// if it is a function and a `Show` or `Match` child only if it declares a
+    /// parameter.
     #[test]
     fn a_child_of_unknown_kind_is_decided_at_run_time() {
         let code = emit(
-            "import { For, Repeat, createSignal } from \"@barqjs/core\";\n\
-             import { renderRow, cell } from \"./rows\";\n\
+            "import { For, Repeat, Show, createSignal } from \"@barqjs/core\";\n\
+             import { renderRow, cell, content } from \"./rows\";\n\
              const [rows] = createSignal([]);\n\
              export const A = () => <ul><For each={rows}>{renderRow}</For></ul>;\n\
-             export const B = () => <ul><Repeat count={2} from={1}>{cell}</Repeat></ul>;\n",
+             export const B = () => <ul><Repeat count={2} from={1}>{cell}</Repeat></ul>;\n\
+             export const C = () => <p><Show when={rows}>{content}</Show></p>;\n",
         )
         .code;
         assert!(code.contains("_$each(_el$1, null, rows, null, renderRow)"), "{code}");
         assert!(!code.contains("() => renderRow"), "{code}");
         assert!(code.contains("children: cell"), "{code}");
         assert!(!code.contains("() => cell"), "{code}");
+        assert!(code.contains("children: content"), "{code}");
+        assert!(!code.contains("() => content"), "{code}");
     }
 }

@@ -215,13 +215,15 @@ fn admits_element<'a>(shaper: &Shaper<'a, '_>, flow: Flow, element: &JSXElement<
     if !spread && required(flow).iter().any(|name| !seen.contains(name)) {
         return false;
     }
-    // `from` shifts the index into a call, and a child of unknown kind may not
-    // be a function: the adapter asks that at run time, as Solid's `Repeat`
-    // does.
-    if flow == Flow::Repeat
-        && (seen.contains(&"from") || spread)
-        && runtime_callback_child(shaper, flow, element)
-    {
+    // A child of unknown kind is decided at run time, by the adapter, as Solid
+    // decides it: `Show` and `Match` call it only if it declares a parameter,
+    // and `Repeat` shifts its index into a call only if it is a function.
+    let decided_by_adapter = match flow {
+        Flow::Show | Flow::Match => true,
+        Flow::Repeat => seen.contains(&"from") || spread,
+        _ => false,
+    };
+    if decided_by_adapter && runtime_callback_child(shaper, flow, element) {
         return false;
     }
     if flow == Flow::Switch { admits_arms(shaper, element) } else { true }

@@ -266,8 +266,20 @@ function slotBlock(slot: unknown): Block<unknown> | null {
   return slot === null || slot === undefined ? null : (slot as Block<unknown>);
 }
 
+/**
+ * A construct's child, decided as Solid 2.0's `Show` and `Match` decide it
+ * (`solid/src/client/flow.ts`, `typeof child === "function" && child.length >
+ * 0`): a function that declares a parameter is a render callback, called
+ * untracked with the value, and any other child is content, a Cell included,
+ * which the branch then reads live. A Block is a construction the compiler
+ * made and is always run.
+ */
 function callSlot(slot: unknown, ...args: unknown[]): unknown {
-  return typeof slot === "function" ? (slot as Block<unknown, unknown[]>)(...args) : slot;
+  if (isBlock(slot)) return (slot as Block<unknown, unknown[]>)(...args);
+  if (typeof slot === "function" && slot.length > 0) {
+    return untrack(() => (slot as (...rest: unknown[]) => unknown)(...args));
+  }
+  return slot;
 }
 
 /** One child after `children()` has resolved it: never an array, never a function to call. */

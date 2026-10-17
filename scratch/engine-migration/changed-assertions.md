@@ -1161,3 +1161,21 @@ store at -O0 and -O2; without the change its `For` and `Show` cases fail at both
   it (`carrier: () => counting`). That is C5's rule for a zero-arity function the author wrote;
   the fixture's claims, including that forwarding does not read the Cell, all pass. No other
   row moved.
+
+
+## Show and Match decide a child by Solid 2.0's rule
+
+Decided by the user, asked directly: a construct child is decided as Solid 2.0 decides it
+(`solid-next/packages/solid/src/client/flow.ts:232` for `Show`, `:323` for `Match`, `typeof
+child === "function" && child.length > 0`). `callSlot` in `core/src/components.ts` now runs a
+branded Block, calls a function that declares a parameter under `untrack` with the value, and
+renders anything else as content. Before, it called every function with the value, so a signal
+handed to `Show` as its child was read once, and the compiler could not pass an imported
+callback through because the two cases were indistinguishable.
+
+- `core/src/components.test.ts` "EDGE CASE: children function with default parameters": asserted
+  that `(item = { name: "default" }) => …`, whose `.length` is 0, is called with the `when`
+  value `{ name: "test" }`. Under Solid's rule a function declaring no parameter is content, so
+  it now asserts the function was read and was not handed the `when` value. A hole reads content
+  as a Cell, with the owner as the argument the Cell contract says it ignores, which is why the
+  test no longer asserts the default value itself.

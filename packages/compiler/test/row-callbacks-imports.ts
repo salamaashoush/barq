@@ -8,4 +8,8 @@ export function renderRow(row: { label: string }): Node {
   return item;
 }
 
+export function describePick(picked: () => { name: string }): string {
+  return `picked ${picked().name}`;
+}
+
 export const labels = { renderRow, index: (index: number): string => String(index) };
