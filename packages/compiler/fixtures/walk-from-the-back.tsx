@@ -31,7 +31,6 @@ export const steps = [() => setLast("ZZ"), () => setPenultimate("YY")]
 
 export const optimality = {
   target: 5,
-  milestone: 3,
   templates: 1,
   patchCalls: 2,
   emits: [".lastChild", ".previousSibling"],

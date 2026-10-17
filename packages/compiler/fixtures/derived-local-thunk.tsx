@@ -22,7 +22,6 @@ export default function DerivedLocalThunk() {
 export const steps = [() => setCount(3), () => setCount(0)]
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 1,
   patchCalls: 2,
   // Reactivity carried through two ordinary `const` bindings by their

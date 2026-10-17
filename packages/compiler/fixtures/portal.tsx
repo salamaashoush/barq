@@ -12,7 +12,6 @@ export default function PortalFixture() {
 }
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 2,
   // `Portal` renders its children into a container it appends elsewhere, so
   // they are nodes and target #8 hands them over as one clone. `mount` is a

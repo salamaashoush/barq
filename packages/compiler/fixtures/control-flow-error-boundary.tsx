@@ -33,7 +33,6 @@ export const events = [
 
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 3,
   // K5: `Errored` ceases to exist and becomes `boundary`, whose kind is
   // the string `"error"` and whose insertion pair is the one the walk computed.

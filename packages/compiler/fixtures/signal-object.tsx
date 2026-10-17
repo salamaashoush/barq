@@ -26,7 +26,6 @@ export const events = [(root: HTMLElement) => root.querySelector("button")?.clic
 
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 1,
   // The return-shape row: one binding, two verdicts. `count()` reads live, and
   // `count.update` is a write rather than a tracked read — so the handler that

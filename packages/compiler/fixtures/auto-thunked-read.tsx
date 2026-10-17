@@ -34,7 +34,6 @@ export const steps = [() => setCount(2)]
 
 export const optimality = {
   target: 1,
-  milestone: 3,
   templates: 1,
   emits: ["`count: ${count()}`", "() => `n=${count()}`"],
 }

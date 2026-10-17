@@ -70,7 +70,6 @@ export const optimality = {
   // M5's. M7's halves — the compare, the caret, the re-assertion — are
   // behavioural and are declared where behaviour is observed, in
   // `fixtures/semantics/`.
-  milestone: 5,
   templates: 1,
   // The property and the reporting event are STRINGS in the emitted call: the
   // runtime is told which channel, never asked to work it out. `valueAsNumber`

@@ -19,7 +19,6 @@ export default function RefBinding() {
 export const steps = [() => box.current?.setAttribute("data-ref-resolved", box.current.className)]
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 1,
   patchCalls: 2,
   // B3: `ref` is a CHANNEL of its own, not a prop — the name never reaches

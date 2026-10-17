@@ -54,7 +54,6 @@ export const steps = [
 
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 4,
   // η-reduction is UNIVERSAL after M3 rather than a five-name whitelist: a
   // zero-arity function IS a Cell, so `() => note()` and `note`

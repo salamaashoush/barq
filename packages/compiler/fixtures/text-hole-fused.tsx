@@ -10,7 +10,6 @@ export const steps = [() => setClicks(1), () => setClicks(12)]
 
 export const optimality = {
   target: 9,
-  milestone: 4,
   templates: 1,
   patchCalls: 1,
   // The case elision CANNOT remove, stated as the exact bytes: the text either

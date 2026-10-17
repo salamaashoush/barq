@@ -57,7 +57,6 @@ export const ssrDiffers = {
 
 export const optimality = {
   target: 4,
-  milestone: 5,
   effects: 1,
   templates: 1,
   // One effect for the element. `ref` is its own channel and opens none.

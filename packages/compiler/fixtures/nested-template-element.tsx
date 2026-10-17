@@ -12,7 +12,6 @@ export default function NestedTemplateElement() {
 }
 export const optimality = {
   target: 2,
-  milestone: 9,
   templates: 1,
   // A `<template>` ELEMENT is baked whole. The parser puts its children on
   // `.content` and `cloneNode` copies that, so the clone carries them — the

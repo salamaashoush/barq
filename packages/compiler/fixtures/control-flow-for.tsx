@@ -27,7 +27,6 @@ export const steps = [
 
 export const optimality = {
   target: 8,
-  milestone: 5,
   // Three templates: the list, the fallback, the row. The fallback is a JSX
   // element, so it is built ONCE as a node exactly as `fallbackNodes` expects;
   // the row body is a callback the runtime invokes per item, so it keeps its

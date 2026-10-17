@@ -17,7 +17,6 @@ export default function StaticAttributeExpression() {
 
 export const optimality = {
   target: 1,
-  milestone: 3,
   effects: 0,
   templates: 1,
   patchCalls: 0,

@@ -38,7 +38,6 @@ export const steps = [() => setCount("2")];
 
 export const optimality = {
   target: 1,
-  milestone: 3,
   templates: 1,
   patchCalls: 3,
   // Every hole takes the accessor UNWRAPPED, and no thunk is built anywhere.

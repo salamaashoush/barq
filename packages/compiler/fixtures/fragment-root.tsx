@@ -22,7 +22,6 @@ export const steps = [() => setLabel("changed")]
 
 export const optimality = {
   target: 2,
-  milestone: 4,
   // `template()` returns `content.firstChild` and nothing else, so a three-root
   // fragment is three templates and an array — not one template holding three
   // siblings, which would silently render only the first.

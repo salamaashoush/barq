@@ -27,7 +27,6 @@ export const events = [
 
 export const optimality = {
   target: 7,
-  milestone: 3,
   emits: ["__bq_click", "__bq_input", "delegateEvents("],
   absent: ["addEventListener"],
 }

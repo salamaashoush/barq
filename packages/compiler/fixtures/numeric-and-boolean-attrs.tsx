@@ -22,7 +22,6 @@ export default function NumericAndBooleanAttrs() {
 export const steps = [() => setActive(true), () => setActive(false)]
 export const optimality = {
   target: 3,
-  milestone: 5,
   templates: 1,
   patchCalls: 1,
   // A NUMBER folds into the attribute channel as the string the DOM would have

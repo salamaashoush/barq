@@ -49,7 +49,6 @@ export const steps = [
 
 export const optimality = {
   target: 1,
-  milestone: 3,
   // The list, the fallback and the row.
   templates: 3,
   // Both row parameters are accessors. The text hole cannot η-reduce, so it

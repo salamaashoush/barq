@@ -20,7 +20,6 @@ export const events = [
 
 export const optimality = {
   target: 7,
-  milestone: 2,
   // `ordered` alone is satisfied by the un-compiled JSX, where the handler also
   // trails the function it is written inside. The expando write is the clause
   // that says the compiler did something.

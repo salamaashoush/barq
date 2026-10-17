@@ -15,7 +15,6 @@ export const steps = [() => setCount(3), () => setCount(7)]
 
 export const optimality = {
   target: 9,
-  milestone: 3,
   templates: 1,
   patchCalls: 1,
   // Something DOES follow the hole, and it is still not a comment: the <span>

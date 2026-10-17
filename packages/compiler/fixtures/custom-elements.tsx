@@ -15,7 +15,6 @@ export default function CustomElements() {
 export const steps = [() => setValue("v2")]
 export const optimality = {
   target: 2,
-  milestone: 5,
   templates: 1,
   patchCalls: 1,
   // A hyphenated tag is an ordinary element: it is baked into the template,

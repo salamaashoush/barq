@@ -30,7 +30,6 @@ export const steps = [
 ]
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 2,
   // `each` η-reduces through a LOCAL arrow with no primitive call in it: the
   // binding is proved to be an accessor by its initialiser, and `activeItems`

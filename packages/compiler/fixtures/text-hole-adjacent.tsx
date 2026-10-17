@@ -16,7 +16,6 @@ export const steps = [() => setA("A"), () => setB("B"), () => setA("")]
 
 export const optimality = {
   target: 9,
-  milestone: 4,
   templates: 1,
   patchCalls: 2,
   // TWO holes, ONE anchor. The first needs a position to insert before, so it

@@ -37,7 +37,6 @@ export const steps = [() => setTail("two"), () => setTail("")]
 
 export const optimality = {
   target: 3,
-  milestone: 6,
   templates: 1,
   // The doubling, and only where a newline leads. `<pre class="plain">` proves
   // the rule is about the first byte rather than about the tag.

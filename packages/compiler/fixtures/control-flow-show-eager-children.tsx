@@ -22,7 +22,6 @@ export default function ControlFlowShowEagerChildren() {
 export const steps = [() => setVisible(false), () => setVisible(true)]
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 3,
   // Zero patch calls: the construct is a REGION, so its `insert` is gone.
   patchCalls: 0,

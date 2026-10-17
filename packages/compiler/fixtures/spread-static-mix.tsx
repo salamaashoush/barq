@@ -28,7 +28,6 @@ export default function SpreadStaticMix() {
 export const steps = [() => setExtra({ role: "link", "data-n": "2" }), () => setExtra({})]
 export const optimality = {
   target: 2,
-  milestone: 9,
   // The markup is still a template; only the attribute list leaves it.
   templates: 1,
   emits: ['<div>spread</div>', '"id": "fixed"', '"class", "after-spread"'],

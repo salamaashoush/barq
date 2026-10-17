@@ -33,7 +33,6 @@ export const events = [(root: HTMLElement) => root.querySelector<HTMLElement>(".
 
 export const optimality = {
   target: 7,
-  milestone: 14,
   templates: 2,
   // The island is a REGION like any other — one `island` call taking the
   // insertion pair the walk computed — and the subtree inside it is an ordinary

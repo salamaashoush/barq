@@ -32,7 +32,6 @@ export default function SwitchMatchComponentBodies() {
 export const steps = [() => setStatus("ready"), () => setStatus("loading")]
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 4,
   // On the DOM target `Match` is a real call. It returns its own
   // props object and `Switch` reads it, so collapsing the pair into a ternary —

@@ -27,7 +27,6 @@ export const steps = [() => setLabel("second")]
 
 export const optimality = {
   target: 4,
-  milestone: 5,
   templates: 2,
   // Target #4 across a component boundary: `data-tone` and `id` are two live
   // reads on ONE element, so they share ONE renderEffect with per-key `!==`

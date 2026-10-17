@@ -14,7 +14,6 @@ export default function ClassListArrayObject() {
 export const steps = [() => setOn(true), () => setOn(false)]
 export const optimality = {
   target: 4,
-  milestone: 5,
   templates: 1,
   patchCalls: 2,
   // `class` normalises its value, so an array or an object has to reach the

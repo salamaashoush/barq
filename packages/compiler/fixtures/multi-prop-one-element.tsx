@@ -16,7 +16,6 @@ export const steps = [
 
 export const optimality = {
   target: 4,
-  milestone: 3,
   effects: 1,
   templates: 1,
 }

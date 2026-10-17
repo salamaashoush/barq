@@ -39,7 +39,6 @@ export const steps = [() => setLabel("second"), () => setTone("blue")]
 
 export const optimality = {
   target: 4,
-  milestone: 5,
   effects: 1,
   templates: 1,
   // One effect covering all three, with the class channel called from inside

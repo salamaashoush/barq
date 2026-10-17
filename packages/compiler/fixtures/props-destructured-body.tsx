@@ -29,7 +29,6 @@ export const steps = [() => setLabel("second")]
 
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 2,
   // Destructuring in the BODY is the same read at a different line: `const {
   // text, tone } = props` drains the object once. The claim is that the call

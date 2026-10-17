@@ -22,7 +22,6 @@ export default function ControlFlowReveal() {
 export const steps = [() => setLabel("two")]
 export const optimality = {
   target: 8,
-  milestone: 9,
   templates: 3,
   // `Reveal` takes its children as nodes, so target #8 applies to both of them:
   // the one with a hole is built by an IIFE and the fully static one is a bare

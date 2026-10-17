@@ -25,7 +25,6 @@ export const events = [
 
 export const optimality = {
   target: 7,
-  milestone: 3,
   emits: ["listen("],
   absent: ["__bq_mouseenter", "__bq_mouseleave", "__bq_focus", "addEventListener"],
 }

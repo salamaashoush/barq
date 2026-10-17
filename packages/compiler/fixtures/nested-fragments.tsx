@@ -20,7 +20,6 @@ export default function NestedFragments() {
 export const steps = [() => setLabel("changed")]
 export const optimality = {
   target: 2,
-  milestone: 5,
   // Five: the host, and one per static subtree the fragments hold. A fragment
   // is not an element, so it cannot be a template root — `template()` returns
   // `content.firstChild` only — and each of its children has to

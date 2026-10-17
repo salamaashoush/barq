@@ -19,7 +19,6 @@ export const steps = [() => setA("A"), () => setB("B")]
 
 export const optimality = {
   target: 5,
-  milestone: 3,
   templates: 1,
   patchCalls: 2,
   // Holes at index 2 and 4 of five children. Forward costs 2 + 4 hops; from the

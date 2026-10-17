@@ -40,7 +40,6 @@ export const steps = [() => settle?.("ready")]
 
 export const optimality = {
   target: 8,
-  milestone: 10,
   templates: 5,
   // K5 from both sides in one module. A boundary is `boundary` under its kind
   // string, taking the insertion pair the walk computed and its fallback

@@ -30,7 +30,6 @@ export const steps = [() => setLabel("second")]
 
 export const optimality = {
   target: 1,
-  milestone: 9,
   // Two templates: the outer div, and `Chip`'s own span. The spread does not
   // take the span off the template path — it takes its ATTRIBUTES off it, and
   // `class="chip"` is applied in source order beside the spread rather than

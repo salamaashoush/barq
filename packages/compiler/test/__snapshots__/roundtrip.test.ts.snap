@@ -89,7 +89,6 @@ export default function AsyncValue() {
 export const steps = [() => setWho("grace"), () => setWho("hopper")];
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 1,
   // \`computed\` returns an Accessor like \`computed\` does, so the CALL is the
   // tracked read and the member on its result rides along inside one thunk —
@@ -165,7 +164,6 @@ export const ssrDiffers = {
 };
 export const optimality = {
   target: 2,
-  milestone: 5,
   templates: 1,
   // The channels are resolved at compile time, so the emitted module names the
   // write and never the classification: no \`setProp\`, and \`my-beep\` is never
@@ -222,7 +220,6 @@ export default function AutoThunkedRead() {
 export const steps = [() => setCount(2)];
 export const optimality = {
   target: 1,
-  milestone: 3,
   templates: 1,
   emits: ["\`count: \${count()}\`", "() => \`n=\${count()}\`"]
 };
@@ -298,7 +295,6 @@ export const optimality = {
   // M5's. M7's halves — the compare, the caret, the re-assertion — are
   // behavioural and are declared where behaviour is observed, in
   // \`fixtures/semantics/\`.
-  milestone: 5,
   templates: 1,
   // The property and the reporting event are STRINGS in the emitted call: the
   // runtime is told which channel, never asked to work it out. \`valueAsNumber\`
@@ -346,7 +342,6 @@ export const events = [(root: HTMLElement) => {
 }];
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 1,
   // The property and the reporting event are STRINGS in the emitted call: the
   // runtime is told which channel, never asked to work it out.
@@ -376,7 +371,6 @@ export default function BooleanAndNullishProps() {
 export const steps = [() => setFlag(true), () => setFlag(false)];
 export const optimality = {
   target: 3,
-  milestone: 5,
   templates: 1,
   patchCalls: 2,
   // \`hidden={false}\` is a literal FALSE, and an HTML boolean attribute has no
@@ -436,7 +430,6 @@ export default function ClassEmptyString() {
 export const steps = [() => setLabel("b"), () => setExtra(true)];
 export const optimality = {
   target: 4,
-  milestone: 6,
   templates: 1,
   // An empty literal class is still an attribute, and it is baked as one.
   emits: ["<span data-p=\\"static\\" class=\\"\\">"],
@@ -466,7 +459,6 @@ export default function ClassListArrayObject() {
 export const steps = [() => setOn(true), () => setOn(false)];
 export const optimality = {
   target: 4,
-  milestone: 5,
   templates: 1,
   patchCalls: 2,
   // \`class\` normalises its value, so an array or an object has to reach the
@@ -507,7 +499,6 @@ export default function ClassListProp() {
 export const steps = [() => setOn(true), () => setOn(false)];
 export const optimality = {
   target: 4,
-  milestone: 5,
   templates: 1,
   patchCalls: 2,
   // The list reaches the class channel whole, so the static \`"badge"\` inside it
@@ -576,7 +567,6 @@ export const ssrDiffers = {
 };
 export const optimality = {
   target: 4,
-  milestone: 5,
   effects: 1,
   templates: 1,
   // One effect for the element. \`ref\` is its own channel and opens none.
@@ -631,7 +621,6 @@ export default function ClassWithLiveSiblings() {
 export const steps = [() => setLabel("second"), () => setTone("blue")];
 export const optimality = {
   target: 4,
-  milestone: 5,
   effects: 1,
   templates: 1,
   // One effect covering all three, with the class channel called from inside
@@ -683,7 +672,6 @@ export default function ComponentBoundaryProps() {
 export const steps = [() => setName("barq")];
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 2,
   // Both props are read through a \`PropsParam\` binding, so both become live
   // reads inside the callee — including \`punctuation\`, which the caller passed
@@ -720,7 +708,6 @@ export default function ComponentChildOfElement() {
 export const steps = [() => setOn(false), () => setOn(true)];
 export const optimality = {
   target: 9,
-  milestone: 5,
   templates: 3,
   // Zero patch calls, where there was one: the hole is a REGION now, so the
   // \`insert\` that used to join the construct to its parent is gone with it —
@@ -795,7 +782,6 @@ export default function ComponentChildrenSlot() {
 export const steps = [() => setBadge(7), () => setBadge(0)];
 export const optimality = {
   target: 1,
-  milestone: 5,
   // Five: the callee's own markup, the caller's page frame, and one per child
   // handed across the boundary.
   templates: 5,
@@ -896,7 +882,6 @@ export const events = [(root: HTMLElement): void => {
 }];
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 2,
   // Three carriers, three rules, in one call. \`cb\` is an array, so C3's
   // identity rule evaluates it ONCE into a cell; \`render\` is a zero-arity arrow
@@ -967,7 +952,6 @@ export const events = [(root: HTMLElement): void => {
 }];
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 2,
   // Both props are functions the component installs or calls itself, so both
   // stay values. A getter here would be a new object per read.
@@ -1014,7 +998,6 @@ export default function ComponentGetterProps() {
 export const steps = [() => setTotal(7)];
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 2,
   // A direct call whose reactive prop is a getter. Both halves matter: the
   // getter is what keeps the read live, and the direct call is what stops
@@ -1073,7 +1056,6 @@ export default function ComponentSpread() {
 export const steps = [() => setLabel("second")];
 export const optimality = {
   target: 4,
-  milestone: 5,
   templates: 2,
   // Target #4 across a component boundary: \`data-tone\` and \`id\` are two live
   // reads on ONE element, so they share ONE renderEffect with per-key \`!==\`
@@ -1108,7 +1090,6 @@ export default function ComputedDerived() {
 export const steps = [() => setCount(5), () => setCount(0)];
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 1,
   // \`computed\` returns an Accessor, so calling it is a tracked read and the bare
   // hole in the \`<b>\` passes the accessor itself: no closure per hole, and
@@ -1163,7 +1144,6 @@ export default function ContextProvider() {
 export const steps = [() => setTheme("sepia")];
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 2,
   // The context is its own provider, called like any component. \`useContext\`
   // returns whatever was provided, so the read inside \`Badge\` stays Opaque and
@@ -1214,7 +1194,6 @@ export default function ControlFlowAwaitSuspense() {
 export const steps = [() => settle?.("ready")];
 export const optimality = {
   target: 8,
-  milestone: 10,
   templates: 5,
   // K5 from both sides in one module. A boundary is \`boundary\` under its kind
   // string, taking the insertion pair the walk computed and its fallback
@@ -1264,7 +1243,6 @@ export const events = [(root: HTMLElement) => {
 }];
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 3,
   // K5: \`Errored\` ceases to exist and becomes \`boundary\`, whose kind is
   // the string \`"error"\` and whose insertion pair is the one the walk computed.
@@ -1314,7 +1292,6 @@ export const events = [(root: HTMLElement) => {
 }];
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 3,
   // All three constructs cease to exist (K5): \`Loading\` and \`Errored\` are the
   // same \`boundary\` primitive under two kind strings, and \`Reveal\` is the
@@ -1378,7 +1355,6 @@ export const steps = [
 ];
 export const optimality = {
   target: 8,
-  milestone: 5,
   // Three templates: the list, the fallback, the row. The fallback is a JSX
   // element, so it is built ONCE as a node exactly as \`fallbackNodes\` expects;
   // the row body is a callback the runtime invokes per item, so it keeps its
@@ -1435,7 +1411,6 @@ export const steps = [() => setRows([{
 }]), () => setRows([])];
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 2,
   // \`keyed={true}\` and \`keyed\` absent are ONE arm, and the compiler says so in
   // the emission rather than forwarding a Cell for the runtime to unpick:
@@ -1491,7 +1466,6 @@ export const steps = [
 ];
 export const optimality = {
   target: 1,
-  milestone: 3,
   templates: 2,
   // The index is a plain number here, so it is baked as a value and never
   // wrapped; the item is an accessor, so its read η-reduces to the accessor.
@@ -1562,7 +1536,6 @@ export const steps = [
 ];
 export const optimality = {
   target: 1,
-  milestone: 3,
   // The list, the fallback and the row.
   templates: 3,
   // Both row parameters are accessors. The text hole cannot η-reduce, so it
@@ -1644,7 +1617,6 @@ export const steps = [() => setRows([{
 }])];
 export const optimality = {
   target: 1,
-  milestone: 10,
   templates: 2,
   // C9's source list is still a runtime object — that part does not change. What
   // changed is that the construct no longer needs to READ it at compile time:
@@ -1710,7 +1682,6 @@ export const steps = [() => setRows([{
 }])];
 export const optimality = {
   target: 1,
-  milestone: 3,
   templates: 2,
   // A BINDING resolved to a function that declares a parameter is a key
   // function, so it reaches \`keyOf\` by name — no Cell around it, and no runtime
@@ -1757,7 +1728,6 @@ export const steps = [
 ];
 export const optimality = {
   target: 8,
-  milestone: 5,
   // The BOUNDARY of target 8, and the reason it is a fact about the children
   // contract rather than about the body. \`For\` calls \`children(item, index)\`
   // per row, so the row thunk survives however static its body is — one shared
@@ -1828,7 +1798,6 @@ export const steps = [
 ];
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 2,
   // The positional mode gives its row an ACCESSOR item and a plain-number index
   // — the mirror image of the identity-keyed default — so the index hole passes
@@ -1886,7 +1855,6 @@ export const steps = [
 ];
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 4,
   // One patch call, and it is the row's \`{item}\` hole. Neither construct costs
   // one: since K5 a region IS a patch, so the \`insert\` that used to join each
@@ -1933,7 +1901,6 @@ export default function ControlFlowRepeat() {
 export const steps = [() => setN(4), () => setN(1)];
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 2,
   // \`Repeat.count\` is unwrapped by the runtime, so the accessor goes in bare;
   // the row index is a plain number and needs no thunk at all.
@@ -1975,7 +1942,6 @@ export default function ControlFlowReveal() {
 export const steps = [() => setLabel("two")];
 export const optimality = {
   target: 8,
-  milestone: 9,
   templates: 3,
   // \`Reveal\` takes its children as nodes, so target #8 applies to both of them:
   // the one with a hole is built by an IIFE and the fully static one is a bare
@@ -2012,7 +1978,6 @@ export default function ControlFlowShow() {
 export const steps = [() => setVisible(false), () => setVisible(true)];
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 3,
   // K5: \`Show\` ceases to exist. The key is the author's own \`when\` read —
   // \`visible() || false\`, which collapses every falsy value onto one key so a
@@ -2084,7 +2049,6 @@ export const steps = [
 ];
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 2,
   patchCalls: 1,
   // The flag integer is the whole point of the fixture. \`2\` is \`NO_SCOPE\`, \`1\`
@@ -2126,7 +2090,6 @@ export default function ControlFlowShowEagerChildren() {
 export const steps = [() => setVisible(false), () => setVisible(true)];
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 3,
   // Zero patch calls: the construct is a REGION, so its \`insert\` is gone.
   patchCalls: 0,
@@ -2179,7 +2142,6 @@ export const steps = [
 ];
 export const optimality = {
   target: 8,
-  milestone: 5,
   // One template for the body, and not one patch call in the module: the
   // subtree produced no patch, so there is nothing left to defer.
   templates: 1,
@@ -2241,7 +2203,6 @@ export const steps = [
 ];
 export const optimality = {
   target: 8,
-  milestone: 5,
   // Five: the host, and one per node in each multi-node fragment. Neither the
   // body nor the fallback is wrapped in a thunk the compiler manufactured —
   // both are arrays of built clones inside the Block the branch owns.
@@ -2302,7 +2263,6 @@ export const steps = [
 ];
 export const optimality = {
   target: 1,
-  milestone: 10,
   templates: 3,
   // The value IS the key, and one body serves every key — no two-row table,
   // because the arm is decided by the value rather than by an index.
@@ -2351,7 +2311,6 @@ export const steps = [
 ];
 export const optimality = {
   target: 1,
-  milestone: 10,
   templates: 3,
   // The key is the truthiness index and the body is the two-row table. The
   // read η-reduces to the accessor, which is the whole claim: a bare name in
@@ -2396,7 +2355,6 @@ export const steps = [
 ];
 export const optimality = {
   target: 8,
-  milestone: 5,
   // The body is a subtree that produced no patch, so it costs one template and
   // not a single patch call anywhere in the module — with the author's thunk
   // still around it, deferring the clone until the branch is taken.
@@ -2459,7 +2417,6 @@ export default function ControlFlowShowStaticKey() {
 export const steps = [() => setLabel("done")];
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 5,
   // One patch, the \`loud\` body's hole. Neither branch is inserted into
   // anything: since K5 a region IS the patch.
@@ -2529,7 +2486,6 @@ export const steps = [
 ];
 export const optimality = {
   target: 1,
-  milestone: 10,
   templates: 2,
   // The source is the accessor itself, static. The keying carrier is the member
   // read, unresolved. Both in one call, which is the whole claim.
@@ -2575,7 +2531,6 @@ export default function ControlFlowSpreadRepeat() {
 export const steps = [() => setN(4), () => setN(1)];
 export const optimality = {
   target: 8,
-  milestone: 10,
   templates: 2,
   // The count is the member read, called by the primitive. The shift is the
   // slot read, wrapped by the compiler.
@@ -2635,7 +2590,6 @@ export const steps = [
 ];
 export const optimality = {
   target: 1,
-  milestone: 10,
   templates: 2,
   // One \`branch\`, one body, and the keying test inside both the key and the
   // body — which is the whole of the third arm. \`readSlot\` is the Cell-slot read at
@@ -2675,7 +2629,6 @@ export const steps = [
 ];
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 4,
   // K5, and the shape the lowering asks for: \`Switch\` and its arms collapse into ONE
   // \`branch\` whose key is an INTEGER — the winning arm's index, with 0 for the
@@ -2738,7 +2691,6 @@ export default function ControlFlowSwitchStaticKey() {
 export const steps = [() => setCount(1), () => setCount(2)];
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 4,
   // Two patches, one per arm's hole. The construct itself costs none.
   patchCalls: 2,
@@ -2774,7 +2726,6 @@ export default function CustomElements() {
 export const steps = [() => setValue("v2")];
 export const optimality = {
   target: 2,
-  milestone: 5,
   templates: 1,
   patchCalls: 1,
   // A hyphenated tag is an ordinary element: it is baked into the template,
@@ -2879,7 +2830,6 @@ export const events = [(root: HTMLElement) => root.querySelector("button")?.clic
 }];
 export const optimality = {
   target: 7,
-  milestone: 5,
   // Everything at once, and every one of them still holds in each other's
   // company: two closure-free handlers hoisted to module scope with ONE
   // \`delegateEvents\` for both types, \`value\` staying in the property channel
@@ -2934,7 +2884,6 @@ export default function DedupIdenticalMarkup() {
 }
 export const optimality = {
   target: 6,
-  milestone: 3,
   // Left and Right emit byte-identical markup, so M4 folds them onto one
   // template and the module keeps two: the shared cell and the grid around it.
   templates: 2,
@@ -2960,7 +2909,6 @@ export default function DeepWalk() {
 export const steps = [() => setLeaf("LL")];
 export const optimality = {
   target: 5,
-  milestone: 3,
   templates: 1,
   patchCalls: 1,
   // Five nested single-child divs, so five hops is the cheapest route there is
@@ -2991,7 +2939,6 @@ export const steps = [() => setCount(1)];
 export const events = [(root: HTMLElement) => root.querySelector("button")?.click(), (root: HTMLElement) => root.querySelector("button")?.click()];
 export const optimality = {
   target: 7,
-  milestone: 3,
   emits: ["__bq_click", "delegateEvents("],
   absent: ["addEventListener"]
 };
@@ -3048,7 +2995,6 @@ export const events = [
 ];
 export const optimality = {
   target: 7,
-  milestone: 3,
   emits: [
     "__bq_click",
     "__bq_input",
@@ -3082,7 +3028,6 @@ export default function DerivedLocalThunk() {
 export const steps = [() => setCount(3), () => setCount(0)];
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 1,
   patchCalls: 2,
   // Reactivity carried through two ordinary \`const\` bindings by their
@@ -3137,7 +3082,6 @@ export default function DiagnosticAccessorCoercion() {
 export const steps = [() => setCount("2")];
 export const optimality = {
   target: 1,
-  milestone: 3,
   templates: 1,
   patchCalls: 3,
   // Every hole takes the accessor UNWRAPPED, and no thunk is built anywhere.
@@ -3184,7 +3128,6 @@ export default function DomPropStaticValue() {
 }
 export const optimality = {
   target: 3,
-  milestone: 4,
   effects: 0,
   templates: 1,
   // Every one of them is a constant, and not one of them may fold.
@@ -3217,7 +3160,6 @@ export default function DynamicFixture() {
 export const steps = [() => setTag("b"), () => setTag("span")];
 export const optimality = {
   target: 8,
-  milestone: 9,
   templates: 1,
   // \`dynamic\` is a component the author hoists, so the call site is an
   // ordinary component call whose props are Cells. The \`branch\` keyed on the
@@ -3269,7 +3211,6 @@ export default function EqualLiveness() {
 export const steps = [() => setTone("blue"), () => setTone("green")];
 export const optimality = {
   target: 4,
-  milestone: 5,
   effects: 1,
   templates: 1,
   // three channel writes, all of them inside one effect
@@ -3308,7 +3249,6 @@ export default function EscapedTextAndAttribute() {
 }
 export const optimality = {
   target: 3,
-  milestone: 4,
   effects: 0,
   templates: 1,
   // The whole thing folds: the quote becomes \`&quot;\` for the attribute
@@ -3386,7 +3326,6 @@ export const steps = [
 ];
 export const optimality = {
   target: 3,
-  milestone: 4,
   // The static half folds; the dynamic half cannot. \`data-markup\` is the proof
   // the folding really happened — a compiler that punted every value to the
   // patch code would satisfy an "is escaped" assertion by never escaping
@@ -3463,7 +3402,6 @@ export const steps = [
 ];
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 4,
   // η-reduction is UNIVERSAL after M3 rather than a five-name whitelist: a
   // zero-arity function IS a Cell, so \`() => note()\` and \`note\`
@@ -3538,7 +3476,6 @@ export const steps = [() => setState((state) => {
 })];
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 2,
   // \`each\` η-reduces through a LOCAL arrow with no primitive call in it: the
   // binding is proved to be an accessor by its initialiser, and \`activeItems\`
@@ -3591,7 +3528,6 @@ export const steps = [() => setWords(["z", "b"]), () => setWords([
 ])];
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 2,
   // \`keyed={false}\` INVERTS the row contract: the item becomes an accessor and
   // the index becomes a plain number. Since M4b the compiler does not pass a
@@ -3653,7 +3589,6 @@ export default function FormAction() {
 export const events = [(root: HTMLElement) => root.querySelector<HTMLButtonElement>("button")?.click()];
 export const optimality = {
   target: 1,
-  milestone: 10,
   templates: 1,
   // One call, taking the scope — the listener it installs is owned by the
   // position (B4), which is why this is an op and not a channel.
@@ -3692,7 +3627,6 @@ export default function FragmentRoot() {
 export const steps = [() => setLabel("changed")];
 export const optimality = {
   target: 2,
-  milestone: 4,
   // \`template()\` returns \`content.firstChild\` and nothing else, so a three-root
   // fragment is three templates and an array — not one template holding three
   // siblings, which would silently render only the first.
@@ -3737,7 +3671,6 @@ export const events = [
 ];
 export const optimality = {
   target: 7,
-  milestone: 3,
   templates: 1,
   emits: ["__bq_click = bump", "__bq_click = reset"],
   absent: ["addEventListener", "\\"onClick\\""]
@@ -3761,7 +3694,6 @@ export const steps = [() => setN(6)];
 export const events = [(root: HTMLElement) => root.querySelector("button")?.click(), (root: HTMLElement) => root.querySelector("button")?.click()];
 export const optimality = {
   target: 7,
-  milestone: 2,
   // \`ordered\` alone is satisfied by the un-compiled JSX, where the handler also
   // trails the function it is written inside. The expando write is the clause
   // that says the compiler did something.
@@ -3785,7 +3717,6 @@ export default function HandlerNoClosure() {
 export const events = [(root: HTMLElement) => root.querySelector("button")?.click()];
 export const optimality = {
   target: 7,
-  milestone: 3,
   ordered: [["setAttribute(\\"data-clicked\\"", "function HandlerNoClosure"]] as Array<[string, string]>
 };
 "
@@ -3817,7 +3748,6 @@ export const steps = [
 ];
 export const optimality = {
   target: 9,
-  milestone: 4,
   templates: 1,
   patchCalls: 2,
   emits: ["<div class=\\"pair\\"><span class=\\"tail\\">tail:</span></div>"],
@@ -3834,7 +3764,6 @@ export default function HtmlEntities() {
 }
 export const optimality = {
   target: 3,
-  milestone: 5,
   effects: 0,
   templates: 1,
   patchCalls: 0,
@@ -3910,7 +3839,6 @@ export default function InertMemberReads() {
 }
 export const optimality = {
   target: 1,
-  milestone: 4,
   effects: 0,
   templates: 1,
   // Three holes, three inserts, and not one thunk: \`items.length\` reaches the
@@ -3954,7 +3882,6 @@ export default function InnerHtmlWithChildren() {
 }
 export const optimality = {
   target: 2,
-  milestone: 9,
   // One template for the whole section, the \`div\` included. Only the CHILDREN
   // of the element whose content is replaced leave the template — the write
   // would delete them where the parser put them, and it runs first.
@@ -3975,7 +3902,6 @@ export default function LiteralClassStyle() {
 }
 export const optimality = {
   target: 3,
-  milestone: 3,
   effects: 0,
   templates: 1,
   patchCalls: 0,
@@ -4032,7 +3958,6 @@ export default function LiveCallHole() {
 export const steps = [() => setCount("5"), () => setLabel("c2")];
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 1,
   // The hole keeps its arrow. Reduced, \`insert\` would be handed \`String\` itself.
   emits: ["() => String(count())"],
@@ -4096,7 +4021,6 @@ export const steps = [
 const frame = (mid: string, opt: string, zero: string, flag: boolean): string => \`<div class="cond"><span class="head">head</span>\${flag ? "<em class=\\"flag\\">on</em>" : ""}\` + \`<span class="mid">\${mid}</span><span class="opt">\${opt}</span>\` + \`<span class="zero">\${zero}</span><span class="tail">tail</span></div>\`;
 export const optimality = {
   target: 9,
-  milestone: 5,
   // Four holes and not one baked anchor: three are their span's only child and
   // have nothing after them, and the bare one is followed by an ELEMENT, which
   // is its own anchor. The whole page is two templates — one for the frame with
@@ -4155,7 +4079,6 @@ export default function MarkerLiteralText() {
 export const steps = [() => setNote("<!---->x"), () => setNote("plain")];
 export const optimality = {
   target: 9,
-  milestone: 2,
   templates: 1,
   patchCalls: 1,
   emits: ["data-note=\\"<!---->\\""]
@@ -4198,7 +4121,6 @@ export const steps = [
 ];
 export const optimality = {
   target: 4,
-  milestone: 3,
   effects: 1,
   templates: 1
 };
@@ -4222,7 +4144,6 @@ export default function MultiSignalExpression() {
 export const steps = [() => setA(10), () => setB(20)];
 export const optimality = {
   target: 4,
-  milestone: 5,
   templates: 1,
   patchCalls: 2,
   // Two independent dep sets joined into one hole and one attribute. The
@@ -4266,7 +4187,6 @@ export default function NestedFragments() {
 export const steps = [() => setLabel("changed")];
 export const optimality = {
   target: 2,
-  milestone: 5,
   // Five: the host, and one per static subtree the fragments hold. A fragment
   // is not an element, so it cannot be a template root — \`template()\` returns
   // \`content.firstChild\` only — and each of its children has to
@@ -4294,7 +4214,6 @@ export default function NestedTemplateElement() {
 }
 export const optimality = {
   target: 2,
-  milestone: 9,
   templates: 1,
   // A \`<template>\` ELEMENT is baked whole. The parser puts its children on
   // \`.content\` and \`cloneNode\` copies that, so the clone carries them — the
@@ -4339,7 +4258,6 @@ export default function NoHydrationIsland() {
 export const events = [(root: HTMLElement) => root.querySelector<HTMLElement>(".live")?.click()];
 export const optimality = {
   target: 7,
-  milestone: 14,
   templates: 2,
   // The island is a REGION like any other — one \`island\` call taking the
   // insertion pair the walk computed — and the subtree inside it is an ordinary
@@ -4375,7 +4293,6 @@ export const events = [
 ];
 export const optimality = {
   target: 7,
-  milestone: 3,
   emits: ["listen("],
   absent: [
     "__bq_mouseenter",
@@ -4408,7 +4325,6 @@ export default function NumericAndBooleanAttrs() {
 export const steps = [() => setActive(true), () => setActive(false)];
 export const optimality = {
   target: 3,
-  milestone: 5,
   templates: 1,
   patchCalls: 1,
   // A NUMBER folds into the attribute channel as the string the DOM would have
@@ -4454,7 +4370,6 @@ export default function CreateOptimisticSignal() {
 export const events = [(root: HTMLElement) => root.querySelector("button")?.click()];
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 1,
   // The setter is a function the compiler can see through, so the handler that
   // calls the action hoists to module scope and the one handed over by
@@ -4483,7 +4398,6 @@ export default function PortalFixture() {
 }
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 2,
   // \`Portal\` renders its children into a container it appends elsewhere, so
   // they are nodes and target #8 hands them over as one clone. \`mount\` is a
@@ -4552,7 +4466,6 @@ export default function PreDynamicLeadingNewline() {
 export const steps = [() => setBody("no newline"), () => setDraft("")];
 export const optimality = {
   target: 3,
-  milestone: 6,
   // The \`<textarea>\` holding a hole is refused, so it leaves the template.
   templates: 1,
   // Nothing LITERAL leads either element, so the DOM template doubles nothing:
@@ -4603,7 +4516,6 @@ export default function PreLeadingNewline() {
 export const steps = [() => setTail("two"), () => setTail("")];
 export const optimality = {
   target: 3,
-  milestone: 6,
   templates: 1,
   // The doubling, and only where a newline leads. \`<pre class="plain">\` proves
   // the rule is about the first byte rather than about the tag.
@@ -4649,7 +4561,6 @@ export default function CreateProjectionStore() {
 export const steps = [() => setOn(true), () => setOn(false)];
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 1,
   // \`projection\` returns a ReactiveObject directly — not a tuple — so any
   // MEMBER read of it is the tracked read and both holes bind live off \`.on\`.
@@ -4722,7 +4633,6 @@ export default function PropsDestructuredBody() {
 export const steps = [() => setLabel("second")];
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 2,
   // Destructuring in the BODY is the same read at a different line: \`const {
   // text, tone } = props\` drains the object once. The claim is that the call
@@ -4780,7 +4690,6 @@ export default function PropsDestructuredParam() {
 export const steps = [() => setLabel("second")];
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 2,
   // A destructured PARAMETER reads every prop at binding time, so the two
   // locals are snapshots and nothing the compiler does can make them live.
@@ -4843,7 +4752,6 @@ export default function PropsRawForward() {
 export const steps = [() => setTone("cool")];
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 2,
   // The forward itself: the middle layer must hand ON a getter, not the value
   // its own read produced.
@@ -4888,7 +4796,6 @@ export default function PropsRenamedAndDefaulted() {
 export const steps = [() => setLabel("second")];
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 2,
   // Renaming and defaulting are ordinary destructuring, so they snapshot like
   // the other two. The prop the caller OMITS must be omitted from the object
@@ -4939,7 +4846,6 @@ export default function PropsRestSpread() {
 export const steps = [() => setLabel("second")];
 export const optimality = {
   target: 1,
-  milestone: 9,
   // Two templates: the outer div, and \`Chip\`'s own span. The spread does not
   // take the span off the template path — it takes its ATTRIBUTES off it, and
   // \`class="chip"\` is applied in source order beside the spread rather than
@@ -4993,7 +4899,6 @@ export const steps = [
 */
 export const optimality = {
   target: 4,
-  milestone: 5,
   effects: 1,
   templates: 1,
   emits: [
@@ -5065,7 +4970,6 @@ const hold = action(function* () {
 export const steps = [() => void hold()];
 export const optimality = {
   target: 1,
-  milestone: 11,
   templates: 1,
   // One fused effect (B2) for the template's two live classes, the \`latest\`
   // hole's own effect, and the control's class object handed straight to
@@ -5114,7 +5018,6 @@ export default function ReassignedBinding() {
 }
 export const optimality = {
   target: 3,
-  milestone: 4,
   effects: 0,
   templates: 1,
   // The attribute and the child both stay patch calls: neither value is a
@@ -5147,7 +5050,6 @@ export default function RefBinding() {
 export const steps = [() => box.current?.setAttribute("data-ref-resolved", box.current.className)];
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 1,
   patchCalls: 2,
   // B3: \`ref\` is a CHANNEL of its own, not a prop — the name never reaches
@@ -5197,7 +5099,6 @@ export default function RefCleanup() {
 }
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 1,
   patchCalls: 1,
   emits: ["ref("],
@@ -5252,7 +5153,6 @@ export const steps = [() => {
 }];
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 2,
   // The same word, two channels, decided by what it is attached to. On the
   // intrinsic \`<b>\` it is the runtime ref channel and reaches \`setProp\`; on the
@@ -5296,7 +5196,6 @@ export default function RefWritableBinding() {
 export const steps = [() => box?.setAttribute("data-el", box.className)];
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 1,
   patchCalls: 0,
   // No channel call at all: the assignment IS the emission.
@@ -5345,7 +5244,6 @@ export const steps = [
 ];
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 4,
   // Nothing in this module is spelled the way a regex would look for it, and
   // every decision still lands: \`When\` is resolved to \`Show\` and \`Each\` to
@@ -5398,7 +5296,6 @@ export default function SelectOptionMultiple() {
 }
 export const optimality = {
   target: 2,
-  milestone: 4,
   // One template for the whole select, with \`multiple\` baked into it.
   templates: 1,
   emits: ["<select class=\\"picker\\" multiple><option>one</option><option>two</option></select>"],
@@ -5446,7 +5343,6 @@ export default function SiblingLiveProps() {
 export const steps = [() => setLeft("l2"), () => setRight("r2")];
 export const optimality = {
   target: 4,
-  milestone: 3,
   // One for the pair, never one per element.
   effects: 1,
   templates: 1
@@ -5470,7 +5366,6 @@ export default function SiblingWalk() {
 export const steps = [() => setA("A"), () => setB("B")];
 export const optimality = {
   target: 5,
-  milestone: 3,
   templates: 1,
   patchCalls: 2,
   // Holes at index 2 and 4 of five children. Forward costs 2 + 4 hops; from the
@@ -5498,7 +5393,6 @@ export default function SignalAlias() {
 export const steps = [() => setCount(4), () => setCount(-1)];
 export const optimality = {
   target: 1,
-  milestone: 4,
   templates: 1,
   patchCalls: 2,
   // \`alias\` IS \`count\`, so the hole keeps its arrow and stays live. \`total\` is
@@ -5542,7 +5436,6 @@ export default function SignalMethodsInHandler() {
 export const events = [(root: HTMLElement) => root.querySelector("button")?.click(), (root: HTMLElement) => root.querySelector("button")?.click()];
 export const optimality = {
   target: 1,
-  milestone: 4,
   templates: 1,
   patchCalls: 2,
   // One signal, three verdicts: the hole's read is tracked, the setter call and
@@ -5585,7 +5478,6 @@ export const steps = [() => setCount(5), () => setCount((n) => n * 2)];
 export const events = [(root: HTMLElement) => root.querySelector("button")?.click()];
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 1,
   // The return-shape row: one binding, two verdicts. \`count()\` reads live, and
   // \`count.update\` is a write rather than a tracked read — so the handler that
@@ -5633,7 +5525,6 @@ export const steps = [() => setExtra({
 }), () => setExtra({})];
 export const optimality = {
   target: 2,
-  milestone: 9,
   // The markup is still a template; only the attribute list leaves it.
   templates: 1,
   emits: [
@@ -5662,7 +5553,6 @@ export default function StaticAttributeExpression() {
 }
 export const optimality = {
   target: 1,
-  milestone: 3,
   effects: 0,
   templates: 1,
   patchCalls: 0,
@@ -5685,7 +5575,6 @@ export default function StaticOnly() {
 }
 export const optimality = {
   target: 2,
-  milestone: 2,
   effects: 0,
   templates: 1,
   patchCalls: 0,
@@ -5730,7 +5619,6 @@ export const steps = [
 ];
 export const optimality = {
   target: 1,
-  milestone: 4,
   templates: 1,
   patchCalls: 2,
   // A store proxy is read as a MEMBER, never called. \`state()\` throws.
@@ -5815,7 +5703,6 @@ export default function SvgNestedInHtml() {
 }
 export const optimality = {
   target: 2,
-  milestone: 4,
   effects: 0,
   templates: 1,
   patchCalls: 0,
@@ -5861,7 +5748,6 @@ export default function SwitchMatchComponentBodies() {
 export const steps = [() => setStatus("ready"), () => setStatus("loading")];
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 4,
   // On the DOM target \`Match\` is a real call. It returns its own
   // props object and \`Switch\` reads it, so collapsing the pair into a ternary —
@@ -5935,7 +5821,6 @@ export default function TableRootShapes() {
 export const steps = [() => setRevision(2), () => setRevision(3)];
 export const optimality = {
   target: 2,
-  milestone: 6,
   // The table, then one per hole: caption, col, the head row, the cell, the
   // foot. Every one of them was a \`createElement\` chain before a template root
   // stopped being modelled as "in body".
@@ -6016,7 +5901,6 @@ export const steps = [
 ];
 export const optimality = {
   target: 2,
-  milestone: 6,
   // Two: the table with its tbody, and the row. Before "in template" insertion
   // mode was modelled the second one did not exist and the whole row body was
   // \`createElement\`.
@@ -6085,7 +5969,6 @@ export const steps = [
 ];
 export const optimality = {
   target: 9,
-  milestone: 4,
   templates: 1,
   patchCalls: 2,
   // TWO holes, ONE anchor. The first needs a position to insert before, so it
@@ -6109,7 +5992,6 @@ export default function TextHoleFollowed() {
 export const steps = [() => setCount(3), () => setCount(7)];
 export const optimality = {
   target: 9,
-  milestone: 3,
   templates: 1,
   patchCalls: 1,
   // Something DOES follow the hole, and it is still not a comment: the <span>
@@ -6133,7 +6015,6 @@ export default function TextHoleFused() {
 export const steps = [() => setClicks(1), () => setClicks(12)];
 export const optimality = {
   target: 9,
-  milestone: 4,
   templates: 1,
   patchCalls: 1,
   // The case elision CANNOT remove, stated as the exact bytes: the text either
@@ -6161,7 +6042,6 @@ export const steps = [
 ];
 export const optimality = {
   target: 9,
-  milestone: 3,
   templates: 1,
   patchCalls: 1,
   // Nothing follows the hole, so \`insert\` can append and the anchor goes.
@@ -6195,7 +6075,6 @@ export default function TwoComponentsTwoTemplates() {
 }
 export const optimality = {
   target: 6,
-  milestone: 4,
   templates: 3,
   patchCalls: 2
 };
@@ -6223,7 +6102,6 @@ export default function TwoNestedHoles() {
 export const steps = [() => setB("Z"), () => setA("Y")];
 export const optimality = {
   target: 9,
-  milestone: 4,
   templates: 1,
   patchCalls: 2,
   emits: ["<div class=\\"nested\\"><span>1:</span><span>2:</span></div>"],
@@ -6264,7 +6142,6 @@ export default function VoidElements() {
 }
 export const optimality = {
   target: 2,
-  milestone: 4,
   effects: 0,
   templates: 1,
   patchCalls: 0,
@@ -6301,7 +6178,6 @@ export default function WalkFromTheBack() {
 export const steps = [() => setLast("ZZ"), () => setPenultimate("YY")];
 export const optimality = {
   target: 5,
-  milestone: 3,
   templates: 1,
   patchCalls: 2,
   emits: [".lastChild", ".previousSibling"],
@@ -6318,7 +6194,6 @@ export default function WhitespaceOnly() {
 }
 export const optimality = {
   target: 2,
-  milestone: 4,
   effects: 0,
   templates: 1,
   patchCalls: 0,

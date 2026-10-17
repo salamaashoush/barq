@@ -21,7 +21,6 @@ export const steps = [() => setB("Z"), () => setA("Y")]
 
 export const optimality = {
   target: 9,
-  milestone: 4,
   templates: 1,
   patchCalls: 2,
   emits: ["<div class=\"nested\"><span>1:</span><span>2:</span></div>"],

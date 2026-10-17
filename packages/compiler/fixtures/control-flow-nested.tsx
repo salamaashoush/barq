@@ -32,7 +32,6 @@ export const steps = [
 
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 4,
   // One patch call, and it is the row's `{item}` hole. Neither construct costs
   // one: since K5 a region IS a patch, so the `insert` that used to join each

@@ -21,7 +21,6 @@ export const steps = [
 
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 4,
   // K5, and the shape the lowering asks for: `Switch` and its arms collapse into ONE
   // `branch` whose key is an INTEGER — the winning arm's index, with 0 for the

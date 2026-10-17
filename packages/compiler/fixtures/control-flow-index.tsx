@@ -27,7 +27,6 @@ export const steps = [() => setNums([9, 2, 3]), () => setNums([9]), () => setNum
 
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 2,
   // The positional mode gives its row an ACCESSOR item and a plain-number index
   // — the mirror image of the identity-keyed default — so the index hole passes

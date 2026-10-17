@@ -17,7 +17,6 @@ export const steps = [() => setVisible(false), () => setVisible(true)]
 
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 3,
   // K5: `Show` ceases to exist. The key is the author's own `when` read —
   // `visible() || false`, which collapses every falsy value onto one key so a

@@ -25,7 +25,6 @@ export default function DedupIdenticalMarkup() {
 
 export const optimality = {
   target: 6,
-  milestone: 3,
   // Left and Right emit byte-identical markup, so M4 folds them onto one
   // template and the module keeps two: the shared cell and the grid around it.
   templates: 2,

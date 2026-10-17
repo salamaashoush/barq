@@ -24,7 +24,6 @@ export default function SelectOptionMultiple() {
 
 export const optimality = {
   target: 2,
-  milestone: 4,
   // One template for the whole select, with `multiple` baked into it.
   templates: 1,
   emits: ['<select class="picker" multiple><option>one</option><option>two</option></select>'],

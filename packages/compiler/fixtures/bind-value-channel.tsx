@@ -34,7 +34,6 @@ export const events = [
 
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 1,
   // The property and the reporting event are STRINGS in the emitted call: the
   // runtime is told which channel, never asked to work it out.

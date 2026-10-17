@@ -23,7 +23,6 @@ export const steps = [() => setA("Z"), () => setB("Y"), () => setA("")]
 
 export const optimality = {
   target: 9,
-  milestone: 4,
   templates: 1,
   patchCalls: 2,
   emits: ['<div class="pair"><span class="tail">tail:</span></div>'],

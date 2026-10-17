@@ -38,7 +38,6 @@ export const steps = [
 
 export const optimality = {
   target: 1,
-  milestone: 10,
   templates: 3,
   // The key is the truthiness index and the body is the two-row table. The
   // read η-reduces to the accessor, which is the whole claim: a bare name in

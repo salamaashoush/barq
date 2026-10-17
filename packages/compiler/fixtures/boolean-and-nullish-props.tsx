@@ -16,7 +16,6 @@ export default function BooleanAndNullishProps() {
 export const steps = [() => setFlag(true), () => setFlag(false)]
 export const optimality = {
   target: 3,
-  milestone: 5,
   templates: 1,
   patchCalls: 2,
   // `hidden={false}` is a literal FALSE, and an HTML boolean attribute has no

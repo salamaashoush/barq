@@ -62,7 +62,6 @@ export const steps = [
 
 export const optimality = {
   target: 3,
-  milestone: 4,
   // The static half folds; the dynamic half cannot. `data-markup` is the proof
   // the folding really happened — a compiler that punted every value to the
   // patch code would satisfy an "is escaped" assertion by never escaping

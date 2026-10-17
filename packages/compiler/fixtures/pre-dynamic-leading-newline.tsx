@@ -42,7 +42,6 @@ export const steps = [() => setBody("no newline"), () => setDraft("")]
 
 export const optimality = {
   target: 3,
-  milestone: 6,
   // The `<textarea>` holding a hole is refused, so it leaves the template.
   templates: 1,
   // Nothing LITERAL leads either element, so the DOM template doubles nothing:

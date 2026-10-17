@@ -16,7 +16,6 @@ export default function DomPropStaticValue() {
 
 export const optimality = {
   target: 3,
-  milestone: 4,
   effects: 0,
   templates: 1,
   // Every one of them is a constant, and not one of them may fold.

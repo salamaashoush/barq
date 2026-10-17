@@ -46,7 +46,6 @@ export const events = [
 
 export const optimality = {
   target: 1,
-  milestone: 10,
   templates: 1,
   // One call, taking the scope — the listener it installs is owned by the
   // position (B4), which is why this is an op and not a channel.

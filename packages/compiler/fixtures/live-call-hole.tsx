@@ -36,7 +36,6 @@ export const steps = [() => setCount("5"), () => setLabel("c2")]
 
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 1,
   // The hole keeps its arrow. Reduced, `insert` would be handed `String` itself.
   emits: ["() => String(count())"],

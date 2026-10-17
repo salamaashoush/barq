@@ -24,7 +24,6 @@ export const steps = [() => setName("barq")]
 
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 2,
   // Both props are read through a `PropsParam` binding, so both become live
   // reads inside the callee — including `punctuation`, which the caller passed

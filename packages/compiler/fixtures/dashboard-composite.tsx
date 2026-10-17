@@ -63,7 +63,6 @@ export const events = [
 
 export const optimality = {
   target: 7,
-  milestone: 5,
   // Everything at once, and every one of them still holds in each other's
   // company: two closure-free handlers hoisted to module scope with ONE
   // `delegateEvents` for both types, `value` staying in the property channel

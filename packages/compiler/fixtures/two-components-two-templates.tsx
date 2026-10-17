@@ -30,7 +30,6 @@ export default function TwoComponentsTwoTemplates() {
 
 export const optimality = {
   target: 6,
-  milestone: 4,
   templates: 3,
   patchCalls: 2,
 }

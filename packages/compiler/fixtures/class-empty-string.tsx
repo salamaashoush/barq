@@ -41,7 +41,6 @@ export const steps = [() => setLabel("b"), () => setExtra(true)]
 
 export const optimality = {
   target: 4,
-  milestone: 6,
   templates: 1,
   // An empty literal class is still an attribute, and it is baked as one.
   emits: ['<span data-p="static" class="">'],

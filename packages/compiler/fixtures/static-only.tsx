@@ -14,7 +14,6 @@ export default function StaticOnly() {
 
 export const optimality = {
   target: 2,
-  milestone: 2,
   effects: 0,
   templates: 1,
   patchCalls: 0,

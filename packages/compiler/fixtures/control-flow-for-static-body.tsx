@@ -25,7 +25,6 @@ export const steps = [() => setRows([1, 2, 3]), () => setRows([1]), () => setRow
 
 export const optimality = {
   target: 8,
-  milestone: 5,
   // The BOUNDARY of target 8, and the reason it is a fact about the children
   // contract rather than about the body. `For` calls `children(item, index)`
   // per row, so the row thunk survives however static its body is — one shared

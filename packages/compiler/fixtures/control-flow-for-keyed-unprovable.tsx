@@ -36,7 +36,6 @@ export const steps = [
 
 export const optimality = {
   target: 1,
-  milestone: 3,
   templates: 2,
   // A BINDING resolved to a function that declares a parameter is a key
   // function, so it reaches `keyOf` by name — no Cell around it, and no runtime

@@ -41,7 +41,6 @@ export const steps = [
 
 export const optimality = {
   target: 1,
-  milestone: 10,
   templates: 2,
   // The source is the accessor itself, static. The keying carrier is the member
   // read, unresolved. Both in one call, which is the whole claim.

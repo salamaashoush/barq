@@ -31,7 +31,6 @@ export const steps = [() => setCount(1), () => setCount(2)]
 
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 4,
   // Two patches, one per arm's hole. The construct itself costs none.
   patchCalls: 2,

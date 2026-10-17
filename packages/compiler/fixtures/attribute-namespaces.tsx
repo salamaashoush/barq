@@ -73,7 +73,6 @@ export const ssrDiffers = {
 
 export const optimality = {
   target: 2,
-  milestone: 5,
   templates: 1,
   // The channels are resolved at compile time, so the emitted module names the
   // write and never the classification: no `setProp`, and `my-beep` is never

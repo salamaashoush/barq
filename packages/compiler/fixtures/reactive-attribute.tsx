@@ -26,7 +26,6 @@ export const steps = [() => setActive(true), () => setHref("/about"), () => setA
  */
 export const optimality = {
   target: 4,
-  milestone: 5,
   effects: 1,
   templates: 1,
   emits: ['"href"', "setClass(", "bindEffect("],

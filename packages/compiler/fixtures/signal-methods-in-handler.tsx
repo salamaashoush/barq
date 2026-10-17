@@ -31,7 +31,6 @@ export const events = [
 
 export const optimality = {
   target: 1,
-  milestone: 4,
   templates: 1,
   patchCalls: 2,
   // One signal, three verdicts: the hole's read is tracked, the setter call and

@@ -41,7 +41,6 @@ export const steps = [() => setTone("cool")]
 
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 2,
   // The forward itself: the middle layer must hand ON a getter, not the value
   // its own read produced.

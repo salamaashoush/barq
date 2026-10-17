@@ -28,7 +28,6 @@ export const steps = [() => box?.setAttribute("data-el", box.className)]
 
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 1,
   patchCalls: 0,
   // No channel call at all: the assignment IS the emission.

@@ -24,7 +24,6 @@ export const steps = [() => setTone("blue"), () => setTone("green")]
 
 export const optimality = {
   target: 4,
-  milestone: 5,
   effects: 1,
   templates: 1,
   // three channel writes, all of them inside one effect

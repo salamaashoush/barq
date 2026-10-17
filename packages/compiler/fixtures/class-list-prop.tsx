@@ -19,7 +19,6 @@ export default function ClassListProp() {
 export const steps = [() => setOn(true), () => setOn(false)]
 export const optimality = {
   target: 4,
-  milestone: 5,
   templates: 1,
   patchCalls: 2,
   // The list reaches the class channel whole, so the static `"badge"` inside it

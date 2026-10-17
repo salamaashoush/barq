@@ -54,7 +54,6 @@ export const steps = [() => void hold()]
 
 export const optimality = {
   target: 1,
-  milestone: 11,
   templates: 1,
   // One fused effect (B2) for the template's two live classes, the `latest`
   // hole's own effect, and the control's class object handed straight to

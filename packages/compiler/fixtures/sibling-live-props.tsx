@@ -32,7 +32,6 @@ export const steps = [() => setLeft("l2"), () => setRight("r2")]
 
 export const optimality = {
   target: 4,
-  milestone: 3,
   // One for the pair, never one per element.
   effects: 1,
   templates: 1,

@@ -25,7 +25,6 @@ export const steps = [() => setOn(true), () => setOn(false)]
 
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 1,
   // `projection` returns a ReactiveObject directly — not a tuple — so any
   // MEMBER read of it is the tracked read and both holes bind live off `.on`.

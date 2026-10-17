@@ -18,7 +18,6 @@ export const steps = [() => setCount(4), () => setCount(-1)]
 
 export const optimality = {
   target: 1,
-  milestone: 4,
   templates: 1,
   patchCalls: 2,
   // `alias` IS `count`, so the hole keeps its arrow and stays live. `total` is

@@ -25,7 +25,6 @@ export default function InnerHtmlWithChildren() {
 }
 export const optimality = {
   target: 2,
-  milestone: 9,
   // One template for the whole section, the `div` included. Only the CHILDREN
   // of the element whose content is replaced leave the template — the write
   // would delete them where the parser put them, and it runs first.

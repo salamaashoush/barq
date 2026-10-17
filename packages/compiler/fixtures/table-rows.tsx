@@ -51,7 +51,6 @@ export const steps = [
 
 export const optimality = {
   target: 2,
-  milestone: 6,
   // Two: the table with its tbody, and the row. Before "in template" insertion
   // mode was modelled the second one did not exist and the whole row body was
   // `createElement`.

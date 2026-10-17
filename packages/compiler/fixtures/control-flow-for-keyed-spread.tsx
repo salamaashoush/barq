@@ -50,7 +50,6 @@ export const steps = [
 
 export const optimality = {
   target: 1,
-  milestone: 10,
   templates: 2,
   // C9's source list is still a runtime object — that part does not change. What
   // changed is that the construct no longer needs to READ it at compile time:

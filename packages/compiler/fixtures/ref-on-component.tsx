@@ -38,7 +38,6 @@ export const steps = [
 
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 2,
   // The same word, two channels, decided by what it is attached to. On the
   // intrinsic `<b>` it is the runtime ref channel and reaches `setProp`; on the

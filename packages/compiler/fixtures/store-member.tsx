@@ -34,7 +34,6 @@ export const steps = [
 
 export const optimality = {
   target: 1,
-  milestone: 4,
   templates: 1,
   patchCalls: 2,
   // A store proxy is read as a MEMBER, never called. `state()` throws.

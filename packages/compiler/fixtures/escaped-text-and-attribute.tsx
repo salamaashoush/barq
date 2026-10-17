@@ -16,7 +16,6 @@ export default function EscapedTextAndAttribute() {
 
 export const optimality = {
   target: 3,
-  milestone: 4,
   effects: 0,
   templates: 1,
   // The whole thing folds: the quote becomes `&quot;` for the attribute

@@ -35,7 +35,6 @@ export const steps = [() => setTotal(7)]
 
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 2,
   // A direct call whose reactive prop is a getter. Both halves matter: the
   // getter is what keeps the read live, and the direct call is what stops

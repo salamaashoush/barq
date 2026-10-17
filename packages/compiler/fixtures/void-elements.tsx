@@ -12,7 +12,6 @@ export default function VoidElements() {
 
 export const optimality = {
   target: 2,
-  milestone: 4,
   effects: 0,
   templates: 1,
   patchCalls: 0,

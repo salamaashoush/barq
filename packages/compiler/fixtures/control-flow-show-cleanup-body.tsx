@@ -54,7 +54,6 @@ export const steps = [() => setOn(true), () => setOn(false), () => setOn(true)]
 
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 2,
   patchCalls: 1,
   // The flag integer is the whole point of the fixture. `2` is `NO_SCOPE`, `1`

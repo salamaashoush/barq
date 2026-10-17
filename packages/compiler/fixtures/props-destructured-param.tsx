@@ -30,7 +30,6 @@ export const steps = [() => setLabel("second")]
 
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 2,
   // A destructured PARAMETER reads every prop at binding time, so the two
   // locals are snapshots and nothing the compiler does can make them live.

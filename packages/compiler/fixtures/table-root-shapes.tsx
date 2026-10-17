@@ -49,7 +49,6 @@ export const steps = [() => setRevision(2), () => setRevision(3)]
 
 export const optimality = {
   target: 2,
-  milestone: 6,
   // The table, then one per hole: caption, col, the head row, the cell, the
   // foot. Every one of them was a `createElement` chain before a template root
   // stopped being modelled as "in body".

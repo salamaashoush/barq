@@ -27,7 +27,6 @@ export default function ForUnkeyedRows() {
 export const steps = [() => setWords(["z", "b"]), () => setWords(["z", "b", "c"])]
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 2,
   // `keyed={false}` INVERTS the row contract: the item becomes an accessor and
   // the index becomes a plain number. Since M4b the compiler does not pass a

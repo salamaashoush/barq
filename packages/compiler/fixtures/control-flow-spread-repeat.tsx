@@ -26,7 +26,6 @@ export const steps = [() => setN(4), () => setN(1)]
 
 export const optimality = {
   target: 8,
-  milestone: 10,
   templates: 2,
   // The count is the member read, called by the primitive. The shift is the
   // slot read, wrapped by the compiler.

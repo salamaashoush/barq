@@ -47,7 +47,6 @@ export const steps = [() => setBadge(7), () => setBadge(0)]
 
 export const optimality = {
   target: 1,
-  milestone: 5,
   // Five: the callee's own markup, the caller's page frame, and one per child
   // handed across the boundary.
   templates: 5,

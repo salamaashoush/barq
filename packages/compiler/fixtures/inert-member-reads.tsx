@@ -19,7 +19,6 @@ export default function InertMemberReads() {
 
 export const optimality = {
   target: 1,
-  milestone: 4,
   effects: 0,
   templates: 1,
   // Three holes, three inserts, and not one thunk: `items.length` reaches the

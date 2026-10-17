@@ -22,7 +22,6 @@ export const steps = [() => setTheme("sepia")]
 
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 2,
   // The context is its own provider, called like any component. `useContext`
   // returns whatever was provided, so the read inside `Badge` stays Opaque and

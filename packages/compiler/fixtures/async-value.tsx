@@ -21,7 +21,6 @@ export const steps = [() => setWho("grace"), () => setWho("hopper")]
 
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 1,
   // `computed` returns an Accessor like `computed` does, so the CALL is the
   // tracked read and the member on its result rides along inside one thunk —

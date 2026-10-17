@@ -35,7 +35,6 @@ export const steps = [() => setOn(true), () => setOn(false), () => setOn(true)]
 
 export const optimality = {
   target: 8,
-  milestone: 5,
   // The body is a subtree that produced no patch, so it costs one template and
   // not a single patch call anywhere in the module — with the author's thunk
   // still around it, deferring the clone until the branch is taken.

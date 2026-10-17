@@ -36,7 +36,6 @@ export const events = [
 
 export const optimality = {
   target: 7,
-  milestone: 3,
   templates: 1,
   emits: ["__bq_click = bump", "__bq_click = reset"],
   absent: ["addEventListener", '"onClick"'],

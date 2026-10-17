@@ -23,7 +23,6 @@ export const steps = [() => setLeaf("LL")]
 
 export const optimality = {
   target: 5,
-  milestone: 3,
   templates: 1,
   patchCalls: 1,
   // Five nested single-child divs, so five hops is the cheapest route there is

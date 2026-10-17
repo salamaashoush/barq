@@ -15,7 +15,6 @@ export default function MultiSignalExpression() {
 export const steps = [() => setA(10), () => setB(20)]
 export const optimality = {
   target: 4,
-  milestone: 5,
   templates: 1,
   patchCalls: 2,
   // Two independent dep sets joined into one hole and one attribute. The

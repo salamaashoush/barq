@@ -24,7 +24,6 @@ export default function RenamedCoreImport() {
 export const steps = [() => setCount(2), () => setRows(["a", "b", "c"]), () => setCount(0)]
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 4,
   // Nothing in this module is spelled the way a regex would look for it, and
   // every decision still lands: `When` is resolved to `Show` and `Each` to

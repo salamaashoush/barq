@@ -23,7 +23,6 @@ export default function ComponentChildOfElement() {
 export const steps = [() => setOn(false), () => setOn(true)]
 export const optimality = {
   target: 9,
-  milestone: 5,
   templates: 3,
   // Zero patch calls, where there was one: the hole is a REGION now, so the
   // `insert` that used to join the construct to its parent is gone with it —

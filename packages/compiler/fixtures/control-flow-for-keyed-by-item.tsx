@@ -34,7 +34,6 @@ export const steps = [
 
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 2,
   // `keyed={true}` and `keyed` absent are ONE arm, and the compiler says so in
   // the emission rather than forwarding a Cell for the runtime to unpick:

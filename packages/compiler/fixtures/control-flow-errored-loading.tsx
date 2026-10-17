@@ -34,7 +34,6 @@ export const events = [
 
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 3,
   // All three constructs cease to exist (K5): `Loading` and `Errored` are the
   // same `boundary` primitive under two kind strings, and `Reveal` is the

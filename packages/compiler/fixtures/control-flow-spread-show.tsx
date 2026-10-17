@@ -35,7 +35,6 @@ export const steps = [
 
 export const optimality = {
   target: 1,
-  milestone: 10,
   templates: 2,
   // One `branch`, one body, and the keying test inside both the key and the
   // body — which is the whole of the third arm. `readSlot` is the Cell-slot read at

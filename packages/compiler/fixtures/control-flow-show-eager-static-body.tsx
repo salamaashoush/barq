@@ -38,7 +38,6 @@ export const steps = [() => setOn(true), () => setOn(false), () => setOn(true)]
 
 export const optimality = {
   target: 8,
-  milestone: 5,
   // One template for the body, and not one patch call in the module: the
   // subtree produced no patch, so there is nothing left to defer.
   templates: 1,

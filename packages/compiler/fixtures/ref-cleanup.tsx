@@ -30,7 +30,6 @@ export default function RefCleanup() {
 
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 1,
   patchCalls: 1,
   emits: ["ref("],

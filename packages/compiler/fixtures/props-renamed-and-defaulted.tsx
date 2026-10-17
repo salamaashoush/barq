@@ -30,7 +30,6 @@ export const steps = [() => setLabel("second")]
 
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 2,
   // Renaming and defaulting are ordinary destructuring, so they snapshot like
   // the other two. The prop the caller OMITS must be omitted from the object

@@ -28,7 +28,6 @@ export default function ReassignedBinding() {
 
 export const optimality = {
   target: 3,
-  milestone: 4,
   effects: 0,
   templates: 1,
   // The attribute and the child both stay patch calls: neither value is a

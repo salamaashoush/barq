@@ -44,7 +44,6 @@ export const steps = [() => setOn(false), () => setOn(true), () => setOn(false)]
 
 export const optimality = {
   target: 8,
-  milestone: 5,
   // Five: the host, and one per node in each multi-node fragment. Neither the
   // body nor the fallback is wrapped in a thunk the compiler manufactured —
   // both are arrays of built clones inside the Block the branch owns.

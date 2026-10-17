@@ -81,7 +81,6 @@ export const events = [
 
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 2,
   // Three carriers, three rules, in one call. `cb` is an array, so C3's
   // identity rule evaluates it ONCE into a cell; `render` is a zero-arity arrow

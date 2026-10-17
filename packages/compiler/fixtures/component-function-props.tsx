@@ -53,7 +53,6 @@ export const events = [
 
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 2,
   // Both props are functions the component installs or calls itself, so both
   // stay values. A getter here would be a new object per read.

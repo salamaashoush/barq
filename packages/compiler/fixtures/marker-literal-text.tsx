@@ -37,7 +37,6 @@ export const steps = [() => setNote("<!---->x"), () => setNote("plain")]
 
 export const optimality = {
   target: 9,
-  milestone: 2,
   templates: 1,
   patchCalls: 1,
   emits: ['data-note="<!---->"'],

@@ -35,7 +35,6 @@ export const events = [(root: HTMLElement) => root.querySelector("button")?.clic
 
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 1,
   // The setter is a function the compiler can see through, so the handler that
   // calls the action hoists to module scope and the one handed over by

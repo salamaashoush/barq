@@ -45,7 +45,6 @@ export const steps = [() => setLabel("done")]
 
 export const optimality = {
   target: 8,
-  milestone: 5,
   templates: 5,
   // One patch, the `loud` body's hole. Neither branch is inserted into
   // anything: since K5 a region IS the patch.

@@ -17,7 +17,6 @@ export const steps = [() => setCount(5), () => setCount(0)]
 
 export const optimality = {
   target: 1,
-  milestone: 5,
   templates: 1,
   // `computed` returns an Accessor, so calling it is a tracked read and the bare
   // hole in the `<b>` passes the accessor itself: no closure per hole, and

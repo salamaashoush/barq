@@ -60,7 +60,6 @@ const frame = (mid: string, opt: string, zero: string, flag: boolean): string =>
 
 export const optimality = {
   target: 9,
-  milestone: 5,
   // Four holes and not one baked anchor: three are their span's only child and
   // have nothing after them, and the bare one is followed by an ELEMENT, which
   // is its own anchor. The whole page is two templates — one for the frame with

@@ -33,7 +33,6 @@ export const steps = [
 
 export const optimality = {
   target: 1,
-  milestone: 3,
   templates: 2,
   // The index is a plain number here, so it is baked as a value and never
   // wrapped; the item is an accessor, so its read η-reduces to the accessor.
