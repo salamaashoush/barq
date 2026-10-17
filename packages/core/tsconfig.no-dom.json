@@ -1,0 +1,29 @@
+{
+  // The files that stay in `@barqjs/core` once the DOM renderer has its own
+  // package, checked with no DOM in scope: a document type or global in any of
+  // them, or in anything they import, is an error here.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ESNext"],
+    "types": []
+  },
+  "include": [],
+  "files": [
+    "host-globals.d.ts",
+    "src/component-types.ts",
+    "src/config.ts",
+    "src/dev-console.ts",
+    "src/flow.ts",
+    "src/hot.ts",
+    "src/hydration-state.ts",
+    "src/module-sink.ts",
+    "src/props.ts",
+    "src/safe-error.ts",
+    "src/scope.ts",
+    "src/shared-sources.ts",
+    "src/signals.ts",
+    "src/trace.ts",
+    "src/type-utils.ts",
+    "src/types.ts"
+  ]
+}

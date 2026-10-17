@@ -94,7 +94,7 @@
   "scripts": {
     "build": "tsdown",
     "dev": "tsdown --watch",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.conformance.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.conformance.json && tsc --noEmit -p tsconfig.no-dom.json",
     "test": "bun test --timeout 10000 && bun test --timeout 10000 --conditions=development"
   },
   "dependencies": {
