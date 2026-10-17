@@ -1,7 +1,7 @@
 //! The reference backend.
 //!
 //! It serialises the analysed IR beside the module and lets a small JS
-//! interpreter (`@barqjs/core/interp`) walk it. The property the whole layer
+//! interpreter (`@barqjs/web/interp`) walk it. The property the whole layer
 //! rests on is that it reads the **same analysed IR** the DOM backend reads:
 //! the same anchors P5 chose, the same template bytes P7 wrote, the same ref
 //! plan P6 addressed, the same patch program in the same order. "The compiler

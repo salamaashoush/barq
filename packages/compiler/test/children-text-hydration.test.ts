@@ -39,14 +39,15 @@ describe("text among a component's children", () => {
 
     test(`${name}: hydrates without a mismatch and stays live`, async () => {
       const core = await import("@barqjs/core");
+      const web = await import("@barqjs/web");
       const compiled = await compileText(source, tag);
       const page = host(wire(compiled.ssr));
       const before = shape(page);
-      const stop = core.hydrate(compiled.dom.default as never, page);
+      const stop = web.hydrate(compiled.dom.default as never, page);
       core.flush();
       try {
-        expect(core.hydrate.report.mismatches).toEqual([]);
-        expect(core.hydrate.report.recovered).toBe(false);
+        expect(web.hydrate.report.mismatches).toEqual([]);
+        expect(web.hydrate.report.recovered).toBe(false);
         expect(shape(page)).toBe(before);
         const setOn = (compiled.dom as unknown as { setOn: (value: boolean) => void }).setOn;
         setOn(false);
@@ -76,6 +77,7 @@ describe("list rows that are text beside rows that are elements", () => {
 
     test(`${name}: hydrates without a mismatch and keeps the server's nodes`, async () => {
       const core = await import("@barqjs/core");
+      const web = await import("@barqjs/web");
       const compiled = await compileText(
         `
 import { For } from "@barqjs/core";
@@ -89,11 +91,11 @@ export default function Page() { return <p><Prose /></p>; }`,
       const page = host(wire(compiled.ssr));
       const served = [...(page.querySelector("p") as Element).childNodes];
       const text = page.textContent;
-      const stop = core.hydrate(compiled.dom.default as never, page);
+      const stop = web.hydrate(compiled.dom.default as never, page);
       core.flush();
       try {
-        expect(core.hydrate.report.mismatches).toEqual([]);
-        expect(core.hydrate.report.recovered).toBe(false);
+        expect(web.hydrate.report.mismatches).toEqual([]);
+        expect(web.hydrate.report.recovered).toBe(false);
         const kept = [...(page.querySelector("p") as Element).childNodes];
         expect(served.every((node) => kept.includes(node))).toBe(true);
         expect(page.textContent).toBe(text);

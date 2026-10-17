@@ -33,26 +33,27 @@ const ids = (root: Element): string[] =>
 
 async function served(tag: string) {
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const server = await import("@barqjs/server");
   const compiled = await compileText(SOURCE, tag);
   const rendered = await server.renderPage((() =>
     (compiled.ssr.default as unknown as () => unknown)()) as never);
   const page = host(rendered.html);
   core.resetChildIds();
-  return { core, compiled, page };
+  return { core, web, compiled, page };
 }
 
 describe("an id made on the server and again on the client", () => {
   test("is the same string, for every field on the page", async () => {
-    const { core, compiled, page } = await served("unique-id-same");
+    const { core, web, compiled, page } = await served("unique-id-same");
     const written = ids(page);
-    const dispose = core.hydrate(compiled.dom.default as never, page);
+    const dispose = web.hydrate(compiled.dom.default as never, page);
     core.flush();
     try {
       expect(written).toHaveLength(5);
       expect(new Set(written).size).toBe(5);
       expect(ids(page)).toEqual(written);
-      expect(core.hydrate.report.recovered).toBe(false);
+      expect(web.hydrate.report.recovered).toBe(false);
       for (const label of page.querySelectorAll("label")) {
         expect(page.querySelector(`#${CSS.escape(label.htmlFor)}`)).not.toBeNull();
       }
@@ -63,8 +64,8 @@ describe("an id made on the server and again on the client", () => {
   });
 
   test("a field built after hydration takes an id no other field has", async () => {
-    const { core, compiled, page } = await served("unique-id-later");
-    const dispose = core.hydrate(compiled.dom.default as never, page);
+    const { core, web, compiled, page } = await served("unique-id-later");
+    const dispose = web.hydrate(compiled.dom.default as never, page);
     core.flush();
     try {
       (compiled.dom as unknown as { setExtra: (value: boolean) => void }).setExtra(true);
@@ -81,9 +82,10 @@ describe("an id made on the server and again on the client", () => {
 
   test("a page that was never on a server still gets distinct ids", async () => {
     const core = await import("@barqjs/core");
+    const web = await import("@barqjs/web");
     const compiled = await compileText(SOURCE, "unique-id-cold");
     const page = host("");
-    const dispose = core.render(compiled.dom.default as never, page);
+    const dispose = web.render(compiled.dom.default as never, page);
     core.flush();
     try {
       const all = ids(page);

@@ -41,7 +41,7 @@ use crate::lower::{names, text};
 /// The branch instruction, at a hole rather than at a branch: a hole has no
 /// key to write, so the open comment carries none. `ssr.ts` spells the same
 /// three constants — one for the DOM's insert anchor and two for a range — and
-/// `packages/core/src/hydration.ts` reads them back. Three places, one format,
+/// `packages/web/src/hydration.ts` reads them back. Three places, one format,
 /// and `test/hydration.test.ts` asserts the compiler's bytes against the
 /// runtime's reader rather than against a copy of this string.
 const OPEN_HOLE: &str = "<!--[-->";
@@ -1606,7 +1606,8 @@ mod tests {
     /// only difference in the emitted call is where `branch` is imported from.
     #[test]
     fn a_lowered_construct_reaches_the_same_primitive_on_both_backends() {
-        let source = "import { For, Show, Errored, Portal } from \"@barqjs/core\";\n\
+        let source = "import { For, Show, Errored } from \"@barqjs/core\";\n\
+             import { Portal } from \"@barqjs/web\";\n\
              export const V = () => (\n  <div>\n    <For each={rows}>{(r) => <li>{r.n}</li>}</For>\n\
              <Show when={on}>yes</Show>\n\
              <Errored fallback={(e) => <b>{e().message}</b>}>x</Errored>\n\
@@ -1625,7 +1626,7 @@ mod tests {
         // and the string module imports from the client entry not at all.
         assert!(string.code.contains("branch as _$branch"), "{}", string.code);
         assert!(string.code.contains("from \"@barqjs/server\""), "{}", string.code);
-        assert!(core_import(&string.code).is_empty(), "{}", string.code);
+        assert!(import_from(&string.code, WEB).is_empty(), "{}", string.code);
         assert!(nodes.contains("branch as _$branch"), "{nodes}");
         assert!(!nodes.contains("@barqjs/server"), "{nodes}");
     }
@@ -1852,8 +1853,8 @@ mod tests {
         assert!(!inlined.code.contains("core.For"), "{}", inlined.code);
         assert!(inlined.warnings.is_empty(), "{:?}", inlined.warnings);
 
-        let was_a_fallback = ssr("import * as core from \"@barqjs/core\";\n\
-             export const V = () => <div><core.Portal>x</core.Portal></div>;\n");
+        let was_a_fallback = ssr("import * as web from \"@barqjs/web\";\n\
+             export const V = () => <div><web.Portal>x</web.Portal></div>;\n");
         assert!(was_a_fallback.code.contains("_$ssrPortal("), "{}", was_a_fallback.code);
         assert!(!was_a_fallback.code.contains("_$template"), "{}", was_a_fallback.code);
         assert!(was_a_fallback.warnings.is_empty(), "{:?}", was_a_fallback.warnings);
@@ -1866,14 +1867,15 @@ mod tests {
         assert!(local.warnings.is_empty(), "{:?}", local.warnings);
     }
 
-    /// The import statement the module source contributes, as one line, so an
-    /// assertion about a SPECIFIER is not confounded by a helper name that
-    /// happens to contain it (`ssrShow as _$ssrShow` contains `Show`).
-    fn core_import(code: &str) -> String {
-        code.lines()
-            .find(|line| line.ends_with("from \"@barqjs/core\";"))
-            .unwrap_or_default()
-            .to_string()
+    const CORE: &str = "@barqjs/core";
+    const WEB: &str = "@barqjs/web";
+
+    /// The import statement `source` contributes, as one line, so an assertion
+    /// about a SPECIFIER is not confounded by a helper name that happens to
+    /// contain it (`ssrShow as _$ssrShow` contains `Show`).
+    fn import_from(code: &str, source: &str) -> String {
+        let ending = format!("from \"{source}\";");
+        code.lines().find(|line| line.ends_with(&ending)).unwrap_or_default().to_string()
     }
 
     /// `dynamic` is imported from the client entry and called by the author,
@@ -1882,21 +1884,22 @@ mod tests {
     /// backend leaves the call alone.
     #[test]
     fn the_dynamic_factory_calls_the_string_half() {
-        let source = "import { dynamic, createSignal } from \"@barqjs/core\";\n\
+        let source = "import { createSignal } from \"@barqjs/core\";\n\
+             import { dynamic } from \"@barqjs/web\";\n\
              const [tag] = createSignal(\"b\");\n\
              const Tagged = dynamic(() => tag());\n\
              export const V = () => <div><Tagged class=\"x\">y</Tagged></div>;\n";
         let code = ssr(source).code;
         assert!(code.contains("const Tagged = _$dynamic(() => tag());"), "{code}");
         assert!(code.contains("dynamic as _$dynamic"), "{code}");
-        assert!(!core_import(&code).contains("dynamic"), "{code}");
-        assert!(core_import(&code).contains("createSignal"), "{code}");
+        assert!(!import_from(&code, WEB).contains("dynamic"), "{code}");
+        assert!(import_from(&code, CORE).contains("createSignal"), "{code}");
 
-        let kept = ssr("import { dynamic } from \"@barqjs/core\";\n\
+        let kept = ssr("import { dynamic } from \"@barqjs/web\";\n\
              export const make = dynamic;\n\
              export const B = dynamic(() => \"b\");\n")
         .code;
-        assert!(core_import(&kept).contains("dynamic"), "{kept}");
+        assert!(import_from(&kept, WEB).contains("dynamic"), "{kept}");
 
         let options = ResolvedOptions::with_filename("V.tsx");
         let dom = compile(source, &options).expect("compiles").code;
@@ -1921,7 +1924,7 @@ mod tests {
     /// pointed there too.
     #[test]
     fn the_client_only_factory_calls_the_string_half() {
-        let source = "import { clientOnly } from \"@barqjs/core\";\n\
+        let source = "import { clientOnly } from \"@barqjs/web\";\n\
              const Chart = clientOnly(() => import(\"./chart.tsx\"), { lazy: true });\n\
              export const V = () => <div><Chart fallback={<i>wait</i>} /></div>;\n";
         let code = ssr(source).code;
@@ -1936,10 +1939,10 @@ mod tests {
             .find(|line| line.ends_with("from \"@barqjs/server\";"))
             .unwrap_or_default();
         assert!(server_import.contains("clientOnly as _$clientOnly"), "{code}");
-        assert!(!core_import(&code).contains("clientOnly"), "{code}");
+        assert!(!import_from(&code, WEB).contains("clientOnly"), "{code}");
 
-        let namespaced = ssr("import * as core from \"@barqjs/core\";\n\
-             const Chart = core.clientOnly(() => import(\"./chart.tsx\"));\n\
+        let namespaced = ssr("import * as web from \"@barqjs/web\";\n\
+             const Chart = web.clientOnly(() => import(\"./chart.tsx\"));\n\
              export const V = () => <div><Chart /></div>;\n")
         .code;
         assert!(namespaced.contains("const Chart = _$clientOnly("), "{namespaced}");
@@ -1963,22 +1966,22 @@ mod tests {
         // `codegen::brand`, every component declaration carries `_$block`,
         // which is a shared-ABI helper and lives in the module source, so the
         // import itself survives with one specifier that is not `Show`.
-        assert!(!core_import(&gone).contains("Switch"), "{gone}");
+        assert!(!import_from(&gone, CORE).contains("Switch"), "{gone}");
 
         // One reader left is one reader too many.
         let kept = ssr("import { Switch } from \"@barqjs/core\";\n\
              const alias = Switch;\n\
              export const V = () => <div><Switch>{arms}</Switch></div>;\n")
         .code;
-        assert!(core_import(&kept).contains("Switch"), "{kept}");
+        assert!(import_from(&kept, CORE).contains("Switch"), "{kept}");
 
         // And a binding the backend never rewrote is untouched.
         let other = ssr("import { Switch, createSignal } from \"@barqjs/core\";\n\
              export const [n] = createSignal(0);\n\
              export const V = () => <div><Switch>{arms}</Switch></div>;\n")
         .code;
-        assert!(core_import(&other).contains("createSignal"), "{other}");
-        assert!(!core_import(&other).contains("Switch"), "{other}");
+        assert!(import_from(&other, CORE).contains("createSignal"), "{other}");
+        assert!(!import_from(&other, CORE).contains("Switch"), "{other}");
     }
 
     /// Every fixture in the corpus compiles through the string backend, and

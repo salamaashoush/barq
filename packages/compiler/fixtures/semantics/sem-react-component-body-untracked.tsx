@@ -9,7 +9,8 @@
  *
  * R1.
  */
-import { flush, render, createSignal } from "@barqjs/core"
+import { flush, createSignal } from "@barqjs/core"
+import { render } from "@barqjs/web"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 

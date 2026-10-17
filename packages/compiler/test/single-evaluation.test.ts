@@ -158,13 +158,14 @@ describe("C7, single evaluation", () => {
     // runtime is KNOWN to emit: `render()` handed an already-built subtree while
     // an owner is current warns `RENDER_SUBTREE_NOT_OWNED` (O5).
     const core = await import("@barqjs/core");
+    const web = await import("@barqjs/web");
     const host = document.createElement("div");
     document.body.appendChild(host);
     const capture = core.DEV.diagnostics.capture();
     try {
       const owner = core.rootScope();
       core.runWithOwner(owner, () => {
-        core.render(document.createElement("p") as never, host);
+        web.render(document.createElement("p") as never, host);
       });
       core.dispose(owner);
     } finally {

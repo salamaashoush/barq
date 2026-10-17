@@ -276,11 +276,11 @@ export async function withChrome<T>(
   }
 }
 
-const PRAGMA = "/** @jsxImportSource @barqjs/core */\n";
+const PRAGMA = "/** @jsxImportSource @barqjs/web */\n";
 
 /**
  * `fixture`, compiled and bundled into one page Chrome can open from disk.
- * `shim` stands in for `@barqjs/core`, so a check can show it fails without the
+ * `shim` stands in for `@barqjs/web`, so a check can show it fails without the
  * runtime's own handling.
  */
 export async function fixturePage(
@@ -288,7 +288,7 @@ export async function fixturePage(
   fixture: string,
   shim?: string,
 ): Promise<{ path: string; cleanup: () => void }> {
-  // Inside the package: the bundle imports `@barqjs/core`, and a workdir in
+  // Inside the package: the bundle imports `@barqjs/web`, and a workdir in
   // the system temp has no node_modules above it to resolve it from.
   const workdir = join(TMP_DIR, `${name}-${shim === undefined ? "real" : "naive"}`);
   rmSync(workdir, { recursive: true, force: true });
@@ -296,8 +296,8 @@ export async function fixturePage(
 
   let code = compileSource(fixture, `${name}.tsx`);
   if (shim !== undefined) {
-    writeFileSync(join(workdir, "core-naive.ts"), shim);
-    code = code.replaceAll('from "@barqjs/core"', 'from "./core-naive.ts"');
+    writeFileSync(join(workdir, "web-naive.ts"), shim);
+    code = code.replaceAll('from "@barqjs/web"', 'from "./web-naive.ts"');
   }
   writeFileSync(join(workdir, "entry.tsx"), PRAGMA + code);
 

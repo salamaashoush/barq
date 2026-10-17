@@ -20,7 +20,8 @@
  *
  * A6.
  */
-import { Loading, Reveal, render, createMemo } from "@barqjs/core"
+import { Loading, Reveal, createMemo } from "@barqjs/core"
+import { render } from "@barqjs/web"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 

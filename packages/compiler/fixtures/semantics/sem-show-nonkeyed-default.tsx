@@ -16,7 +16,8 @@
  *
  * K1.1.
  */
-import { Show, render, createSignal } from "@barqjs/core"
+import { Show, createSignal } from "@barqjs/core"
+import { render } from "@barqjs/web"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 

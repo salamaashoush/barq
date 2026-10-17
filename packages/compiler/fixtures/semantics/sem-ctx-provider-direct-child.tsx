@@ -11,7 +11,8 @@
  *
  * O2, O2.1 and X1; C6.
  */
-import { createContext, getOwner, hasContext, render, createSignal, useContext } from "@barqjs/core"
+import { createContext, getOwner, hasContext, createSignal, useContext } from "@barqjs/core"
+import { render } from "@barqjs/web"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 import { formatThrown } from "../../test/semantics-support.ts"

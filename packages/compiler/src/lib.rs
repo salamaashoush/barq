@@ -367,6 +367,7 @@ pub fn route_split(
     specifier: String,
     for_client: Option<bool>,
     split_components: Option<bool>,
+    core_source: Option<String>,
 ) -> RouteSplitResult {
     if !route_split::mentions(&source) {
         return RouteSplitResult { reference: source.clone(), split: source, refused: None };
@@ -377,6 +378,7 @@ pub fn route_split(
         &specifier,
         for_client.unwrap_or(false),
         split_components.unwrap_or(true),
+        core_source.as_deref().unwrap_or(crate::options::DEFAULT_CORE_SOURCE),
     );
     RouteSplitResult { reference: out.reference, split: out.split, refused: out.refused }
 }

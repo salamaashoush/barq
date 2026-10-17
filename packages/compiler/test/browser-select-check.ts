@@ -14,7 +14,8 @@
 
 import { fixturePage, openFixturePage, type Page } from "./chrome.ts";
 
-const FIXTURE = `import { For, render, createSignal, flush } from "@barqjs/core"
+const FIXTURE = `import { For, createSignal, flush } from "@barqjs/core"
+import { render } from "@barqjs/web"
 
 const [choice, setChoice] = createSignal("grace")
 const [names, setNames] = createSignal<string[]>([])
@@ -50,7 +51,7 @@ Object.assign(window, {
 })
 `;
 
-const NAIVE_SHIM = `export * from "@barqjs/core"
+const NAIVE_SHIM = `export * from "@barqjs/web"
 
 export function setLive(element, name, value) {
   element[name] = value

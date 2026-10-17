@@ -129,6 +129,7 @@ pub fn split(
     specifier: &str,
     for_client: bool,
     split_components: bool,
+    core_source: &str,
 ) -> RouteSplit {
     // What the split half imports `Route` back from: the specifier with the
     // query taken off, which is the reference module's own id.
@@ -348,8 +349,9 @@ pub fn split(
     reference.insert_str(
         0,
         &format!(
-            "import {{ lazy as $$barqLazy }} from \"@barqjs/core\";\n\
+            "import {{ lazy as $$barqLazy }} from {};\n\
              const $$barqSplit = () => import({});\n",
+            json_string(core_source),
             json_string(specifier),
         ),
     );
@@ -778,12 +780,19 @@ mod tests {
     const SPEC: &str = "/src/routes/posts.tsx?barq-split";
 
     fn run(source: &str) -> RouteSplit {
-        split(source, "src/routes/posts.tsx", SPEC, false, true)
+        split(
+            source,
+            "src/routes/posts.tsx",
+            SPEC,
+            false,
+            true,
+            crate::options::DEFAULT_CORE_SOURCE,
+        )
     }
 
     /// The CLIENT build, which also deletes `server`.
     fn client(source: &str) -> RouteSplit {
-        split(source, "src/routes/posts.tsx", SPEC, true, true)
+        split(source, "src/routes/posts.tsx", SPEC, true, true, crate::options::DEFAULT_CORE_SOURCE)
     }
 
     /// The whole point, in one case: the component's imports leave the
@@ -921,7 +930,14 @@ export const Route = createFileRoute("/posts")({
             "import { createRootRoute } from \"@barqjs/router\";\nfunction L() { return <p/>; }\nexport const Route = createRootRoute({ component: L });\n",
             "import { createRootRouteWithContext } from \"@barqjs/router\";\nfunction L() { return <p/>; }\nexport const Route = createRootRouteWithContext<{}>()({ component: L });\n",
         ] {
-            let out = split(source, "src/routes/__root.tsx", SPEC, false, true);
+            let out = split(
+                source,
+                "src/routes/__root.tsx",
+                SPEC,
+                false,
+                true,
+                crate::options::DEFAULT_CORE_SOURCE,
+            );
             assert_eq!(out.refused, None);
             assert_eq!(out.reference, source, "a root route must not be rewritten");
             assert_eq!(out.split, source);
@@ -1120,7 +1136,14 @@ const box = css`color: red`;
 function Page() { return <p class={box}>hi</p>; }
 export const Route = createFileRoute("/x")({ component: Page });
 "#;
-        let out = split(source, "src/routes/x.tsx", "/src/routes/x.tsx?barq-split", true, true);
+        let out = split(
+            source,
+            "src/routes/x.tsx",
+            "/src/routes/x.tsx?barq-split",
+            true,
+            true,
+            crate::options::DEFAULT_CORE_SOURCE,
+        );
         let reference = out.reference;
         assert!(
             reference.contains(r#"import { css, globalCss } from "@barqjs/css""#),
@@ -1149,8 +1172,14 @@ export const Route = createFileRoute("/admin")({
   component: Page,
 });
 "#;
-        let client =
-            split(source, "src/routes/admin.tsx", "/src/routes/admin.tsx?barq-split", true, true);
+        let client = split(
+            source,
+            "src/routes/admin.tsx",
+            "/src/routes/admin.tsx?barq-split",
+            true,
+            true,
+            crate::options::DEFAULT_CORE_SOURCE,
+        );
         assert!(
             !client.reference.contains("requireSession"),
             "the client half kept the chain and the import that reaches async_hooks:\n{}",
@@ -1160,8 +1189,14 @@ export const Route = createFileRoute("/admin")({
 
         // The SERVER build keeps it, because the verifier is the only reader and
         // it runs inside that bundle.
-        let server =
-            split(source, "src/routes/admin.tsx", "/src/routes/admin.tsx?barq-split", false, true);
+        let server = split(
+            source,
+            "src/routes/admin.tsx",
+            "/src/routes/admin.tsx?barq-split",
+            false,
+            true,
+            crate::options::DEFAULT_CORE_SOURCE,
+        );
         assert!(server.reference.contains("requireSession"), "{}", server.reference);
         assert!(server.reference.contains("middleware"), "{}", server.reference);
     }
@@ -1186,7 +1221,14 @@ export const Route = createFileRoute("/admin")({
 function Page() { const go = useNavigate(); return <p onClick={go}>hi</p>; }
 export const Route = createFileRoute("/x")({ component: Page });
 "#;
-        let out = split(source, "src/routes/x.tsx", "/src/routes/x.tsx?barq-split", true, true);
+        let out = split(
+            source,
+            "src/routes/x.tsx",
+            "/src/routes/x.tsx?barq-split",
+            true,
+            true,
+            crate::options::DEFAULT_CORE_SOURCE,
+        );
         let reference = out.reference;
         assert!(
             reference.contains("createFileRoute"),
@@ -1210,7 +1252,14 @@ import { load, act } from "./data";
 function Page() { try { act(); } catch (e) { if (isRedirect(e)) {} } return <p>hi</p>; }
 export const Route = createFileRoute("/x")({ loader: () => load(), component: Page });
 "#;
-        let out = split(source, "src/routes/x.tsx", "/src/routes/x.tsx?barq-split", true, true);
+        let out = split(
+            source,
+            "src/routes/x.tsx",
+            "/src/routes/x.tsx?barq-split",
+            true,
+            true,
+            crate::options::DEFAULT_CORE_SOURCE,
+        );
         let reference = out.reference;
         // `loader` stays, so `load` and the factory both stay with it.
         assert!(reference.contains("createFileRoute"), "{reference}");
@@ -1228,7 +1277,14 @@ import { heavy } from "./heavy";
 function Page() { return heavy(); }
 export const Route = createFileRoute("/x")({ component: Page });
 "#;
-        let out = split(source, "src/routes/x.tsx", "/src/routes/x.tsx?barq-split", true, true);
+        let out = split(
+            source,
+            "src/routes/x.tsx",
+            "/src/routes/x.tsx?barq-split",
+            true,
+            true,
+            crate::options::DEFAULT_CORE_SOURCE,
+        );
         assert!(!out.reference.contains("./heavy"), "{}", out.reference);
         assert!(out.split.contains("./heavy"));
     }

@@ -23,7 +23,8 @@
  *
  * O4.5.
  */
-import { block, branch, createEffect, createSignal, dispose, getOwner, insert, onCleanup, rootScope, runWithOwner, setProp } from "@barqjs/core"
+import { block, createEffect, createSignal, dispose, getOwner, onCleanup, rootScope, runWithOwner } from "@barqjs/core"
+import { branch, insert, setProp } from "@barqjs/web"
 import type { Scope } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"

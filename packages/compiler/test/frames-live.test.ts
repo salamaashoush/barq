@@ -11,7 +11,8 @@ import { afterEach, expect, test } from "bun:test";
 import { compileText, host } from "./hydration.ts";
 
 const SOURCE = `
-import { Loading, createMemo, createSignal, dynamic } from "@barqjs/core"
+import { Loading, createMemo, createSignal } from "@barqjs/core"
+import { dynamic } from "@barqjs/web"
 export function boardFor(feed) {
   return (props) => {
     const latest = createMemo(() => feed)
@@ -166,11 +167,12 @@ async function setup(name: string) {
 test("a live frame is applied in place for each value its source yields, over one connection", async () => {
   const { dom, feed, stub, connections, startClient } = await setup("frames-live-a");
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const board = startClient.live(stub)();
   const statuses: string[] = [];
   board.onstatus = (status) => statuses.push(status);
   const container = host("");
-  const dispose = core.render(() => {
+  const dispose = web.render(() => {
     const current = core.createMemo(() => board as never);
     return dom.Page({ view: () => current() }) as never;
   }, container);
@@ -211,12 +213,13 @@ test("a live frame is applied in place for each value its source yields, over on
 test("a connection that dies is reconnected from the event it last applied, and nothing remounts", async () => {
   const { dom, feed, stub, connections, startClient } = await setup("frames-live-b");
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const board = startClient.live(stub)();
   const statuses: string[] = [];
   board.onstatus = (status) => statuses.push(status);
   const container = host("");
   let mounts = 0;
-  const dispose = core.render(() => {
+  const dispose = web.render(() => {
     const current = core.createMemo(() => board as never);
     return dom.Page({ view: () => (mounts++, current()) }) as never;
   }, container);
@@ -246,6 +249,7 @@ test("a connection that dies is reconnected from the event it last applied, and 
 test("a live frame the page was served connects once the page is claimed", async () => {
   const { ssr, dom, feed, getBoard, connections, startClient } = await setup("frames-live-c");
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const server = await import("@barqjs/server");
   const codec = await import("@barqjs/server/codec");
   const frame = await startClient.live(getBoard)();
@@ -261,9 +265,9 @@ test("a live frame the page was served connects once the page is claimed", async
   const container = host(page.html);
   const heading = container.querySelector("h1");
   core.resetChildIds();
-  const dispose = core.hydrate(() => dom.Page({ view: () => view }) as never, container);
+  const dispose = web.hydrate(() => dom.Page({ view: () => view }) as never, container);
   core.flush();
-  expect(core.hydrate.report.recovered).toBe(false);
+  expect(web.hydrate.report.recovered).toBe(false);
   await until(() => connections.length === 1);
 
   feed.publish({ title: "pushed after the claim", items: [{ id: 1, label: "first" }] });

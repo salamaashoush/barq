@@ -20,7 +20,8 @@
  *
  * C1, C2, C3.
  */
-import { merge, omit, render } from "@barqjs/core"
+import { merge, omit } from "@barqjs/core"
+import { render } from "@barqjs/web"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 import { formatThrown } from "../../test/semantics-support.ts"

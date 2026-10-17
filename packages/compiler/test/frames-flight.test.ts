@@ -9,7 +9,8 @@ import { afterEach, expect, test } from "bun:test";
 import { compileText } from "./hydration.ts";
 
 const SOURCE = `
-import { createSignal, dynamic } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
+import { dynamic } from "@barqjs/web"
 export const stories = { 1: { title: "story one", comments: [{ id: 1, text: "first" }] } }
 export function storyFor(id) {
   return (props) => (
@@ -55,6 +56,7 @@ test("a mutation answers with the regions it changed, in one request", async () 
   const ssr = both.ssr as unknown as Module;
   const dom = both.dom as unknown as Module;
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const start = await import("@barqjs/start");
   const startServer = await import("@barqjs/start/server");
   const startClient = await import("@barqjs/start/client");
@@ -97,7 +99,7 @@ test("a mutation answers with the regions it changed, in one request", async () 
   const view = await story({ data: { id: 1 }, fetch: viaServer as typeof fetch });
   const host = document.createElement("div");
   document.body.appendChild(host);
-  const dispose = core.render(() => dom.Page({ view: () => view }) as never, host);
+  const dispose = web.render(() => dom.Page({ view: () => view }) as never, host);
   core.flush();
   const heading = host.querySelector("h1");
   host.querySelector("button")!.click();

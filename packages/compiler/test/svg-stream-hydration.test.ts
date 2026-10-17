@@ -36,6 +36,7 @@ export default function Chart() {
 async function hydrated(mode: "buffered" | "streamed") {
   const compiled = await compileText(SOURCE, `svg-stream-${mode}`, true, false);
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const server = await import("@barqjs/server");
   const container = host("");
   const seeded = globalThis as { __BARQ_DATA__?: Record<string, unknown> };
@@ -53,12 +54,12 @@ async function hydrated(mode: "buffered" | "streamed") {
 
   const before = census(container);
   core.resetChildIds();
-  const dispose = core.hydrate(
+  const dispose = web.hydrate(
     compiled.dom.default as never,
     container,
     data === undefined ? undefined : { data },
   );
-  const report = core.hydrate.report;
+  const report = web.hydrate.report;
   const result = {
     namespace,
     recovered: report.recovered,

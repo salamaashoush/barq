@@ -9,7 +9,8 @@
  * region are then the same thing, so `rebuilds` says something exact about every
  * element in the frame rather than about a subset a class cannot name.
  */
-import { createSignal, dynamic } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
+import { dynamic } from "@barqjs/web"
 
 export const log: string[] = []
 

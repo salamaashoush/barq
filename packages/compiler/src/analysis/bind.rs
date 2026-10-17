@@ -152,7 +152,11 @@ pub fn classify<'a>(
         function_params: Vec::new(),
         named_callbacks: Vec::new(),
     };
-    binder.imports(program, &options.module_source, &options.server_source);
+    binder.imports(
+        program,
+        &[&options.core_source, &options.module_source],
+        &options.server_source,
+    );
     binder.env.namespaces = binder.namespaces.clone();
     binder.exports(program);
     binder.visit_program(program);
@@ -395,11 +399,13 @@ impl<'a> Binder<'_, 'a> {
     /// A flat scan over top-level statements, not a walk: `build_module_record`
     /// does not exist on oxc 0.143, and an import binding is an ordinary symbol
     /// anyway.
-    fn imports(&mut self, program: &Program<'a>, module_source: &str, server_source: &str) {
+    /// `runtime` is core and the renderer: an author imports `Show` from the
+    /// one and `Portal` from the other, and both are constructs.
+    fn imports(&mut self, program: &Program<'a>, runtime: &[&str], server_source: &str) {
         for statement in &program.body {
             let Statement::ImportDeclaration(declaration) = statement else { continue };
             let source = declaration.source.value.as_str();
-            let is_runtime = source == module_source;
+            let is_runtime = runtime.contains(&source);
             let is_server = source == server_source;
             let mounts_from_here = is_runtime || is_server || mounts_roots(source);
             if !is_runtime && !mounts_from_here {

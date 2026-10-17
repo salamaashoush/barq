@@ -22,7 +22,7 @@ fn main() {
             },
         )
     };
-    let dom_ts = runtime("core", "dom.ts");
+    let dom_ts = runtime("web", "dom.ts");
     let ssr_ts = runtime("server", "ssr.ts");
     println!("cargo:rerun-if-changed={}", dom_ts.display());
     println!("cargo:rerun-if-changed={}", ssr_ts.display());

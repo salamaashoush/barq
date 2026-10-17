@@ -19,7 +19,8 @@
  *
  * B8.
  */
-import { action, render } from "@barqjs/core"
+import { action } from "@barqjs/core"
+import { render } from "@barqjs/web"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 

@@ -29,7 +29,7 @@ pub enum Target {
     Dom,
     Ssr,
     /// Serialises the analysed IR beside the module and
-    /// lets `@barqjs/core/interp` walk it, instead of printing the walk and the
+    /// lets `@barqjs/web/interp` walk it, instead of printing the walk and the
     /// patch program as JavaScript. It runs the DOM backend's passes and reads
     /// the DOM backend's artefacts — the anchors, the template bytes, the ref
     /// plan — because "the compiler knows more than the reference" has to be
@@ -59,39 +59,105 @@ impl Target {
 
 pub const HELPER_COUNT: usize = 62;
 
-/// The first helper that lives in `<server_source>` rather than in the
-/// module source itself. The string backend calls into `ssr.ts`, which the DOM
-/// bundle must never pull in.
-pub const FIRST_SERVER_HELPER: usize = Helper::Esc as usize;
+/// The module a helper is imported from.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Home {
+    /// `<core_source>`: the renderer-neutral half every target shares.
+    Core,
+    /// `<module_source>`: the renderer, which builds and places the nodes.
+    Renderer,
+    /// `<server_source>`: the string backend, which the client bundle must never
+    /// pull in.
+    Server,
+    /// `<module_source>/interp`: the reference backend, DEV and test only, so
+    /// it never reaches a production bundle through the other two.
+    Interp,
+}
 
-/// The first helper that lives in `<module_source>/interp`. The reference
-/// backend is DEV and test only, so its entry point is a third source and never
-/// reaches a production bundle through the other two.
-pub const FIRST_INTERP_HELPER: usize = Helper::Interp as usize;
-
-/// The names that exist in BOTH runtime halves: the three ABI constructors and
-/// `flow.ts`'s four primitives with `each`'s count symbol.
+/// Where `helper` comes from when compiling for `target`. The one table that
+/// decides it, so a helper moving between packages is one line here.
 ///
-/// One ABI means no fallback cliff, applied to a runtime
-/// entry point rather than to a call: one name, one argument order, two
-/// implementations, and the SOURCE is what the target chooses. A module compiled
-/// for the DOM imports `branch` from `@barqjs/core`; the same module compiled
-/// for the server imports `branch` from `@barqjs/server`. Nothing between
-/// the two emissions differs — not the helper, not the arity, not the order —
-/// which is what makes `region_call` one function rather than two.
-///
-/// It is also what makes the string backend's own claim checkable: a module
-/// compiled for the server imports from the server entry and from nowhere else,
-/// so `@barqjs/core`'s DOM runtime cannot reach a server bundle through a helper
-/// that merely happens to be DOM-free today.
-pub const SHARED_ABI: std::ops::Range<usize> = (Helper::Props as usize)..(Helper::SetAttr as usize);
-// `ReadSlot` is the last of them and is deliberately inside the range: the
-// spread lowering that emits it runs in the shape pass, before a backend is
-// chosen, so `@barqjs/core` and `@barqjs/server` must both export it.
+/// One ABI means no fallback cliff, applied to a runtime entry point rather
+/// than to a call: `branch` and its siblings have one name, one argument order
+/// and two implementations, and the TARGET chooses the source. A module
+/// compiled for the DOM imports `branch` from the renderer; the same module
+/// compiled for the server imports it from `<server_source>`. Nothing between
+/// the two emissions differs, which is what makes `region_call` one function
+/// rather than two. It is also what makes the string backend's own claim
+/// checkable: a module compiled for the server imports from the server entry
+/// and from core, so the DOM runtime cannot reach a server bundle through a
+/// helper that merely happens to be DOM-free today.
+pub fn home(helper: Helper, target: Target) -> Home {
+    use Helper as H;
+    match helper {
+        // `ReadSlot` is here because the spread lowering that emits it runs in
+        // the shape pass, before a backend is chosen.
+        H::Props
+        | H::Cell
+        | H::Block
+        | H::ReadSlot
+        | H::Count
+        | H::GetOwner
+        | H::Untrack
+        | H::CreateComponent
+        | H::BindEffect => Home::Core,
+        H::Branch | H::Each | H::Boundary | H::Portal | H::Island | H::Reveal | H::Dynamic => {
+            match target {
+                Target::Ssr => Home::Server,
+                Target::Dom | Target::Interp => Home::Renderer,
+            }
+        }
+        H::Interp => Home::Interp,
+        H::Esc
+        | H::EscAttr
+        | H::Attr
+        | H::Content
+        | H::Html
+        | H::RawText
+        | H::SpreadAttrs
+        | H::SsrFor
+        | H::SsrRepeat
+        | H::SsrShow
+        | H::SsrSwitch
+        | H::SsrMatch
+        | H::AttrLit
+        | H::SsrLoading
+        | H::SsrErrored
+        | H::SsrPortal
+        | H::SsrIsland
+        | H::SsrReveal
+        | H::FormAttr
+        | H::ClientOnly
+        | H::BindAttr => Home::Server,
+        H::Template
+        | H::Insert
+        | H::SetProp
+        | H::Element
+        | H::Spread
+        | H::DelegateEvents
+        | H::SetAttr
+        | H::SetDomProp
+        | H::SetLive
+        | H::SetClass
+        | H::SetStyle
+        | H::SetHtml
+        | H::BindProp
+        | H::BindValue
+        | H::Ref
+        | H::FormAction
+        | H::Listen
+        | H::BindEvent
+        | H::Child
+        | H::Sib
+        | H::Hole
+        | H::ReadKeys
+        | H::ClassToString
+        | H::ReadOpaque => Home::Renderer,
+    }
+}
 
-/// Runtime entry points the two backends are allowed to call. Every one is read
-/// off `packages/core/src/dom.ts` or `packages/core/src/ssr.ts`; nothing else is
-/// emitted.
+/// Runtime entry points the backends are allowed to call. [`home`] says which
+/// package each comes from; nothing else is emitted.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Helper {
     Template = 0,
@@ -145,8 +211,8 @@ pub enum Helper {
     /// `island(s, parent, anchor, block, flags)` — a subtree the client does not
     /// hydrate.
     ///
-    /// Inside [`SHARED_ABI`] on purpose: one name, one argument order, two
-    /// implementations, with the TARGET choosing the source. That is what keeps
+    /// One of the names [`home`] gives two sources on purpose: one name, one
+    /// argument order, two implementations, with the TARGET choosing the source. That is what keeps
     /// `region_call` a single function for it, and it is why the server's half
     /// takes the insertion pair it has no use for — the emission is identical on
     /// both sides, which is the property this block exists to hold.
@@ -161,7 +227,7 @@ pub enum Helper {
     /// `_$dynamic(source)` — Solid 2.0's factory, which the AUTHOR calls. The
     /// server backend points that call here, at the string half of the same
     /// name, because the client half builds DOM; the DOM backend never emits
-    /// it and leaves the author's import of `@barqjs/core`'s alone.
+    /// it and leaves the author's import of the renderer's alone.
     Dynamic = 17,
     /// `_$readSlot(v, "origin")` — the Cell-slot read, at the one
     /// place the compiler cannot perform it itself: a prop that arrived through
@@ -170,8 +236,8 @@ pub enum Helper {
     /// the name `readValue`, and the `origin` string is what makes a Block
     /// landing in a Cell slot throw with the prop's name instead of stringify.
     ///
-    /// It sits inside [`SHARED_ABI`] because the lowering that emits it runs
-    /// before the backend is chosen, so both halves must answer to the name.
+    /// It is core's because the lowering that emits it runs before the backend
+    /// is chosen, so every target must answer to the name.
     ReadSlot = 18,
     // ── the resolved channels ─────────────────────────────────────────────
     //
@@ -252,7 +318,7 @@ pub enum Helper {
     SsrErrored = 48,
     SsrPortal = 49,
     /// `ssrIsland(s, props)` — the COMPONENT form, for a build whose flow pass
-    /// is off. [`Island`] is the region form and lives in [`SHARED_ABI`]; this is
+    /// is off. [`Island`] is the region form, whose source the target picks; this is
     /// the string backend's answer when the construct was never lowered, exactly
     /// as [`SsrPortal`] is for `Portal`.
     SsrIsland = 50,
@@ -302,79 +368,77 @@ pub enum Helper {
     BindAttr = 61,
 }
 
-/// The helpers past the module-source tail that live in `<server_source>`.
-pub const FIRST_LATE_SERVER_HELPER: usize = Helper::BindAttr as usize;
-
-const IMPORTED: [&str; HELPER_COUNT] = [
-    "template",
-    "insert",
-    "setProp",
-    "element",
-    "spread",
-    "bindEffect",
-    "delegateEvents",
-    "props",
-    "cell",
-    "block",
-    "branch",
-    "each",
-    "boundary",
-    "portal",
-    "island",
-    "COUNT",
-    "reveal",
-    "dynamic",
-    "readSlot",
-    "setAttr",
-    "setDomProp",
-    "setLive",
-    "setClass",
-    "setStyle",
-    "setHtml",
-    "bindProp",
-    "bindValue",
-    "ref",
-    "formAction",
-    "listen",
-    "bindEvent",
-    "child",
-    "sib",
-    "hole",
-    "esc",
-    "escAttr",
-    "attr",
-    "content",
-    "html",
-    "rawText",
-    "spreadAttrs",
-    "ssrFor",
-    "ssrRepeat",
-    "ssrShow",
-    "ssrSwitch",
-    "ssrMatch",
-    "attrLit",
-    "ssrLoading",
-    "ssrErrored",
-    "ssrPortal",
-    "ssrIsland",
-    "ssrReveal",
-    "formAttr",
-    "clientOnly",
-    "interp",
-    "getOwner",
-    "readKeys",
-    "classToString",
-    "untrack",
-    "createComponent",
-    "readOpaque",
-    "bindAttr",
+/// Every helper with the name it is imported under, in `Helper` order.
+const IMPORTED: [(Helper, &str); HELPER_COUNT] = [
+    (Helper::Template, "template"),
+    (Helper::Insert, "insert"),
+    (Helper::SetProp, "setProp"),
+    (Helper::Element, "element"),
+    (Helper::Spread, "spread"),
+    (Helper::BindEffect, "bindEffect"),
+    (Helper::DelegateEvents, "delegateEvents"),
+    (Helper::Props, "props"),
+    (Helper::Cell, "cell"),
+    (Helper::Block, "block"),
+    (Helper::Branch, "branch"),
+    (Helper::Each, "each"),
+    (Helper::Boundary, "boundary"),
+    (Helper::Portal, "portal"),
+    (Helper::Island, "island"),
+    (Helper::Count, "COUNT"),
+    (Helper::Reveal, "reveal"),
+    (Helper::Dynamic, "dynamic"),
+    (Helper::ReadSlot, "readSlot"),
+    (Helper::SetAttr, "setAttr"),
+    (Helper::SetDomProp, "setDomProp"),
+    (Helper::SetLive, "setLive"),
+    (Helper::SetClass, "setClass"),
+    (Helper::SetStyle, "setStyle"),
+    (Helper::SetHtml, "setHtml"),
+    (Helper::BindProp, "bindProp"),
+    (Helper::BindValue, "bindValue"),
+    (Helper::Ref, "ref"),
+    (Helper::FormAction, "formAction"),
+    (Helper::Listen, "listen"),
+    (Helper::BindEvent, "bindEvent"),
+    (Helper::Child, "child"),
+    (Helper::Sib, "sib"),
+    (Helper::Hole, "hole"),
+    (Helper::Esc, "esc"),
+    (Helper::EscAttr, "escAttr"),
+    (Helper::Attr, "attr"),
+    (Helper::Content, "content"),
+    (Helper::Html, "html"),
+    (Helper::RawText, "rawText"),
+    (Helper::SpreadAttrs, "spreadAttrs"),
+    (Helper::SsrFor, "ssrFor"),
+    (Helper::SsrRepeat, "ssrRepeat"),
+    (Helper::SsrShow, "ssrShow"),
+    (Helper::SsrSwitch, "ssrSwitch"),
+    (Helper::SsrMatch, "ssrMatch"),
+    (Helper::AttrLit, "attrLit"),
+    (Helper::SsrLoading, "ssrLoading"),
+    (Helper::SsrErrored, "ssrErrored"),
+    (Helper::SsrPortal, "ssrPortal"),
+    (Helper::SsrIsland, "ssrIsland"),
+    (Helper::SsrReveal, "ssrReveal"),
+    (Helper::FormAttr, "formAttr"),
+    (Helper::ClientOnly, "clientOnly"),
+    (Helper::Interp, "interp"),
+    (Helper::GetOwner, "getOwner"),
+    (Helper::ReadKeys, "readKeys"),
+    (Helper::ClassToString, "classToString"),
+    (Helper::Untrack, "untrack"),
+    (Helper::CreateComponent, "createComponent"),
+    (Helper::ReadOpaque, "readOpaque"),
+    (Helper::BindAttr, "bindAttr"),
 ];
 
 /// The name a helper is imported under, for a test that has to check the table
 /// rather than trust it.
 #[cfg(test)]
 pub(crate) fn imported_name(helper: Helper) -> &'static str {
-    IMPORTED[helper as usize]
+    IMPORTED[helper as usize].1
 }
 
 const INTERP: &str = "/interp";
@@ -389,7 +453,7 @@ pub(crate) fn free_sigil(source: &str) -> String {
     let mut sigil = String::from("_$");
     while source.match_indices(sigil.as_str()).any(|(at, _)| {
         let rest = &source[at + sigil.len()..];
-        IMPORTED.iter().any(|suffix| rest.starts_with(suffix))
+        IMPORTED.iter().any(|(_, suffix)| rest.starts_with(suffix))
     }) {
         sigil.push('$');
     }
@@ -399,9 +463,9 @@ pub(crate) fn free_sigil(source: &str) -> String {
 /// Every helper's local name, packed end to end into one arena string and
 /// handed out as slices of it.
 pub(crate) fn helper_names<'a>(sigil: &str, allocator: &'a Allocator) -> [&'a str; HELPER_COUNT] {
-    let width: usize = IMPORTED.iter().map(|suffix| sigil.len() + suffix.len()).sum();
+    let width: usize = IMPORTED.iter().map(|(_, suffix)| sigil.len() + suffix.len()).sum();
     let mut packed = String::with_capacity(width);
-    for suffix in IMPORTED {
+    for (_, suffix) in IMPORTED {
         packed.push_str(sigil);
         packed.push_str(suffix);
     }
@@ -409,7 +473,7 @@ pub(crate) fn helper_names<'a>(sigil: &str, allocator: &'a Allocator) -> [&'a st
 
     let mut local = [""; HELPER_COUNT];
     let mut at = 0;
-    for (index, suffix) in IMPORTED.iter().enumerate() {
+    for (index, (_, suffix)) in IMPORTED.iter().enumerate() {
         let end = at + sigil.len() + suffix.len();
         local[index] = &packed[at..end];
         at = end;
@@ -464,6 +528,8 @@ pub struct Emit<'a, 'm> {
     pub module: &'m mut Module<'a>,
     pub source: &'a str,
     pub module_source: &'a str,
+    /// `<core_source>` — the helpers every target shares.
+    pub core_source: &'a str,
     /// `<server_source>` — where P8b's helpers come from. Its own package: the
     /// server runtime must never reach a client bundle.
     pub server_source: &'a str,
@@ -514,6 +580,7 @@ impl<'a, 'm> Emit<'a, 'm> {
             module,
             source,
             module_source: allocator.alloc_str(&options.module_source),
+            core_source: allocator.alloc_str(&options.core_source),
             server_source: allocator.alloc_str(&options.server_source),
             interp_source: allocator.alloc_str(&interp_source),
             target,
@@ -920,5 +987,18 @@ fn implant<'a>(statement: &mut Statement<'a>, root: Expression<'a>) {
         Statement::ReturnStatement(it) => it.argument = Some(root),
         Statement::VariableDeclaration(it) => it.declarations[0].init = Some(root),
         _ => unreachable!("only the two shapes `host` matches are ever spliced"),
+    }
+}
+
+#[cfg(test)]
+mod table {
+    use super::{HELPER_COUNT, IMPORTED};
+
+    #[test]
+    fn every_helper_sits_at_its_own_index() {
+        for (index, (helper, _)) in IMPORTED.iter().enumerate() {
+            assert_eq!(*helper as usize, index, "{}", IMPORTED[index].1);
+        }
+        assert_eq!(IMPORTED.len(), HELPER_COUNT);
     }
 }

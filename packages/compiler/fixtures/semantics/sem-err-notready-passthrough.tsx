@@ -19,7 +19,8 @@
  *
  * A3, E2.3.
  */
-import { Errored, Loading, render, createMemo } from "@barqjs/core"
+import { Errored, Loading, createMemo } from "@barqjs/core"
+import { render } from "@barqjs/web"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 

@@ -36,7 +36,7 @@ import { beginTrace, endTrace, type Trace } from "./tracer.ts";
 
 export const L4_DIR = join(import.meta.dir, "..", "fixtures", "l4");
 
-const DOM_PATH = join(dirname(Bun.resolveSync("@barqjs/core", import.meta.dir)), "dom.ts");
+const DOM_PATH = join(dirname(Bun.resolveSync("@barqjs/web", import.meta.dir)), "dom.ts");
 
 export interface OwnershipEvent {
   seq: number;
@@ -441,7 +441,10 @@ export async function openSession(
   source: string,
   options: SessionOptions = {},
 ): Promise<Session> {
-  const core = (await import("@barqjs/core")) as unknown as CoreLike;
+  const core = {
+    ...(await import("@barqjs/core")),
+    ...(await import("@barqjs/web")),
+  } as unknown as CoreLike;
   const code = compileSource(source, `${fixture}.tsx`, options.compile ?? {});
 
   // Before the module is imported, not after: `_$delegateEvents([…])` is emitted

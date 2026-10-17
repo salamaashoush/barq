@@ -98,22 +98,23 @@ export default function Page() {
     const page = await compiled(PAGE);
     const { html, data } = await served(page.ssr);
     const core = await import("@barqjs/core");
+    const web = await import("@barqjs/web");
     const container = host(html);
     const before = census(container);
 
     core.resetChildIds();
-    const stopPage = core.hydrate(page.dom.default as never, container, { data });
-    expect(core.hydrate.report.mismatches).toEqual([]);
-    expect(core.hydrate.report.recovered).toBe(false);
+    const stopPage = web.hydrate(page.dom.default as never, container, { data });
+    expect(web.hydrate.report.mismatches).toEqual([]);
+    expect(web.hydrate.report.recovered).toBe(false);
 
     const region = container.querySelector("#w")!;
     const { Region } = page.dom as unknown as { Region: () => never };
-    const stopRegion = core.hydrate(() => Region(), region as never, {
+    const stopRegion = web.hydrate(() => Region(), region as never, {
       renderId: "w-",
       data,
     });
-    expect(core.hydrate.report.mismatches).toEqual([]);
-    expect(core.hydrate.report.recovered).toBe(false);
+    expect(web.hydrate.report.mismatches).toEqual([]);
+    expect(web.hydrate.report.recovered).toBe(false);
     await microtasks();
 
     expect(reuse(before, container).percent).toBe(100);
@@ -133,8 +134,9 @@ export default function Page() {
   test("on the client Hydration passes through, so its children stay unhydratable under NoHydration", async () => {
     const page = await compiled(PAGE);
     const core = await import("@barqjs/core");
+    const web = await import("@barqjs/web");
     const container = host("");
-    const stop = core.render(page.dom.default as never, container);
+    const stop = web.render(page.dom.default as never, container);
     await microtasks();
     core.flush();
 
@@ -157,7 +159,8 @@ export default function Page() {
 
 describe("clientOnly", () => {
   const PAGE = `
-import { Loading, clientOnly, createMemo, createSignal, isHydratable } from "@barqjs/core"
+import { Loading, createMemo, createSignal, isHydratable } from "@barqjs/core"
+import { clientOnly } from "@barqjs/web"
 ${COUNTS}
 function Chart(props) {
   return <canvas data-name={props.name()} data-fallback={String("fallback" in props)} />
@@ -206,13 +209,14 @@ export default function Page() {
     const page = await compiled(PAGE);
     const { html, data } = await served(page.ssr);
     const core = await import("@barqjs/core");
+    const web = await import("@barqjs/web");
     const container = host(html);
     const fallbacks = [...container.querySelectorAll(".skel")];
 
     core.resetChildIds();
-    const stop = core.hydrate(page.dom.default as never, container, { data });
-    expect(core.hydrate.report.mismatches).toEqual([]);
-    expect(core.hydrate.report.recovered).toBe(false);
+    const stop = web.hydrate(page.dom.default as never, container, { data });
+    expect(web.hydrate.report.mismatches).toEqual([]);
+    expect(web.hydrate.report.recovered).toBe(false);
     expect([...container.querySelectorAll(".skel")]).toEqual(fallbacks);
     expect(page.client.fetches).toBe(0);
     // Eager for the first, deferred to the first render for the lazy one.
@@ -233,7 +237,8 @@ export default function Page() {
 
   test("a client render shows the fallback until the module lands, then the component", async () => {
     const core = await import("@barqjs/core");
-    const { clientOnly } = core;
+    const web = await import("@barqjs/web");
+    const { clientOnly } = web;
     let land!: () => void;
     let imports = 0;
     const Widget = clientOnly(() => {
@@ -244,7 +249,7 @@ export default function Page() {
     });
     const container = host("");
     const fallback = core.block(() => document.createTextNode("wait"));
-    const stop = core.render(
+    const stop = web.render(
       () => [Widget({ fallback } as never), Widget({ fallback } as never)] as never,
       container,
     );
@@ -275,6 +280,7 @@ export default function Page() {
   test("waits for a streamed boundary the root pass claimed a fallback for", async () => {
     const page = await compileText(PAGE, `hydration-api-${serial++}`, true, false);
     const core = await import("@barqjs/core");
+    const web = await import("@barqjs/web");
     const chunks = await chunksOf(page.ssr);
     expect(chunks.length).toBeGreaterThan(1);
     const container = host("");
@@ -287,8 +293,8 @@ export default function Page() {
     expect(container.querySelector(".skel")).not.toBeNull();
     core.resetChildIds();
     let ended = false;
-    const stop = core.hydrate(page.dom.default as never, container);
-    core.onHydrationEnd(() => {
+    const stop = web.hydrate(page.dom.default as never, container);
+    web.onHydrationEnd(() => {
       ended = true;
     });
     await microtasks();

@@ -8,7 +8,8 @@ The component the `dynamic` factory returns passes each prop through as the same
 received, so what it renders reads current values and there is nothing to warn about:
 
 ```tsx
-import { createSignal, dynamic } from "@barqjs/core";
+import { createSignal } from "@barqjs/core";
+import { dynamic } from "@barqjs/web";
 
 const [total] = createSignal(0);
 const Output = dynamic(() => "output");

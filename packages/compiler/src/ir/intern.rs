@@ -80,7 +80,7 @@ pub struct NameRow<'a> {
 /// Every bit that mirrors the runtime — `SVG_TAGS`, `DELEGATED_EVENTS`,
 /// `DOM_PROPS`, the names `applyProp` intercepts, the two SVG attributes that
 /// escape kebab-casing — comes off [`crate::tables`], which `build.rs` derives
-/// from `packages/core/src/dom.ts`. The tables declared below are the
+/// from `packages/web/src/dom.ts`. The tables declared below are the
 /// remainder: HTML tree-construction facts, which no runtime edit can move.
 pub struct Interner<'a> {
     allocator: &'a Allocator,

@@ -92,6 +92,7 @@ async function streamSource(name: string, source: string): Promise<StreamResult>
   const reference = await compileText(source, `${name}-stream-ref`, true, false);
   const compiled = await compileText(source, `${name}-stream`, true, false);
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const server = await import("@barqjs/server");
 
   // (1) the buffered reference, fully settled — BOUNDED, because the corpus
@@ -139,9 +140,9 @@ async function streamSource(name: string, source: string): Promise<StreamResult>
   // bookkeeping instead of the round trip.
   const before = census(container);
   core.resetChildIds();
-  const dispose = core.hydrate(compiled.dom.default as never, container);
+  const dispose = web.hydrate(compiled.dom.default as never, container);
   const claim = reuse(before, container);
-  const report = core.hydrate.report;
+  const report = web.hydrate.report;
   const hydratedShape = shape(container);
   // Out of the document before the cold page goes in: both carry the same ids,
   // and a portal aimed at `#portal-target` mounts into the first one it finds.
@@ -150,7 +151,7 @@ async function streamSource(name: string, source: string): Promise<StreamResult>
 
   const cold = host("");
   core.resetChildIds();
-  const rendered = core.render(compiled.dom.default as never, cold);
+  const rendered = web.render(compiled.dom.default as never, cold);
   const coldShape = shape(cold);
 
   rendered();
@@ -409,6 +410,7 @@ export default function StreamErroredReset() {
 `;
     const compiled = await compileText(source, "stream-errored-reset", true, false);
     const core = await import("@barqjs/core");
+    const web = await import("@barqjs/web");
     const container = host("");
     const assembled = await assemble(compiled.ssr, container);
     const streamed = container.querySelector(".err");
@@ -420,8 +422,8 @@ export default function StreamErroredReset() {
     expect(shape(container)).toBe('<div><button class="err">late boom</button></div>');
 
     core.resetChildIds();
-    const dispose = core.hydrate(compiled.dom.default as never, container);
-    const report = core.hydrate.report;
+    const dispose = web.hydrate(compiled.dom.default as never, container);
+    const report = web.hydrate.report;
 
     expect({ recovered: report.recovered, mismatches: report.mismatches }).toEqual({
       recovered: false,

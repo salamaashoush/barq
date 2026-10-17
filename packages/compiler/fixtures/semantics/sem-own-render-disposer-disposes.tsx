@@ -14,7 +14,8 @@
  *
  * O5, O3.7.
  */
-import { createRoot, DEV, createEffect, onCleanup, render, createRenderEffect, createSignal, runWithOwner } from "@barqjs/core"
+import { createRoot, DEV, createEffect, onCleanup, createRenderEffect, createSignal, runWithOwner } from "@barqjs/core"
+import { render } from "@barqjs/web"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 import { formatThrown } from "../../test/semantics-support.ts"

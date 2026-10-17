@@ -6,7 +6,8 @@
  * container, so a second invocation would leave no trace anywhere the DOM
  * channels look.
  */
-import { Portal, createSignal } from "@barqjs/core"
+import { Portal } from "@barqjs/web"
+import { createSignal } from "@barqjs/core"
 
 export const log: string[] = []
 

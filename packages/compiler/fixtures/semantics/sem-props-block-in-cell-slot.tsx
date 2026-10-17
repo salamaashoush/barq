@@ -29,8 +29,10 @@
  *
  * C3.6, C3.7, C3.8, C3.9, C5.1.
  */
-import { block, delegate, dispose, flush, isBlock, listen, pin, ref, render, resetErrorHalt, rootScope, runWithOwner, setProp } from "@barqjs/core"
-import { branch, boundary, each, onCleanup, portal, provide, createContext, useContext } from "@barqjs/core"
+import { block, dispose, flush, isBlock, pin, resetErrorHalt, rootScope, runWithOwner } from "@barqjs/core"
+import { delegate, listen, ref, render, setProp } from "@barqjs/web"
+import { branch, boundary, each, portal } from "@barqjs/web"
+import { onCleanup, provide, createContext, useContext } from "@barqjs/core"
 import type { Scope } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"

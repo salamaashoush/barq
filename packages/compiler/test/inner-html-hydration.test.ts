@@ -23,6 +23,7 @@ describe("innerHTML the browser serialises differently", () => {
 
     test(`${name}: keeps the server's nodes`, async () => {
       const core = await import("@barqjs/core");
+      const web = await import("@barqjs/web");
       const source = svg
         ? `export const MARKUP = ${JSON.stringify(markup)};
 export default function Page() { return <main><svg viewBox="0 0 10 10" innerHTML={MARKUP} /></main>; }`
@@ -33,11 +34,11 @@ export default function Page() { return <main><div innerHTML={MARKUP} /></main>;
       const holder = page.querySelector(svg ? "svg" : "main > div") as Element;
       expect(holder.innerHTML).not.toBe(markup);
       const served = [...holder.childNodes];
-      const stop = core.hydrate(compiled.dom.default as never, page);
+      const stop = web.hydrate(compiled.dom.default as never, page);
       core.flush();
       try {
-        expect(core.hydrate.report.mismatches).toEqual([]);
-        expect(core.hydrate.report.recovered).toBe(false);
+        expect(web.hydrate.report.mismatches).toEqual([]);
+        expect(web.hydrate.report.recovered).toBe(false);
         const kept = [...holder.childNodes];
         expect(kept.length).toBe(served.length);
         expect(kept.every((node, at) => node === served[at])).toBe(true);
@@ -51,6 +52,7 @@ export default function Page() { return <main><div innerHTML={MARKUP} /></main>;
 
   test("different markup is still written", async () => {
     const core = await import("@barqjs/core");
+    const web = await import("@barqjs/web");
     const compiled = await compileText(
       `import { createSignal } from "@barqjs/core";
 export const [markup, setMarkup] = createSignal("<b>server</b>");
@@ -60,7 +62,7 @@ export default function Page() { return <main><div innerHTML={markup()} /></main
     const page = host(wire(compiled.ssr));
     (compiled.dom as unknown as { setMarkup: (value: string) => void }).setMarkup("<i>client</i>");
     core.flush();
-    const stop = core.hydrate(compiled.dom.default as never, page);
+    const stop = web.hydrate(compiled.dom.default as never, page);
     core.flush();
     try {
       expect(page.querySelector("main > div")?.innerHTML).toBe("<i>client</i>");

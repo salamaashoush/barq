@@ -19,7 +19,8 @@
  *
  * R7.
  */
-import { createOwner, createSignal, flush, render, runWithOwner } from "@barqjs/core"
+import { createOwner, createSignal, flush, runWithOwner } from "@barqjs/core"
+import { render } from "@barqjs/web"
 import type { Block } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"

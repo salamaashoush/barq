@@ -397,7 +397,7 @@ describe("the diagnostic engine", () => {
     expect(codes(diagnose(when))).toContain("BARQ010");
 
     const target =
-      'import { Portal } from "@barqjs/core";\n' +
+      'import { Portal } from "@barqjs/web";\n' +
       "function Away(props) { return <Portal mount={props.thing}>ok</Portal>; }\n" +
       "export const V = () => <Away thing={<b>x</b>} />;\n";
     expect(codes(diagnose(target))).toContain("BARQ010");

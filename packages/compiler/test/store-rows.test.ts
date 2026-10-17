@@ -36,6 +36,7 @@ export function Table() { return <p class={labels.open}>{labels.done}</p>; }
 
 async function mounted(name: string) {
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const code = compileSource(SOURCE, "store-rows.tsx");
   const module = (await loadModule(code, `store-rows-${name}`)) as unknown as Record<
     string,
@@ -43,7 +44,7 @@ async function mounted(name: string) {
   >;
   const host = document.createElement("div");
   document.body.appendChild(host);
-  const dispose = core.render(() => module[name]() as never, host);
+  const dispose = web.render(() => module[name]() as never, host);
   const write = (change: (draft: Record<string, never>) => void): void => {
     (module.setState as unknown as (fn: typeof change) => void)(change);
     core.flush();
@@ -171,6 +172,7 @@ describe("BARQ004 against a store row written in place", () => {
         (warning) => warning.includes("BARQ004"),
       );
       const core = await import("@barqjs/core");
+      const web = await import("@barqjs/web");
       const module = (await loadModule(
         compileSource(source, `barq004-${name}.tsx`),
         `barq004-${name}`,
@@ -180,7 +182,7 @@ describe("BARQ004 against a store row written in place", () => {
       };
       const host = document.createElement("div");
       document.body.appendChild(host);
-      const dispose = core.render(() => module.Rows() as never, host);
+      const dispose = web.render(() => module.Rows() as never, host);
       try {
         expect(shown(host)).toBe("salama");
         module.setState((draft) => {

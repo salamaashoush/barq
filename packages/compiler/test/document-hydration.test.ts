@@ -58,6 +58,7 @@ afterAll(() => {
 test("a tree rooted at <html> claims the served document", async () => {
   const compiled = await compileText(SOURCE, "document-shell");
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const markup = wire(compiled.ssr);
 
   // The served bytes, parsed by the parser rather than assigned as `innerHTML`:
@@ -71,8 +72,8 @@ test("a tree rooted at <html> claims the served document", async () => {
   const title = document.querySelector("title");
   const app = document.getElementById("app");
 
-  const dispose = core.hydrate(compiled.dom.default as never, document as never);
-  const report = core.hydrate.report;
+  const dispose = web.hydrate(compiled.dom.default as never, document as never);
+  const report = web.hydrate.report;
 
   // The claim, not the markup: a rebuilt document and a claimed one serialise
   // the same, so identity is the only evidence.

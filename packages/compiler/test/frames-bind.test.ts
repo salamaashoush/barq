@@ -12,7 +12,8 @@ import { afterEach, expect, test } from "bun:test";
 import { census, compileText, host, reuse } from "./hydration.ts";
 
 const SOURCE = `
-import { createSignal, dynamic } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
+import { dynamic } from "@barqjs/web"
 export const todos = {
   list: [{ id: 1, title: "first", done: false }, { id: 2, title: "second", done: true }],
 }
@@ -165,6 +166,7 @@ test("the browser claims every position the server wrote, then owns it", async (
   const server = await import("@barqjs/server");
   const codec = await import("@barqjs/server/codec");
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const frame = await getTodos();
   const html = server.renderToString(() => ssr.default({ view: () => frame }) as never);
   const named = codec.decodeWire<{ id: string; address: string }>(codec.encodeWire(frame));
@@ -185,10 +187,10 @@ test("the browser claims every position the server wrote, then owns it", async (
   });
   ssr.counts.fills = 0;
   core.resetChildIds();
-  const dispose = core.hydrate(() => dom.default({ view: () => view }) as never, container);
+  const dispose = web.hydrate(() => dom.default({ view: () => view }) as never, container);
   core.flush();
 
-  expect(core.hydrate.report.recovered).toBe(false);
+  expect(web.hydrate.report.recovered).toBe(false);
   // Nothing the server wrote is written again: the claim is the whole of it.
   expect(observer.takeRecords()).toEqual([]);
   observer.disconnect();
@@ -218,9 +220,10 @@ test("the browser claims every position the server wrote, then owns it", async (
 test("an update keeps each fill and its state, and binds what the server added", async () => {
   const { ssr, dom, call, startClient } = await setup();
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const view = await startClient.applyFrameResponse((await call())!);
   const container = host("");
-  const dispose = core.render(() => dom.default({ view: () => view }) as never, container);
+  const dispose = web.render(() => dom.default({ view: () => view }) as never, container);
   core.flush();
   const { counts } = dom;
 

@@ -2717,7 +2717,8 @@ mod tests {
         );
 
         // `BARQ006`'s shape, now silent, and the emitted module says why: no getter.
-        let dynamic = dev("import { dynamic, createSignal } from \"@barqjs/core\";\n\
+        let dynamic = dev("import { createSignal } from \"@barqjs/core\";\n\
+             import { dynamic } from \"@barqjs/web\";\n\
              const [n] = createSignal(0);\n\
              const Chosen = dynamic(() => \"b\");\n\
              const V = () => <Chosen total={n()} />;\n");

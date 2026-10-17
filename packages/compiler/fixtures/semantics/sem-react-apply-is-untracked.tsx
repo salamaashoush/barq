@@ -21,7 +21,8 @@
  * is the precondition for the first, and without it "no dependency" would be
  * satisfied by an apply that read nothing at all.
  */
-import { render, createSignal } from "@barqjs/core"
+import { render } from "@barqjs/web"
+import { createSignal } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 

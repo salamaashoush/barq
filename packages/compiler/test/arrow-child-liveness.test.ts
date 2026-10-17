@@ -52,12 +52,13 @@ describe("a function child that chooses its DOM", () => {
 
     test(`${name}: follows what it reads`, async () => {
       const core = await import("@barqjs/core");
+      const web = await import("@barqjs/web");
       const compiled = await compileText(PRELUDE + body, `${tag}-cold`, false);
       const dom = compiled.dom as unknown as { setOn: (value: boolean) => void };
       dom.setOn(false);
       const page = document.createElement("div");
       document.body.append(page);
-      const stop = core.render(compiled.dom.default as never, page);
+      const stop = web.render(compiled.dom.default as never, page);
       core.flush();
       try {
         const before = text(page);
@@ -76,16 +77,17 @@ describe("a function child that chooses its DOM", () => {
 
     test(`${name}: hydrates, then follows what it reads`, async () => {
       const core = await import("@barqjs/core");
+      const web = await import("@barqjs/web");
       const compiled = await compileText(PRELUDE + body, `${tag}-hydrate`);
       const dom = compiled.dom as unknown as { setOn: (value: boolean) => void };
       dom.setOn(false);
       const page = host(wire(compiled.ssr));
       const served = [...page.querySelectorAll("i")];
-      const stop = core.hydrate(compiled.dom.default as never, page);
+      const stop = web.hydrate(compiled.dom.default as never, page);
       core.flush();
       try {
-        expect(core.hydrate.report.mismatches).toEqual([]);
-        expect(core.hydrate.report.recovered).toBe(false);
+        expect(web.hydrate.report.mismatches).toEqual([]);
+        expect(web.hydrate.report.recovered).toBe(false);
         expect([...page.querySelectorAll("i")]).toEqual(served);
         dom.setOn(true);
         core.flush();

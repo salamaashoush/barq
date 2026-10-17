@@ -13,7 +13,8 @@ import { afterEach, expect, test } from "bun:test";
 import { census, compileText, host, reuse } from "./hydration.ts";
 
 const SOURCE = `
-import { createSignal, dynamic, useHead } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
+import { dynamic, useHead } from "@barqjs/web"
 export const story = {
   title: "first",
   comments: [{ id: 1, text: "one" }, { id: 2, text: "two" }],
@@ -146,6 +147,7 @@ test("the browser claims the frame, fills its slots, and an update morphs it in 
   const server = await import("@barqjs/server");
   const codec = await import("@barqjs/server/codec");
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
 
   const frame = await getStory();
   const html = server.renderToString(() => ssr.default({ view: () => frame }) as never);
@@ -165,11 +167,11 @@ test("the browser claims the frame, fills its slots, and an update morphs it in 
   };
   const before = census(container);
   core.resetChildIds();
-  const dispose = core.hydrate(() => dom.default({ view: () => view }) as never, container);
+  const dispose = web.hydrate(() => dom.default({ view: () => view }) as never, container);
   core.flush();
 
-  expect(core.hydrate.report.recovered).toBe(false);
-  expect(core.hydrate.report.mismatches).toEqual([]);
+  expect(web.hydrate.report.recovered).toBe(false);
+  expect(web.hydrate.report.mismatches).toEqual([]);
   expect(container.querySelector("article")).toBe(served.article);
   expect(container.querySelector("h1")).toBe(served.h1);
   // The slots' content is claimed like any other hole's: every node the server
@@ -222,13 +224,14 @@ test("the browser claims the frame, fills its slots, and an update morphs it in 
 test("an update whose region needs a stylesheet is applied once the stylesheet has loaded", async () => {
   const { ssr, dom, getStory, call, startClient } = await setup();
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const codec = await import("@barqjs/server/codec");
   const frame = await getStory();
   const view = startClient.frameAdapter.fromSerializable(
     codec.decodeWire(codec.encodeWire(frame)) as never,
   ) as (props: Record<string, unknown>) => Node;
   const container = host("");
-  const dispose = core.render(() => dom.default({ view: () => view }) as never, container);
+  const dispose = web.render(() => dom.default({ view: () => view }) as never, container);
   core.flush();
   // A fresh mount over a reference has no markup until an answer brings it.
   await startClient.applyFrameResponse((await call())!);

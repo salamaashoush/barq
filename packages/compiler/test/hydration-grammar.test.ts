@@ -321,7 +321,8 @@ export function Case${offset + i}() {
 }`;
   });
   return `
-import { Show, For, Repeat, Switch, Match, Loading, Portal, dynamic, createSignal, onSettled, createEffect, createRenderEffect } from "@barqjs/core";
+import { Show, For, Repeat, Switch, Match, Loading, createSignal, onSettled, createEffect, createRenderEffect } from "@barqjs/core";
+import { Portal, dynamic } from "@barqjs/web";
 const ROWS = [{ id: 1, name: "r1" }, { id: 2, name: "r2" }, { id: 3, name: "r3" }];
 const LEAD = "lead ";
 const TAIL = "tail";
@@ -399,7 +400,8 @@ async function settle(core: Core): Promise<void> {
 async function cold(core: Core, mod: Pair["dom"], fn: string): Promise<string> {
   const others = new Set(document.querySelectorAll(".portal"));
   const page = host("");
-  const stop = core.render(() => (mod[fn] as () => never)(), page);
+  const { render } = await import("@barqjs/web");
+  const stop = render(() => (mod[fn] as () => never)(), page);
   await settle(core);
   const out = seen(page, portalsIn(others));
   stop();
@@ -421,6 +423,7 @@ function used(c: Case): (keyof State)[] {
 async function run(index: number, start: State, dev: boolean): Promise<void> {
   const c = CASES[index];
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const server = await import("@barqjs/server");
   const pair = await modulesFor(index, dev);
   const fn = `Case${index}`;
@@ -434,8 +437,8 @@ async function run(index: number, start: State, dev: boolean): Promise<void> {
   const before = census(page);
   const statics = Array.from(page.querySelectorAll(".s"));
   core.resetChildIds();
-  const stop = core.hydrate(() => (pair.dom[fn] as () => never)(), page);
-  const report = core.hydrate.report;
+  const stop = web.hydrate(() => (pair.dom[fn] as () => never)(), page);
+  const report = web.hydrate.report;
   try {
     expect({ mismatches: report.mismatches, recovered: report.recovered }).toEqual({
       mismatches: [],

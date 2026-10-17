@@ -79,10 +79,11 @@ async function quiet(): Promise<void> {
 
 async function hydrated(dom: Module, container: HTMLElement) {
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   core.resetChildIds();
-  const dispose = core.hydrate(dom.default as never, container);
+  const dispose = web.hydrate(dom.default as never, container);
   const claimed = container.textContent;
-  const report = core.hydrate.report;
+  const report = web.hydrate.report;
   return { dispose, claimed, report };
 }
 

@@ -32,13 +32,14 @@ describe("a choice under a provider reads the provider's context", () => {
   for (const name of ["Choice", "InAFragment", "BesideAnElement"]) {
     test(name, async () => {
       const core = await import("@barqjs/core");
+      const web = await import("@barqjs/web");
       const module = (await loadModule(
         compileSource(SOURCE, "provider-choice.tsx"),
         `provider-choice-${name}`,
       )) as unknown as Record<string, () => unknown> & { setOn(next: boolean): void };
       const host = document.createElement("div");
       document.body.appendChild(host);
-      const dispose = core.render(() => module[name]() as never, host);
+      const dispose = web.render(() => module[name]() as never, host);
       try {
         expect(host.querySelector("i")?.textContent).toBe("dark");
         module.setOn(false);

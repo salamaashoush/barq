@@ -77,7 +77,13 @@ pub fn bind<'a>(
     let reshaped = nesting::check(allocator, program);
     module.env.diagnostics.extend(reshaped);
     if options.diagnostics {
-        render::check(allocator, program, &module.scoping, &mut module.env, &options.module_source);
+        render::check(
+            allocator,
+            program,
+            &module.scoping,
+            &mut module.env,
+            &[&options.core_source, &options.module_source],
+        );
     }
 }
 

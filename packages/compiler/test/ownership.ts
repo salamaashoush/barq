@@ -323,7 +323,10 @@ export async function trace(
   tag: string,
   siblings: ReadonlyArray<{ name: string; code: string }> = [],
 ): Promise<OwnershipEvent[]> {
-  const core = (await import("@barqjs/core")) as unknown as CoreLike;
+  const core = {
+    ...(await import("@barqjs/core")),
+    ...(await import("@barqjs/web")),
+  } as unknown as CoreLike;
   // bun caches a module by path permanently, so rewriting a fixed sibling path
   // and re-importing hands back the FIRST compilation. Two calls that differ
   // only in backend would then compare the same sibling twice, and two

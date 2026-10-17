@@ -9,18 +9,21 @@ import { compileText, host, shape, wire } from "./hydration.ts";
  */
 const SHAPES: Record<string, string> = {
   "inside a condition": `
-import { Show, Portal, createSignal } from "@barqjs/core";
+import { Show, createSignal } from "@barqjs/core";
+import { Portal } from "@barqjs/web";
 export const [open, setOpen] = createSignal(true);
 export default function Page() {
   return <main><Show when={open()}><Portal><div class="dialog">saved</div></Portal></Show><p>after</p></main>;
 }`,
   "as a component's whole value": `
-import { Show, Portal, createSignal } from "@barqjs/core";
+import { Show, createSignal } from "@barqjs/core";
+import { Portal } from "@barqjs/web";
 export const [open, setOpen] = createSignal(true);
 function Dialog() { return <Show when={open()}><Portal><div class="dialog">saved</div></Portal></Show>; }
 export default function Page() { return <main><h1>Orders</h1><Dialog /><p>after</p></main>; }`,
   "beside its trigger in a fragment": `
-import { Show, Portal, createSignal } from "@barqjs/core";
+import { Show, createSignal } from "@barqjs/core";
+import { Portal } from "@barqjs/web";
 export const [open, setOpen] = createSignal(true);
 function Dialog() {
   return <><button>open</button><Show when={open()}><Portal><div class="dialog">saved</div></Portal></Show></>;
@@ -30,13 +33,14 @@ export default function Page() { return <main><Dialog /><p>after</p></main>; }`,
 
 async function hydrated(source: string, tag: string) {
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const compiled = await compileText(source, `portal-hydration-${tag}`);
   const page = host(wire(compiled.ssr));
-  const stop = core.hydrate(compiled.dom.default as never, page);
+  const stop = web.hydrate(compiled.dom.default as never, page);
   core.flush();
   return {
     page,
-    report: core.hydrate.report,
+    report: web.hydrate.report,
     setOpen: (compiled.dom as unknown as { setOpen: (value: boolean) => void }).setOpen,
     flush: () => core.flush(),
     dispose: () => {

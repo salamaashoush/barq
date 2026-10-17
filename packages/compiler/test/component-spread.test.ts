@@ -8,7 +8,8 @@ import { compileSource, loadModule } from "./harness.ts";
  * it; the same spread on an element has always followed its source.
  */
 const SOURCE = `
-import { createSignal, dynamic } from "@barqjs/core";
+import { createSignal } from "@barqjs/core";
+import { dynamic } from "@barqjs/web";
 export const [rest, setRest] = createSignal<Record<string, unknown>>({ title: "first" });
 export const [wide, setWide] = createSignal(false);
 const narrow = { lang: "en" };
@@ -31,13 +32,14 @@ export function Tag() { return <Para {...rest()} />; }
 
 async function mounted(name: string) {
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const module = (await loadModule(
     compileSource(SOURCE, "component-spread.tsx"),
     `component-spread-${name}`,
   )) as unknown as Record<string, (value?: never) => unknown>;
   const host = document.createElement("div");
   document.body.appendChild(host);
-  const dispose = core.render(() => module[name]() as never, host);
+  const dispose = web.render(() => module[name]() as never, host);
   return {
     element: () => host.firstElementChild as HTMLElement,
     set: (setter: string, value: unknown) => {

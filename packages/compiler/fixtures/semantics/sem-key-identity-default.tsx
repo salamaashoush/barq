@@ -30,7 +30,8 @@
  *
  * K1, K3.
  */
-import { For, render, createSignal } from "@barqjs/core"
+import { For, createSignal } from "@barqjs/core"
+import { render } from "@barqjs/web"
 import type { Block } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"

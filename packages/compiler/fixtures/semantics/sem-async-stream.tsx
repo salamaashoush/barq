@@ -15,7 +15,8 @@
  *
  * A7, A3.
  */
-import { Loading, createMemo, render } from "@barqjs/core"
+import { Loading, createMemo } from "@barqjs/core"
+import { render } from "@barqjs/web"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 

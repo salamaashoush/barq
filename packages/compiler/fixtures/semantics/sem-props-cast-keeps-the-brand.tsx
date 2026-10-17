@@ -21,7 +21,7 @@
  *
  * C6, C5.1.
  */
-import { render } from "@barqjs/core"
+import { render } from "@barqjs/web"
 
 import type { Claim } from "../../test/semantics-support.ts"
 

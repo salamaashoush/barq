@@ -21,7 +21,8 @@
  *
  * B6.
  */
-import { createSignal, flush, render, untrack } from "@barqjs/core"
+import { createSignal, flush, untrack } from "@barqjs/core"
+import { render } from "@barqjs/web"
 import type { Block } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"

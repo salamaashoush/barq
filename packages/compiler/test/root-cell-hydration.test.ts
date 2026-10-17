@@ -17,6 +17,7 @@ export function Edited() { return <main><h1>invoices</h1><p>{count()}</p></main>
 
 async function served(tag: string) {
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const server = await import("@barqjs/server");
   const compiled = await compileText(SOURCE, tag);
   const rendered = await server.renderPage((() =>
@@ -25,6 +26,7 @@ async function served(tag: string) {
   core.resetChildIds();
   return {
     core,
+    web,
     page,
     module: compiled.dom as unknown as {
       default: () => unknown;
@@ -36,13 +38,13 @@ async function served(tag: string) {
 
 describe("a root that is a Cell", () => {
   test("claims the server's markup instead of discarding it", async () => {
-    const { core, page, module } = await served("root-cell-plain");
+    const { core, web, page, module } = await served("root-cell-plain");
     const heading = page.querySelector("h1");
-    const dispose = core.hydrate((() => () => module.default()) as never, page);
+    const dispose = web.hydrate((() => () => module.default()) as never, page);
     core.flush();
     try {
-      expect(core.hydrate.report.mismatches).toEqual([]);
-      expect(core.hydrate.report.recovered).toBe(false);
+      expect(web.hydrate.report.mismatches).toEqual([]);
+      expect(web.hydrate.report.recovered).toBe(false);
       expect(page.querySelector("h1")).toBe(heading);
       module.setCount(2);
       core.flush();
@@ -55,15 +57,15 @@ describe("a root that is a Cell", () => {
   });
 
   test("a component handed out through hot hydrates, and is still replaced in place afterwards", async () => {
-    const { core, page, module } = await served("root-cell-hot");
+    const { core, web, page, module } = await served("root-cell-hot");
     const { hot } = await import("@barqjs/core/hot");
     const context = { data: {} };
     const heading = page.querySelector("h1");
     const Page = hot(context, "Page", module.default, "one");
-    const dispose = core.hydrate((() => Page()) as never, page);
+    const dispose = web.hydrate((() => Page()) as never, page);
     core.flush();
     try {
-      expect(core.hydrate.report.recovered).toBe(false);
+      expect(web.hydrate.report.recovered).toBe(false);
       expect(page.querySelector("h1")).toBe(heading);
       hot(context, "Page", module.Edited, "two");
       expect(page.querySelector("h1")?.textContent).toBe("invoices");

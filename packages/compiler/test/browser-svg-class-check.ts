@@ -21,7 +21,8 @@ import { compileFixture } from "./harness.ts";
 
 const PROBE = `
 import Component, { setActive } from "./fixture.js"
-import { flush, render, setProp } from "@barqjs/core"
+import { flush } from "@barqjs/core"
+import { render, setProp } from "@barqjs/web"
 
 const SVG = "http://www.w3.org/2000/svg"
 const result = { probes: {}, fixture: {} }
@@ -96,7 +97,9 @@ export function buildProbePage(): { pagePath: string; cleanup: () => void } {
   // The page is bundled outside the workspace, so the bare specifier has nothing
   // to resolve against. Point both modules straight at the runtime's entry.
   const core = JSON.stringify(Bun.resolveSync("@barqjs/core", import.meta.dir));
-  const rewrite = (code: string): string => code.replaceAll('"@barqjs/core"', core);
+  const web = JSON.stringify(Bun.resolveSync("@barqjs/web", import.meta.dir));
+  const rewrite = (code: string): string =>
+    code.replaceAll('"@barqjs/core"', core).replaceAll('"@barqjs/web"', web);
 
   const workdir = mkdtempSync(join(tmpdir(), "barq-svg-class-page-"));
   writeFileSync(join(workdir, "fixture.js"), rewrite(compileFixture("svg-dynamic-class")));

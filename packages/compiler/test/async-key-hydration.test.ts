@@ -16,10 +16,8 @@ import { compileText, host } from "./hydration.ts";
 import { assemble } from "./stream.ts";
 
 const HEAD = `
-import {
-  Errored, For, Loading, Match, Portal, Repeat, Show, Switch,
-  createContext, createMemo, createSignal, dynamic, lazy, useContext,
-} from "@barqjs/core"
+import { Errored, For, Loading, Match, Repeat, Show, Switch, createContext, createMemo, createSignal, lazy, useContext } from "@barqjs/core"
+import { Portal, dynamic } from "@barqjs/web"
 export const counts = { fetches: 0 }
 function Read(props) {
   const tag = props.tag()
@@ -287,6 +285,7 @@ let serial = 0;
 async function roundTrip(source: string, mode: Mode) {
   const compiled = await compileText(HEAD + source, `async-key-${mode}-${serial++}`, true, false);
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const server = await import("@barqjs/server");
   const seeded = globalThis as { __BARQ_DATA__?: Record<string, unknown> };
   seeded.__BARQ_DATA__ = undefined;
@@ -308,7 +307,7 @@ async function roundTrip(source: string, mode: Mode) {
   // which is what a route's modulepreload is for.
   await (compiled.dom as { preload?: () => Promise<void> }).preload?.();
   core.resetChildIds();
-  const dispose = core.hydrate(
+  const dispose = web.hydrate(
     compiled.dom.default as never,
     container,
     data === undefined ? undefined : { data },
@@ -319,7 +318,7 @@ async function roundTrip(source: string, mode: Mode) {
     fetchedOnClient: (compiled.dom as unknown as { counts: { fetches: number } }).counts.fetches,
     unclaimed: Object.keys(seeded.__BARQ_DATA__ ?? {}),
     shown: container.textContent,
-    recovered: core.hydrate.report.recovered,
+    recovered: web.hydrate.report.recovered,
   };
   dispose();
   container.remove();

@@ -1,5 +1,5 @@
 /**
- * The runtime tables, read out of `packages/core/src/dom.ts` AS IT IS ON DISK.
+ * The runtime tables, read out of `packages/web/src/dom.ts` AS IT IS ON DISK.
  *
  * Table generation is the only mechanism that keeps the compiler and the
  * runtime honest. `build.rs` re-derives them on every build

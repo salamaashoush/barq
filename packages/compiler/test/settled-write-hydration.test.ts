@@ -46,14 +46,15 @@ describe("a write from an effect while the page hydrates", () => {
 
     test(`${name}: claims the server's page, then applies the write`, async () => {
       const core = await import("@barqjs/core");
+      const web = await import("@barqjs/web");
       const compiled = await compileText(source, tag);
       const page = host(wire(compiled.ssr));
       const after = page.querySelector("p");
-      const stop = core.hydrate(compiled.dom.default as never, page);
+      const stop = web.hydrate(compiled.dom.default as never, page);
       core.flush();
       try {
-        expect(core.hydrate.report.mismatches).toEqual([]);
-        expect(core.hydrate.report.recovered).toBe(false);
+        expect(web.hydrate.report.mismatches).toEqual([]);
+        expect(web.hydrate.report.recovered).toBe(false);
         expect(page.querySelector("p")).toBe(after);
         const shown = name.includes("hides") ? 0 : 1;
         expect(page.querySelectorAll("span").length).toBe(shown);
@@ -68,6 +69,7 @@ describe("a write from an effect while the page hydrates", () => {
 describe("a condition the server showed and the browser does not", () => {
   test("removes the server's arm, reports it, and builds the next arm cold", async () => {
     const core = await import("@barqjs/core");
+    const web = await import("@barqjs/web");
     const compiled = await compileText(
       `
 import { Show, createSignal } from "@barqjs/core";
@@ -81,11 +83,11 @@ export default function Page() {
     const dom = compiled.dom as unknown as { setOn: (value: boolean) => void };
     dom.setOn(false);
     core.flush();
-    const stop = core.hydrate(compiled.dom.default as never, page);
+    const stop = web.hydrate(compiled.dom.default as never, page);
     core.flush();
     try {
-      expect(core.hydrate.report.recovered).toBe(false);
-      expect(core.hydrate.report.mismatches.length).toBe(1);
+      expect(web.hydrate.report.recovered).toBe(false);
+      expect(web.hydrate.report.mismatches.length).toBe(1);
       expect(page.querySelectorAll("span").length).toBe(0);
       dom.setOn(true);
       core.flush();

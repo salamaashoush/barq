@@ -49,10 +49,10 @@ import {
   TMP_DIR,
 } from "./harness.ts";
 
-const PRAGMA = "/** @jsxImportSource @barqjs/core */\n";
+const PRAGMA = "/** @jsxImportSource @barqjs/web */\n";
 
 /**
- * `@barqjs/core` with `template` recording every clone it hands out.
+ * `@barqjs/web` with `template` recording every clone it hands out.
  *
  * The happy-dom harness gets this from `mock.module`, which has no meaning in a
  * browser, so the compiled modules import through this shim instead.
@@ -67,8 +67,8 @@ const PRAGMA = "/** @jsxImportSource @barqjs/core */\n";
  * whose templates bake no anchor cannot produce one" — which is no check at all
  * for a module that bakes one.
  */
-const CORE_SHIM = `export * from "@barqjs/core"
-import { template as realTemplate } from "@barqjs/core"
+const WEB_SHIM = `export * from "@barqjs/web"
+import { template as realTemplate } from "@barqjs/web"
 
 // Counted HERE, on the fresh clone, and never again. Counting at snapshot time
 // instead double-counts: once a clone has been inserted into another clone, the
@@ -174,7 +174,8 @@ function entrySource(fixtures: PageRow[]): string {
 
   return `${PRAGMA}${imports}
 import { normalizeChannels, resetIdentity } from "../../normalize.ts"
-import { flush, render } from "@barqjs/core"
+import { flush } from "@barqjs/core"
+import { render } from "@barqjs/web"
 
 const CORPUS = [
 ${table}
@@ -330,7 +331,7 @@ window.__barqDifferential = async function () {
 
 /**
  * Bundle both paths for every fixture into one page. The workdir lives inside
- * the package on purpose: `@jsxImportSource @barqjs/core` is resolved by the
+ * the package on purpose: `@jsxImportSource @barqjs/web` is resolved by the
  * BUNDLER, and a tmpdir outside the workspace has no node_modules to resolve
  * it against.
  */
@@ -360,7 +361,7 @@ export async function buildDifferentialPage(
       compile: () => compileBrowserOnly(name),
     })),
   ];
-  writeFileSync(join(workdir, "core-instrumented.ts"), CORE_SHIM);
+  writeFileSync(join(workdir, "web-instrumented.ts"), WEB_SHIM);
 
   const names = rows.map((row) => row.name);
   const fixtures = rows.map(({ name, compile }, i) => {
@@ -372,7 +373,7 @@ export async function buildDifferentialPage(
     assertDeclaresItsDelegatedTypes(code, name);
     writeFileSync(
       join(workdir, `compiled-${i}.tsx`),
-      PRAGMA + code.replaceAll('from "@barqjs/core"', 'from "./core-instrumented.ts"'),
+      PRAGMA + code.replaceAll('from "@barqjs/web"', 'from "./web-instrumented.ts"'),
     );
     return {
       name,

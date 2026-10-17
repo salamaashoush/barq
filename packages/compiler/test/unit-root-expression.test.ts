@@ -21,13 +21,14 @@ export function InARow() { return <ul><For each={rows()}>{(row) => <>{row}: {cou
 
 async function textAfterIncrement(name: string): Promise<[string, string]> {
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const module = (await loadModule(
     compileSource(SOURCE, "unit-root.tsx"),
     `unit-root-${name}`,
   )) as unknown as Record<string, () => unknown> & { setCount(next: number): void };
   const host = document.createElement("div");
   document.body.appendChild(host);
-  const dispose = core.render(() => module[name]() as never, host);
+  const dispose = web.render(() => module[name]() as never, host);
   try {
     const before = host.textContent ?? "";
     module.setCount(1);

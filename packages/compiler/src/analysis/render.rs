@@ -53,12 +53,12 @@ pub(super) fn check<'a>(
     program: &Program<'a>,
     scoping: &Scoping,
     env: &mut ReactiveEnv<'a>,
-    module_source: &str,
+    runtime: &[&str],
 ) {
     let mut core = Vec::new();
     for statement in &program.body {
         let Statement::ImportDeclaration(declaration) = statement else { continue };
-        if declaration.source.value.as_str() != module_source {
+        if !runtime.contains(&declaration.source.value.as_str()) {
             continue;
         }
         for specifier in declaration.specifiers.iter().flatten() {

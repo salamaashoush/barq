@@ -24,13 +24,14 @@ export function Shadow() {
 
 async function namespaces(name: string): Promise<Record<string, string | null>> {
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const module = (await loadModule(
     compileSource(SOURCE, "svg-namespace.tsx"),
     `svg-namespace-${name}`,
   )) as unknown as Record<string, () => unknown>;
   const host = document.createElement("div");
   document.body.appendChild(host);
-  const dispose = core.render(() => module[name]() as never, host);
+  const dispose = web.render(() => module[name]() as never, host);
   try {
     const found: Record<string, string | null> = {};
     for (const node of host.querySelectorAll("svg *"))

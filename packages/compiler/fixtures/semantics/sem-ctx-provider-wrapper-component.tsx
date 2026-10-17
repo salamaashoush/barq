@@ -24,7 +24,8 @@
  * O1, O2, O2.1 and X1;.
  */
 import type { Block } from "@barqjs/core"
-import { createContext, getOwner, hasContext, render, useContext } from "@barqjs/core"
+import { createContext, getOwner, hasContext, useContext } from "@barqjs/core"
+import { render } from "@barqjs/web"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 import { formatThrown } from "../../test/semantics-support.ts"

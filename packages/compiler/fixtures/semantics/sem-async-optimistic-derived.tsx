@@ -19,7 +19,8 @@
  *
  * A4.
  */
-import { action, createOptimistic, createOwner, createSignal, render, runWithOwner } from "@barqjs/core"
+import { action, createOptimistic, createOwner, createSignal, runWithOwner } from "@barqjs/core"
+import { render } from "@barqjs/web"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 

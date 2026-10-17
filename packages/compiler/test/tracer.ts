@@ -169,8 +169,9 @@ export function installTracer(
   mockModule: (path: string, factory: () => unknown) => void,
 ): Installed {
   const coreIndex = Bun.resolveSync("@barqjs/core", import.meta.dir);
+  const webIndex = Bun.resolveSync("@barqjs/web", import.meta.dir);
   const signalsPath = join(dirname(coreIndex), "signals.ts");
-  const domPath = join(dirname(coreIndex), "dom.ts");
+  const domPath = join(dirname(webIndex), "dom.ts");
 
   const real = require(signalsPath) as Record<string, unknown>;
   // Snapshot eagerly: mock.module overwrites the namespace in place, so the

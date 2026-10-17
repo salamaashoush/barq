@@ -230,20 +230,21 @@ async function run(mutation: Mutation, dev: boolean): Promise<Verdict> {
   const tag = `mut-${dev ? "dev" : "prod"}-${mutation.name.replaceAll(/\W+/g, "-")}`;
   const compiled = await compileText(SOURCE, tag, true, dev);
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
 
   const clean = wire(compiled.ssr);
   const corrupted = mutation.apply(clean);
   const container = host(corrupted);
   const before = census(container);
-  const dispose = core.hydrate(compiled.dom.default as never, container);
+  const dispose = web.hydrate(compiled.dom.default as never, container);
   const claim = reuse(before, container);
-  const report = core.hydrate.report;
+  const report = web.hydrate.report;
   const hydrated = shape(container);
   dispose();
   container.remove();
 
   const cold = host("");
-  const rendered = core.render(compiled.dom.default as never, cold);
+  const rendered = web.render(compiled.dom.default as never, cold);
   const coldShape = shape(cold);
   rendered();
   cold.remove();
@@ -372,17 +373,18 @@ describe("hydrating a page the compiler never made hydratable", () => {
   test("is detected by the claim that never happened, and renders cold", async () => {
     const compiled = await compileText(SOURCE, "mut-not-hydratable", false);
     const core = await import("@barqjs/core");
+    const web = await import("@barqjs/web");
     const container = host(wire(compiled.ssr));
     const before = census(container);
-    const dispose = core.hydrate(compiled.dom.default as never, container);
-    const report = core.hydrate.report;
+    const dispose = web.hydrate(compiled.dom.default as never, container);
+    const report = web.hydrate.report;
     const hydrated = shape(container);
     const claim = reuse(before, container);
     dispose();
     container.remove();
 
     const cold = host("");
-    const rendered = core.render(compiled.dom.default as never, cold);
+    const rendered = web.render(compiled.dom.default as never, cold);
     const coldShape = shape(cold);
     rendered();
     cold.remove();
@@ -407,21 +409,22 @@ describe("hydrating a page the compiler never made hydratable", () => {
   test("raised inside a list under an Errored, it recovers and shows no fallback", async () => {
     const compiled = await compileText(GUARDED_LIST, "mut-guarded-list", true);
     const core = await import("@barqjs/core");
+    const web = await import("@barqjs/web");
     const served = wire(compiled.ssr);
     const drifted = served.replace("<li", "<p").replace("</li>", "</p>");
     expect(drifted, "the mutation changed nothing, so nothing below is about a mismatch").not.toBe(
       served,
     );
     const container = host(drifted);
-    const dispose = core.hydrate(compiled.dom.default as never, container);
-    const report = core.hydrate.report;
+    const dispose = web.hydrate(compiled.dom.default as never, container);
+    const report = web.hydrate.report;
     const failed = container.querySelector(".failed");
     const hydrated = shape(container);
     dispose();
     container.remove();
 
     const cold = host("");
-    const rendered = core.render(compiled.dom.default as never, cold);
+    const rendered = web.render(compiled.dom.default as never, cold);
     const coldShape = shape(cold);
     rendered();
     cold.remove();
@@ -446,6 +449,7 @@ describe("hydrating a page the compiler never made hydratable", () => {
     async (_, source, tag) => {
       const compiled = await compileText(source, tag, true);
       const core = await import("@barqjs/core");
+      const web = await import("@barqjs/web");
       const served = wire(compiled.ssr);
       const drifted = served.replace("<li", "<p").replace("</li>", "</p>");
       const container = host(drifted);
@@ -463,13 +467,13 @@ describe("hydrating a page the compiler never made hydratable", () => {
       const diagnostics = core.DEV.diagnostics.capture();
       let dispose: () => void;
       try {
-        dispose = core.hydrate(compiled.dom.default as never, container);
+        dispose = web.hydrate(compiled.dom.default as never, container);
       } finally {
         console.error = originalError;
         globalThis.reportError = originalReport;
       }
       const events = diagnostics.stop();
-      const report = core.hydrate.report;
+      const report = web.hydrate.report;
 
       expect(logged.filter((line) => line.includes("REACTIVITY_HALTED"))).toEqual([]);
       expect(reported).toEqual([]);
@@ -501,18 +505,19 @@ describe("hydrating a page the compiler never made hydratable", () => {
    */
   test("a hydratable server paired with a non-hydratable client is caught too", async () => {
     const core = await import("@barqjs/core");
+    const web = await import("@barqjs/web");
     const server = await compileText(SOURCE, "mut-mixed-server", true);
     const client = await compileText(SOURCE, "mut-mixed-client", false);
 
     const container = host(wire(server.ssr));
-    const dispose = core.hydrate(client.dom.default as never, container);
-    const report = core.hydrate.report;
+    const dispose = web.hydrate(client.dom.default as never, container);
+    const report = web.hydrate.report;
     const hydrated = shape(container);
     dispose();
     container.remove();
 
     const cold = host("");
-    const rendered = core.render(client.dom.default as never, cold);
+    const rendered = web.render(client.dom.default as never, cold);
     const coldShape = shape(cold);
     rendered();
     cold.remove();
@@ -647,11 +652,12 @@ describe("text beside an element is the string's, not a mismatch", () => {
       const tag = `mut-text-${shape_.replaceAll(/[^a-z]+/g, "-")}`;
       const compiled = await compileText(source, tag, true);
       const core = await import("@barqjs/core");
+      const web = await import("@barqjs/web");
       const container = host(wire(compiled.ssr));
       const before = census(container);
       const served = shape(container);
-      const dispose = core.hydrate(compiled.dom.default as never, container);
-      const report = core.hydrate.report;
+      const dispose = web.hydrate(compiled.dom.default as never, container);
+      const report = web.hydrate.report;
       const hydrated = shape(container);
       const claim = reuse(before, container);
       dispose();
@@ -682,11 +688,12 @@ describe("a live hole that returns its children claims them", () => {
   test("the children's templates take the nodes inside the hole's range", async () => {
     const compiled = await compileText(CHILDREN_OR_DEFAULT, "mut-children-or-default", true);
     const core = await import("@barqjs/core");
+    const web = await import("@barqjs/web");
     const container = host(wire(compiled.ssr));
     const before = census(container);
     const served = shape(container);
-    const dispose = core.hydrate(compiled.dom.default as never, container);
-    const report = core.hydrate.report;
+    const dispose = web.hydrate(compiled.dom.default as never, container);
+    const report = web.hydrate.report;
     const hydrated = shape(container);
     const claim = reuse(before, container);
     dispose();
@@ -716,9 +723,10 @@ describe("a region that claimed in place survives the hole around it", () => {
   test("it shows its content when the condition turns, after a clean hydration", async () => {
     const compiled = await compileText(CLAIMED_IN_PLACE, "mut-claimed-in-place", true);
     const core = await import("@barqjs/core");
+    const web = await import("@barqjs/web");
     const container = host(wire(compiled.ssr));
-    const dispose = core.hydrate(compiled.dom.default as never, container);
-    const report = core.hydrate.report;
+    const dispose = web.hydrate(compiled.dom.default as never, container);
+    const report = web.hydrate.report;
 
     expect({ recovered: report.recovered, mismatches: report.mismatches }).toEqual({
       recovered: false,

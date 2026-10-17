@@ -26,12 +26,13 @@ interface Rendered {
 async function roundTrip(source: string, tag: string, dev: boolean): Promise<Rendered> {
   const compiled = await compileText(source, `${tag}-${dev ? "dev" : "prod"}`, true, dev);
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const container = host(wire(compiled.ssr));
   const served = shape(container);
   const before = census(container);
   core.resetChildIds();
-  const dispose = core.hydrate(compiled.dom.default as never, container);
-  const report = core.hydrate.report;
+  const dispose = web.hydrate(compiled.dom.default as never, container);
+  const report = web.hydrate.report;
   const hydrated = shape(container);
   const kept = reuse(before, container);
   dispose();
@@ -39,7 +40,7 @@ async function roundTrip(source: string, tag: string, dev: boolean): Promise<Ren
 
   const cold = host("");
   core.resetChildIds();
-  const rendered = core.render(compiled.dom.default as never, cold);
+  const rendered = web.render(compiled.dom.default as never, cold);
   const coldShape = shape(cold);
   rendered();
   cold.remove();

@@ -26,13 +26,14 @@ describe("a child that moves leaves its siblings alone", () => {
 
   test("a text hole that changes builds nothing and keeps every node beside it", async () => {
     const core = await import("@barqjs/core");
+    const web = await import("@barqjs/web");
     const module = (await loadModule(
       compileSource(SOURCE, "children-order.tsx"),
       "children-order-siblings",
     )) as unknown as { default: () => unknown; setCount(next: number): void; built: number };
     const container = document.createElement("div");
     document.body.appendChild(container);
-    const dispose = core.render(() => module.default() as never, container);
+    const dispose = web.render(() => module.default() as never, container);
     try {
       const fields = [...container.querySelectorAll("input")];
       const built = module.built;
@@ -87,11 +88,12 @@ describe("children hydrate in the order they are written", () => {
   test("an optional child before a component leaves the component its own node", async () => {
     const compiled = await compileText(SOURCE, "children-order-hydration", true);
     const core = await import("@barqjs/core");
+    const web = await import("@barqjs/web");
     const container = host(wire(compiled.ssr));
     const before = census(container);
     const served = shape(container);
-    const dispose = core.hydrate(compiled.dom.default as never, container);
-    const report = core.hydrate.report;
+    const dispose = web.hydrate(compiled.dom.default as never, container);
+    const report = web.hydrate.report;
     const hydrated = shape(container);
     const claim = reuse(before, container);
     dispose();

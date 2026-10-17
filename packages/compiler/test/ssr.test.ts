@@ -376,7 +376,7 @@ describe("dual render: the compiled SSR string", () => {
     // the real DOM component, which dies with no `document` on the one kind of
     // server target #10 exists for.
     const portal = compileSourceRaw(
-      'import * as core from "@barqjs/core";\nexport default () => <div><core.Portal>x</core.Portal></div>;\n',
+      'import * as web from "@barqjs/web";\nexport default () => <div><web.Portal>x</web.Portal></div>;\n',
       "ns.tsx",
       { ssr: true },
     );

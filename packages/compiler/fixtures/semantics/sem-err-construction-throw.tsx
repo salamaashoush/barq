@@ -21,14 +21,8 @@
  * E2.1 and O4.4.
  */
 import type { Block } from "@barqjs/core"
-import {
-  Errored,
-  Loading,
-  NotReadyError,
-  onCleanup,
-  render,
-  Reveal,
-} from "@barqjs/core"
+import { Errored, Loading, NotReadyError, onCleanup, Reveal } from "@barqjs/core"
+import { render } from "@barqjs/web"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 import { formatThrown } from "../../test/semantics-support.ts"

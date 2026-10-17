@@ -7,7 +7,7 @@ use oxc::ast::ast::{
 use oxc::span::{SPAN, Span};
 use oxc::syntax::number::NumberBase;
 
-use super::{Emit, Helper, IMPORTED, Target};
+use super::{Emit, Helper, Home, IMPORTED, home};
 use crate::ir::{Hoisted, Ns, TemplateId};
 use oxc::allocator::CloneIn;
 
@@ -24,6 +24,9 @@ pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
         && !cells
         && !emit.module.detached_roots
     {
+        if calls_a_component(emit, &program.body) {
+            program.body.insert(0, host_import(emit));
+        }
         return;
     }
     let interp_units = std::mem::take(&mut emit.interp_units);
@@ -72,47 +75,21 @@ pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
     // has run.
     templates.extend(interp_units);
 
-    // Three groups, three sources: the DOM helpers come from the module source,
-    // P8b's from `<module_source>/server`, which the client bundle must never
-    // pull in, and the reference backend's single entry point from
-    // `<module_source>/interp`, which no production bundle pulls in at all.
-    //
-    // `SHARED_ABI` is the one block whose source the TARGET decides rather than
-    // the index: `props`/`cell`/`block` and the four primitives with `COUNT` are
-    // exported by both halves under one name and one argument order, and the
-    // string backend reaches its own implementations by importing them from the
-    // server entry.
-    let shared_here: fn(&usize) -> bool = match emit.target {
-        Target::Ssr => |index| !super::SHARED_ABI.contains(index),
-        Target::Dom | Target::Interp => |_| true,
-    };
+    // One import per source, and `home` decides each helper's: the shared ABI
+    // from core, the renderer's from the module source, the string backend's
+    // from `<server_source>`, which the client bundle must never pull in, and
+    // the reference backend's single entry point from `<module_source>/interp`,
+    // which no production bundle pulls in at all.
     let groups = [
-        (
-            emit.module_source,
-            helper_specifiers(
-                emit,
-                (0..super::FIRST_SERVER_HELPER)
-                    .filter(shared_here)
-                    // `getOwner` and what follows it sit past the interp entry
-                    // in the table but are module-source helpers like the rest
-                    // of the DOM surface.
-                    .chain((super::Helper::GetOwner as usize)..super::FIRST_LATE_SERVER_HELPER),
-            ),
-        ),
-        (
-            emit.server_source,
-            helper_specifiers(
-                emit,
-                (super::FIRST_SERVER_HELPER..super::FIRST_INTERP_HELPER)
-                    .chain(super::FIRST_LATE_SERVER_HELPER..super::HELPER_COUNT)
-                    .chain(super::SHARED_ABI.filter(|index| !shared_here(index))),
-            ),
-        ),
-        (
-            emit.interp_source,
-            helper_specifiers(emit, super::FIRST_INTERP_HELPER..(super::Helper::GetOwner as usize)),
-        ),
-    ];
+        (emit.core_source, Home::Core),
+        (emit.module_source, Home::Renderer),
+        (emit.server_source, Home::Server),
+        (emit.interp_source, Home::Interp),
+    ]
+    .map(|(source, wanted)| {
+        let target = emit.target;
+        (source, helper_specifiers(emit, |helper| home(helper, target) == wanted))
+    });
     let allocator = emit.allocator;
     let mut body = std::mem::replace(&mut program.body, ArenaVec::new_in(&allocator));
     drop_rewritten_flow_imports(emit, &mut body);
@@ -127,7 +104,10 @@ pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
         }
     }
 
-    let mut out = ArenaVec::with_capacity_in(body.len() + templates.len() + 2, &allocator);
+    let mut out = ArenaVec::with_capacity_in(body.len() + templates.len() + 3, &allocator);
+    if calls_a_component(emit, &body) {
+        out.push(host_import(emit));
+    }
     for (source, specifiers) in &pending {
         out.push(helper_import(emit, source, specifiers));
     }
@@ -199,13 +179,94 @@ fn drop_rewritten_flow_imports<'a>(emit: &Emit<'a, '_>, body: &mut ArenaVec<'a, 
     }
 }
 
+/// The components that render through a host they look up, because they are
+/// called rather than lowered onto a renderer's `branch` and `each`.
+const HOST_COMPONENTS: [&str; 8] =
+    ["Show", "For", "Repeat", "Switch", "Loading", "Reveal", "Errored", "NoHydration"];
+
+/// Whether a module compiled for the document still CALLS one of core's
+/// components, which is what a spread or a component passed as a value
+/// compiles to. Such a call finds its host at run time, so the module imports
+/// the renderer's registration of it. Asked after the lowered names lost their
+/// imports, so a module whose every `<Show>` became a `branch` pays nothing.
+///
+/// A namespace import of core counts whatever it is used for: `core.Show` is
+/// one property read away, and nothing here follows it.
+fn calls_a_component<'a>(emit: &Emit<'a, '_>, body: &[Statement<'a>]) -> bool {
+    if !emit.target.walks_the_dom() {
+        return false;
+    }
+    let mut calls = false;
+    for statement in body {
+        let Statement::ImportDeclaration(declaration) = statement else { continue };
+        if declaration.import_kind != ImportOrExportKind::Value {
+            continue;
+        }
+        let source = declaration.source.value.as_str();
+        if source == host_source(emit).as_str() {
+            return false;
+        }
+        if source != emit.core_source {
+            continue;
+        }
+        for specifier in declaration.specifiers.iter().flatten() {
+            calls |= match specifier {
+                ImportDeclarationSpecifier::ImportNamespaceSpecifier(_) => true,
+                ImportDeclarationSpecifier::ImportSpecifier(imported) => {
+                    imported.import_kind == ImportOrExportKind::Value
+                        && HOST_COMPONENTS.contains(&imported.imported.name().as_str())
+                        && imported.local.symbol_id.get().is_none_or(|symbol| {
+                            let references =
+                                emit.module.scoping.get_resolved_reference_ids(symbol).len();
+                            let closings = emit
+                                .module
+                                .env
+                                .jsx_closings
+                                .iter()
+                                .filter(|it| **it == symbol)
+                                .count();
+                            let rewritten = emit
+                                .module
+                                .flow_rewrites
+                                .iter()
+                                .filter(|it| **it == symbol)
+                                .count();
+                            references > closings + rewritten
+                        })
+                }
+                ImportDeclarationSpecifier::ImportDefaultSpecifier(_) => false,
+            };
+        }
+    }
+    calls
+}
+
+fn host_source(emit: &Emit<'_, '_>) -> String {
+    format!("{}/host", emit.module_source)
+}
+
+fn host_import<'a>(emit: &Emit<'a, '_>) -> Statement<'a> {
+    let source = emit.allocator.alloc_str(&host_source(emit));
+    Statement::new_import_declaration(
+        SPAN,
+        None,
+        StringLiteral::new(SPAN, source, None, &emit.ast),
+        None,
+        None,
+        ImportOrExportKind::Value,
+        &emit.ast,
+    )
+}
+
 fn helper_specifiers<'a>(
     emit: &Emit<'a, '_>,
-    indices: impl Iterator<Item = usize>,
+    from_here: impl Fn(Helper) -> bool,
 ) -> Vec<(&'a str, &'a str)> {
-    indices
-        .filter(|index| emit.used[*index])
-        .map(|index| (IMPORTED[index], emit.local[index]))
+    IMPORTED
+        .iter()
+        .enumerate()
+        .filter(|(index, (helper, _))| emit.used[*index] && from_here(*helper))
+        .map(|(index, (_, name))| (*name, emit.local[index]))
         .collect()
 }
 

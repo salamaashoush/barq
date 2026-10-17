@@ -34,13 +34,14 @@ describe("a MathML element that is the root of its own template", () => {
     // The namespace itself is Chrome's to answer: happy-dom parses `<math>` as
     // HTML. See `browser-mathml-check.ts`.
     const core = await import("@barqjs/core");
+    const web = await import("@barqjs/web");
     const module = (await loadModule(code, "mathml-rows")) as unknown as {
       Rows: () => unknown;
       setNames: (next: string[]) => void;
     };
     const host = document.createElement("div");
     document.body.appendChild(host);
-    const dispose = core.render(() => module.Rows() as never, host);
+    const dispose = web.render(() => module.Rows() as never, host);
     try {
       module.setNames(["x", "y", "w"]);
       core.flush();

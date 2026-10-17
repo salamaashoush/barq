@@ -1,6 +1,12 @@
 use napi_derive::napi;
 
-pub const DEFAULT_MODULE_SOURCE: &str = "@barqjs/core";
+/// The renderer compiled code builds through: templates, inserts, the
+/// channels and control flow over its own host.
+pub const DEFAULT_MODULE_SOURCE: &str = "@barqjs/web";
+
+/// The renderer-neutral half of the ABI: props, cells, blocks and the scope
+/// reads every target emits, and the components an author imports.
+pub const DEFAULT_CORE_SOURCE: &str = "@barqjs/core";
 
 /// Where the string backend's helpers come from. Its own package rather than a
 /// subpath of [`DEFAULT_MODULE_SOURCE`]: the server runtime carries a
@@ -230,7 +236,13 @@ impl ImportedValue {
 pub struct TransformOptions {
     pub filename: Option<String>,
     pub sourcemap: Option<bool>,
+    /// Module source for the renderer's helpers.
+    /// @default `@barqjs/web`
     pub module_source: Option<String>,
+    /// Module source for the helpers every target shares and for the
+    /// components and primitives an author imports.
+    /// @default `@barqjs/core`
+    pub core_source: Option<String>,
     /// Module source for the string backend's helpers.
     /// @default `@barqjs/server`
     pub server_source: Option<String>,
@@ -272,7 +284,7 @@ pub struct TransformOptions {
     pub ssr: Option<bool>,
     /// Emit for the reference backend instead of the DOM
     /// backend: the analysed IR is serialised beside the module and
-    /// `@barqjs/core/interp` walks it. DEV and test only. Wins over `ssr`,
+    /// `@barqjs/web/interp` walks it. DEV and test only. Wins over `ssr`,
     /// because the two are different backends over the same IR and asking for
     /// both is a caller bug rather than a blend.
     pub interp: Option<bool>,
@@ -367,6 +379,7 @@ pub const OPTION_KEYS: &[&str] = &[
     "filename",
     "sourcemap",
     "moduleSource",
+    "coreSource",
     "serverSource",
     "startSource",
     "clientSource",
@@ -415,6 +428,7 @@ pub struct ResolvedOptions {
     pub filename: Option<String>,
     pub sourcemap: bool,
     pub module_source: String,
+    pub core_source: String,
     pub server_source: String,
     pub start_source: String,
     pub client_source: String,
@@ -453,6 +467,7 @@ impl Default for ResolvedOptions {
             filename: None,
             sourcemap: false,
             module_source: DEFAULT_MODULE_SOURCE.to_string(),
+            core_source: DEFAULT_CORE_SOURCE.to_string(),
             server_source: DEFAULT_SERVER_SOURCE.to_string(),
             start_source: DEFAULT_START_SOURCE.to_string(),
             client_source: DEFAULT_CLIENT_SOURCE.to_string(),
@@ -518,6 +533,7 @@ impl TransformOptions {
             filename: self.filename,
             sourcemap: self.sourcemap.unwrap_or(false),
             module_source: self.module_source.unwrap_or_else(|| DEFAULT_MODULE_SOURCE.to_string()),
+            core_source: self.core_source.unwrap_or_else(|| DEFAULT_CORE_SOURCE.to_string()),
             server_source: self.server_source.unwrap_or_else(|| DEFAULT_SERVER_SOURCE.to_string()),
             start_source: self.start_source.unwrap_or_else(|| DEFAULT_START_SOURCE.to_string()),
             client_source: self.client_source.unwrap_or_else(|| DEFAULT_CLIENT_SOURCE.to_string()),
@@ -634,7 +650,8 @@ mod tests {
         assert!(!resolved.ssr);
         assert!(!resolved.interp);
         assert!(!resolved.sourcemap);
-        assert_eq!(resolved.module_source, "@barqjs/core");
+        assert_eq!(resolved.module_source, "@barqjs/web");
+        assert_eq!(resolved.core_source, "@barqjs/core");
         assert_eq!(resolved.server_source, "@barqjs/server");
         assert_eq!(resolved.start_source, "@barqjs/start");
         // The stub points at the CLIENT subpath, which is the whole point of it

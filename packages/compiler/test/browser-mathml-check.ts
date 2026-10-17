@@ -12,9 +12,10 @@ import { join } from "node:path";
 import type { Page } from "./chrome.ts";
 import { compileSource, TMP_DIR } from "./harness.ts";
 
-const PRAGMA = "/** @jsxImportSource @barqjs/core */\n";
+const PRAGMA = "/** @jsxImportSource @barqjs/web */\n";
 
-const FIXTURE = `import { For, render, createSignal, flush } from "@barqjs/core"
+const FIXTURE = `import { For, createSignal, flush } from "@barqjs/core"
+import { render } from "@barqjs/web"
 
 const [names, setNames] = createSignal(["x", "y"])
 function Variable(props) { return <mi mathvariant="bold">{props.name()}</mi> }

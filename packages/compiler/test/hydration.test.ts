@@ -34,6 +34,7 @@ interface Result extends Outcome {
 async function hydrateFixture(name: string, dev = false): Promise<Result> {
   const compiled = await compileText(fixtureSource(name), dev ? `${name}-dev` : name, true, dev);
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const markup = wire(compiled.ssr);
 
   const container = host(markup);
@@ -41,13 +42,13 @@ async function hydrateFixture(name: string, dev = false): Promise<Result> {
   let trace = beginTrace();
   let hydrated: () => void;
   try {
-    hydrated = core.hydrate(compiled.dom.default as never, container);
+    hydrated = web.hydrate(compiled.dom.default as never, container);
   } finally {
     endTrace();
   }
   const claim = reuse(before, container);
   const hot = summarize(trace);
-  const report = core.hydrate.report;
+  const report = web.hydrate.report;
   const hydratedShape = shape(container);
   // Out of the document before the cold page goes in: both carry the same ids,
   // and a portal aimed at `#portal-target` mounts into the first one it finds.
@@ -58,7 +59,7 @@ async function hydrateFixture(name: string, dev = false): Promise<Result> {
   trace = beginTrace();
   let rendered: () => void;
   try {
-    rendered = core.render(compiled.dom.default as never, cold);
+    rendered = web.render(compiled.dom.default as never, cold);
   } finally {
     endTrace();
   }
@@ -488,6 +489,7 @@ describe("H6 focus and typed input survive hydration", () => {
   test("the input is the server's node, still focused, with the text still in it", async () => {
     const compiled = await compileText(FORM, "h6-form");
     const core = await import("@barqjs/core");
+    const web = await import("@barqjs/web");
     const container = host(wire(compiled.ssr));
 
     const input = container.querySelector("input") as HTMLInputElement;
@@ -534,7 +536,7 @@ describe("H6 focus and typed input survive hydration", () => {
     ];
     globals.__BARQ_EVTS_STOP__ = (): void => {};
 
-    const dispose = core.hydrate(compiled.dom.default as never, container);
+    const dispose = web.hydrate(compiled.dom.default as never, container);
     const after = container.querySelector("input") as HTMLInputElement;
 
     // H1 first: without the node, none of the rest is even a question.
@@ -542,7 +544,7 @@ describe("H6 focus and typed input survive hydration", () => {
     // H6, both halves.
     expect(after.value).toBe("half a word");
     expect(document.activeElement).toBe(after);
-    expect(core.hydrate.report.recovered).toBe(false);
+    expect(web.hydrate.report.recovered).toBe(false);
 
     dispose();
     container.remove();
@@ -558,6 +560,7 @@ describe("H6 focus and typed input survive hydration", () => {
   test("a keystroke captured before hydration replays against that same node", async () => {
     const compiled = await compileText(FORM, "h6-keys");
     const core = await import("@barqjs/core");
+    const web = await import("@barqjs/web");
     const container = host(wire(compiled.ssr));
     const input = container.querySelector("input") as HTMLInputElement;
 
@@ -588,7 +591,7 @@ describe("H6 focus and typed input survive hydration", () => {
     ];
     globals.__BARQ_EVTS_STOP__ = (): void => {};
 
-    const dispose = core.hydrate(compiled.dom.default as never, container);
+    const dispose = web.hydrate(compiled.dom.default as never, container);
     expect(saw.at(-1)).toBe(input);
     dispose();
     container.remove();

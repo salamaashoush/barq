@@ -23,7 +23,8 @@
  *
  * C6.
  */
-import { createSignal, dispose, each, rootScope, runWithOwner } from "@barqjs/core"
+import { createSignal, dispose, rootScope, runWithOwner } from "@barqjs/core"
+import { each } from "@barqjs/web"
 import type { Scope } from "@barqjs/core"
 
 import type { Claim } from "../../test/semantics-support.ts"

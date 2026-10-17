@@ -100,9 +100,9 @@ function occurrences(code: string, needle: string): number {
 
 /** The runtime helpers the emitted module imports, by their exported names. */
 function runtimeImports(code: string): string[] {
-  const line = code.match(/^import \{([^}]*)\} from "@barqjs\/core";/m);
-  return (line?.[1] ?? "")
-    .split(",")
+  const lines = code.matchAll(/^import \{([^}]*)\} from "@barqjs\/(?:core|web)";/gm);
+  return [...lines]
+    .flatMap((line) => line[1].split(","))
     .map((entry) => entry.trim().split(" as ")[0].trim())
     .filter((name) => name.length > 0)
     .sort();

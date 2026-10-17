@@ -1,7 +1,7 @@
 /**
  * The reference backend.
  *
- * `Interp` serialises the analysed IR and `@barqjs/core/interp` walks it. What
+ * `Interp` serialises the analysed IR and `@barqjs/web/interp` walks it. What
  * makes it an oracle rather than a fourth implementation is stated once and
  * asserted here: it consumes the **same analysed IR** codegen consumes — the
  * anchors P5 chose, the template bytes P7 wrote, the ref plan P6 addressed, the
@@ -41,7 +41,7 @@ import {
   runSemanticFixture,
   type FixtureRun as SemanticRun,
 } from "./semantics.ts";
-import { HANDLED, OFF_TEMPLATE } from "@barqjs/core/interp";
+import { HANDLED, OFF_TEMPLATE } from "@barqjs/web/interp";
 
 const INTERP = { interp: true };
 
@@ -142,7 +142,7 @@ describe("Interp is a build, not a debug mode", () => {
    */
   it("imports the interpreter from its own entry point and nowhere else", () => {
     const code = compileFixture("walk-from-the-back", INTERP);
-    expect(code).toContain('from "@barqjs/core/interp"');
+    expect(code).toContain('from "@barqjs/web/interp"');
     expect(compileFixture("walk-from-the-back")).not.toContain("/interp");
   });
 });

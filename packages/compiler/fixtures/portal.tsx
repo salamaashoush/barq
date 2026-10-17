@@ -1,4 +1,4 @@
-import { Portal } from "@barqjs/core"
+import { Portal } from "@barqjs/web"
 
 export default function PortalFixture() {
   return (

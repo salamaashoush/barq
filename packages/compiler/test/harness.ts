@@ -54,7 +54,7 @@ export const TMP_DIR = join(import.meta.dir, `.tmp-${RUN}`);
  * lowered by bun. The pragma pins the factory explicitly instead of relying on
  * whichever tsconfig.json happens to be nearest to the temp file.
  */
-const PRAGMA = "/** @jsxImportSource @barqjs/core */\n";
+const PRAGMA = "/** @jsxImportSource @barqjs/web */\n";
 
 export interface NativeTransformResult {
   code: string;
@@ -548,6 +548,7 @@ export function renderModule(mod: FixtureModule): Promise<RenderResult> {
 
 async function renderUnheld(mod: FixtureModule): Promise<RenderResult> {
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
 
   const container = document.createElement("div");
   document.body.appendChild(container);
@@ -586,7 +587,7 @@ async function renderUnheld(mod: FixtureModule): Promise<RenderResult> {
         // C1: the default export is a component, so `render` is handed the
         // BLOCK and opens the scope it runs under itself. Calling it here would
         // construct the subtree before any scope existed.
-        unmount = core.render(mod.default as never, container);
+        unmount = web.render(mod.default as never, container);
       }),
     );
 
@@ -637,7 +638,7 @@ async function renderUnheld(mod: FixtureModule): Promise<RenderResult> {
  *
  * The COMPILED module, not the source. Loading a fixture un-compiled makes bun
  * lower its JSX with its own transform, which needs `jsx`/`jsxs` to resolve on
- * `@barqjs/core/jsx-runtime`, which does not exist: bun's transform cannot
+ * `@barqjs/web/jsx-runtime`, which does not exist: bun's transform cannot
  * produce scope-taking Blocks and an authoring path that
  * cannot have the same semantics is worse than none. The declarations are
  * module-scope constants and survive the compile untouched, so reading them off
@@ -674,7 +675,7 @@ export async function renderViaCompiler(
 /**
  * The reference backend (the reference backend): the SAME analysed IR the DOM
  * backend consumes, serialised beside the module and walked by
- * `@barqjs/core/interp` instead of printed as JavaScript.
+ * `@barqjs/web/interp` instead of printed as JavaScript.
  */
 export async function renderViaInterp(
   name: string,
@@ -1552,7 +1553,7 @@ export function formatDivergences(name: string, divergences: Divergence[]): stri
 /**
  * The precondition every channel over the emitted module ASSUMES and none of
  * them stated. Under an identity `transform(code) { return { code } }` bun
- * lowers the fixture onto `@barqjs/core/jsx-runtime` and every assertion about
+ * lowers the fixture onto `@barqjs/web/jsx-runtime` and every assertion about
  * "the compiled module" goes green against a compiler that compiled nothing.
  *
  * So each check states a fact no build that skipped the work can produce: the

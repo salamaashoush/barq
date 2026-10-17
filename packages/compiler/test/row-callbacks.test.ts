@@ -70,11 +70,12 @@ type Module = Record<string, () => unknown> & {
 
 async function mounted(name: string, optimize: number) {
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const code = compileSource(SOURCE, "row-callbacks.tsx", { optimize });
   const module = (await loadModule(code, `row-callbacks-${name}-${optimize}`)) as unknown as Module;
   const host = document.createElement("div");
   document.body.appendChild(host);
-  const dispose = core.render(() => module[name]!() as never, host);
+  const dispose = web.render(() => module[name]!() as never, host);
   return {
     host,
     write: (change: (draft: never) => void): void => {

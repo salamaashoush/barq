@@ -11,7 +11,8 @@
  * O2 and X3.
  */
 import type { Block } from "@barqjs/core"
-import { createContext, render, useContext } from "@barqjs/core"
+import { createContext, useContext } from "@barqjs/core"
+import { render } from "@barqjs/web"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 import { formatThrown } from "../../test/semantics-support.ts"

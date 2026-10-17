@@ -22,7 +22,8 @@
  *
  * E2, E2.2.
  */
-import { Errored, render } from "@barqjs/core"
+import { Errored } from "@barqjs/core"
+import { render } from "@barqjs/web"
 import type { Block } from "@barqjs/core"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"

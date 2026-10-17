@@ -32,7 +32,8 @@ import { fixturePage, openFixturePage, type Page } from "./chrome.ts";
  * write — which is the whole scenario: something other than the user changes
  * the bound value while the user is inside the field.
  */
-const FIXTURE = `import { render, createSignal } from "@barqjs/core"
+const FIXTURE = `import { render } from "@barqjs/web"
+import { createSignal } from "@barqjs/core"
 
 export const [text, setText] = createSignal("hello world")
 export const [notes, setNotes] = createSignal("first line")
@@ -62,11 +63,12 @@ Object.assign(window, {
 
 /**
  * The MUTATION, applied to the emitted module rather than to the runtime: the
- * page imports a `@barqjs/core` whose `bindValue` writes the property with no
+ * page imports a `@barqjs/web` whose `bindValue` writes the property with no
  * DOM-compare and no caret restore, and it is what the control row runs.
  */
-const NAIVE_SHIM = `export * from "@barqjs/core"
-import { bindEffect, listen } from "@barqjs/core"
+const NAIVE_SHIM = `export * from "@barqjs/web"
+import { bindEffect } from "@barqjs/core"
+import { listen } from "@barqjs/web"
 
 export function bindValue(element, name, type, value) {
   const [read, write] = value

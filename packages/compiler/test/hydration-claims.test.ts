@@ -22,16 +22,17 @@ interface Shape {
 
 async function check(shapeOf: Shape, tag: string): Promise<void> {
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const hot = await compileText(shapeOf.source, `claims-hot-${tag}`);
   const ref = await compileText(shapeOf.source, `claims-cold-${tag}`);
   const page = host(wire(hot.ssr));
   const before = census(page);
   const kept = Array.from(page.querySelectorAll(".s"));
-  const stopHot = core.hydrate(hot.dom.default as never, page);
-  const report = core.hydrate.report;
+  const stopHot = web.hydrate(hot.dom.default as never, page);
+  const report = web.hydrate.report;
   const lost = reuse(before, page).firstLost;
   const cold = host("");
-  const stopCold = core.render(ref.dom.default as never, cold);
+  const stopCold = web.render(ref.dom.default as never, cold);
   core.flush();
   await Promise.resolve();
   core.flush();
@@ -201,7 +202,8 @@ export default function Page() {
   },
   "a portal that is its element's only child": {
     source: `
-import { Portal, createSignal } from "@barqjs/core";
+import { Portal } from "@barqjs/web";
+import { createSignal } from "@barqjs/core";
 export const [label, setLabel] = createSignal("one");
 export default function Page() {
   return <div class="s"><Portal><p class="portal">{label()}</p></Portal></div>;
@@ -209,7 +211,8 @@ export default function Page() {
   },
   "a portal in a component's element leaves the next region's range alone": {
     source: `
-import { Portal, Show, createSignal } from "@barqjs/core";
+import { Portal } from "@barqjs/web";
+import { Show, createSignal } from "@barqjs/core";
 export const [on, setOn] = createSignal(true);
 function Dialog() { return <div class="s"><Portal><p class="portal">x</p></Portal><i>i</i></div>; }
 function Frag(props) { return <>{props.children}</>; }
@@ -234,6 +237,7 @@ describe("what a hydration claim leaves standing", () => {
 describe("a branch arm whose hole wrote a new element, rendered cold", () => {
   test("is removed whole when the branch moves on", async () => {
     const core = await import("@barqjs/core");
+    const web = await import("@barqjs/web");
     const compiled = await compileText(
       SHAPES["a branch arm whose hole wrote a new element is removed whole"].source,
       "claims-arm-cold",
@@ -241,7 +245,7 @@ describe("a branch arm whose hole wrote a new element, rendered cold", () => {
     );
     const page = host("");
     const dom = compiled.dom as unknown as Module;
-    const stop = core.render(compiled.dom.default as never, page);
+    const stop = web.render(compiled.dom.default as never, page);
     try {
       dom.setOn(false as never);
       core.flush();

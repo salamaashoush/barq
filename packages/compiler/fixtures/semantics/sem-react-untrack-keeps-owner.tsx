@@ -9,7 +9,8 @@
  *
  * O6.
  */
-import { createEffect, onCleanup, render, createSignal, untrack } from "@barqjs/core"
+import { createEffect, onCleanup, createSignal, untrack } from "@barqjs/core"
+import { render } from "@barqjs/web"
 
 import type { Claim, Kit } from "../../test/semantics-support.ts"
 

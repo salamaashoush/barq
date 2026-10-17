@@ -44,6 +44,7 @@ export function Cleanup() {
 
 async function mount(name: string) {
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const module = (await loadModule(
     compileSource(SOURCE, "ref-cleanup.tsx"),
     `ref-cleanup-${name}`,
@@ -55,7 +56,7 @@ async function mount(name: string) {
   module.setOn(true);
   const host = document.createElement("div");
   document.body.appendChild(host);
-  const dispose = core.render(() => (module[name] as () => never)(), host);
+  const dispose = web.render(() => (module[name] as () => never)(), host);
   return {
     core,
     module,

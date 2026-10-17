@@ -51,11 +51,12 @@ const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0
 async function hydratedAtShell(source: string, name: string) {
   const compiled = await compileText(source, name, true, false);
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const container = host("");
   let dispose = (): void => {};
   const chunks = await assembleHydrating(compiled.ssr, container, 1, () => {
     core.resetChildIds();
-    dispose = core.hydrate(compiled.dom.default as never, container);
+    dispose = web.hydrate(compiled.dom.default as never, container);
   });
   const served = [...container.querySelectorAll("li")];
   for (let i = 0; i < 5; i++) {
@@ -67,7 +68,7 @@ async function hydratedAtShell(source: string, name: string) {
     served,
     rows: [...container.querySelectorAll("li")],
     skeleton: container.querySelector(".skel"),
-    recovered: core.hydrate.report.recovered,
+    recovered: web.hydrate.report.recovered,
   };
   dispose();
   container.remove();

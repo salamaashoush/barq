@@ -11,7 +11,8 @@ import { afterEach, expect, test } from "bun:test";
 import { compileText } from "./hydration.ts";
 
 const SOURCE = `
-import { createSignal, dynamic } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
+import { dynamic } from "@barqjs/web"
 export const stories = {
   1: { title: "story one", comments: [{ id: 1, text: "first" }] },
   2: { title: "story two", comments: [{ id: 7, text: "seventh" }] },
@@ -63,6 +64,7 @@ test("navigation mounts each story's region, and asking again updates the one on
   const ssr = both.ssr as unknown as Module;
   const dom = both.dom as unknown as Module;
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const start = await import("@barqjs/start");
   const startServer = await import("@barqjs/start/server");
   const startClient = await import("@barqjs/start/client");
@@ -101,7 +103,7 @@ test("navigation mounts each story's region, and asking again updates the one on
   await state.load();
   const host = document.createElement("div");
   document.body.appendChild(host);
-  const dispose = core.render(
+  const dispose = web.render(
     (() =>
       (router.RouterProvider as never as (p: unknown) => unknown)({ state: () => state })) as never,
     host,

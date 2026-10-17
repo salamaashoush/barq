@@ -24,13 +24,14 @@ export default function Page() { return <main><p title="before" {...rest()} lang
 
 async function mounted(name: string) {
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const module = (await loadModule(
     compileSource(SOURCE, "spread-precedence.tsx"),
     `spread-precedence-${name}`,
   )) as unknown as Record<string, (value?: never) => unknown> & { clicks: string[] };
   const root = document.createElement("div");
   document.body.appendChild(root);
-  const dispose = core.render(() => module[name]() as never, root);
+  const dispose = web.render(() => module[name]() as never, root);
   return {
     element: root.firstElementChild as HTMLElement,
     module,
@@ -108,6 +109,7 @@ describe("an attribute written before a spread", () => {
 describe("the same list on the server", () => {
   test("gives the attributes the client gives, on both sides of the spread", async () => {
     const core = await import("@barqjs/core");
+    const web = await import("@barqjs/web");
     const server = await import("@barqjs/server");
     const compiled = await compileText(SOURCE, "spread-precedence-ssr");
     const arrange = (module: unknown): void => {
@@ -125,7 +127,7 @@ describe("the same list on the server", () => {
     const page = host(rendered.html);
     const written = page.querySelector("p")?.outerHTML;
     core.resetChildIds();
-    const dispose = core.hydrate(compiled.dom.default as never, page);
+    const dispose = web.hydrate(compiled.dom.default as never, page);
     core.flush();
     try {
       const paragraph = page.querySelector("p");
@@ -133,7 +135,7 @@ describe("the same list on the server", () => {
       expect(paragraph?.lang).toBe("after");
       expect(paragraph?.id).toBe("local-a");
       expect(paragraph?.outerHTML).toBe(written);
-      expect(core.hydrate.report.recovered).toBe(false);
+      expect(web.hydrate.report.recovered).toBe(false);
     } finally {
       dispose();
       page.remove();

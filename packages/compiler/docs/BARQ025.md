@@ -23,7 +23,7 @@ export const Field = (props) => (
 ## Fixed example
 
 ```tsx
-import { dynamic } from "@barqjs/core";
+import { dynamic } from "@barqjs/web";
 import { Editor, Viewer } from "./fields";
 
 export const Field = (props) => {
@@ -36,7 +36,7 @@ A source may answer with a tag name as well as a component, or with `null`, `und
 `false` to render nothing:
 
 ```tsx
-import { dynamic } from "@barqjs/core";
+import { dynamic } from "@barqjs/web";
 
 export const Heading = (props) => {
   const Tag = dynamic(() => `h${props.level()}`);

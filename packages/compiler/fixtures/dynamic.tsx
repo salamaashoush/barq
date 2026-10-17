@@ -1,4 +1,5 @@
-import { createSignal, dynamic } from "@barqjs/core"
+import { createSignal } from "@barqjs/core"
+import { dynamic } from "@barqjs/web"
 
 export const [tag, setTag] = createSignal<"span" | "b">("span")
 

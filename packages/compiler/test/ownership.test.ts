@@ -300,7 +300,10 @@ describe("the trace costs nothing when it is off", () => {
   });
 
   it("records nothing at all while it is off", async () => {
-    const core = (await import("@barqjs/core")) as unknown as {
+    const core = {
+      ...(await import("@barqjs/core")),
+      ...(await import("@barqjs/web")),
+    } as unknown as {
       childScope: (parent: object | null, kind: string) => object;
       dispose: (scope: object) => void;
       runWithOwner: <T>(owner: object | null, fn: () => T) => T;
@@ -453,7 +456,10 @@ describe("self-check: the assertion would notice", () => {
     // The arrangement below hands `insert` a block under a `provide` scope and
     // has that block build under the root instead. Nothing is edited after the
     // fact; the events are whatever the runtime produced.
-    const core = (await import("@barqjs/core")) as unknown as {
+    const core = {
+      ...(await import("@barqjs/core")),
+      ...(await import("@barqjs/web")),
+    } as unknown as {
       childScope: (parent: object | null, kind: string) => object;
       dispose: (scope: object) => void;
       getOwner: () => object | null;
@@ -523,7 +529,10 @@ describe("self-check: the assertion would notice", () => {
     // runs, so the only difference between them is where the effect was filed;
     // a check that reported the cheating run through the clone arm would pass
     // this test without ever looking at an effect.
-    const core = (await import("@barqjs/core")) as unknown as {
+    const core = {
+      ...(await import("@barqjs/core")),
+      ...(await import("@barqjs/web")),
+    } as unknown as {
       childScope: (parent: object | null, kind: string) => object;
       dispose: (scope: object) => void;
       runWithOwner: <T>(owner: object | null, fn: () => T) => T;

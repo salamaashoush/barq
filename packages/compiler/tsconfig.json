@@ -15,7 +15,7 @@
     "esModuleInterop": true,
     "types": ["bun"],
     "jsx": "react-jsx",
-    "jsxImportSource": "@barqjs/core"
+    "jsxImportSource": "@barqjs/web"
   },
   // `fixtures/` is its own project, `fixtures/tsconfig.json`: some fixtures are
   // compiler input that is deliberately not valid TypeScript.

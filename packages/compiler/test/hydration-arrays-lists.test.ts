@@ -23,6 +23,7 @@ async function pages(
   observe?: (container: HTMLElement) => void,
 ): Promise<Page> {
   const core = await import("@barqjs/core");
+  const web = await import("@barqjs/web");
   const hot = await compileText(source, `arrays-lists-hot-${tag}`);
   const ref = await compileText(source, `arrays-lists-cold-${tag}`);
   const hydrated = host(wire(hot.ssr));
@@ -33,9 +34,9 @@ async function pages(
   arrange?.(refModule);
   core.flush();
   observe?.(hydrated);
-  const stopHot = core.hydrate(hot.dom.default as never, hydrated);
-  const report = core.hydrate.report;
-  const stopCold = core.render(ref.dom.default as never, cold);
+  const stopHot = web.hydrate(hot.dom.default as never, hydrated);
+  const report = web.hydrate.report;
+  const stopCold = web.render(ref.dom.default as never, cold);
   return {
     hydrated,
     cold,

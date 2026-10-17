@@ -1517,7 +1517,7 @@ mod tests {
     #[test]
     fn the_dynamic_component_is_reported_with_the_factory_spelling() {
         let found = codes_of(
-            "import { Dynamic } from \"@barqjs/core\";\n\
+            "import { Dynamic } from \"@barqjs/web\";\n\
              const Card = (p) => <b>{p.label()}</b>;\n\
              export const App = (p) => <Dynamic component={p.on() ? Card : \"i\"} label=\"x\" />;\n",
         );
@@ -1527,13 +1527,13 @@ mod tests {
         assert!(found[0].1.contains("<Chosen …/>"), "{}", found[0].1);
 
         let namespaced = codes_of(
-            "import * as core from \"@barqjs/core\";\n\
-             export const App = () => <core.Dynamic component=\"i\">x</core.Dynamic>;\n",
+            "import * as web from \"@barqjs/web\";\n\
+             export const App = () => <web.Dynamic component=\"i\">x</web.Dynamic>;\n",
         );
         assert_eq!(namespaced.iter().map(|(code, _)| *code).collect::<Vec<_>>(), [Code::Barq025]);
 
         let renamed = codes_of(
-            "import { Dynamic as Pick } from \"@barqjs/core\";\n\
+            "import { Dynamic as Pick } from \"@barqjs/web\";\n\
              export const App = () => <Pick component=\"i\" />;\n",
         );
         assert_eq!(renamed.iter().map(|(code, _)| *code).collect::<Vec<_>>(), [Code::Barq025]);
@@ -1552,7 +1552,7 @@ mod tests {
         );
         assert!(imported.is_empty(), "{imported:?}");
         let factory = codes_of(
-            "import { dynamic } from \"@barqjs/core\";\n\
+            "import { dynamic } from \"@barqjs/web\";\n\
              const Chosen = dynamic(() => \"i\");\n\
              export const App = () => <Chosen>x</Chosen>;\n",
         );
@@ -1814,14 +1814,15 @@ mod tests {
     /// would be the same defect with the evidence removed.
     #[test]
     fn the_two_diagnostics_that_no_longer_have_anything_to_report() {
-        let o7 = "import { dynamic, createSignal } from \"@barqjs/core\";\n\
+        let o7 = "import { createSignal } from \"@barqjs/core\";\n\
+                  import { dynamic } from \"@barqjs/web\";\n\
                   const [n] = createSignal(0);\n\
                   const Chosen = dynamic(() => \"div\");\n\
                   export const V = () => <Chosen total={n()} />;\n";
         let output = compile(o7, &diagnosing("App.tsx")).expect("compiles");
         assert!(codes(&output).is_empty(), "{:?}", codes(&output));
 
-        let was_a_fallback = "import { Portal } from \"@barqjs/core\";\n\
+        let was_a_fallback = "import { Portal } from \"@barqjs/web\";\n\
                         export const V = () => <Portal><b>x</b></Portal>;\n";
         let options = ResolvedOptions { ssr: true, ..diagnosing("App.tsx") };
         let output = compile(was_a_fallback, &options).expect("compiles");
@@ -2252,14 +2253,65 @@ export const Route = createFileRoute("/x")({ component: Page });
     #[test]
     fn helpers_extend_an_existing_import_instead_of_adding_a_second_one() {
         let source =
-            "import { createSignal } from \"@barqjs/core\";\nconst V = () => <i>{signal}</i>;\n";
+            "import { isServer } from \"@barqjs/web\";\nconst V = () => <i>{signal}</i>;\n";
         let output = compile_ok(source, "V.tsx");
-        assert_eq!(output.code.matches("from \"@barqjs/core\"").count(), 1, "{}", output.code);
+        assert_eq!(output.code.matches("from \"@barqjs/web\"").count(), 1, "{}", output.code);
         assert!(
-            output.code.contains("import { createSignal, template as _$template"),
+            output.code.contains("import { isServer, template as _$template"),
             "{}",
             output.code
         );
+    }
+
+    /// A module that still calls one of core's components imports the
+    /// renderer's host registration, and a module whose components were all
+    /// lowered does not, so a page with no such call ships no list reorder.
+    #[test]
+    fn a_called_component_imports_the_host_and_a_lowered_one_does_not() {
+        const HOST: &str = "import \"@barqjs/web/host\";";
+        let lowered = compile_ok(
+            "import { Show } from \"@barqjs/core\";\n\
+             export const V = (p) => <Show when={p.on()}><b>x</b></Show>;\n",
+            "V.tsx",
+        );
+        assert!(!lowered.code.contains(HOST), "{}", lowered.code);
+
+        let called = compile_ok(
+            "import { Switch } from \"@barqjs/core\";\n\
+             export const V = (p) => <div><Switch>{p.arms}</Switch></div>;\n",
+            "V.tsx",
+        );
+        assert!(called.code.contains("Switch"), "{}", called.code);
+        assert_eq!(called.code.matches(HOST).count(), 1, "{}", called.code);
+
+        let value = compile_ok(
+            "import { For } from \"@barqjs/core\";\nexport const Picked = For;\n",
+            "V.tsx",
+        );
+        assert!(value.code.starts_with(HOST), "{}", value.code);
+
+        let namespace = compile_ok(
+            "import * as core from \"@barqjs/core\";\n\
+             export const V = () => <core.Show when={true}>x</core.Show>;\n",
+            "V.tsx",
+        );
+        assert!(namespace.code.contains(HOST), "{}", namespace.code);
+
+        let already = compile_ok(
+            "import \"@barqjs/web/host\";\nimport { For } from \"@barqjs/core\";\n\
+             export const Picked = For;\n",
+            "V.tsx",
+        );
+        assert_eq!(already.code.matches(HOST).count(), 1, "{}", already.code);
+
+        let options = ResolvedOptions { ssr: true, ..ResolvedOptions::with_filename("V.tsx") };
+        let server = compile(
+            "import { Switch } from \"@barqjs/core\";\n\
+             export const V = (p) => <div><Switch>{p.arms}</Switch></div>;\n",
+            &options,
+        )
+        .expect("compiles");
+        assert!(!server.code.contains("/host"), "{}", server.code);
     }
 
     #[test]

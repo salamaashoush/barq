@@ -131,12 +131,12 @@ function detect(): InterpStatus {
     };
   }
   try {
-    Bun.resolveSync("@barqjs/core/interp", import.meta.dir);
+    Bun.resolveSync("@barqjs/web/interp", import.meta.dir);
   } catch (error) {
     return {
       state: "broken",
       landed: false,
-      refusal: `the compiler emits for it, but @barqjs/core/interp does not resolve: ${error}`,
+      refusal: `the compiler emits for it, but @barqjs/web/interp does not resolve: ${error}`,
     };
   }
   return { state: "live", landed: true, refusal: "" };
