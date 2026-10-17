@@ -125,6 +125,23 @@ describe("a streamed page", () => {
     expect(caught).toEqual([]);
   });
 
+  test("does not render the errorComponent for a redirect that comes after the shell", async () => {
+    const { handler, path } = page({
+      loader: async () => {
+        await tick();
+        redirect("/login");
+      },
+      component: (props: { data: () => unknown }) =>
+        ssrHtml(`<main>${esc(String(props.data()))}</main>`),
+      errorComponent: (props: { error: () => Error }) =>
+        ssrHtml(`<p>failed: ${esc(props.error().message)}</p>`),
+    });
+    const body = await (await handler(get(path))).text();
+
+    expect(body).toContain('<script nonce="n0nce">location.replace("/login")</script>');
+    expect(body).not.toContain("failed:");
+  });
+
   test("takes the status and headers the shell declared with httpStatus and httpHeader", async () => {
     const { handler, path } = page({
       component: () => {

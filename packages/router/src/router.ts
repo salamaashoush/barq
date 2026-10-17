@@ -913,6 +913,8 @@ export interface RouterConfig<Dehydrated = unknown> {
    * and a module-level "current answer" hands one request's answer to another
    * under load. The router state is already request-scoped on the server, so
    * the callback rides it.
+   *
+   * Given, it takes a loader's redirect too; absent, the router follows it.
    */
   readonly onLoaderError?: (error: unknown) => void;
   /**
@@ -1731,7 +1733,13 @@ export function createRouter<Dehydrated = unknown>(
                   if (!isRedirect(error) && !isNotFound(error)) {
                     route.definition.onError?.(error);
                   }
-                  config.onLoaderError?.(error);
+                  if (config.onLoaderError !== undefined) config.onLoaderError(error);
+                  else if (isRedirect(error) && !entry.preload) {
+                    // A loader that throws before its first await is still
+                    // inside the computation that ran it, which may not write.
+                    const redirected = error;
+                    queueMicrotask(() => void follow(redirected));
+                  }
                   throw error;
                 }
               };

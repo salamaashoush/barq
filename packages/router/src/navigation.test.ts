@@ -694,6 +694,42 @@ describe("router defaults, TanStack's names", () => {
     state.dispose();
   });
 
+  test("a loader's redirect navigates there, replacing, and no errorComponent shows it", async () => {
+    const shown: string[] = [];
+    const state = createRouter({
+      routeTree: routes([
+        { path: "/", component: page("home") },
+        { path: "/login", component: page("login") },
+        {
+          path: "/moved",
+          component: (props: RouteProps) => document.createTextNode(String(props.data())),
+          errorComponent: (props: { error: () => Error }) => {
+            shown.push(props.error().message);
+            return document.createTextNode("failed");
+          },
+          loader: async () => {
+            await tick(1);
+            throw redirect({ to: "/login" });
+          },
+        },
+      ]),
+      history: memoryHistory({ initial: ["/"] }),
+    });
+    const { host, dispose } = mountState(state);
+    await state.navigate("/moved");
+    await tick(10);
+    flush();
+    expect(state.location().pathname).toBe("/login");
+    expect(host.textContent).toBe("login");
+    expect(shown).toEqual([]);
+    state.history.go(-1);
+    await tick(5);
+    flush();
+    expect(state.location().pathname).toBe("/");
+    dispose();
+    state.dispose();
+  });
+
   test("`onError` is told about a Response thrown by `beforeLoad` and by a loader alike", async () => {
     const told: string[] = [];
     const refusing = (id: string, phase: "beforeLoad" | "loader"): Record<string, unknown> => ({

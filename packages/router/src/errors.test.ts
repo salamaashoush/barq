@@ -240,6 +240,20 @@ describe("onCatch", () => {
     }
   });
 
+  /** The browser is leaving, so a redirect is never handed to an `errorComponent`. */
+  test("a redirect renders nothing, even under an errorComponent", () => {
+    const rendered: string[] = [];
+    const chain = chainOf({
+      errorComponent: (props: { error: () => Error }) => rendered.push(props.error().message),
+    });
+    const shown = errorFallbackFor(chain, 0, () => ({}))(
+      () => new Redirect("/login"),
+      () => {},
+    );
+    expect(shown).toBeNull();
+    expect(rendered).toEqual([]);
+  });
+
   /** A redirect is an ANSWER as well, and neither a route's nor the router's `onCatch` hears of it. */
   test("a redirect is not a catch", () => {
     const seen: string[] = [];

@@ -291,6 +291,9 @@ export function errorFallbackFor(
       }
       if (!told) fallbacks?.onCatch?.(thrown);
     }
+    // A redirect is never shown: the browser is already leaving, through the
+    // router, the server's 302 or the script a streamed page ends with.
+    if (isRedirect(thrown)) return null;
     // `notFound({ routeId })` names the route that answers. A route below the
     // boundary that caught cannot render here, so only an ancestor moves the
     // search's starting point.
@@ -331,10 +334,8 @@ export function errorFallbackFor(
     // render as an empty `<div id="app">` with no clue why. A route that has
     // not said what to do with an error still deserves to have the error said
     // out loud once.
-    // A redirect is an answer too: the server writes it after the shell, and
-    // the region it stood in has nothing to show while the browser leaves.
     // Once a thrown answer has superseded the render, no region of it is sent.
-    if (answer || superseded?.() === true) return null;
+    if (missing || superseded?.() === true) return null;
     const route = chain[depth]?.id ?? `depth ${depth}`;
     reportUnhandled(route, thrown);
     // In development the region says what happened instead of standing empty.
