@@ -77,7 +77,7 @@ function shown(provide?: RangeHost<Item>): string[] {
 
 describe("a component called as a function", () => {
   test("with no host anywhere, says which component and what to import", () => {
-    expect(() => shown()).toThrow('`<Show>` was called as a component with no renderer');
+    expect(() => shown()).toThrow("`<Show>` was called as a component with no renderer");
     expect(() => shown()).toThrow('import "@barqjs/web/host"');
   });
 

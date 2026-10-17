@@ -1,3 +1,7 @@
+// The oracle renders un-compiled trees, and a string module compiled at -O0
+// still calls the components it nests: both find the document through the host
+// this installs.
+import "@barqjs/web/host";
 import {
   compileSource,
   fixtureSource,

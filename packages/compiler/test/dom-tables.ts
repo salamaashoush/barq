@@ -22,8 +22,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
-const DOM_TS =
-  process.env.BARQ_DOM_TS ?? join(import.meta.dir, "..", "..", "core", "src", "dom.ts");
+const DOM_TS = process.env.BARQ_DOM_TS ?? join(import.meta.dir, "..", "..", "web", "src", "dom.ts");
 const source = readFileSync(DOM_TS, "utf8");
 
 const unquote = (text: string): string =>

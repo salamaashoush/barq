@@ -79,7 +79,14 @@ async function serve(paths: readonly string[]): Promise<{
       plugins: [barqPlugin({ ssr: true, hydratable: true, every: true })],
       // The handler's own defaults import what only the Vite plugins provide;
       // every one is behind an option this passes, so none is ever asked for.
-      external: ["@barqjs/core", "@barqjs/css", "@barqjs/server", "virtual:*", "#barq-*"],
+      external: [
+        "@barqjs/core",
+        "@barqjs/web",
+        "@barqjs/css",
+        "@barqjs/server",
+        "virtual:*",
+        "#barq-*",
+      ],
     });
     if (!result.success) throw new AggregateError(result.logs, "the route table did not build");
     writeFileSync(

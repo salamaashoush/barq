@@ -40,7 +40,7 @@ async function half(workspace: string, slug: string, ssr: boolean): Promise<Page
     plugins: [barqPlugin({ ssr, hydratable: true, every: true })],
     // One runtime for the bundle and this file: two copies of the scheduler
     // mean the markup is built under a scope the walk cannot see.
-    external: ["@barqjs/core", "@barqjs/css", "@barqjs/server"],
+    external: ["@barqjs/core", "@barqjs/web", "@barqjs/css", "@barqjs/server"],
   });
   if (!result.success) {
     throw new AggregateError(

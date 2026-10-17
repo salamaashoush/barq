@@ -42,7 +42,7 @@ async function half(
     plugins: [barqPlugin({ ssr, hydratable: true, every: true })],
     // One runtime for the bundle and this file: two copies of the scheduler
     // mean the markup is built under a scope the walk cannot see.
-    external: ["@barqjs/core", "@barqjs/css", "@barqjs/server"],
+    external: ["@barqjs/core", "@barqjs/web", "@barqjs/css", "@barqjs/server"],
   });
   if (!result.success) {
     throw new AggregateError(
@@ -83,7 +83,7 @@ export async function serverRender(
       target: "bun",
       format: "esm",
       plugins: [barqPlugin({ ssr: true, hydratable: true, every: true })],
-      external: ["@barqjs/core", "@barqjs/css", "@barqjs/server"],
+      external: ["@barqjs/core", "@barqjs/web", "@barqjs/css", "@barqjs/server"],
     });
     if (!result.success) {
       throw new AggregateError(result.logs, `the server half of ${file} did not build`);

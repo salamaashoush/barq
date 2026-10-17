@@ -90,7 +90,7 @@ async function server(source: string): Promise<{ page: () => string }> {
     target: "bun",
     format: "esm",
     plugins: [ssrPlugin],
-    external: ["@barqjs/core", "@barqjs/css", "@barqjs/server"],
+    external: ["@barqjs/core", "@barqjs/web", "@barqjs/css", "@barqjs/server"],
   });
   if (!result.success) throw new AggregateError(result.logs, "the page did not build");
 
@@ -130,7 +130,7 @@ async function serverProcess(
     target: "bun",
     format: "esm",
     plugins: [ssrPlugin],
-    external: ["@barqjs/core", "@barqjs/css", "@barqjs/server"],
+    external: ["@barqjs/core", "@barqjs/web", "@barqjs/css", "@barqjs/server"],
   });
   if (!result.success) throw new AggregateError(result.logs, "the page did not build");
 
