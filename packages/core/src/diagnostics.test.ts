@@ -7,7 +7,7 @@
  * each claim says what the production build answers as well.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import {
   DEV,
   OBSERVE,
@@ -58,15 +58,23 @@ describe("DEV.diagnostics", () => {
   });
 
   test("the engine's findings arrive on the same channel, with the page that explains them", () => {
+    const warn = spyOn(console, "warn").mockImplementation(() => {});
     const capture = DEV.diagnostics.capture();
-    // An effect with no owner is a finding of the engine's, not barq's.
-    createRenderEffect(
-      () => 1,
-      () => {},
-    );
+    let printed: string[];
+    try {
+      // An effect with no owner is a finding of the engine's, not barq's.
+      createRenderEffect(
+        () => 1,
+        () => {},
+      );
+    } finally {
+      printed = warn.mock.calls.map((call) => String(call[0]).split("\n")[0]);
+      warn.mockRestore();
+    }
     const engine = capture.stop().find((event) => event.code === "NO_OWNER_EFFECT");
     expect(engine !== undefined).toBe(named);
     if (engine !== undefined) expect(engine.docs).toContain("#no_owner_effect");
+    expect(printed).toEqual(engine === undefined ? [] : [engine.message]);
   });
 });
 

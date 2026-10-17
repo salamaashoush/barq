@@ -100,7 +100,7 @@ describe("childToNodes", () => {
     body.appendChild(document.createElement("i"));
     body.appendChild(document.createElement("u"));
 
-    container.appendChild(Show({ when: on, children: body }) as Node);
+    container.appendChild(createRoot(() => Show({ when: on, children: body })) as Node);
     flush();
     expect(container.querySelectorAll("i, u").length).toBe(2);
 
@@ -122,13 +122,13 @@ describe("childToNodes", () => {
   });
 
   test("handles functions (reactive children)", () => {
-    const nodes = childToNodes(() => "dynamic");
+    const nodes = createRoot(() => childToNodes(() => "dynamic"));
     expect(nodes.length).toBe(1);
     expect(nodes[0].textContent).toBe("dynamic");
   });
 
   test("handles deeply nested functions", () => {
-    const nodes = childToNodes(() => () => () => "deep");
+    const nodes = createRoot(() => childToNodes(() => () => () => "deep"));
     expect(nodes.length).toBe(1);
     expect(nodes[0].textContent).toBe("deep");
   });
@@ -137,10 +137,12 @@ describe("childToNodes", () => {
 describe("Show component", () => {
   test("renders children when condition is truthy", () => {
     const [show] = createSignal(true);
-    const node = Show({
-      when: show,
-      children: () => document.createTextNode("visible"),
-    });
+    const node = createRoot(() =>
+      Show({
+        when: show,
+        children: () => document.createTextNode("visible"),
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(container.textContent).toContain("visible");
@@ -148,11 +150,13 @@ describe("Show component", () => {
 
   test("renders fallback when condition is falsy", () => {
     const [show] = createSignal(false);
-    const node = Show({
-      when: show,
-      fallback: document.createTextNode("fallback"),
-      children: () => document.createTextNode("visible"),
-    });
+    const node = createRoot(() =>
+      Show({
+        when: show,
+        fallback: document.createTextNode("fallback"),
+        children: () => document.createTextNode("visible"),
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(container.textContent).toContain("fallback");
@@ -160,11 +164,13 @@ describe("Show component", () => {
 
   test("toggles between children and fallback", () => {
     const [show, setShow] = createSignal(true);
-    const node = Show({
-      when: show,
-      fallback: document.createTextNode("hidden"),
-      children: () => document.createTextNode("shown"),
-    });
+    const node = createRoot(() =>
+      Show({
+        when: show,
+        fallback: document.createTextNode("hidden"),
+        children: () => document.createTextNode("shown"),
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(container.textContent).toContain("shown");
@@ -182,16 +188,18 @@ describe("Show component", () => {
     const [value] = createSignal<string | null>("hello");
     let receivedValue: string | null = null;
 
-    const node = Show({
-      when: value,
-      // The raw value is the KEYED arm; non-keyed is the default since M10 and
-      // hands over a narrowed accessor instead.
-      keyed: true,
-      children: (v: string) => {
-        receivedValue = v;
-        return document.createTextNode(v);
-      },
-    });
+    const node = createRoot(() =>
+      Show({
+        when: value,
+        // The raw value is the KEYED arm; non-keyed is the default since M10 and
+        // hands over a narrowed accessor instead.
+        keyed: true,
+        children: (v: string) => {
+          receivedValue = v;
+          return document.createTextNode(v);
+        },
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(receivedValue as string | null).toBe("hello");
@@ -200,11 +208,13 @@ describe("Show component", () => {
 
   test("handles rapid condition changes", () => {
     const [show, setShow] = createSignal(true);
-    const node = Show({
-      when: show,
-      fallback: document.createTextNode("off"),
-      children: () => document.createTextNode("on"),
-    });
+    const node = createRoot(() =>
+      Show({
+        when: show,
+        fallback: document.createTextNode("off"),
+        children: () => document.createTextNode("on"),
+      }),
+    );
 
     container.appendChild(node as Node);
 
@@ -220,10 +230,12 @@ describe("Show component", () => {
 
   test("handles children as direct value (not function)", () => {
     const [show] = createSignal(true);
-    const node = Show({
-      when: show,
-      children: document.createTextNode("direct"),
-    });
+    const node = createRoot(() =>
+      Show({
+        when: show,
+        children: document.createTextNode("direct"),
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(container.textContent).toContain("direct");
@@ -234,16 +246,18 @@ describe("Show component", () => {
     const [innerSignal, setInnerSignal] = createSignal(0);
     let effectRunCount = 0;
 
-    const node = Show({
-      when: show,
-      children: () => {
-        createEffect(innerSignal, () => {
-          effectRunCount++;
-        });
-        flush();
-        return document.createTextNode("content");
-      },
-    });
+    const node = createRoot(() =>
+      Show({
+        when: show,
+        children: () => {
+          createEffect(innerSignal, () => {
+            effectRunCount++;
+          });
+          flush();
+          return document.createTextNode("content");
+        },
+      }),
+    );
 
     container.appendChild(node as Node);
     flush();
@@ -265,12 +279,14 @@ describe("Show component", () => {
 
   test("EDGE CASE: handles condition returning 0 (falsy but valid)", () => {
     const [count, setCount] = createSignal(0);
-    const node = Show({
-      when: count,
-      keyed: true,
-      fallback: document.createTextNode("empty"),
-      children: (n: number) => document.createTextNode(`count: ${n}`),
-    });
+    const node = createRoot(() =>
+      Show({
+        when: count,
+        keyed: true,
+        fallback: document.createTextNode("empty"),
+        children: (n: number) => document.createTextNode(`count: ${n}`),
+      }),
+    );
 
     container.appendChild(node as Node);
     // 0 is falsy, should show fallback
@@ -283,12 +299,14 @@ describe("Show component", () => {
 
   test("EDGE CASE: handles condition returning empty string (falsy)", () => {
     const [text, setText] = createSignal("");
-    const node = Show({
-      when: text,
-      keyed: true,
-      fallback: document.createTextNode("empty"),
-      children: (t: string) => document.createTextNode(t),
-    });
+    const node = createRoot(() =>
+      Show({
+        when: text,
+        keyed: true,
+        fallback: document.createTextNode("empty"),
+        children: (t: string) => document.createTextNode(t),
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(container.textContent).toContain("empty");
@@ -303,15 +321,17 @@ describe("Show component", () => {
     const [show] = createSignal({ name: "test" });
     let receivedValue: unknown = null;
 
-    const node = Show({
-      when: show,
-      keyed: true,
-      // This function has default param, so .length === 0
-      children: (item = { name: "default" }) => {
-        receivedValue = item;
-        return document.createTextNode(item.name);
-      },
-    });
+    const node = createRoot(() =>
+      Show({
+        when: show,
+        keyed: true,
+        // This function has default param, so .length === 0
+        children: (item = { name: "default" }) => {
+          receivedValue = item;
+          return document.createTextNode(item.name);
+        },
+      }),
+    );
 
     container.appendChild(node as Node);
     // BUG: Due to .length check, this might get called without the value
@@ -366,10 +386,12 @@ describe("Show component", () => {
 describe("For component", () => {
   test("renders list of items", () => {
     const [items] = createSignal(["a", "b", "c"]);
-    const node = For({
-      each: items,
-      children: (item: string) => document.createTextNode(item),
-    });
+    const node = createRoot(() =>
+      For({
+        each: items,
+        children: (item: string) => document.createTextNode(item),
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(container.textContent).toContain("abc");
@@ -377,10 +399,12 @@ describe("For component", () => {
 
   test("updates when items change", () => {
     const [items, setItems] = createSignal(["a", "b"]);
-    const node = For({
-      each: items,
-      children: (item: string) => document.createTextNode(item),
-    });
+    const node = createRoot(() =>
+      For({
+        each: items,
+        children: (item: string) => document.createTextNode(item),
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(container.textContent).toContain("ab");
@@ -392,11 +416,13 @@ describe("For component", () => {
 
   test("renders fallback for empty array", () => {
     const [items] = createSignal<string[]>([]);
-    const node = For({
-      each: items,
-      fallback: document.createTextNode("empty"),
-      children: (item: string) => document.createTextNode(item),
-    });
+    const node = createRoot(() =>
+      For({
+        each: items,
+        fallback: document.createTextNode("empty"),
+        children: (item: string) => document.createTextNode(item),
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(container.textContent).toContain("empty");
@@ -404,11 +430,13 @@ describe("For component", () => {
 
   test("switches between items and fallback", () => {
     const [items, setItems] = createSignal<string[]>([]);
-    const node = For({
-      each: items,
-      fallback: document.createTextNode("empty"),
-      children: (item: string) => document.createTextNode(item),
-    });
+    const node = createRoot(() =>
+      For({
+        each: items,
+        fallback: document.createTextNode("empty"),
+        children: (item: string) => document.createTextNode(item),
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(container.textContent).toContain("empty");
@@ -427,16 +455,18 @@ describe("For component", () => {
     const [items, setItems] = createSignal(["a", "b", "c"]);
     const indices: number[] = [];
 
-    const node = For({
-      each: items,
-      children: (item: string, index: () => number) => {
-        createEffect(index, (value) => {
-          indices.push(value);
-        });
-        flush();
-        return document.createTextNode(item);
-      },
-    });
+    const node = createRoot(() =>
+      For({
+        each: items,
+        children: (item: string, index: () => number) => {
+          createEffect(index, (value) => {
+            indices.push(value);
+          });
+          flush();
+          return document.createTextNode(item);
+        },
+      }),
+    );
 
     container.appendChild(node as Node);
     flush();
@@ -456,13 +486,15 @@ describe("For component", () => {
     ]);
     let renderCount = 0;
 
-    const node = For({
-      each: items,
-      children: (item: { id: number; name: string }) => {
-        renderCount++;
-        return document.createTextNode(item.name);
-      },
-    });
+    const node = createRoot(() =>
+      For({
+        each: items,
+        children: (item: { id: number; name: string }) => {
+          renderCount++;
+          return document.createTextNode(item.name);
+        },
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(renderCount).toBe(2);
@@ -481,14 +513,16 @@ describe("For component", () => {
 
   test("handles items added at beginning", () => {
     const [items, setItems] = createSignal(["b", "c"]);
-    const node = For({
-      each: items,
-      children: (item: string) => {
-        const span = document.createElement("span");
-        span.textContent = item;
-        return span;
-      },
-    });
+    const node = createRoot(() =>
+      For({
+        each: items,
+        children: (item: string) => {
+          const span = document.createElement("span");
+          span.textContent = item;
+          return span;
+        },
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(container.textContent).toBe("bc");
@@ -500,14 +534,16 @@ describe("For component", () => {
 
   test("handles items added at end", () => {
     const [items, setItems] = createSignal(["a", "b"]);
-    const node = For({
-      each: items,
-      children: (item: string) => {
-        const span = document.createElement("span");
-        span.textContent = item;
-        return span;
-      },
-    });
+    const node = createRoot(() =>
+      For({
+        each: items,
+        children: (item: string) => {
+          const span = document.createElement("span");
+          span.textContent = item;
+          return span;
+        },
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(container.textContent).toBe("ab");
@@ -519,14 +555,16 @@ describe("For component", () => {
 
   test("handles items removed from middle", () => {
     const [items, setItems] = createSignal(["a", "b", "c"]);
-    const node = For({
-      each: items,
-      children: (item: string) => {
-        const span = document.createElement("span");
-        span.textContent = item;
-        return span;
-      },
-    });
+    const node = createRoot(() =>
+      For({
+        each: items,
+        children: (item: string) => {
+          const span = document.createElement("span");
+          span.textContent = item;
+          return span;
+        },
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(container.textContent).toBe("abc");
@@ -538,14 +576,16 @@ describe("For component", () => {
 
   test("handles complete replacement", () => {
     const [items, setItems] = createSignal(["a", "b", "c"]);
-    const node = For({
-      each: items,
-      children: (item: string) => {
-        const span = document.createElement("span");
-        span.textContent = item;
-        return span;
-      },
-    });
+    const node = createRoot(() =>
+      For({
+        each: items,
+        children: (item: string) => {
+          const span = document.createElement("span");
+          span.textContent = item;
+          return span;
+        },
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(container.textContent).toBe("abc");
@@ -560,16 +600,18 @@ describe("For component", () => {
     const effectCounts: Record<string, number> = { a: 0, b: 0 };
     const [trigger, setTrigger] = createSignal(0);
 
-    const node = For({
-      each: items,
-      children: (item: string) => {
-        createEffect(trigger, () => {
-          effectCounts[item]++;
-        });
-        flush();
-        return document.createTextNode(item);
-      },
-    });
+    const node = createRoot(() =>
+      For({
+        each: items,
+        children: (item: string) => {
+          createEffect(trigger, () => {
+            effectCounts[item]++;
+          });
+          flush();
+          return document.createTextNode(item);
+        },
+      }),
+    );
 
     container.appendChild(node as Node);
     flush();
@@ -592,11 +634,13 @@ describe("For component", () => {
 
   test("EDGE CASE: handles null/undefined each", () => {
     const [items] = createSignal<string[] | null>(null);
-    const node = For({
-      each: items,
-      fallback: document.createTextNode("empty"),
-      children: (item: string) => document.createTextNode(item),
-    });
+    const node = createRoot(() =>
+      For({
+        each: items,
+        fallback: document.createTextNode("empty"),
+        children: (item: string) => document.createTextNode(item),
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(container.textContent).toContain("empty");
@@ -604,10 +648,12 @@ describe("For component", () => {
 
   test("EDGE CASE: handles getter function for each", () => {
     const [items, setItems] = createSignal(["a", "b"]);
-    const node = For({
-      each: () => items(),
-      children: (item: string) => document.createTextNode(item),
-    });
+    const node = createRoot(() =>
+      For({
+        each: () => items(),
+        children: (item: string) => document.createTextNode(item),
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(container.textContent).toContain("ab");
@@ -621,10 +667,12 @@ describe("For component", () => {
     // With duplicate keys, only unique keys are rendered (Map-based cache)
     // This is a known limitation - use unique keys for correct behavior
     const [items] = createSignal(["a", "a", "b"]);
-    const node = For({
-      each: items,
-      children: (item: string) => document.createTextNode(item),
-    });
+    const node = createRoot(() =>
+      For({
+        each: items,
+        children: (item: string) => document.createTextNode(item),
+      }),
+    );
 
     container.appendChild(node as Node);
     // Only renders unique keys: "a" and "b"
@@ -640,16 +688,18 @@ describe("For component", () => {
     ]);
     let renderCount = 0;
 
-    const node = For({
-      each: items,
-      children: (item: { id: number; v: string }) => {
-        renderCount++;
-        const span = document.createElement("span");
-        span.textContent = item.v;
-        span.setAttribute("data-id", String(item.id));
-        return span;
-      },
-    });
+    const node = createRoot(() =>
+      For({
+        each: items,
+        children: (item: { id: number; v: string }) => {
+          renderCount++;
+          const span = document.createElement("span");
+          span.textContent = item.v;
+          span.setAttribute("data-id", String(item.id));
+          return span;
+        },
+      }),
+    );
 
     container.appendChild(node as Node);
     flush();
@@ -686,16 +736,18 @@ describe("For component", () => {
     const [items, setItems] = createSignal([a, b, c, d]);
     let renderCount = 0;
 
-    const node = For({
-      each: items,
-      children: (item: { id: number; v: string }) => {
-        renderCount++;
-        const span = document.createElement("span");
-        span.textContent = item.v;
-        span.setAttribute("data-id", String(item.id));
-        return span;
-      },
-    });
+    const node = createRoot(() =>
+      For({
+        each: items,
+        children: (item: { id: number; v: string }) => {
+          renderCount++;
+          const span = document.createElement("span");
+          span.textContent = item.v;
+          span.setAttribute("data-id", String(item.id));
+          return span;
+        },
+      }),
+    );
 
     container.appendChild(node as Node);
     flush();
@@ -720,14 +772,16 @@ describe("For component", () => {
 
   test("EDGE CASE: interleaved insert and remove", () => {
     const [items, setItems] = createSignal(["a", "c", "e"]);
-    const node = For({
-      each: items,
-      children: (item: string) => {
-        const span = document.createElement("span");
-        span.textContent = item;
-        return span;
-      },
-    });
+    const node = createRoot(() =>
+      For({
+        each: items,
+        children: (item: string) => {
+          const span = document.createElement("span");
+          span.textContent = item;
+          return span;
+        },
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(container.textContent).toBe("ace");
@@ -747,16 +801,18 @@ describe("For component", () => {
     const [items, setItems] = createSignal(["a"]);
     let effectRuns = 0;
 
-    const node = For({
-      each: items,
-      children: (item: string) => {
-        onSettled(() => {
-          effectRuns++;
-        });
-        flush();
-        return document.createTextNode(item);
-      },
-    });
+    const node = createRoot(() =>
+      For({
+        each: items,
+        children: (item: string) => {
+          onSettled(() => {
+            effectRuns++;
+          });
+          flush();
+          return document.createTextNode(item);
+        },
+      }),
+    );
 
     container.appendChild(node as Node);
     flush();
@@ -779,14 +835,16 @@ describe("For keyed={false} — the positional mode", () => {
     const [items] = createSignal(["a", "b", "c"]);
     const receivedIndices: number[] = [];
 
-    const node = For({
-      each: items,
-      keyed: false,
-      children: (item: () => string, index: number) => {
-        receivedIndices.push(index);
-        return document.createTextNode(item());
-      },
-    });
+    const node = createRoot(() =>
+      For({
+        each: items,
+        keyed: false,
+        children: (item: () => string, index: number) => {
+          receivedIndices.push(index);
+          return document.createTextNode(item());
+        },
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(container.textContent).toContain("abc");
@@ -797,22 +855,24 @@ describe("For keyed={false} — the positional mode", () => {
     const [items, setItems] = createSignal(["a", "b", "c"]);
     let updateCount = 0;
 
-    const node = For({
-      each: items,
-      keyed: false,
-      children: (item: () => string, _index: number) => {
-        createEffect(item, () => {
-          updateCount++;
-        });
-        flush();
-        const span = document.createElement("span");
-        createEffect(item, (text) => {
-          span.textContent = text;
-        });
-        flush();
-        return span;
-      },
-    });
+    const node = createRoot(() =>
+      For({
+        each: items,
+        keyed: false,
+        children: (item: () => string, _index: number) => {
+          createEffect(item, () => {
+            updateCount++;
+          });
+          flush();
+          const span = document.createElement("span");
+          createEffect(item, (text) => {
+            span.textContent = text;
+          });
+          flush();
+          return span;
+        },
+      }),
+    );
 
     container.appendChild(node as Node);
     flush();
@@ -829,18 +889,20 @@ describe("For keyed={false} — the positional mode", () => {
 
   test("handles array shrinking", () => {
     const [items, setItems] = createSignal(["a", "b", "c", "d"]);
-    const node = For({
-      each: items,
-      keyed: () => false,
-      children: (item: () => string) => {
-        const span = document.createElement("span");
-        createEffect(item, (text) => {
-          span.textContent = text;
-        });
-        flush();
-        return span;
-      },
-    });
+    const node = createRoot(() =>
+      For({
+        each: items,
+        keyed: () => false,
+        children: (item: () => string) => {
+          const span = document.createElement("span");
+          createEffect(item, (text) => {
+            span.textContent = text;
+          });
+          flush();
+          return span;
+        },
+      }),
+    );
 
     container.appendChild(node as Node);
     flush();
@@ -853,18 +915,20 @@ describe("For keyed={false} — the positional mode", () => {
 
   test("handles array growing", () => {
     const [items, setItems] = createSignal(["a"]);
-    const node = For({
-      each: items,
-      keyed: () => false,
-      children: (item: () => string) => {
-        const span = document.createElement("span");
-        createEffect(item, (text) => {
-          span.textContent = text;
-        });
-        flush();
-        return span;
-      },
-    });
+    const node = createRoot(() =>
+      For({
+        each: items,
+        keyed: () => false,
+        children: (item: () => string) => {
+          const span = document.createElement("span");
+          createEffect(item, (text) => {
+            span.textContent = text;
+          });
+          flush();
+          return span;
+        },
+      }),
+    );
 
     container.appendChild(node as Node);
     flush();
@@ -880,20 +944,22 @@ describe("For keyed={false} — the positional mode", () => {
     const [trigger, setTrigger] = createSignal(0);
     const effectCounts = [0, 0, 0];
 
-    const node = For({
-      each: items,
-      keyed: false,
-      children: (item: () => string, index: number) => {
-        createEffect(
-          () => [item(), trigger()],
-          () => {
-            effectCounts[index]++;
-          },
-        );
-        flush();
-        return document.createTextNode(item());
-      },
-    });
+    const node = createRoot(() =>
+      For({
+        each: items,
+        keyed: false,
+        children: (item: () => string, index: number) => {
+          createEffect(
+            () => [item(), trigger()],
+            () => {
+              effectCounts[index]++;
+            },
+          );
+          flush();
+          return document.createTextNode(item());
+        },
+      }),
+    );
 
     container.appendChild(node as Node);
     flush();
@@ -917,12 +983,14 @@ describe("For keyed={false} — the positional mode", () => {
 
   test("EDGE CASE: empty to non-empty transition", () => {
     const [items, setItems] = createSignal<string[]>([]);
-    const node = For({
-      each: items,
-      keyed: () => false,
-      fallback: document.createTextNode("empty"),
-      children: (item: () => string) => document.createTextNode(item()),
-    });
+    const node = createRoot(() =>
+      For({
+        each: items,
+        keyed: () => false,
+        fallback: document.createTextNode("empty"),
+        children: (item: () => string) => document.createTextNode(item()),
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(container.textContent).toContain("empty");
@@ -937,12 +1005,14 @@ describe("For keyed={false} — the positional mode", () => {
 describe("Switch/Match components", () => {
   test("renders first matching condition", () => {
     const [value] = createSignal(1);
-    const node = Switch({
-      children: [
-        Match({ when: () => value() === 1, children: () => document.createTextNode("one") }),
-        Match({ when: () => value() === 2, children: () => document.createTextNode("two") }),
-      ],
-    });
+    const node = createRoot(() =>
+      Switch({
+        children: [
+          Match({ when: () => value() === 1, children: () => document.createTextNode("one") }),
+          Match({ when: () => value() === 2, children: () => document.createTextNode("two") }),
+        ],
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(container.textContent).toContain("one");
@@ -950,16 +1020,18 @@ describe("Switch/Match components", () => {
 
   test("updates when condition changes", () => {
     const [value, setValue] = createSignal(1);
-    const node = Switch({
-      children: [
-        Match({ when: () => value() === 1, children: () => document.createTextNode("one") }),
-        Match({ when: () => value() === 2, children: () => document.createTextNode("two") }),
-        Match({
-          when: () => value() === 3,
-          children: () => document.createTextNode("three"),
-        }),
-      ],
-    });
+    const node = createRoot(() =>
+      Switch({
+        children: [
+          Match({ when: () => value() === 1, children: () => document.createTextNode("one") }),
+          Match({ when: () => value() === 2, children: () => document.createTextNode("two") }),
+          Match({
+            when: () => value() === 3,
+            children: () => document.createTextNode("three"),
+          }),
+        ],
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(container.textContent).toContain("one");
@@ -976,13 +1048,15 @@ describe("Switch/Match components", () => {
 
   test("renders fallback when no match", () => {
     const [value] = createSignal(99);
-    const node = Switch({
-      fallback: document.createTextNode("default"),
-      children: [
-        Match({ when: () => value() === 1, children: () => document.createTextNode("one") }),
-        Match({ when: () => value() === 2, children: () => document.createTextNode("two") }),
-      ],
-    });
+    const node = createRoot(() =>
+      Switch({
+        fallback: document.createTextNode("default"),
+        children: [
+          Match({ when: () => value() === 1, children: () => document.createTextNode("one") }),
+          Match({ when: () => value() === 2, children: () => document.createTextNode("two") }),
+        ],
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(container.textContent).toContain("default");
@@ -992,18 +1066,20 @@ describe("Switch/Match components", () => {
     const [user, setUser] = createSignal({ id: 1, name: "Alice" });
     let renderCount = 0;
 
-    const node = Switch({
-      children: [
-        Match({
-          when: user,
-          keyed: true,
-          children: (u: { id: number; name: string }) => {
-            renderCount++;
-            return document.createTextNode(u.name);
-          },
-        }),
-      ],
-    });
+    const node = createRoot(() =>
+      Switch({
+        children: [
+          Match({
+            when: user,
+            keyed: true,
+            children: (u: { id: number; name: string }) => {
+              renderCount++;
+              return document.createTextNode(u.name);
+            },
+          }),
+        ],
+      }),
+    );
 
     container.appendChild(node as Node);
     expect(container.textContent).toContain("Alice");
@@ -1020,26 +1096,28 @@ describe("Switch/Match components", () => {
     const [user, setUser] = createSignal({ id: 1, name: "Alice" });
     let renderCount = 0;
 
-    const node = Switch({
-      children: [
-        Match({
-          when: user,
-          keyed: () => false,
-          children: () => {
-            renderCount++;
-            const span = document.createElement("span");
-            createEffect(
-              () => user().name,
-              (name) => {
-                span.textContent = name;
-              },
-            );
-            flush();
-            return span;
-          },
-        }),
-      ],
-    });
+    const node = createRoot(() =>
+      Switch({
+        children: [
+          Match({
+            when: user,
+            keyed: () => false,
+            children: () => {
+              renderCount++;
+              const span = document.createElement("span");
+              createEffect(
+                () => user().name,
+                (name) => {
+                  span.textContent = name;
+                },
+              );
+              flush();
+              return span;
+            },
+          }),
+        ],
+      }),
+    );
 
     container.appendChild(node as Node);
     flush();
@@ -1059,30 +1137,32 @@ describe("Switch/Match components", () => {
     let effect1Runs = 0;
     let effect2Runs = 0;
 
-    const node = Switch({
-      children: [
-        Match({
-          when: () => value() === 1,
-          children: () => {
-            createEffect(trigger, () => {
-              effect1Runs++;
-            });
-            flush();
-            return document.createTextNode("one");
-          },
-        }),
-        Match({
-          when: () => value() === 2,
-          children: () => {
-            createEffect(trigger, () => {
-              effect2Runs++;
-            });
-            flush();
-            return document.createTextNode("two");
-          },
-        }),
-      ],
-    });
+    const node = createRoot(() =>
+      Switch({
+        children: [
+          Match({
+            when: () => value() === 1,
+            children: () => {
+              createEffect(trigger, () => {
+                effect1Runs++;
+              });
+              flush();
+              return document.createTextNode("one");
+            },
+          }),
+          Match({
+            when: () => value() === 2,
+            children: () => {
+              createEffect(trigger, () => {
+                effect2Runs++;
+              });
+              flush();
+              return document.createTextNode("two");
+            },
+          }),
+        ],
+      }),
+    );
 
     container.appendChild(node as Node);
     flush();
@@ -1107,12 +1187,14 @@ describe("Switch/Match components", () => {
 
   test("EDGE CASE: multiple matches with same condition", () => {
     const [show] = createSignal(true);
-    const node = Switch({
-      children: [
-        Match({ when: show, children: () => document.createTextNode("first") }),
-        Match({ when: show, children: () => document.createTextNode("second") }),
-      ],
-    });
+    const node = createRoot(() =>
+      Switch({
+        children: [
+          Match({ when: show, children: () => document.createTextNode("first") }),
+          Match({ when: show, children: () => document.createTextNode("second") }),
+        ],
+      }),
+    );
 
     container.appendChild(node as Node);
     // Should render first match only

@@ -7,7 +7,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { classToString, element, setProp, spread } from "./dom.ts";
-import { flush, createSignal } from "./signals.ts";
+import { createRoot, flush, createSignal } from "./signals.ts";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -61,7 +61,7 @@ describe("class on an element", () => {
   test("a reactive list follows its source", () => {
     const el = document.createElement("div");
     const [on, setOn] = createSignal(false);
-    setProp(el, "class", () => ["card", { active: on() }]);
+    createRoot(() => setProp(el, "class", () => ["card", { active: on() }]));
     expect(classes(el)).toEqual(["card"]);
 
     setOn(true);
@@ -70,7 +70,9 @@ describe("class on an element", () => {
   });
 
   test("createElement applies it", () => {
-    const el = element("div", { class: ["card", { active: true }] }) as HTMLElement;
+    const el = createRoot(() =>
+      element("div", { class: ["card", { active: true }] }),
+    ) as HTMLElement;
     expect(classes(el)).toEqual(["active", "card"]);
   });
 
@@ -79,7 +81,7 @@ describe("class on an element", () => {
     const [props, setProps] = createSignal<Record<string, unknown>>({
       class: ["card", { active: true }],
     });
-    spread(el, () => props());
+    createRoot(() => spread(el, () => props()));
     expect(classes(el)).toEqual(["active", "card"]);
 
     setProps({ class: { done: true } });

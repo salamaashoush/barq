@@ -6,7 +6,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { bindProp, element, hydrate, insert, render, setDomProp, setProp, spread } from "./dom.ts";
-import { flush, createSignal } from "./signals.ts";
+import { createRoot, flush, createSignal } from "./signals.ts";
 
 // The container is a render root, as every element an application shows is
 // under one: a delegated handler outside a root has nothing listening for it.
@@ -33,7 +33,7 @@ describe("insert: array reconciliation", () => {
     c.textContent = "c";
 
     const [list, setList] = createSignal([a, b, c]);
-    insert(container, () => list());
+    createRoot(() => insert(container, () => list()));
     flush();
     expect(container.textContent).toBe("abc");
 
@@ -53,7 +53,7 @@ describe("insert: array reconciliation", () => {
       return el;
     });
     const [list, setList] = createSignal(nodes.slice(0, 2));
-    insert(container, () => list());
+    createRoot(() => insert(container, () => list()));
     flush();
 
     setList(nodes); // append at end
@@ -69,7 +69,7 @@ describe("insert: array reconciliation", () => {
 
   test("text nodes are reused positionally when content matches", () => {
     const [items, setItems] = createSignal(["a", "b", "c"]);
-    insert(container, () => items());
+    createRoot(() => insert(container, () => items()));
     flush();
 
     const firstText = container.firstChild?.nextSibling; // after start marker
@@ -96,7 +96,7 @@ describe("prev-value diffing", () => {
       color: "red",
       margin: "4px",
     });
-    setProp(el, "style", () => styles());
+    createRoot(() => setProp(el, "style", () => styles()));
     flush();
     expect(writes).toEqual(["color", "margin"]);
     expect(el.style.color).toBe("red");
@@ -120,10 +120,12 @@ describe("prev-value diffing", () => {
 
     const [title, setTitle] = createSignal("x");
     const [tick, setTick] = createSignal(0);
-    setProp(el, "title", () => {
-      tick(); // extra dependency forcing re-runs
-      return title();
-    });
+    createRoot(() =>
+      setProp(el, "title", () => {
+        tick(); // extra dependency forcing re-runs
+        return title();
+      }),
+    );
     flush();
     expect(sets).toBe(1);
 
@@ -139,7 +141,7 @@ describe("prev-value diffing", () => {
   test("class objects diff the final string", () => {
     const el = document.createElement("div");
     const [active, setActive] = createSignal(true);
-    setProp(el, "class", () => ({ btn: true, active: active() }));
+    createRoot(() => setProp(el, "class", () => ({ btn: true, active: active() })));
     flush();
     expect(el.className).toBe("btn active");
 
@@ -153,7 +155,7 @@ describe("spread", () => {
   test("applies, updates, and removes props reactively", () => {
     const el = document.createElement("div");
     const [props, setProps] = createSignal<Record<string, unknown>>({ id: "a", title: "t1" });
-    spread(el, () => props());
+    createRoot(() => spread(el, () => props()));
     flush();
     expect(el.getAttribute("id")).toBe("a");
     expect(el.getAttribute("title")).toBe("t1");
@@ -172,7 +174,7 @@ describe("spread", () => {
     const [props, setProps] = createSignal<Record<string, unknown>>({
       onClick: () => log.push("first"),
     });
-    spread(el, () => props());
+    createRoot(() => spread(el, () => props()));
     flush();
     el.click();
     expect(log).toEqual(["first"]);
@@ -192,7 +194,7 @@ describe("spread", () => {
     const el = document.createElement("div");
     let refCalls = 0;
     const [n, setN] = createSignal(0);
-    spread(el, () => ({ "data-n": n(), ref: () => refCalls++ }));
+    createRoot(() => spread(el, () => ({ "data-n": n(), ref: () => refCalls++ })));
     flush();
     expect(refCalls).toBe(1);
 
@@ -209,7 +211,7 @@ describe("[handler, data] delegation tuples", () => {
     const handler = (data: unknown, e: Event) => {
       seen.push([data, e.type]);
     };
-    const el = element("button", { onClick: [handler, 42] }) as HTMLButtonElement;
+    const el = createRoot(() => element("button", { onClick: [handler, 42] })) as HTMLButtonElement;
     container.appendChild(el);
     el.click();
     expect(seen).toEqual([[42, "click"]]);
@@ -217,9 +219,11 @@ describe("[handler, data] delegation tuples", () => {
 
   test("non-delegated tuple wraps into a listener", () => {
     const seen: unknown[] = [];
-    const el = element("div", {
-      onMouseEnter: [(data: unknown) => seen.push(data), "hover-data"],
-    }) as HTMLDivElement;
+    const el = createRoot(() =>
+      element("div", {
+        onMouseEnter: [(data: unknown) => seen.push(data), "hover-data"],
+      }),
+    ) as HTMLDivElement;
     container.appendChild(el);
     el.dispatchEvent(new MouseEvent("mouseenter"));
     expect(seen).toEqual(["hover-data"]);
@@ -378,7 +382,7 @@ describe("textContent: the text node is kept", () => {
     const el = document.createElement("a");
     container.appendChild(el);
     const [label, setLabel] = createSignal("salama");
-    bindProp(el, setDomProp, "textContent", label);
+    createRoot(() => bindProp(el, setDomProp, "textContent", label));
     flush();
     const text = el.firstChild;
     expect(text?.nodeType).toBe(3);

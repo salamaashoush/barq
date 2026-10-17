@@ -10,7 +10,7 @@
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { element, setProp, spread } from "./dom.ts";
-import { flush, createSignal } from "./signals.ts";
+import { createRoot, flush, createSignal } from "./signals.ts";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -56,7 +56,7 @@ function withReadOnlySvgPrototype<T>(fn: () => T): T {
     },
   });
   try {
-    return fn();
+    return createRoot(() => fn());
   } finally {
     if (original) {
       Object.defineProperty(proto, "className", original);
@@ -90,7 +90,7 @@ describe("SVG className is read-only in browsers", () => {
   test("reactive class on an SVG element updates on signal change", () => {
     const el = withReadOnlyClassName(svg("rect"));
     const [active, setActive] = createSignal(false);
-    setProp(el, "class", () => (active() ? "on" : "off"));
+    createRoot(() => setProp(el, "class", () => (active() ? "on" : "off")));
 
     expect(el.getAttribute("class")).toBe("off");
     setActive(true);
@@ -111,7 +111,7 @@ describe("SVG className is read-only in browsers", () => {
   test("nullish class removes the attribute on SVG", () => {
     const el = withReadOnlyClassName(svg("circle"));
     const [cls, setCls] = createSignal<string | null>("ring");
-    setProp(el, "class", () => cls());
+    createRoot(() => setProp(el, "class", () => cls()));
     expect(el.getAttribute("class")).toBe("ring");
 
     setCls(null);
@@ -122,7 +122,7 @@ describe("SVG className is read-only in browsers", () => {
   test("spread applies class to an SVG element", () => {
     const el = withReadOnlyClassName(svg("circle"));
     const [props, setProps] = createSignal<Record<string, unknown>>({ class: "one", r: "4" });
-    spread(el, () => props());
+    createRoot(() => spread(el, () => props()));
 
     expect(el.getAttribute("class")).toBe("one");
     expect(el.getAttribute("r")).toBe("4");
@@ -176,7 +176,7 @@ describe("SVG style", () => {
   test("reactive style object diffs and removes vanished properties on SVG", () => {
     const el = svg("circle");
     const [style, setStyle] = createSignal<Record<string, unknown>>({ fill: "red", opacity: 1 });
-    setProp(el, "style", () => style());
+    createRoot(() => setProp(el, "style", () => style()));
     expect(el.style.getPropertyValue("fill")).toBe("red");
     expect(el.style.getPropertyValue("opacity")).toBe("1");
 
@@ -217,7 +217,7 @@ describe("SVG class values", () => {
   test("a reactive list follows its source", () => {
     const el = withReadOnlyClassName(svg("circle"));
     const [state, setState] = createSignal<Record<string, unknown>>({ ring: true, busy: true });
-    setProp(el, "class", () => ["dot", state()]);
+    createRoot(() => setProp(el, "class", () => ["dot", state()]));
     expect(el.getAttribute("class")).toBe("dot ring busy");
 
     setState({ busy: true, done: true });
@@ -236,7 +236,7 @@ describe("SVG class values", () => {
   test("spread applies a map to an SVG element", () => {
     const el = withReadOnlyClassName(svg("circle"));
     const [props, setProps] = createSignal<Record<string, unknown>>({ class: { ring: true } });
-    spread(el, () => props());
+    createRoot(() => spread(el, () => props()));
     expect(el.getAttribute("class")).toBe("ring");
 
     setProps({ class: { done: true } });

@@ -11,7 +11,7 @@ import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSy
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { transform } from "@barqjs/compiler";
 
 import * as core from "./index.ts";
@@ -90,6 +90,9 @@ async function run(source: string, name: string): Promise<string[]> {
   const file = join(directory, `${name}.js`);
   writeFileSync(file, body);
   const capture = core.DEV.diagnostics.capture();
+  // The engine prints what it reports; barq's own codes stay on the channel.
+  const warn = spyOn(console, "warn").mockImplementation(() => {});
+  let printed: string[];
   const disposers: (() => void)[] = [];
   try {
     const { roots } = (await import(runtime)) as { roots: (() => void)[] };
@@ -110,8 +113,14 @@ async function run(source: string, name: string): Promise<string[]> {
     for (const dispose of disposers) dispose();
     document.body.textContent = "";
     rmSync(directory, { recursive: true, force: true });
+    printed = warn.mock.calls.map((call) => String(call[0]).split("\n")[0]);
+    warn.mockRestore();
   }
-  return capture.stop().map((event) => event.code);
+  const events = capture.stop();
+  expect(printed, `${name} printed something besides the engine's own findings`).toEqual(
+    events.filter((event) => ENGINE_CODES.test(event.code)).map((event) => event.message),
+  );
+  return events.map((event) => event.code);
 }
 
 afterEach(() => {

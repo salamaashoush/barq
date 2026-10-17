@@ -222,12 +222,14 @@ describe("dynamic — a component chosen at run time", () => {
 describe("ref arrays", () => {
   test("ref={[a, b]} runs every ref with the element", () => {
     const seen: string[] = [];
-    const el = element("div", {
-      ref: [
-        (node: Element) => seen.push(`a:${node.tagName}`),
-        (node: Element) => seen.push(`b:${node.tagName}`),
-      ],
-    });
+    const el = createRoot(() =>
+      element("div", {
+        ref: [
+          (node: Element) => seen.push(`a:${node.tagName}`),
+          (node: Element) => seen.push(`b:${node.tagName}`),
+        ],
+      }),
+    );
     expect(el).toBeInstanceOf(HTMLDivElement);
     expect(seen).toEqual(["a:DIV", "b:DIV"]);
   });

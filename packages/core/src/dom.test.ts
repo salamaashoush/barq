@@ -2,7 +2,7 @@
  * DOM Tests - Edge cases for rendering, reactivity, and prop handling
  */
 
-import { describe, expect, test, beforeEach, afterEach } from "bun:test";
+import { describe, expect, test, beforeEach, afterEach, spyOn } from "bun:test";
 import { bindProp, element, insert, render, setProp, setStyle, spread, template } from "./dom.ts";
 import { boundary } from "./flow.ts";
 import {
@@ -41,32 +41,38 @@ describe("element — one element by tag NAME (§3.13 items 1 and 4)", () => {
   // this function can invoke; C1 says a component call is a plain call, so the
   // two tests at the bottom of this block call theirs directly.
   test("creates basic HTML element", () => {
-    const el = element("div", {}) as HTMLDivElement;
+    const el = createRoot(() => element("div", {})) as HTMLDivElement;
     expect(el.tagName).toBe("DIV");
   });
 
   test("creates element with static props", () => {
-    const el = element("div", { id: "test", class: "my-class" }) as HTMLDivElement;
+    const el = createRoot(() =>
+      element("div", { id: "test", class: "my-class" }),
+    ) as HTMLDivElement;
     expect(el.id).toBe("test");
     expect(el.className).toBe("my-class");
   });
 
   test("creates element with children", () => {
-    const el = element("div", { children: ["hello", " ", "world"] }) as HTMLDivElement;
+    const el = createRoot(() =>
+      element("div", { children: ["hello", " ", "world"] }),
+    ) as HTMLDivElement;
     expect(el.textContent).toBe("hello world");
   });
 
   test("creates SVG element", () => {
-    const el = element("svg", { viewBox: "0 0 100 100" }) as SVGSVGElement;
+    const el = createRoot(() => element("svg", { viewBox: "0 0 100 100" })) as SVGSVGElement;
     expect(el.namespaceURI).toBe("http://www.w3.org/2000/svg");
     expect(el.getAttribute("viewBox")).toBe("0 0 100 100");
   });
 
   test("creates nested SVG elements", () => {
-    const el = element("svg", {
-      viewBox: "0 0 100 100",
-      children: element("circle", { cx: "50", cy: "50", r: "40" }),
-    }) as SVGSVGElement;
+    const el = createRoot(() =>
+      element("svg", {
+        viewBox: "0 0 100 100",
+        children: element("circle", { cx: "50", cy: "50", r: "40" }),
+      }),
+    ) as SVGSVGElement;
 
     const circle = el.querySelector("circle");
     expect(circle).not.toBeNull();
@@ -89,7 +95,7 @@ describe("element — one element by tag NAME (§3.13 items 1 and 4)", () => {
       return element("span", { children: `Hello ${props.name}` });
     };
 
-    const el = MyComponent({ name: "World" }) as HTMLSpanElement;
+    const el = createRoot(() => MyComponent({ name: "World" })) as HTMLSpanElement;
     expect(el.textContent).toBe("Hello World");
   });
 
@@ -98,7 +104,7 @@ describe("element — one element by tag NAME (§3.13 items 1 and 4)", () => {
       return element("div", { class: "wrapper", children: props.children });
     };
 
-    const el = Wrapper({ children: "content" }) as HTMLDivElement;
+    const el = createRoot(() => Wrapper({ children: "content" })) as HTMLDivElement;
     expect(el.className).toBe("wrapper");
     expect(el.textContent).toBe("content");
   });
@@ -109,11 +115,13 @@ describe("Event handling", () => {
   // so elements must be inside a root and events must bubble.
   test("attaches onClick handler (delegated)", () => {
     let clicked = false;
-    const el = element("button", {
-      onClick: () => {
-        clicked = true;
-      },
-    }) as HTMLButtonElement;
+    const el = createRoot(() =>
+      element("button", {
+        onClick: () => {
+          clicked = true;
+        },
+      }),
+    ) as HTMLButtonElement;
 
     container.appendChild(el);
     el.click();
@@ -122,11 +130,13 @@ describe("Event handling", () => {
 
   test("attaches onInput handler (delegated)", () => {
     let value = "";
-    const el = element("input", {
-      onInput: (e: Event) => {
-        value = (e.target as HTMLInputElement).value;
-      },
-    }) as HTMLInputElement;
+    const el = createRoot(() =>
+      element("input", {
+        onInput: (e: Event) => {
+          value = (e.target as HTMLInputElement).value;
+        },
+      }),
+    ) as HTMLInputElement;
 
     container.appendChild(el);
     el.value = "test";
@@ -136,10 +146,12 @@ describe("Event handling", () => {
 
   test("delegated click bubbles from a nested child", () => {
     let clicks = 0;
-    const el = element("div", {
-      onClick: () => clicks++,
-      children: element("span", { children: "inner" }),
-    }) as HTMLDivElement;
+    const el = createRoot(() =>
+      element("div", {
+        onClick: () => clicks++,
+        children: element("span", { children: "inner" }),
+      }),
+    ) as HTMLDivElement;
 
     container.appendChild(el);
     (el.querySelector("span") as HTMLElement).dispatchEvent(
@@ -150,10 +162,12 @@ describe("Event handling", () => {
 
   test("stopPropagation halts the delegated walk", () => {
     let outerClicks = 0;
-    const el = element("div", {
-      onClick: () => outerClicks++,
-      children: element("button", { onClick: (e: Event) => e.stopPropagation() }),
-    }) as HTMLDivElement;
+    const el = createRoot(() =>
+      element("div", {
+        onClick: () => outerClicks++,
+        children: element("button", { onClick: (e: Event) => e.stopPropagation() }),
+      }),
+    ) as HTMLDivElement;
 
     container.appendChild(el);
     (el.querySelector("button") as HTMLButtonElement).click();
@@ -162,12 +176,14 @@ describe("Event handling", () => {
 
   test("handles multiple event handlers (delegated + direct)", () => {
     const events: string[] = [];
-    const el = element("button", {
-      onClick: () => events.push("click"),
-      // mouseenter/mouseleave do not bubble: attached directly
-      onMouseEnter: () => events.push("enter"),
-      onMouseLeave: () => events.push("leave"),
-    }) as HTMLButtonElement;
+    const el = createRoot(() =>
+      element("button", {
+        onClick: () => events.push("click"),
+        // mouseenter/mouseleave do not bubble: attached directly
+        onMouseEnter: () => events.push("enter"),
+        onMouseLeave: () => events.push("leave"),
+      }),
+    ) as HTMLButtonElement;
 
     container.appendChild(el);
     el.click();
@@ -181,11 +197,13 @@ describe("Event handling", () => {
 describe("Ref handling", () => {
   test("ref callback is called with element", () => {
     let refEl: Element | null = null;
-    const el = element("div", {
-      ref: (node: Element) => {
-        refEl = node;
-      },
-    }) as HTMLDivElement;
+    const el = createRoot(() =>
+      element("div", {
+        ref: (node: Element) => {
+          refEl = node;
+        },
+      }),
+    ) as HTMLDivElement;
 
     expect(refEl as Element | null).toBe(el);
   });
@@ -195,7 +213,7 @@ describe("Ref handling", () => {
     // (B3) or a callback, and the box is one object literal. The `{current}`
     // SHAPE is still a ref the channel writes, which is what this asserts.
     const ref: { current: HTMLDivElement | null } = { current: null };
-    const el = element("div", { ref }) as HTMLDivElement;
+    const el = createRoot(() => element("div", { ref })) as HTMLDivElement;
 
     expect(ref.current).toBe(el);
   });
@@ -203,16 +221,20 @@ describe("Ref handling", () => {
 
 describe("Style handling", () => {
   test("applies style object", () => {
-    const el = element("div", {
-      style: { color: "red", fontSize: "16px" },
-    }) as HTMLDivElement;
+    const el = createRoot(() =>
+      element("div", {
+        style: { color: "red", fontSize: "16px" },
+      }),
+    ) as HTMLDivElement;
 
     expect(el.style.color).toBe("red");
     expect(el.style.fontSize).toBe("16px");
   });
 
   test("applies style string", () => {
-    const el = element("div", { style: "color: blue; font-size: 14px" }) as HTMLDivElement;
+    const el = createRoot(() =>
+      element("div", { style: "color: blue; font-size: 14px" }),
+    ) as HTMLDivElement;
 
     expect(el.style.color).toBe("blue");
     expect(el.style.fontSize).toBe("14px");
@@ -224,7 +246,7 @@ describe("Style handling", () => {
     // round-trip it through the CSSOM serializer (which appends ";"), and the
     // compiled and un-compiled paths would then disagree on the attribute.
     const literal = "color: red; font-weight: bold";
-    const el = element("div", { style: literal }) as HTMLDivElement;
+    const el = createRoot(() => element("div", { style: literal })) as HTMLDivElement;
     expect(el.getAttribute("style")).toBe(literal);
 
     const parsed = document.createElement("template");
@@ -235,16 +257,20 @@ describe("Style handling", () => {
   });
 
   test("handles numeric values with px suffix", () => {
-    const el = element("div", { style: { width: 100, height: 50 } }) as HTMLDivElement;
+    const el = createRoot(() =>
+      element("div", { style: { width: 100, height: 50 } }),
+    ) as HTMLDivElement;
 
     expect(el.style.width).toBe("100px");
     expect(el.style.height).toBe("50px");
   });
 
   test("handles unitless CSS properties", () => {
-    const el = element("div", {
-      style: { zIndex: 10, opacity: 0.5, flexGrow: 1 },
-    }) as HTMLDivElement;
+    const el = createRoot(() =>
+      element("div", {
+        style: { zIndex: 10, opacity: 0.5, flexGrow: 1 },
+      }),
+    ) as HTMLDivElement;
 
     expect(el.style.zIndex).toBe("10");
     expect(el.style.opacity).toBe("0.5");
@@ -252,7 +278,9 @@ describe("Style handling", () => {
   });
 
   test("handles zero values without px", () => {
-    const el = element("div", { style: { margin: 0, padding: 0 } }) as HTMLDivElement;
+    const el = createRoot(() =>
+      element("div", { style: { margin: 0, padding: 0 } }),
+    ) as HTMLDivElement;
 
     // Browsers normalize "0" to "0px" for length properties
     expect(el.style.margin).toBe("0px");
@@ -261,7 +289,7 @@ describe("Style handling", () => {
 
   test("reactive style properties", () => {
     const [color, setColor] = createSignal("red");
-    const el = element("div", { style: { color } }) as HTMLDivElement;
+    const el = createRoot(() => element("div", { style: { color } })) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.style.color).toBe("red");
@@ -296,7 +324,7 @@ describe("Style handling", () => {
 
   test("removes style property when null", () => {
     const [width, setWidth] = createSignal<number | null>(100);
-    const el = element("div", { style: { width } }) as HTMLDivElement;
+    const el = createRoot(() => element("div", { style: { width } })) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.style.width).toBe("100px");
@@ -309,41 +337,45 @@ describe("Style handling", () => {
 
 describe("Class handling", () => {
   test("applies class string", () => {
-    const el = element("div", { class: "foo bar" }) as HTMLDivElement;
+    const el = createRoot(() => element("div", { class: "foo bar" })) as HTMLDivElement;
     expect(el.className).toBe("foo bar");
   });
 
   test("applies className string", () => {
-    const el = element("div", { className: "foo bar" }) as HTMLDivElement;
+    const el = createRoot(() => element("div", { className: "foo bar" })) as HTMLDivElement;
     expect(el.className).toBe("foo bar");
   });
 
   test("applies class array", () => {
-    const el = element("div", { class: ["foo", "bar", "baz"] }) as HTMLDivElement;
+    const el = createRoot(() => element("div", { class: ["foo", "bar", "baz"] })) as HTMLDivElement;
     expect(el.className).toBe("foo bar baz");
   });
 
   test("filters falsy values from class array", () => {
-    const el = element("div", {
-      class: ["foo", "", null, "bar", false, "baz"],
-    }) as HTMLDivElement;
+    const el = createRoot(() =>
+      element("div", {
+        class: ["foo", "", null, "bar", false, "baz"],
+      }),
+    ) as HTMLDivElement;
     expect(el.className).toBe("foo bar baz");
   });
 
   test("applies class object", () => {
-    const el = element("div", {
-      class: { foo: true, bar: false, baz: true },
-    }) as HTMLDivElement;
+    const el = createRoot(() =>
+      element("div", {
+        class: { foo: true, bar: false, baz: true },
+      }),
+    ) as HTMLDivElement;
     expect(el.className).toBe("foo baz");
   });
 
   test("removes class when value is null", () => {
-    const el = element("div", { class: null }) as HTMLDivElement;
+    const el = createRoot(() => element("div", { class: null })) as HTMLDivElement;
     expect(el.hasAttribute("class")).toBe(false);
   });
 
   test("removes class when value is false", () => {
-    const el = element("div", { class: false }) as HTMLDivElement;
+    const el = createRoot(() => element("div", { class: false })) as HTMLDivElement;
     expect(el.hasAttribute("class")).toBe(false);
   });
 
@@ -373,7 +405,7 @@ describe("Class handling", () => {
 describe("Reactive props", () => {
   test("updates prop when signal changes", () => {
     const [title, setTitle] = createSignal("initial");
-    const el = element("div", { title }) as HTMLDivElement;
+    const el = createRoot(() => element("div", { title })) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.title).toBe("initial");
@@ -385,7 +417,7 @@ describe("Reactive props", () => {
 
   test("updates attribute when signal changes", () => {
     const [ariaLabel, setAriaLabel] = createSignal("label 1");
-    const el = element("div", { "aria-label": ariaLabel }) as HTMLDivElement;
+    const el = createRoot(() => element("div", { "aria-label": ariaLabel })) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.getAttribute("aria-label")).toBe("label 1");
@@ -397,7 +429,7 @@ describe("Reactive props", () => {
 
   test("handles boolean attribute reactively", () => {
     const [disabled, setDisabled] = createSignal(true);
-    const el = element("button", { disabled }) as HTMLButtonElement;
+    const el = createRoot(() => element("button", { disabled })) as HTMLButtonElement;
 
     container.appendChild(el);
     expect(el.hasAttribute("disabled")).toBe(true);
@@ -410,7 +442,7 @@ describe("Reactive props", () => {
   test("handles computed prop values", () => {
     const [count, setCount] = createSignal(0);
     const label = createMemo(() => `Count: ${count()}`);
-    const el = element("div", { title: label }) as HTMLDivElement;
+    const el = createRoot(() => element("div", { title: label })) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.title).toBe("Count: 0");
@@ -424,7 +456,7 @@ describe("Reactive props", () => {
 describe("Reactive children", () => {
   test("updates text content from signal", () => {
     const [text, setText] = createSignal("hello");
-    const el = element("div", { children: text }) as HTMLDivElement;
+    const el = createRoot(() => element("div", { children: text })) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.textContent).toContain("hello");
@@ -437,7 +469,7 @@ describe("Reactive children", () => {
   test("updates text from computed", () => {
     const [count, setCount] = createSignal(0);
     const label = createMemo(() => `Count: ${count()}`);
-    const el = element("div", { children: label }) as HTMLDivElement;
+    const el = createRoot(() => element("div", { children: label })) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.textContent).toContain("Count: 0");
@@ -470,15 +502,17 @@ describe("Reactive children", () => {
 
   test("EDGE CASE: reactive child changes from text to array", () => {
     const [content, setContent] = createSignal<string | string[]>("text");
-    const el = element("div", {
-      children: () => {
-        const val = content();
-        if (Array.isArray(val)) {
-          return val.map((v) => element("span", { children: v }));
-        }
-        return val;
-      },
-    }) as HTMLDivElement;
+    const el = createRoot(() =>
+      element("div", {
+        children: () => {
+          const val = content();
+          if (Array.isArray(val)) {
+            return val.map((v) => element("span", { children: v }));
+          }
+          return val;
+        },
+      }),
+    ) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.textContent).toContain("text");
@@ -496,9 +530,11 @@ describe("Reactive children", () => {
 
   test("EDGE CASE: reactive child changes from node to primitive", () => {
     const [showNode, setShowNode] = createSignal(true);
-    const el = element("div", {
-      children: () => (showNode() ? element("span", { children: "node" }) : "primitive"),
-    }) as HTMLDivElement;
+    const el = createRoot(() =>
+      element("div", {
+        children: () => (showNode() ? element("span", { children: "node" }) : "primitive"),
+      }),
+    ) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.querySelector("span")).not.toBeNull();
@@ -515,7 +551,7 @@ describe("Reactive children", () => {
 
   test("EDGE CASE: rapid reactive child updates", () => {
     const [count, setCount] = createSignal(0);
-    const el = element("div", { children: count }) as HTMLDivElement;
+    const el = createRoot(() => element("div", { children: count })) as HTMLDivElement;
 
     container.appendChild(el);
 
@@ -529,7 +565,7 @@ describe("Reactive children", () => {
 
   test("EDGE CASE: null/undefined reactive child", () => {
     const [content, setContent] = createSignal<string | null>("visible");
-    const el = element("div", { children: () => content() }) as HTMLDivElement;
+    const el = createRoot(() => element("div", { children: () => content() })) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.textContent).toContain("visible");
@@ -546,9 +582,11 @@ describe("Reactive children", () => {
 
   test("EDGE CASE: deeply nested reactive children", () => {
     const [inner, setInner] = createSignal("deep");
-    const el = element("div", {
-      children: element("div", { children: element("div", { children: inner }) }),
-    }) as HTMLDivElement;
+    const el = createRoot(() =>
+      element("div", {
+        children: element("div", { children: element("div", { children: inner }) }),
+      }),
+    ) as HTMLDivElement;
 
     container.appendChild(el);
     expect(el.textContent).toContain("deep");
@@ -561,30 +599,34 @@ describe("Reactive children", () => {
 
 describe("DOM properties vs attributes", () => {
   test("sets value property on input", () => {
-    const el = element("input", { value: "test" }) as HTMLInputElement;
+    const el = createRoot(() => element("input", { value: "test" })) as HTMLInputElement;
     expect(el.value).toBe("test");
   });
 
   test("sets checked property on checkbox", () => {
-    const el = element("input", { type: "checkbox", checked: true }) as HTMLInputElement;
+    const el = createRoot(() =>
+      element("input", { type: "checkbox", checked: true }),
+    ) as HTMLInputElement;
     expect(el.checked).toBe(true);
   });
 
   test("sets selected property on option", () => {
-    const el = element("option", { selected: true }) as HTMLOptionElement;
+    const el = createRoot(() => element("option", { selected: true })) as HTMLOptionElement;
     expect(el.selected).toBe(true);
   });
 
   test("sets innerHTML", () => {
-    const el = element("div", {
-      dangerouslySetInnerHTML: { __html: "<b>bold</b>" },
-    }) as HTMLDivElement;
+    const el = createRoot(() =>
+      element("div", {
+        dangerouslySetInnerHTML: { __html: "<b>bold</b>" },
+      }),
+    ) as HTMLDivElement;
     expect(el.innerHTML).toBe("<b>bold</b>");
   });
 
   test("reactive value property", () => {
     const [value, setValue] = createSignal("initial");
-    const el = element("input", { value }) as HTMLInputElement;
+    const el = createRoot(() => element("input", { value })) as HTMLInputElement;
 
     container.appendChild(el);
     expect(el.value).toBe("initial");
@@ -596,7 +638,9 @@ describe("DOM properties vs attributes", () => {
 
   test("reactive checked property", () => {
     const [checked, setChecked] = createSignal(false);
-    const el = element("input", { type: "checkbox", checked }) as HTMLInputElement;
+    const el = createRoot(() =>
+      element("input", { type: "checkbox", checked }),
+    ) as HTMLInputElement;
 
     container.appendChild(el);
     expect(el.checked).toBe(false);
@@ -609,7 +653,7 @@ describe("DOM properties vs attributes", () => {
 
 describe("render function", () => {
   test("renders element to container", () => {
-    const el = element("div", { children: "content" }) as HTMLDivElement;
+    const el = createRoot(() => element("div", { children: "content" })) as HTMLDivElement;
     render(el, container);
 
     expect(container.textContent).toBe("content");
@@ -617,7 +661,7 @@ describe("render function", () => {
 
   test("clears container before rendering", () => {
     container.innerHTML = "<span>old content</span>";
-    const el = element("div", { children: "new content" }) as HTMLDivElement;
+    const el = createRoot(() => element("div", { children: "new content" })) as HTMLDivElement;
 
     render(el, container);
 
@@ -626,7 +670,7 @@ describe("render function", () => {
   });
 
   test("returns cleanup function", () => {
-    const el = element("div", { children: "content" }) as HTMLDivElement;
+    const el = createRoot(() => element("div", { children: "content" })) as HTMLDivElement;
     const cleanup = render(el, container);
 
     expect(container.textContent).toBe("content");
@@ -683,7 +727,11 @@ describe("render function", () => {
   test("a fragment root keeps its static members in order around a Cell", () => {
     const [middle, setMiddle] = createSignal("b");
     render(
-      [element("span", { children: "a" }), () => middle(), element("span", { children: "c" })],
+      [
+        createRoot(() => element("span", { children: "a" })),
+        () => middle(),
+        createRoot(() => element("span", { children: "c" })),
+      ],
       container,
     );
 
@@ -696,9 +744,9 @@ describe("render function", () => {
 
   test("renders array of elements", () => {
     const elements = [
-      element("span", { children: "a" }),
-      element("span", { children: "b" }),
-      element("span", { children: "c" }),
+      createRoot(() => element("span", { children: "a" })),
+      createRoot(() => element("span", { children: "b" })),
+      createRoot(() => element("span", { children: "c" })),
     ];
     render(elements, container);
 
@@ -717,7 +765,7 @@ describe("the { current } ref shape", () => {
 
   test("current is set when attached to an element", () => {
     const ref: { current: HTMLInputElement | null } = { current: null };
-    const el = element("input", { ref }) as HTMLInputElement;
+    const el = createRoot(() => element("input", { ref })) as HTMLInputElement;
 
     expect(ref.current).toBe(el);
   });
@@ -855,7 +903,7 @@ describe("Memory and cleanup", () => {
 
 describe("Edge cases and error handling", () => {
   test("handles empty children array", () => {
-    const el = element("div", {}) as HTMLDivElement;
+    const el = createRoot(() => element("div", {})) as HTMLDivElement;
     expect(el.childNodes.length).toBe(0);
   });
 
@@ -881,29 +929,33 @@ describe("Edge cases and error handling", () => {
   });
 
   test("handles nested arrays in children", () => {
-    const el = element("div", { children: [["a", ["b", "c"]], "d"] }) as HTMLDivElement;
+    const el = createRoot(() =>
+      element("div", { children: [["a", ["b", "c"]], "d"] }),
+    ) as HTMLDivElement;
 
     expect(el.textContent).toBe("abcd");
   });
 
   test("handles props with undefined values", () => {
-    const el = element("div", { title: undefined, id: "test" }) as HTMLDivElement;
+    const el = createRoot(() => element("div", { title: undefined, id: "test" })) as HTMLDivElement;
 
     expect(el.hasAttribute("title")).toBe(false);
     expect(el.id).toBe("test");
   });
 
   test("handles props with null values", () => {
-    const el = element("div", { title: null, id: "test" }) as HTMLDivElement;
+    const el = createRoot(() => element("div", { title: null, id: "test" })) as HTMLDivElement;
 
     expect(el.hasAttribute("title")).toBe(false);
     expect(el.id).toBe("test");
   });
 
   test("kebab-case SVG attributes", () => {
-    const el = element("svg", {
-      children: element("rect", { strokeWidth: "2", fillOpacity: "0.5" }),
-    }) as SVGSVGElement;
+    const el = createRoot(() =>
+      element("svg", {
+        children: element("rect", { strokeWidth: "2", fillOpacity: "0.5" }),
+      }),
+    ) as SVGSVGElement;
 
     const rect = el.querySelector("rect");
     expect(rect?.getAttribute("stroke-width")).toBe("2");
@@ -911,7 +963,7 @@ describe("Edge cases and error handling", () => {
   });
 
   test("preserves viewBox casing", () => {
-    const el = element("svg", { viewBox: "0 0 100 100" }) as SVGSVGElement;
+    const el = createRoot(() => element("svg", { viewBox: "0 0 100 100" })) as SVGSVGElement;
     expect(el.getAttribute("viewBox")).toBe("0 0 100 100");
   });
 });
@@ -928,7 +980,7 @@ describe("BUG: isSignalGetter false positive", () => {
 
     // If callback is incorrectly treated as a signal getter,
     // it will be wrapped in an effect and called
-    const el = element("div", { "data-value": callback }) as HTMLDivElement;
+    const el = createRoot(() => element("div", { "data-value": callback })) as HTMLDivElement;
 
     container.appendChild(el);
 
@@ -944,13 +996,13 @@ describe("BUG: textNode stale reference", () => {
     // This tests the potential bug where textNode reference becomes stale
     const [content, setContent] = createSignal<string | Node>("initial");
 
-    const el = element("div", { children: () => content() }) as HTMLDivElement;
+    const el = createRoot(() => element("div", { children: () => content() })) as HTMLDivElement;
     container.appendChild(el);
 
     expect(el.textContent).toContain("initial");
 
     // Change to a node
-    setContent(element("span", { children: "node" }));
+    setContent(createRoot(() => element("span", { children: "node" })));
     flush();
     expect(el.querySelector("span")).not.toBeNull();
 
@@ -962,9 +1014,9 @@ describe("BUG: textNode stale reference", () => {
 
     // Rapid changes
     setContent("text1");
-    setContent(element("div", { children: "div" }));
+    setContent(createRoot(() => element("div", { children: "div" })));
     setContent("text2");
-    setContent(element("span", { children: "span" }));
+    setContent(createRoot(() => element("span", { children: "span" })));
     setContent("final");
     flush();
 
@@ -996,7 +1048,7 @@ describe("eager multi-node bodies survive a hide/show cycle", () => {
     const body = twoNodeFragment();
     const first = Array.from(body.childNodes);
 
-    insert(container, () => (on() ? body : null));
+    createRoot(() => insert(container, () => (on() ? body : null)));
     expect(container.innerHTML).toBe("<i>i</i><u>u</u>");
 
     setOn(false);
@@ -1130,14 +1182,22 @@ describe("spread — B4 and E2.2 on the one channel the corpus cannot reach", ()
     runWithOwner(root, () => {
       // The refusal is raised inside the binding's own computation, so it
       // arrives as the engine's wrapper around it.
+      // Nothing above it catches the throw, so the engine halts and says so.
       let thrown: unknown;
+      const halt = spyOn(console, "error").mockImplementation(() => {});
+      let printed: string[];
       try {
         const target = document.createElement("i");
         spread(target, () => ({ style: leaf }));
       } catch (error) {
         thrown = error;
+      } finally {
+        printed = halt.mock.calls.map((call) => String(call[0]));
+        halt.mockRestore();
       }
       expect((thrown as Error | undefined)?.cause).toBeInstanceOf(ScopeMissingError);
+      expect(printed).toHaveLength(1);
+      expect(printed[0]).toStartWith("[REACTIVITY_HALTED]");
     });
   });
 
@@ -1180,25 +1240,27 @@ describe("spread — B4 and E2.2 on the one channel the corpus cannot reach", ()
 
 describe("enumerated attributes", () => {
   test("aria-pressed={false} is written, not removed", () => {
-    const el = element("button", { "aria-pressed": false }) as HTMLButtonElement;
+    const el = createRoot(() => element("button", { "aria-pressed": false })) as HTMLButtonElement;
     expect(el.getAttribute("aria-pressed")).toBe("false");
   });
 
   test("aria-pressed={true} is the string, not the empty boolean attribute", () => {
-    const el = element("button", { "aria-pressed": true }) as HTMLButtonElement;
+    const el = createRoot(() => element("button", { "aria-pressed": true })) as HTMLButtonElement;
     expect(el.getAttribute("aria-pressed")).toBe("true");
   });
 
   test("a boolean HTML attribute is still its own presence", () => {
-    const on = element("button", { disabled: true }) as HTMLButtonElement;
-    const off = element("button", { hidden: false }) as HTMLButtonElement;
+    const on = createRoot(() => element("button", { disabled: true })) as HTMLButtonElement;
+    const off = createRoot(() => element("button", { hidden: false })) as HTMLButtonElement;
     expect(on.disabled).toBe(true);
     expect(off.hasAttribute("hidden")).toBe(false);
   });
 
   test("the value follows a signal both ways", () => {
     const [pressed, setPressed] = createSignal(false);
-    const el = element("button", { "aria-pressed": () => pressed() }) as HTMLButtonElement;
+    const el = createRoot(() =>
+      element("button", { "aria-pressed": () => pressed() }),
+    ) as HTMLButtonElement;
     container.appendChild(el);
 
     expect(el.getAttribute("aria-pressed")).toBe("false");
@@ -1211,7 +1273,7 @@ describe("enumerated attributes", () => {
   });
 
   test("contentEditable spells its value out", () => {
-    const el = element("div", { contentEditable: false }) as HTMLDivElement;
+    const el = createRoot(() => element("div", { contentEditable: false })) as HTMLDivElement;
     expect(el.getAttribute("contentEditable")).toBe("false");
   });
 });
@@ -1307,13 +1369,17 @@ describe("a component's construction is not a dependency of the hole that placed
 describe("capture-phase events", () => {
   test("an onXCapture prop fires before a descendant's bubble handler", () => {
     const seen: string[] = [];
-    const parent = element("div", {
-      onKeyDownCapture: () => seen.push("parent-capture"),
-      onKeyDown: () => seen.push("parent-bubble"),
-    }) as HTMLDivElement;
-    const child = element("input", {
-      onKeyDown: () => seen.push("child"),
-    }) as HTMLInputElement;
+    const parent = createRoot(() =>
+      element("div", {
+        onKeyDownCapture: () => seen.push("parent-capture"),
+        onKeyDown: () => seen.push("parent-bubble"),
+      }),
+    ) as HTMLDivElement;
+    const child = createRoot(() =>
+      element("input", {
+        onKeyDown: () => seen.push("child"),
+      }),
+    ) as HTMLInputElement;
     parent.appendChild(child);
     container.appendChild(parent);
 
@@ -1324,15 +1390,19 @@ describe("capture-phase events", () => {
 
   test("a capture handler can stop the event reaching the child", () => {
     const seen: string[] = [];
-    const parent = element("div", {
-      onKeyDownCapture: (e: Event) => {
-        seen.push("capture");
-        e.stopPropagation();
-      },
-    }) as HTMLDivElement;
-    const child = element("input", {
-      onKeyDown: () => seen.push("child"),
-    }) as HTMLInputElement;
+    const parent = createRoot(() =>
+      element("div", {
+        onKeyDownCapture: (e: Event) => {
+          seen.push("capture");
+          e.stopPropagation();
+        },
+      }),
+    ) as HTMLDivElement;
+    const child = createRoot(() =>
+      element("input", {
+        onKeyDown: () => seen.push("child"),
+      }),
+    ) as HTMLInputElement;
     parent.appendChild(child);
     container.appendChild(parent);
 
@@ -1361,10 +1431,12 @@ describe("capture-phase events", () => {
   test("a spread binds both phases of one event type", () => {
     const seen: string[] = [];
     const parent = document.createElement("div");
-    spread(parent, {
-      onKeyDownCapture: () => seen.push("capture"),
-      onKeyDown: () => seen.push("bubble"),
-    });
+    createRoot(() =>
+      spread(parent, {
+        onKeyDownCapture: () => seen.push("capture"),
+        onKeyDown: () => seen.push("bubble"),
+      }),
+    );
     const child = document.createElement("input");
     parent.appendChild(child);
     container.appendChild(parent);

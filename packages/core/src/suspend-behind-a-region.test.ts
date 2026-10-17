@@ -63,7 +63,6 @@ describe("suspend behind a region", () => {
         await tick();
         await tick();
         await tick();
-        console.log(name.padEnd(26), "mount:", atMount.padEnd(6), "after:", host.textContent);
         expect(atMount).toBe("BUSY");
         expect(host.textContent).toBe("READY");
       }),

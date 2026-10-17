@@ -11,7 +11,7 @@
  * rather than failed.
  */
 
-import { afterAll, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, spyOn, test } from "bun:test";
 import { type ReactiveFramework, SkipTest, testSuite } from "reactive-framework-test-suite";
 // The suite's `effect` tracks and acts in one function. Only the engine's
 // deprecated `createTrackedEffect` does that, and barq does not export it.
@@ -92,17 +92,23 @@ const barq: ReactiveFramework = {
     return dispose;
   },
   // An error a case lets escape halts the engine by design, so the halt is
-  // lifted before the next one.
+  // lifted before the next one. The engine reports a halt on the console; that
+  // report is the case's own, and anything else printed there fails it.
   run: (fn) => {
     const outer = made;
     made = [];
+    const error = spyOn(console, "error").mockImplementation(() => {});
+    let printed: string[];
     try {
       runWithOwner(null, fn);
     } finally {
       for (const dispose of made) dispose();
       made = outer;
+      printed = error.mock.calls.map((call) => String(call[0]));
+      error.mockRestore();
       resetErrorHalt();
     }
+    expect(printed.filter((line) => !line.startsWith("[REACTIVITY_HALTED]"))).toEqual([]);
   },
   batch: (fn) => {
     batching++;
@@ -212,10 +218,11 @@ for (const section of testSuite) {
 
 afterAll(() => {
   const total = tally.pass + tally.fail + tally.skip + tally.differ;
-  // eslint-disable-next-line no-console
-  console.log(
-    `\n[conformance] barq: ${tally.pass}/${total} pass, ${tally.fail} fail, ${tally.differ} differ by model, ${tally.skip} skipped (capability not advertised)`,
-  );
+  if (tally.fail > 0 || process.env.BARQ_TEST_REPORT) {
+    console.log(
+      `\n[conformance] barq: ${tally.pass}/${total} pass, ${tally.fail} fail, ${tally.differ} differ by model, ${tally.skip} skipped (capability not advertised)`,
+    );
+  }
   // Keep a tiny assertion so the summary block itself is a visible test step.
   expect(tally.pass + tally.fail + tally.skip + tally.differ).toBe(total);
 });
