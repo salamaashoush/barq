@@ -1,14 +1,6 @@
-/**
- * Test setup - registers happy-dom globals before tests run
- */
-
-import { GlobalRegistrator } from "@happy-dom/global-registrator";
 import { afterEach } from "bun:test";
 import { resetErrorHalt } from "@solidjs/signals";
 import { followAsync } from "./signals.ts";
-
-// Register happy-dom globals (document, window, etc.)
-GlobalRegistrator.register();
 
 // Tests await graphs they build by hand, so async memos are followed here the
 // way a server render follows its own.

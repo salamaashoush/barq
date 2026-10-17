@@ -1,7 +1,6 @@
 /**
- * Barq - Tiny JSX renderer with fine-grained reactivity via signals
- *
- * Core: the reactive engine, JSX/DOM rendering, components, hydration
+ * Barq's core: the reactive engine, components and control flow, with no
+ * renderer. `@barqjs/web` renders into a document.
  * For scheduling, events, observers and browser APIs, see @barqjs/primitives
  */
 
@@ -176,89 +175,16 @@ export type {
   StrictChild,
 } from "./config.ts";
 
-export { isClient, isDev, isServer } from "#env";
+/**
+ * True under the development entry, which is what the `development` export
+ * condition resolves `@barqjs/core` to. A literal here, so a production bundle
+ * folds `if (isDev)` away; the development entry exports its own `true` over
+ * this one.
+ */
+export const isDev: boolean = false;
 
 export { isSafeError, markSafeError } from "./safe-error.ts";
 
-export {
-  getRequestEvent,
-  getTraceContext,
-  httpHeader,
-  httpStatus,
-  type RequestEvent,
-  type RequestEventLocals,
-  type ResponseStub,
-} from "./request-event.ts";
-
-export type { TraceContext } from "./trace-context.ts";
-
-export { useHead, type HeadInput, type HeadTag, type HeadTagName } from "./head.ts";
-
-// Server-side rendering
-
-// Claim-based hydration. The two walk helpers are emitted ONLY by a
-// `hydratable` compile — the index must cost nothing on the client-render path,
-// which is the diff between the two emissions — and with the flag off neither
-// name appears in a module.
-export { child, sib, hole, shellReady } from "./hydration.ts";
-export {
-  hydrating as isHydrating,
-  onHydrationEnd,
-  type HydrationReport,
-  type Mismatch,
-  type MismatchKind,
-} from "./hydration-state.ts";
-
-// DOM
-export {
-  element,
-  render,
-  hydrate,
-  type HydrateOptions,
-  type MountOptions,
-  type MountTarget,
-  template,
-  insert,
-  setProp,
-  // The resolved channels. The compiler picks one at compile time from
-  // `NameFlags` plus the namespace, so no name is classified at run time.
-  setAttr,
-  setDomProp,
-  setLive,
-  setClass,
-  setStyle,
-  setHtml,
-  setRef,
-  bindProp,
-  readOpaque,
-  readKeys,
-  bindValue,
-  bindEvent,
-  bindChannelOf,
-  ref,
-  formAction,
-  listen,
-  delegate,
-  spread,
-  delegateEvents,
-  classToString,
-  type Channel,
-  // The SSR string backend's brand. It is read on the CLIENT too: a module that
-  // fell back to this backend renders a string-compiled component's markup
-  // through it.
-  isSsrHtml,
-} from "./dom.ts";
-export type { Child, Props, JSXElement, Element, ArrayElement } from "./types.ts";
-
-// The two halves of a form write, exported because they are a CHANNEL and not
-// an internal: `setLive` and every author-written directive that touches a
-// user-mutable property need the same compare and the same caret restore, and a
-// second implementation of either is how the two would drift.
-export { writeLive, coerceLive, holdsLive, captureCaret, restoreCaret } from "./forms.ts";
-
-// The four control-flow primitives.
-// Everything under `Components` below is an adapter over these; compiled code
-// reaches them directly.
 /**
  * `HYDRATE` is public because a hand-written construct has to be able to pass
  * it. The compiler sets it on every range it emits, but `@barqjs/router` builds
@@ -267,7 +193,6 @@ export { writeLive, coerceLive, holdsLive, captureCaret, restoreCaret } from "./
  * writes the range, which is a page that silently re-renders itself cold.
  */
 export { COUNT, STATIC_KEY, NO_SCOPE, HYDRATE, WHOLE } from "./flow.ts";
-export { branch, each, boundary, island, portal, reveal } from "./dom-flow.ts";
 export type { BoundaryKind } from "./flow.ts";
 
 // The flow components — the adapters `passes::flow` falls back to when it
@@ -288,18 +213,12 @@ export {
   NoHydration,
   Hydration,
 } from "./components.ts";
-export { Portal } from "./dom-components.ts";
 export { children } from "./components.ts";
 // Not one of the ten. `lazy` is a `computed` over an import — a reactivity
 // primitive that happens to return a component — and it is here rather than in
 // a router because every mechanism it rides is private to `signals.ts` and
 // `flow.ts`.
 export { lazy, lazyModule } from "./components.ts";
-// Solid 2.0's `clientOnly`, from `@solidjs/web`. The server backend calls the
-// string half in `@barqjs/server` instead, which never starts the import.
-export { clientOnly } from "./dom-components.ts";
-// Solid 2.0's factory for a component chosen at run time, from `@solidjs/web`.
-export { dynamic } from "./dom-components.ts";
 export type {
   ChildrenReturn,
   ResolvedChildren,
@@ -320,18 +239,6 @@ export type {
   LazyComponent,
   LazyModule,
 } from "./components.ts";
-export type {
-  PortalProps,
-  DynamicComponent,
-  DynamicProps,
-  DynamicTag,
-  ClientOnlyComponent,
-} from "./dom-components.ts";
-
-// JSX — the TYPES stay whole; `jsx`/`jsxs`/`jsxDEV` are gone. Bun's JSX
-// transform cannot produce scope-taking Blocks, so an un-compiled authoring
-// path could not have the same semantics and there is no point shipping one.
-export type { JSX } from "./jsx-runtime.ts";
 
 // Type utilities
 // `setProperty` is NOT exported: it is one character from `setProp`, which is a
@@ -353,8 +260,9 @@ export type {
   Ref,
   RefCallback,
   RefObject,
+  Bindable,
 } from "./component-types.ts";
-export type { ComponentProps, ValidComponent, IntrinsicElementProps } from "./jsx-runtime.ts";
+export type { Child, Props, JSXElement, Element, ArrayElement } from "./types.ts";
 
 // The L2b ownership trace. DEV/test only, off until asked
 // for; every instrumentation site behind it is one branch when it is off.

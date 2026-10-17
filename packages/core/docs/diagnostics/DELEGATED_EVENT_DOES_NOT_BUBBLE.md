@@ -19,7 +19,7 @@ family. Delegation installs one listener on the container each `render` or
 event that never reaches that container never finds it:
 
 ```tsx
-import { delegateEvents } from "@barqjs/core";
+import { delegateEvents } from "@barqjs/web";
 
 export function Search() {
   delegateEvents(["focus"]);
@@ -35,7 +35,7 @@ events to the element directly. Only a hand-written call reaches it.
 Listen on the element itself:
 
 ```tsx
-import { listen } from "@barqjs/core";
+import { listen } from "@barqjs/web";
 
 export function Search() {
   return (

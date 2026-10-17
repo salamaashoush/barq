@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "lib": ["ESNext"],
     "target": "ESNext",
     "module": "ESNext",
     "moduleDetection": "force",
@@ -18,20 +18,12 @@
     "esModuleInterop": true,
     "declaration": true,
     "declarationMap": true,
-    "isolatedDeclarations": true,
-    "jsx": "react-jsx",
-    "jsxImportSource": "."
+    "isolatedDeclarations": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx"],
-  // `src/jsx-types` is its own project: `jsxImportSource` is a module specifier
-  // resolved from the FILE, so `"."` reaches `src/jsx-runtime` from `src/` and
-  // reaches nothing from a subdirectory. It also carries deliberate
-  // `@ts-expect-error`s, which only mean anything under a config that compiles
-  // it alone — `form-action-types.test.ts` is what runs it.
-  //
+  "include": ["src/**/*.ts"],
   // `conformance.test.ts` imports a third-party suite that ships TypeScript
   // source and fails `noUnusedLocals`; `skipLibCheck` does not reach a `.ts`
   // file, so the suite would be checked as if it were this package.
   // `tsconfig.conformance.json` checks that test against the suite instead.
-  "exclude": ["node_modules", "dist", "src/jsx-types", "src/conformance.test.ts"]
+  "exclude": ["node_modules", "dist", "src/conformance.test.ts"]
 }

@@ -1,7 +1,7 @@
 {
   "name": "@barqjs/core",
   "version": "0.1.0",
-  "description": "Signals, stores, control flow, JSX and the DOM renderer for barq: fine-grained updates with no virtual DOM",
+  "description": "Signals, stores, components and control flow for barq: fine-grained updates with no virtual DOM, on any renderer",
   "keywords": [
     "barq",
     "fine-grained",
@@ -32,25 +32,12 @@
     "!src/**/*-probe.ts",
     "!src/**/fixtures",
     "!src/**/fixtures.ts",
-    "!src/**/ssr-fixtures.ts",
-    "!src/jsx-types"
+    "!src/**/ssr-fixtures.ts"
   ],
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "imports": {
-    "#env": {
-      "types": "./src/env.ts",
-      "worker": "./dist/env.server.js",
-      "workerd": "./dist/env.server.js",
-      "browser": "./dist/env.client.js",
-      "bun": "./src/env.ts",
-      "deno": "./dist/env.server.js",
-      "node": "./dist/env.server.js",
-      "default": "./dist/env.js"
-    }
-  },
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
@@ -70,21 +57,6 @@
       "types": "./dist/internal.d.ts",
       "bun": "./src/internal.ts",
       "import": "./dist/internal.js"
-    },
-    "./interp": {
-      "types": "./dist/interp.d.ts",
-      "bun": "./src/interp.ts",
-      "import": "./dist/interp.js"
-    },
-    "./jsx-dev-runtime": {
-      "types": "./dist/jsx-runtime.d.ts",
-      "bun": "./src/jsx-runtime.ts",
-      "import": "./dist/jsx-runtime.js"
-    },
-    "./jsx-runtime": {
-      "types": "./dist/jsx-runtime.d.ts",
-      "bun": "./src/jsx-runtime.ts",
-      "import": "./dist/jsx-runtime.js"
     }
   },
   "publishConfig": {
@@ -98,12 +70,9 @@
     "test": "bun test --timeout 10000 && bun test --timeout 10000 --conditions=development"
   },
   "dependencies": {
-    "@solidjs/signals": "2.0.0-rc.15",
-    "csstype": "^3.2.3"
+    "@solidjs/signals": "2.0.0-rc.15"
   },
   "devDependencies": {
-    "@barqjs/compiler": "workspace:*",
-    "@happy-dom/global-registrator": "^21.0.1",
     "@types/bun": "^1.4.3",
     "reactive-framework-test-suite": "^0.1.0",
     "typescript": "^7.0.2"

@@ -16,7 +16,8 @@ dispose their effects and listeners. Pass a function instead: `render(() => <App
 that builds them:
 
 ```tsx
-import { createSignal, render } from "@barqjs/core";
+import { createSignal } from "@barqjs/core";
+import { render } from "@barqjs/web";
 
 function Counter() {
   const [count, setCount] = createSignal(0);
@@ -35,7 +36,8 @@ the root that should own it.
 Hand `render` a function, so the component runs inside the root:
 
 ```tsx
-import { createSignal, render } from "@barqjs/core";
+import { createSignal } from "@barqjs/core";
+import { render } from "@barqjs/web";
 
 function Counter() {
   const [count, setCount] = createSignal(0);

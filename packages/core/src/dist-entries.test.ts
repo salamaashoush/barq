@@ -1,5 +1,5 @@
 /**
- * The six published entries must share ONE runtime.
+ * The four published entries must share ONE runtime.
  *
  * `src/signals.ts` holds module state — `activeAsyncSession`, the in-flight
  * registry, the hydration store — and every entry reaches it. A build that
@@ -22,7 +22,7 @@ import { fileURLToPath } from "node:url";
 
 import { describe, expect, test } from "bun:test";
 
-const ENTRIES = ["index", "dev", "hot", "internal", "interp", "jsx-runtime"] as const;
+const ENTRIES = ["index", "dev", "hot", "internal"] as const;
 
 const distOf = (entry: string): string =>
   fileURLToPath(new URL(`../dist/${entry}.js`, import.meta.url));

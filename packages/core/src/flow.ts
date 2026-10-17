@@ -36,6 +36,7 @@ import {
 import type { Block, Cell, Scope } from "./scope.ts";
 import { createMemo } from "@solidjs/signals";
 import {
+  CONTEXT_MISS,
   ERROR_BOUNDARY,
   type Maybe,
   NotReadyError,
@@ -62,6 +63,7 @@ import {
   OWNERSHIP,
   repeat,
   jsxAsValue,
+  lookupContext,
   traceScope,
   underScope,
   untrack,
@@ -167,6 +169,48 @@ export type SyncRows<N extends object = object> = (
   current: readonly Row<N>[],
   next: readonly Row<N>[],
 ) => void;
+
+/** A host and the list reorder that goes with it. */
+export interface Renderer<N extends object = object> {
+  host: RangeHost<N>;
+  sync: SyncRows<N>;
+}
+
+/**
+ * The owner context a renderer provides its `Renderer` under, for the
+ * components below it.
+ *
+ * Compiled code never reads it: it calls a renderer's own `branch` and `each`,
+ * which carry their host. Only `<Show>`, `<For>` and the rest called as
+ * components, which is what a spread compiles to, have to ask where they are.
+ */
+export const HOST: unique symbol = Symbol("host");
+
+let installed: Renderer | null = null;
+
+/**
+ * The renderer the components use where no owner provides one. A renderer
+ * installs it from a module of its own rather than from `render`, so a page
+ * whose compiled code never calls a component does not ship the list reorder.
+ */
+export function setDefaultHost<N extends object>(host: RangeHost<N>, sync: SyncRows<N>): void {
+  // The node type is erased here and nowhere else: a component only ever hands
+  // the host nodes the same host made, so no call can pair it with another's.
+  installed = { host, sync } as unknown as Renderer;
+}
+
+/** The renderer a component called here renders through. */
+export function rendererHere(construct: string): Renderer {
+  const provided = lookupContext(getOwner(), HOST);
+  if (provided !== CONTEXT_MISS) return provided as Renderer;
+  if (installed !== null) return installed;
+  throw new Error(
+    `\`<${construct}>\` was called as a component with no renderer to render through. ` +
+      "Compiled code installs one for every module that calls a component, so this " +
+      'is a hand-written call: import "@barqjs/web/host" once before it, or render ' +
+      "under a renderer that provides `HOST`.",
+  );
+}
 
 /**
  * The nodes that stand at the END of something whose content changes after it

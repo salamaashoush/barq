@@ -1,0 +1,114 @@
+{
+  "name": "@barqjs/web",
+  "version": "0.1.0",
+  "description": "barq's renderer for the document: render, hydrate, the head, the request API and the JSX types",
+  "keywords": [
+    "barq",
+    "dom",
+    "hydration",
+    "jsx",
+    "renderer"
+  ],
+  "homepage": "https://github.com/salamaashoush/barq#readme",
+  "bugs": {
+    "url": "https://github.com/salamaashoush/barq/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/salamaashoush/barq.git",
+    "directory": "packages/web"
+  },
+  "files": [
+    "dist",
+    "src",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "!src/**/test-*.ts",
+    "!src/**/*-harness.ts",
+    "!src/**/*-probe.ts",
+    "!src/**/fixtures",
+    "!src/**/fixtures.ts",
+    "!src/**/ssr-fixtures.ts",
+    "!src/jsx-types"
+  ],
+  "type": "module",
+  "sideEffects": [
+    "./src/host.ts",
+    "./dist/host.js"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "imports": {
+    "#env": {
+      "types": "./src/env.ts",
+      "worker": "./dist/env.server.js",
+      "workerd": "./dist/env.server.js",
+      "browser": "./dist/env.client.js",
+      "bun": "./src/env.ts",
+      "deno": "./dist/env.server.js",
+      "node": "./dist/env.server.js",
+      "default": "./dist/env.js"
+    }
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "bun": "./src/index.ts",
+      "import": "./dist/index.js"
+    },
+    "./host": {
+      "types": "./dist/host.d.ts",
+      "bun": "./src/host.ts",
+      "import": "./dist/host.js"
+    },
+    "./internal": {
+      "types": "./dist/internal.d.ts",
+      "bun": "./src/internal.ts",
+      "import": "./dist/internal.js"
+    },
+    "./interp": {
+      "types": "./dist/interp.d.ts",
+      "bun": "./src/interp.ts",
+      "import": "./dist/interp.js"
+    },
+    "./jsx-dev-runtime": {
+      "types": "./dist/jsx-runtime.d.ts",
+      "bun": "./src/jsx-runtime.ts",
+      "import": "./dist/jsx-runtime.js"
+    },
+    "./jsx-runtime": {
+      "types": "./dist/jsx-runtime.d.ts",
+      "bun": "./src/jsx-runtime.ts",
+      "import": "./dist/jsx-runtime.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test --timeout 10000 && bun test --timeout 10000 --conditions=development"
+  },
+  "dependencies": {
+    "csstype": "^3.2.3"
+  },
+  "devDependencies": {
+    "@barqjs/compiler": "workspace:*",
+    "@barqjs/core": "workspace:*",
+    "@happy-dom/global-registrator": "^21.0.1",
+    "@solidjs/signals": "2.0.0-rc.15",
+    "@types/bun": "^1.4.3",
+    "typescript": "^7.0.2"
+  },
+  "peerDependencies": {
+    "@barqjs/core": ">=0.1.0",
+    "typescript": ">=7.0.0"
+  },
+  "engines": {
+    "bun": ">=1.1.0"
+  }
+}

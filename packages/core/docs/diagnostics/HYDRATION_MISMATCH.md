@@ -102,7 +102,8 @@ overlay links it to the editor. The component the walk was in follows as
 build:
 
 ```ts
-import { DEV, hydrate } from "@barqjs/core";
+import { DEV } from "@barqjs/core";
+import { hydrate } from "@barqjs/web";
 
 const stop = DEV.diagnostics.subscribe((event) => {
   if (event.code === "HYDRATION_MISMATCH") console.warn(event.message, event.docs);

@@ -26,6 +26,7 @@
         "@barqjs/server": "workspace:*",
         "@barqjs/testing": "workspace:*",
         "@barqjs/vite": "workspace:*",
+        "@barqjs/web": "workspace:*",
         "@happy-dom/global-registrator": "^21.0.1",
         "@types/bun": "^1.4.3",
         "typescript": "^7.0.2",
@@ -34,6 +35,7 @@
         "@barqjs/core": ">=0.1.0",
         "@barqjs/primitives": ">=0.1.0",
         "@barqjs/server": ">=0.1.0",
+        "@barqjs/web": ">=0.1.0",
       },
     },
     "packages/benchmark": {
@@ -48,6 +50,7 @@
         "@barqjs/core": "workspace:*",
         "@barqjs/server": "workspace:*",
         "@barqjs/start": "workspace:*",
+        "@barqjs/web": "workspace:*",
         "@happy-dom/global-registrator": "^21.0.1",
         "@solidjs/signals": "2.0.0-rc.15",
         "@types/babel__core": "^7.20.5",
@@ -64,6 +67,7 @@
         "@barqjs/router": "workspace:*",
         "@barqjs/server": "workspace:*",
         "@barqjs/start": "workspace:*",
+        "@barqjs/web": "workspace:*",
         "@happy-dom/global-registrator": "^21.0.1",
         "@napi-rs/cli": "^3.10.8",
         "@types/bun": "^1.4.3",
@@ -111,11 +115,8 @@
       "version": "0.1.0",
       "dependencies": {
         "@solidjs/signals": "2.0.0-rc.15",
-        "csstype": "^3.2.3",
       },
       "devDependencies": {
-        "@barqjs/compiler": "workspace:*",
-        "@happy-dom/global-registrator": "^21.0.1",
         "@types/bun": "^1.4.3",
         "reactive-framework-test-suite": "^0.1.0",
         "typescript": "^7.0.2",
@@ -159,12 +160,14 @@
         "@barqjs/compiler": "workspace:*",
         "@barqjs/core": "workspace:*",
         "@barqjs/vite": "workspace:*",
+        "@barqjs/web": "workspace:*",
         "@happy-dom/global-registrator": "^21.0.1",
         "@types/bun": "^1.4.3",
         "typescript": "^7.0.2",
       },
       "peerDependencies": {
         "@barqjs/core": ">=0.1.0",
+        "@barqjs/web": ">=0.1.0",
       },
     },
     "packages/kitchen-sink": {
@@ -178,6 +181,7 @@
         "@barqjs/router": "workspace:*",
         "@barqjs/server": "workspace:*",
         "@barqjs/start": "workspace:*",
+        "@barqjs/web": "workspace:*",
         "@tanstack/query-core": "^5.104.3",
       },
       "devDependencies": {
@@ -195,6 +199,7 @@
         "@barqjs/core": "workspace:*",
         "@barqjs/testing": "workspace:*",
         "@barqjs/vite": "workspace:*",
+        "@barqjs/web": "workspace:*",
         "@happy-dom/global-registrator": "^21.0.1",
         "@types/bun": "^1.4.3",
         "lucide-static": "^1.57.0",
@@ -203,6 +208,7 @@
       "peerDependencies": {
         "@barqjs/core": ">=0.1.0",
         "@barqjs/server": ">=0.1.0",
+        "@barqjs/web": ">=0.1.0",
       },
     },
     "packages/primitives": {
@@ -210,12 +216,14 @@
       "version": "0.1.0",
       "devDependencies": {
         "@barqjs/core": "workspace:*",
+        "@barqjs/web": "workspace:*",
         "@happy-dom/global-registrator": "^21.0.1",
         "@types/bun": "^1.4.3",
         "typescript": "^7.0.2",
       },
       "peerDependencies": {
         "@barqjs/core": ">=0.1.0",
+        "@barqjs/web": ">=0.1.0",
       },
     },
     "packages/query": {
@@ -230,6 +238,7 @@
         "@barqjs/router": "workspace:*",
         "@barqjs/server": "workspace:*",
         "@barqjs/vite": "workspace:*",
+        "@barqjs/web": "workspace:*",
         "@happy-dom/global-registrator": "^21.0.1",
         "@tanstack/query-devtools": "5.104.3",
         "@tanstack/query-persist-client-core": "5.104.3",
@@ -239,6 +248,7 @@
       "peerDependencies": {
         "@barqjs/core": ">=0.1.0",
         "@barqjs/router": ">=0.1.0",
+        "@barqjs/web": ">=0.1.0",
         "@tanstack/query-core": "^5.104.3",
         "@tanstack/query-devtools": "^5.104.3",
         "@tanstack/query-persist-client-core": "^5.104.3",
@@ -261,6 +271,7 @@
         "@barqjs/server": "workspace:*",
         "@barqjs/start": "workspace:*",
         "@barqjs/vite": "workspace:*",
+        "@barqjs/web": "workspace:*",
         "@happy-dom/global-registrator": "^21.0.1",
         "@types/bun": "^1.4.3",
         "typescript": "^7.0.2",
@@ -269,6 +280,7 @@
         "@barqjs/core": ">=0.1.0",
         "@barqjs/server": ">=0.1.0",
         "@barqjs/start": ">=0.1.0",
+        "@barqjs/web": ">=0.1.0",
       },
       "optionalPeers": [
         "@barqjs/server",
@@ -283,12 +295,14 @@
       },
       "devDependencies": {
         "@barqjs/core": "workspace:*",
+        "@barqjs/web": "workspace:*",
         "@happy-dom/global-registrator": "^21.0.1",
         "@types/bun": "^1.4.3",
         "typescript": "^7.0.2",
       },
       "peerDependencies": {
         "@barqjs/core": ">=0.1.0",
+        "@barqjs/web": ">=0.1.0",
       },
     },
     "packages/site": {
@@ -306,6 +320,7 @@
         "@barqjs/start": "workspace:*",
         "@barqjs/table": "workspace:*",
         "@barqjs/ui": "workspace:*",
+        "@barqjs/web": "workspace:*",
         "@fontsource-variable/geist": "^5.3.0",
         "@fontsource-variable/geist-mono": "^5.3.0",
         "@tanstack/charts": "^1.1.0",
@@ -332,12 +347,14 @@
         "@barqjs/compiler": "workspace:*",
         "@barqjs/core": "workspace:*",
         "@barqjs/server": "workspace:*",
+        "@barqjs/web": "workspace:*",
         "@types/bun": "^1.4.3",
         "typescript": "^7.0.2",
       },
       "peerDependencies": {
         "@barqjs/core": ">=0.1.0",
         "@barqjs/server": ">=0.1.0",
+        "@barqjs/web": ">=0.1.0",
       },
     },
     "packages/table": {
@@ -351,12 +368,14 @@
         "@barqjs/compiler": "workspace:*",
         "@barqjs/core": "workspace:*",
         "@barqjs/vite": "workspace:*",
+        "@barqjs/web": "workspace:*",
         "@happy-dom/global-registrator": "^21.0.1",
         "@types/bun": "^1.4.3",
         "typescript": "^7.0.2",
       },
       "peerDependencies": {
         "@barqjs/core": ">=0.1.0",
+        "@barqjs/web": ">=0.1.0",
       },
     },
     "packages/testing": {
@@ -374,6 +393,7 @@
         "@barqjs/server": "workspace:*",
         "@barqjs/start": "workspace:*",
         "@barqjs/vite": "workspace:*",
+        "@barqjs/web": "workspace:*",
         "@happy-dom/global-registrator": "^21.0.1",
         "@types/bun": "^1.4.3",
         "typescript": "^7.0.2",
@@ -383,6 +403,7 @@
         "@barqjs/router": ">=0.1.0",
         "@barqjs/server": ">=0.1.0",
         "@barqjs/start": ">=0.1.0",
+        "@barqjs/web": ">=0.1.0",
       },
       "optionalPeers": [
         "@barqjs/router",
@@ -407,6 +428,7 @@
         "@barqjs/server": "workspace:*",
         "@barqjs/testing": "workspace:*",
         "@barqjs/vite": "workspace:*",
+        "@barqjs/web": "workspace:*",
         "@happy-dom/global-registrator": "^21.0.1",
         "@types/bun": "^1.4.3",
         "@types/d3-shape": "^3.2.0",
@@ -423,6 +445,7 @@
         "@barqjs/lucide": ">=0.1.0",
         "@barqjs/primitives": ">=0.1.0",
         "@barqjs/server": ">=0.1.0",
+        "@barqjs/web": ">=0.1.0",
       },
     },
     "packages/ui-cli": {
@@ -448,12 +471,14 @@
         "@barqjs/core": "workspace:*",
         "@barqjs/server": "workspace:*",
         "@barqjs/vite": "workspace:*",
+        "@barqjs/web": "workspace:*",
         "@happy-dom/global-registrator": "^21.0.1",
         "@types/bun": "^1.4.3",
         "typescript": "^7.0.2",
       },
       "peerDependencies": {
         "@barqjs/core": ">=0.1.0",
+        "@barqjs/web": ">=0.1.0",
       },
     },
     "packages/vite": {
@@ -469,6 +494,7 @@
         "@barqjs/router": "workspace:*",
         "@barqjs/server": "workspace:*",
         "@barqjs/start": "workspace:*",
+        "@barqjs/web": "workspace:*",
         "@happy-dom/global-registrator": "^21.0.1",
         "@types/bun": "^1.4.3",
         "typescript": "^7.0.2",
@@ -483,6 +509,25 @@
         "@barqjs/router",
         "@barqjs/start",
       ],
+    },
+    "packages/web": {
+      "name": "@barqjs/web",
+      "version": "0.1.0",
+      "dependencies": {
+        "csstype": "^3.2.3",
+      },
+      "devDependencies": {
+        "@barqjs/compiler": "workspace:*",
+        "@barqjs/core": "workspace:*",
+        "@happy-dom/global-registrator": "^21.0.1",
+        "@solidjs/signals": "2.0.0-rc.15",
+        "@types/bun": "^1.4.3",
+        "typescript": "^7.0.2",
+      },
+      "peerDependencies": {
+        "@barqjs/core": ">=0.1.0",
+        "typescript": ">=7.0.0",
+      },
     },
   },
   "packages": {
@@ -583,6 +628,8 @@
     "@barqjs/virtual": ["@barqjs/virtual@workspace:packages/virtual"],
 
     "@barqjs/vite": ["@barqjs/vite@workspace:packages/vite"],
+
+    "@barqjs/web": ["@barqjs/web@workspace:packages/web"],
 
     "@braidai/lang": ["@braidai/lang@1.1.2", "", {}, "sha512-qBcknbBufNHlui137Hft8xauQMTZDKdophmLFv05r2eNmdIv/MlPuP4TdUknHG68UdWLgVZwgxVe735HzJNIwA=="],
 

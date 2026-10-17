@@ -33,7 +33,8 @@ export default defineConfig({
 ## A component
 
 ```tsx
-import { createSignal, render } from "@barqjs/core";
+import { createSignal } from "@barqjs/core";
+import { render } from "@barqjs/web";
 
 function Counter() {
   const [count, setCount] = createSignal(0);
@@ -282,7 +283,8 @@ mutate, and the change is applied at the next flush, as a signal write is.
 ## flush, untrack and Portal
 
 ```tsx
-import { Portal, flush, untrack } from "@barqjs/core";
+import { Portal } from "@barqjs/web";
+import { flush, untrack } from "@barqjs/core";
 
 setFirst("Ada");
 setLast("Lovelace");

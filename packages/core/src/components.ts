@@ -68,8 +68,7 @@
 import type { Accessor, AsDeclared, CallSite, StrictAccessor, StrictChild } from "./config.ts";
 import type { ArrayElement, Child, JSXElement } from "./types.ts";
 import { reportModule } from "./module-sink.ts";
-import { boundary, branch, each, island, reveal } from "./dom-flow.ts";
-import { COUNT } from "./flow.ts";
+import { COUNT, boundaryIn, branchIn, eachIn, islandIn, rendererHere, revealIn } from "./flow.ts";
 import type { Block, Cell } from "./scope.ts";
 import {
   NotReadyError,
@@ -323,7 +322,7 @@ export function Show<T, K extends boolean = false>(props: ShowProps<T, K>): JSXE
     const current = untrack(value);
     return current ? callSlot(props.children, keyed ? current : value) : callSlot(props.fallback);
   };
-  return branch(null, null, key, content);
+  return branchIn(rendererHere("Show").host, null, null, key, content);
 }
 
 export function For<T, K extends ForKeyed<T> = true>(
@@ -333,7 +332,10 @@ export function For<T, K extends ForKeyed<T> = true>(
   // one — is `each`'s own, so the carrier goes through unresolved. This adapter
   // and the compiler's spread lowering therefore reach the primitive with the
   // same argument rather than with two implementations of one rule.
-  return each(
+  const { host, sync } = rendererHere("For");
+  return eachIn(
+    host,
+    sync,
     null,
     null,
     props.each as Cell<readonly unknown[]>,
@@ -353,7 +355,10 @@ export function Repeat(props: RepeatProps): JSXElement {
     typeof props.children === "function"
       ? (props.children as (i: number) => unknown)((index as number) + from())
       : props.children;
-  return each(
+  const { host, sync } = rendererHere("Repeat");
+  return eachIn(
+    host,
+    sync,
     null,
     null,
     count as Cell<number>,
@@ -444,13 +449,14 @@ export function Switch(props: SwitchProps): JSXElement {
     return callSlot(found.match.children, keyed ? found.value : narrowed);
   };
 
-  return branch(null, null, key, body);
+  return branchIn(rendererHere("Switch").host, null, null, key, body);
 }
 
 const UNSEEN: unique symbol = Symbol("unseen");
 
 export function Loading(props: LoadingProps): JSXElement {
-  return boundary(
+  return boundaryIn(
+    rendererHere("Loading").host,
     null,
     null,
     "loading",
@@ -462,7 +468,8 @@ export function Loading(props: LoadingProps): JSXElement {
 }
 
 export function Errored(props: ErroredProps): JSXElement {
-  return boundary(
+  return boundaryIn(
+    rendererHere("Errored").host,
     null,
     null,
     "error",
@@ -485,7 +492,7 @@ export function Errored(props: ErroredProps): JSXElement {
  * contains.
  */
 export function NoHydration(props: { children: unknown }): JSXElement {
-  return island(null, null, props.children as Block<unknown>);
+  return islandIn(rendererHere("NoHydration").host, null, null, props.children as Block<unknown>);
 }
 
 /**
@@ -524,7 +531,8 @@ function settled(value: unknown): unknown {
  * their content and owns no range of its own.
  */
 export function Reveal(props: RevealProps): JSXElement {
-  return reveal(
+  return revealIn(
+    rendererHere("Reveal").host,
     () =>
       (readValue(props.order, "Reveal.order") as
         | "sequential"

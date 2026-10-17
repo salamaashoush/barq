@@ -28,6 +28,7 @@
       "@barqjs/ui-cli",
       "@barqjs/virtual",
       "@barqjs/vite",
+      "@barqjs/web",
       "create-barq"
     ]
   ],
