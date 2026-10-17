@@ -10,7 +10,7 @@ export default defineConfig([
     outExtensions,
     dts: true,
     clean: false,
-    deps: { neverBundle: ["seroval", "@barqjs/core", /^#/] },
+    deps: { neverBundle: ["seroval", "@barqjs/core", "@barqjs/web", /^#/] },
   },
   {
     entry: ["./src/storage.ts"],
@@ -18,7 +18,7 @@ export default defineConfig([
     outExtensions,
     dts: true,
     clean: false,
-    deps: { neverBundle: ["@barqjs/core"] },
+    deps: { neverBundle: ["@barqjs/core", "@barqjs/web"] },
   },
   {
     entry: ["./src/index.ts"],
@@ -26,10 +26,20 @@ export default defineConfig([
     outExtensions,
     dts: true,
     clean: false,
-    deps: { neverBundle: ["csstype", "seroval", "@barqjs/core", "@barqjs/core/internal", /^#/] },
+    deps: {
+      neverBundle: [
+        "csstype",
+        "seroval",
+        "@barqjs/core",
+        "@barqjs/core/internal",
+        "@barqjs/web",
+        "@barqjs/web/internal",
+        /^#/,
+      ],
+    },
     esbuildOptions: {
       jsx: "automatic",
-      jsxImportSource: "@barqjs/core",
+      jsxImportSource: "@barqjs/web",
     },
   },
 ]);

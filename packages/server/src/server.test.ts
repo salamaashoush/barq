@@ -8,22 +8,17 @@
  * serialization, client hydrate() seeding (no refetch), settle().
  */
 
+import "@barqjs/web/host";
 import {
   DEV,
   HYDRATE,
   Loading,
   NotReadyError,
   block,
-  boundary,
-  branch,
   createMemo,
   createRenderEffect,
-  element,
   flush,
-  hydrate,
-  insert,
   runWithOwner,
-  template,
   createRoot,
   settle,
   createSignal,
@@ -31,6 +26,7 @@ import {
   markSafeError,
   type DiagnosticEvent,
 } from "@barqjs/core";
+import { boundary, branch, element, hydrate, insert, template } from "@barqjs/web";
 import {
   SEED_ABANDONED,
   clearHydrationData,
@@ -613,7 +609,7 @@ describe("hydrate", () => {
     container.innerHTML = serverHtml;
     const served = container.querySelector("b");
 
-    hydrate(makeApp(false) as never, container, { data });
+    hydrate(makeApp(false), container, { data });
     flush();
 
     expect(hydrate.report.recovered).toBe(false);

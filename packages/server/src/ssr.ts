@@ -29,23 +29,21 @@ import {
   ScopeMissingError,
   block,
   childScope,
-  classToString,
   createContext,
   getContext,
   getOwner,
   type Owner,
   isArray,
   isBlock,
-  isSsrHtml,
   omit,
   runWithOwner,
   setContext,
   toString,
   untrack,
 } from "@barqjs/core";
+import { classToString, isSsrHtml } from "@barqjs/web";
 import {
   ERROR_BOUNDARY,
-  SSR_HTML_BRAND,
   disposeScope,
   internalMemo,
   isObject,
@@ -53,9 +51,9 @@ import {
   provideOn,
   reportModule,
   setHydratable,
-  styleToString,
   thrownBy,
 } from "@barqjs/core/internal";
+import { SSR_HTML_BRAND, styleToString } from "@barqjs/web/internal";
 
 import { sanitizeThrown } from "./codec.ts";
 
@@ -1592,7 +1590,7 @@ export function island(
 }
 
 /**
- * The server half of `@barqjs/core`'s `clientOnly`, under the same name, which
+ * The server half of `@barqjs/web`'s `clientOnly`, under the same name, which
  * the compiler's server backend calls in its place. The import is never
  * started: what is rendered is `props.fallback`, in the first arm of the
  * two-armed region the client builds, so the client's first render claims it.
@@ -1625,7 +1623,7 @@ export function ssrPortal(props: { mount?: unknown; children: unknown }): SsrHtm
 }
 
 /**
- * `dynamic` — the string half of `@barqjs/core`'s factory, under the same name,
+ * `dynamic` — the string half of `@barqjs/web`'s factory, under the same name,
  * which the compiler's server backend calls in its place. Each instance builds
  * what the client's builds, in the same order: a memo of the source, then a
  * `branch` keyed on it with a range around it, so the owner ids line up and the

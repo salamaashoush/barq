@@ -7,10 +7,8 @@
 import {
   DEV,
   NotReadyError,
-  boundary,
   createMemo,
   getOwner,
-  hydrate,
   latest,
   peekNextChildId,
   resetChildIds,
@@ -19,6 +17,7 @@ import {
   runWithOwner,
   settle,
 } from "@barqjs/core";
+import { boundary, hydrate } from "@barqjs/web";
 import {
   clearHydrationData,
   disposeScope,

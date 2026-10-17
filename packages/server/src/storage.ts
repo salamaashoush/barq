@@ -8,7 +8,7 @@
 
 import { AsyncLocalStorage } from "node:async_hooks";
 
-import type { RequestEvent } from "@barqjs/core";
+import type { RequestEvent } from "@barqjs/web";
 
 const REQUEST_EVENT = Symbol.for("barq.request-event");
 

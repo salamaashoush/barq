@@ -9,13 +9,13 @@
  * unwound, so a middleware may still set a cookie after `next()`.
  */
 
-import type { RequestEvent, ResponseStub } from "@barqjs/core";
+import type { RequestEvent, ResponseStub } from "@barqjs/web";
 import {
   COMPOSED_BODY_FRAMING,
   commitResponseStub,
   getExpectedRedirectStatus,
   mergeServerTiming,
-} from "@barqjs/core/internal";
+} from "@barqjs/web/internal";
 
 import { escapeAttribute } from "./ssr.ts";
 

@@ -1,3 +1,4 @@
+import "@barqjs/web/host";
 import {
   DEV,
   For,
@@ -7,11 +8,10 @@ import {
   Switch,
   cell,
   createRoot,
-  element,
   props,
-  render,
   type Cell,
 } from "@barqjs/core";
+import { element, render } from "@barqjs/web";
 import { describe, expect, test } from "bun:test";
 
 import { renderPage, renderToString } from "./server.ts";

@@ -1,4 +1,5 @@
-import { DEV, createRoot, getRequestEvent, httpHeader, httpStatus } from "@barqjs/core";
+import { DEV, createRoot } from "@barqjs/core";
+import { getRequestEvent, httpHeader, httpStatus } from "@barqjs/web";
 import { describe, expect, test } from "bun:test";
 
 import { provideRequestEvent } from "./storage.ts";

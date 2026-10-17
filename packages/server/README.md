@@ -143,10 +143,10 @@ import {
   composeMiddleware,
   createRequestEvent,
   createSSRResponse,
-  getRequestEvent,
   renderToStream,
 } from "@barqjs/server";
 import { provideRequestEvent } from "@barqjs/server/storage";
+import { getRequestEvent } from "@barqjs/web";
 
 import { App } from "./App.tsx";
 

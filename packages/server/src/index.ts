@@ -8,14 +8,13 @@
  * `createElement` tree, or a component from a module this compiler never saw.
  * `renderToString` accepts both.
  *
- * `branch`, `each`, `boundary`, `portal` and `COUNT` — and `props`, `cell` and
- * `block` with them — are exported here under the names `@barqjs/core` exports
- * them under, with the same argument order: one ABI, two implementations. The
- * compiler emits the same call for both backends and
- * chooses between them by choosing this source, which is why a string-compiled
- * module imports from here and from nowhere else. `dynamic` is the same
- * arrangement for an import the author writes: the server backend calls this
- * one where the source calls `@barqjs/core`'s.
+ * `branch`, `each`, `boundary` and `portal` are exported here under the names
+ * `@barqjs/web` exports them under, with the same argument order: one ABI, two
+ * implementations. The compiler emits the same call for both backends and
+ * chooses between them by choosing this source; `props`, `cell`, `block` and
+ * `COUNT` are renderer-neutral and come from `@barqjs/core` on both. `dynamic`
+ * is the same arrangement for an import the author writes: the server backend
+ * calls this one where the source calls `@barqjs/web`'s.
  */
 
 export {
@@ -62,30 +61,13 @@ export {
 
 export { HEAD_SNIPPET, applyHeadPatch } from "#swap";
 
-export { COUNT } from "@barqjs/core";
-export { cell, props } from "@barqjs/core";
-export { block, readSlot } from "@barqjs/core";
-
-export {
-  getRequestEvent,
-  getTraceContext,
-  httpHeader,
-  httpStatus,
-  isSafeError,
-  markSafeError,
-  type RequestEvent,
-  type RequestEventLocals,
-  type ResponseStub,
-  type TraceContext,
-} from "@barqjs/core";
-
 export {
   commitEventResponse,
   commitResponseStub,
   createRequestEvent,
   createResponseStub,
   getExpectedRedirectStatus,
-} from "@barqjs/core/internal";
+} from "@barqjs/web/internal";
 
 export {
   type FetchMiddleware,

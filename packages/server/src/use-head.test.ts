@@ -1,4 +1,5 @@
-import { createMemo, createRoot, useHead } from "@barqjs/core";
+import { createMemo, createRoot } from "@barqjs/core";
+import { useHead } from "@barqjs/web";
 import { clearHydrationData } from "@barqjs/core/internal";
 import { afterEach, describe, expect, test } from "bun:test";
 

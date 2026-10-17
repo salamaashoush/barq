@@ -11,17 +11,13 @@
  * an ambient DOM (happy-dom's `GlobalRegistrator` on a server) and serialized.
  */
 
+import { type HeadTag, isSsrHtml, render, type RequestEvent, getRequestEvent } from "@barqjs/web";
 import {
-  type HeadTag,
   type JSXElement,
   HYDRATE,
   type Scope,
   NotReadyError,
   flush,
-  isSsrHtml,
-  render,
-  type RequestEvent,
-  getRequestEvent,
   ownRange,
   rootScope,
   runWithOwner,
@@ -39,13 +35,15 @@ import {
   deferredFlightsOf,
   diagnosticsEnabled,
   emitDiagnostic,
+  thrownBy,
+} from "@barqjs/core/internal";
+import {
   headKey,
   setHeadSink,
-  thrownBy,
   freezeDeclarations,
   traceForEvent,
   traceMetaMarkup,
-} from "@barqjs/core/internal";
+} from "@barqjs/web/internal";
 import {
   type LateCatcher,
   type RevealGroup,

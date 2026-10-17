@@ -4,15 +4,8 @@
  * composes around them.
  */
 
-import {
-  DEV,
-  createMemo,
-  createRoot,
-  getRequestEvent,
-  httpHeader,
-  httpStatus,
-  onCleanup,
-} from "@barqjs/core";
+import { DEV, createMemo, createRoot, onCleanup } from "@barqjs/core";
+import { getRequestEvent, httpHeader, httpStatus } from "@barqjs/web";
 import { clearHydrationData } from "@barqjs/core/internal";
 import { afterEach, describe, expect, test } from "bun:test";
 

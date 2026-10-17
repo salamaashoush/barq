@@ -1,4 +1,4 @@
-import { shellReady } from "@barqjs/core";
+import { shellReady } from "@barqjs/web";
 import { expect, test } from "bun:test";
 import { runInThisContext } from "node:vm";
 

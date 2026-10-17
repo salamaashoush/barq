@@ -4,7 +4,8 @@
  * it.
  */
 
-import { type TraceContext, createMemo, getTraceContext } from "@barqjs/core";
+import { type TraceContext, getTraceContext } from "@barqjs/web";
+import { createMemo } from "@barqjs/core";
 import { clearHydrationData } from "@barqjs/core/internal";
 import { afterEach, describe, expect, test } from "bun:test";
 
