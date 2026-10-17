@@ -36,7 +36,7 @@ import {
 export interface SsrStatus {
   /**
    * `live` — the backend runs. `absent` — this build has no such backend, which
-   * is a fact about the milestone. `broken` — the option is there and does not
+   * is a fact about the build. `broken` — the option is there and does not
    * produce a string backend, which is a BUG and must never be reported as
    * absence.
    */

@@ -709,8 +709,7 @@ function countMatches(text: string, pattern: RegExp): number {
  * Substring-counting the whole module is not a bound, it is a coincidence: a
  * fixture whose source contains the characters `_$insert(` (in a doc comment,
  * in a string it renders) raises the hole count and buys marker slack it never
- * earned. Target #9 is the milestone that turns that count into an assertion,
- * so it has to be exact before elision lands.
+ * earned. Target #9 turns that count into an assertion, so it has to be exact.
  */
 /**
  * Whether the `/` at `at` belongs to a JSX tag rather than opening a regex.

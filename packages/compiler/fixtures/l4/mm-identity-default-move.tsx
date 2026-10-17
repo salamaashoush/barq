@@ -4,8 +4,8 @@
  *
  * `mm-keyed-move` proves a keyed move for `keyed={fn}` and `mm-index-row-stable`
  * proves positional reuse for `keyed={false}`. The arm nobody wrote a fixture
- * for is the one every author gets without asking for it, and it is the arm the
- * milestone reversed onto. Both of its directions are declared here, because the
+ * for is the one every author gets without asking for it, because identity
+ * keying is the default. Both of its directions are declared here, because the
  * trade is real and only one half is comfortable:
  *
  *  - step 0 reorders the SAME three objects, so every row moves and none is

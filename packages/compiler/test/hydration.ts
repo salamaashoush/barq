@@ -14,7 +14,7 @@ import { compileSource, fixtureSource, loadModule, type FixtureModule } from "./
  * server's nodes rather than replaced them, which is what the identity census
  * below measures — a claim that a markup comparison cannot make, because a
  * replaced node and a claimed node serialise identically. That is exactly the
- * silent-failure shape this milestone exists to close.
+ * silent failure hydration has to rule out.
  */
 
 export interface Compiled {

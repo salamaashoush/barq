@@ -5800,7 +5800,7 @@ export const [revision, setRevision] = createSignal(1);
 * emitted template in real Chrome and fails a template that comes back as more
 * than one root or with a tag moved. Nothing else in the corpus puts these tags
 * in that position, which is how a refusal that cost every list in the
-* ecosystem its template survived five milestones.
+* ecosystem its template went unnoticed.
 */
 export default function TableRootShapes() {
   const _el$1 = _tmpl$1();
