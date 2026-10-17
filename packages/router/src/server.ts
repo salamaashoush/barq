@@ -43,6 +43,7 @@ import {
   type AnySerializationAdapter,
   encodeSeed,
   registerSerializationAdapters,
+  sanitizeThrown,
 } from "@barqjs/server/codec";
 import { isbot } from "isbot";
 
@@ -360,7 +361,7 @@ export function renderRoutes(state: RouterState): unknown {
                   depth,
                   () => state.params(),
                   state.config.defaults,
-                  state.config.superseded,
+                  state.config.thrownAnswer,
                 )(error, reset);
                 return shown === null || shown === undefined ? ssrHtml("") : shown;
               },
@@ -965,9 +966,6 @@ export function createPageHandler(
             ? "1"
             : "0";
 
-      // Decided BEFORE the head is projected, because it is what decides
-      // whether `head` sees `loaderData` at all.
-      const buffered = options.stream === false || isCrawler(request, options);
       // Request-scoped, so the answer a loader throws cannot reach another
       // request. A module-level "current answer" hands one request's to the next.
       let answer: Response | null = null;
@@ -1017,7 +1015,7 @@ export function createPageHandler(
           }
           answer ??= answerFor(error);
         },
-        superseded: () => buffered && answer !== null,
+        thrownAnswer: (error) => answer !== null && sanitizeThrown(answer) === error,
       };
 
       // Rule 2. The whole render, including every loader and every server
@@ -1136,6 +1134,9 @@ export function createPageHandler(
           // `<title>` at all, which hydration then found a `<style>` in place of.
           const rendered = untrack(state.chain);
           await preloadMatched(rendered);
+          // Decided BEFORE the head is projected, because it is what decides
+          // whether `head` sees `loaderData` at all.
+          const buffered = options.stream === false || isCrawler(request, options);
           const shell = shellComponentOf(options.routeTree);
           // `projectLane`, in the same pre-shell phase. Every route's `head` and
           // `scripts` run here with the params, the context and whatever
@@ -1377,11 +1378,11 @@ export function createPageHandler(
                 );
           // THE HEAD IS DECIDED AT SHELL FLUSH, not when the render starts: a
           // loader that answered while the shell was being written has said
-          // whether this page is a 404 or a redirect, and a declaration the
-          // shell made with `httpStatus` is in the draft.
+          // whether this page is a 404, a redirect or a refusal, and a
+          // declaration the shell made with `httpStatus` is in the draft.
           await Promise.race([shellFlushed, rendering]);
           const early = answered();
-          if (early !== null && early.status >= 300 && early.status < 400) {
+          if (early !== null) {
             await body.cancel();
             return applyResponseDraft(early, draft);
           }
@@ -1504,6 +1505,14 @@ function reportRefusedRedirect(to: string): void {
   );
 }
 
+function reportLateAnswer(status: number): void {
+  console.error(
+    `[barq-router] A loader threw a Response with status ${status} after this streamed page had sent its status line, so the page went out with its own status and not ${status}. ` +
+      "The route that read the loader shows its error fallback in its place. " +
+      "Throw the Response where the status is still open: from `beforeLoad`, from a request middleware, or on a page rendered with `stream: false`.",
+  );
+}
+
 /**
  * A redirect a LOADER threw, once the shell is already on the wire.
  *
@@ -1516,12 +1525,16 @@ function reportRefusedRedirect(to: string): void {
  *
  * A redirect that MUST be a 302 belongs in `beforeEach`, which runs before the
  * render and gets one. A non-redirect answer — a middleware's `throw new
- * Response(401)` — cannot be honoured here at all: the route's error boundary
- * has already replaced the content with its fallback, and that is the whole of
- * what a stream can do about it. Authorization belongs before the shell.
+ * Response(401)` — cannot be honoured here at all: the status line has gone
+ * and the route's error boundary has already replaced the content with its
+ * fallback. Saying so is the whole of what a stream can do about it.
  */
 function redirectScript(answer: Response | null, nonce: string | undefined): string {
-  if (answer === null || answer.status < 300 || answer.status >= 400) return "";
+  if (answer === null) return "";
+  if (answer.status < 300 || answer.status >= 400) {
+    reportLateAnswer(answer.status);
+    return "";
+  }
   const to = answer.headers.get("location");
   if (to === null || to === "") return "";
   // THE ESCALATION THIS PREVENTS: a 302 to `javascript:…` is inert, and

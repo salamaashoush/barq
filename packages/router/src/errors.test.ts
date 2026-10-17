@@ -25,6 +25,7 @@ import {
   errorFallbackFor,
   isNotFound,
   isRedirect,
+  unhandledText,
 } from "./errors.ts";
 import { isNavigable } from "./path.ts";
 
@@ -209,31 +210,32 @@ describe("onCatch", () => {
   });
 
   /**
-   * A buffered page that a loader's thrown `Response` answered sends that
-   * instead of the markup, so the empty region is never seen. A streamed one
-   * has already sent the region, and still hears about it.
+   * The page handler reports the `Response` a loader threw, because only it
+   * knows whether that became the response. The region renders as it would
+   * have, so a streamed page and the browser that hydrates it agree.
    */
-  test("a render a thrown answer superseded reports nothing", () => {
+  test("the answer a loader threw is the page handler's to report", () => {
     const error = spyOn(console, "error").mockImplementation(() => {});
     try {
-      const refused = () => new Error("[object Response]");
-      const superseded = errorFallbackFor(
+      const refused = new Error("A Response with status 401 was thrown");
+      const fallback = errorFallbackFor(
         chainOf({}),
         0,
         () => ({}),
         undefined,
-        () => true,
-      )(refused, () => {});
-      expect(superseded).toBeNull();
+        (thrown) => thrown === refused,
+      );
+      const shown = fallback(
+        () => refused,
+        () => {},
+      );
+      expect(shown).toBe(isDev ? unhandledText("/r0", refused) : null);
       expect(error).not.toHaveBeenCalled();
 
-      errorFallbackFor(
-        chainOf({}),
-        0,
-        () => ({}),
-        undefined,
-        () => false,
-      )(refused, () => {});
+      fallback(
+        () => new Error("boom"),
+        () => {},
+      );
       expect(error).toHaveBeenCalledTimes(1);
     } finally {
       error.mockRestore();

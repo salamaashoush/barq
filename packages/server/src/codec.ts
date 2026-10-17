@@ -186,16 +186,31 @@ const REPLACED = new WeakMap<object, Error>();
  * Anything else in production is one generic `Error`, the SAME one for the same
  * original, so the markup an error boundary wrote and the seed the client
  * hydrates that boundary from say the same thing.
+ *
+ * A thrown `Response` is replaced in every build. It is an answer the server
+ * gives with its status, and no encoder can carry one: handed to the seed, it
+ * failed the encode and held the stream open until its deadline.
  */
 export function sanitizeThrown(value: unknown): unknown {
+  if (value instanceof Response) {
+    return replacement(
+      value,
+      isDev ? `A Response with status ${value.status} was thrown` : GENERIC_SERVER_ERROR,
+    );
+  }
   if (isDev || isSafeError(value)) return value;
   if (value instanceof Error && kindOf(value) !== "") return value;
   if (value === null || (typeof value !== "object" && typeof value !== "function")) {
     return new Error(GENERIC_SERVER_ERROR);
   }
+  return replacement(value, GENERIC_SERVER_ERROR);
+}
+
+/** The one stand-in for `value`, made on first ask. */
+function replacement(value: object, message: string): Error {
   let replaced = REPLACED.get(value);
   if (replaced === undefined) {
-    replaced = new Error(GENERIC_SERVER_ERROR);
+    replaced = new Error(message);
     REPLACED.set(value, replaced);
   }
   return replaced;
@@ -600,6 +615,15 @@ export function createSeedEncoder(adapters?: readonly AnySerializationAdapter[])
     },
     encodeDeferred(data, onLater, onDone) {
       let initial = "";
+      // seroval calls `onDone` after `onError` as well. Told twice, a caller
+      // counting its outstanding payloads goes below zero and waits for its
+      // deadline instead of closing.
+      let done = false;
+      const finish = (): void => {
+        if (done) return;
+        done = true;
+        onDone();
+      };
       crossSerializeStream(data, {
         scopeId,
         refs,
@@ -609,14 +633,14 @@ export function createSeedEncoder(adapters?: readonly AnySerializationAdapter[])
           if (isInitial) initial = payload;
           else onLater(payload);
         },
-        onDone,
+        onDone: finish,
         onError(error) {
           // A rejection after the shell has flushed cannot become a status, and
           // tearing the body over it is worse than the value simply never
           // arriving: the client's read falls through to a fetch when the
           // channel closes.
           onLater(`/* seed serialization failed: ${JSON.stringify(String(error))} */`);
-          onDone();
+          finish();
         },
       });
       warnIfLarge(initial.length);

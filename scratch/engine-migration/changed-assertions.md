@@ -1085,3 +1085,11 @@ Each now orders what it waits on; no expectation's subject changed, and what mov
   `onCatch` hearing a redirect; it did, because `errorFallbackFor` skipped only `notFound`. It now
   skips a redirect as well, matching TanStack Router, whose route boundary rethrows a not-found
   before `onCatch` and whose loaders settle a redirect before any boundary sees it.
+- `router/src/errors.test.ts` "a render a thrown answer superseded reports nothing" (added in the
+  entry above) is replaced by "the answer a loader threw is the page handler's to report". It
+  asserted that a `superseded` render skipped the report and rendered nothing; the check is now
+  `thrownAnswer(error)`, which matches only the stand-in for the `Response` the request was
+  answered with, skips the generic report for that error alone and renders the region as before,
+  so a streamed page and the browser hydrating it agree. The page handler reports a late refusal
+  itself. Added, no assertion changed: two streamed refusal tests in `router/src/server.test.ts`
+  (honoured before the shell, reported after it) and two in `server/src/codec.test.ts`.

@@ -250,6 +250,58 @@ describe("the request is ambient for the whole render", () => {
     expect(ok.status).toBe(200);
     expect(await ok.text()).toContain("<b>private</b>");
   });
+
+  const refusingPage = (delay: number) => {
+    const guard = async (): Promise<unknown> => {
+      throw new Response("unauthorized", { status: 401 });
+    };
+    const load = createServerFn()
+      .middleware([guard])
+      .validator("unchecked")
+      .handler(async () => "private");
+    return createPageHandler({
+      routeTree: [
+        {
+          path: "/",
+          loader: async () => {
+            if (delay > 0) await new Promise((resolve) => setTimeout(resolve, delay));
+            return load();
+          },
+          component: (props: { data: () => unknown }) =>
+            ssrHtml(`<b>${esc(String(props.data()))}</b>`),
+        },
+      ] as never,
+      app: (state) => ssrHtml(`<main>${esc(renderRoutes(state))}</main>`),
+      document,
+    });
+  };
+
+  test("a streamed page refused before its shell flushed answers with the refusal", async () => {
+    const handler = refusingPage(0);
+    const printed = await printedErrors(async () => {
+      const response = await handler(get("/"));
+      expect(response.status).toBe(401);
+      expect(await response.text()).toBe("unauthorized");
+    });
+    expect(printed).toEqual([]);
+  });
+
+  // The status line has gone by the time this loader refuses, so the page is a
+  // 200 whatever it says; what it can do is say why, once, and finish promptly.
+  test("a refusal after a streamed page's shell is reported, and the stream still ends", async () => {
+    const handler = refusingPage(5);
+    const printed = await printedErrors(async () => {
+      const response = await handler(get("/"));
+      expect(response.status).toBe(200);
+      const body = await response.text();
+      expect(body).not.toContain("<b>");
+      expect(body).not.toContain("seed serialization failed");
+    });
+    expect(printed).toHaveLength(1);
+    expect(String(printed[0]?.[0])).toStartWith(
+      "[barq-router] A loader threw a Response with status 401 after this streamed page had sent its status line",
+    );
+  }, 3000);
 });
 
 describe("redirect() from a loader", () => {

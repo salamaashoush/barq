@@ -262,7 +262,7 @@ export function errorFallbackFor(
   depth: number,
   params: () => Record<string, string>,
   fallbacks?: ErrorFallbacks,
-  superseded?: () => boolean,
+  thrownAnswer?: (error: Error) => boolean,
 ): (error: () => Error, reset: () => void) => unknown {
   // ONE report per error OBJECT. The fallback re-renders — a reset, a
   // re-entered branch — and `onCatch` is a notification, not a render step, so
@@ -334,10 +334,11 @@ export function errorFallbackFor(
     // render as an empty `<div id="app">` with no clue why. A route that has
     // not said what to do with an error still deserves to have the error said
     // out loud once.
-    // Once a thrown answer has superseded the render, no region of it is sent.
-    if (missing || superseded?.() === true) return null;
+    if (missing) return null;
     const route = chain[depth]?.id ?? `depth ${depth}`;
-    reportUnhandled(route, thrown);
+    // The answer a loader threw is the page handler's to report: it knows
+    // whether that answer became the response or arrived too late to.
+    if (thrownAnswer?.(thrown) !== true) reportUnhandled(route, thrown);
     // In development the region says what happened instead of standing empty.
     // Text, so the server's string and the browser's node are the same thing.
     return isDev ? unhandledText(route, thrown) : null;

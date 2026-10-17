@@ -7,6 +7,7 @@
 
 import { runInThisContext } from "node:vm";
 
+import { isDev } from "@barqjs/core";
 import { afterEach, describe, expect, test } from "bun:test";
 
 import {
@@ -17,6 +18,7 @@ import {
   encodeSeed,
   encodeWire,
   registerSerializationAdapters,
+  sanitizeThrown,
   serializationAdapters,
 } from "./codec.ts";
 
@@ -212,6 +214,37 @@ describe("a rejected loader on the streaming channel", () => {
 
     const payload = await streamOf({ e: rejected });
     expect(payload).toContain("barq.not-found");
+  });
+
+  /** seroval calls `onDone` after `onError`, and a second call left the stream waiting for its deadline. */
+  test("a rejection the encoder cannot carry ends the payload once", async () => {
+    const encoder = createSeedEncoder();
+    const chunks: string[] = [];
+    let done = 0;
+    const rejected = Promise.reject({ format: () => "not data" });
+    rejected.catch(() => {});
+    encoder.encodeDeferred(
+      { e: rejected },
+      (payload) => chunks.push(payload),
+      () => done++,
+    );
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(done).toBe(1);
+    expect(chunks.join("\n")).toContain("seed serialization failed");
+  });
+});
+
+/** A thrown `Response` is an answer the server gives, never a value it encodes. */
+describe("sanitizeThrown", () => {
+  test("stands one Error in for a thrown Response, in every build", () => {
+    const refusal = new Response("sign in first", { status: 401 });
+    const shown = sanitizeThrown(refusal);
+    expect(shown).toBeInstanceOf(Error);
+    expect(sanitizeThrown(refusal)).toBe(shown);
+    expect((shown as Error).message).toBe(
+      isDev ? "A Response with status 401 was thrown" : "Internal Server Error",
+    );
+    expect(encodeSeed({ e: shown })).toContain((shown as Error).message);
   });
 });
 
