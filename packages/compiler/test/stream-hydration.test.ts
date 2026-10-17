@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 
 import { type FixtureModule, fixtureSource, listFixtures } from "./harness.ts";
 import {
@@ -70,6 +70,19 @@ function ticks(n: number): Promise<null> {
   });
 }
 
+/**
+ * Every buffered reference render, including the ones the tick race below gave
+ * up on. A render that lost the race keeps running to `renderPage`'s own
+ * deadline, seconds later, and opens scopes when it gets there. Left alone it
+ * does so inside whichever test file runs next, and a leak oracle there counts
+ * that scope as one of its own fixture's.
+ */
+const references: Promise<unknown>[] = [];
+
+afterAll(async () => {
+  await Promise.allSettled(references);
+});
+
 async function streamSource(name: string, source: string): Promise<StreamResult> {
   // TWO compilations of the same source, and the second name is what separates
   // them. A fixture may hold module-level state — a signal at the top of the
@@ -86,11 +99,13 @@ async function streamSource(name: string, source: string): Promise<StreamResult>
   // awaits without a deadline. `null` records "this fixture cannot be compared",
   // which is a different fact from "it matched", and the guard below makes sure
   // the whole corpus never quietly becomes `null`.
+  const page = server
+    .renderPage((() =>
+      (reference.ssr.default as unknown as (props?: unknown) => unknown)()) as never)
+    .then((rendered) => rendered.html);
+  references.push(page);
   const settled = await Promise.race([
-    server
-      .renderPage((() =>
-        (reference.ssr.default as unknown as (props?: unknown) => unknown)()) as never)
-      .then((page) => page.html),
+    page,
     // TICKS, not milliseconds. The corpus contains fixtures whose promise never
     // settles by design, so the race needs a loser — but a wall-clock deadline
     // makes which fixtures can be compared a function of machine load: 250ms
