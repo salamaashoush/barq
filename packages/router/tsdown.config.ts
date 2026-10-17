@@ -3,6 +3,7 @@ import { defineConfig } from "tsdown";
 export default defineConfig({
   entry: ["./src/index.ts", "./src/client.ts", "./src/server.ts"],
   format: ["esm"],
+  tsconfig: "./tsconfig.build.json",
   dts: true,
   clean: true,
   // The build-time specifiers `client.ts` and `server.ts` import. They are

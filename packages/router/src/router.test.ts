@@ -24,6 +24,8 @@ import { notFound, redirect } from "./errors.ts";
 import { retainSearchParams } from "./search.ts";
 import { RpcRedirect } from "@barqjs/start/client";
 
+import { fakeClock, realClock } from "../../testing/src/test-clock.ts";
+
 import { memoryHistory } from "./history.ts";
 import {
   useLocation,
@@ -38,41 +40,6 @@ import type { AnyRouteDefinition, RouteProps } from "./route.ts";
 import { type RouterEvent, type RouterState, createRouter, unmask } from "./router.ts";
 
 const tick = (ms = 0) => new Promise<void>((resolve) => setTimeout(resolve, ms));
-
-// `setImmediate` is the one timer fake timers leave real, and it fires once the
-// microtask queue is empty.
-const immediate = (): Promise<void> => new Promise((resolve) => setImmediate(resolve));
-
-/**
- * Installs the fake clock.
- *
- * happy-dom folds every zero-delay timeout into one native timer. One left
- * pending on the real clock would collect the zero-delay timeouts made under the
- * fake one, where advancing it never reaches them, so it is let fire first.
- */
-async function fakeClock(): Promise<void> {
-  await tick();
-  jest.useFakeTimers();
-}
-
-/**
- * Runs out the fake clock, then puts the real one back.
- *
- * A zero-delay timeout still pending on the fake clock is dropped with it, and
- * happy-dom's shared timer would then never fire again, taking every later
- * zero-delay timeout in the file with it.
- */
-async function realClock(): Promise<void> {
-  if (!jest.isFakeTimers()) return;
-  for (let round = 0; jest.getTimerCount() > 0; round++) {
-    if (round === 100) {
-      throw new Error(`${jest.getTimerCount()} timers still pending: something was left running`);
-    }
-    jest.runOnlyPendingTimers();
-    await immediate();
-  }
-  jest.useRealTimers();
-}
 
 afterEach(() => {
   document.body.innerHTML = "";
