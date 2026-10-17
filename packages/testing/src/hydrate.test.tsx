@@ -4,13 +4,37 @@
  * about node identity or about the walk's own report, and never about HTML.
  */
 
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 
 import { html as ssrHtml } from "@barqjs/server";
 import { For, flush, createSignal, onCleanup, template } from "@barqjs/core";
 
 import { renderAndHydrate } from "./hydrate.ts";
 import { cleanup } from "./pure.ts";
+
+/**
+ * A client half that builds fresh nodes claims nothing, and a development build
+ * prints the mismatch as well as reporting it. The report is what these assert
+ * on; the console copy must be that report and nothing else.
+ */
+function rebuilt(
+  options: Parameters<typeof renderAndHydrate>[0],
+): ReturnType<typeof renderAndHydrate> {
+  const warn = spyOn(console, "warn").mockImplementation(() => {});
+  const error = spyOn(console, "error").mockImplementation(() => {});
+  let printed: string[];
+  let result: ReturnType<typeof renderAndHydrate>;
+  try {
+    result = renderAndHydrate(options);
+  } finally {
+    printed = [...warn.mock.calls, ...error.mock.calls].map((call) => String(call[0]));
+    warn.mockRestore();
+    error.mockRestore();
+  }
+  for (const line of printed) expect(line).toStartWith("[barq] HYDRATION_MISMATCH: ");
+  expect(result.mismatches.length).toBeGreaterThan(0);
+  return result;
+}
 
 describe("renderAndHydrate", () => {
   test("a page the server wrote is CLAIMED, and its nodes are the same objects", () => {
@@ -42,7 +66,7 @@ describe("renderAndHydrate", () => {
    * not.
    */
   test("a client half that REBUILDS keeps nothing, even though the markup matches", () => {
-    const result = renderAndHydrate({
+    const result = rebuilt({
       server: () => ssrHtml("<b>hi</b>"),
       client: (_scope: unknown) => {
         // Not a claim: a fresh node, which is what a cold `lazy()` boundary
@@ -64,7 +88,7 @@ describe("renderAndHydrate", () => {
   });
 
   test("`total` counts what the SERVER wrote, not what is there afterwards", () => {
-    const result = renderAndHydrate({
+    const result = rebuilt({
       server: () => ssrHtml("<div><span>a</span><span>b</span></div>"),
       client: (_scope: unknown) => document.createElement("p"),
     });
@@ -76,7 +100,7 @@ describe("renderAndHydrate", () => {
   });
 
   test("the markup is available before the walk touched it", () => {
-    const result = renderAndHydrate({
+    const result = rebuilt({
       server: () => ssrHtml("<b>hi</b>"),
       client: (_scope: unknown) => document.createElement("i"),
     });
