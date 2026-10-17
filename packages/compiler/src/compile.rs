@@ -241,16 +241,16 @@ fn panic_message(payload: &Box<dyn std::any::Any + Send>) -> String {
 /// signal no JS `catch` can see. Anything that could reach that depth is parsed
 /// on a thread whose stack is sized for it; ordinary files run inline.
 pub fn compile(source: &str, options: &ResolvedOptions) -> Result<CompileOutput, Vec<Diagnostic>> {
+    let filename = options.filename.as_deref().unwrap_or(DEFAULT_FILENAME);
     if source.len() < SCAN_FREE_LIMIT {
-        return compile_on_this_stack(source, options);
+        return caught(filename, || compile_on_this_stack(source, options));
     }
 
     let depth = nesting_estimate(source.as_bytes());
     if depth <= INLINE_DEPTH_LIMIT && source.len() < INLINE_SOURCE_LIMIT {
-        return compile_on_this_stack(source, options);
+        return caught(filename, || compile_on_this_stack(source, options));
     }
 
-    let filename = options.filename.as_deref().unwrap_or(DEFAULT_FILENAME);
     if depth > MAX_NESTING_DEPTH {
         return Err(internal(
             filename,
@@ -277,18 +277,29 @@ pub fn compile(source: &str, options: &ResolvedOptions) -> Result<CompileOutput,
                     ),
                 )
             })?;
-        handle.join().unwrap_or_else(|payload| {
-            Err(internal(
-                filename,
-                format!(
-                    "The barq compiler crashed on this file, which is a bug in the compiler and \
-                     not in your code: {}. Please report it with this file at \
-                     https://github.com/salamaashoush/barq/issues.",
-                    panic_message(&payload)
-                ),
-            ))
-        })
+        handle.join().unwrap_or_else(|payload| Err(crashed(filename, &payload)))
     })
+}
+
+/// A panic caught here reaches the caller as the same error the guarded thread
+/// reports, rather than as the bare panic text with no file named.
+fn caught(
+    filename: &str,
+    run: impl FnOnce() -> Result<CompileOutput, Vec<Diagnostic>> + std::panic::UnwindSafe,
+) -> Result<CompileOutput, Vec<Diagnostic>> {
+    std::panic::catch_unwind(run).unwrap_or_else(|payload| Err(crashed(filename, &payload)))
+}
+
+fn crashed(filename: &str, payload: &Box<dyn std::any::Any + Send>) -> Vec<Diagnostic> {
+    internal(
+        filename,
+        format!(
+            "The barq compiler crashed on this file, which is a bug in the compiler and not in \
+             your code: {}. Please report it with this file at \
+             https://github.com/salamaashoush/barq/issues.",
+            panic_message(payload)
+        ),
+    )
 }
 
 fn compile_on_this_stack(
@@ -432,7 +443,7 @@ fn compile_on_this_stack(
     // The payoff is downstream: `class={cardStyle}` is a literal by the time
     // `lower` sees it, so `fold` bakes the class into the template markup and
     // the element carries no class channel.
-    let stylesheet = (crate::css::mentions(source_text, &options.css_source)
+    let mut stylesheet = (crate::css::mentions(source_text, &options.css_source)
         || options.css_exports)
         .then(|| crate::css::run(&allocator, &mut program, options));
 
@@ -441,6 +452,10 @@ fn compile_on_this_stack(
     // nothing for P0 to classify and the symbol table is pure cost.
     if source_type.is_jsx() {
         analysis::bind(&allocator, &program, &mut module, options);
+    } else if let Some(sheet) = stylesheet.as_mut() {
+        // With no `bind` to restamp them, the ids the css pass left on the
+        // program index its table and no other, and ownership reads them.
+        module.scoping = std::mem::take(&mut sheet.scoping);
     }
     // Before harvest: it reads the JSX the harvest is about to move out. After
     // `bind`: it resolves flow components and local components by `SymbolId`.
@@ -1143,6 +1158,74 @@ mod tests {
     fn compile_ok(source: &str, filename: &str) -> CompileOutput {
         compile(source, &ResolvedOptions::with_filename(filename))
             .unwrap_or_else(|diagnostics| panic!("{}", format_diagnostics(&diagnostics)))
+    }
+
+    const NAMED_DEFAULT_EXPORTS: [(&str, &str); 3] = [
+        (
+            "src/theme.ts",
+            "import { installTheme } from \"@barqjs/ui\";\n\
+             const theme = { base: \"neutral\", accent: \"blue\" };\n\
+             installTheme(theme);\n\
+             export default theme;\n",
+        ),
+        (
+            "src/routeTree.gen.ts",
+            "import { Route as rootRoute } from \"./routes/__root\";\n\
+             export const routeTree = [{ ...rootRoute.options, id: \"__root__\", path: \"/\" }];\n\
+             export default routeTree;\n",
+        ),
+        (
+            "src/styles.ts",
+            "import { css } from \"@barqjs/css\";\n\
+             const card = css`color: red;`;\n\
+             export default card;\n",
+        ),
+    ];
+
+    /// The css pass stamps symbol ids on the program whenever it runs, and a
+    /// module with no JSX has no `bind` to restamp them, so ownership resolves
+    /// `export default theme` through the css pass's table.
+    #[test]
+    fn a_default_export_by_name_outside_jsx_compiles_under_every_reader() {
+        let empty = r#"{"version":2,"roots":[],"nodes":[],"positions":[],"opaque":[]}"#;
+        for (filename, source) in NAMED_DEFAULT_EXPORTS {
+            let base = ResolvedOptions::with_filename(filename);
+            let plain = compile(source, &base)
+                .unwrap_or_else(|diagnostics| panic!("{}", format_diagnostics(&diagnostics)));
+            for options in [
+                ResolvedOptions { ownership: true, css_exports: true, ..base.clone() },
+                ResolvedOptions {
+                    addresses: true,
+                    ownership: true,
+                    diagnostics: true,
+                    css_exports: true,
+                    templates: false,
+                    ..base.clone()
+                },
+                ResolvedOptions { ownership: true, sourcemap: true, ..base.clone() },
+            ] {
+                let out = compile(source, &options).unwrap_or_else(|diagnostics| {
+                    panic!("{filename}: {}", format_diagnostics(&diagnostics))
+                });
+                assert_eq!(out.code, plain.code, "{filename}");
+                assert_eq!(out.ownership.as_deref(), Some(empty), "{filename}");
+                assert!(out.warnings.is_empty(), "{filename}: {:?}", out.warnings);
+            }
+        }
+    }
+
+    /// napi's own catch turns a panic into the bare panic text, with no file
+    /// named and nothing saying the compiler is at fault.
+    #[test]
+    fn a_panic_reaches_the_caller_as_a_crash_naming_the_file() {
+        let Err(diagnostics) = caught("src/theme.ts", || panic!("index out of bounds")) else {
+            panic!("the panic was swallowed");
+        };
+        let [crash] = diagnostics.as_slice() else { panic!("{diagnostics:?}") };
+        assert_eq!(crash.severity, Severity::Error);
+        assert_eq!(crash.filename, "src/theme.ts");
+        assert!(crash.message.contains("crashed on this file"), "{}", crash.message);
+        assert!(crash.message.contains("index out of bounds"), "{}", crash.message);
     }
 
     // ---------------------------------------------------------------------

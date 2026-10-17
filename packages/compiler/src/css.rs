@@ -97,6 +97,9 @@ pub struct Extracted {
     /// `[exported name, kind, member, value]` for every module-level binding
     /// this pass resolved, so a module importing one can be handed it.
     pub exports: Vec<(String, Resolved)>,
+    /// The table the pass resolved against. Building it stamped its ids into
+    /// the program, so whatever reads those ids next has to read this table.
+    pub scoping: Scoping,
 }
 
 /// A value one module exports and another can fold against.
@@ -148,6 +151,7 @@ pub fn run<'a>(
             reports: Vec::new(),
             wanted: Vec::new(),
             exports: Vec::new(),
+            scoping,
         };
     }
     let rewrite = !tags.is_empty();
@@ -188,6 +192,7 @@ pub fn run<'a>(
         reports: pass.reports,
         wanted: pass.wanted.into_inner(),
         exports,
+        scoping,
     }
 }
 
