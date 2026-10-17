@@ -1,5 +1,7 @@
 import { describe, expect, test } from "bun:test";
 
+import { join } from "node:path";
+
 import { compileSource, loadModule } from "./harness.ts";
 
 /**
@@ -9,8 +11,11 @@ import { compileSource, loadModule } from "./harness.ts";
  * A `<Match>` hands the narrowed accessor unless it is keyed, at every level,
  * as `<Show>` does.
  */
+const IMPORTS = join(import.meta.dir, "row-callbacks-imports.ts");
+
 const SOURCE = `
-import { For, Match, Show, Switch, createStore } from "@barqjs/core";
+import { For, Match, Repeat, Show, Switch, createStore } from "@barqjs/core";
+import { count, labels, renderRow } from ${JSON.stringify(IMPORTS)};
 export const [state, setState] = createStore({
   rows: [{ id: 1, label: "salama", done: false }],
   picked: { name: "salama" } as { name: string } | null,
@@ -29,6 +34,19 @@ export function DeclaredMatch() {
 export function InlineMatch() {
   return <p><Switch><Match when={state.picked}>{(picked) => <b>{picked().name}</b>}</Match></Switch></p>;
 }
+let reassigned = (row) => null;
+reassigned = renderRow;
+function rows(render) { return <ul><For each={state.rows}>{render}</For></ul>; }
+
+export function ImportedFor() { return <ul><For each={state.rows}>{renderRow}</For></ul>; }
+export function MemberFor() { return <ul><For each={state.rows}>{labels.renderRow}</For></ul>; }
+export function ReassignedFor() { return <ul><For each={state.rows}>{reassigned}</For></ul>; }
+export function ParameterFor() { return rows(renderRow); }
+export function AttributeFor() { return <ul><For each={state.rows} children={renderRow} /></ul>; }
+export function ImportedRepeat() {
+  return <ul><Repeat count={2}>{(index) => <li>{index}</li>}</Repeat><Repeat count={1} from={4}>{labels.index}</Repeat></ul>;
+}
+export function ImportedShowValue() { return <p><Show when={state.picked}>{count}</Show></p>; }
 export function KeyedMatch() {
   return <p><Switch><Match when={state.picked} keyed>{(picked) => <b>{picked.name}</b>}</Match></Switch></p>;
 }
@@ -105,5 +123,67 @@ for (const optimize of [0, 2]) {
         }
       });
     }
+  });
+}
+
+/**
+ * A list child the compiler cannot see the kind of goes to the construct as
+ * written, which decides it by Solid 2.0's rule: `For` calls it with each row
+ * (`solid/src/client/flow.ts:96`) and `Repeat` calls any function with the
+ * index (`:140`). `Show` renders a function that declares no parameter as
+ * content (`:232`), so a signal handed to it stays live.
+ */
+for (const optimize of [0, 2]) {
+  describe(`a child of unknown kind, at -O${optimize}`, () => {
+    for (const name of [
+      "ImportedFor",
+      "MemberFor",
+      "ReassignedFor",
+      "ParameterFor",
+      "AttributeFor",
+    ]) {
+      test(`${name}: For calls it with each row`, async () => {
+        const view = await mounted(name, optimize);
+        try {
+          expect([...view.host.querySelectorAll("li")].map((node) => node.textContent)).toEqual([
+            "salama",
+          ]);
+          view.write((draft: { rows: { id: number; label: string; done: boolean }[] }) => {
+            draft.rows.push({ id: 2, label: "example.com", done: false });
+          });
+          expect([...view.host.querySelectorAll("li")].map((node) => node.textContent)).toEqual([
+            "salama",
+            "example.com",
+          ]);
+        } finally {
+          view.dispose();
+        }
+      });
+    }
+
+    test("Repeat calls a function child with the shifted index", async () => {
+      const view = await mounted("ImportedRepeat", optimize);
+      try {
+        expect(view.host.textContent).toBe("014");
+      } finally {
+        view.dispose();
+      }
+    });
+
+    test("Show renders a zero-arity function child as a live value", async () => {
+      const { setCount } = await import(IMPORTS);
+      const core = await import("@barqjs/core");
+      setCount(1);
+      core.flush();
+      const view = await mounted("ImportedShowValue", optimize);
+      try {
+        expect(view.host.querySelector("p")?.textContent).toBe("1");
+        setCount(2);
+        core.flush();
+        expect(view.host.querySelector("p")?.textContent).toBe("2");
+      } finally {
+        view.dispose();
+      }
+    });
   });
 }

@@ -389,8 +389,12 @@ export function For<T, K extends ForKeyed<T> = true>(
 export function Repeat(props: RepeatProps): JSXElement {
   const from = (): number => (readValue(props.from, "Repeat.from") as number | undefined) ?? 0;
   const count = (): number => readValue(props.count, "Repeat.count") as number;
+  // Solid 2.0's `Repeat` calls any function child with the index and renders
+  // anything else as it is.
   const shifted: Block<unknown> = (index: unknown): unknown =>
-    (props.children as (i: number) => unknown)((index as number) + from());
+    typeof props.children === "function"
+      ? (props.children as (i: number) => unknown)((index as number) + from())
+      : props.children;
   return each(
     null,
     null,

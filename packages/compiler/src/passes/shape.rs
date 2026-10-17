@@ -362,7 +362,11 @@ impl<'a> Shaper<'a, '_> {
                 if self.builds_dom(&value) || self.is_block(&value) {
                     self.block_into_cell_slot(symbol, "children", at);
                 }
-                let cell = self.cell_at(value, at, Some("children"));
+                let cell = if self.callback_at_runtime(flow, &value) {
+                    value
+                } else {
+                    self.cell_at(value, at, Some("children"))
+                };
                 Some(self.property("children", cell, at))
             } else if live {
                 Some(self.discarded(value, at))
@@ -375,7 +379,15 @@ impl<'a> Shaper<'a, '_> {
             }
         }
 
-        if !kids.is_empty() {
+        if let [kid] = kids.as_slice()
+            && self.callback_at_runtime(flow, kid)
+        {
+            let kid = kids.into_iter().next().unwrap_or_else(|| unreachable!("one kid"));
+            let property = self.property("children", kid, span);
+            let last = sources.len() - 1;
+            let Source::Record(record) = &mut sources[last] else { unreachable!() };
+            record.push(property);
+        } else if !kids.is_empty() {
             // C6. JSX children are a BLOCK — a deferred CONSTRUCTION taking the
             // scope of the construct that receives them. This is the line that
             // makes the Provider bug unrepresentable: there is no expression in
@@ -1211,6 +1223,31 @@ impl<'a> Shaper<'a, '_> {
     /// recreate — a store proxy, a props forward, or an origin the analysis could
     /// not follow at all. Syntactic on purpose: it drives a note, and the honest
     /// answer for anything it cannot see through is "not proven".
+    /// Whether a list construct's lone child is a value whose kind the analysis
+    /// cannot see, an import, a reassigned binding, a parameter, or a member of
+    /// one, and so goes to the construct as written. Solid 2.0 decides such a
+    /// child at run time, and so does the construct: `For` calls it with each
+    /// row and `Repeat` calls a function with each index. Wrapped as a Cell it
+    /// was a value, and a row callback never received its row.
+    pub(super) fn callback_at_runtime(&self, flow: Option<Flow>, value: &Expression<'a>) -> bool {
+        if !matches!(flow, Some(Flow::For | Flow::Repeat)) || self.builds_dom(value) {
+            return false;
+        }
+        let mut root = strip_wrappers(value);
+        loop {
+            root = match root {
+                Expression::StaticMemberExpression(member) => strip_wrappers(&member.object),
+                Expression::ComputedMemberExpression(member) => strip_wrappers(&member.object),
+                Expression::Identifier(_) => break,
+                _ => return false,
+            };
+        }
+        // Resolved only: the passes stand placeholders for built DOM and staged
+        // regions in as unbound names, and those are values.
+        symbol_of(self.lift.scoping(), root)
+            .is_some_and(|symbol| self.lift.env().kind_of(symbol) == SourceKind::Opaque)
+    }
+
     /// Whether the analysis found the row callback of the `<For>` at `span`
     /// reading a field of its row once.
     pub(super) fn rows_read_once(&self, span: Span) -> bool {
@@ -2830,5 +2867,25 @@ mod tests {
             0
         );
         assert_eq!(tanstack("{({ original }) => <tr><td>{original.name}</td></tr>}"), 1);
+    }
+
+    /// A list child whose kind the analysis cannot see goes to the construct as
+    /// written, and the construct decides it as Solid 2.0 does: `For` hands it
+    /// each row and `Repeat` each index. A `Repeat` with `from` stays on its
+    /// adapter, which calls only a function.
+    #[test]
+    fn a_child_of_unknown_kind_is_decided_at_run_time() {
+        let code = emit(
+            "import { For, Repeat, createSignal } from \"@barqjs/core\";\n\
+             import { renderRow, cell } from \"./rows\";\n\
+             const [rows] = createSignal([]);\n\
+             export const A = () => <ul><For each={rows}>{renderRow}</For></ul>;\n\
+             export const B = () => <ul><Repeat count={2} from={1}>{cell}</Repeat></ul>;\n",
+        )
+        .code;
+        assert!(code.contains("_$each(_el$1, null, rows, null, renderRow)"), "{code}");
+        assert!(!code.contains("() => renderRow"), "{code}");
+        assert!(code.contains("children: cell"), "{code}");
+        assert!(!code.contains("() => cell"), "{code}");
     }
 }

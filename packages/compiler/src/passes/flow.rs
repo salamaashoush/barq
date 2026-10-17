@@ -215,7 +215,39 @@ fn admits_element<'a>(shaper: &Shaper<'a, '_>, flow: Flow, element: &JSXElement<
     if !spread && required(flow).iter().any(|name| !seen.contains(name)) {
         return false;
     }
+    // `from` shifts the index into a call, and a child of unknown kind may not
+    // be a function: the adapter asks that at run time, as Solid's `Repeat`
+    // does.
+    if flow == Flow::Repeat
+        && (seen.contains(&"from") || spread)
+        && runtime_callback_child(shaper, flow, element)
+    {
+        return false;
+    }
     if flow == Flow::Switch { admits_arms(shaper, element) } else { true }
+}
+
+/// The lone child of a construct, when it is one the construct has to decide at
+/// run time: see [`Shaper::callback_at_runtime`].
+fn runtime_callback_child<'a>(
+    shaper: &Shaper<'a, '_>,
+    flow: Flow,
+    element: &JSXElement<'a>,
+) -> bool {
+    let mut content = element.children.iter().filter(|child| match child {
+        JSXChild::Text(text) => {
+            text::clean(text.span.source_text(shaper.source_text()), shaper.allocator).is_some()
+        }
+        _ => true,
+    });
+    let (Some(JSXChild::ExpressionContainer(container)), None) = (content.next(), content.next())
+    else {
+        return false;
+    };
+    container
+        .expression
+        .as_expression()
+        .is_some_and(|value| shaper.callback_at_runtime(Some(flow), value))
 }
 
 /// The one prop whose VALUE the lowering has to resolve statically, because the
@@ -459,6 +491,29 @@ fn body_of<'a>(
         return Some(body);
     }
     bag.take(shaper, "children").map(|attr| slot_of(shaper, attr))
+}
+
+/// A row body: a child whose kind the analysis cannot see goes to `each` as
+/// written, which calls it with each row as Solid's `For` and `Repeat` do.
+fn row_body_of<'a>(
+    shaper: &mut Shaper<'a, '_>,
+    bag: &mut Bag<'a>,
+    mut kids: Vec<Expression<'a>>,
+    flow: Flow,
+    span: Span,
+) -> Option<Expression<'a>> {
+    if kids.len() == 1 && shaper.callback_at_runtime(Some(flow), &kids[0]) {
+        return kids.pop();
+    }
+    if kids.is_empty()
+        && let Some(attr) = bag.take(shaper, "children")
+    {
+        if attr.proven && shaper.callback_at_runtime(Some(flow), &attr.value) {
+            return Some(attr.value);
+        }
+        return Some(slot_of(shaper, attr));
+    }
+    body_of(shaper, bag, kids, span)
 }
 
 fn parts<'a>(
@@ -797,7 +852,7 @@ fn list<'a>(
     let mut region = blank(shaper, span);
     region.key = Some(cell_of(shaper, source));
     region.keyed = keyed;
-    region.body = body_of(shaper, bag, kids, span)
+    region.body = row_body_of(shaper, bag, kids, Flow::For, span)
         .unwrap_or_else(|| Expression::new_null_literal(span, &shaper.ast));
     region.fallback = fallback;
     region
@@ -813,7 +868,7 @@ fn repeat<'a>(
     let count = bag.take(shaper, "count").expect("checked by `admits`");
     let from = bag.take(shaper, "from");
     let fallback = bag.take(shaper, "fallback").map(|attr| slot_of(shaper, attr));
-    let row = body_of(shaper, bag, kids, span)
+    let row = row_body_of(shaper, bag, kids, Flow::Repeat, span)
         .unwrap_or_else(|| Expression::new_null_literal(span, &shaper.ast));
 
     let mut region = blank(shaper, span);
