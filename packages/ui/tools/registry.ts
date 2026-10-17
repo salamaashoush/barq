@@ -42,6 +42,7 @@ import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "nod
 import { dirname, join, relative, resolve } from "node:path";
 
 import { CATALOG } from "../../site/src/blocks/catalog.ts";
+import { packageOf, specifiersIn, titleOf } from "../../ui-cli/src/build.ts";
 import { THEMES } from "../src/theme/themes.ts";
 
 const root = resolve(import.meta.dir, "..");
@@ -75,45 +76,6 @@ export interface RegistryItem {
 }
 
 const SCHEMA = "https://github.com/salamaashoush/barq/schema/registry-item.json";
-
-/**
- * `import … from "x"`, `export … from "x"` and a bare `import "x"`.
- *
- * `from` is required rather than "the first quoted string on the line", which
- * is what this used to be: `export type ButtonVariant = "default" | …` then
- * declared a dependency on a package called `default`.
- *
- * What stands between the keyword and `from` is an import CLAUSE and nothing
- * else — names, braces, commas, `*`, whitespace. Matching "anything up to the
- * end of the line" instead missed every import long enough to be wrapped, and
- * that is most of them: `context-menu.tsx` declared no dependency on
- * `@barqjs/aria` and none on `dropdown-menu`, so `add context-menu` wrote a
- * file that imports a component the project does not have.
- */
-const IMPORT =
-  /(?:^|\n)\s*(?:import|export)\s+(?:type\s+)?[\w*{}\s,$]+?\s*\bfrom\s*["']([^"']+)["']|(?:^|\n)\s*import\s+["']([^"']+)["']/g;
-
-function specifiersIn(source: string): string[] {
-  const out: string[] = [];
-  for (const match of source.matchAll(IMPORT)) {
-    const specifier = match[1] ?? match[2];
-    if (specifier !== undefined) out.push(specifier);
-  }
-  return out;
-}
-
-/** `@barqjs/lucide/icons/check` -> `@barqjs/lucide`. What you install. */
-function packageOf(specifier: string): string {
-  const parts = specifier.split("/");
-  return specifier.startsWith("@") ? parts.slice(0, 2).join("/") : (parts[0] ?? specifier);
-}
-
-function titleOf(name: string): string {
-  return name
-    .split("-")
-    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
-    .join(" ");
-}
 
 /**
  * The first sentence of a module's own doc comment.
