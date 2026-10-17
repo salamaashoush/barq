@@ -1194,3 +1194,9 @@ callback through because the two cases were indistinguishable.
   now installs the shared `compilerLoader` from `@barqjs/vite/internal`, so the test looks for that
   import and the `plugin(compilerLoader(` call instead of `require_("@barqjs/compiler")` and
   `native.transform(source`. The `@barqjs/compiler` devDependency and no-JSX checks are unchanged.
+
+- `vite/test/compiler.test.ts` "dev is derived from Vite rather than asked for": the fixture's row
+  callback read `{row.name}` inline, which BARQ004 no longer reports because that read is emitted
+  live. The fixture now destructures the row (`({ name }) => <li>{name}</li>`), a shape whose field
+  is read once, so the three tests still pin what they are about: a dev-only note shows in a dev
+  server run, not in a production build, and an explicit `dev` option wins.
