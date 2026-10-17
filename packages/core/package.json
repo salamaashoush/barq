@@ -1,6 +1,6 @@
 {
   "name": "@barqjs/core",
-  "version": "0.1.0",
+  "version": "0.2.0-next.0",
   "description": "Signals, stores, control flow, JSX and the DOM renderer for barq: fine-grained updates with no virtual DOM",
   "keywords": [
     "barq",

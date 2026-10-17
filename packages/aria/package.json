@@ -1,6 +1,6 @@
 {
   "name": "@barqjs/aria",
-  "version": "0.1.0",
+  "version": "0.2.0-next.0",
   "description": "Accessible interactions, state and headless components for barq: WAI-ARIA behaviour on fine-grained signals",
   "keywords": [
     "a11y",
@@ -336,9 +336,9 @@
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
-    "@barqjs/core": ">=0.1.0",
-    "@barqjs/primitives": ">=0.1.0",
-    "@barqjs/server": ">=0.1.0"
+    "@barqjs/core": ">=0.2.0-next.0",
+    "@barqjs/primitives": ">=0.2.0-next.0",
+    "@barqjs/server": ">=0.2.0-next.0"
   },
   "peerDependenciesMeta": {},
   "engines": {
