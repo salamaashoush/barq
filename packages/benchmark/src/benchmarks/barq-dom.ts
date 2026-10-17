@@ -6,14 +6,8 @@
 import type { BenchmarkResult } from "../types.ts";
 import { benchmark, generateItems } from "../utils.ts";
 
-import {
-  type Child,
-  type Component,
-  render,
-  createMemo,
-  createSignal,
-  flush,
-} from "@barqjs/core";
+import { type Child, type Component, createMemo, createSignal, flush } from "@barqjs/core";
+import { render } from "@barqjs/web";
 import { For, Show, h } from "../h.ts";
 
 type Item = { id: number; name: string; value: number };

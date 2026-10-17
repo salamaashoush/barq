@@ -20,7 +20,12 @@ GlobalRegistrator.register();
 // BARQ_A points the barq side at another build of the runtime, so the same
 // instrument can bisect a DOM ratio against an older signals.ts. Unset is the
 // workspace build and is what `bun run bench:dom` measures.
-const barq = (await import(process.env.BARQ_A ?? "@barqjs/core")) as typeof import("@barqjs/core");
+// A runtime from before the renderer had its own package exports both halves
+// from core, so BARQ_A alone names it.
+const barq = {
+  ...((await import(process.env.BARQ_A ?? "@barqjs/core")) as typeof import("@barqjs/core")),
+  ...((await import(process.env.BARQ_A ?? "@barqjs/web")) as typeof import("@barqjs/web")),
+};
 const solid = await import("solid-js/web");
 const solidCore = await import("solid-js");
 

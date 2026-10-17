@@ -29,6 +29,8 @@ import {
 } from "./stats.ts";
 
 const barq = await import("@barqjs/core");
+
+const web = await import("@barqjs/web");
 const solid = await import("solid-js/web");
 const solidCore = await import("solid-js");
 
@@ -114,7 +116,7 @@ investigations.push({
         el.textContent = row.label;
         return el;
       });
-      barq.insert(parent, () => view());
+      web.insert(parent, () => view());
     });
     barq.flush();
     return () => {
@@ -163,7 +165,7 @@ investigations.push({
           el.textContent = row.label;
           return el;
         });
-        barq.insert(parent, () => view());
+        web.insert(parent, () => view());
       });
       barq.flush();
       let i = 0;
@@ -265,7 +267,7 @@ investigations.push({
     barq: () => {
       const parent = container();
       const [which, setWhich] = barq.createSignal(0);
-      owned(() => barq.insert(parent, () => nodePool[which() % POOL]));
+      owned(() => web.insert(parent, () => nodePool[which() % POOL]));
       barq.flush();
       let i = 0;
       return () => {

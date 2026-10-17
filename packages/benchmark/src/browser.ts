@@ -7,14 +7,8 @@ import type { BenchmarkResult } from "./types.ts";
 import { benchmark, generateItems } from "./utils.ts";
 
 // Barq imports
-import {
-  createRoot,
-  createEffect as barqCreateEffect,
-  createMemo,
-  createSignal,
-  flush,
-  render as barqRender,
-} from "@barqjs/core";
+import { createRoot, createEffect as barqCreateEffect, createMemo, createSignal, flush } from "@barqjs/core";
+import { render as barqRender } from "@barqjs/web";
 import { For, Show, h } from "./h.ts";
 
 // SolidJS imports

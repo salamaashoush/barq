@@ -14,7 +14,7 @@ import { appSource, bundleFor, compileFor, type Framework } from "./solid2.ts"
 import { serverModule } from "./ssr.ts"
 
 const HYDRATE_FROM: Record<Framework, string> = {
-  barq: "@barqjs/core",
+  barq: "@barqjs/web",
   solid2: "@solidjs/web",
   solid1: "solid-js/web",
 }

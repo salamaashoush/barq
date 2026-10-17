@@ -1,5 +1,5 @@
 /**
- * @jsxImportSource @barqjs/core
+ * @jsxImportSource @barqjs/web
  *
  * js-framework-benchmark, keyed, in barq.
  *
@@ -18,7 +18,8 @@
  * 2. barq's `For` is identity-keyed by default, which
  *     is what "keyed" means here, so no `keyed` prop is written.
  */
-import { type Accessor, type Setter, For, flush, render, createSignal } from "@barqjs/core"
+import { type Accessor, type Setter, For, flush, createSignal } from "@barqjs/core"
+import { render } from "@barqjs/web"
 
 const adjectives = ["pretty", "large", "big", "small", "tall", "short", "long", "handsome", "plain", "quaint", "clean", "elegant", "easy", "angry", "crazy", "helpful", "mushy", "odd", "unsightly", "adorable", "important", "inexpensive", "cheap", "expensive", "fancy"] // prettier-ignore
 const colors = ["red", "yellow", "blue", "green", "pink", "brown", "purple", "brown", "white", "black", "orange"] // prettier-ignore

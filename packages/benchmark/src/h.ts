@@ -20,17 +20,8 @@
  * two-line adapter over an entry point the compiler itself emits.
  */
 
-import {
-  type Block,
-  type Cell,
-  type Child,
-  block,
-  branch,
-  createRoot,
-  each,
-  element,
-  getOwner,
-} from "@barqjs/core";
+import { type Block, type Cell, type Child, block, createRoot, getOwner } from "@barqjs/core";
+import { branch, each, element } from "@barqjs/web";
 
 type Props = Record<string, unknown> | null;
 

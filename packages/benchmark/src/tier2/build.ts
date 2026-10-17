@@ -19,13 +19,10 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
+import { barqSource } from "../barq-runtime.ts"
 import { compileBarq, compileSolid } from "../compile.ts"
 
 const HERE = import.meta.dir
-const REPO = join(HERE, "..", "..", "..", "..")
-
-/** The barq runtime, as source. See rule 2 above. */
-export const BARQ_CORE = join(REPO, "packages", "core", "src", "index.ts")
 
 const WORK = join(HERE, ".tmp")
 
@@ -60,6 +57,7 @@ async function bundle(entryPath: string, name: string): Promise<string> {
     sourcemap: "none",
     conditions: ["browser"],
     define: { "process.env.NODE_ENV": '"production"' },
+    plugins: [barqSource()],
   })
   if (!built.success) {
     throw new Error(`bundling ${name} failed:\n${built.logs.map(String).join("\n")}`)
@@ -70,7 +68,7 @@ async function bundle(entryPath: string, name: string): Promise<string> {
 /** A page whose entry is TypeScript/JS needing no JSX compiler. */
 export async function plainPage(source: string, name: string): Promise<Bundle> {
   const entry = join(WORK, `${name}-${seq++}.ts`)
-  writeFileSync(entry, source.replaceAll('"@barqjs/core"', JSON.stringify(BARQ_CORE)))
+  writeFileSync(entry, source)
   const code = await bundle(entry, name)
   return {
     files: new Map([
@@ -83,10 +81,7 @@ export async function plainPage(source: string, name: string): Promise<Bundle> {
 
 /** A page whose entry is barq JSX, compiled by the real native compiler. */
 export async function barqPage(source: string, name: string): Promise<Bundle> {
-  const compiled = compileBarq(source, `${name}.tsx`, false).replaceAll(
-    '"@barqjs/core"',
-    JSON.stringify(BARQ_CORE),
-  )
+  const compiled = compileBarq(source, `${name}.tsx`, false)
   // `.ts`, not `.js`: the barq compiler transforms JSX and leaves TypeScript
   // annotations for the bundler, so an entry named `.js` is a parse error and
   // not a compile failure — which is a confusing way to learn this.

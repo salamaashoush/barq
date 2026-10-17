@@ -60,7 +60,8 @@ import { GlobalRegistrator } from "@happy-dom/global-registrator";
 GlobalRegistrator.register();
 
 import { transform } from "@barqjs/compiler";
-import { effectAllocations, flush, render, scopeAllocations } from "@barqjs/core";
+import { effectAllocations, flush, scopeAllocations } from "@barqjs/core";
+import { render } from "@barqjs/web";
 
 import { paired, wilcoxon } from "./stats.ts";
 
@@ -139,7 +140,7 @@ let seq = 0;
 
 async function load(code: string): Promise<{ default: (scope: unknown) => Node }> {
   const file = join(TMP, `m${seq++}.tsx`);
-  writeFileSync(file, `/** @jsxImportSource @barqjs/core */\n${code}`);
+  writeFileSync(file, `/** @jsxImportSource @barqjs/web */\n${code}`);
   return (await import(file)) as { default: (scope: unknown) => Node };
 }
 

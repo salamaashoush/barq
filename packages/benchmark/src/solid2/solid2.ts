@@ -17,6 +17,7 @@ import { join } from "node:path"
 import type { BunPlugin } from "bun"
 
 import { compileBarq, compileSolid } from "../compile.ts"
+import { barqSource } from "../barq-runtime.ts"
 
 const HERE = import.meta.dir
 const REPO = join(HERE, "..", "..", "..", "..")
@@ -120,11 +121,12 @@ let seq = 0
 
 /**
  * The shared app sources import from `solid-js` and `@solidjs/web`. barq
- * exports every name they use from `@barqjs/core`, so the barq build is the
- * same file with the two specifiers pointed there and nothing else changed.
+ * exports every name they use from `@barqjs/core` and `@barqjs/web`, so the
+ * barq build is the same file with the two specifiers pointed there and
+ * nothing else changed.
  */
 export function asBarq(source: string): string {
-  return source.replaceAll('"solid-js"', '"@barqjs/core"').replaceAll('"@solidjs/web"', '"@barqjs/core"')
+  return source.replaceAll('"solid-js"', '"@barqjs/core"').replaceAll('"@solidjs/web"', '"@barqjs/web"')
 }
 
 export interface CompileOptions {
@@ -148,9 +150,7 @@ export async function compileFor(
   if (framework === "barq") {
     const code = compileBarq(asBarq(source), file.replace(/\.jsx$/, ".tsx"), ssr, hydratable)
     return {
-      code: code
-        .replaceAll('"@barqjs/core"', JSON.stringify(BARQ_CORE))
-        .replaceAll('"@barqjs/server"', JSON.stringify(BARQ_SERVER)),
+      code: code.replaceAll('"@barqjs/server"', JSON.stringify(BARQ_SERVER)),
       ext: "ts",
     }
   }
@@ -189,7 +189,12 @@ export async function bundleFor(
     sourcemap: "none",
     conditions: browser ? ["browser"] : ["node"],
     define: { "process.env.NODE_ENV": '"production"' },
-    plugins: framework === "solid2" ? [solid2Plugin(options.target)] : [],
+    plugins:
+      framework === "solid2"
+        ? [solid2Plugin(options.target)]
+        : framework === "barq"
+          ? [barqSource(BARQ_CORE)]
+          : [],
   })
   if (!built.success) {
     throw new Error(`bundling ${name} for ${framework} failed:\n${built.logs.map(String).join("\n")}`)

@@ -18,7 +18,8 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { join } from "node:path"
 
 import { compileBarq } from "../compile.ts"
-import { BARQ_CORE, type Bundle } from "./build.ts"
+import { BARQ_CORE, barqSource } from "../barq-runtime.ts"
+import type { Bundle } from "./build.ts"
 import { driveJfb } from "./jfb.ts"
 
 const HERE = import.meta.dir
@@ -30,10 +31,7 @@ writeFileSync(join(WORK, ".gitignore"), "*\n")
 
 async function pageAgainst(core: string, name: string): Promise<Bundle> {
   const source = readFileSync(new URL("./apps/jfb-barq.tsx", import.meta.url), "utf8")
-  const compiled = compileBarq(source, `${name}.tsx`, false).replaceAll(
-    '"@barqjs/core"',
-    JSON.stringify(core),
-  )
+  const compiled = compileBarq(source, `${name}.tsx`, false)
   const entry = join(WORK, `${name}.ts`)
   writeFileSync(entry, compiled)
   const built = await Bun.build({
@@ -44,6 +42,7 @@ async function pageAgainst(core: string, name: string): Promise<Bundle> {
     sourcemap: "none",
     conditions: ["browser"],
     define: { "process.env.NODE_ENV": '"production"' },
+    plugins: [barqSource(core)],
   })
   if (!built.success) throw new Error(`bundling ${name} failed:\n${built.logs.map(String).join("\n")}`)
   const code = await built.outputs[0].text()

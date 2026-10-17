@@ -32,6 +32,7 @@
     "@barqjs/core": "workspace:*",
     "@barqjs/server": "workspace:*",
     "@barqjs/start": "workspace:*",
+    "@barqjs/web": "workspace:*",
     "@happy-dom/global-registrator": "^21.0.1",
     "@solidjs/signals": "2.0.0-rc.15",
     "@types/babel__core": "^7.20.5",

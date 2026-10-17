@@ -35,6 +35,8 @@ if (!solidServer.isServer) {
 GlobalRegistrator.register();
 
 const barqCore = await import("@barqjs/core");
+
+const web = await import("@barqjs/web");
 // `renderToString` is the STRING backend's, not core's.
 const barqServer = await import("@barqjs/server");
 
@@ -66,7 +68,7 @@ export default function Page(props) {
  * this a measurement of the deopt and of nothing else.
  */
 const ROWS_PAGE_WITH_FLOW = `
-import { Portal } from "@barqjs/core";
+import { Portal } from "@barqjs/web";
 
 export function Modal(props) {
   return <Portal target={props.target}>{props.children}</Portal>;
@@ -129,13 +131,13 @@ const solidStatic = await loadModule<Compiled>(
 function barqUncompiledPage(): unknown {
   const scope = barqCore.getOwner();
   const build = (): unknown =>
-    barqCore.element("div", {
+    web.element("div", {
       class: "page",
       children: [
-        barqCore.element("h1", { children: "Title" }),
-        barqCore.element("ul", {
+        web.element("h1", { children: "Title" }),
+        web.element("ul", {
           children: DATA.map((row) =>
-            barqCore.element("li", {
+            web.element("li", {
               class: "row",
               "data-id": String(row.id),
               children: row.label,

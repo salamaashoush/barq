@@ -44,23 +44,8 @@
  * same number, which is exactly how a stub DOM produced a conclusion about a
  * real one.
  */
-import {
-  block,
-  cell,
-  childScope,
-  createRoot,
-  createSignal,
-  dispose as disposeScope,
-  flush,
-  insert,
-  mapArray,
-  props,
-  runWithOwner,
-  setProp,
-  template,
-  type Scope,
-  untrack,
-} from "@barqjs/core"
+import { block, cell, childScope, createRoot, createSignal, dispose as disposeScope, flush, mapArray, props, runWithOwner, type Scope, untrack } from "@barqjs/core"
+import { insert, setProp, template } from "@barqjs/web"
 
 const HTML =
   '<div class="card"><h2> </h2><p class="body"> </p><span class="tail">tail</span></div>'
