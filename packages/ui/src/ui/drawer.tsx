@@ -25,13 +25,13 @@ import {
   getOwner,
   onCleanup,
   onSettled,
-  Portal,
   provide,
   Show,
   untrack,
   type Child,
   type Incoming,
 } from "@barqjs/core";
+import { Portal } from "@barqjs/web";
 import { firstThatWorks, layer } from "@barqjs/css";
 
 import "../theme/layers.ts";

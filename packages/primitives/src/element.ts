@@ -1,4 +1,5 @@
-import { type Accessor, isServer, createRenderEffect, createSignal, untrack } from "@barqjs/core";
+import { type Accessor, createRenderEffect, createSignal, untrack } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { on } from "./event.ts";
 import { intersectionObserver, resizeObserver } from "./observers.ts";
 import { type Clear, type MaybeAccessor, access, shared } from "./utils.ts";

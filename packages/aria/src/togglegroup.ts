@@ -21,7 +21,8 @@
  * is what a server render and the first paint need.
  */
 
-import { type Accessor, createSignal, createEffect, isServer } from "@barqjs/core";
+import { type Accessor, createSignal, createEffect } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { tryCleanup } from "@barqjs/primitives/utils";
 import { contains, focusWithoutScrolling, targetElement } from "./dom.ts";
 import { type ReadingDirection, useDirection } from "./i18n.ts";

@@ -23,18 +23,11 @@ import {
   type Context,
   type Incoming,
   HYDRATE,
-  bindProp,
   block,
-  boundary,
-  branch,
   cell,
-  clientOnly,
   createMemo,
   createContext,
   createEffect,
-  element,
-  insert,
-  listen,
   onCleanup,
   onSettled,
   props as sources,
@@ -42,16 +35,25 @@ import {
   provide,
   read,
   readSlot,
-  setAttr,
   createSignal,
-  setClass,
-  template,
   toString,
   untrack,
   WHOLE,
-  isHydrating,
   type Accessor,
 } from "@barqjs/core";
+import {
+  bindProp,
+  boundary,
+  branch,
+  clientOnly,
+  element,
+  insert,
+  listen,
+  setAttr,
+  setClass,
+  template,
+  isHydrating,
+} from "@barqjs/web";
 import { serverRendering } from "@barqjs/core/internal";
 
 import {
@@ -64,7 +66,7 @@ import {
   tagKey,
   tagProps,
 } from "./head.ts";
-import type { JSX as CoreJSX } from "@barqjs/core/jsx-runtime";
+import type { JSX as CoreJSX } from "@barqjs/web/jsx-runtime";
 import type { NavigateOptionsFor, ToPath } from "./register.ts";
 import { type MatchRouteOptions, type RouterState, createRouter } from "./router.ts";
 import { type Route, type RouteProps } from "./route.ts";

@@ -12,29 +12,32 @@
 
 import {
   type HeadTag,
-  type Owner,
   bindEvent,
-  block,
   classToString,
-  createRenderEffect,
-  createRoot,
-  createSignal,
   delegate,
   element,
-  getOwner,
   insert,
   isHydrating,
-  onCleanup,
   onHydrationEnd,
   ref as bindRef,
-  runWithOwner,
   setClass,
   setProp,
   setStyle,
-  untrack,
   useHead,
+} from "@barqjs/web";
+import {
+  type Owner,
+  block,
+  createRenderEffect,
+  createRoot,
+  createSignal,
+  getOwner,
+  onCleanup,
+  runWithOwner,
+  untrack,
 } from "@barqjs/core";
-import { type Range, withRange, withoutClaim } from "@barqjs/core/internal";
+import { withoutClaim } from "@barqjs/core/internal";
+import { type Range, withRange } from "@barqjs/web/internal";
 import { type AnySerializationAdapter, decodeWire } from "@barqjs/server/codec";
 
 import { ServerFnError } from "./fn-error.ts";

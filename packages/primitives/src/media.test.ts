@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { flush, createRoot, createSignal, hydrate } from "@barqjs/core";
+import { flush, createRoot, createSignal } from "@barqjs/core";
+import { hydrate } from "@barqjs/web";
 import { breakpoints, mediaQuery } from "./media.ts";
 
 interface FakeList {

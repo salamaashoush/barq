@@ -13,7 +13,8 @@
  * where the answer is zero.
  */
 
-import { type Accessor, createEffect, isServer, createSignal, untrack } from "@barqjs/core";
+import { type Accessor, createEffect, createSignal, untrack } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 
 import type { ElementRef } from "./interactions/press.ts";
 import { access, type MaybeAccessor } from "./utils.ts";

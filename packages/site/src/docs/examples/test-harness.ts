@@ -36,7 +36,7 @@ interface Framed {
  */
 const frame = (slug: string): string =>
   [
-    'import { dynamic } from "@barqjs/core";',
+    'import { dynamic } from "@barqjs/web";',
     `import { demos } from ${JSON.stringify(join(examples, slug, "index.ts"))};`,
     "export const framed = demos.map((demo) => {",
     "  const Demo = dynamic(() => demo.component);",

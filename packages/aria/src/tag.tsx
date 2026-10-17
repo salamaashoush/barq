@@ -29,10 +29,10 @@ import {
   getOwner,
   type Incoming,
   install,
-  isServer,
   provide,
   untrack,
 } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { button } from "./button.tsx";
 import type { ItemAccessors, Key, ListStateOptions, Node, SelectionMode } from "./collections.ts";

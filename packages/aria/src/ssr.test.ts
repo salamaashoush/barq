@@ -28,6 +28,7 @@ const native = require_("@barqjs/compiler") as {
 
 const SRC = new URL(".", import.meta.url).pathname.replace(/\/$/, "");
 const CORE = new URL("../node_modules/@barqjs/core/src/index.ts", import.meta.url).pathname;
+const WEB = new URL("../node_modules/@barqjs/web/src/index.ts", import.meta.url).pathname;
 const SERVER = new URL("../node_modules/@barqjs/server/src/index.ts", import.meta.url).pathname;
 
 // Inside the package, not the system temp directory: a fixture imports
@@ -46,7 +47,8 @@ async function ssrModule<T>(source: string): Promise<T> {
   const { code } = native.transform(source, {
     filename: join(OUT, `fixture-${sequence}.tsx`),
     ssr: true,
-    moduleSource: CORE,
+    moduleSource: WEB,
+    coreSource: CORE,
     serverSource: SERVER,
   });
   const file = join(OUT, `fixture-${sequence++}.ts`);

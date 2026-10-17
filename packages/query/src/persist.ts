@@ -4,9 +4,9 @@ import {
   createEffect,
   createRenderEffect,
   createSignal,
-  isServer,
   readSlot,
 } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import type { OmitKeyof, QueryClient } from "@tanstack/query-core";
 import {
   type PersistQueryClientOptions,

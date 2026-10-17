@@ -1,4 +1,5 @@
-import { type Accessor, isServer, createSignal } from "@barqjs/core";
+import { type Accessor, createSignal } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { type Clear, type MaybeAccessor, access, tryCleanup } from "./utils.ts";
 
 export type SocketState = "closed" | "connecting" | "open" | "closing";

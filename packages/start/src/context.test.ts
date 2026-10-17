@@ -15,7 +15,7 @@
  * `/admin` route crashed on load.
  */
 
-import { getRequestEvent } from "@barqjs/core";
+import { getRequestEvent } from "@barqjs/web";
 import { describe, expect, test } from "bun:test";
 
 import {

@@ -8,7 +8,8 @@
  * and a crash reporter or a console told about it reports a failure nobody had.
  */
 
-import { flush, render, settle } from "@barqjs/core";
+import { flush, settle } from "@barqjs/core";
+import { render } from "@barqjs/web";
 import { afterEach, describe, expect, test } from "bun:test";
 
 import { RouterProvider } from "./components.ts";

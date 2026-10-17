@@ -1,4 +1,5 @@
-import { flush, render } from "@barqjs/core";
+import { flush } from "@barqjs/core";
+import { render } from "@barqjs/web";
 
 import {
   aggregationFns,

@@ -1,4 +1,4 @@
-import { httpHeader, httpStatus } from "@barqjs/core";
+import { httpHeader, httpStatus } from "@barqjs/web";
 
 export default function NotFound() {
   httpStatus(404);

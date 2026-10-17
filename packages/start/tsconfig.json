@@ -23,7 +23,7 @@
     "declaration": true,
     "declarationMap": true,
     "jsx": "react-jsx",
-    "jsxImportSource": "@barqjs/core"
+    "jsxImportSource": "@barqjs/web"
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["node_modules", "dist"]

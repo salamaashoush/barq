@@ -34,10 +34,10 @@ import {
   createEffect,
   getOwner,
   install,
-  isServer,
   createSignal,
   useContext,
 } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import type { ElementRef } from "./interactions/press.ts";
 import { setInteractionModality } from "./interactions/modality.ts";
 import { access, type MaybeAccessor } from "./utils.ts";

@@ -18,7 +18,8 @@
  * ```
  */
 
-import { flush, render as barqRender } from "@barqjs/core";
+import { flush } from "@barqjs/core";
+import { render as barqRender } from "@barqjs/web";
 import type { JSXElement } from "@barqjs/core";
 import {
   configure as configureDTL,

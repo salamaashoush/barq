@@ -8,7 +8,8 @@
  * navigation that moves something else.
  */
 
-import { type Cell, flush, insert, render } from "@barqjs/core";
+import { type Cell, flush } from "@barqjs/core";
+import { insert, render } from "@barqjs/web";
 import { afterEach, describe, expect, test } from "bun:test";
 
 import { RouterProvider } from "./components.ts";

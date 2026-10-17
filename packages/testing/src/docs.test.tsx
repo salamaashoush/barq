@@ -24,7 +24,6 @@ import {
   Match,
   Show,
   Switch,
-  Portal,
   createContext,
   createEffect,
   createMemo,
@@ -36,10 +35,10 @@ import {
   onCleanup,
   onSettled,
   refresh,
-  render,
   untrack,
   useContext,
 } from "@barqjs/core";
+import { Portal, render } from "@barqjs/web";
 import {
   ReactiveMap,
   debounce,

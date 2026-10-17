@@ -80,7 +80,7 @@ async function half(source: string, ssr: boolean): Promise<() => never> {
     target: "bun",
     format: "esm",
     plugins: [halfPlugin(ssr)],
-    external: ["@barqjs/core", "@barqjs/css", "@barqjs/server"],
+    external: ["@barqjs/core", "@barqjs/web", "@barqjs/css", "@barqjs/server"],
   });
   if (!result.success)
     throw new AggregateError(result.logs, `the ${ssr ? "server" : "client"} half did not build`);

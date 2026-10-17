@@ -6,7 +6,8 @@
 import { runInThisContext } from "node:vm";
 
 import { esc, html as ssrHtml } from "@barqjs/server";
-import { type Child, flush, render } from "@barqjs/core";
+import { type Child, flush } from "@barqjs/core";
+import { render } from "@barqjs/web";
 import { afterEach, describe, expect, test } from "bun:test";
 
 import { RouterProvider } from "./components.ts";

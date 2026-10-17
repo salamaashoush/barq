@@ -12,6 +12,7 @@ export default defineConfig({
   deps: {
     neverBundle: [
       "@barqjs/core",
+      "@barqjs/web",
       "@barqjs/server",
       "@barqjs/start",
       "#barq-router-entry",
@@ -27,6 +28,6 @@ export default defineConfig({
   outExtensions: () => ({ js: ".js", dts: ".d.ts" }),
   esbuildOptions: {
     jsx: "automatic",
-    jsxImportSource: "@barqjs/core",
+    jsxImportSource: "@barqjs/web",
   },
 });

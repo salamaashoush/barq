@@ -1,4 +1,5 @@
-import { isServer, onCleanup, createRenderEffect, createRoot } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
+import { onCleanup, createRenderEffect, createRoot } from "@barqjs/core";
 import { type Clear, type MaybeAccessor, access } from "./utils.ts";
 
 /**

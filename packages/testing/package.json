@@ -91,6 +91,7 @@
     "@barqjs/server": "workspace:*",
     "@barqjs/start": "workspace:*",
     "@barqjs/vite": "workspace:*",
+    "@barqjs/web": "workspace:*",
     "@happy-dom/global-registrator": "^21.0.1",
     "@types/bun": "^1.4.3",
     "typescript": "^7.0.2"
@@ -99,7 +100,8 @@
     "@barqjs/core": ">=0.1.0",
     "@barqjs/router": ">=0.1.0",
     "@barqjs/server": ">=0.1.0",
-    "@barqjs/start": ">=0.1.0"
+    "@barqjs/start": ">=0.1.0",
+    "@barqjs/web": ">=0.1.0"
   },
   "peerDependenciesMeta": {
     "@barqjs/router": {

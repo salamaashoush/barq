@@ -6,7 +6,8 @@
  * failure here is about the router and not about a render.
  */
 
-import { flush, insert, render } from "@barqjs/core";
+import { flush } from "@barqjs/core";
+import { insert, render } from "@barqjs/web";
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
 
 import { RouterProvider } from "./components.ts";

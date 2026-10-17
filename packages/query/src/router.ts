@@ -1,4 +1,5 @@
-import { type JSXElement, isServer } from "@barqjs/core";
+import type { JSXElement } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { type RouterState, isRedirect, useRouteContext } from "@barqjs/router";
 import {
   type DehydrateOptions,

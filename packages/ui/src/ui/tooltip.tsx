@@ -18,7 +18,8 @@ import {
   type TooltipTriggerComponentProps,
 } from "@barqjs/aria/tooltip";
 import { filterDOMProps, fromProps, mergeProps, styleProps } from "@barqjs/aria/utils";
-import { Portal, Show, type Child, type Incoming, type JSXElement } from "@barqjs/core";
+import { Portal } from "@barqjs/web";
+import { Show, type Child, type Incoming, type JSXElement } from "@barqjs/core";
 import { firstThatWorks, layer } from "@barqjs/css";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 

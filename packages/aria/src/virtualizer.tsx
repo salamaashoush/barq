@@ -39,11 +39,11 @@ import {
   createEffect,
   getContext,
   type Incoming,
-  isServer,
   provide,
   createSignal,
   untrack,
 } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { ListCollection } from "./collections.ts";
 import type { Collection, Key, LayoutDelegate, Node, Rect, Size } from "./collections.ts";
 import { access, type MaybeAccessor } from "./utils.ts";

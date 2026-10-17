@@ -11,7 +11,7 @@
     "types": ["@types/bun"],
     "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
-    "jsxImportSource": "@barqjs/core"
+    "jsxImportSource": "@barqjs/web"
   },
   "include": ["src/**/*", "vite.config.ts"],
   "exclude": ["node_modules"]

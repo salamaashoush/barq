@@ -9,7 +9,8 @@
  * rows offering the same long press adds one node, not two hundred.
  */
 
-import { createEffect, isServer, createSignal } from "@barqjs/core";
+import { createEffect, createSignal } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { tryCleanup } from "@barqjs/primitives/utils";
 import { access, type DOMProps, type MaybeAccessor } from "../utils.ts";
 

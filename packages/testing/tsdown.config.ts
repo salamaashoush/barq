@@ -21,6 +21,7 @@ export default defineConfig({
   deps: {
     neverBundle: [
       "@barqjs/core",
+      "@barqjs/web",
       "@barqjs/server",
       "@barqjs/router",
       "@barqjs/start",

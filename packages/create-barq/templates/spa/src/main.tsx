@@ -7,7 +7,7 @@
  * before anything reads it, or the first frame renders a page nobody matched.
  */
 
-import { render } from "@barqjs/core";
+import { render } from "@barqjs/web";
 import { RouterProvider, browserHistory, createRouter } from "@barqjs/router";
 
 import { routeTree } from "./routeTree.gen.ts";

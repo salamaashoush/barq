@@ -24,6 +24,7 @@ export default defineConfig({
   deps: {
     neverBundle: [
       "@barqjs/core",
+      "@barqjs/web",
       "@barqjs/server",
       "@barqjs/server/codec",
       "srvx",

@@ -17,7 +17,8 @@ import {
   setResponseStatus,
 } from "@barqjs/start";
 import { mount, unmountAll } from "@barqjs/start/server";
-import { createMemo, flush, hole, hydrate, insert, markSafeError, template } from "@barqjs/core";
+import { createMemo, flush, markSafeError } from "@barqjs/core";
+import { hole, hydrate, insert, template } from "@barqjs/web";
 import { describe, expect, spyOn, test } from "bun:test";
 import { runInThisContext } from "node:vm";
 

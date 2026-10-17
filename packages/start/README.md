@@ -222,7 +222,8 @@ slots, positions the server marks and the page fills: with components of its
 own where a slot is placed, and with behaviour where a slot is read as data.
 
 ```tsx
-import { type Child, dynamic } from "@barqjs/core";
+import type { Child } from "@barqjs/core";
+import { dynamic } from "@barqjs/web";
 import { type Slot, createServerFn } from "@barqjs/start";
 
 export const getStory = createServerFn({ method: "GET" })

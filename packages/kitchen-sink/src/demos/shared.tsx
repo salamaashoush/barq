@@ -2,7 +2,8 @@
  * Shared components for demos
  */
 
-import { type Child, For, type Incoming, type JSX } from "@barqjs/core";
+import { type Child, For, type Incoming } from "@barqjs/core";
+import type { JSX } from "@barqjs/web";
 import { atoms, css } from "@barqjs/css";
 
 // Demo section container

@@ -5,10 +5,10 @@ import {
   createRenderEffect,
   createSignal,
   getObserver,
-  isServer,
   onSettled,
   untrack,
 } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import {
   type PartialKeys,
   type VirtualItem,

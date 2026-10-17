@@ -3,7 +3,6 @@ import {
   createMemo,
   createEffect,
   createUniqueId,
-  dynamic,
   For,
   getContext,
   onCleanup,
@@ -16,6 +15,7 @@ import {
   type Component,
   type Incoming,
 } from "@barqjs/core";
+import { dynamic } from "@barqjs/web";
 import { layer } from "@barqjs/css";
 import { resizeObserver } from "@barqjs/primitives/observers";
 import { ref as makeRef } from "@barqjs/primitives/refs";

@@ -35,7 +35,7 @@ async function bundle(source: string): Promise<string> {
     target: "browser",
     minify: false,
     plugins: [barqPlugin],
-    external: ["@barqjs/core"],
+    external: ["@barqjs/core", "@barqjs/web"],
   });
   if (!result.success) throw new AggregateError(result.logs, "the probe did not build");
   return await result.outputs[0]!.text();

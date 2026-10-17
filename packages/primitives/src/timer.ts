@@ -1,10 +1,5 @@
-import {
-  type Accessor,
-  isServer,
-  createRenderEffect,
-  createRoot,
-  createSignal,
-} from "@barqjs/core";
+import { type Accessor, createRenderEffect, createRoot, createSignal } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { type Clear, type MaybeAccessor, access, noop } from "./utils.ts";
 
 /** A delay of `null` or `false` means "not running". */

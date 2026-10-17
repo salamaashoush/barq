@@ -18,7 +18,8 @@ peers, needed only by the entries that name them.
 ## Example
 
 ```tsx
-import { For, Show, render } from "@barqjs/core";
+import { For, Show } from "@barqjs/core";
+import { render } from "@barqjs/web";
 import { QueryClient, QueryClientProvider, useQuery } from "@barqjs/query";
 
 interface User {

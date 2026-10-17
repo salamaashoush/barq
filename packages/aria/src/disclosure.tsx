@@ -28,9 +28,9 @@ import {
   getOwner,
   type Incoming,
   install,
-  isServer,
   provide,
 } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { button, type ButtonOptions } from "./button.tsx";
 import type { ItemAccessors, Key, Node } from "./collections.ts";

@@ -19,7 +19,8 @@
  * already handling them, and two handlers on one keypress move focus twice.
  */
 
-import { type Child, createEffect, type Incoming, isServer, createSignal } from "@barqjs/core";
+import { type Child, createEffect, type Incoming, createSignal } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { contains, targetElement } from "./dom.ts";
 import { createFocusManager } from "./focus.ts";

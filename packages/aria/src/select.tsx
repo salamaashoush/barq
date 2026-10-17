@@ -24,7 +24,6 @@ import {
   type Accessor,
   type Child,
   For,
-  Portal,
   Show,
   createContext,
   createEffect,
@@ -37,6 +36,7 @@ import {
   onSettled,
   provide,
 } from "@barqjs/core";
+import { Portal } from "@barqjs/web";
 import { resizeObserver } from "@barqjs/primitives/observers";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { button, type ButtonOptions } from "./button.tsx";

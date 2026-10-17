@@ -8,7 +8,8 @@
  */
 
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { flush, hydrate, resetChildIds } from "@barqjs/core";
+import { flush, resetChildIds } from "@barqjs/core";
+import { hydrate } from "@barqjs/web";
 
 import { QueryClient } from "./index.ts";
 import {

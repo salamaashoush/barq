@@ -1,4 +1,5 @@
-import { type Accessor, isServer, createRenderEffect, createSignal, untrack } from "@barqjs/core";
+import { type Accessor, createRenderEffect, createSignal, untrack } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { prefersReducedMotion } from "./media.ts";
 import { raf } from "./raf.ts";
 import { type MaybeAccessor, access } from "./utils.ts";

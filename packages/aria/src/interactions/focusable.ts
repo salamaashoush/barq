@@ -8,7 +8,8 @@
  * is going, so VoiceOver reads the wrong thing.
  */
 
-import { createEffect, isServer, createSignal } from "@barqjs/core";
+import { createEffect, createSignal } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { activeElement, focusWithoutScrolling, ownerDocument, runAfterTransition } from "../dom.ts";
 import { access, mergeProps, type DOMProps, type MaybeAccessor } from "../utils.ts";
 import { focused, type FocusOptions } from "./focus-events.ts";

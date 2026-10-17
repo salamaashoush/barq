@@ -1,4 +1,5 @@
-import { createSignal, flush, render, Show } from "@barqjs/core";
+import { createSignal, flush, Show } from "@barqjs/core";
+import { render } from "@barqjs/web";
 import { renderToString } from "@barqjs/server";
 import { describe, expect, test } from "bun:test";
 

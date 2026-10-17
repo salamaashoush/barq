@@ -6,7 +6,8 @@
  * trusted.
  */
 
-import { flush, insert, render, settle } from "@barqjs/core";
+import { flush, settle } from "@barqjs/core";
+import { insert, render } from "@barqjs/web";
 import { afterEach, describe, expect, test } from "bun:test";
 
 import { RouterProvider } from "./components.ts";

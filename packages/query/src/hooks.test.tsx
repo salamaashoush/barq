@@ -5,7 +5,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, jest, test } from "bun:test";
-import { Errored, Loading, createSignal, render } from "@barqjs/core";
+import { Errored, Loading, createSignal } from "@barqjs/core";
+import { render } from "@barqjs/web";
 import {
   type InfiniteData,
   QueryClient,

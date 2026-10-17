@@ -22,7 +22,8 @@
  * still in the tree afterwards, by reference.
  */
 
-import { flush, hydrate } from "@barqjs/core";
+import { flush } from "@barqjs/core";
+import { hydrate } from "@barqjs/web";
 import type { JSXElement } from "@barqjs/core";
 import { type SsrHtml, renderToString } from "@barqjs/server";
 

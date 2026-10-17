@@ -4,7 +4,8 @@
  * ready by then.
  */
 
-import { DEV, createMemo, httpHeader, httpStatus } from "@barqjs/core";
+import { DEV, createMemo } from "@barqjs/core";
+import { httpHeader, httpStatus } from "@barqjs/web";
 import { esc, html as ssrHtml, ssrLoading } from "@barqjs/server";
 import { describe, expect, spyOn, test } from "bun:test";
 

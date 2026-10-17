@@ -1,4 +1,5 @@
-import { For, createSignal, dynamic } from "@barqjs/core";
+import { For, createSignal } from "@barqjs/core";
+import { dynamic } from "@barqjs/web";
 import { css } from "@barqjs/css";
 import { AudioWaveform } from "@barqjs/lucide/icons/audio-waveform";
 import { BadgeCheck } from "@barqjs/lucide/icons/badge-check";

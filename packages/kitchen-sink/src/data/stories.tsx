@@ -7,7 +7,8 @@
  * bound to it: a binding slot.
  */
 
-import { type Child, Loading, createMemo, useHead } from "@barqjs/core";
+import { type Child, Loading, createMemo } from "@barqjs/core";
+import { useHead } from "@barqjs/web";
 import { type BindingSlot, type Slot, createServerFn, invalidateFrames } from "@barqjs/start";
 
 interface Story {

@@ -12,7 +12,7 @@
  * optionality. `parsePattern` carries the grammar.
  */
 
-export { isNavigable } from "@barqjs/core/internal";
+export { isNavigable } from "@barqjs/web/internal";
 
 /**
  * One piece of a path pattern.

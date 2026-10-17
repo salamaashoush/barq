@@ -29,13 +29,12 @@ import {
   getContext,
   getOwner,
   type Incoming,
-  isServer,
   onCleanup,
-  Portal,
   provide,
   Show,
   createSignal,
 } from "@barqjs/core";
+import { isServer, Portal } from "@barqjs/web";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { ownerDocument } from "./dom.ts";
 import { useLocale } from "./i18n.ts";

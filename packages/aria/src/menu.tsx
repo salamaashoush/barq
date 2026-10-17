@@ -32,11 +32,11 @@ import {
   getOwner,
   type Incoming,
   install,
-  isServer,
   onCleanup,
   provide,
   createSignal,
 } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { tryCleanup } from "@barqjs/primitives/utils";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import type {

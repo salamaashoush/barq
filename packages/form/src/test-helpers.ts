@@ -1,4 +1,5 @@
-import { type JSXElement, flush, render } from "@barqjs/core";
+import { type JSXElement, flush } from "@barqjs/core";
+import { render } from "@barqjs/web";
 export { fakeClock, realClock } from "../../testing/src/test-clock.ts";
 
 export const tick = (ms = 0): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));

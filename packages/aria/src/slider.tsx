@@ -31,11 +31,11 @@ import {
   getOwner,
   type Incoming,
   install,
-  isServer,
   createSignal,
   onSettled,
   untrack,
 } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { focusWithoutScrolling } from "./dom.ts";
 import { focusRing } from "./focus.ts";

@@ -2,7 +2,8 @@
  * One guide's page: `/docs/<slug>`, in the shell the component pages use.
  */
 
-import { dynamic, type Child } from "@barqjs/core";
+import { dynamic } from "@barqjs/web";
+import type { Child } from "@barqjs/core";
 import { css } from "@barqjs/css";
 import { Link, useParams } from "@barqjs/router";
 import { Button, Empty } from "@barqjs/ui";

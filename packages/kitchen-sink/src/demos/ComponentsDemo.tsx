@@ -7,7 +7,8 @@
  * - Children: direct JSX instead of `{() => <div>...</div>}`
  */
 
-import { Errored, For, Match, Portal, Show, Switch, createSignal } from "@barqjs/core";
+import { Errored, For, Match, Show, Switch, createSignal } from "@barqjs/core";
+import { Portal } from "@barqjs/web";
 import { css } from "@barqjs/css";
 import { Button, DemoCard, DemoSection } from "./shared";
 

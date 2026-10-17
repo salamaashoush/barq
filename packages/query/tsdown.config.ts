@@ -10,6 +10,7 @@ export default defineConfig({
   deps: {
     neverBundle: [
       "@barqjs/core",
+      "@barqjs/web",
       "@barqjs/router",
       "@tanstack/query-core",
       "@tanstack/query-devtools",
@@ -18,6 +19,6 @@ export default defineConfig({
   },
   esbuildOptions: {
     jsx: "automatic",
-    jsxImportSource: "@barqjs/core",
+    jsxImportSource: "@barqjs/web",
   },
 });

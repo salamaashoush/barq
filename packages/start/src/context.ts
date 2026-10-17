@@ -26,15 +26,14 @@
 
 import type { AsyncLocalStorage } from "node:async_hooks";
 
-import type { RequestEventLocals, ResponseStub } from "@barqjs/core";
+import type { RequestEventLocals, ResponseStub } from "@barqjs/web";
 import {
   commitResponseStub,
   createRequestEvent,
   createResponseStub,
-  diagnosticsEnabled,
-  emitDiagnostic,
   foldResponseStub,
-} from "@barqjs/core/internal";
+} from "@barqjs/web/internal";
+import { diagnosticsEnabled, emitDiagnostic } from "@barqjs/core/internal";
 import { provideRequestEvent } from "@barqjs/server/storage";
 
 import { type CookieOptions, deleteCookieLine, parseCookies, serializeCookie } from "./cookies.ts";

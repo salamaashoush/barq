@@ -4,7 +4,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, mock, test } from "bun:test";
-import { createSignal, render } from "@barqjs/core";
+import { createSignal } from "@barqjs/core";
+import { render } from "@barqjs/web";
 import type { PersistedClient, Persister } from "@tanstack/query-persist-client-core";
 
 import { BarqQueryDevtools } from "./devtools.ts";

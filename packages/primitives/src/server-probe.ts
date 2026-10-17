@@ -12,7 +12,8 @@
  * Prints one JSON object. Any throw is the failure.
  */
 
-import { flush, isServer, createRoot, createSignal, runWithOwner } from "@barqjs/core";
+import { flush, createRoot, createSignal, runWithOwner } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 
 import { cubicBezier, easing, spring, tween } from "./animation.ts";
 import {

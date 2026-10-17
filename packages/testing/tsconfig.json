@@ -16,7 +16,7 @@
     // Stopping on the error is what keeps a build from writing into a sibling.
     "noEmitOnError": true,
     "jsx": "react-jsx",
-    "jsxImportSource": "@barqjs/core",
+    "jsxImportSource": "@barqjs/web",
     "lib": ["ESNext", "DOM", "DOM.Iterable"],
     "types": ["@types/bun"]
   },

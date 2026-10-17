@@ -3,13 +3,13 @@ import {
   type JSXElement,
   cell,
   createContext,
-  isServer,
   onCleanup,
   provide,
   read,
   readSlot,
   createSignal,
 } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import type { QueryClient } from "@tanstack/query-core";
 
 const CLIENT = createContext<QueryClient>(undefined, "barq-query-client");

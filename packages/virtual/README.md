@@ -22,7 +22,8 @@ A list of 10,000 rows of unknown height. Only the rows in the viewport, plus the
 overscan, are in the document.
 
 ```tsx
-import { For, render } from "@barqjs/core";
+import { For } from "@barqjs/core";
+import { render } from "@barqjs/web";
 import { type VirtualItem, createVirtualizer } from "@barqjs/virtual";
 
 const contacts = Array.from({ length: 10_000 }, (_, id) => ({

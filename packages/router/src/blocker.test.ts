@@ -8,7 +8,8 @@
  * `popstate`, which is what a real back button is.
  */
 
-import { type Cell, flush, insert, render } from "@barqjs/core";
+import { type Cell, flush } from "@barqjs/core";
+import { insert, render } from "@barqjs/web";
 import { afterEach, describe, expect, test } from "bun:test";
 
 import { type BlockerResolver, type ShouldBlockArgs, Block } from "./blocker.ts";
@@ -44,7 +45,7 @@ const page =
     const node = document.createElement("section");
     node.append(label);
     const extra = body();
-    if (extra !== null && extra !== undefined) insert(node, extra as never);
+    if (extra !== null && extra !== undefined) insert(node, extra);
     return node;
   };
 

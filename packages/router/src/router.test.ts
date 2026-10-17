@@ -7,16 +7,8 @@
  * that did nothing.
  */
 
-import {
-  type Scope,
-  flush,
-  getOwner,
-  insert,
-  isDisposed,
-  lazy,
-  render,
-  settle,
-} from "@barqjs/core";
+import { type Scope, flush, getOwner, isDisposed, lazy, settle } from "@barqjs/core";
+import { insert, render } from "@barqjs/web";
 import { afterEach, describe, expect, jest, test } from "bun:test";
 
 import { Await, Link, NavLink, Router, RouterProvider, linkHref, useRouter } from "./components.ts";

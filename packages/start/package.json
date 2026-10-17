@@ -93,12 +93,14 @@
     "@barqjs/compiler": "workspace:*",
     "@barqjs/core": "workspace:*",
     "@barqjs/server": "workspace:*",
+    "@barqjs/web": "workspace:*",
     "@types/bun": "^1.4.3",
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
     "@barqjs/core": ">=0.1.0",
-    "@barqjs/server": ">=0.1.0"
+    "@barqjs/server": ">=0.1.0",
+    "@barqjs/web": ">=0.1.0"
   },
   "engines": {
     "node": ">=20.16.0"

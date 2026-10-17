@@ -1,4 +1,5 @@
-import { type Signal, isServer, createRenderEffect, createSignal } from "@barqjs/core";
+import { type Signal, createRenderEffect, createSignal } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { on } from "./event.ts";
 
 export interface PersistOptions<T> {

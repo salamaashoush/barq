@@ -3,10 +3,10 @@ import {
   createRenderEffect,
   createSignal,
   createStore,
-  isServer,
   onCleanup,
   untrack,
 } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import {
   type DefaultError,
   type DefaultedQueryObserverOptions,

@@ -15,7 +15,7 @@
  * client's.
  */
 
-import { hydrate, shellReady } from "@barqjs/core";
+import { hydrate, shellReady } from "@barqjs/web";
 import { type AnySerializationAdapter, registerSerializationAdapters } from "@barqjs/server/codec";
 import { frameAdapter } from "@barqjs/start/client";
 

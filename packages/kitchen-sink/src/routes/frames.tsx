@@ -9,7 +9,8 @@
  * liked, and nothing else on the page is built again.
  */
 
-import { type Child, type Incoming, createMemo, createSignal, dynamic } from "@barqjs/core";
+import { type Child, type Incoming, createMemo, createSignal } from "@barqjs/core";
+import { dynamic } from "@barqjs/web";
 import { live } from "@barqjs/start";
 import { css } from "@barqjs/css";
 import { Link, type RouteProps, createFileRoute, useLocation } from "@barqjs/router";

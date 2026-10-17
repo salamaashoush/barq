@@ -1,4 +1,5 @@
-import { type Accessor, isServer, createSignal } from "@barqjs/core";
+import { type Accessor, createSignal } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { on } from "./event.ts";
 import { type MaybeAccessor, access, shared } from "./utils.ts";
 

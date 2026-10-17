@@ -21,9 +21,9 @@ import {
   getContext,
   getOwner,
   install,
-  isServer,
   createSignal,
 } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { tryCleanup } from "@barqjs/primitives/utils";
 import { access, type MaybeAccessor } from "./utils.ts";
 

@@ -1,11 +1,5 @@
-import {
-  type Cell,
-  type JSXElement,
-  createRenderEffect,
-  isServer,
-  onCleanup,
-  readSlot,
-} from "@barqjs/core";
+import { type Cell, type JSXElement, createRenderEffect, onCleanup, readSlot } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { type QueryClient, onlineManager } from "@tanstack/query-core";
 import type {
   DevtoolsButtonPosition,

@@ -15,7 +15,8 @@
  * `useNavigate` away for anyone who wants it.
  */
 
-import { bindProp, block, insert, listen, setAttr, setStyle } from "@barqjs/core";
+import { bindProp, insert, listen, setAttr, setStyle } from "@barqjs/web";
+import { block } from "@barqjs/core";
 
 import { useRouter } from "./components.ts";
 import { type RouterState, unmask } from "./router.ts";

@@ -6,7 +6,8 @@
  * both, without a DOM.
  */
 
-import { flush, insert, render, spread } from "@barqjs/core";
+import { flush } from "@barqjs/core";
+import { insert, render, spread } from "@barqjs/web";
 import { afterEach, describe, expect, test } from "bun:test";
 
 import {

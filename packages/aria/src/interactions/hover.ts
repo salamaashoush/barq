@@ -13,7 +13,8 @@
  * different element than the first.
  */
 
-import { type Accessor, createEffect, isServer, createSignal } from "@barqjs/core";
+import { type Accessor, createEffect, createSignal } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { tryCleanup } from "@barqjs/primitives/utils";
 import { contains, ownerDocument, targetElement } from "../dom.ts";
 import { access, type DOMProps, type MaybeAccessor } from "../utils.ts";

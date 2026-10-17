@@ -26,7 +26,8 @@
  * id there is no way to say which one.
  */
 
-import { createSignal, isServer, type Accessor, type Child } from "@barqjs/core";
+import { createSignal, type Accessor, type Child } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 
 import { access, type MaybeAccessor } from "./utils.ts";
 

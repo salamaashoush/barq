@@ -62,7 +62,8 @@ server functions) or `minimal` (the compiler and signals, no router).
 ## A component
 
 ```tsx
-import { createSignal, render } from "@barqjs/core";
+import { createSignal } from "@barqjs/core";
+import { render } from "@barqjs/web";
 
 function Counter() {
   const [count, setCount] = createSignal(0);

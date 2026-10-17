@@ -3,9 +3,9 @@ import {
   composeMiddleware,
   createRequestEvent,
   createSSRResponse,
-  getRequestEvent,
   renderToStream,
 } from "@barqjs/server";
+import { getRequestEvent } from "@barqjs/web";
 import { provideRequestEvent } from "@barqjs/server/storage";
 
 function App() {

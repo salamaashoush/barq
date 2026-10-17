@@ -20,10 +20,10 @@ import {
   getContext,
   getOwner,
   install,
-  isServer,
   onSettled,
   createSignal,
 } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { tryCleanup } from "@barqjs/primitives/utils";
 import {
   activeElement,

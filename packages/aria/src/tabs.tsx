@@ -30,11 +30,11 @@ import {
   getOwner,
   type Incoming,
   install,
-  isServer,
   Show,
   createSignal,
   untrack,
 } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import type { Collection, ItemAccessors, Key, Node } from "./collections.ts";
 import {

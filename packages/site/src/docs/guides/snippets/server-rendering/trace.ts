@@ -1,4 +1,4 @@
-import { getTraceContext } from "@barqjs/core";
+import { getTraceContext } from "@barqjs/web";
 
 export default async function loadOrders(): Promise<unknown> {
   const trace = getTraceContext();

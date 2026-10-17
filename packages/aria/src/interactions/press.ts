@@ -22,7 +22,8 @@
  *   drag and selection behaviour that call would also cancel.
  */
 
-import { type Accessor, createEffect, isServer, createSignal } from "@barqjs/core";
+import { type Accessor, createEffect, createSignal } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { tryCleanup } from "@barqjs/primitives/utils";
 import {
   contains,

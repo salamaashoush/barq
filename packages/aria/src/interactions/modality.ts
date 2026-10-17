@@ -14,7 +14,8 @@
  * makes that a lie.
  */
 
-import { type Accessor, isServer, createSignal, untrack } from "@barqjs/core";
+import { type Accessor, createSignal, untrack } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { activeElement, eventTarget, ownerDocument, ownerWindow } from "../dom.ts";
 import { isAndroid, isMac } from "../platform.ts";
 import { tryCleanup } from "@barqjs/primitives/utils";

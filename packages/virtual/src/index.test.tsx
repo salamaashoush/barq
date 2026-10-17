@@ -7,9 +7,9 @@ import {
   createRoot,
   createSignal,
   flush,
-  render,
   snapshot,
 } from "@barqjs/core";
+import { render } from "@barqjs/web";
 import { renderToString } from "@barqjs/server";
 import {
   type Range,

@@ -1,13 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import {
-  boundary,
-  createRoot,
-  createSignal,
-  createEffect,
-  flush,
-  getOwner,
-  render,
-} from "@barqjs/core";
+import { boundary, render } from "@barqjs/web";
+import { createRoot, createSignal, createEffect, flush, getOwner } from "@barqjs/core";
 import { eventSignal, on, onMap, once } from "./event.ts";
 import { owned } from "./utils.ts";
 

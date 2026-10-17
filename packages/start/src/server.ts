@@ -13,10 +13,9 @@ import {
   commitEventResponse,
   commitResponseStub,
   createRequestEvent,
-  diagnosticsEnabled,
-  emitDiagnostic,
   isNavigable,
-} from "@barqjs/core/internal";
+} from "@barqjs/web/internal";
+import { diagnosticsEnabled, emitDiagnostic } from "@barqjs/core/internal";
 import { decodeWire, encodeWire } from "@barqjs/server/codec";
 import { provideRequestEvent } from "@barqjs/server/storage";
 import { createBodyTooLargeError, limitBodyStream } from "srvx/body-limit";

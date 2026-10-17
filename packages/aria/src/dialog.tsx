@@ -22,11 +22,11 @@ import {
   type Child,
   type Incoming,
   onCleanup,
-  Portal,
   Show,
   createSignal,
   untrack,
 } from "@barqjs/core";
+import { Portal } from "@barqjs/web";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 
 import { focusScope, type FocusScopeOptions } from "./focus.ts";

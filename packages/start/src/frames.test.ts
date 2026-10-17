@@ -4,7 +4,8 @@
  * in process.
  */
 
-import { block, useHead } from "@barqjs/core";
+import { block } from "@barqjs/core";
+import { useHead } from "@barqjs/web";
 import { clearSerializationAdapters, encodeWire } from "@barqjs/server/codec";
 import { esc, html } from "@barqjs/server";
 import { afterEach, describe, expect, test } from "bun:test";

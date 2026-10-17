@@ -27,7 +27,8 @@
  *   appears later lands between the right handles.
  */
 
-import { type Accessor, createSignal, createEffect, isServer, untrack } from "@barqjs/core";
+import { type Accessor, createSignal, createEffect, untrack } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { tryCleanup } from "@barqjs/primitives/utils";
 import { ownerWindow } from "./dom.ts";
 import { type ReadingDirection, useDirection } from "./i18n.ts";

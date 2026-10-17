@@ -35,7 +35,7 @@ const OWN_MODULES = fileURLToPath(new URL("../node_modules", import.meta.url));
  * entry imports `collectCss` from `@barqjs/css`, so a project that never writes
  * a `css` block still resolves it.
  */
-const WORKSPACE = ["core", "css", "router", "server", "start", "compiler", "vite"];
+const WORKSPACE = ["core", "css", "router", "server", "start", "compiler", "vite", "web"];
 
 /** Built once for the whole file: a template resolves `@barqjs/*` through it. */
 function ensureBuilt(): void {

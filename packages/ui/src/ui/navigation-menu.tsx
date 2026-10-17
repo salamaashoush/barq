@@ -2,13 +2,13 @@ import {
   createContext,
   getContext,
   onCleanup,
-  Portal,
   provide,
   Show,
   createSignal,
   type Child,
   type Incoming,
 } from "@barqjs/core";
+import { Portal } from "@barqjs/web";
 import type { Key } from "@barqjs/aria/collections";
 import {
   navigationMenu,

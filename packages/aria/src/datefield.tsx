@@ -29,10 +29,10 @@ import {
   createEffect,
   getContext,
   type Incoming,
-  isServer,
   provide,
   createSignal,
 } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import {
   CalendarDate,

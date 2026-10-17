@@ -9,9 +9,10 @@
  * browser to fill. Both write the markup `frames.ts` describes.
  */
 
-import type { HeadTag } from "@barqjs/core";
+import type { HeadTag } from "@barqjs/web";
 import { block, childScope, getOwner, runWithOwner, untrack } from "@barqjs/core";
-import { SSR_HTML_BRAND, setHeadSink, setHydratable } from "@barqjs/core/internal";
+import { SSR_HTML_BRAND, setHeadSink } from "@barqjs/web/internal";
+import { setHydratable } from "@barqjs/core/internal";
 import { SlotValue, esc, html, renderFrame, setServerComponent } from "@barqjs/server";
 import {
   encodeWire,

@@ -13,10 +13,10 @@ import {
   type JSXElement,
   HYDRATE,
   block,
-  boundary,
   createEffect,
   read,
 } from "@barqjs/core";
+import { boundary } from "@barqjs/web";
 
 import { LinkBackendContext, RouterContext, componentSlot } from "./components.ts";
 import { isNotFound } from "./errors.ts";

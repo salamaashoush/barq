@@ -30,9 +30,9 @@ import {
   getOwner,
   type Incoming,
   install,
-  isServer,
   createSignal,
 } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { button } from "./button.tsx";
 import { focusRing } from "./focus.ts";

@@ -25,7 +25,8 @@
  * markup already says, so no piece of content arrives twice.
  */
 
-import type { Child, HeadTag, Incoming, JSXElement } from "@barqjs/core";
+import type { Child, Incoming, JSXElement } from "@barqjs/core";
+import type { HeadTag } from "@barqjs/web";
 
 /**
  * A slot on a server component's props: a call the browser answers with its

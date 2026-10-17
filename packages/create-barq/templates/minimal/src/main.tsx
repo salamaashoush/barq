@@ -1,4 +1,4 @@
-import { render } from "@barqjs/core";
+import { render } from "@barqjs/web";
 
 import { App } from "./App.tsx";
 

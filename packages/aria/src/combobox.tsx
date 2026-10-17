@@ -37,15 +37,14 @@ import {
   type Incoming,
   install,
   isBlock,
-  isServer,
   createSignal,
   onCleanup,
   onSettled,
-  Portal,
   provide,
   Show,
   untrack,
 } from "@barqjs/core";
+import { isServer, Portal } from "@barqjs/web";
 import { ref as makeRef, mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { button } from "./button.tsx";
 import {

@@ -47,10 +47,10 @@ import {
   type Incoming,
   install,
   type JSXElement,
-  isServer,
   onCleanup,
   untrack,
 } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { mergeRefs, type RefTarget } from "@barqjs/primitives/refs";
 import { useDirection } from "./i18n.ts";
 import {

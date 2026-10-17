@@ -7,7 +7,8 @@
  * variants come after `## Usage` with one card each.
  */
 
-import { For, dynamic, type Child, type Incoming } from "@barqjs/core";
+import { For, type Child, type Incoming } from "@barqjs/core";
+import { dynamic } from "@barqjs/web";
 import { css } from "@barqjs/css";
 import { ArrowLeft } from "@barqjs/lucide/icons/arrow-left";
 import { ArrowRight } from "@barqjs/lucide/icons/arrow-right";

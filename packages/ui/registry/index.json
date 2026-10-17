@@ -529,6 +529,7 @@
         "@barqjs/core",
         "@barqjs/css",
         "@barqjs/primitives",
+        "@barqjs/web",
         "@tanstack/charts"
       ],
       "registryDependencies": [
@@ -726,7 +727,8 @@
       "dependencies": [
         "@barqjs/aria",
         "@barqjs/core",
-        "@barqjs/css"
+        "@barqjs/css",
+        "@barqjs/web"
       ],
       "registryDependencies": [
         "button",
@@ -1068,7 +1070,8 @@
         "@barqjs/core",
         "@barqjs/css",
         "@barqjs/lucide",
-        "@barqjs/primitives"
+        "@barqjs/primitives",
+        "@barqjs/web"
       ],
       "registryDependencies": [
         "layers",
@@ -1526,7 +1529,8 @@
         "@barqjs/core",
         "@barqjs/css",
         "@barqjs/lucide",
-        "@barqjs/primitives"
+        "@barqjs/primitives",
+        "@barqjs/web"
       ],
       "registryDependencies": [
         "button",
@@ -1588,7 +1592,8 @@
         "@barqjs/aria",
         "@barqjs/core",
         "@barqjs/css",
-        "@barqjs/primitives"
+        "@barqjs/primitives",
+        "@barqjs/web"
       ],
       "registryDependencies": [
         "layers",
@@ -1892,7 +1897,8 @@
       "dependencies": [
         "@barqjs/core",
         "@barqjs/css",
-        "@barqjs/lucide"
+        "@barqjs/lucide",
+        "@barqjs/web"
       ],
       "registryDependencies": [
         "breadcrumb",
@@ -2022,7 +2028,8 @@
       "dependencies": [
         "@barqjs/core",
         "@barqjs/css",
-        "@barqjs/lucide"
+        "@barqjs/lucide",
+        "@barqjs/web"
       ],
       "registryDependencies": [
         "avatar",

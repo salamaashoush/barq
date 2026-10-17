@@ -10,10 +10,10 @@ import {
   Loading,
   createEffect,
   flush,
-  render,
   createRoot,
   runWithOwner,
 } from "@barqjs/core";
+import { render } from "@barqjs/web";
 import { QueryClient } from "@tanstack/query-core";
 import {
   QueryClientProvider,

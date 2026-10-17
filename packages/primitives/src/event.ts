@@ -4,9 +4,9 @@ import {
   createRoot,
   createSignal,
   getOwner,
-  listen,
   runWithOwner,
 } from "@barqjs/core";
+import { listen } from "@barqjs/web";
 import { type Clear, type MaybeAccessor, access } from "./utils.ts";
 
 /**

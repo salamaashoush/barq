@@ -1,11 +1,5 @@
-import {
-  type Accessor,
-  createMemo,
-  createSignal,
-  isHydrating,
-  isServer,
-  onHydrationEnd,
-} from "@barqjs/core";
+import { type Accessor, createMemo, createSignal } from "@barqjs/core";
+import { isHydrating, isServer, onHydrationEnd } from "@barqjs/web";
 import { on } from "./event.ts";
 import { type MaybeAccessor, access, sharedKeyed } from "./utils.ts";
 

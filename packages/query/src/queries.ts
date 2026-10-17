@@ -3,9 +3,9 @@ import {
   createRenderEffect,
   createSignal,
   createStore,
-  isServer,
   untrack,
 } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import {
   type DefaultError,
   type OmitKeyof,

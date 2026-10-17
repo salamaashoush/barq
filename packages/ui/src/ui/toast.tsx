@@ -14,7 +14,6 @@ import {
 } from "@barqjs/aria/toast";
 import {
   For,
-  Portal,
   createContext,
   createSignal,
   createEffect,
@@ -27,6 +26,7 @@ import {
   type Child,
   type Incoming,
 } from "@barqjs/core";
+import { Portal } from "@barqjs/web";
 import { layer } from "@barqjs/css";
 import { CircleCheck } from "@barqjs/lucide/icons/circle-check";
 import { Info } from "@barqjs/lucide/icons/info";

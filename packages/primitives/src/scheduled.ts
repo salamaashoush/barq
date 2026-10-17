@@ -1,4 +1,5 @@
-import { type Accessor, isServer, getObserver, createSignal } from "@barqjs/core";
+import { type Accessor, getObserver, createSignal } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { type Clear, noop, tryCleanup } from "./utils.ts";
 
 /** A callback whose invocation is deferred, with the deferral under your control. */

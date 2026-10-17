@@ -7,7 +7,8 @@
 import { describe, expect, spyOn, test } from "bun:test";
 
 import { html as ssrHtml } from "@barqjs/server";
-import { For, flush, createSignal, onCleanup, template } from "@barqjs/core";
+import { For, flush, createSignal, onCleanup } from "@barqjs/core";
+import { template } from "@barqjs/web";
 
 import { renderAndHydrate } from "./hydrate.ts";
 import { cleanup } from "./pure.ts";

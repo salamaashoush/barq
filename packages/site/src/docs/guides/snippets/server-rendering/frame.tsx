@@ -1,4 +1,5 @@
-import { type Child, type Incoming, createSignal, dynamic } from "@barqjs/core";
+import { type Child, type Incoming, createSignal } from "@barqjs/core";
+import { dynamic } from "@barqjs/web";
 import { type Slot, createServerFn } from "@barqjs/start";
 
 const STORIES: Record<string, { title: string; comments: { id: number; text: string }[] }> = {

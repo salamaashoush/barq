@@ -7,7 +7,8 @@
  * above, or a 404 fallback ends up rendering for a crash.
  */
 
-import { createSignal, flush, insert, markSafeError, render } from "@barqjs/core";
+import { createSignal, flush, markSafeError } from "@barqjs/core";
+import { insert, render } from "@barqjs/web";
 import { esc, html as ssrHtml } from "@barqjs/server";
 import { afterEach, describe, expect, test } from "bun:test";
 

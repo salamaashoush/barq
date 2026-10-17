@@ -3,11 +3,11 @@ import {
   createEffect,
   createMemo,
   createRoot,
-  isServer,
   onCleanup,
   runWithOwner,
   untrack,
 } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { type DehydratedState, type QueryClient, dehydrate, hydrate } from "@tanstack/query-core";
 
 /** What crosses from a server render to the page: the queries one read asked for. */

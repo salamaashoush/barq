@@ -24,11 +24,11 @@ import {
   getContext,
   getOwner,
   install,
-  isServer,
   provide,
   createSignal,
   untrack,
 } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import {
   addEvent,
   contains,

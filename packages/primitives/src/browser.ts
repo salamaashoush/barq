@@ -3,9 +3,9 @@ import {
   createRenderEffect,
   createSignal,
   getOwner,
-  isServer,
   runWithOwner,
 } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { on } from "./event.ts";
 import {
   type Clear,

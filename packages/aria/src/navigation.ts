@@ -47,7 +47,8 @@
  * finds it open and shuts it again.
  */
 
-import { createSignal, createEffect, createUniqueId, isServer, type Accessor } from "@barqjs/core";
+import { createSignal, createEffect, createUniqueId, type Accessor } from "@barqjs/core";
+import { isServer } from "@barqjs/web";
 import { resizeObserver } from "@barqjs/primitives/observers";
 import { ref as makeRef } from "@barqjs/primitives/refs";
 

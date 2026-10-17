@@ -17,6 +17,7 @@
     "@barqjs/router": "workspace:*",
     "@barqjs/server": "workspace:*",
     "@barqjs/start": "workspace:*",
+    "@barqjs/web": "workspace:*",
     "@tanstack/query-core": "^5.104.3"
   },
   "devDependencies": {

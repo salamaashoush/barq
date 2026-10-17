@@ -1,4 +1,5 @@
-import { For, dynamic } from "@barqjs/core";
+import { For } from "@barqjs/core";
+import { dynamic } from "@barqjs/web";
 import { css } from "@barqjs/css";
 import { Link, useParams } from "@barqjs/router";
 import {
