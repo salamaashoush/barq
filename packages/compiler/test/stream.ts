@@ -319,4 +319,38 @@ export default function StreamNestedBoundaries() {
   )
 }
 `,
+
+  /**
+   * A boundary that parks BEFORE the read that unwinds the body around it. The
+   * body is built again once its own value arrives, and only that build's copy
+   * of the inner boundary stands on the page to be swapped, its value seeded
+   * under the key both builds declared it at.
+   */
+  "stream-nested-before-unwind": `
+import { Loading, createMemo } from "@barqjs/core"
+function Inner() {
+  const inner = createMemo(() => new Promise((r) => setTimeout(() => r("INNER"), 10)))
+  return <u class="iv">{() => inner()}</u>
+}
+function Outer() {
+  const outer = createMemo(() => new Promise((r) => setTimeout(() => r("OUTER"), 0)))
+  return (
+    <section>
+      <Loading fallback={<span class="i">skel-inner</span>}>
+        <Inner />
+      </Loading>
+      <b class="ov">{() => outer()}</b>
+    </section>
+  )
+}
+export default function StreamNestedBeforeUnwind() {
+  return (
+    <div>
+      <Loading fallback={<span class="o">skel-outer</span>}>
+        <Outer />
+      </Loading>
+    </div>
+  )
+}
+`,
 });
