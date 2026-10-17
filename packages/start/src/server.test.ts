@@ -1106,9 +1106,8 @@ describe("a server function's control-flow throws", () => {
   });
 
   test("the targets a redirect may name are the router's list, exactly", async () => {
-    // The pin between the two copies of `isNavigable`. `packages/router`'s own
-    // `path.test.ts` runs the same table against its copy, so a change to
-    // either that the other does not follow fails on one side or the other.
+    // The table `packages/router`'s `errors.test.ts` runs against
+    // `isNavigable` directly, here through a server function's redirect.
     const allowed = [
       "/login",
       "login",

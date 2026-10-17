@@ -51,6 +51,7 @@ export {
   foldResponseStub,
   freezeDeclarations,
   getExpectedRedirectStatus,
+  isNavigable,
 } from "./request-event.ts";
 
 export { mergeServerTiming, traceForEvent, traceMetaMarkup } from "./trace-context.ts";

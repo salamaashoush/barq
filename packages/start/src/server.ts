@@ -15,6 +15,7 @@ import {
   createRequestEvent,
   diagnosticsEnabled,
   emitDiagnostic,
+  isNavigable,
 } from "@barqjs/core/internal";
 import { decodeWire, encodeWire } from "@barqjs/server/codec";
 import { provideRequestEvent } from "@barqjs/server/storage";
@@ -800,25 +801,6 @@ function answerHeaders(extra: unknown): Headers {
   } catch {
     return new Headers();
   }
-}
-
-/**
- * Somewhere a browser may be SENT.
- *
- * A SECOND COPY of `isNavigable` from `packages/router/src/path.ts`, and the
- * duplication is the lesser evil rather than an oversight: this package cannot
- * import the router (see {@link REDIRECT}), and a server function is an
- * independent trust boundary that has to make the decision for itself. The
- * router's copy carries the reasoning and the browser measurement behind it.
- * `server.test.ts` pins the two against one table of cases, so a change to
- * either that the other does not follow fails there rather than silently
- * opening a hole on one channel.
- */
-function isNavigable(to: string): boolean {
-  const scheme = /^([a-zA-Z][a-zA-Z\d+\-.]*):/.exec(to);
-  if (scheme === null) return true;
-  const name = (scheme[1] ?? "").toLowerCase();
-  return name === "http" || name === "https";
 }
 
 function reportRefusedRedirect(to: string): void {

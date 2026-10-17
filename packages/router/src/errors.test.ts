@@ -92,13 +92,9 @@ describe("the brands @barqjs/start agrees to", () => {
 });
 
 /**
- * The pin between the two copies of `isNavigable`.
- *
- * `packages/start/src/server.ts` carries a second one, because a server function
- * is an independent trust boundary and cannot import this package. The same
- * table runs against that copy under `the targets a redirect may name are the
- * router's list, exactly`, so a change to either that the other does not follow
- * fails on one side or the other rather than opening a hole on one channel.
+ * What `isNavigable` allows. `@barqjs/start` refuses a server function's redirect
+ * with the same function, and `the targets a redirect may name are the router's
+ * list, exactly` runs this table through that channel.
  */
 describe("what a redirect may name", () => {
   const allowed = [
