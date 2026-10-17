@@ -1807,7 +1807,7 @@ const EMPTY_NODES: Node[] = [];
  * That is one `parentNode` read per node against a `removeChild` per node, and
  * the reads do not touch layout.
  */
-function removeNodes(nodes: readonly Node[]): void {
+export function removeNodes(nodes: readonly Node[]): void {
   const count = nodes.length;
   if (count === 0) return;
   const host = nodes[0].parentNode;

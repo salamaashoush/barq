@@ -17,6 +17,7 @@ import {
   delegatedRootOf,
   hostPortal,
   registerDelegatedContainer,
+  removeNodes,
   unregisterDelegatedContainer,
 } from "./dom.ts";
 import {
@@ -389,32 +390,6 @@ function insertAt(site: Site, nodes: readonly Node[]): void {
 function place(parent: Node, node: Node, before: Node | null): void {
   if (node.parentNode === parent && node.nextSibling === before) return;
   parent.insertBefore(node, before);
-}
-
-/**
- * Removal, in ONE DOM call when the run being removed is every child its parent
- * has — `dom.ts`'s `removeNodes` states the measurement and the guard.
- *
- * This is the copy the LIST path reaches, and the list is where it matters:
- * `clear rows` empties a `<tbody>` of 1,000 rows through `syncRows`, and the
- * per-node loop was 2.85 ms of that operation's 3.95 ms of JS.
- */
-function removeNodes(nodes: readonly Node[]): void {
-  const count = nodes.length;
-  if (count === 0) return;
-  const host = nodes[0].parentNode;
-  if (host !== null && count === host.childNodes.length && allUnder(host, nodes)) {
-    host.textContent = "";
-    return;
-  }
-  for (let i = 0; i < count; i++) nodes[i].parentNode?.removeChild(nodes[i]);
-}
-
-function allUnder(host: Node, nodes: readonly Node[]): boolean {
-  for (let i = 0; i < nodes.length; i++) {
-    if (nodes[i].parentNode !== host) return false;
-  }
-  return true;
 }
 
 // ============================================================================
