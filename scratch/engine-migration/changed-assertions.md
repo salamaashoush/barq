@@ -1179,3 +1179,14 @@ callback through because the two cases were indistinguishable.
   it now asserts the function was read and was not handed the `when` value. A hole reads content
   as a Cell, with the owner as the argument the Cell contract says it ignores, which is why the
   test no longer asserts the default value itself.
+
+
+## Test isolation and shared helpers
+
+- `compiler/test/leak-known-failures.ts` `LEAK_REACH.listeners`: 328 to 32. Every render root
+  listens on its container for every event type the process has delegated, so the count took in
+  types other test files had declared: 259 with `leaks.test.ts` run alone, 328 in the suite's
+  file order. `openSession` now isolates delegation (`isolateDelegatedEvents` in `core/src/dom.ts`)
+  for its window, so a session counts the container listeners its own module asks for. 32 alone,
+  in the suite, and after three random sets of preceding files. The B4 assertions still run on
+  every listener a session registers.

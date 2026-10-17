@@ -183,12 +183,18 @@ export const LEAK_FAILURES: readonly LeakKnownFailure[] = Object.freeze(
  * Then 324 effects to 310: every live binding of a template shares one render
  * effect, where each element had its own and an opaque call in an attribute
  * had one through `bindProp`. Survivors stay at zero.
+ *
+ * Then 328 listeners to 32: a root listens on its container for every type the
+ * PROCESS has delegated, so the count took in types other test files declared
+ * and moved with the file order (259 with this file run alone). Each session
+ * now opens with no type delegated, so a root's container listeners are the
+ * ones its own module asked for, whatever ran before it.
  */
 export const LEAK_REACH: Readonly<Record<string, number>> = Object.freeze({
   sessions: 158,
   scopesEntered: 501,
   effectsCreated: 310,
-  listeners: 328,
+  listeners: 32,
 });
 
 export function leakKey(fixture: string, leak: string): string {

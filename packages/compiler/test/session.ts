@@ -27,13 +27,15 @@
  */
 
 import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 import { compileSource, loadModule, settle } from "./harness.ts";
 import { normalizeChannels, resetIdentity } from "./normalize.ts";
 import { beginTrace, endTrace, type Trace } from "./tracer.ts";
 
 export const L4_DIR = join(import.meta.dir, "..", "fixtures", "l4");
+
+const DOM_PATH = join(dirname(Bun.resolveSync("@barqjs/core", import.meta.dir)), "dom.ts");
 
 export interface OwnershipEvent {
   seq: number;
@@ -445,11 +447,16 @@ export async function openSession(
   // at module scope and runs at import time, so a probe installed later sees a
   // module that registered nothing and a document that is quietly listening.
   const listenerProbe = installListenerProbe();
+  // Every root listens on its container for every type the process has ever
+  // delegated, so without this a session's listener count would depend on
+  // which test files ran before it.
+  const restoreDelegation = (await import(DOM_PATH)).isolateDelegatedEvents() as () => void;
   let mod: Driven & Record<string, unknown>;
   try {
     mod = (await loadModule(code, `l4-${fixture}`)) as unknown as Driven & Record<string, unknown>;
   } catch (error) {
     listenerProbe.stop();
+    restoreDelegation();
     throw error;
   }
 
@@ -607,6 +614,7 @@ export async function openSession(
     endTrace();
     asyncProbe.stop();
     listenerProbe.stop();
+    restoreDelegation();
     container.remove();
     document.body.innerHTML = "";
   }

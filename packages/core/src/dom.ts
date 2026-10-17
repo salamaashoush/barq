@@ -524,6 +524,19 @@ function declareDelegated(type: string): void {
 }
 
 /**
+ * Test seam: forget every declared type until the returned restore runs, so a
+ * measurement sees the types its own module and render declare and not the ones
+ * whatever ran earlier in the process happened to leave behind.
+ */
+export function isolateDelegatedEvents(): () => void {
+  const saved = [...delegatedEvents];
+  delegatedEvents.clear();
+  return () => {
+    for (const type of saved) declareDelegated(type);
+  };
+}
+
+/**
  * Listen for every delegated type on `container`, on behalf of the root
  * `owner`. A root registers its own container; a portal mounted outside its
  * root registers the box it mounted, on behalf of that root.
