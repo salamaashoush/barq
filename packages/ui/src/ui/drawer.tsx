@@ -28,6 +28,7 @@ import {
   Portal,
   provide,
   Show,
+  untrack,
   type Child,
   type Incoming,
 } from "@barqjs/core";
@@ -813,7 +814,7 @@ export function DrawerContent(props: Incoming<DrawerContentProps>) {
       return drag.isDragging();
     },
     (dragging) => {
-      if (!dragging) place();
+      if (!dragging) untrack(place);
     },
   );
 
@@ -824,7 +825,7 @@ export function DrawerContent(props: Incoming<DrawerContentProps>) {
     (open) => {
       if (open) return;
       underlay?.setAttribute("data-state", "closed");
-      announce(false);
+      untrack(() => announce(false));
     },
   );
 
