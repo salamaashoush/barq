@@ -29,6 +29,7 @@ import {
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import { renderPage } from "./server.ts";
+import { expectOnly, printedBy } from "./test-console.ts";
 
 type Payload = Record<string, unknown>;
 
@@ -274,7 +275,17 @@ describe("createAsync auto-keying", () => {
     document.body.appendChild(container);
     container.innerHTML = html;
 
-    const dispose = hydrate(app, container, { data });
+    // Both halves are the DOM backend's, so the markup carries nothing to claim:
+    // `hydrate` says so and renders, and the seed is what spares the refetch.
+    const capture = DEV.diagnostics.capture();
+    let dispose!: () => void;
+    const printed = await printedBy(() => {
+      dispose = hydrate(app, container, { data });
+    });
+    const mismatches = capture.stop().filter((event) => event.code === "HYDRATION_MISMATCH");
+    expect(mismatches).toHaveLength(1);
+    expect(mismatches[0]?.message).toStartWith("Hydration mismatch (not-hydratable):");
+    expectOnly(printed, "HYDRATION_MISMATCH");
     expect(container.textContent).toContain("Hello Ada");
     expect(container.textContent).not.toContain("loading...");
     expect(fetches).toBe(served);
@@ -314,15 +325,19 @@ describe("createAsync auto-keying", () => {
     resetChildIds();
     const capture = DEV.diagnostics.capture();
     let read!: () => unknown;
-    const dispose = underRoot(() => {
-      read = b();
+    let dispose!: () => void;
+    const printed = await printedBy(() => {
+      dispose = underRoot(() => {
+        read = b();
+      });
+      expect(read()).toBe("A-VALUE"); // the hazard, in one line
+      // A's value was claimed by B, so B's is stranded — which is the evidence.
+      // `hydrate` runs this once the first render has settled.
+      expect(unclaimedSeeds()).toEqual([Object.keys(both)[1]]);
     });
-    expect(read()).toBe("A-VALUE"); // the hazard, in one line
-    // A's value was claimed by B, so B's is stranded — which is the evidence.
-    // `hydrate` runs this once the first render has settled.
-    expect(unclaimedSeeds()).toEqual([Object.keys(both)[1]]);
     const events = capture.stop();
     dispose();
+    expectOnly(printed, "HYDRATION_SEED_DRIFT");
 
     expect(events.map((event) => event.code)).toContain("HYDRATION_SEED_DRIFT");
     expect(events[0]?.data).toEqual({ keys: [Object.keys(both)[1]] });
@@ -374,14 +389,18 @@ describe("createAsync auto-keying", () => {
     dispose();
   });
 
-  test("hydrate reports the drift once the first render has settled", () => {
+  test("hydrate reports the drift once the first render has settled", async () => {
     const capture = DEV.diagnostics.capture();
     const container = document.createElement("div");
     document.body.appendChild(container);
-    const dispose = hydrate(() => document.createTextNode("ok"), container, {
-      data: { "r9~ghost": "a value this tree never asks for" },
+    let dispose!: () => void;
+    const printed = await printedBy(() => {
+      dispose = hydrate(() => document.createTextNode("ok"), container, {
+        data: { "r9~ghost": "a value this tree never asks for" },
+      });
     });
     const events = capture.stop();
+    expectOnly(printed, "HYDRATION_SEED_DRIFT");
     dispose();
     container.remove();
 

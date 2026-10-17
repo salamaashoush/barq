@@ -5,7 +5,7 @@
  * parked boundary gets when it resumes.
  */
 
-import { createEffect, createMemo, createSignal, flush, onSettled } from "@barqjs/core";
+import { createEffect, createMemo, createRoot, createSignal, flush, onSettled } from "@barqjs/core";
 import { clearHydrationData } from "@barqjs/core/internal";
 import { afterEach, expect, test } from "bun:test";
 
@@ -86,7 +86,7 @@ test("a streamed render runs none of them, in the shell or in a boundary that re
 
 test("outside a render they run as they always have", () => {
   const ran: string[] = [];
-  page(ran);
+  createRoot(() => page(ran));
   flush();
   expect(ran.toSorted()).toEqual(["effect", "settled"]);
 });

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, test } from "bun:test";
 
 import { generateHydrationScript, renderPage, renderToStream } from "./server.ts";
 import { type SsrHtml, boundary, esc, html } from "./ssr.ts";
+import { expectOnly, printedBy } from "./test-console.ts";
 
 const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
 
@@ -109,7 +110,18 @@ describe("an error a server render sends to the browser", () => {
   });
 
   test("is redacted on a stream the same way", async () => {
-    const body = await collect(renderToStream(rejecting(new Error(SECRET))).readable);
+    let body = "";
+    // With no `onError`, the stream logs what failed after the shell: the
+    // server's own log is where the unredacted error belongs.
+    const printed = await printedBy(async () => {
+      body = await collect(renderToStream(rejecting(new Error(SECRET))).readable);
+    });
+    const logged = printed.map(([first]) => first).filter((first) => first instanceof Error);
+    expect(logged.map((error) => error.message)).toEqual([SECRET]);
+    expectOnly(
+      printed.filter(([first]) => !(first instanceof Error)),
+      "SSR_RENDER_ERROR_CONTAINED",
+    );
 
     if (isDev) expect(body).toContain(SECRET);
     else {

@@ -27,6 +27,7 @@ import {
 import { renderToStream, renderToString } from "./server.ts";
 import { esc, html, ssrLoading } from "./ssr.ts";
 import { provideRequestEvent } from "./storage.ts";
+import { expectOnly, printedBy } from "./test-console.ts";
 
 const request = (path = "/account"): Request => new Request(`https://example.com${path}`);
 
@@ -133,18 +134,23 @@ describe("createSSRResponse over a stream", () => {
     });
     const event = createRequestEvent(request());
     const capture = DEV.diagnostics.capture();
-    const response = await provideRequestEvent(event, () =>
-      createSSRResponse(
-        renderToStream(slowPage(released, () => httpHeader("x-late", "1")) as never),
-        event,
-      ),
-    );
+    let response!: Response;
+    let body = "";
+    const printed = await printedBy(async () => {
+      response = await provideRequestEvent(event, () =>
+        createSSRResponse(
+          renderToStream(slowPage(released, () => httpHeader("x-late", "1")) as never),
+          event,
+        ),
+      );
 
-    expect(response.status).toBe(201);
-    expect(event.response.committed).toBe(true);
-    release();
-    const body = await response.text();
+      expect(response.status).toBe(201);
+      expect(event.response.committed).toBe(true);
+      release();
+      body = await response.text();
+    });
     const late = capture.stop().filter((found) => found.code === "LATE_HEADER_WRITE");
+    expectOnly(printed, "LATE_HEADER_WRITE");
 
     expect(body).toContain("<i>wait</i>");
     expect(body).toContain("salama");
@@ -258,12 +264,13 @@ describe("commitEventResponse", () => {
     expect(toSecond.headers.getSetCookie()).toEqual(["session=second; Path=/"]);
   });
 
-  test("a write to the head after it was committed reaches nothing and is reported", () => {
+  test("a write to the head after it was committed reaches nothing and is reported", async () => {
     const event = createRequestEvent(request());
     commitEventResponse(new Response("ok"), event);
     const capture = DEV.diagnostics.capture();
-    event.response.headers.set("x-late", "1");
+    const printed = await printedBy(() => event.response.headers.set("x-late", "1"));
     const found = capture.stop().filter((one) => one.code === "LATE_HEADER_WRITE");
+    expectOnly(printed, "LATE_HEADER_WRITE");
 
     expect(event.response.headers.has("x-late")).toBe(false);
     expect(found.map((one) => one.data?.call)).toEqual(['headers.set("x-late")']);

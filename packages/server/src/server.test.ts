@@ -29,6 +29,7 @@ import {
   createSignal,
   isDev,
   markSafeError,
+  type DiagnosticEvent,
 } from "@barqjs/core";
 import {
   SEED_ABANDONED,
@@ -54,6 +55,7 @@ import {
   ssrLoading,
 } from "./ssr.ts";
 import { encodeSeed } from "./codec.ts";
+import { expectOnly, holdReports, printedBy } from "./test-console.ts";
 
 async function collect(stream: ReadableStream<Uint8Array>): Promise<string[]> {
   const reader = stream.getReader();
@@ -504,6 +506,13 @@ describe("the seed encoder", () => {
 });
 
 describe("hydrate", () => {
+  const notHydratable = (events: readonly DiagnosticEvent[]): number =>
+    events.filter(
+      (event) =>
+        event.code === "HYDRATION_MISMATCH" &&
+        event.message.startsWith("Hydration mismatch (not-hydratable):"),
+    ).length;
+
   test("seeded async values resolve synchronously: no refetch, no fallback flash", async () => {
     // --- server ---
     let fetches = 0;
@@ -532,8 +541,15 @@ describe("hydrate", () => {
     document.body.appendChild(container);
     container.innerHTML = serverHtml;
 
-    hydrate(makeApp(), container, { data });
-    flush();
+    // Both halves are the DOM backend's, so the markup carries nothing to claim:
+    // `hydrate` says so and renders, and the seed is what spares the refetch.
+    const capture = DEV.diagnostics.capture();
+    const printed = await printedBy(() => {
+      hydrate(makeApp(), container, { data });
+      flush();
+    });
+    expect(notHydratable(capture.stop())).toBe(1);
+    expectOnly(printed, "HYDRATION_MISMATCH");
 
     expect(container.textContent).toContain("Hello Ada");
     expect(container.textContent).not.toContain("loading...");
@@ -1212,6 +1228,8 @@ describe("a pending promise inside a seeded value", () => {
  * shell — it errors the BOUNDARY — and these rows pin that barq does not either.
  */
 describe("a throw after the shell", () => {
+  holdReports("SSR_RENDER_ERROR_CONTAINED");
+
   const pageThatThrowsLate = (): (() => SsrHtml) => {
     return () => {
       const bad = createMemo(async () => {

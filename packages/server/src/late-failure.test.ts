@@ -16,6 +16,7 @@ import { clearHydrationData } from "@barqjs/core/internal";
 import { afterEach, describe, expect, test } from "bun:test";
 
 import { renderPage, renderToStream } from "./server.ts";
+import { holdReports } from "./test-console.ts";
 import { type SsrHtml, boundary, esc, html } from "./ssr.ts";
 
 const tick = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 0));
@@ -220,6 +221,8 @@ function assemble(chunks: readonly string[]): HTMLElement {
 }
 
 describe("a stream", () => {
+  holdReports("SSR_RENDER_ERROR_CONTAINED");
+
   afterEach(() => {
     document.body.innerHTML = "";
   });

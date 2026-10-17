@@ -1,7 +1,8 @@
-import { createRoot, getRequestEvent, httpHeader, httpStatus } from "@barqjs/core";
+import { DEV, createRoot, getRequestEvent, httpHeader, httpStatus } from "@barqjs/core";
 import { describe, expect, test } from "bun:test";
 
 import { provideRequestEvent } from "./storage.ts";
+import { expectOnly, printedBy } from "./test-console.ts";
 
 const event = () => ({
   request: new Request("https://example.com/account"),
@@ -48,18 +49,24 @@ describe("httpStatus and httpHeader", () => {
     expect(given.response.headers.has("cache-control")).toBe(false);
   });
 
-  test("leave a committed head alone, declaring and retracting", () => {
+  test("leave a committed head alone, declaring and retracting", async () => {
     const given = event();
-    provideRequestEvent(given, () => {
-      createRoot((dispose) => {
-        httpStatus(404);
-        given.response.committed = true;
-        httpStatus(500);
-        dispose();
-      });
-    });
+    const capture = DEV.diagnostics.capture();
+    const printed = await printedBy(() =>
+      provideRequestEvent(given, () => {
+        createRoot((dispose) => {
+          httpStatus(404);
+          given.response.committed = true;
+          httpStatus(500);
+          dispose();
+        });
+      }),
+    );
+    const late = capture.stop().filter((found) => found.code === "LATE_HEADER_WRITE");
 
     expect(given.response.status).toBe(404);
+    expect(late.map((found) => found.data?.call)).toEqual(["httpStatus(500)"]);
+    expectOnly(printed, "LATE_HEADER_WRITE");
   });
 
   test("keep every set-cookie line a scope added when it retracts its own", () => {
