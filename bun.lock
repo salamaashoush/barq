@@ -18,7 +18,7 @@
     },
     "packages/aria": {
       "name": "@barqjs/aria",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
       "devDependencies": {
         "@barqjs/compiler": "workspace:*",
         "@barqjs/core": "workspace:*",
@@ -58,7 +58,7 @@
     },
     "packages/compiler": {
       "name": "@barqjs/compiler",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
       "devDependencies": {
         "@barqjs/core": "workspace:*",
         "@barqjs/router": "workspace:*",
@@ -80,35 +80,35 @@
     },
     "packages/compiler/npm/darwin-arm64": {
       "name": "@barqjs/compiler-darwin-arm64",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
     },
     "packages/compiler/npm/darwin-x64": {
       "name": "@barqjs/compiler-darwin-x64",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
     },
     "packages/compiler/npm/linux-arm64-gnu": {
       "name": "@barqjs/compiler-linux-arm64-gnu",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
     },
     "packages/compiler/npm/linux-x64-gnu": {
       "name": "@barqjs/compiler-linux-x64-gnu",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
     },
     "packages/compiler/npm/linux-x64-musl": {
       "name": "@barqjs/compiler-linux-x64-musl",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
     },
     "packages/compiler/npm/win32-arm64-msvc": {
       "name": "@barqjs/compiler-win32-arm64-msvc",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
     },
     "packages/compiler/npm/win32-x64-msvc": {
       "name": "@barqjs/compiler-win32-x64-msvc",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
     },
     "packages/core": {
       "name": "@barqjs/core",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
       "dependencies": {
         "@solidjs/signals": "2.0.0-rc.15",
         "csstype": "^3.2.3",
@@ -126,7 +126,7 @@
     },
     "packages/create-barq": {
       "name": "create-barq",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
       "bin": {
         "create-barq": "./dist/index.js",
       },
@@ -138,7 +138,7 @@
     },
     "packages/css": {
       "name": "@barqjs/css",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
       "dependencies": {
         "csstype": "^3.2.3",
       },
@@ -150,7 +150,7 @@
     },
     "packages/form": {
       "name": "@barqjs/form",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
       "dependencies": {
         "@tanstack/form-core": "^1.33.5",
         "@tanstack/store": "^0.11.2",
@@ -189,7 +189,7 @@
     },
     "packages/lucide": {
       "name": "@barqjs/lucide",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
       "devDependencies": {
         "@barqjs/compiler": "workspace:*",
         "@barqjs/core": "workspace:*",
@@ -207,7 +207,7 @@
     },
     "packages/primitives": {
       "name": "@barqjs/primitives",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
       "devDependencies": {
         "@barqjs/core": "workspace:*",
         "@happy-dom/global-registrator": "^21.0.1",
@@ -220,7 +220,7 @@
     },
     "packages/query": {
       "name": "@barqjs/query",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
       "dependencies": {
         "@tanstack/query-core": "^5.104.3",
       },
@@ -251,7 +251,7 @@
     },
     "packages/router": {
       "name": "@barqjs/router",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
       "dependencies": {
         "isbot": "^5.2.2",
       },
@@ -277,7 +277,7 @@
     },
     "packages/server": {
       "name": "@barqjs/server",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
       "dependencies": {
         "seroval": "^1.6.9",
       },
@@ -323,7 +323,7 @@
     },
     "packages/start": {
       "name": "@barqjs/start",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
       "dependencies": {
         "@barqjs/css": "workspace:*",
         "srvx": "^1.0.5",
@@ -342,7 +342,7 @@
     },
     "packages/table": {
       "name": "@barqjs/table",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
       "dependencies": {
         "@tanstack/store": "^0.11.2",
         "@tanstack/table-core": "^9.3.1",
@@ -361,7 +361,7 @@
     },
     "packages/testing": {
       "name": "@barqjs/testing",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
       "dependencies": {
         "@testing-library/dom": "^10.4.2",
       },
@@ -391,7 +391,7 @@
     },
     "packages/ui": {
       "name": "@barqjs/ui",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
       "dependencies": {
         "@tanstack/charts": "^1.1.0",
         "embla-carousel": "^8.6.0",
@@ -427,7 +427,7 @@
     },
     "packages/ui-cli": {
       "name": "@barqjs/ui-cli",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
       "bin": {
         "barq-ui": "./dist/index.js",
       },
@@ -439,7 +439,7 @@
     },
     "packages/virtual": {
       "name": "@barqjs/virtual",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
       "dependencies": {
         "@tanstack/virtual-core": "^3.19.5",
       },
@@ -458,7 +458,7 @@
     },
     "packages/vite": {
       "name": "@barqjs/vite",
-      "version": "0.1.0",
+      "version": "0.2.0-next.0",
       "dependencies": {
         "@barqjs/compiler": "workspace:*",
         "srvx": "^1.0.5",

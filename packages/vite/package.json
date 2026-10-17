@@ -1,6 +1,6 @@
 {
   "name": "@barqjs/vite",
-  "version": "0.1.0",
+  "version": "0.2.0-next.0",
   "description": "The barq Vite plugin: the compiler, file routes, compiled styles and the server build, from one call",
   "keywords": [
     "barq",
@@ -72,8 +72,8 @@
     "vite": "^8.3.4"
   },
   "peerDependencies": {
-    "@barqjs/router": ">=0.1.0",
-    "@barqjs/start": ">=0.1.0",
+    "@barqjs/router": ">=0.2.0-next.0",
+    "@barqjs/start": ">=0.2.0-next.0",
     "vite": ">=8.0.0"
   },
   "peerDependenciesMeta": {

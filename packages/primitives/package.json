@@ -1,6 +1,6 @@
 {
   "name": "@barqjs/primitives",
-  "version": "0.1.0",
+  "version": "0.2.0-next.0",
   "description": "Reactive primitives for barq: scheduling, events, observers, browser APIs, collections and animation",
   "keywords": [
     "barq",
@@ -196,6 +196,6 @@
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
-    "@barqjs/core": ">=0.1.0"
+    "@barqjs/core": ">=0.2.0-next.0"
   }
 }

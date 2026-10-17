@@ -1,6 +1,6 @@
 {
   "name": "@barqjs/testing",
-  "version": "0.1.0",
+  "version": "0.2.0-next.0",
   "description": "Testing utilities for barq: components, user events, accessibility checks, routes, hydration and server functions",
   "keywords": [
     "barq",
@@ -96,10 +96,10 @@
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
-    "@barqjs/core": ">=0.1.0",
-    "@barqjs/router": ">=0.1.0",
-    "@barqjs/server": ">=0.1.0",
-    "@barqjs/start": ">=0.1.0"
+    "@barqjs/core": ">=0.2.0-next.0",
+    "@barqjs/router": ">=0.2.0-next.0",
+    "@barqjs/server": ">=0.2.0-next.0",
+    "@barqjs/start": ">=0.2.0-next.0"
   },
   "peerDependenciesMeta": {
     "@barqjs/router": {
