@@ -214,7 +214,9 @@ pub fn build<'a>(program: &Program<'a>, module: &Module<'a>) -> OwnershipTree {
 
     let mut tree = OwnershipTree::default();
     let mut plan: Vec<(Vec<String>, Def<'a, '_>)> = Vec::new();
-    if let Some(entry) = entry {
+    if let Some(entry) = entry
+        && holds_jsx(entry)
+    {
         // Both names address one node. A second tree for the same function
         // would duplicate every subtree under it and say nothing new.
         let mut names = vec!["default".to_string()];
@@ -905,6 +907,45 @@ mod tests {
             }
         }
         panic!("no node labelled {label} under {root}");
+    }
+
+    fn compiled_roots(filename: &str, source: &str) -> String {
+        let options =
+            ResolvedOptions { ownership: true, ..ResolvedOptions::with_filename(filename) };
+        let out = crate::compile::compile(source, &options).unwrap_or_else(|diagnostics| {
+            panic!("{}", crate::compile::format_diagnostics(&diagnostics))
+        });
+        let json = out.ownership.expect("ownership was asked for");
+        let start = json.find("\"roots\":").expect("a roots field");
+        let end = start + json[start..].find(']').expect("the roots array closes");
+        json[start..=end].to_string()
+    }
+
+    /// A root claims a render. A default export that builds no JSX is held to
+    /// the rule a named one already was: a plugin factory or a loader is not a
+    /// component, whichever way the module exports it.
+    #[test]
+    fn a_default_export_is_a_root_only_when_it_renders() {
+        for (filename, source) in [
+            (
+                "src/plugin.ts",
+                "export function helper() { return 1; }\n\
+                 export default function barq() { return { name: \"barq\" }; }\n",
+            ),
+            ("src/loader.ts", "const load = () => fetch(\"/orders\");\nexport default load;\n"),
+            ("src/arrow.ts", "export default () => ({ name: \"barq\" });\n"),
+            ("src/Plain.tsx", "export default function plain() { return 1; }\n"),
+        ] {
+            assert_eq!(compiled_roots(filename, source), "\"roots\":[]", "{filename}");
+        }
+        assert_eq!(
+            compiled_roots("src/App.tsx", "export default function App() { return <p>x</p>; }\n"),
+            r#""roots":[{"name":"default","node":0},{"name":"App","node":0}]"#
+        );
+        assert_eq!(
+            compiled_roots("src/View.tsx", "const View = () => <p>x</p>;\nexport default View;\n",),
+            r#""roots":[{"name":"default","node":0},{"name":"View","node":0}]"#
+        );
     }
 
     /// The case the whole redesign exists for: the child of a provider is owned
