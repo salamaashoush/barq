@@ -2698,7 +2698,7 @@ fn gather_layers(css: &str) -> String {
         };
 
         let body = at + "@layer ".len() + layer.len() + 1;
-        let Some(close) = matching_brace(css, body) else {
+        let Some(close) = barq_css::order::matching_brace(css, body) else {
             out.push_str(rest);
             break;
         };
@@ -2720,24 +2720,6 @@ fn gather_layers(css: &str) -> String {
         out.push('}');
     }
     out
-}
-
-/// Where the block opened at `from` closes.
-fn matching_brace(text: &str, from: usize) -> Option<usize> {
-    let mut depth = 1i32;
-    for (offset, character) in text[from..].char_indices() {
-        match character {
-            '{' => depth += 1,
-            '}' => {
-                depth -= 1;
-                if depth == 0 {
-                    return Some(from + offset);
-                }
-            }
-            _ => {}
-        }
-    }
-    None
 }
 
 /// A declaration as the atoms it is: `barq_css::atoms::resolve`, which is where

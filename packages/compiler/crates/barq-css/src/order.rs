@@ -348,7 +348,8 @@ fn layer_body(statement: &str) -> Option<(&str, &str)> {
         .then(|| (&statement[..open], &statement[open..close]))
 }
 
-fn matching_brace(text: &str, from: usize) -> Option<usize> {
+/// Where the block opened at `from` closes.
+pub fn matching_brace(text: &str, from: usize) -> Option<usize> {
     let mut depth = 1i32;
     for (offset, character) in text[from..].char_indices() {
         match character {
