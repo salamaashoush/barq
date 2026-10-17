@@ -129,7 +129,7 @@ pub fn run<'a>(
 pub(super) const STALE_ROW: &str = "`<For>` reads a field of this row once, when the row is built, and the \
      compiler cannot tell where the items in `each` come from. If they are store objects, changing \
      that field in place leaves the row showing the old value. Read the field where it is shown, as \
-     `{row.name}` in the JSX of an inline callback, or key the list and read the row by calling \
+     `{row.name}` in the row callback's JSX, or key the list and read the row by calling \
      it: `keyed={(row) => row.id}` with `row().name`.";
 
 pub(super) struct Shaper<'a, 'm> {
@@ -393,7 +393,7 @@ impl<'a> Shaper<'a, '_> {
 
         // O3. A store writes a row's field in place, so the row is kept and a
         // field read only when it was built keeps the old value. A field read in
-        // a hole of an inline callback is emitted live and follows the write, so
+        // a hole of the row callback is emitted live and follows the write, so
         // the note needs both halves: rows the compiler cannot prove plain, and
         // a callback that reads a field once (`rows_read_once`, from the
         // analysis). A resolvable store is the demonstrable failure case, so
@@ -2556,8 +2556,10 @@ mod tests {
     }
 
     /// A one-parameter JSX-returning arrow is a BLOCK with a slot parameter
-    /// (C6), not a component with a props object: a `<For>` row callback and a
-    /// `.map` body are spelled the same way, and thunking the row is pure loss.
+    /// (C6), not a component with a props object. Passed to a `<For>` by name
+    /// its parameter is the row, typed as an inline callback's is: a field is
+    /// read where it is shown, and never called as though it were a Cell. A
+    /// `function` declaration is the same callback.
     #[test]
     fn a_row_callback_parameter_is_not_a_props_object() {
         let code = emit(
@@ -2567,12 +2569,33 @@ mod tests {
              export const V = () => <For each={rows}>{row}</For>;\n",
         )
         .code;
-        assert!(code.contains("_$insert(_el$1, item.n)"), "{code}");
-        assert!(!code.contains("() => item.n"), "{code}");
+        assert!(code.contains("_$insert(_el$1, () => item.n)"), "{code}");
+        assert!(!code.contains("item.n()"), "{code}");
         // Branded where it enters the slot, by name: wrapped as `() => row` the
         // construct's call hands back the function and the item never arrives.
         assert!(code.contains("_$each(null, null, rows, null, _$block(row))"), "{code}");
         assert!(!code.contains("() => row"), "{code}");
+
+        let declared = emit(
+            "import { For, createSignal } from \"@barqjs/core\";\n\
+             const [rows] = createSignal([{ id: 1, n: \"a\" }]);\n\
+             function row(item) { return <li>{item.n}</li>; }\n\
+             export const V = () => <For each={rows}>{row}</For>;\n",
+        )
+        .code;
+        assert!(declared.contains("_$each(null, null, rows, null, _$block(row))"), "{declared}");
+        assert!(declared.contains("() => item.n"), "{declared}");
+        assert!(!declared.contains("() => row"), "{declared}");
+
+        let attribute = emit(
+            "import { For, createSignal } from \"@barqjs/core\";\n\
+             const [rows] = createSignal([{ id: 1, n: \"a\" }]);\n\
+             const row = (item) => <li class={item.c}>{item.n}</li>;\n\
+             export const V = () => <ul><For each={rows} children={row} /></ul>;\n",
+        )
+        .code;
+        assert!(attribute.contains("() => item.c"), "{attribute}");
+        assert!(!attribute.contains("item.c()"), "{attribute}");
     }
 
     /// Rows an array literal or an index-mapping `Array.from` created are plain
@@ -2700,7 +2723,7 @@ mod tests {
 
     /// O3's callback half. A store keeps a row whose field it writes in place,
     /// so the note holds exactly where a field is read once: a read in a hole
-    /// of an inline callback is emitted live and follows the write. Every case
+    /// of the row callback is emitted live and follows the write. Every case
     /// runs through both sites that raise the note, the flow pass and the
     /// component call left when flow lowering is off.
     #[test]
@@ -2737,8 +2760,11 @@ mod tests {
             ("", "{(row) => (row.done ? <s>{row.name}</s> : <li>{row.name}</li>)}"),
             ("", "{(row) => <row.Icon />}"),
             ("", "{function (row) { const name = row.name; return <li>{name}</li>; }}"),
-            ("const named = (row) => <li>{row.name}</li>;", "{named}"),
-            ("function declared(row) { return <li>{row.name}</li>; }", "{declared}"),
+            (
+                "const named = (row) => { const name = row.name; return <li>{name}</li>; };",
+                "{named}",
+            ),
+            ("function declared({ name }) { return <li>{name}</li>; }", "{declared}"),
             ("let swapped = (row) => <li />;\nswapped = external;", "{swapped}"),
             ("", "{external}"),
             ("", "{pick()}"),
@@ -2771,6 +2797,13 @@ mod tests {
             assert_eq!(notes("", children), 0, "{children}");
         }
         assert_eq!(notes("const whole = (row) => <Item row={row} />;", "{whole}"), 0);
+        // Passed by name, a callback's row is typed as an inline one's, so a
+        // field read in its JSX is live there too.
+        assert_eq!(notes("const named = (row) => <li>{row.name}</li>;", "{named}"), 0);
+        assert_eq!(
+            notes("function declared(row) { return <li>{row.name}</li>; }", "{declared}"),
+            0
+        );
 
         // TanStack's row model: an opaque table, rows read through methods and
         // fields in holes only. The same source destructuring the row is told.

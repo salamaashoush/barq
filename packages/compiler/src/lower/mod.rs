@@ -121,55 +121,6 @@ struct TmpAttr<'a> {
     written: Option<&'a str>,
 }
 
-/// The kind an attribute's written name selects on an element, before its value
-/// is seen.
-fn attr_kind(raw: &str, in_svg: bool, tag: &str) -> AttrKind {
-    match names::prefixed(raw) {
-        names::Prefixed::Ref => AttrKind::Ref,
-        names::Prefixed::Bind(_) => AttrKind::Bind,
-        names::Prefixed::Chan(_, chan) => AttrKind::Chan(chan),
-        // Before the plain `on` rule: `onKeyDownCapture` is a capture binding
-        // for `keydown`, not a bubble one for `keydowncapture`. The type is
-        // resolved here and never re-derived: `onX` is
-        // `key.slice(2).toLowerCase()`, and a name with a colon in it is an
-        // attribute.
-        names::Prefixed::Plain(name)
-            if !name.contains(':') && names::capture_event(name).is_some() =>
-        {
-            AttrKind::CaptureEvent
-        }
-        names::Prefixed::Plain(name) if name.starts_with("on") && !name.contains(':') => {
-            AttrKind::Event
-        }
-        // `action` on a `<form>` is a URL or a SUBMIT HANDLER, and the arity
-        // rule cannot separate them: an `action()` is `(...args) => Promise<R>`,
-        // whose arity is 0, so the attribute channel read it as a Cell, CALLED
-        // it at mount, and wrote the promise it returned into the form's
-        // target. The slot decides, exactly as it does for `on*`.
-        //
-        // A literal `action="/url"` never reaches here: it is bakeable by name
-        // and folds into the template bytes.
-        names::Prefixed::Plain(name) if name == "action" && !in_svg && tag == "form" => {
-            AttrKind::FormAction
-        }
-        names::Prefixed::Plain(name) => {
-            AttrKind::Chan(names::channel_of(names::normalize(name), in_svg, tag))
-        }
-    }
-}
-
-/// Whether an element attribute's value is evaluated once, when the element is
-/// built, rather than read again by an effect: a handler, a `ref`, a `bind:`
-/// pair and a form action are handed over as they are. A handler written
-/// before a spread joins the object the spread reads, which is read live.
-pub(crate) fn applied_once(raw: &str, in_svg: bool, tag: &str, before_a_spread: bool) -> bool {
-    match attr_kind(raw, in_svg, tag) {
-        AttrKind::Ref | AttrKind::Bind | AttrKind::FormAction => true,
-        AttrKind::Event | AttrKind::CaptureEvent => !before_a_spread,
-        AttrKind::Chan(_) | AttrKind::Spread => false,
-    }
-}
-
 /// The instruction the attribute becomes, decided at P1: every attribute
 /// resolves at compile time to exactly one channel.
 #[derive(Clone, Copy)]
@@ -657,19 +608,45 @@ impl<'a> Lower<'a, '_> {
             let raw = attribute_name(&attribute.name, self.allocator);
             // The channel is decided HERE, from the name plus the namespace
             // plus the author's override, and never again.
-            let kind = attr_kind(raw, in_svg, tag);
-            let key = match (kind, names::prefixed(raw)) {
-                (_, names::Prefixed::Ref) => "ref",
-                (_, names::Prefixed::Bind(name) | names::Prefixed::Chan(name, _)) => name,
-                (AttrKind::CaptureEvent, names::Prefixed::Plain(name)) => self
-                    .allocator
-                    .alloc_str(&names::capture_event(name).expect("checked by `attr_kind`"))
-                    as &'a str,
-                (AttrKind::Event, names::Prefixed::Plain(name)) => {
-                    self.allocator.alloc_str(&name[2..].to_ascii_lowercase()) as &'a str
+            let (kind, key) = match names::prefixed(raw) {
+                names::Prefixed::Ref => (AttrKind::Ref, "ref"),
+                names::Prefixed::Bind(name) => (AttrKind::Bind, name),
+                names::Prefixed::Chan(name, chan) => (AttrKind::Chan(chan), name),
+                // Before the plain `on` rule: `onKeyDownCapture` is a capture
+                // binding for `keydown`, not a bubble one for `keydowncapture`.
+                // The type is resolved here and never re-derived: `onX` is
+                // `key.slice(2).toLowerCase()`, and a name with a colon in it is
+                // an attribute.
+                names::Prefixed::Plain(name)
+                    if !name.contains(':') && names::capture_event(name).is_some() =>
+                {
+                    (
+                        AttrKind::CaptureEvent,
+                        self.allocator
+                            .alloc_str(&names::capture_event(name).expect("checked by the guard"))
+                            as &'a str,
+                    )
                 }
-                (AttrKind::FormAction, _) => "action",
-                (_, names::Prefixed::Plain(name)) => names::attr_name(name, in_svg, self.allocator),
+                names::Prefixed::Plain(name) if name.starts_with("on") && !name.contains(':') => (
+                    AttrKind::Event,
+                    self.allocator.alloc_str(&name[2..].to_ascii_lowercase()) as &'a str,
+                ),
+                // `action` on a `<form>` is a URL or a SUBMIT HANDLER,
+                // and the arity rule cannot separate them: an `action()` is
+                // `(...args) => Promise<R>`, whose arity is 0, so the attribute
+                // channel read it as a Cell, CALLED it at mount, and wrote the
+                // promise it returned into the form's target. The slot decides,
+                // exactly as it does for `on*`.
+                //
+                // A literal `action="/url"` never reaches here: it is bakeable
+                // by name and folds into the template bytes.
+                names::Prefixed::Plain(name) if name == "action" && !in_svg && tag == "form" => {
+                    (AttrKind::FormAction, "action")
+                }
+                names::Prefixed::Plain(name) => (
+                    AttrKind::Chan(names::channel_of(names::normalize(name), in_svg, tag)),
+                    names::attr_name(name, in_svg, self.allocator),
+                ),
             };
             // Only a plain name may become template bytes: every other channel
             // writes something the HTML parser does not produce.

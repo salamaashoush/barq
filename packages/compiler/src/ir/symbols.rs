@@ -371,9 +371,9 @@ pub struct ReactiveEnv<'a> {
     pub plain_rows: Vec<SymbolId>,
     /// The by-item `<For>` elements whose row callback reads a field of its row
     /// where nothing reads it again: a destructured parameter, a read outside a
-    /// JSX hole, a value handed over once, or a callback this module does not
-    /// show as an inline function. A field read in a hole is emitted live and
-    /// follows a store write, so a `<For>` with only those is not here.
+    /// JSX hole, or a callback this module does not show, such as an import. A
+    /// field read in a hole is emitted live and follows a store write, so a
+    /// `<For>` with only those is not here.
     pub rows_read_once: Vec<Span>,
 }
 

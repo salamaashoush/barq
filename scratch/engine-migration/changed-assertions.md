@@ -1130,3 +1130,34 @@ field once (`analysis/rows.rs`), and these assertions were restated:
   the TanStack row model shape quiet), and a `store-rows.test.ts` block that compiles each
   callback shape for the note, mounts it over a store row written in place, and asserts the note
   is raised exactly when the text stays old.
+
+
+## A flow callback passed by name is typed as the inline one
+
+A `function row(item)` declaration was left `Opaque`, so `<For>{row}</For>` emitted
+`_$block(() => [() => row])` and the row never reached it; and a `const row = (item) => …`
+passed by name was slotted, counted as a component, and its parameter typed as a props object,
+so `class={item.done}` compiled to `item.done()`. A declaration now takes the `Fn` kind a `const`
+function takes, and a callback written by name as a flow construct's child or `children` takes
+the parameter kinds the inline callback would. `test/row-callbacks.test.ts` mounts both over a
+store at -O0 and -O2; without the change its `For` and `Show` cases fail at both levels.
+
+- `compiler/src/passes/shape.rs` `a_row_callback_parameter_is_not_a_props_object`: asserted
+  `_$insert(_el$1, item.n)` and no `() => item.n`, now `_$insert(_el$1, () => item.n)` and no
+  `item.n()`. The named callback's row is read where it is shown, as the inline one's has been
+  since member reads off a row were made live; a store row written in place updates through
+  it. The test's intent, that the parameter is not a props object, is what the new `item.n()`
+  assertion pins. Added: the `function` declaration and `children={row}` forms.
+- `compiler/src/passes/shape.rs` `a_row_read_once_is_reported_and_a_live_read_is_not`: the named
+  `const` and declared callbacks reading `{row.name}` moved from the once list (1 note) to 0,
+  because their reads are now live; the once list keeps a named callback reading a field in a
+  statement and a declared one destructuring its row.
+- `compiler/docs/BARQ004.md`: the second failing example was a callback passed by name, which
+  no longer fires; it is now a field read in a statement before the JSX.
+- `compiler/test/__snapshots__/modes.test.ts.snap` "the matrix is locked": the row for
+  `semantics/sem-calling-convention` moved in all seven modes. The fixture's
+  `function counting(): string` is now `Fn { nullary: true }` as a `const` arrow would be, so
+  `<Outer carrier={counting}>` forwards it by identity (`carrier: counting`) instead of wrapping
+  it (`carrier: () => counting`). That is C5's rule for a zero-arity function the author wrote;
+  the fixture's claims, including that forwarding does not read the Cell, all pass. No other
+  row moved.

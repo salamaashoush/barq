@@ -2,10 +2,10 @@ use oxc::allocator::Allocator;
 use oxc::ast::ast::{
     Argument, ArrowFunctionExpression, BinaryExpression, BindingPattern, ConditionalExpression,
     Declaration, DoWhileStatement, ExportDefaultDeclarationKind, Expression, ForStatement,
-    FormalParameters, Function, IfStatement, ImportDeclarationSpecifier, JSXAttributeItem,
-    JSXAttributeName, JSXAttributeValue, JSXChild, JSXElement, JSXElementName, JSXExpression,
-    LogicalExpression, ModuleExportName, ObjectExpression, ObjectPattern, ObjectPropertyKind,
-    Program, PropertyKey, Statement, StaticMemberExpression, SwitchStatement,
+    FormalParameters, Function, FunctionType, IfStatement, ImportDeclarationSpecifier,
+    JSXAttributeItem, JSXAttributeName, JSXAttributeValue, JSXChild, JSXElement, JSXElementName,
+    JSXExpression, LogicalExpression, ModuleExportName, ObjectExpression, ObjectPattern,
+    ObjectPropertyKind, Program, PropertyKey, Statement, StaticMemberExpression, SwitchStatement,
     TaggedTemplateExpression, TemplateLiteral, UnaryExpression, UnaryOperator, VariableDeclarator,
     WhileStatement,
 };
@@ -20,7 +20,7 @@ use crate::ir::{
 };
 use crate::options::ResolvedOptions;
 
-use super::rows::{Body, Callback, reads_fields_once};
+use super::rows::{Body, reads_fields_once};
 use super::symbol_of;
 
 /// A lowercase tag is an element, and its slots are element children the
@@ -149,6 +149,8 @@ pub fn classify<'a>(
         dev: options.dev,
         named_rows: Vec::new(),
         row_readers: Vec::new(),
+        function_params: Vec::new(),
+        named_callbacks: Vec::new(),
     };
     binder.imports(program, &options.module_source, &options.server_source);
     binder.env.namespaces = binder.namespaces.clone();
@@ -157,6 +159,7 @@ pub fn classify<'a>(
     // Before the fixpoint, not after: `const { text } = props` asks what `props`
     // is, and a parameter is never a declarator, so nothing the fixpoint decides
     // can feed back into this.
+    binder.attribute_named_callbacks();
     binder.props_params();
     binder.fixpoint();
     binder.contexts();
@@ -276,6 +279,13 @@ struct Binder<'p, 'a> {
     /// Every function binding with a parameter, and whether it reads a field of
     /// its first parameter once if a `<For>` hands it a row.
     row_readers: Vec<(SymbolId, bool)>,
+    /// Every function binding and the symbols of its plain parameters, so a
+    /// callback passed to a flow construct by name can be typed after the walk.
+    function_params: Vec<(SymbolId, Vec<Option<SymbolId>>)>,
+    /// `(callback, parameter kinds, proved)` for a binding written by name as a
+    /// flow construct's callback child, which is invoked exactly as an inline
+    /// callback there would be.
+    named_callbacks: Vec<(SymbolId, Vec<SourceKind>, bool)>,
 }
 
 /// A D1 candidate: an identifier in a syntactic slot where no correct program
@@ -1394,20 +1404,12 @@ impl<'a> Binder<'_, 'a> {
         let mut once = false;
         for callback in children.chain(attribute) {
             once |= match super::without_type_wrappers(callback) {
-                Expression::ArrowFunctionExpression(arrow) => reads_fields_once(
-                    self.scoping,
-                    &arrow.params,
-                    Body::Arrow(&arrow.body),
-                    Callback::Inline,
-                ),
+                Expression::ArrowFunctionExpression(arrow) => {
+                    reads_fields_once(self.scoping, &arrow.params, Body::Arrow(&arrow.body))
+                }
                 Expression::FunctionExpression(function) => {
                     function.body.as_ref().is_some_and(|body| {
-                        reads_fields_once(
-                            self.scoping,
-                            &function.params,
-                            Body::Block(body),
-                            Callback::Inline,
-                        )
+                        reads_fields_once(self.scoping, &function.params, Body::Block(body))
                     })
                 }
                 other => match symbol_of(self.scoping, other) {
@@ -1427,9 +1429,17 @@ impl<'a> Binder<'_, 'a> {
     }
 
     fn row_reader(&mut self, symbol: SymbolId, params: &FormalParameters<'a>, body: Body<'_, 'a>) {
+        let symbols = params
+            .items
+            .iter()
+            .map(|param| match &param.pattern {
+                BindingPattern::BindingIdentifier(identifier) => identifier.symbol_id.get(),
+                _ => None,
+            })
+            .collect();
+        self.function_params.push((symbol, symbols));
         if self.dev && (!params.items.is_empty() || params.rest.is_some()) {
-            let once = reads_fields_once(self.scoping, params, body, Callback::Named);
-            self.row_readers.push((symbol, once));
+            self.row_readers.push((symbol, reads_fields_once(self.scoping, params, body)));
         }
     }
 
@@ -1569,10 +1579,67 @@ impl<'a> Binder<'_, 'a> {
 
         for child in &element.children {
             let JSXChild::ExpressionContainer(container) = child else { continue };
-            let JSXExpression::ArrowFunctionExpression(arrow) = &container.expression else {
+            match &container.expression {
+                JSXExpression::ArrowFunctionExpression(arrow) => {
+                    self.attribute(arrow, params, proved);
+                }
+                JSXExpression::Identifier(identifier) => {
+                    self.named_callback(identifier, params, proved)
+                }
+                _ => {}
+            }
+        }
+        for item in &element.opening_element.attributes {
+            if let JSXAttributeItem::Attribute(attribute) = item
+                && let JSXAttributeName::Identifier(name) = &attribute.name
+                && name.name == "children"
+                && let Some(JSXAttributeValue::ExpressionContainer(container)) = &attribute.value
+                && let JSXExpression::Identifier(identifier) = &container.expression
+            {
+                self.named_callback(identifier, params, proved);
+            }
+        }
+    }
+
+    fn named_callback(
+        &mut self,
+        identifier: &oxc::ast::ast::IdentifierReference<'a>,
+        params: &[SourceKind],
+        proved: bool,
+    ) {
+        if let Some(symbol) =
+            identifier.reference_id.get().and_then(|id| self.scoping.get_reference(id).symbol_id())
+        {
+            self.named_callbacks.push((symbol, params.to_vec(), proved));
+        }
+    }
+
+    /// A callback written by name is invoked with what an inline one is, so its
+    /// parameters take the same kinds. Left to [`Binder::props_params`], a
+    /// slotted callback counts as a component and its row was typed as a props
+    /// object: `class={row.done}` compiled to `row.done()`. Before
+    /// `props_params`, so this wins as an inline attribution does, and only for
+    /// a binding nothing writes again.
+    fn attribute_named_callbacks(&mut self) {
+        for (callback, kinds, proved) in std::mem::take(&mut self.named_callbacks) {
+            if self.scoping.symbol_is_mutated(callback) {
+                continue;
+            }
+            let Some((_, params)) =
+                self.function_params.iter().find(|(owner, _)| *owner == callback)
+            else {
                 continue;
             };
-            self.attribute(arrow, params, proved);
+            for (param, kind) in params.iter().zip(&kinds) {
+                let Some(param) = *param else { continue };
+                if self.env.kind[param] != SourceKind::Opaque {
+                    continue;
+                }
+                self.env.kind[param] = *kind;
+                if !proved {
+                    self.assumed.push(param);
+                }
+            }
         }
     }
 
@@ -1848,6 +1915,26 @@ impl<'a> Visit<'a> for Binder<'_, 'a> {
             self.declarations.push((owner, it.span, name));
             if let Some(body) = &it.body {
                 self.row_reader(owner, &it.params, Body::Block(body));
+            }
+        }
+        // A declaration binds the function exactly as `const f = function () {}`
+        // does, so it takes the same kind: left Opaque, `<For>{row}</For>` over a
+        // declared `function row(item)` was handed on as a Cell yielding the
+        // function, and the row never reached it.
+        if it.r#type == FunctionType::FunctionDeclaration
+            && let Some(owner) = owner
+        {
+            let nullary = !it.r#async && it.params.items.is_empty() && it.params.rest.is_none();
+            self.decls.push(Decl {
+                symbol: owner,
+                element: None,
+                init: InitOf::Fn { nullary },
+                member: false,
+            });
+            if nullary && let Some(body) = &it.body {
+                let mut scan = ReadScan::new(self.scoping);
+                scan.visit_function_body(body);
+                self.bodies.push(scan.into_reads(owner));
             }
         }
         if function_returns_jsx(it) {
