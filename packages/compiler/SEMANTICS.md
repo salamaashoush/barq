@@ -894,21 +894,23 @@ placeholder followed by a correction.
 **Status.** `HOLDS`. Pinned by `reactive-attribute.tsx` and `text-hole-fused.tsx`; no fixture runs the
 `MutationObserver` half.
 
-### M3 — refs drain after insertion, children before parents
+### M3 — a ref runs at creation, in document order, before insertion
 
-**Rule.** A `ref` callback runs **after** its element is inserted into the tree its render is building,
-and refs drain **children before parents**, so a parent's ref sees a fully-populated subtree. A ref
-callback that returns a function has that function registered as a cleanup on the owning scope.
+**Rule.** A `ref` callback runs synchronously when its element is created, right after the element's
+template is cloned. Refs therefore run in document order, a parent's before its children's, and
+before the element is inserted into the parent its render is building. At that point the element
+has its static children and its parent within the same template; children a component or a hole
+builds are not there yet, and a component's root element has no parent. Work that needs the
+connected, fully built DOM belongs in `onSettled` or an effect, which run after the render settles.
+A ref callback that returns a function has that function registered as a cleanup on the scope that
+owns the element. The timing is Solid 2.0's (`packages/web/src/client.ts`, `ref`), which applies the
+callback inline at creation; Solid ignores the returned value, barq registers it.
 
-**Falsified by.** A parent ref that reads `el.childElementCount` must see the final count. A child ref
-must run before its parent's. A returned disposer must run at dispose.
+**Falsified by.** A parent's ref logged after a child's; a ref on a component's root element that
+sees a parent; a parent's ref that sees children a component child builds; a returned function that
+does not run at dispose, or when a branch holding the element leaves.
 
-**Status.** `VIOLATED`. A ref runs inline where the compiler emits `_$ref`, right after its own
-template is cloned: a parent's ref runs before its children's, and before a component child's subtree
-is inserted, so it sees `childElementCount` 0 there; a component's root element is not yet in its
-parent when its ref runs. The cleanup clause holds: a returned function runs at dispose and when a
-branch holding the element leaves, and the ref runs again when it comes back
-(`test/ref-cleanup.test.ts`). Pinned by `ref-binding.tsx` and `ref-on-component.tsx`.
+**Status.** `HOLDS`. Pinned by `test/ref.test.ts`, `ref-binding.tsx` and `ref-on-component.tsx`.
 
 ### M4 — updates flush on a microtask; render effects before user effects
 
@@ -1104,13 +1106,13 @@ record) and `sem-react-apply-is-untracked.tsx`.
 ### B3 — `ref` is not a prop
 
 **Rule.** `<div ref={el}>` with a writable binding MUST emit an assignment `el = _n1`. `ref={fn}` MUST
-emit a ref registration drained per M3. `useRef()` and the `{current}` shape are deleted.
+emit a ref registration that runs per M3. `useRef()` and the `{current}` shape are deleted.
 
 **Falsified by.** After render, the `let` binding MUST hold the element.
 
 **Status.** `PARTIAL`. The channel holds: `ref` is `Op::Ref`, a writable binding lowers to an
 assignment and every other shape to `_$ref`, which owns the cleanup a callback returns and routes a
-callback throw. The draining does not (M3), and `_$ref` still accepts the object and array forms.
+callback throw. `_$ref` still accepts the object and array forms.
 Pinned by `ref-writable-binding.tsx`, `ref-binding.tsx` and `ref-on-component.tsx`.
 
 ### B4 — a listener dies with its position

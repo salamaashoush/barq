@@ -3,14 +3,29 @@ import { describe, expect, test } from "bun:test";
 import { compileSource, loadModule } from "./harness.ts";
 
 /**
- * SEMANTICS M3's cleanup clause: a function a ref callback returns is a
- * cleanup on the scope that owns the element, so it runs at dispose and when
- * a branch holding the element leaves.
+ * SEMANTICS M3: a ref runs when its element is created, in document order and
+ * before the element is inserted into the parent its render is building, which
+ * is Solid 2.0's timing. A function it returns is a cleanup on the scope that
+ * owns the element.
  */
 const SOURCE = `
 import { createSignal, Show } from "@barqjs/core";
 export const log: string[] = [];
 export const [on, setOn] = createSignal(true);
+function Leaf() {
+  return <i ref={(el: HTMLElement) => { log.push("leaf parent=" + (el.parentElement?.tagName ?? "none")); }} />;
+}
+export function Order() {
+  return (
+    <section ref={(el: HTMLElement) => { log.push("section children=" + el.childElementCount); }}>
+      <div ref={(el: HTMLElement) => { log.push("div children=" + el.childElementCount + " parent=" + el.parentElement?.tagName); }}>
+        <span ref={(el: HTMLElement) => { log.push("span parent=" + el.parentElement?.tagName); }} />
+        <span />
+      </div>
+      <Leaf />
+    </section>
+  );
+}
 export function Cleanup() {
   return (
     <p>
@@ -50,6 +65,22 @@ async function mount(name: string) {
     },
   };
 }
+
+describe("M3, when a ref runs", () => {
+  test("in document order at creation: a parent before its children, a component's root before insertion", async () => {
+    const view = await mount("Order");
+    try {
+      expect(view.module.log).toEqual([
+        "section children=1",
+        "div children=2 parent=SECTION",
+        "span parent=DIV",
+        "leaf parent=none",
+      ]);
+    } finally {
+      view.dispose();
+    }
+  });
+});
 
 describe("M3, a ref callback's returned cleanup", () => {
   test("a returned function runs when the scope that owns the element is disposed", async () => {
