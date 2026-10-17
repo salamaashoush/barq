@@ -257,7 +257,7 @@ describe("the diagnostic engine", () => {
       BARQ004:
         `import { For, useStore } from "@barqjs/core";\n` +
         `const [state] = useStore({ rows: [] });\n` +
-        "export const V = () => <For each={state.rows}>{(row) => <li>{row.name}</li>}</For>;\n",
+        "export const V = () => <For each={state.rows}>{({ name }) => <li>{name}</li>}</For>;\n",
       BARQ005: "export const V = ({ text }) => <p>{`#${text}`}</p>;\n",
       BARQ008:
         "// barq-ignore-next-line BARQ001 (nothing reports this here)\n" +

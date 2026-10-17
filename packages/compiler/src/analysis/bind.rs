@@ -20,6 +20,7 @@ use crate::ir::{
 };
 use crate::options::ResolvedOptions;
 
+use super::rows::{Body, Callback, reads_fields_once};
 use super::symbol_of;
 
 /// A lowercase tag is an element, and its slots are element children the
@@ -145,6 +146,9 @@ pub fn classify<'a>(
         cell_reads: Vec::new(),
         slot_forwards: Vec::new(),
         tagged: 0,
+        dev: options.dev,
+        named_rows: Vec::new(),
+        row_readers: Vec::new(),
     };
     binder.imports(program, &options.module_source, &options.server_source);
     binder.env.namespaces = binder.namespaces.clone();
@@ -160,6 +164,7 @@ pub fn classify<'a>(
     binder.report();
     binder.publish_components();
     binder.publish_cell_slots();
+    binder.publish_rows_read_once();
 
     number_reactive_symbols(&mut module.env);
 }
@@ -262,6 +267,15 @@ struct Binder<'p, 'a> {
     /// Inside a tagged template's quasi, where the raw strings are a tag
     /// function's arguments rather than text being built.
     tagged: u32,
+    /// BARQ004 is a development note, so a production compile does not scan
+    /// row callbacks for it.
+    dev: bool,
+    /// A by-item `<For>` whose row callback is passed by name, and the name. The
+    /// declaration may come after the `<For>`, so it is judged after the walk.
+    named_rows: Vec<(Span, SymbolId)>,
+    /// Every function binding with a parameter, and whether it reads a field of
+    /// its first parameter once if a `<For>` hands it a row.
+    row_readers: Vec<(SymbolId, bool)>,
 }
 
 /// A D1 candidate: an identifier in a syntactic slot where no correct program
@@ -1161,6 +1175,7 @@ impl<'a> Binder<'_, 'a> {
         {
             match init {
                 Expression::ArrowFunctionExpression(arrow) => {
+                    self.row_reader(owner, &arrow.params, Body::Arrow(&arrow.body));
                     self.declarations.push((owner, arrow.span, identifier.name.as_str()));
                     if matches!(self.init_of(init), InitOf::Fn { nullary: true }) {
                         let mut scan = ReadScan::new(self.scoping);
@@ -1169,6 +1184,9 @@ impl<'a> Binder<'_, 'a> {
                     }
                 }
                 Expression::FunctionExpression(function) => {
+                    if let Some(body) = &function.body {
+                        self.row_reader(owner, &function.params, Body::Block(body));
+                    }
                     self.declarations.push((owner, function.span, identifier.name.as_str()));
                     if matches!(self.init_of(init), InitOf::Fn { nullary: true })
                         && let Some(body) = &function.body
@@ -1355,6 +1373,79 @@ impl<'a> Binder<'_, 'a> {
     /// so `Mid` forwarding `props.thing` into `Sink`'s attribute slot makes
     /// `Mid.thing` a Cell slot too — the one-hop case C5.1 item 1 names, at any
     /// depth, within the module.
+    /// BARQ004's half about the row callback, for every by-item `<For>`: the
+    /// `each` half is the shape pass's, where the attribute is read.
+    fn row_reads(&mut self, element: &JSXElement<'a>) {
+        let children = element.children.iter().filter_map(|child| match child {
+            JSXChild::ExpressionContainer(container) => container.expression.as_expression(),
+            _ => None,
+        });
+        let attribute = element.opening_element.attributes.iter().filter_map(|item| {
+            let JSXAttributeItem::Attribute(attribute) = item else { return None };
+            let JSXAttributeName::Identifier(name) = &attribute.name else { return None };
+            if name.name != "children" {
+                return None;
+            }
+            let Some(JSXAttributeValue::ExpressionContainer(container)) = &attribute.value else {
+                return None;
+            };
+            container.expression.as_expression()
+        });
+        let mut once = false;
+        for callback in children.chain(attribute) {
+            once |= match super::without_type_wrappers(callback) {
+                Expression::ArrowFunctionExpression(arrow) => reads_fields_once(
+                    self.scoping,
+                    &arrow.params,
+                    Body::Arrow(&arrow.body),
+                    Callback::Inline,
+                ),
+                Expression::FunctionExpression(function) => {
+                    function.body.as_ref().is_some_and(|body| {
+                        reads_fields_once(
+                            self.scoping,
+                            &function.params,
+                            Body::Block(body),
+                            Callback::Inline,
+                        )
+                    })
+                }
+                other => match symbol_of(self.scoping, other) {
+                    Some(symbol) if !self.scoping.symbol_is_mutated(symbol) => {
+                        self.named_rows.push((element.span, symbol));
+                        false
+                    }
+                    // Imported, written again, or computed: a body the module
+                    // does not show is a body that may read the row once.
+                    _ => true,
+                },
+            };
+        }
+        if once {
+            self.env.rows_read_once.push(element.span);
+        }
+    }
+
+    fn row_reader(&mut self, symbol: SymbolId, params: &FormalParameters<'a>, body: Body<'_, 'a>) {
+        if self.dev && (!params.items.is_empty() || params.rest.is_some()) {
+            let once = reads_fields_once(self.scoping, params, body, Callback::Named);
+            self.row_readers.push((symbol, once));
+        }
+    }
+
+    fn publish_rows_read_once(&mut self) {
+        for (span, symbol) in std::mem::take(&mut self.named_rows) {
+            let once = self
+                .row_readers
+                .iter()
+                .find(|(reader, _)| *reader == symbol)
+                .is_none_or(|(_, once)| *once);
+            if once && !self.env.rows_read_once.contains(&span) {
+                self.env.rows_read_once.push(span);
+            }
+        }
+    }
+
     fn publish_cell_slots(&mut self) {
         let owner_of = |props: SymbolId| -> Option<SymbolId> {
             self.candidates.iter().find(|(_, p)| *p == props).and_then(|(owner, _)| *owner)
@@ -1462,6 +1553,10 @@ impl<'a> Binder<'_, 'a> {
             (Flow::Show | Flow::Match, _) => &[accessor],
             _ => return,
         };
+        if self.dev && flow == Flow::For && keyed == Keyed::ByItem {
+            self.row_reads(element);
+        }
+
         // Only `For`, `Show` and `Match` read `keyed`; `Repeat` hands over a
         // plain number, so an unreadable attribute list leaves it proved.
         let proved = proved || !matches!(flow, Flow::For | Flow::Show | Flow::Match);
@@ -1751,6 +1846,9 @@ impl<'a> Visit<'a> for Binder<'_, 'a> {
             && let Some(name) = it.id.as_ref().map(|id| id.name.as_str())
         {
             self.declarations.push((owner, it.span, name));
+            if let Some(body) = &it.body {
+                self.row_reader(owner, &it.params, Body::Block(body));
+            }
         }
         if function_returns_jsx(it) {
             if let Some(props) = props_symbol(&it.params)

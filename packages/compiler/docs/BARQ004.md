@@ -1,15 +1,44 @@
-# BARQ004: `<For>` rows may show stale fields when `each` holds store objects
+# BARQ004: A `<For>` row reads a field once, which goes stale if `each` holds store objects
 
 **Level:** note · [all codes](README.md)
 
 ## Message
 
-> `<For>` reads a row's fields once, when the row is created, and the compiler cannot
-> tell where the items in `each` come from. If they are store objects, changing a field
-> in place leaves the row showing the old value. Key the list and read the row by
+> `<For>` reads a field of this row once, when the row is built, and the compiler cannot
+> tell where the items in `each` come from. If they are store objects, changing that field
+> in place leaves the row showing the old value. Read the field where it is shown, as
+> `{row.name}` in the JSX of an inline callback, or key the list and read the row by
 > calling it: `keyed={(row) => row.id}` with `row().name`.
 
 ## Failing example
+
+```tsx
+import { For, createStore } from "@barqjs/core";
+
+const [state] = createStore({ rows: [{ id: 1, name: "salama" }] });
+
+export const List = () => (
+  <ul>
+    <For each={state.rows}>{({ name }) => <li>{name}</li>}</For>
+  </ul>
+);
+```
+
+```tsx
+import { For, createStore } from "@barqjs/core";
+
+const [state] = createStore({ rows: [{ id: 1, name: "salama" }] });
+
+const renderRow = (row) => <li>{row.name}</li>;
+
+export const List = () => (
+  <ul>
+    <For each={state.rows}>{renderRow}</For>
+  </ul>
+);
+```
+
+## Fixed example
 
 ```tsx
 import { For, createStore } from "@barqjs/core";
@@ -22,8 +51,6 @@ export const List = () => (
   </ul>
 );
 ```
-
-## Fixed example
 
 ```tsx
 import { For, createStore } from "@barqjs/core";
@@ -41,14 +68,29 @@ export const List = () => (
 
 ## Why this rule exists
 
-Without `keyed`, a row is identified by the item itself and receives it as a plain value,
-so `{row.name}` is written once. That is right when a change replaces the item with a new
-object, because a new item is a new row. A store changes fields in place: the item stays
-the same object, the row is kept, and the old text stays on the page.
+Without `keyed`, a row is identified by the item itself and receives it as a plain value.
+A store changes fields in place: the item stays the same object, so the row is kept rather
+than built again. What the row shows is then up to where each field is read.
 
-The compiler cannot tell which kind of list `each` holds, which is why this is a note and
-not a warning. With `keyed={(row) => row.id}` or `keyed={false}` the row receives an
-accessor, `row().name` is read again when the field changes, and nothing is reported.
+A field read in a hole of an inline row callback, a child like `{row.name}`, an attribute
+like `title={row.name}`, or a component prop, is compiled as a read that runs again when
+the field changes, so that row follows the store and nothing is reported. A field read
+anywhere the row reads it only while it is built is reported:
+
+- a destructured parameter, `({ name }) => …`, or `const { name } = row`;
+- a read outside the JSX, `const name = row.name`, or a row handed to a function there;
+- a read that picks the JSX, `row.done ? <s/> : <li/>`, or the tag, `<row.Icon />`;
+- a callback passed by name, `{renderRow}`, whose parameter the compiler does not treat as a
+  row, and any callback the module does not show, such as an import.
+
+Handlers, `ref`, `bind:` and a form's `action` are handed over once whatever their
+source, a signal's included, so a row field read there is not reported.
+
+The note needs both halves: a callback that reads a field once, and rows the compiler
+cannot prove are plain values. Rows written as an array literal are plain, and a `<For>`
+over them is not reported. With `keyed={(row) => row.id}` or `keyed={false}` the row
+receives an accessor, `row().name` is read again when the field changes, and nothing is
+reported.
 
 ## Silencing one line
 
@@ -60,7 +102,7 @@ const [state] = createStore({ rows: [{ id: 1, name: "salama" }] });
 export const List = () => (
   <ul>
     {/* barq-ignore-next-line BARQ004 (rows are replaced, never changed in place) */}
-    <For each={state.rows}>{(row) => <li>{row.name}</li>}</For>
+    <For each={state.rows}>{({ name }) => <li>{name}</li>}</For>
   </ul>
 );
 ```

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { compileSource, loadModule } from "./harness.ts";
+import { compileSource, compileSourceRaw, loadModule } from "./harness.ts";
 
 /**
  * A member read off a value the compiler knows nothing about may be a store's
@@ -132,4 +132,68 @@ describe("a field of a store read through a value the compiler cannot name", () 
       view.dispose();
     }
   });
+});
+
+/**
+ * BARQ004 says a row reads a field once and goes stale when a store writes it
+ * in place. Each callback here is compiled for the note and then mounted over a
+ * store whose first row is written in place, so the note and what the page does
+ * cannot drift apart: the note is raised exactly where the text stays old.
+ */
+describe("BARQ004 against a store row written in place", () => {
+  const callbacks: Record<string, { declaration?: string; children: string }> = {
+    inline: { children: "{(row) => <li>{row.label}</li>}" },
+    attribute: { children: '{(row) => <li title={row.label}>{"x"}</li>}' },
+    call: { children: "{(row) => <li>{String(row.label)}</li>}" },
+    spread: { children: "{(row) => <li {...row} />}" },
+    rest: { children: "{(...all) => <li>{all[0].label}</li>}" },
+    functionExpression: { children: "{function (row) { return <li>{row.label}</li>; }}" },
+    destructured: { children: "{({ label }) => <li>{label}</li>}" },
+    statement: { children: "{(row) => { const label = row.label; return <li>{label}</li>; }}" },
+    expression: { children: "{(row) => row.label}" },
+    named: {
+      declaration: "const named = (row) => <li>{row.label}</li>;",
+      children: "{named}",
+    },
+  };
+
+  const shown = (host: HTMLElement): string =>
+    host.querySelector("li")?.title || host.querySelector("ul")?.textContent || "";
+
+  for (const [name, { declaration = "", children }] of Object.entries(callbacks)) {
+    test(`${name}: noted exactly when the row stays stale`, async () => {
+      const source =
+        `import { For, createStore } from "@barqjs/core";\n` +
+        `export const [state, setState] = createStore({ rows: [{ id: 1, label: "salama", title: "salama" }] });\n` +
+        `${declaration}\n` +
+        `export function Rows() { return <ul><For each={state.rows}>${children}</For></ul>; }\n`;
+      const noted = compileSourceRaw(source, `barq004-${name}.tsx`, { dev: true }).warnings.some(
+        (warning) => warning.includes("BARQ004"),
+      );
+      const core = await import("@barqjs/core");
+      const module = (await loadModule(
+        compileSource(source, `barq004-${name}.tsx`),
+        `barq004-${name}`,
+      )) as unknown as {
+        Rows: () => unknown;
+        setState: (change: (draft: { rows: { label: string; title: string }[] }) => void) => void;
+      };
+      const host = document.createElement("div");
+      document.body.appendChild(host);
+      const dispose = core.render(() => module.Rows() as never, host);
+      try {
+        expect(shown(host)).toBe("salama");
+        module.setState((draft) => {
+          draft.rows[0]!.label = "salama ashoush";
+          draft.rows[0]!.title = "salama ashoush";
+        });
+        core.flush();
+        const followed = shown(host) === "salama ashoush";
+        expect({ noted, followed }).toEqual({ noted: !followed, followed });
+      } finally {
+        dispose();
+        host.remove();
+      }
+    });
+  }
 });

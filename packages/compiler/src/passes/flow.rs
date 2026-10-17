@@ -777,18 +777,15 @@ fn list<'a>(
         },
     };
     // O3, which the flow pass has to keep raising because it is the pass that
-    // took the component call away. A by-item row is a plain value, so
-    // `{item.name}` is applied once with no thunk — right whenever the rows are
-    // what `mapArray` recreated, and silently stale when they are store proxies.
-    if shaper.dev() && source.proven && keyed.is_none() && shaper.unproven_rows(&source.value) {
-        shaper.diagnose(
-            crate::diag::Code::Barq004,
-            source.span,
-            "`<For>` reads a row's fields once, when the row is created, and the compiler cannot \
-             tell where the items in `each` come from. If they are store objects, changing a field \
-             in place leaves the row showing the old value. Key the list and read the row by \
-             calling it: `keyed={(row) => row.id}` with `row().name`.",
-        );
+    // took the component call away. Both halves, as the shape pass takes them:
+    // rows not proven plain, and a callback that reads a field once.
+    if shaper.dev()
+        && source.proven
+        && keyed.is_none()
+        && shaper.unproven_rows(&source.value)
+        && shaper.rows_read_once(span)
+    {
+        shaper.diagnose(crate::diag::Code::Barq004, source.span, super::shape::STALE_ROW);
     }
 
     let mut region = blank(shaper, span);

@@ -369,6 +369,12 @@ pub struct ReactiveEnv<'a> {
     /// created, never store proxies, so a `<For>` over them reads nothing a
     /// field write could leave stale.
     pub plain_rows: Vec<SymbolId>,
+    /// The by-item `<For>` elements whose row callback reads a field of its row
+    /// where nothing reads it again: a destructured parameter, a read outside a
+    /// JSX hole, a value handed over once, or a callback this module does not
+    /// show as an inline function. A field read in a hole is emitted live and
+    /// follows a store write, so a `<For>` with only those is not here.
+    pub rows_read_once: Vec<Span>,
 }
 
 /// One proven Cell slot. `read` is where the callee consumes it, so the
@@ -404,6 +410,7 @@ impl<'a> ReactiveEnv<'a> {
             root_jsx_args: Vec::new(),
             derived: Vec::new(),
             plain_rows: Vec::new(),
+            rows_read_once: Vec::new(),
         }
     }
 

@@ -3,6 +3,7 @@ pub mod link;
 pub mod migration;
 mod nesting;
 mod render;
+mod rows;
 pub mod server_fn;
 
 use oxc::allocator::Allocator;

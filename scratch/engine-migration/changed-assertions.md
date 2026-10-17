@@ -1100,3 +1100,33 @@ Each now orders what it waits on; no expectation's subject changed, and what mov
   touched, is now a count carried along the redirect chain and checked in one `follow`. The
   behaviour is pinned by two new navigation tests (a loader cycle and a `beforeLoad` cycle stop
   with one error) and a server test (each request answers one hop, buffered or streamed).
+
+## BARQ004 reports a row field read once, not every row callback
+
+BARQ004 said "`<For>` reads a row's fields once" for every by-item `<For>` over rows the
+compiler could not prove plain. A field read in a hole of an inline row callback has been
+emitted live for a while (`_$insert(el, () => row.name)`, `_$bindProp(..., () => row.title)`),
+so that claim was false for the commonest shape. Runtime evidence, a `createStore` row written in
+place (`s.rows[0].name = "ada"`, then `flush()`): an inline `{(row) => <li>{row.name}</li>}`
+shows "ada"; a destructured `({ name })`, a `const n = row.name` before the JSX, and a callback
+passed by name all still show "salama". The analysis now also requires the callback to read a
+field once (`analysis/rows.rs`), and these assertions were restated:
+
+- `compiler/src/passes/shape.rs` `the_documented_divergence_is_reported_and_the_getter_one_is_gone`:
+  `<For each={props.rows}>{(item) => <li>{item.n}</li>}</For>` expected 1 note, now 0 with
+  `() => item.n` asserted in the output; the 1-note case is now `({ n }) => <li>{n}</li>`. The
+  `store.items` and `() => store.items` loop: the same, 1 note for the destructured row and 0 for
+  `{item.n}`.
+- `compiler/src/passes/shape.rs` `rows_a_literal_created_are_not_reported`: the body was
+  `{(item) => <li>{item}</li>}`, which reads no field and so no longer fires on any source. It is
+  now `({ name }) => <li>{name}</li>`, so the test still decides on the rows alone; every 0 and 1
+  it asserts is unchanged.
+- `compiler/test/diagnostics.test.ts` "every advertised code is reachable from some input":
+  BARQ004's source was the inline `{row.name}`, now the destructured `({ name })`.
+- `compiler/docs/BARQ004.md`: the failing example was the inline `{row.name}`, which is now the
+  first fixed example; the failing examples are a destructured row and a callback passed by name.
+  The page title, the index entry and the message changed with the claim.
+- Added: `shape.rs` `a_row_read_once_is_reported_and_a_live_read_is_not` (both raising sites, and
+  the TanStack row model shape quiet), and a `store-rows.test.ts` block that compiles each
+  callback shape for the note, mounts it over a store row written in place, and asserts the note
+  is raised exactly when the text stays old.

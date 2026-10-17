@@ -124,6 +124,14 @@ pub fn run<'a>(
     module.env.diagnostics.extend(diagnostics);
 }
 
+/// BARQ004's message, raised here for a `<For>` left a component call and by
+/// the flow pass for one it lowers.
+pub(super) const STALE_ROW: &str = "`<For>` reads a field of this row once, when the row is built, and the \
+     compiler cannot tell where the items in `each` come from. If they are store objects, changing \
+     that field in place leaves the row showing the old value. Read the field where it is shown, as \
+     `{row.name}` in the JSX of an inline callback, or key the list and read the row by calling \
+     it: `keyed={(row) => row.id}` with `row().name`.";
+
 pub(super) struct Shaper<'a, 'm> {
     pub(super) allocator: &'a Allocator,
     pub(super) ast: AstBuilder<'a>,
@@ -383,30 +391,21 @@ impl<'a> Shaper<'a, '_> {
             record.push(property);
         }
 
-        // O3. A by-item row is a plain value, so `{item.name}` is applied once
-        // with no thunk and no effect. That is right whenever the rows really are
-        // the values `mapArray` recreated, and silently stale when they are store
-        // proxies: mutating a proxy field leaves the array identity alone, so no
-        // row is recreated and the applied-once read never runs again.
-        //
-        // The gate is therefore NOT "the compiler knows nothing". A resolvable
-        // store — `each={store.items}`, `each={() => store.items}` — is the
-        // demonstrable failure case, and gating on `Opaque` stayed silent for
-        // exactly it. `keyed={false}` and `keyed={fn}` both hand the row through
-        // an accessor, so neither has the hazard at all.
+        // O3. A store writes a row's field in place, so the row is kept and a
+        // field read only when it was built keeps the old value. A field read in
+        // a hole of an inline callback is emitted live and follows the write, so
+        // the note needs both halves: rows the compiler cannot prove plain, and
+        // a callback that reads a field once (`rows_read_once`, from the
+        // analysis). A resolvable store is the demonstrable failure case, so
+        // `each` is not gated on `Opaque`. `keyed={false}` and `keyed={fn}` both
+        // hand the row through an accessor, so neither has the hazard at all.
         if self.dev
             && flow == Some(Flow::For)
             && keyed == Keyed::ByItem
             && let Some((at, true)) = each
+            && self.rows_read_once(span)
         {
-            self.diagnose(
-                Code::Barq004,
-                at,
-                "`<For>` reads a row's fields once, when the row is created, and the compiler cannot \
-                 tell where the items in `each` come from. If they are store objects, changing a field \
-                 in place leaves the row showing the old value. Key the list and read the row by \
-                 calling it: `keyed={(row) => row.id}` with `row().name`.",
-            );
+            self.diagnose(Code::Barq004, at, STALE_ROW);
         }
 
         // O7 is gone with the getters, and this is where that is recorded. It
@@ -1212,6 +1211,12 @@ impl<'a> Shaper<'a, '_> {
     /// recreate — a store proxy, a props forward, or an origin the analysis could
     /// not follow at all. Syntactic on purpose: it drives a note, and the honest
     /// answer for anything it cannot see through is "not proven".
+    /// Whether the analysis found the row callback of the `<For>` at `span`
+    /// reading a field of its row once.
+    pub(super) fn rows_read_once(&self, span: Span) -> bool {
+        self.lift.env().rows_read_once.contains(&span)
+    }
+
     pub(super) fn unproven_rows(&self, value: &Expression<'a>) -> bool {
         match value {
             Expression::ParenthesizedExpression(it) => self.unproven_rows(&it.expression),
@@ -2573,14 +2578,16 @@ mod tests {
     /// Rows an array literal or an index-mapping `Array.from` created are plain
     /// values, so a `<For>` over them has nothing for O3 to warn about. A row
     /// the literal did not create, a mapper that may hand back its source's
-    /// items, and a binding written again all keep the note.
+    /// items, and a binding written again all keep the note. The row is
+    /// destructured, so the callback half of the note holds throughout and the
+    /// rows are what decides it.
     #[test]
     fn rows_a_literal_created_are_not_reported() {
         let note = |declaration: &str, each: &str| {
             dev(&format!(
                 "import {{ For }} from \"@barqjs/core\";\n\
                  {declaration}\n\
-                 export const V = () => <For each={{{each}}}>{{(item) => <li>{{item}}</li>}}</For>;\n"
+                 export const V = () => <For each={{{each}}}>{{({{ name }}) => <li>{{name}}</li>}}</For>;\n"
             ))
             .warnings
             .len()
@@ -2611,13 +2618,18 @@ mod tests {
     /// Its shape is now a `dynamic` component given a live prop.
     #[test]
     fn the_documented_divergence_is_reported_and_the_getter_one_is_gone() {
-        let notes = dev(
-            "import { For } from \"@barqjs/core\";\n\
-             export const V = (props) => <For each={props.rows}>{(item) => <li>{item.n}</li>}</For>;\n",
-        )
+        let notes = dev("import { For } from \"@barqjs/core\";\n\
+             export const V = (props) => <For each={props.rows}>{({ n }) => <li>{n}</li>}</For>;\n")
         .warnings;
         assert_eq!(notes.len(), 1, "{notes:?}");
         assert!(notes[0].message.contains("where the items in `each` come from"), "{notes:?}");
+
+        // The same rows read in a hole: the read is emitted live and follows a
+        // write to the field, so the row does not go stale.
+        let live = dev("import { For } from \"@barqjs/core\";\n\
+             export const V = (props) => <For each={props.rows}>{(item) => <li>{item.n}</li>}</For>;\n");
+        assert!(live.warnings.is_empty(), "{:?}", live.warnings);
+        assert!(live.code.contains("() => item.n"), "{}", live.code);
 
         // The case the `Opaque` gate stayed silent for, and the one O3's own
         // message names: a RESOLVABLE store, whose rows `mapArray` never
@@ -2626,10 +2638,14 @@ mod tests {
             let source = format!(
                 "import {{ For, useStore }} from \"@barqjs/core\";\n\
                  const [store] = useStore({{ items: [] }});\n\
-                 export const V = () => <For each={{{each}}}>{{(item) => <li>{{item.n}}</li>}}</For>;\n"
+                 export const V = () => <For each={{{each}}}>{{({{ n }}) => <li>{{n}}</li>}}</For>;\n"
             );
             let notes = dev(&source).warnings;
             assert_eq!(notes.len(), 1, "each={each}: {notes:?}");
+
+            let live =
+                dev(&source.replace("({ n }) => <li>{n}</li>", "(item) => <li>{item.n}</li>"));
+            assert!(live.warnings.is_empty(), "each={each}: {:?}", live.warnings);
         }
 
         // A signal of plain rows IS what mapArray recreates, so there is
@@ -2680,5 +2696,106 @@ mod tests {
         assert!(dynamic.warnings.is_empty(), "{:?}", dynamic.warnings);
         assert!(!dynamic.code.contains("get total()"), "{}", dynamic.code);
         assert!(dynamic.code.contains("total: () => n()"), "{}", dynamic.code);
+    }
+
+    /// O3's callback half. A store keeps a row whose field it writes in place,
+    /// so the note holds exactly where a field is read once: a read in a hole
+    /// of an inline callback is emitted live and follows the write. Every case
+    /// runs through both sites that raise the note, the flow pass and the
+    /// component call left when flow lowering is off.
+    #[test]
+    fn a_row_read_once_is_reported_and_a_live_read_is_not() {
+        let notes = |declarations: &str, children: &str| {
+            let source = format!(
+                "import {{ For, Show, useStore }} from \"@barqjs/core\";\n\
+                 import {{ Item, pick, external }} from \"./x\";\n\
+                 const [store] = useStore({{ rows: [] }});\n\
+                 {declarations}\n\
+                 export const V = () => <ul><For each={{store.rows}}>{children}</For></ul>;\n"
+            );
+            let lowered = dev(&source).warnings.len();
+            let options = ResolvedOptions {
+                dev: true,
+                opt: crate::options::Opt::NONE,
+                ..ResolvedOptions::with_filename("s.tsx")
+            };
+            let called = compile(&source, &options).expect("compiles").warnings.len();
+            assert_eq!(lowered, called, "{children}");
+            lowered
+        };
+
+        let once = [
+            ("", "{({ name }) => <li>{name}</li>}"),
+            ("", "{({ name } = {}) => <li>{name}</li>}"),
+            ("", "{([first]) => <li>{first}</li>}"),
+            ("", "{(...all) => { const name = all[0].name; return <li>{name}</li>; }}"),
+            ("", "{(row) => { const name = row.name; return <li>{name}</li>; }}"),
+            ("", "{(row) => { const { name } = row; return <li>{name}</li>; }}"),
+            ("", "{(row) => { const label = pick(row); return <li>{label}</li>; }}"),
+            ("", "{(row) => { const copy = { ...row }; return <li>{copy.name}</li>; }}"),
+            ("", "{(row) => row.name}"),
+            ("", "{(row) => (row.done ? <s>{row.name}</s> : <li>{row.name}</li>)}"),
+            ("", "{(row) => <row.Icon />}"),
+            ("", "{function (row) { const name = row.name; return <li>{name}</li>; }}"),
+            ("const named = (row) => <li>{row.name}</li>;", "{named}"),
+            ("function declared(row) { return <li>{row.name}</li>; }", "{declared}"),
+            ("let swapped = (row) => <li />;\nswapped = external;", "{swapped}"),
+            ("", "{external}"),
+            ("", "{pick()}"),
+        ];
+        for (declarations, children) in once {
+            assert_eq!(notes(declarations, children), 1, "{declarations} {children}");
+        }
+
+        let live = [
+            "{(row) => <li>{row.name}</li>}",
+            "{(row) => <li title={row.name} class={row.done ? \"done\" : \"\"}>{`#${row.id}`}</li>}",
+            "{(row) => <li>{pick(row)}</li>}",
+            "{(row) => <li>{row?.name}{row[\"id\"]}</li>}",
+            "{(row) => <Item name={row.name} row={row} />}",
+            "{(row) => <Show when={row.done}>{row.name}</Show>}",
+            "{(row) => <>{row.name}<b>{row.id}</b></>}",
+            "{(row) => <li {...row} />}",
+            "{(row) => <li>{row.tags.length}<For each={row.tags}>{(tag) => <b>{tag}</b>}</For></li>}",
+            "{(row) => <li onClick={() => pick(row.id)}>{row.name}</li>}",
+            "{(row = {}) => <li>{row.name}</li>}",
+            "{(...all) => <li>{all[0].name}</li>}",
+            "{function (row) { return <li>{row.name}</li>; }}",
+            "{(row) => <li>x</li>}",
+            // Handed over once whatever the source: a signal's value in these
+            // slots is not read again either, so a row's is not stale there.
+            "{(row) => <li onClick={pick(row.id)} ref={row.ref}>x</li>}",
+            "{(row) => <form action={row.action}><input bind:value={row.value} /></form>}",
+        ];
+        for children in live {
+            assert_eq!(notes("", children), 0, "{children}");
+        }
+        assert_eq!(notes("const whole = (row) => <Item row={row} />;", "{whole}"), 0);
+
+        // TanStack's row model: an opaque table, rows read through methods and
+        // fields in holes only. The same source destructuring the row is told.
+        let tanstack = |row: &str| {
+            dev(&format!(
+                "import {{ For }} from \"@barqjs/core\";\n\
+                 import {{ createTable }} from \"@barqjs/table\";\n\
+                 export const V = () => {{\n\
+                   const table = createTable(() => ({{}}));\n\
+                   return <tbody><For each={{table.getRowModel().rows}}>{row}</For></tbody>;\n\
+                 }};\n"
+            ))
+            .warnings
+            .len()
+        };
+        assert_eq!(
+            tanstack(
+                "{(row) => <tr data-id={row.id} data-selected={`${row.getIsSelected()}`}>\
+                 <td><input type=\"checkbox\" checked={row.getIsSelected()} \
+                 onChange={row.getToggleSelectedHandler()} /></td>\
+                 <td>{row.original.name}</td>\
+                 <For each={row.getVisibleCells()}>{(cell) => <td>{cell.id}</td>}</For></tr>}"
+            ),
+            0
+        );
+        assert_eq!(tanstack("{({ original }) => <tr><td>{original.name}</td></tr>}"), 1);
     }
 }
