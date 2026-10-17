@@ -280,6 +280,7 @@ interface Native {
     specifier: string,
     forClient?: boolean,
     splitComponents?: boolean,
+    coreSource?: string,
   ): RouteSplit;
 }
 
@@ -340,6 +341,12 @@ export interface VerifyOptions {
 }
 
 export interface BarqRouterOptions {
+  /**
+   * Where the split route module imports `lazy` and `hot` from: the compiler's
+   * `coreSource`.
+   * @default "@barqjs/core"
+   */
+  readonly coreSource?: string;
   /** Where route files live, relative to the Vite root. */
   readonly routesDir?: string;
   /**
@@ -440,7 +447,7 @@ function referenceShape(code: string): string {
  */
 const SPLIT_EXPORTS = /^export const \w+ = \$\$barqOptions\.\w+;$/m;
 
-function withSplitHot(code: string): string {
+function withSplitHot(code: string, coreSource: string): string {
   const at = code.search(SPLIT_EXPORTS);
   if (at === -1) return code;
   const hot = [
@@ -458,7 +465,7 @@ function withSplitHot(code: string): string {
   ].join("\n");
   const accept = [
     ``,
-    `import { hot as $$barqHot } from "@barqjs/core/hot";`,
+    `import { hot as $$barqHot } from ${JSON.stringify(`${coreSource}/hot`)};`,
     `if (import.meta.hot) {`,
     `  import.meta.hot.accept((next) => {`,
     `    const after = next?.$$barqOptions;`,
@@ -476,6 +483,7 @@ function withSplitHot(code: string): string {
 export function barqRouter(options: BarqRouterOptions = {}): Plugin {
   const routesDir = options.routesDir ?? "src/routes";
   const codeSplitting = options.codeSplitting ?? true;
+  const coreSource = options.coreSource ?? "@barqjs/core";
   let root = process.cwd();
   let base = "/";
   let serving = false;
@@ -513,6 +521,7 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
       `${file}?${SPLIT_QUERY}`,
       client,
       codeSplitting,
+      coreSource,
     );
 
   /** `<file>?barq-split` — the half the reference module `import()`s. */
@@ -833,7 +842,7 @@ export function barqRouter(options: BarqRouterOptions = {}): Plugin {
       if (hot && !wantsSplit) references.set(file, referenceShape(answer.reference));
       const out = wantsSplit
         ? hot && !refused
-          ? withSplitHot(answer.split)
+          ? withSplitHot(answer.split, coreSource)
           : answer.split
         : answer.reference;
       return out === source ? null : { code: out, map: null };

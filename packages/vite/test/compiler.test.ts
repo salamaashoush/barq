@@ -511,7 +511,7 @@ describe("barqVitePlugin", () => {
 
     test("interp serialises the IR instead of emitting the walk", async () => {
       const code = await build({ interp: true });
-      expect(code).toContain('from "@barqjs/core/interp"');
+      expect(code).toContain('from "@barqjs/web/interp"');
       expect(code).toContain("_$interp(");
       expect(await build({})).not.toContain("/interp");
     });

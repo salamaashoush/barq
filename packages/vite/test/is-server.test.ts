@@ -12,7 +12,7 @@ import { cleanUp, project } from "./project.ts";
 
 afterAll(cleanUp);
 
-const ENTRY = `import { isServer } from "@barqjs/core";
+const ENTRY = `import { isServer } from "@barqjs/web";
 export function where(): string {
   if (isServer) return "SERVER_ONLY_BRANCH";
   return "CLIENT_ONLY_BRANCH";

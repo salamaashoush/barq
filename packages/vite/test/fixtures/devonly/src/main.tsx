@@ -1,4 +1,5 @@
-import { createSignal, hydrate } from "@barqjs/core";
+import { createSignal } from "@barqjs/core";
+import { hydrate } from "@barqjs/web";
 
 function Row(props: { label: string }) {
   return <li>{props.label}</li>;

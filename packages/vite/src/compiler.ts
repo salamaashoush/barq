@@ -57,8 +57,18 @@ export interface BarqTemplateLabel {
  * every reactive read resolves by `SymbolId`.
  */
 export interface BarqCompilerOptions {
-  /** @default "@barqjs/core" */
+  /**
+   * The renderer compiled code builds through.
+   * @default "@barqjs/web"
+   */
   moduleSource?: string;
+
+  /**
+   * Where the renderer-neutral half of the ABI and the components an author
+   * imports come from.
+   * @default "@barqjs/core"
+   */
+  coreSource?: string;
 
   /**
    * Module source for the string backend's helpers. Its own package rather than
@@ -257,12 +267,12 @@ export interface BarqCompilerOptions {
 
   /**
    * Emit for the reference backend instead of the DOM backend: the analysed IR
-   * is serialised beside the module and `@barqjs/core/interp` walks it. It is
+   * is serialised beside the module and `@barqjs/web/interp` walks it. It is
    * the SAME analysed IR codegen consumes — same anchors, same template bytes,
    * same ref plan, same patch program — which is what makes it usable as an
    * oracle rather than a second implementation.
    *
-   * DEV and test only. It pulls in `@barqjs/core/interp`, and it is slower and
+   * DEV and test only. It pulls in `@barqjs/web/interp`, and it is slower and
    * larger than the emitted module in every case. It is a DOM backend, so it
    * applies to the client pass only and the server pass still goes through the
    * string backend.
@@ -327,6 +337,7 @@ interface NativeTransformOptions {
   cssImports?: string[][];
   routes?: readonly string[];
   moduleSource?: string;
+  coreSource?: string;
   serverSource?: string;
   startSource?: string;
   clientSource?: string;
@@ -728,11 +739,11 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       if (
         serving &&
         (compilerOptions.hmr ?? true) &&
-        optimizable(root, compilerOptions.moduleSource ?? "@barqjs/core")
+        optimizable(root, compilerOptions.coreSource ?? "@barqjs/core")
       ) {
         optimizeDeps.include = [
           ...(optimizeDeps.include ?? []),
-          `${compilerOptions.moduleSource ?? "@barqjs/core"}/hot`,
+          `${compilerOptions.coreSource ?? "@barqjs/core"}/hot`,
         ];
       }
     },
@@ -787,7 +798,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
             clear: SERVER_DIAGNOSTICS_CLEAR,
             root,
           },
-          compilerOptions.moduleSource ?? "@barqjs/core",
+          compilerOptions.coreSource ?? "@barqjs/core",
         );
       }
       if (!id.includes(CSS_QUERY)) return null;
@@ -1022,6 +1033,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       ): Promise<NativeResult> => {
         const base = {
           moduleSource: compilerOptions.moduleSource,
+          coreSource: compilerOptions.coreSource,
           serverSource: compilerOptions.serverSource,
           startSource: compilerOptions.startSource,
           clientSource: compilerOptions.clientSource,
@@ -1209,7 +1221,12 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
           program = undefined;
         }
         if (program !== undefined) {
-          emitted = withHotComponents(emitted, componentsIn(program, components), program);
+          emitted = withHotComponents(
+            emitted,
+            componentsIn(program, components),
+            program,
+            compilerOptions.coreSource,
+          );
         }
       }
 
@@ -1257,6 +1274,7 @@ export function withHotComponents(
   code: string,
   components: ReadonlySet<string>,
   program: HotProgram,
+  coreSource = "@barqjs/core",
 ): string {
   const edits: [start: number, end: number, text: string][] = [];
   let wrapped = 0;
@@ -1344,7 +1362,7 @@ export function withHotComponents(
   for (const [start, end, text] of edits.toSorted((a, b) => b[0] - a[0] || b[1] - a[1])) {
     out = out.slice(0, start) + text + out.slice(end);
   }
-  out += `\nimport { hot as __barq_hot } from "@barqjs/core/hot";\n`;
+  out += `\nimport { hot as __barq_hot } from ${JSON.stringify(`${coreSource}/hot`)};\n`;
   if (exported > 0 && onlyComponents) out += `if (import.meta.hot) import.meta.hot.accept();\n`;
   return out;
 }

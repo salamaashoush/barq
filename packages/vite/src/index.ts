@@ -111,7 +111,7 @@ interface Shared {
   reachability: Reachability | undefined;
 }
 
-const RUNTIME_PACKAGES = ["@barqjs/core", "@solidjs/signals"];
+const RUNTIME_PACKAGES = ["@barqjs/core", "@barqjs/web", "@solidjs/signals"];
 
 function installed(name: string): boolean {
   try {
@@ -188,7 +188,7 @@ function configPlugin(
         ...(development ? ["development"] : []),
         // A server render inside a worker runtime still resolves the browser
         // builds of its dependencies, and `worker` ahead of them picks the
-        // server half of a package that ships one, such as `@barqjs/core`'s
+        // server half of a package that ships one, such as `@barqjs/web`'s
         // `isServer`.
         ...(environment.isSsrTargetWebworker === true ? ["worker"] : []),
         ...(serving && options.dev === false
@@ -296,6 +296,9 @@ export default async function barq(options: BarqOptions = {}): Promise<Plugin[]>
   if (routerInstalled && routerOptions !== null) {
     const router: BarqRouterOptions = {
       ...routerOptions,
+      ...(compilerOptions.coreSource === undefined
+        ? {}
+        : { coreSource: compilerOptions.coreSource }),
       hmr,
       onRoutes: (patterns) => (shared.routes = patterns),
       onReachability: (found) => (shared.reachability = found),
