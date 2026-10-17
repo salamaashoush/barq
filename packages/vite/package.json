@@ -42,9 +42,9 @@
       "import": "./dist/index.js"
     },
     "./internal": {
-      "types": "./dist/css-registration.d.ts",
-      "bun": "./src/css-registration.ts",
-      "import": "./dist/css-registration.js"
+      "types": "./dist/internal.d.ts",
+      "bun": "./src/internal.ts",
+      "import": "./dist/internal.js"
     },
     "./boundary-modules": {
       "types": "./boundary-modules.d.ts"

@@ -153,6 +153,6 @@ barq builds, so under such a host they do not run, and the build says so.
 
 ## Internal subpath
 
-`@barqjs/vite/internal` is not public API. It holds the CSS registration the
-repository's own `bun test` preloads append to a compiled module, and it can
-change in any release.
+`@barqjs/vite/internal` is not public API. It holds the compiler loader the
+repository's own `bun test` preloads install, and the CSS registration it
+appends to a compiled module. It can change in any release.
