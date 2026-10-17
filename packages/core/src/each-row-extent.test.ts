@@ -6,7 +6,8 @@
  */
 
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { NO_SCOPE, branch, each } from "./flow.ts";
+import { NO_SCOPE } from "./flow.ts";
+import { branch, each } from "./dom-flow.ts";
 import { block, createSignal, flush, rootScope, runWithOwner } from "./signals.ts";
 
 let list: HTMLUListElement;

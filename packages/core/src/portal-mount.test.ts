@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { insert } from "./dom.ts";
-import { boundary, portal } from "./flow.ts";
+import { boundary, portal } from "./dom-flow.ts";
 import { block, createMemo, createSignal, flush, rootScope, runWithOwner } from "./signals.ts";
 
 let host: HTMLDivElement;

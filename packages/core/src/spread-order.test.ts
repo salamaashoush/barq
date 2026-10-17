@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { render, setAttr, setClass, spread } from "./dom.ts";
 import { bindEffect } from "./signals.ts";
-import { boundary } from "./flow.ts";
+import { boundary } from "./dom-flow.ts";
 import type { Block } from "./scope.ts";
 import {
   block,

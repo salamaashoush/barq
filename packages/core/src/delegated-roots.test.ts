@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 
 import * as core from "./index.ts";
 import { delegate, delegateEvents, hydrate, render } from "./dom.ts";
-import { portal } from "./flow.ts";
+import { portal } from "./dom-flow.ts";
 import { block, flush } from "./signals.ts";
 
 let hosts: HTMLElement[] = [];

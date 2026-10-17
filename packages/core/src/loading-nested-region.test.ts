@@ -24,7 +24,7 @@
 
 import { rooted } from "./test-root.ts";
 import { beforeEach, expect, test } from "bun:test";
-import { boundary, branch } from "./flow.ts";
+import { boundary, branch } from "./dom-flow.ts";
 import { render } from "./dom.ts";
 import { createMemo, flush, createRoot, createSignal } from "./signals.ts";
 

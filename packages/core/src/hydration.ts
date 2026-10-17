@@ -57,95 +57,24 @@ const CLOSE = "]";
 /** `<!---->` — a DOM insert anchor, present in the template and on the wire. */
 const MARKER = "";
 
-import { OBSERVE, getOwner } from "@solidjs/signals";
-
-/** What a mismatch was, for the report a caller can assert against. */
-export type MismatchKind = "structure" | "range" | "key" | "text" | "portal" | "not-hydratable";
-
-export interface Mismatch {
-  kind: MismatchKind;
-  detail: string;
-}
-
-/**
- * Thrown by every claim that cannot be satisfied. It is never caught by the
- * code that raised it: a region catches its own, `hydrate` catches the rest.
- */
-export class HydrationMismatch extends Error {
-  readonly kind: MismatchKind;
-  /**
-   * `file:line:column` of the JSX whose template was being claimed, where a
-   * development compile wrote it beside the template.
-   */
-  declare template: string | undefined;
-  /** The component path the walk was in, where the engine keeps owner names. */
-  declare readonly ownerPath: string[] | undefined;
-  constructor(kind: MismatchKind, detail: string) {
-    super(`Hydration mismatch (${kind}): ${detail}. ${CAUSES[kind]}`);
-    this.name = "HydrationMismatch";
-    this.kind = kind;
-    // The engine keeps a channel and owner names in its development and
-    // observe builds only; in production `OBSERVE` is a literal `undefined`,
-    // so the bundler drops both lines.
-    if (OBSERVE !== undefined) {
-      this.template = SESSION?.template;
-      (this as { ownerPath: string[] | undefined }).ownerPath = OBSERVE.ownerPath(getOwner());
-    }
-  }
-}
-
-const CAUSES: Record<MismatchKind, string> = {
-  structure:
-    "This usually means the component renders different elements on the server and in the " +
-    "browser (a branch on `typeof window`, on the time, or on data only one side has), the " +
-    "markup nests elements the browser's HTML parser moves (a `<div>` inside a `<p>`), or a " +
-    "browser extension changed the page before it hydrated.",
-  text:
-    "This usually means the value differs between the server and the browser (`Date.now()`, " +
-    "`Math.random()`, or `toLocaleString()` in another locale or time zone), a browser " +
-    "extension or page translator rewrote the text, or the server and the browser bundle were " +
-    "built from different sources.",
-  range:
-    "The server writes the comments `<!--[-->` and `<!--]-->` around dynamic content, so this " +
-    "usually means something removed HTML comments from the response (an HTML minifier, a proxy " +
-    "or a CDN), a script changed the page before it hydrated, or the server and the browser " +
-    "bundle were built from different sources.",
-  key:
-    "This usually means the condition reads something that differs between the server and the " +
-    "browser, such as `typeof window`, `localStorage`, a media query or the time.",
-  portal:
-    "This usually means the `mount` target of a `<Portal>` differs between the server and the " +
-    "browser.",
-  "not-hydratable":
-    "Set `ssr: true` in `barq()` from `@barqjs/vite`, which compiles both the server build and the " +
-    "browser build hydratable, and deploy the two together.",
-};
-
-export function usualCauses(kind: MismatchKind): string {
-  return CAUSES[kind];
-}
-
-/**
- * The mismatch an error is, or carries. One raised inside a computation leaves
- * it wrapped by the engine, with the mismatch as its cause.
- */
-export function mismatchIn(error: unknown): HydrationMismatch | null {
-  if (error instanceof HydrationMismatch) return error;
-  const cause = error instanceof Error ? error.cause : undefined;
-  return cause instanceof HydrationMismatch ? cause : null;
-}
-
-/**
- * The compiler's `WHOLE` (`ir/region.rs`): this position owns its parent
- * element's entire child list, so the server wrote it no boundary comments and
- * the claim is every child of the parent.
- *
- * ONE number for the two places it is spelled — a region carries it as a bit of
- * the flags integer both backends already take, and a hole carries it as
- * `insert`'s trailing argument. A hole has no flags integer and a region has no
- * spare argument, so the two spellings are unavoidable; the two VALUES are not.
- */
-export const WHOLE: number = 1 << 4;
+import {
+  type ClaimWalk,
+  type Cursor as HostCursor,
+  type HydrationReport,
+  type Range as HostRange,
+  type Session,
+  WHOLE,
+  HydrationMismatch,
+  drainHydrationEnd,
+  hydrating,
+  hydrationSession,
+  installClaimWalk,
+  noSession,
+  setHydrationSession,
+  withoutClaim,
+  atCursor,
+} from "./hydration-state.ts";
+import { LIVE_EDGES } from "./flow.ts";
 
 /**
  * The compiler's `TAGGED` (`ir/region.rs`): no range on the wire here, but the
@@ -158,79 +87,16 @@ export const WHOLE: number = 1 << 4;
  */
 export const TAGGED: number = 1 << 5;
 
-/**
- * A claimed range and the nodes inside it.
- *
- * `open` and `close` stay in the document when they exist: `close` is the anchor
- * every later write to this position uses, so removing it would cost the
- * position its identity the first time the value changed. They are `null` for a
- * position that OWNS its parent's child list — there is nothing to remove and
- * nothing to anchor against, because appending to `parent` is already the right
- * answer for every later write.
- */
-export interface Range {
-  open: Comment | null;
-  close: Comment | null;
-  /** Where the range lives. The one field both shapes always have. */
-  parent: Node;
-  nodes: Node[];
-}
+/** A claimed range of the document. */
+export type Range = HostRange<Node, Comment>;
 
-/** One cursor over a claimed sequence. `template()` pops from the innermost. */
-export interface Cursor {
-  parent: Node;
-  next: Node | null;
-  /** Exclusive; `null` means "to the end of `parent`". */
-  end: Node | null;
-  /**
-   * Text a template claim stepped over, in document order.
-   *
-   * `["Label ", <i/>]` is evaluated left to right, so the element is claimed
-   * before anything has turned the string into a node, and what the cursor is
-   * standing on at that moment is the string's text. It is the string's to
-   * take, so it waits here for `claimText`.
-   */
-  held?: Text[];
-  /**
-   * Children are being made into nodes HERE, in document order, so a string
-   * arriving now owns the text the cursor is standing on.
-   *
-   * Not the general case: a string is usually made into a node after its
-   * cursor has closed, where the one on the stack is an ancestor's and its
-   * next node is a neighbour's.
-   */
-  ordered?: boolean;
-}
+/** One cursor over a claimed sequence of the document. */
+export type Cursor = HostCursor<Node, Text>;
 
-interface Session {
-  container: Node;
-  /** A streamed boundary's own claim, after the root pass has ended. */
-  late?: boolean;
-  /** Whether the served markup carries range comments at all. */
-  marked: boolean;
-  stack: Cursor[];
-  mismatches: Mismatch[];
-  claimed: number;
-  ranges: number;
-  built: number;
-  /** Every range claimed so far, for `split` to keep their node lists whole. */
-  taken: Range[];
-  /** The first mismatch handed over by `abandonClaim`, for `hydrate` to recover from. */
-  abandoned: HydrationMismatch | null;
-  /** Where the last template claimed was written, in a development build. */
-  template?: string;
-}
+type DomSession = Session<Node, Comment, Text>;
 
-let SESSION: Session | null = null;
-
-/** Record where the template being claimed was written, for a mismatch below it. */
-export function claimingTemplate(at: string): void {
-  if (SESSION !== null) SESSION.template = at;
-}
-
-/** True while a claim is live. Every hot path tests this and nothing else. */
-export function hydrating(): boolean {
-  return SESSION !== null && SESSION.stack.length > 0;
+function session(): DomSession | null {
+  return hydrationSession<Node, Comment, Text>();
 }
 
 /**
@@ -240,7 +106,7 @@ export function hydrating(): boolean {
  * these functions was kept in every bundle by the render path's own
  * `hydrating()` branches.
  *
- * With no table installed no `hydrate` has started, so `SESSION` is null and
+ * With no table installed no `hydrate` has started, so no session is open and
  * each entry below answers exactly as its walk does with no session.
  */
 let walk: typeof WALK | null = null;
@@ -299,39 +165,6 @@ function strayRange(): HydrationMismatch {
   );
 }
 
-function noSession(): HydrationMismatch {
-  return new HydrationMismatch(
-    "range",
-    "a component looked for server-rendered content while no `hydrate` call is running",
-  );
-}
-
-export function mismatches(): readonly Mismatch[] {
-  return SESSION === null ? [] : SESSION.mismatches;
-}
-
-/**
- * Record a divergence that was RECOVERED rather than thrown.
- *
- * A text difference is the case: the server said one thing, the client another,
- * and writing the client's value through the claimed text node keeps the node
- * and fixes the content. It is still a divergence and still gets a row, because
- * "nothing was reported" has to mean "nothing diverged".
- */
-export function report(kind: MismatchKind, detail: string): void {
-  if (SESSION !== null) SESSION.mismatches.push({ kind, detail });
-}
-
-export interface HydrationReport {
-  mismatches: readonly Mismatch[];
-  /** Nodes taken from the server's markup. */
-  claimed: number;
-  /** Ranges taken from the server's markup. */
-  ranges: number;
-  /** Nodes the client built because it could not take one. */
-  built: number;
-}
-
 /**
  * Where the claim walk starts inside a container.
  *
@@ -353,7 +186,8 @@ function firstClaimable(container: Node): Node | null {
 
 export function beginHydration(container: Node): void {
   walk = WALK;
-  SESSION = {
+  installClaimWalk(CLAIM_WALK);
+  setHydrationSession({
     container,
     marked: hasRanges(container),
     stack: [{ parent: container, next: firstClaimable(container), end: null }],
@@ -363,7 +197,7 @@ export function beginHydration(container: Node): void {
     built: 0,
     taken: [],
     abandoned: null,
-  };
+  });
 }
 
 /**
@@ -402,8 +236,8 @@ export function claimLate<T>(
   container: Node,
   work: () => T,
 ): { value: T; abandoned: HydrationMismatch | null } {
-  if (walk === null || SESSION !== null) return { value: work(), abandoned: null };
-  const session: Session = {
+  if (walk === null || session() !== null) return { value: work(), abandoned: null };
+  const late: DomSession = {
     container,
     late: true,
     marked: true,
@@ -415,57 +249,14 @@ export function claimLate<T>(
     taken: [],
     abandoned: null,
   };
-  SESSION = session;
+  setHydrationSession(late);
   try {
-    return { value: work(), abandoned: session.abandoned };
+    return { value: work(), abandoned: late.abandoned };
   } finally {
-    SESSION = null;
+    setHydrationSession(null);
     holeTaken = null;
     drainHydrationEnd();
   }
-}
-
-/**
- * Give `mismatch` to `hydrate` from a place where throwing it would hand it to
- * the engine instead.
- *
- * A mismatch raised inside a computation, a list row or an error boundary's
- * fallback, reaches no catcher of barq's by being thrown: the engine takes it
- * for an uncaught application error, halts every update and reports a crash.
- * Handed over here, it is the same full-page recovery, raised by `mount` once
- * the build returns.
- *
- * `false` when no hydration is in progress, and the caller still owns it.
- */
-export function abandonClaim(mismatch: HydrationMismatch): boolean {
-  if (SESSION === null) return false;
-  SESSION.abandoned ??= mismatch;
-  return true;
-}
-
-export function abandonedClaim(): HydrationMismatch | null {
-  return SESSION === null ? null : SESSION.abandoned;
-}
-
-/**
- * Does this markup carry range comments?
- *
- * One scan, at the start, and it is what lets a construct with no flag tell its
- * two situations apart. A module built without the flag over markup built
- * without it is ORDINARY — nothing was ever going to be claimed there, and
- * building cold is exactly right. The same module over markup built WITH it is a
- * deployment mistake, and a bad one: the client's walk is native, so it steps
- * onto a boundary comment and everything it addresses after that is off by an
- * unknown amount. That is not recoverable locally and must not be treated as if
- * it were.
- *
- * `true` proves the markup is hydratable; `false` proves nothing. The comments
- * are off every position whose extent the client can read off its parent, so a
- * hydratable page can now carry none at all. The caller uses it to choose the
- * wording of a diagnostic, which is all a one-way signal can carry.
- */
-export function wireIsMarked(): boolean {
-  return SESSION !== null && SESSION.marked;
 }
 
 /**
@@ -493,89 +284,18 @@ function hasRanges(root: Node): boolean {
   return false;
 }
 
-let afterHydration: (() => void)[] | null = null;
-
-/** Streamed boundaries the root pass claimed a fallback for, still owed their content. */
-let pendingBoundaries = 0;
-
-/**
- * Solid 2.0's `onHydrationEnd`: run `callback` once the hydration phase is
- * over, which is the root pass of `hydrate` and every streamed boundary it
- * claimed a fallback for, each resumed or gone. On the next microtask when no
- * hydration is in progress, on the server included.
- *
- * A microtask later in both cases. `hydrate` is synchronous to its end, and
- * what follows the claim there is the recovery render and the flush: a callback
- * run from `endHydration` itself would see the tree before either.
- *
- * For test tooling and markers. What a component renders must not branch on
- * it: read `isHydrating()` where a value has to match the server.
- */
-export function onHydrationEnd(callback: () => void): void {
-  if (SESSION === null && pendingBoundaries === 0) {
-    queueMicrotask(callback);
-    return;
-  }
-  (afterHydration ??= []).push(callback);
-}
-
-/**
- * Hold the end of hydration open for a streamed boundary whose content has not
- * arrived. Answers the release, which is idempotent, or `null` when the phase
- * is not open: nothing is claiming, or a late claim runs after it has ended.
- */
-export function holdHydration(): (() => void) | null {
-  if (SESSION === null || (SESSION.late === true && pendingBoundaries === 0)) return null;
-  pendingBoundaries++;
-  let held = true;
-  return () => {
-    if (!held) return;
-    held = false;
-    pendingBoundaries--;
-    drainHydrationEnd();
-  };
-}
-
-function drainHydrationEnd(): void {
-  if (SESSION !== null || pendingBoundaries !== 0 || afterHydration === null) return;
-  const callbacks = afterHydration;
-  afterHydration = null;
-  queueMicrotask(() => {
-    for (const callback of callbacks) callback();
-  });
-}
-
 export function endHydration(): HydrationReport {
-  const session = SESSION;
-  SESSION = null;
+  const ended = session();
+  setHydrationSession(null);
   holeTaken = null;
   drainHydrationEnd();
-  if (session === null) return { mismatches: [], claimed: 0, ranges: 0, built: 0 };
+  if (ended === null) return { mismatches: [], claimed: 0, ranges: 0, built: 0 };
   return {
-    mismatches: session.mismatches,
-    claimed: session.claimed,
-    ranges: session.ranges,
-    built: session.built,
+    mismatches: ended.mismatches,
+    claimed: ended.claimed,
+    ranges: ended.ranges,
+    built: ended.built,
   };
-}
-
-/**
- * Run `body` with the cursor suspended.
- *
- * A portal builds into a container the server never wrote at this position, and
- * a rebuilt branch builds nodes nobody may claim. Both need the ordinary client
- * path, and both are re-entrant with respect to the claim above them — hence a
- * stack rather than a flag.
- */
-export function withoutClaim<T>(body: () => T): T {
-  if (SESSION === null) return body();
-  const stack = SESSION.stack;
-  SESSION.stack = [];
-  try {
-    return body();
-  } finally {
-    SESSION.stack = stack;
-  }
 }
 
 /**
@@ -596,23 +316,6 @@ export function openCursor(range: Range): Cursor {
   };
 }
 
-/** Run `body` claiming from `cursor`, which keeps whatever it consumed. */
-export function atCursor<T>(cursor: Cursor, body: () => T): T {
-  if (SESSION === null) return body();
-  SESSION.stack.push(cursor);
-  try {
-    return body();
-  } finally {
-    SESSION.stack.pop();
-  }
-}
-
-/** Whether `cursor` has anything left to claim. */
-export function cursorAtEnd(cursor: Cursor): boolean {
-  if (cursor.held !== undefined && cursor.held.length > 0) return false;
-  return cursor.next === null || cursor.next === cursor.end;
-}
-
 /** Everything `cursor` still holds, consumed: text nobody took included. */
 export function cursorRest(cursor: Cursor): Node[] {
   const rest: Node[] = cursor.held === undefined ? [] : cursor.held;
@@ -626,7 +329,7 @@ export function cursorRest(cursor: Cursor): Node[] {
 
 /** Run `body` claiming from `range`'s interior, once. */
 export function withRange<T>(range: Range, body: () => T): T {
-  if (SESSION === null) return body();
+  if (session() === null) return body();
   return atCursor(openCursor(range), body);
 }
 
@@ -651,7 +354,8 @@ function withRangeTakenWalk<T>(
    */
   after?: Taken,
 ): { value: T; taken: Node[]; held: Text[] } {
-  if (SESSION === null) return { value: body(), taken: [], held: [] };
+  const state = session();
+  if (state === null) return { value: body(), taken: [], held: [] };
   const cursor = openCursor(range);
   if (after !== undefined && after.taken.length > 0) {
     cursor.next = after.taken[after.taken.length - 1].nextSibling;
@@ -690,8 +394,9 @@ export interface Taken {
  * wrong elements.
  */
 function claimNodeWalk(template: Node, detect?: boolean | string): Node | null {
-  if (SESSION === null) return null;
-  const cursor = SESSION.stack[SESSION.stack.length - 1];
+  const state = session();
+  if (state === null) return null;
+  const cursor = state.stack[state.stack.length - 1];
   if (cursor === undefined) return null;
   const expect = template.nodeName;
   let node = cursor.next;
@@ -723,7 +428,7 @@ function claimNodeWalk(template: Node, detect?: boolean | string): Node | null {
   // A development compile passes the template's source location as the flag.
   if (detect) verifySubtree(template, node, expect.toLowerCase());
   cursor.next = node.nextSibling;
-  SESSION.claimed++;
+  state.claimed++;
   return node;
 }
 
@@ -737,12 +442,13 @@ function claimNodeWalk(template: Node, detect?: boolean | string): Node | null {
  * be taking a neighbour's.
  */
 function claimTextWalk(value: string): Text | null {
-  if (SESSION === null) return null;
-  const cursor = SESSION.stack[SESSION.stack.length - 1];
+  const state = session();
+  if (state === null) return null;
+  const cursor = state.stack[state.stack.length - 1];
   if (cursor === undefined) return null;
   const held = cursor.held;
   if (held !== undefined && held.length > 0 && leads(held[0], value)) {
-    SESSION.claimed++;
+    state.claimed++;
     const node = held[0];
     if (node.data.length === value.length) held.shift();
     else held[0] = split(node, value.length);
@@ -754,7 +460,7 @@ function claimTextWalk(value: string): Text | null {
   if (!leads(node as Text, value)) return null;
   if ((node as Text).data.length > value.length) split(node as Text, value.length);
   cursor.next = node.nextSibling;
-  SESSION.claimed++;
+  state.claimed++;
   return node as Text;
 }
 
@@ -780,35 +486,16 @@ function leads(node: Text, value: string): boolean {
  * front is: left out, it reads as a node the client made and is moved.
  */
 function split(node: Text, at: number): Text {
+  const state = session();
   const rest = node.splitText(at);
-  if (SESSION !== null) {
-    for (const range of SESSION.taken) {
+  if (state !== null) {
+    for (const range of state.taken) {
       if (range.parent !== node.parentNode) continue;
       const index = range.nodes.indexOf(node);
       if (index >= 0) range.nodes.splice(index + 1, 0, rest);
     }
   }
   return rest;
-}
-
-/**
- * Run `body`, which makes children into nodes in document order at the open
- * cursor, so that a string among them takes the text it is level with.
- *
- * `[() => name, <Badge/>]` where the badge's root is a region: the region asks
- * the cursor for its `<!--[-->`, and the cursor is still standing on the name
- * unless the string before it took that text on its way past.
- */
-export function inDocumentOrder<T>(body: () => T): T {
-  const cursor = SESSION?.stack[SESSION.stack.length - 1];
-  if (cursor === undefined) return body();
-  const outer = cursor.ordered;
-  cursor.ordered = true;
-  try {
-    return body();
-  } finally {
-    cursor.ordered = outer;
-  }
 }
 
 /**
@@ -828,8 +515,9 @@ export function inDocumentOrder<T>(body: () => T): T {
  * a wrong element here puts every binding under it on the wrong node.
  */
 function claimElementWalk(tag: string): Element | null {
-  if (SESSION === null) return null;
-  const cursor = SESSION.stack[SESSION.stack.length - 1];
+  const state = session();
+  if (state === null) return null;
+  const cursor = state.stack[state.stack.length - 1];
   if (cursor === undefined) return null;
   const node = cursor.next;
   if (node === null || node === cursor.end) return null;
@@ -842,7 +530,7 @@ function claimElementWalk(tag: string): Element | null {
     );
   }
   cursor.next = node.nextSibling;
-  SESSION.claimed++;
+  state.claimed++;
   return node as Element;
 }
 
@@ -854,12 +542,13 @@ function claimElementWalk(tag: string): Element | null {
  * `parent`'s child list, not from the list the element sits in.
  */
 export function withinElement<T>(parent: Element, body: () => T): T {
-  if (SESSION === null) return body();
-  SESSION.stack.push({ parent, next: parent.firstChild, end: null });
+  const state = session();
+  if (state === null) return body();
+  state.stack.push({ parent, next: parent.firstChild, end: null });
   try {
     return body();
   } finally {
-    SESSION.stack.pop();
+    state.stack.pop();
   }
 }
 
@@ -1011,21 +700,6 @@ export function takenAtHole(range: Range): Taken {
 
 const NONE_TAKEN: Taken = { taken: [], held: [] };
 
-/**
- * A server text node a hole kept by writing its value through it rather than
- * taking it at a cursor. It is reused all the same, and a page whose only
- * server node is one, `hydrate(() => <Pass>{label()}</Pass>)`, otherwise read
- * as one that reused nothing.
- */
-export function adopted(): void {
-  if (SESSION !== null) SESSION.claimed++;
-}
-
-/** A node the client had to build because no claim was possible. */
-export function built(): void {
-  if (SESSION !== null) SESSION.built++;
-}
-
 function describe(node: Node): string {
   if (node.nodeType === COMMENT) return `the comment \`<!--${(node as Comment).data}-->\``;
   if (node.nodeType === TEXT) return `the text ${JSON.stringify((node as Text).data)}`;
@@ -1086,7 +760,7 @@ function logicalChildren(parent: Node): Node[] {
  * from the END.
  */
 export function child(parent: Node, k: number, back?: number): Node | null {
-  if (SESSION === null || SESSION.stack.length === 0) {
+  if (!hydrating()) {
     let node = back === undefined ? parent.firstChild : parent.lastChild;
     for (let i = 0; i < k && node !== null; i++) {
       node = back === undefined ? node.nextSibling : node.previousSibling;
@@ -1134,7 +808,7 @@ export function child(parent: Node, k: number, back?: number): Node | null {
 
 /** `_$sib(el, k)` — k logical siblings on, and `_$sib(el, k, 1)` k back. */
 export function sib(node: Node, k: number, back?: number): Node | null {
-  if (SESSION === null || SESSION.stack.length === 0) {
+  if (!hydrating()) {
     let out: Node | null = node;
     for (let i = 0; i < k && out !== null; i++) {
       out = back === undefined ? out.nextSibling : out.previousSibling;
@@ -1184,6 +858,7 @@ export function sib(node: Node, k: number, back?: number): Node | null {
  * was written with no comments at all.
  */
 function claimRangeWalk(parent: Node | null, anchor: Node | null, mode?: number): Range | null {
+  const state = session();
   const host = anchor !== null ? anchor.parentNode : parent;
   if (host === null) throw strayRange();
   // The position has to be somewhere the SERVER wrote. A parent the client just
@@ -1192,7 +867,7 @@ function claimRangeWalk(parent: Node | null, anchor: Node | null, mode?: number)
   // range to find. Returning `null` there is not a failure: it is the correct
   // answer to "what did the server put here", which is "this is not the
   // server's tree at all".
-  if (SESSION === null || !SESSION.container.contains(host)) return null;
+  if (state === null || !state.container.contains(host)) return null;
   // `WHOLE` is the compiler saying the string backend wrote this hole no
   // comments because it owns the element outright. The extent is then every
   // child of the parent, read off the document rather than off the wire.
@@ -1239,12 +914,13 @@ function claimRangeWalk(parent: Node | null, anchor: Node | null, mode?: number)
 }
 
 function took(range: Range): Range {
-  if (SESSION !== null) {
+  const state = session();
+  if (state !== null) {
     // The container's own child list is where every page's value goes, not a
     // range the server wrote. Counted, it made a page nothing was reused from
     // read as one that claimed something, and `hydrate` never said so.
-    if (range.open !== null || range.parent !== SESSION.container) SESSION.ranges++;
-    SESSION.taken.push(range);
+    if (range.open !== null || range.parent !== state.container) state.ranges++;
+    state.taken.push(range);
   }
   return range;
 }
@@ -1256,9 +932,10 @@ function took(range: Range): Range {
  * the cursor, exactly as a `template()` call there would claim the next node.
  */
 function claimAtWalk(parent: Node | null, anchor: Node | null, mode?: number): Range | null {
+  const state = session();
   if (parent !== null || anchor !== null) return claimRange(parent, anchor, mode);
-  if (SESSION === null) throw noSession();
-  const cursor = SESSION.stack[SESSION.stack.length - 1];
+  if (state === null) throw noSession();
+  const cursor = state.stack[state.stack.length - 1];
   if (cursor === undefined) {
     throw new HydrationMismatch(
       "range",
@@ -1379,4 +1056,50 @@ const WALK = {
   claimRange: claimRangeWalk,
   claimAt: claimAtWalk,
   probeRange: probeRangeWalk,
+};
+
+/**
+ * A claimed range as it stands, comments included.
+ *
+ * What a region that adopted the server's nodes hands its caller. The caller
+ * places by identity, so nodes already in position cost nothing — and a value
+ * that left them out read as "nothing here", which put a sibling built beside
+ * them on the wrong side and reconciled the range's own comments away.
+ */
+export function rangeNodes(range: Range): Node[] {
+  const nodes: Node[] = [];
+  const { open, close } = range;
+  if (open === null || close === null || open.parentNode === null) return nodes;
+  for (let node: Node | null = open; node !== null; node = node.nextSibling) {
+    nodes.push(node);
+    if (node === close) break;
+  }
+  LIVE_EDGES.add(close);
+  return nodes;
+}
+
+/** The siblings from `from` up to, but not including, `to`. */
+function spanBetween(from: Node | null, to: Node | null): Node[] {
+  const out: Node[] = [];
+  for (let node = from; node !== null && node !== to; node = node.nextSibling) out.push(node);
+  return out;
+}
+
+function evict(nodes: readonly Node[]): void {
+  for (const node of nodes) node.parentNode?.removeChild(node);
+}
+
+const CLAIM_WALK: ClaimWalk = {
+  claimAt: claimAtWalk,
+  claimRange: claimRangeWalk,
+  probeRange: probeRangeWalk,
+  claimLate,
+  isScaffolding,
+  rangeKey,
+  releaseRange,
+  openCursor,
+  cursorRest,
+  rangeNodes,
+  spanBetween,
+  evict,
 };

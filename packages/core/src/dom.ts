@@ -49,34 +49,37 @@ import {
 } from "./type-utils.ts";
 import type { Cell } from "./scope.ts";
 import type { Child, JSXElement } from "./types.ts";
+import { LIVE_EDGES } from "./flow.ts";
 import { coerceLive, writeLive } from "./forms.ts";
 import {
-  HydrationMismatch,
-  claimingTemplate,
-  abandonedClaim,
-  adopted,
   beginHydration,
-  built as builtNode,
-  WHOLE,
   claimElement,
   claimNode,
   claimRange,
   claimText,
   endHydration,
   hole,
+  takenAtHole,
+  withRangeTaken,
+  type Range,
+  type Taken,
+} from "./hydration.ts";
+import {
+  HydrationMismatch,
+  claimingTemplate,
+  abandonedClaim,
+  adopted,
+  built as builtNode,
+  WHOLE,
   hydrating,
   mismatchIn,
   report,
   usualCauses,
   inDocumentOrder,
-  takenAtHole,
   wireIsMarked,
-  withRangeTaken,
   withoutClaim,
   type HydrationReport,
-  type Range,
-  type Taken,
-} from "./hydration.ts";
+} from "./hydration-state.ts";
 
 // SVG namespace
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -2560,16 +2563,6 @@ function holdsAFunction(child: Child): boolean {
   if (typeof child === "function") return true;
   return isArray(child) && child.some(holdsAFunction);
 }
-
-/**
- * The nodes that stand at the END of something whose content changes after it
- * is built: a live hole's text node, a region's anchor.
- *
- * Whoever built a list of nodes and kept it has, wherever one of these is in
- * it, a snapshot of what stood before the edge on the day it was taken. `each`
- * asks, so that a row it moves is the row as it stands.
- */
-export const LIVE_EDGES: WeakSet<Node> = new WeakSet<Node>();
 
 /**
  * A Cell that is not the whole value of a hole: one entry of a children array,

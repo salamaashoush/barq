@@ -16,7 +16,8 @@ import {
   onCleanup,
   runWithOwner,
 } from "./signals.ts";
-import { Errored, For, Loading, Match, Portal, Show, Switch, dynamic } from "./components.ts";
+import { Errored, For, Loading, Match, Show, Switch } from "./components.ts";
+import { Portal, dynamic } from "./dom-components.ts";
 import { merge, omit } from "./props.ts";
 
 // The container is a render root, as every element an application shows is

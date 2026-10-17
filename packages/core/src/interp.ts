@@ -64,7 +64,7 @@ import {
   spread,
   type Channel,
 } from "./dom.ts";
-import { boundary, branch, each, island, portal } from "./flow.ts";
+import { boundary, branch, each, island, portal } from "./dom-flow.ts";
 import { bindEffect, getOwner } from "./signals.ts";
 import type { Cell } from "./scope.ts";
 

@@ -3,7 +3,7 @@
 // (revealed2 === "<i>ARM1</i><i>ARM1</i>"), passes with the instance fix.
 import { rooted } from "./test-root.ts";
 import { describe, expect, test } from "bun:test";
-import { boundary, branch } from "./flow.ts";
+import { boundary, branch } from "./dom-flow.ts";
 import { render } from "./dom.ts";
 import { NotReadyError, block, createMemo, createRoot, createSignal } from "./signals.ts";
 

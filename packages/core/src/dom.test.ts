@@ -4,7 +4,7 @@
 
 import { describe, expect, test, beforeEach, afterEach, spyOn } from "bun:test";
 import { bindProp, element, insert, render, setProp, setStyle, spread, template } from "./dom.ts";
-import { boundary } from "./flow.ts";
+import { boundary } from "./dom-flow.ts";
 import {
   ScopeMissingError,
   block,

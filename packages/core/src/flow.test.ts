@@ -15,7 +15,8 @@
  */
 
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { NO_SCOPE, STATIC_KEY, boundary, branch, each, portal } from "./flow.ts";
+import { NO_SCOPE, STATIC_KEY } from "./flow.ts";
+import { boundary, branch, each, portal } from "./dom-flow.ts";
 import type { Block, Cell, Scope } from "./scope.ts";
 import {
   childScope,

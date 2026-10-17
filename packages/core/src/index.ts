@@ -200,17 +200,14 @@ export { useHead, type HeadInput, type HeadTag, type HeadTagName } from "./head.
 // `hydratable` compile — the index must cost nothing on the client-render path,
 // which is the diff between the two emissions — and with the flag off neither
 // name appears in a module.
+export { child, sib, hole, shellReady } from "./hydration.ts";
 export {
-  child,
-  sib,
-  hole,
   hydrating as isHydrating,
   onHydrationEnd,
-  shellReady,
   type HydrationReport,
   type Mismatch,
   type MismatchKind,
-} from "./hydration.ts";
+} from "./hydration-state.ts";
 
 // DOM
 export {
@@ -269,19 +266,8 @@ export { writeLive, coerceLive, holdsLive, captureCaret, restoreCaret } from "./
  * without the flag the client claims nothing while the string backend still
  * writes the range, which is a page that silently re-renders itself cold.
  */
-export {
-  branch,
-  each,
-  boundary,
-  island,
-  portal,
-  reveal,
-  COUNT,
-  STATIC_KEY,
-  NO_SCOPE,
-  HYDRATE,
-  WHOLE,
-} from "./flow.ts";
+export { COUNT, STATIC_KEY, NO_SCOPE, HYDRATE, WHOLE } from "./flow.ts";
+export { branch, each, boundary, island, portal, reveal } from "./dom-flow.ts";
 export type { BoundaryKind } from "./flow.ts";
 
 // The flow components — the adapters `passes::flow` falls back to when it
@@ -301,8 +287,8 @@ export {
   Errored,
   NoHydration,
   Hydration,
-  Portal,
 } from "./components.ts";
+export { Portal } from "./dom-components.ts";
 export { children } from "./components.ts";
 // Not one of the ten. `lazy` is a `computed` over an import — a reactivity
 // primitive that happens to return a component — and it is here rather than in
@@ -311,9 +297,9 @@ export { children } from "./components.ts";
 export { lazy, lazyModule } from "./components.ts";
 // Solid 2.0's `clientOnly`, from `@solidjs/web`. The server backend calls the
 // string half in `@barqjs/server` instead, which never starts the import.
-export { clientOnly } from "./components.ts";
+export { clientOnly } from "./dom-components.ts";
 // Solid 2.0's factory for a component chosen at run time, from `@solidjs/web`.
-export { dynamic } from "./components.ts";
+export { dynamic } from "./dom-components.ts";
 export type {
   ChildrenReturn,
   ResolvedChildren,
@@ -331,14 +317,16 @@ export type {
   LoadingProps,
   RevealProps,
   ErroredProps,
+  LazyComponent,
+  LazyModule,
+} from "./components.ts";
+export type {
   PortalProps,
   DynamicComponent,
   DynamicProps,
   DynamicTag,
-  LazyComponent,
-  LazyModule,
   ClientOnlyComponent,
-} from "./components.ts";
+} from "./dom-components.ts";
 
 // JSX — the TYPES stay whole; `jsx`/`jsxs`/`jsxDEV` are gone. Bun's JSX
 // transform cannot produce scope-taking Blocks, so an un-compiled authoring

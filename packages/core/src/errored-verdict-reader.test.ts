@@ -12,7 +12,7 @@
  */
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { insert, render, setAttr, setClass } from "./dom.ts";
-import { boundary } from "./flow.ts";
+import { boundary } from "./dom-flow.ts";
 import { block } from "./props.ts";
 import { bindEffect, createMemo, createRoot, createSignal, flush, isPending } from "./signals.ts";
 

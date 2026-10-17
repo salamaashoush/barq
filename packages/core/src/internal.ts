@@ -40,7 +40,8 @@ export { headKey, setHeadSink } from "./head.ts";
 
 export { reportModule, setModuleSink } from "./module-sink.ts";
 
-export { type Range, withRange, withoutClaim } from "./hydration.ts";
+export { type Range, withRange } from "./hydration.ts";
+export { withoutClaim } from "./hydration-state.ts";
 
 export { SharedSources, shareSources, unshareSources } from "./shared-sources.ts";
 

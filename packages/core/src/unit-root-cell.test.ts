@@ -8,7 +8,7 @@
  */
 
 import { afterEach, beforeEach, expect, test } from "bun:test";
-import { branch } from "./flow.ts";
+import { branch } from "./dom-flow.ts";
 import { block, createSignal, flush, rootScope, runWithOwner } from "./signals.ts";
 
 let host: HTMLDivElement;

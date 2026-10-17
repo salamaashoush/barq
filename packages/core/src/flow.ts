@@ -8,46 +8,34 @@
  *   nothing. `region` says why a swapped instance hangs off its effect.
  * - C7: every Block goes through `invoke`, including the two the error boundary
  *   hands `region` as its own arms.
+ *
+ * Nothing here touches a node. Every read and write of the tree goes through
+ * the `RangeHost` a construct is handed, once per range rather than once per
+ * node, and a list's reorder through the `SyncRows` its renderer passes beside
+ * it, so the renderer that never reorders a list never ships the reorder.
  */
 
 import type { Child } from "./types.ts";
 import {
-  LIVE_EDGES,
-  childToNodes,
-  delegatedRootOf,
-  hostPortal,
-  registerDelegatedContainer,
-  removeNodes,
-  unregisterDelegatedContainer,
-} from "./dom.ts";
-import {
   HydrationMismatch,
   abandonClaim,
   atCursor,
+  claimWalk,
   claimLate,
-  claimAt,
   cursorAtEnd,
-  cursorRest,
   inDocumentOrder,
-  isScaffolding,
-  openCursor,
-  probeRange,
-  claimRange,
   holdHydration,
   hydrating,
-  rangeKey,
-  releaseRange,
   report,
   usualCauses,
   WHOLE,
   withoutClaim,
   type Cursor,
   type Range,
-} from "./hydration.ts";
+} from "./hydration-state.ts";
 import type { Block, Cell, Scope } from "./scope.ts";
 import { createMemo } from "@solidjs/signals";
 import {
-  createEffect,
   ERROR_BOUNDARY,
   type Maybe,
   NotReadyError,
@@ -129,17 +117,80 @@ export const COUNT: unique symbol = Symbol("barq-count");
 const OPAQUE_KEY = "?";
 
 // ============================================================================
+// The host a construct writes through
+// ============================================================================
+
+/**
+ * What a renderer gives control flow to work with. `N` is the renderer's node;
+ * nothing here knows what one is beyond the questions below.
+ *
+ * A range changes through one call, `insertRange` or `removeRange`, never a
+ * call per node, so a host whose calls cost something pays once per change.
+ */
+export interface RangeHost<N extends object = object> {
+  /** An empty node to anchor against, which renders nothing. */
+  sentinel(): N;
+  /** A detached container whose children move out with it when it is inserted. */
+  park(): N;
+  /** Whether `node` is such a container. */
+  isPark(node: N): boolean;
+  parentOf(node: N): N | null;
+  nextOf(node: N): N | null;
+  prevOf(node: N): N | null;
+  firstOf(parent: N): N | null;
+  lastOf(parent: N): N | null;
+  /** What a list row of these nodes stands on, so a row that changes is moved whole. */
+  row(nodes: N[]): N[];
+  /** A child value, built into nodes under `scope`. */
+  toNodes(child: Child, scope: Scope | null): N[];
+  /** Put `nodes` in order before `before`, leaving any already in place where it is. */
+  insertRange(parent: N, nodes: readonly N[], before: N | null): void;
+  removeRange(nodes: readonly N[]): void;
+}
+
+/**
+ * A list row: its one node, or its nodes. A row of one node is the common
+ * case, and holding the node itself instead of an array around it is one
+ * array fewer kept alive per row. The row's identity is the node then, which
+ * is as stable as the array was.
+ */
+export type Row<N extends object = object> = N | readonly N[];
+
+/**
+ * Move a list's rows from `current` to `next` under `parent`, before `anchor`.
+ * The rows are the same objects in both wherever a row survived, so identity
+ * is what says a row stayed.
+ */
+export type SyncRows<N extends object = object> = (
+  parent: N,
+  anchor: N | null,
+  current: readonly Row<N>[],
+  next: readonly Row<N>[],
+) => void;
+
+/**
+ * The nodes that stand at the END of something whose content changes after it
+ * is built: a live hole's text node, a region's anchor.
+ *
+ * Whoever built a list of nodes and kept it has, wherever one of these is in
+ * it, a snapshot of what stood before the edge on the day it was taken. `each`
+ * asks, so that a row it moves is the row as it stands.
+ */
+export const LIVE_EDGES: WeakSet<object> = new WeakSet<object>();
+
+// ============================================================================
 // The range a region owns
 // ============================================================================
 
-const EMPTY: readonly Node[] = [];
+const EMPTY: readonly object[] = [];
 
 /** The parent is resolved from the anchor on every write, never captured: a
  * region built with no `(parent, anchor)` only learns its parent when the caller
  * inserts the anchor it returned. */
-interface Site {
-  parent: Node | null;
-  anchor: Node | null;
+export interface Site {
+  host: RangeHost;
+  parent: object | null;
+  anchor: object | null;
   /**
    * The server's range for this position, until the FIRST activation consumes
    * it. It lives on the site rather than being threaded through `region`,
@@ -157,13 +208,17 @@ interface Site {
 }
 
 /** K7: a region with no parent owns ONE empty text node, not a comment pair. */
-function siteFor(parent: Node | null, anchor: Node | null): { site: Site; out: Node | null } {
-  if (parent !== null) return { site: { parent, anchor }, out: null };
-  const own = document.createTextNode("");
+function siteFor(
+  host: RangeHost,
+  parent: object | null,
+  anchor: object | null,
+): { site: Site; out: object | null } {
+  if (parent !== null) return { site: { host, parent, anchor }, out: null };
+  const own = host.sentinel();
   LIVE_EDGES.add(own);
-  const out = document.createDocumentFragment();
-  out.appendChild(own);
-  return { site: { parent: null, anchor: own }, out };
+  const out = host.park();
+  host.insertRange(out, [own], null);
+  return { site: { host, parent: null, anchor: own }, out };
 }
 
 /**
@@ -190,8 +245,8 @@ const REST_REUSED = "and the rest of the server's markup was reused.";
 
 function claimSite(
   site: Site,
-  parent: Node | null,
-  anchor: Node | null,
+  parent: object | null,
+  anchor: object | null,
   flags: number,
   origin: string,
 ): void {
@@ -215,7 +270,10 @@ function claimSite(
     // here is off by an unknown amount. That is a deployment mistake, it is not
     // recoverable locally, and pretending otherwise showed the branch's arm
     // TWICE on the page.
-    if (isScaffolding(anchor) || (anchor === null && isScaffolding(parent))) {
+    if (
+      claimWalk().isScaffolding(anchor) ||
+      (anchor === null && claimWalk().isScaffolding(parent))
+    ) {
       throw new HydrationMismatch(
         "not-hydratable",
         `the browser bundle renders ${WRITTEN_AS[origin]} compiled without ` +
@@ -230,7 +288,7 @@ function claimSite(
         `${usualCauses("not-hydratable")} It was built again in the browser ${REST_REUSED}`,
     );
     site.cold = true;
-    const stray = probeRange(parent, anchor);
+    const stray = claimWalk().probeRange(parent, anchor);
     if (stray !== null) {
       if (stray.nodes.length > 0) {
         report(
@@ -240,9 +298,8 @@ function claimSite(
             "browser built that content again.",
         );
       }
-      releaseRange(stray);
-      site.anchor = stray.close;
-      site.parent = stray.close?.parentNode ?? stray.parent;
+      claimWalk().releaseRange(stray);
+      settleOn(site, stray);
     }
     return;
   }
@@ -254,7 +311,7 @@ function claimSite(
   // as `HYDRATE`: this range owns its parent element, so the string backend
   // wrote it no comments and the claim is every child of that parent. It is
   // never set under `DETECT`, because the open comment is where the key goes.
-  const range = claimAt(parent, anchor, flags & WHOLE);
+  const range = claimWalk().claimAt(parent, anchor, flags & WHOLE);
   // `null` is "this position is not in the server's tree" — a region inside
   // something the client built. It claims nothing and builds cold, which is the
   // same answer `hole` gives one level up.
@@ -263,8 +320,13 @@ function claimSite(
     return;
   }
   site.claim = range;
+  settleOn(site, range);
+}
+
+/** Anchor `site` on the close of a range the server wrote. */
+function settleOn(site: Site, range: Range): void {
   site.anchor = range.close;
-  site.parent = range.close?.parentNode ?? range.parent;
+  site.parent = (range.close === null ? null : site.host.parentOf(range.close)) ?? range.parent;
 }
 
 /**
@@ -289,7 +351,7 @@ const ISLAND_KEY = "i:";
 function takeSettledClaim(site: Site): Range | null {
   const claim = site.claim;
   if (claim === undefined || claim === null) return null;
-  const wire = rangeKey(claim);
+  const wire = claimWalk().rangeKey(claim);
   if (wire !== null && UNSETTLED_KEYS.some((key) => wire.startsWith(key))) return null;
   site.claim = null;
   return claim;
@@ -316,7 +378,7 @@ function takeSettledClaim(site: Site): Range | null {
 function takeUnsettledClaim(site: Site): Range | null {
   const claim = site.claim;
   if (claim === undefined || claim === null) return null;
-  const wire = rangeKey(claim);
+  const wire = claimWalk().rangeKey(claim);
   if (wire === null || !UNSETTLED_KEYS.some((key) => wire.startsWith(key))) return null;
   site.claim = null;
   return claim;
@@ -338,58 +400,20 @@ function takeUnsettledClaim(site: Site): Range | null {
  * empty text node and removes every node in it — measured on a router page as
  * `"5 server node(s) at a range the client rebuilt"` and an empty document.
  */
-function outFor(site: Site, out: Node | null, claimed: Range | null): Node | Node[] | null {
+function outFor(site: Site, out: object | null, claimed: Range | null): object | object[] | null {
   if (out === null) return null;
-  if (site.anchor !== null && site.anchor.parentNode === out) return out;
-  return claimed === null ? null : rangeNodes(claimed);
+  if (site.anchor !== null && site.host.parentOf(site.anchor) === out) return out;
+  return claimed === null ? null : claimWalk().rangeNodes(claimed);
 }
 
-/**
- * A claimed range as it stands, comments included.
- *
- * What a region that adopted the server's nodes hands its caller. The caller
- * places by identity, so nodes already in position cost nothing — and a value
- * that left them out read as "nothing here", which put a sibling built beside
- * them on the wrong side and reconciled the range's own comments away.
- */
-function rangeNodes(range: Range): Node[] {
-  const nodes: Node[] = [];
-  const { open, close } = range;
-  if (open === null || close === null || open.parentNode === null) return nodes;
-  for (let node: Node | null = open; node !== null; node = node.nextSibling) {
-    nodes.push(node);
-    if (node === close) break;
-  }
-  LIVE_EDGES.add(close);
-  return nodes;
+function parentOfSite(site: Site): object | null {
+  return site.anchor !== null ? site.host.parentOf(site.anchor) : site.parent;
 }
 
-function hostOf(site: Site): Node | null {
-  return site.anchor !== null ? site.anchor.parentNode : site.parent;
-}
-
-function insertAt(site: Site, nodes: readonly Node[]): void {
-  const host = hostOf(site);
-  if (host === null) return;
-  let anchor = site.anchor;
-  for (let i = nodes.length; i--;) {
-    place(host, nodes[i], anchor);
-    anchor = nodes[i];
-  }
-}
-
-/**
- * `insertBefore` that does nothing when the node is already there.
- *
- * The DOM defines `insertBefore` on a node that is already in position as a
- * REMOVAL followed by an insertion, and a removal is what blurs the element
- * inside it. On the claim path every node is already in position, so without
- * this line hydration would move the whole page one node at a time and H6 would
- * fail for the one reason claiming exists to remove.
- */
-function place(parent: Node, node: Node, before: Node | null): void {
-  if (node.parentNode === parent && node.nextSibling === before) return;
-  parent.insertBefore(node, before);
+function insertAt(site: Site, nodes: readonly object[]): void {
+  const parent = parentOfSite(site);
+  if (parent === null) return;
+  site.host.insertRange(parent, nodes, site.anchor);
 }
 
 // ============================================================================
@@ -397,21 +421,21 @@ function place(parent: Node, node: Node, before: Node | null): void {
 // ============================================================================
 
 /** `scope` is null exactly when `NO_SCOPE` was proved. */
-interface Instance {
+export interface Instance {
   scope: Scope | null;
-  nodes: readonly Node[];
+  nodes: readonly object[];
 }
 
 /** Marks which arm a boundary's view is showing; the nodes are placed by hand. */
 const CONTENT: unique symbol = Symbol("barq-content");
 
-const NOTHING: Instance = { scope: null, nodes: EMPTY };
+export const NOTHING: Instance = { scope: null, nodes: EMPTY };
 
 /**
  * O1/O2/K6. The range removal is installed on the instance scope (O3.5), so a
  * disposal arriving from above removes the DOM without this module being asked.
  */
-function activate(
+export function activate(
   given: Scope | null,
   site: Site,
   body: Block<unknown>,
@@ -452,7 +476,7 @@ function activate(
       `${error.message} Only the content of ${WRITTEN_AS[kind]} was rebuilt in the browser, ` +
         REST_REUSED,
     );
-    releaseRange(claim);
+    claimWalk().releaseRange(claim);
     return attempt(given, site, body, args, flags, kind, null, placed);
   }
 }
@@ -484,27 +508,30 @@ function attempt(
   let cursor: Cursor | null = null;
   const under = <T>(work: () => T): T => {
     if (claim === null) return withoutClaim(work);
-    cursor = openCursor(claim);
+    cursor = claimWalk().openCursor(claim);
     return atCursor(cursor, () => inDocumentOrder(work));
   };
 
+  const host = site.host;
   if ((flags & NO_SCOPE) !== 0) {
-    const nodes = under(() => asRow(build(given, body, args)));
+    const nodes = under(() => host.row(build(host, given, body, args)));
     evictUnclaimed(claim, cursor);
     if (placed) insertAt(site, nodes);
     return { scope: null, nodes };
   }
   const scope = childScope(given, kind);
-  const instance: { scope: Scope; nodes: readonly Node[] } = { scope, nodes: EMPTY };
+  const instance: { scope: Scope; nodes: readonly object[] } = { scope, nodes: EMPTY };
   // Installed before the body runs: a scope's cleanups unwind last-registered
   // first, so the range is still in the document while the body's own run.
   ownRange(scope, () => {
-    removeNodes(standingRow(instance.nodes));
+    host.removeRange(standingRow(host, instance.nodes));
     instance.nodes = EMPTY;
   });
   let built = false;
   try {
-    instance.nodes = runWithOwner(scope, () => under(() => asRow(build(scope, body, args))));
+    instance.nodes = runWithOwner(scope, () =>
+      under(() => host.row(build(host, scope, body, args))),
+    );
     built = true;
   } finally {
     if (!built) {
@@ -513,7 +540,7 @@ function attempt(
       // rendering of a body that just threw on the client, so they are wrong by
       // construction, and leaving them would put them beside whatever the
       // recovery builds instead.
-      if (claim !== null) releaseRange(claim);
+      if (claim !== null) claimWalk().releaseRange(claim);
     }
   }
   evictUnclaimed(claim, cursor);
@@ -543,9 +570,9 @@ function evictUnclaimed(claim: Range | null, cursor: Cursor | null): void {
   if (claim === null || cursor === null) return;
   claim.nodes = [];
   if (cursorAtEnd(cursor)) return;
-  const stranded = cursorRest(cursor);
+  const stranded = claimWalk().cursorRest(cursor);
   if (stranded.length === 0) return;
-  for (const node of stranded) node.parentNode?.removeChild(node);
+  claimWalk().evict(stranded);
   report(
     "structure",
     `The server sent ${stranded.length} more node(s) than the browser builds inside one ` +
@@ -555,12 +582,17 @@ function evictUnclaimed(claim: Range | null, cursor: Cursor | null): void {
 }
 
 /** A Cell ignores every argument, so one spelling serves both. */
-function build(scope: Scope | null, body: Block<unknown>, args: readonly unknown[]): Node[] {
+function build(
+  host: RangeHost,
+  scope: Scope | null,
+  body: Block<unknown>,
+  args: readonly unknown[],
+): object[] {
   // An already-built value in a renderable slot. Compiled code never produces
   // one — C6 makes children a Block — but the un-compiled surface `packages/extra`
   // is still on does, and `Out` admits a `Node` in its own right.
-  if (typeof body !== "function") return childToNodes(body, scope);
-  return childToNodes(invoke(scope, body, args) as Child, scope);
+  if (typeof body !== "function") return host.toNodes(body, scope);
+  return host.toNodes(invoke(scope, body, args) as Child, scope);
 }
 
 /**
@@ -581,6 +613,11 @@ function invoke(scope: Scope | null, body: Block<unknown>, args: readonly unknow
 // `activation` is bumped once per activation, so this asserts "once per
 // activation" rather than "once ever".
 let activation = 0;
+
+/** Count one activation, for a construct a renderer builds outside this module. */
+export function nextActivation(): void {
+  activation++;
+}
 const lastSeen = new WeakMap<object, number>();
 
 function countCall(body: object): void {
@@ -599,14 +636,14 @@ function countCall(body: object): void {
   lastSeen.set(body, activation);
 }
 
-function teardown(instance: Instance): void {
+export function teardown(host: RangeHost, instance: Instance): void {
   if (instance.scope !== null) {
     // O3: total and ordered, ending in the range removal `activate` installed.
     // Nothing here duplicates it.
     disposeScope(instance.scope);
     return;
   }
-  removeNodes(standingRow(instance.nodes));
+  host.removeRange(standingRow(host, instance.nodes));
 }
 
 // ============================================================================
@@ -663,7 +700,7 @@ function region<K>(
   const reconcileKey = (k: K): void => {
     const claim = site.claim;
     if (claim === undefined || claim === null) return;
-    const wire = rangeKey(claim);
+    const wire = claimWalk().rangeKey(claim);
     if (wire === null || wire === OPAQUE_KEY) return;
     if (wire === String(k)) return;
     report(
@@ -672,7 +709,7 @@ function region<K>(
         `\`${String(k)}\`. ${usualCauses("key")} The server's branch was replaced by the ` +
         `browser's ${REST_REUSED}`,
     );
-    releaseRange(claim);
+    claimWalk().releaseRange(claim);
     site.claim = null;
   };
 
@@ -692,7 +729,7 @@ function region<K>(
           `The server sent ${claim.nodes.length} node(s) for ${WRITTEN_AS.branch} where the ` +
             `browser renders nothing. The nodes were removed ${REST_REUSED}`,
         );
-        releaseRange(claim);
+        claimWalk().releaseRange(claim);
       }
       return NOTHING;
     }
@@ -718,7 +755,7 @@ function region<K>(
         // An instance with a scope was retired by the engine along with the
         // pass that replaced it. One without has nothing else to remove it.
         if (previous !== undefined && previous.scope === null) {
-          removeNodes(standingRow(previous.nodes));
+          site.host.removeRange(standingRow(site.host, previous.nodes));
         }
         insertAt(site, next.nodes);
         standing = next;
@@ -729,7 +766,7 @@ function region<K>(
   if ((flags & NO_SCOPE) !== 0) {
     // With no instance scope there is no `ownRange` to run, so the region's
     // last nodes come out with the scope that owns the region itself.
-    onCleanup(() => removeNodes(standingRow(standing.nodes)));
+    onCleanup(() => site.host.removeRange(standingRow(site.host, standing.nodes)));
   }
 }
 
@@ -753,7 +790,7 @@ function region<K>(
  * `STATIC_KEY` path and inside a `renderEffect` otherwise, and `readSlot` would
  * decide that for them.
  */
-function cellSlot(value: unknown, origin: string, returned = false): void {
+export function cellSlot(value: unknown, origin: string, returned = false): void {
   if (isBlock(value)) throw jsxAsValue(origin, returned);
 }
 
@@ -771,13 +808,14 @@ function cellSlot(value: unknown, origin: string, returned = false): void {
  *
  * Returns the anchor to insert when the caller supplied no `parent`, else `null`.
  */
-export function branch<K>(
-  parent: Node | null,
-  anchor: Node | null,
+export function branchIn<K, N extends object>(
+  host: RangeHost<N>,
+  parent: N | null,
+  anchor: N | null,
   key: Cell<K>,
   bodies: Block<unknown> | readonly (Block<unknown> | null | undefined)[],
   flags = 0,
-): Node | Node[] | null {
+): N | N[] | null {
   const given = getOwner();
   // The key ACCESSOR, not the key's value.
   //
@@ -789,11 +827,11 @@ export function branch<K>(
   // component held in data threw from inside the construct that exists to do
   // exactly that.
   cellSlot(key, "The condition of a `<Show>`, `<Match>` or `dynamic`");
-  const { site, out } = siteFor(parent, anchor);
+  const { site, out } = siteFor(host, parent, anchor);
   claimSite(site, parent, anchor, flags, "branch");
   const claimed = site.claim ?? null;
   underScope(given, "branch", () => region(site, key, bodies, flags, EMPTY_ARGS));
-  return outFor(site, out, claimed);
+  return outFor(site, out, claimed) as N | N[] | null;
 }
 
 const EMPTY_ARGS: readonly unknown[] = [];
@@ -848,9 +886,11 @@ export function keyMode<T>(
   return resolved === false ? false : null;
 }
 
-export function each<T>(
-  parent: Node | null,
-  anchor: Node | null,
+export function eachIn<T, N extends object>(
+  host: RangeHost,
+  sync: SyncRows<N>,
+  parent: N | null,
+  anchor: N | null,
   src: Cell<Maybe<readonly T[]>> | Cell<number>,
   carrier: ((item: T) => unknown) | false | null | typeof COUNT | Cell<unknown>,
   row: Block<unknown, never[]>,
@@ -859,7 +899,7 @@ export function each<T>(
   // `NO_SCOPE` would have to reach the row scopes `mapArray`/`repeat` own.
   flags = 0,
   fallback?: Block<unknown> | null,
-): Node | Node[] | null {
+): N | N[] | null {
   const given = getOwner();
   const keyOf = keyMode<T>(carrier);
   // The branded case is refused here. The laundered one, `() => aBlock`, is
@@ -872,7 +912,7 @@ export function each<T>(
     cellSlot(yielded, "For.each", true);
     return yielded;
   };
-  const { site, out } = siteFor(parent, anchor);
+  const { site, out } = siteFor(host, parent, anchor);
   claimSite(site, parent, anchor, flags, "each");
   const claimed = site.claim ?? null;
   // ONE cursor over the list's range, shared by every row.
@@ -888,18 +928,20 @@ export function each<T>(
   // cold; a client that renders fewer leaves nodes nobody adopted. Both are
   // reported and both are cleaned up below.
   const claim = site.claim ?? null;
-  let rowCursor: Cursor | null = claim === null ? null : openCursor(claim);
+  let rowCursor: Cursor | null = claim === null ? null : claimWalk().openCursor(claim);
   const body = row as Block<unknown>;
+  const rowOf = (args: readonly unknown[]): object[] =>
+    host.row(build(host, getOwner(), body, args));
   // A list with nothing to claim builds its rows cold, and says so to each
   // one: a row is built by the list's own node, under whatever cursor the
   // page left current, and a template there would claim from it.
   let cold = claim === null && hydrating();
 
-  return underScope(given, "each", (): Node | Node[] | null => {
+  return underScope(given, "each", (): N | N[] | null => {
     const fallbackRows =
       fallback === null || fallback === undefined
         ? undefined
-        : (): Node[] => {
+        : (): object[] => {
             activation++;
             if (OWNERSHIP.sink !== null) traceRow(given);
             // Under the list's cursor like any row: the server wrote the
@@ -907,10 +949,10 @@ export function each<T>(
             // fallback's template claimed whatever the page had next.
             if (rowCursor === null) {
               return cold
-                ? withoutClaim(() => build(getOwner(), fallback, EMPTY_ARGS))
-                : build(getOwner(), fallback, EMPTY_ARGS);
+                ? withoutClaim(() => build(host, getOwner(), fallback, EMPTY_ARGS))
+                : build(host, getOwner(), fallback, EMPTY_ARGS);
             }
-            return inRow(rowCursor, () => build(getOwner(), fallback, EMPTY_ARGS));
+            return inRow(rowCursor, () => build(host, getOwner(), fallback, EMPTY_ARGS));
           };
 
     // A row IS the scope the engine opens for it, so the body is built under
@@ -925,13 +967,9 @@ export function each<T>(
           // The closure exists only for the hydrating cursor to wrap, and it is
           // one allocation PER ROW. Nothing is hydrating in the ordinary case.
           if (rowCursor === null) {
-            return listRow(
-              cold
-                ? withoutClaim(() => asRow(build(getOwner(), body, [index])))
-                : asRow(build(getOwner(), body, [index])),
-            );
+            return listRow(cold ? withoutClaim(() => rowOf([index])) : rowOf([index]));
           }
-          return listRow(inRow(rowCursor, () => asRow(build(getOwner(), body, [index]))));
+          return listRow(inRow(rowCursor, () => rowOf([index])));
         },
         { fallback: fallbackRows },
       );
@@ -940,25 +978,17 @@ export function each<T>(
         activation++;
         if (OWNERSHIP.sink !== null) traceRow(given);
         if (rowCursor === null) {
-          return listRow(
-            cold
-              ? withoutClaim(() => asRow(build(getOwner(), body, [item])))
-              : asRow(build(getOwner(), body, [item])),
-          );
+          return listRow(cold ? withoutClaim(() => rowOf([item])) : rowOf([item]));
         }
-        return listRow(inRow(rowCursor, () => asRow(build(getOwner(), body, [item]))));
+        return listRow(inRow(rowCursor, () => rowOf([item])));
       };
       const two = (item: unknown, index: unknown): Row => {
         activation++;
         if (OWNERSHIP.sink !== null) traceRow(given);
         if (rowCursor === null) {
-          return listRow(
-            cold
-              ? withoutClaim(() => asRow(build(getOwner(), body, [item, index])))
-              : asRow(build(getOwner(), body, [item, index])),
-          );
+          return listRow(cold ? withoutClaim(() => rowOf([item, index])) : rowOf([item, index]));
         }
-        return listRow(inRow(rowCursor, () => asRow(build(getOwner(), body, [item, index]))));
+        return listRow(inRow(rowCursor, () => rowOf([item, index])));
       };
       // The engine reads the mapper's arity to decide whether a row needs an
       // index at all, and an index is a whole signal per row. The row Block's
@@ -982,7 +1012,7 @@ export function each<T>(
     // Once the rows are built and BEFORE they are placed: a claimed row is
     // already where it belongs only while nothing stands between it and the
     // row after it, and the leftovers are exactly what would.
-    syncRows(site, rows, () => {
+    syncRows(site, sync as SyncRows, rows, () => {
       // The server's rows are spent by the first pass. A row the list gains
       // after it is new, built cold like any later change, and not a row the
       // server failed to send.
@@ -990,17 +1020,17 @@ export function each<T>(
       rowCursor = null;
       if (cursor !== null) cold = true;
       if (site.cold === true || cursor === null || cursorAtEnd(cursor)) return;
-      const stranded = cursorRest(cursor);
+      const stranded = claimWalk().cursorRest(cursor);
       report(
         "structure",
         `The server sent ${stranded.length} node(s) in a list that no row in the browser ` +
           `matches, so the list is shorter in the browser. ${usualCauses("structure")} The ` +
           `extra nodes were removed ${REST_REUSED}`,
       );
-      for (const node of stranded) node.parentNode?.removeChild(node);
+      claimWalk().evict(stranded);
     });
     site.claim = null;
-    return outFor(site, out, claimed);
+    return outFor(site, out, claimed) as N | N[] | null;
   });
 }
 
@@ -1023,7 +1053,7 @@ function traceRow(list: Scope | null): void {
  * their nodes. It is still reported, because "nothing was reported" has to mean
  * the list was the list.
  */
-function inRow(cursor: Cursor | null, make: () => Node[]): Node[] {
+function inRow(cursor: Cursor | null, make: () => object[]): object[] {
   if (cursor === null) return make();
   if (cursorAtEnd(cursor)) {
     report(
@@ -1041,7 +1071,7 @@ function inRow(cursor: Cursor | null, make: () => Node[]): Node[] {
 
   /*
    * A row that ADOPTED the server's nodes created none of its own, so `build`
-   * hands back nothing and the row is, as far as `syncNodeOrder` can tell, a
+   * hands back nothing and the row is, as far as the list's `sync` can tell, a
    * row with no extent. It cannot be moved, and worse, nothing can be inserted
    * next to it: the walk that places a NEW row looks for the first node of the
    * row after it, finds none the whole way down, and falls back on the list's
@@ -1052,27 +1082,15 @@ function inRow(cursor: Cursor | null, make: () => Node[]): Node[] {
    *
    * Unless the build handed back all of that and more. A live hole in the row
    * makes the node its content is placed before, and a row holding one is given
-   * a node to be read from (`asRow`); neither is the server's, and a row cut
+   * a node to be read from (the host's `row`); neither is the server's, and a row cut
    * down to its claimed span lost both, so the hole's next write had nowhere
    * in the document to go.
    */
-  const claimed = spanBetween(from, cursor.next);
+  const claimed = claimWalk().spanBetween(from, cursor.next);
   if (claimed.length === 0) return made;
   return claimed.every((node) => made.includes(node)) ? made : claimed;
 }
 
-/** The siblings from `from` up to, but not including, `to`. */
-function spanBetween(from: Node | null, to: Node | null): Node[] {
-  const out: Node[] = [];
-  for (let node = from; node !== null && node !== to; node = node.nextSibling) out.push(node);
-  return out;
-}
-
-/**
- * Row lifecycle belongs to `mapArray`/`repeat`; this only moves nodes, so a
- * group's ARRAY IDENTITY is what tracks a row — which is why a keyed move
- * preserves the moved row's nodes (K2).
- */
 /**
  * Rows whose content changes after they are built, which are the ones a
  * captured node list stops describing. A branch's arm is one too: the arm is
@@ -1088,77 +1106,51 @@ function spanBetween(from: Node | null, to: Node | null): Node[] {
  * Such a row is given a node to start at, and is read off the document from
  * there to its last node — which is an edge, or something that never moves.
  */
-const LIVE_ROWS = new WeakSet<readonly Node[]>();
+export const LIVE_ROWS: WeakSet<readonly object[]> = new WeakSet<readonly object[]>();
 
-function asRow(nodes: Node[]): Node[] {
-  for (let i = 0; i < nodes.length; i++) {
-    const node = nodes[i];
-    if (node.nodeType === 1 || !LIVE_EDGES.has(node)) continue;
-    const row = [document.createTextNode("") as Node, ...nodes];
-    LIVE_ROWS.add(row);
-    return row;
-  }
-  return nodes;
-}
-
-/**
- * A list row: its one node, or its nodes. A row of one node is the common
- * case, and holding the node itself instead of an array around it is one
- * array fewer kept alive per row. The row's identity is the node then, which
- * is as stable as the array was.
- */
-type Row = Node | readonly Node[];
-
-function listRow(nodes: readonly Node[]): Row {
+function listRow(nodes: readonly object[]): Row {
   return nodes.length === 1 && !LIVE_ROWS.has(nodes) ? nodes[0] : nodes;
 }
 
-function isNodes(row: Row): row is readonly Node[] {
+export function isNodes<N extends object>(row: Row<N>): row is readonly N[] {
   return Array.isArray(row);
 }
 
-function rowFirst(row: Row): Node | undefined {
-  return isNodes(row) ? row[0] : row;
-}
-
-function detach(node: Node): void {
-  node.parentNode?.removeChild(node);
-}
-
-/** A row's nodes as they stand, one node handed to `visit`. */
-function eachStanding(row: Row, visit: (node: Node) => void): void {
-  if (!isNodes(row)) {
-    visit(row);
-    return;
-  }
-  const standing = standingRow(row);
-  for (let i = 0; i < standing.length; i++) visit(standing[i]);
-}
-
 /** A row as it stands. */
-function standingRow(row: readonly Node[]): readonly Node[] {
+export function standingRow<N extends object>(host: RangeHost<N>, row: readonly N[]): readonly N[] {
   if (!LIVE_ROWS.has(row)) return row;
   const first = row[0];
   const last = row[row.length - 1];
-  if (first.parentNode === null || first.parentNode !== last.parentNode) return row;
-  const nodes: Node[] = [];
-  for (let node: Node | null = first; node !== null; node = node.nextSibling) {
+  const parent = host.parentOf(first);
+  if (parent === null || parent !== host.parentOf(last)) return row;
+  const nodes: N[] = [];
+  for (let node: N | null = first; node !== null; node = host.nextOf(node)) {
     nodes.push(node);
     if (node === last) break;
   }
   return nodes;
 }
 
-function standingRows(rows: readonly Row[]): Node[] {
-  const out: Node[] = [];
-  const push = (node: Node): void => {
-    out.push(node);
-  };
-  for (const row of rows) eachStanding(row, push);
+export function standingRows<N extends object>(host: RangeHost<N>, rows: readonly Row<N>[]): N[] {
+  const out: N[] = [];
+  for (const row of rows) {
+    if (!isNodes(row)) {
+      out.push(row);
+      continue;
+    }
+    const standing = standingRow(host, row);
+    for (let i = 0; i < standing.length; i++) out.push(standing[i]);
+  }
   return out;
 }
 
-function syncRows(site: Site, rows: () => Row[], beforeFirst: () => void): void {
+/**
+ * Row lifecycle belongs to `mapArray`/`repeat`; this only moves nodes, so a
+ * group's ARRAY IDENTITY is what tracks a row — which is why a keyed move
+ * preserves the moved row's nodes (K2). How they move is the renderer's
+ * `sync`, called once per list update.
+ */
+function syncRows(site: Site, sync: SyncRows, rows: () => Row[], beforeFirst: () => void): void {
   let current: Row[] = [];
   let first = true;
 
@@ -1167,153 +1159,20 @@ function syncRows(site: Site, rows: () => Row[], beforeFirst: () => void): void 
       first = false;
       beforeFirst();
     }
-    const host = hostOf(site);
-    if (host === null) return;
-
-    // The rows both lists start and end with are where they were, so only what
-    // lies between is compared. An append, a prepend or one row removed is then
-    // the row itself rather than a set and an index of the whole list.
-    const shared = Math.min(current.length, next.length);
-    let head = 0;
-    while (head < shared && current[head] === next[head]) head++;
-    let was = current.length;
-    let now = next.length;
-    while (was > head && now > head && current[was - 1] === next[now - 1]) {
-      was--;
-      now--;
-    }
-    // The two ends of what is left traded places: two moves, and the rows
-    // between them are shared again. Without this a swap of two rows is a map
-    // and a longest increasing subsequence over every row in between.
-    while (
-      was - head > 1 &&
-      now - head > 1 &&
-      current[head] === next[now - 1] &&
-      next[head] === current[was - 1] &&
-      swapEnds(host, current[head], current[was - 1])
-    ) {
-      head++;
-      was--;
-      now--;
-      while (head < was && head < now && current[head] === next[head]) head++;
-      while (was > head && now > head && current[was - 1] === next[now - 1]) {
-        was--;
-        now--;
-      }
-    }
-    const leaving = head === 0 && was === current.length ? current : current.slice(head, was);
-    const arriving = head === 0 && now === next.length ? next : next.slice(head, now);
-
-    if (leaving.length > 0) {
-      // Emptying the list is its own case, and not only to skip a `Set` of
-      // every group: it is the one removal that can go through `removeNodes`'s
-      // single-call path, which is what `clear rows` is.
-      if (arriving.length === 0) {
-        removeNodes(standingRows(leaving));
-      } else {
-        const kept = new Set(arriving);
-        for (const group of leaving) {
-          if (kept.has(group)) continue;
-          eachStanding(group, detach);
-        }
-      }
-    }
-
-    if (arriving.length > 0) {
-      let after = site.anchor;
-      for (let i = now; i < next.length; i++) {
-        const lead = rowFirst(next[i]);
-        if (lead === undefined) continue;
-        after = lead;
-        break;
-      }
-      syncNodeOrder(host, after, leaving, arriving);
-    }
+    const parent = parentOfSite(site);
+    if (parent === null) return;
+    sync(parent, site.anchor, current, next);
     current = next;
   });
 
   onCleanup(() => {
-    removeNodes(standingRows(current));
+    site.host.removeRange(standingRows(site.host, current));
     current = [];
   });
 }
 
-/**
- * Put `high` where `low` stands and `low` where `high` stood. `false`, with
- * nothing moved, when either row has no node to stand anywhere.
- */
-function swapEnds(parent: Node, low: Row, high: Row): boolean {
-  const lowNodes = isNodes(low) ? standingRow(low) : [low];
-  const highNodes = isNodes(high) ? standingRow(high) : [high];
-  if (lowNodes.length === 0 || highNodes.length === 0) return false;
-  const afterHigh = highNodes[highNodes.length - 1].nextSibling;
-  const lowFirst = lowNodes[0];
-  for (let i = 0; i < highNodes.length; i++) parent.insertBefore(highNodes[i], lowFirst);
-  for (let i = 0; i < lowNodes.length; i++) parent.insertBefore(lowNodes[i], afterHigh);
-  return true;
-}
-
-function syncNodeOrder(parent: Node, anchor: Node | null, previous: Row[], next: Row[]): void {
-  const newLen = next.length;
-
-  if (previous.length === 0) {
-    // Last to first against the node that follows, so a row the claim left in
-    // position is not taken out and put back.
-    let before = anchor;
-    for (let i = newLen - 1; i >= 0; i--) {
-      const group = next[i];
-      if (!isNodes(group)) {
-        place(parent, group, before);
-        before = group;
-        continue;
-      }
-      const row = standingRow(group);
-      for (let j = row.length - 1; j >= 0; j--) {
-        place(parent, row[j], before);
-        before = row[j];
-      }
-    }
-    return;
-  }
-
-  const previousIndex = new Map<Row, number>();
-  for (let i = 0; i < previous.length; i++) previousIndex.set(previous[i], i);
-
-  const sources: number[] = new Array(newLen);
-  for (let i = 0; i < newLen; i++) sources[i] = previousIndex.get(next[i]) ?? -1;
-
-  const lis = longestIncreasingSubsequence(sources.filter((source) => source !== -1));
-
-  let lisIndex = lis.length - 1;
-  let nextNode: Node | null = anchor;
-
-  for (let i = newLen - 1; i >= 0; i--) {
-    const group = next[i];
-    const first = rowFirst(group);
-    if (first === undefined) continue;
-
-    if (sources[i] !== -1 && lisIndex >= 0 && lis[lisIndex] === sources[i]) {
-      lisIndex--; // already in the right place
-    } else {
-      // First to last, each before the same node, which is what keeps a row
-      // of several nodes in its own order: last to first put them down
-      // reversed.
-      if (!isNodes(group)) {
-        parent.insertBefore(group, nextNode);
-      } else {
-        const standing = standingRow(group);
-        for (let j = 0; j < standing.length; j++) {
-          parent.insertBefore(standing[j], nextNode);
-        }
-      }
-    }
-
-    nextNode = first;
-  }
-}
-
 /** Patience sorting plus binary search: O(n log n). */
-function longestIncreasingSubsequence(arr: number[]): number[] {
+export function longestIncreasingSubsequence(arr: number[]): number[] {
   if (arr.length === 0) return [];
 
   const n = arr.length;
@@ -1370,18 +1229,19 @@ export type BoundaryKind = "error" | "loading";
  * E2.3: a pending read is never captured by an error boundary — it passes
  * through to the nearest `Loading`.
  */
-export function boundary(
-  parent: Node | null,
-  anchor: Node | null,
+export function boundaryIn<N extends object>(
+  host: RangeHost<N>,
+  parent: N | null,
+  anchor: N | null,
   kind: BoundaryKind,
   fallback: Block<unknown> | null | undefined,
   body: Block<unknown>,
   flags = 0,
   on?: Cell<unknown>,
-): Node | Node[] | null {
+): N | N[] | null {
   const given = getOwner();
   if (on !== undefined) cellSlot(on, "Loading.on");
-  const { site, out } = siteFor(parent, anchor);
+  const { site, out } = siteFor(host, parent, anchor);
   claimSite(site, parent, anchor, flags, "boundary");
   const claimed = site.claim ?? null;
   underScope(given, "boundary", () => {
@@ -1411,10 +1271,10 @@ export function boundary(
           "is missing or comes from another render). The server's nodes were removed and the " +
           "boundary shows its fallback until the value loads.",
       );
-      releaseRange(stranded);
+      claimWalk().releaseRange(stranded);
     }
   }
-  return outFor(site, out, claimed);
+  return outFor(site, out, claimed) as N | N[] | null;
 }
 
 /**
@@ -1435,7 +1295,8 @@ function guarded(
   body: Block<unknown>,
   on?: Cell<unknown>,
 ): void {
-  const park: Site = { parent: document.createDocumentFragment(), anchor: null };
+  const host = site.host;
+  const park: Site = { host, parent: host.park(), anchor: null };
   // The server's nodes at this position, when the server actually SETTLED here.
   //
   // On the FIRST build of a hydration there is nothing to protect by parking:
@@ -1459,18 +1320,21 @@ function guarded(
   // when its values arrive instead of building a second copy beside them. An
   // error boundary's range is never replaced under a client that hydrated it:
   // its own fallback shows the failure.
-  let lateOpen: Comment | null = null;
-  const owed = (fallbackClaim ?? firstClaim)?.open ?? null;
-  if (owed !== null && (owed.data.startsWith("[b:") || owed.data.startsWith("[e:"))) {
-    const deferred = owed.data.startsWith("[b:");
-    (owed as Comment & { $$barq?: (failed: boolean) => boolean }).$$barq = (failed) => {
-      if (!deferred || failed || content !== NOTHING || owed.parentNode === null) return false;
+  let lateOpen: object | null = null;
+  const owedRange = fallbackClaim ?? firstClaim;
+  const owed = owedRange?.open ?? null;
+  const owedKey = owedRange === null ? null : claimWalk().rangeKey(owedRange);
+  if (owed !== null && owedKey !== null && (owedKey.startsWith("b:") || owedKey.startsWith("e:"))) {
+    const deferred = owedKey.startsWith("b:");
+    (owed as { $$barq?: (failed: boolean) => boolean }).$$barq = (failed) => {
+      if (!deferred || failed || content !== NOTHING || host.parentOf(owed) === null) return false;
       lateOpen = owed;
       return true;
     };
   }
   // `onHydrationEnd` waits for the content the stream still owes.
-  const releaseHold = owed !== null && owed.data.startsWith("[b:") ? holdHydration() : null;
+  const releaseHold =
+    owed !== null && owedKey !== null && owedKey.startsWith("b:") ? holdHydration() : null;
   if (releaseHold !== null) onCleanup(releaseHold);
   let content: Instance = NOTHING;
   let standIn: Instance = NOTHING;
@@ -1482,31 +1346,40 @@ function guarded(
   // The node the content stands after while it is at the site, `null` for the
   // start of the host. Everything from there to the site's anchor is the
   // content: the position is this boundary's alone.
-  let lead: Node | null = null;
+  let lead: object | null = null;
   // A site with no parent is one node in a fragment the caller adopts, and once
   // it has, nothing says where this boundary's content begins: whatever the
   // caller placed before it is now its sibling. Such a site is given a node to
   // begin at, which travels with the fragment.
   let pinned = false;
-  const fragment = site.anchor?.parentNode ?? null;
-  if (site.anchor !== null && fragment !== null && fragment.nodeType === 11) {
-    lead = document.createTextNode("");
-    fragment.insertBefore(lead, site.anchor);
+  const fragment = site.anchor === null ? null : host.parentOf(site.anchor);
+  if (site.anchor !== null && fragment !== null && host.isPark(fragment)) {
+    lead = host.sentinel();
+    host.insertRange(fragment, [lead], site.anchor);
     pinned = true;
   }
-  const leadOf = (first: Node | undefined): Node | null => {
-    if (first !== undefined) return first.previousSibling;
-    const host = hostOf(site);
-    return site.anchor !== null ? site.anchor.previousSibling : (host?.lastChild ?? null);
+  const leadOf = (first: object | undefined): object | null => {
+    if (first !== undefined) return host.prevOf(first);
+    const parent = parentOfSite(site);
+    if (site.anchor !== null) return host.prevOf(site.anchor);
+    return parent === null ? null : host.lastOf(parent);
   };
   if (firstClaim !== null && !pinned) lead = leadOf(firstClaim.nodes[0]);
 
-  const standing = (): Node[] => {
-    const host = hostOf(site);
-    if (host === null) return [...content.nodes];
-    const out: Node[] = [];
-    let node = lead === null ? host.firstChild : lead.nextSibling;
-    for (; node !== null && node !== site.anchor; node = node.nextSibling) out.push(node);
+  const standing = (): object[] => {
+    const parent = parentOfSite(site);
+    if (parent === null) return [...content.nodes];
+    const out: object[] = [];
+    let node = lead === null ? host.firstOf(parent) : host.nextOf(lead);
+    for (; node !== null && node !== site.anchor; node = host.nextOf(node)) out.push(node);
+    return out;
+  };
+
+  const parked = (): object[] => {
+    const out: object[] = [];
+    for (let node = host.firstOf(park.parent!); node !== null; node = host.nextOf(node)) {
+      out.push(node);
+    }
     return out;
   };
 
@@ -1517,7 +1390,7 @@ function guarded(
     // the build's list still names the arm that left. The park holds this
     // boundary's content and nothing else, so its child list is the truth; at
     // the site the truth is everything between the lead and the anchor.
-    const moving = live === park ? [...park.parent!.childNodes] : standing();
+    const moving = live === park ? parked() : standing();
     live = target;
     if (target === site && !pinned) lead = leadOf(undefined);
     insertAt(target, moving);
@@ -1533,17 +1406,10 @@ function guarded(
   const lateClaim = (): Range | null => {
     const open = lateOpen;
     lateOpen = null;
-    const parent = open?.parentNode ?? null;
+    const parent = open === null ? null : host.parentOf(open);
     if (open === null || parent === null) return null;
-    const nodes: Node[] = [];
-    for (
-      let node = open.nextSibling;
-      node !== null && node !== site.anchor;
-      node = node.nextSibling
-    ) {
-      nodes.push(node);
-    }
-    return { open, close: site.anchor as Comment | null, parent, nodes };
+    const nodes = claimWalk().spanBetween(host.nextOf(open), site.anchor);
+    return { open, close: site.anchor, parent, nodes };
   };
 
   // Claimed where they stand. A mismatch costs this boundary its server nodes
@@ -1566,7 +1432,7 @@ function guarded(
       return cold();
     }
     if (claimed.abandoned === null) return claimed.value;
-    teardown(claimed.value);
+    teardown(host, claimed.value);
     return cold();
   };
 
@@ -1661,7 +1527,7 @@ function guarded(
 
   const dropStandIn = (): void => {
     if (standIn === NOTHING) return;
-    teardown(standIn);
+    teardown(host, standIn);
     standIn = NOTHING;
   };
 
@@ -1675,7 +1541,7 @@ function guarded(
       // pendingness, so the outer renders content and never builds the
       // fallback its claim was being held for.
       if (fallbackClaim !== null) {
-        removeNodes(fallbackClaim.nodes);
+        host.removeRange(fallbackClaim.nodes);
         fallbackClaim = null;
       }
       move(site);
@@ -1702,11 +1568,6 @@ function guarded(
 // ============================================================================
 
 /**
- * A hole whose insertion target is elsewhere and whose scope's parent is the
- * LEXICAL one, which is why a portalled modal reads the provider it is
- * WRITTEN under (X4).
- */
-/**
  * An ISLAND: markup the server rendered that the client must not hydrate.
  *
  * Solid's `NoHydration`. The server half renders the subtree as ordinary markup
@@ -1723,21 +1584,22 @@ function guarded(
  * position the server never wrote — the children build normally, because an
  * island is a statement about hydration and not about what the page contains.
  */
-export function island(
-  parent: Node | null,
-  anchor: Node | null,
+export function islandIn<N extends object>(
+  host: RangeHost<N>,
+  parent: N | null,
+  anchor: N | null,
   block: Block<unknown>,
   flags = 0,
-): Node | null {
-  const site: Site = { parent, anchor };
+): N | null {
+  const site: Site = { host, parent, anchor };
   if (hydrating()) {
     // BY ADDRESS, exactly as `hole` claims: inside a compiled template this
     // position is reached through `child`/`sib` off a claimed root, not through
     // the walk's cursor — so a cursor-based claim never sees the island at all.
     // Measured on the first attempt: `built: 1` with the island's body running
     // and its output appended beside the server's markup.
-    const claim = claimRange(parent, anchor);
-    if (claim !== null && rangeKey(claim) === ISLAND_KEY) {
+    const claim = claimWalk().claimRange(parent, anchor);
+    if (claim !== null && claimWalk().rangeKey(claim) === ISLAND_KEY) {
       // Nothing is built and nothing is walked. The server's nodes stay exactly
       // where they are, which is the whole of what an island buys.
       //
@@ -1745,11 +1607,11 @@ export function island(
       // its siblings, and without this one every async value after it would be
       // looked up one position early.
       setHydratable(childScope(getOwner(), "branch"), false);
-      return claim.nodes.length > 0 ? claim.nodes[0] : null;
+      return claim.nodes.length > 0 ? (claim.nodes[0] as N) : null;
     }
     // Not an island on the wire — a client-only render, or a position the server
     // wrote differently. Give the claim back and build cold.
-    if (claim !== null) releaseRange(claim);
+    if (claim !== null) claimWalk().releaseRange(claim);
   }
   const unhydratable = (...args: readonly unknown[]): unknown => {
     setHydratable(getOwner()!, false);
@@ -1760,107 +1622,7 @@ export function island(
   // Never without a scope: the scope is what carries the mark.
   const scoped = flags & ~NO_SCOPE;
   const instance = attempt(getOwner(), site, unhydratable, EMPTY_ARGS, scoped, "branch", null);
-  return instance.nodes.length > 0 ? instance.nodes[0] : null;
-}
-
-export function portal(target: Cell<Node | string | null | undefined>, block: Block<unknown>): Node;
-export function portal(
-  target: Cell<Node | string | null | undefined>,
-  block: Block<unknown>,
-  flags: number,
-): Node | Node[];
-export function portal(
-  target: Cell<Node | string | null | undefined>,
-  block: Block<unknown>,
-  flags = 0,
-): Node | Node[] {
-  const given = getOwner();
-  cellSlot(target, "Portal.mount");
-  // Read once here as well as in the effect below: what the Cell YIELDS is
-  // refused on the read, and the effect's first read is the engine's to
-  // schedule, where a refusal would surface a turn late and away from the
-  // construct that caused it.
-  cellSlot(untrack(target), "Portal.mount", true);
-
-  // A portal is the one construct whose server bytes are in the WRONG PLACE by
-  // construction: the string backend has no second insertion point, so it wrote
-  // an EMPTY range at the lexical position and the content is the client's to
-  // build. The range is still this portal's to take: left at the cursor, it is
-  // two nodes the enclosing region did not build and reports as a mismatch.
-  const claimed = hydrating() && (flags & HYDRATE) !== 0 ? probeRange(null, null) : null;
-  if (claimed !== null) releaseRange(claimed);
-  const marker: Node = claimed?.close ?? document.createTextNode("");
-
-  underScope(given, "portal", () => {
-    let instance = NOTHING;
-    let container: HTMLElement | null = null;
-    let delegatingFor: Node | null = null;
-    let request = 0;
-    const site: Site = { parent: null, anchor: null };
-
-    const clear = (): void => {
-      if (instance !== NOTHING) {
-        teardown(instance);
-        instance = NOTHING;
-      }
-      if (container !== null && delegatingFor !== null) {
-        unregisterDelegatedContainer(container, delegatingFor);
-      }
-      delegatingFor = null;
-      container?.parentNode?.removeChild(container);
-      container = null;
-      site.parent = null;
-    };
-
-    // An EFFECT, not a render effect, and that is where the mount's timing
-    // comes from. It runs once the pass that placed the marker has written the
-    // document, so a target inside the tree being built is there to be found;
-    // and under a boundary that is still showing its fallback the engine holds
-    // it until the content is revealed, which is the moment a portal the
-    // content declares should appear. Deferred to a microtask instead, it asked
-    // once whether the marker was connected, found the parked content was not,
-    // and never asked again.
-    createEffect(
-      () => {
-        const requested = target();
-        cellSlot(requested, "Portal.mount", true);
-        return requested;
-      },
-      (requested) => {
-        clear();
-        const mine = ++request;
-        const mount = (): void => {
-          // The marker IS the portal's lexical position, so a tree that was
-          // never put in a document mounts nothing outside itself either.
-          if (mine !== request || !marker.isConnected) return;
-          const host = resolveTarget(requested);
-          if (host === null) return;
-          container = document.createElement("div");
-          container.style.display = "contents";
-          hostPortal(container, marker);
-          site.parent = container;
-          activation++;
-          instance = activate(given, site, block, EMPTY_ARGS, flags, "portal");
-          host.appendChild(container);
-          // A root's own listener already hears a portal mounted inside it.
-          const root = delegatedRootOf(marker);
-          if (root !== null && !root.contains(container)) {
-            registerDelegatedContainer(container, root);
-            delegatingFor = root;
-          }
-        };
-        // A portal nothing owns has no scope to build under, and the engine
-        // refuses one made from inside an effect's write. It mounts a turn
-        // later, outside it, and only if it is still the one being asked for.
-        if (given === null) queueMicrotask(mount);
-        else mount();
-      },
-    );
-
-    onCleanup(clear);
-  });
-
-  return claimed === null ? marker : rangeNodes(claimed);
+  return instance.nodes.length > 0 ? (instance.nodes[0] as N) : null;
 }
 
 /**
@@ -1869,28 +1631,20 @@ export function portal(
  * its reveal. The order and the collapsed flag arrive as Cells the compiler
  * computed, the children as the Block they already were.
  */
-export function reveal(
+export function revealIn<N extends object>(
+  host: RangeHost<N>,
   order: Cell<RevealOrder | undefined>,
   collapsed: Cell<boolean | undefined>,
   block: Block<unknown>,
-): Node[] {
+): N[] {
   const given = getOwner();
   return createRevealOrder(
     () => {
       // The group's scope is the engine's; say so to the ownership trace.
       const group = getOwner();
       if (OWNERSHIP.sink !== null && group !== null) traceScope(group, given, "provide", true);
-      return childToNodes((block as unknown as () => unknown)() as Child, group);
+      return host.toNodes((block as unknown as () => unknown)() as Child, group);
     },
     { order: () => order() ?? "sequential", collapsed: () => collapsed() === true },
   );
-}
-
-function resolveTarget(requested: Node | string | null | undefined): Node | null {
-  if (typeof requested === "string") {
-    const found = document.querySelector(requested);
-    return found instanceof HTMLElement ? found : null;
-  }
-  if (requested === null || requested === undefined) return document.body;
-  return requested;
 }

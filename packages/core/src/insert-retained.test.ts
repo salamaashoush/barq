@@ -24,7 +24,7 @@ function retained(measure: string): Record<string, number> {
     import { heapStats } from "bun:jsc";
     GlobalRegistrator.register();
     const { insert } = await import(${JSON.stringify(`${dir}/dom.ts`)});
-    const { each } = await import(${JSON.stringify(`${dir}/flow.ts`)});
+    const { each } = await import(${JSON.stringify(`${dir}/dom-flow.ts`)});
     const { block, createRoot, createSignal, flush } = await import(${JSON.stringify(`${dir}/signals.ts`)});
     const HOLES = ${HOLES};
     const arrays = () => { Bun.gc(true); return heapStats().objectTypeCounts.Array ?? 0; };

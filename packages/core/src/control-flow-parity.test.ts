@@ -6,7 +6,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { For, Repeat, Show } from "./components.ts";
 import { cell } from "./props.ts";
-import { dynamic } from "./components.ts";
+import { dynamic } from "./dom-components.ts";
 import { element, render } from "./dom.ts";
 import { createRoot, flush, createSignal, onCleanup } from "./signals.ts";
 
