@@ -1,9 +1,8 @@
 use oxc::allocator::Vec as ArenaVec;
 use oxc::ast::ast::{
-    Argument, BindingIdentifier, BindingPattern, Expression, IdentifierName,
-    ImportDeclarationSpecifier, ImportOrExportKind, ModuleExportName, Program, Statement,
-    StringLiteral, TemplateElement, TemplateElementValue, TemplateLiteral, VariableDeclarationKind,
-    VariableDeclarator,
+    Argument, BindingIdentifier, Expression, IdentifierName, ImportDeclarationSpecifier,
+    ImportOrExportKind, ModuleExportName, Program, Statement, StringLiteral, TemplateElement,
+    TemplateElementValue, TemplateLiteral,
 };
 use oxc::span::{SPAN, Span};
 use oxc::syntax::number::NumberBase;
@@ -286,21 +285,7 @@ fn hoisted_declaration<'a>(emit: &mut Emit<'a, '_>, index: usize) -> Statement<'
         emit.module.uids.handler(id, emit.allocator)
     };
     let init = expr.clone_in(emit.allocator);
-    let declarator = VariableDeclarator::new(
-        span,
-        BindingPattern::new_binding_identifier(span, name, &emit.ast),
-        None,
-        Some(init),
-        false,
-        &emit.ast,
-    );
-    Statement::new_variable_declaration(
-        span,
-        VariableDeclarationKind::Const,
-        [declarator],
-        false,
-        &emit.ast,
-    )
+    emit.binding(name, init, span)
 }
 
 /// 1-based line and column of `offset`, the column in UTF-16 units as an
@@ -371,19 +356,5 @@ fn template_declaration<'a>(
     );
 
     let name = emit.template_name(id);
-    let declarator = VariableDeclarator::new(
-        span,
-        BindingPattern::new_binding_identifier(span, name, &emit.ast),
-        None,
-        Some(init),
-        false,
-        &emit.ast,
-    );
-    Statement::new_variable_declaration(
-        span,
-        VariableDeclarationKind::Const,
-        [declarator],
-        false,
-        &emit.ast,
-    )
+    emit.binding(name, init, span)
 }

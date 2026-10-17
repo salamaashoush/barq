@@ -38,10 +38,7 @@
 //! the name sets against `codegen::backend::OPS` in both directions.
 
 use oxc::allocator::Vec as ArenaVec;
-use oxc::ast::ast::{
-    ArrayExpressionElement, BindingPattern, Expression, NumberBase, Statement,
-    VariableDeclarationKind, VariableDeclarator,
-};
+use oxc::ast::ast::{ArrayExpressionElement, Expression, NumberBase};
 use oxc::span::Span;
 
 use crate::codegen::backend::{At, Backend, lower};
@@ -93,7 +90,7 @@ pub fn emit_unit<'a>(
     let descriptor = array(ctx, vec![clone, refs, array(ctx, ops, span)], span);
 
     let name = ctx.module.uids.ir(id, ctx.allocator);
-    ctx.interp_units.push(binding(ctx, name, descriptor, span));
+    ctx.interp_units.push(ctx.binding(name, descriptor, span));
 
     let callee = ctx.helper(Helper::Interp, span);
     // Innermost first, so the lists evaluate in region order — the same order
@@ -497,27 +494,4 @@ fn text<'a>(ctx: &Emit<'a, '_>, value: &'static str, span: Span) -> Expression<'
 
 fn text_of<'a>(ctx: &Emit<'a, '_>, value: &str, span: Span) -> Expression<'a> {
     ctx.string(ctx.allocator.alloc_str(value), span)
-}
-
-fn binding<'a>(
-    ctx: &Emit<'a, '_>,
-    name: &'a str,
-    init: Expression<'a>,
-    span: Span,
-) -> Statement<'a> {
-    let declarator = VariableDeclarator::new(
-        span,
-        BindingPattern::new_binding_identifier(span, name, &ctx.ast),
-        None,
-        Some(init),
-        false,
-        &ctx.ast,
-    );
-    Statement::new_variable_declaration(
-        span,
-        VariableDeclarationKind::Const,
-        [declarator],
-        false,
-        &ctx.ast,
-    )
 }

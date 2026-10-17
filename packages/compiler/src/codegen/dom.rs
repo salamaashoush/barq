@@ -2,7 +2,7 @@ use oxc::allocator::{Allocator, Box as ArenaBox, Vec as ArenaVec};
 use oxc::ast::ast::{
     Argument, ArrayExpressionElement, ArrowFunctionBody, ArrowFunctionExpression, AssignmentTarget,
     BindingPattern, Expression, FormalParameterKind, FormalParameters, IdentifierName,
-    MemberExpression, ObjectPropertyKind, Statement, VariableDeclarationKind, VariableDeclarator,
+    MemberExpression, ObjectPropertyKind, Statement,
 };
 use oxc::span::Span;
 use rustc_hash::FxHashSet;
@@ -41,7 +41,7 @@ pub fn emit_unit_parts<'a>(
             Step::Root => clone_call(ctx, unit, def.span),
             _ => walk(ctx, unit, &def),
         };
-        statements.push(binding(ctx, ctx.module.interner.str(def.name), init, def.span));
+        statements.push(ctx.binding(ctx.module.interner.str(def.name), init, def.span));
     }
 
     // The driver. It owns traversal — program order, one pass — and the
@@ -1342,29 +1342,6 @@ pub(super) fn take<'a>(
     span: Span,
 ) -> Expression<'a> {
     unit.exprs.entry_mut(id).src.take().unwrap_or_else(|| Expression::new_void_0(span, &ctx.ast))
-}
-
-fn binding<'a>(
-    ctx: &Emit<'a, '_>,
-    name: &'a str,
-    init: Expression<'a>,
-    span: Span,
-) -> Statement<'a> {
-    let declarator = VariableDeclarator::new(
-        span,
-        BindingPattern::new_binding_identifier(span, name, &ctx.ast),
-        None,
-        Some(init),
-        false,
-        &ctx.ast,
-    );
-    Statement::new_variable_declaration(
-        span,
-        VariableDeclarationKind::Const,
-        [declarator],
-        false,
-        &ctx.ast,
-    )
 }
 
 fn iife<'a>(ctx: &Emit<'a, '_>, statements: Vec<Statement<'a>>, span: Span) -> Expression<'a> {
