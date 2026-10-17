@@ -209,6 +209,15 @@ export interface Corruptions {
 // fixtures
 // ---------------------------------------------------------------------------
 
+export function optionExists(name: string): boolean {
+  try {
+    const types = readFileSync(join(import.meta.dir, "..", "index.d.ts"), "utf8");
+    return new RegExp(`^\\s*${name}\\?:`, "m").test(types);
+  } catch {
+    return false;
+  }
+}
+
 export function listFixtures(): string[] {
   return readdirSync(FIXTURE_DIR)
     .filter((f) => f.endsWith(".tsx"))

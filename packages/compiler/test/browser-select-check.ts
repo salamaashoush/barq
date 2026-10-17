@@ -12,13 +12,7 @@
  * nothing.
  */
 
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-
-import type { Page } from "./chrome.ts";
-import { compileSource, TMP_DIR } from "./harness.ts";
-
-const PRAGMA = "/** @jsxImportSource @barqjs/core */\n";
+import { fixturePage, openFixturePage, type Page } from "./chrome.ts";
 
 const FIXTURE = `import { For, render, createSignal, flush } from "@barqjs/core"
 
@@ -77,52 +71,6 @@ export interface SelectReport {
   control: SelectRow;
 }
 
-async function buildPage(naive: boolean): Promise<{ path: string; cleanup: () => void }> {
-  const workdir = join(TMP_DIR, `select-${naive ? "naive" : "real"}`);
-  rmSync(workdir, { recursive: true, force: true });
-  mkdirSync(workdir, { recursive: true });
-
-  let code = compileSource(FIXTURE, "select.tsx");
-  if (naive) {
-    writeFileSync(join(workdir, "core-naive.ts"), NAIVE_SHIM);
-    code = code.replaceAll('from "@barqjs/core"', 'from "./core-naive.ts"');
-  }
-  writeFileSync(join(workdir, "entry.tsx"), PRAGMA + code);
-
-  const built = await Bun.build({
-    entrypoints: [join(workdir, "entry.tsx")],
-    target: "browser",
-    format: "esm",
-    conditions: ["bun"],
-  });
-  if (!built.success) {
-    for (const log of built.logs) console.error(String(log));
-    throw new Error("the select page did not build");
-  }
-  const path = join(workdir, "page.html");
-  writeFileSync(
-    path,
-    `<!doctype html><meta charset="utf-8"><title>barq select</title>` +
-      `<script>window.addEventListener("error", (e) => { window.__barqLoadError ??= ` +
-      `String((e.error && e.error.stack) || e.message) });</script>` +
-      `<script type="module">\n${(await built.outputs[0]!.text()).replace(/<\/script/gi, "<\\/script")}\n</script>`,
-  );
-  return { path, cleanup: () => rmSync(workdir, { recursive: true, force: true }) };
-}
-
-async function open(page: Page, path: string): Promise<void> {
-  await page.open(`file://${path}`);
-  let ready = false;
-  for (let attempt = 0; attempt < 400 && !ready; attempt++) {
-    ready = await page.evaluate<boolean>("window.__barqReady === true");
-    if (!ready) await new Promise((resolve) => setTimeout(resolve, 50));
-  }
-  if (!ready) {
-    const reason = await page.evaluate<string>("String(window.__barqLoadError || '')");
-    throw new Error(`the select page never loaded${reason ? `:\n${reason}` : ""}`);
-  }
-}
-
 /** Run a step, let the page's microtasks drain, and read what a select shows. */
 async function shown(page: Page, id: string, step: string): Promise<string> {
   return page.evaluate<string>(
@@ -140,9 +88,9 @@ const PEOPLE = JSON.stringify(["ada", "grace", "edsger"]);
 export async function checkSelect(page: Page): Promise<SelectReport> {
   const rows: SelectRow[] = [];
 
-  const real = await buildPage(false);
+  const real = await fixturePage("select", FIXTURE);
   try {
-    await open(page, real.path);
+    await openFixturePage(page, "select", real.path);
     rows.push(
       row(
         "the options arrive after the value was written",
@@ -188,9 +136,9 @@ export async function checkSelect(page: Page): Promise<SelectReport> {
     real.cleanup();
   }
 
-  const naive = await buildPage(true);
+  const naive = await fixturePage("select", FIXTURE, NAIVE_SHIM);
   try {
-    await open(page, naive.path);
+    await openFixturePage(page, "select", naive.path);
     const shows = await shown(page, "late", `window.__barqNames(${PEOPLE})`);
     return {
       rows,

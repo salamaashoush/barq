@@ -24,13 +24,7 @@
  * destroyed. A check that cannot show the failure is not checking for it.
  */
 
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
-
-import type { Page } from "./chrome.ts";
-import { compileSource, TMP_DIR } from "./harness.ts";
-
-const PRAGMA = "/** @jsxImportSource @barqjs/core */\n";
+import { fixturePage, openFixturePage, type Page } from "./chrome.ts";
 
 /**
  * The page's own source. A module-level signal, a `bind:value` input, a
@@ -107,41 +101,6 @@ export interface CaretReport {
   rows: CaretRow[];
   /** The control row, run against the naive channel. It MUST report a loss. */
   control: CaretRow;
-}
-
-async function buildPage(naive: boolean): Promise<{ path: string; cleanup: () => void }> {
-  // Inside the package: the bundle imports `@barqjs/core`, and a workdir in
-  // the system temp has no node_modules above it to resolve it from.
-  const workdir = join(TMP_DIR, `caret-${naive ? "naive" : "real"}`);
-  rmSync(workdir, { recursive: true, force: true });
-  mkdirSync(workdir, { recursive: true });
-
-  let code = compileSource(FIXTURE, "caret.tsx");
-  if (naive) {
-    writeFileSync(join(workdir, "core-naive.ts"), NAIVE_SHIM);
-    code = code.replaceAll('from "@barqjs/core"', 'from "./core-naive.ts"');
-  }
-  writeFileSync(join(workdir, "entry.tsx"), PRAGMA + code);
-
-  const built = await Bun.build({
-    entrypoints: [join(workdir, "entry.tsx")],
-    target: "browser",
-    format: "esm",
-    conditions: ["bun"],
-  });
-  if (!built.success) {
-    for (const log of built.logs) console.error(String(log));
-    throw new Error("the caret page did not build");
-  }
-  const path = join(workdir, "page.html");
-  writeFileSync(
-    path,
-    `<!doctype html><meta charset="utf-8"><title>barq caret</title>` +
-      `<script>window.addEventListener("error", (e) => { window.__barqLoadError ??= ` +
-      `String((e.error && e.error.stack) || e.message) });</script>` +
-      `<script type="module">\n${(await built.outputs[0]!.text()).replace(/<\/script/gi, "<\\/script")}\n</script>`,
-  );
-  return { path, cleanup: () => rmSync(workdir, { recursive: true, force: true }) };
 }
 
 /** One character, through the browser's own editing code. */
@@ -247,18 +206,9 @@ function judge(
 export async function checkCaret(page: Page): Promise<CaretReport> {
   const rows: CaretRow[] = [];
 
-  const real = await buildPage(false);
+  const real = await fixturePage("caret", FIXTURE);
   try {
-    await page.open(`file://${real.path}`);
-    let ready = false;
-    for (let attempt = 0; attempt < 400 && !ready; attempt++) {
-      ready = await page.evaluate<boolean>("window.__barqReady === true");
-      if (!ready) await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    if (!ready) {
-      const reason = await page.evaluate<string>("String(window.__barqLoadError || '')");
-      throw new Error(`the caret page never loaded${reason ? `:\n${reason}` : ""}`);
-    }
+    await openFixturePage(page, "caret", real.path);
 
     const field = await driveOne(page, "field", "XY", [2, 7], "hello there world");
     rows.push(
@@ -305,19 +255,10 @@ export async function checkCaret(page: Page): Promise<CaretReport> {
   }
 
   // The control: the same drive, against a channel with neither half.
-  const naive = await buildPage(true);
+  const naive = await fixturePage("caret", FIXTURE, NAIVE_SHIM);
   let control: CaretRow;
   try {
-    await page.open(`file://${naive.path}`);
-    let ready = false;
-    for (let attempt = 0; attempt < 400 && !ready; attempt++) {
-      ready = await page.evaluate<boolean>("window.__barqReady === true");
-      if (!ready) await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    if (!ready) {
-      const reason = await page.evaluate<string>("String(window.__barqLoadError || '')");
-      throw new Error(`the control page never loaded${reason ? `:\n${reason}` : ""}`);
-    }
+    await openFixturePage(page, "control", naive.path);
     const field = await driveOne(page, "field", "XY", [2, 7], "hello there world");
     const row = judge(
       "MUTATION: no DOM-compare and no caret restore",

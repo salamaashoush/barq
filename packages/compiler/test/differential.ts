@@ -22,10 +22,13 @@
  *     generator, the mutator and any later mode all diff the same things.
  */
 
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
-import { compileSource, loadModule, renderModule, type RenderResult } from "./harness.ts";
+import {
+  compileSource,
+  loadModule,
+  optionExists,
+  renderModule,
+  type RenderResult,
+} from "./harness.ts";
 
 /**
  * `dom-Ox` is what ships. `dom-O0` is the reference: same front end, same IR,
@@ -99,15 +102,6 @@ const INTERP_PROBE =
  * The probe carries a HOLE deliberately: a pure-static unit needs no patch
  * program at all, so the backends could legitimately agree on it.
  */
-function optionExists(name: string): boolean {
-  try {
-    const types = readFileSync(join(import.meta.dir, "..", "index.d.ts"), "utf8");
-    return new RegExp(`^\\s*${name}\\?:`, "m").test(types);
-  } catch {
-    return false;
-  }
-}
-
 function detect(): InterpStatus {
   if (!optionExists("interp")) {
     return {

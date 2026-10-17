@@ -1,11 +1,9 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
-
 import {
   compileSource,
   fixtureSource,
   haltsHeld,
   loadModule,
+  optionExists,
   type FixtureModule,
 } from "./harness.ts";
 
@@ -52,15 +50,6 @@ export interface SsrStatus {
 }
 
 const SSR_PROBE = 'const Probe = () => <section class="p">hi</section>;\nexport default Probe;\n';
-
-function optionExists(name: string): boolean {
-  try {
-    const types = readFileSync(join(import.meta.dir, "..", "index.d.ts"), "utf8");
-    return new RegExp(`^\\s*${name}\\?:`, "m").test(types);
-  } catch {
-    return false;
-  }
-}
 
 /**
  * Detection with a THIRD answer, on the pattern `differential.ts` states in

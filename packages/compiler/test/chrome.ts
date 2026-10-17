@@ -11,7 +11,10 @@
  */
 
 import { spawn, type ChildProcess } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+
+import { compileSource, TMP_DIR } from "./harness.ts";
 
 const CANDIDATES = [
   "/usr/bin/chromium",
@@ -273,7 +276,66 @@ export async function withChrome<T>(
   } finally {
     connection?.close();
     chrome?.kill();
-    const { rmSync } = await import("node:fs");
     for (const profile of profiles) rmSync(profile, { recursive: true, force: true });
+  }
+}
+
+const PRAGMA = "/** @jsxImportSource @barqjs/core */\n";
+
+/**
+ * `fixture`, compiled and bundled into one page Chrome can open from disk.
+ * `shim` stands in for `@barqjs/core`, so a check can show it fails without the
+ * runtime's own handling.
+ */
+export async function fixturePage(
+  name: string,
+  fixture: string,
+  shim?: string,
+): Promise<{ path: string; cleanup: () => void }> {
+  // Inside the package: the bundle imports `@barqjs/core`, and a workdir in
+  // the system temp has no node_modules above it to resolve it from.
+  const workdir = join(TMP_DIR, `${name}-${shim === undefined ? "real" : "naive"}`);
+  rmSync(workdir, { recursive: true, force: true });
+  mkdirSync(workdir, { recursive: true });
+
+  let code = compileSource(fixture, `${name}.tsx`);
+  if (shim !== undefined) {
+    writeFileSync(join(workdir, "core-naive.ts"), shim);
+    code = code.replaceAll('from "@barqjs/core"', 'from "./core-naive.ts"');
+  }
+  writeFileSync(join(workdir, "entry.tsx"), PRAGMA + code);
+
+  const built = await Bun.build({
+    entrypoints: [join(workdir, "entry.tsx")],
+    target: "browser",
+    format: "esm",
+    conditions: ["bun"],
+  });
+  if (!built.success) {
+    for (const log of built.logs) console.error(String(log));
+    throw new Error(`the ${name} page did not build`);
+  }
+  const path = join(workdir, "page.html");
+  writeFileSync(
+    path,
+    `<!doctype html><meta charset="utf-8"><title>barq ${name}</title>` +
+      `<script>window.addEventListener("error", (e) => { window.__barqLoadError ??= ` +
+      `String((e.error && e.error.stack) || e.message) });</script>` +
+      `<script type="module">\n${(await built.outputs[0]!.text()).replace(/<\/script/gi, "<\\/script")}\n</script>`,
+  );
+  return { path, cleanup: () => rmSync(workdir, { recursive: true, force: true }) };
+}
+
+/** Opens a `fixturePage` and waits for the fixture to report `__barqReady`. */
+export async function openFixturePage(page: Page, name: string, path: string): Promise<void> {
+  await page.open(`file://${path}`);
+  let ready = false;
+  for (let attempt = 0; attempt < 400 && !ready; attempt++) {
+    ready = await page.evaluate<boolean>("window.__barqReady === true");
+    if (!ready) await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  if (!ready) {
+    const reason = await page.evaluate<string>("String(window.__barqLoadError || '')");
+    throw new Error(`the ${name} page never loaded${reason ? `:\n${reason}` : ""}`);
   }
 }

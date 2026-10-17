@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 
-import { compileSource, haltsHeld, loadModule, stripLiterals } from "./harness.ts";
+import { compileSource, haltsHeld, loadModule, settle, stripLiterals } from "./harness.ts";
 import {
   describeThrown,
   PreconditionFailed,
@@ -43,14 +43,6 @@ export interface Outcome {
 interface SemanticModule {
   rules?: string[];
   claims?: Claim[];
-}
-
-async function settle(): Promise<void> {
-  const core = await import("@barqjs/core");
-  core.flush();
-  await new Promise((r) => setTimeout(r, 0));
-  core.flush();
-  await new Promise((r) => setTimeout(r, 0));
 }
 
 function makeKit(emitted: string, containers: HTMLElement[]): Kit {
