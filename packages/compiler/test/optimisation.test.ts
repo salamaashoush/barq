@@ -6,16 +6,13 @@
  * OPTIMISATIONS OFF, not a hand-written sibling with its own history and its
  * own bugs. `-O0` shares the front end, the IR, the ABI, the props model and
  * the ownership model, so it cannot encode a legacy decision and cannot share
- * an optimisation bug — which is exactly what the `createElement` oracle could
- * not say about itself. What `-O0` cannot say about ITSELF is the other half:
+ * an optimisation bug. What `-O0` cannot say about ITSELF is the other half:
  * two builds that share a front end cannot grade it, so P2 `classify` and P4
- * `shape` need an ABSOLUTE grader and the oracle does not retire until one
- * exists. the oracle design states it; the last describe block here asserts it.
+ * `shape` need an ABSOLUTE grader, and the last describe block here is one.
  *
- * This file is the M1 half of that: `-O0` is a build that RUNS and renders what
- * `-Ox` renders. The channels it compares are the ones L4 grades as
- * differential (rendered DOM across every frame, and the side channels read off
- * it). The ones it deliberately does NOT compare are the ones L4 grades as
+ * `-O0` is a build that RUNS and renders what `-Ox` renders. The channels this
+ * file compares are the differential ones (rendered DOM across every frame, and
+ * the side channels read off it). The ones it deliberately does NOT compare are
  * absolute optimality claims rather than equivalence claims — effect counts and
  * baked anchor counts move by design when fusion and elision are off, and a
  * suite that demanded they agree would be asserting that the optimisations do
@@ -122,12 +119,11 @@ describe("-O0 is a build, not a debug mode", () => {
 });
 
 /**
- * L3, over the fixture corpus. This is the channel the grade table grades
- * "differential — `-O0` vs `-Ox` byte-identical", and it is the property that
+ * The -O0/-Ox differential over the fixture corpus. It is the property that
  * makes `-O0` usable as the oracle's reference at all: an optimisation that
  * changes what the program DOES fails here, on the exact frame it changed.
  */
-describe("L3 — the -O0/-Ox differential over the corpus", () => {
+describe("the -O0/-Ox differential over the corpus", () => {
   for (const name of listFixtures()) {
     it(`${name} renders identically at both levels`, async () => {
       const optimised = await drive(name);
@@ -164,7 +160,7 @@ describe("L3 — the -O0/-Ox differential over the corpus", () => {
         // property the channel exists for — one source order and one split point
         // per build explain both — and it still rejects a group emitted
         // backwards. No fixture carries the shape today, so this is green either
-        // way; the version that was here would have turned red the day one did.
+        // way, and byte equality would turn red the day one did.
         expect(
           frame.attributes.map((line) => line.slice(0, line.indexOf(": "))),
           `${at}: elements carrying attributes`,
@@ -185,18 +181,16 @@ describe("L3 — the -O0/-Ox differential over the corpus", () => {
 });
 
 /**
- * THE SAME DIFFERENTIAL, BISECTED TO ONE PASS — M4b.
+ * THE SAME DIFFERENTIAL, BISECTED TO ONE PASS.
  *
  * `-O0` turns nine flags off at once, which makes it a good acceptance test and
- * a poor diagnosis: a divergence there says "one of nine passes", and until M4b
- * the flow pass was not one of them at all. M4 shipped the runtime half and
- * reported the compiler half as not delivered, so `-O0` and `-Ox` emitted the
- * same `Show(_s$, { when, fallback, children })` and the whole corpus
- * differential above was green ON A PAIR THAT DID NOT CHANGE. Green for the
- * right reason and green because there is nothing to compare are the same
- * colour, and the second is the one the oracle design exists to prevent.
+ * a poor diagnosis: a divergence there says "one of nine passes". And a pass
+ * that stopped lowering would leave `-O0` and `-Ox` emitting the same module,
+ * so the corpus differential above would be green ON A PAIR THAT DID NOT
+ * CHANGE. Green for the right reason and green because there is nothing to
+ * compare are the same colour.
  *
- * This describe is the answer in the sharpest available form: `flow` OFF is the
+ * Here `flow` OFF is the
  * only difference between the two builds, so every fixture below compares an
  * adapter call against a primitive call and nothing else moves. Two properties
  * follow that the corpus differential cannot state:
@@ -205,9 +199,9 @@ describe("L3 — the -O0/-Ox differential over the corpus", () => {
  *  - the POPULATION is asserted. If the pass stops lowering, this suite does not
  *    go quietly green with nothing to compare — it fails on the count.
  */
-describe("L3 — the flow pass alone, bisected", () => {
+describe("the flow pass alone, bisected", () => {
   const FLOW_OFF = { passes: [["flow", "off"]] };
-  // `reveal` joins the four: M9 lowers `Reveal` onto a provide-scope call, a
+  // `reveal` joins the four: `Reveal` lowers onto a provide-scope call, a
   // primitive the flow-off build does not emit.
   const PRIMITIVES = ["branch", "each", "boundary", "portal", "reveal", "island"];
 
@@ -217,9 +211,9 @@ describe("L3 — the flow pass alone, bisected", () => {
   );
 
   it("lowers a construct in a substantial share of the corpus", () => {
-    // The anti-vacuity clause, and the one M4 could not have satisfied: with the
-    // pass unwired this list is EMPTY and every `it` below disappears, so a
-    // suite that stopped comparing anything would have reported success.
+    // The anti-vacuity clause: with the pass unwired this list is EMPTY and
+    // every `it` below disappears, so a suite that stopped comparing anything
+    // would report success.
     expect(lowered.length, "the flow pass moves no fixture at all").toBeGreaterThan(24);
   });
 
@@ -265,10 +259,10 @@ describe("L3 — the flow pass alone, bisected", () => {
  * The same differential through the second backend. It is a weaker test than
  * the DOM one — the string backend runs three fewer passes, so `-O0` moves less
  * — and it is worth having anyway: the `Backend` trait is what both backends
- * lower through now, and a regression that reached only the string rows would
- * otherwise be invisible until M6.
+ * lower through, and a regression that reached only the string rows would
+ * otherwise be invisible.
  */
-describe("L3 — the -O0/-Ox differential through the string backend", () => {
+describe("the -O0/-Ox differential through the string backend", () => {
   const ssr = (name: string, optimize?: number): string =>
     compileSource(fixtureSource(name), `${name}.tsx`, { ssr: true, optimize });
 
@@ -321,20 +315,21 @@ describe("L3 — the -O0/-Ox differential through the string backend", () => {
 });
 
 /**
- * L3's BLIND SPOT, graded absolutely because a differential cannot grade it at
+ * The differential's BLIND SPOT, graded absolutely because a differential cannot grade it at
  * all.
  *
  * `passes::run` gates `fold`, `fuse`, `anchor`, `walk`, `dedup`, `eta`, `hoist`,
  * `splice` and `flow`. It does not gate `analysis::bind`, `harvest`, `lower`, P2
  * `classify` or P4 `shape` — roughly 5000 lines of front end that both levels
- * and all three backends share, by design. Everything L3 says is of the form
- * "the two builds agree", so a front end that is wrong is wrong on both sides
- * and L3 stays green. That was measured, not feared: mutating `classify` so that
- * every tracked signal read comes out `React::Static` — the most consequential
+ * and all three backends share, by design. Everything the differential says is
+ * of the form "the two builds agree", so a front end that is wrong is wrong on
+ * both sides and the differential stays green. That was measured, not feared:
+ * mutating `classify` so that every tracked signal read comes out
+ * `React::Static` — the most consequential
  * single bug this compiler can have — left the whole `-O0` differential and the
  * whole Interp differential fully green.
  *
- * Gating `classify` would not fix it, and the oracle design now says why: the
+ * Gating `classify` would not fix it, because the
  * pessimal choice for the reactivity analysis is not "assume nothing", it is a
  * DIFFERENT PROGRAM. With P2 skipped every patch stays the `Op::SetOpaque` /
  * `InsertPlan::Opaque` that P1 emitted, which `codegen::dom` passes to the
@@ -389,9 +384,10 @@ const REACTIVITY_PROBES: Array<{ what: string; source: string; before: string; a
     // because the record slot holds what the channel returned. Downgrade
     // `Diff::Thread` to the plain `!==` guard and the channel is handed
     // `undefined` every run: it can still add `margin`, and it can no longer
-    // take `color` away. L3 is structurally blind to this — P2 `classify` is shared by
-    // both levels and all three backends, so `-O0`, `-Ox` and `Interp` are
-    // wrong in exactly the same way — which is why the probe is here.
+    // take `color` away. The differential is structurally blind to this: P2
+    // `classify` is shared by both levels and all three backends, so `-O0`,
+    // `-Ox` and `Interp` are wrong in exactly the same way, which is why the
+    // probe is here.
     what: "a normalising channel still REMOVES what vanished",
     source:
       'import { createSignal } from "@barqjs/core"\n' +
@@ -461,7 +457,7 @@ function applyBodies(code: string): string[] {
   return out;
 }
 
-describe("the front end L3 cannot grade, graded absolutely", () => {
+describe("the front end the -O0/-Ox differential cannot grade, graded absolutely", () => {
   /**
    * The flag census, because a flag is the one thing in this pass that the
    * -O0/-Ox differential structurally cannot grade.
@@ -478,8 +474,8 @@ describe("the front end L3 cannot grade, graded absolutely", () => {
   });
 
   /**
-   * B2's grouping key, asserted absolutely — the one mutation the whole L3 axis
-   * could not see.
+   * B2's grouping key, asserted absolutely: the one mutation the whole -O0/-Ox
+   * axis cannot see.
    *
    * `group.rs` fuses every live binding of a TEMPLATE into one `bindEffect`.
    * Stopping at the element splits it into one effect per element again, and the
@@ -524,11 +520,9 @@ describe("the front end L3 cannot grade, graded absolutely", () => {
 
 /**
  * The differential the fixture corpus cannot state: `listFixtures()` does not
- * enumerate `fixtures/semantics/`, so until now the L1 conformance corpus only
- * ever ran at `-Ox` and a level that changed a conformance VERDICT would have
- * gone unseen. The dangerous direction is the one that looks like good news — a
- * registered known failure going green at `-O0` — because `-O0` is about to
- * become the oracle's reference, and a reference that disagrees with the build
+ * enumerate `fixtures/semantics/`, so without this the semantics claims would
+ * only run at `-Ox` and a level that changed a conformance VERDICT would go
+ * unseen. `-O0` is the reference, and a reference that disagrees with the build
  * it is referencing is worth less than no reference at all.
  *
  * The comparison is on the verdict, not the DOM: each claim's rule and its
@@ -536,7 +530,7 @@ describe("the front end L3 cannot grade, graded absolutely", () => {
  * and the one claim that reads the emitted text reports a component NAME, which
  * is level-invariant.
  */
-describe("L3 — the -O0/-Ox differential over the L1 conformance corpus", () => {
+describe("the -O0/-Ox differential over the semantics claims", () => {
   const shape = (run: FixtureRun): string[] =>
     run.outcomes.map((o) => `${o.claim} :: ${o.rule} :: ${o.failure ?? "HELD"}`);
 

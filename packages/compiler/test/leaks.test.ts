@@ -1,5 +1,5 @@
 /**
- * L4 — the leak oracle, for O3.7 and B4.
+ * The leak oracle, for O3.7 and B4.
  *
  * `leaks.ts` states the five probes and why each one needs to be taken from
  * outside the runtime. Every probe runs on every fixture in the corpus, any
@@ -23,7 +23,7 @@ for (const name of L4) sessions.set(name, await openSession(name, l4Source(name)
 const findings: LeakFinding[] = [];
 for (const session of sessions.values()) findings.push(...findLeaks(session));
 
-describe("L4 — the leak oracle", () => {
+describe("the leak oracle", () => {
   it("the probes are installed, so a zero is an observation and not a silence", () => {
     // The listener probe once patched `globalThis.EventTarget.prototype` and
     // intercepted nothing, because under the global registrator a DOM node can
@@ -90,7 +90,7 @@ describe("L4 — the leak oracle", () => {
   });
 });
 
-describe("L4 — the leak probes are not inert", () => {
+describe("the leak probes are not inert", () => {
   /**
    * Each probe is driven from a corrupted SESSION: the field it reads is moved
    * off zero and the finding must appear, with the rule its clause belongs to.

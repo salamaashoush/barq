@@ -105,7 +105,7 @@ export function host(markup = ""): HTMLElement {
 }
 
 // ---------------------------------------------------------------------------
-// the node-identity census — M5's metamorphic channel, pointed at hydration
+// the node-identity census: the metamorphic channel, pointed at hydration
 // ---------------------------------------------------------------------------
 
 /**

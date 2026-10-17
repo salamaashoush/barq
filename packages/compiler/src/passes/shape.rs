@@ -1292,8 +1292,8 @@ impl<'a> Shaper<'a, '_> {
         }
     }
 
-    /// `() => f()` → `f`. UNIVERSAL under M3, where it used to be a per-prop
-    /// whitelist: the reduction is sound because a signal getter IS a Cell (R6)
+    /// `() => f()` → `f`, UNIVERSAL rather than a per-prop whitelist: the
+    /// reduction is sound because a signal getter IS a Cell (R6)
     /// and every prop slot is now a Cell slot, so there is no callee contract
     /// left to be ignorant of. It stays refused when the reduced expression is
     /// JSX, which lowers to a Block (C5.2) — that case never reaches here,
@@ -1834,8 +1834,7 @@ mod tests {
 
     /// C3.1/C3.3. A reactive prop crosses as a Cell — `() => expr`, not
     /// memoised and not tracking — so the CONSUMER's effect subscribes, at the
-    /// consumer's position. Where it used to be a getter it is now a plain
-    /// property, which is what makes `{...props}` in user code correct (C3.4)
+    /// consumer's position. It is a plain property, not a getter, which is what makes `{...props}` in user code correct (C3.4)
     /// and what buys the 8.7x allocation measurement.
     #[test]
     fn a_reactive_prop_crosses_the_boundary_as_a_cell() {
@@ -1852,7 +1851,7 @@ mod tests {
         // zero-arity arrow already IS a Cell and is forwarded untouched.
         assert!(code.contains("label: _k$1"), "{code}");
         assert!(code.contains("const _k$1 = () => \"x\""), "{code}");
-        // η-reduction is UNIVERSAL after M3, so an author-written `() => n()`
+        // η-reduction is UNIVERSAL, so an author-written `() => n()`
         // collapses to the accessor itself: the same Cell, one closure fewer.
         assert!(code.contains("fn: n"), "{code}");
     }
@@ -2220,7 +2219,7 @@ mod tests {
     ///
     /// With `-O0` the same constant is a thunk at its use site. Both spellings
     /// mean the same thing, which is exactly what makes the difference an
-    /// optimisation the L3 differential can grade rather than a semantic fork.
+    /// optimisation the -O0/-Ox differential can grade rather than a semantic fork.
     #[test]
     fn a_constant_prop_is_one_hoisted_thunk_for_the_whole_module() {
         let source = "const A = () => <Badge tone=\"w\" />;\n\
@@ -2285,14 +2284,13 @@ mod tests {
         assert!(!code.contains("_$props"), "{code}");
     }
 
-    /// Target #8, restated for M4b. A static control-flow body is one
+    /// Target #8. A static control-flow body is one
     /// `template()` clone inside a Block — no IIFE, no element binding — and a
     /// body carrying a patch splices its walk into the same Block.
     ///
-    /// The construct itself is gone: what stands here is `branch`, taking a key
-    /// that is the author's own `when` read and one body for every key. The
-    /// props object, the `Show` frame and the runtime's re-derivation of
-    /// `(parent, anchor)` went with it (K5).
+    /// The construct lowers to `branch`, taking a key that is the author's own
+    /// `when` read and one body for every key, with no props object, no `Show`
+    /// frame and no runtime re-derivation of `(parent, anchor)` (K5).
     #[test]
     fn a_static_control_flow_body_costs_one_clone_and_nothing_else() {
         let source = "import { Show, createSignal } from \"@barqjs/core\";\n\
@@ -2300,7 +2298,7 @@ mod tests {
                       export const A = () => <Show when={() => on()}><p class=\"s\">x</p></Show>;\n\
                       export const B = () => <Show when={() => on()}><p class=\"s\">{on()}</p></Show>;\n";
         let code = emit(source).code;
-        // Non-keyed is the default since M10, so the key is the truthiness
+        // Non-keyed is the default, so the key is the truthiness
         // INDEX and the bodies are a two-row table whose falsy row is the
         // (absent) fallback.
         assert!(code.contains("_$branch(null, null, () => on() ? 1 : 0"), "{code}");
@@ -2309,16 +2307,15 @@ mod tests {
         assert!(!code.contains("Show("), "{code}");
         assert!(!code.contains("when:"), "{code}");
 
-        // With the flow pass off the construct keeps its adapter, and the
-        // η-reduction that used to be the only observable here is still what
-        // fills the prop: a signal getter IS a Cell (C5.2).
+        // With the flow pass off the construct keeps its adapter, and
+        // η-reduction fills the prop: a signal getter IS a Cell (C5.2).
         let code = o0(source).code;
         assert!(code.contains("Show({"), "{code}");
         assert!(code.contains("when: on"), "{code}");
         assert!(!code.contains("_$branch"), "{code}");
     }
 
-    /// The boundary of η-reduction, and what M3 changes about it. An arrow the
+    /// The boundary of η-reduction. An arrow the
     /// AUTHOR wrote is a Cell already and is forwarded untouched; a thunk over
     /// DOM in a body slot is a BLOCK already, branded where it stands and
     /// likewise never wrapped.
@@ -2350,7 +2347,7 @@ mod tests {
         assert!(code.contains("_$block(() => {"), "{code}");
         assert!(code.contains("_$insert(_el$1, value)"), "{code}");
         // The two-row table of the non-keyed default, which is what a `Show`
-        // with no `keyed` emits since M10.
+        // with no `keyed` emits.
         assert!(code.contains("[null, _$block("), "{code}");
         // A body that reaches `insert` registers something disposable, so the
         // activation still gets a `Scope` and no flag is shipped.
@@ -2394,7 +2391,7 @@ mod tests {
     /// converge on ONE emission: the reference is Accessor-shaped so it is
     /// emitted unwrapped, and `() => props.total()` η-reduces to the same Cell.
     /// That convergence is the point — `insert` unwraps exactly one level, and
-    /// the pre-M3 `() => props.total` handed it two.
+    /// `() => props.total` would hand it two.
     #[test]
     fn a_props_read_is_live_inside_and_forwards_by_identity_out() {
         let code = emit(
@@ -2547,11 +2544,10 @@ mod tests {
             assert!(code.contains(expected), "{expected} not in:\n{code}");
         }
 
-        // η-reduction is universal now, so a reduced prop is no longer
-        // evidence about which binding the tag resolved to. The SymbolId
-        // discipline it used to stand for is pinned where it is still
-        // observable: a LOCAL `Show` is not the runtime's and gets no string
-        // implementation.
+        // η-reduction is universal, so a reduced prop is not evidence about
+        // which binding the tag resolved to. The SymbolId discipline is pinned
+        // where it is observable: a LOCAL `Show` is not the runtime's and gets
+        // no string implementation.
         let options = ResolvedOptions { ssr: true, ..ResolvedOptions::with_filename("s.tsx") };
         let local = compile(
             "const Show = (props) => props.when;\n\

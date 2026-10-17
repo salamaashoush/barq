@@ -1,4 +1,4 @@
-//! L2b's expected value: the static ownership tree.
+//! The ownership channel's expected value: the static ownership tree.
 //!
 //! The tree is derived from the source, never from a second execution, so it is
 //! the one oracle channel that needs no reference implementation. Which
@@ -118,10 +118,11 @@ pub struct OwnershipTree {
     pub positions: Vec<OwnPosition>,
     /// One entry per component the module could be rendered *from*, in source
     /// order: `(name, root node)`. A forest rather than a tree, because the
-    /// harness renders whichever component a fixture drives and the L1
+    /// harness renders whichever component a fixture drives and the
     /// fixtures under `fixtures/semantics/` export claims rather than a
     /// component — their subject is a module-local `Direct`, and a tree rooted
-    /// only at the default export would be empty exactly where the M0 gate is.
+    /// only at the default export would be empty exactly where the Provider
+    /// gate is.
     pub roots: Vec<(String, u32)>,
     /// A component the walk could not follow (imported, or reached through an
     /// expression). Its subtree is absent, so the harness knows the tree is
@@ -1110,7 +1111,7 @@ mod tests {
         assert!(tree.to_json().contains("\"nodes\":[]"));
     }
 
-    /// The whole of M0's compiler-side risk, as one assertion. The artefact is
+    /// The ownership artefact's compiler-side risk, as one assertion. The artefact is
     /// a side channel: turning it on may not move one byte of the emitted
     /// program, on either backend, for any fixture. The 234 emission snapshots
     /// are the other half of this proof; this is the half that does not need a

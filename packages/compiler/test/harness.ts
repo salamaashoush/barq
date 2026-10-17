@@ -44,7 +44,7 @@ const RUN = process.pid;
  * row, with 1027 entries in the directory. A fresh name does not fix it; a
  * directory only this process writes to does.
  *
- * `TMP_DIR` stays ONE level under `test/`, because the L1 fixtures reach their
+ * `TMP_DIR` stays ONE level under `test/`, because the semantics fixtures reach their
  * support module by relative path from where the generated file lands.
  */
 export const TMP_DIR = join(import.meta.dir, `.tmp-${RUN}`);
@@ -511,7 +511,7 @@ export async function settle(): Promise<void> {
 }
 
 /**
- * Exported because the L3 drivers that are not the corpus — the JSX generator
+ * Exported because the differential drivers that are not the corpus — the JSX generator
  * and the EMI mutator — produce SOURCE rather than a fixture name, and a second
  * copy of this loop would be a second answer to what a frame is.
  */
@@ -639,8 +639,8 @@ async function renderUnheld(mod: FixtureModule): Promise<RenderResult> {
  *
  * The COMPILED module, not the source. Loading a fixture un-compiled makes bun
  * lower its JSX with its own transform, which needs `jsx`/`jsxs` to resolve on
- * `@barqjs/core/jsx-runtime` — and M9 deleted them, because bun's
- * transform cannot produce scope-taking Blocks and an authoring path that
+ * `@barqjs/core/jsx-runtime`, which does not exist: bun's transform cannot
+ * produce scope-taking Blocks and an authoring path that
  * cannot have the same semantics is worse than none. The declarations are
  * module-scope constants and survive the compile untouched, so reading them off
  * the compiled module is the same answer with no un-compiled path involved.
@@ -653,7 +653,7 @@ export async function fixtureOptimality(name: string): Promise<OptimalityExpecta
 /**
  * The thing under test: JSX lowered by @barqjs/compiler.
  *
- * `options` reaches the native transform unchanged, which is how the L3
+ * `options` reaches the native transform unchanged, which is how the -O0/-Ox
  * differential renders the same fixture at `-O0` and at `-Ox`. The tag carries
  * the options so two levels of one fixture never share a generated module.
  */
@@ -931,18 +931,6 @@ export function templateAnchors(code: string): number {
 }
 
 /**
- * `clonesEachTemplateOnce` and `DEGRADED_MARKER_LAYOUT` used to live here: a
- * syntactic guess at whether a module clones each of its templates once, and the
- * list of seven fixtures the guess had to give up on. A module it gave up on
- * dropped to "a module whose templates bake no anchor cannot produce one", which
- * is not a check at all for a module that bakes one — and
- * `component-boundary-props`, the fixture the exclusion was written for, bakes
- * one. Both are gone: `tracer.ts` wraps `template` and records the node every
- * clone produces, so the anchors a frame may hold are the anchors of the clones
- * attached to it, exactly, for every module. See `RenderResult.expectedAnchors`.
- */
-
-/**
  * The primitives that take an anchor as their THIRD argument, `($s, parent,
  * anchor, …)`. `portal`, `reveal` and `dynamic` are NOT among them — each is a value
  * an `insert` or a `branch` places, so it consumes its parent's anchor and never
@@ -1043,8 +1031,8 @@ export function auditAnchors(code: string): AnchorAudit {
     claim(call[2].trim());
   }
   // A REGION consumes an anchor too, and takes it as the SECOND argument:
-  // `_$branch(parent, anchor, …)`. Since M4b that is where most of the
-  // corpus's anchors are read, so an audit that only knew about `insert` would
+  // `_$branch(parent, anchor, …)`. That is where most of the corpus's anchors
+  // are read, so an audit that only knew about `insert` would
   // report every one of them as baked-and-unused (K5, K7).
   for (const primitive of REGION_PRIMITIVES) {
     for (const call of callsTo(stripped, primitive)) {
@@ -1266,16 +1254,14 @@ export function propCalls(code: string): number {
 /**
  * Two renders of ONE fixture, compared channel by channel.
  *
- * The reference used to be the un-compiled `createElement` path. the design
- * the oracle design retires it — a second implementation that shares your defect certifies the
- * defect — so nothing in the corpus sweep calls this with a second
- * implementation any more. What survives is the L6 use: the reference is the
- * CLEAN compiled render and the subject is the same fixture compiled with one
+ * There is no un-compiled `createElement` reference: a second implementation
+ * that shares your defect certifies the defect. The reference is the CLEAN
+ * compiled render and the subject is the same fixture compiled with one
  * thing deliberately broken, which is how the suite answers "would I notice a
  * wrong compiler change?".
  *
- * The corpus channels moved to graders that need no reference at all:
- * `effect-counts.ts` (absolute, hand-written per fixture), the per-fixture DOM
+ * The corpus channels use graders that need no reference at all:
+ * `effect-counts.test.ts` (absolute, snapshotted per fixture), the per-fixture DOM
  * golden in `oracle.test.ts`, `auditCompiled` below (self-check), and the
  * `-O0`/`-Ox` differential in `optimisation.test.ts`.
  */
@@ -1337,7 +1323,7 @@ export function compareRenders(reference: RenderResult, subject: RenderResult): 
   // The bound existed because the reference was a different implementation and
   // creating fewer effects than it was the point; two builds of the same
   // fixture have no such asymmetry, and the corpus-level optimality claim is
-  // `effect-counts.ts` rather than a comparison at all.
+  // `effect-counts.test.ts` rather than a comparison at all.
   if (reference.trace.created !== subject.trace.created) {
     divergences.push({
       kind: "effect-count",
@@ -1502,7 +1488,7 @@ export function auditRender(render: RenderResult): { ok: boolean; divergences: D
     // 1 rather than a concession: a spread's names are the one attribute fact
     // the compiler cannot have, so the runtime resolves them and no reading of
     // the emitted code can tell which of an element's attributes the patch code
-    // wrote. the two backends' split's M9 note also makes those elements bake nothing at all, so
+    // wrote. Those elements also bake nothing at all, so
     // there is no partition on them to check — every attribute is applied, in
     // source order, and the golden is what records it.
     const patched = patchedAttributeNames(code);
@@ -1538,8 +1524,8 @@ export function auditRender(render: RenderResult): { ok: boolean; divergences: D
 }
 
 /**
- * The clean compiled render against a deliberately broken one — L6's channel.
- * the mutation layer: "would my suite notice a wrong compiler change?"
+ * The clean compiled render against a deliberately broken one: "would my suite
+ * notice a wrong compiler change?"
  */
 export async function compareToClean(
   name: string,

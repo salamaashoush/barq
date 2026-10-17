@@ -110,7 +110,7 @@ impl RegionKind {
     /// - `portal` reads it, and must not be given `NO_SCOPE` anyway. Its
     ///   activation is deferred to a microtask, and the instance scope is what
     ///   restores the ambient owner there; without it the subtree is built with
-    ///   no owner current, which the L2b trace sees as a clone under no scope.
+    ///   no owner current, which the ownership trace sees as a clone under no scope.
     ///   The flag's own claim — nothing disposable is registered — stays true;
     ///   what is false is that the scope was doing nothing else.
     #[inline]

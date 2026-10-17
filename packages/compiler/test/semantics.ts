@@ -14,12 +14,12 @@ import {
 export const SEMANTICS_DIR = join(import.meta.dir, "..", "fixtures", "semantics");
 
 /**
- * The L1 fixtures live in their own directory, out of `listFixtures()`'s reach,
+ * The semantics fixtures live in their own directory, out of `listFixtures()`'s reach,
  * for the same reason `browser-only/` does: the suites that run over the corpus
  * ask a question these cannot answer. `oracle.test.ts` compares two
  * implementations and both of them are wrong here; `ssr.test.ts` asks for
  * markup from a fixture whose whole point is that it throws. Keeping them out
- * is what lets M0 add nine fixtures without moving a single existing number.
+ * lets fixtures be added here without moving a single existing number.
  */
 export function listSemanticFixtures(): string[] {
   return readdirSync(SEMANTICS_DIR)

@@ -1,15 +1,12 @@
 /**
  * happy-dom's globals, installed as this module's BODY.
  *
- * `preload.ts` used to do this in its own body, under a comment saying "every
- * import below has to happen after this line" — which ESM does not promise and
- * did not deliver. Every import a module declares is evaluated before the
- * first line of its body runs, so the imports at the foot of that file ran
- * FIRST. It happened to be harmless, because `./tracer.ts` reaches the runtime
- * lazily; one eager `import "@barqjs/core"` added to `preload.ts` would have
- * flipped `isServer` to true for all 3680 tests, silently, since `env.ts`
- * reads `typeof document` once at module scope. The same mistake had already
- * done exactly that to `@barqjs/testing`'s suite.
+ * Not in `preload.ts`'s own body: ESM evaluates every import a module declares
+ * before the first line of its body runs, so "every import below happens after
+ * this line" is not a promise ESM makes. One eager `import "@barqjs/core"` in
+ * `preload.ts` would flip `isServer` to true for every test, silently, since
+ * `env.ts` reads `typeof document` once at module scope. The same mistake did
+ * exactly that to `@barqjs/testing`'s suite.
  *
  * Imported FIRST in `preload.ts`, which is what makes the ordering a fact
  * rather than a hope.

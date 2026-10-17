@@ -32,13 +32,13 @@ import { concatFixtures, TYPICAL_COMPONENT_FILE, typicalComponentFile } from "./
 import { countAnchors } from "./normalize.ts";
 
 /**
- * The definition of done for milestones 2-6.
+ * The optimisation targets, asserted on the emitted code.
  *
  * These assert on the emitted CODE, not on behaviour — oracle.test.ts already
  * proves behaviour. Every optimization target from the project brief has
  * exactly one block here, naming the fixture it runs against.
  *
- * THE TEST FOR WHETHER AN ASSERTION HERE IS EVIDENCE. Take the M1 identity
+ * THE TEST FOR WHETHER AN ASSERTION HERE IS EVIDENCE. Take the identity
  * round-trip — a "compiler" that emits its input back unchanged — and ask
  * whether the assertion still passes. If it does, it cannot distinguish this
  * compiler from a no-op and it is not proving a target; it is decoration. Upper
@@ -48,8 +48,8 @@ import { countAnchors } from "./normalize.ts";
  * therefore leads with a POSITIVE claim about what the compiler produced, and
  * uses the bound only to say the produced thing is also cheap.
  *
- * `bun test` against a stub `index.js` returning `{ code }` unchanged is how the
- * six that used to survive were found; re-run it after adding an assertion here.
+ * Run `bun test` against a stub `index.js` returning `{ code }` unchanged after
+ * adding an assertion here.
  */
 
 /**
@@ -120,7 +120,7 @@ describe("declared optimality", () => {
   function assertDeclared(name: string, decl: OptimalityExpectation, module: string): void {
     // A declaration is a claim about EMITTED CODE, and a fixture's own prose is
     // not code — it reaches the module verbatim. `switch-match-component-bodies`
-    // explains in a doc comment what the DOM target used to emit, spelling
+    // explains in a doc comment what the DOM target once emitted, spelling
     // `Switch({ children: [...] })` inside it, which is enough to falsify an
     // `absent: ["Switch("]` that is otherwise true of every line the compiler
     // wrote. Literals stay: half the declarations here are claims about the
@@ -166,11 +166,9 @@ describe("declared optimality", () => {
    * `assertDeclared` already refuses to count such an occurrence, so a needle
    * like that fails there — but it fails with "must emit", which reads as a
    * compiler regression and sends the next reader into `flow.rs`. This names it
-   * for what it is instead, and it is the check that found the two declarations
-   * M4b left behind: `control-flow-error-boundary` claimed to emit
-   * `ErrorBoundary(` and `control-flow-await-suspense` claimed `Suspense(`,
-   * both green, both satisfied by nothing but the fixture's default export,
-   * while the constructs they name had already been lowered onto `boundary`.
+   * for what it is instead: a needle like `ErrorBoundary(` would be satisfied by
+   * nothing but the fixture's default export once the construct it names is
+   * lowered onto `boundary`.
    */
   it("no emits needle is satisfied only by a longer identifier", () => {
     const shadowed: string[] = [];
@@ -197,7 +195,7 @@ describe("declared optimality", () => {
     // the test file, where they run against the stripped body.
     const offenders = listFixtures().filter((name) => {
       const declaration = fixtureSource(name).match(/export const optimality = \{[\s\S]*?\n\}/);
-      // `_s$` joined the list at M3: the scope parameter is a compiler uid like
+      // `_s$` is on the list because the scope parameter is a compiler uid like
       // any other, and a fixture that names it in its own declaration block
       // shifts EVERY emitted uid to `_$$` — while the declaration itself keeps
       // passing, because it is asserted against the body with the block
@@ -243,10 +241,9 @@ describe("declared optimality", () => {
       // more now, not less, because a zero-arity Block and a Cell are the same
       // shape and only the brand tells them apart.
       //
-      // Since M4b a body is not always a NAMED slot: the flow pass hands
+      // A body is not always a NAMED slot: the flow pass hands
       // `branch`/`each`/`boundary`/`portal` their bodies positionally, so the
-      // brand is what identifies one and the prop name no longer exists to
-      // anchor on.
+      // brand is what identifies one and there is no prop name to anchor on.
       blocks += [...code.matchAll(/[\w$]*block\(\(/g)].length;
     }
     expect(
@@ -268,11 +265,9 @@ describe("declared optimality", () => {
    * names the channel that carries its claim instead — and the channel is
    * CHECKED.
    *
-   * It used to be a string, and the staleness test only asked whether the key
-   * still existed. Nine of the reasons said a shape was deferred to M5, which
-   * shipped; a reason cannot rot silently when the suite runs it. Every entry
-   * below is a predicate over the fixture and its emitted module, and an excuse
-   * that stopped being true fails here rather than sitting in a comment.
+   * Every entry below is a predicate over the fixture and its emitted module,
+   * because a reason cannot rot silently when the suite runs it: an excuse that
+   * stopped being true fails here rather than sitting in a comment.
    */
   interface Excuse {
     why: string;
@@ -287,12 +282,11 @@ describe("declared optimality", () => {
     const text = readFileSync(join(import.meta.dir, file), "utf8");
     const needle = JSON.stringify(subject.name);
     const occurrences = text.split(needle).length - 1;
-    // COUNTED, not sliced. This used to cut the registry out with
-    // `indexOf("\n  }\n")` and search what was left — which depends on where the
-    // formatter puts a closing brace, so reformatting the file silently changed
-    // the answer and an excuse that had never held started "holding". When the
-    // file being searched is the one holding the registry, the fixture's own row
-    // is one occurrence and the CLAIM has to be a second.
+    // COUNTED, not sliced: slicing the table out depends on where the
+    // formatter puts a closing brace, so reformatting the file would silently
+    // change the answer. When the file being searched is the one holding the
+    // table, the fixture's own row is one occurrence and the CLAIM has to be a
+    // second.
     return occurrences > (file === import.meta.file ? 1 : 0);
   };
 
@@ -303,10 +297,8 @@ describe("declared optimality", () => {
   };
 
   const NO_DECLARATION: Record<string, Excuse> = {
-    // Both used to point at their declared `win`s, which were behavioural
-    // claims against the retired oracle. the oracle design replaces that channel with the
-    // per-fixture rendered-DOM golden, which records every frame either fixture
-    // drives rather than only the ones that differed from a reference.
+    // Both are behavioural, and the per-fixture rendered-DOM golden records
+    // every frame either fixture drives.
     "conditional-children": {
       why: "behavioural: every frame is recorded in the rendered-DOM golden",
       holds: recordedIn("oracle.test.ts.snap"),
@@ -414,11 +406,8 @@ describe("declared optimality", () => {
   });
 
   it("every excuse for not declaring one is still TRUE", async () => {
-    // The half that was missing. `NO_DECLARATION` used to hold prose, and the
-    // test above only asked whether the key was still there — so nine reasons
-    // could go on saying a shape was deferred to a milestone that had already
-    // shipped, and the suite reported them as explained. Each entry is now a
-    // predicate, and this runs it.
+    // Each `NO_DECLARATION` entry is a predicate, and this runs it, so an
+    // excuse that stopped being true is a failure rather than an explanation.
     const rotted: string[] = [];
     for (const [name, excuse] of Object.entries(NO_DECLARATION)) {
       const source = fixtureSource(name);
@@ -467,9 +456,8 @@ describe("target 1 — semantic reactivity (never name regexes)", () => {
   it("handler-no-closure: a handler closing over nothing is not re-created per instance", () => {
     const code = compileFixtureBody("handler-no-closure");
     // Hoisted to module scope: the arrow appears above the component, not inside
-    // it. The needle is the fixture's own handler body — it used to be a string
-    // ("static handler") the fixture no longer contains, so this could never
-    // have gone green as written.
+    // it. The needle is the fixture's own handler body, so it matches only what
+    // the fixture really contains.
     const handlerAt = code.indexOf('setAttribute("data-clicked"');
     const componentAt = code.indexOf("function HandlerNoClosure");
     expect(handlerAt).toBeGreaterThan(-1);
@@ -493,9 +481,9 @@ describe("target 2 — fully-static subtree costs one clone and nothing else", (
   it("static-only: exactly one template() and zero patch calls", () => {
     const code = compileFixtureBody("static-only");
     expect(emittedCalls(code, "template")).toBe(1);
-    // The same union the declared path uses, so the two cannot drift apart —
-    // `spread` used to stand here and matched nothing, because the only helper
-    // spelt that way is SSR's `spreadAttrs` and `_$spread(` needs the paren.
+    // The same union the declared path uses, so the two cannot drift apart.
+    // `spread` is not in it: the only helper spelt that way is SSR's
+    // `spreadAttrs`, and `_$spread(` needs the paren.
     expect(
       emittedCalls(code, "insert") +
         propCalls(code) +
@@ -549,7 +537,7 @@ describe("target 3 — constant folding into the template string", () => {
     const code = compileFixtureBody("literal-class-style");
     // Inside the TEMPLATE's own bytes. The fixture writes that exact string
     // itself, so a search of the whole module is satisfied by output that was
-    // never compiled — this was one of the six.
+    // never compiled.
     expect(templateHtml(code).join("\n")).toContain('style="color: red; font-weight: bold"');
     expect(templateHtml(code), "one template, everything folded into it").toHaveLength(1);
   });
@@ -557,9 +545,8 @@ describe("target 3 — constant folding into the template string", () => {
 
 describe("target 4 — one effect per template, not one per prop", () => {
   it("multi-prop-one-element: three dynamic props share a single effect", async () => {
-    // The contrast used to be the oracle's count — one effect per live prop.
-    // the oracle design retires it, so the same claim is stated off the module: ONE bindEffect
-    // that covers two or more channel writes, and one effect at run time. The
+    // The claim is stated off the module: ONE bindEffect that covers two or
+    // more channel writes, and one effect at run time. The
     // module half is the stronger of the two, because the count alone is also
     // what a compiler that dropped two props produces.
     const code = compileFixtureBody("multi-prop-one-element");
@@ -570,11 +557,9 @@ describe("target 4 — one effect per template, not one per prop", () => {
   });
 
   it("class-with-live-siblings: class is a FIELD of the one effect, not an exception to it", async () => {
-    // B1/B2. This test asserted the opposite until M5: `class` had to stay out
-    // of the group, because `setClass` owned the whole attribute and an
-    // unrelated prop firing the shared effect re-wrote it. Both halves of that
-    // are gone — the record guards `class` on its own field, and the channel
-    // emits only the tokens it applied — so the exclusion is not needed and the
+    // B1/B2. `class` can share the group: the record guards `class` on its own
+    // field, and the channel emits only the tokens it applied, so an unrelated
+    // prop firing the shared effect does not re-write the attribute and the
     // element really does cost ONE effect.
     const code = compileFixtureBody("class-with-live-siblings");
     expect(bindEffectBodies(code), "one effect for class+title+id").toHaveLength(1);
@@ -600,8 +585,8 @@ describe("target 4 — one effect per template, not one per prop", () => {
   it("reactive-attribute: href and class are two fields of one record", async () => {
     const code = compileFixtureBody("reactive-attribute");
     // Both live props on the element are fields of the same compute. `class`
-    // threads its APPLIED value through its own slot, which is the whole of
-    // what used to keep it in a separate runtime-owned effect.
+    // threads its APPLIED value through its own slot, so it needs no separate
+    // runtime-owned effect.
     expect(code).toContain('if (_v$.a !== _p$.a) _$setAttr(_el$1, "href", _v$.a);');
     expect(code).toContain('_v$.b = _$setClass(_el$1, "class", _v$.b, _p$.b);');
     expect(code).not.toContain("_$bindProp(");
@@ -610,8 +595,7 @@ describe("target 4 — one effect per template, not one per prop", () => {
     ]);
     expect(bindEffectBodies(code)).toHaveLength(1);
 
-    // Was 2 at M4 — one compiled effect for `href`, one the runtime opened for
-    // `class`. Both are fields of one record now.
+    // One effect, not one for `href` and another the runtime opens for `class`.
     expect(countMerges(code), "href and class in one effect").toBe(1);
     const render = await renderViaCompiler("reactive-attribute");
     expect(render.trace.created).toBe(1);
@@ -641,10 +625,8 @@ describe("target 4 — one effect per template, not one per prop", () => {
       "ref-added",
     ]);
 
-    // Frame 0 changes `title` only. Before M5 this rewrote `element.className`
-    // whenever `class` shared an effect with it — which is exactly why `class`
-    // was excluded from grouping. It now shares the effect AND leaves the
-    // attribute alone.
+    // Frame 0 changes `title` only. `class` shares the effect with it AND
+    // leaves the attribute alone.
     expect(classes(frames[1]!), "an unrelated prop change must not touch class").toEqual([
       "pinned",
       "red",
@@ -689,7 +671,7 @@ describe("target 4 — one effect per template, not one per prop", () => {
   it("no template opens two effects and no effect spans two templates, across the corpus", () => {
     // P5 fuses every live binding of ONE template into one record. Splitting it
     // again, or merging two templates' bindings, still produces identical DOM,
-    // so a rendered comparison cannot see either. `effect-counts.ts` makes the
+    // so a rendered comparison cannot see either. `effect-counts.test.ts` makes the
     // count an equality and would move, but the number alone does not say WHICH
     // clone a group serves. `passes::group::tests` pins the pass itself; this
     // pins what codegen actually emitted.
@@ -698,9 +680,9 @@ describe("target 4 — one effect per template, not one per prop", () => {
     for (const name of listFixtures()) {
       const code = compileFixtureBody(name);
       const bodies = bindEffectBodies(code);
-      // The scan used to be anchored on a four-space closing brace, which
-      // reports ZERO groups on a nested emit — indistinguishable from a module
-      // that has none. Balanced parens cannot miss one, and this says so.
+      // A scan anchored on indentation would report ZERO groups on a nested
+      // emit, indistinguishable from a module that has none. Balanced parens
+      // cannot miss one, and this says so.
       expect(bodies, `${name}: every bindEffect must be scanned`).toHaveLength(
         emittedCalls(code, "bindEffect"),
       );
@@ -843,9 +825,9 @@ describe("target 7 — delegated events as expando writes", () => {
   });
 
   it("handler-by-reference: a handler bound to a name is an expando write at either scope", () => {
-    // The commonest shape in real code, and the one target #7 used to miss:
-    // `const h = () => …; <button onClick={h}/>` fell all the way back to
-    // setProp, getting neither the expando nor the hoist.
+    // The commonest shape in real code: `const h = () => …; <button
+    // onClick={h}/>` must get the expando, not fall all the way back to
+    // setProp.
     const code = compileFixtureBody("handler-by-reference");
     expect(code).toMatch(/_el\$\d+\.__bq_click = bump/);
     expect(code).toMatch(/_el\$\d+\.__bq_click = reset/);
@@ -928,13 +910,13 @@ describe("target 7 — delegated events as expando writes", () => {
 });
 
 /**
- * K5's lowering half, stated once for the whole corpus. A construct the flow
+ * The flow pass's lowering, stated once for the whole corpus. A construct the flow
  * pass understands CEASES TO EXIST as a component: no props object, no adapter
  * frame, and `(parent, anchor)` taken from the template walk instead of
  * re-derived. The list below is therefore not a tolerance — it is the complete
  * set of REFUSALS, and each one has a reason in `passes/flow.rs`.
  */
-describe("K5 — the thirteen constructs, and the four they lower onto", () => {
+describe("the flow constructs lower onto the four primitives", () => {
   const LOWERED = [
     "Show",
     "Switch",
@@ -946,8 +928,8 @@ describe("K5 — the thirteen constructs, and the four they lower onto", () => {
     "Errored",
     "ErrorBoundary",
     "Portal",
-    // M9. `Await` is two boundaries, `Reveal` a `reveal` call — the provide
-    // scope it always was, with the component around it gone.
+    // `Await` is two boundaries, `Reveal` a `reveal` call: a provide scope with
+    // no component around it.
     "Await",
     "Reveal",
   ];
@@ -964,31 +946,25 @@ describe("K5 — the thirteen constructs, and the four they lower onto", () => {
         }
       }
     }
-    // Empty since M10, and the row that used to be here is why the assertion is
-    // worth making. `control-flow-for-keyed-spread` was the ONE survivor: a
-    // spread is a runtime source list (C9), so the pass could not read the
-    // construct's props and refused. What M10 found is that it did not need to
-    // read the one prop the refusal was written for — `keyed` is already a
-    // runtime argument `each` dispatches on, and the row Block's parameter list
-    // does not change with it. The other three constructs a spread reaches
-    // (`Show`, `Match`, `Switch`) still refuse, each for a reason
-    // stated in `passes::flow::admits_spread`, and none of them is in `LOWERED`
-    // with a spread fixture behind it.
+    // `control-flow-for-keyed-spread` lowers even though a spread is a runtime
+    // source list (C9): `keyed` is a runtime argument `each` dispatches on, and
+    // the row Block's parameter list does not change with it. The other three
+    // constructs a spread reaches (`Show`, `Match`, `Switch`) refuse, each for a
+    // reason stated in `passes::flow::admits_spread`, and none of them is in
+    // `LOWERED` with a spread fixture behind it.
     expect(survivors).toEqual([]);
   });
 
-  it("the constructs M8 refused now lower too, onto what they always were", () => {
-    // The refusals were facts about the constructs, and M9 answered each one
-    // rather than routing around it. A third, `Dynamic`, is no construct now:
-    // Solid 2.0 replaced it with the `dynamic` factory, which BARQ025 names.
+  it("Await and Reveal lower onto a boundary and a reveal call", () => {
+    // `Dynamic` is no construct: Solid 2.0 replaced it with the `dynamic`
+    // factory, which BARQ025 names.
     //
     //  - `Await`'s three states are what READING a resource does — throw
     //    `NotReady`, throw the error, return the value — so it is a loading
-    //    boundary around an error boundary and the property test that told a
-    //    Resource from a Cell carrying one is gone with the key it fed.
-    //  - `Reveal` is still a provide scope rather than a range, and is lowered
-    //    to the CALL that says so — not onto `branch`, which would have put a
-    //    context binding where a conditional belongs.
+    //    boundary around an error boundary.
+    //  - `Reveal` is a provide scope rather than a range, and is lowered to the
+    //    CALL that says so, not onto `branch`, which would put a context
+    //    binding where a conditional belongs.
     const bodies = listFixtures().map((name) => [name, compileFixtureBody(name)] as const);
     for (const [name, code] of bodies) {
       for (const construct of ["Await", "Reveal"]) {
@@ -1006,10 +982,10 @@ describe("K5 — the thirteen constructs, and the four they lower onto", () => {
   });
 
   /**
-   * WHAT MAKES A DECLARATION EVIDENCE FOR THIS MILESTONE, machine-checked.
+   * WHAT MAKES A DECLARATION EVIDENCE FOR A LOWERED CONSTRUCT, machine-checked.
    *
    * The file header states the criterion — take a "compiler" that returns its
-   * input unchanged and ask whether the assertion survives — and for K5 there
+   * input unchanged and ask whether the assertion survives — and for lowering there
    * is a sharper reference available than the identity transform, because the
    * project already builds one: `-O0`, which shares the front end, the IR, the
    * ABI and the ownership model, and differs from `-Ox` here in exactly one
@@ -1023,17 +999,14 @@ describe("K5 — the thirteen constructs, and the four they lower onto", () => {
    *  - at least one `emits` needle that `-O0` does not satisfy. Without this a
    *    declaration can be green on a build where nothing was lowered at all.
    *  - at least one `absent` needle that `-O0` DOES emit. This is the half that
-   *    is easy to fake and worthless when faked: every control-flow fixture in
-   *    the corpus carried `absent: ["(Show, {"]` — the pre-M3 call shape, which
-   *    no build has emitted for two milestones — so all of them were asserting
-   *    the absence of something that could not have been present. Requiring the
-   *    needle to be a fact about `-O0` makes "the adapter frame it no longer
-   *    emits" a difference between two programs instead of a sentence.
+   *    is easy to fake and worthless when faked: an `absent` needle naming a
+   *    call shape no build emits asserts the absence of something that could
+   *    not have been present. Requiring the needle to be a fact about `-O0`
+   *    makes "the adapter frame it replaced" a difference between two programs
+   *    instead of a sentence.
    *
-   * The refusals are deliberately out of scope: `Await`, `Reveal` and
-   * `control-flow-for-keyed-spread` emit the same adapter at both levels,
-   * so there is no difference for them to name, and the two tests above pin
-   * them by their own criterion.
+   * A fixture whose construct does not lower emits the same code at both
+   * levels, so it has no difference to name and is skipped.
    */
   it("every lowered region names its primitive and the frame it replaced", () => {
     const PRIMITIVES = ["branch", "each", "boundary", "portal"];
@@ -1069,49 +1042,41 @@ describe("K5 — the thirteen constructs, and the four they lower onto", () => {
     expect(silent).toEqual([]);
     // The gate is only worth what its population is: a run where the flow pass
     // lowered nothing would satisfy every clause above by having nothing to
-    // check, which is the same fail-open shape the differential's third detection value
-    // exists to prevent.
+    // check, which is the same fail-open shape the differential's third
+    // detection value exists to prevent.
     expect(lowered, "no fixture in the corpus lowers a construct at all").toBeGreaterThan(24);
   }, 180_000);
 });
 
 describe("target 8 — thunk elision for static control-flow bodies", () => {
   it("control-flow-show-eager-static-body: the body is one clone, handed straight in", async () => {
-    // M4 emitted `_$createElement(Show, { when: () => on() }, _tmpl$1())`, which
-    // copies the props object and pays for a variadic call. P4 Shape makes the
-    // call real, and the body — a subtree that produced no patch — reaches
-    // `children` as the clone itself: no arrow, no IIFE, no element binding.
+    // No props object and no variadic call: the flow pass lowers the construct
+    // onto `branch`, and the body is a subtree that produced no patch.
     const code = compileFixtureBody("control-flow-show-eager-static-body");
-    // M4b took the call away as well: K5 lowers the construct onto `branch`,
-    // which receives the `(parent, anchor)` pair the walk computed — here
+    // `branch` receives the `(parent, anchor)` pair the walk computed — here
     // `(null, null)`, because the construct IS the component's whole body.
     expect(code).toMatch(/[\w$]*branch\(null, null, /);
     // O2/O2.1 SUPERSEDE target #8's eager arm, and this is where that is said.
     // A child may not be an ARGUMENT, because an argument is evaluated at the
     // call site — before the receiving scope exists — so "the clone itself,
-    // handed straight in" is a shape M3 makes unrepresentable. What survives of
+    // handed straight in" is unrepresentable. What survives of
     // the elision is the IIFE and the element binding, both still absent.
     expect(code).toMatch(/[\w$]*block\(\(\)\s*=>\s*_tmpl\$\d+\(\)\)/);
     // …and the flag the compiler PROVED about it: nothing in the body registers
     // anything disposable, so `NO_SCOPE` is shipped and the activation
     // allocates no `Scope`.
-    // A non-keyed `Show` — the default since M10 — ends in the two-row body
+    // A non-keyed `Show`, the default, ends in the two-row body
     // TABLE rather than in the keyed shape's single Block, so the flag sits
     // after a `]` instead of a `})`.
     expect(code, "the proven flags integer").toMatch(/\], 2\)/);
     expect(code, "and nothing to bind it to").not.toMatch(/const _el\$/);
-    // `setProp` is a needle that cannot match since M5 split it into eight
-    // named channels — the same inert shape `patchedAttributeNames`,
-    // `reverseAppliedProps` and `countMerges` were in. `propCalls` scans the
-    // channels that exist.
+    // `setProp` is split into named channels, so a `setProp` needle cannot
+    // match; `propCalls` scans the channels that exist.
     expect(emittedCalls(code, "insert") + propCalls(code)).toBe(0);
 
     // The observable consequence of the change, measured rather than asserted:
-    // with the Block, each toggle REBUILDS the body. The eager argument form
-    // handed the same node back every time, and it was the only shape the
-    // retired un-compiled reference could express — which is why this fixture
-    // was registered as a known oracle divergence for six milestones. Stated
-    // directly it needs no registry at all.
+    // with the Block, each toggle REBUILDS the body, where an eager argument
+    // would hand the same node back every time.
     const rendered = await renderViaCompiler("control-flow-show-eager-static-body");
     const identities = rendered.channels.map((frame) => frame.identity.join(","));
     expect(new Set(identities).size, "the toggle rebuilt the body").toBeGreaterThan(1);
@@ -1128,7 +1093,7 @@ describe("target 8 — thunk elision for static control-flow bodies", () => {
     // C6: the child is a Block, so the arrow declares the scope it runs under.
     expect(code).toMatch(/[\w$]*block\(\(\)\s*=>\s*_tmpl\$\d+\(\)\)/);
     // The key is the author's own `when` read, emitted as plain JavaScript
-    // (K5). Non-keyed is the default since M10, so what it carries is the
+    // (K5). Non-keyed is the default, so what it carries is the
     // TRUTHINESS — one index for every falsy value, which is what keeps a
     // fallback in place across `0`, `""` and `null`, and what lets the content
     // survive a change from one truthy value to another.
@@ -1167,11 +1132,8 @@ describe("target 8 — thunk elision for static control-flow bodies", () => {
     expect(code, "an unprovable body ships no flag").not.toMatch(/\}\), \d\)/);
 
     // What is asserted here is the half this test is about — the body really is
-    // built, and only when `when` is first true. It used to need saying that
-    // the comparison leg lived elsewhere, because `control-flow-nested`'s
-    // un-compiled reference bound the scope to the row callback's item slot;
-    // that reference is retired and the fixture is held to its rendered-DOM
-    // golden like every other.
+    // built, and only when `when` is first true. The rendered DOM is held to
+    // the fixture's rendered-DOM golden like every other.
     const rendered = await renderViaCompiler("control-flow-nested");
     expect(rendered.html, "the body was built").toContain("<li>");
   });
@@ -1285,14 +1247,8 @@ describe("target 9 — marker elision", () => {
 });
 
 /**
- * Target 10 is asserted in `ssr.test.ts`, not here.
- *
- * It used to carry two `it.todo` bodies in this file. They are gone rather than
- * enabled: `SSR emit shape` in `ssr.test.ts` runs the same two claims live and
- * correctly — one of the bodies below asserted `not.toContain("<section")` over
- * a module whose whole job is to carry `<section` inside a template literal, so
- * enabling it as written would have failed — and a second, wrong copy of a
- * claim is worse than none.
+ * Target 10 is asserted in `ssr.test.ts` (`SSR emit shape`), not here: a
+ * second copy of a claim is worse than none.
  */
 
 describe("target 11 — compile throughput", () => {
@@ -1336,19 +1292,11 @@ describe("open questions the harness must be able to state", () => {
 
   it("O4: a bare tracked read is auto-thunked, and the corpus reaches that path", async () => {
     // `<div>{count()}</div>` is a dead read under an un-compiled runtime and a
-    // live binding once auto-thunking is on. This used to forbid the shape
-    // corpus-wide, which kept the old effect BOUND simple but made the
-    // compiler-BUILT thunk unreachable from any fixture — the arrow-construction
-    // path in `codegen::dom::thunk` had zero coverage in either suite as a
-    // result.
-    //
-    // It then became "a fixture may hold a bare read, but it must DECLARE what
-    // goes live", because a live hole cost one effect the reference did not
-    // create and the bound had to be lifted by exactly the holes that earned it.
-    // the oracle design retires the reference and `effect-counts.ts` makes the count absolute,
-    // so there is nothing left to declare: the number for a fixture holding a
-    // bare read simply IS one higher, and a hole that stopped going live moves
-    // that number and fails there.
+    // live binding once auto-thunking is on. Without a fixture holding the
+    // shape, the arrow-construction path in `codegen::dom::thunk` has no
+    // coverage. `effect-counts.test.ts` makes the count absolute: the number
+    // for a fixture holding a bare read simply IS one higher, and a hole that
+    // stopped going live moves that number and fails there.
     //
     // What remains here is the half a count cannot state — that the shape is
     // REACHED and that it really is bound rather than read once.
@@ -1403,9 +1351,7 @@ describe("open questions the harness must be able to state", () => {
     expect(result.render.trace.created, "three live holes, three effects").toBe(3);
     // And they are LIVE, which is the whole claim: the fixture's steps write
     // the signal and every frame moves. Under an un-compiled runtime each hole
-    // is read once at construction and the frames are identical — that was the
-    // divergence the fixture used to declare as a `win`, stated here as the
-    // property instead of as an exemption from a comparison.
+    // is read once at construction and the frames are identical.
     expect(result.render.frames.length, "the fixture drives a step").toBeGreaterThan(0);
     for (const frame of result.render.frames) {
       expect(frame, "a live hole updates").not.toBe(result.render.html);
@@ -1413,8 +1359,8 @@ describe("open questions the harness must be able to state", () => {
   });
 
   it("spread: the element keeps its template and the attribute list is applied in source order", () => {
-    // M9. A spread no longer takes the element off the template path: it takes
-    // its ATTRIBUTES off it, because the parser applies baked bytes before any
+    // A spread does not take the element off the template path: it takes its
+    // ATTRIBUTES off it, because the parser applies baked bytes before any
     // patch runs and duplicate attributes in markup collapse the opposite way
     // from a props object. What is left is one clone and the list in the order
     // the author wrote it: a name before the spread is a key of the object the

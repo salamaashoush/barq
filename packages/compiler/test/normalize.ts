@@ -34,7 +34,7 @@
  *     divergence, but it does erase anchor POSITION. `a<!---->b` and
  *     `a b<!---->` serialize identically here, so a misplaced or spurious marker
  *     is invisible to the DOM comparison. That is why `auditCompiled` bounds
- *     the marker COUNT against the emitted code instead, and why M4's marker
+ *     the marker COUNT against the emitted code instead, and why marker
  *     elision needs a position assertion before it can be trusted.
  *
  * Marker comments (`<!--Show:7-->`) carry a process-global counter, so the id

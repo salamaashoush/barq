@@ -29,8 +29,8 @@ import {
  *     runtime's node building — the compile-time half of the escaping rules,
  *     which the normalised DOM diff in `oracle.test.ts` deliberately throws
  *     away (it compares parsed trees, and `&amp;` and `&` parse the same).
- *  3. The compiled SSR module's own string. Pending until P8b lands; see
- *     `ssrStatus`, which detects it rather than being told.
+ *  3. The compiled SSR module's own string. `ssrStatus` detects whether the
+ *     backend is in the build rather than being told.
  */
 
 export interface SsrStatus {

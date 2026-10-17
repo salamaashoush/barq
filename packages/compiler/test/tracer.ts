@@ -13,12 +13,10 @@ import { dirname, join } from "node:path";
  * effects from that module, so the count is the real total for both the oracle
  * and the compiled path, not an estimate.
  *
- * `dom.ts` is replaced the same way, for `template`. The marker bound used to
- * ask "does this module clone each template exactly once?" and, whenever it
- * could not prove that, degrade to "a module whose templates bake no anchor
- * cannot produce one" — which switched the bound off entirely for every module
- * that calls a component. Recording the node each clone RETURNS makes the
- * question unnecessary: the anchors a frame is allowed to contain are the
+ * `dom.ts` is replaced the same way, for `template`. Recording the node each
+ * clone RETURNS means the marker bound never has to guess whether a module
+ * clones each template exactly once, a guess that cannot be made for any
+ * module that calls a component: the anchors a frame is allowed to contain are the
  * anchors baked into the clones that are still in the tree at that moment,
  * whether that is one clone or one per row.
  */

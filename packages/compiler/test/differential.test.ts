@@ -1,5 +1,5 @@
 /**
- * L3, drivers 2 and 3.
+ * The -O0/-Ox differential, drivers 2 and 3.
  *
  * Three drivers make up the `-O0`/`-Ox` differential. Driver 1, the fixture
  * corpus, is `optimisation.test.ts`. This file is the other two:
@@ -37,7 +37,7 @@ import { fixtureSource, listFixtures, type RenderResult } from "./harness.ts";
 // the mode axis
 // ---------------------------------------------------------------------------
 
-describe("L3 — the mode axis", () => {
+describe("the mode axis", () => {
   it("always has a reference build and a subject build", () => {
     const modes = liveModes();
     expect(modes).toContain(REFERENCE);
@@ -47,7 +47,7 @@ describe("L3 — the mode axis", () => {
   /**
    * Detected, never declared — and three-valued, which is the part that matters.
    *
-   * A mode that is ABSENT is a fact about the milestone and skipping it is
+   * A mode that is ABSENT is a fact about the build and skipping it is
    * correct. A mode that is BROKEN is a bug, and skipping it turns the suite
    * fail-open: the mutation experiment produced a compiler that panicked the
    * SSR backend on 106 fixtures and silently degraded `interp` to DOM codegen,
@@ -75,8 +75,8 @@ describe("L3 — the mode axis", () => {
  * property ever stopped rejecting a reversed group, every claim the two
  * generative drivers make about attribute order would go quiet at once.
  */
-describe("L3 — attribute order across two levels", () => {
-  it("accepts the reordering P3 fold is entitled to produce", () => {
+describe("attribute order across two optimisation levels", () => {
+  it("accepts the reordering the fold pass is entitled to produce", () => {
     // `-O0` applies the folded `title` after the clone; `-Ox` bakes it at its
     // source position. One source order — class,data-k,title,style,data-ev —
     // explains both.
@@ -131,7 +131,7 @@ const REQUIRED_FEATURES = [
   "reassigned binding",
 ];
 
-describe("L3 — the JSX generator", () => {
+describe("the -O0/-Ox differential over the JSX generator", () => {
   const programs = generateMany(BASE_SEED, SEEDS);
 
   it("is deterministic: one seed is one program", () => {
@@ -295,7 +295,7 @@ function report(outcomes: EmiOutcome[]): string {
   );
 }
 
-describe("L3 — EMI mutation over the corpus", () => {
+describe("EMI mutation over the corpus", () => {
   const outcomes: EmiOutcome[] = [];
 
   for (const fixture of listFixtures()) {
@@ -308,49 +308,34 @@ describe("L3 — EMI mutation over the corpus", () => {
 
   /**
    * The assertion that keeps the driver from going quiet — as an exact SET
-   * rather than as a floor, because the floor was the weaker statement of the
-   * two and it was being met by material that was not material.
+   * rather than as a floor, because a floor can be met by material that is not
+   * material.
    *
    * The corpus number is LOW, and that is a fact about the corpus rather than a
    * weakness of the driver: a fixture's `steps` and `events` have to be
    * non-inert and `oracle.test.ts` fails a fixture whose driver reaches nothing
    * new, so the corpus renders every branch it contains.
-   * It is lower than it was, for two reasons that both make the driver stronger:
    *
-   *  - the scanner was desynchronised by `</tag>` (`stripLiterals` read the `/`
-   *    of a closing tag as a regex opener), which HID real elements and INVENTED
-   *    candidates inside string literals. 264 candidates became 372, and four of
-   *    the nine "unreached" ones had been HTML inside an `ssrDiffers.markup`
-   *    string — a textual rewrite of an SSR expectation that never reached the
-   *    JSX path at all, counting toward the old floor.
-   *  - liveness now reads `RenderResult.seen` — the whole document plus every
-   *    template clone — instead of the container's frames, so `<Portal>` content
-   *    and a subtree built and destroyed inside one step stop being classified
-   *    unreached. Both were unsound in the direction that manufactures failures.
+   * Liveness reads `RenderResult.seen` (the whole document plus every template
+   * clone) rather than the container's frames, so `<Portal>` content and a
+   * subtree built and destroyed inside one step count as reached. Naming the
+   * set is what a floor could not do: a scanner that stops finding elements, a
+   * probe that stops reaching the DOM, a liveness rule that drifts in either
+   * direction, each changes this set and fails here. The anti-vacuity weight
+   * lives in the generated half below, which carries dead material by
+   * construction.
    *
-   * What is left is five fixtures, named. Naming them is what a floor could not
-   * do: a scanner that stops finding elements, a probe that stops reaching the
-   * DOM, a liveness rule that drifts in either direction — each changes this set
-   * and fails here. The anti-vacuity weight lives in the generated half below,
-   * which carries dead material by construction.
+   * A JSX-valued `fallback` or an unmatched branch body is a Block (C6), so an
+   * untaken branch is never invoked and its template is never cloned:
+   * control-flow-errored-loading renders only its errored branch,
+   * dashboard-composite's `Show` fallback never shows, and
+   * switch-match-component-bodies' `<Switch fallback>` never matches.
    *
-   * THREE JOINED AT M3, and the milestone is the reason. A JSX-valued `fallback`
-   * or an unmatched branch body is a Block now (C6), so an untaken branch is
-   * never invoked and its template is never cloned: control-flow-errored-loading
-   * renders only its errored branch, dashboard-composite's `Show` fallback never
-   * shows, and switch-match-component-bodies' `<Switch fallback>` never matches.
-   * The eager ARGUMENT form built all three at the call site whether or not the
-   * branch was entered, and `RenderResult.seen` counted the clone as reached —
-   * so the material was live for the wrong reason. EMI's material GROWING is a
-   * strengthening of the driver, which is why this stays an exact set.
-   *
-   * TWO JOINED AT M4b, and they are dead material BY CONSTRUCTION rather than by
-   * circumstance. `control-flow-show-static-key` and
-   * `control-flow-switch-static-key` exist to prove `STATIC_KEY`, which means
-   * their keys are module constants — so the branch each one does not take can
-   * never be taken, at any step, in any session. That is the strongest material
-   * this driver can be handed: for every other subject here the unreached arm is
-   * unreached because no step happened to select it.
+   * `control-flow-show-static-key` and `control-flow-switch-static-key` are dead
+   * material BY CONSTRUCTION: they exist to prove `STATIC_KEY`, so their keys
+   * are module constants and the branch each one does not take can never be
+   * taken. For every other subject here the unreached arm is unreached because
+   * no step happened to select it.
    */
   it("mutates whatever unreached material the corpus has, and refuses none of it", () => {
     const detail = report(outcomes);
@@ -394,7 +379,7 @@ describe("L3 — EMI mutation over the corpus", () => {
  * an unselected body, an uninstantiated component — are present by construction
  * rather than by luck.
  */
-describe("L3 — EMI mutation over generated programs", () => {
+describe("EMI mutation over generated programs", () => {
   const programs = generateMany(BASE_SEED + 10_000, 40);
   const outcomes: EmiOutcome[] = [];
 

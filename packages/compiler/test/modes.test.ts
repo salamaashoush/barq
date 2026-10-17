@@ -6,7 +6,7 @@ import { renderSourceViaDom, renderSourceViaSsr, sameTree, ssrStatus } from "./s
 import { MATRIX_EXCEPTIONS } from "./mode-matrix.ts";
 
 /**
- * L5, the mode matrix, over the UNION.
+ * The mode matrix, over the UNION.
  *
  * ## The hole this closes
  *
@@ -15,15 +15,15 @@ import { MATRIX_EXCEPTIONS } from "./mode-matrix.ts";
  * other four directories — 51 more fixture files — have each only ever been
  * compiled the one way their own suite needs:
  *
- *   fixtures/semantics/   L1, DOM, -Ox
- *   fixtures/ownership/   L2b, DOM, -Ox, with `--ownership`
+ *   fixtures/semantics/   the claim runner, DOM, -Ox
+ *   fixtures/ownership/   the ownership channel, DOM, -Ox, with `--ownership`
  *   fixtures/l4/          the leak and metamorphic sessions, DOM, -Ox
  *   fixtures/browser-only/ the Chrome differential, DOM, -Ox
  *
  * The `backend!` macro proves every backend has an arm for every `Op`. That is a
  * statement about a match expression. It cannot say whether SSR handles
  * `Op::Region` CORRECTLY for a construct only `fixtures/semantics/` writes, and
- * until this file nothing asked.
+ * this file is what asks.
  *
  * ## The warning attached to this, and what it changed here
  *
@@ -282,8 +282,8 @@ describe("the two backends agree, over the union", () => {
   /**
    * The fixtures that render on NEITHER backend, pinned by name.
    *
-   * They are the ones whose whole point is to throw — an L1 fixture that
-   * asserts a construction-time error, an L4 session driven by the harness
+   * They are the ones whose whole point is to throw — a semantics fixture that
+   * asserts a construction-time error, a session driven by the harness
    * rather than by a default export. That is legitimate. What is not legitimate
    * is the list growing quietly: a fixture that stopped rendering has left the
    * end-to-end comparison above, and the comparison would go on reporting green

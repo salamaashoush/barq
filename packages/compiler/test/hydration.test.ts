@@ -14,12 +14,12 @@ import {
 } from "./hydration.ts";
 
 /**
- * L5 — the hydration oracle.
+ * The hydration oracle.
  *
  * Three renderings of every fixture, and the suite is the comparison between
  * them: the string module's WIRE, the DOM module HYDRATED over it, and the DOM
  * module rendered COLD. The first comparison — hydrated against cold — is the
- * one every framework makes. The second is the one this milestone exists for:
+ * one every framework makes. The second is the one this suite exists for:
  * node IDENTITY, because a replaced node and a claimed node serialise
  * identically and a markup diff cannot tell them apart. That is the shape of
  * silent failure detection was bought for.
@@ -113,7 +113,7 @@ const ALL_DEV: Promise<Map<string, Result>> = (async () => {
   return out;
 })();
 
-describe("L5 hydration conformance", () => {
+describe("hydration conformance", () => {
   for (const name of FIXTURES) {
     test(`${name} hydrates over its own server render`, async () => {
       const result = (await ALL).get(name) as Result;
@@ -266,7 +266,7 @@ describe("H3 the hydration index is free when nothing hydrates", () => {
  */
 const DEV_DIVERGES = new Set(["escaping-adversarial"]);
 
-describe("L5 hydration conformance, with detection on", () => {
+describe("hydration conformance, with detection on", () => {
   for (const name of FIXTURES) {
     test(`${name} hydrates the same way under \`dev\``, async () => {
       const production = (await ALL).get(name) as Result;
@@ -314,20 +314,14 @@ function bytes(markup: string): Bytes {
 
 describe("the claim payload", () => {
   /**
-   * "Revisit if the measured byte cost is material on a real page."
-   * it was — 55.7% raw and 7.3% gzipped on the 100-row page — and the
-   * decision reversed. THE WIRE CARRIES WHAT RECOVERY NEEDS, AND DETECTION IS
-   * AN EMISSION AXIS.
-   *
-   * So the payload is measured on four wires rather than two: the corpus and
-   * the 100-row page, each compiled for production and for development. The
-   * numbers are printed rather than asserted at a threshold nobody agreed to,
-   * with three assertions that ARE agreed — the bytes are comments, so the two
-   * markups differ by comments alone; the production page costs ZERO, which is
-   * the acceptance criterion; and development costs MORE than production,
-   * because a detection axis nobody can measure is not an axis.
+   * The wire carries what recovery needs, and detection is an emission axis.
+   * The payload is measured on four wires: the corpus and the 100-row page,
+   * each compiled for production and for development. There is no byte
+   * threshold. Three things are asserted: the two markups differ by comments
+   * alone; the production page costs ZERO; and development costs MORE than
+   * production, because a detection axis nobody can measure is not an axis.
    */
-  test("costs what it costs, on the corpus and on a real page, in both builds", async () => {
+  test("the claim payload is comments only, free in production, dearer in development", async () => {
     let plain = 0;
     let production = 0;
     let development = 0;

@@ -86,8 +86,8 @@ impl<'a> Classify<'a, '_> {
     }
 
     /// The one place a patch changes shape. Everything it refuses stays
-    /// `SetOpaque`, which emits the value unwrapped — byte for byte what M2
-    /// emitted and what the oracle does.
+    /// `SetOpaque`, which emits the value unwrapped: byte for byte what an
+    /// unanalysed compile emits.
     fn resolve(&mut self, unit: &mut Unit<'a>, patch: Patch) -> Option<Op> {
         match patch.op {
             Op::SetEvent { event, value, capture } => self.event(unit, event, value, capture),
@@ -562,9 +562,9 @@ impl<'a> Lift<'a, '_> {
                 // C3.1/C4: every own property of a props object is a Cell.
                 // Taking the reference reads nothing and CALLING it is the read,
                 // which is the same shape `Resource<T>` already has below. The
-                // pre-M3 verdict — the member read IS the tracked read — was the
-                // getter model, and keeping it made `thunk()` wrap a Cell in a
-                // second Cell at -O0 while fusion unwrapped one level at -Ox.
+                // getter model's verdict (the member read IS the tracked read)
+                // would make `thunk()` wrap a Cell in a second Cell at -O0 while
+                // fusion unwrapped one level at -Ox.
                 SourceKind::PropsParam => {
                     return Rx {
                         react: React::Static,

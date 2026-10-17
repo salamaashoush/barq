@@ -4,12 +4,12 @@ import { type FixtureModule, compileSource } from "./harness.ts";
 import { census, compileText, host, reuse, shape, wire } from "./hydration.ts";
 
 /**
- * L6 pointed at hydration. the mutation layer, the wire decision Q4.
+ * Mutation testing, pointed at hydration.
  *
  * **A property no mutation can violate is not a property.** The conformance
  * suite next door says every fixture hydrates cleanly; on its own that is a
  * statement about a corpus, not about a detector. This file corrupts the wire
- * one way at a time and asks the two questions the wire decision Q4 paid the bytes for:
+ * one way at a time and asks the two questions the claim bytes on the wire pay for:
  *
  *   1. was the corruption DETECTED?
  *   2. did it degrade to a full client render, or to a wrong tree?
@@ -119,8 +119,8 @@ const MUTATIONS: Mutation[] = [
       "the server says it took arm `1`, the client's own read says `0`. H2 forbids " +
       "re-deriving the condition, so the written key is the only evidence there is — and " +
       "§12 put that key on the DETECTION axis, so this is the one corruption a production " +
-      "wire cannot express. The key is the truthiness INDEX rather than the value since " +
-      "M10 flipped `Show`'s default to non-keyed; under the keyed default it read `true`.",
+      "wire cannot express. The key is the truthiness INDEX rather than the value, because " +
+      "`Show`'s default is non-keyed.",
     apply: (w) => w.replace("<!--[1-->", "<!--[0-->"),
     production: null,
     development: { detected: true, degrades: "local" },
@@ -292,7 +292,7 @@ async function run(mutation: Mutation, dev: boolean): Promise<Verdict> {
 for (const dev of [false, true]) {
   const build = dev ? "development" : "production";
 
-  describe(`L6 hydration mutations — ${build}`, () => {
+  describe(`hydration mutations — ${build}`, () => {
     const verdicts: { mutation: Mutation; verdict: Verdict }[] = [];
 
     for (const mutation of MUTATIONS) {
@@ -560,8 +560,8 @@ describe("hydrating a page the compiler never made hydratable", () => {
     // writes them anyway because the open comment is the only place a key can
     // live. An `each` has no key, so the second is the axis paying for a
     // uniform range shape rather than for information.
-    // `1` rather than `true`: the key is the truthiness INDEX since M10 flipped
-    // `Show`'s default to non-keyed, where the keyed arm wrote the value itself.
+    // `1` rather than `true`: the key is the truthiness INDEX, because `Show`'s
+    // default is non-keyed; only the keyed arm writes the value itself.
     expect(development).toContain("<!--[1-->");
     expect(development).toContain("<ul><!--[--><li>one</li>");
     expect(

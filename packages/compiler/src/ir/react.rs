@@ -138,7 +138,7 @@ pub struct Rx<'a> {
 
 impl<'a> Rx<'a> {
     /// What P1 records before P2 exists. `Opaque` is sound for every expression,
-    /// so M2's "no analysis at all" is a correct compiler, just not a fast one.
+    /// so "no analysis at all" is a correct compiler, just not a fast one.
     pub const OPAQUE: Self = Self {
         react: React::Opaque,
         deps: DepSet::EMPTY,

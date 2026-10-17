@@ -80,7 +80,7 @@ pub struct CompileOutput {
     /// Dev-mode labels: `(template name, component name, span)` per hoisted
     /// template row, from `Skeleton::origin` by way of `mappings::template_span`.
     pub labels: Vec<TemplateLabel>,
-    /// L2b's expected value, as JSON, under `options.ownership` only. A side
+    /// The ownership channel's expected value, as JSON, under `options.ownership` only. A side
     /// artefact: it is derived from the program BEFORE harvest and consumed by
     /// nothing downstream, so `code` is byte-identical with it on or off.
     pub ownership: Option<String>,
@@ -134,9 +134,9 @@ pub fn source_type_for(filename: Option<&str>) -> SourceType {
 // Measured on this crate's oxc version by bisecting the thread stack a single
 // nesting shape survives, at depth 2000, debug profile. The figure is the sum
 // over every recursive phase, and the staged pipeline runs four of them where
-// M2 ran two — oxc_semantic and the harvest walk are the new ones:
+// an unstaged one runs two — oxc_semantic and the harvest walk are the extra ones:
 //
-//   shape                      M2 debug   staged debug
+//   shape                      unstaged   staged debug
 //   (((1)))  /  z(((...)))     2833 B     2816 B    <- worst, and always bracketed
 //   `${ `${ 1 }` }`            2637 B     2620 B
 //   [[[1]]]                    2506 B     2489 B
@@ -549,11 +549,10 @@ fn compile_on_this_stack(
         ));
     }
     // Decided before the pass stage, because the string backend skips two of
-    // its passes outright. The OPTIONS decide it and nothing else: M6 deleted
-    // `uninlinable_flow`, which scanned every symbol and dropped the whole
-    // module here if any of eight flow components was referenced — 41.88x on the
-    // 100-row page, for one import. Every construct has a string lowering now,
-    // so there is nothing left to fall back from.
+    // its passes outright. The OPTIONS decide it and nothing else: every
+    // construct has a string lowering, so there is nothing to fall back from,
+    // and a scan that dropped the whole module to the DOM backend for one flow
+    // import cost 41.88x on the 100-row page.
     let target = codegen::Target::of(options);
 
     passes::run(&allocator, &mut module, options, target);
@@ -1479,9 +1478,9 @@ mod tests {
             Parser::new(&allocator, code, SourceType::mjs()).parse().diagnostics.is_empty()
         };
 
-        // L6: the self-check first. A gate that cannot fail is not a gate, and
+        // The self-check first. A gate that cannot fail is not a gate, and
         // this one is only worth having if it rejects the exact shape the
-        // emitter used to produce.
+        // emitter once produced.
         assert!(
             !parses("export const default = 1;\n"),
             "the parser accepts `export const default`, so this test could not have caught it",
@@ -1651,7 +1650,7 @@ mod tests {
     }
 
     // ---------------------------------------------------------------------
-    // M8a — the diagnostic engine
+    // the diagnostic engine
     // ---------------------------------------------------------------------
 
     fn diagnosing(filename: &str) -> ResolvedOptions {
@@ -1807,9 +1806,9 @@ mod tests {
     /// is gone and warning anyway would be a lie about the emitted module. The
     /// shape is now a `dynamic` component given a live prop.
     ///
-    /// `BARQ007` announced the whole-module SSR→DOM downgrade. M6 deleted the
+    /// `BARQ007` announced the whole-module SSR→DOM downgrade. There is no
     /// downgrade: every construct has a string lowering, so there is no module
-    /// left to announce anything about. A compile that mentions `Portal` is
+    /// to announce anything about. A compile that mentions `Portal` is
     /// silent AND stays on the string backend, which is the pair that has to be
     /// asserted together — a silent compile that quietly emitted `_$template`
     /// would be the same defect with the evidence removed.
@@ -2558,10 +2557,9 @@ export const Route = createFileRoute("/x")({ component: Page });
         assert!(output.code.contains("_$element(\"div\""), "{}", output.code);
     }
 
-    /// The flag was accepted and refused from M1 to M5, because emitting the
-    /// DOM backend for it would have surfaced as a production SSR mismatch.
-    /// M6 is where it decides something: one concatenation, and not one DOM
-    /// call anywhere in the output.
+    /// The flag selects the string backend: one concatenation, and not one DOM
+    /// call anywhere in the output. Emitting the DOM backend for it would
+    /// surface as a production SSR mismatch.
     #[test]
     fn the_ssr_flag_selects_the_string_backend() {
         let options = ResolvedOptions { ssr: true, ..ResolvedOptions::with_filename("V.tsx") };
@@ -3355,8 +3353,8 @@ export const Route = createFileRoute("/x")({ component: Page });
     }
 
     /// The default is `-Ox`, so a caller that never heard of the axis compiles
-    /// exactly what it always compiled. This is the whole of "M1 changes no
-    /// semantics" that a Rust test can state; the 234 emitted-bytes snapshots
+    /// exactly what it always compiled. This is the part of "the level changes
+    /// no semantics" that a Rust test can state; the emitted-bytes snapshots
     /// state the rest.
     #[test]
     fn the_default_level_is_the_optimising_one() {
@@ -3405,7 +3403,7 @@ export const Route = createFileRoute("/x")({ component: Page });
         assert!(checked >= 100, "only {checked} compiles");
     }
 
-    /// M3's ABI, asserted over the WHOLE corpus rather than on hand-written
+    /// The calling convention, asserted over the WHOLE corpus rather than on hand-written
     /// cases, and at both optimisation levels and both backends — because
     /// `-O0` and `-Ox` must emit the same convention
     /// from the same IR, and because a calling convention that holds on the
@@ -3415,7 +3413,7 @@ export const Route = createFileRoute("/x")({ component: Page });
     /// substring of "target" and `children:` is a substring of a doc comment, so
     /// a textual scan reports the corpus rather than the compiler.
     ///
-    /// Two claims, each the negation of a shape the M0 fixtures pin as a defect:
+    /// Two claims, each the negation of a shape the ownership fixtures pin as a defect:
     ///
     /// - **no props member is a getter** (C3.1) — the emission that made
     ///   `{...props}` flatten and cost 8.7x to allocate;
@@ -3733,7 +3731,7 @@ export const Route = createFileRoute("/x")({ component: Page });
         }
     }
 
-    /// L3's payoff, stated as the property rather than as a level: EVERY
+    /// The -O0/-Ox differential's payoff, stated as a property: EVERY
     /// optimisation is individually bisectable. For each flag there is a
     /// fixture whose emitted bytes move when that flag alone is flipped — so a
     /// differential failure can be bisected to one pass, and a flag that
@@ -3888,7 +3886,7 @@ export const Route = createFileRoute("/x")({ component: Page });
         }
     }
 
-    // ── M3: the analysis passes ───────────────────────────────────────────
+    // ── the analysis passes ───────────────────────────────────────────────
 
     const CORE: &str = "import { createSignal, createMemo, useStore } from \"@barqjs/core\";\n";
 

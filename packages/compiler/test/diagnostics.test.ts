@@ -48,9 +48,9 @@ const COERCED =
 describe("the diagnostic engine", () => {
   /**
    * The whole deliverable in one assertion: a code, a real severity, and a span
-   * that is still a SPAN on this side of the napi boundary. `warnings` used to be
-   * `Array<string>` and the byte offset Rollup's `position` wants was dropped at
-   * the boundary, which is why no code frame existed anywhere, in any mode.
+   * that is still a SPAN on this side of the napi boundary. A bare
+   * `Array<string>` drops the byte offset Rollup's `position` wants at the
+   * boundary, and with it every code frame, in any mode.
    */
   it("carries code, severity and a byte span across the napi boundary", () => {
     const raw = diagnose(COERCED);
@@ -373,7 +373,7 @@ describe("the diagnostic engine", () => {
    * and `target` are Cell arguments of the primitive the construct lowers to,
    * exactly as an attribute on an intrinsic element is, and the runtime answers
    * a Block in one with the same `ScopeMissingError` — so a compile-time fact
-   * was being discovered at run time. The M7 gate found them silent.
+   * would otherwise be discovered at run time.
    *
    * The bounds are asserted beside them, because C5.1 states them and a bound
    * nothing measures drifts: a spread ends the chain, a Block slot (`children`)

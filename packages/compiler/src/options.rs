@@ -63,7 +63,8 @@ impl Env {
 /// compiler is the same compiler with the optimisations off, so `-O0` shares the
 /// front end, the IR, the ABI and the ownership model and can encode neither a
 /// legacy decision nor an optimisation bug. Every field is separately flippable
-/// because bisectability — not the level itself — is what L3 buys.
+/// because bisectability, not the level itself, is what the -O0/-Ox differential
+/// buys.
 ///
 /// Nothing here may change what the emitted module MEANS. Each flag removes a
 /// transformation whose absence is slower or larger and never different.
@@ -100,14 +101,14 @@ pub struct Opt {
     /// does the work — a props object, an adapter frame, `(null, null)` and
     /// `flags = 0`.
     ///
-    /// This is the axis that makes the L3 differential non-vacuous: the two
+    /// This is the axis that makes the -O0/-Ox differential non-vacuous: the two
     /// builds reach the same primitives by two genuinely different routes, so
     /// the `-O0` side is a real reference rather than the same bytes twice.
     pub flow: bool,
 }
 
 impl Opt {
-    /// `-O0`, the L3 reference.
+    /// `-O0`, the differential's reference.
     pub const NONE: Self = Self {
         fold: false,
         dedup: false,
@@ -345,8 +346,8 @@ pub struct TransformOptions {
     /// Per-pass override on top of `optimize`, `[[name, "on"|"off"]]`. napi has
     /// no map type, so this is pairs. The names are `fold`, `dedup`, `anchor`,
     /// `fuse`, `walk`, `eta`, `hoist`, `splice`, `flow` — one flag per
-    /// optimisation, because L3's payoff is that every optimisation is
-    /// individually bisectable.
+    /// optimisation, because the -O0/-Ox differential's payoff is that every
+    /// optimisation is individually bisectable.
     pub passes: Option<Vec<Vec<String>>>,
 }
 
@@ -357,8 +358,8 @@ pub struct TransformOptions {
 /// the default. That is the worst available failure for this surface: asking
 /// for `{ target: "ssr" }` compiles the DOM backend and returns a plausible
 /// module, and the mistake is only visible to a reader who already knows what
-/// the SSR emission should import. It cost a wrong backend comparison in the
-/// M11 session, which is why the list exists.
+/// the SSR emission should import. It has cost a wrong backend comparison,
+/// which is why the list exists.
 ///
 /// Kept beside the struct deliberately: adding a field without adding it here
 /// makes that field unusable, which `options_keys_cover_every_field` catches.
@@ -484,7 +485,7 @@ impl ResolvedOptions {
         Self { filename: Some(filename.into()), ..Self::default() }
     }
 
-    /// The same options with every optimisation off — the L3 reference build of
+    /// The same options with every optimisation off — the -O0 reference build of
     /// this exact input.
     pub fn at_o0(self) -> Self {
         Self { opt: Opt::NONE, ..self }
@@ -663,7 +664,7 @@ mod tests {
         assert_eq!(resolved.opt, Opt::ALL);
     }
 
-    /// L3's payoff is that every optimisation is bisectable by flipping ONE
+    /// The differential's payoff is that every optimisation is bisectable by flipping ONE
     /// flag, which only holds if each name reaches its own field and no other.
     #[test]
     fn every_named_pass_is_individually_flippable_in_both_directions() {

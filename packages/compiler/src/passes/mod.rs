@@ -42,11 +42,8 @@ pub fn run<'a>(
     // is also `NO_SCOPE`'s proof — and before P5, because nothing it builds
     // reaches the skeleton.
     //
-    // Ungated on the target since M6. The gate was there because P8b owned a
-    // hand-written string implementation of every construct, so a construct that
-    // had already become a primitive had nothing left for it to rewrite; the
-    // string backend now implements the four primitives itself, and the SAME
-    // lowered IR serves both.
+    // Ungated on the target: the string backend implements the four primitives
+    // itself, so the SAME lowered IR serves both backends.
     shape::run(allocator, module, options, opt.flow);
     // A `<!---->` is an insert anchor for a sibling walk, and the string backend
     // has no walk. It is also the reason a `NodeId` may never reach a

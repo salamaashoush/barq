@@ -86,7 +86,7 @@ describe("emitted code snapshots", () => {
    * one is green.
    */
   /**
-   * The one-line detector for M3's whole miscompilation class, standing beside
+   * The one-line detector for a whole miscompilation class, standing beside
    * the snapshots that would otherwise have absorbed it.
    *
    * The `scope` pass gives a function the scope parameter only where something
@@ -365,7 +365,7 @@ describe("compiler contract", () => {
   });
 
   /**
-   * The map was ~30% of compile time at M1, and roughly two thirds of that is
+   * The map is ~30% of compile time, and roughly two thirds of that is
    * oxc's own builder and VLQ encoder. Maps are off by default, so the cost is
    * held rather than tuned.
    *

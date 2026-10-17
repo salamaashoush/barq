@@ -1,8 +1,8 @@
 /**
- * L4 — the node-identity channel, regraded METAMORPHIC.
+ * The node-identity channel, graded METAMORPHIC.
  *
- * `metamorphic.ts`'s header states what was wrong with the differential grading
- * and what replaces it. This file is the discipline around it: the properties
+ * `metamorphic.ts`'s header states why a differential cannot grade node
+ * identity and what does instead. This file is the discipline around it: the properties
  * are run over the whole corpus AND over a dedicated declared corpus, the number
  * of checks each property performed is asserted to be non-trivial, and the
  * declarations in `fixtures/l4/` are asserted to be TOTAL — a step without a
@@ -63,7 +63,7 @@ for (const session of sessions.values()) {
   }
 }
 
-describe("L4 — node identity, graded metamorphic", () => {
+describe("node identity, graded metamorphic", () => {
   it("holds over the whole corpus and the declared corpus", () => {
     expect(formatViolations(violations)).toBe("");
   });
@@ -120,7 +120,7 @@ describe("L4 — node identity, graded metamorphic", () => {
     expect(missing.join("\n")).toBe("");
   });
 
-  it("every DECLARED L4 step is replayable, so the replay frames are unchanged inputs", () => {
+  it("every DECLARED session step is replayable, so the replay frames are unchanged inputs", () => {
     // MM3's replay check asserts that re-applying a step preserves every node.
     // That is only a statement about the runtime if the second application is
     // the same input — which is a property of how the step is WRITTEN, and is
@@ -188,7 +188,7 @@ describe("L4 — node identity, graded metamorphic", () => {
   });
 });
 
-describe("L4 — the metamorphic channel is not inert", () => {
+describe("the metamorphic channel is not inert", () => {
   /**
    * A property no mutation can violate is not a property. These two corrupt the
    * SESSION rather than the runtime, and they establish the weaker but necessary

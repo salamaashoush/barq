@@ -8,12 +8,11 @@
  * at all, so a differential can only ever see the flag's SYMPTOM, and a symptom
  * is exactly what a correct-but-slower program does not have.
  *
- * M4b's gate round found the other half of that: `flow-ships-no-scope-unproven`
- * used to be killed by the DOM differential on `dashboard-composite`, and it
- * stopped being killed there the moment `insert` began owning its effect by the
- * scope it was handed (O4.5, `dom.ts`). The ownership fix removed the symptom;
- * the mutation is still a miscompilation. So the census is imported by the L3
- * suite as well, where it is the channel that catches both directions.
+ * Shipping `NO_SCOPE` on an unproven body has no DOM symptom either, because
+ * `insert` owns its effect by the scope it was handed (O4.5, `dom.ts`), yet it
+ * is still a miscompilation. So the census is imported by the -O0/-Ox
+ * differential suite as well, where it is the channel that catches both
+ * directions.
  */
 import { compileFixtureBody, listFixtures, stripLiterals } from "./harness.ts";
 
@@ -32,8 +31,8 @@ import { compileFixtureBody, listFixtures, stripLiterals } from "./harness.ts";
  *  - `3` — both, which needs a static gate over a body that is one clone.
  *
  * Every `2` is a `Show` over a signal; every `1` and `3` comes from one of the
- * two static-key fixtures, which exist because until M4b the corpus could not
- * emit `STATIC_KEY` at all and a flag with no fixture is a flag with no number.
+ * two static-key fixtures, which exist because a flag with no fixture is a flag
+ * with no number.
  */
 export const FLAG_CENSUS: readonly string[] = Object.freeze([
   "component-child-of-element: 2",

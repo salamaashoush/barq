@@ -152,7 +152,7 @@ pub struct Module<'a> {
     pub positions: Vec<crate::ir::Position>,
     pub env: ReactiveEnv<'a>,
     /// oxc's symbol table, detached from the AST it was built against. P0 reads
-    /// it in M3; it stays valid across codegen because it holds `SymbolId`s and
+    /// it; it stays valid across codegen because it holds `SymbolId`s and
     /// owned names, never AST references.
     pub scoping: Scoping,
     pub maps: Mappings,

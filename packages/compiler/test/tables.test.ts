@@ -243,8 +243,8 @@ describe("the compiler's tables against dom.ts as it is on disk", () => {
     expect(styleObjectStaysWhole(renamed, "z-index")).not.toEqual([]);
 
     // 4. no compiler at all. The three mutations above are things a future P3
-    //    could do; this one is the thing the M1 identity round-trip does, and it
-    //    used to satisfy every clause — un-compiled JSX folds nothing, contains
+    //    could do; this one is an identity transform, which would otherwise
+    //    satisfy every clause — un-compiled JSX folds nothing, contains
     //    no `px`, and contains `"z-index": 2` because the author wrote it there.
     const uncompiled = `const Probe = () => <div style={{ "z-index": 2 }} />;\n`;
     expect(styleObjectStaysWhole(uncompiled, "z-index")).not.toEqual([]);

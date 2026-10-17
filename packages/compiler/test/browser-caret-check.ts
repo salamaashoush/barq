@@ -63,8 +63,7 @@ Object.assign(window, {
 /**
  * The MUTATION, applied to the emitted module rather than to the runtime: the
  * page imports a `@barqjs/core` whose `bindValue` writes the property with no
- * DOM-compare and no caret restore. That is the pre-M7 channel exactly, and it
- * is what the control row runs.
+ * DOM-compare and no caret restore, and it is what the control row runs.
  */
 const NAIVE_SHIM = `export * from "@barqjs/core"
 import { bindEffect, listen } from "@barqjs/core"

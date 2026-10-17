@@ -13,15 +13,15 @@ import {
 import { STREAM_SOURCES, assemble } from "./stream.ts";
 
 /**
- * L5-S — the STREAMING hydration oracle.
+ * The STREAMING hydration oracle.
  *
  * The buffered oracle (`hydration.test.ts`) proves a page rendered in one shot
  * hydrates over itself. It says nothing about the page a stream produces, and
  * those are not the same document: a streamed page arrives as a shell whose
  * boundaries hold FALLBACKS, and the real content is spliced in afterwards by
- * `swapDeferredRange`. Until this file, "streaming works" and "hydration works"
- * were two separately-true facts with no proof that they COMPOSE — and the
- * composition is the thing every SSR page actually does.
+ * `swapDeferredRange`. "Streaming works" and "hydration works" are two
+ * separately-true facts with no proof that they COMPOSE without this file, and
+ * the composition is the thing every SSR page actually does.
  *
  * Three properties, over the whole corpus:
  *
@@ -182,7 +182,7 @@ const ALL: Promise<Map<string, StreamResult>> = (async () => {
   return out;
 })();
 
-describe("L5-S streaming hydration conformance", () => {
+describe("streaming hydration conformance", () => {
   for (const name of FIXTURES) {
     test(`${name} streams to the same page it buffers, and hydrates over it`, async () => {
       const result = (await ALL).get(name) as StreamResult;
@@ -271,7 +271,7 @@ describe("L5-S streaming hydration conformance", () => {
  * the mechanism — a shell carrying fallbacks, a `<template>` per boundary, and
  * `swapDeferredRange` splicing each one into place.
  */
-describe("L5-S the streaming mechanism itself", () => {
+describe("the streaming mechanism itself", () => {
   const STREAMED: Promise<Map<string, StreamResult>> = (async () => {
     await ALL;
     const out = new Map<string, StreamResult>();

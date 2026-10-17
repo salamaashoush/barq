@@ -1,15 +1,14 @@
 /**
- * L4 — single-evaluation conformance. the rule set C7.
+ * Single-evaluation conformance, for C7.
  *
  * > For each activation of a position, its Block is invoked **exactly once**.
  * > Not zero times, not twice.
  *
- * The old runtime read `props.children` at four syntactic sites in `Show` and
- * did the same in four other components, so a lazy child was built twice and one
- * copy discarded. Nothing could see it: two subtrees are built, one is dropped,
- * and the DOM that survives is the DOM one invocation would have produced. The
- * only trace was the per-fixture template-clone count, which is why
- * `ownership-census.ts` declares that number rather than deriving it.
+ * A runtime that reads `props.children` at several syntactic sites builds a
+ * lazy child twice and discards one copy. Nothing DOM-shaped can see it: two
+ * subtrees are built, one is dropped, and the DOM that survives is the DOM one
+ * invocation would have produced. The ownership census snapshots the
+ * per-fixture template-clone count for the same reason.
  *
  * This file states it directly, and at two grades:
  *
@@ -92,7 +91,7 @@ const totalInvocations = [...sessions.values()].reduce(
   0,
 );
 
-describe("L4 — C7, single evaluation", () => {
+describe("C7, single evaluation", () => {
   it("every consumer in the rule has a fixture that drives it", () => {
     const missing = Object.entries(CONSUMERS)
       .filter(([, fixture]) => !L4.includes(fixture))

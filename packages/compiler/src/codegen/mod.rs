@@ -156,8 +156,7 @@ pub enum Helper {
     // ── two more names that exist in BOTH halves ──────────────────────────
     /// `_$reveal($s, order, collapsed, body)` — reveal ORDERING, which is a
     /// provide scope rather than a range (O1 lists `provide` separately). Not
-    /// one of the four primitives and never was; what M9 removed is the
-    /// component around it.
+    /// one of the four primitives, and no component wraps it.
     Reveal = 16,
     /// `_$dynamic(source)` — Solid 2.0's factory, which the AUTHOR calls. The
     /// server backend points that call here, at the string half of the same

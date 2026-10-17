@@ -7,37 +7,18 @@
  * anchors P5 chose, the template bytes P7 wrote, the ref plan P6 addressed, the
  * patch program in program order — so "the compiler knows more than the
  * reference" is structurally impossible, and there is no O4-style divergence to
- * buy back with per-fixture slack. The retired `createElement` oracle needed 12
- * `wins` and 16 `goesLive`; this one has no exemption machinery at all, and the
+ * buy back with per-fixture slack. It has no exemption machinery at all, and the
  * day it needs a row the design has gone wrong and the row is the evidence.
  *
- * ## The one tension worth stating, and its answer
+ * ## Why a runtime defect cannot show up here as a divergence
  *
- * There are 29 `VIOLATED` rules. `Interp` is new code, so the
- * question is whether it implements those rules AS SPECIFIED (and disagrees
- * with the runtime on all 29) or AS IMPLEMENTED (and reproduces the bugs).
- *
- * The question dissolves once you ask WHOSE defect each rule names. All 29 are
- * defects of the RUNTIME — of ownership, of the calling convention, of context,
- * of error routing, of async, of hydration. None of them is a defect of the
- * lowering. `Interp` reaches the DOM through the same four ABI primitives
- * the emitted module reaches it through — `template`, `insert`,
- * `setProp`, `bindEffect` — because those are the contract both backends are
- * written against, not the thing under test. A rule the runtime violates is
- * therefore violated identically on this path, by construction, with no code
- * here that knows anything about it. That is what "M1 changes no semantics"
- * means for the reference backend, it is why the differential below is green
- * with no exemptions, and it is why this file registers nothing in
- * `known-failures.ts`: there is no claim that fails here for a reason of its
- * own. The rules turn green when M2–M9 change the runtime and the calling
- * convention, on both backends at once.
- *
- * The two rules in the 29 that ARE compiler-side — B1 (`class`/`style`/`ref`
- * knock an element off the template path) and B3 (`ref` is still a prop) — are
- * P2 `classify` exclusions, so P1 refuses the element and the subtree goes
- * through `createElement` here for exactly the reason and by exactly the route
- * it does on the DOM backend. `set_class` / `set_style` / `set_ref` answering
- * `None` is that, written down once per op.
+ * `Interp` reaches the DOM through the same four ABI primitives the emitted
+ * module reaches it through (`template`, `insert`, `setProp`, `bindEffect`),
+ * because those are the contract both backends are written against, not the
+ * thing under test. A rule the runtime violates is therefore violated
+ * identically on this path, by construction, with no code here that knows
+ * anything about it. That is why the differential below is green with no
+ * exemptions: what it can see is a lowering defect, never a runtime one.
  */
 
 import { describe, expect, it } from "bun:test";
@@ -168,7 +149,7 @@ describe("Interp is a build, not a debug mode", () => {
 
 /**
  * One golden, whitespace-collapsed. Not a snapshot: the serialised form is the
- * artefact this milestone adds, and it should be readable in a review diff
+ * artefact this backend reads, and it should be readable in a review diff
  * rather than parked in a file nobody opens.
  */
 it("serialises a unit as [clone, refs, ops] with its expressions beside it", () => {
@@ -187,7 +168,7 @@ it("serialises a unit as [clone, refs, ops] with its expressions beside it", () 
 });
 
 // ---------------------------------------------------------------------------
-// L2 — the differential
+// the differential
 // ---------------------------------------------------------------------------
 
 /**
@@ -223,7 +204,7 @@ function divergences(reference: RenderResult, subject: RenderResult): string[] {
   return out;
 }
 
-describe("L2 — the Interp differential over the corpus", () => {
+describe("the Interp differential over the corpus", () => {
   for (const name of listFixtures()) {
     it(`${name} renders identically through the interpreter`, async () => {
       const compiled = await drive(name);
@@ -243,7 +224,7 @@ describe("L2 — the Interp differential over the corpus", () => {
  * reason `optimisation.test.ts` gives: elision and fusion are the things `-O0`
  * turns off, and demanding they agree is demanding they do nothing.
  */
-describe("L3 — the -O0/-Ox differential through the interpreter", () => {
+describe("the -O0/-Ox differential through the interpreter", () => {
   for (const name of listFixtures()) {
     it(`${name} renders identically at both levels`, async () => {
       const optimised = await renderViaInterp(name);
@@ -266,13 +247,13 @@ describe("L3 — the -O0/-Ox differential through the interpreter", () => {
 });
 
 /**
- * L2b, through the third backend. The ownership trace is keyed on `template()`,
+ * The ownership trace, through the third backend. It is keyed on `template()`,
  * which this path calls through the same ABI primitive, so the census must come
  * out identical: a reference backend that quietly fixed an ownership defect
  * would be a reference backend that disagrees with the thing it is a reference
  * for, and one that introduced a new one is a bug. Both are this assertion.
  */
-describe("L2b — the ownership trace is unchanged by the backend", () => {
+describe("the ownership trace is unchanged by the backend", () => {
   const digest = (findings: ReadonlyArray<{ rule: string; kind: string }>): string[] =>
     findings.map((finding) => `${finding.rule}:${finding.kind}`).sort();
 
@@ -295,16 +276,14 @@ describe("L2b — the ownership trace is unchanged by the backend", () => {
 });
 
 /**
- * L1, through the reference backend. This file's header argues that all 29
- * `VIOLATED` rules are defects of the RUNTIME and are therefore violated
- * identically on this path, by construction. `fixtures/semantics/` is the only
- * corpus that executes those rules as claims, and it is out of `listFixtures()`'s
- * reach — so until now the argument was prose. The dangerous direction is the
- * one that looks like good news: a registered known failure going GREEN through
- * the reference backend would mean the reference disagrees with the build it is
- * a reference for.
+ * The semantics claims, through the reference backend. This file's header
+ * argues that a runtime defect is reproduced identically on this path, by
+ * construction. `fixtures/semantics/` is the only corpus that executes the
+ * rules as claims, and it is out of `listFixtures()`'s reach, so this is where
+ * the argument is checked rather than stated. A verdict that differs in either
+ * direction means the reference disagrees with the build it is a reference for.
  */
-describe("L1 — the conformance corpus reaches the same verdict through the interpreter", () => {
+describe("the semantics claims reach the same verdict through the interpreter", () => {
   const shape = (run: SemanticRun): string[] =>
     run.outcomes.map((o) => `${o.claim} :: ${o.rule} :: ${o.failure ?? "HELD"}`);
 
@@ -321,7 +300,7 @@ describe("L1 — the conformance corpus reaches the same verdict through the int
 });
 
 // ---------------------------------------------------------------------------
-// L6 — would this suite notice a wrong interpreter?
+// would this suite notice a wrong interpreter?
 // ---------------------------------------------------------------------------
 
 /**
@@ -366,8 +345,8 @@ const demoteLive = mutator(
 /**
  * Mutants that survive because they are EQUIVALENT, named exactly — a set, not
  * a floor, so a new survivor fails the suite and a survivor that starts dying
- * fails it too. It is empty, and the two fixtures that used to be in it are
- * why the channel list in `divergences` is as long as it is: in
+ * fails it too. It is empty, and two fixtures are why the channel list in
+ * `divergences` is as long as it is: in
  * `text-hole-fused` and `hygiene-shifted-uids` the hole's anchor is a `<!---->`
  * immediately followed by a text node, so "insert before the anchor" and
  * "insert before the node after it" produce byte-identical MARKUP and the

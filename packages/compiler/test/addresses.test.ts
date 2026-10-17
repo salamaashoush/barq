@@ -73,7 +73,7 @@ describe("compile-time addresses", () => {
   });
 
   it("the two backends agree at -O0 as well as at -Ox", () => {
-    // The agreement is the property, and it has to hold on the axis L3 uses.
+    // The agreement is the property, and it has to hold on the axis the -O0/-Ox differential uses.
     // Checking only the default level would leave the two backends free to
     // disagree in exactly the configuration the differential runs them in.
     const moved: string[] = [];

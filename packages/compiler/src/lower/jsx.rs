@@ -38,10 +38,9 @@ pub fn attribute_name<'a>(name: &JSXAttributeName<'a>, allocator: &'a Allocator)
 /// so `title="a &quot; b"` would hand the runtime the six characters `&quot;`
 /// and `setAttribute` would put them in the document verbatim.
 ///
-/// Found by M9: retiring the `createElement` oracle re-pointed `ssr.test.ts`'s
-/// reshaped-probe comparison at the DOM backend, and the DOM backend was the
-/// side that had never been read. `element(scope, tag, props)` and a component's
-/// props both arrive here, and both were double-escaping.
+/// `element(scope, tag, props)` and a component's props both arrive here, and
+/// both double-escaped until `ssr.test.ts`'s reshaped-probe comparison was
+/// pointed at the DOM backend.
 pub fn attribute_expression<'a>(
     value: JSXAttributeValue<'a>,
     ast: &AstBuilder<'a>,

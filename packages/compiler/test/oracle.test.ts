@@ -19,40 +19,24 @@ import {
 import { countAnchors, normalizeDom } from "./normalize.ts";
 
 /**
- * THE ORACLE, after M9 removed its reference implementation.
+ * THE ORACLE, with no reference implementation.
  *
- * the oracle design retires the un-compiled `createElement` path as an oracle on
- * three grounds, the first of which is decisive: both paths rendered a blank
- * page for `<Provider><Child/></Provider>`, so the harness was green on the very
- * bug that prompted the redesign. A second implementation that shares your
- * defect is worse than no oracle, because it certifies the defect.
+ * A differential against an un-compiled `createElement` path certifies every
+ * defect the two share: both render a blank page for
+ * `<Provider><Child/></Provider>`. A second implementation that shares your
+ * defect is worse than no oracle, so each channel is graded without one:
  *
- * What that leaves, and where each piece went:
- *
- *  - RENDERED DOM was a differential against the reference. It is now the
- *    per-fixture GOLDEN below plus the `-O0`/`-Ox` differential in
- *    `optimisation.test.ts` — the settled answer for an optimising compiler is
- *    your own compiler with the optimisations off.
- *  - EFFECT COUNTS were an upper bound against the reference's count. They are
- *    now absolute, hand-written per fixture, in `effect-counts.ts`.
- *  - NODE IDENTITY was a differential. It is now metamorphic and unconditional
- *    in `metamorphic.ts`; the differential's per-frame `if (html !== html)
- *    continue` guard — a channel that switched itself off exactly where the
- *    frames disagreed — is gone with it.
- *  - MARKER LAYOUT and the ATTRIBUTE PARTITION never needed a reference: both
- *    sides come off the emitted module and the clones it produced. They stay,
- *    as `harness.ts auditCompiled`.
- *  - The corruption self-checks stay, and they are the point of the mutation layer —
- *    "would my suite notice a wrong compiler change?". Their reference is now
- *    the CLEAN compiled render of the same fixture (`compareToClean`), which is
- *    not a second implementation and cannot share an implementation's defect.
- *
- * `wins` and `goesLive` are gone from the corpus with the reference that made
- * them necessary. Both were exemption machinery: a `win` bought one frame out
- * of a DOM comparison the reference could not pass, and a `goesLive` entry
- * bought one effect out of a bound the reference set. Neither has anything left
- * to buy out of — the golden records what the compiled path renders and the
- * table records how many effects it creates.
+ *  - RENDERED DOM: the per-fixture GOLDEN below plus the `-O0`/`-Ox`
+ *    differential in `optimisation.test.ts`; the settled answer for an
+ *    optimising compiler is your own compiler with the optimisations off.
+ *  - EFFECT COUNTS: absolute, snapshotted per fixture, in
+ *    `effect-counts.test.ts`.
+ *  - NODE IDENTITY: metamorphic and unconditional, in `metamorphic.ts`.
+ *  - MARKER LAYOUT and the ATTRIBUTE PARTITION: both sides come off the
+ *    emitted module and the clones it produced, in `harness.ts auditCompiled`.
+ *  - The corruption self-checks answer "would my suite notice a wrong compiler
+ *    change?". Their reference is the CLEAN compiled render of the same fixture
+ *    (`compareToClean`), which cannot share an implementation's defect.
  */
 
 /**
@@ -321,7 +305,7 @@ describe("compiled render integrity", () => {
 
   it("the reactivity tracer is intercepting effect creation", async () => {
     // Without this every effect channel goes inert the moment mock.module stops
-    // resolving signals.ts, and `effect-counts.ts` becomes a table of zeroes
+    // resolving signals.ts, and `effect-counts.test.ts` snapshots a table of zeroes
     // that agrees with itself.
     let tracked = 0;
     for (const name of fixtures) {
@@ -403,7 +387,7 @@ describe("marker channel", () => {
    * `channels.markers` is the same walk with every anchor kept in place and no
    * text fused across one, snapshotted per fixture.
    *
-   * This is the behavioural test target #9 (marker elision, M4) does not
+   * This is the behavioural test target #9 (marker elision) does not
    * otherwise have. Every anchor elision removes shows up as a line in this
    * snapshot's diff, and an anchor removed where something still follows the
    * hole shows up as a `bun test` failure on the DOM golden above.
@@ -455,7 +439,7 @@ describe("node-identity self-check", () => {
   // corrupted build shows up on this channel and on no other.
 
   it("catches a control-flow body handed over as a node instead of as a thunk", async () => {
-    // The M5 miscompile, exactly: unwrapping the author's `() => _tmpl$N()`
+    // A real miscompile, exactly: unwrapping the author's `() => _tmpl$N()`
     // evaluates the body once at call time, so `branch` re-inserts the SAME node
     // on every toggle where the clean build calls the Block again. The fixture
     // toggles off and back on, so the clean build really does build two.
@@ -701,7 +685,7 @@ describe("template parse conformance", () => {
     const cases: Array<[string, string]> = [
       ["<table>text</table>", "<table>"],
       ["<div><body>b</body></div>", "<body"],
-      // A raw-text element with a hole in it KEEPS its template since M9 — what
+      // A raw-text element with a hole in it KEEPS its template — what
       // it may not do is bake anything into it, because a `<!---->` there is
       // text and a literal `</style` closes the element. So the forbidden shape
       // is the CONTENT, not the tag.
@@ -877,7 +861,7 @@ describe("harness self-check", () => {
    * path creating MORE effects than the reference, so the fixture had to buy
    * the difference back with a declaration. Between two builds of one fixture
    * there is nothing to buy: the corruption creates one effect the clean build
-   * does not, the equality reports it, and `effect-counts.ts` carries the
+   * does not, the equality reports it, and `effect-counts.test.ts` carries the
    * absolute number for the clean build.
    */
   it("a hole that goes live costs one effect, re-running once per frame", async () => {

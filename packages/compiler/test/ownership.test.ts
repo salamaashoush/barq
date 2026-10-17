@@ -17,15 +17,14 @@ const GATE_FIXTURE = "own-provider-direct";
 const WRAPPER_GATE_FIXTURE = "own-provider-wrapper";
 
 /**
- * Layer L2b of the oracle — the oracle design, and the half of M0 that has no
- * counterpart in any other project surveyed.
+ * The ownership channel, which no other project surveyed has a counterpart to.
  *
  * The question every other suite in this package asks is "do two executions
- * agree". For the defect that prompted the redesign they agree perfectly: the
- * compiled path and the `createElement` path both build a provider's child at
- * the call site, both render the same markup, and the oracle certified the bug
- * for seven milestones. A reference implementation that shares your defect is
- * worse than none, because it issues a passing grade.
+ * agree". For a provider's child built at the call site they agree perfectly:
+ * the compiled path and a `createElement` path both build it there and render
+ * the same markup, so a differential oracle certifies the bug. A reference
+ * implementation that shares your defect is worse than none, because it
+ * issues a passing grade.
  *
  * This suite asks a different question. The compiler already knew, at
  * compile time, which constructs own which positions — it is emitting the
@@ -320,23 +319,23 @@ describe("the trace costs nothing when it is off", () => {
 });
 
 // ---------------------------------------------------------------------------
-// mutation self-checks — L6 discipline, applied to this channel
+// mutation self-checks, applied to this channel
 // ---------------------------------------------------------------------------
 
 /**
  * `oracle.test.ts`'s corruption self-checks are the only mechanism in the
  * twelve-project survey that asks "would my suite notice a wrong change".
- * The same question, asked of L2b: each mutation below reintroduces or
+ * The same question, asked of the ownership channel: each mutation below reintroduces or
  * fabricates an ownership defect, and the channel must report it. A self-check
  * that stops failing means the assertion above it has become decoration.
  */
 describe("self-check: the assertion would notice", () => {
   it("catches the Provider bug being reintroduced into the clean control", async () => {
-    // M3 made this unrepresentable in the SOURCE: `<P><C/></P>` and
-    // `<P>{() => <C/>}</P>` lower to the same Block, so unwrapping the thunk —
-    // the mutation this self-check used at M0 — now changes nothing at all.
-    // That is the claim holding, and it is also this assertion's problem:
-    // a mutation that no longer mutates makes the check decoration.
+    // This is unrepresentable in the SOURCE: `<P><C/></P>` and
+    // `<P>{() => <C/>}</P>` lower to the same Block, so unwrapping the thunk
+    // changes nothing at all. That is the claim holding, and it is also this
+    // assertion's problem: a mutation that does not mutate makes the check
+    // decoration.
     //
     // So the defect is written where it can still be written, in the emitted
     // text: turn `children: () => Label({})` back into an ARGUMENT.
@@ -364,12 +363,12 @@ describe("self-check: the assertion would notice", () => {
   });
 
   it("catches a body hoisted out of the branch that owns it", async () => {
-    // Same reasoning as above: the source-level thunk is no longer the thing
-    // that decides, so the hoist is written into the emitted module.
+    // Same reasoning as above: the source-level thunk is not the thing that
+    // decides, so the hoist is written into the emitted module.
     //
-    // Since M4b the body is not a `children` PROP either — the construct is
-    // gone and what stands here is `_$boundary(parent, anchor, kind, fallback,
-    // body)`, whose body argument is the Block. Building it at the call site
+    // The body is not a `children` PROP either: what stands here is
+    // `_$boundary(parent, anchor, kind, fallback, body)`, whose body argument
+    // is the Block. Building it at the call site
     // instead is the same mutation one syntax later.
     const clean = ownershipSource("own-nested-scopes-dispose");
     let hit = 0;

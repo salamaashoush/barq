@@ -15,9 +15,9 @@
  *
  *   fixtures/            131  differential, interp, ssr, hydration, addresses,
  *                             leaks, oracle, optimality — all of them
- *   fixtures/semantics/   26  L1 only. Compiled for the DOM, at -Ox, and never
+ *   fixtures/semantics/   26  semantics claims only. Compiled for the DOM, at -Ox, and never
  *                             once through the string backend or the reference
- *   fixtures/ownership/    6  L2b only, DOM only
+ *   fixtures/ownership/    6  ownership trace only, DOM only
  *   fixtures/l4/           7  the leak and metamorphic sessions, DOM only
  *   fixtures/browser-only/ 1  the Chrome differential, DOM only
  *

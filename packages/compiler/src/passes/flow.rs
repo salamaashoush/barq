@@ -20,11 +20,11 @@
 //! | `Errored` | `boundary("error")` | the collector's |
 //! | `Portal` | `portal` | the mount |
 //!
-//! `Reveal` lowers too, since M9. It is a `reveal` call rather than a region
+//! `Reveal` lowers too. It is a `reveal` call rather than a region
 //! row, because it creates a PROVIDE scope and not a range.
 //!
 //! There are nine constructs, not thirteen: `Suspense`, `Await` and
-//! `ErrorBoundary` went at M10 because Solid 2.0 ships neither, and each was a
+//! `ErrorBoundary` are not supported because Solid 2.0 ships none of them, and each was a
 //! spelling of something here — `Loading`, a `Loading` around an `Errored`, and
 //! `Errored` with the error by value. `Dynamic` went because Solid 2.0
 //! deprecates it for the `dynamic` factory, which is a call the author writes
@@ -138,8 +138,7 @@ pub(super) fn admits_reveal<'a>(shaper: &Shaper<'a, '_>, element: &JSXElement<'a
 
 /// Whether a SPREAD may carry this construct's props.
 ///
-/// M9 recorded the refusal as one gap; it is two, and only one of them is about
-/// the spread.
+/// The refusal is two gaps, and only one of them is about the spread.
 ///
 /// For `For` there was never a gap at all: `keyOf` is already a runtime argument
 /// `each` dispatches on, `mapArray` decides what a row's `item` and `index` are,
@@ -931,8 +930,8 @@ fn boundary<'a>(
     region.body = body;
     // The error reaches the fallback as an ACCESSOR, which is `Errored`'s
     // signature and Solid 2.0's. `ErrorBoundary` was the same boundary with the
-    // error handed over by value, and `unwrap_error` was that one wrapper; both
-    // went at M10 with the construct.
+    // error handed over by value, and neither it nor its by-value wrapper is
+    // supported.
     region.fallback = fallback;
     region.on = on;
     region

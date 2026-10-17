@@ -1,31 +1,20 @@
 /**
- * The node-identity channel, regraded METAMORPHIC.
+ * The node-identity channel, graded METAMORPHIC.
  *
- * ## What was wrong with the differential grading
+ * ## Why not a differential
  *
- * Until M9 `compareToOracle` compared the compiled render's surviving-node
- * vector against the `createElement` render's, and it did so under a guard:
+ * A differential compares the compiled render's surviving-node vector against
+ * a second implementation's, and it has two holes rather than compromises.
  *
- * ```ts
- * if (oracle.channels[i].html !== compiled.channels[i].html) continue
- * ```
+ *  1. **Guarded on markup agreement, the channel switches ITSELF off.** Exactly
+ *     on the frames where the two paths disagree, the frames a reviewer would
+ *     most want an identity answer for, there is no answer at all, and the
+ *     suite is green because the check did not run.
+ *  2. **The expectation is whatever the reference incidentally kept.** A second
+ *     implementation is not a specification of node survival; it has its own
+ *     reuse behaviour, and a rebuild both paths perform is certified, not caught.
  *
- * Two things follow, and both are holes rather than compromises.
- *
- *  1. **The premise is a runtime observation, so the channel switches ITSELF
- *     off.** Exactly on the frames where the two paths disagree — the frames a
- *     reviewer would most want an identity answer for — there is no answer at
- *     all, and the suite is green because the check did not run.
- *  2. **The expectation is whatever the reference incidentally kept.** The
- *     `createElement` oracle is not a specification of node survival; it is one
- *     more implementation, with its own reuse behaviour. A rebuild both paths
- *     perform is certified, not caught.
- *
- * That reference is retired, which settles (2) by removing it. This file
- * is what (1) needed either way, and it predates the retirement: an
- * unconditional property is not something a better reference could have given.
- *
- * ## What replaces it
+ * ## What it does instead
  *
  * A metamorphic property compares ONE implementation against ITSELF under a
  * transform of the input. There is no second implementation, so there is nothing
@@ -57,7 +46,7 @@
  * that is a fact about the fixture, not about the run. Glimmer has the same shape:
  * `assertStableRerender()` is written at a point in a test where the author knows
  * the arguments did not change. So `fixtures/l4/` declares it, per step, TOTALLY —
- * every step of every L4 fixture carries exactly one class, and an unclassified
+ * every step of every session fixture carries exactly one class, and an unclassified
  * step is a failure. That is grading, not exemption: a declaration makes the
  * assertion STRONGER and stranger to satisfy, where an exemption removes one.
  *
@@ -381,7 +370,7 @@ function mm3(session: Session, report: MetamorphicReport): void {
 /**
  * MM4 — the declared classes, over `fixtures/l4/`.
  *
- * Every step of every L4 fixture carries exactly one class, checked in both
+ * Every step of every session fixture carries exactly one class, checked in both
  * directions. `metamorphic.test.ts` asserts the totality separately, so a
  * fixture that gained a step and not a class fails as an unclassified step
  * rather than as a silently unchecked one.
@@ -488,7 +477,7 @@ function mm4(
     if (frame.kind === "replay") {
       // The replay of a step is an unchanged input by construction, whatever the
       // step's own class is: this is `assertStableRerender` proper, and it is
-      // where the L4 corpus buys the identity half MM2 cannot assert generically.
+      // where the session corpus buys the identity half MM2 cannot assert generically.
       report.checks["MM4-declared"]++;
       const lost = missing(previous.identity, frame.identity);
       const fresh = added(previous.identity, frame.identity);
@@ -512,7 +501,7 @@ function mm4(
           frame: frame.label,
           message:
             `re-applying a step preserved no node: ${lost.length} destroyed, ${fresh.length} built. ` +
-            `An L4 fixture's steps are written to be idempotent, so this is a rebuild on an ` +
+            `A session fixture's steps are written to be idempotent, so this is a rebuild on an ` +
             `unchanged input (${declaration.why})`,
           before: previous.identity.join(","),
           after: frame.identity.join(","),

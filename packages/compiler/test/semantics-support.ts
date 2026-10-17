@@ -1,5 +1,5 @@
 /**
- * Layer L1 of the oracle: absolute expectations, taken from the rule set.
+ * The semantics channel: absolute expectations, taken from the rule set.
  *
  * The differential harness (`oracle.test.ts`) cannot see any of the rules
  * pinned through this channel. It asks "do the compiled path and the
@@ -45,7 +45,7 @@ export interface Kit {
    * that surfaces on the flush are both failures the claim wants to *report*,
    * not failures of the claim.
    *
-   * `body` is a BLOCK. M3's `scope` pass rewrites any function containing JSX
+   * `body` is a BLOCK. The `scope` pass rewrites any function containing JSX
    * in value position to take the scope as its first parameter, and a claim's
    * mount helper is one of those, so the runner has to hand it a scope value.
    * It hands `null` — the same value the compiler emits for a module-level

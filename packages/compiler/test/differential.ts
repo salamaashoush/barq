@@ -1,5 +1,5 @@
 /**
- * L3, the machinery.
+ * The -O0/-Ox differential's machinery.
  *
  * The reference for an optimising compiler is the same compiler with the
  * optimisations off. `test/optimisation.test.ts` drives that over the fixture
@@ -13,12 +13,12 @@
  *  1. `renderIn` — one render entry point taking a MODE, so `-O0`, `-Ox` and
  *     `interp` are three values of one argument rather than three code paths.
  *  2. `interpStatus` — detected, never declared, on `ssr.ts`'s pattern. There is
- *     no constant to flip: the interp half of L3 goes live by itself on the
+ *     no constant to flip: the interp half of the differential goes live by itself on the
  *     first build where the reference backend exists, and while it does not, the
  *     suite says so out loud instead of sitting asleep behind a boolean. The
  *     detection is POSITIVE — an unknown napi option is silently ignored, so a
  *     probe that merely compiled would report a DOM build as an interpreter.
- *  3. `compareRenders` — the channel set L3 compares, in one place, so the
+ *  3. `compareRenders` — the channel set the differential compares, in one place, so the
  *     generator, the mutator and any later mode all diff the same things.
  */
 
@@ -35,7 +35,7 @@ import {
  * same ABI, same props model, same ownership model, every optimisation off.
  * `interp` is the reference backend over the same analysed IR.
  *
- * **Why the string backend is not a fourth mode.** L3's channels are read off a
+ * **Why the string backend is not a fourth mode.** The differential's channels are read off a
  * rendered DOM and off a driven interaction — nodes, attributes, text, effect
  * counts across frames. The string backend produces bytes and no interaction at
  * all, so every one of those channels would have to be replaced rather than
@@ -44,7 +44,7 @@ import {
  * fits its output: the dual-render conformance suite in `ssr.test.ts` compares
  * all 130 fixtures' string output against `renderToString` EXACTLY, and
  * `hydration.test.ts` compares the wire against a cold DOM render of the same
- * fixture — which is the string-against-DOM diff L3 would otherwise be asked
+ * fixture — which is the string-against-DOM diff this axis would otherwise be asked
  * for. `ssr-O0` against `ssr-Ox` is checkable on bytes alone, so it is
  * asked directly rather than through this axis: `ssr.test.ts`'s "the string
  * backend at -O0 against -Ox" compares all 130 fixtures' markup byte for byte.
@@ -60,7 +60,7 @@ export const OPTIONS: Record<Mode, Record<string, unknown>> = {
 export interface InterpStatus {
   /**
    * `live` — the mode runs. `absent` — this build has no such backend, which is
-   * a fact about the milestone. `broken` — the backend is there and does not
+   * a fact about the build. `broken` — the backend is there and does not
    * work, which is a BUG and must never be reported as absence.
    */
   state: "live" | "absent" | "broken";
@@ -81,7 +81,7 @@ const INTERP_PROBE =
  * flip. Two-valued detection has a failure mode of its own: a compiler mutant that
  * offered statement splicing to the non-DOM backends made the SSR compile PANIC
  * on 106 of the 117 fixtures and made `interp: true` emit ordinary DOM code —
- * and the whole L3 suite went GREEN, because every probe failed, every mode was
+ * and the whole differential suite went GREEN, because every probe failed, every mode was
  * classified "not landed", and every claim about those modes was skipped. A
  * detector that cannot distinguish "not built yet" from "built and broken" is
  * fail-open: the worse the compiler gets, the quieter the suite becomes.
@@ -270,7 +270,7 @@ export function oneSourceOrderExplainsBoth(a: string[], b: string[]): boolean {
 }
 
 /**
- * The channels L3 compares, in one place.
+ * The channels the differential compares, in one place.
  *
  * `html`, `frames` and `eventFrames` are the rendered DOM across every frame.
  * `attributes` carries the order the DOM reported, which `normalize.ts` rule 2
@@ -334,7 +334,7 @@ export function compareRenders(
 
 /**
  * One source, every live mode, each diffed against the REFERENCE — which is
- * `dom-O0` and not `dom-Ox`. That is the whole of L3's framing: the optimised
+ * `dom-O0` and not `dom-Ox`. That is the whole of the differential's framing: the optimised
  * build is the subject, the unoptimised build of the same compiler is what it
  * is judged against. Returns the divergence messages; empty is green.
  */

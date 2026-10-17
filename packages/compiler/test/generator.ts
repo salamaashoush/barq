@@ -510,8 +510,8 @@ class Gen {
     // literal" from "this binding is a constant", and neither the corpus nor
     // this generator contained it: a `fold` that dropped `bind.rs`'s
     // `symbol_is_mutated` guard baked `"before"` into the template, moved the
-    // rendered DOM, and survived the entire L3 and Interp differential for want
-    // of one input. `fixtures/reassigned-binding.tsx` is the corpus half.
+    // rendered DOM, and survived the entire -O0/-Ox and Interp differentials
+    // for want of one input. `fixtures/reassigned-binding.tsx` is the corpus half.
     this.features.add("reassigned binding");
 
     const source = [

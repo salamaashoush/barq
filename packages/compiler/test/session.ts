@@ -1,8 +1,9 @@
 /**
- * The L4 session driver — one render window, every graded channel read off it.
+ * The session driver: one render window, every graded channel read off it.
  *
- * the grade table replaces near-total equality with GRADED properties, and
- * three of the grades want observations the L1/L2/L3 drivers never took: which
+ * The leak, metamorphic and single-evaluation channels grade properties rather
+ * than near-total equality, and they want observations the other drivers
+ * never take: which
  * nodes survived a transition, which scopes were still alive when the render was
  * disposed, and what was still registered against the outside world afterwards.
  * Taking them in three separate renders would mean three different renders being
@@ -621,7 +622,7 @@ export async function openSession(
 }
 
 // ---------------------------------------------------------------------------
-// the L4 corpus
+// the session corpus, `fixtures/l4/`
 // ---------------------------------------------------------------------------
 
 export function listL4Fixtures(): string[] {

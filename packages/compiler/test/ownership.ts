@@ -1,6 +1,6 @@
 /**
- * Layer L2b of the oracle — the ownership trace, checked against the
- * compiler's static ownership tree. the ownership channel.
+ * The ownership channel: the ownership trace, checked against the compiler's
+ * static ownership tree.
  *
  * The claim, per fixture:
  *
@@ -14,7 +14,7 @@
  * agree, and for the Provider defect they agree perfectly — both render a blank
  * page, so the oracle certified the bug. There is nothing for a second
  * implementation to be wrong about here. The compiler already knew the
- * ownership structure it was emitting; L2b makes it write that structure down
+ * ownership structure it was emitting; this channel makes it write that structure down
  * and then asks the runtime whether it kept to it.
  *
  * Two independent halves:
@@ -31,22 +31,23 @@
  *    an idempotent disposer three times records one event and is correctly
  *    silent; what it catches is the guard being deleted. And the O2 span check
  *    is about what a block BUILT, not about an ambient owner read at the moment
- *    of handover: comparing that read against itself is what the clause used to
- *    do, and no runtime state could falsify it.
+ *    of handover: comparing that read against itself is something no runtime
+ *    state could falsify.
  * 2. **The static comparison**: every template clone happened under a scope
  *    path the compiler lists for that template, under the root that was
  *    rendered.
  *
  * The second is the one that names the Provider bug. For
  * `<Ctx value={…}><Child/></Ctx>` the compiler says the
- * child's `<span>` occurs at `["root","provide"]` and only there; the runtime
- * clones it at `["root"]`, because `Child({})` is an argument and runs at the
- * call site. That is O2, reported as O2, from two artefacts that were produced
+ * child's `<span>` occurs at `["root","provide"]` and only there; a runtime
+ * that ran `Child({})` as an argument at the call site would clone it at
+ * `["root"]`. That is O2, reported as O2, from two artefacts that were produced
  * independently.
  *
  * **Honest limit, stated by the design that proposed the channel:** the trace
  * proves the tree, never the values. A compiler that gets every scope right and
- * every DOM write wrong passes L2b completely. L3 carries that weight.
+ * every DOM write wrong passes this channel completely. The -O0/-Ox
+ * differential carries that weight.
  */
 
 import { readdirSync, readFileSync } from "node:fs";
@@ -395,8 +396,7 @@ function within(runtime: RuntimeTree, scope: number, ancestor: number): boolean 
  * the scope a template instantiation actually happened under, observed
  * separately and later. O2 is the claim that each of those sits at the given
  * scope or below it. Comparing an ambient read against itself at the handover
- * instant — which is what this check used to do — cannot fail whatever the
- * runtime does, and a finding kind no runtime state can produce does not
+ * instant cannot fail whatever the runtime does, and a finding kind no runtime state can produce does not
  * belong in a channel's vocabulary.
  *
  * Only the innermost open span is checked: an inner `given` is a descendant of
@@ -650,9 +650,9 @@ export async function checkOwnership(
   /**
    * Mutate the EMITTED module before it runs.
    *
-   * M3 made the defect this channel exists for unrepresentable in the source:
-   * `<P><C/></P>` and `<P>{() => <C/>}</P>` lower to the same Block, so the
-   * source-level mutation that used to reintroduce it now changes nothing.
+   * The defect this channel exists for is unrepresentable in the source:
+   * `<P><C/></P>` and `<P>{() => <C/>}</P>` lower to the same Block, so a
+   * source-level mutation cannot reintroduce it.
    * The only level at which "children, already built" can still be written is
    * the emitted text, so that is where a self-check has to write it.
    */
@@ -773,11 +773,11 @@ function crash(fixture: string, phase: string, error: unknown): OwnershipRun {
 // ---------------------------------------------------------------------------
 
 /**
- * The L2b fixtures live in their own directory for the reason
+ * The ownership fixtures live in their own directory for the reason
  * `fixtures/semantics/` does: `oracle.test.ts` compares two implementations and
  * both are wrong on these, and `ssr.test.ts` asks for markup from a fixture
- * whose point is that it renders nothing. Keeping them out is what lets M0 add
- * fixtures without moving a single existing number.
+ * whose point is that it renders nothing. Keeping them out lets fixtures be
+ * added here without moving a single existing number.
  */
 export function listOwnershipFixtures(): string[] {
   return readdirSync(OWNERSHIP_DIR)

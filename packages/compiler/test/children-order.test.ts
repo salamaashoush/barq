@@ -7,9 +7,9 @@ import { census, compileText, host, reuse, shape, wire } from "./hydration.ts";
  * A component's children are an array, and each part of it that moves is a
  * hole of its own.
  *
- * The array used to be ONE hole. A change to any signal a child read re-ran
- * the whole of it, so `{count()}` beside `<Field />` built a second field on
- * every count: the input the user was typing into replaced by a new one.
+ * As ONE hole, a change to any signal a child read would re-run the whole of
+ * it, so `{count()}` beside `<Field />` would build a second field on every
+ * count: the input the user was typing into replaced by a new one.
  */
 describe("a child that moves leaves its siblings alone", () => {
   const SOURCE = `

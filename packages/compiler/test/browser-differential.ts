@@ -16,19 +16,18 @@
  * has no meaning in a browser — so this is the DOM half of the invariant, which
  * is exactly the half a fake DOM can lie about.
  *
- * ## The reference, and what replaced the old one
+ * ## No reference implementation
  *
- * This used to bundle the fixture's own source BESIDE the compiled module and
- * diff the two. That reference is retired, so the page now drives the compiled
- * module alone and returns what it observed. Two things replace the diff, and
- * neither needs a second implementation:
+ * The page drives the compiled module alone and returns what it observed. Two
+ * checks stand in for a diff against a second implementation, and neither
+ * needs one:
  *
  *  - the page keeps the channels that were always self-checks — marker layout
  *    against the anchors the clones baked in, and the attribute PARTITION —
  *    which are the two the real parser is needed for in the first place;
  *  - `compareRuns` below diffs a CORRUPTED run against the CLEAN one, in node.
- *    That is what every detector in `browser.test.ts` was actually measuring:
- *    the reference was never load-bearing there, the corruption was.
+ *    That is what every detector in `browser.test.ts` measures: the corruption
+ *    is load-bearing, not a reference.
  *
  * Cost: one Chrome launch and one bundle for the whole corpus, about three
  * seconds. It is not per-fixture, which is what makes it affordable in CI.

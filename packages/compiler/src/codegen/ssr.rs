@@ -12,11 +12,11 @@
 //! [`crate::codegen::backend::Backend`] over `Op`, which both implement and
 //! neither may leave a hole in.
 //!
-//! Since M6 they also share the CONTROL FLOW. The flow pass runs for both
-//! targets, `Op::Region` reaches both, and both expand it through one
+//! They also share the CONTROL FLOW. The flow pass runs for both targets,
+//! `Op::Region` reaches both, and both expand it through one
 //! `dom::region_call` — the string backend passing `(null, null)` where the DOM
-//! backend passes the pair its template walk computed. `uninlinable_flow` and
-//! the whole-module downgrade it drove are gone with that.
+//! backend passes the pair its template walk computed. No module is downgraded
+//! to the DOM backend.
 
 use oxc::allocator::{Box as ArenaBox, Vec as ArenaVec};
 use oxc::ast::ast::{
@@ -1566,7 +1566,7 @@ mod tests {
         assert!(dirty.contains("_$attr(\"readOnly\", r(), \"input\")"), "{dirty}");
 
         // A spread is the one place a NAME is runtime data, and it keeps
-        // `attr`'s `checkName` — the M6 fix against a hostile key.
+        // `attr`'s `checkName`, the guard against a hostile key.
         let spread = ssr("export const V = () => <p {...props} />;\n").code;
         assert!(spread.contains("_$spreadAttrs({ ...props }, \"p\")"), "{spread}");
         assert!(!spread.contains("_$attrLit"), "{spread}");
@@ -1634,8 +1634,7 @@ mod tests {
     /// has one: the component call survives and is rewritten to the adapter over
     /// the same four primitives.
     ///
-    /// The example used to be `For`, then `Show`. Both of those lower now: M10
-    /// admits a spread for most constructs. What is left is stated in
+    /// Most constructs admit a spread and lower. What is left is stated in
     /// `admits_spread` and none of it is about spreads: `Switch` needs literal
     /// `<Match>` arms it can read (`admits_arms`), which takes `Match` with it.
     #[test]
@@ -2014,12 +2013,9 @@ mod tests {
             }
         }
         assert!(compiled >= 60, "only {compiled} fixtures reached the string backend");
-        // ZERO, and this is the assertion M6 exists to make. It read
-        // `fell_back > 0` until this milestone — the corpus had to keep
-        // exercising the whole-module downgrade, because the downgrade was the
-        // only answer eight constructs had. There is no fallback path left to
-        // exercise, and a fixture that stopped reaching the string backend
-        // would be one that quietly got one back.
+        // ZERO. There is no whole-module fallback path, and a fixture that
+        // stopped reaching the string backend would be one that quietly got
+        // one back.
         assert_eq!(fell_back, 0, "a fixture did not reach the string backend");
     }
 }

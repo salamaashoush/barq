@@ -213,8 +213,7 @@ pub enum Flow {
     NoHydration,
 }
 
-// `Suspense`, `Await` and `ErrorBoundary` were here until M10 and are gone.
-// Solid 2.0's control-flow surface is nine constructs — `For`, `Repeat`,
+// `Suspense`, `Await` and `ErrorBoundary` are not constructs. Solid 2.0's control-flow surface is nine constructs — `For`, `Repeat`,
 // `Show`, `Switch`, `Match`, `Errored`, `Loading`, `Reveal` from `solid-js`,
 // plus `Portal` from `@solidjs/web` — read out of `solid-js@2.0.0-rc.0` rather
 // than out of its documentation. None of the three is in it, and all three
@@ -505,9 +504,8 @@ mod tests {
             Flow::Reveal,
             Flow::Portal,
         ];
-        // M6 deleted `inlinable_on_server`, the six/eight split it named, and
-        // the whole-module downgrade it drove. What replaced it is a TOTAL map
-        // from a construct to a string implementation, so the property worth
+        // The map from a construct to a string implementation is TOTAL, with
+        // no whole-module downgrade behind it, so the property worth
         // asserting is that the map has no hole: every construct resolves to a
         // helper, and a helper resolves to a name in `IMPORTED`.
         //

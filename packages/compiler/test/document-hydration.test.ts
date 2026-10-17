@@ -5,7 +5,7 @@ import { census, compileText, reuse, wire } from "./hydration.ts";
 /**
  * Hydrating the DOCUMENT, not a container.
  *
- * The L5 oracle mounts every fixture into a `<div>` (`hydration.ts`'s `host`),
+ * The hydration oracle mounts every fixture into a `<div>` (`hydration.ts`'s `host`),
  * which cannot reach this: `<html>`, `<head>` and `<body>` are exactly the tags
  * a `<template>` cannot hold, so the compiler emits them as `element()` calls
  * and they take a different path through the claim walk than everything the
