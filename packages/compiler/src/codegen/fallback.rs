@@ -1,14 +1,16 @@
 use oxc::allocator::{Box as ArenaBox, Vec as ArenaVec};
 use oxc::ast::ast::{
-    Argument, ArrayExpressionElement, Expression, IdentifierName, JSXAttributeItem, JSXChild,
-    JSXElement, JSXElementName, JSXFragment, JSXMemberExpression, JSXMemberExpressionObject,
-    ObjectProperty, ObjectPropertyKind, PropertyKey, PropertyKind, SpreadElement, StringLiteral,
+    Argument, ArrayExpressionElement, Expression, JSXAttributeItem, JSXChild, JSXElement,
+    JSXElementName, JSXFragment, JSXMemberExpression, JSXMemberExpressionObject, ObjectProperty,
+    ObjectPropertyKind, PropertyKind, SpreadElement,
 };
 use oxc::span::{GetSpan, SPAN};
 
 use super::{Emit, Helper};
 use crate::lower::entity;
-use crate::lower::jsx::{attribute_expression, attribute_name, expression_of, is_identifier_name};
+use crate::lower::jsx::{
+    attribute_expression, attribute_name, expression_of, object_property, property_key,
+};
 use crate::lower::text;
 
 /// The BUILT path — one element by tag name, for the intrinsic P1 refused.
@@ -85,7 +87,7 @@ impl<'a> Emit<'a, '_> {
         } else {
             value
         };
-        let property = self.property("children", value, span);
+        let property = object_property("children", value, span, &self.ast, self.allocator);
         match props {
             Expression::ObjectExpression(mut object) => {
                 object.properties.push(property);
@@ -205,7 +207,7 @@ impl<'a> Emit<'a, '_> {
                 JSXAttributeItem::Attribute(attribute) => {
                     let attribute = attribute.unbox();
                     let name = attribute_name(&attribute.name, self.allocator);
-                    let key = self.property_key(name, attribute.span);
+                    let key = property_key(name, attribute.span, &self.ast, self.allocator);
                     let value = match attribute.value {
                         None => Expression::new_boolean_literal(attribute.span, true, &self.ast),
                         Some(value) => attribute_expression(value, &self.ast, self.allocator),
@@ -228,42 +230,6 @@ impl<'a> Emit<'a, '_> {
         }
         let properties = ArenaVec::from_iter_in(properties, &self.allocator);
         Expression::new_object_expression(SPAN, properties, &self.ast)
-    }
-
-    fn property(
-        &self,
-        name: &'a str,
-        value: Expression<'a>,
-        span: oxc::span::Span,
-    ) -> ObjectPropertyKind<'a> {
-        let key = self.property_key(name, span);
-        ObjectPropertyKind::ObjectProperty(ArenaBox::new_in(
-            ObjectProperty::new(
-                span,
-                PropertyKind::Init,
-                key,
-                value,
-                false,
-                false,
-                false,
-                &self.ast,
-            ),
-            &self.allocator,
-        ))
-    }
-
-    fn property_key(&self, name: &'a str, span: oxc::span::Span) -> PropertyKey<'a> {
-        if is_identifier_name(name) {
-            PropertyKey::StaticIdentifier(ArenaBox::new_in(
-                IdentifierName::new(span, name, &self.ast),
-                &self.allocator,
-            ))
-        } else {
-            PropertyKey::StringLiteral(ArenaBox::new_in(
-                StringLiteral::new(span, name, None, &self.ast),
-                &self.allocator,
-            ))
-        }
     }
 
     fn child_arguments(

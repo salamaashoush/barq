@@ -1,10 +1,12 @@
 use std::borrow::Cow;
 
-use oxc::allocator::Allocator;
+use oxc::allocator::{Allocator, Box as ArenaBox};
 use oxc::ast::ast::{
-    Expression, JSXAttributeName, JSXAttributeValue, JSXElementName, JSXExpression,
+    Expression, IdentifierName, JSXAttributeName, JSXAttributeValue, JSXElementName, JSXExpression,
+    ObjectProperty, ObjectPropertyKind, PropertyKey, PropertyKind, StringLiteral,
 };
 use oxc::ast::builder::AstBuilder;
+use oxc::span::Span;
 
 use crate::lower::entity;
 
@@ -69,6 +71,39 @@ pub fn attribute_expression<'a>(
             expression_of(container.unbox().expression)
                 .unwrap_or_else(|| Expression::new_void_0(span, ast))
         }
+    }
+}
+
+pub fn object_property<'a>(
+    name: &'a str,
+    value: Expression<'a>,
+    span: Span,
+    ast: &AstBuilder<'a>,
+    allocator: &'a Allocator,
+) -> ObjectPropertyKind<'a> {
+    let key = property_key(name, span, ast, allocator);
+    ObjectPropertyKind::ObjectProperty(ArenaBox::new_in(
+        ObjectProperty::new(span, PropertyKind::Init, key, value, false, false, false, ast),
+        &allocator,
+    ))
+}
+
+pub fn property_key<'a>(
+    name: &'a str,
+    span: Span,
+    ast: &AstBuilder<'a>,
+    allocator: &'a Allocator,
+) -> PropertyKey<'a> {
+    if is_identifier_name(name) {
+        PropertyKey::StaticIdentifier(ArenaBox::new_in(
+            IdentifierName::new(span, name, ast),
+            &allocator,
+        ))
+    } else {
+        PropertyKey::StringLiteral(ArenaBox::new_in(
+            StringLiteral::new(span, name, None, ast),
+            &allocator,
+        ))
     }
 }
 

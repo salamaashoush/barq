@@ -3,8 +3,8 @@ use oxc::ast::ast::{
     Argument, ArrayExpressionElement, ArrowFunctionBody, BindingPattern, Expression,
     FormalParameter, FormalParameterKind, FormalParameters, IdentifierName, JSXAttributeItem,
     JSXAttributeValue, JSXChild, JSXElement, JSXElementName, JSXExpression, JSXFragment,
-    JSXMemberExpression, JSXMemberExpressionObject, NumberBase, ObjectProperty, ObjectPropertyKind,
-    PropertyKey, PropertyKind, SpreadElement, Statement, StringLiteral,
+    JSXMemberExpression, JSXMemberExpressionObject, NumberBase, ObjectPropertyKind, SpreadElement,
+    Statement,
 };
 use oxc::ast::builder::AstBuilder;
 use oxc::ast_visit::VisitMut;
@@ -21,7 +21,7 @@ use crate::ir::{
     Diag, Flow, HoistId, Hoisted, Keyed, Module, React, Region, Root, Site, SourceKind, Thunk, Uids,
 };
 use crate::lower::entity;
-use crate::lower::jsx::{attribute_expression, attribute_name, expression_of, is_identifier_name};
+use crate::lower::jsx::{attribute_expression, attribute_name, expression_of, object_property};
 use crate::lower::text;
 use crate::options::ResolvedOptions;
 
@@ -337,7 +337,7 @@ impl<'a> Shaper<'a, '_> {
                         self.block_into_cell_slot(symbol, name, at);
                     }
                     let cell = self.cell_at(value, at, Some(name));
-                    let property = self.property(name, cell, at);
+                    let property = object_property(name, cell, at, &self.ast, self.allocator);
                     let Source::Record(record) = &mut sources[last] else { unreachable!() };
                     record.push(property);
                 }
@@ -367,7 +367,7 @@ impl<'a> Shaper<'a, '_> {
                 } else {
                     self.cell_at(value, at, Some("children"))
                 };
-                Some(self.property("children", cell, at))
+                Some(object_property("children", cell, at, &self.ast, self.allocator))
             } else if live {
                 Some(self.discarded(value, at))
             } else {
@@ -383,7 +383,7 @@ impl<'a> Shaper<'a, '_> {
             && self.callback_at_runtime(flow, kid)
         {
             let kid = kids.into_iter().next().unwrap_or_else(|| unreachable!("one kid"));
-            let property = self.property("children", kid, span);
+            let property = object_property("children", kid, span, &self.ast, self.allocator);
             let last = sources.len() - 1;
             let Source::Record(record) = &mut sources[last] else { unreachable!() };
             record.push(property);
@@ -397,7 +397,7 @@ impl<'a> Shaper<'a, '_> {
                 self.block_into_cell_slot(symbol, "children", span);
             }
             let value = self.construction_slot(value, span, builds);
-            let property = self.property("children", value, span);
+            let property = object_property("children", value, span, &self.ast, self.allocator);
             let last = sources.len() - 1;
             let Source::Record(record) = &mut sources[last] else { unreachable!() };
             record.push(property);
@@ -1327,42 +1327,6 @@ impl<'a> Shaper<'a, '_> {
             SpreadElement::new(span, argument, &self.ast),
             &self.allocator,
         ))
-    }
-
-    pub(super) fn property(
-        &self,
-        name: &'a str,
-        value: Expression<'a>,
-        span: Span,
-    ) -> ObjectPropertyKind<'a> {
-        let key = self.property_key(name, span);
-        ObjectPropertyKind::ObjectProperty(ArenaBox::new_in(
-            ObjectProperty::new(
-                span,
-                PropertyKind::Init,
-                key,
-                value,
-                false,
-                false,
-                false,
-                &self.ast,
-            ),
-            &self.allocator,
-        ))
-    }
-
-    fn property_key(&self, name: &'a str, span: Span) -> PropertyKey<'a> {
-        if is_identifier_name(name) {
-            PropertyKey::StaticIdentifier(ArenaBox::new_in(
-                IdentifierName::new(span, name, &self.ast),
-                &self.allocator,
-            ))
-        } else {
-            PropertyKey::StringLiteral(ArenaBox::new_in(
-                StringLiteral::new(span, name, None, &self.ast),
-                &self.allocator,
-            ))
-        }
     }
 
     pub(super) fn children(&mut self, children: ArenaVec<'a, JSXChild<'a>>) -> Vec<Expression<'a>> {

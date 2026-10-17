@@ -65,7 +65,7 @@ use oxc::span::Span;
 use crate::analysis::symbol_of;
 use crate::codegen::Helper;
 use crate::ir::{Flow, NO_SCOPE, React, Region, RegionKind, STATIC_KEY, SourceKind};
-use crate::lower::jsx::{attribute_expression, attribute_name};
+use crate::lower::jsx::{attribute_expression, attribute_name, object_property};
 use crate::lower::text;
 
 use super::shape::{Shaper, Source};
@@ -541,7 +541,13 @@ fn parts<'a>(
                         .into_iter()
                         .map(|attr| {
                             let cell = shaper.cell_at(attr.value, attr.span, Some(attr.name));
-                            shaper.property(attr.name, cell, attr.span)
+                            object_property(
+                                attr.name,
+                                cell,
+                                attr.span,
+                                &shaper.ast,
+                                shaper.allocator,
+                            )
                         })
                         .collect(),
                 ));
