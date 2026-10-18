@@ -6,14 +6,13 @@
  * ```
  *
  * A registry item is a component's SOURCE plus what it needs: the npm packages
- * it imports and the other items it imports. `@barqjs/ui-cli` reads these and
+ * it imports and the other items it imports. `@barqjs/ui-cli` fetches these and
  * writes the files into a project, so a component that has been added is the
- * project's own code — which is shadcn's whole idea and the reason this package
- * ships as a library AND as a registry.
+ * project's own code, which is shadcn's whole idea.
  *
- * Both halves come from the same files. There is no second copy of a component
- * to drift: `registry/button.json` holds `src/ui/button.tsx` verbatim, and the
- * suite that tests the library is testing what `add` writes.
+ * There is no second copy of a component to drift: `registry/button.json` holds
+ * `src/ui/button.tsx` verbatim, and the suite that tests `src` is testing what
+ * `add` writes.
  *
  * ## What it works out for itself
  *
@@ -306,8 +305,13 @@ function main(): void {
     owner.set(source.path, source.name);
     shared.set(relative(site, source.from).replaceAll("\\", "/"), source.path);
   }
+  // Served beside the items under these names, so no item may take one.
+  const data = new Set(["index", "themes", "styles"]);
   const names = new Set<string>();
   for (const name of owner.values()) {
+    if (data.has(name) || name.startsWith("style-")) {
+      throw new Error(`"${name}" is a name the registry serves data under`);
+    }
     if (names.has(name)) throw new Error(`two registry items are named "${name}"`);
     names.add(name);
   }
@@ -356,6 +360,15 @@ function main(): void {
     };
   });
 
+  // What each file exports by name, so a page can show an import of the
+  // package's barrel as imports of the files a project holds.
+  const exportedBy = new Map<string, string[]>();
+  for (const [name, file] of exports) exportedBy.set(file, [...(exportedBy.get(file) ?? []), name]);
+  const exportsOf = (item: RegistryItem): { exports?: string[] } => {
+    const exported = item.files.flatMap((file) => exportedBy.get(file.path) ?? []);
+    return exported.length === 0 ? {} : { exports: exported.toSorted() };
+  };
+
   const out = join(root, "registry");
   rmSync(out, { recursive: true, force: true });
   mkdirSync(out, { recursive: true });
@@ -380,6 +393,7 @@ function main(): void {
           registryDependencies: item.registryDependencies,
           files: item.files.map((file) => file.path),
           ...(item.categories === undefined ? {} : { categories: item.categories }),
+          ...exportsOf(item),
         })),
       },
       null,
@@ -387,16 +401,22 @@ function main(): void {
     )}\n`,
   );
 
-  // The colour themes, as DATA beside the items.
-  //
-  // `barq-ui init` used to `import()` them out of this package's `dist`, which
-  // stopped existing when the package began publishing source: a compiled build
-  // is specific to one backend and one `hydratable`, so there is nothing for a
-  // CLI to import. A table of colours needs no compiling, and `registry/` is
-  // already the channel the CLI reads.
+  // The colour themes and the component styles, as data beside the items: the
+  // CLI writes the chosen theme as source and copies the chosen style whole.
   writeFileSync(join(out, "themes.json"), `${JSON.stringify(THEMES, null, 2)}\n`);
+  const styles = readdirSync(join(root, "styles"))
+    .filter((file) => file.endsWith(".css"))
+    .map((file) => file.replace(/\.css$/, ""))
+    .toSorted();
+  writeFileSync(join(out, "styles.json"), `${JSON.stringify(styles, null, 2)}\n`);
+  for (const name of styles) {
+    const css = readFileSync(join(root, "styles", `${name}.css`), "utf8");
+    writeFileSync(join(out, `style-${name}.json`), `${JSON.stringify({ name, css }, null, 2)}\n`);
+  }
 
-  process.stdout.write(`${built.length} items and ${THEMES.length} themes -> registry/\n`);
+  process.stdout.write(
+    `${built.length} items, ${THEMES.length} themes and ${styles.length} styles -> registry/\n`,
+  );
 }
 
 main();

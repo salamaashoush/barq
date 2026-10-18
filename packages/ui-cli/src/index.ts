@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * `barq-ui` — copy `@barqjs/ui` components into a project, and keep them in
+ * `barq-ui` — copy barq's components into a project, and keep them in
  * sync with the registry they came from.
  *
  * NO DEPENDENCIES. The argument parsing, the prompts, the diff and the schema
@@ -18,7 +18,7 @@
  * otherwise. Owning the code means the edit wins by default.
  */
 
-import { existsSync, readdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs";
+import { realpathSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { stdout } from "node:process";
 import { fileURLToPath } from "node:url";
@@ -28,12 +28,13 @@ import { CONFIG_FILE, findRoot, requireConfig, writeConfig } from "./config.ts";
 import { hashOf, placed, read, rewrite, targetOf, write } from "./files.ts";
 import { install, installCommand, installedPackages, packageManager } from "./project.ts";
 import {
-  localRegistry,
-  localStyles,
+  defaultRegistry,
+  REGISTRY_ENV,
   registriesFor,
   resolveItems,
   sourceFor,
   type Registries,
+  type Source,
 } from "./registry.ts";
 import {
   DEFAULT_PATHS,
@@ -62,7 +63,8 @@ Usage: barq-ui <command> [options]
   build <dir>          turn a directory of components into a registry
 
 A name is an item in the project's registry, or @scope/name for one of the
-registries ${CONFIG_FILE} lists.
+registries ${CONFIG_FILE} lists. Without a \`registry\` in ${CONFIG_FILE}, items
+come from the @barqjs/ui release this CLI belongs to; ${REGISTRY_ENV} replaces it.
 
 Options:
   -c, --cwd <dir>      where the project is. Defaults to here
@@ -282,76 +284,36 @@ function blank(answer: string): string | undefined {
   return answer === NONE ? undefined : answer;
 }
 
-/**
- * The styles the installed package actually ships, read rather than listed.
- *
- * A style added upstream appears here without this file changing, and one that
- * is missing from the install says so instead of writing a broken import.
- */
-function styles(cwd: string): Option[] {
-  const directory = localStyles(cwd);
-  if (directory === undefined) return [];
-  return readdirSync(directory)
-    .filter((file) => file.endsWith(".css"))
-    .map((file) => file.replace(/\.css$/, ""))
+/** The styles the registry serves, read rather than listed. */
+async function styles(source: Source): Promise<Option[]> {
+  const names = (await source.data("styles")) as string[];
+  return names
     .toSorted()
     .map((name) => ({ value: name, label: name[0]?.toUpperCase() + name.slice(1) }));
 }
 
 /**
- * The chosen style, copied into the project beside the theme.
- *
- * COPIED rather than imported from `node_modules`, for the reason the whole
- * tool exists: what it writes is yours, and a style is 180 KB of ordinary CSS
- * you may want to edit. A project pays for the one it picked.
+ * The chosen style, copied into the project beside the theme: what the tool
+ * writes is yours, and a style is ordinary CSS you may want to edit.
  */
-function writeStyle(root: string, config: Config, name: string, cwd: string): string {
-  const directory = localStyles(cwd);
-  if (directory === undefined) {
-    throw new Error(
-      "the component styles come from @barqjs/ui, and this install has none.\n" +
-        "Reinstall it, or leave `--style` off.",
-    );
-  }
-  const from = join(directory, `${name}.css`);
-  if (!existsSync(from)) {
-    throw new Error(
-      `no style named "${name}". Try one of: ${styles(cwd)
-        .map((each) => each.value)
-        .join(", ")}`,
-    );
-  }
+async function writeStyle(
+  root: string,
+  config: Config,
+  name: string,
+  source: Source,
+): Promise<string> {
+  const { css } = (await source.data(`style-${name}`)) as { css: string };
   const target = targetOf(config, root, {
     path: "theme/style.css",
     type: "registry:theme",
     content: "",
   });
-  writeFileSync(target, readFileSync(from, "utf8"));
+  writeFileSync(target, css);
   return target;
 }
 
-async function themes(cwd: string): Promise<ThemeDefinition[]> {
-  const directory = localRegistry(cwd);
-  if (directory !== undefined) {
-    // `@barqjs/ui` is installed, so its own table is the authority.
-    //
-    // Read as DATA, not imported as a module. That package publishes source
-    // rather than a build — a compiled component is specific to one backend and
-    // one `hydratable`, so there is nothing here to `import()` — and a table of
-    // colours never needed compiling anyway.
-    const file = join(directory, "themes.json");
-    if (existsSync(file)) {
-      return JSON.parse(readFileSync(file, "utf8")) as ThemeDefinition[];
-    }
-    throw new Error(
-      `the colour themes come from @barqjs/ui, and ${file} is missing.\n` +
-        "Reinstall it, or write the theme file by hand.",
-    );
-  }
-  throw new Error(
-    "the colour themes come from @barqjs/ui, which is not installed here.\n" +
-      "Install it, or write the theme file by hand.",
-  );
+async function themes(source: Source): Promise<ThemeDefinition[]> {
+  return (await source.data("themes")) as ThemeDefinition[];
 }
 
 // ---------------------------------------------------------------------------
@@ -361,7 +323,11 @@ async function themes(cwd: string): Promise<ThemeDefinition[]> {
 async function init(args: Args): Promise<void> {
   const prompt = ask(!args.yes);
   try {
-    const table = await themes(args.cwd);
+    const source = sourceFor(
+      parseConfig(args.registry === undefined ? {} : { registry: args.registry }),
+      args.cwd,
+    );
+    const table = await themes(source);
     const options = (kind: ThemeDefinition["kind"]): Option[] =>
       table
         .filter((theme) => theme.kind === kind)
@@ -372,7 +338,7 @@ async function init(args: Args): Promise<void> {
     // classic registry, transcribed; a style is one of eight SECOND opinions
     // over it, 180 KB each. Defaulting to one would install a file nobody asked
     // for and quietly replace the look the rest of the tool promises.
-    const available = styles(args.cwd);
+    const available = await styles(source);
     const style =
       args.style ??
       (available.length === 0
@@ -394,7 +360,7 @@ async function init(args: Args): Promise<void> {
     const root = args.cwd;
     const parent = path.replace(/\/ui$/, "");
     const config = parseConfig({
-      registry: args.registry ?? "node_modules",
+      ...(args.registry === undefined ? {} : { registry: args.registry }),
       paths: {
         ui: path,
         lib: path.endsWith("/ui") ? `${parent}/lib` : `${path}/lib`,
@@ -433,7 +399,8 @@ async function init(args: Args): Promise<void> {
       resetPath: "./reset.ts",
     });
     write(themeFile, module_);
-    const styleFile = style === undefined ? undefined : writeStyle(root, config, style, args.cwd);
+    const styleFile =
+      style === undefined ? undefined : await writeStyle(root, config, style, source);
 
     const next: Config = {
       ...applied.config,
@@ -499,7 +466,7 @@ async function extendTheme(
   }
   const theme = items.reduce(withItemCss, config.theme);
 
-  const incoming = themeModule(theme, await themes(root), {
+  const incoming = themeModule(theme, await themes(sourceFor(config, root)), {
     reset: config.reset,
     base: "./base.ts",
     resetPath: "./reset.ts",
@@ -748,15 +715,12 @@ async function list(args: Args): Promise<void> {
   }
 }
 
-/** `list` works before `init`, against the installed package's registry. */
+/** `list` works before `init`, against the default registry. */
 function requireConfigOrCwd(cwd: string): { root: string; config: Config } {
   try {
     return requireConfig(cwd);
   } catch {
-    return {
-      root: cwd,
-      config: parseConfig({ registry: "node_modules", paths: DEFAULT_PATHS, items: {} }),
-    };
+    return { root: cwd, config: parseConfig({ paths: DEFAULT_PATHS, items: {} }) };
   }
 }
 
@@ -855,7 +819,7 @@ async function info(args: Args): Promise<void> {
   const facts = {
     root: project,
     config: root === undefined ? null : join(root, CONFIG_FILE),
-    registry: config.registry,
+    registry: config.registry ?? defaultRegistry(),
     registries: Object.fromEntries(
       Object.entries(config.registries).map(([scope, endpoint]) => [scope, endpoint.url]),
     ),
@@ -904,7 +868,7 @@ async function chooseTheme(args: Args): Promise<void> {
   const name = args.rest[0];
   if (name === undefined) throw new Error("which theme? `barq-ui list` shows the components");
   const { root, config } = requireConfig(args.cwd);
-  const table = await themes(root);
+  const table = await themes(sourceFor(config, root));
 
   const chosen = table.find((entry) => entry.name === name);
   if (chosen === undefined) {
@@ -938,10 +902,8 @@ async function chooseTheme(args: Args): Promise<void> {
 async function chooseStyle(args: Args): Promise<void> {
   const name = args.rest[0] ?? args.style;
   const { root, config } = requireConfig(args.cwd);
-  const available = styles(args.cwd);
-  if (available.length === 0) {
-    throw new Error("the component styles come from @barqjs/ui, and this install has none.");
-  }
+  const source = sourceFor(config, root);
+  const available = await styles(source);
   if (name === undefined) {
     throw new Error(`which style? ${available.map((each) => each.value).join(", ")}`);
   }
@@ -951,11 +913,10 @@ async function chooseStyle(args: Args): Promise<void> {
     );
   }
 
-  const path = writeStyle(root, config, name, args.cwd);
+  const path = await writeStyle(root, config, name, source);
   writeConfig(root, { ...config, theme: { ...config.theme, style: name } });
   say(`${green("Style")} ${bold(name)} written to ${path.slice(root.length + 1)}.`);
   say(dim(`Put class="style-${name}" on the element it applies to.`));
-  await Promise.resolve();
 }
 
 async function build(args: Args): Promise<void> {

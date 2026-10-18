@@ -6,10 +6,10 @@
  * imported the module would be testing neither the argument parsing nor the
  * exit code.
  *
- * The project is a temporary directory with a symlink to this repository's
- * `@barqjs/ui`, which is what `registry: "node_modules"` resolves. It needs
- * that package BUILT, so the suite skips itself rather than failing when it is
- * not.
+ * The project is a temporary directory, and the default registry is this
+ * repository's built `packages/ui/registry`, through the variable that replaces
+ * the default. It needs that registry BUILT, so the suite skips itself rather
+ * than failing when it is not.
  */
 
 import {
@@ -20,7 +20,6 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
-  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -34,6 +33,7 @@ const cli = join(here, "../src/index.ts");
 const ui = join(here, "../../ui");
 const ready =
   existsSync(join(ui, "registry/index.json")) && existsSync(join(ui, "src/theme/index.ts"));
+const registry = join(ui, "registry/{name}.json");
 
 const workspaces: string[] = [];
 
@@ -44,8 +44,6 @@ afterAll(() => {
 function project(): string {
   const workspace = mkdtempSync(join(tmpdir(), "barq-ui-cli-"));
   workspaces.push(workspace);
-  mkdirSync(join(workspace, "node_modules/@barqjs"), { recursive: true });
-  symlinkSync(ui, join(workspace, "node_modules/@barqjs/ui"), "dir");
   writeFileSync(
     join(workspace, "package.json"),
     JSON.stringify({ name: "probe", private: true, type: "module" }),
@@ -67,7 +65,7 @@ async function spawn(
     stdout: "pipe",
     stderr: "pipe",
     stdin: "ignore",
-    env: { ...process.env, NO_COLOR: "1", ...env },
+    env: { ...process.env, NO_COLOR: "1", BARQ_UI_REGISTRY: registry, ...env },
   });
   const [out, err] = await Promise.all([
     new Response(child.stdout).text(),
@@ -127,7 +125,7 @@ describe.if(ready)("barq-ui", () => {
     expect(result.code).toBe(0);
 
     const config = JSON.parse(file(root, "components.json")) as Record<string, unknown>;
-    expect(config["registry"]).toBe("node_modules");
+    expect(config["registry"]).toBeUndefined();
     expect((config["theme"] as Record<string, unknown>)["base"]).toBe("neutral");
 
     expect(existsSync(join(root, "src/components/theme/theme.ts"))).toBe(true);
@@ -698,7 +696,16 @@ describe.if(ready)("barq-ui", () => {
       items: string[];
     };
     expect(facts.config.endsWith("components.json")).toBe(true);
-    expect(facts.registry).toBe("node_modules");
+    expect(facts.registry).toBe(registry);
+
+    const pinned = await spawn(root, ["info", "--json"], { BARQ_UI_REGISTRY: "" });
+    const version = (
+      JSON.parse(readFileSync(join(here, "../package.json"), "utf8")) as { version: string }
+    ).version;
+    expect((JSON.parse(pinned.out) as { registry: string }).registry).toBe(
+      "https://raw.githubusercontent.com/salamaashoush/barq/refs/tags/" +
+        `@barqjs/ui-cli@${version}/packages/ui/registry/{name}.json`,
+    );
     expect(facts.paths["components"]).toBe("src/components");
     expect(facts.paths["hooks"]).toBe("src/hooks");
     expect(facts.theme.base).toBe("zinc");

@@ -26,13 +26,15 @@ interface Item {
 const REGISTRY = resolve(import.meta.dir, "../registry");
 
 /** Everything in `registry/` that is data rather than a component. */
-const NOT_ITEMS = new Set(["index.json", "themes.json"]);
+const NOT_ITEMS = new Set(["index.json", "themes.json", "styles.json"]);
 
 const items: Item[] = readdirSync(REGISTRY)
-  // `index.json` is the listing and `themes.json` is the colour table the CLI
-  // reads; neither is an item, and reading them as one is a `files of
-  // undefined` with no name attached.
-  .filter((entry) => entry.endsWith(".json") && !NOT_ITEMS.has(entry))
+  // `index.json` is the listing, and the themes and styles are data the CLI
+  // reads; none is an item, and reading one as one is a `files of undefined`
+  // with no name attached.
+  .filter(
+    (entry) => entry.endsWith(".json") && !NOT_ITEMS.has(entry) && !entry.startsWith("style-"),
+  )
   .toSorted()
   .map((entry) => JSON.parse(readFileSync(join(REGISTRY, entry), "utf8")) as Item);
 

@@ -1,7 +1,8 @@
 # @barqjs/ui-cli
 
-Copy [`@barqjs/ui`](../ui#readme) components into your project, and keep them in
-sync with the registry they came from.
+Copy barq's components into your project, and keep them in sync with the
+registry they came from. The components are not a package: their source lives in
+[`packages/ui`](../ui#readme), and this CLI is the only way they reach an app.
 
 A component you add is your code: it lands in your repository, it goes through
 your review, and you edit it. That is shadcn/ui's idea, and the commands follow
@@ -20,8 +21,10 @@ bunx @barqjs/ui-cli add button card dialog
 bunx @barqjs/ui-cli add dashboard-01
 ```
 
-The default registry is the `@barqjs/ui` in your `node_modules`, so add it to
-the project first (`bun add @barqjs/ui`).
+Items come from the registry built from `packages/ui`, read from this
+repository at the tag the CLI was released under, so a CLI version always writes
+the components of the same release. `BARQ_UI_REGISTRY` replaces that default
+with any `{name}` pattern, for a fork, a mirror or a local build.
 
 ## Commands
 
@@ -90,7 +93,6 @@ tool taking the ownership back.
 
 ```json
 {
-  "registry": "node_modules",
   "paths": {
     "ui": "src/components/ui",
     "lib": "src/components/lib",
@@ -104,11 +106,9 @@ tool taking the ownership back.
 }
 ```
 
-**`registry`** is either `"node_modules"` (the copy of `@barqjs/ui` this
-project already has) or a URL with `{name}` in it, which `init --registry`
-writes. The default reads the
-installed package, so a monorepo, a pinned version and a machine with no network
-all work, and what `add` writes is exactly the version in your lockfile.
+**`registry`** is where items without a scope come from: a URL or a path with
+`{name}` in it, which `init --registry` writes. Left out, it is the registry of
+the CLI's own release.
 
 **`registries`** names more registries by scope, and an item from one is
 addressed as `@scope/name`:

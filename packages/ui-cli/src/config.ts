@@ -38,7 +38,7 @@ export function readConfig(root: string): Config {
 export function writeConfig(root: string, config: Config): void {
   const ordered = {
     ...(config.$schema === undefined ? {} : { $schema: config.$schema }),
-    registry: config.registry,
+    ...(config.registry === undefined ? {} : { registry: config.registry }),
     ...(Object.keys(config.registries).length === 0
       ? {}
       : {

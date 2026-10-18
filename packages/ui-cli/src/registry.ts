@@ -1,22 +1,18 @@
 /**
  * Where an item comes from, and what else it needs.
  *
- * Two sources, and the difference is one line of configuration:
- *
- * - **`node_modules`**, the default. The copy of `@barqjs/ui` the project has
- *   already installed. A monorepo, a pinned version and a machine with no
- *   network all work, and what `add` writes is exactly the version in the
- *   lockfile — which a URL cannot promise.
- * - **A URL** with `{name}` in it, for a registry of your own. `build` in this
- *   CLI produces the files it serves.
+ * Every registry is a pattern with `{name}` in it, a URL or a path, serving one
+ * JSON file per item plus `index.json`. The project's own registry is
+ * `registry` in `components.json`; without one it is this CLI's own release of
+ * `@barqjs/ui`, read from the repository at the tag the CLI was published
+ * under, so a CLI and the components it writes always come from one commit.
  *
  * `registries` in `components.json` names more of them, and an item from one
  * is addressed as `@scope/name`.
  */
 
 import { existsSync, readFileSync } from "node:fs";
-import { createRequire } from "node:module";
-import { dirname, join, resolve } from "node:path";
+import { resolve } from "node:path";
 
 import {
   parseIndex,
@@ -30,53 +26,27 @@ import {
 export interface Source {
   index(): Promise<RegistryIndex>;
   item(name: string): Promise<RegistryItem>;
+  /** A file the registry serves beside its items, such as `themes`, unparsed. */
+  data(name: string): Promise<unknown>;
   readonly describe: string;
 }
 
-/** The directory `@barqjs/ui`'s own files are in, resolved from the PROJECT. */
-export function localPackage(cwd: string): string | undefined {
-  // `createRequire` from a path INSIDE the project, so resolution walks the
-  // project's own `node_modules` rather than this CLI's.
-  const require_ = createRequire(join(resolve(cwd), "package.json"));
-  try {
-    return dirname(require_.resolve("@barqjs/ui/package.json"));
-  } catch {
-    return undefined;
-  }
+/** Replaces the default registry, for a fork, a mirror or a local build. */
+export const REGISTRY_ENV = "BARQ_UI_REGISTRY";
+
+function ownVersion(): string {
+  // `../package.json` from both `src/registry.ts` and the bundled `dist/index.js`.
+  const manifest = new URL("../package.json", import.meta.url);
+  return (JSON.parse(readFileSync(manifest, "utf8")) as { version: string }).version;
 }
 
-/** The eight stylesheets that package ships, by name. */
-export function localStyles(cwd: string): string | undefined {
-  const root = localPackage(cwd);
-  if (root === undefined) return undefined;
-  const directory = join(root, "styles");
-  return existsSync(directory) ? directory : undefined;
-}
-
-/** The directory `@barqjs/ui`'s registry is in, resolved from the project. */
-export function localRegistry(cwd: string): string | undefined {
-  // `createRequire` from a path INSIDE the project, so resolution walks the
-  // project's own `node_modules` rather than this CLI's.
-  const require_ = createRequire(join(resolve(cwd), "package.json"));
-  try {
-    const manifest = require_.resolve("@barqjs/ui/package.json");
-    const directory = join(dirname(manifest), "registry");
-    return existsSync(join(directory, "index.json")) ? directory : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function fromDirectory(directory: string): Source {
-  return {
-    describe: directory,
-    index: async () => parseIndex(JSON.parse(readFileSync(join(directory, "index.json"), "utf8"))),
-    item: async (name) => {
-      const path = join(directory, `${name}.json`);
-      if (!existsSync(path)) throw new Error(`no item named "${name}" in ${directory}`);
-      return parseItem(JSON.parse(readFileSync(path, "utf8")), name);
-    },
-  };
+export function defaultRegistry(): string {
+  const override = process.env[REGISTRY_ENV];
+  if (override !== undefined && override !== "") return override;
+  return (
+    "https://raw.githubusercontent.com/salamaashoush/barq/refs/tags/" +
+    `@barqjs/ui-cli@${ownVersion()}/packages/ui/registry/{name}.json`
+  );
 }
 
 /** `${NAME}` from the environment, so a token never has to be written down. */
@@ -122,22 +92,14 @@ function fromPattern(endpoint: RegistryEndpoint, cwd: string, where: string): So
     describe: endpoint.url,
     index: async () => parseIndex(await get("index")),
     item: async (name) => parseItem(await get(name), name),
+    data: get,
   };
 }
 
 export function sourceFor(config: Config, cwd: string): Source {
-  if (config.registry !== "node_modules") {
-    return fromPattern({ url: config.registry, headers: {} }, cwd, "components.json.registry");
-  }
-
-  const directory = localRegistry(cwd);
-  if (directory === undefined) {
-    throw new Error(
-      'the registry is "node_modules" and @barqjs/ui is not installed here.\n' +
-        "Install it, or point `registry` at a URL containing {name}.",
-    );
-  }
-  return fromDirectory(directory);
+  return config.registry === undefined
+    ? fromPattern({ url: defaultRegistry(), headers: {} }, cwd, REGISTRY_ENV)
+    : fromPattern({ url: config.registry, headers: {} }, cwd, "components.json.registry");
 }
 
 export interface Located {
@@ -156,10 +118,8 @@ export interface Registries {
 }
 
 /**
- * The project's registry and the ones it names, each opened when first asked for.
- *
- * Lazily, because the default one throws when `@barqjs/ui` is not installed,
- * and a project that only ever adds `@acme/…` should not need it to be.
+ * The project's registry and the ones it names, each opened when first asked for,
+ * so a project that only ever adds `@acme/…` never reads the default one.
  */
 export function registriesFor(config: Config, cwd: string): Registries {
   const opened = new Map<string, Source>();

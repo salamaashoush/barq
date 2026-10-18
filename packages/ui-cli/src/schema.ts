@@ -140,13 +140,10 @@ export interface RegistryEndpoint {
 export interface Config {
   readonly $schema?: string;
   /**
-   * Where items come from.
-   *
-   * A URL with `{name}` in it, or `"node_modules"` to read the copy of
-   * `@barqjs/ui` this project already has — which is what a monorepo and an
-   * offline machine both want.
+   * Where items without a scope come from: a URL or a path with `{name}` in it.
+   * Left out, it is the `@barqjs/ui` release this CLI was published with.
    */
-  readonly registry: string;
+  readonly registry?: string;
   /** More registries, by the `@scope` their items are addressed with. */
   readonly registries: Readonly<Record<string, RegistryEndpoint>>;
   readonly paths: Paths;
@@ -336,6 +333,14 @@ function registries(value: unknown): Record<string, RegistryEndpoint> {
   );
 }
 
+function pattern(value: unknown): string {
+  const url = text(value, "components.json.registry");
+  if (!url.includes("{name}")) {
+    fail(`components.json.registry must contain {name}, as in https://example.com/r/{name}.json`);
+  }
+  return url;
+}
+
 export function parseConfig(value: unknown): Config {
   const entry = record(value, "components.json");
   const paths = record(entry["paths"] ?? {}, "components.json.paths");
@@ -349,7 +354,7 @@ export function parseConfig(value: unknown): Config {
 
   return {
     ...(typeof entry["$schema"] === "string" ? { $schema: entry["$schema"] } : {}),
-    registry: text(entry["registry"] ?? "node_modules", "components.json.registry"),
+    ...(entry["registry"] === undefined ? {} : { registry: pattern(entry["registry"]) }),
     registries: registries(entry["registries"] ?? {}),
     paths: {
       ui,

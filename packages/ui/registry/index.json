@@ -68,6 +68,9 @@
       "registryDependencies": [],
       "files": [
         "lib/atoms.ts"
+      ],
+      "exports": [
+        "ui"
       ]
     },
     {
@@ -85,6 +88,16 @@
       ],
       "files": [
         "lib/overlay.tsx"
+      ],
+      "exports": [
+        "OverlayFamily",
+        "OverlayKind",
+        "OverlayPortal",
+        "OverlayPortalProps",
+        "OverlayRootProps",
+        "OverlayValue",
+        "overlayFamily",
+        "registerUnderlay"
       ]
     },
     {
@@ -98,6 +111,10 @@
       "registryDependencies": [],
       "files": [
         "lib/props.ts"
+      ],
+      "exports": [
+        "UiProps",
+        "UiRef"
       ]
     },
     {
@@ -111,6 +128,9 @@
       "registryDependencies": [],
       "files": [
         "lib/shared-box.ts"
+      ],
+      "exports": [
+        "box"
       ]
     },
     {
@@ -123,6 +143,9 @@
       "registryDependencies": [],
       "files": [
         "lib/shared-icon.ts"
+      ],
+      "exports": [
+        "icon"
       ]
     },
     {
@@ -136,6 +159,9 @@
       "registryDependencies": [],
       "files": [
         "lib/shared-ring-slot.ts"
+      ],
+      "exports": [
+        "ringSlot"
       ]
     },
     {
@@ -149,6 +175,9 @@
       "registryDependencies": [],
       "files": [
         "lib/shared-ring.ts"
+      ],
+      "exports": [
+        "ring"
       ]
     },
     {
@@ -161,6 +190,9 @@
       "registryDependencies": [],
       "files": [
         "lib/shared-text.ts"
+      ],
+      "exports": [
+        "text"
       ]
     },
     {
@@ -174,6 +206,9 @@
       "registryDependencies": [],
       "files": [
         "lib/shared-when.ts"
+      ],
+      "exports": [
+        "when"
       ]
     },
     {
@@ -192,6 +227,16 @@
       ],
       "files": [
         "lib/slot.ts"
+      ],
+      "exports": [
+        "PartRender",
+        "RenderPart",
+        "controlProps",
+        "handedOn",
+        "named",
+        "omit",
+        "partRender",
+        "uiProps"
       ]
     },
     {
@@ -207,6 +252,12 @@
       "registryDependencies": [],
       "files": [
         "lib/trigger.tsx"
+      ],
+      "exports": [
+        "TriggerPart",
+        "TriggerPartProps",
+        "TriggerRender",
+        "useTrigger"
       ]
     },
     {
@@ -220,6 +271,9 @@
       "registryDependencies": [],
       "files": [
         "lib/utils.ts"
+      ],
+      "exports": [
+        "cn"
       ]
     },
     {
@@ -233,6 +287,9 @@
       "registryDependencies": [],
       "files": [
         "hooks/use-mobile.ts"
+      ],
+      "exports": [
+        "useIsMobile"
       ]
     },
     {
@@ -256,6 +313,16 @@
       ],
       "files": [
         "ui/accordion.tsx"
+      ],
+      "exports": [
+        "Accordion",
+        "AccordionContent",
+        "AccordionContentProps",
+        "AccordionItem",
+        "AccordionItemProps",
+        "AccordionProps",
+        "AccordionTrigger",
+        "AccordionTriggerProps"
       ]
     },
     {
@@ -280,6 +347,25 @@
       ],
       "files": [
         "ui/alert-dialog.tsx"
+      ],
+      "exports": [
+        "AlertDialog",
+        "AlertDialogAction",
+        "AlertDialogActionProps",
+        "AlertDialogCancel",
+        "AlertDialogContent",
+        "AlertDialogContentProps",
+        "AlertDialogDescription",
+        "AlertDialogFooter",
+        "AlertDialogHeader",
+        "AlertDialogMedia",
+        "AlertDialogOverlay",
+        "AlertDialogPortal",
+        "AlertDialogPortalProps",
+        "AlertDialogProps",
+        "AlertDialogSize",
+        "AlertDialogTitle",
+        "AlertDialogTrigger"
       ]
     },
     {
@@ -299,6 +385,15 @@
       ],
       "files": [
         "ui/alert.tsx"
+      ],
+      "exports": [
+        "Alert",
+        "AlertAction",
+        "AlertDescription",
+        "AlertProps",
+        "AlertTitle",
+        "AlertVariant",
+        "alertVariants"
       ]
     },
     {
@@ -317,6 +412,10 @@
       ],
       "files": [
         "ui/aspect-ratio.tsx"
+      ],
+      "exports": [
+        "AspectRatio",
+        "AspectRatioProps"
       ]
     },
     {
@@ -337,6 +436,27 @@
       ],
       "files": [
         "ui/attachment.tsx"
+      ],
+      "exports": [
+        "Attachment",
+        "AttachmentAction",
+        "AttachmentActionProps",
+        "AttachmentActions",
+        "AttachmentContent",
+        "AttachmentDescription",
+        "AttachmentGroup",
+        "AttachmentMedia",
+        "AttachmentMediaProps",
+        "AttachmentMediaVariant",
+        "AttachmentOrientation",
+        "AttachmentProps",
+        "AttachmentSize",
+        "AttachmentState",
+        "AttachmentTitle",
+        "AttachmentTrigger",
+        "AttachmentTriggerProps",
+        "attachmentMediaVariants",
+        "attachmentVariants"
       ]
     },
     {
@@ -356,6 +476,18 @@
       ],
       "files": [
         "ui/avatar.tsx"
+      ],
+      "exports": [
+        "Avatar",
+        "AvatarBadge",
+        "AvatarFallback",
+        "AvatarFallbackProps",
+        "AvatarGroup",
+        "AvatarGroupCount",
+        "AvatarImage",
+        "AvatarImageProps",
+        "AvatarProps",
+        "AvatarSize"
       ]
     },
     {
@@ -376,6 +508,12 @@
       ],
       "files": [
         "ui/badge.tsx"
+      ],
+      "exports": [
+        "Badge",
+        "BadgeProps",
+        "BadgeVariant",
+        "badgeVariants"
       ]
     },
     {
@@ -397,6 +535,17 @@
       ],
       "files": [
         "ui/breadcrumb.tsx"
+      ],
+      "exports": [
+        "Breadcrumb",
+        "BreadcrumbEllipsis",
+        "BreadcrumbItem",
+        "BreadcrumbLink",
+        "BreadcrumbLinkProps",
+        "BreadcrumbList",
+        "BreadcrumbPage",
+        "BreadcrumbSeparator",
+        "BreadcrumbSeparatorProps"
       ]
     },
     {
@@ -415,6 +564,20 @@
       ],
       "files": [
         "ui/bubble.tsx"
+      ],
+      "exports": [
+        "Bubble",
+        "BubbleAlign",
+        "BubbleContent",
+        "BubbleContentProps",
+        "BubbleGroup",
+        "BubbleProps",
+        "BubbleReactions",
+        "BubbleReactionsProps",
+        "BubbleSide",
+        "BubbleVariant",
+        "bubbleReactionsVariants",
+        "bubbleVariants"
       ]
     },
     {
@@ -436,6 +599,15 @@
       ],
       "files": [
         "ui/button-group.tsx"
+      ],
+      "exports": [
+        "ButtonGroup",
+        "ButtonGroupOrientation",
+        "ButtonGroupProps",
+        "ButtonGroupSeparator",
+        "ButtonGroupSeparatorProps",
+        "ButtonGroupText",
+        "buttonGroupVariants"
       ]
     },
     {
@@ -456,6 +628,13 @@
       ],
       "files": [
         "ui/button.tsx"
+      ],
+      "exports": [
+        "Button",
+        "ButtonProps",
+        "ButtonSize",
+        "ButtonVariant",
+        "buttonVariants"
       ]
     },
     {
@@ -478,6 +657,22 @@
       ],
       "files": [
         "ui/calendar.tsx"
+      ],
+      "exports": [
+        "Calendar",
+        "CalendarCaptionLayout",
+        "CalendarDay",
+        "CalendarDayButton",
+        "CalendarDayButtonProps",
+        "CalendarDayModifiers",
+        "CalendarDayProps",
+        "CalendarFormatters",
+        "CalendarMode",
+        "CalendarProps",
+        "MultipleCalendar",
+        "MultipleCalendarProps",
+        "RangeCalendar",
+        "RangeCalendarProps"
       ]
     },
     {
@@ -497,6 +692,18 @@
       ],
       "files": [
         "ui/card.tsx"
+      ],
+      "exports": [
+        "Card",
+        "CardAction",
+        "CardContent",
+        "CardDescription",
+        "CardEdgeProps",
+        "CardFooter",
+        "CardHeader",
+        "CardProps",
+        "CardSize",
+        "CardTitle"
       ]
     },
     {
@@ -519,6 +726,21 @@
       ],
       "files": [
         "ui/carousel.tsx"
+      ],
+      "exports": [
+        "Carousel",
+        "CarouselApi",
+        "CarouselButtonProps",
+        "CarouselContent",
+        "CarouselItem",
+        "CarouselNext",
+        "CarouselOptions",
+        "CarouselOrientation",
+        "CarouselPlugin",
+        "CarouselPrevious",
+        "CarouselProps",
+        "CarouselValue",
+        "useCarousel"
       ]
     },
     {
@@ -539,6 +761,37 @@
       ],
       "files": [
         "ui/chart.tsx"
+      ],
+      "exports": [
+        "AXIS_FONT_SIZE",
+        "Chart",
+        "ChartBars",
+        "ChartConfig",
+        "ChartConfigEntry",
+        "ChartConfigRecord",
+        "ChartContainer",
+        "ChartContainerProps",
+        "ChartDefinition",
+        "ChartLegend",
+        "ChartLegendContent",
+        "ChartLegendContentProps",
+        "ChartLegendProps",
+        "ChartLines",
+        "ChartOrigin",
+        "ChartPayloadItem",
+        "ChartPlotProps",
+        "ChartProps",
+        "ChartSeries",
+        "ChartStyle",
+        "ChartStyleProps",
+        "ChartTheme",
+        "ChartTooltip",
+        "ChartTooltipContent",
+        "ChartTooltipContentProps",
+        "ChartTooltipIndicator",
+        "ChartTooltipPopupProps",
+        "ChartTooltipProps",
+        "chartHover"
       ]
     },
     {
@@ -560,6 +813,10 @@
       ],
       "files": [
         "ui/checkbox.tsx"
+      ],
+      "exports": [
+        "Checkbox",
+        "CheckboxProps"
       ]
     },
     {
@@ -582,6 +839,14 @@
       ],
       "files": [
         "ui/collapsible.tsx"
+      ],
+      "exports": [
+        "Collapsible",
+        "CollapsibleContent",
+        "CollapsibleContentProps",
+        "CollapsibleProps",
+        "CollapsibleTrigger",
+        "CollapsibleTriggerProps"
       ]
     },
     {
@@ -611,6 +876,37 @@
       ],
       "files": [
         "ui/combobox.tsx"
+      ],
+      "exports": [
+        "Combobox",
+        "ComboboxChip",
+        "ComboboxChipProps",
+        "ComboboxChips",
+        "ComboboxChipsInput",
+        "ComboboxChipsInputProps",
+        "ComboboxChipsProps",
+        "ComboboxClear",
+        "ComboboxClearProps",
+        "ComboboxCollection",
+        "ComboboxCollectionProps",
+        "ComboboxContent",
+        "ComboboxContentProps",
+        "ComboboxEmpty",
+        "ComboboxGroup",
+        "ComboboxGroupProps",
+        "ComboboxInput",
+        "ComboboxInputProps",
+        "ComboboxItem",
+        "ComboboxItemProps",
+        "ComboboxLabel",
+        "ComboboxList",
+        "ComboboxListProps",
+        "ComboboxProps",
+        "ComboboxSeparator",
+        "ComboboxTrigger",
+        "ComboboxTriggerProps",
+        "ComboboxValue",
+        "useComboboxAnchor"
       ]
     },
     {
@@ -637,6 +933,25 @@
       ],
       "files": [
         "ui/command.tsx"
+      ],
+      "exports": [
+        "Command",
+        "CommandDialog",
+        "CommandDialogProps",
+        "CommandEmpty",
+        "CommandGroup",
+        "CommandGroupProps",
+        "CommandInput",
+        "CommandInputProps",
+        "CommandItem",
+        "CommandItemProps",
+        "CommandList",
+        "CommandLoading",
+        "CommandLoadingProps",
+        "CommandProps",
+        "CommandSeparator",
+        "CommandSeparatorProps",
+        "CommandShortcut"
       ]
     },
     {
@@ -654,6 +969,37 @@
       ],
       "files": [
         "ui/context-menu.tsx"
+      ],
+      "exports": [
+        "ContextMenu",
+        "ContextMenuCheckboxItem",
+        "ContextMenuCheckboxItemProps",
+        "ContextMenuContent",
+        "ContextMenuContentProps",
+        "ContextMenuGroup",
+        "ContextMenuGroupLabel",
+        "ContextMenuGroupProps",
+        "ContextMenuItem",
+        "ContextMenuItemProps",
+        "ContextMenuLabel",
+        "ContextMenuLabelProps",
+        "ContextMenuPortal",
+        "ContextMenuPortalProps",
+        "ContextMenuProps",
+        "ContextMenuRadioGroup",
+        "ContextMenuRadioGroupProps",
+        "ContextMenuRadioItem",
+        "ContextMenuRadioItemProps",
+        "ContextMenuSeparator",
+        "ContextMenuShortcut",
+        "ContextMenuSub",
+        "ContextMenuSubContent",
+        "ContextMenuSubContentProps",
+        "ContextMenuSubProps",
+        "ContextMenuSubTrigger",
+        "ContextMenuSubTriggerProps",
+        "ContextMenuTrigger",
+        "ContextMenuTriggerProps"
       ]
     },
     {
@@ -678,6 +1024,15 @@
       ],
       "files": [
         "ui/date-picker.tsx"
+      ],
+      "exports": [
+        "DatePicker",
+        "DatePickerInput",
+        "DatePickerInputProps",
+        "DatePickerProps",
+        "DatePreset",
+        "DateRangePicker",
+        "DateRangePickerProps"
       ]
     },
     {
@@ -705,6 +1060,23 @@
       ],
       "files": [
         "ui/dialog.tsx"
+      ],
+      "exports": [
+        "Dialog",
+        "DialogClose",
+        "DialogCloseProps",
+        "DialogContent",
+        "DialogContentProps",
+        "DialogDescription",
+        "DialogFooter",
+        "DialogFooterProps",
+        "DialogHeader",
+        "DialogOverlay",
+        "DialogPortal",
+        "DialogPortalProps",
+        "DialogProps",
+        "DialogTitle",
+        "DialogTrigger"
       ]
     },
     {
@@ -718,6 +1090,12 @@
       "registryDependencies": [],
       "files": [
         "ui/direction.tsx"
+      ],
+      "exports": [
+        "Direction",
+        "DirectionProvider",
+        "DirectionProviderProps",
+        "useDirection"
       ]
     },
     {
@@ -740,6 +1118,24 @@
       ],
       "files": [
         "ui/drawer.tsx"
+      ],
+      "exports": [
+        "Drawer",
+        "DrawerClose",
+        "DrawerCloseProps",
+        "DrawerContent",
+        "DrawerContentProps",
+        "DrawerDescription",
+        "DrawerFooter",
+        "DrawerHandle",
+        "DrawerHandleProps",
+        "DrawerHeader",
+        "DrawerHeaderProps",
+        "DrawerOverlay",
+        "DrawerPortal",
+        "DrawerProps",
+        "DrawerTitle",
+        "DrawerTrigger"
       ]
     },
     {
@@ -764,6 +1160,41 @@
       ],
       "files": [
         "ui/dropdown-menu.tsx"
+      ],
+      "exports": [
+        "DropdownMenu",
+        "DropdownMenuCheckboxItem",
+        "DropdownMenuCheckboxItemProps",
+        "DropdownMenuContent",
+        "DropdownMenuContentProps",
+        "DropdownMenuGroup",
+        "DropdownMenuGroupLabel",
+        "DropdownMenuGroupProps",
+        "DropdownMenuItem",
+        "DropdownMenuItemProps",
+        "DropdownMenuItemVariant",
+        "DropdownMenuLabel",
+        "DropdownMenuLabelProps",
+        "DropdownMenuPortal",
+        "DropdownMenuPortalProps",
+        "DropdownMenuProps",
+        "DropdownMenuRadioGroup",
+        "DropdownMenuRadioGroupProps",
+        "DropdownMenuRadioItem",
+        "DropdownMenuRadioItemProps",
+        "DropdownMenuSelectEvent",
+        "DropdownMenuSeparator",
+        "DropdownMenuShortcut",
+        "DropdownMenuSub",
+        "DropdownMenuSubContent",
+        "DropdownMenuSubContentProps",
+        "DropdownMenuSubProps",
+        "DropdownMenuSubTrigger",
+        "DropdownMenuSubTriggerProps",
+        "DropdownMenuTrigger",
+        "DropdownMenuTriggerProps",
+        "MenuPositionProps",
+        "menuPlacement"
       ]
     },
     {
@@ -783,6 +1214,17 @@
       ],
       "files": [
         "ui/empty.tsx"
+      ],
+      "exports": [
+        "Empty",
+        "EmptyContent",
+        "EmptyDescription",
+        "EmptyHeader",
+        "EmptyMedia",
+        "EmptyMediaProps",
+        "EmptyMediaVariant",
+        "EmptyTitle",
+        "emptyMediaVariants"
       ]
     },
     {
@@ -803,6 +1245,28 @@
       ],
       "files": [
         "ui/field.tsx"
+      ],
+      "exports": [
+        "Field",
+        "FieldContent",
+        "FieldDescription",
+        "FieldError",
+        "FieldErrorProps",
+        "FieldGroup",
+        "FieldGroupProps",
+        "FieldLabel",
+        "FieldLabelProps",
+        "FieldLegend",
+        "FieldLegendProps",
+        "FieldLegendVariant",
+        "FieldOrientation",
+        "FieldProps",
+        "FieldSeparator",
+        "FieldSeparatorProps",
+        "FieldSet",
+        "FieldTitle",
+        "fieldVariants",
+        "useFieldInvalid"
       ]
     },
     {
@@ -826,6 +1290,13 @@
       ],
       "files": [
         "ui/hover-card.tsx"
+      ],
+      "exports": [
+        "HoverCard",
+        "HoverCardContent",
+        "HoverCardContentProps",
+        "HoverCardProps",
+        "HoverCardTrigger"
       ]
     },
     {
@@ -849,6 +1320,22 @@
       ],
       "files": [
         "ui/input-group.tsx"
+      ],
+      "exports": [
+        "InputGroup",
+        "InputGroupAddon",
+        "InputGroupAddonProps",
+        "InputGroupAlign",
+        "InputGroupButton",
+        "InputGroupButtonProps",
+        "InputGroupButtonSize",
+        "InputGroupInput",
+        "InputGroupInputProps",
+        "InputGroupProps",
+        "InputGroupText",
+        "InputGroupTextarea",
+        "InputGroupTextareaProps",
+        "inputGroupButtonVariants"
       ]
     },
     {
@@ -870,6 +1357,17 @@
       ],
       "files": [
         "ui/input-otp.tsx"
+      ],
+      "exports": [
+        "InputOTP",
+        "InputOTPGroup",
+        "InputOTPProps",
+        "InputOTPSeparator",
+        "InputOTPSlot",
+        "InputOTPSlotProps",
+        "REGEXP_ONLY_CHARS",
+        "REGEXP_ONLY_DIGITS",
+        "REGEXP_ONLY_DIGITS_AND_CHARS"
       ]
     },
     {
@@ -892,6 +1390,11 @@
       ],
       "files": [
         "ui/input.tsx"
+      ],
+      "exports": [
+        "Input",
+        "InputProps",
+        "InputSize"
       ]
     },
     {
@@ -914,6 +1417,26 @@
       ],
       "files": [
         "ui/item.tsx"
+      ],
+      "exports": [
+        "Item",
+        "ItemActions",
+        "ItemContent",
+        "ItemDescription",
+        "ItemFooter",
+        "ItemGroup",
+        "ItemHeader",
+        "ItemMedia",
+        "ItemMediaProps",
+        "ItemMediaVariant",
+        "ItemProps",
+        "ItemSeparator",
+        "ItemSeparatorProps",
+        "ItemSize",
+        "ItemTitle",
+        "ItemVariant",
+        "itemMediaVariants",
+        "itemVariants"
       ]
     },
     {
@@ -933,6 +1456,10 @@
       ],
       "files": [
         "ui/kbd.tsx"
+      ],
+      "exports": [
+        "Kbd",
+        "KbdGroup"
       ]
     },
     {
@@ -953,6 +1480,10 @@
       ],
       "files": [
         "ui/label.tsx"
+      ],
+      "exports": [
+        "Label",
+        "LabelProps"
       ]
     },
     {
@@ -972,6 +1503,14 @@
       ],
       "files": [
         "ui/marker.tsx"
+      ],
+      "exports": [
+        "Marker",
+        "MarkerContent",
+        "MarkerIcon",
+        "MarkerProps",
+        "MarkerVariant",
+        "markerVariants"
       ]
     },
     {
@@ -997,6 +1536,39 @@
       ],
       "files": [
         "ui/menubar.tsx"
+      ],
+      "exports": [
+        "Menubar",
+        "MenubarCheckboxItem",
+        "MenubarCheckboxItemProps",
+        "MenubarContent",
+        "MenubarContentProps",
+        "MenubarGroup",
+        "MenubarGroupLabel",
+        "MenubarGroupProps",
+        "MenubarItem",
+        "MenubarItemProps",
+        "MenubarLabel",
+        "MenubarLabelProps",
+        "MenubarMenu",
+        "MenubarMenuProps",
+        "MenubarPortal",
+        "MenubarPortalProps",
+        "MenubarProps",
+        "MenubarRadioGroup",
+        "MenubarRadioGroupProps",
+        "MenubarRadioItem",
+        "MenubarRadioItemProps",
+        "MenubarSeparator",
+        "MenubarShortcut",
+        "MenubarSub",
+        "MenubarSubContent",
+        "MenubarSubContentProps",
+        "MenubarSubProps",
+        "MenubarSubTrigger",
+        "MenubarSubTriggerProps",
+        "MenubarTrigger",
+        "MenubarTriggerProps"
       ]
     },
     {
@@ -1019,6 +1591,24 @@
       ],
       "files": [
         "ui/message-scroller.tsx"
+      ],
+      "exports": [
+        "MessageScroller",
+        "MessageScrollerButton",
+        "MessageScrollerButtonProps",
+        "MessageScrollerCommands",
+        "MessageScrollerContent",
+        "MessageScrollerContentProps",
+        "MessageScrollerItem",
+        "MessageScrollerItemProps",
+        "MessageScrollerProps",
+        "MessageScrollerProvider",
+        "MessageScrollerProviderProps",
+        "MessageScrollerViewport",
+        "MessageScrollerViewportProps",
+        "useMessageScroller",
+        "useMessageScrollerScrollable",
+        "useMessageScrollerVisibility"
       ]
     },
     {
@@ -1037,6 +1627,16 @@
       ],
       "files": [
         "ui/message.tsx"
+      ],
+      "exports": [
+        "Message",
+        "MessageAlign",
+        "MessageAvatar",
+        "MessageContent",
+        "MessageFooter",
+        "MessageGroup",
+        "MessageHeader",
+        "MessageProps"
       ]
     },
     {
@@ -1059,6 +1659,15 @@
       ],
       "files": [
         "ui/native-select.tsx"
+      ],
+      "exports": [
+        "NativeSelect",
+        "NativeSelectOptGroup",
+        "NativeSelectOptGroupProps",
+        "NativeSelectOption",
+        "NativeSelectOptionProps",
+        "NativeSelectProps",
+        "NativeSelectSize"
       ]
     },
     {
@@ -1080,6 +1689,21 @@
       ],
       "files": [
         "ui/navigation-menu.tsx"
+      ],
+      "exports": [
+        "NavigationMenu",
+        "NavigationMenuContent",
+        "NavigationMenuIndicator",
+        "NavigationMenuItem",
+        "NavigationMenuItemProps",
+        "NavigationMenuLink",
+        "NavigationMenuLinkProps",
+        "NavigationMenuList",
+        "NavigationMenuProps",
+        "NavigationMenuTrigger",
+        "NavigationMenuTriggerProps",
+        "NavigationMenuViewport",
+        "navigationMenuTriggerStyle"
       ]
     },
     {
@@ -1100,6 +1724,17 @@
       ],
       "files": [
         "ui/pagination.tsx"
+      ],
+      "exports": [
+        "Pagination",
+        "PaginationContent",
+        "PaginationEdgeProps",
+        "PaginationEllipsis",
+        "PaginationItem",
+        "PaginationLink",
+        "PaginationLinkProps",
+        "PaginationNext",
+        "PaginationPrevious"
       ]
     },
     {
@@ -1124,6 +1759,17 @@
       ],
       "files": [
         "ui/popover.tsx"
+      ],
+      "exports": [
+        "Popover",
+        "PopoverAnchor",
+        "PopoverContent",
+        "PopoverContentProps",
+        "PopoverDescription",
+        "PopoverHeader",
+        "PopoverProps",
+        "PopoverTitle",
+        "PopoverTrigger"
       ]
     },
     {
@@ -1144,6 +1790,15 @@
       ],
       "files": [
         "ui/progress.tsx"
+      ],
+      "exports": [
+        "Progress",
+        "ProgressIndicator",
+        "ProgressLabel",
+        "ProgressProps",
+        "ProgressTrack",
+        "ProgressValue",
+        "ProgressValueProps"
       ]
     },
     {
@@ -1164,6 +1819,38 @@
       ],
       "files": [
         "ui/questionnaire.tsx"
+      ],
+      "exports": [
+        "Questionnaire",
+        "QuestionnaireActions",
+        "QuestionnaireChoice",
+        "QuestionnaireChoiceDefinition",
+        "QuestionnaireChoiceDescription",
+        "QuestionnaireChoiceProps",
+        "QuestionnaireChoices",
+        "QuestionnaireChoicesProps",
+        "QuestionnaireDescription",
+        "QuestionnaireDescriptionProps",
+        "QuestionnaireError",
+        "QuestionnaireErrorProps",
+        "QuestionnaireInput",
+        "QuestionnaireInputProps",
+        "QuestionnaireInputType",
+        "QuestionnaireItem",
+        "QuestionnaireItemDefinition",
+        "QuestionnaireItemProps",
+        "QuestionnaireItemStatus",
+        "QuestionnaireNavigationProps",
+        "QuestionnaireNext",
+        "QuestionnairePrevious",
+        "QuestionnaireProgress",
+        "QuestionnaireProgressProps",
+        "QuestionnaireProps",
+        "QuestionnaireShortcutMode",
+        "QuestionnaireSkip",
+        "QuestionnaireSubmit",
+        "QuestionnaireTitle",
+        "QuestionnaireTitleProps"
       ]
     },
     {
@@ -1185,6 +1872,12 @@
       ],
       "files": [
         "ui/radio-group.tsx"
+      ],
+      "exports": [
+        "RadioGroup",
+        "RadioGroupItem",
+        "RadioGroupItemProps",
+        "RadioGroupProps"
       ]
     },
     {
@@ -1205,6 +1898,21 @@
       ],
       "files": [
         "ui/resizable.tsx"
+      ],
+      "exports": [
+        "ResizableGroupHandle",
+        "ResizableHandle",
+        "ResizableHandleProps",
+        "ResizableLayout",
+        "ResizablePanel",
+        "ResizablePanelGroup",
+        "ResizablePanelGroupProps",
+        "ResizablePanelHandle",
+        "ResizablePanelProps",
+        "ResizablePanelSize",
+        "ResizableSize",
+        "ResizableStorage",
+        "ResizeDirection"
       ]
     },
     {
@@ -1224,6 +1932,12 @@
       ],
       "files": [
         "ui/scroll-area.tsx"
+      ],
+      "exports": [
+        "ScrollArea",
+        "ScrollAreaProps",
+        "ScrollBar",
+        "ScrollBarProps"
       ]
     },
     {
@@ -1239,6 +1953,20 @@
       ],
       "files": [
         "ui/scroll-fade.ts"
+      ],
+      "exports": [
+        "ScrollFadeOptions",
+        "scrollFade",
+        "scrollFadeB",
+        "scrollFadeE",
+        "scrollFadeL",
+        "scrollFadeNone",
+        "scrollFadeR",
+        "scrollFadeS",
+        "scrollFadeStyle",
+        "scrollFadeT",
+        "scrollFadeX",
+        "scrollFadeY"
       ]
     },
     {
@@ -1263,6 +1991,25 @@
       ],
       "files": [
         "ui/select.tsx"
+      ],
+      "exports": [
+        "Select",
+        "SelectContent",
+        "SelectContentProps",
+        "SelectGroup",
+        "SelectGroupProps",
+        "SelectItem",
+        "SelectItemProps",
+        "SelectLabel",
+        "SelectProps",
+        "SelectScrollDownButton",
+        "SelectScrollUpButton",
+        "SelectSeparator",
+        "SelectSize",
+        "SelectTrigger",
+        "SelectTriggerProps",
+        "SelectValue",
+        "SelectValueProps"
       ]
     },
     {
@@ -1279,6 +2026,10 @@
       ],
       "files": [
         "ui/separator.tsx"
+      ],
+      "exports": [
+        "Separator",
+        "SeparatorProps"
       ]
     },
     {
@@ -1305,6 +2056,23 @@
       ],
       "files": [
         "ui/sheet.tsx"
+      ],
+      "exports": [
+        "Sheet",
+        "SheetClose",
+        "SheetCloseProps",
+        "SheetContent",
+        "SheetContentProps",
+        "SheetDescription",
+        "SheetFooter",
+        "SheetHeader",
+        "SheetOverlay",
+        "SheetPortal",
+        "SheetPortalProps",
+        "SheetProps",
+        "SheetSide",
+        "SheetTitle",
+        "SheetTrigger"
       ]
     },
     {
@@ -1320,6 +2088,14 @@
       ],
       "files": [
         "ui/shimmer.ts"
+      ],
+      "exports": [
+        "ShimmerOptions",
+        "shimmer",
+        "shimmerNone",
+        "shimmerOnce",
+        "shimmerReverse",
+        "shimmerStyle"
       ]
     },
     {
@@ -1348,6 +2124,46 @@
       ],
       "files": [
         "ui/sidebar.tsx"
+      ],
+      "exports": [
+        "Sidebar",
+        "SidebarCollapsible",
+        "SidebarContent",
+        "SidebarFooter",
+        "SidebarGroup",
+        "SidebarGroupAction",
+        "SidebarGroupContent",
+        "SidebarGroupLabel",
+        "SidebarHeader",
+        "SidebarInput",
+        "SidebarInset",
+        "SidebarMenu",
+        "SidebarMenuAction",
+        "SidebarMenuActionProps",
+        "SidebarMenuBadge",
+        "SidebarMenuButton",
+        "SidebarMenuButtonProps",
+        "SidebarMenuButtonSize",
+        "SidebarMenuButtonVariant",
+        "SidebarMenuItem",
+        "SidebarMenuSkeleton",
+        "SidebarMenuSkeletonProps",
+        "SidebarMenuSub",
+        "SidebarMenuSubButton",
+        "SidebarMenuSubButtonProps",
+        "SidebarMenuSubItem",
+        "SidebarProps",
+        "SidebarProvider",
+        "SidebarProviderProps",
+        "SidebarRail",
+        "SidebarSeparator",
+        "SidebarSide",
+        "SidebarTrigger",
+        "SidebarVariant",
+        "sidebarGroupLabelVariants",
+        "sidebarMenuActionVariants",
+        "sidebarMenuButtonVariants",
+        "useSidebar"
       ]
     },
     {
@@ -1365,6 +2181,9 @@
       ],
       "files": [
         "ui/skeleton.tsx"
+      ],
+      "exports": [
+        "Skeleton"
       ]
     },
     {
@@ -1384,6 +2203,10 @@
       ],
       "files": [
         "ui/slider.tsx"
+      ],
+      "exports": [
+        "Slider",
+        "SliderProps"
       ]
     },
     {
@@ -1406,6 +2229,22 @@
       ],
       "files": [
         "ui/sonner.tsx"
+      ],
+      "exports": [
+        "ExternalToast",
+        "ToastApi",
+        "ToastButtonOptions",
+        "ToastPromiseMessage",
+        "ToastPromiseOptions",
+        "Toaster",
+        "ToasterIcons",
+        "ToasterOffset",
+        "ToasterPosition",
+        "ToasterProps",
+        "ToasterSwipeDirection",
+        "ToasterTheme",
+        "ToasterToastOptions",
+        "toast"
       ]
     },
     {
@@ -1423,6 +2262,10 @@
       ],
       "files": [
         "ui/spinner.tsx"
+      ],
+      "exports": [
+        "Spinner",
+        "SpinnerProps"
       ]
     },
     {
@@ -1438,6 +2281,9 @@
       ],
       "files": [
         "ui/sr-only.ts"
+      ],
+      "exports": [
+        "srOnly"
       ]
     },
     {
@@ -1458,6 +2304,11 @@
       ],
       "files": [
         "ui/switch.tsx"
+      ],
+      "exports": [
+        "Switch",
+        "SwitchProps",
+        "SwitchSize"
       ]
     },
     {
@@ -1477,6 +2328,19 @@
       ],
       "files": [
         "ui/table.tsx"
+      ],
+      "exports": [
+        "Table",
+        "TableBody",
+        "TableCaption",
+        "TableCell",
+        "TableCellProps",
+        "TableFooter",
+        "TableHead",
+        "TableHeadProps",
+        "TableHeader",
+        "TableRow",
+        "TableRowProps"
       ]
     },
     {
@@ -1497,6 +2361,18 @@
       ],
       "files": [
         "ui/tabs.tsx"
+      ],
+      "exports": [
+        "Tabs",
+        "TabsContent",
+        "TabsContentProps",
+        "TabsList",
+        "TabsListProps",
+        "TabsListVariant",
+        "TabsProps",
+        "TabsTrigger",
+        "TabsTriggerProps",
+        "tabsListVariants"
       ]
     },
     {
@@ -1518,6 +2394,10 @@
       ],
       "files": [
         "ui/textarea.tsx"
+      ],
+      "exports": [
+        "Textarea",
+        "TextareaProps"
       ]
     },
     {
@@ -1540,6 +2420,25 @@
       ],
       "files": [
         "ui/toast.tsx"
+      ],
+      "exports": [
+        "Toast",
+        "ToastAction",
+        "ToastActionProps",
+        "ToastClose",
+        "ToastContent",
+        "ToastDescription",
+        "ToastManager",
+        "ToastManagerOptions",
+        "ToastObject",
+        "ToastPortal",
+        "ToastProps",
+        "ToastProvider",
+        "ToastProviderProps",
+        "ToastTitle",
+        "ToastViewport",
+        "createToastManager",
+        "useToastManager"
       ]
     },
     {
@@ -1560,6 +2459,14 @@
       ],
       "files": [
         "ui/toggle-group.tsx"
+      ],
+      "exports": [
+        "ToggleGroup",
+        "ToggleGroupItem",
+        "ToggleGroupItemProps",
+        "ToggleGroupOrientation",
+        "ToggleGroupProps",
+        "ToggleGroupType"
       ]
     },
     {
@@ -1582,6 +2489,13 @@
       ],
       "files": [
         "ui/toggle.tsx"
+      ],
+      "exports": [
+        "Toggle",
+        "ToggleProps",
+        "ToggleSize",
+        "ToggleVariant",
+        "toggleVariants"
       ]
     },
     {
@@ -1603,6 +2517,15 @@
       ],
       "files": [
         "ui/tooltip.tsx"
+      ],
+      "exports": [
+        "Tooltip",
+        "TooltipContent",
+        "TooltipContentProps",
+        "TooltipProps",
+        "TooltipProvider",
+        "TooltipProviderProps",
+        "TooltipTrigger"
       ]
     },
     {

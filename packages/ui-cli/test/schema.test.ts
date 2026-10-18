@@ -126,11 +126,20 @@ describe("parseIndex", () => {
 describe("parseConfig", () => {
   test("an empty object is a working default", () => {
     const config = parseConfig({});
-    expect(config.registry).toBe("node_modules");
+    expect(config.registry).toBeUndefined();
     expect(config.paths).toEqual(DEFAULT_PATHS);
     expect(config.theme.base).toBe("neutral");
     expect(config.reset).toBe(true);
     expect(config.items).toEqual({});
+  });
+
+  test("a registry is a pattern with {name} in it", () => {
+    expect(parseConfig({ registry: "https://example.com/r/{name}.json" }).registry).toBe(
+      "https://example.com/r/{name}.json",
+    );
+    expect(() => parseConfig({ registry: "https://example.com/r" })).toThrow(
+      "components.json.registry must contain {name}",
+    );
   });
 
   test("the recorded hashes survive a round trip", () => {
