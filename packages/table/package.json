@@ -1,6 +1,6 @@
 {
   "name": "@barqjs/table",
-  "version": "0.1.0",
+  "version": "0.2.0-next.0",
   "description": "Headless tables for barq: createTable, FlexRender and createTableHook, on @tanstack/table-core",
   "keywords": [
     "barq",
@@ -81,7 +81,7 @@
     "typescript": "^7.0.2"
   },
   "peerDependencies": {
-    "@barqjs/core": ">=0.1.0",
-    "@barqjs/web": ">=0.1.0"
+    "@barqjs/core": ">=0.2.0-next.0",
+    "@barqjs/web": ">=0.2.0-next.0"
   }
 }

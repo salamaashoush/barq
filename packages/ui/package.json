@@ -477,13 +477,13 @@
     "vite": "^8.3.4"
   },
   "peerDependencies": {
-    "@barqjs/aria": ">=0.1.0",
-    "@barqjs/core": ">=0.1.0",
-    "@barqjs/css": ">=0.1.0",
-    "@barqjs/lucide": ">=0.1.0",
-    "@barqjs/primitives": ">=0.1.0",
-    "@barqjs/server": ">=0.1.0",
-    "@barqjs/web": ">=0.1.0"
+    "@barqjs/aria": ">=0.2.0-next.0",
+    "@barqjs/core": ">=0.2.0-next.0",
+    "@barqjs/css": ">=0.2.0-next.0",
+    "@barqjs/lucide": ">=0.2.0-next.0",
+    "@barqjs/primitives": ">=0.2.0-next.0",
+    "@barqjs/server": ">=0.2.0-next.0",
+    "@barqjs/web": ">=0.2.0-next.0"
   },
   "peerDependenciesMeta": {},
   "engines": {

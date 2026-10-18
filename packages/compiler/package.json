@@ -1,6 +1,6 @@
 {
   "name": "@barqjs/compiler",
-  "version": "0.1.0",
+  "version": "0.2.0-next.0",
   "description": "The barq compiler, in Rust: JSX to cloned DOM templates, compiled styles, file routes and diagnostics with stable codes",
   "keywords": [
     "barq",
