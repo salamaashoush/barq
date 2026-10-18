@@ -50,6 +50,7 @@
     "@barqjs/router": "workspace:*",
     "@barqjs/server": "workspace:*",
     "@barqjs/start": "workspace:*",
+    "@barqjs/universal": "workspace:*",
     "@barqjs/web": "workspace:*",
     "@happy-dom/global-registrator": "^21.0.1",
     "@napi-rs/cli": "^3.10.8",
