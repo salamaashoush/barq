@@ -197,7 +197,7 @@ async function connect(port: number): Promise<Connection> {
 /** Run `body` against a fresh headless Chrome, and always tear it down. */
 export async function withChrome<T>(
   body: (page: Page) => Promise<T>,
-  options: { binary?: string; profile?: string } = {},
+  options: { binary?: string; profile?: string; flags?: readonly string[] } = {},
 ): Promise<T> {
   const binary = chromePath(options.binary);
   const base = options.profile ?? `/tmp/barq-chrome-${process.pid}-${Date.now()}`;
@@ -224,6 +224,7 @@ export async function withChrome<T>(
           "--disable-gpu",
           "--disable-dev-shm-usage",
           `--user-data-dir=${profile}`,
+          ...(options.flags ?? []),
           "about:blank",
         ],
         { stdio: "ignore" },

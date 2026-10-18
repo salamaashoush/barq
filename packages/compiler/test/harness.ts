@@ -11,12 +11,7 @@ import { join } from "node:path";
 import { createRequire } from "node:module";
 import { spyOn } from "bun:test";
 
-import {
-  expectedAttributeOrder,
-  normalizeChannels,
-  resetIdentity,
-  type DomChannels,
-} from "./normalize.ts";
+import { normalizeChannels, resetIdentity, type DomChannels } from "./normalize.ts";
 import {
   beginTrace,
   endTrace,
