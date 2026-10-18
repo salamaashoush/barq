@@ -4,6 +4,7 @@ import type { DocsSection } from "../../docs.tsx";
 import * as changelog from "./changelog.tsx";
 import * as cli from "./cli.tsx";
 import * as componentsJson from "./components-json.tsx";
+import * as customRenderers from "./custom-renderers.tsx";
 import * as darkMode from "./dark-mode.tsx";
 import * as forms from "./forms.tsx";
 import * as installation from "./installation.tsx";
@@ -27,6 +28,7 @@ const MODULES: Record<string, GuideModule> = {
   cli,
   forms,
   "server-rendering": serverRendering,
+  "custom-renderers": customRenderers,
   registry,
   changelog,
 };

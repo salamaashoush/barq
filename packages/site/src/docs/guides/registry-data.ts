@@ -67,6 +67,11 @@ export const GUIDES: readonly GuideMeta[] = [
     description: "The request, the response head, async values and frames.",
   },
   {
+    slug: "custom-renderers",
+    title: "Custom Renderers",
+    description: "Render barq to a host other than the document.",
+  },
+  {
     slug: "registry",
     title: "Registry",
     description: "Run your own component registry.",

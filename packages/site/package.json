@@ -23,6 +23,7 @@
     "@barqjs/start": "workspace:*",
     "@barqjs/table": "workspace:*",
     "@barqjs/ui": "workspace:*",
+    "@barqjs/universal": "workspace:*",
     "@barqjs/web": "workspace:*",
     "@fontsource-variable/geist": "^5.3.0",
     "@fontsource-variable/geist-mono": "^5.3.0",
