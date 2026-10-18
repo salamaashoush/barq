@@ -122,7 +122,8 @@ enum Import<'a> {
     Namespace(SymbolId),
 }
 
-/// The `@barqjs/core` export a callee names, through an alias or a namespace.
+/// The runtime export (from `coreSource` or `moduleSource`) a callee names,
+/// through an alias or a namespace.
 fn core_name<'a>(
     scoping: &Scoping,
     core: &[Import<'a>],

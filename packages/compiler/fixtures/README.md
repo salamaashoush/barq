@@ -98,7 +98,7 @@ that `auditCompiled` and the per-fixture golden assert separately:
 
   Against the DOM the bound is an EQUALITY, for every fixture. `tracer.ts` wraps
   `template` and records the node every clone returns, and the Chrome differential
-  does the same through a `@barqjs/core` shim. So the anchors a frame may hold are
+  does the same through a `@barqjs/web` shim. So the anchors a frame may hold are
   the anchors of the clones attached to it, which is exact for a component called
   twice, for a `For` cloning a row per item, and for a `Show` parking its body in a
   detached fragment.

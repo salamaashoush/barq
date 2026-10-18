@@ -47,7 +47,7 @@ const O0 = { optimize: 0 };
  * A differential compares two builds and says nothing about either one, so it is
  * only worth what its inputs are worth — and the null hypothesis is brutal: an
  * identity `transform(code) { return { code } }` leaves the emitted JSX for bun
- * to lower through the `@barqjs/core` automatic runtime, both sides render
+ * to lower through the `@barqjs/web` automatic runtime, both sides render
  * through `createElement`, and 931 of the 938 assertions in this file and
  * `differential.test.ts` go green against a compiler that compiled nothing. A
  * build that dropped the `optimize` option is the same failure one level down:

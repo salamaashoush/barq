@@ -21,7 +21,8 @@ pub enum SourceKind {
     /// A compiled component's props parameter. Member reads are ⊤-reactive
     /// because our own component emit lowers props to getters.
     PropsParam,
-    /// Resolves to a `@barqjs/core` primitive; drives the return-shape table.
+    /// Resolves to a primitive imported from `coreSource` or `moduleSource`;
+    /// drives the return-shape table.
     Primitive(Prim),
     /// The row VALUE parameter of a keyed `<For>`. A PLAIN VALUE, not an
     /// accessor — `(item: T, index: () => number)`. Getting this wrong is the

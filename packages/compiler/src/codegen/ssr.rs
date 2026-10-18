@@ -1954,7 +1954,7 @@ mod tests {
     }
 
     /// A rewritten callee leaves its import specifier with no reader, and that
-    /// name drags `@barqjs/core`'s whole DOM runtime into a server bundle. It
+    /// name keeps the client's flow component in a server bundle. It
     /// comes off only when EVERY reference was rewritten.
     #[test]
     fn an_import_whose_every_reference_was_rewritten_comes_off() {

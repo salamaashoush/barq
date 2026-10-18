@@ -12,7 +12,7 @@
 ## Failing example
 
 ```tsx
-import { Dynamic } from "@barqjs/core";
+import { Dynamic } from "@barqjs/web";
 import { Editor, Viewer } from "./fields";
 
 export const Field = (props) => (
@@ -55,13 +55,13 @@ which follows Solid 2.0, does not export it, so the import is `undefined` and th
 throws when it renders rather than when it builds.
 
 The check reports a `<Dynamic>` tag, or `<core.Dynamic>` on a namespace import, whose
-binding is the one imported from `@barqjs/core`. A component of your own named `Dynamic` is
+binding is the one imported from `@barqjs/web` or `@barqjs/core`. A component of your own named `Dynamic` is
 not reported.
 
 ## Silencing one line
 
 ```tsx
-import { Dynamic } from "@barqjs/core";
+import { Dynamic } from "@barqjs/web";
 import { Chart } from "./chart";
 
 // barq-ignore-next-line BARQ025 (a compatibility shim provides Dynamic at startup)

@@ -103,7 +103,7 @@ impl<'a> Produced<'a> {
 }
 
 /// P0 Bind. Everything resolves by `SymbolId`: the local binding of every
-/// `@barqjs/core` import is found by module specifier plus imported name, so
+/// `coreSource` and `moduleSource` import is found by module specifier plus imported name, so
 /// `import { signal as sig }` classifies and a user's `const signal = 1` does
 /// not. Where an origin cannot be followed — a re-export through a barrel, a
 /// reassigned binding, a pattern with no per-name attribution — the answer is

@@ -2,13 +2,15 @@
 
 The barq JSX compiler, written in Rust on [oxc](https://oxc.rs) and loaded into
 Node or Bun through napi-rs. It turns JSX into templates that are cloned once
-and runtime calls from `@barqjs/core` that update only the holes that read a
-signal. With `ssr: true` the same analysis emits a string renderer that imports
-`@barqjs/server` instead.
+and runtime calls from `@barqjs/web` that update only the holes that read a
+signal, with the reactive calls from `@barqjs/core`. With `ssr: true` the same
+analysis emits a string renderer that imports `@barqjs/server` instead, and
+with `target: "universal"` it builds every element through a custom renderer
+made with `@barqjs/universal`.
 
 It also generates the file route table, splits route and middleware modules into
 their client and server halves, compiles `@barqjs/css` blocks to a stylesheet,
-and reports mistakes before the code runs: 24 [diagnostics](./docs/README.md),
+and reports mistakes before the code runs: 26 [diagnostics](./docs/README.md),
 each with a stable `BARQ` code, a page that shows the fix, and a required reason
 to silence it.
 
@@ -108,8 +110,25 @@ const { code, map, warnings, diagnostics } = transform(source, {
   [docs/README.md](./docs/README.md#changing-a-level-for-the-whole-project).
 - `routes`: the route patterns [BARQ013](./docs/BARQ013.md) checks `<Link to>`
   against. Absent turns the check off.
-- `moduleSource`: where the emitted code imports the runtime from. Defaults to
-  `@barqjs/core`.
+- `moduleSource`: where the emitted code imports the renderer from. Defaults
+  to `@barqjs/web`.
+- `coreSource`: where the emitted code imports the reactive calls (`props`,
+  `cell`, `block`, `bindEffect`, `createComponent`) and the components an
+  author imports from. Defaults to `@barqjs/core`.
+- `target`: `"dom"` (the default) or `"universal"`. A universal module creates
+  each node with `createElement` or `createTextNode`, places it with
+  `insertNode`, and writes every attribute, property and event with one
+  `setProp` call under the name the author wrote, all imported from
+  `moduleSource`, which is then a module that exports what
+  `@barqjs/universal`'s `createRenderer` returned. `bind:` and a form `action`
+  are errors there ([BARQ027](./docs/BARQ027.md)), as are `ssr`, `hydratable`
+  and `interp` ([BARQ028](./docs/BARQ028.md)).
+- `renderers`: per-file renderer selection, a list of
+  `{ include, target, moduleSource }`. A file whose name matches one of an
+  entry's `include` globs compiles for that entry's `target` (`"universal"` by
+  default) and `moduleSource`, and the first entry that matches wins. A file
+  an entry gives to the universal target is compiled without `ssr` and
+  `hydratable`, which keep describing the build's document files.
 - `templates`: `false` emits `element()` calls instead of cloned templates.
 - `optimize`: `0` turns every optimisation off. The output is larger and slower
   and never behaves differently.

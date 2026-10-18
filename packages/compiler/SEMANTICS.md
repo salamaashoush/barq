@@ -169,7 +169,7 @@ that is NOT the ambient one must put its subtree under the scope it was handed.
 **Status.** `HOLDS`, and O2.1 with it: the emission is `Ctx({ value: _k$1, children: _$block(() =>
 Child({})) })`, so `Child` is constructed by the provider, inside the instance scope, after the
 binding is written. Pinned by `sem-ctx-provider-direct-child.tsx` (the direct form, with no
-`{() => …}` wrapper) and `packages/core`'s `calling-convention.test.ts`.
+`{() => …}` wrapper) and `packages/web`'s `calling-convention.test.ts`.
 
 ### O3 — disposal is total and ordered
 
@@ -202,7 +202,7 @@ still have run and the boundary must have caught one error.
 **Status.** O3.1-O3.3, O3.5 and O3.7 `HOLDS`; O3.4 `IMPLEMENTED, UNEXERCISED` (nothing calls
 `abortSignal`); O3.6 `VIOLATED` (the engine runs cleanups last-registered first with no `try` around
 each, so a throw leaves `dispose` and the earlier cleanups never run). Pinned by
-`sem-own-render-disposer-disposes.tsx`, `packages/core/src/flow.test.ts`, the metamorphic channel
+`sem-own-render-disposer-disposes.tsx`, `packages/web/src/flow.test.ts`, the metamorphic channel
 (`test/metamorphic.ts`, which joins DOM survival and the ownership trace per step), and the whole
 corpus through `test/leaks.ts`, whose five probes (scope, effect, listener, async, node) are taken
 from outside the runtime after `dispose()` returns and find nothing.
@@ -404,7 +404,7 @@ type error in value position — which is the point of stating the type at all.
 requires a `Scope`).
 
 **Status.** `HOLDS`, in the type channel only. Pinned by
-`packages/core/src/jsx-types/props-typed-slot.types.tsx`, typechecked by
+`packages/web/src/jsx-types/props-typed-slot.types.tsx`, typechecked by
 `jsx-types/attribute-types.test.ts`, which asserts the positives compile and every
 `@ts-expect-error` still fires.
 
@@ -491,7 +491,7 @@ additional invocation (K2).
 
 **Status.** `HOLDS`. `flow.ts`'s `invoke` is the one site any consumer invokes a Block from, and it
 emits `BLOCK_EVALUATED_TWICE` on a second call for one activation. Pinned by
-`packages/core/src/flow.test.ts` and by `test/single-evaluation.test.ts`, which compiles the
+`packages/web/src/flow.test.ts` and by `test/single-evaluation.test.ts`, which compiles the
 `fixtures/l4/` fixtures (`mm-branch-flip`, `mm-branch-key-stable`, `c7-portal`, `c7-provider`,
 `c7-error-boundary`, `c7-error-boundary-fallback`, `c7-await-suspense`, `c7-repeat`,
 `c7-each-fallback`, `c7-dynamic`, `c7-reveal`, `c7-loading-errored`) and compares each recorded
@@ -696,7 +696,7 @@ node in the branch is the same object and the Block's invocation counter did not
 keyed list; assert the moved row's nodes are the same objects.
 
 **Status.** `HOLDS`: `region` returns before anything else when the key equals the previous one.
-Pinned by `packages/core/src/flow.test.ts` and the metamorphic channel (`test/metamorphic.ts`) over
+Pinned by `packages/web/src/flow.test.ts` and the metamorphic channel (`test/metamorphic.ts`) over
 `fixtures/l4/` `mm-branch-key-stable.tsx`, `mm-branch-nonkeyed-truthy.tsx` (the one fixture where the
 region's own comparison is the only thing between a write and a rebuild), `mm-keyed-move.tsx` and
 `mm-index-row-stable.tsx`, plus `control-flow-for-keyed-by-item.tsx`.
@@ -758,7 +758,7 @@ fresh child scope, invoke `bodies[k]` under it, insert at the anchor. A hide/sho
 before.
 
 **Status.** `HOLDS` for every construct that reaches `branch`/`each`/`boundary`/`portal`. Pinned by
-`packages/core/src/flow.test.ts`, `control-flow-show.tsx`, and the metamorphic channel over
+`packages/web/src/flow.test.ts`, `control-flow-show.tsx`, and the metamorphic channel over
 `fixtures/l4/` `mm-branch-flip.tsx`, `mm-switch-arm.tsx` and `c7-dynamic.tsx`, whose steps are
 declared `rebuilds` and are checked off the DOM and off the ownership trace.
 
@@ -836,7 +836,7 @@ through to the nearest `Loading` boundary.
 **Status.** `PARTIAL`: entries 1, 3, 4 and 6 are routed, the rest are not. Entry 7 is routed by
 `ref`, but no channel observes it, so it is not recorded as holding. E2.1, E2.2 and E2.3 each `HOLDS`. Pinned by
 `sem-err-construction-throw.tsx` (E2.1, in the direct form across `Errored`, `Loading` and a
-`Reveal > Loading > Errored` stack), `sem-err-handler-throw.tsx` and `packages/core/src/dom.test.ts`
+`Reveal > Loading > Errored` stack), `sem-err-handler-throw.tsx` and `packages/web/src/dom.test.ts`
 (E2.2), `sem-err-notready-passthrough.tsx` (E2.3), and `control-flow-error-boundary.tsx` and
 `control-flow-errored-loading.tsx` for entries 3-4.
 
@@ -1127,7 +1127,7 @@ and delegated listeners alike (a root's delegated listeners sit on its container
 `spread` owns the removal of the listeners it binds. Pinned by the whole corpus through
 `test/leaks.ts` (zero outstanding listeners, with the probe shown to still see an un-removed one),
 `delegated-event.tsx`, `non-delegated-event.tsx`, `ref-cleanup.tsx` and
-`packages/core/src/dom.test.ts` for the `spread` channel.
+`packages/web/src/dom.test.ts` for the `spread` channel.
 
 ### B5 — property-vs-attribute is a stated rule with an explicit override
 
@@ -1328,7 +1328,7 @@ under this one.
    will ever fill, and the rest of the group is dark for the life of the page.)*
 
 **Status.** `HOLDS`. Pinned by `sem-reveal-nested-group.tsx` (the seven procedures through compiled
-JSX), `packages/core/src/reveal.test.ts`, `control-flow-reveal.tsx` and `fixtures/l4/c7-reveal.tsx`.
+JSX), `packages/web/src/reveal.test.ts`, `control-flow-reveal.tsx` and `fixtures/l4/c7-reveal.tsx`.
 
 ### A7 — a compute returns a value, ANY thenable, or an async iterable
 

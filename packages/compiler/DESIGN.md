@@ -145,7 +145,7 @@ pub enum SkelAttrValue {
 ```
 
 `TagId`/`NameId` are interned against a static PHF built at compile time from
-`packages/core/src/dom.ts` (see §9). `TAG_TABLE[id]` and `NAME_TABLE[id]` carry the bit flags
+`packages/web/src/dom.ts` (see §9). `TAG_TABLE[id]` and `NAME_TABLE[id]` carry the bit flags
 `SVG`, `VOID`, `RAW_TEXT`, `PRESERVE_WS` / `IS_EVENT`, `IS_DELEGATED`, `IS_DOM_PROP`, `IS_CLASS`,
 `IS_STYLE`, `SVG_KEBAB_EXEMPT`. After P1 no pass ever compares a tag or attribute string.
 
@@ -336,7 +336,7 @@ pub enum SourceKind {
     /// A compiled component's props parameter. Member reads are ⊤-reactive
     /// because our own component emit lowers props to getters.
     PropsParam,
-    /// Resolves to a @barqjs/core primitive; drives the return-shape table.
+    /// Resolves to a primitive imported from `coreSource` or `moduleSource`; drives the return-shape table.
     Primitive(Prim),
     /// The row VALUE parameter of a keyed `<For>`. A PLAIN VALUE, not an
     /// accessor. `components.ts:264` — `(item: T, index: () => number)`.
@@ -508,7 +508,8 @@ plus the `Program` for declaration initialisers.
 
 **Enables:** target #1, and it is the precondition for #3, #7, and #8.
 
-Resolves the **local binding** of every `@barqjs/core` import by module specifier + imported
+Resolves the **local binding** of every `coreSource` and `moduleSource` import (`@barqjs/core`
+and `@barqjs/web` by default) by module specifier + imported
 name, so `import { signal as sig }` classifies correctly and a user-defined `const signal = 1`
 does not. Then a small worklist runs to fixpoint over:
 
@@ -842,7 +843,7 @@ helper call, matching `setElementAttr`'s add/remove semantics.
 **Control flow on the server.** The flow pass lowers every control-flow construct onto four
 primitives, `branch`, `each`, `boundary` and `portal`, before either backend runs.
 `@barqjs/server`'s `ssr.ts` implements those four as string builders under the same names and the
-same argument order as `packages/core/src/flow.ts`, so the compiler emits the same call for both
+same argument order as `@barqjs/web`'s (`packages/web/src/dom-flow.ts`), so the compiler emits the same call for both
 targets and picks the implementation by picking the import source. A construct the flow pass
 refuses (a spread source, an unreadable `keyed`) reaches a string COMPONENT that is an
 adapter over the same four primitives, so every construct has a string lowering and no module falls
@@ -992,8 +993,8 @@ row, over `browser-parse-check.ts`'s measurement that one newline is exactly wha
 `fixtures/pre-dynamic-leading-newline.tsx` carries the shape through the corpus.
 
 **A rewritten flow import comes off.** When P8b rewrote every reference a binding had, the import
-specifier has no reader and would drag `@barqjs/core`'s DOM runtime into a server bundle for a
-component nothing calls. `install.rs` counts the rewrites against the binding's resolved
+specifier has no reader and would keep the client's flow component in a server bundle for a call
+nothing makes. `install.rs` counts the rewrites against the binding's resolved
 references (minus the JSX closing tags, which oxc counts as references of their own) and drops the
 specifier only when they match: one reader left is one reader too many.
 
@@ -1077,12 +1078,58 @@ builder and encoder. Maps are off by default and the mapped compile is 26x insid
 
 ---
 
+## 7. Universal codegen rules
+
+`target: "universal"` compiles for a renderer made with `@barqjs/universal`'s `createRenderer`,
+whose members the module named by `moduleSource` exports. `options.rs` resolves the target per
+file: a file matching an entry of `renderers` takes that entry's `target` (`"universal"` when
+absent) and `moduleSource`, the first match winning; otherwise the top-level `target` applies. A
+file an entry gives to the universal target is compiled with `ssr`, `hydratable` and `interp`
+off, because the build's document options describe its document files. A top-level universal
+target asked for any of the three turns it off and reports [BARQ028](docs/BARQ028.md).
+
+The analysis and the IR are the target's as they are the DOM's. What differs:
+
+- **Lowering** applies no HTML parser rules (BARQ026 is about the document's parser), and an
+  `on*` attribute is an event under the name the author wrote: never delegated, never
+  lowercased, and spelled the same in the props object a spread reads.
+- **P3 Fold is skipped.** Folding writes a constant into the template as text, and a host is owed
+  the value itself: `width={3}` is the number 3.
+- **The anchor pass runs**, because a hole on a custom host still needs a node standing after it.
+  Serialisation and the sibling walk (`walks_the_dom`) do not: there is no `template()` to parse
+  and nothing to walk.
+- **Construction replaces the template.** `codegen/universal.rs` emits one `createElement` per
+  element, one `createTextNode` per text run and one `insertNode` per static child, in document
+  order, naming only the nodes something reads again (an insert's anchor, a unit's roots). The
+  patch program then runs over those names exactly as the DOM backend runs it over the nodes its
+  walk found.
+- **Every channel is one `setProp`.** An attribute, a property, a class, a style, a ref and an
+  event handler all arrive as `setProp(node, name, value)`, so `onClick={h}` is
+  `setProp(el, "onClick", h)` and the host decides what a name means. A fused `EffectGroup`
+  keeps one `bindEffect`, passing each channel's previous value as `setProp`'s fourth argument.
+- **Control flow is the DOM backend's call.** `insert`, `spread`, `branch`, `each`,
+  `boundary`, `island`, `reveal` and `portal` take the same arguments and come from
+  `moduleSource`, so `region_call` is shared.
+- **Document-only syntax is an error.** A `bind:` or a form `action` is reported as
+  [BARQ027](docs/BARQ027.md) by `compile.rs`'s `document_only`, after the passes.
+
+`codegen::home(helper, target)` is the one table of where a helper is imported from: the
+reactive half (`props`, `cell`, `block`, `readSlot`, `COUNT`, `getOwner`, `untrack`,
+`createComponent`, `bindEffect`) from `coreSource` on every target, the renderer's helpers from
+`moduleSource` on the DOM and universal targets, the string backend's from `serverSource`, and
+the reference backend from `<moduleSource>/interp`.
+
+`test/universal.test.ts` compiles every fixture for this target, runs it through its steps on
+`@barqjs/universal`'s in-memory host, and requires the tree the DOM backend builds in happy-dom.
+
+---
+
 ## 9. Table generation, not transcription
 
 `classToString`, `diffStyleObjects`' kebab + px rules, `CSS_NUMBER_PROPS`, `DOM_PROPS`,
 `SVG_TAGS`, and `DELEGATED_EVENTS` all have to exist byte-for-byte in Rust. Nothing in a normal
 build enforces that, and drift produces *wrong HTML*, not a crash.
 
-`build.rs` therefore parses `packages/core/src/dom.ts` and emits `tables.rs` (the PHFs behind
+`build.rs` therefore parses `packages/web/src/dom.ts` and emits `tables.rs` (the PHFs behind
 `TagId`/`NameId` and their flag bits). CI fails on drift. This is a requirement, not a nicety —
 it is the only mechanism that keeps the compiler and the runtime honest.

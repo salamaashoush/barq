@@ -159,8 +159,8 @@ pub struct Module<'a> {
     /// One entry per reference P8b rewrote from a flow component to its string
     /// implementation. When the count reaches the binding's resolved reference
     /// count, the import specifier has no reader left and comes off — otherwise
-    /// a server bundle keeps pulling `@barqjs/core`'s DOM runtime in for a
-    /// component nothing calls.
+    /// a server bundle keeps the client's flow component for a call nothing
+    /// makes.
     pub flow_rewrites: Vec<SymbolId>,
     /// A JSX root was written outside every function, so no component parameter
     /// binds the scope name P4 threads through the calls it emits. `install`

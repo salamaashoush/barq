@@ -12,9 +12,9 @@ fn main() {
     napi_build::setup();
 
     let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").expect("CARGO_MANIFEST_DIR"));
-    // Two packages since the server runtime moved out of core: `dom.ts` is the
-    // client's table, `ssr.ts` is the string backend's, and the compiler reads
-    // both as the source of truth for its own.
+    // Two packages: `dom.ts` in web is the client's table, `ssr.ts` in server
+    // is the string backend's, and the compiler reads both as the source of
+    // truth for its own.
     let runtime = |package: &str, name: &str| {
         manifest.join("..").join(package).join("src").join(name).canonicalize().unwrap_or_else(
             |error| {

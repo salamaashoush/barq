@@ -141,8 +141,8 @@ pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
 }
 
 /// P8b rewrites `<For>` to `ssrFor`. When it rewrote EVERY reference a binding
-/// had, the import specifier is a reader-free name — and it names a component
-/// that drags `@barqjs/core`'s whole DOM runtime into a server bundle. The
+/// had, the import specifier is a reader-free name — and it keeps the client's
+/// flow component in a server bundle that never calls it. The
 /// counting is what makes this safe: a binding with one reference left keeps
 /// its specifier, and only the identifier form is ever counted, so the
 /// namespace spelling (`core.For`, which the whole namespace object serves)
