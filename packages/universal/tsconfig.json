@@ -23,5 +23,5 @@
   // The tests drive the document renderer beside this one, so they need the
   // DOM. `tsconfig.no-dom.json` checks everything that ships without it.
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "dist"]
+  "exclude": ["node_modules", "dist", "src/jsx-types"]
 }
