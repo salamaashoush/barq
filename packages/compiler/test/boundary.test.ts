@@ -14,6 +14,7 @@ import {
   TMP_DIR,
   compileSource,
   compileSourceRaw,
+  haltsHeld,
   loadModule,
   settle,
   writeSibling,
@@ -177,6 +178,174 @@ export function App() {
     expect(scene.children.map(shape).join("")).toBe("<box size=2><leaf></leaf></box>");
     dispose();
     container.remove();
+  });
+
+  test("control flow around components alone builds on the host of the root it renders in", async () => {
+    const web = await import("@barqjs/web");
+    const components = (await import(COMPONENTS)) as Components;
+    // Scene and Choice name no element, so they compile for the document and
+    // find the scene's host at run time.
+    const source = `
+import { createSignal, Errored, For, Loading, Match, Repeat, Show, Switch } from "@barqjs/core";
+import { Canvas } from ${JSON.stringify(COMPONENTS)};
+export const [xs, setXs] = createSignal(["a", "b", "c"]);
+export const [on, setOn] = createSignal(true);
+export const [mode, setMode] = createSignal("one");
+export const [count, setCount] = createSignal(2);
+function Box(props) {
+  return <box x={props.x} />;
+}
+function Leaf() {
+  return <leaf />;
+}
+function Broken() {
+  throw new Error("salama");
+}
+function Scene() {
+  return <For each={xs()}>{(x) => <Box x={x} />}</For>;
+}
+function Rows() {
+  return <For each={xs()} keyed={false}>{(x) => <Box x={x()} />}</For>;
+}
+function Choice() {
+  return (
+    <Show when={on()} fallback={<Leaf />}>
+      <Box x="on" />
+    </Show>
+  );
+}
+function Modes() {
+  return (
+    <Switch fallback={<Leaf />}>
+      <Match when={mode() === "one"}><Box x="one" /></Match>
+      <Match when={mode() === "two"}><Box x="two" /></Match>
+    </Switch>
+  );
+}
+function Counted() {
+  return <Repeat count={count()}>{(i) => <Box x={i} />}</Repeat>;
+}
+function Guarded() {
+  return (
+    <Errored fallback={<Leaf />}>
+      <Loading fallback={<Leaf />}>
+        <Broken />
+      </Loading>
+    </Errored>
+  );
+}
+export const parts = { Scene, Rows, Choice, Modes, Counted, Guarded };
+export function App(props) {
+  const Part = parts[props.part];
+  return <main><Canvas><Part /></Canvas></main>;
+}
+`;
+    const { code } = compileSourceRaw(source, "scene.tsx", {
+      boundaries: BOUNDARIES,
+      intrinsics: [{ tags: ["box", "leaf"], target: "universal", moduleSource: RENDERER }],
+    });
+    const module = (await loadModule(code, "boundary-foreign-flow")) as unknown as {
+      App: (props: { part: string }) => unknown;
+      setXs: (value: string[]) => void;
+      setOn: (value: boolean) => void;
+      setMode: (value: string) => void;
+      setCount: (value: number) => void;
+    };
+    const mount = async (part: string) => {
+      const container = document.createElement("div");
+      document.body.appendChild(container);
+      const dispose = web.render(() => module.App({ part }) as never, container);
+      await settle();
+      const scene = components.scenes.at(-1)!;
+      return {
+        tree: () => scene.children.map(shape).join(""),
+        dispose: () => {
+          dispose();
+          container.remove();
+          expect(scene.children).toHaveLength(0);
+        },
+      };
+    };
+    const boxes = (...xs: (string | number)[]) =>
+      xs.map((x) => `<box x=${JSON.stringify(x)}></box>`).join("");
+
+    for (const part of ["Scene", "Rows"]) {
+      module.setXs(["a", "b", "c"]);
+      const list = await mount(part);
+      expect(list.tree()).toBe(boxes("a", "b", "c"));
+      module.setXs(["c", "a", "b"]);
+      await settle();
+      expect(list.tree()).toBe(boxes("c", "a", "b"));
+      module.setXs(["c", "d", "a", "b"]);
+      await settle();
+      expect(list.tree()).toBe(boxes("c", "d", "a", "b"));
+      module.setXs(["d", "b"]);
+      await settle();
+      expect(list.tree()).toBe(boxes("d", "b"));
+      module.setXs([]);
+      await settle();
+      expect(list.tree()).toBe("");
+      list.dispose();
+    }
+
+    module.setOn(true);
+    const choice = await mount("Choice");
+    expect(choice.tree()).toBe(boxes("on"));
+    module.setOn(false);
+    await settle();
+    expect(choice.tree()).toBe("<leaf></leaf>");
+    module.setOn(true);
+    await settle();
+    expect(choice.tree()).toBe(boxes("on"));
+    choice.dispose();
+
+    module.setMode("one");
+    const modes = await mount("Modes");
+    expect(modes.tree()).toBe(boxes("one"));
+    module.setMode("two");
+    await settle();
+    expect(modes.tree()).toBe(boxes("two"));
+    module.setMode("none");
+    await settle();
+    expect(modes.tree()).toBe("<leaf></leaf>");
+    modes.dispose();
+
+    module.setCount(2);
+    const counted = await mount("Counted");
+    expect(counted.tree()).toBe(boxes(0, 1));
+    module.setCount(3);
+    await settle();
+    expect(counted.tree()).toBe(boxes(0, 1, 2));
+    counted.dispose();
+
+    const guarded = await mount("Guarded");
+    expect(guarded.tree()).toBe("<leaf></leaf>");
+    guarded.dispose();
+  });
+
+  test("a document element in such a body is refused with the construct named", async () => {
+    const web = await import("@barqjs/web");
+    const source = `
+import { For } from "@barqjs/core";
+import { Canvas } from ${JSON.stringify(COMPONENTS)};
+function Scene() {
+  return <For each={["a"]}>{(x) => <div>{x}</div>}</For>;
+}
+export function App() {
+  return <main><Canvas><Scene /></Canvas></main>;
+}
+`;
+    const { code } = compileSourceRaw(source, "scene.tsx", { boundaries: BOUNDARIES });
+    const module = (await loadModule(code, "boundary-foreign-refused")) as unknown as {
+      App: () => unknown;
+    };
+    const container = document.createElement("div");
+    // The throw halts the engine, as any error nothing catches does.
+    await haltsHeld(async () => {
+      expect(() => web.render(() => module.App() as never, container)).toThrow(
+        /a list such as `<For>` in another renderer's tree built a node that tree cannot hold/,
+      );
+    });
   });
 });
 
