@@ -45,6 +45,7 @@ pub fn lower<'a>(
         ast: AstBuilder::new(allocator),
         source,
         use_templates: options.templates,
+        universal: options.target == crate::options::RenderTarget::Universal,
         module,
         in_svg: false,
         svg_roots: std::collections::HashSet::new(),
@@ -78,6 +79,10 @@ struct Lower<'a, 'm> {
     ast: AstBuilder<'a>,
     source: &'a str,
     use_templates: bool,
+    /// Compiling for a custom renderer: no HTML parser builds the tree, so
+    /// nothing is refused for how a parser would reshape it, and every name
+    /// reaches the host as the author wrote it.
+    universal: bool,
     module: &'m mut Module<'a>,
     /// Whether the JSX being scanned is written inside SVG content. A root
     /// found there is an SVG element whatever its tag says: `<a>`, `<title>`
@@ -220,6 +225,9 @@ impl<'a> Lower<'a, '_> {
         let Some(tag) = intrinsic_tag(&element.opening_element.name) else {
             return false;
         };
+        if self.universal {
+            return !self.names_children(element);
+        }
         if parse::reshapes(tag, at) {
             return false;
         }
@@ -252,7 +260,17 @@ impl<'a> Lower<'a, '_> {
         // A `children=` attribute is the one name that still takes an element
         // off the template path: it is a PROP whose value is the child list,
         // and P4 is where a child list becomes a Block.
-        let names_children = element.opening_element.attributes.iter().any(|item| match item {
+        if self.names_children(element) {
+            return false;
+        }
+        self.children_survive_the_parser(element, tag)
+    }
+
+    /// A `children=` attribute is the one name that still takes an element
+    /// off the template path: it is a PROP whose value is the child list,
+    /// and P4 is where a child list becomes a Block.
+    fn names_children(&self, element: &JSXElement<'a>) -> bool {
+        element.opening_element.attributes.iter().any(|item| match item {
             // A spread stays on the template path. Its NAMES are the one
             // thing about an attribute the compiler cannot know, so the channel
             // per key is resolved at run time — but the element around it, its
@@ -261,11 +279,7 @@ impl<'a> Lower<'a, '_> {
             JSXAttributeItem::Attribute(attribute) => {
                 attribute_name(&attribute.name, self.allocator) == "children"
             }
-        });
-        if names_children {
-            return false;
-        }
-        self.children_survive_the_parser(element, tag)
+        })
     }
 
     /// Nothing under this element addresses a node at run time: every attribute
@@ -612,6 +626,11 @@ impl<'a> Lower<'a, '_> {
                 names::Prefixed::Ref => (AttrKind::Ref, "ref"),
                 names::Prefixed::Bind(name) => (AttrKind::Bind, name),
                 names::Prefixed::Chan(name, chan) => (AttrKind::Chan(chan), name),
+                names::Prefixed::Plain(name)
+                    if self.universal && name.starts_with("on") && !name.contains(':') =>
+                {
+                    (AttrKind::Event, name)
+                }
                 // Before the plain `on` rule: `onKeyDownCapture` is a capture
                 // binding for `keydown`, not a bubble one for `keydowncapture`.
                 // The type is resolved here and never re-derived: `onX` is
@@ -642,6 +661,9 @@ impl<'a> Lower<'a, '_> {
                 // by name and folds into the template bytes.
                 names::Prefixed::Plain(name) if name == "action" && !in_svg && tag == "form" => {
                     (AttrKind::FormAction, "action")
+                }
+                names::Prefixed::Plain(name) if self.universal => {
+                    (AttrKind::Chan(crate::ir::Chan::Attr), name)
                 }
                 names::Prefixed::Plain(name) => (
                     AttrKind::Chan(names::channel_of(names::normalize(name), in_svg, tag)),
@@ -824,6 +846,12 @@ impl<'a> Lower<'a, '_> {
     /// known by, or `None` for one a props object has no key for.
     fn spread_key(&self, attr: &TmpAttr<'a>) -> Option<&'a str> {
         let name = self.module.interner.name(attr.key).text;
+        // A custom host is handed the author's names, so the props object a
+        // spread reads spells them the same way.
+        if self.universal {
+            return matches!(attr.kind, AttrKind::Event | AttrKind::Ref | AttrKind::Chan(_))
+                .then_some(name);
+        }
         let key = match attr.kind {
             AttrKind::Event => format!("on:{name}"),
             AttrKind::CaptureEvent => format!("oncapture:{name}"),

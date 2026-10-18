@@ -55,7 +55,8 @@ pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
             templates.push(hoisted_declaration(emit, index));
         }
     }
-    if emit.target.walks_the_dom() {
+    // A custom renderer reads a hoisted handler as well, through `setProp`.
+    if emit.target.walks_the_dom() || emit.target == super::Target::Universal {
         // With hoisting off `handler_expression` rebuilds each one at its use
         // site, so a declaration here would be a module-scope binding with no
         // reader.
@@ -68,7 +69,9 @@ pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
             }
             templates.push(hoisted_declaration(emit, index));
         }
-        templates.extend(super::dom::delegate_call(emit));
+        if emit.target.walks_the_dom() {
+            templates.extend(super::dom::delegate_call(emit));
+        }
     }
     // Last, because a serialised unit names the `_tmpl$N` it clones and the
     // `_h$N` it installs, and a `const` cannot be read before its initialiser
@@ -105,7 +108,11 @@ pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
     }
 
     let mut out = ArenaVec::with_capacity_in(body.len() + templates.len() + 3, &allocator);
-    if calls_a_component(emit, &body) {
+    // A helper import from the renderer's own module already loads it, and with
+    // it the host it registers.
+    let loads_the_renderer = emit.target == super::Target::Universal
+        && pending.iter().any(|(source, _)| *source == emit.module_source);
+    if !loads_the_renderer && calls_a_component(emit, &body) {
         out.push(host_import(emit));
     }
     for (source, specifiers) in &pending {
@@ -192,8 +199,11 @@ const HOST_COMPONENTS: [&str; 8] =
 ///
 /// A namespace import of core counts whatever it is used for: `core.Show` is
 /// one property read away, and nothing here follows it.
+///
+/// A custom renderer registers its host from its own module, as a default no
+/// other renderer has taken, so the import is of that module.
 fn calls_a_component<'a>(emit: &Emit<'a, '_>, body: &[Statement<'a>]) -> bool {
-    if !emit.target.walks_the_dom() {
+    if emit.target == super::Target::Ssr {
         return false;
     }
     let mut calls = false;
@@ -242,6 +252,9 @@ fn calls_a_component<'a>(emit: &Emit<'a, '_>, body: &[Statement<'a>]) -> bool {
 }
 
 fn host_source(emit: &Emit<'_, '_>) -> String {
+    if emit.target == super::Target::Universal {
+        return emit.module_source.to_string();
+    }
     format!("{}/host", emit.module_source)
 }
 

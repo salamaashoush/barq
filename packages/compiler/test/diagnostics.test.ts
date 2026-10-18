@@ -324,6 +324,15 @@ describe("the diagnostic engine", () => {
         `import { Dynamic } from "@barqjs/core";\n` +
         'export const V = () => <Dynamic component="p">salama</Dynamic>;\n',
       BARQ026: "export const V = () => <p>Hello <div>salama</div></p>;\n",
+      // The two that a custom renderer's target makes reachable.
+      BARQ027: {
+        source: "export const V = (props) => <input bind:value={props.pair} />;\n",
+        options: { target: "universal", moduleSource: "./renderer.ts" },
+      },
+      BARQ028: {
+        source: "export const V = () => <p>salama</p>;\n",
+        options: { target: "universal", moduleSource: "./renderer.ts", ssr: true },
+      },
     };
 
     const advertised = native
@@ -464,6 +473,16 @@ describe("the diagnostic engine", () => {
 describe("the docs pages", () => {
   const PAGE_OPTIONS: Record<string, Record<string, unknown>> = {
     BARQ013: { routes: ["/", "/users", "/users/$id"] },
+    BARQ027: { target: "universal", moduleSource: "./renderer.ts" },
+    BARQ028: { target: "universal", moduleSource: "./renderer.ts", ssr: true },
+  };
+
+  /**
+   * A code about the options a module is compiled with is fixed by changing
+   * them, so its fixed example is compiled with the corrected ones.
+   */
+  const FIXED_OPTIONS: Record<string, Record<string, unknown>> = {
+    BARQ028: { target: "universal", moduleSource: "./renderer.ts" },
   };
 
   function section(page: string, heading: string): string | undefined {
@@ -508,7 +527,7 @@ describe("the docs pages", () => {
       const fixed = fences(section(page, "Fixed example") ?? "");
       expect(fixed.length, "a fixed example").toBeGreaterThan(0);
       for (const source of fixed) {
-        expect(codes(diagnose(source, options)), source).toEqual([]);
+        expect(codes(diagnose(source, FIXED_OPTIONS[code] ?? options)), source).toEqual([]);
       }
 
       const silenced = section(page, "Silencing one line");

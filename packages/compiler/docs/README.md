@@ -28,6 +28,8 @@ exists and how to silence it.
 - [BARQ024](BARQ024.md), error: An attribute uses a Solid 1.x namespace such as `on:` or `attr:`.
 - [BARQ025](BARQ025.md), error: `<Dynamic>` is rendered, where Solid 2.0 uses the `dynamic` factory.
 - [BARQ026](BARQ026.md), error: Markup the browser's HTML parser builds differently from the JSX.
+- [BARQ027](BARQ027.md), error: A `bind:` or a form `action` is written in a module compiled for a custom renderer.
+- [BARQ028](BARQ028.md), error: A module compiled for a custom renderer is also asked for `ssr`, `hydratable` or `interp`.
 
 When each code is reported:
 
@@ -35,7 +37,7 @@ When each code is reported:
   `diagnostics` option is on. It defaults to on in development builds, and
   `barq({ compiler: { diagnostics: true } })` runs them in a production build.
 - BARQ004 and BARQ010: in development builds only.
-- BARQ012 to BARQ017 and BARQ022 to BARQ026: in every build, so they can fail CI.
+- BARQ012 to BARQ017 and BARQ022 to BARQ028: in every build, so they can fail CI.
   BARQ013 also needs the route table, which file-based routing provides.
 - BARQ008 and BARQ009: in every build, about your own suppression comments.
 

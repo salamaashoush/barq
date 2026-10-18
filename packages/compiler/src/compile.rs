@@ -8,7 +8,7 @@ use oxc::parser::{ParseOptions, Parser, ParserReturn};
 use oxc::span::{SourceType, Span};
 
 use crate::diag::{Code, Suppressions};
-use crate::ir::{LineIndex, Module};
+use crate::ir::{LineIndex, Module, Op};
 use crate::options::ResolvedOptions;
 use crate::{analysis, codegen, harvest, lower, passes};
 
@@ -548,6 +548,40 @@ fn compile_on_this_stack(
             filename,
         ));
     }
+    if let Some(target) = &options.unknown_target {
+        warnings.push(Diagnostic::at(
+            Severity::Warning,
+            format!(
+                "`{target}` is not a compile target, so this module was compiled for the \
+                 document. The targets are: dom, universal."
+            ),
+            filename,
+        ));
+    }
+    for option in &options.universal_conflicts {
+        warnings.push(located(
+            Code::Barq028.default_level(),
+            Code::Barq028,
+            format!(
+                "`{option}: true` was asked for together with `target: \"universal\"`, and \
+                 {}. It was turned off for this module. Remove it from this module's options, \
+                 or give the files of the custom renderer their own entry in `renderers`, which \
+                 leaves `{option}` to the rest of the build.",
+                match *option {
+                    "ssr" =>
+                        "the string backend renders the document's markup, which a custom \
+                              host does not have",
+                    "hydratable" =>
+                        "hydration claims the document's server markup, which a \
+                                     custom host does not have",
+                    _ => "the reference backend walks the document",
+                }
+            ),
+            Span::default(),
+            filename,
+            &mut lines,
+        ));
+    }
     // Decided before the pass stage, because the string backend skips two of
     // its passes outright. The OPTIONS decide it and nothing else: every
     // construct has a string lowering, so there is nothing to fall back from,
@@ -557,6 +591,9 @@ fn compile_on_this_stack(
 
     passes::run(&allocator, &mut module, options, target);
     warnings.extend(analysis_diagnostics(&module, filename, &mut lines));
+    if target == codegen::Target::Universal {
+        warnings.extend(document_only(&module, filename, &mut lines));
+    }
     let labels = template_labels(&module, &mut lines, options);
     // Templates are numbered by P7, so the position table is filled here —
     // still before codegen, which is the last stage that may touch a unit.
@@ -1075,6 +1112,38 @@ fn located(
 /// was referenced, which measured at 41.88x on the 100-row page for one import.
 /// The string backend has the four primitives and a string component for every
 /// construct now, so the split it decided no longer exists to decide.
+/// BARQ027: the two attribute forms whose meaning is a document form's, in a
+/// module compiled for a custom renderer.
+fn document_only(module: &Module<'_>, filename: &str, lines: &mut Lines<'_>) -> Vec<Diagnostic> {
+    let mut found = Vec::new();
+    for unit in &module.units {
+        for patch in &unit.patch {
+            let message = match patch.op {
+                Op::Bind { .. } => "`bind:` is a two-way binding to a document form control, \
+                     and this module is compiled for a custom renderer, which has none. Pass the \
+                     value as a prop and write it back from the host's own event: `value={text()}` \
+                     with `onChange={(next) => setText(next)}`."
+                    .to_string(),
+                Op::FormAction { .. } => "`action` on a `<form>` is a document form's submit \
+                     handler or URL, and this module is compiled for a custom renderer, which \
+                     submits nothing. Call the action from the host's own event instead: \
+                     `onSubmit={() => save()}`."
+                    .to_string(),
+                _ => continue,
+            };
+            found.push(located(
+                Code::Barq027.default_level(),
+                Code::Barq027,
+                message,
+                patch.span,
+                filename,
+                lines,
+            ));
+        }
+    }
+    found
+}
+
 fn analysis_diagnostics(
     module: &Module<'_>,
     filename: &str,

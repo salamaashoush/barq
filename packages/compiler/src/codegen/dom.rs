@@ -701,7 +701,7 @@ fn number<'a>(ctx: &Emit<'a, '_>, value: u8, span: Span) -> Expression<'a> {
 /// The assignment target `ref={binding}` writes into. P1 only sets `write` for
 /// an identifier that resolves to a mutable binding, so nothing else reaches
 /// here.
-fn writable_target(value: Expression<'_>) -> AssignmentTarget<'_> {
+pub(super) fn writable_target(value: Expression<'_>) -> AssignmentTarget<'_> {
     match value {
         Expression::Identifier(identifier) => {
             AssignmentTarget::AssignmentTargetIdentifier(identifier)
@@ -921,7 +921,7 @@ fn opaque_read<'a>(
 
 /// An expression that can only evaluate to a primitive, so never to a Block or
 /// a Cell.
-fn is_primitive_valued(expression: &Expression<'_>) -> bool {
+pub(super) fn is_primitive_valued(expression: &Expression<'_>) -> bool {
     match expression {
         Expression::StringLiteral(_)
         | Expression::TemplateLiteral(_)
@@ -955,7 +955,7 @@ fn is_string_valued(expression: &Expression<'_>) -> bool {
 /// of one name on two elements cannot collide, the emitted bytes do not grow with the name,
 /// and `__proto__` — which as an object-literal key would set the prototype
 /// rather than create a slot — is not a case that has to be excluded.
-fn slot_key(index: usize, allocator: &Allocator) -> &str {
+pub(super) fn slot_key(index: usize, allocator: &Allocator) -> &str {
     let mut out = String::with_capacity(2);
     let mut index = index;
     loop {
@@ -968,7 +968,7 @@ fn slot_key(index: usize, allocator: &Allocator) -> &str {
     allocator.alloc_str(&out)
 }
 
-fn property<'a>(
+pub(super) fn property<'a>(
     ctx: &Emit<'a, '_>,
     key: &'a str,
     value: Expression<'a>,
@@ -1025,7 +1025,7 @@ fn channel_write<'a>(
     Statement::new_expression_statement(span, call, &ctx.ast)
 }
 
-fn effect_call<'a>(
+pub(super) fn effect_call<'a>(
     ctx: &mut Emit<'a, '_>,
     compute: Expression<'a>,
     apply: Expression<'a>,
@@ -1036,7 +1036,7 @@ fn effect_call<'a>(
     Statement::new_expression_statement(span, call, &ctx.ast)
 }
 
-fn arrow<'a>(
+pub(super) fn arrow<'a>(
     ctx: &Emit<'a, '_>,
     params: ArenaBox<'a, FormalParameters<'a>>,
     body: ArrowFunctionBody<'a>,
@@ -1045,7 +1045,7 @@ fn arrow<'a>(
     Expression::new_arrow_function_expression(span, false, None, params, None, body, &ctx.ast)
 }
 
-fn block<'a>(
+pub(super) fn block<'a>(
     ctx: &Emit<'a, '_>,
     statements: Vec<Statement<'a>>,
     span: Span,
@@ -1061,7 +1061,7 @@ fn block<'a>(
 /// `(_v$)` or `(_v$, _p$)` or `(_v$, _p$ = {})`. The default is what makes the
 /// FIRST apply see an empty record rather than `undefined`; a scalar prev needs
 /// none, because comparing against `undefined` is exactly the first-run write.
-fn apply_params<'a>(
+pub(super) fn apply_params<'a>(
     ctx: &Emit<'a, '_>,
     value: &'a str,
     prev: Option<(&'a str, bool)>,
@@ -1099,7 +1099,7 @@ fn expando_target<'a>(
     assignment_target(member)
 }
 
-fn assignment_target<'a>(expression: Expression<'a>) -> AssignmentTarget<'a> {
+pub(super) fn assignment_target<'a>(expression: Expression<'a>) -> AssignmentTarget<'a> {
     match expression {
         Expression::StaticMemberExpression(member) => {
             AssignmentTarget::from(MemberExpression::StaticMemberExpression(member))
@@ -1190,7 +1190,7 @@ fn holds_no_getter(value: &Expression<'_>) -> bool {
     })
 }
 
-fn value_expression<'a>(
+pub(super) fn value_expression<'a>(
     ctx: &mut Emit<'a, '_>,
     unit: &mut Unit<'a>,
     value: ExprId,
@@ -1344,7 +1344,11 @@ pub(super) fn take<'a>(
     unit.exprs.entry_mut(id).src.take().unwrap_or_else(|| Expression::new_void_0(span, &ctx.ast))
 }
 
-fn iife<'a>(ctx: &Emit<'a, '_>, statements: Vec<Statement<'a>>, span: Span) -> Expression<'a> {
+pub(super) fn iife<'a>(
+    ctx: &Emit<'a, '_>,
+    statements: Vec<Statement<'a>>,
+    span: Span,
+) -> Expression<'a> {
     let statements = ArenaVec::from_iter_in(statements, &ctx.allocator);
     let body = ArrowFunctionBody::new_function_body(
         span,

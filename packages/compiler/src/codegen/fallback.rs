@@ -29,6 +29,11 @@ impl<'a> Emit<'a, '_> {
     ) -> Expression<'a> {
         let JSXElement { span, opening_element, children, .. } = element.unbox();
         let opening = opening_element.unbox();
+        if self.target == super::Target::Universal {
+            let tag = self.element_name(opening.name);
+            let props = self.props_with_children(opening.attributes, children, span);
+            return self.universal_element(tag, props, span);
+        }
         // The subtree is BUILT rather than cloned. The string backend serialised
         // the whole thing inline as one hole's value, so there is no walk for the
         // client to claim it with: everything under this call has to build cold,
@@ -98,6 +103,63 @@ impl<'a> Emit<'a, '_> {
                 Expression::new_object_expression(span, properties, &self.ast)
             }
         }
+    }
+
+    /// The same element on a custom host, which has no `element()`: created,
+    /// its props spread, its children inserted.
+    ///
+    /// ```js
+    /// (() => {
+    ///   const _el$1 = _$createElement("box");
+    ///   const _v$1 = { title: "x", children: [...] };
+    ///   _$spread(_el$1, _v$1);
+    ///   _$insert(_el$1, _v$1.children);
+    ///   return _el$1;
+    /// })()
+    /// ```
+    fn universal_element(
+        &mut self,
+        tag: Expression<'a>,
+        props: Expression<'a>,
+        span: oxc::span::Span,
+    ) -> Expression<'a> {
+        let node = self.module.uids.element(self.allocator);
+        let held = self.module.uids.value(self.allocator);
+        let props = match props {
+            Expression::NullLiteral(_) => Expression::new_object_expression(
+                span,
+                ArenaVec::new_in(&self.allocator),
+                &self.ast,
+            ),
+            other => other,
+        };
+        let create = self.helper(Helper::CreateElement, span);
+        let create = self.call(create, vec![Argument::from(tag)], span);
+        let spread = self.helper(Helper::Spread, span);
+        let spread = self.call(
+            spread,
+            vec![Argument::from(self.ident(node, span)), Argument::from(self.ident(held, span))],
+            span,
+        );
+        let insert = self.helper(Helper::Insert, span);
+        let children = self.member(self.ident(held, span), "children", span);
+        let insert = self.call(
+            insert,
+            vec![Argument::from(self.ident(node, span)), Argument::from(children)],
+            span,
+        );
+        let statements = vec![
+            self.binding(node, create, span),
+            self.binding(held, props, span),
+            oxc::ast::ast::Statement::new_expression_statement(span, spread, &self.ast),
+            oxc::ast::ast::Statement::new_expression_statement(span, insert, &self.ast),
+            oxc::ast::ast::Statement::new_return_statement(
+                span,
+                Some(self.ident(node, span)),
+                &self.ast,
+            ),
+        ];
+        super::dom::iife(self, statements, span)
     }
 
     /// `_$hole(null, null, () => …, TAGGED)` — a position with no RANGE, whose

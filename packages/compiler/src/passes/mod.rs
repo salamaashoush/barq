@@ -35,7 +35,10 @@ pub fn run<'a>(
 ) {
     let opt = options.opt;
     classify::run(allocator, module);
-    if opt.fold {
+    // Folding writes a constant into the template's bytes, as text. A custom
+    // host has no template and is owed the value itself: `width={3}` is the
+    // number 3 there, not the string the attribute would hold.
+    if opt.fold && target != Target::Universal {
         fold::run(allocator, module);
     }
     // After P3, because target #8 asks whether a unit still has a patch — which
@@ -55,7 +58,10 @@ pub fn run<'a>(
     // marker the wire omitted would shift every index after it by one. The
     // string backend still has no walk — it serialises the comment and nothing
     // reads it there.
-    if target.walks_the_dom() || options.hydratable {
+    //
+    // A custom renderer inserts against an anchor too: its nodes are created
+    // rather than walked, but a hole still needs a node standing after it.
+    if target.walks_the_dom() || target == Target::Universal || options.hydratable {
         anchor::run(allocator, module, opt.anchor);
     }
     // Skipped whole: a `SetLive` with no group header is the one-effect-per-prop

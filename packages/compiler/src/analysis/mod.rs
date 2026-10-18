@@ -74,8 +74,13 @@ pub fn bind<'a>(
     // Not gated on `diagnostics`: markup the parser reshapes breaks every
     // server-rendered page that holds it, so a production build is where it
     // has to fail.
-    let reshaped = nesting::check(allocator, program);
-    module.env.diagnostics.extend(reshaped);
+    //
+    // A custom renderer's tree is built by its host, which no HTML parser
+    // stands in front of.
+    if options.target != crate::options::RenderTarget::Universal {
+        let reshaped = nesting::check(allocator, program);
+        module.env.diagnostics.extend(reshaped);
+    }
     if options.diagnostics {
         render::check(
             allocator,

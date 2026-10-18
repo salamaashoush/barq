@@ -112,6 +112,8 @@ codes! {
     Barq024 = "BARQ024", Error, "An attribute uses a Solid 1.x namespace such as `on:` or `attr:`";
     Barq025 = "BARQ025", Error, "`<Dynamic>` is rendered, where Solid 2.0 uses the `dynamic` factory";
     Barq026 = "BARQ026", Error, "Markup the browser's HTML parser builds differently from the JSX";
+    Barq027 = "BARQ027", Error, "A `bind:` or a form `action` is written in a module compiled for a custom renderer";
+    Barq028 = "BARQ028", Error, "A module compiled for a custom renderer is also asked for `ssr`, `hydratable` or `interp`";
 }
 
 /// Where the pages live. A consumer gets this string verbatim — the Vite panel

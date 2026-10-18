@@ -6,6 +6,7 @@ pub mod interp;
 pub mod mappings;
 mod prune;
 pub mod ssr;
+pub mod universal;
 
 pub use backend::{At, Backend};
 
@@ -35,10 +36,17 @@ pub enum Target {
     /// plan — because "the compiler knows more than the reference" has to be
     /// structurally impossible, not merely unintended.
     Interp,
+    /// A custom renderer made with `createRenderer`, imported from the module
+    /// source. No template and no walk: every node is created and inserted by
+    /// a call, and every attribute and event is one `setProp`.
+    Universal,
 }
 
 impl Target {
     pub fn of(options: &ResolvedOptions) -> Self {
+        if options.target == crate::options::RenderTarget::Universal {
+            return Self::Universal;
+        }
         match (options.interp, options.ssr) {
             (true, _) => Self::Interp,
             (false, true) => Self::Ssr,
@@ -57,7 +65,7 @@ impl Target {
     }
 }
 
-pub const HELPER_COUNT: usize = 62;
+pub const HELPER_COUNT: usize = 65;
 
 /// The module a helper is imported from.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -104,7 +112,7 @@ pub fn home(helper: Helper, target: Target) -> Home {
         H::Branch | H::Each | H::Boundary | H::Portal | H::Island | H::Reveal | H::Dynamic => {
             match target {
                 Target::Ssr => Home::Server,
-                Target::Dom | Target::Interp => Home::Renderer,
+                Target::Dom | Target::Interp | Target::Universal => Home::Renderer,
             }
         }
         H::Interp => Home::Interp,
@@ -152,7 +160,10 @@ pub fn home(helper: Helper, target: Target) -> Home {
         | H::Hole
         | H::ReadKeys
         | H::ClassToString
-        | H::ReadOpaque => Home::Renderer,
+        | H::ReadOpaque
+        | H::CreateElement
+        | H::CreateTextNode
+        | H::InsertNode => Home::Renderer,
     }
 }
 
@@ -366,6 +377,13 @@ pub enum Helper {
     /// server. A `<server_source>` helper numbered after the module-source
     /// tail, so the import grouping names it apart.
     BindAttr = 61,
+    // ── a custom renderer's node operations ───────────────────────────────
+    /// `_$createElement("box")` — one element of the host, by tag.
+    CreateElement = 62,
+    /// `_$createTextNode("text")`.
+    CreateTextNode = 63,
+    /// `_$insertNode(parent, node)` — a static child, put in place once.
+    InsertNode = 64,
 }
 
 /// Every helper with the name it is imported under, in `Helper` order.
@@ -432,6 +450,9 @@ const IMPORTED: [(Helper, &str); HELPER_COUNT] = [
     (Helper::CreateComponent, "createComponent"),
     (Helper::ReadOpaque, "readOpaque"),
     (Helper::BindAttr, "bindAttr"),
+    (Helper::CreateElement, "createElement"),
+    (Helper::CreateTextNode, "createTextNode"),
+    (Helper::InsertNode, "insertNode"),
 ];
 
 /// The name a helper is imported under, for a test that has to check the table
@@ -765,6 +786,7 @@ impl<'a, 'm> Emit<'a, 'm> {
             Target::Dom => dom::emit_unit(self, &mut unit, span),
             Target::Ssr => ssr::emit_unit_root(self, &mut unit, span),
             Target::Interp => interp::emit_unit(self, &mut unit, id, span),
+            Target::Universal => universal::emit_unit(self, &mut unit, span),
         };
         self.module.units[id as usize] = unit;
         expression
@@ -793,9 +815,10 @@ impl<'a, 'm> Emit<'a, 'm> {
     /// The placeholder's unit, when its recorded [`Site`] says its statements
     /// may be spliced into the enclosing body instead of wrapped in an IIFE.
     fn spliceable(&self, expression: &Expression<'a>) -> Option<(u32, UnitId)> {
-        // The other two backends produce one expression and no statements, so
-        // there is nothing to splice and every root goes through `root`.
-        if self.target != Target::Dom || !self.opt.splice {
+        // The string and reference backends produce one expression and no
+        // statements, so there is nothing to splice and every root goes
+        // through `root`.
+        if !matches!(self.target, Target::Dom | Target::Universal) || !self.opt.splice {
             return None;
         }
         let Expression::Identifier(identifier) = expression else { return None };
@@ -827,7 +850,11 @@ impl<'a, 'm> Emit<'a, 'm> {
         self.module.roots[index as usize] = Root::Unit(NONE);
         let empty = Unit::new_in(self.allocator, Ns::Html, Site::Nested(span));
         let mut unit = std::mem::replace(&mut self.module.units[id as usize], empty);
-        let parts = dom::emit_unit_parts(self, &mut unit, span);
+        let parts = if self.target == Target::Universal {
+            universal::emit_unit_parts(self, &mut unit, span)
+        } else {
+            dom::emit_unit_parts(self, &mut unit, span)
+        };
         self.module.units[id as usize] = unit;
         parts
     }
