@@ -55,7 +55,7 @@ function bindOne(
   handler: EventListener,
   options: Options | undefined,
 ): void {
-  // Through the core's `listen`, not `addEventListener` directly: a throw out
+  // Through `@barqjs/web`'s `listen`, not `addEventListener` directly: a throw out
   // of a handler has to reach the enclosing `Errored` boundary the same way a
   // compiled `onClick` does, and the listener has to be removed with this
   // owner. The handler itself runs with no owner, so it may write signals.

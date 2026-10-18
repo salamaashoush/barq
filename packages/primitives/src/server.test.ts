@@ -4,7 +4,7 @@
  * The README promises that nothing here needs a DOM to import and that the
  * browser primitives read a neutral value and subscribe to nothing. Under
  * `bun test` that promise cannot be checked at all: `bunfig.toml` preloads
- * happy-dom, `@barqjs/core` reads `typeof document` once at module scope, and
+ * happy-dom, `@barqjs/web` reads `typeof document` once at module scope, and
  * `isServer` is therefore false in every other file in this suite. So the
  * server path is measured the only way it can be — by spawning a process
  * without one, running `server-probe.ts` there, and reading back what it saw.

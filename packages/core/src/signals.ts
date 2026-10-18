@@ -1529,8 +1529,8 @@ export function isHydratable(): boolean {
   const carried = engineGetContext(RENDER_SESSION, owner);
   if (carried !== null) return hydrationData.has(carried);
   // No render above it: the client's answer where there is a document, and
-  // the server's outside a render where there is none. Asked at the call, not
-  // read from `#env`, whose answer is fixed before a test registers its DOM.
+  // the server's outside a render where there is none. Asked at the call
+  // rather than once at load, so a DOM a test registers later is seen.
   return "document" in globalThis;
 }
 

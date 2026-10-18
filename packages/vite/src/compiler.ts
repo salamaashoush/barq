@@ -535,7 +535,7 @@ function passPairs(passes: BarqCompilerOptions["passes"]): string[][] | undefine
  * The export condition a barq package publishes its SOURCE under.
  *
  * A compiled component is backend-specific: the same file emits
- * `template()`/`spread` from `@barqjs/core` for the DOM and `html()`/`esc()`
+ * `template()`/`spread` from `@barqjs/web` for the DOM and `html()`/`esc()`
  * from `@barqjs/server` for a string render, and `hydratable` moves it again —
  * three distinct outputs for a trivial component. `hydratable` is a decision
  * the APPLICATION makes, so a library cannot pre-compile for it, and a library

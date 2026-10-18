@@ -640,7 +640,7 @@ export function deleteCookie(name: string, options?: CookieOptions): void {
 
 /**
  * Fold a draft into a response, Solid's fold for `commitEventResponse` without
- * the commit: `foldResponseStub` in `@barqjs/core` says what wins and why.
+ * the commit: `foldResponseStub` in `@barqjs/web` says what wins and why.
  *
  * It does NOT override the status of a `Response` a handler returned, because
  * a handler that built a whole response has said what it wants.

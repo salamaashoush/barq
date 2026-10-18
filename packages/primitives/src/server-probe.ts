@@ -3,7 +3,7 @@
  *
  * Run as a SCRIPT rather than a test, and spawned by `server.test.ts`, because
  * this package's `bunfig.toml` preloads happy-dom into `bun test` — which is
- * correct for the other twenty-two files and fatal here. `@barqjs/core` reads
+ * correct for the other twenty-two files and fatal here. `@barqjs/web` reads
  * `typeof document` once, at module scope, so a DOM registered before this
  * module is imported makes `isServer` false and every branch below the wrong
  * one. The only way to observe the server path is a process that never had a
