@@ -34,7 +34,7 @@ export const demos: readonly Demo[] = [
   },
   {
     title: "Shimmer",
-    note: "Pass the `shimmer` class to `MarkerContent` for an animated streaming-text effect. It is exported by `@barqjs/ui`.",
+    note: "Pass the `shimmer` class to `MarkerContent` for an animated streaming-text effect. `barq-ui add shimmer` writes it.",
     size: "auto",
     code: markerShimmer,
     component: MarkerShimmer,

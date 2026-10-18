@@ -2,8 +2,6 @@ import { For, type Incoming } from "@barqjs/core";
 
 import { anchor, type DocsSection } from "../../docs.tsx";
 import { CodeBlock, CommandTabs } from "../code.tsx";
-import scoped from "./snippets/theming/scoped.ts?raw";
-import theme from "./snippets/theming/theme.ts?raw";
 import tokens from "./snippets/theming/tokens.tsx?raw";
 
 export const TOKENS: readonly { readonly name: string; readonly does: string }[] = [
@@ -20,6 +18,10 @@ export const TOKENS: readonly { readonly name: string; readonly does: string }[]
   { name: "--ring", does: "The focus ring." },
   { name: "--chart-1", does: "The first of five chart colours, through `--chart-5`." },
 ];
+
+export const DARK = `{
+  "theme": { "base": "stone", "dark": "media" }
+}`;
 
 export const STYLES = ["vega", "nova", "maia", "lyra", "mira", "luma", "sera", "rhea"] as const;
 
@@ -72,15 +74,10 @@ export function Body() {
         Install a theme
       </h2>
       <p>
-        <code>installTheme</code> takes a base colour theme, optionally an accent over it, and a
-        radius. It registers the theme's rules when it runs, and a second call replaces the first,
-        so an app can change theme while the page is open.
-      </p>
-      <CodeBlock code={theme} title="src/theme.ts" />
-      <p>
-        The CLI writes the same rules into a <code>theme.ts</code> of its own instead, a{" "}
-        <code>globalCss</code> block the compiler folds into the stylesheet, so nothing runs in the
-        browser. Changing that theme is one command, and it rewrites the file for you.
+        <code>init</code> asks for a base colour theme, an accent over it and a radius, and writes
+        them into <code>theme.ts</code> beside the components: a <code>globalCss</code> block the
+        compiler folds into the stylesheet, so nothing runs in the browser. Changing the theme is
+        one command, and it rewrites the file for you.
       </p>
       <CommandTabs command="@barqjs/ui-cli theme stone" />
 
@@ -89,10 +86,10 @@ export function Body() {
       </h2>
       <p>
         A theme is written on <code>:root</code> and its dark values under <code>.dark</code>.{" "}
-        <code>scope</code> puts it on another selector, and <code>dark</code> takes another selector
-        or <code>"media"</code> to follow the operating system.
+        <code>theme.dark</code> in <code>components.json</code>, or <code>init --dark</code>, takes
+        another selector or <code>"media"</code> to follow the operating system.
       </p>
-      <CodeBlock code={scoped} title="src/theme.ts" />
+      <CodeBlock code={DARK} title="components.json" />
 
       <h2 class={anchor} id="use">
         Use the tokens

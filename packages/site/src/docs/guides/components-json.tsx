@@ -2,7 +2,6 @@ import { anchor, type DocsSection } from "../../docs.tsx";
 import { CodeBlock } from "../code.tsx";
 
 export const SAMPLE = `{
-  "registry": "node_modules",
   "paths": {
     "ui": "src/components/ui",
     "lib": "src/components/lib",
@@ -39,8 +38,7 @@ export function Body() {
     <>
       <p>
         <code>components.json</code> holds the configuration for your project. The CLI writes it on{" "}
-        <code>barq-ui init</code> and reads it on every other command. You only need it if you use
-        the CLI to add components; importing from the <code>@barqjs/ui</code> package needs no file.
+        <code>barq-ui init</code> and reads it on every other command.
       </p>
       <CodeBlock code={SAMPLE} title="components.json" />
 
@@ -48,10 +46,11 @@ export function Body() {
         registry
       </h2>
       <p>
-        Where items come from. <code>"node_modules"</code> reads the copy of <code>@barqjs/ui</code>{" "}
-        the project already has, so a monorepo, a pinned version and a machine with no network all
-        work, and what <code>add</code> writes is the version in your lockfile. Anything else is a
-        URL with <code>{"{name}"}</code> in it.
+        Where items without a scope come from: a URL with <code>{"{name}"}</code> in it, or a path
+        from the project root. Left out, items come from the release of the components that matches
+        the CLI's own version, so a CLI and what it writes always agree. The{" "}
+        <code>BARQ_UI_REGISTRY</code> environment variable replaces that default for a fork, a
+        mirror or a local build.
       </p>
 
       <h2 class={anchor} id="registries">

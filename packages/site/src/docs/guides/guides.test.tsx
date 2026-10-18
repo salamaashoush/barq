@@ -11,7 +11,7 @@ import { MONTHS } from "./changelog.tsx";
 import { COMMANDS, GLOBAL_OPTIONS } from "./cli.tsx";
 import { REGISTRIES, SAMPLE } from "./components-json.tsx";
 import { PAGES } from "./index.ts";
-import { PACKAGES } from "./installation.tsx";
+import { COMMANDS as INSTALL } from "./installation.tsx";
 import { ITEM } from "./registry.tsx";
 import ModeToggle from "./snippets/dark-mode/mode-toggle.tsx";
 import BugReport from "./snippets/forms/bug-report.tsx";
@@ -73,7 +73,7 @@ describe("what the guides say, against what the packages do", () => {
 
   test("the components.json on the page loads through the CLI's own parser", () => {
     const config = parseConfig(JSON.parse(SAMPLE));
-    expect(config.registry).toBe("node_modules");
+    expect(config.registry).toBeUndefined();
     expect(config.paths.ui).toBe("src/components/ui");
     const scoped = parseConfig({ ...JSON.parse(SAMPLE), ...JSON.parse(REGISTRIES) });
     expect(Object.keys(scoped.registries ?? {})).toEqual(["@acme", "@private"]);
@@ -86,18 +86,8 @@ describe("what the guides say, against what the packages do", () => {
     expect(item.registryDependencies).toEqual(["button", "card"]);
   });
 
-  test("every package the installation page names is in the workspace", () => {
-    const names = readdirSync(packages)
-      .filter((name) => existsSync(join(packages, name, "package.json")))
-      .map(
-        (name) =>
-          (
-            JSON.parse(readFileSync(join(packages, name, "package.json"), "utf8")) as {
-              name: string;
-            }
-          ).name,
-      );
-    for (const name of PACKAGES) expect(names).toContain(name);
+  test("every command the installation page runs is one the CLI has", () => {
+    for (const command of INSTALL) expect(help, command).toContain(`  ${command} `);
   });
 
   test("every component the changelog names is one the package has", () => {

@@ -17,6 +17,7 @@ import { Button, Empty, Toaster } from "@barqjs/ui";
 
 import { anchor, DocsPage, slugOf, type DocsSection, type RailEntry } from "../docs.tsx";
 import { CodeBlock, CommandTabs } from "./code.tsx";
+import { asCopied } from "./copied.ts";
 import { COMPONENTS, docNamed } from "./index.ts";
 import { ComponentPreview } from "./preview.tsx";
 import { addName, type ComponentDoc, type Demo } from "./registry.ts";
@@ -114,7 +115,7 @@ function DemoSection(props: Incoming<{ demo: Demo }>) {
         </p>
       )}
       <ComponentPreview
-        code={props.demo().code}
+        code={asCopied(props.demo().code)}
         align={props.demo().align}
         size={props.demo().size}
         rtl={props.demo().rtl}
@@ -200,7 +201,7 @@ function Found(props: Incoming<{ entry: ComponentDoc }>) {
         {() =>
           hero() === undefined ? null : (
             <ComponentPreview
-              code={() => hero()?.code ?? ""}
+              code={() => asCopied(hero()?.code ?? "")}
               align={() => hero()?.align}
               size={() => hero()?.size}
               rtl={() => hero()?.rtl}
@@ -224,7 +225,7 @@ function Found(props: Incoming<{ entry: ComponentDoc }>) {
         <h2 class={anchor} id="usage">
           Usage
         </h2>
-        <CodeBlock code={() => entry().usage} />
+        <CodeBlock code={() => asCopied(entry().usage)} />
 
         <For each={rest}>{(demo: Demo) => <DemoSection demo={() => demo} />}</For>
       </div>
