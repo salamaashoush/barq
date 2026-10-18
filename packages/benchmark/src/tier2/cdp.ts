@@ -186,7 +186,10 @@ async function connect(port: number): Promise<Connection> {
   }
 }
 
-export async function withBenchChrome<T>(body: (page: Page) => Promise<T>): Promise<T> {
+export async function withBenchChrome<T>(
+  body: (page: Page) => Promise<T>,
+  options: { flags?: readonly string[] } = {},
+): Promise<T> {
   const binary = chromePath()
   const base = join(process.env.BENCH_TMP ?? "/tmp", `barq-bench-chrome-${process.pid}-${Date.now()}`)
   const firstPort = 9700 + (process.pid % 250)
@@ -212,6 +215,7 @@ export async function withBenchChrome<T>(body: (page: Page) => Promise<T>): Prom
           "--disable-dev-shm-usage",
           `--user-data-dir=${profile}`,
           ...BENCH_FLAGS,
+          ...(options.flags ?? []),
           "about:blank",
         ],
         { stdio: "ignore" },
