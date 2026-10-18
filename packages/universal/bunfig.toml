@@ -1,0 +1,7 @@
+[test]
+onlyFailures = true
+root = "./src"
+# happy-dom, for the differential suite that drives the document renderer
+# beside this one.
+preload = ["./src/test-setup.ts"]
+smol = true

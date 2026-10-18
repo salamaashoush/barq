@@ -1,0 +1,11 @@
+{
+  // Everything this package ships, checked with no DOM in scope: a renderer
+  // for any host may not name the document's types or globals.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "lib": ["ESNext"],
+    "types": []
+  },
+  "include": ["host-globals.d.ts", "src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "src/**/*.test.ts", "src/test-*.ts"]
+}

@@ -460,6 +460,21 @@
         "typescript": "^7.0.2",
       },
     },
+    "packages/universal": {
+      "name": "@barqjs/universal",
+      "version": "0.1.0",
+      "devDependencies": {
+        "@barqjs/core": "workspace:*",
+        "@barqjs/web": "workspace:*",
+        "@happy-dom/global-registrator": "^21.0.1",
+        "@types/bun": "^1.4.3",
+        "typescript": "^7.0.2",
+      },
+      "peerDependencies": {
+        "@barqjs/core": ">=0.1.0",
+        "typescript": ">=7.0.0",
+      },
+    },
     "packages/virtual": {
       "name": "@barqjs/virtual",
       "version": "0.1.0",
@@ -624,6 +639,8 @@
     "@barqjs/ui": ["@barqjs/ui@workspace:packages/ui"],
 
     "@barqjs/ui-cli": ["@barqjs/ui-cli@workspace:packages/ui-cli"],
+
+    "@barqjs/universal": ["@barqjs/universal@workspace:packages/universal"],
 
     "@barqjs/virtual": ["@barqjs/virtual@workspace:packages/virtual"],
 
