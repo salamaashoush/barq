@@ -40,7 +40,7 @@ needs to call it by hand.
 also takes `{ static, deferStream }` and a source that answers with a promise or an async
 iterable; barq's reads the source in a memo per instance and keys a `branch` on it.
 `@barqjs/server` has the string half under the same name, and the compiler's server backend
-calls it where a `.jsx` or `.tsx` module calls `@barqjs/core`'s, so call `dynamic` in one of
+calls it where a `.jsx` or `.tsx` module calls `@barqjs/web`'s, so call `dynamic` in one of
 those rather than in a plain `.ts` module that a server build loads. `dynamicComponent`, the
 component-only variant, is not exported.
 
@@ -84,6 +84,42 @@ portal's content into a `<div style="display: contents">` of its own and registe
 where Solid registers the mount element. A handler on an element no root rendered never
 runs, and there is no `clearDelegatedEvents`; dispose the root instead.
 
+## Packages
+
+Each name has one home, as in Solid 2.0, and no package re-exports another's.
+
+- **`solid-js` is `@barqjs/core`**: the engine, the components (`Show`, `For`, `Loading`,
+  `Errored`, `Reveal` and the rest), `lazy`, `children`, context and `isDev`. It renders
+  nothing and needs no document.
+- **`@solidjs/web` is `@barqjs/web`**: `render`, `hydrate`, `Portal`, `dynamic`,
+  `clientOnly`, `useHead`, `isServer`, `isClient`, the request API and the JSX types, so
+  `jsxImportSource` is `@barqjs/web`. Where Solid's `@solidjs/web` also re-exports the
+  control-flow components and `effect`, `memo`, `untrack`, `getOwner`, `createComponent`
+  and `mergeProps`, barq's does not: they are imported from `@barqjs/core`
+  (`createRenderEffect`, `createMemo` and `merge` for the first two and the last).
+  `render(code, element, options)` takes `{ owner, renderId }` as its third argument, with
+  no `init` before it, and `hydrate` takes the same options plus `data`.
+- **`@solidjs/universal` is `@barqjs/universal`.** `createRenderer(ops)` takes Solid's node
+  operations (`createElement`, `createTextNode`, `replaceText`, `isTextNode`,
+  `setProperty`, `insertNode`, `removeNode`, `getParentNode`, `getFirstChild`,
+  `getNextSibling`, optional `createSentinel`), plus an optional `createContainer` for
+  content built while it is not shown. `createElement` takes no static props and there is
+  no `cleanupNodes`. What it returns differs:
+  - `render`, `createElement`, `createTextNode`, `insertNode`, `insert`, `spread` and
+    `setProp` keep Solid's names. `setProp(node, name, value, prev)` writes through
+    `setProperty` and returns `value`, and `ref` is one of its names, so there is no
+    `ref` or `applyRef`.
+  - There is no `effect`, `memo`, `createComponent` or `mergeProps`. Compiled code takes
+    those from `@barqjs/core`, which every renderer shares.
+  - It also returns `branch`, `each`, `boundary`, `island`, `reveal` and `portal`, the
+    calls compiled control flow makes over the host, and `dynamic` and `Portal`, which
+    mounts into another node of the same host.
+  - `render(code, root, options)` takes `{ owner, renderId }`, as `@barqjs/web`'s does.
+
+  The compiler builds a module for it under `target: "universal"`, with `moduleSource`
+  naming the module that exports what `createRenderer` returned, or per file through
+  `renderers` (see `@barqjs/vite`'s README).
+
 ## Server rendering
 
 `renderToString`, `renderToStream`, `getRequestEvent`, `getTraceContext`, `httpStatus`,
@@ -95,8 +131,8 @@ differences:
 
 - **Two packages, not one.** The server entry points are `@barqjs/server`'s and the
   isomorphic ones (`getRequestEvent`, `getTraceContext`, `httpStatus`, `httpHeader`,
-  `useHead`, `markSafeError`, `isServer`) are `@barqjs/core`'s. `provideRequestEvent` is
-  `@barqjs/server/storage`'s. `isServer` is a literal per side, by export condition, as in
+  `useHead`, `isServer`) are `@barqjs/web`'s, with `markSafeError` from `@barqjs/core`.
+  `provideRequestEvent` is `@barqjs/server/storage`'s. `isServer` is a literal per side, by export condition, as in
   Solid; under `bun` it is the run-time check the test suites rely on.
 - **`@barqjs/start` is the same lifecycle under its older names.** Its `withRequest`
   enters a `createRequestEvent` event with `provideRequestEvent`, `createResponseDraft` is
