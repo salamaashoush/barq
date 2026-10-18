@@ -1,9 +1,11 @@
 /**
- * A renderer boundary found with no configuration. The project installs a
- * package whose `package.json` declares its `Canvas` a boundary into its own
- * renderer, and writes a page that holds a `Canvas` beside document markup.
- * The bundle is then run: the page renders into happy-dom, the canvas's
- * children into the package's host, and both follow the same signals.
+ * A renderer found with no configuration. The project installs a package
+ * whose `package.json` declares its `Canvas` a boundary into its own renderer
+ * and claims its scene tags from a JSON file. The page holds a `Canvas`
+ * beside document markup, and the scene is made of components declared
+ * outside it: in a file of their own, and beside the page. The bundle is then
+ * run: the page renders into happy-dom, the scene into the package's host,
+ * and both follow the same signals.
  */
 
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
@@ -104,17 +106,44 @@ const FILES = {
     exports: { ".": "./index.js", "./renderer": "./renderer.js" },
     barq: {
       boundaries: [{ name: "Canvas", target: "universal", moduleSource: "@acme/scene/renderer" }],
+      intrinsics: [
+        { tags: "./tags.json", target: "universal", moduleSource: "@acme/scene/renderer" },
+      ],
     },
   }),
+  "node_modules/@acme/scene/tags.json": JSON.stringify(["group", "counter", "badge", "sprite"]),
   "node_modules/@acme/scene/index.js": CANVAS,
   "node_modules/@acme/scene/renderer.js": RENDERER,
   "src/state.ts": `import { createSignal } from "@barqjs/core";
 export const [count, setCount] = createSignal(1);
 export const [items, setItems] = createSignal(["a", "b"]);
 `,
-  "src/App.tsx": `import { For, Show } from "@barqjs/core";
-import { Canvas } from "@acme/scene";
-import { count, items, setCount } from "./state.ts";
+  // A file of scene components and nothing else, written outside any Canvas.
+  "src/Scene.tsx": `import { For, Show } from "@barqjs/core";
+import { count, items } from "./state.ts";
+
+const Badge = () => <badge />;
+
+export function Scene(props: { children?: unknown }) {
+  return (
+    <group name="scene">
+      {props.children}
+      <Show when={count() > 1}>
+        <Badge />
+      </Show>
+      <For each={items()}>{(item) => <sprite id={item} />}</For>
+    </group>
+  );
+}
+`,
+  // A scene component declared beside the page's own markup.
+  "src/App.tsx": `import { Canvas } from "@acme/scene";
+import { Scene } from "./Scene.tsx";
+import { count, setCount } from "./state.ts";
+
+function Counter() {
+  return <counter text={"count " + count()} />;
+}
 
 export function App() {
   return (
@@ -122,13 +151,9 @@ export function App() {
       <h1>{count()}</h1>
       <button type="button" onClick={() => setCount(count() + 10)}>add</button>
       <Canvas>
-        <group name="scene">
-          <label text={"count " + count()} />
-          <Show when={count() > 1}>
-            <badge />
-          </Show>
-          <For each={items()}>{(item) => <sprite id={item} />}</For>
-        </group>
+        <Scene>
+          <Counter />
+        </Scene>
       </Canvas>
     </main>
   );
@@ -150,7 +175,7 @@ export function mount(element: HTMLElement) {
 `,
 };
 
-describe("a boundary a dependency declares in its package.json", () => {
+describe("a renderer a dependency declares in its package.json", () => {
   let root = "";
   beforeAll(async () => {
     root = project(null, FILES);
@@ -170,7 +195,7 @@ describe("a boundary a dependency declares in its package.json", () => {
     const code = readFileSync(join(root, "dist", "main.js"), "utf8");
     expect(code).toContain("<main><h1>");
     expect(code).toMatch(/createElement(\$\d+)?\("sprite"\)/);
-    expect(code).not.toContain("<group");
+    for (const tag of ["<group", "<counter", "<badge", "<sprite"]) expect(code).not.toContain(tag);
   });
 
   test("renders both and keeps both on the same signals", () => {
@@ -186,17 +211,17 @@ describe("a boundary a dependency declares in its package.json", () => {
       {
         dom: page(1),
         scene:
-          "<scene><group name=scene><label text=count 1></label><sprite id=a></sprite><sprite id=b></sprite></group></scene>",
+          "<scene><group name=scene><counter text=count 1></counter><sprite id=a></sprite><sprite id=b></sprite></group></scene>",
       },
       {
         dom: page(2),
         scene:
-          "<scene><group name=scene><label text=count 2></label><badge></badge><sprite id=b></sprite><sprite id=c></sprite><sprite id=a></sprite></group></scene>",
+          "<scene><group name=scene><counter text=count 2></counter><badge></badge><sprite id=b></sprite><sprite id=c></sprite><sprite id=a></sprite></group></scene>",
       },
       {
         dom: page(12),
         scene:
-          "<scene><group name=scene><label text=count 12></label><badge></badge><sprite id=b></sprite><sprite id=c></sprite><sprite id=a></sprite></group></scene>",
+          "<scene><group name=scene><counter text=count 12></counter><badge></badge><sprite id=b></sprite><sprite id=c></sprite><sprite id=a></sprite></group></scene>",
       },
       { dom: "", scene: "<scene></scene>" },
     ]);

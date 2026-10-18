@@ -22,7 +22,7 @@ import { type BarqRouterOptions, barqRouter } from "./router.ts";
 import type { BarqStartOptions } from "./start.ts";
 
 export { CLIENT_ENV_ID, ENV_TYPES_FILE, SERVER_ENV_ID } from "./env.ts";
-export type { BarqBoundary, BarqRenderer } from "./compiler.ts";
+export type { BarqBoundary, BarqIntrinsic, BarqRenderer } from "./compiler.ts";
 
 /** What `compiler` passes through; the rest is decided from the options around it. */
 export type CompilerOptions = Omit<

@@ -123,6 +123,31 @@ the same here.
   they are created where it reads `props.children`, so it renders them inside
   a root of its own renderer.
 
+- `compiler.intrinsics`: tags a renderer claims, a list of
+  `{ tags, claimUnknown, target, moduleSource }`. Outside every boundary, a
+  tree of intrinsic elements whose root tag an entry claims, and the document
+  does not have, compiles for that entry's renderer, so a scene component
+  such as `function Box() { return <mesh /> }` can sit in the page's own file
+  or a file of its own with no `renderers` entry. A tag the document also has
+  (`line`, `audio`) is the renderer's only over a tag that renderer alone
+  claims, a tag with a hyphen is always the document's, and `claimUnknown`
+  takes every other lowercase tag the document does not have. Two renderers
+  claiming one tag is BARQ029.
+
+  A package declares its claims beside its boundaries, with `tags` as a list
+  or a path to a JSON file holding one:
+
+  ```json
+  "barq": {
+    "intrinsics": [
+      { "tags": "./intrinsics.json", "claimUnknown": true, "target": "universal", "moduleSource": "@acme/scene/renderer" }
+    ]
+  }
+  ```
+
+  Entries in `compiler.intrinsics` come after the declared ones, and a tag or
+  `claimUnknown` they give is taken from every package that declares it.
+
 Where it differs from Solid's plugin: barq has one native compiler, so there is
 no `compiler: "babel"` switch and `compiler` holds what Solid calls `solid`.
 Server functions are `createServerFn` and live in `start`, which is what serves

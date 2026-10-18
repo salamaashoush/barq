@@ -70,6 +70,17 @@ export interface BarqRenderer {
   moduleSource?: string;
 }
 
+/** One entry of `intrinsics`. */
+export interface BarqIntrinsic {
+  /** The lowercase tags the renderer claims. */
+  tags: readonly string[];
+  /** Also claim a lowercase tag without a hyphen that the document does not have. */
+  claimUnknown?: boolean;
+  target: "dom" | "universal";
+  /** The module claimed elements import the renderer's helpers from. */
+  moduleSource: string;
+}
+
 /** One entry of `boundaries`. */
 export interface BarqBoundary {
   /** The module the component is imported from. */
@@ -130,6 +141,21 @@ export interface BarqCompilerOptions {
    * ```
    */
   boundaries?: readonly BarqBoundary[];
+
+  /**
+   * Intrinsic tags a renderer claims. Outside every boundary, a tree of
+   * intrinsic elements whose root tag one entry claims, and the document does
+   * not have, compiles for that entry's renderer wherever it is written, so
+   * `function Box() { return <mesh /> }` is a scene object in any file. A tag
+   * the document also has (`line`, `audio`) is the renderer's only when the
+   * tree under it holds a tag that renderer alone claims.
+   *
+   * A dependency declares its own under `"barq": { "intrinsics": [...] }`,
+   * where `tags` may be a path to a JSON file holding the list. These entries
+   * come after the declared ones, and a tag or `claimUnknown` given here is
+   * taken from every package that declares it.
+   */
+  intrinsics?: readonly BarqIntrinsic[];
 
   /**
    * Where the renderer-neutral half of the ABI and the components an author
@@ -408,6 +434,7 @@ interface NativeTransformOptions {
   target?: string;
   renderers?: { include: string[]; target?: string; moduleSource?: string }[];
   boundaries?: { source: string; name: string; target: string; moduleSource: string }[];
+  intrinsics?: { tags: string[]; claimUnknown?: boolean; target: string; moduleSource: string }[];
   coreSource?: string;
   serverSource?: string;
   startSource?: string;
@@ -681,7 +708,7 @@ interface BoundaryManifest {
   peerDependencies?: Record<string, string>;
   optionalDependencies?: Record<string, string>;
   workspaces?: unknown;
-  barq?: { boundaries?: unknown };
+  barq?: { boundaries?: unknown; intrinsics?: unknown };
 }
 
 function readManifest(file: string): BoundaryManifest | null {
@@ -743,13 +770,41 @@ function declaredBoundaries(manifest: BoundaryManifest): BarqBoundary[] {
 }
 
 /**
- * Every boundary the project's dependencies and workspace packages declare in
- * their `package.json`, under `"barq": { "boundaries": [...] }`. A package
- * that ships a renderer knows which of its components host it, so an
- * application that installs it compiles those components' children for it
- * with no configuration.
+ * The entries one package declares under `barq.intrinsics`. `tags` is the
+ * list, or a path from the package's directory to a JSON file holding it, so
+ * a renderer with hundreds of tags can generate the file from its own
+ * classes.
  */
-export function discoverBoundaries(root: string): BarqBoundary[] {
+function declaredIntrinsics(manifest: BoundaryManifest, dir: string): BarqIntrinsic[] {
+  const declared = manifest.barq?.intrinsics;
+  if (!Array.isArray(declared)) return [];
+  const found: BarqIntrinsic[] = [];
+  for (const entry of declared as unknown[]) {
+    if (entry === null || typeof entry !== "object") continue;
+    const { tags, claimUnknown, target, moduleSource } = entry as Record<string, unknown>;
+    let list: unknown = tags;
+    if (typeof tags === "string") {
+      try {
+        list = JSON.parse(readFileSync(join(dir, tags), "utf8"));
+      } catch {
+        continue;
+      }
+    }
+    if (
+      Array.isArray(list) &&
+      list.every((tag): tag is string => typeof tag === "string") &&
+      (claimUnknown === undefined || typeof claimUnknown === "boolean") &&
+      (target === "dom" || target === "universal") &&
+      typeof moduleSource === "string"
+    ) {
+      found.push({ tags: list, claimUnknown, target, moduleSource });
+    }
+  }
+  return found;
+}
+
+/** The directory and manifest of every dependency and workspace package of the project. */
+function dependencyManifests(root: string): { dir: string; manifest: BoundaryManifest }[] {
   const manifest = readManifest(join(root, "package.json"));
   if (manifest === null) return [];
   const names = new Set([
@@ -762,12 +817,55 @@ export function discoverBoundaries(root: string): BarqBoundary[] {
     ...[...names].flatMap((name) => packageDir(root, name) ?? []),
     ...workspaceDirs(root, manifest.workspaces),
   ];
-  const found: BarqBoundary[] = [];
+  const found: { dir: string; manifest: BoundaryManifest }[] = [];
   for (const dir of new Set(dirs)) {
     const theirs = readManifest(join(dir, "package.json"));
-    if (theirs !== null) found.push(...declaredBoundaries(theirs));
+    if (theirs !== null) found.push({ dir, manifest: theirs });
   }
+  return found;
+}
+
+/**
+ * Every boundary the project's dependencies and workspace packages declare in
+ * their `package.json`, under `"barq": { "boundaries": [...] }`. A package
+ * that ships a renderer knows which of its components host it, so an
+ * application that installs it compiles those components' children for it
+ * with no configuration.
+ */
+export function discoverBoundaries(root: string): BarqBoundary[] {
+  const found = dependencyManifests(root).flatMap(({ manifest }) => declaredBoundaries(manifest));
   return mergeBoundaries([], found);
+}
+
+/**
+ * Every intrinsic claim the project's dependencies and workspace packages
+ * declare, under `"barq": { "intrinsics": [...] }`.
+ */
+export function discoverIntrinsics(root: string): BarqIntrinsic[] {
+  return dependencyManifests(root).flatMap(({ dir, manifest }) =>
+    declaredIntrinsics(manifest, dir),
+  );
+}
+
+/**
+ * The discovered claims, then the configured ones. A tag the configuration
+ * claims is taken from every discovered entry, and so is `claimUnknown`, so
+ * the application settles what two packages would otherwise both claim.
+ */
+export function mergeIntrinsics(
+  configured: readonly BarqIntrinsic[],
+  discovered: readonly BarqIntrinsic[],
+): BarqIntrinsic[] {
+  const taken = new Set(configured.flatMap((entry) => entry.tags));
+  const unknownTaken = configured.some((entry) => entry.claimUnknown === true);
+  const kept: BarqIntrinsic[] = [];
+  for (const entry of discovered) {
+    const tags = entry.tags.filter((tag) => !taken.has(tag));
+    const claimUnknown = entry.claimUnknown === true && !unknownTaken;
+    if (tags.length === 0 && !claimUnknown) continue;
+    kept.push({ ...entry, tags, claimUnknown });
+  }
+  return [...kept, ...configured];
 }
 
 /**
@@ -857,6 +955,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
   let root = process.cwd();
   // The configured entries until `config` knows the root to discover from.
   let boundaries = mergeBoundaries(compilerOptions.boundaries ?? [], []);
+  let intrinsics = mergeIntrinsics(compilerOptions.intrinsics ?? [], []);
 
   // Per module, so a file that stops reporting clears its own rows. A terminal
   // warning fires once per transform and is gone after a reload; this is the
@@ -908,6 +1007,7 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       serving = env.command === "serve";
       root = resolve(config.root ?? process.cwd());
       boundaries = mergeBoundaries(compilerOptions.boundaries ?? [], discoverBoundaries(root));
+      intrinsics = mergeIntrinsics(compilerOptions.intrinsics ?? [], discoverIntrinsics(root));
 
       // A barq package ships SOURCE, so Vite must not externalise it: node
       // would be handed the `.ts` the condition resolved to and refuse it.
@@ -1237,6 +1337,10 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
           target: compilerOptions.target,
           renderers: rendererEntries(compilerOptions.renderers),
           boundaries: boundaries.length > 0 ? boundaries : undefined,
+          intrinsics:
+            intrinsics.length > 0
+              ? intrinsics.map((entry) => ({ ...entry, tags: [...entry.tags] }))
+              : undefined,
           coreSource: compilerOptions.coreSource,
           serverSource: compilerOptions.serverSource,
           startSource: compilerOptions.startSource,

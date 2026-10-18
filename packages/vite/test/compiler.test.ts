@@ -14,10 +14,13 @@ import {
   barqVitePlugin,
   DIAGNOSTICS_EVENT,
   discoverBoundaries,
+  discoverIntrinsics,
   loadNativeCompiler,
   mergeBoundaries,
+  mergeIntrinsics,
   resetNativeCompilerCache,
   type BarqBoundary,
+  type BarqIntrinsic,
   type BarqDiagnostic,
   type BarqOptimisation,
 } from "../src/compiler.ts";
@@ -1015,6 +1018,108 @@ export const App = (p) => <main><h1>{p.title()}</h1><Canvas><mesh name={p.title(
 
     const configured = builtAt(project(), [canvas("/src/renderer.ts")]);
     const own = (await run(configured, PAGE, "/app/src/App.tsx")).result?.code ?? "";
+    expect(own).toContain('from "/src/renderer.ts"');
+    expect(own).not.toContain("@acme/scene/renderer");
+  });
+});
+
+describe("intrinsics", () => {
+  const BOX = `export function Box() {
+  return <mesh><boxGeometry /></mesh>;
+}
+export const App = () => <main><h1>salama</h1></main>;
+`;
+  const scene = (tags: string[], extra: Partial<BarqIntrinsic> = {}): BarqIntrinsic => ({
+    tags,
+    target: "universal",
+    moduleSource: "@acme/scene/renderer",
+    ...extra,
+  });
+
+  const made: string[] = [];
+  afterAll(() => {
+    for (const dir of made) rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** An app that installs `@acme/scene`, whose tags are a JSON file beside its manifest. */
+  function project(): string {
+    const root = join(tmpdir(), `barq-intrinsics-${process.pid}`);
+    made.push(root);
+    rmSync(root, { recursive: true, force: true });
+    const scenePackage = join(root, "node_modules", "@acme", "scene");
+    mkdirSync(scenePackage, { recursive: true });
+    writeFileSync(
+      join(root, "package.json"),
+      JSON.stringify({ name: "salama-app", dependencies: { "@acme/scene": "1.0.0" } }),
+    );
+    writeFileSync(join(scenePackage, "tags.json"), JSON.stringify(["mesh", "boxGeometry"]));
+    writeFileSync(
+      join(scenePackage, "package.json"),
+      JSON.stringify({
+        name: "@acme/scene",
+        barq: {
+          intrinsics: [
+            {
+              tags: "./tags.json",
+              claimUnknown: true,
+              target: "universal",
+              moduleSource: "@acme/scene/renderer",
+            },
+            { tags: "./missing.json", target: "universal", moduleSource: "@acme/scene/renderer" },
+            { tags: ["light"], target: "canvas", moduleSource: "@acme/scene/renderer" },
+          ],
+        },
+      }),
+    );
+    return root;
+  }
+
+  function builtAt(root: string, intrinsics?: BarqIntrinsic[]) {
+    const plugin = barqVitePlugin({ dev: false, intrinsics });
+    const hook = plugin.config as unknown as (config: unknown, env: ConfigEnv) => void;
+    hook.call(plugin, { root }, { command: "build", mode: "production" });
+    return plugin;
+  }
+
+  test("compiler.intrinsics gives a claimed tree its renderer outside any boundary", async () => {
+    const plugin = barqVitePlugin({
+      dev: false,
+      intrinsics: [scene(["mesh", "boxGeometry"], { moduleSource: "/src/renderer.ts" })],
+    });
+    const code = (await run(plugin, BOX, "/app/src/Box.tsx")).result?.code ?? "";
+    expect(code).toContain('_$createElement$1("mesh")');
+    expect(code).toContain('from "/src/renderer.ts"');
+    expect(code).toContain("_$template(`<main><h1>salama</h1></main>`)");
+  });
+
+  test("a package declares its tags in a JSON file, and a malformed entry is skipped", () => {
+    expect(discoverIntrinsics(project())).toEqual([
+      scene(["mesh", "boxGeometry"], { claimUnknown: true }),
+    ]);
+  });
+
+  test("the configuration takes a tag and claimUnknown from every package", () => {
+    const declared = [scene(["mesh", "group"], { claimUnknown: true })];
+    const own = scene(["mesh"], { claimUnknown: true, moduleSource: "/src/renderer.ts" });
+    expect(mergeIntrinsics([own], declared)).toEqual([
+      scene(["group"], { claimUnknown: false }),
+      own,
+    ]);
+    expect(mergeIntrinsics([scene(["mesh", "group"])], declared)).toEqual([
+      scene([], { claimUnknown: true }),
+      scene(["mesh", "group"]),
+    ]);
+  });
+
+  test("the plugin discovers the claims from the project root with no configuration", async () => {
+    const code = (await run(builtAt(project()), BOX, "/app/src/Box.tsx")).result?.code ?? "";
+    expect(code).toContain('_$createElement$1("mesh")');
+    expect(code).toContain('from "@acme/scene/renderer"');
+
+    const configured = builtAt(project(), [
+      scene(["mesh", "boxGeometry"], { moduleSource: "/src/renderer.ts" }),
+    ]);
+    const own = (await run(configured, BOX, "/app/src/Box.tsx")).result?.code ?? "";
     expect(own).toContain('from "/src/renderer.ts"');
     expect(own).not.toContain("@acme/scene/renderer");
   });
