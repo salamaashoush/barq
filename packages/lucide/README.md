@@ -8,7 +8,7 @@ rather than an `<svg>` built element by element. The props are `lucide-react`'s.
 ## Install
 
 ```bash
-bun add @barqjs/lucide @barqjs/core @barqjs/server
+bun add @barqjs/lucide @barqjs/core @barqjs/web @barqjs/server
 bun add -d @barqjs/vite
 ```
 

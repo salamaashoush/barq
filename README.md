@@ -14,7 +14,8 @@ changes only the DOM nodes that read it update.
   rendering, components, accessible primitives, forms, queries, tables, virtual
   lists, icons and test utilities are barq packages that share its conventions.
 - A compiler that reports mistakes. The Rust compiler turns JSX into cloned
-  templates and direct DOM writes, with no virtual DOM. It reports 24
+  templates and direct DOM writes, with no virtual DOM, or into calls on a
+  renderer of your own for a host that is not a document. It reports 26
   diagnostics, each with a stable `BARQ` code and a page that shows the fix: an
   accessor used without being called, a store destructured into snapshots, a
   `<Link to>` that no route matches, markup the HTML parser would build
@@ -86,7 +87,9 @@ and no dependency arrays.
 
 The framework:
 
-- [`@barqjs/core`](./packages/core#readme): signals, stores, control flow, JSX and the DOM renderer.
+- [`@barqjs/core`](./packages/core#readme): signals, stores, components and control flow, with no renderer.
+- [`@barqjs/web`](./packages/web#readme): the document renderer, `render`, `hydrate`, `Portal`, the head, the request API and the JSX types.
+- [`@barqjs/universal`](./packages/universal#readme): `createRenderer`, barq on a host other than the document.
 - [`@barqjs/vite`](./packages/vite#readme): the Vite plugin, `barq()`.
 - [`@barqjs/compiler`](./packages/compiler#readme): the native JSX compiler the plugin runs.
 - [`@barqjs/router`](./packages/router#readme): file routes, loaders, head management, SSR and prerendering.

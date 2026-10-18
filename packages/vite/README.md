@@ -63,6 +63,35 @@ the same here.
 - `compiler`: options for the barq compiler (`strictCss`, `checks`,
   `overlay`, and the rest). `compiler.routes` adds patterns `BARQ013` accepts
   beside the file routes, for a router the app mounts with a table of its own.
+  The rest of this list is the compiler options that pick what compiled code
+  imports.
+- `compiler.moduleSource`: the renderer compiled code builds through,
+  `@barqjs/web` by default. Under `target: "universal"` it is the module that
+  exports what `@barqjs/universal`'s `createRenderer` returned.
+- `compiler.coreSource`: where the reactive half of the compiled-code ABI and
+  the components an author imports come from, `@barqjs/core` by default.
+- `compiler.target`: `"dom"` (the default) or `"universal"`. Universal builds
+  every element through `moduleSource`'s `createElement` and `insertNode` and
+  writes every attribute and event with one `setProp` call. `ssr` and
+  `hydratable` are the document's and fail the build beside it (BARQ028), as do
+  `bind:` and a form `action` (BARQ027).
+- `compiler.renderers`: per-file renderer selection, a list of
+  `{ include, target, moduleSource }`. A file that matches an entry's globs
+  (`*` within one path segment, `**` across them, one glob or a list) compiles
+  for that entry's target and module; the first entry that matches wins, and
+  `target` defaults to `"universal"`. One build then holds document files and
+  a custom renderer's files, and `ssr` and `hydratable` keep describing the
+  document's:
+
+  ```ts
+  barq({
+    compiler: {
+      renderers: [
+        { include: "src/scene/**", target: "universal", moduleSource: "/src/scene/renderer.ts" },
+      ],
+    },
+  });
+  ```
 
 Where it differs from Solid's plugin: barq has one native compiler, so there is
 no `compiler: "babel"` switch and `compiler` holds what Solid calls `solid`.
@@ -80,8 +109,8 @@ them, so there is no separate `serverFunctions` flag.
 - `server-only` and `client-only` import markers.
 - Resolution: the `barq` condition, under which a barq package publishes its
   source, and `development` under `vite dev`, in every environment and in the
-  server's `externalConditions`, and `resolve.dedupe` of `@barqjs/core` and
-  `@solidjs/signals` where the project can reach them.
+  server's `externalConditions`, and `resolve.dedupe` of `@barqjs/core`,
+  `@barqjs/web` and `@solidjs/signals` where the project can reach them.
 - Dependency optimization: packages that publish barq source are excluded, and
   the runtime modules that only compiled code imports are pre-bundled up front,
   so the first edit does not re-optimize and reload the page.

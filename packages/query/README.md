@@ -11,7 +11,7 @@ engine of [TanStack Query](https://tanstack.com/query).
 bun add @barqjs/query @tanstack/query-core
 ```
 
-`@barqjs/core` is a peer dependency. `@barqjs/router`,
+`@barqjs/core` and `@barqjs/web` are peer dependencies. `@barqjs/router`,
 `@tanstack/query-persist-client-core` and `@tanstack/query-devtools` are optional
 peers, needed only by the entries that name them.
 

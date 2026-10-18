@@ -14,7 +14,7 @@ the signatures are this package's own rather than a port, so read them below.
 bun add @barqjs/primitives
 ```
 
-`@barqjs/core` is a peer dependency. One package, twenty-seven modules, nothing
+`@barqjs/core` and `@barqjs/web` are peer dependencies. One package, twenty-seven modules, nothing
 running at import time. Ask for one primitive and you pay for one primitive.
 Bundled from `dist` with `Bun.build`, minified, `@barqjs/core` left external:
 
@@ -130,7 +130,7 @@ on(target, "click", handle); // target is an accessor: rebinds when it changes
 ```
 
 Any of the target, the type and the options may be an accessor, so a `ref` that
-fills in after mount needs no extra effect. Handlers go through the core's own
+fills in after mount needs no extra effect. Handlers go through `@barqjs/web`'s own
 `listen`, so a throw reaches the enclosing `Errored` boundary exactly as a
 compiled `onClick` does.
 

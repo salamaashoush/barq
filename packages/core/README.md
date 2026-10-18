@@ -1,14 +1,18 @@
 # @barqjs/core
 
-Signals, stores, control flow, JSX and the DOM renderer. A component runs once;
-afterwards only the nodes that read a changed signal are touched, with no
-virtual DOM and no dependency arrays. Reactivity is Solid's engine,
+Signals, stores, components and control flow, with no renderer. A component
+runs once; afterwards only the nodes that read a changed signal are touched,
+with no virtual DOM and no dependency arrays. Reactivity is Solid's engine,
 `@solidjs/signals`, exported under its own names.
+
+Nothing here touches a document. [`@barqjs/web`](../web#readme) renders into
+one, and [`@barqjs/universal`](../universal#readme) builds a renderer for any
+other host from its node operations.
 
 ## Install
 
 ```bash
-bun add @barqjs/core
+bun add @barqjs/core @barqjs/web
 bun add -d @barqjs/vite vite
 ```
 
@@ -28,7 +32,7 @@ export default defineConfig({
 });
 ```
 
-`tsconfig.json` needs `"jsx": "react-jsx"` and `"jsxImportSource": "@barqjs/core"`.
+`tsconfig.json` needs `"jsx": "react-jsx"` and `"jsxImportSource": "@barqjs/web"`.
 
 ## A component
 
@@ -193,6 +197,10 @@ syntax rather than a helper:
 The target is a signal: the `[read, write]` pair `createSignal` returns, passed
 whole or put back together as `[name, setName]`. A memo or a bare accessor has
 no setter, which is a type error and a `BIND_TARGET_NOT_WRITABLE` diagnostic.
+
+`bind:` is a document binding, which `@barqjs/web` carries out. A file compiled
+for a custom renderer reports it as
+[BARQ027](../compiler/docs/BARQ027.md).
 
 ## `createSignal(fn)`: writable state that re-seeds
 
@@ -362,16 +370,14 @@ value updates the consumers that read it.
   which Vite's dev server and Vitest set, it resolves the engine's development
   build, which throws on model violations, and installs the console reporter for
   the [runtime diagnostics](docs/diagnostics).
-- `@barqjs/core/jsx-runtime` and `@barqjs/core/jsx-dev-runtime`: the JSX types
-  and `Fragment`; `jsxImportSource` points here.
 - `@barqjs/core/hot`: component replacement for a development server, which
   `@barqjs/vite` wires up.
-- `@barqjs/core/internal`: the runtime surface `@barqjs/server` needs and no
-  application does.
-- `@barqjs/core/interp`: the reference backend, for the compiler's own oracle.
+- `@barqjs/core/internal`: the runtime surface a renderer and `@barqjs/server`
+  build on, and no application does.
 
 All of them share one copy of the runtime. Importing two of them does not give
-you two schedulers.
+you two schedulers. `@barqjs/web`, `@barqjs/server` and `@barqjs/universal`
+list this package as a peer dependency for the same reason.
 
 ## Coming from Solid
 

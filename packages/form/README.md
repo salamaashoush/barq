@@ -12,7 +12,7 @@ follows `@tanstack/solid-form`, with the differences listed below.
 bun add @barqjs/form
 ```
 
-`@barqjs/core` is a peer dependency. `@tanstack/form-core` and `@tanstack/store` come
+`@barqjs/core` and `@barqjs/web` are peer dependencies. `@tanstack/form-core` and `@tanstack/store` come
 with the package, and everything form-core exports is re-exported from here.
 
 ## Example

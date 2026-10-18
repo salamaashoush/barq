@@ -12,7 +12,7 @@ in view in the DOM, and scrolling changes which ones. `createVirtualizer` and
 bun add @barqjs/virtual
 ```
 
-`@barqjs/core` is a peer dependency. `@tanstack/virtual-core` is a dependency of
+`@barqjs/core` and `@barqjs/web` are peer dependencies. `@tanstack/virtual-core` is a dependency of
 this package and is re-exported from it, so one import covers the adapter and
 the core.
 

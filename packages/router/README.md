@@ -10,7 +10,7 @@ no route matches. The route API follows TanStack Router's design:
 ## Install
 
 ```bash
-bun add @barqjs/router @barqjs/core @barqjs/server @barqjs/start
+bun add @barqjs/router @barqjs/core @barqjs/web @barqjs/server @barqjs/start
 bun add -d @barqjs/vite vite
 ```
 

@@ -16,7 +16,7 @@ left alone when the page index does.
 bun add @barqjs/table
 ```
 
-`@barqjs/core` is a peer dependency. `@tanstack/table-core` and
+`@barqjs/core` and `@barqjs/web` are peer dependencies. `@tanstack/table-core` and
 `@tanstack/store` come with the package, and everything table-core exports is
 re-exported from `@barqjs/table`, so an application imports from one place.
 

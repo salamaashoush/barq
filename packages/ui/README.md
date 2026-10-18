@@ -11,7 +11,7 @@ with none of React, Radix or Tailwind underneath.
 ## Install
 
 ```bash
-bun add @barqjs/ui @barqjs/aria @barqjs/core @barqjs/css @barqjs/lucide @barqjs/primitives @barqjs/server
+bun add @barqjs/ui @barqjs/aria @barqjs/core @barqjs/css @barqjs/lucide @barqjs/primitives @barqjs/server @barqjs/web
 bun add -d @barqjs/vite
 ```
 

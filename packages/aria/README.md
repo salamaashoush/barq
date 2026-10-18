@@ -9,7 +9,7 @@ Cells. Nothing is styled.
 ## Install
 
 ```bash
-bun add @barqjs/aria @barqjs/core @barqjs/primitives @barqjs/server
+bun add @barqjs/aria @barqjs/core @barqjs/web @barqjs/primitives @barqjs/server
 bun add -d @barqjs/vite
 ```
 

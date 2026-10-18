@@ -14,7 +14,7 @@ render barq to HTML without the router.
 ## Install
 
 ```bash
-bun add @barqjs/server @barqjs/core
+bun add @barqjs/server @barqjs/core @barqjs/web
 bun add -d @barqjs/vite
 ```
 
@@ -105,8 +105,8 @@ of `await renderToStream(...)`, which returns the same document with its seed.
 
 ## The request
 
-Re-exported from `@barqjs/core`, so a component can use them without importing
-a server package:
+From `@barqjs/web`, so a component can use them without importing a server
+package (`markSafeError` is `@barqjs/core`'s):
 
 - **`getRequestEvent()`** returns the current `{ request, locals, response }`,
   or `undefined` outside a request and in the browser.
@@ -123,7 +123,7 @@ a server package:
   `<meta name="traceparent">` in the document's head.
 - **`markSafeError(error)`** lets an error reach the browser as thrown in a
   production build too, where every other error is replaced with a generic one.
-- **`useHead(tags)`** (from `@barqjs/core`) declares head tags from wherever a
+- **`useHead(tags)`** (from `@barqjs/web`) declares head tags from wherever a
   component renders. Tags declared while the shell renders go into its
   `<head>`, and tags declared by a boundary that resumes later stream as a
   patch.
@@ -308,10 +308,11 @@ never saw) through a DOM such as happy-dom's `GlobalRegistrator`.
 `renderToString` accepts both.
 
 `branch`, `each`, `boundary` and `portal` are exported here under the names
-`@barqjs/core` exports them under, with the same argument order. The compiler
+`@barqjs/web` exports them under, with the same argument order. The compiler
 emits the same call for both backends and chooses between them by choosing the
-import source, which is why a string-compiled module imports from here and from
-nowhere else.
+import source, which is why a string-compiled module imports its rendering
+calls from here and the reactive ones, such as `props`, `cell` and `block`, from
+`@barqjs/core`.
 
 `esc`, `escAttr` and `html` are the escaping primitives the compiler emits
 around. `html` brands a string as already safe, and `esc` passes such a value
