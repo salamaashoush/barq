@@ -86,6 +86,35 @@ reported as errors.
 Set `"jsxImportSource": "@barqjs/universal"` for any tag and any property, or
 point it at your renderer package's own `jsx-runtime` to type its tags.
 
+### Inside a document file
+
+A component can host the renderer inside a page, the way a canvas hosts a
+scene. Declare it in the renderer package's `package.json` and `@barqjs/vite`
+compiles its children for the renderer in every file that imports it, while
+the JSX around it stays the document's:
+
+```json
+"barq": {
+  "boundaries": [{ "name": "Canvas", "target": "universal", "moduleSource": "@acme/scene/renderer" }]
+}
+```
+
+The component receives its children unbuilt and renders them in a root of its
+own, which is what gives them this host:
+
+```ts
+import { getOwner, onCleanup } from "@barqjs/core";
+import { render } from "./renderer.ts";
+
+export function Canvas(props: { children?: unknown }) {
+  const scene = createScene();
+  onCleanup(render(() => props.children as never, scene.root, { owner: getOwner() }));
+  return scene.canvas;
+}
+```
+
+A server build renders `Canvas` itself and leaves its children out.
+
 ## Rendering
 
 ```tsx
