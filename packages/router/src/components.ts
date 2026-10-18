@@ -82,6 +82,7 @@ import {
   linkNavigation,
   linkState,
 } from "./link.ts";
+import type { Match } from "./matcher.ts";
 import { publicHref } from "./rewrite.ts";
 import { wrapWith } from "./ssr.ts";
 
@@ -442,8 +443,13 @@ export async function resolveHeadFor(
   // the ROOT route standing in, and the server renders its `head` — so reading
   // the match here gave the client an EMPTY head for every 404, and
   // `<HeadContent />` then reconciled away every tag the server had written.
-  const match = state.match();
-  const chain = state.chain();
+  return headOf(state.match(), state.chain());
+}
+
+function headOf(
+  match: Match<Route> | null,
+  chain: readonly Route[],
+): Promise<readonly import("./head.ts").MatchAssets[]> {
   return projectHead(
     chain.map((route) => ({
       params: match?.params ?? {},
@@ -505,10 +511,12 @@ export function clientHeadAssets(
   let newest = 0;
   let first = options.initial !== undefined;
   createEffect(
-    // SUBSCRIBED, all three, so a navigation that keeps the same match still
-    // re-runs — the head depends on the params and the contexts too.
-    () => [state.match(), state.location(), state.contexts()],
-    () => {
+    // SUBSCRIBED, all of them, so a navigation that keeps the same match still
+    // re-runs — the head depends on the params and the contexts too. The match
+    // and chain are read here and handed over, because a read in the apply
+    // half is one the development build reports as untracked.
+    () => [state.match(), state.chain(), state.location(), state.contexts()] as const,
+    ([match, chain]) => {
       // The boot already resolved this one, and re-resolving it would replace
       // every tag the render just claimed.
       if (first) {
@@ -516,7 +524,7 @@ export function clientHeadAssets(
         return;
       }
       const mine = ++newest;
-      void resolveHeadFor(state)
+      void headOf(match, chain)
         .then((assets) => {
           if (mine === newest) setResolved(assets);
         })
@@ -545,7 +553,15 @@ export function clientHeadAssets(
       ...options.clientAssets,
       css: [...new Set([...(options.clientAssets?.css ?? []), ...served.css])],
     },
-    inlineCss: options.inlineCss ?? served.inlineCss,
+    // Read when `<HeadContent />` renders, not at import. A module evaluated
+    // between the two (a route chunk with compiled CSS, in dev) has already
+    // painted its rules into this element, and claiming the element with the
+    // import-time text wrote them back out of the document.
+    get inlineCss() {
+      return (
+        options.inlineCss ?? document.getElementById("barq-css")?.textContent ?? served.inlineCss
+      );
+    },
     lateCss: () => served.lateCss,
     preloads: options.preloads ?? served.preloads,
     raw: (markup: string) => {
