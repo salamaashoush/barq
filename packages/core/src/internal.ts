@@ -8,9 +8,9 @@
  * of that is application API, and exporting it from the package index would
  * have made it so permanently.
  *
- * Every name here is imported by `@barqjs/web`, `@barqjs/server` or
- * `@barqjs/start`. Adding one that none of them imports makes this a second
- * public surface by accident.
+ * Every name here is imported by `@barqjs/web`, `@barqjs/universal`,
+ * `@barqjs/server` or `@barqjs/start`. Adding one that none of them imports
+ * makes this a second public surface by accident.
  */
 
 export {
@@ -60,6 +60,7 @@ export {
   keyMode,
   longestIncreasingSubsequence,
   nextActivation,
+  offerDefaultHost,
   revealIn,
   setDefaultHost,
   standingRow,

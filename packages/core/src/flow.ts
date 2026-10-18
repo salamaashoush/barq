@@ -199,6 +199,16 @@ export function setDefaultHost<N extends object>(host: RangeHost<N>, sync: SyncR
   installed = { host, sync } as unknown as Renderer;
 }
 
+/**
+ * Installs a renderer as the default only while there is none. A custom
+ * renderer offers itself this way, so in an app that loads the document's host
+ * as well, the document stays the default whichever module loads first, and
+ * each tree still renders through the host its own root provides.
+ */
+export function offerDefaultHost<N extends object>(host: RangeHost<N>, sync: SyncRows<N>): void {
+  if (installed === null) setDefaultHost(host, sync);
+}
+
 /** The renderer a component called here renders through. */
 export function rendererHere(construct: string): Renderer {
   const provided = lookupContext(getOwner(), HOST);
@@ -208,7 +218,7 @@ export function rendererHere(construct: string): Renderer {
     `\`<${construct}>\` was called as a component with no renderer to render through. ` +
       "Compiled code installs one for every module that calls a component, so this " +
       'is a hand-written call: import "@barqjs/web/host" once before it, or render ' +
-      "under a renderer that provides `HOST`.",
+      "under a renderer that provides `HOST`, such as one `createRenderer` returns.",
   );
 }
 

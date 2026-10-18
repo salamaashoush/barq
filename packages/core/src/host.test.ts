@@ -7,7 +7,13 @@
 import { describe, expect, test } from "bun:test";
 
 import { Show } from "./components.ts";
-import { HOST, type RangeHost, type SyncRows, setDefaultHost } from "./flow.ts";
+import {
+  HOST,
+  type RangeHost,
+  type SyncRows,
+  offerDefaultHost,
+  setDefaultHost,
+} from "./flow.ts";
 import { createRoot, getOwner, provideOn, runWithOwner } from "./signals.ts";
 import type { Scope } from "./scope.ts";
 
@@ -82,6 +88,17 @@ describe("a component called as a function", () => {
   });
 
   test("renders through the host its owner provides", () => {
+    expect(shown(memoryHost("provided"))).toContain("provided:yes");
+  });
+
+  test("an offered host fills an empty default and never replaces one", () => {
+    offerDefaultHost(memoryHost("first offer"), unused);
+    expect(shown()).toContain("first offer:yes");
+    offerDefaultHost(memoryHost("second offer"), unused);
+    expect(shown()).toContain("first offer:yes");
+    setDefaultHost(memoryHost("document"), unused);
+    offerDefaultHost(memoryHost("late offer"), unused);
+    expect(shown()).toContain("document:yes");
     expect(shown(memoryHost("provided"))).toContain("provided:yes");
   });
 
