@@ -947,9 +947,9 @@ arm, so a new opcode has to answer where it sits on the wire or the crate does n
 filter that quietly dropped an opcode would produce missing output with no error, which is the
 precise silence §4's no-drift guarantee exists to make impossible.
 
-**A namespace import resolves to the same `Flow` as a named one.** `import * as core` binds no
-symbol for `core.Portal`, so a split resolved by `SymbolId` alone would walk past `<core.For>` and
-`<core.Portal>`. The bind walk records the flows a namespace member names, and
+**A namespace import resolves to the same `Flow` as a named one.** `import * as core` (or `* as web`) binds no
+symbol for `core.For`, so a split resolved by `SymbolId` alone would walk past `<core.For>` and
+`<web.Portal>`. The bind walk records the flows a namespace member names, and
 `shape.rs::member_chain` carries the object's `ReferenceId` into the emitted identifier so the
 backend resolves it by symbol rather than by spelling.
 
