@@ -442,72 +442,67 @@ function sameArgs(a: readonly unknown[] | undefined, b: readonly unknown[] | und
   return true;
 }
 
-export function setProperty(node: Instance, name: string, value: unknown, prev: unknown): void {
-  switch (name) {
-    case "args": {
-      if (value !== undefined && !Array.isArray(value)) {
-        throw new TypeError(
-          `\`args\` on <${node.type}> must be an array of constructor arguments.`,
-        );
-      }
-      const args = value as readonly unknown[] | undefined;
-      if (sameArgs(node.args, args)) return;
-      node.args = args;
-      if (node.waiting) resume(node);
-      else if (node.object !== null && node.kind === ELEMENT) rebuild(node);
-      return;
-    }
-    case "attach": {
-      const attach = value as AttachType | undefined;
-      if (attach === node.attach) return;
-      const parent = node.parent;
-      const reattach = parent !== null && node.attached !== 0;
-      if (reattach) detachObject(parent, node);
-      node.attach = attach;
-      if (reattach) {
-        attachObject(parent, node);
-        node.root?.invalidate();
-      }
-      return;
-    }
-    case "dispose":
-      node.dispose = value !== null;
-      return;
-    case "onUpdate":
-      node.onUpdate = typeof value === "function" ? (value as (self: unknown) => void) : null;
-      return;
-    case "children":
-    case "key":
-      return;
+/** What a prop name is to the renderer, decided once per distinct name. */
+const ARGS = 1;
+const ATTACH = 2;
+const DISPOSE = 3;
+const ON_UPDATE = 4;
+const IGNORED = 5;
+const HANDLER = 6;
+const OBJECT = 7;
+/** A property of the object: `visible`, `material`. */
+const PLAIN = 8;
+/** A dashed path into it: `position-x`, `material-color`. */
+const DASHED = 9;
+
+const RESERVED: Record<string, number> = {
+  args: ARGS,
+  attach: ATTACH,
+  dispose: DISPOSE,
+  onUpdate: ON_UPDATE,
+  children: IGNORED,
+  key: IGNORED,
+  object: OBJECT,
+};
+
+const NAMES = new Map<string, number>();
+
+function kindOf(name: string): number {
+  let kind = NAMES.get(name);
+  if (kind === undefined) {
+    kind = Object.prototype.hasOwnProperty.call(RESERVED, name)
+      ? RESERVED[name]
+      : HANDLERS.has(name)
+        ? HANDLER
+        : pathOf(name) === null
+          ? PLAIN
+          : DASHED;
+    NAMES.set(name, kind);
   }
-  if (HANDLERS.has(name)) {
-    setHandler(node, name, value);
+  return kind;
+}
+
+export function setProperty(node: Instance, name: string, value: unknown, prev: unknown): void {
+  const kind = kindOf(name);
+  if (kind < PLAIN) {
+    setReserved(node, kind, name, value);
     return;
   }
   let props = node.props;
   if (props === null) props = node.props = {};
   props[name] = value;
-  if (name === "object" && node.kind === PRIMITIVE) {
-    if (node.waiting) resume(node);
-    else if (node.object !== null && node.object !== value) rebuild(node);
-    return;
-  }
-  const head = pathOf(name) === null;
-  if (!head) node.dashed = true;
+  if (kind === DASHED) node.dashed = true;
   const object = node.object;
   if (object === null) return;
   const root = node.root;
-  if (value === undefined) {
-    if (prev !== undefined) {
-      const fallback = defaultOf(object, name);
-      if (fallback.found) applyProp(object, name, fallback.value, true);
-    }
-  } else {
-    applyProp(object, name, value, root !== null && root.internal.linear);
+  const linear = root !== null && root.internal.linear;
+  if (value !== undefined) applyProp(object, name, value, linear);
+  else if (prev !== undefined) {
+    const fallback = defaultOf(object, name);
+    if (fallback.found) applyProp(object, name, fallback.value, true);
   }
   // Writing `material` replaces what `material-color` was written into.
-  if (head && node.dashed) {
-    const linear = root !== null && root.internal.linear;
+  if (kind === PLAIN && node.dashed) {
     for (const other in props) {
       if (
         other.length > name.length &&
@@ -520,6 +515,60 @@ export function setProperty(node: Instance, name: string, value: unknown, prev: 
   }
   if (node.onUpdate !== null) node.onUpdate(object as never);
   if (root !== null) root.invalidate();
+}
+
+function setReserved(node: Instance, kind: number, name: string, value: unknown): void {
+  switch (kind) {
+    case ARGS: {
+      if (value !== undefined && !Array.isArray(value)) {
+        throw new TypeError(
+          `\`args\` on <${node.type}> must be an array of constructor arguments.`,
+        );
+      }
+      const args = value as readonly unknown[] | undefined;
+      if (sameArgs(node.args, args)) return;
+      node.args = args;
+      if (node.waiting) resume(node);
+      else if (node.object !== null && node.kind === ELEMENT) rebuild(node);
+      return;
+    }
+    case ATTACH: {
+      const attach = value as AttachType | undefined;
+      if (attach === node.attach) return;
+      const parent = node.parent;
+      const reattach = parent !== null && node.attached !== 0;
+      if (reattach) detachObject(parent, node);
+      node.attach = attach;
+      if (reattach) {
+        attachObject(parent, node);
+        node.root?.invalidate();
+      }
+      return;
+    }
+    case DISPOSE:
+      node.dispose = value !== null;
+      return;
+    case ON_UPDATE:
+      node.onUpdate = typeof value === "function" ? (value as (self: unknown) => void) : null;
+      return;
+    case HANDLER:
+      setHandler(node, name, value);
+      return;
+    case OBJECT: {
+      // Only a primitive stands for a given object; on any other tag
+      // `object` is a property like the rest.
+      let props = node.props;
+      if (props === null) props = node.props = {};
+      props.object = value;
+      if (node.kind !== PRIMITIVE) {
+        if (node.object !== null) applyProp(node.object, name, value, false);
+        return;
+      }
+      if (node.waiting) resume(node);
+      else if (node.object !== null && node.object !== value) rebuild(node);
+      return;
+    }
+  }
 }
 
 function setHandler(node: Instance, name: string, value: unknown): void {
