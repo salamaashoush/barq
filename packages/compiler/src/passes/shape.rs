@@ -56,6 +56,8 @@ pub fn run<'a>(
         helpers,
         regions,
         flow_rewrites,
+        renderers,
+        boundaries,
         ..
     } = module;
     let helpers = *helpers;
@@ -90,6 +92,8 @@ pub fn run<'a>(
             inert_roots,
             helpers,
             used: [false; HELPER_COUNT],
+            renderers,
+            boundaries,
             untracks: !options.ssr,
             depth: 0,
             built_once: FxHashSet::default(),
@@ -168,6 +172,8 @@ pub(super) struct Shaper<'a, 'm> {
     inert_roots: Vec<bool>,
     helpers: [&'a str; HELPER_COUNT],
     used: [bool; HELPER_COUNT],
+    renderers: &'m mut Vec<crate::ir::Renderer<'a>>,
+    boundaries: &'m [(u32, u32, u8)],
     /// Whether a component call that may run inside a compute is wrapped in
     /// `untrack`. The string backend runs no computes around a call.
     untracks: bool,
@@ -1215,6 +1221,15 @@ impl<'a> Shaper<'a, '_> {
     }
 
     pub(super) fn helper(&mut self, helper: Helper, span: Span) -> Expression<'a> {
+        let renderer = crate::ir::renderer_in(self.boundaries, span.start);
+        if renderer != 0 {
+            let entered = &mut self.renderers[renderer as usize - 1];
+            if crate::codegen::home(helper, entered.target) == crate::codegen::Home::Renderer {
+                entered.used[helper as usize] = true;
+                let name = entered.helpers[helper as usize];
+                return self.ident(name, span);
+            }
+        }
         self.used[helper as usize] = true;
         self.ident(self.helpers[helper as usize], span)
     }

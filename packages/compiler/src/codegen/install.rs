@@ -21,11 +21,12 @@ pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
     let cells = emit.module.hoisted.iter().any(|it| matches!(it, Hoisted::Cell { .. }));
     if emit.module.templates.is_empty()
         && !emit.used.iter().any(|used| *used)
+        && !emit.module.renderers.iter().any(|it| it.used.iter().any(|used| *used))
         && !cells
         && !emit.module.detached_roots
     {
-        if calls_a_component(emit, &program.body) {
-            program.body.insert(0, host_import(emit));
+        for (index, host) in host_imports(emit, &program.body, &[]).into_iter().enumerate() {
+            program.body.insert(index, host);
         }
         return;
     }
@@ -35,7 +36,9 @@ pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
     let mut templates = Vec::with_capacity(emit.module.templates.len());
     for id in 0..emit.module.templates.len() as TemplateId {
         let origin = super::mappings::template_span(emit.module, &claimant, id);
+        let entered = emit.enter(emit.module.template_meta[id as usize].renderer);
         templates.push(template_declaration(emit, id, origin));
+        emit.leave(entered);
     }
     // Target #7: capture-free handlers become module-scope constants, so a
     // thousand rows allocate zero closures. Then ONE delegateEvents call
@@ -69,8 +72,17 @@ pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
             }
             templates.push(hoisted_declaration(emit, index));
         }
-        if emit.target.walks_the_dom() {
+        // A boundary into the document from a custom renderer's module
+        // delegates through that document renderer.
+        let document = if emit.target.walks_the_dom() {
+            Some(0)
+        } else {
+            emit.module.renderers.iter().position(|it| it.target.walks_the_dom()).map(|at| at + 1)
+        };
+        if let Some(renderer) = document {
+            let entered = emit.enter(renderer as u8);
             templates.extend(super::dom::delegate_call(emit));
+            emit.leave(entered);
         }
     }
     // Last, because a serialised unit names the `_tmpl$N` it clones and the
@@ -93,12 +105,29 @@ pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
         let target = emit.target;
         (source, helper_specifiers(emit, |helper| home(helper, target) == wanted))
     });
+    // Then each renderer a boundary entered, for the helpers that live in its
+    // own module. A source two groups name is still one import.
+    let mut grouped: Vec<(&'a str, Vec<(&'a str, &'a str)>)> = groups.into_iter().collect();
+    for renderer in &emit.module.renderers {
+        let specifiers: Vec<(&'a str, &'a str)> = IMPORTED
+            .iter()
+            .enumerate()
+            .filter(|(index, (helper, _))| {
+                renderer.used[*index] && home(*helper, renderer.target) == Home::Renderer
+            })
+            .map(|(index, (_, name))| (*name, renderer.helpers[index]))
+            .collect();
+        match grouped.iter_mut().find(|(source, _)| *source == renderer.source) {
+            Some((_, existing)) => existing.extend(specifiers),
+            None => grouped.push((renderer.source, specifiers)),
+        }
+    }
     let allocator = emit.allocator;
     let mut body = std::mem::replace(&mut program.body, ArenaVec::new_in(&allocator));
     drop_rewritten_flow_imports(emit, &mut body);
 
     let mut pending: Vec<(&'a str, Vec<(&'a str, &'a str)>)> = Vec::new();
-    for (source, specifiers) in groups {
+    for (source, specifiers) in grouped {
         if specifiers.is_empty() {
             continue;
         }
@@ -108,13 +137,7 @@ pub fn run<'a>(emit: &mut Emit<'a, '_>, program: &mut Program<'a>) {
     }
 
     let mut out = ArenaVec::with_capacity_in(body.len() + templates.len() + 3, &allocator);
-    // A helper import from the renderer's own module already loads it, and with
-    // it the host it registers.
-    let loads_the_renderer = emit.target == super::Target::Universal
-        && pending.iter().any(|(source, _)| *source == emit.module_source);
-    if !loads_the_renderer && calls_a_component(emit, &body) {
-        out.push(host_import(emit));
-    }
+    out.extend(host_imports(emit, &body, &pending));
     for (source, specifiers) in &pending {
         out.push(helper_import(emit, source, specifiers));
     }
@@ -202,10 +225,43 @@ const HOST_COMPONENTS: [&str; 8] =
 ///
 /// A custom renderer registers its host from its own module, as a default no
 /// other renderer has taken, so the import is of that module.
-fn calls_a_component<'a>(emit: &Emit<'a, '_>, body: &[Statement<'a>]) -> bool {
-    if emit.target == super::Target::Ssr {
-        return false;
+///
+/// The call is not attributed to a renderer, so a module whose boundaries
+/// enter other renderers loads the host of each of them.
+fn host_imports<'a>(
+    emit: &Emit<'a, '_>,
+    body: &[Statement<'a>],
+    pending: &[(&'a str, Vec<(&'a str, &'a str)>)],
+) -> Vec<Statement<'a>> {
+    if emit.target == super::Target::Ssr || !calls_a_component(emit, body) {
+        return Vec::new();
     }
+    let custom = |target: super::Target| target == super::Target::Universal;
+    let renderers = std::iter::once((emit.module_source, custom(emit.target)))
+        .chain(emit.module.renderers.iter().map(|it| (it.source, custom(it.target))));
+    let mut hosts: Vec<String> = Vec::new();
+    for (source, custom) in renderers {
+        let host = host_source(source, custom);
+        // A helper import from the renderer's own module already loads it, and
+        // with it the host it registers.
+        let loaded = custom && pending.iter().any(|(from, _)| *from == source);
+        if loaded || imports(body, &host) || hosts.contains(&host) {
+            continue;
+        }
+        hosts.push(host);
+    }
+    hosts.iter().map(|host| bare_import(emit, host)).collect()
+}
+
+fn imports(body: &[Statement<'_>], source: &str) -> bool {
+    body.iter().any(|statement| {
+        matches!(statement, Statement::ImportDeclaration(declaration)
+            if declaration.import_kind == ImportOrExportKind::Value
+                && declaration.source.value.as_str() == source)
+    })
+}
+
+fn calls_a_component<'a>(emit: &Emit<'a, '_>, body: &[Statement<'a>]) -> bool {
     let mut calls = false;
     for statement in body {
         let Statement::ImportDeclaration(declaration) = statement else { continue };
@@ -213,9 +269,6 @@ fn calls_a_component<'a>(emit: &Emit<'a, '_>, body: &[Statement<'a>]) -> bool {
             continue;
         }
         let source = declaration.source.value.as_str();
-        if source == host_source(emit).as_str() {
-            return false;
-        }
         if source != emit.core_source {
             continue;
         }
@@ -251,15 +304,15 @@ fn calls_a_component<'a>(emit: &Emit<'a, '_>, body: &[Statement<'a>]) -> bool {
     calls
 }
 
-fn host_source(emit: &Emit<'_, '_>) -> String {
-    if emit.target == super::Target::Universal {
-        return emit.module_source.to_string();
+fn host_source(source: &str, custom: bool) -> String {
+    if custom {
+        return source.to_string();
     }
-    format!("{}/host", emit.module_source)
+    format!("{source}/host")
 }
 
-fn host_import<'a>(emit: &Emit<'a, '_>) -> Statement<'a> {
-    let source = emit.allocator.alloc_str(&host_source(emit));
+fn bare_import<'a>(emit: &Emit<'a, '_>, source: &str) -> Statement<'a> {
+    let source = emit.allocator.alloc_str(source);
     Statement::new_import_declaration(
         SPAN,
         None,

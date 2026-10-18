@@ -25,9 +25,11 @@ use crate::ir::{
 /// `nextSibling` — the same alphabet, the longest route, and no claim about
 /// anything but the node's own materialised index.
 pub fn run<'a>(allocator: &'a Allocator, module: &mut Module<'a>, nearest: bool) {
+    let walks: Vec<bool> =
+        module.units.iter().map(|unit| module.target_of(unit.renderer).walks_the_dom()).collect();
     let Module { units, interner, uids, .. } = module;
-    for unit in units.iter_mut() {
-        if unit.patch.is_empty() {
+    for (unit, walks) in units.iter_mut().zip(walks) {
+        if unit.patch.is_empty() || !walks {
             continue;
         }
         plan(allocator, unit, uids, interner, nearest);

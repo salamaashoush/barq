@@ -28,7 +28,7 @@ exists and how to silence it.
 - [BARQ024](BARQ024.md), error: An attribute uses a Solid 1.x namespace such as `on:` or `attr:`.
 - [BARQ025](BARQ025.md), error: `<Dynamic>` is rendered, where Solid 2.0 uses the `dynamic` factory.
 - [BARQ026](BARQ026.md), error: Markup the browser's HTML parser builds differently from the JSX.
-- [BARQ027](BARQ027.md), error: A `bind:` or a form `action` is written in a module compiled for a custom renderer.
+- [BARQ027](BARQ027.md), error: A `bind:` or a form `action` is written for a custom renderer.
 - [BARQ028](BARQ028.md), error: A module compiled for a custom renderer is also asked for `ssr`, `hydratable` or `interp`.
 
 When each code is reported:

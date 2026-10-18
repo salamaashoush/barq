@@ -28,12 +28,20 @@ use crate::ir::{
 /// still have to be written and the id still has to be assigned, so with it off
 /// every unit simply takes a row of its own.
 pub fn run(module: &mut Module<'_>, share: bool) {
+    let walks: Vec<bool> =
+        module.units.iter().map(|unit| module.target_of(unit.renderer).walks_the_dom()).collect();
     let Module { units, interner, html, templates, template_meta, dedup, dedup_overflow, .. } =
         module;
     let mut origin: Vec<(u32, Span)> = Vec::new();
 
-    for unit in units.iter_mut() {
+    for (unit, walks) in units.iter_mut().zip(walks) {
+        // A unit a boundary gave to a custom renderer is built by calls, and
+        // has no template to parse.
+        if !walks {
+            continue;
+        }
         origin.clear();
+        let renderer = unit.renderer;
         let start = html.len() as u32;
         {
             let mut writer =
@@ -56,6 +64,7 @@ pub fn run(module: &mut Module<'_>, share: bool) {
             let row = &templates[*id as usize];
             row.ns == ns
                 && template_meta[*id as usize].wrapped == wrapped
+                && template_meta[*id as usize].renderer == renderer
                 && html[row.range.0 as usize..row.range.1 as usize]
                     == html[start as usize..end as usize]
         };
@@ -76,7 +85,7 @@ pub fn run(module: &mut Module<'_>, share: bool) {
             None => {
                 let id = templates.len() as TemplateId;
                 templates.push(TemplateRow { range: (start, end), ns, hash });
-                template_meta.push(TemplateMeta { wrapped, span: unit.site.span() });
+                template_meta.push(TemplateMeta { wrapped, span: unit.site.span(), renderer });
                 // A collision degrades to a duplicate ROW, never to a silent
                 // merge — and the loser is still registered, so a third template
                 // identical to it shares with it instead of adding a third row.
@@ -241,7 +250,11 @@ mod tests {
             ns: Ns::Html,
             hash: identity(a, Ns::Html, false),
         });
-        module.template_meta.push(TemplateMeta { wrapped: false, span: Span::default() });
+        module.template_meta.push(TemplateMeta {
+            wrapped: false,
+            span: Span::default(),
+            renderer: 0,
+        });
         module.dedup.insert(identity(b, Ns::Html, false), 0);
 
         run(&mut module, true);

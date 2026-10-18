@@ -79,9 +79,9 @@ struct Lower<'a, 'm> {
     ast: AstBuilder<'a>,
     source: &'a str,
     use_templates: bool,
-    /// Compiling for a custom renderer: no HTML parser builds the tree, so
-    /// nothing is refused for how a parser would reshape it, and every name
-    /// reaches the host as the author wrote it.
+    /// The unit being built is for a custom renderer: no HTML parser builds
+    /// the tree, so nothing is refused for how a parser would reshape it, and
+    /// every name reaches the host as the author wrote it.
     universal: bool,
     module: &'m mut Module<'a>,
     /// Whether the JSX being scanned is written inside SVG content. A root
@@ -225,7 +225,7 @@ impl<'a> Lower<'a, '_> {
         let Some(tag) = intrinsic_tag(&element.opening_element.name) else {
             return false;
         };
-        if self.universal {
+        if self.universal_at(element.span.start) {
             return !self.names_children(element);
         }
         if parse::reshapes(tag, at) {
@@ -264,6 +264,11 @@ impl<'a> Lower<'a, '_> {
             return false;
         }
         self.children_survive_the_parser(element, tag)
+    }
+
+    fn universal_at(&self, offset: u32) -> bool {
+        let renderer = self.module.renderer_at(offset);
+        self.module.target_of(renderer) == crate::codegen::Target::Universal
     }
 
     /// A `children=` attribute is the one name that still takes an element
@@ -406,6 +411,10 @@ impl<'a> Lower<'a, '_> {
             insert_patches: Vec::new(),
             next_slot: 0,
         };
+        // A unit's elements are all intrinsic, and a boundary is a component,
+        // so the whole unit sits on one side of every boundary.
+        build.unit.renderer = self.module.renderer_at(element.span.start);
+        self.universal = self.universal_at(element.span.start);
 
         let root = self.element_node(&mut build, element, NONE, 0, self.root_context());
         build.unit.skeleton.roots = (root, root + 1);

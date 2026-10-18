@@ -16,9 +16,19 @@ use super::classify::as_text;
 /// A subtree that loses its last patch becomes `is_pure_static()`, which is
 /// target #2 falling out as a type-level fact rather than a special case.
 pub fn run<'a>(allocator: &'a Allocator, module: &mut Module<'a>) {
+    // Folding writes a constant into the template's bytes, as text. A custom
+    // host has no template and is owed the value itself: `width={3}` is the
+    // number 3 there, not the string the attribute would hold.
+    let folds: Vec<bool> = module
+        .units
+        .iter()
+        .map(|unit| module.target_of(unit.renderer) != crate::codegen::Target::Universal)
+        .collect();
     let Module { units, interner, folded_reads, .. } = module;
-    for unit in units.iter_mut() {
-        fold_unit(allocator, interner, folded_reads, unit);
+    for (unit, folds) in units.iter_mut().zip(folds) {
+        if folds {
+            fold_unit(allocator, interner, folded_reads, unit);
+        }
     }
 }
 

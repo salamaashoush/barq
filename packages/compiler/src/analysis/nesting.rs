@@ -22,18 +22,24 @@ use crate::ir::Diag;
 use crate::lower::parse::{Context, Reshape, reshape};
 use crate::tables::is_svg_tag;
 
-pub(super) fn check<'a>(allocator: &'a Allocator, program: &Program<'a>) -> Vec<Diag<'a>> {
-    let mut nesting = Nesting { allocator, diagnostics: Vec::new() };
+/// `custom` is the source a custom renderer builds, which no parser reads.
+pub(super) fn check<'a>(
+    allocator: &'a Allocator,
+    program: &Program<'a>,
+    custom: &[(u32, u32)],
+) -> Vec<Diag<'a>> {
+    let mut nesting = Nesting { allocator, custom, diagnostics: Vec::new() };
     nesting.visit_program(program);
     nesting.diagnostics
 }
 
-struct Nesting<'a> {
+struct Nesting<'a, 'c> {
     allocator: &'a Allocator,
+    custom: &'c [(u32, u32)],
     diagnostics: Vec<Diag<'a>>,
 }
 
-impl<'a> Visit<'a> for Nesting<'a> {
+impl<'a> Visit<'a> for Nesting<'a, '_> {
     fn visit_jsx_element(&mut self, element: &JSXElement<'a>) {
         self.element(element, Context::default());
     }
@@ -43,8 +49,12 @@ impl<'a> Visit<'a> for Nesting<'a> {
     }
 }
 
-impl<'a> Nesting<'a> {
+impl<'a> Nesting<'a, '_> {
     fn element(&mut self, element: &JSXElement<'a>, at: Context<'a>) {
+        let start = element.span.start;
+        if self.custom.iter().any(|(lo, hi)| *lo <= start && start < *hi) {
+            return;
+        }
         let opening = &element.opening_element;
         // A component places its children wherever it renders them, which is
         // not knowable here: they start a tree of their own.

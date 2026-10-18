@@ -502,6 +502,17 @@ pub(crate) fn helper_names<'a>(sigil: &str, allocator: &'a Allocator) -> [&'a st
     local
 }
 
+/// The local names of renderer `index`'s helpers: the module's own names with
+/// `$index` after them. A source spelling one of them would spell the module's
+/// name first, and [`free_sigil`] has already moved past that.
+pub(crate) fn renderer_helper_names<'a>(
+    base: &[&'a str; HELPER_COUNT],
+    index: u32,
+    allocator: &'a Allocator,
+) -> [&'a str; HELPER_COUNT] {
+    base.map(|name| allocator.alloc_str(&format!("{name}${index}")) as &'a str)
+}
+
 /// Stage 5 (P8a) plus the module preamble. The IR is final — every unit already
 /// carries its `TemplateId`, its `RefPlan` and its patch program — so this stage
 /// only prints. It is also the only stage that writes to the program, which it
@@ -580,6 +591,20 @@ pub struct Emit<'a, 'm> {
     pub filename: &'a str,
     pub used: [bool; HELPER_COUNT],
     pub local: [&'a str; HELPER_COUNT],
+    /// The renderer the code being printed builds through, `0` being the
+    /// module's own. `target`, `hydratable` and `detect` are that renderer's
+    /// while it is entered.
+    pub renderer: u8,
+    own_hydratable: bool,
+    own_detect: bool,
+}
+
+/// What [`Emit::enter`] replaced, for [`Emit::leave`] to put back.
+pub struct Entered {
+    renderer: u8,
+    target: Target,
+    hydratable: bool,
+    detect: bool,
 }
 
 impl<'a, 'm> Emit<'a, 'm> {
@@ -616,7 +641,40 @@ impl<'a, 'm> Emit<'a, 'm> {
             ),
             used,
             local,
+            renderer: 0,
+            own_hydratable: options.hydratable,
+            own_detect: options.hydratable && options.dev,
         }
+    }
+
+    /// Prints through `renderer` until the result is handed to [`Self::leave`].
+    ///
+    /// A custom host claims nothing, so hydration stops at a boundary into
+    /// one. The document inside such a host is the module's own document
+    /// again, and is emitted as the module's other document code is: it is
+    /// mounted by a `render` of its own, which claims nothing.
+    pub fn enter(&mut self, renderer: u8) -> Entered {
+        let saved = Entered {
+            renderer: self.renderer,
+            target: self.target,
+            hydratable: self.hydratable,
+            detect: self.detect,
+        };
+        if renderer != self.renderer {
+            self.renderer = renderer;
+            self.target = self.module.target_of(renderer);
+            let custom = self.target == Target::Universal;
+            self.hydratable = self.own_hydratable && !custom;
+            self.detect = self.own_detect && !custom;
+        }
+        saved
+    }
+
+    pub fn leave(&mut self, saved: Entered) {
+        self.renderer = saved.renderer;
+        self.target = saved.target;
+        self.hydratable = saved.hydratable;
+        self.detect = saved.detect;
     }
 
     /// Whether a hole may go on the wire with no boundary comments at all.
@@ -768,6 +826,12 @@ impl<'a, 'm> Emit<'a, 'm> {
 
     pub fn helper(&mut self, helper: Helper, span: Span) -> Expression<'a> {
         let index = helper as usize;
+        if self.renderer != 0 && home(helper, self.target) == Home::Renderer {
+            let renderer = &mut self.module.renderers[self.renderer as usize - 1];
+            renderer.used[index] = true;
+            let name = renderer.helpers[index];
+            return self.ident(name, span);
+        }
         self.used[index] = true;
         self.ident(self.local[index], span)
     }
@@ -782,12 +846,14 @@ impl<'a, 'm> Emit<'a, 'm> {
     fn unit(&mut self, id: UnitId, span: Span) -> Expression<'a> {
         let empty = Unit::new_in(self.allocator, Ns::Html, Site::Nested(span));
         let mut unit = std::mem::replace(&mut self.module.units[id as usize], empty);
+        let entered = self.enter(unit.renderer);
         let expression = match self.target {
             Target::Dom => dom::emit_unit(self, &mut unit, span),
             Target::Ssr => ssr::emit_unit_root(self, &mut unit, span),
             Target::Interp => interp::emit_unit(self, &mut unit, id, span),
             Target::Universal => universal::emit_unit(self, &mut unit, span),
         };
+        self.leave(entered);
         self.module.units[id as usize] = unit;
         expression
     }
@@ -801,7 +867,10 @@ impl<'a, 'm> Emit<'a, 'm> {
         let Some(region) = self.module.regions[id as usize].replace(empty) else {
             unreachable!("a claimed region no longer has a placeholder to expand")
         };
-        dom::region_call(self, region, None, span)
+        let entered = self.enter(self.module.renderer_at(region.span.start));
+        let call = dom::region_call(self, region, None, span);
+        self.leave(entered);
+        call
     }
 
     fn root(&mut self, index: u32, span: Span) -> Expression<'a> {
@@ -818,14 +887,16 @@ impl<'a, 'm> Emit<'a, 'm> {
         // The string and reference backends produce one expression and no
         // statements, so there is nothing to splice and every root goes
         // through `root`.
-        if !matches!(self.target, Target::Dom | Target::Universal) || !self.opt.splice {
+        if !self.opt.splice {
             return None;
         }
         let Expression::Identifier(identifier) = expression else { return None };
         let index = self.module.uids.root_index(identifier.name.as_str())?;
         let Root::Unit(id) = self.module.roots[index as usize] else { return None };
         let unit = self.module.units.get(id as usize)?;
-        (!unit.site.needs_iife()).then_some((index, id))
+        let builds =
+            matches!(self.module.target_of(unit.renderer), Target::Dom | Target::Universal);
+        (builds && !unit.site.needs_iife()).then_some((index, id))
     }
 
     /// A statement whose whole value is one spliceable placeholder.
@@ -850,11 +921,13 @@ impl<'a, 'm> Emit<'a, 'm> {
         self.module.roots[index as usize] = Root::Unit(NONE);
         let empty = Unit::new_in(self.allocator, Ns::Html, Site::Nested(span));
         let mut unit = std::mem::replace(&mut self.module.units[id as usize], empty);
+        let entered = self.enter(unit.renderer);
         let parts = if self.target == Target::Universal {
             universal::emit_unit_parts(self, &mut unit, span)
         } else {
             dom::emit_unit_parts(self, &mut unit, span)
         };
+        self.leave(entered);
         self.module.units[id as usize] = unit;
         parts
     }
@@ -863,7 +936,10 @@ impl<'a, 'm> Emit<'a, 'm> {
         if self.target == Target::Ssr {
             return ssr::emit_verbatim_root(self, expression);
         }
-        self.create_element_path(expression)
+        let entered = self.enter(self.module.renderer_at(expression.span().start));
+        let built = self.create_element_path(expression);
+        self.leave(entered);
+        built
     }
 
     /// The un-compiled path, for both backends: the string backend falls back
