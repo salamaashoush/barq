@@ -338,7 +338,7 @@ export function createStore(hooks: StoreHooks, initial: Partial<SettableState> =
       if (priority > 0) internal.priority++;
       const subscription: Subscription = { callback, priority, store };
       let at = internal.subscribers.length;
-      while (at > 0 && internal.subscribers[at - 1].priority > priority) at--;
+      while (at > 0 && internal.subscribers[at - 1]!.priority > priority) at--;
       internal.subscribers.splice(at, 0, subscription);
       hooks.invalidate(state);
       return () => {

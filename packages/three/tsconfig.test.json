@@ -3,7 +3,10 @@
   "compilerOptions": {
     "isolatedDeclarations": false,
     "declaration": false,
-    "declarationMap": false
+    "declarationMap": false,
+    // The browser suite imports the compiler's Chrome driver, whose harness
+    // is written without this check. What ships is checked with it.
+    "noUncheckedIndexedAccess": false
   },
   "include": ["src/**/*.ts", "src/**/*.tsx", "tools/**/*.ts"],
   "exclude": ["node_modules", "dist", "src/jsx-types"]

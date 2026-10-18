@@ -20,7 +20,8 @@
     "declarationMap": true,
     "isolatedDeclarations": true,
     "jsx": "react-jsx",
-    "jsxImportSource": "@barqjs/web"
+    "jsxImportSource": "@barqjs/web",
+    "noUncheckedIndexedAccess": true
   },
   "include": ["src/**/*.ts", "src/**/*.tsx"],
   // The tests and their fixtures are checked by `tsconfig.test.json`, without

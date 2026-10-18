@@ -67,8 +67,7 @@ export function update(state: RootState, timestamp: number, frame?: XRFrame): vo
     state.clock.update(timestamp);
     const delta = state.clock.getDelta();
     const subscribers = internal.subscribers;
-    for (let i = 0; i < subscribers.length; i++) {
-      const subscription = subscribers[i];
+    for (const subscription of subscribers) {
       subscription.callback.current(subscription.store, delta, frame);
     }
     // A subscriber that writes a signal changes the scene through effects the
@@ -87,9 +86,9 @@ export function update(state: RootState, timestamp: number, frame?: XRFrame): vo
 export function sortChildren(state: RootState): void {
   const unordered = state.internal.unordered;
   if (unordered.length === 0) return;
-  for (let i = 0; i < unordered.length; i++) {
-    unordered[i].queued = false;
-    unordered[i].sortChildren();
+  for (const parent of unordered) {
+    parent.queued = false;
+    parent.sortChildren();
   }
   unordered.length = 0;
 }

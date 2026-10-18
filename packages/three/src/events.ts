@@ -234,8 +234,7 @@ function cast(
   }
   if (!propagate) return;
   const children = object.children;
-  for (let i = 0; i < children.length; i++) {
-    const child = children[i];
+  for (const child of children) {
     const node = tagOf(child);
     if (node !== undefined && (hoverOnly ? node.hoverIndex !== -1 : node.interactionIndex !== -1)) {
       continue;
@@ -301,8 +300,7 @@ export function createEvents(store: RootState): {
       computed.set(store, stamp);
       hits.length = 0;
       let layered = false;
-      for (let i = 0; i < objects.length; i++) {
-        const object = objects[i];
+      for (const object of objects) {
         const layer = tagOf(object)?.root ?? store;
         if (layer !== store) layered = true;
         const raycaster = raycasterOf(layer, event);
@@ -319,13 +317,12 @@ export function createEvents(store: RootState): {
       }
       const found = store.events.filter === undefined ? hits : store.events.filter(hits, store);
       let accepted = 0;
-      for (let i = 0; i < found.length; i++) {
-        const hit = found[i];
+      for (const hit of found) {
         // A ray through an edge hits both faces that share it, and R3F reports
         // one intersection per object, index and instance.
         let duplicate = false;
         for (let j = 0; j < accepted; j++) {
-          const seen = found[j];
+          const seen = found[j]!;
           if (
             seen.object === hit.object &&
             seen.index === hit.index &&
@@ -352,8 +349,8 @@ export function createEvents(store: RootState): {
       if (captures !== undefined) {
         for (const capture of captures.values()) {
           let present = false;
-          for (let i = 0; i < intersections.length; i++) {
-            if (intersections[i].eventObject === capture.intersection.eventObject) {
+          for (const intersection of intersections) {
+            if (intersection.eventObject === capture.intersection.eventObject) {
               present = true;
               break;
             }
@@ -390,7 +387,7 @@ export function createEvents(store: RootState): {
     const internal = store.internal;
     const local = { stopped: false };
     for (let i = 0; i < intersections.length; i++) {
-      const hit = intersections[i];
+      const hit = intersections[i]!;
       const state = layerOf(hit.object) ?? store;
       const pointerId = "pointerId" in event ? event.pointerId : -1;
       const capture: PointerCaptureApi = {
@@ -445,8 +442,7 @@ export function createEvents(store: RootState): {
     const internal = store.internal;
     for (const [id, hovered] of internal.hovered) {
       let still = false;
-      for (let i = 0; i < intersections.length; i++) {
-        const hit = intersections[i];
+      for (const hit of intersections) {
         if (
           hit.object === hovered.object &&
           hit.index === hovered.index &&
@@ -469,17 +465,15 @@ export function createEvents(store: RootState): {
   }
 
   function pointerMissed(event: MouseEvent, objects: readonly THREE.Object3D[]): void {
-    for (let i = 0; i < objects.length; i++) {
-      tagOf(objects[i])?.handlers?.onPointerMissed?.(event);
-    }
+    for (const object of objects) tagOf(object)?.handlers?.onPointerMissed?.(event);
   }
 
   function missedExcept(event: MouseEvent): void {
     const internal = store.internal;
     const initial = internal.initialHits;
     const objects = internal.interaction;
-    for (let i = 0; i < objects.length; i++) {
-      if (!initial.includes(objects[i])) tagOf(objects[i])?.handlers?.onPointerMissed?.(event);
+    for (const object of objects) {
+      if (!initial.includes(object)) tagOf(object)?.handlers?.onPointerMissed?.(event);
     }
   }
 
@@ -602,7 +596,7 @@ export function createPointerEvents(
     enabled: true,
     compute(event: DomEvent, state: RootState) {
       const size = state.size;
-      const source = event as unknown as Record<string, number>;
+      const source = event as unknown as Record<typeof x | typeof y, number>;
       state.pointer.set((source[x] / size.width) * 2 - 1, -(source[y] / size.height) * 2 + 1);
       state.raycaster.setFromCamera(state.pointer, state.camera);
     },

@@ -319,7 +319,7 @@ function resume(node: Instance): void {
 
 function deliverRefs(node: Instance): void {
   const refs = node.refs;
-  if (refs !== null) for (let i = 0; i < refs.length; i++) refs[i](node.object);
+  if (refs !== null) for (const deliver of refs) deliver(node.object);
 }
 
 /** Leave the scene: no longer cast against or hovered. The objects stay attached below. */
@@ -460,28 +460,23 @@ const PLAIN = 8;
 /** A dashed path into it: `position-x`, `material-color`. */
 const DASHED = 9;
 
-const RESERVED: Record<string, number> = {
-  args: ARGS,
-  attach: ATTACH,
-  dispose: DISPOSE,
-  onUpdate: ON_UPDATE,
-  children: IGNORED,
-  key: IGNORED,
-  object: OBJECT,
-};
+const RESERVED = new Map<string, number>([
+  ["args", ARGS],
+  ["attach", ATTACH],
+  ["dispose", DISPOSE],
+  ["onUpdate", ON_UPDATE],
+  ["children", IGNORED],
+  ["key", IGNORED],
+  ["object", OBJECT],
+]);
 
 const NAMES = new Map<string, number>();
 
 function kindOf(name: string): number {
   let kind = NAMES.get(name);
   if (kind === undefined) {
-    kind = Object.prototype.hasOwnProperty.call(RESERVED, name)
-      ? RESERVED[name]
-      : HANDLERS.has(name)
-        ? HANDLER
-        : pathOf(name) === null
-          ? PLAIN
-          : DASHED;
+    kind =
+      RESERVED.get(name) ?? (HANDLERS.has(name) ? HANDLER : pathOf(name) === null ? PLAIN : DASHED);
     NAMES.set(name, kind);
   }
   return kind;
@@ -695,7 +690,7 @@ function rebuild(node: Instance): void {
   node.object = null;
   materialize(node);
   if (wasAttached) attachObject(parent, node);
-  for (let i = 0; i < children.length; i++) attachObject(node, children[i]);
+  for (const child of children) attachObject(node, child);
   if (interactive) addInteraction(node);
   deliverRefs(node);
   node.root?.invalidate();

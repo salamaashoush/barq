@@ -57,7 +57,7 @@ export function resolve(object: object, name: string, out: Resolved = scratch): 
   let owner = object as Bag;
   const last = path.length - 1;
   for (let i = 0; i < last; i++) {
-    const next = owner[path[i]];
+    const next = owner[path[i]!];
     if (next === null || (typeof next !== "object" && typeof next !== "function")) {
       throw new Error(
         `Cannot set \`${name}\`: \`${path.slice(0, i + 1).join("-")}\` is ${String(next)}, ` +
@@ -67,7 +67,7 @@ export function resolve(object: object, name: string, out: Resolved = scratch): 
     owner = next as Bag;
   }
   out.owner = owner;
-  out.key = path[last];
+  out.key = path[last]!;
   return out;
 }
 
@@ -139,8 +139,10 @@ export function applyProp(object: object, name: string, value: unknown, linear: 
       const uniforms = target as Record<string, THREE.IUniform>;
       const next = value as Record<string, THREE.IUniform>;
       for (const uniform in next) {
-        if (uniforms[uniform] === undefined) uniforms[uniform] = { ...next[uniform] };
-        else Object.assign(uniforms[uniform], next[uniform]);
+        const given = next[uniform]!;
+        const held = uniforms[uniform];
+        if (held === undefined) uniforms[uniform] = { ...given };
+        else Object.assign(held, given);
       }
       return;
     }
