@@ -7,10 +7,18 @@
 import { describe, expect, test } from "bun:test";
 
 import { bindPlain, bindSlot } from "./signals.ts";
-import { createSignal, createStore, effectAllocations, flush } from "./index.ts";
+import { createRoot, createSignal, createStore, effectAllocations, flush } from "./index.ts";
 import { rooted } from "./test-root.ts";
 
 type Writes = [name: string, value: unknown, prev: unknown][];
+
+/** Build under a root, and leave the writes that follow to the test, outside any scope. */
+function owned(build: () => void): () => void {
+  return createRoot((dispose) => {
+    build();
+    return dispose;
+  });
+}
 
 function recorder(): {
   writes: Writes;
@@ -38,20 +46,18 @@ describe("bindSlot", () => {
     }),
   );
 
-  test(
-    "a Cell is followed",
-    rooted(() => {
-      const { writes, write } = recorder();
-      const [size, setSize] = createSignal(1);
-      bindSlot({}, write, "size", size);
-      setSize(2);
-      flush();
-      expect(writes).toEqual([
-        ["size", 1, undefined],
-        ["size", 2, 1],
-      ]);
-    }),
-  );
+  test("a Cell is followed", () => {
+    const { writes, write } = recorder();
+    const [size, setSize] = createSignal(1);
+    const dispose = owned(() => bindSlot({}, write, "size", size));
+    setSize(2);
+    flush();
+    expect(writes).toEqual([
+      ["size", 1, undefined],
+      ["size", 2, 1],
+    ]);
+    dispose();
+  });
 });
 
 describe("bindPlain", () => {
@@ -73,31 +79,31 @@ describe("bindPlain", () => {
     }),
   );
 
-  test(
-    "a store, a getter that reads a signal, or a field holding a Cell is followed",
-    rooted(() => {
-      const [store, setStore] = createStore({ x: 1 });
-      const [count, setCount] = createSignal(1);
-      const getter = {
-        get x() {
-          return count();
-        },
-      };
-      const cell = { x: count };
-      const seen: unknown[][] = [[], [], []];
+  test("a store, a getter that reads a signal, or a field holding a Cell is followed", () => {
+    const [store, setStore] = createStore({ x: 1 });
+    const [count, setCount] = createSignal(1);
+    const getter = {
+      get x() {
+        return count();
+      },
+    };
+    const cell = { x: count };
+    const seen: unknown[][] = [[], [], []];
+    const dispose = owned(() => {
       bindPlain(() => store.x, apply(seen[0]), ["x"], store);
       bindPlain(() => getter.x, apply(seen[1]), ["x"], getter);
-      bindPlain(() => (cell.x as () => number)(), apply(seen[2]), ["x"], cell);
-      setStore((draft) => {
-        draft.x = 5;
-      });
-      setCount(7);
-      flush();
-      expect(seen).toEqual([
-        [1, 5],
-        [1, 7],
-        [1, 7],
-      ]);
-    }),
-  );
+      bindPlain(() => cell.x(), apply(seen[2]), ["x"], cell);
+    });
+    setStore((draft) => {
+      draft.x = 5;
+    });
+    setCount(7);
+    flush();
+    expect(seen).toEqual([
+      [1, 5],
+      [1, 7],
+      [1, 7],
+    ]);
+    dispose();
+  });
 });

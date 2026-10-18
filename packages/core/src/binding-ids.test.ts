@@ -14,10 +14,10 @@ import { disposeScope } from "./signals.ts";
 
 test("a binding takes no place in the engine's numbering and allocates no id", () => {
   const root = rootScope();
+  const [count, setCount] = createSignal(1);
   try {
+    const seen: number[] = [];
     runWithOwner(root, () => {
-      const [count, setCount] = createSignal(1);
-      const seen: number[] = [];
       const before = peekNextChildId(root);
       bindEffect(
         () => count(),
@@ -33,11 +33,10 @@ test("a binding takes no place in the engine's numbering and allocates no id", (
         return count();
       });
       expect(memoId).toBe(before);
-
-      setCount(2);
-      flush();
-      expect(seen).toEqual([1, 2]);
     });
+    setCount(2);
+    flush();
+    expect(seen).toEqual([1, 2]);
   } finally {
     disposeScope(root);
   }
