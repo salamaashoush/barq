@@ -225,6 +225,46 @@ impl ImportedValue {
     }
 }
 
+/// The renderer a compiled module builds through.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum RenderTarget {
+    /// The document, through `@barqjs/web`: templates, a sibling walk, the
+    /// resolved channels, delegated events.
+    #[default]
+    Dom,
+    /// A host other than the document, through the module a renderer built
+    /// with `createRenderer`: every element is a `createElement` call and every
+    /// attribute and event one `setProp`.
+    Universal,
+}
+
+impl RenderTarget {
+    fn parse(text: &str) -> Option<Self> {
+        match text {
+            "dom" => Some(Self::Dom),
+            "universal" => Some(Self::Universal),
+            _ => None,
+        }
+    }
+}
+
+/// One entry of `renderers`: the files it matches compile for its target,
+/// importing from its module.
+#[napi(object)]
+#[derive(Debug, Clone, Default)]
+pub struct RendererEntry {
+    /// Globs matched against the file name: `*` within one path segment, `**`
+    /// across segments. A pattern that does not start with `/` matches at any
+    /// directory, so `src/scene/**` matches `/home/salama/app/src/scene/a.tsx`.
+    pub include: Vec<String>,
+    /// `"dom"` or `"universal"`.
+    /// @default `"universal"`
+    pub target: Option<String>,
+    /// The module these files import the renderer's helpers from.
+    /// @default the top-level `moduleSource`
+    pub module_source: Option<String>,
+}
+
 /// `autoComputed` and the three component NAME LISTS the deleted Babel plugin
 /// took are not here and will not be. Nothing in this compiler could read them —
 /// every component and every reactive read resolves by `SymbolId` in P0,
@@ -236,9 +276,21 @@ impl ImportedValue {
 pub struct TransformOptions {
     pub filename: Option<String>,
     pub sourcemap: Option<bool>,
-    /// Module source for the renderer's helpers.
+    /// Module source for the renderer's helpers. Under `target: "universal"`
+    /// it is the module that exports what `createRenderer` returned.
     /// @default `@barqjs/web`
     pub module_source: Option<String>,
+    /// `"dom"` or `"universal"`. `"universal"` compiles for a renderer made
+    /// with `@barqjs/universal`'s `createRenderer`, imported from
+    /// `moduleSource`. `ssr`, `hydratable` and `interp` are document
+    /// concepts, and asking for one of them with it is an error.
+    /// @default `"dom"`
+    pub target: Option<String>,
+    /// Per-file renderer selection: a file matching an entry's `include`
+    /// compiles for that entry's target and module, whatever `target`,
+    /// `moduleSource`, `ssr` and `hydratable` say for the rest of the build.
+    /// The first entry that matches wins.
+    pub renderers: Option<Vec<RendererEntry>>,
     /// Module source for the helpers every target shares and for the
     /// components and primitives an author imports.
     /// @default `@barqjs/core`
@@ -379,6 +431,8 @@ pub const OPTION_KEYS: &[&str] = &[
     "filename",
     "sourcemap",
     "moduleSource",
+    "target",
+    "renderers",
     "coreSource",
     "serverSource",
     "startSource",
@@ -428,6 +482,13 @@ pub struct ResolvedOptions {
     pub filename: Option<String>,
     pub sourcemap: bool,
     pub module_source: String,
+    pub target: RenderTarget,
+    /// The document-only options that were asked for together with a
+    /// universal `target`, by name. They are switched off and each is
+    /// reported, so nothing downstream ever sees the two together.
+    pub universal_conflicts: Vec<&'static str>,
+    /// A `target` this compiler does not have, reported and treated as `dom`.
+    pub unknown_target: Option<String>,
     pub core_source: String,
     pub server_source: String,
     pub start_source: String,
@@ -467,6 +528,9 @@ impl Default for ResolvedOptions {
             filename: None,
             sourcemap: false,
             module_source: DEFAULT_MODULE_SOURCE.to_string(),
+            target: RenderTarget::Dom,
+            universal_conflicts: Vec::new(),
+            unknown_target: None,
             core_source: DEFAULT_CORE_SOURCE.to_string(),
             server_source: DEFAULT_SERVER_SOURCE.to_string(),
             start_source: DEFAULT_START_SOURCE.to_string(),
@@ -529,10 +593,57 @@ impl TransformOptions {
                 unknown_passes.push(name.clone());
             }
         }
+        let mut module_source =
+            self.module_source.unwrap_or_else(|| DEFAULT_MODULE_SOURCE.to_string());
+        let mut unknown_target = None;
+        let mut target = match self.target.as_deref() {
+            None => RenderTarget::Dom,
+            Some(text) => RenderTarget::parse(text).unwrap_or_else(|| {
+                unknown_target = Some(text.to_string());
+                RenderTarget::Dom
+            }),
+        };
+        let mut ssr = self.ssr.unwrap_or(false);
+        let mut hydratable = self.hydratable.unwrap_or(false);
+        let mut interp = self.interp.unwrap_or(false);
+        let chosen = self.filename.as_deref().and_then(|filename| {
+            let entries = self.renderers.as_deref()?;
+            entries.iter().find(|entry| renderer_matches(entry, filename, self.root.as_deref()))
+        });
+        let mut universal_conflicts = Vec::new();
+        if let Some(entry) = chosen {
+            target = match entry.target.as_deref() {
+                None => RenderTarget::Universal,
+                Some(text) => RenderTarget::parse(text).unwrap_or_else(|| {
+                    unknown_target = Some(text.to_string());
+                    RenderTarget::Dom
+                }),
+            };
+            if let Some(source) = &entry.module_source {
+                module_source = source.clone();
+            }
+            // The rest of the build's document options describe the document
+            // half of it. A file an entry gives to another renderer is not in
+            // that half, so they do not apply to it rather than conflict.
+            if target == RenderTarget::Universal {
+                (ssr, hydratable, interp) = (false, false, false);
+            }
+        } else if target == RenderTarget::Universal {
+            for (asked, name) in
+                [(&mut ssr, "ssr"), (&mut hydratable, "hydratable"), (&mut interp, "interp")]
+            {
+                if std::mem::take(asked) {
+                    universal_conflicts.push(name);
+                }
+            }
+        }
         ResolvedOptions {
             filename: self.filename,
             sourcemap: self.sourcemap.unwrap_or(false),
-            module_source: self.module_source.unwrap_or_else(|| DEFAULT_MODULE_SOURCE.to_string()),
+            module_source,
+            target,
+            universal_conflicts,
+            unknown_target,
             core_source: self.core_source.unwrap_or_else(|| DEFAULT_CORE_SOURCE.to_string()),
             server_source: self.server_source.unwrap_or_else(|| DEFAULT_SERVER_SOURCE.to_string()),
             start_source: self.start_source.unwrap_or_else(|| DEFAULT_START_SOURCE.to_string()),
@@ -545,12 +656,12 @@ impl TransformOptions {
             server_fns: self.server_fns.unwrap_or(false),
             dev,
             templates: self.templates.unwrap_or(true),
-            ssr: self.ssr.unwrap_or(false),
-            interp: self.interp.unwrap_or(false),
+            ssr,
+            interp,
             diagnostics: self.diagnostics.unwrap_or(dev),
             ownership: self.ownership.unwrap_or(false),
             addresses: self.addresses.unwrap_or(false),
-            hydratable: self.hydratable.unwrap_or(false),
+            hydratable,
             css_exports: self.css_exports.unwrap_or(false),
             css_imports: ImportedValue::parse(self.css_imports.unwrap_or_default()),
             strict_css,
@@ -561,6 +672,57 @@ impl TransformOptions {
                 self.default_category.as_deref(),
                 strict_css,
             ),
+        }
+    }
+}
+
+/// Whether `filename` is one of `entry`'s files.
+fn renderer_matches(entry: &RendererEntry, filename: &str, root: Option<&str>) -> bool {
+    let path = filename.split_once('?').map_or(filename, |(path, _)| path).replace('\\', "/");
+    let relative = root.and_then(|root| {
+        let root = root.replace('\\', "/");
+        path.strip_prefix(root.trim_end_matches('/'))
+            .map(|rest| rest.trim_start_matches('/').to_string())
+    });
+    entry.include.iter().any(|pattern| {
+        let pattern = pattern.replace('\\', "/");
+        let pattern = pattern.strip_prefix("./").unwrap_or(&pattern);
+        let candidates = std::iter::once(path.as_str()).chain(relative.as_deref());
+        candidates.into_iter().any(|candidate| {
+            if pattern.starts_with('/') {
+                return glob(pattern.as_bytes(), candidate.as_bytes());
+            }
+            // Relative: at the start of the path or after any `/` in it.
+            glob(pattern.as_bytes(), candidate.as_bytes())
+                || candidate
+                    .match_indices('/')
+                    .any(|(at, _)| glob(pattern.as_bytes(), &candidate.as_bytes()[at + 1..]))
+        })
+    })
+}
+
+/// `*` matches within one path segment, `**` across them, `?` one character
+/// that is not `/`. A `**/` may match no directory at all.
+fn glob(pattern: &[u8], text: &[u8]) -> bool {
+    match pattern {
+        [] => text.is_empty(),
+        [b'*', b'*', b'/', rest @ ..] => {
+            glob(rest, text)
+                || text
+                    .iter()
+                    .enumerate()
+                    .any(|(at, byte)| *byte == b'/' && glob(rest, &text[at + 1..]))
+        }
+        [b'*', b'*', rest @ ..] => (0..=text.len()).any(|at| glob(rest, &text[at..])),
+        [b'*', rest @ ..] => {
+            let segment = text.iter().position(|byte| *byte == b'/').unwrap_or(text.len());
+            (0..=segment).any(|at| glob(rest, &text[at..]))
+        }
+        [b'?', rest @ ..] => {
+            matches!(text, [first, tail @ ..] if *first != b'/' && glob(rest, tail))
+        }
+        [expected, rest @ ..] => {
+            matches!(text, [first, tail @ ..] if first == expected && glob(rest, tail))
         }
     }
 }
@@ -629,11 +791,10 @@ mod tests {
 
     #[test]
     fn unknown_option_names_the_nearest_key() {
-        // The case that motivated the check: `target` is not an option and the
-        // caller meant a backend, but nothing here is close enough to guess.
+        // A name nothing here is close enough to guess from.
         assert_eq!(
-            unknown_option("target"),
-            "`target` is not a compiler option, so nothing would read it."
+            unknown_option("backend"),
+            "`backend` is not a compiler option, so nothing would read it."
         );
         // A spelling, which is the common case.
         assert!(unknown_option("Hydratable").contains("Did you mean `hydratable`?"));
@@ -651,6 +812,8 @@ mod tests {
         assert!(!resolved.interp);
         assert!(!resolved.sourcemap);
         assert_eq!(resolved.module_source, "@barqjs/web");
+        assert_eq!(resolved.target, RenderTarget::Dom);
+        assert!(resolved.universal_conflicts.is_empty());
         assert_eq!(resolved.core_source, "@barqjs/core");
         assert_eq!(resolved.server_source, "@barqjs/server");
         assert_eq!(resolved.start_source, "@barqjs/start");
@@ -669,6 +832,90 @@ mod tests {
         // heard of the axis gets exactly the bytes it always got.
         assert_eq!(resolved.opt, Opt::ALL);
         assert!(resolved.unknown_passes.is_empty());
+    }
+
+    #[test]
+    fn a_universal_target_switches_the_document_options_off_and_names_each() {
+        let resolved = TransformOptions {
+            target: Some("universal".into()),
+            ssr: Some(true),
+            hydratable: Some(true),
+            interp: Some(true),
+            ..TransformOptions::default()
+        }
+        .resolve();
+        assert_eq!(resolved.target, RenderTarget::Universal);
+        assert_eq!(resolved.universal_conflicts, vec!["ssr", "hydratable", "interp"]);
+        assert!(!resolved.ssr && !resolved.hydratable && !resolved.interp);
+
+        let unknown =
+            TransformOptions { target: Some("canvas".into()), ..TransformOptions::default() }
+                .resolve();
+        assert_eq!(unknown.target, RenderTarget::Dom);
+        assert_eq!(unknown.unknown_target.as_deref(), Some("canvas"));
+    }
+
+    fn with_renderers(filename: &str, root: Option<&str>) -> ResolvedOptions {
+        TransformOptions {
+            filename: Some(filename.into()),
+            root: root.map(Into::into),
+            ssr: Some(true),
+            hydratable: Some(true),
+            renderers: Some(vec![
+                RendererEntry {
+                    include: vec!["src/scene/**/*.tsx".into()],
+                    target: None,
+                    module_source: Some("/src/scene/renderer.ts".into()),
+                },
+                RendererEntry {
+                    include: vec!["/abs/only/*.tsx".into(), "panel.tsx".into()],
+                    target: Some("universal".into()),
+                    module_source: None,
+                },
+            ]),
+            ..TransformOptions::default()
+        }
+        .resolve()
+    }
+
+    #[test]
+    fn a_file_a_renderer_entry_matches_compiles_for_that_renderer() {
+        let matched = with_renderers("/home/salama/app/src/scene/deep/box.tsx?v=1", None);
+        assert_eq!(matched.target, RenderTarget::Universal);
+        assert_eq!(matched.module_source, "/src/scene/renderer.ts");
+        // The document options describe the rest of the build, so they do not
+        // apply here rather than conflict.
+        assert!(!matched.ssr && !matched.hydratable);
+        assert!(matched.universal_conflicts.is_empty());
+
+        let rooted = with_renderers("/home/salama/app/src/scene/box.tsx", Some("/home/salama/app"));
+        assert_eq!(rooted.target, RenderTarget::Universal);
+
+        let second = with_renderers("/home/salama/app/ui/panel.tsx", None);
+        assert_eq!(second.target, RenderTarget::Universal);
+        assert_eq!(second.module_source, "@barqjs/web");
+
+        let anchored = with_renderers("/abs/only/a.tsx", None);
+        assert_eq!(anchored.target, RenderTarget::Universal);
+        let nested = with_renderers("/abs/only/deeper/a.tsx", None);
+        assert_eq!(nested.target, RenderTarget::Dom);
+
+        let unmatched = with_renderers("/home/salama/app/src/page.tsx", None);
+        assert_eq!(unmatched.target, RenderTarget::Dom);
+        assert_eq!(unmatched.module_source, "@barqjs/web");
+        assert!(unmatched.ssr && unmatched.hydratable);
+    }
+
+    #[test]
+    fn globs_keep_a_star_inside_one_segment() {
+        assert!(glob(b"src/*.tsx", b"src/a.tsx"));
+        assert!(!glob(b"src/*.tsx", b"src/a/b.tsx"));
+        assert!(glob(b"src/**/*.tsx", b"src/a.tsx"));
+        assert!(glob(b"src/**/*.tsx", b"src/a/b/c.tsx"));
+        assert!(glob(b"src/**", b"src/a/b"));
+        assert!(glob(b"a?c", b"abc"));
+        assert!(!glob(b"a?c", b"a/c"));
+        assert!(!glob(b"src/*.tsx", b"src/a.ts"));
     }
 
     #[test]
