@@ -59,22 +59,24 @@ Point the compiler at the renderer module for the files that render through it:
 
 ```ts
 // vite.config.ts
-import { barq } from "@barqjs/vite";
+import barq from "@barqjs/vite";
 
 export default {
   plugins: [
     barq({
-      renderers: [
-        { include: ["src/scene/**"], target: "universal", moduleSource: "/src/renderer.ts" },
-      ],
+      compiler: {
+        renderers: [
+          { include: ["src/scene/**"], target: "universal", moduleSource: "/src/renderer.ts" },
+        ],
+      },
     }),
   ],
 };
 ```
 
 Every other file keeps compiling for the document, so one app can hold both.
-A whole project for one host sets `target: "universal"` and `moduleSource`
-instead. In the files compiled for it, an element is created with
+A whole project for one host sets `compiler: { target: "universal",
+moduleSource }` instead. In the files compiled for it, an element is created with
 `createElement`, every attribute and event is one `setProp` call
 (`onClick={handler}` is `setProp(node, "onClick", handler)`), and `<Show>`,
 `<For>`, `<Loading>`, `<Errored>` and `<Portal>` run over the host. `bind:`,

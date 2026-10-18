@@ -56,12 +56,50 @@ export interface BarqTemplateLabel {
  * are gone, because nothing resolves by name any more — every component and
  * every reactive read resolves by `SymbolId`.
  */
+/** One entry of `renderers`. */
+export interface BarqRenderer {
+  /**
+   * Globs the file name is matched against: `*` within one path segment,
+   * `**` across them. A pattern that does not start with `/` matches at any
+   * directory, so `src/scene/**` matches every file under a `src/scene`.
+   */
+  include: string | readonly string[];
+  /** @default "universal" */
+  target?: "dom" | "universal";
+  /** The module these files import the renderer's helpers from. */
+  moduleSource?: string;
+}
+
 export interface BarqCompilerOptions {
   /**
-   * The renderer compiled code builds through.
+   * The renderer compiled code builds through. Under `target: "universal"`
+   * it is the module that exports what `@barqjs/universal`'s
+   * `createRenderer` returned.
    * @default "@barqjs/web"
    */
   moduleSource?: string;
+
+  /**
+   * `"universal"` compiles every file for a custom renderer imported from
+   * `moduleSource`: elements are `createElement` calls and every attribute and
+   * event is one `setProp`. `ssr` and `hydratable` are the document's and are
+   * an error beside it; an app that also renders the document uses
+   * `renderers` instead.
+   * @default "dom"
+   */
+  target?: "dom" | "universal";
+
+  /**
+   * Per-file renderer selection. A file that matches an entry compiles for
+   * that entry's target and module, so one build holds document files and a
+   * custom renderer's files, and `ssr` and `hydratable` keep describing the
+   * document's. The first entry that matches wins.
+   *
+   * ```ts
+   * renderers: [{ include: ["src/scene/**"], target: "universal", moduleSource: "/src/scene/renderer.ts" }]
+   * ```
+   */
+  renderers?: readonly BarqRenderer[];
 
   /**
    * Where the renderer-neutral half of the ABI and the components an author
@@ -337,6 +375,8 @@ interface NativeTransformOptions {
   cssImports?: string[][];
   routes?: readonly string[];
   moduleSource?: string;
+  target?: string;
+  renderers?: { include: string[]; target?: string; moduleSource?: string }[];
   coreSource?: string;
   serverSource?: string;
   startSource?: string;
@@ -472,6 +512,17 @@ export interface BarqVitePluginOptions extends BarqCompilerOptions {
 function checkPairs(checks: BarqCompilerOptions["checks"]): string[][] | undefined {
   if (!checks) return undefined;
   return Object.entries(checks).map(([code, category]) => [code, category]);
+}
+
+/** The compiler takes `include` as a list, and an entry may name one glob. */
+function rendererEntries(
+  renderers: BarqCompilerOptions["renderers"],
+): NativeTransformOptions["renderers"] {
+  return renderers?.map((entry) => ({
+    include: typeof entry.include === "string" ? [entry.include] : [...entry.include],
+    target: entry.target,
+    moduleSource: entry.moduleSource,
+  }));
 }
 
 /** napi has no map type, so the per-pass overrides travel as pairs. */
@@ -1033,6 +1084,8 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       ): Promise<NativeResult> => {
         const base = {
           moduleSource: compilerOptions.moduleSource,
+          target: compilerOptions.target,
+          renderers: rendererEntries(compilerOptions.renderers),
           coreSource: compilerOptions.coreSource,
           serverSource: compilerOptions.serverSource,
           startSource: compilerOptions.startSource,

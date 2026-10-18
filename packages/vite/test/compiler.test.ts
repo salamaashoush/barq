@@ -885,3 +885,43 @@ export const card = css\`color: red\`;
     expect(loadHook.call(plugin, "/a/route.tsx.barq.css?barq-split")).toContain("color: red");
   });
 });
+
+describe("renderers", () => {
+  const SCENE = "export const Box = (p) => <box title={p.title()}>{p.label}</box>;\n";
+
+  test("a file a renderer entry matches compiles for that renderer, the rest for the document", async () => {
+    const plugin = barqVitePlugin({
+      dev: false,
+      renderers: [{ include: "src/scene/**", moduleSource: "/src/scene/renderer.ts" }],
+    });
+    const scene = (await run(plugin, SCENE, "/app/src/scene/Box.tsx")).result?.code ?? "";
+    expect(scene).toContain('from "/src/scene/renderer.ts"');
+    expect(scene).toContain("_$createElement(");
+    expect(scene).not.toContain("@barqjs/web");
+
+    const page = (await run(plugin, SCENE, "/app/src/page/Box.tsx")).result?.code ?? "";
+    expect(page).toContain('from "@barqjs/web"');
+    expect(page).toContain("_$template(");
+  });
+
+  test("the server half compiles a renderer's files for that renderer too, with no error", async () => {
+    const plugin = barqVitePlugin({
+      dev: false,
+      renderers: [{ include: ["src/scene/**"], moduleSource: "/src/scene/renderer.ts" }],
+    });
+    const { result, warnings } = await run(plugin, SCENE, "/app/src/scene/Box.tsx", { ssr: true });
+    expect(result?.code).toContain("_$createElement(");
+    expect(warnings).toEqual([]);
+  });
+
+  test("`target` compiles every file for a custom renderer", async () => {
+    const plugin = barqVitePlugin({
+      dev: false,
+      target: "universal",
+      moduleSource: "/src/renderer.ts",
+    });
+    const code = (await run(plugin, SCENE, "/app/src/Box.tsx")).result?.code ?? "";
+    expect(code).toContain('from "/src/renderer.ts"');
+    expect(code).toContain("_$setProp(");
+  });
+});

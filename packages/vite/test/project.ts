@@ -7,7 +7,7 @@ const PACKAGES = fileURLToPath(new URL("../..", import.meta.url));
 const OWN_MODULES = fileURLToPath(new URL("../node_modules", import.meta.url));
 
 /** What an application installs, linked from the workspace. */
-const LINKED = ["core", "css", "router", "server", "start", "compiler", "vite", "web"];
+const LINKED = ["core", "css", "router", "server", "start", "compiler", "vite", "web", "universal"];
 
 const made: string[] = [];
 
