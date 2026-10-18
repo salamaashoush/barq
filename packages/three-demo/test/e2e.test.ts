@@ -290,6 +290,13 @@ test("hydrates without a mismatch, draws, selects on click, and remounts after n
         created: 2,
         lost: 1,
       });
+      // Built in the browser this time, not parsed: the asteroid slider's value
+      // has to be written after its `max`, or it is clamped to 100.
+      expect(
+        await page.evaluate<string[]>(
+          "[...document.querySelectorAll('input[type=range]')].map((input) => input.value)",
+        ),
+      ).toEqual(["40", "2500"]);
       await clickElement(page, "#play");
       await until(
         page,
