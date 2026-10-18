@@ -1,0 +1,9 @@
+[install]
+peer = false
+
+[test]
+onlyFailures = true
+root = "./src"
+# happy-dom for the Canvas, and the compiler for every `.tsx`.
+preload = ["./src/test-setup.ts"]
+smol = true

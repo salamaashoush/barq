@@ -90,6 +90,7 @@ The framework:
 - [`@barqjs/core`](./packages/core#readme): signals, stores, components and control flow, with no renderer.
 - [`@barqjs/web`](./packages/web#readme): the document renderer, `render`, `hydrate`, `Portal`, the head, the request API and the JSX types.
 - [`@barqjs/universal`](./packages/universal#readme): `createRenderer`, barq on a host other than the document.
+- [`@barqjs/three`](./packages/three#readme): three.js scenes as JSX, with `<Canvas>`, `useFrame`, `useThree` and `useLoader`.
 - [`@barqjs/vite`](./packages/vite#readme): the Vite plugin, `barq()`.
 - [`@barqjs/compiler`](./packages/compiler#readme): the native JSX compiler the plugin runs.
 - [`@barqjs/router`](./packages/router#readme): file routes, loaders, head management, SSR and prerendering.

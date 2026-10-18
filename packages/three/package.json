@@ -1,0 +1,121 @@
+{
+  "name": "@barqjs/three",
+  "version": "0.1.0",
+  "description": "barq for three.js: a renderer for scenes written as JSX, a Canvas for the page, and hooks for the frame loop, the store and loaders",
+  "keywords": [
+    "barq",
+    "custom-renderer",
+    "jsx",
+    "renderer",
+    "three",
+    "threejs",
+    "webgl",
+    "webgpu"
+  ],
+  "homepage": "https://github.com/salamaashoush/barq#readme",
+  "bugs": {
+    "url": "https://github.com/salamaashoush/barq/issues"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/salamaashoush/barq.git",
+    "directory": "packages/three"
+  },
+  "files": [
+    "dist/intrinsics.json",
+    "src",
+    "!src/**/*.test.ts",
+    "!src/**/*.test.tsx",
+    "!src/**/test-*.ts",
+    "!src/**/fixtures",
+    "!src/jsx-types"
+  ],
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "barq": "./src/index.ts",
+      "bun": "./src/index.ts"
+    },
+    "./renderer": {
+      "types": "./src/runtime.ts",
+      "barq": "./src/runtime.ts",
+      "bun": "./src/runtime.ts"
+    },
+    "./jsx-runtime": {
+      "types": "./src/jsx-runtime.ts",
+      "barq": "./src/jsx-runtime.ts",
+      "bun": "./src/jsx-runtime.ts"
+    },
+    "./jsx-dev-runtime": {
+      "types": "./src/jsx-runtime.ts",
+      "barq": "./src/jsx-runtime.ts",
+      "bun": "./src/jsx-runtime.ts"
+    },
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "bun run tools/intrinsics.ts",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json && tsc --noEmit -p src/jsx-types",
+    "test": "bun test --timeout 20000 && bun test --timeout 20000 --conditions=development"
+  },
+  "dependencies": {
+    "@barqjs/universal": "workspace:*"
+  },
+  "devDependencies": {
+    "@barqjs/compiler": "workspace:*",
+    "@barqjs/core": "workspace:*",
+    "@barqjs/server": "workspace:*",
+    "@barqjs/testing": "workspace:*",
+    "@barqjs/vite": "workspace:*",
+    "@barqjs/web": "workspace:*",
+    "@happy-dom/global-registrator": "^21.0.1",
+    "@types/bun": "^1.4.3",
+    "@types/three": "^0.186.0",
+    "three": "^0.186.1",
+    "typescript": "^7.0.2"
+  },
+  "peerDependencies": {
+    "@barqjs/core": ">=0.1.0",
+    "@barqjs/web": ">=0.1.0",
+    "@types/three": ">=0.186.0",
+    "three": ">=0.186.0",
+    "typescript": ">=7.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@types/three": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "bun": ">=1.1.0"
+  },
+  "barq": {
+    "boundaries": [
+      {
+        "name": "Canvas",
+        "target": "universal",
+        "moduleSource": "@barqjs/three/renderer"
+      },
+      {
+        "name": "Html",
+        "target": "dom",
+        "moduleSource": "@barqjs/web"
+      }
+    ],
+    "intrinsics": [
+      {
+        "tags": "./dist/intrinsics.json",
+        "claimUnknown": true,
+        "target": "universal",
+        "moduleSource": "@barqjs/three/renderer"
+      }
+    ]
+  }
+}

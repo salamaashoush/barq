@@ -24,6 +24,7 @@
       "@barqjs/start",
       "@barqjs/table",
       "@barqjs/testing",
+      "@barqjs/three",
       "@barqjs/ui",
       "@barqjs/ui-cli",
       "@barqjs/universal",

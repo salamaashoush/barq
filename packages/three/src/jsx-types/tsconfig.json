@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "jsxImportSource": "@barqjs/three",
+    "noUnusedLocals": false,
+    "noUnusedParameters": false,
+    // Assertions that are never emitted, so there is no declaration for an
+    // annotation to describe.
+    "isolatedDeclarations": false
+  },
+  "include": ["*.tsx"],
+  // The package project excludes this directory; inheriting that would
+  // exclude us from ourselves.
+  "exclude": []
+}

@@ -1,0 +1,37 @@
+{
+  "compilerOptions": {
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    "target": "ESNext",
+    "module": "ESNext",
+    "moduleDetection": "force",
+    "moduleResolution": "bundler",
+    "allowImportingTsExtensions": true,
+    "noEmit": true,
+    "noEmitOnError": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "types": ["@types/bun"],
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "allowSyntheticDefaultImports": true,
+    "esModuleInterop": true,
+    "declaration": true,
+    "declarationMap": true,
+    "isolatedDeclarations": true,
+    "jsx": "react-jsx",
+    "jsxImportSource": "@barqjs/web"
+  },
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  // The tests and their fixtures are checked by `tsconfig.test.json`, without
+  // the declaration rules that only what ships needs.
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/jsx-types",
+    "src/fixtures",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/test-*.ts"
+  ]
+}
