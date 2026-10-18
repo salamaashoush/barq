@@ -141,7 +141,20 @@ const { code, map, warnings, diagnostics } = transform(source, {
   the option. Under `ssr` the boundary renders and a universal boundary's
   children are left out of the server module; `@barqjs/vite` also reads
   `"barq": { "boundaries": [...] }` from a dependency's `package.json`.
-  [DESIGN.md](./DESIGN.md#8-renderer-boundaries) has the emission.
+  [DESIGN.md](./DESIGN.md#8-renderer-boundaries-and-claimed-intrinsics) has the emission.
+- `intrinsics`: tags a renderer claims, a list of
+  `{ tags, claimUnknown, target, moduleSource }`. Outside every boundary, a
+  tree of intrinsic elements whose root tag one entry claims, and the
+  document does not have, compiles for that entry's renderer wherever it is
+  written, so `function Box() { return <mesh /> }` is a scene object in a page
+  file. A tag the document also has (`line`, `audio`, `path`, `source`) is the
+  renderer's only when the tree under it holds a tag that renderer alone
+  claims, and never under an `<svg>`. With `claimUnknown`, an entry also takes
+  any lowercase tag without a hyphen that no entry names and the document does
+  not have. A tag with a hyphen is always the document's. JSX written inside a
+  claimed tree follows it, and so does a component such as `<Show>` whose JSX
+  all went to one renderer. Two entries claiming one tag is
+  [BARQ029](./docs/BARQ029.md), and the tree stays the document's.
 - `templates`: `false` emits `element()` calls instead of cloned templates.
 - `optimize`: `0` turns every optimisation off. The output is larger and slower
   and never behaves differently.

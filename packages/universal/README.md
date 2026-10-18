@@ -115,6 +115,17 @@ export function Canvas(props: { children?: unknown }) {
 
 A server build renders `Canvas` itself and leaves its children out.
 
+Components built from the renderer's tags are usually declared outside the
+`Canvas`, in the page's file or one of their own. The package claims those
+tags, and a tree rooted at one compiles for the renderer wherever it is
+written:
+
+```json
+"barq": {
+  "intrinsics": [{ "tags": ["mesh", "group"], "target": "universal", "moduleSource": "@acme/scene/renderer" }]
+}
+```
+
 ## Rendering
 
 ```tsx
