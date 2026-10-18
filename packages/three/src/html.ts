@@ -49,6 +49,10 @@ export interface HtmlProps {
   prepend?: boolean;
   /** Where on screen the point is, in pixels from the canvas's top-left corner. */
   calculatePosition?: CalculatePosition;
+  /** `pointer-events` of the content, as drei's `pointerEvents`. */
+  pointerEvents?: string;
+  /** A class for the element that is moved to the point, around the content. */
+  wrapperClass?: string;
   style?: CanvasStyle;
   class?: string;
 }
@@ -119,15 +123,29 @@ export function Html(props: Incoming<HtmlProps>): JSXElement {
   const content = document.createElement("div");
   element.appendChild(content);
 
+  // The content is out of flow, so the element moved to the point has no box
+  // of its own: only the content's box takes pointer events, and the canvas
+  // keeps everything around it.
+  element.style.cssText = "position:absolute;top:0;left:0;transform-origin:0 0;";
+  createRenderEffect(
+    () => props.wrapperClass?.(),
+    (wrapperClass) => {
+      if (wrapperClass === undefined) element.removeAttribute("class");
+      else element.className = wrapperClass;
+    },
+  );
   createRenderEffect(
     () => ({
       style: props.style?.(),
       className: props.class?.(),
       center: props.center?.() === true,
+      pointerEvents: props.pointerEvents?.(),
     }),
-    ({ style, className, center }) => {
-      element.style.cssText = "position:absolute;top:0;left:0;";
-      content.style.cssText = center ? "transform:translate3d(-50%,-50%,0);" : "";
+    ({ style, className, center, pointerEvents }) => {
+      content.style.cssText =
+        "position:absolute;" +
+        (center ? "transform:translate3d(-50%,-50%,0);" : "") +
+        (pointerEvents === undefined ? "" : `pointer-events:${pointerEvents};`);
       if (typeof style === "string") {
         content.style.cssText += style;
       } else if (style !== undefined) {

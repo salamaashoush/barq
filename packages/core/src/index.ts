@@ -157,7 +157,7 @@ export {
  * has the same slots the
  * compiled path has and must refuse a Block in one the same way.
  */
-export { bindEffect, readSlot } from "./signals.ts";
+export { bindEffect, bindPlain, bindSlot, readSlot } from "./signals.ts";
 export type { Block, Cell, Scope, Slot } from "./scope.ts";
 
 // The props model. `props` and `cell` are the two

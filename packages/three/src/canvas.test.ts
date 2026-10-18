@@ -5,6 +5,7 @@ import { render } from "@barqjs/web";
 import * as THREE from "three";
 
 import { App, renderers, setInline } from "./fixtures/app.tsx";
+import { CanvasInLoading, finishTitle } from "./fixtures/canvas-loading.tsx";
 import { labelX, setLabelText, setLabelX } from "./fixtures/overlay.tsx";
 import type { RootState } from "./store.ts";
 import { manualFrames, type Frames } from "./test-utils.ts";
@@ -107,5 +108,18 @@ describe("<Canvas>", () => {
     setLabelX(0);
     setLabelText("salama");
     flush();
+  });
+
+  test("a canvas in a Loading waits with it and mounts its scene once the boundary shows", async () => {
+    const dispose = render(() => CanvasInLoading(), container);
+    flush();
+    expect(container.querySelector("p.waiting")).not.toBe(null);
+    finishTitle("salama");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    flush();
+    expect(container.querySelector("p.waiting")).toBe(null);
+    expect(container.querySelector("h1")?.getAttribute("title")).toBe("salama");
+    expect(container.querySelector("canvas")).not.toBe(null);
+    dispose();
   });
 });

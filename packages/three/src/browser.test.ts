@@ -19,9 +19,9 @@ afterAll(() => rmSync(OUT, { recursive: true, force: true }));
 /** Software WebGL, so a headless Chrome on any machine has a context to draw into. */
 const WEBGL = ["--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist"];
 
-async function buildPage(): Promise<string> {
+async function buildPage(fixture: string): Promise<string> {
   const built = await Bun.build({
-    entrypoints: [join(import.meta.dir, "fixtures", "browser.tsx")],
+    entrypoints: [join(import.meta.dir, "fixtures", fixture)],
     target: "browser",
     format: "esm",
     conditions: ["bun"],
@@ -29,7 +29,7 @@ async function buildPage(): Promise<string> {
   });
   if (!built.success) throw new Error(built.logs.map(String).join("\n"));
   mkdirSync(OUT, { recursive: true });
-  const path = join(OUT, "page.html");
+  const path = join(OUT, fixture.replace(/\.tsx$/, ".html"));
   const script = (await built.outputs[0].text()).replace(/<\/script/gi, "<\\/script");
   writeFileSync(
     path,
@@ -55,7 +55,7 @@ const frame = (page: Page): Promise<unknown> =>
   );
 
 test("a mesh draws, a signal write redraws it once, and an idle scene is not redrawn", async () => {
-  const path = await buildPage();
+  const path = await buildPage("browser.tsx");
   await withChrome(
     async (chrome) => {
       await chrome.open(`file://${path}`);
@@ -80,6 +80,37 @@ test("a mesh draws, a signal write redraws it once, and an idle scene is not red
 
       for (let i = 0; i < 10; i++) await frame(chrome);
       expect(await chrome.evaluate<number>("window.__three.renders")).toBe(settled + 1);
+    },
+    { flags: WEBGL },
+  );
+}, 120_000);
+
+test("a label takes pointer events over its own box only, and none when told not to", async () => {
+  const path = await buildPage("html-browser.tsx");
+  await withChrome(
+    async (chrome) => {
+      await chrome.open(`file://${path}`);
+      await until(
+        chrome,
+        "[...document.querySelectorAll('span')].length === 3 && " +
+          "[...document.querySelectorAll('span')].every((s) => s.getBoundingClientRect().width === 20)",
+        "the labels",
+      );
+      await frame(chrome);
+      const hit = (name: string): Promise<string> =>
+        chrome.evaluate<string>(
+          `(() => {
+            const rect = document.querySelector("span.${name}").getBoundingClientRect();
+            const at = document.elementFromPoint(rect.left + 10, rect.top + 10);
+            return at.localName + (at.className ? "." + at.className : "");
+          })()`,
+        );
+      expect(await hit("open")).toBe("span.open");
+      expect(await hit("styled")).toBe("canvas");
+      expect(await hit("prop")).toBe("canvas");
+      expect(
+        await chrome.evaluate<number>("document.querySelectorAll('div.styled, div.prop').length"),
+      ).toBe(2);
     },
     { flags: WEBGL },
   );

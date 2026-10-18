@@ -2,7 +2,7 @@
  * A CPU profile of one scenario of `run.ts`, summed by function: where a row's
  * script time goes.
  *
- *   CHROME_PATH=... bun run src/three/profile.ts barq|r3f update|mount|toggle [mode]
+ *   CHROME_PATH=... bun run src/three/profile.ts barq|r3f update|mount|unmount|toggle [mode]
  */
 import { load, serve, withBenchChrome, type Page } from "../tier2/driver.ts"
 import { bundle } from "./bundle.ts"
@@ -55,6 +55,10 @@ await withBenchChrome(
       await profile(page, () => page.call("__bench.run(240)"))
     } else if (scenario === "mount") {
       await profile(page, () => page.call("__bench.mount(10000)"))
+    } else if (scenario === "unmount") {
+      await page.send("HeapProfiler.collectGarbage", {})
+      await page.call("__bench.mount(5000)")
+      await profile(page, () => page.call("__bench.unmount()"))
     } else {
       await page.call("__bench.mount(5000)")
       await profile(page, async () => {

@@ -12,6 +12,7 @@
  */
 
 import {
+  $PROXY as STORE_PROXY,
   type Owner as EngineOwner,
   type Context as EngineContext,
   type MemoOptions,
@@ -34,6 +35,7 @@ import {
   onCleanup,
   runWithOwner,
   setContext as engineSetContext,
+  untrack,
   DEV as ENGINE_DEV,
   OBSERVE,
   type Dev as EngineDev,
@@ -538,9 +540,11 @@ export function scopeAllocations(): number {
   return scopesAllocated;
 }
 
-// A scope barq opens is transparent to the engine's numbering: the ids the
-// engine hands out depend on the computations alone and not on how many ranges
-// the renderer happened to open around them.
+// A scope barq opens, and a render effect that writes a host, is transparent
+// to the engine's numbering: the ids the engine hands out depend on the
+// computations alone and not on how many ranges and bindings the renderer
+// happened to make around them. A binding that took a slot would also carry an
+// id string of its own, one per bound prop of every row.
 const TRANSPARENT = { transparent: true } as const;
 const openTransparent = (): Scope => createOwner(TRANSPARENT);
 
@@ -787,6 +791,25 @@ export function rootScope(owner: Scope | null = null, renderId = ""): Scope {
   }
   if (OWNERSHIP.sink !== null) traceScope(root, null, "root", false);
   return root;
+}
+
+let mounting = 0;
+
+/**
+ * A renderer's `render`: build the tree, then flush. A tree mounted while
+ * another is being built, as a component mounting its children into another
+ * renderer does in its body, is that build's: its flush runs when the
+ * outermost mount's does, because a flush in the middle commits boundaries
+ * the outer build has only half made.
+ */
+export function mountTree(build: () => void): void {
+  mounting++;
+  try {
+    build();
+  } finally {
+    mounting--;
+  }
+  if (mounting === 0) flush();
 }
 
 // ============================================================================
@@ -1103,7 +1126,7 @@ export function renderEffect<T>(
     claiming(run, apply);
     return;
   }
-  createRenderEffect<T>(run as never, apply);
+  createRenderEffect<T>(run as never, apply, TRANSPARENT);
 }
 
 /**
@@ -1146,6 +1169,74 @@ export function bindEffect<T>(
 }
 
 /**
+ * One opaque prop of a custom host whose value is a bare name, as the
+ * universal target emits it. A value that is not a function is written once
+ * and costs no effect; a function is a Cell and is followed, read through
+ * `readSlot` so a Block there is refused with the prop's name.
+ */
+export function bindSlot<N>(
+  node: N,
+  write: (node: N, name: string, value: unknown, prev: unknown) => unknown,
+  name: string,
+  value: unknown,
+): void {
+  if (typeof value !== "function") {
+    write(node, name, value, undefined);
+    return;
+  }
+  const origin = `The \`${name}\` prop`;
+  effectUnder(
+    getOwner(),
+    "bindSlot",
+    () => readSlot(value, origin),
+    (next, prev) => {
+      write(node, name, next, prev);
+    },
+  );
+}
+
+/**
+ * A custom host's bindings whose reads are literals and fields `keys` of one
+ * object `base`, as the universal target emits them for `position={[p.x,
+ * p.y, 0]}`. When `base` is plain data (no store, no getter on those fields,
+ * no Cell in them) nothing the compute reads can change, so it runs once,
+ * untracked, and the apply writes it: no effect is made. Anything else gets
+ * the effect `bindEffect` would.
+ */
+export function bindPlain<T>(
+  compute: (prev: T | undefined) => T,
+  apply: (value: T, prev: T | undefined) => void,
+  keys: readonly string[],
+  base: unknown,
+): void {
+  if (!plainFields(base, keys)) {
+    bindEffect(compute, apply);
+    return;
+  }
+  apply(
+    untrack(() => compute(undefined)),
+    undefined,
+  );
+}
+
+function plainFields(base: unknown, keys: readonly string[]): boolean {
+  if (base === null || base === undefined) return true;
+  if (typeof base !== "object") return typeof base !== "function";
+  if ((base as Record<symbol, unknown>)[STORE_PROXY] !== undefined) return false;
+  const proto = Object.getPrototypeOf(base) as object | null;
+  if (proto !== Object.prototype && proto !== null && !Array.isArray(base)) return false;
+  for (let i = 0; i < keys.length; i++) {
+    const key = keys[i];
+    const field = Object.getOwnPropertyDescriptor(base, key);
+    if (field !== undefined && field.get !== undefined) return false;
+    // Read rather than described: a props view answers its fields through a
+    // trap, and what it answers with is a Cell.
+    if (typeof (base as Record<string, unknown>)[key] === "function") return false;
+  }
+  return true;
+}
+
+/**
  * `claimEffect`, installed by `hydrate` so a page that never hydrates does not
  * ship it. Nothing hydrates before `hydrate` has run, which installs it first.
  */
@@ -1182,6 +1273,7 @@ function claimEffect<T>(
       if (value === ABANDONED) return;
       return apply(value, prev === ABANDONED ? undefined : prev);
     },
+    TRANSPARENT,
   );
 }
 

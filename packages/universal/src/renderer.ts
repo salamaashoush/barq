@@ -15,7 +15,6 @@ import {
   type RevealOrder,
   type Scope,
   createEffect,
-  flush,
   getOwner,
   isBlock,
   NotReadyError,
@@ -39,6 +38,7 @@ import {
   disposeScope,
   eachIn,
   effectUnder,
+  mountTree,
   internalMemo,
   isNodes,
   islandIn,
@@ -446,8 +446,10 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
   // Placing a hole's nodes
   // ==========================================================================
 
+  // Last node first: a host keeping children in an array finds each one at
+  // its end and removes it without moving the rest.
   function removeAll(nodes: readonly N[]): void {
-    for (let i = 0; i < nodes.length; i++) detach(nodes[i]);
+    for (let i = nodes.length - 1; i >= 0; i--) detach(nodes[i]);
   }
 
   /**
@@ -1018,10 +1020,11 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
     // A host has no server markup, so a tree mounted while a page hydrates,
     // as a canvas component mounting its scene does, claims nothing.
     withoutClaim(() => {
-      runWithOwner(scope, () => {
-        insert(root, typeof code === "function" ? code() : code);
+      mountTree(() => {
+        runWithOwner(scope, () => {
+          insert(root, typeof code === "function" ? code() : code);
+        });
       });
-      flush();
     });
     return () => {
       disposeScope(scope);

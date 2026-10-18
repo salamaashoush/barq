@@ -1,67 +1,67 @@
 {
-  "when": "2026-10-18T02:42:53.945Z",
+  "when": "2026-10-18T04:14:37.627Z",
   "rounds": 5,
   "results": {
     "mount10k barq": {
-      "wall": 34.15500000119209,
-      "script": 34.231,
-      "task": 214.25900000000001,
-      "heapMB": 24.144485473632812
+      "wall": 30.7950000166893,
+      "script": 30.818,
+      "task": 211.567,
+      "heapMB": 16.663272857666016
     },
     "mount10k r3f": {
-      "wall": 118.30000001192093,
-      "script": 118.30000000000001,
-      "task": 298.86199999999997,
-      "heapMB": 17.672019958496094
+      "wall": 126.53999999165535,
+      "script": 126.51399999999998,
+      "task": 306.73,
+      "heapMB": 17.671096801757812
     },
     "toggle5k barq": {
-      "unmountWall": 16.87000000476837,
-      "unmountScript": 4.010999999999999,
-      "remountWall": 20.264999985694885,
-      "remountScript": 15.556000000000004
+      "unmountWall": 16.819999992847443,
+      "unmountScript": 3.113000000000003,
+      "remountWall": 20.109999984502792,
+      "remountScript": 13.700000000000003
     },
     "toggle5k r3f": {
       "unmountWall": 16.979999989271164,
-      "unmountScript": 5.5290000000000035,
-      "remountWall": 34.58499997854233,
-      "remountScript": 34.563
+      "unmountScript": 6.968999999999987,
+      "remountWall": 40.34000000357628,
+      "remountScript": 40.32700000000001
     },
     "update1k barq signals": {
-      "scriptPerFrame": 0.6297750000000001,
-      "taskPerFrame": 16.861658333333335,
-      "framePerFrame": 16.75094721666666,
-      "drawn": 122
+      "scriptPerFrame": 0.4086416666666667,
+      "taskPerFrame": 16.466304166666667,
+      "framePerFrame": 16.67884444375001,
+      "drawn": 481
     },
     "update1k barq refs": {
-      "scriptPerFrame": 0.4675416666666667,
-      "taskPerFrame": 16.703741666666666,
-      "framePerFrame": 16.668605558333304,
-      "drawn": 122
+      "scriptPerFrame": 0.3102770833333333,
+      "taskPerFrame": 16.39039375,
+      "framePerFrame": 16.66314071041667,
+      "drawn": 482
     },
     "update1k r3f refs": {
-      "scriptPerFrame": 0.40115833333333334,
-      "taskPerFrame": 16.705033333333333,
-      "framePerFrame": 16.648460766666663,
-      "drawn": 122
+      "scriptPerFrame": 0.3044354166666666,
+      "taskPerFrame": 16.402270833333333,
+      "framePerFrame": 16.661060156250034,
+      "drawn": 481
     },
     "update1k r3f state": {
-      "scriptPerFrame": 0.8413083333333334,
-      "taskPerFrame": 17.009641666666667,
-      "framePerFrame": 16.89699549166665,
-      "drawn": 122
+      "scriptPerFrame": 0.7611729166666666,
+      "taskPerFrame": 16.7624625,
+      "framePerFrame": 16.733528037499976,
+      "drawn": 482
     },
     "events1k barq": {
-      "perEvent": 0.045899999539057414,
+      "perEvent": 0.04879999975363414,
       "hits": 15
     },
     "events1k r3f": {
-      "perEvent": 0.06033333381017049,
+      "perEvent": 0.05995000024636587,
       "hits": 15
     },
     "bundle (gz)": {
-      "barqKB": 228.4658203125,
+      "barqKB": 229.0947265625,
       "r3fKB": 313.3095703125,
-      "barqWithoutThreeKB": 40.2861328125,
+      "barqWithoutThreeKB": 40.9755859375,
       "r3fWithoutThreeKB": 124.5673828125
     }
   }

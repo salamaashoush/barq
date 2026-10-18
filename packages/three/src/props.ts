@@ -47,8 +47,12 @@ const scratch: Resolved = { owner: {}, key: "" };
  * whole (`"foo-bar" in object`) is not split. Throws when a segment before the
  * last is not an object, since there is nothing to write into.
  */
-export function resolve(object: object, name: string, out: Resolved = scratch): Resolved {
-  const path = pathOf(name);
+export function resolve(
+  object: object,
+  name: string,
+  out: Resolved = scratch,
+  path: readonly string[] | null = pathOf(name),
+): Resolved {
   if (path === null || name in object) {
     out.owner = object as Bag;
     out.key = name;
@@ -92,9 +96,15 @@ function isColorRepresentation(value: unknown): boolean {
  * Write `value` under `name` on `object`. `linear` is the root's flag: false
  * marks a color texture sRGB as it is assigned. `undefined` writes nothing.
  */
-export function applyProp(object: object, name: string, value: unknown, linear: boolean): void {
+export function applyProp(
+  object: object,
+  name: string,
+  value: unknown,
+  linear: boolean,
+  path: readonly string[] | null = pathOf(name),
+): void {
   if (value === undefined) return;
-  const { owner, key } = resolve(object, name);
+  const { owner, key } = resolve(object, name, scratch, path);
   const target = owner[key];
 
   if (target !== null && typeof target === "object") {

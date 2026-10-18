@@ -63,6 +63,7 @@ let scheduled = 0;
 export function update(state: RootState, timestamp: number, frame?: XRFrame): void {
   const internal = state.internal;
   drawing = state;
+  internal.drawing = true;
   try {
     state.clock.update(timestamp);
     const delta = state.clock.getDelta();
@@ -78,6 +79,7 @@ export function update(state: RootState, timestamp: number, frame?: XRFrame): vo
       internal.peek("gl").render(internal.peek("scene"), internal.peek("camera"));
   } finally {
     drawing = null;
+    internal.drawing = false;
   }
   if (internal.frames > 0) internal.frames--;
 }

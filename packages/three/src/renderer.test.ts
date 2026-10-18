@@ -12,6 +12,7 @@ import Scene, {
   setWidth,
   setX,
 } from "./fixtures/basic.scene.tsx";
+import type { RootConfig } from "./renderer.ts";
 import { manualFrames, mount, unmountAll, type Frames } from "./test-utils.ts";
 
 let frames: Frames;
@@ -104,10 +105,51 @@ describe("a compiled scene", () => {
     unmount();
   });
 
+  test("objects leaving a list fire three's removal events and the rest keep their order", () => {
+    const { scene, unmount } = mount(() => Scene());
+    const group = scene.children[0];
+    const removed: string[] = [];
+    const left: string[] = [];
+    group.addEventListener("childremoved", (event) => {
+      removed.push(event.child.name);
+      expect(event.child.parent).toBe(null);
+    });
+    for (const child of group.children) {
+      child.addEventListener("removed", () => left.push(child.name));
+    }
+    setIds([1]);
+    flush();
+    expect(names(group)).toEqual(["box", "item-1"]);
+    expect(removed.toSorted()).toEqual(["item-2", "item-3"]);
+    expect(left.toSorted()).toEqual(["item-2", "item-3"]);
+    setIds([1, 2, 3]);
+    flush();
+    expect(names(group)).toEqual(["box", "item-1", "item-2", "item-3"]);
+    unmount();
+  });
+
   test("unmounting the root empties the scene", () => {
     const { scene, unmount } = mount(() => Box());
     expect(scene.children).toHaveLength(1);
     unmount();
     expect(scene.children).toHaveLength(0);
+  });
+});
+
+describe("root configuration", () => {
+  test("shadows choose a shadow map three still has", () => {
+    const types: [RootConfig["shadows"], THREE.ShadowMapType][] = [
+      [true, THREE.PCFShadowMap],
+      ["soft", THREE.PCFShadowMap],
+      ["percentage", THREE.PCFShadowMap],
+      ["basic", THREE.BasicShadowMap],
+      ["variance", THREE.VSMShadowMap],
+    ];
+    for (const [shadows, type] of types) {
+      const { gl, unmount } = mount(() => Box(), { shadows });
+      expect(gl.shadowMap.enabled).toBe(true);
+      expect(gl.shadowMap.type).toBe(type);
+      unmount();
+    }
   });
 });

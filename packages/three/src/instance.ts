@@ -2,17 +2,18 @@
  * The renderer's node: a small record around the three object a tag stands
  * for, with the tree the renderer arranges.
  *
- * The object is not built when the node is. Compiled code creates an element,
- * places its children and only then writes its properties, so `args` (the
- * constructor's arguments) are known once the node joins a scene: that is
- * when the object is built, its properties applied, and the node attached to
- * its parent's object. A later change of `args` builds a new object and moves
- * the children and the attachment over to it, as React Three Fiber does.
+ * The object is not built when the node is. Compiled code creates an element
+ * and writes its properties before the element joins a scene, so `args` (the
+ * constructor's arguments) are known by then: that is when the object is
+ * built, its properties applied, and the node attached to its parent's
+ * object. A later change of `args` builds a new object and moves the children
+ * and the attachment over to it, as React Three Fiber does.
  *
  * Text, sentinels and containers are nodes of the same shape that never hold
  * an object, so they never enter three's graph.
  */
 
+import { getObserver, isDisposed, onCleanup, runWithOwner, type Owner } from "@barqjs/core";
 import * as THREE from "three";
 
 import { type ConstructorRepresentation } from "./catalogue.ts";
@@ -39,6 +40,23 @@ const ADDED = 1;
 const ASSIGNED = 2;
 /** `attached` when an attach function put it there. */
 const CALLED = 3;
+
+// One integer holds a node's kind, how it is attached and its flags: a scene
+// holds a node per object, and every field is paid ten thousand times over.
+const KIND_MASK = 0b111;
+const ATTACHED_SHIFT = 3;
+const ATTACHED_MASK = 0b11 << ATTACHED_SHIFT;
+/** `dispose={null}`: the object and those below it are not disposed. */
+const KEEP = 1 << 5;
+const DESTROYED = 1 << 6;
+/** A dashed property was written, so a write to its head writes it again. */
+const DASHED_PROP = 1 << 7;
+/** Waiting in the root's list of parents whose children are out of order. */
+const QUEUED = 1 << 8;
+/** In a scene, but not built: its constructor needs `args` a later write brings. */
+const WAITING = 1 << 9;
+/** Removed while its scope lived, and so ended when that scope goes. */
+const WATCHED = 1 << 10;
 
 const POINTER_HOVER = new Set([
   "onPointerMove",
@@ -85,10 +103,20 @@ interface Kinds {
 /** A node's object: an instance of any class. */
 export type Built = object & Tagged & Kinds;
 
+/** What a node with pointer handlers carries; most nodes have none. */
+export interface EventState {
+  handlers: EventHandlers;
+  count: number;
+  hovers: number;
+  /** Where its object sits in the root's list of objects cast against, or -1. */
+  interaction: number;
+  /** Where it sits in the list of those with hover handlers, or -1. */
+  hover: number;
+}
+
 export class Instance {
-  readonly type: string;
-  readonly kind: number;
   readonly ctor: ConstructorRepresentation | null;
+  bits: number;
   object: Built | null = null;
   /** Every property written, in order, so a rebuilt object gets them all again. */
   props: Record<string, unknown> | null = null;
@@ -100,40 +128,85 @@ export class Instance {
   next: Instance | null = null;
   /** The state of the scene this node is in, or `null` while it is in none. */
   root: RootState | null = null;
+  /** The scope that built it, which it ends with. */
+  owner: Owner | null = null;
   attach: AttachType | undefined = undefined;
-  /** How the object is attached to the parent's object: `ADDED`, `ASSIGNED`, `CALLED` or 0. */
-  attached = 0;
-  /** The path or function it was attached with. */
-  attachedWith: AttachType | undefined = undefined;
   /** What an assignment replaced, or what an attach function returned. */
   previousAttach: unknown = undefined;
-  handlers: EventHandlers | null = null;
-  eventCount = 0;
-  hoverCount = 0;
-  interactionIndex = -1;
-  hoverIndex = -1;
+  events: EventState | null = null;
   refs: ((value: unknown) => void)[] | null = null;
-  /** False under `dispose={null}`: the object and those below it are not disposed. */
-  dispose = true;
-  destroyed = false;
-  /** A dashed property was written, so a write to its head writes it again. */
-  dashed = false;
-  /** Waiting in the root's list of parents whose children are out of order. */
-  queued = false;
-  /** In a scene, but not built: its constructor needs `args` a later write brings. */
-  waiting = false;
   onUpdate: ((self: never) => void) | null = null;
 
-  constructor(type: string, kind: number, ctor: ConstructorRepresentation | null) {
-    this.type = type;
-    this.kind = kind;
+  constructor(kind: number, ctor: ConstructorRepresentation | null) {
+    this.bits = kind;
     this.ctor = ctor;
+  }
+
+  get kind(): number {
+    return this.bits & KIND_MASK;
+  }
+
+  /** How the object is attached to the parent's object: `ADDED`, `ASSIGNED`, `CALLED` or 0. */
+  get attached(): number {
+    return (this.bits & ATTACHED_MASK) >> ATTACHED_SHIFT;
+  }
+
+  set attached(how: number) {
+    this.bits = (this.bits & ~ATTACHED_MASK) | (how << ATTACHED_SHIFT);
+  }
+
+  get dispose(): boolean {
+    return (this.bits & KEEP) === 0;
+  }
+
+  set dispose(on: boolean) {
+    this.flag(KEEP, !on);
+  }
+
+  get destroyed(): boolean {
+    return (this.bits & DESTROYED) !== 0;
+  }
+
+  get queued(): boolean {
+    return (this.bits & QUEUED) !== 0;
+  }
+
+  set queued(on: boolean) {
+    this.flag(QUEUED, on);
+  }
+
+  get waiting(): boolean {
+    return (this.bits & WAITING) !== 0;
+  }
+
+  set waiting(on: boolean) {
+    this.flag(WAITING, on);
+  }
+
+  get eventCount(): number {
+    return this.events === null ? 0 : this.events.count;
+  }
+
+  get handlers(): EventHandlers | null {
+    return this.events === null ? null : this.events.handlers;
+  }
+
+  get interactionIndex(): number {
+    return this.events === null ? -1 : this.events.interaction;
+  }
+
+  get hoverIndex(): number {
+    return this.events === null ? -1 : this.events.hover;
+  }
+
+  flag(bit: number, on: boolean): void {
+    this.bits = on ? this.bits | bit : this.bits & ~bit;
   }
 
   /**
    * Put the objects this node `add`ed back in the order of its nodes. An
    * insert before a sibling appends, which keeps a list mounted in reverse
-   * linear; the order is restored once, before the next frame or raycast.
+   * linear; the renderer asks for this once the batch is over.
    */
   sortChildren(): void {
     const object = this.object as THREE.Object3D | null;
@@ -229,10 +302,44 @@ export function removeNode(parent: Instance, node: Instance): void {
   if (node.parent !== parent) return;
   unlink(parent, node);
   const root = node.root;
-  if (root === null) return;
   if (node.attached !== 0) detachObject(parent, node);
-  disconnect(node);
-  root.invalidate();
+  if (root !== null) {
+    disconnect(node);
+    root.invalidate();
+  }
+  const owner = node.owner;
+  if (owner === null) return;
+  if (isDisposed(owner)) {
+    destroy(node);
+    return;
+  }
+  // Moved out by a scope that lives on, it may come back. It ends with that
+  // scope if it is still out then.
+  if (node.object !== null && (node.bits & WATCHED) === 0) {
+    node.flag(WATCHED, true);
+    runWithOwner(owner, () => {
+      onCleanup(() => {
+        if (node.parent === null) destroy(node);
+      });
+    });
+  }
+}
+
+/**
+ * A node built by `createElement`. It ends when the renderer removes it after
+ * its scope has gone, which is how a list row, a branch and a root end, so no
+ * node costs a cleanup of its own. One built inside a computation (JSX in a
+ * reactive child function) is replaced each time it runs, and ends then.
+ */
+export function element(
+  kind: number,
+  ctor: ConstructorRepresentation | null,
+  owner: Owner | null,
+): Instance {
+  const node = new Instance(kind, ctor);
+  node.owner = owner;
+  if (owner !== null && getObserver() !== null) onCleanup(() => destroy(node));
+  return node;
 }
 
 function unordered(parent: Instance): void {
@@ -278,7 +385,7 @@ function connect(parent: Instance, node: Instance): void {
 
 function join(parent: Instance, node: Instance, built: boolean): void {
   if (node.attached === 0) attachObject(parent, node);
-  if (node.eventCount > 0) addInteraction(node);
+  if (node.events !== null && node.events.count > 0) addInteraction(node);
   for (let child = node.first; child !== null; child = child.next) connect(node, child);
   if (built) deliverRefs(node);
 }
@@ -339,7 +446,7 @@ function disconnect(node: Instance): void {
   for (let child = node.first; child !== null; child = child.next) {
     if (child.root !== null) disconnect(child);
   }
-  if (node.interactionIndex !== -1) removeInteraction(node);
+  if (node.events !== null && node.events.interaction !== -1) removeInteraction(node);
   node.root = null;
   node.waiting = false;
 }
@@ -399,13 +506,11 @@ function attachObject(parent: Instance, node: Instance): void {
     node.previousAttach = owner[key];
     owner[key] = object;
     node.attached = ASSIGNED;
-    node.attachedWith = attach;
     return;
   }
   if (typeof attach === "function") {
     node.previousAttach = attach(parentObject as never, object as never);
     node.attached = CALLED;
-    node.attachedWith = attach;
     return;
   }
   if (object.isObject3D === true && parentObject.isObject3D === true) {
@@ -420,15 +525,45 @@ function attachObject(parent: Instance, node: Instance): void {
   }
 }
 
+const removedEvent = { type: "removed" } as const;
+const childRemovedEvent: { type: "childremoved"; child: THREE.Object3D } = {
+  type: "childremoved",
+  child: null as never,
+};
+
+/**
+ * `Object3D.remove`, searching from the end. A range of nodes leaves last
+ * first, so each object is found in one step and the splice moves nothing;
+ * searched from the start, unmounting a list of n meshes was n squared.
+ */
+function removeChild(parent: THREE.Object3D, object: THREE.Object3D): void {
+  if (parent.remove !== THREE.Object3D.prototype.remove) {
+    parent.remove(object);
+    return;
+  }
+  const children = parent.children;
+  const index = children.lastIndexOf(object);
+  if (index === -1) return;
+  object.parent = null;
+  children.splice(index, 1);
+  object.dispatchEvent(removedEvent);
+  childRemovedEvent.child = object;
+  parent.dispatchEvent(childRemovedEvent);
+  childRemovedEvent.child = null as never;
+}
+
 function detachObject(parent: Instance, node: Instance): void {
   const parentObject = parent.object!;
   const object = node.object;
   const attached = node.attached;
   node.attached = 0;
   if (attached === ADDED) {
-    (parentObject as THREE.Object3D).remove(object as THREE.Object3D);
+    removeChild(parentObject as THREE.Object3D, object as THREE.Object3D);
   } else if (attached === ASSIGNED) {
-    const { owner, key } = resolve(parentObject, node.attachedWith as string);
+    // The path it was attached with: `attach` cannot change while attached,
+    // and the object, whose type picks the path otherwise, is the same one.
+    const path = (node.attach ?? autoAttach(object!)) as string;
+    const { owner, key } = resolve(parentObject, path);
     const previous = node.previousAttach;
     const holder = owner[key];
     if (holder === object) {
@@ -445,7 +580,6 @@ function detachObject(parent: Instance, node: Instance): void {
     if (typeof undo === "function") undo();
   }
   node.previousAttach = undefined;
-  node.attachedWith = undefined;
 }
 
 // ---------------------------------------------------------------------------
@@ -482,20 +616,35 @@ const RESERVED = new Map<string, number>([
   ["object", OBJECT],
 ]);
 
-const NAMES = new Map<string, number>();
+/** A prop name as the renderer reads it: what it is, and its dashed path. */
+interface Name {
+  kind: number;
+  path: readonly string[] | null;
+  /**
+   * The last class this dashed name was found to pierce on, which holds no
+   * property of the whole name: a write on another object of it skips that
+   * question.
+   */
+  pierces: unknown;
+}
 
-function kindOf(name: string): number {
-  let kind = NAMES.get(name);
-  if (kind === undefined) {
-    kind =
-      RESERVED.get(name) ?? (HANDLERS.has(name) ? HANDLER : pathOf(name) === null ? PLAIN : DASHED);
-    NAMES.set(name, kind);
+const NAMES = new Map<string, Name>();
+
+function nameOf(name: string): Name {
+  let known = NAMES.get(name);
+  if (known === undefined) {
+    const path = pathOf(name);
+    const kind =
+      RESERVED.get(name) ?? (HANDLERS.has(name) ? HANDLER : path === null ? PLAIN : DASHED);
+    known = { kind, path, pierces: undefined };
+    NAMES.set(name, known);
   }
-  return kind;
+  return known;
 }
 
 export function setProperty(node: Instance, name: string, value: unknown, prev: unknown): void {
-  const kind = kindOf(name);
+  const known = nameOf(name);
+  const kind = known.kind;
   if (kind < PLAIN) {
     setReserved(node, kind, name, value);
     return;
@@ -503,18 +652,25 @@ export function setProperty(node: Instance, name: string, value: unknown, prev: 
   let props = node.props;
   if (props === null) props = node.props = {};
   props[name] = value;
-  if (kind === DASHED) node.dashed = true;
+  if (kind === DASHED) node.flag(DASHED_PROP, true);
   const object = node.object;
   if (object === null) return;
   const root = node.root;
   const linear = root !== null && root.internal.linear;
-  if (value !== undefined) applyProp(object, name, value, linear);
-  else if (prev !== undefined) {
-    const fallback = defaultOf(object, name);
-    if (fallback.found) applyProp(object, name, fallback.value, true);
+  if (value === undefined) {
+    if (prev !== undefined) {
+      const fallback = defaultOf(object, name);
+      if (fallback.found) applyProp(object, name, fallback.value, true);
+    }
+  } else if (
+    kind !== DASHED ||
+    typeof value !== "number" ||
+    !writeScalar(object, name, value, known)
+  ) {
+    applyProp(object, name, value, linear, known.path);
   }
   // Writing `material` replaces what `material-color` was written into.
-  if (kind === PLAIN && node.dashed) {
+  if (kind === PLAIN && (node.bits & DASHED_PROP) !== 0) {
     for (const other in props) {
       if (
         other.length > name.length &&
@@ -526,7 +682,34 @@ export function setProperty(node: Instance, name: string, value: unknown, prev: 
     }
   }
   if (node.onUpdate !== null) node.onUpdate(object as never);
-  if (root !== null) root.invalidate();
+  // A write while the root's frame is drawn is in that frame, and one while a
+  // frame is already owed is in the next: only the first write asks.
+  if (root !== null) {
+    const internal = root.internal;
+    if (!internal.drawing && internal.frames === 0) root.invalidate();
+  }
+}
+
+/**
+ * A number into a number field one level down (`position-x`, `scale-y`,
+ * `material-opacity`), the write a signal driving an animation makes every
+ * frame: one read and one store, without the general path's questions.
+ * Answers false when the field is anything else.
+ */
+function writeScalar(object: Built, name: string, value: number, known: Name): boolean {
+  const path = known.path!;
+  if (path.length !== 2) return false;
+  const kind = (object as { constructor: unknown }).constructor;
+  if (known.pierces !== kind) {
+    if (name in object) return false;
+    known.pierces = kind;
+  }
+  const owner = (object as Record<string, unknown>)[path[0]!];
+  if (owner === null || typeof owner !== "object") return false;
+  const key = path[1]!;
+  if (typeof (owner as Record<string, unknown>)[key] !== "number") return false;
+  (owner as Record<string, unknown>)[key] = value;
+  return true;
 }
 
 function setReserved(node: Instance, kind: number, name: string, value: unknown): void {
@@ -534,7 +717,7 @@ function setReserved(node: Instance, kind: number, name: string, value: unknown)
     case ARGS: {
       if (value !== undefined && !Array.isArray(value)) {
         throw new TypeError(
-          `\`args\` on <${node.type}> must be an array of constructor arguments.`,
+          `\`args\` on <${node.ctor?.name ?? "primitive"}> must be an array of constructor arguments.`,
         );
       }
       const args = value as readonly unknown[] | undefined;
@@ -584,21 +767,24 @@ function setReserved(node: Instance, kind: number, name: string, value: unknown)
 }
 
 function setHandler(node: Instance, name: string, value: unknown): void {
-  let handlers = node.handlers;
-  if (handlers === null) handlers = node.handlers = {};
-  const table = handlers as Record<string, unknown>;
+  let events = node.events;
+  if (events === null) {
+    if (typeof value !== "function") return;
+    events = node.events = { handlers: {}, count: 0, hovers: 0, interaction: -1, hover: -1 };
+  }
+  const table = events.handlers as Record<string, unknown>;
   const had = table[name] !== undefined;
   const has = typeof value === "function";
   if (has) table[name] = value;
   else if (had) delete table[name];
   if (had === has) return;
   const step = has ? 1 : -1;
-  const wasInteractive = node.eventCount > 0;
-  node.eventCount += step;
-  if (POINTER_HOVER.has(name)) node.hoverCount += step;
+  const wasInteractive = events.count > 0;
+  events.count += step;
+  if (POINTER_HOVER.has(name)) events.hovers += step;
   if (node.root === null) return;
   if (wasInteractive) removeInteraction(node);
-  if (node.eventCount > 0) addInteraction(node);
+  if (events.count > 0) addInteraction(node);
 }
 
 // ---------------------------------------------------------------------------
@@ -611,26 +797,24 @@ function addInteraction(node: Instance): void {
   if (root === null || object === null || !object.isObject3D) return;
   if ((object as { raycast?: unknown }).raycast === null) return;
   const internal = root.internal;
-  if (node.interactionIndex === -1) {
-    node.interactionIndex = internal.interaction.length;
+  const events = node.events!;
+  if (events.interaction === -1) {
+    events.interaction = internal.interaction.length;
     internal.interaction.push(object);
   }
-  if (node.hoverCount > 0 && node.hoverIndex === -1) {
-    node.hoverIndex = internal.hoverable.length;
+  if (events.hovers > 0 && events.hover === -1) {
+    events.hover = internal.hoverable.length;
     internal.hoverable.push(object);
   }
 }
 
-function swapRemove(
-  list: THREE.Object3D[],
-  index: number,
-  field: "interactionIndex" | "hoverIndex",
-): void {
+function swapRemove(list: THREE.Object3D[], index: number, field: "interaction" | "hover"): void {
   const last = list.length - 1;
   if (index !== last) {
     const moved = list[last] as THREE.Object3D & Tagged;
     list[index] = moved;
-    if (moved.__barq !== undefined) moved.__barq[field] = index;
+    const events = moved.__barq?.events;
+    if (events !== undefined && events !== null) events[field] = index;
   }
   list.length = last;
 }
@@ -639,13 +823,15 @@ function removeInteraction(node: Instance): void {
   const root = node.root;
   if (root === null) return;
   const internal = root.internal;
-  if (node.interactionIndex !== -1) {
-    swapRemove(internal.interaction, node.interactionIndex, "interactionIndex");
-    node.interactionIndex = -1;
+  const events = node.events;
+  if (events === null) return;
+  if (events.interaction !== -1) {
+    swapRemove(internal.interaction, events.interaction, "interaction");
+    events.interaction = -1;
   }
-  if (node.hoverIndex !== -1) {
-    swapRemove(internal.hoverable, node.hoverIndex, "hoverIndex");
-    node.hoverIndex = -1;
+  if (events.hover !== -1) {
+    swapRemove(internal.hoverable, events.hover, "hover");
+    events.hover = -1;
   }
   const object = node.object as THREE.Object3D | null;
   if (object !== null) releaseInteractivity(internal, object);
@@ -695,7 +881,7 @@ function rebuild(node: Instance): void {
     detachObject(node, child);
     children.push(child);
   }
-  const interactive = node.interactionIndex !== -1;
+  const interactive = node.events !== null && node.events.interaction !== -1;
   if (interactive) removeInteraction(node);
   if (old.__barq === node) delete old.__barq;
   if (node.kind === ELEMENT && node.dispose) disposeObject(old);
@@ -727,7 +913,7 @@ function underDisposeNull(node: Instance): boolean {
  */
 export function destroy(node: Instance, disposing: boolean = !underDisposeNull(node)): void {
   if (node.destroyed) return;
-  node.destroyed = true;
+  node.flag(DESTROYED, true);
   const parent = node.parent;
   if (parent !== null && node.attached !== 0) detachObject(parent, node);
   const root = node.root;
