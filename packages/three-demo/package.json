@@ -1,0 +1,31 @@
+{
+  "name": "@barqjs/three-demo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "start": "bun dist/server/serve.js",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.test.json",
+    "test": "bun test --timeout 180000"
+  },
+  "dependencies": {
+    "@barqjs/core": "workspace:*",
+    "@barqjs/css": "workspace:*",
+    "@barqjs/router": "workspace:*",
+    "@barqjs/server": "workspace:*",
+    "@barqjs/start": "workspace:*",
+    "@barqjs/three": "workspace:*",
+    "@barqjs/universal": "workspace:*",
+    "@barqjs/web": "workspace:*",
+    "three": "^0.186.1"
+  },
+  "devDependencies": {
+    "@barqjs/vite": "workspace:*",
+    "@types/bun": "^1.4.3",
+    "@types/three": "^0.186.0",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.4"
+  }
+}

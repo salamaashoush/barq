@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    // The end-to-end suite imports the compiler's Chrome driver, whose harness
+    // is written without this check. The application is checked with it.
+    "noUncheckedIndexedAccess": false
+  },
+  "include": ["test/**/*.ts"]
+}

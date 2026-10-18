@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="256" viewBox="0 0 512 256">
+  <defs>
+    <linearGradient id="bands" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0.000" stop-color="rgb(191,191,191)"/>
+      <stop offset="0.067" stop-color="rgb(200,200,200)"/>
+      <stop offset="0.118" stop-color="rgb(159,159,159)"/>
+      <stop offset="0.178" stop-color="rgb(162,162,162)"/>
+      <stop offset="0.213" stop-color="rgb(157,157,157)"/>
+      <stop offset="0.278" stop-color="rgb(177,177,177)"/>
+      <stop offset="0.295" stop-color="rgb(205,205,205)"/>
+      <stop offset="0.333" stop-color="rgb(180,180,180)"/>
+      <stop offset="0.353" stop-color="rgb(204,204,204)"/>
+      <stop offset="0.372" stop-color="rgb(222,222,222)"/>
+      <stop offset="0.393" stop-color="rgb(178,178,178)"/>
+      <stop offset="0.443" stop-color="rgb(224,224,224)"/>
+      <stop offset="0.510" stop-color="rgb(223,223,223)"/>
+      <stop offset="0.557" stop-color="rgb(156,156,156)"/>
+      <stop offset="0.626" stop-color="rgb(155,155,155)"/>
+      <stop offset="0.672" stop-color="rgb(167,167,167)"/>
+      <stop offset="0.703" stop-color="rgb(168,168,168)"/>
+      <stop offset="0.747" stop-color="rgb(223,223,223)"/>
+      <stop offset="0.779" stop-color="rgb(254,254,254)"/>
+      <stop offset="0.832" stop-color="rgb(163,163,163)"/>
+      <stop offset="0.879" stop-color="rgb(231,231,231)"/>
+      <stop offset="0.904" stop-color="rgb(162,162,162)"/>
+      <stop offset="0.949" stop-color="rgb(158,158,158)"/>
+      <stop offset="0.995" stop-color="rgb(229,229,229)"/>
+      <stop offset="1.000" stop-color="rgb(191,191,191)"/>
+    </linearGradient>
+    <filter id="turbulence">
+      <feTurbulence type="fractalNoise" baseFrequency="0.012 0.09" numOctaves="3" seed="7"/>
+      <feColorMatrix values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.35 0"/>
+      <feComposite in2="SourceGraphic" operator="in"/>
+    </filter>
+  </defs>
+  <rect width="512" height="256" fill="url(#bands)"/>
+  <rect width="512" height="256" fill="#000" filter="url(#turbulence)"/>
+</svg>

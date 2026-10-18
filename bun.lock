@@ -454,6 +454,28 @@
         "@types/three",
       ],
     },
+    "packages/three-demo": {
+      "name": "@barqjs/three-demo",
+      "version": "0.1.0",
+      "dependencies": {
+        "@barqjs/core": "workspace:*",
+        "@barqjs/css": "workspace:*",
+        "@barqjs/router": "workspace:*",
+        "@barqjs/server": "workspace:*",
+        "@barqjs/start": "workspace:*",
+        "@barqjs/three": "workspace:*",
+        "@barqjs/universal": "workspace:*",
+        "@barqjs/web": "workspace:*",
+        "three": "^0.186.1",
+      },
+      "devDependencies": {
+        "@barqjs/vite": "workspace:*",
+        "@types/bun": "^1.4.3",
+        "@types/three": "^0.186.0",
+        "typescript": "^7.0.2",
+        "vite": "^8.3.4",
+      },
+    },
     "packages/ui": {
       "name": "@barqjs/ui",
       "version": "0.1.0",
@@ -681,6 +703,8 @@
     "@barqjs/testing": ["@barqjs/testing@workspace:packages/testing"],
 
     "@barqjs/three": ["@barqjs/three@workspace:packages/three"],
+
+    "@barqjs/three-demo": ["@barqjs/three-demo@workspace:packages/three-demo"],
 
     "@barqjs/ui": ["@barqjs/ui@workspace:packages/ui"],
 
