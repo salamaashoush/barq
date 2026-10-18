@@ -525,13 +525,40 @@ function attachObject(parent: Instance, node: Instance): void {
   }
 }
 
+const removedEvent = { type: "removed" } as const;
+const childRemovedEvent: { type: "childremoved"; child: THREE.Object3D } = {
+  type: "childremoved",
+  child: null as never,
+};
+
+/**
+ * `Object3D.remove`, searching from the end. A range of nodes leaves last
+ * first, so each object is found in one step and the splice moves nothing;
+ * searched from the start, unmounting a list of n meshes was n squared.
+ */
+function removeChild(parent: THREE.Object3D, object: THREE.Object3D): void {
+  if (parent.remove !== THREE.Object3D.prototype.remove) {
+    parent.remove(object);
+    return;
+  }
+  const children = parent.children;
+  const index = children.lastIndexOf(object);
+  if (index === -1) return;
+  object.parent = null;
+  children.splice(index, 1);
+  object.dispatchEvent(removedEvent);
+  childRemovedEvent.child = object;
+  parent.dispatchEvent(childRemovedEvent);
+  childRemovedEvent.child = null as never;
+}
+
 function detachObject(parent: Instance, node: Instance): void {
   const parentObject = parent.object!;
   const object = node.object;
   const attached = node.attached;
   node.attached = 0;
   if (attached === ADDED) {
-    (parentObject as THREE.Object3D).remove(object as THREE.Object3D);
+    removeChild(parentObject as THREE.Object3D, object as THREE.Object3D);
   } else if (attached === ASSIGNED) {
     // The path it was attached with: `attach` cannot change while attached,
     // and the object, whose type picks the path otherwise, is the same one.

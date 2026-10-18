@@ -105,6 +105,29 @@ describe("a compiled scene", () => {
     unmount();
   });
 
+  test("objects leaving a list fire three's removal events and the rest keep their order", () => {
+    const { scene, unmount } = mount(() => Scene());
+    const group = scene.children[0];
+    const removed: string[] = [];
+    const left: string[] = [];
+    group.addEventListener("childremoved", (event) => {
+      removed.push(event.child.name);
+      expect(event.child.parent).toBe(null);
+    });
+    for (const child of group.children) {
+      child.addEventListener("removed", () => left.push(child.name));
+    }
+    setIds([1]);
+    flush();
+    expect(names(group)).toEqual(["box", "item-1"]);
+    expect(removed.toSorted()).toEqual(["item-2", "item-3"]);
+    expect(left.toSorted()).toEqual(["item-2", "item-3"]);
+    setIds([1, 2, 3]);
+    flush();
+    expect(names(group)).toEqual(["box", "item-1", "item-2", "item-3"]);
+    unmount();
+  });
+
   test("unmounting the root empties the scene", () => {
     const { scene, unmount } = mount(() => Box());
     expect(scene.children).toHaveLength(1);

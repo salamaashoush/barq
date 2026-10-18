@@ -446,8 +446,10 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
   // Placing a hole's nodes
   // ==========================================================================
 
+  // Last node first: a host keeping children in an array finds each one at
+  // its end and removes it without moving the rest.
   function removeAll(nodes: readonly N[]): void {
-    for (let i = 0; i < nodes.length; i++) detach(nodes[i]);
+    for (let i = nodes.length - 1; i >= 0; i--) detach(nodes[i]);
   }
 
   /**
