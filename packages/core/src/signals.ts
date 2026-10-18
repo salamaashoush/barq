@@ -540,9 +540,11 @@ export function scopeAllocations(): number {
   return scopesAllocated;
 }
 
-// A scope barq opens is transparent to the engine's numbering: the ids the
-// engine hands out depend on the computations alone and not on how many ranges
-// the renderer happened to open around them.
+// A scope barq opens, and a render effect that writes a host, is transparent
+// to the engine's numbering: the ids the engine hands out depend on the
+// computations alone and not on how many ranges and bindings the renderer
+// happened to make around them. A binding that took a slot would also carry an
+// id string of its own, one per bound prop of every row.
 const TRANSPARENT = { transparent: true } as const;
 const openTransparent = (): Scope => createOwner(TRANSPARENT);
 
@@ -1105,7 +1107,7 @@ export function renderEffect<T>(
     claiming(run, apply);
     return;
   }
-  createRenderEffect<T>(run as never, apply);
+  createRenderEffect<T>(run as never, apply, TRANSPARENT);
 }
 
 /**
@@ -1252,6 +1254,7 @@ function claimEffect<T>(
       if (value === ABANDONED) return;
       return apply(value, prev === ABANDONED ? undefined : prev);
     },
+    TRANSPARENT,
   );
 }
 
