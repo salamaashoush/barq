@@ -12,6 +12,7 @@ import Scene, {
   setWidth,
   setX,
 } from "./fixtures/basic.scene.tsx";
+import type { RootConfig } from "./renderer.ts";
 import { manualFrames, mount, unmountAll, type Frames } from "./test-utils.ts";
 
 let frames: Frames;
@@ -109,5 +110,23 @@ describe("a compiled scene", () => {
     expect(scene.children).toHaveLength(1);
     unmount();
     expect(scene.children).toHaveLength(0);
+  });
+});
+
+describe("root configuration", () => {
+  test("shadows choose a shadow map three still has", () => {
+    const types: [RootConfig["shadows"], THREE.ShadowMapType][] = [
+      [true, THREE.PCFShadowMap],
+      ["soft", THREE.PCFShadowMap],
+      ["percentage", THREE.PCFShadowMap],
+      ["basic", THREE.BasicShadowMap],
+      ["variance", THREE.VSMShadowMap],
+    ];
+    for (const [shadows, type] of types) {
+      const { gl, unmount } = mount(() => Box(), { shadows });
+      expect(gl.shadowMap.enabled).toBe(true);
+      expect(gl.shadowMap.type).toBe(type);
+      unmount();
+    }
   });
 });

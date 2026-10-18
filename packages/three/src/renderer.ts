@@ -387,15 +387,17 @@ export function createRoot(canvas: HTMLCanvasElement | OffscreenCanvas): Root {
       const enabled = gl.shadowMap.enabled;
       const type = gl.shadowMap.type;
       gl.shadowMap.enabled = shadows !== false;
-      if (typeof shadows === "boolean") gl.shadowMap.type = THREE.PCFSoftShadowMap;
+      // three has folded PCFSoftShadowMap into PCFShadowMap, softened by each
+      // light's `shadow.radius`, and warns once the old type draws a shadow.
+      if (typeof shadows === "boolean") gl.shadowMap.type = THREE.PCFShadowMap;
       else if (typeof shadows === "string") {
         gl.shadowMap.type =
           {
             basic: THREE.BasicShadowMap,
             percentage: THREE.PCFShadowMap,
-            soft: THREE.PCFSoftShadowMap,
+            soft: THREE.PCFShadowMap,
             variance: THREE.VSMShadowMap,
-          }[shadows] ?? THREE.PCFSoftShadowMap;
+          }[shadows] ?? THREE.PCFShadowMap;
       } else Object.assign(gl.shadowMap, shadows);
       if (enabled !== gl.shadowMap.enabled || type !== gl.shadowMap.type)
         gl.shadowMap.needsUpdate = true;
