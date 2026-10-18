@@ -603,6 +603,16 @@ fn compile_on_this_stack(
             filename,
         ));
     }
+    for target in &options.unknown_intrinsic_targets {
+        warnings.push(Diagnostic::at(
+            Severity::Warning,
+            format!(
+                "An `intrinsics` entry names `{target}`, which is not a compile target, so no \
+                 renderer claims its tags. The targets are: dom, universal."
+            ),
+            filename,
+        ));
+    }
 
     passes::run(&allocator, &mut module, options, target);
     warnings.extend(analysis_diagnostics(&module, filename, &mut lines));

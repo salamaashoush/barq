@@ -290,6 +290,31 @@ pub struct Boundary {
     pub module_source: String,
 }
 
+/// One entry of `intrinsics`: lowercase tags a renderer claims, so a JSX tree
+/// rooted at one of them builds through that renderer wherever it is written.
+#[napi(object)]
+#[derive(Debug, Clone, Default)]
+pub struct IntrinsicEntry {
+    pub tags: Vec<String>,
+    /// Also claim a lowercase tag without a hyphen that no renderer names and
+    /// the document does not have.
+    /// @default false
+    pub claim_unknown: Option<bool>,
+    /// `"dom"` or `"universal"`.
+    pub target: String,
+    /// The module the claimed elements import the renderer's helpers from.
+    pub module_source: String,
+}
+
+/// A resolved `intrinsics` entry.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Intrinsic {
+    pub tags: Vec<String>,
+    pub claim_unknown: bool,
+    pub target: RenderTarget,
+    pub module_source: String,
+}
+
 /// `autoComputed` and the three component NAME LISTS the deleted Babel plugin
 /// took are not here and will not be. Nothing in this compiler could read them —
 /// every component and every reactive read resolves by `SymbolId` in P0,
@@ -321,6 +346,10 @@ pub struct TransformOptions {
     /// own target, and its children for the entry's `target` and
     /// `moduleSource`. Boundaries nest.
     pub boundaries: Option<Vec<BoundaryEntry>>,
+    /// Intrinsic tags a renderer claims. A tree of intrinsic elements outside
+    /// every boundary whose root tag one entry claims, and the document does
+    /// not have, compiles for that entry's `target` and `moduleSource`.
+    pub intrinsics: Option<Vec<IntrinsicEntry>>,
     /// Module source for the helpers every target shares and for the
     /// components and primitives an author imports.
     /// @default `@barqjs/core`
@@ -464,6 +493,7 @@ pub const OPTION_KEYS: &[&str] = &[
     "target",
     "renderers",
     "boundaries",
+    "intrinsics",
     "coreSource",
     "serverSource",
     "startSource",
@@ -526,6 +556,11 @@ pub struct ResolvedOptions {
     /// not have. Each is reported, and its children compile for the target
     /// around them.
     pub unknown_boundary_targets: Vec<String>,
+    /// The `intrinsics` entries whose target this compiler has.
+    pub intrinsics: Vec<Intrinsic>,
+    /// The `target` of every `intrinsics` entry this compiler does not have.
+    /// Each is reported, and its tags are claimed by no renderer.
+    pub unknown_intrinsic_targets: Vec<String>,
     pub core_source: String,
     pub server_source: String,
     pub start_source: String,
@@ -570,6 +605,8 @@ impl Default for ResolvedOptions {
             unknown_target: None,
             boundaries: Vec::new(),
             unknown_boundary_targets: Vec::new(),
+            intrinsics: Vec::new(),
+            unknown_intrinsic_targets: Vec::new(),
             core_source: DEFAULT_CORE_SOURCE.to_string(),
             server_source: DEFAULT_SERVER_SOURCE.to_string(),
             start_source: DEFAULT_START_SOURCE.to_string(),
@@ -689,6 +726,19 @@ impl TransformOptions {
                 None => unknown_boundary_targets.push(entry.name),
             }
         }
+        let mut intrinsics = Vec::new();
+        let mut unknown_intrinsic_targets = Vec::new();
+        for entry in self.intrinsics.unwrap_or_default() {
+            match RenderTarget::parse(&entry.target) {
+                Some(target) => intrinsics.push(Intrinsic {
+                    tags: entry.tags,
+                    claim_unknown: entry.claim_unknown.unwrap_or(false),
+                    target,
+                    module_source: entry.module_source,
+                }),
+                None => unknown_intrinsic_targets.push(entry.target),
+            }
+        }
         ResolvedOptions {
             filename: self.filename,
             sourcemap: self.sourcemap.unwrap_or(false),
@@ -698,6 +748,8 @@ impl TransformOptions {
             unknown_target,
             boundaries,
             unknown_boundary_targets,
+            intrinsics,
+            unknown_intrinsic_targets,
             core_source: self.core_source.unwrap_or_else(|| DEFAULT_CORE_SOURCE.to_string()),
             server_source: self.server_source.unwrap_or_else(|| DEFAULT_SERVER_SOURCE.to_string()),
             start_source: self.start_source.unwrap_or_else(|| DEFAULT_START_SOURCE.to_string()),

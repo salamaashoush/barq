@@ -186,23 +186,24 @@ pub struct Module<'a> {
     pub used_helpers: [bool; crate::codegen::HELPER_COUNT],
     /// What renderer `0`, the module's own, compiles for.
     pub target: crate::codegen::Target,
-    /// Every other renderer a boundary in this module enters, as renderer
-    /// `index + 1`. Empty for a module that writes no boundary, which is what
-    /// keeps its emission exactly what it was without the option.
+    /// Every other renderer a boundary or a claimed intrinsic tree in this
+    /// module enters, as renderer `index + 1`. Empty for a module that enters
+    /// none, which is what keeps its emission exactly what it was without the
+    /// options.
     pub renderers: Vec<Renderer<'a>>,
-    /// `(start, end, renderer)`: the source a boundary's children occupy, in
-    /// the order the walk met them, so an inner boundary follows the outer one
-    /// whose children hold it.
-    pub boundaries: Vec<(u32, u32, u8)>,
+    /// `(start, end, renderer)`: the source that builds through a renderer
+    /// other than the one around it. Ranges nest; the innermost holding an
+    /// offset decides.
+    pub renderer_ranges: Vec<(u32, u32, u8)>,
 }
 
 /// [`Module::renderer_at`] over a borrowed table, for a pass that holds the
 /// module's fields apart.
-pub fn renderer_in(boundaries: &[(u32, u32, u8)], offset: u32) -> u8 {
-    boundaries
+pub fn renderer_in(ranges: &[(u32, u32, u8)], offset: u32) -> u8 {
+    ranges
         .iter()
-        .rev()
-        .find(|(start, end, _)| *start <= offset && offset < *end)
+        .filter(|(start, end, _)| *start <= offset && offset < *end)
+        .min_by_key(|(start, end, _)| end - start)
         .map_or(0, |(_, _, renderer)| *renderer)
 }
 
@@ -699,14 +700,14 @@ impl<'a> Module<'a> {
             used_helpers: [false; crate::codegen::HELPER_COUNT],
             target: crate::codegen::Target::Dom,
             renderers: Vec::new(),
-            boundaries: Vec::new(),
+            renderer_ranges: Vec::new(),
         }
     }
 
     /// The renderer the source at `offset` builds through: the innermost
     /// boundary whose children hold it, or the module's own.
     pub fn renderer_at(&self, offset: u32) -> u8 {
-        renderer_in(&self.boundaries, offset)
+        renderer_in(&self.renderer_ranges, offset)
     }
 
     pub fn target_of(&self, renderer: u8) -> crate::codegen::Target {

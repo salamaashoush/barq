@@ -114,6 +114,7 @@ codes! {
     Barq026 = "BARQ026", Error, "Markup the browser's HTML parser builds differently from the JSX";
     Barq027 = "BARQ027", Error, "A `bind:` or a form `action` is written for a custom renderer";
     Barq028 = "BARQ028", Error, "A module compiled for a custom renderer is also asked for `ssr`, `hydratable` or `interp`";
+    Barq029 = "BARQ029", Warning, "Two renderers claim the same intrinsic tag";
 }
 
 /// Where the pages live. A consumer gets this string verbatim — the Vite panel
