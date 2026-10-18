@@ -437,15 +437,20 @@ impl<'a> Backend<'a> for Universal<'a, '_, '_, '_> {
         let span = at.span();
         let value = dom::take(self.ctx, self.unit, value, span);
         if write {
-            let node = self.node(at.target(), span);
+            // The variable is handed what the host hands a ref rather than the
+            // node: a host's node can stand for an object it builds later,
+            // once a property the object's constructor needs has arrived.
             let assign = Expression::new_assignment_expression(
                 span,
                 oxc::ast::ast::AssignmentOperator::Assign,
                 dom::writable_target(value),
-                node,
+                self.ctx.ident("_r$", span),
                 &self.ctx.ast,
             );
-            return Some(Statement::new_expression_statement(span, assign, &self.ctx.ast));
+            let body = vec![Statement::new_expression_statement(span, assign, &self.ctx.ast)];
+            let params = dom::apply_params(self.ctx, "_r$", None, span);
+            let deliver = dom::arrow(self.ctx, params, dom::block(self.ctx, body, span), span);
+            return self.write(at, "ref", deliver);
         }
         self.write(at, "ref", value)
     }
@@ -584,6 +589,16 @@ mod tests {
         for document in ["_$setClass", "_$setStyle", "_$setAttr", "__bq_", "_$listen", "_$ref("] {
             assert!(!code.contains(document), "{document} in\n{code}");
         }
+    }
+
+    #[test]
+    fn a_ref_written_into_a_variable_is_delivered_by_the_host() {
+        let code =
+            universal("export function V() { let r; const v = <box ref={r} />; return [v, r]; }\n")
+                .code;
+        assert!(code.contains("_$setProp(_el$1, \"ref\", (_r$) => {"), "{code}");
+        assert!(code.contains("r = _r$;"), "{code}");
+        assert!(!code.contains("r = _el$1"), "{code}");
     }
 
     #[test]
