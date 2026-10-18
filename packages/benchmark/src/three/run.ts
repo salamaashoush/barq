@@ -20,6 +20,8 @@ import { bundle } from "./bundle.ts"
 const HERE = import.meta.dir
 const OUT = join(HERE, "..", "..", "three-results.json")
 const ROUNDS = Number(process.argv[2] ?? 5)
+/** Scenario names to run, by prefix (`update`, `mount`); all of them when none is given. */
+const ONLY = process.argv.slice(3)
 
 const page = (script: string): string =>
   '<!doctype html><meta charset="utf-8"><body style="margin:0"><div id="app"></div>' +
@@ -89,7 +91,8 @@ async function toggle5k(page: Page, url: string): Promise<Row> {
   }
 }
 
-const FRAMES = 120
+// Long enough that a collection or a late frame is a small share of a round.
+const FRAMES = 480
 
 /** 1k meshes moving every frame for 120 frames: per-frame script, task and wall time. */
 async function update1k(page: Page, url: string, mode: string): Promise<Row> {
@@ -155,35 +158,49 @@ const results: Record<string, Row> = {}
 try {
   await withBenchChrome(
     async (chrome) => {
-      const repeat = async (name: string, run: () => Promise<Row>): Promise<void> => {
-        const rows: Row[] = []
-        for (let round = 0; round < ROUNDS; round++) rows.push(await run())
-        results[name] = summarize(rows)
+      const scenarios: [string, () => Promise<Row>][] = [
+        ["mount10k barq", () => mount10k(chrome, barqUrl)],
+        ["mount10k r3f", () => mount10k(chrome, r3fUrl)],
+        ["toggle5k barq", () => toggle5k(chrome, barqUrl)],
+        ["toggle5k r3f", () => toggle5k(chrome, r3fUrl)],
+        ["update1k barq signals", () => update1k(chrome, barqUrl, "signals")],
+        ["update1k barq refs", () => update1k(chrome, barqUrl, "refs")],
+        ["update1k r3f refs", () => update1k(chrome, r3fUrl, "refs")],
+        ["update1k r3f state", () => update1k(chrome, r3fUrl, "state")],
+        ["events1k barq", () => events1k(chrome, barqUrl)],
+        ["events1k r3f", () => events1k(chrome, r3fUrl)],
+      ]
+      const chosen = scenarios.filter(
+        ([name]) => ONLY.length === 0 || ONLY.some((prefix) => name.startsWith(prefix)),
+      )
+      // Round by round rather than scenario by scenario, so a machine that
+      // slows down part way through slows every side of a comparison alike.
+      const rows = new Map<string, Row[]>(chosen.map(([name]) => [name, []]))
+      for (let round = 0; round < ROUNDS; round++) {
+        for (const [name, run] of chosen) rows.get(name)!.push(await run())
+      }
+      for (const [name] of chosen) {
+        results[name] = summarize(rows.get(name)!)
         console.log(name.padEnd(28), JSON.stringify(results[name], (_, v: unknown) =>
           typeof v === "number" ? Math.round(v * 1000) / 1000 : v,
         ))
       }
-      await repeat("mount10k barq", () => mount10k(chrome, barqUrl))
-      await repeat("mount10k r3f", () => mount10k(chrome, r3fUrl))
-      await repeat("toggle5k barq", () => toggle5k(chrome, barqUrl))
-      await repeat("toggle5k r3f", () => toggle5k(chrome, r3fUrl))
-      await repeat("update1k barq signals", () => update1k(chrome, barqUrl, "signals"))
-      await repeat("update1k barq refs", () => update1k(chrome, barqUrl, "refs"))
-      await repeat("update1k r3f refs", () => update1k(chrome, r3fUrl, "refs"))
-      await repeat("update1k r3f state", () => update1k(chrome, r3fUrl, "state"))
-      await repeat("events1k barq", () => events1k(chrome, barqUrl))
-      await repeat("events1k r3f", () => events1k(chrome, r3fUrl))
     },
     { flags: WEBGL },
   )
 } finally {
   served.stop()
 }
-results["bundle (gz)"] = await sizes()
-console.log("bundle (gz)".padEnd(28), JSON.stringify(results["bundle (gz)"]))
+if (ONLY.length === 0 || ONLY.includes("bundle")) results["bundle (gz)"] = await sizes()
+if (results["bundle (gz)"] !== undefined) {
+  console.log("bundle (gz)".padEnd(28), JSON.stringify(results["bundle (gz)"]))
+}
 
-writeFileSync(
-  OUT,
-  `${JSON.stringify({ when: new Date().toISOString(), rounds: ROUNDS, results }, null, 2)}\n`,
-)
+// A subset is a probe, not a record: only a full run is written.
+if (ONLY.length === 0) {
+  writeFileSync(
+    OUT,
+    `${JSON.stringify({ when: new Date().toISOString(), rounds: ROUNDS, results }, null, 2)}\n`,
+  )
+}
 console.log(`\n${OUT}`)
