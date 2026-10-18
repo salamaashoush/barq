@@ -96,13 +96,10 @@ describe("a compiled scene", () => {
     expect(disposed).toBe(2);
     setIds([3, 1, 4]);
     flush();
-    // A move appends and the order is restored before the next frame draws.
-    frames.step();
     expect(names(group)).toEqual(["item-3", "item-1", "item-4"]);
     setShown(true);
     setIds([1, 2, 3]);
     flush();
-    frames.step();
     expect(names(group)).toEqual(["box", "item-1", "item-2", "item-3"]);
     unmount();
   });

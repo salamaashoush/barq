@@ -21,8 +21,6 @@ const mounted = app.mount(element);
 const frames = [{ dom: element.querySelector("h1")?.outerHTML, scene: mounted.scene() }];
 app.setCount(3);
 app.flush();
-// A list that grew restores its children's order once the batch of inserts is over.
-await Promise.resolve();
 frames.push({ dom: element.querySelector("h1")?.outerHTML, scene: mounted.scene() });
 mounted.dispose();
 frames.push({ dom: element.innerHTML, scene: mounted.scene() });

@@ -245,9 +245,21 @@ function unordered(parent: Instance): void {
   parent.queued = true;
   const list = root.internal.unordered;
   list.push(parent);
-  // Restored once the current batch of inserts is over, as well as before a
-  // frame or a raycast, so code that reads `children` later sees them in order.
+  // The renderer reports the end of every batch it places through `placed`.
+  // An insert made by hand, outside one, is put in order once the task that
+  // made it is over, and before the next frame or raycast in any case.
   if (list.length === 1) queueMicrotask(() => sortChildren(root));
+}
+
+/**
+ * A batch of inserts under `parent` is done: put its objects back in the
+ * order of its nodes, once for the whole batch, so a list mounted in reverse
+ * costs one pass and nothing ever reads it out of order.
+ */
+export function placed(parent: Instance): void {
+  if (!parent.queued) return;
+  parent.queued = false;
+  parent.sortChildren();
 }
 
 // ---------------------------------------------------------------------------

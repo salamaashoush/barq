@@ -64,7 +64,6 @@ describe("<Canvas>", () => {
     expect(names()).toEqual(["inline-a", "inline-b"]);
     setInline(["b", "c"]);
     flush();
-    frames.step();
     expect(names()).toEqual(["inline-b", "inline-c"]);
     dispose();
     setInline(["a", "b"]);

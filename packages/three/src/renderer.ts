@@ -48,6 +48,7 @@ import {
   attachRef,
   destroy,
   insertNode as insertInstance,
+  placed,
   removeNode as removeInstance,
   setProperty,
 } from "./instance.ts";
@@ -106,6 +107,7 @@ const renderer: Host = createRenderer<Instance>({
   createSentinel: () => new Instance("#sentinel", SENTINEL, null),
   createContainer: () => new Instance("#container", CONTAINER, null),
   attachRef,
+  placed,
 });
 
 export const createTextNode: Host["createTextNode"] = renderer.createTextNode;

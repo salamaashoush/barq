@@ -87,6 +87,7 @@ export function sortChildren(state: RootState): void {
   const unordered = state.internal.unordered;
   if (unordered.length === 0) return;
   for (const parent of unordered) {
+    if (!parent.queued) continue;
     parent.queued = false;
     parent.sortChildren();
   }
