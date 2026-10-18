@@ -125,6 +125,18 @@ const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 const frames = (page: Page): Promise<number> =>
   page.evaluate<number>("Number(document.querySelector('#frames').textContent)");
 
+/** The frame count once it stops moving, read a poll interval apart. */
+async function settledFrames(page: Page): Promise<number> {
+  let last = await frames(page);
+  for (let attempt = 0; attempt < 40; attempt++) {
+    await sleep(300);
+    const now = await frames(page);
+    if (now === last) return now;
+    last = now;
+  }
+  throw new Error(`the frame count never settled, last at ${String(last)}`);
+}
+
 /** A real mouse click, through the browser's input pipeline rather than `dispatchEvent`. */
 async function click(page: Page, x: number, y: number): Promise<void> {
   await page.send("Input.dispatchMouseEvent", { type: "mouseMoved", x, y });
@@ -210,8 +222,7 @@ test("hydrates without a mismatch, draws, selects on click, and remounts after n
       // Paused under the demand frameloop, nothing draws.
       await clickElement(page, "#play");
       await until(page, "document.querySelector('#play').textContent === 'Play'", "the pause");
-      await sleep(500);
-      const idle = await frames(page);
+      const idle = await settledFrames(page);
       await sleep(1000);
       expect(await frames(page)).toBe(idle);
 
@@ -249,8 +260,13 @@ test("hydrates without a mismatch, draws, selects on click, and remounts after n
         "document.querySelector('span[data-planet=\"saturn\"]').hasAttribute('data-lit')",
         "Saturn lit",
       );
-      await sleep(500);
-      expect(await frames(page)).toBeGreaterThan(before);
+      // Waited for rather than slept on: a frame of the whole belt on a
+      // software rasteriser can outlast any fixed pause.
+      await until(
+        page,
+        `Number(document.querySelector('#frames').textContent) > ${String(before)}`,
+        "a frame after the selection",
+      );
 
       // Away to a page with no canvas: the scene goes, and its context with it.
       await page.evaluate("window.__marker = 'same document'");
