@@ -61,6 +61,10 @@ type Row = Record<string, number>
 async function fresh(page: Page, url: string): Promise<void> {
   await load(page, url)
   await page.send("Performance.enable", {})
+  // The previous page's heap is collected now rather than inside whatever
+  // this page measures first: with rounds interleaved, that is the other
+  // library's 10k meshes landing in this one's unmount.
+  await page.send("HeapProfiler.collectGarbage", {})
 }
 
 /** Mount 10k meshes, then unmount them: wall and script time of each, and the heap they hold. */
