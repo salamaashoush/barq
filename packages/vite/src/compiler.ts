@@ -572,6 +572,8 @@ function checkPairs(checks: BarqCompilerOptions["checks"]): string[][] | undefin
   return Object.entries(checks).map(([code, category]) => [code, category]);
 }
 
+const SCRIPT_MODULE = /\.[cm]?[jt]sx?$/;
+
 /** The compiler takes `include` as a list, and an entry may name one glob. */
 function rendererEntries(
   renderers: BarqCompilerOptions["renderers"],
@@ -1231,7 +1233,11 @@ export function barqVitePlugin(options: BarqVitePluginOptions = {}): Plugin {
       // A stylesheet lives in a `.ts` module with no JSX in it, so extension
       // alone would skip exactly the file the CSS is in. Naming the package is
       // the cheap gate; the compiler then resolves the tag by symbol.
-      const shouldTransform = include.some((ext) => path.endsWith(ext)) || code.includes(cssSource);
+      // Only a script module: a `package.json` or a JSON data file that merely
+      // NAMES the package is not a module to compile.
+      const shouldTransform =
+        include.some((ext) => path.endsWith(ext)) ||
+        (SCRIPT_MODULE.test(path) && code.includes(cssSource));
       if (!shouldTransform) {
         // The package's name was the only reason this module was compiled, and
         // an edit that takes the last rule out usually takes the import too.

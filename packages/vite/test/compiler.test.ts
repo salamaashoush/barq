@@ -723,6 +723,12 @@ export const card = css\`color: red\`;
     const renamed = CSS_SOURCE.replace("@barqjs/css", "@acme/styles");
     expect((await run(plugin, renamed, "/a/styles.ts")).result?.code).toContain(".barq.css");
   });
+
+  test("a JSON file that names the package is not compiled", async () => {
+    const plugin = barqVitePlugin();
+    const manifest = `{\n  "name": "@acme/ui",\n  "dependencies": { "@barqjs/css": "*" }\n}\n`;
+    expect((await run(plugin, manifest, "/a/package.json")).result).toBe(null);
+  });
 });
 
 /**
