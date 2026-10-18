@@ -89,6 +89,14 @@ export interface HostOps<N extends object> {
    * built before anything placed it. Defaults to `createElement("#container")`.
    */
   createContainer?(): N;
+  /**
+   * Hand a `ref` what it should hold for `node`, in place of the node itself.
+   * A host whose node stands for an object it builds later (once a property
+   * the object's constructor needs has arrived) calls `deliver` with that
+   * object when it exists and again each time it is replaced, and returns the
+   * function that stops delivering. Without it a ref is handed the node, once.
+   */
+  attachRef?(node: N, deliver: (value: unknown) => void): () => void;
 }
 
 /** What `render` accepts besides the tree and the node it is mounted into. */
@@ -760,14 +768,37 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
   function ref(node: N, value: unknown): void {
     const owner = getOwner();
     const undo: (() => void)[] = [];
+    const attachRef = ops.attachRef;
     const one = (target: unknown): void => {
       refuseBlock(target, "A `ref`");
       if (typeof target === "function") {
-        const back: unknown = target(node);
-        refuseBlock(back, "A `ref`", true);
-        if (typeof back === "function") undo.push(back as () => void);
+        if (attachRef === undefined) {
+          const back: unknown = target(node);
+          refuseBlock(back, "A `ref`", true);
+          if (typeof back === "function") undo.push(back as () => void);
+          return;
+        }
+        let release: (() => void) | undefined;
+        const stop = attachRef(node, (held) => {
+          release?.();
+          const back: unknown = target(held);
+          refuseBlock(back, "A `ref`", true);
+          release = typeof back === "function" ? (back as () => void) : undefined;
+        });
+        undo.push(() => {
+          stop();
+          release?.();
+        });
       } else if (typeof target === "object" && target !== null && "current" in target) {
-        target.current = node;
+        if (attachRef === undefined) {
+          target.current = node;
+          return;
+        }
+        undo.push(
+          attachRef(node, (held) => {
+            target.current = held;
+          }),
+        );
       }
     };
     if (Array.isArray(value)) {

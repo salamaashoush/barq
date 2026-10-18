@@ -53,6 +53,12 @@ export const {
 `insertBefore` does. `createSentinel` and `createContainer` are optional: the
 first defaults to an empty text node, the second to `createElement("#container")`.
 
+`attachRef(node, deliver)` is optional too. Without it a `ref` is handed the
+node. A host whose node stands for an object it builds later, such as a three.js
+object that needs constructor arguments a later property brings, calls
+`deliver` with that object once it exists and again whenever it is replaced, and
+returns a function that stops delivering.
+
 ## Compiling for it
 
 Point the compiler at the renderer module for the files that render through it:

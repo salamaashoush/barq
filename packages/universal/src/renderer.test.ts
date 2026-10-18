@@ -82,6 +82,43 @@ describe("the node operations compiled code calls", () => {
     expect(undone).toBe(1);
     expect(node.props).toEqual({});
   });
+
+  test("a host's attachRef hands a ref what it delivers, each time, and stops when the owner goes", () => {
+    const deliveries = new Set<(value: unknown) => void>();
+    let stopped = 0;
+    const host = createRenderer({
+      ...createTestHost().ops,
+      attachRef(_node, deliver) {
+        deliveries.add(deliver);
+        return () => {
+          deliveries.delete(deliver);
+          stopped++;
+        };
+      },
+    });
+    const node = host.createElement("box");
+    const seen: unknown[] = [];
+    const released: unknown[] = [];
+    const holder: { current: unknown } = { current: null };
+    createRoot((dispose) => {
+      host.setProp(node, "ref", (value: unknown) => {
+        seen.push(value);
+        return () => released.push(value);
+      });
+      host.setProp(node, "ref", holder);
+      expect(seen).toEqual([]);
+      expect(holder.current).toBe(null);
+      for (const deliver of deliveries.values()) deliver("first");
+      expect(seen).toEqual(["first"]);
+      expect(holder.current).toBe("first");
+      for (const deliver of deliveries.values()) deliver("second");
+      expect(seen).toEqual(["first", "second"]);
+      expect(released).toEqual(["first"]);
+      dispose();
+    });
+    expect(released).toEqual(["first", "second"]);
+    expect(stopped).toBe(2);
+  });
 });
 
 describe("insert", () => {
