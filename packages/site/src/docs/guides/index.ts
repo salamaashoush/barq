@@ -13,6 +13,7 @@ import * as registry from "./registry.tsx";
 import * as rtl from "./rtl.tsx";
 import * as serverRendering from "./server-rendering.tsx";
 import * as theming from "./theming.tsx";
+import * as three from "./three.tsx";
 
 interface GuideModule {
   readonly sections: readonly DocsSection[];
@@ -29,6 +30,7 @@ const MODULES: Record<string, GuideModule> = {
   forms,
   "server-rendering": serverRendering,
   "custom-renderers": customRenderers,
+  three,
   registry,
   changelog,
 };

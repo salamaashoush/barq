@@ -72,6 +72,11 @@ export const GUIDES: readonly GuideMeta[] = [
     description: "Render barq to a host other than the document.",
   },
   {
+    slug: "three",
+    title: "three.js",
+    description: "Scenes written as JSX with @barqjs/three.",
+  },
+  {
     slug: "registry",
     title: "Registry",
     description: "Run your own component registry.",

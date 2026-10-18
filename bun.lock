@@ -328,6 +328,7 @@
         "@barqjs/server": "workspace:*",
         "@barqjs/start": "workspace:*",
         "@barqjs/table": "workspace:*",
+        "@barqjs/three": "workspace:*",
         "@barqjs/ui": "workspace:*",
         "@barqjs/universal": "workspace:*",
         "@barqjs/web": "workspace:*",
@@ -335,6 +336,7 @@
         "@fontsource-variable/geist-mono": "^5.3.0",
         "@tanstack/charts": "^1.1.0",
         "d3-shape": "3.2.0",
+        "three": "^0.186.1",
       },
       "devDependencies": {
         "@barqjs/compiler": "workspace:*",
@@ -343,6 +345,7 @@
         "@happy-dom/global-registrator": "^21.0.1",
         "@types/bun": "^1.4.3",
         "@types/d3-shape": "^3.2.0",
+        "@types/three": "^0.186.0",
         "vite": "^8.3.4",
       },
     },
