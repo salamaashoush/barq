@@ -83,6 +83,27 @@ describe("the node operations compiled code calls", () => {
     expect(node.props).toEqual({});
   });
 
+  test("a host's placed hears the end of each batch of inserts, once per batch", () => {
+    const seen: TestNode[] = [];
+    const custom = createRenderer({
+      ...createTestHost().ops,
+      placed: (parent) => seen.push(parent),
+    });
+    const parent = custom.createElement("list");
+    const [a, b, c] = ["a", "b", "c"].map((tag) => custom.createElement(tag)) as [
+      TestNode,
+      TestNode,
+      TestNode,
+    ];
+    custom.insert(parent, [a, b, c]);
+    expect(seen).toEqual([parent]);
+    custom.syncRows(parent, null, [a, b, c], [c, b, a]);
+    expect(seen).toEqual([parent, parent]);
+    expect(serialize(parent)).toBe("<list><c></c><b></b><a></a></list>");
+    custom.host.insertRange(parent, [custom.createElement("d")], a);
+    expect(seen).toEqual([parent, parent, parent]);
+  });
+
   test("a host's attachRef hands a ref what it delivers, each time, and stops when the owner goes", () => {
     const deliveries = new Set<(value: unknown) => void>();
     let stopped = 0;

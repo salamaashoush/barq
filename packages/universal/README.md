@@ -59,6 +59,11 @@ object that needs constructor arguments a later property brings, calls
 `deliver` with that object once it exists and again whenever it is replaced, and
 returns a function that stops delivering.
 
+`placed(parent)` is optional as well. The renderer calls it once a batch of
+inserts under `parent` is over: a list it placed, a hole it filled, a range it
+moved. A host that keeps a second order of its own, such as three.js's
+`children` array, can append during the batch and sort once here.
+
 ## Compiling for it
 
 Point the compiler at the renderer module for the files that render through it:

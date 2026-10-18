@@ -98,6 +98,13 @@ export interface HostOps<N extends object> {
    * function that stops delivering. Without it a ref is handed the node, once.
    */
   attachRef?(node: N, deliver: (value: unknown) => void): () => void;
+  /**
+   * Told once a batch of inserts under `parent` is done: the nodes a list
+   * placed, a hole filled, a range moved. A host that keeps its own order of
+   * children cheaply by appending during the batch puts them in order here,
+   * so nothing reads them in the wrong order.
+   */
+  placed?(parent: N): void;
 }
 
 /** What `render` accepts besides the tree and the node it is mounted into. */
@@ -210,6 +217,8 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
     ops.attachRef === undefined
       ? undefined
       : (node: N, deliver: (value: unknown) => void) => ops.attachRef!(node, deliver);
+  const placed =
+    ops.placed === undefined ? (_parent: N): void => {} : (parent: N) => ops.placed!(parent);
 
   // The text each text node was created with or last set to. The host has no
   // operation to read it back, and a hole that rewrites the same string keeps
@@ -459,13 +468,16 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
     }
     if (current.length === 0) {
       for (let i = 0; i < next.length; i++) insertNode(parent, next[i], marker);
+      placed(parent);
       return next;
     }
     if (next.length === 0) {
       removeAll(current);
       return [];
     }
-    reconcile(parentOf(current[0]) ?? parent, current, next, marker);
+    const into = parentOf(current[0]) ?? parent;
+    reconcile(into, current, next, marker);
+    placed(into);
     return next;
   }
 
@@ -584,6 +596,7 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
         place(parent, nodes[i], anchor);
         anchor = nodes[i];
       }
+      placed(parent);
     },
     removeRange: removeAll,
   };
@@ -655,6 +668,7 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
       }
       orderRows(parent, after, leaving, arriving);
     }
+    placed(parent);
   };
 
   function swapEnds(parent: N, low: Row<N>, high: Row<N>): boolean {
@@ -731,6 +745,7 @@ export function createRenderer<N extends object>(ops: HostOps<N>): Renderer<N> {
     if (value === null || value === undefined || typeof value === "boolean") return;
     const nodes = toNodes(value, given);
     for (let i = 0; i < nodes.length; i++) insertNode(parent, nodes[i], anchor);
+    placed(parent);
   }
 
   function insertLive(
