@@ -10,6 +10,7 @@ import {
   type ShapeDivergence,
   type Template,
 } from "./browser-parse-check.ts";
+import { checkRange, type RangeReport } from "./browser-range-check.ts";
 import { checkSelect, type SelectReport } from "./browser-select-check.ts";
 import { checkSvgClass, svgClassClaims, type SvgClassResult } from "./browser-svg-class-check.ts";
 import { checkDifferential, compareRuns, type DifferentialReport } from "./browser-differential.ts";
@@ -45,6 +46,7 @@ let truncated: DifferentialReport;
 let unanchored: DifferentialReport;
 let caret: CaretReport;
 let select: SelectReport;
+let range: RangeReport;
 let mathml: MathReport;
 
 /** Reverse the attribute order every template bakes in, exactly as oracle.test.ts does. */
@@ -116,6 +118,7 @@ beforeAll(async () => {
     // browser-caret-check.ts for why a `dispatchEvent` cannot.
     caret = await checkCaret(page);
     select = await checkSelect(page);
+    range = await checkRange(page);
     mathml = await checkMathml(page);
   });
 }, 600_000);
@@ -310,6 +313,24 @@ describe("real browser: a select whose options change", () => {
       select.control.ok ? "" : `the naive channel shows ${select.control.shows}`,
       "the control writes the property and keeps nothing; if THAT shows the value, the browser " +
         "is not the one being measured",
+    ).toBe("");
+  });
+});
+
+describe("real browser: a range input written before its max", () => {
+  it("keeps the value it was given, whatever order the attributes were written in", () => {
+    expect(
+      range.rows
+        .filter((row) => !row.ok)
+        .map((row) => `${row.what}: shows ${row.shows}, wanted ${row.wanted}`),
+    ).toEqual([]);
+  });
+
+  it("and the check can see the clamp: a value written before its max is clamped", () => {
+    expect(
+      range.control.ok ? "" : `the control shows ${range.control.shows}`,
+      "the control writes the value before the max; if THAT keeps 2500, the browser is not " +
+        "the one being measured",
     ).toBe("");
   });
 });

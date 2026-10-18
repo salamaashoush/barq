@@ -49,6 +49,9 @@ flag_set!(TagFlags: u16 {
     PRESERVE_WS = 3;
     /// member of the generated `SVG_TAGS`
     SVG = 4;
+    /// `<input>` / `<select>`: a write to `value` or `checked` is sanitized
+    /// against the element's other attributes as they stand at that moment
+    CLAMPS_VALUE = 5;
 });
 
 flag_set!(NameFlags: u16 {
@@ -62,6 +65,11 @@ flag_set!(NameFlags: u16 {
     IS_STYLE = 4;
     /// `setElementAttr` kebab-cases every SVG attribute except these
     SVG_KEBAB_EXEMPT = 5;
+    /// `value`, `checked` and their defaults: what a [`TagFlags::CLAMPS_VALUE`]
+    /// element sanitizes
+    FORM_STATE = 6;
+    /// `type`, `min`, `max`, `step`, `multiple`: what the sanitizing reads
+    CONSTRAINS_VALUE = 7;
 });
 
 pub struct TagRow<'a> {
@@ -108,6 +116,12 @@ const ESCAPABLE_RAW_TEXT_TAGS: [&str; 2] = ["textarea", "title"];
 
 const NEWLINE_EATING_TAGS: [&str; 3] = ["pre", "textarea", "listing"];
 
+const VALUE_CLAMPING_TAGS: [&str; 2] = ["input", "select"];
+
+const FORM_STATE_NAMES: [&str; 4] = ["value", "checked", "defaultValue", "defaultChecked"];
+
+const VALUE_CONSTRAINT_NAMES: [&str; 5] = ["type", "min", "max", "step", "multiple"];
+
 /// `applyProp`'s test is `key[0] === "o" && key[1] === "n"`, and the name it
 /// binds is `key.slice(2).toLowerCase()` — so `onceUpon` really does bind a
 /// `ceupon` listener in this runtime, and the compiler has to agree.
@@ -135,6 +149,9 @@ pub fn tag_flags(text: &str) -> TagFlags {
     if NEWLINE_EATING_TAGS.contains(&text) {
         flags = flags | TagFlags::PRESERVE_WS;
     }
+    if VALUE_CLAMPING_TAGS.contains(&text) {
+        flags = flags | TagFlags::CLAMPS_VALUE;
+    }
     flags
 }
 
@@ -157,6 +174,12 @@ fn name_flags(text: &str) -> NameFlags {
     }
     if crate::tables::is_svg_kebab_exempt(text) {
         flags = flags | NameFlags::SVG_KEBAB_EXEMPT;
+    }
+    if FORM_STATE_NAMES.contains(&text) {
+        flags = flags | NameFlags::FORM_STATE;
+    }
+    if VALUE_CONSTRAINT_NAMES.contains(&text) {
+        flags = flags | NameFlags::CONSTRAINS_VALUE;
     }
     flags
 }

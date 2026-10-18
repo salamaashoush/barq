@@ -589,6 +589,17 @@ Event delivery: membership of the lowercased name in the **22-name** `DELEGATED_
 §9 — the set does *not* contain `change`, `submit`, `keypress`, `focus`, `blur`, `mouseenter`,
 `mouseleave`; assuming otherwise produces silently dead handlers).
 
+### Order (`passes/order.rs`)
+
+An `<input>` or `<select>` sanitizes a write to `value` or `checked` against its `type`, `min`,
+`max`, `step` and `multiple` as they stand at that moment, so a range input's `value = 2500`
+written before its `max` is clamped to 100 for good. When an element's value is written by a
+patch, the patches writing those constraints on it move to the front of the unit's program:
+ahead of the value however the attributes were spelled, and ahead of the effect group header,
+whose first run writes every member where the first member stood. It runs after P2 on every
+target and level, so the address table stays the same for the DOM and string backends and
+under `-O0`.
+
 ### P3 Fold
 
 **In:** `Unit`.

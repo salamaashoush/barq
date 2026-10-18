@@ -4,6 +4,7 @@ pub(crate) mod classify;
 pub(crate) mod flow;
 mod fold;
 pub(crate) mod group;
+mod order;
 mod serialize;
 mod shape;
 
@@ -36,6 +37,9 @@ pub fn run<'a>(
     let opt = options.opt;
     module.target = target;
     classify::run(allocator, module);
+    // Ungated, like the address table it feeds: the program order it sets is
+    // the same on every target and at every level.
+    order::run(allocator, module);
     if opt.fold {
         fold::run(allocator, module);
     }
